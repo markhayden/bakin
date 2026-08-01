@@ -4,7 +4,7 @@
  * Fetch is stubbed; no engine, no billing.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -53,6 +53,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  cleanup()
   globalThis.fetch = realFetch
 })
 
@@ -65,7 +66,8 @@ describe('EnrichmentCard', () => {
     expect(screen.getByTestId('enrichment-caption').textContent).toContain('a red square')
     expect(screen.getByTestId('enrichment-tags').textContent).toContain('red')
     expect(screen.getByTestId('enrichment-ocr').textContent).toContain('TOTAL $42')
-    expect(screen.getByTestId('enrichment-status').textContent).toBe('done')
+    expect(screen.getByText('done').textContent).toBe('done')
+    expect(screen.getByRole('heading', { level: 3, name: 'Enrichment' })).toBeTruthy()
   })
 
   it('nothing renders without an enrichment record', () => {

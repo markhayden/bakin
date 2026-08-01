@@ -1,0 +1,1692 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "pre-revamp",
+  "refs": {
+    "bakin": "8552a1e829c7904d988e27e0b5ea557d3c78497f",
+    "bits": "cd36bf69c230e4e593966603c923a293cea24094"
+  },
+  "commands": [
+    "bun run build:host",
+    "bun run build:plugins",
+    "bun run build:assets-manifest",
+    "bun run ui:baseline:capture",
+    "bun run ui:baseline:check"
+  ],
+  "environment": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "bun": "1.3.13",
+    "playwright": "1.60.0",
+    "chromium": "148.0.7778.96",
+    "colorScheme": "dark",
+    "fixedNow": "2026-04-07T12:00:00.000Z",
+    "viewports": {
+      "desktop": {
+        "width": 1440,
+        "height": 900
+      },
+      "mobile": {
+        "width": 320,
+        "height": 800
+      }
+    }
+  },
+  "counts": {
+    "scenarios": 8,
+    "captures": 16,
+    "hostRouteFiles": 26,
+    "corePluginManifests": 13,
+    "bitsPluginManifests": 3,
+    "styleSourceFiles": 656
+  },
+  "inventory": {
+    "hostRouteFiles": [
+      "packages/host/src/routes/__root.tsx",
+      "packages/host/src/routes/assets.$assetId.tsx",
+      "packages/host/src/routes/assets.tsx",
+      "packages/host/src/routes/brands.$brandId.docs.$kind.$name.tsx",
+      "packages/host/src/routes/brands.$brandId.tsx",
+      "packages/host/src/routes/brands.tsx",
+      "packages/host/src/routes/chat.$chatId.tsx",
+      "packages/host/src/routes/chat.new.tsx",
+      "packages/host/src/routes/chat.tsx",
+      "packages/host/src/routes/explore.tsx",
+      "packages/host/src/routes/health.tsx",
+      "packages/host/src/routes/index.tsx",
+      "packages/host/src/routes/memory.tsx",
+      "packages/host/src/routes/models.tsx",
+      "packages/host/src/routes/plugin-catchall.tsx",
+      "packages/host/src/routes/runtime.tsx",
+      "packages/host/src/routes/schedule.tsx",
+      "packages/host/src/routes/settings.tsx",
+      "packages/host/src/routes/tasks.tsx",
+      "packages/host/src/routes/team.$id.tsx",
+      "packages/host/src/routes/team.index.tsx",
+      "packages/host/src/routes/team.teams.$teamId.tsx",
+      "packages/host/src/routes/workflows.$id.edit.tsx",
+      "packages/host/src/routes/workflows.$id.index.tsx",
+      "packages/host/src/routes/workflows.index.tsx",
+      "packages/host/src/routes/workflows.new.tsx"
+    ],
+    "corePluginManifests": [
+      "plugins/assets/bakin-plugin.json",
+      "plugins/brands/bakin-plugin.json",
+      "plugins/chat/bakin-plugin.json",
+      "plugins/explore/bakin-plugin.json",
+      "plugins/git/bakin-plugin.json",
+      "plugins/health/bakin-plugin.json",
+      "plugins/images/bakin-plugin.json",
+      "plugins/memory/bakin-plugin.json",
+      "plugins/models/bakin-plugin.json",
+      "plugins/schedule/bakin-plugin.json",
+      "plugins/tasks/bakin-plugin.json",
+      "plugins/team/bakin-plugin.json",
+      "plugins/workflows/bakin-plugin.json"
+    ],
+    "bitsPluginManifests": [
+      "bakin-bits-official/plugins/_template/bakin-plugin.json",
+      "bakin-bits-official/plugins/messaging/bakin-plugin.json",
+      "bakin-bits-official/plugins/projects/bakin-plugin.json"
+    ]
+  },
+  "styleViolations": {
+    "totals": {
+      "arbitrary-value": 469,
+      "inline-style": 42,
+      "native-control": 211,
+      "raw-color": 1428
+    },
+    "byPath": {
+      "bakin-bits-official/plugins/messaging/components/brainstorm-view.tsx": {
+        "arbitrary-value": 5,
+        "inline-style": 1,
+        "native-control": 7,
+        "raw-color": 17
+      },
+      "bakin-bits-official/plugins/messaging/components/content-calendar.tsx": {
+        "arbitrary-value": 5,
+        "native-control": 1
+      },
+      "bakin-bits-official/plugins/messaging/components/deliverable-drawer.tsx": {
+        "arbitrary-value": 5,
+        "raw-color": 14
+      },
+      "bakin-bits-official/plugins/messaging/components/plan-list.tsx": {
+        "arbitrary-value": 2,
+        "native-control": 1
+      },
+      "bakin-bits-official/plugins/messaging/components/plan-workspace.tsx": {
+        "arbitrary-value": 14,
+        "inline-style": 3,
+        "native-control": 4,
+        "raw-color": 26
+      },
+      "bakin-bits-official/plugins/messaging/components/plans-badge-provider.tsx": {
+        "raw-color": 1
+      },
+      "bakin-bits-official/plugins/messaging/components/quick-post-button.tsx": {
+        "native-control": 5
+      },
+      "bakin-bits-official/plugins/messaging/constants.ts": {
+        "raw-color": 40
+      },
+      "bakin-bits-official/plugins/messaging/index.ts": {
+        "raw-color": 1
+      },
+      "bakin-bits-official/plugins/messaging/lib/scheduled-events.ts": {
+        "raw-color": 1
+      },
+      "bakin-bits-official/plugins/messaging/tests/agentid-validation.test.ts": {
+        "raw-color": 1
+      },
+      "bakin-bits-official/plugins/messaging/tests/brainstorm-consumer.test.tsx": {
+        "native-control": 2
+      },
+      "bakin-bits-official/plugins/messaging/tests/calendar-local-filter.test.tsx": {
+        "native-control": 2
+      },
+      "bakin-bits-official/plugins/messaging/tests/deliverable-drawer.test.tsx": {
+        "native-control": 2
+      },
+      "bakin-bits-official/plugins/messaging/tests/orphan-refs.test.tsx": {
+        "raw-color": 1
+      },
+      "bakin-bits-official/plugins/messaging/tests/plan-ui.test.tsx": {
+        "native-control": 2
+      },
+      "bakin-bits-official/plugins/messaging/tests/prompt-builder.test.ts": {
+        "raw-color": 1
+      },
+      "bakin-bits-official/plugins/messaging/tests/quick-post-button.test.tsx": {
+        "native-control": 4
+      },
+      "bakin-bits-official/plugins/messaging/tests/scheduled-events.test.ts": {
+        "raw-color": 1
+      },
+      "bakin-bits-official/plugins/projects/client.tsx": {
+        "arbitrary-value": 1
+      },
+      "bakin-bits-official/plugins/projects/components/new-project-dialog.tsx": {
+        "raw-color": 1
+      },
+      "bakin-bits-official/plugins/projects/components/project-card.tsx": {
+        "arbitrary-value": 3,
+        "inline-style": 1,
+        "native-control": 1,
+        "raw-color": 2
+      },
+      "bakin-bits-official/plugins/projects/components/project-checklist.tsx": {
+        "arbitrary-value": 16,
+        "native-control": 10,
+        "raw-color": 46
+      },
+      "bakin-bits-official/plugins/projects/components/project-detail.tsx": {
+        "arbitrary-value": 62,
+        "inline-style": 3,
+        "native-control": 23,
+        "raw-color": 127
+      },
+      "bakin-bits-official/plugins/projects/components/project-grid.tsx": {
+        "arbitrary-value": 1,
+        "native-control": 1,
+        "raw-color": 3
+      },
+      "bakin-bits-official/plugins/projects/components/project-status-badge.tsx": {
+        "arbitrary-value": 1,
+        "raw-color": 8
+      },
+      "bakin-bits-official/plugins/projects/tests/project-grid.test.tsx": {
+        "native-control": 3
+      },
+      "bakin-bits-official/plugins/test-helpers.ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/api/agent-packages/dynamic.ts": {
+        "raw-color": 2
+      },
+      "packages/host/src/api/agents/[action].ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/api/agents/health.ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/api/agents/settings.ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/api/context-report/index.ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/api/memory/log.ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/api/plugin-settings/[pluginId].ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/api/plugin-settings/schemas.ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/api/plugins/assets.ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/api/plugins/install.ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/api/plugins/install/body.ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/api/plugins/install/consent-gate.ts": {
+        "raw-color": 2
+      },
+      "packages/host/src/api/plugins/memory/audit.ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/api/plugins/memory/workspace.ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/api/plugins/remove.ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/components/layout/app-sidebar.tsx": {
+        "arbitrary-value": 2
+      },
+      "packages/host/src/components/layout/dispatch-timer.tsx": {
+        "native-control": 1
+      },
+      "packages/host/src/components/layout/header.tsx": {
+        "arbitrary-value": 6,
+        "native-control": 6,
+        "raw-color": 5
+      },
+      "packages/host/src/components/layout/layout-shell.tsx": {
+        "arbitrary-value": 5,
+        "raw-color": 1
+      },
+      "packages/host/src/components/layout/nav-badge.tsx": {
+        "arbitrary-value": 1,
+        "raw-color": 12
+      },
+      "packages/host/src/components/layout/notification-toggle.tsx": {
+        "arbitrary-value": 1,
+        "native-control": 1
+      },
+      "packages/host/src/components/layout/sidebar-nav-item.tsx": {
+        "arbitrary-value": 1,
+        "native-control": 1
+      },
+      "packages/host/src/components/layout/sidebar-promo.tsx": {
+        "arbitrary-value": 1,
+        "raw-color": 18
+      },
+      "packages/host/src/components/layout/toaster.tsx": {
+        "arbitrary-value": 1,
+        "native-control": 1
+      },
+      "packages/host/src/components/runtime/capabilities-tab.tsx": {
+        "arbitrary-value": 1,
+        "raw-color": 12
+      },
+      "packages/host/src/components/runtime/extensions-section.tsx": {
+        "native-control": 1,
+        "raw-color": 8
+      },
+      "packages/host/src/components/runtime/runtimes-tab.tsx": {
+        "arbitrary-value": 1,
+        "native-control": 3,
+        "raw-color": 18
+      },
+      "packages/host/src/components/runtime/shared.tsx": {
+        "raw-color": 20
+      },
+      "packages/host/src/components/search/global-search-overlay.tsx": {
+        "arbitrary-value": 9,
+        "native-control": 3,
+        "raw-color": 8
+      },
+      "packages/host/src/dev-client/client.ts": {
+        "raw-color": 2
+      },
+      "packages/host/src/globals.css": {
+        "raw-color": 63
+      },
+      "packages/host/src/lib/react-identity.ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/plugin-host/PluginHost.tsx": {
+        "arbitrary-value": 2,
+        "native-control": 3,
+        "raw-color": 2
+      },
+      "packages/host/src/plugin-host/user-plugin-builder.ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/providers/AgentThemeProvider.tsx": {
+        "raw-color": 1
+      },
+      "packages/host/src/router.ts": {
+        "raw-color": 1
+      },
+      "packages/host/src/routes/plugin-catchall.tsx": {
+        "arbitrary-value": 2,
+        "native-control": 1,
+        "raw-color": 2
+      },
+      "packages/host/src/routes/schedule.tsx": {
+        "arbitrary-value": 1
+      },
+      "packages/host/src/routes/settings.tsx": {
+        "arbitrary-value": 2,
+        "native-control": 1,
+        "raw-color": 1
+      },
+      "packages/host/src/routes/tasks.tsx": {
+        "arbitrary-value": 1
+      },
+      "plugins/assets/components/task-assets.tsx": {
+        "arbitrary-value": 3,
+        "native-control": 2,
+        "raw-color": 1
+      },
+      "plugins/assets/components/versioned/AssetPreview.tsx": {
+        "arbitrary-value": 2,
+        "native-control": 1,
+        "raw-color": 14
+      },
+      "plugins/assets/components/versioned/atoms.tsx": {
+        "arbitrary-value": 10,
+        "raw-color": 9
+      },
+      "plugins/assets/components/versioned/EnrichmentCard.tsx": {
+        "arbitrary-value": 1,
+        "native-control": 2,
+        "raw-color": 1
+      },
+      "plugins/assets/components/versioned/ImportView.tsx": {
+        "arbitrary-value": 1,
+        "native-control": 1,
+        "raw-color": 1
+      },
+      "plugins/assets/components/versioned/sse-refetch.ts": {
+        "raw-color": 1
+      },
+      "plugins/assets/components/versioned/TagFolderGrid.tsx": {
+        "arbitrary-value": 3,
+        "raw-color": 5
+      },
+      "plugins/assets/components/versioned/TagInput.tsx": {
+        "native-control": 2
+      },
+      "plugins/assets/components/versioned/types.ts": {
+        "raw-color": 2
+      },
+      "plugins/assets/components/versioned/VersionedAssetDetail.tsx": {
+        "native-control": 5,
+        "raw-color": 6
+      },
+      "plugins/assets/components/versioned/VersionedAssetGrid.tsx": {
+        "arbitrary-value": 9,
+        "native-control": 7,
+        "raw-color": 28
+      },
+      "plugins/assets/components/versioned/VersionRow.tsx": {
+        "arbitrary-value": 4,
+        "native-control": 1,
+        "raw-color": 8
+      },
+      "plugins/assets/index.ts": {
+        "raw-color": 3
+      },
+      "plugins/assets/lib/asset-consolidate.ts": {
+        "raw-color": 1
+      },
+      "plugins/assets/lib/constants.ts": {
+        "raw-color": 2
+      },
+      "plugins/assets/lib/enrichment/providers.ts": {
+        "raw-color": 1
+      },
+      "plugins/assets/lib/enrichment/runtime.ts": {
+        "raw-color": 4
+      },
+      "plugins/assets/lib/manifest-cache.ts": {
+        "raw-color": 1
+      },
+      "plugins/assets/lib/manifest.ts": {
+        "raw-color": 4
+      },
+      "plugins/assets/lib/register-hooks.ts": {
+        "raw-color": 1
+      },
+      "plugins/brands/components/brand-builder.tsx": {
+        "arbitrary-value": 8,
+        "native-control": 4,
+        "raw-color": 2
+      },
+      "plugins/brands/components/brand-card.tsx": {
+        "arbitrary-value": 2,
+        "inline-style": 1,
+        "native-control": 1
+      },
+      "plugins/brands/components/brand-detail.tsx": {
+        "arbitrary-value": 7,
+        "inline-style": 1,
+        "native-control": 9,
+        "raw-color": 5
+      },
+      "plugins/brands/components/brand-doc-editor.tsx": {
+        "arbitrary-value": 3
+      },
+      "plugins/brands/components/new-brand-flows.tsx": {
+        "arbitrary-value": 3,
+        "inline-style": 1,
+        "native-control": 1
+      },
+      "plugins/brands/components/task-brand-panel.tsx": {
+        "arbitrary-value": 1,
+        "native-control": 6,
+        "raw-color": 6
+      },
+      "plugins/brands/index.ts": {
+        "raw-color": 1
+      },
+      "plugins/brands/lib/card.ts": {
+        "raw-color": 1
+      },
+      "plugins/brands/lib/exec-tools.ts": {
+        "raw-color": 1
+      },
+      "plugins/brands/lib/fingerprint.ts": {
+        "raw-color": 1
+      },
+      "plugins/brands/lib/github-import.ts": {
+        "raw-color": 1
+      },
+      "plugins/brands/lib/health-checks.ts": {
+        "raw-color": 1
+      },
+      "plugins/brands/lib/integrity.ts": {
+        "raw-color": 1
+      },
+      "plugins/brands/lib/lesson-retrieval.ts": {
+        "raw-color": 1
+      },
+      "plugins/brands/lib/portable.ts": {
+        "raw-color": 1
+      },
+      "plugins/brands/lib/register-hooks.ts": {
+        "raw-color": 2
+      },
+      "plugins/brands/lib/routes.ts": {
+        "raw-color": 6
+      },
+      "plugins/brands/lib/scaffold.ts": {
+        "raw-color": 1
+      },
+      "plugins/brands/lib/schemas.ts": {
+        "raw-color": 1
+      },
+      "plugins/brands/lib/search-sync.ts": {
+        "raw-color": 1
+      },
+      "plugins/brands/lib/store.ts": {
+        "raw-color": 2
+      },
+      "plugins/brands/types.ts": {
+        "raw-color": 1
+      },
+      "plugins/chat/components/chat-badge-provider.tsx": {
+        "native-control": 1
+      },
+      "plugins/chat/components/chat-rail.tsx": {
+        "arbitrary-value": 3,
+        "native-control": 4
+      },
+      "plugins/chat/components/chat-view.tsx": {
+        "native-control": 5
+      },
+      "plugins/chat/components/launcher.tsx": {
+        "native-control": 2
+      },
+      "plugins/explore/components/catalog-card.tsx": {
+        "arbitrary-value": 7,
+        "native-control": 1,
+        "raw-color": 6
+      },
+      "plugins/explore/components/consent-dialog.tsx": {
+        "raw-color": 3
+      },
+      "plugins/explore/components/detail-drawer.tsx": {
+        "arbitrary-value": 3,
+        "raw-color": 2
+      },
+      "plugins/explore/components/explore-page.tsx": {
+        "arbitrary-value": 1,
+        "raw-color": 1
+      },
+      "plugins/explore/components/install-dialog.tsx": {
+        "native-control": 3
+      },
+      "plugins/health/components/activity-breakdown.tsx": {
+        "inline-style": 2,
+        "native-control": 1
+      },
+      "plugins/health/components/activity-event-stream.tsx": {
+        "native-control": 1
+      },
+      "plugins/health/components/activity-pulse.tsx": {
+        "inline-style": 5
+      },
+      "plugins/health/components/agent-pulse.tsx": {
+        "arbitrary-value": 3,
+        "inline-style": 3
+      },
+      "plugins/health/components/overview-agent-spend.tsx": {
+        "arbitrary-value": 3,
+        "inline-style": 2
+      },
+      "plugins/health/components/overview-alerts.tsx": {
+        "arbitrary-value": 1
+      },
+      "plugins/health/components/overview-context-traffic.tsx": {
+        "arbitrary-value": 3,
+        "inline-style": 2
+      },
+      "plugins/health/components/overview-interactions.tsx": {
+        "inline-style": 4
+      },
+      "plugins/health/components/overview-platform-pulse.tsx": {
+        "arbitrary-value": 4
+      },
+      "plugins/health/components/system-inventory.tsx": {
+        "arbitrary-value": 3
+      },
+      "plugins/health/components/system-search-section.tsx": {
+        "arbitrary-value": 2
+      },
+      "plugins/health/components/system-tab.tsx": {
+        "native-control": 1
+      },
+      "plugins/health/components/system-watch-list.tsx": {
+        "arbitrary-value": 1,
+        "native-control": 1
+      },
+      "plugins/health/index.ts": {
+        "raw-color": 1
+      },
+      "plugins/health/lib/system-checks/agent-burn.ts": {
+        "raw-color": 1
+      },
+      "plugins/health/lib/system-checks/content-dir.ts": {
+        "raw-color": 1
+      },
+      "plugins/health/lib/system-checks/context-report.ts": {
+        "raw-color": 1
+      },
+      "plugins/health/lib/system-checks/plugin-assets.ts": {
+        "raw-color": 1
+      },
+      "plugins/health/lib/system-checks/runtime.ts": {
+        "raw-color": 1
+      },
+      "plugins/health/lib/system-checks/search-spin.ts": {
+        "raw-color": 1
+      },
+      "plugins/health/lib/system-checks/search.ts": {
+        "raw-color": 1
+      },
+      "plugins/health/lib/system-checks/service.ts": {
+        "raw-color": 1
+      },
+      "plugins/health/lib/system-checks/session-store.ts": {
+        "raw-color": 1
+      },
+      "plugins/health/lib/system-checks/sync-skill.ts": {
+        "raw-color": 1
+      },
+      "plugins/health/lib/usage-history-timer.ts": {
+        "raw-color": 1
+      },
+      "plugins/health/types.ts": {
+        "raw-color": 4
+      },
+      "plugins/images/index.ts": {
+        "raw-color": 2
+      },
+      "plugins/images/lib/idempotency.ts": {
+        "raw-color": 1
+      },
+      "plugins/images/lib/tools.ts": {
+        "raw-color": 16
+      },
+      "plugins/memory/components/memory-cleanup.tsx": {
+        "arbitrary-value": 1,
+        "raw-color": 3
+      },
+      "plugins/memory/components/memory-detail-drawer.tsx": {
+        "arbitrary-value": 3
+      },
+      "plugins/memory/components/memory-search-results.tsx": {
+        "arbitrary-value": 2,
+        "raw-color": 3
+      },
+      "plugins/memory/components/memory-shell.tsx": {
+        "native-control": 1
+      },
+      "plugins/memory/components/tier-colors.ts": {
+        "raw-color": 42
+      },
+      "plugins/models/components/agents-tab.tsx": {
+        "arbitrary-value": 2
+      },
+      "plugins/models/components/aliases-tab.tsx": {
+        "arbitrary-value": 1
+      },
+      "plugins/models/components/available-models-tab.tsx": {
+        "arbitrary-value": 4,
+        "raw-color": 11
+      },
+      "plugins/models/components/brand-icon.tsx": {
+        "arbitrary-value": 1,
+        "inline-style": 1,
+        "raw-color": 2
+      },
+      "plugins/models/components/models-page.tsx": {
+        "raw-color": 6
+      },
+      "plugins/models/components/routing-tab.tsx": {
+        "arbitrary-value": 4,
+        "native-control": 2
+      },
+      "plugins/models/components/spend-tab.tsx": {
+        "arbitrary-value": 3,
+        "inline-style": 2,
+        "native-control": 4,
+        "raw-color": 16
+      },
+      "plugins/models/data/known-models.ts": {
+        "raw-color": 11
+      },
+      "plugins/models/index.ts": {
+        "raw-color": 1
+      },
+      "plugins/models/lib/billing.ts": {
+        "raw-color": 1
+      },
+      "plugins/models/lib/budget-migration.ts": {
+        "raw-color": 1
+      },
+      "plugins/models/lib/budget-routes.ts": {
+        "raw-color": 1
+      },
+      "plugins/schedule/components/agent-badge.tsx": {
+        "raw-color": 2
+      },
+      "plugins/schedule/components/agent-colors.ts": {
+        "raw-color": 32
+      },
+      "plugins/schedule/components/calendar-monthly.tsx": {
+        "arbitrary-value": 5,
+        "inline-style": 1,
+        "native-control": 1,
+        "raw-color": 7
+      },
+      "plugins/schedule/components/calendar-today.tsx": {
+        "arbitrary-value": 2,
+        "raw-color": 4
+      },
+      "plugins/schedule/components/calendar-weekly.tsx": {
+        "arbitrary-value": 10,
+        "inline-style": 2,
+        "native-control": 1,
+        "raw-color": 16
+      },
+      "plugins/schedule/components/event-popover.tsx": {
+        "arbitrary-value": 5,
+        "raw-color": 12
+      },
+      "plugins/schedule/components/job-drawer.tsx": {
+        "arbitrary-value": 12,
+        "raw-color": 13
+      },
+      "plugins/schedule/components/job-form.tsx": {
+        "arbitrary-value": 1,
+        "native-control": 3,
+        "raw-color": 4
+      },
+      "plugins/schedule/components/job-list.tsx": {
+        "arbitrary-value": 5
+      },
+      "plugins/schedule/components/job-row.tsx": {
+        "arbitrary-value": 5,
+        "raw-color": 6
+      },
+      "plugins/schedule/components/pause-controls.tsx": {
+        "raw-color": 1
+      },
+      "plugins/schedule/components/run-history.tsx": {
+        "arbitrary-value": 1,
+        "raw-color": 1
+      },
+      "plugins/schedule/components/schedule-input.tsx": {
+        "arbitrary-value": 3,
+        "native-control": 2,
+        "raw-color": 1
+      },
+      "plugins/schedule/components/schedule-page.tsx": {
+        "arbitrary-value": 1,
+        "native-control": 1
+      },
+      "plugins/schedule/index.ts": {
+        "raw-color": 2
+      },
+      "plugins/schedule/lib/domain-events.ts": {
+        "raw-color": 2
+      },
+      "plugins/schedule/lib/exec-tools.ts": {
+        "raw-color": 2
+      },
+      "plugins/schedule/lib/fire-engine.ts": {
+        "raw-color": 3
+      },
+      "plugins/schedule/lib/job-service.ts": {
+        "raw-color": 2
+      },
+      "plugins/schedule/lib/jobs-reader.ts": {
+        "raw-color": 1
+      },
+      "plugins/schedule/lib/occurrences.ts": {
+        "raw-color": 1
+      },
+      "plugins/schedule/lib/routes/jobs.ts": {
+        "raw-color": 2
+      },
+      "plugins/schedule/types.ts": {
+        "raw-color": 2
+      },
+      "plugins/tasks/components/kanban-board.tsx": {
+        "arbitrary-value": 6,
+        "raw-color": 2
+      },
+      "plugins/tasks/components/kanban-column.tsx": {
+        "arbitrary-value": 11,
+        "native-control": 2
+      },
+      "plugins/tasks/components/step-output-viewer.tsx": {
+        "arbitrary-value": 2,
+        "raw-color": 9
+      },
+      "plugins/tasks/components/task-card.tsx": {
+        "arbitrary-value": 22,
+        "native-control": 1,
+        "raw-color": 53
+      },
+      "plugins/tasks/components/task-detail-modes.tsx": {
+        "arbitrary-value": 2,
+        "inline-style": 1,
+        "raw-color": 5
+      },
+      "plugins/tasks/components/task-filters.tsx": {
+        "raw-color": 3
+      },
+      "plugins/tasks/components/task-log-table.tsx": {
+        "arbitrary-value": 1,
+        "raw-color": 3
+      },
+      "plugins/tasks/components/task-metrics.tsx": {
+        "arbitrary-value": 2,
+        "raw-color": 8
+      },
+      "plugins/tasks/components/task-notes-section.tsx": {
+        "arbitrary-value": 4,
+        "native-control": 1,
+        "raw-color": 8
+      },
+      "plugins/tasks/components/task-run-history.tsx": {
+        "arbitrary-value": 4,
+        "native-control": 1,
+        "raw-color": 2
+      },
+      "plugins/tasks/components/task-workflow-panels.tsx": {
+        "arbitrary-value": 15,
+        "native-control": 2,
+        "raw-color": 52
+      },
+      "plugins/tasks/components/tasks-badge-provider.tsx": {
+        "raw-color": 1
+      },
+      "plugins/tasks/components/use-task-detail.ts": {
+        "raw-color": 4
+      },
+      "plugins/tasks/constants.ts": {
+        "raw-color": 4
+      },
+      "plugins/tasks/hooks/use-brand-status.ts": {
+        "raw-color": 1
+      },
+      "plugins/tasks/hooks/use-task-filters.ts": {
+        "raw-color": 1
+      },
+      "plugins/tasks/index.ts": {
+        "raw-color": 2
+      },
+      "plugins/tasks/lib/routes.ts": {
+        "raw-color": 1
+      },
+      "plugins/tasks/lib/runs-reader.ts": {
+        "raw-color": 1
+      },
+      "plugins/tasks/lib/scheduled-events.ts": {
+        "raw-color": 1
+      },
+      "plugins/tasks/lib/task-schemas.ts": {
+        "raw-color": 2
+      },
+      "plugins/team/components/active-context-tab.tsx": {
+        "arbitrary-value": 3,
+        "raw-color": 11
+      },
+      "plugins/team/components/adopt-dialog.tsx": {
+        "raw-color": 6
+      },
+      "plugins/team/components/agent-detail.tsx": {
+        "arbitrary-value": 2,
+        "native-control": 3,
+        "raw-color": 6
+      },
+      "plugins/team/components/agent-form.tsx": {
+        "native-control": 5
+      },
+      "plugins/team/components/diagnostics-tab.tsx": {
+        "inline-style": 1,
+        "native-control": 2,
+        "raw-color": 21
+      },
+      "plugins/team/components/heartbeat-tab.tsx": {
+        "native-control": 1,
+        "raw-color": 2
+      },
+      "plugins/team/components/lesson-toggle-list.tsx": {
+        "arbitrary-value": 3
+      },
+      "plugins/team/components/markdown-edit-tab.tsx": {
+        "native-control": 4,
+        "raw-color": 9
+      },
+      "plugins/team/components/overview-tab.tsx": {
+        "arbitrary-value": 8,
+        "inline-style": 1,
+        "native-control": 1,
+        "raw-color": 22
+      },
+      "plugins/team/components/package-card.tsx": {
+        "arbitrary-value": 3,
+        "raw-color": 2
+      },
+      "plugins/team/components/package-state-badge.tsx": {
+        "raw-color": 16
+      },
+      "plugins/team/components/team-detail.tsx": {
+        "arbitrary-value": 3,
+        "native-control": 1,
+        "raw-color": 17
+      },
+      "plugins/team/components/team-grid.tsx": {
+        "arbitrary-value": 6,
+        "inline-style": 3,
+        "native-control": 1,
+        "raw-color": 33
+      },
+      "plugins/team/components/team-manager.tsx": {
+        "arbitrary-value": 3,
+        "native-control": 4
+      },
+      "plugins/team/hooks/use-agent-store.ts": {
+        "raw-color": 1
+      },
+      "plugins/team/index.ts": {
+        "raw-color": 3
+      },
+      "plugins/team/lib/assignment-resolver.ts": {
+        "raw-color": 1
+      },
+      "plugins/team/lib/build-graph.ts": {
+        "raw-color": 1
+      },
+      "plugins/team/lib/routes/agents.ts": {
+        "raw-color": 1
+      },
+      "plugins/team/lib/team-settings.ts": {
+        "raw-color": 9
+      },
+      "plugins/team/lib/timeline.ts": {
+        "raw-color": 1
+      },
+      "plugins/team/types.ts": {
+        "raw-color": 1
+      },
+      "plugins/workflows/components/approvals-badge-provider.tsx": {
+        "native-control": 1
+      },
+      "plugins/workflows/components/managed-workflow-copy-dialog.tsx": {
+        "arbitrary-value": 1,
+        "raw-color": 9
+      },
+      "plugins/workflows/components/node-config-drawer-header.tsx": {
+        "native-control": 1
+      },
+      "plugins/workflows/components/node-config-drawer.tsx": {
+        "arbitrary-value": 2,
+        "raw-color": 9
+      },
+      "plugins/workflows/components/node-type-palette.tsx": {
+        "arbitrary-value": 3,
+        "native-control": 2,
+        "raw-color": 15
+      },
+      "plugins/workflows/components/nodes/agent-assignment-label.tsx": {
+        "arbitrary-value": 1,
+        "raw-color": 2
+      },
+      "plugins/workflows/components/nodes/agent-node.tsx": {
+        "arbitrary-value": 2,
+        "raw-color": 13
+      },
+      "plugins/workflows/components/nodes/create-task-node.tsx": {
+        "arbitrary-value": 2,
+        "raw-color": 7
+      },
+      "plugins/workflows/components/nodes/gate-node.tsx": {
+        "arbitrary-value": 1,
+        "raw-color": 6
+      },
+      "plugins/workflows/components/nodes/map-workflow-node.tsx": {
+        "arbitrary-value": 3,
+        "raw-color": 10
+      },
+      "plugins/workflows/components/nodes/output-node.tsx": {
+        "arbitrary-value": 3,
+        "raw-color": 12
+      },
+      "plugins/workflows/components/nodes/parallel-node.tsx": {
+        "arbitrary-value": 1,
+        "raw-color": 10
+      },
+      "plugins/workflows/components/nodes/subflow-group-node.tsx": {
+        "arbitrary-value": 2,
+        "raw-color": 5
+      },
+      "plugins/workflows/components/nodes/trigger-node.tsx": {
+        "arbitrary-value": 1,
+        "raw-color": 5
+      },
+      "plugins/workflows/components/nodes/workflow-node.tsx": {
+        "arbitrary-value": 2,
+        "raw-color": 9
+      },
+      "plugins/workflows/components/parallel-children-editor.tsx": {
+        "raw-color": 3
+      },
+      "plugins/workflows/components/step-detail-drawer.tsx": {
+        "arbitrary-value": 17,
+        "raw-color": 47
+      },
+      "plugins/workflows/components/workflow-canvas-editor.tsx": {
+        "arbitrary-value": 2,
+        "inline-style": 1,
+        "native-control": 1,
+        "raw-color": 19
+      },
+      "plugins/workflows/components/workflow-canvas.tsx": {
+        "raw-color": 4
+      },
+      "plugins/workflows/components/workflow-card.tsx": {
+        "arbitrary-value": 8,
+        "native-control": 1,
+        "raw-color": 10
+      },
+      "plugins/workflows/components/workflow-detail.tsx": {
+        "raw-color": 10
+      },
+      "plugins/workflows/components/workflow-details-drawer.tsx": {
+        "arbitrary-value": 2,
+        "raw-color": 2
+      },
+      "plugins/workflows/components/workflows-page.tsx": {
+        "arbitrary-value": 2
+      },
+      "plugins/workflows/hooks/use-notification-channels.ts": {
+        "raw-color": 1
+      },
+      "plugins/workflows/index.ts": {
+        "raw-color": 1
+      },
+      "plugins/workflows/lib/engine.ts": {
+        "raw-color": 1
+      },
+      "plugins/workflows/lib/gate-html.ts": {
+        "raw-color": 14
+      },
+      "plugins/workflows/lib/map-children.ts": {
+        "raw-color": 1
+      },
+      "plugins/workflows/lib/routes/gates.ts": {
+        "native-control": 9
+      },
+      "plugins/workflows/lib/step-context.ts": {
+        "raw-color": 1
+      },
+      "plugins/workflows/lib/task-bridge.ts": {
+        "raw-color": 1
+      }
+    }
+  },
+  "artifactSizes": {
+    "vendor": {
+      "files": [
+        {
+          "name": "sdk-components.js",
+          "bytes": 432636
+        },
+        {
+          "name": "sdk-shared-5gra29t7.js",
+          "bytes": 302894
+        },
+        {
+          "name": "sdk-shared-e0awy4pb.js",
+          "bytes": 280586
+        },
+        {
+          "name": "react-dom.js",
+          "bytes": 185227
+        },
+        {
+          "name": "tanstack-router.js",
+          "bytes": 118784
+        },
+        {
+          "name": "sdk-ui.js",
+          "bytes": 84707
+        },
+        {
+          "name": "sdk-shared-56e3endw.js",
+          "bytes": 29447
+        },
+        {
+          "name": "sdk-shared-bgxzemvf.js",
+          "bytes": 26783
+        },
+        {
+          "name": "react.js",
+          "bytes": 9708
+        },
+        {
+          "name": "sdk-shared-8ytarpf1.js",
+          "bytes": 5243
+        },
+        {
+          "name": "sdk-utils.js",
+          "bytes": 3776
+        },
+        {
+          "name": "sdk-shared-qp0jbcda.js",
+          "bytes": 3697
+        },
+        {
+          "name": "sdk-slots.js",
+          "bytes": 1890
+        },
+        {
+          "name": "sdk-shared-nnsycwdq.js",
+          "bytes": 1590
+        },
+        {
+          "name": "sdk-hooks.js",
+          "bytes": 1403
+        },
+        {
+          "name": "sdk-internal.js",
+          "bytes": 1012
+        },
+        {
+          "name": "jsx-runtime.js",
+          "bytes": 989
+        },
+        {
+          "name": "sdk-shared-qyw1dvxq.js",
+          "bytes": 754
+        },
+        {
+          "name": "jsx-dev-runtime.js",
+          "bytes": 427
+        },
+        {
+          "name": "sdk-index.js",
+          "bytes": 377
+        },
+        {
+          "name": "sdk-metadata.js",
+          "bytes": 362
+        },
+        {
+          "name": "sdk-routing.js",
+          "bytes": 160
+        },
+        {
+          "name": "sdk-types.js",
+          "bytes": 34
+        },
+        {
+          "name": "sdk-shared-nqwbjtr4.js",
+          "bytes": 0
+        },
+        {
+          "name": "sdk-shared-nyrhezat.js",
+          "bytes": 0
+        }
+      ],
+      "total": 1492486
+    },
+    "sdk": {
+      "files": [
+        {
+          "name": "sdk-components.js",
+          "bytes": 432636
+        },
+        {
+          "name": "sdk-shared-5gra29t7.js",
+          "bytes": 302894
+        },
+        {
+          "name": "sdk-shared-e0awy4pb.js",
+          "bytes": 280586
+        },
+        {
+          "name": "sdk-ui.js",
+          "bytes": 84707
+        },
+        {
+          "name": "sdk-shared-56e3endw.js",
+          "bytes": 29447
+        },
+        {
+          "name": "sdk-shared-bgxzemvf.js",
+          "bytes": 26783
+        },
+        {
+          "name": "sdk-shared-8ytarpf1.js",
+          "bytes": 5243
+        },
+        {
+          "name": "sdk-utils.js",
+          "bytes": 3776
+        },
+        {
+          "name": "sdk-shared-qp0jbcda.js",
+          "bytes": 3697
+        },
+        {
+          "name": "sdk-slots.js",
+          "bytes": 1890
+        },
+        {
+          "name": "sdk-shared-nnsycwdq.js",
+          "bytes": 1590
+        },
+        {
+          "name": "sdk-hooks.js",
+          "bytes": 1403
+        },
+        {
+          "name": "sdk-internal.js",
+          "bytes": 1012
+        },
+        {
+          "name": "sdk-shared-qyw1dvxq.js",
+          "bytes": 754
+        },
+        {
+          "name": "sdk-index.js",
+          "bytes": 377
+        },
+        {
+          "name": "sdk-metadata.js",
+          "bytes": 362
+        },
+        {
+          "name": "sdk-routing.js",
+          "bytes": 160
+        },
+        {
+          "name": "sdk-types.js",
+          "bytes": 34
+        },
+        {
+          "name": "sdk-shared-nqwbjtr4.js",
+          "bytes": 0
+        },
+        {
+          "name": "sdk-shared-nyrhezat.js",
+          "bytes": 0
+        }
+      ],
+      "total": 1177351
+    },
+    "plugins": {
+      "files": [
+        {
+          "name": "workflows/client.js",
+          "bytes": 610386
+        },
+        {
+          "name": "health/client.js",
+          "bytes": 503468
+        },
+        {
+          "name": "team/client.js",
+          "bytes": 273119
+        },
+        {
+          "name": "tasks/client.js",
+          "bytes": 195482
+        },
+        {
+          "name": "brands/client.js",
+          "bytes": 82221
+        },
+        {
+          "name": "assets/client.js",
+          "bytes": 65687
+        },
+        {
+          "name": "schedule/client.js",
+          "bytes": 55376
+        },
+        {
+          "name": "models/client.js",
+          "bytes": 54189
+        },
+        {
+          "name": "memory/client.js",
+          "bytes": 31215
+        },
+        {
+          "name": "chat/client.js",
+          "bytes": 28327
+        },
+        {
+          "name": "explore/client.js",
+          "bytes": 27601
+        },
+        {
+          "name": "workflows/client.css",
+          "bytes": 15999
+        },
+        {
+          "name": "team/client.css",
+          "bytes": 15999
+        }
+      ],
+      "total": 1959069
+    },
+    "css": {
+      "files": [
+        {
+          "name": "host/globals.css",
+          "bytes": 283019
+        },
+        {
+          "name": "workflows/client.css",
+          "bytes": 15999
+        },
+        {
+          "name": "team/client.css",
+          "bytes": 15999
+        }
+      ],
+      "total": 315017
+    },
+    "hostShell": {
+      "files": [
+        {
+          "name": "main.js",
+          "bytes": 449216
+        }
+      ],
+      "total": 449216
+    },
+    "binaries": {
+      "files": [
+        {
+          "name": "bakin-linux-x64",
+          "bytes": 113113408
+        },
+        {
+          "name": "bakin-linux-arm64",
+          "bytes": 112658752
+        },
+        {
+          "name": "bakin-darwin-arm64",
+          "bytes": 74430370
+        }
+      ],
+      "total": 300202530
+    }
+  },
+  "captures": [
+    {
+      "id": "tasks-list",
+      "archetype": "list-index",
+      "owner": "core",
+      "route": "/tasks",
+      "viewport": "desktop",
+      "outputFile": "screenshots/tasks-list--desktop.webp",
+      "sha256": "4eae1837b074df9c57c8ae0616d6d179b0ffd752dd3ddfddabf6197969b6b492",
+      "bytes": 55916,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1352,
+        "responseStart": 6,
+        "domContentLoaded": 148,
+        "load": 316
+      }
+    },
+    {
+      "id": "tasks-list",
+      "archetype": "list-index",
+      "owner": "core",
+      "route": "/tasks",
+      "viewport": "mobile",
+      "outputFile": "screenshots/tasks-list--mobile.webp",
+      "sha256": "d3e267bf1a47e0441d82057b5e9b42adbf5e8378671daa82138b9aeb7f8d687d",
+      "bytes": 21918,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1271,
+        "responseStart": 1,
+        "domContentLoaded": 110,
+        "load": 232
+      }
+    },
+    {
+      "id": "projects-grid",
+      "archetype": "list-index",
+      "owner": "bits",
+      "route": "/projects",
+      "viewport": "desktop",
+      "outputFile": "screenshots/projects-grid--desktop.webp",
+      "sha256": "3eb0e7c344dfbee0251bf88eb4a5421acc5149b922903bed268a8fbe2ff09846",
+      "bytes": 30290,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1265,
+        "responseStart": 1,
+        "domContentLoaded": 124,
+        "load": 244
+      }
+    },
+    {
+      "id": "projects-grid",
+      "archetype": "list-index",
+      "owner": "bits",
+      "route": "/projects",
+      "viewport": "mobile",
+      "outputFile": "screenshots/projects-grid--mobile.webp",
+      "sha256": "cde9612826fdf698446d69039ec65a3e17b9e35b73fd81d28e5a31adbaac3a36",
+      "bytes": 14964,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1256,
+        "responseStart": 1,
+        "domContentLoaded": 114,
+        "load": 237
+      }
+    },
+    {
+      "id": "agent-detail",
+      "archetype": "detail",
+      "owner": "core",
+      "route": "/team/jessica",
+      "viewport": "desktop",
+      "outputFile": "screenshots/agent-detail--desktop.webp",
+      "sha256": "cbef59279b53c0670a150b4b9e2e83c543e4761bb7517728fc17ba0c8c457368",
+      "bytes": 60784,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1274,
+        "responseStart": 1,
+        "domContentLoaded": 122,
+        "load": 233
+      }
+    },
+    {
+      "id": "agent-detail",
+      "archetype": "detail",
+      "owner": "core",
+      "route": "/team/jessica",
+      "viewport": "mobile",
+      "outputFile": "screenshots/agent-detail--mobile.webp",
+      "sha256": "bea928f201ed1c096ea961af48fd35ca8e21dd91a399beaba1f1a19e14747760",
+      "bytes": 34632,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1253,
+        "responseStart": 1,
+        "domContentLoaded": 107,
+        "load": 213
+      }
+    },
+    {
+      "id": "settings",
+      "archetype": "settings-form",
+      "owner": "core",
+      "route": "/settings",
+      "viewport": "desktop",
+      "outputFile": "screenshots/settings--desktop.webp",
+      "sha256": "2a56481446e28b11cfbaf4bf4f23787dbbbd4b622d53fbc9a2a3ff04c1d2a4fa",
+      "bytes": 46712,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1246,
+        "responseStart": 1,
+        "domContentLoaded": 109,
+        "load": 217
+      }
+    },
+    {
+      "id": "settings",
+      "archetype": "settings-form",
+      "owner": "core",
+      "route": "/settings",
+      "viewport": "mobile",
+      "outputFile": "screenshots/settings--mobile.webp",
+      "sha256": "7d6670b00b3411bdc71d173ba6365c948cb68aa4f16d94408e589632ea6844d1",
+      "bytes": 22386,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1265,
+        "responseStart": 1,
+        "domContentLoaded": 123,
+        "load": 248
+      }
+    },
+    {
+      "id": "health-overview",
+      "archetype": "dashboard-overview",
+      "owner": "core",
+      "route": "/health?tab=activity",
+      "viewport": "desktop",
+      "outputFile": "screenshots/health-overview--desktop.webp",
+      "sha256": "eda4e37e1e507d0e2373cdfb7aa63c56c723486fc4ebe22ae235f71fb6ffe1e0",
+      "bytes": 53314,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1297,
+        "responseStart": 1,
+        "domContentLoaded": 113,
+        "load": 247
+      }
+    },
+    {
+      "id": "health-overview",
+      "archetype": "dashboard-overview",
+      "owner": "core",
+      "route": "/health?tab=activity",
+      "viewport": "mobile",
+      "outputFile": "screenshots/health-overview--mobile.webp",
+      "sha256": "fc44e25e7e8609a2e31c7010f97a9aaf8bcc42bdb759434cbd653b42a8bb2868",
+      "bytes": 21754,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1294,
+        "responseStart": 1,
+        "domContentLoaded": 109,
+        "load": 240
+      }
+    },
+    {
+      "id": "chat-draft",
+      "archetype": "conversation",
+      "owner": "core",
+      "route": "/chat/new?agent=jessica",
+      "viewport": "desktop",
+      "outputFile": "screenshots/chat-draft--desktop.webp",
+      "sha256": "f0eb43ee64e046348f2622a851ed5accfc7cc125a98e11b44ea60af6eb35a1d7",
+      "bytes": 29072,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1249,
+        "responseStart": 1,
+        "domContentLoaded": 116,
+        "load": 223
+      }
+    },
+    {
+      "id": "chat-draft",
+      "archetype": "conversation",
+      "owner": "core",
+      "route": "/chat/new?agent=jessica",
+      "viewport": "mobile",
+      "outputFile": "screenshots/chat-draft--mobile.webp",
+      "sha256": "8d1725aa0f850b8d97ac923fca58cb60ed1c025a7998172cb74db978487bb79b",
+      "bytes": 11350,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1240,
+        "responseStart": 2,
+        "domContentLoaded": 111,
+        "load": 219
+      }
+    },
+    {
+      "id": "runtime-overview",
+      "archetype": "inspector",
+      "owner": "core",
+      "route": "/runtime",
+      "viewport": "desktop",
+      "outputFile": "screenshots/runtime-overview--desktop.webp",
+      "sha256": "73ef14a5b53971c1e77e98e20aab66e6e40bb8ba939ab9f8e2c465f9a5ecfa42",
+      "bytes": 45314,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1253,
+        "responseStart": 1,
+        "domContentLoaded": 115,
+        "load": 233
+      }
+    },
+    {
+      "id": "runtime-overview",
+      "archetype": "inspector",
+      "owner": "core",
+      "route": "/runtime",
+      "viewport": "mobile",
+      "outputFile": "screenshots/runtime-overview--mobile.webp",
+      "sha256": "5f018c7605e43abe6fcb2c4a885b2816ce517351038295f4a5d4293581de7a29",
+      "bytes": 16906,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1254,
+        "responseStart": 1,
+        "domContentLoaded": 107,
+        "load": 236
+      }
+    },
+    {
+      "id": "workflow-create",
+      "archetype": "workflow-action",
+      "owner": "core",
+      "route": "/workflows/new",
+      "viewport": "desktop",
+      "outputFile": "screenshots/workflow-create--desktop.webp",
+      "sha256": "dbb3c9c5d99d1db00b6b6fb08b76e51177bb5bfe94da08492f67148ba0699f87",
+      "bytes": 110274,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1246,
+        "responseStart": 1,
+        "domContentLoaded": 109,
+        "load": 230
+      }
+    },
+    {
+      "id": "workflow-create",
+      "archetype": "workflow-action",
+      "owner": "core",
+      "route": "/workflows/new",
+      "viewport": "mobile",
+      "outputFile": "screenshots/workflow-create--mobile.webp",
+      "sha256": "e973dc1bcb9e4e89f57da5c8858376e10d65520dbc37430d2ad3fb2f9ee60bd1",
+      "bytes": 41238,
+      "console": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "failedRequests": 0,
+      "failedRequestDetails": [],
+      "timingMs": {
+        "ready": 1250,
+        "responseStart": 1,
+        "domContentLoaded": 110,
+        "load": 230
+      }
+    }
+  ],
+  "outputLocations": [
+    "report.json",
+    "screenshots/"
+  ]
+}

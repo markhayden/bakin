@@ -35,7 +35,7 @@ export function BlockReasonDialog({ taskTitle, onConfirm, onCancel }: BlockReaso
 
   return (
     <Dialog open={!!taskTitle} onOpenChange={(open) => { if (!open) handleCancel() }}>
-      <DialogContent className="bg-card border-border sm:max-w-sm">
+      <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Block task</DialogTitle>
           <DialogDescription>

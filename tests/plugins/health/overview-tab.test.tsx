@@ -230,11 +230,14 @@ describe('OverviewTabView', () => {
     const identity = screen.getByRole('heading', { level: 2, name: 'Overview' })
     expect(identity.className).toContain('sr-only')
     const intro = screen.getByText('See what needs attention, fix it, and confirm Bakin is working.')
-    expect(intro.className).toContain('text-xs')
+    expect(intro.className).toContain('text-bakin-typography-size-meta')
     expect(intro.className).toContain('leading-relaxed')
-    expect(intro.className).toContain('text-muted-foreground/80')
+    expect(intro.className).toContain('text-bakin-text-muted')
 
     const pulse = screen.getByTestId('overview-platform-pulse')
+    expect(pulse.getAttribute('data-layout')).toBe('priority-signal')
+    expect(within(pulse).getByRole('heading', { name: 'Needs attention' })).toBeDefined()
+    expect(within(pulse).getByRole('group', { name: 'Health summary metrics' })).toBeDefined()
     expect(pulse.textContent).toMatch(/Bakin.*Needs attention.*Search.*Healthy.*1 working.*4 sessions.*3 failed/i)
     expect(screen.getByRole('link', { name: /Search: Healthy/i }).getAttribute('href')).toBe('/health?tab=system&section=search')
     expect(within(pulse).getByRole('link', { name: /Recent failures: 3 failed/i }).getAttribute('href'))
@@ -282,13 +285,18 @@ describe('OverviewTabView', () => {
     expect(within(interactions).getByText('80')).toBeDefined()
     expect(within(interactions).getByText('Agents')).toBeDefined()
     expect(within(interactions).getByText('10')).toBeDefined()
-    expect(within(interactions).getByText('web search')).toBeDefined()
-    expect(within(interactions).getByText('images generate')).toBeDefined()
+    expect(within(interactions).getAllByText('web search').length).toBeGreaterThan(0)
+    expect(within(interactions).getAllByText('images generate').length).toBeGreaterThan(0)
     expect(within(interactions).getByText('monitoring excluded').getAttribute('title'))
       .toBe('Successful routine polling and static delivery are excluded; failures always count.')
     expect(within(interactions).getByRole('group', { name: /Recorded meaningful Bakin interactions/i })).toBeDefined()
     expect(within(interactions).getByRole('link', { name: 'View recorded interaction activity' }).getAttribute('href'))
       .toBe('/health?tab=activity&activity_window=1h')
+
+    const operations = screen.getByTestId('overview-operations')
+    expect(operations.getAttribute('data-layout')).toBe('operational-telemetry')
+    expect(within(operations).getByRole('heading', { name: 'Operating telemetry' })).toBeDefined()
+    expect(within(operations).getByText('Token use, context pressure, cache efficiency, and recorded interactions.')).toBeDefined()
   })
 
   it('links the interaction failure badge to the one-hour Activity attention section', () => {
@@ -341,7 +349,7 @@ describe('OverviewTabView', () => {
     render(<OverviewTabView model={buildHealthOverviewViewModel({ report: report(), now: NOW })} telemetry={telemetry} />)
 
     const badge = within(screen.getByTestId('overview-interactions')).getByText('1 result not observed')
-    expect(badge.closest('[data-status-badge]')?.getAttribute('data-status-badge')).toBe('warning')
+    expect(badge.closest('[data-status-badge]')?.getAttribute('data-status-badge')).toBe('attention')
   })
 
   it('keeps result-observation gaps visible when failures take badge priority', () => {
@@ -351,7 +359,7 @@ describe('OverviewTabView', () => {
     render(<OverviewTabView model={buildHealthOverviewViewModel({ report: report(), now: NOW })} telemetry={telemetry} />)
 
     const badge = within(screen.getByTestId('overview-interactions')).getByText('2 failed · 1 result not observed')
-    expect(badge.closest('[data-status-badge]')?.getAttribute('data-status-badge')).toBe('destructive')
+    expect(badge.closest('[data-status-badge]')?.getAttribute('data-status-badge')).toBe('danger')
   })
 
   it('uses recorded meaningful wording for an empty interaction window', () => {
@@ -397,7 +405,9 @@ describe('OverviewTabView', () => {
 
     const status = screen.getByTestId('overview-platform-pulse')
     expect(status.textContent).toContain('Checked')
-    expect(status.querySelectorAll('p')).toHaveLength(0)
+    expect(within(status).getByText(
+      'No current conditions require action. Supporting evidence and recent activity remain available below.',
+    )).toBeDefined()
     expect(screen.queryByText('How Search was checked')).toBeNull()
     expect(screen.getByRole('link', { name: /Search: Healthy/i }).getAttribute('href')).toBe('/health?tab=system&section=search')
   })
@@ -536,14 +546,11 @@ describe('OverviewTabView', () => {
     render(<OverviewTabView model={buildHealthOverviewViewModel({ report: report(), now: NOW })} telemetry={telemetry} />)
 
     const interactions = within(screen.getByTestId('overview-interactions'))
-    const failedRow = interactions.getByText('search reindex').closest<HTMLElement>('[data-testid="interaction-destination-row"]')!
-    const successful = within(failedRow).getByTestId('interaction-destination-success')
-    const failed = within(failedRow).getByTestId('interaction-destination-failed')
-
-    expect(successful.className).toContain('bg-chart-1')
-    expect(successful.getAttribute('style')).toContain('flex-grow: 1')
-    expect(failed.className).toContain('bg-destructive')
-    expect(failed.getAttribute('style')).toContain('flex-grow: 1')
+    expect(interactions.getByRole('img', { name: 'search reindex — calls: 2, failed: 1' })).toBeDefined()
+    const failedRow = screen.getByTestId('overview-interactions')
+      .querySelector('[data-row-key="tools:bakin_exec_search_reindex"]')
+    expect(failedRow).not.toBeNull()
+    expect(failedRow!.querySelector('[data-series-secondary="errors"]')).not.toBeNull()
   })
 
   it('keeps incident explanations compact while allowing the full impact to be read', () => {
@@ -582,13 +589,12 @@ describe('OverviewTabView', () => {
       />,
     )
 
-    const rows = within(screen.getByTestId('overview-interactions'))
-      .getAllByTestId('interaction-destination-row')
+    const rows = Array.from(screen.getByTestId('overview-interactions')
+      .querySelectorAll<HTMLElement>('[data-slot="ranked-bar-row"]'))
     expect(rows).toHaveLength(3)
     for (const row of rows) {
       expect(row.className).toContain('min-w-0')
-      expect(within(row).getByTestId('interaction-destination-bar')).toBeDefined()
-      expect(within(row).getByTestId('interaction-destination-metric').className).toContain('w-24')
+      expect(row.querySelector('[data-series="count"], [role="img"]')).not.toBeNull()
     }
 
     const spendRows = within(screen.getByTestId('overview-agent-spend'))
@@ -596,8 +602,7 @@ describe('OverviewTabView', () => {
     expect(spendRows).toHaveLength(2)
     for (const row of spendRows) {
       expect(row.className).toContain('min-w-0')
-      expect(within(row).getByTestId('agent-spend-bar')).toBeDefined()
-      expect(within(row).getByTestId('agent-spend-metric').className).toContain('w-16')
+      expect(within(row).getByTestId('agent-spend-metric')).toBeDefined()
     }
   })
 
@@ -637,5 +642,20 @@ describe('OverviewTabView', () => {
     expect(screen.getByRole('link', { name: /Search: Unknown/i })).toBeDefined()
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(retry).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a verified snapshot visible inside the canonical persistent feedback banner', () => {
+    const model = buildHealthOverviewViewModel({ report: report(), now: NOW })
+
+    render(
+      <OverviewTabView
+        model={model}
+        backgroundError="Search telemetry timed out"
+      />,
+    )
+
+    const banner = screen.getByText('Showing the last verified snapshot').closest('[data-slot="banner"]')
+    expect(banner?.getAttribute('data-tone')).toBe('attention')
+    expect(banner?.textContent).toContain('Search telemetry timed out')
   })
 })

@@ -4,20 +4,27 @@
  * The main entry re-exports types + the single-call `registerPlugin` helper
  * so plugin authors can write `import { registerPlugin } from '@makinbakin/sdk'`
  * without having to remember which sub-path it lives at. UI primitives,
- * hooks, and components stay on sub-paths (`/ui`, `/hooks`, `/components`,
- * `/slots`) to keep the top-level namespace from exploding.
+ * layout, patterns, charts, conversation UI, rich content, hooks, and slots stay on focused
+ * sub-paths to keep the top-level namespace from exploding. The legacy
+ * `/components` barrel is REMOVED (storybook-refit P-final) — compose the
+ * focused sub-paths below instead.
  *
  * This entry is AUTHOR API ONLY. The host shell's registry/lazy-loading
  * plumbing lives on `@makinbakin/sdk/internal` and is not a public contract.
  *
  * Sub-paths:
  *   - `@makinbakin/sdk/ui`         — shadcn UI primitives (Button, Card, Dialog, ...)
+ *   - `@makinbakin/sdk/layout`     — canonical page and responsive composition
+ *   - `@makinbakin/sdk/patterns`   — reusable application-aware UI patterns
+ *   - `@makinbakin/sdk/charts`     — isolated data visualization
+ *   - `@makinbakin/sdk/conversation` — isolated conversation UI and models
+ *   - `@makinbakin/sdk/content`    — opt-in rich content rendering and editing
  *   - `@makinbakin/sdk/hooks`      — React hooks (useAgent, useSSE, useSearch, ...)
- *   - `@makinbakin/sdk/components` — shared components (PluginHeader, FacetFilter, ...)
  *   - `@makinbakin/sdk/slots`      — Slot + registerSlot primitive
  *   - `@makinbakin/sdk/types`      — full type re-exports
  *   - `@makinbakin/sdk/metadata`   — docs-aware contract helpers
  *   - `@makinbakin/sdk/testing`    — plugin test harness (createTestContext, ...)
+ *   - `@makinbakin/sdk/styles.css` — canonical compiled design-system CSS
  *
  * Plugin authors: at build time, mark `@makinbakin/sdk`, `@makinbakin/sdk/*`, and
  * `react`/`react-dom` as externals. At runtime the browser's import map

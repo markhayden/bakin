@@ -3,12 +3,11 @@
  * (assets.$assetId pattern) and renders the detail surface. Back navigates to
  * the list route; the detail's tab state stays in `?tab=`.
  */
-import { useParams } from '@tanstack/react-router'
-import { useHistoryBack } from '@makinbakin/sdk/hooks'
+import { useHistoryBack, useParams } from '@makinbakin/sdk/navigation'
 import { BrandDetail } from './brand-detail'
 
 export function BrandDetailPage() {
-  const { brandId } = useParams({ strict: false }) as { brandId: string }
+  const { brandId } = useParams<{ brandId: string }>()
   // Same pattern as the asset viewer: back = where you came from, list on a
   // cold deep-link. (Deletion navigates to the list explicitly inside
   // BrandDetail — history-back to a deleted brand would strand you.)

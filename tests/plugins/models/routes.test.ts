@@ -912,6 +912,12 @@ describe('GET /spend', () => {
     expect(facets.daily.global.meteredUsdMicros).toBe(150_000)
     expect(body.pace).toHaveProperty('daily')
     expect(body.pace).toHaveProperty('monthly')
+    const timeline = body.timeline as Array<{ costUsdMicros: number | null }>
+    expect(timeline).toHaveLength(6)
+    expect(timeline.reduce(
+      (sum: number, bucket: { costUsdMicros: number | null }) => sum + (bucket.costUsdMicros ?? 0),
+      0,
+    )).toBe(150_000)
   })
 
   it('returns windowed spend rollups (total, byAgent, byModel, byWorkClass) — NULL-honest', async () => {

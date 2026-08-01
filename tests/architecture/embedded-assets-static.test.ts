@@ -35,4 +35,9 @@ describe('embedded-assets static manifest (tracked generated output)', () => {
     expect(source).toContain("'/api/plugins/tasks/assets/client.js'")
     expect(source).toContain("'/api/plugins/team/assets/client.css'")
   })
+
+  it('embeds the canonical SDK stylesheet once at the host stylesheet URL', () => {
+    expect(source.match(/from '\.\.\/\.\.\/\.\.\/sdk\/styles\.css'/g)).toHaveLength(1)
+    expect(source.match(/\['\/globals\.css', asset_globals_css\]/g)).toHaveLength(1)
+  })
 })

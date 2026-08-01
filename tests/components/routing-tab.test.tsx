@@ -4,6 +4,7 @@
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import '../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -42,28 +43,32 @@ describe('RoutingTab', () => {
   it('renders dispatch + system sections; chat is excluded', () => {
     render(<RoutingTab m={makeM()} />)
     // Dispatch classes
-    expect(screen.getByText('Scheduled')).toBeTruthy()
-    expect(screen.getByText('Recovery')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Scheduled' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Recovery' })).toBeTruthy()
     // System classes
-    expect(screen.getByText('Auto-title')).toBeTruthy()
-    expect(screen.getByText('Relay')).toBeTruthy()
-    expect(screen.getByText('Team routing')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Auto-title' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Relay' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Team routing' })).toBeTruthy()
     // Chat is metered-only — no matrix row.
-    expect(screen.queryByText('Chat')).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Chat' })).toBeNull()
   })
 
-  it('thinking dropdowns offer only runtime-supported levels (Pi hides adaptive/max)', () => {
+  it('thinking dropdowns offer only runtime-supported levels (Pi hides adaptive/max)', async () => {
+    const user = userEvent.setup()
     render(<RoutingTab m={makeM()} />)
-    const options = Array.from(document.querySelectorAll('select option')).map((o) => (o as HTMLOptionElement).value)
-    expect(options).toContain('xhigh')
-    expect(options).not.toContain('adaptive')
-    expect(options).not.toContain('max')
+    await user.click(screen.getByRole('combobox', { name: 'Scheduled Thinking' }))
+    const options = screen.getAllByRole('option').map((o) => o.textContent)
+    expect(options).toContain('Extra high')
+    expect(options).not.toContain('Adaptive')
+    expect(options).not.toContain('Maximum')
   })
 
-  it('a persisted-but-unsupported level surfaces as a clamping option, never hidden', () => {
+  it('a persisted-but-unsupported level surfaces as a clamping option, never hidden', async () => {
+    const user = userEvent.setup()
     render(<RoutingTab m={makeM({
       displayRouting: { routes: [{ workClass: 'relay', thinking: 'max' }], tagOverrides: [] },
     } as Partial<ModelsData>)} />)
-    expect(screen.getByText('max (clamps — not supported by this runtime)')).toBeTruthy()
+    await user.click(screen.getByRole('combobox', { name: 'Relay Thinking' }))
+    expect(screen.getByRole('option', { name: 'Maximum · unsupported by this runtime' })).toBeTruthy()
   })
 })

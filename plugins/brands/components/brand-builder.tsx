@@ -5,10 +5,35 @@
  * a DRAFT brand, and dispatches the drafting agent to author the rest.
  */
 import { useCallback, useMemo, useState } from 'react'
-import { Loader2 } from 'lucide-react'
-import { AgentSelect, BakinDrawer } from '@makinbakin/sdk/components'
+import { ImagePlus, Loader2, X } from 'lucide-react'
 import { useFileDrop } from '@makinbakin/sdk/hooks'
-import { Button, Input, Label, Textarea, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@makinbakin/sdk/ui'
+import { AgentSelect, StatusBadge } from '@makinbakin/sdk/patterns'
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Drawer,
+  DrawerSection,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  Form,
+  FormActions,
+  Input,
+  Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@makinbakin/sdk/ui'
+import { useBrandAgentOptions } from './use-brand-agent-options'
 
 interface Answers {
   name: string
@@ -37,6 +62,7 @@ export function BrandBuilder({
   /** taskId = the dispatched drafting task, so the detail page can link it in the drafting banner. */
   onCreated: (brandId: string, taskId?: string) => void
 }) {
+  const agentOptions = useBrandAgentOptions()
   const [step, setStep] = useState<Step>(0)
   const [a, setA] = useState<Answers>(EMPTY)
   const [logoFile, setLogoFile] = useState<File | null>(null)
@@ -124,9 +150,16 @@ export function BrandBuilder({
       : 'Choose which agent drafts the brand.'
     : null
 
-  const gatedButton = (label: React.ReactNode, disabled: boolean, reason: string | null, onClick: () => void, testId: string) => {
+  const gatedButton = (
+    label: React.ReactNode,
+    disabled: boolean,
+    reason: string | null,
+    onClick: (() => void) | undefined,
+    testId: string,
+    type: 'button' | 'submit' = 'button',
+  ) => {
     const btn = (
-      <Button size="sm" onClick={onClick} disabled={disabled} data-testid={testId}>
+      <Button type={type} size="sm" onClick={onClick} disabled={disabled} data-testid={testId}>
         {label}
       </Button>
     )
@@ -143,9 +176,11 @@ export function BrandBuilder({
   }
 
   const footer = (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-xs text-muted-foreground">Step {step + 1} of {STEPS.length} · {STEPS[step]}</span>
-      <div className="flex gap-2">
+    <FormActions align="between" className="sticky bottom-0 z-10 bg-bakin-surface-default pb-bakin-1">
+      <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+        Step {step + 1} of {STEPS.length}
+      </span>
+      <div className="flex min-w-0 gap-bakin-2">
         {step > 0 && (
           <Button variant="outline" size="sm" onClick={() => setStep((s) => s - 1)} disabled={busy}>
             Back
@@ -154,125 +189,178 @@ export function BrandBuilder({
         {step < STEPS.length - 1
           ? gatedButton('Next', !canNext, nextBlockedReason, () => setStep((s) => s + 1), 'builder-next')
           : gatedButton(
-              busy ? <><Loader2 className="mr-1.5 size-3.5 animate-spin" /> Creating...</> : 'Create draft',
+              busy ? <><Loader2 className="animate-spin motion-reduce:animate-none" /> Creating…</> : 'Create draft',
               !canCreate || busy,
               createBlockedReason,
-              () => void create(),
+              undefined,
               'builder-create',
+              'submit',
             )}
       </div>
-    </div>
+    </FormActions>
   )
 
   return (
-    <BakinDrawer
+    <Drawer
       open={open}
       onOpenChange={(o) => { if (!o) close() }}
       title="Build my brand"
       description="Answer a few questions — an agent drafts the whole brand (voice, style guide, palette, rules) as a draft you review and publish."
-      actions={footer}
       dirty={dirty}
+      busy={busy}
       storageKey="brand-builder"
     >
-      <div className="flex flex-col gap-4 p-1">
-        {/* Step rail */}
-        <div className="flex gap-1">
+      <Form
+        aria-label="Build my brand"
+        busy={busy}
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (step === STEPS.length - 1 && canCreate && !busy) void create()
+        }}
+      >
+        <ol
+          aria-label="Brand creation progress"
+          className="grid grid-cols-4 gap-bakin-2"
+        >
           {STEPS.map((s, i) => (
-            <div key={s} className={`h-1 flex-1 rounded-full ${i <= step ? 'bg-accent' : 'bg-border'}`} title={s} />
+            <li
+              key={s}
+              aria-current={i === step ? 'step' : undefined}
+              data-state={i < step ? 'complete' : i === step ? 'current' : 'upcoming'}
+              className={[
+                'flex min-w-0 items-center gap-bakin-2 border-t-2 pt-bakin-2',
+                i <= step ? 'border-bakin-signal-accent text-bakin-text-primary' : 'border-bakin-border-subtle text-bakin-text-muted',
+              ].join(' ')}
+            >
+              <span className="font-bakin-typography-family-mono text-bakin-typography-size-meta">
+                {i + 1}
+              </span>
+              <span className="min-w-0 truncate text-bakin-typography-size-meta font-bakin-typography-weight-semibold">
+                {s}
+              </span>
+            </li>
           ))}
-        </div>
+        </ol>
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error ? (
+          <Alert tone="danger">
+            <AlertTitle>Brand draft could not be created</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
 
         {step === 0 && (
-          <div className="space-y-5">
-            <Field num={1} label="Brand name" hint="What the brand is called.">
-              <Input placeholder="e.g. Acme" value={a.name} onChange={(e) => set('name', e.target.value)} autoFocus />
-              {a.name.trim() && <p className="mt-1 text-[11px] text-muted-foreground">id: <span className="font-mono">{id}</span></p>}
+          <DrawerSection title="Basics" contentClassName="px-0 sm:px-bakin-2">
+            <FieldGroup>
+            <Field name="name">
+              <FieldLabel htmlFor="builder-name" requirement="required">Brand name</FieldLabel>
+              <FieldDescription>What the brand is called.</FieldDescription>
+              <Input id="builder-name" required placeholder="e.g. Acme" value={a.name} onChange={(e) => set('name', e.target.value)} autoFocus />
+              {a.name.trim() && (
+                <p className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                  id: {id}
+                </p>
+              )}
             </Field>
-            <Field num={2} label="What do you sell?" hint="One line — the agent grounds voice + positioning in this.">
-              <Textarea rows={2} placeholder="e.g. Warm bakery-management software for independent bakers" value={a.product} onChange={(e) => set('product', e.target.value)} />
+            <Field name="product">
+              <FieldLabel htmlFor="builder-product" requirement="required">What do you sell?</FieldLabel>
+              <FieldDescription>One line grounds the brand voice and positioning.</FieldDescription>
+              <Textarea id="builder-product" required rows={3} placeholder="e.g. Warm bakery-management software for independent bakers" value={a.product} onChange={(e) => set('product', e.target.value)} />
             </Field>
-          </div>
+            </FieldGroup>
+          </DrawerSection>
         )}
 
         {step === 1 && (
-          <div className="space-y-5">
-            <Field num={1} label="Audience" hint="Who reads this? What do they already know?">
-              <Input placeholder="e.g. independent bakery owners, not enterprise buyers" value={a.audience} onChange={(e) => set('audience', e.target.value)} />
+          <DrawerSection title="Voice" contentClassName="px-0 sm:px-bakin-2">
+            <FieldGroup>
+            <Field name="audience">
+              <FieldLabel htmlFor="builder-audience" requirement="optional">Audience</FieldLabel>
+              <FieldDescription>Who reads this, and what do they already know?</FieldDescription>
+              <Input id="builder-audience" placeholder="e.g. independent bakery owners, not enterprise buyers" value={a.audience} onChange={(e) => set('audience', e.target.value)} />
             </Field>
-            <Field num={2} label="Three tone words" hint="How the brand should sound.">
-              <Input placeholder="e.g. warm, direct, a little irreverent" value={a.tone} onChange={(e) => set('tone', e.target.value)} />
+            <Field name="tone">
+              <FieldLabel htmlFor="builder-tone" requirement="optional">Three tone words</FieldLabel>
+              <FieldDescription>How the brand should sound.</FieldDescription>
+              <Input id="builder-tone" placeholder="e.g. warm, direct, a little irreverent" value={a.tone} onChange={(e) => set('tone', e.target.value)} />
             </Field>
-            <Field num={3} label="Competitors" hint="Brands to sound distinct from (optional).">
-              <Input placeholder="e.g. Toast, Square" value={a.competitors} onChange={(e) => set('competitors', e.target.value)} />
+            <Field name="competitors">
+              <FieldLabel htmlFor="builder-competitors" requirement="optional">Competitors</FieldLabel>
+              <FieldDescription>Brands this kit should sound distinct from.</FieldDescription>
+              <Input id="builder-competitors" placeholder="e.g. Toast, Square" value={a.competitors} onChange={(e) => set('competitors', e.target.value)} />
             </Field>
-          </div>
+            </FieldGroup>
+          </DrawerSection>
         )}
 
         {step === 2 && (
-          <div className="space-y-5">
-            <Field num={1} label="Logo" hint="Shown on the brand dashboard and available to agents as a reference. PNG/SVG/JPG.">
+          <DrawerSection title="Sources" contentClassName="px-0 sm:px-bakin-2">
+            <FieldGroup>
+            <Field name="logo">
+              <FieldLabel requirement="optional">Logo</FieldLabel>
+              <FieldDescription>Shown on the brand dashboard and available to agents as a reference. PNG, SVG, or JPG.</FieldDescription>
               <LogoDrop preview={logoPreview} fileName={logoFile?.name ?? null} onPick={pickLogo} />
             </Field>
-            <Field num={2} label="Brand materials" hint="Up to 3 files with your real branding on them — a PDF, screenshots, a deck slide. The agent mines them for your palette, type, and style (optional).">
+            <Field name="materials">
+              <FieldLabel requirement="optional">Brand materials</FieldLabel>
+              <FieldDescription>Up to three PDFs or images carrying your real colors, type, and style.</FieldDescription>
               <MaterialsDrop files={materials} onChange={setMaterials} />
             </Field>
-            <Field num={3} label="Website URL(s)" hint="The drafting agent reads these to ground the brand in reality — palette, voice, and terminology get mined from them (optional).">
-              <Input placeholder="https://..." value={a.urls} onChange={(e) => set('urls', e.target.value)} />
+            <Field name="urls">
+              <FieldLabel htmlFor="builder-urls" requirement="optional">Website links</FieldLabel>
+              <FieldDescription>The drafting agent mines these for palette, voice, and terminology.</FieldDescription>
+              <Input id="builder-urls" placeholder="https://…" value={a.urls} onChange={(e) => set('urls', e.target.value)} />
             </Field>
-            <Field num={4} label="Anything else" hint="Existing docs, phrases you love or hate — anything that helps (optional).">
-              <Textarea rows={3} value={a.notes} onChange={(e) => set('notes', e.target.value)} />
+            <Field name="notes">
+              <FieldLabel htmlFor="builder-notes" requirement="optional">Anything else</FieldLabel>
+              <FieldDescription>Existing direction or phrases you love or hate.</FieldDescription>
+              <Textarea id="builder-notes" rows={3} value={a.notes} onChange={(e) => set('notes', e.target.value)} />
             </Field>
-          </div>
+            </FieldGroup>
+          </DrawerSection>
         )}
 
         {step === 3 && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 rounded-lg border p-3">
+          <DrawerSection title="Review" contentClassName="px-0 sm:px-bakin-2">
+            <div className="grid gap-bakin-4">
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle>{a.name || 'Untitled'}</CardTitle>
+                <CardDescription className="font-bakin-typography-family-mono">{id}</CardDescription>
+              </CardHeader>
+              <CardContent className="flex items-center gap-bakin-3">
               {logoPreview
-                ? <img src={logoPreview} alt="logo" className="h-12 w-12 rounded-md border object-contain" />
-                : <div className="flex h-12 w-12 items-center justify-center rounded-md border text-[10px] text-muted-foreground">no logo</div>}
-              <div className="min-w-0">
-                <p className="font-medium">{a.name || 'Untitled'} <span className="font-mono text-xs text-muted-foreground">{id}</span></p>
-                <p className="truncate text-xs text-muted-foreground">{a.product || 'No product description'}</p>
-              </div>
-            </div>
-            <ReviewRow label="Audience" value={a.audience} />
-            <ReviewRow label="Tone" value={a.tone} />
-            <ReviewRow label="Competitors" value={a.competitors} />
-            <ReviewRow label="URLs" value={a.urls} />
-            <ReviewRow label="Materials" value={materials.map((f) => f.name).join(', ')} />
-            <Field label="Which agent drafts it?" hint="Who authors the brand from your answers.">
-              <AgentSelect value={a.agent} onValueChange={(v) => set('agent', v)} placeholder="Choose an agent..." />
+                ? <img src={logoPreview} alt="" className="size-10 rounded-bakin-control border border-bakin-border-subtle object-contain" />
+                : <div className="flex size-10 items-center justify-center rounded-bakin-control border border-bakin-border-subtle text-bakin-typography-size-meta text-bakin-text-muted">No logo</div>}
+                <p className="min-w-0 text-bakin-text-muted">{a.product || 'No product description'}</p>
+              </CardContent>
+            </Card>
+            <dl className="grid gap-bakin-2">
+              <ReviewRow label="Audience" value={a.audience} />
+              <ReviewRow label="Tone" value={a.tone} />
+              <ReviewRow label="Competitors" value={a.competitors} />
+              <ReviewRow label="URLs" value={a.urls} />
+              <ReviewRow label="Materials" value={materials.map((f) => f.name).join(', ')} />
+            </dl>
+            <Field name="agent">
+              <FieldLabel requirement="required">Which agent drafts it?</FieldLabel>
+              <FieldDescription>Who authors the first brand draft from these answers.</FieldDescription>
+              <AgentSelect
+                value={a.agent}
+                onValueChange={(v) => set('agent', v)}
+                agents={agentOptions}
+                placeholder="Choose an agent..."
+              />
             </Field>
-            <p className="text-xs text-muted-foreground">
-              This creates a <span className="text-fuchsia-400">draft</span> (invisible to tasks + image tools) and dispatches {a.agent || 'the agent'} to
-              author voice, palette, rules, and terminology. Review and publish it on the brand page when done.
+            <p className="text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+              This creates a <StatusBadge size="xs" tone="accent">Draft</StatusBadge> that stays unavailable to tasks and image tools until you review and publish it.
             </p>
-          </div>
+            </div>
+          </DrawerSection>
         )}
-      </div>
-    </BakinDrawer>
-  )
-}
-
-function Field({ num, label, hint, children }: { num?: number; label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="block border-t border-border/60 pt-5 first:border-t-0 first:pt-0">
-      <div className="flex items-start gap-2.5">
-        {num !== undefined && (
-          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-[11px] font-medium text-muted-foreground">
-            {num}
-          </span>
-        )}
-        <div className="min-w-0 flex-1">
-          <Label className="text-sm font-medium">{label}</Label>
-          {hint && <span className="mt-0.5 block text-[11px] text-muted-foreground">{hint}</span>}
-          <div className="mt-2">{children}</div>
-        </div>
-      </div>
-    </div>
+        {footer}
+      </Form>
+    </Drawer>
   )
 }
 
@@ -293,27 +381,40 @@ function MaterialsDrop({ files, onChange }: { files: File[]; onChange: (files: F
   })
 
   return (
-    <div className="space-y-1.5">
+    <div className="grid gap-bakin-2">
       {files.map((f, i) => (
-        <div key={`${f.name}-${i}`} className="flex items-center gap-2 rounded-lg bg-foreground/5 px-2.5 py-1.5 text-sm">
+        <div
+          key={`${f.name}-${i}`}
+          className="flex min-w-0 items-center gap-bakin-2 rounded-bakin-control border border-bakin-border-subtle bg-bakin-surface-default px-bakin-3 py-bakin-2"
+        >
           <span className="min-w-0 truncate">{f.name}</span>
-          <span className="shrink-0 text-[11px] text-muted-foreground">{(f.size / 1024).toFixed(0)} KB</span>
-          <button
-            className="ml-auto shrink-0 rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-destructive"
+          <span className="shrink-0 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+            {(f.size / 1024).toFixed(0)} KB
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="ml-auto text-bakin-text-muted hover:text-bakin-signal-danger"
             onClick={() => onChange(files.filter((_, j) => j !== i))}
             aria-label={`Remove ${f.name}`}
           >
-            ✕
-          </button>
+            <X />
+          </Button>
         </div>
       ))}
       {!full && (
         <label
-          className={`flex cursor-pointer items-center gap-2 rounded-lg border border-dashed p-3 text-sm text-muted-foreground transition-colors ${over ? 'border-foreground/40 bg-foreground/5' : 'hover:border-foreground/30'}`}
+          className={[
+            'flex cursor-pointer items-center gap-bakin-2 rounded-bakin-control border border-dashed p-bakin-3',
+            'text-bakin-typography-size-meta text-bakin-text-muted transition-colors',
+            over ? 'border-bakin-focus-ring bg-bakin-surface-default' : 'border-bakin-border-subtle hover:bg-bakin-surface-default',
+          ].join(' ')}
           {...dropProps}
           data-materials-drop
         >
-          <span>＋ Drop a PDF or screenshot here, or click to browse ({files.length}/3)</span>
+          <ImagePlus className="size-bakin-4 shrink-0" aria-hidden="true" />
+          <span>Drop a PDF or image here, or browse ({files.length}/3)</span>
           <input type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={(e) => { add(e.target.files); e.target.value = '' }} />
         </label>
       )}
@@ -324,9 +425,9 @@ function MaterialsDrop({ files, onChange }: { files: File[]; onChange: (files: F
 function ReviewRow({ label, value }: { label: string; value: string }) {
   if (!value.trim()) return null
   return (
-    <div className="flex gap-2 text-xs">
-      <span className="w-24 shrink-0 text-muted-foreground">{label}</span>
-      <span>{value}</span>
+    <div className="grid min-w-0 grid-cols-3 gap-bakin-3 text-bakin-typography-size-meta">
+      <dt className="text-bakin-text-muted">{label}</dt>
+      <dd className="col-span-2 min-w-0 break-words text-bakin-text-primary">{value}</dd>
     </div>
   )
 }
@@ -336,21 +437,26 @@ function LogoDrop({ preview, fileName, onPick }: { preview: string | null; fileN
   return (
     <div>
       <label
-        className={`flex cursor-pointer items-center gap-3 rounded-lg border border-dashed p-3 transition-colors ${over ? 'border-foreground/40 bg-foreground/5' : 'hover:border-foreground/30'}`}
+        className={[
+          'flex cursor-pointer items-center gap-bakin-3 rounded-bakin-control border border-dashed p-bakin-3 transition-colors',
+          over ? 'border-bakin-focus-ring bg-bakin-surface-default' : 'border-bakin-border-subtle hover:bg-bakin-surface-default',
+        ].join(' ')}
         {...dropProps}
       >
         {preview
-          ? <img src={preview} alt="logo preview" className="h-14 w-14 rounded-md border object-contain" />
-          : <div className="flex h-14 w-14 items-center justify-center rounded-md border text-xl text-muted-foreground">＋</div>}
-        <div className="min-w-0 text-sm">
+          ? <img src={preview} alt="Logo preview" className="size-10 rounded-bakin-control border border-bakin-border-subtle object-contain" />
+          : <div className="flex size-10 items-center justify-center rounded-bakin-control border border-bakin-border-subtle text-bakin-text-muted"><ImagePlus aria-hidden="true" className="size-bakin-4" /></div>}
+        <div className="min-w-0">
           {fileName
-            ? <><p className="truncate font-medium">{fileName}</p><p className="text-[11px] text-muted-foreground">Click or drop to replace</p></>
-            : <><p className="font-medium">Add a logo</p><p className="text-[11px] text-muted-foreground">Click to browse or drop an image here</p></>}
+            ? <><p className="truncate font-bakin-typography-weight-semibold">{fileName}</p><p className="text-bakin-typography-size-meta text-bakin-text-muted">Browse or drop to replace</p></>
+            : <><p className="font-bakin-typography-weight-semibold">Add a logo</p><p className="text-bakin-typography-size-meta text-bakin-text-muted">Browse or drop an image here</p></>}
         </div>
         <input type="file" accept="image/*" className="hidden" onChange={(e) => onPick(e.target.files?.[0] ?? null)} />
       </label>
       {fileName && (
-        <button className="mt-1 text-[11px] text-muted-foreground hover:text-destructive" onClick={() => onPick(null)}>Remove logo</button>
+        <Button type="button" variant="link" size="xs" className="mt-bakin-1 text-bakin-text-muted hover:text-bakin-signal-danger" onClick={() => onPick(null)}>
+          Remove logo
+        </Button>
       )}
     </div>
   )

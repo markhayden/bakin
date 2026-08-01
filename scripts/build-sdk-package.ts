@@ -6,6 +6,7 @@
  * declarations, a publish-only package.json, and no repo-only import leaks.
  */
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -24,6 +25,10 @@ const SDK_DIR = join(REPO_ROOT, 'packages/sdk')
 const ROOT_PACKAGE_PATH = join(REPO_ROOT, 'package.json')
 const SDK_PACKAGE_PATH = join(SDK_DIR, 'package.json')
 export const PUBLIC_SDK_PACKAGE_NAME = '@makinbakin/sdk'
+export const SDK_STYLES_EXPORT = './styles.css'
+export const SDK_STYLES_SPECIFIER = `${PUBLIC_SDK_PACKAGE_NAME}/styles.css`
+const CANONICAL_SDK_STYLES_PATH = join(SDK_DIR, 'styles.css')
+const SDK_UI_TEST_BIN = 'bin/bakin-plugin-test-ui.js'
 
 export interface SdkExportEntry {
   exportPath: string
@@ -35,18 +40,28 @@ export interface SdkExportEntry {
 export const SDK_EXPORTS: SdkExportEntry[] = [
   { exportPath: '.', source: 'packages/sdk/src/index.ts', importPath: './index.js', typesPath: './index.d.ts' },
   { exportPath: './ui', source: 'packages/sdk/src/ui/index.ts', importPath: './ui/index.js', typesPath: './ui/index.d.ts' },
+  { exportPath: './layout', source: 'packages/sdk/src/layout/index.ts', importPath: './layout/index.js', typesPath: './layout/index.d.ts' },
+  { exportPath: './patterns', source: 'packages/sdk/src/patterns/index.ts', importPath: './patterns/index.js', typesPath: './patterns/index.d.ts' },
+  { exportPath: './charts', source: 'packages/sdk/src/charts/index.ts', importPath: './charts/index.js', typesPath: './charts/index.d.ts' },
+  { exportPath: './conversation', source: 'packages/sdk/src/conversation/index.ts', importPath: './conversation/index.js', typesPath: './conversation/index.d.ts' },
+  { exportPath: './content', source: 'packages/sdk/src/content/index.ts', importPath: './content/index.js', typesPath: './content/index.d.ts' },
   { exportPath: './hooks', source: 'packages/sdk/src/hooks/index.ts', importPath: './hooks/index.js', typesPath: './hooks/index.d.ts' },
-  { exportPath: './components', source: 'packages/sdk/src/components/index.ts', importPath: './components/index.js', typesPath: './components/index.d.ts' },
   { exportPath: './slots', source: 'packages/sdk/src/slots/index.tsx', importPath: './slots/index.js', typesPath: './slots/index.d.ts' },
   { exportPath: './types', source: 'packages/sdk/src/types/index.ts', importPath: './types/index.js', typesPath: './types/index.d.ts' },
   { exportPath: './utils', source: 'packages/sdk/src/utils/index.ts', importPath: './utils/index.js', typesPath: './utils/index.d.ts' },
   { exportPath: './metadata', source: 'packages/sdk/src/metadata/index.ts', importPath: './metadata/index.js', typesPath: './metadata/index.d.ts' },
   { exportPath: './routing', source: 'packages/sdk/src/routing/index.ts', importPath: './routing/index.js', typesPath: './routing/index.d.ts' },
+  { exportPath: './navigation', source: 'packages/sdk/src/navigation/index.ts', importPath: './navigation/index.js', typesPath: './navigation/index.d.ts' },
   { exportPath: './testing', source: 'packages/sdk/src/testing/index.ts', importPath: './testing/index.js', typesPath: './testing/index.d.ts' },
+  { exportPath: './testing/ui', source: 'packages/sdk/src/testing/ui/index.ts', importPath: './testing/ui/index.js', typesPath: './testing/ui/index.d.ts' },
+  { exportPath: './testing/ui/conformance', source: 'packages/sdk/src/testing/ui/conformance/index.ts', importPath: './testing/ui/conformance/index.js', typesPath: './testing/ui/conformance/index.d.ts' },
   { exportPath: './internal', source: 'packages/sdk/src/internal/index.ts', importPath: './internal/index.js', typesPath: './internal/index.d.ts' },
 ]
 
 const EXTERNAL_JS_PEERS = [
+  '@tanstack/react-router',
+  'axe-core',
+  'playwright',
   'react',
   'react-dom',
   'react-dom/client',
@@ -56,6 +71,7 @@ const EXTERNAL_JS_PEERS = [
 
 const FORBIDDEN_BARE_PREFIXES = [
   '@/',
+  '@bakin/ui',
   '@bakin/core',
   '@bakin/team',
   '@bakin/workflows',
@@ -73,6 +89,7 @@ interface PackageJson {
   name?: string
   description?: string
   peerDependencies?: Record<string, string>
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>
   dependencies?: Record<string, string>
   repository?: unknown
   homepage?: string
@@ -134,16 +151,26 @@ function mapSdkModule(rest: string): string | null {
   if (rest === 'index') return 'index'
   if (rest === 'register') return 'register'
   if (rest.endsWith('/index')) return rest
-  if (rest === 'types' || rest === 'routing' || rest === 'ui' || rest === 'hooks' || rest === 'components' || rest === 'slots' || rest === 'utils' || rest === 'metadata' || rest === 'testing' || rest === 'internal') {
+  if (rest === 'types' || rest === 'routing' || rest === 'ui' || rest === 'layout' || rest === 'patterns' || rest === 'charts' || rest === 'conversation' || rest === 'content' || rest === 'hooks' || rest === 'slots' || rest === 'utils' || rest === 'metadata' || rest === 'testing' || rest === 'testing/ui' || rest === 'testing/ui/conformance' || rest === 'internal') {
     return `${rest}/index`
   }
-  return rest === 'hooks/router' ? 'hooks/router' : null
+  // Public entry declarations retain relative references to their SDK leaf
+  // modules (especially `types/*`). Preserve those leaves in the package;
+  // dropping them leaves syntactically valid barrels whose exports resolve
+  // to missing declarations for external consumers.
+  return rest
 }
 
 function mapOriginalModulePath(originalNoExt: string): string | null {
   const normalized = normalizeRel(originalNoExt)
   if (normalized.startsWith('packages/sdk/src/')) {
     return mapSdkModule(normalized.slice('packages/sdk/src/'.length))
+  }
+  if (normalized.startsWith('packages/ui/src/')) {
+    return `_internal/ui/${normalized.slice('packages/ui/src/'.length)}`
+  }
+  if (normalized.startsWith('packages/host/src/')) {
+    return `_internal/host/${normalized.slice('packages/host/src/'.length)}`
   }
   if (normalized.startsWith('src/')) {
     return `_internal/app/${normalized.slice('src/'.length)}`
@@ -167,6 +194,10 @@ function resolveOriginalRelativeSpecifier(originalFileRel: string, specifier: st
 function aliasTarget(specifier: string): string | null {
   if (specifier.startsWith('@/')) {
     return `_internal/app/${specifier.slice(2)}`
+  }
+  if (specifier === '@bakin/ui') return '_internal/ui/index'
+  if (specifier.startsWith('@bakin/ui/')) {
+    return `_internal/ui/${specifier.slice('@bakin/ui/'.length)}`
   }
   if (specifier === '@bakin/core') return '_internal/core/index'
   if (specifier.startsWith('@bakin/core/')) {
@@ -220,31 +251,125 @@ function copyDeclarationTree(tempDtsDir: string, outDir: string): void {
 
 function buildJsEntry(entry: SdkExportEntry, outDir: string): void {
   const targetFile = join(outDir, entry.importPath)
+  // The root source barrel combines SDK types with runtime values. Core also
+  // consumes those SDK types, creating a type-only cycle that Bun 1.3 can
+  // misinterpret as a runtime re-export cycle and emit dangling export names.
+  // Bundle the explicit cycle-free runtime entry; declarations still come
+  // from the public root barrel below.
+  const sourceModule = entry.exportPath === '.'
+    ? join(REPO_ROOT, 'scripts/sdk-runtime-entry.ts')
+    : join(REPO_ROOT, entry.source)
+  const wrapperDir = mkdtempSync(join(tmpdir(), 'bakin-sdk-entry-'))
+  const wrapper = join(wrapperDir, 'entry.ts')
+  // Bun 1.3 applies a source package's sideEffects metadata to a barrel used
+  // directly as the entrypoint and can tree-shake the declarations behind
+  // re-exports while retaining their export names. Building a neutral wrapper
+  // outside that package preserves the same public exports and their values.
+  writeFileSync(wrapper, `export * from ${JSON.stringify(sourceModule)}\n`, 'utf8')
+  mkdirSync(dirname(targetFile), { recursive: true })
+  try {
+    const result = spawnSync('bun', [
+      'build',
+      wrapper,
+      '--outfile',
+      targetFile,
+      '--target',
+      'bun',
+      '--format',
+      'esm',
+      '--production',
+      ...EXTERNAL_JS_PEERS.flatMap((specifier) => ['--external', specifier]),
+    ], {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+    })
+    if (result.status !== 0) {
+      throw new Error(`Failed to build ${entry.exportPath}:\n${result.stdout}${result.stderr}`)
+    }
+    if (!existsSync(targetFile)) {
+      throw new Error(`Expected ${entry.importPath} to be generated`)
+    }
+    if (statSync(targetFile).size === 0) {
+      writeFileSync(targetFile, 'export {}\n', 'utf-8')
+    }
+  } finally {
+    rmSync(wrapperDir, { recursive: true, force: true })
+  }
+}
+
+function buildCli(outDir: string): void {
+  const targetFile = join(outDir, SDK_UI_TEST_BIN)
   mkdirSync(dirname(targetFile), { recursive: true })
   const result = spawnSync('bun', [
     'build',
-    join(REPO_ROOT, entry.source),
-    '--outdir',
-    dirname(targetFile),
-    '--target',
-    'bun',
-    '--format',
-    'esm',
-    '--entry-naming',
-    '[name].[ext]',
+    join(SDK_DIR, 'src/testing/ui/conformance/cli.ts'),
+    '--outfile', targetFile,
+    '--target', 'bun',
+    '--format', 'esm',
     ...EXTERNAL_JS_PEERS.flatMap((specifier) => ['--external', specifier]),
   ], {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
   })
   if (result.status !== 0) {
-    throw new Error(`Failed to build ${entry.exportPath}:\n${result.stdout}${result.stderr}`)
+    throw new Error(`Failed to build bakin-plugin-test-ui:\n${result.stdout}${result.stderr}`)
   }
-  if (!existsSync(targetFile)) {
-    throw new Error(`Expected ${entry.importPath} to be generated`)
+  if (!existsSync(targetFile) || statSync(targetFile).size === 0) {
+    throw new Error(`Expected ${SDK_UI_TEST_BIN} to be generated`)
   }
-  if (statSync(targetFile).size === 0) {
-    writeFileSync(targetFile, 'export {}\n', 'utf-8')
+  const content = readFileSync(targetFile, 'utf8')
+  if (!content.startsWith('#!')) writeFileSync(targetFile, `#!/usr/bin/env bun\n${content}`, 'utf8')
+  chmodSync(targetFile, 0o755)
+}
+
+function buildStylesheet(outDir: string): void {
+  const output = join(outDir, 'styles.css')
+  const result = spawnSync('bun', [
+    join(REPO_ROOT, 'node_modules/.bin/tailwindcss'),
+    '-i', join(REPO_ROOT, 'packages/host/src/globals.css'),
+    '-o', output,
+    '--minify',
+  ], {
+    cwd: REPO_ROOT,
+    encoding: 'utf-8',
+  })
+  if (result.status !== 0) {
+    throw new Error(`Failed to build ${SDK_STYLES_EXPORT}:\n${result.stdout}${result.stderr}`)
+  }
+  if (!existsSync(output) || statSync(output).size === 0) {
+    throw new Error(`Expected ${SDK_STYLES_EXPORT} to be generated`)
+  }
+  assertSdkStylesheetIdentity(output)
+}
+
+/** Refuse to publish CSS that differs from the host/Storybook artifact. */
+export function assertSdkStylesheetIdentity(
+  candidatePath: string,
+  canonicalPath = CANONICAL_SDK_STYLES_PATH,
+): void {
+  if (!existsSync(canonicalPath)) {
+    throw new Error(`Canonical SDK stylesheet is missing at ${canonicalPath}; run bun run build:css`)
+  }
+  if (!existsSync(candidatePath)) {
+    throw new Error(`Compiled SDK stylesheet is missing at ${candidatePath}`)
+  }
+  const candidate = readFileSync(candidatePath)
+  const canonical = readFileSync(canonicalPath)
+  if (!candidate.equals(canonical)) {
+    // Name the actual divergence — "bytes differ" has already cost four CI
+    // rounds of guessing. Class-set deltas identify a content-scan gap;
+    // equal class sets with different bytes point at the compiler itself.
+    const classes = (css: Buffer) => new Set(css.toString().match(/(?<![\w-])\.(?:[\w-]|\\.)+/g) ?? [])
+    const a = classes(candidate)
+    const b = classes(canonical)
+    const onlyCandidate = [...a].filter((c) => !b.has(c)).slice(0, 12)
+    const onlyCanonical = [...b].filter((c) => !a.has(c)).slice(0, 12)
+    throw new Error(
+      'SDK stylesheet does not match the canonical artifact; run bun run build:css and commit packages/sdk/styles.css\n'
+      + `candidate ${candidate.length}B vs canonical ${canonical.length}B\n`
+      + `classes only in candidate (${onlyCandidate.length} shown): ${onlyCandidate.join(' ') || '(none)'}\n`
+      + `classes only in canonical (${onlyCanonical.length} shown): ${onlyCanonical.join(' ') || '(none)'}`,
+    )
   }
 }
 
@@ -302,32 +427,39 @@ function buildDependencies(outDir: string, sourceSdkPkg: PackageJson): Record<st
 
 function writePackageJson(outDir: string, version: string): void {
   const sourcePkg = readJson<PackageJson>(SDK_PACKAGE_PATH)
-  const exportsMap = Object.fromEntries(SDK_EXPORTS.map((entry) => [
+  const exportsMap: Record<string, unknown> = Object.fromEntries(SDK_EXPORTS.map((entry) => [
     entry.exportPath,
     {
       import: entry.importPath,
       types: entry.typesPath,
     },
   ]))
+  exportsMap[SDK_STYLES_EXPORT] = SDK_STYLES_EXPORT
 
   const pkg = {
     name: PUBLIC_SDK_PACKAGE_NAME,
     version,
     description: sourcePkg.description,
     type: 'module',
-    sideEffects: false,
+    sideEffects: [SDK_STYLES_EXPORT],
     main: './index.js',
     types: './index.d.ts',
     exports: exportsMap,
     files: [
       '**/*.js',
       '**/*.d.ts',
+      'styles.css',
       'README.md',
     ],
+    bin: {
+      'bakin-plugin-test-ui': `./${SDK_UI_TEST_BIN}`,
+    },
     peerDependencies: sourcePkg.peerDependencies ?? {
+      '@tanstack/react-router': '^1.168.23',
       react: '^19.0.0',
       'react-dom': '^19.0.0',
     },
+    peerDependenciesMeta: sourcePkg.peerDependenciesMeta,
     dependencies: buildDependencies(outDir, sourcePkg),
     repository: sourcePkg.repository,
     homepage: sourcePkg.homepage,
@@ -382,6 +514,8 @@ export async function buildSdkPackage(opts: BuildSdkPackageOptions): Promise<voi
   mkdirSync(outDir, { recursive: true })
 
   for (const entry of SDK_EXPORTS) buildJsEntry(entry, outDir)
+  buildCli(outDir)
+  buildStylesheet(outDir)
 
   const tempDtsDir = mkdtempSync(join(tmpdir(), 'bakin-sdk-dts-'))
   try {

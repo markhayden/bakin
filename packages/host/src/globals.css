@@ -1,18 +1,27 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "../../ui/src/styles/tokens.generated.css";
+@import "../../ui/src/styles/tailwind.generated.css";
 
 /*
- * Tailwind v4 auto-detects source files from the CSS file's directory, but
- * the host bundle pulls JSX from across the monorepo. Explicitly enumerate
- * every tree that contains utility classes we want generated.
+ * source(none) disables Tailwind's automatic content detection: the scan is
+ * EXACTLY these globs, nothing else. Auto-detection walked the whole repo —
+ * including the committed packages/sdk/styles.css artifact itself, whose
+ * previous contents fed back into the next build (a stale artifact once
+ * resurrected a deleted class's theme variable), plus tests/scripts/docs
+ * whose class-shaped strings injected junk. Hermetic inputs are what make
+ * the buildSdkPackage byte-identity check hold on every machine.
  *
  * Paths are resolved relative to this file (packages/host/src/globals.css).
  */
 @source "./**/*.{ts,tsx}";
+@source "../../ui/src/**/*.{ts,tsx}";
 @source "../../sdk/src/**/*.{ts,tsx}";
 @source "../../../src/**/*.{ts,tsx}";
 @source "../../../plugins/**/*.{ts,tsx}";
+@source "../../../storybook/**/*.{ts,tsx}";
+@source "../../../examples/**/*.{ts,tsx}";
 @source "../../../../bakin-bits-official/plugins/**/*.{ts,tsx}";
 
 @custom-variant dark (&:is(.dark *));
@@ -41,14 +50,8 @@
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
   --radius-sm: calc(var(--radius) * 0.6);
@@ -60,108 +63,80 @@
   --radius-4xl: calc(var(--radius) * 2.6);
   --color-surface: var(--surface);
   --color-surface-low: var(--surface-low);
-  --color-surface-container: var(--surface-container);
-  --color-surface-high: var(--surface-high);
-  --color-surface-highest: var(--surface-highest);
-  --color-surface-bright: var(--surface-bright);
-  --color-surface-elevated: var(--surface-elevated);
-  --color-outline: var(--outline);
   --color-outline-variant: var(--outline-variant);
-  --color-accent-dim: var(--accent-dim);
-  --color-accent-container: var(--accent-container);
   --color-selection: var(--selection);
-  --color-selection-foreground: var(--selection-foreground);
   --color-success-foreground: var(--success-foreground);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-info-foreground: var(--info-foreground);
   --color-success: var(--success);
-  --color-warning: var(--warning);
-  --color-info: var(--info);
-  --color-status-backlog: var(--status-backlog);
-  --color-status-todo: var(--status-todo);
-  --color-status-in-progress: var(--status-in-progress);
-  --color-status-review: var(--status-review);
   --color-status-done: var(--status-done);
   --color-status-blocked: var(--status-blocked);
 }
 
+/*
+ * Legacy generic tokens (migration-only compat layer). Values reference the
+ * namespaced --bakin-* semantic tokens wherever an exact-value token exists;
+ * translucent washes derive from the same tokens via color-mix so every
+ * computed value stays byte-identical to the pre-token stylesheet. Variables
+ * with zero consumers (verified across bakin + bakin-bits-official) were
+ * removed in the T7.2 sweep; what remains is still consumed by rendered UI
+ * (base @apply rules, shadcn-derived primitives, or runtime code).
+ */
 :root {
-  /* Surface hierarchy (darkest → lightest) */
-  --background: #0f0e0e;
-  --surface: #0f0e0e;
-  --surface-low: #151313;
-  --surface-container: #1b1919;
-  --surface-high: #211f1f;
-  --surface-highest: #272525;
-  --surface-bright: #2e2b2b;
-  --surface-elevated: #1b1919;
+  /* Shell chrome geometry — the Header raises these while banners are active
+     (style.setProperty on <html> overrides these stylesheet defaults). */
+  --bakin-header-top: 0px;
+  --bakin-shell-top: 3.5rem;
 
-  --foreground: #ffffff;
-  --card: #151313;
-  --card-foreground: #ffffff;
-  --popover: #1b1919;
-  --popover-foreground: #ffffff;
+  /* Surface hierarchy (darkest → lightest) */
+  --background: var(--bakin-color-canvas-default);
+  --surface: var(--bakin-color-canvas-default);
+  --surface-low: var(--bakin-color-surface-default);
+
+  --foreground: var(--bakin-color-text-primary);
+  --card: var(--bakin-color-surface-default);
+  --card-foreground: var(--bakin-color-text-primary);
 
   /* Primary — Green (default CTA) */
-  --primary: #22c55e;
-  --primary-foreground: #052e16;
-
-  /* Secondary — Subtle surface action */
-  --secondary: #272525;
-  --secondary-foreground: #ffffff;
+  --primary: var(--bakin-color-action-primary-background);
+  --primary-foreground: var(--bakin-color-action-primary-foreground);
 
   /* Accent — Neon Pink (branding, links, highlights) */
-  --accent: #ff007f;
-  --accent-foreground: #ffffff;
-  --accent-dim: #e30071;
-  --accent-container: #ff709e;
+  --accent: var(--bakin-color-signal-accent);
+  --accent-foreground: var(--bakin-color-text-primary);
 
   /* Selection — Electric Yellow */
-  --selection: #eaea00;
-  --selection-foreground: #555500;
+  --selection: var(--bakin-color-signal-highlight);
 
-  --muted: #1b1919;
-  --muted-foreground: #aeaaaa;
-  --destructive: #ef4444;
-  --warning: #f59e0b;
-  --warning-foreground: #451a03;
-  --info: #38bdf8;
-  --info-foreground: #082f49;
+  --destructive: var(--bakin-color-signal-danger);
 
   /* Outline */
-  --border: rgba(74, 71, 71, 0.3);
-  --outline: #787574;
-  --outline-variant: #4a4747;
-  --input: rgba(74, 71, 71, 0.3);
-  --ring: #22c55e;
+  --border: color-mix(in srgb, var(--bakin-color-border-subtle) 30%, transparent);
+  --outline-variant: var(--bakin-color-border-subtle);
+  --input: color-mix(in srgb, var(--bakin-color-border-subtle) 30%, transparent);
+  --ring: var(--bakin-color-focus-ring);
   --radius: 0.5rem;
 
-  --success: #22c55e;
-  --success-foreground: #052e16;
+  --success: var(--bakin-color-action-primary-background);
+  --success-foreground: var(--bakin-color-action-primary-foreground);
 
   /* Sidebar */
-  --sidebar: #0f0e0e;
-  --sidebar-foreground: #aeaaaa;
-  --sidebar-primary: #22c55e;
-  --sidebar-primary-foreground: #052e16;
-  --sidebar-accent: rgba(255, 255, 255, 0.06);
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgba(74, 71, 71, 0.2);
-  --sidebar-ring: #22c55e;
+  --sidebar: var(--bakin-color-canvas-default);
+  --sidebar-foreground: var(--bakin-color-text-muted);
+  --sidebar-primary: var(--bakin-color-action-primary-background);
+  --sidebar-primary-foreground: var(--bakin-color-action-primary-foreground);
+  --sidebar-accent: color-mix(in srgb, var(--bakin-color-text-primary) 6%, transparent);
+  --sidebar-accent-foreground: var(--bakin-color-text-primary);
+  --sidebar-border: color-mix(in srgb, var(--bakin-color-border-subtle) 20%, transparent);
+  --sidebar-ring: var(--bakin-color-focus-ring);
 
-  /* Charts */
-  --chart-1: #22c55e;
-  --chart-2: #ff007f;
-  --chart-3: #eaea00;
-  --chart-4: #ef4444;
-  --chart-5: #aeaaaa;
+  /* Charts (legacy shadcn names; values equal the brand tokens they came from) */
+  --chart-1: var(--bakin-color-action-primary-background);
+  --chart-2: var(--bakin-color-signal-accent);
+  --chart-3: var(--bakin-color-signal-highlight);
+  --chart-4: var(--bakin-color-signal-danger);
+  --chart-5: var(--bakin-color-text-muted);
   /* Status colors for task board */
-  --status-backlog: #71717a;
-  --status-todo: #a855f7;
-  --status-in-progress: #3b82f6;
-  --status-review: #f59e0b;
-  --status-done: #22c55e;
-  --status-blocked: #ef4444;
+  --status-done: var(--bakin-color-action-primary-background);
+  --status-blocked: var(--bakin-color-signal-danger);
   /* Agent accent colors (overridden at runtime by AgentThemeProvider) */
   --agent-main: #60a5fa;
   --agent-pixel: #a78bfa;
@@ -194,12 +169,15 @@
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--bakin-color-text-primary) 10%, transparent);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--bakin-color-text-primary) 20%, transparent);
 }
 
 /* Date/time input icons — visible on dark backgrounds */
@@ -209,11 +187,32 @@
 
 /* Kanban drag states */
 .drag-over {
-  background: rgba(255, 0, 127, 0.06) !important;
-  border-color: rgba(255, 0, 127, 0.2) !important;
+  background: color-mix(in srgb, var(--bakin-color-signal-accent) 6%, transparent) !important;
+  border-color: color-mix(in srgb, var(--bakin-color-signal-accent) 20%, transparent) !important;
 }
 .dragging {
   opacity: 0.5;
+}
+
+/*
+ * Kit motion vocabulary — text luminance sweep (ShimmerText primitive).
+ * Declared via @theme so `animate-shimmer-sweep` is a generated utility and
+ * the keyframes ship only when the utility is used. The sweep animates
+ * background-position over a 300%-wide gradient (muted base, bright band);
+ * reduced motion pins the position mid-sweep via the component's static
+ * `background-position: 50%` declaration.
+ */
+@theme {
+  --animate-shimmer-sweep: shimmer-sweep 2.4s linear infinite;
+
+  @keyframes shimmer-sweep {
+    from {
+      background-position: 100% 50%;
+    }
+    to {
+      background-position: 0% 50%;
+    }
+  }
 }
 
 /* Connection pulse */
@@ -225,26 +224,47 @@
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
-/* Markdown content — sized down ~15% from previous defaults so prose
-   reads as page content rather than display copy. */
-.prose-invert { font-size: 0.875rem; line-height: 1.6; }
-.prose-invert h1 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.625rem; }
-.prose-invert h2 { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.5rem; margin-top: 1.25rem; }
-.prose-invert h3 { font-size: 0.9375rem; font-weight: 600; margin-bottom: 0.5rem; margin-top: 0.875rem; }
-.prose-invert p { margin-bottom: 0.625rem; color: #aeaaaa; }
-.prose-invert ul { list-style: disc; padding-left: 1.25rem; margin-bottom: 0.625rem; }
-.prose-invert ol { list-style: decimal; padding-left: 1.25rem; margin-bottom: 0.625rem; }
-.prose-invert li { margin-bottom: 0.2rem; color: #aeaaaa; }
-.prose-invert code { background: #1b1919; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.8125rem; }
-.prose-invert pre { background: #151313; padding: 0.875rem; border-radius: 0.5rem; overflow-x: auto; margin-bottom: 0.625rem; font-size: 0.8125rem; }
-.prose-invert pre code { background: none; padding: 0; font-size: inherit; }
-.prose-invert a { color: var(--accent); text-decoration: none; }
-.prose-invert a:hover { text-decoration: underline; }
-.prose-invert strong { color: #ffffff; }
-.prose-invert table { width: 100%; border-collapse: collapse; margin-bottom: 0.625rem; font-size: 0.8125rem; }
-.prose-invert th, .prose-invert td { border: 1px solid rgba(255,255,255,0.08); padding: 0.4rem 0.625rem; text-align: left; }
-.prose-invert th { font-weight: 600; color: #ffffff; }
-.prose-invert td { color: #aeaaaa; }
+/* Supported MarkdownContent typography. Native nesting keeps the scoped
+   component contract compact without leaking prose rules into shell chrome. */
+[data-markdown-content] {
+  --md-primary: var(--bakin-color-text-primary);
+  --md-muted: var(--bakin-color-text-muted);
+  --md-surface: var(--bakin-color-surface-default);
+  overflow-wrap: anywhere;
+
+  & :where(h1, h2, h3) { color: var(--md-primary); font-weight: var(--bakin-typography-weight-semibold); }
+  & h1 { margin: var(--bakin-layout-space-6) 0 var(--bakin-layout-space-4); font-size: var(--bakin-typography-size-page-title); font-weight: var(--bakin-typography-weight-bold); line-height: 1.1; }
+  & h2 { margin: var(--bakin-layout-space-6) 0 var(--bakin-layout-space-3); font-size: var(--bakin-typography-size-section-title); }
+  & h3 { margin: var(--bakin-layout-space-4) 0 var(--bakin-layout-space-2); }
+  & p { margin: 0 0 var(--bakin-layout-space-3); }
+  & :where(ul, ol) { margin-bottom: var(--bakin-layout-space-3); padding-left: var(--bakin-layout-space-6); }
+  & ul { list-style: disc; }
+  & ol { list-style: decimal; }
+  & li { margin-block: var(--bakin-layout-space-1); }
+  & > :first-child { margin-top: 0; }
+  & > :last-child { margin-bottom: 0; }
+  & a { color: var(--bakin-color-signal-accent); text-decoration: underline; text-underline-offset: 0.25rem; }
+  & a:hover { color: var(--md-primary); }
+  & strong { color: var(--md-primary); font-weight: var(--bakin-typography-weight-semibold); }
+  & blockquote { margin-block: var(--bakin-layout-space-4); padding-left: var(--bakin-layout-space-4); border-left: 2px solid var(--bakin-color-signal-highlight); }
+  & :not(pre) > code { padding-inline: var(--bakin-layout-space-1); border-radius: var(--bakin-radius-control); background: var(--md-surface); color: var(--md-primary); font-family: var(--bakin-typography-family-mono); font-size: var(--bakin-typography-size-meta); }
+  & pre code { padding: 0; border-radius: 0; background: transparent; color: inherit; font-size: inherit; }
+  & table { width: 100%; border-collapse: collapse; }
+  & :where(th, td) { padding: var(--bakin-layout-space-2) var(--bakin-layout-space-3); border-bottom: 1px solid var(--bakin-color-border-subtle); text-align: left; }
+  & th { background: var(--md-surface); color: var(--md-primary); font-weight: var(--bakin-typography-weight-semibold); }
+  & td { color: var(--md-muted); }
+  & .contains-task-list { padding-left: 0; list-style: none; }
+  & .task-list-item { display: flex; align-items: center; gap: var(--bakin-layout-space-2); }
+  & .hljs-comment { color: var(--md-muted); }
+  & :where(.hljs-attr, .hljs-property) { color: var(--bakin-color-signal-info); }
+  & .hljs-keyword { color: var(--bakin-color-signal-accent); }
+  & :where(.hljs-literal, .hljs-number) { color: var(--bakin-color-signal-highlight); }
+  & .hljs-string { color: var(--bakin-color-action-primary-background); }
+  & .hljs-title { color: var(--md-primary); }
+}
+
+/* Named editor height for document surfaces that own the remaining viewport. */
+.bakin-markdown-editor-viewport { min-height: 70vh; }
 
 /* Kanban drop indicator marching ants */
 @keyframes march {
@@ -264,12 +284,14 @@
   border: 1px solid var(--border);
 }
 .react-flow .react-flow__controls-button {
-  background: var(--surface-container);
+  background: var(--bakin-color-surface-elevated);
   border-bottom-color: var(--border);
-  color: var(--muted-foreground);
+  color: var(--bakin-color-text-muted);
 }
 .react-flow .react-flow__controls-button:hover {
-  background: var(--surface-high);
+  /* One tint above the elevated surface; pinned raw for output preservation —
+     the elevation ladder deliberately has no solid step above surface-elevated. */
+  background: #211f1f;
   color: var(--foreground);
 }
 .react-flow .react-flow__controls-button svg,
@@ -277,7 +299,7 @@
   fill: currentColor;
 }
 .react-flow .react-flow__minimap {
-  background: var(--surface-container);
+  background: var(--bakin-color-surface-elevated);
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) * 0.6);
   overflow: hidden;

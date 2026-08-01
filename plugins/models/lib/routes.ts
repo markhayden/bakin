@@ -20,7 +20,7 @@ import {
   clearPersistedCache,
 } from './models-cache'
 import { listRunCostsSince, listBudgetIncidents, resolveBudgetIncident, LedgerUnavailableError } from '../../../src/core/execution-ledger'
-import { rollupSpend } from './spend-rollup'
+import { buildSpendTimeline, rollupSpend } from './spend-rollup'
 import { assembleBudgetSpend, paceProjection, dayEndMs, monthEndMs } from '../../../src/core/budget-spend'
 import { budgetStatusRoutes } from './budget-routes'
 import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
@@ -408,14 +408,16 @@ export const modelsRoutes = [
     handler: async (req) => {
       try {
         const window = parseSpendWindow(new URL(req.url).searchParams.get('window'))
-        const sinceMs = window === 'all' ? 0 : Date.now() - SPEND_WINDOW_MS[window]
+        const now = Date.now()
+        const sinceMs = window === 'all' ? 0 : now - SPEND_WINDOW_MS[window]
         // NULL-honest rollups over raw rows (replaced the ledger GROUP-BY
         // verbs whose COALESCE fabricated $0 for unpriced buckets).
-        const rollups = rollupSpend(listRunCostsSince(sinceMs))
+        const rows = listRunCostsSince(sinceMs)
+        const rollups = rollupSpend(rows)
+        const timeline = buildSpendTimeline(rows, window, now)
         // Cap-window facets from the shared engine (lane/provider split +
         // pace) ride alongside the rolling browse rollups — utilization
         // always computes on calendar cap windows, whatever the selector.
-        const now = Date.now()
         const facets = await assembleBudgetSpend(now)
         const pace = {
           daily: {
@@ -436,6 +438,7 @@ export const modelsRoutes = [
           byAgent: rollups.byAgent,
           byModel: rollups.byModel,
           byWorkClass: rollups.byWorkClass,
+          timeline,
           facets,
           pace,
         })

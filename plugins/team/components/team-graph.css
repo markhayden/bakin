@@ -1,0 +1,47 @@
+[data-bakin-plugin="team"] .react-flow__node {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+[data-bakin-plugin="team"] [data-team-graph-canvas] {
+  height: calc(100dvh - (var(--bakin-layout-space-8) * 6));
+  min-height: calc(var(--bakin-layout-space-8) * 12);
+}
+
+[data-bakin-plugin="team"] .react-flow__edge.animated path {
+  animation: bakin-team-edge-flow 1.5s linear infinite;
+  stroke-dasharray: 6 3;
+}
+
+[data-bakin-plugin="team"] [data-team-agent-card] {
+  transition:
+    transform var(--bakin-motion-duration-transition) var(--bakin-motion-easing-standard),
+    border-color var(--bakin-motion-duration-transition) var(--bakin-motion-easing-standard),
+    background-color var(--bakin-motion-duration-transition) var(--bakin-motion-easing-standard);
+}
+
+[data-bakin-plugin="team"] [data-team-agent-card]:hover,
+[data-bakin-plugin="team"] .react-flow__node:focus-visible [data-team-agent-card] {
+  border-color: var(--bakin-color-text-muted);
+  background-color: var(--bakin-color-surface-default);
+  transform: translateY(-2px);
+}
+
+@keyframes bakin-team-edge-flow {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-bakin-plugin="team"] .react-flow__edge.animated path {
+    animation: none;
+  }
+
+  [data-bakin-plugin="team"] [data-team-agent-card] {
+    transition: none;
+  }
+}

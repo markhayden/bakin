@@ -1,6 +1,16 @@
 # Conversation Kit
 
-THE shared conversation UI **and turn engine** for every surface that talks to an agent. UI lives in `src/components/conversation/`, exported via `@makinbakin/sdk/components` (+ two server helpers via `@makinbakin/sdk/utils`); the server-side turn engine lives in `src/core/conversation-turns.ts` (see below). Replaced `IntegratedBrainstorm` and the three duplicated chunk-folding implementations (2026-07 overhaul; spec `.claude/specs/chat-conversation-kit.md`), then absorbed chat's turn machinery as the ONE engine for all conversational surfaces (#703; spec `tasks/spec-703-conversation-durability.md`).
+THE shared conversation UI **and turn engine** for every surface that talks to
+an agent. The private UI implementation lives in
+`packages/ui/src/conversation/` and is published through the focused
+`@makinbakin/sdk/conversation` entrypoint (+ two server helpers via
+`@makinbakin/sdk/utils`). Existing `/components` imports are migration-only.
+The server-side turn engine lives in `src/core/conversation-turns.ts` (see
+below). The kit replaced `IntegratedBrainstorm` and the three duplicated
+chunk-folding implementations (2026-07 overhaul; spec
+`.claude/specs/chat-conversation-kit.md`), then absorbed chat's turn machinery
+as the ONE engine for all conversational surfaces (#703; spec
+`tasks/spec-703-conversation-durability.md`).
 
 ## The turn engine (#703)
 
@@ -12,7 +22,9 @@ Consumer config: `events` {chunk,done,error} names + `payload(key)` base, `resol
 
 Client side: `useConversationThread` (below) is the matching hook; `useConversationAttention` + the pure attention rules give every consumer chat-parity badges/notifications.
 
-**The rule:** new chat-like surfaces COMPOSE these components; never hand-roll message/tool rendering or chunk folding. `TurnOutputView` remains only as a thin legacy wrapper for single-turn embeds (task step viewer, workflow step drawer).
+**The rule:** new chat-like surfaces COMPOSE these components; never hand-roll
+message/tool rendering or chunk folding. `TurnOutputView` is the supported
+compact single-turn composition for task and workflow embeds.
 
 ## Two consumption modes
 
@@ -35,7 +47,7 @@ Client side: `useConversationThread` (below) is the matching hook; `useConversat
 | `AgentTurn` | Avatar ALWAYS present (incl. thinking), name header, items in order, error footer + `onRetry` (`Conversation` passes it ONLY to the final turn — retry re-sends the newest user message, so a mid-transcript button would resend the wrong one; #735), aborted notice, copy; opt-in `usage` prop → muted footer (`14.2k in / 890 out · $0.03 · model-tail`; costUsd is server-gated to metered lanes, absent = no footer, never while streaming) |
 | `UserMessage` | Right-aligned contrast-safe bubble, attachment thumbnails (images) + download chips (files, `data-conv-file-chip`), copy |
 | `ActivityGroup` | Collapsed header (`humanizeActivity`: 'Searched the web · 3 calls · 12s', spinner live, failed marker) → inline rows → `onOpenCall` |
-| `ToolCallDrawer` | BakinDrawer: status/duration/callId + pretty-printed copyable input/output/metadata (+ honest truncated marker) |
+| `ToolCallDrawer` | Drawer: status/duration/callId + pretty-printed copyable input/output/metadata (+ honest truncated marker) |
 | `Composer` | Auto-grow + drag-resize (handle raises min height), Enter/Shift+Enter/Esc, IME guard, typing NEVER blocked while busy, autofocus, per-thread drafts + ↑/↓ history (localStorage via `storageKey`), attachment affordance (paperclip/paste/drop; `acceptImages` gates IMAGE files on the model's eyes while PDFs always pass — #742 file lane; honest tooltip on both the disabled and image-refusing states; non-image staged items render as name tiles), char counter, `leadingSlot`. Busy states (#732): strict surfaces hold send (Stop button, honest "wait or stop it" copy); `queueMode` surfaces get the SINGLE MORPHING button — Stop when empty, queue-send (`data-composer-queue`) with text/attachments, Enter queues, Esc always stops, instant morph-back after queueing (the steering sequence, test-pinned); `busy` without `onAbort` renders a disabled "Sending…" spinner, never a dead Stop. `handleRef` exposes `ComposerHandle` (`isEmpty`/`setText`) for queue-remove restore |
 | `QueuedMessageList` | Queued follow-up bubbles (Queued badge, remove ×) rendered by consumers BETWEEN Conversation and Composer — never via foldConversation (queued items belong below the live turn); `onRemove(item)` hands the whole item back so the surface restores its text into an EMPTY composer (spec D8) |
 | `ContextMeter` | The compaction bar (#737): slim fill + reading (`45.3k / 272k (17%)`, amber ≥70%/red ≥90%, threshold tick when the runtime reports one), number-only when the window is unknown, `context — (compacted 2m ago)` during a post-compaction gap, NOTHING when nothing is honest; fill clamps at 100%. Feed it `RuntimeSessionContextStats`-shaped data from `sessions.contextStats` ONLY — never billing aggregates |

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Clock, Play } from 'lucide-react'
+import { Button } from '@makinbakin/sdk/ui'
 
 export function DispatchTimer() {
   const [seconds, setSeconds] = useState<number | null>(null)
@@ -61,17 +62,21 @@ export function DispatchTimer() {
   const display = isDispatching ? 'running' : `${mins}:${secs.toString().padStart(2, '0')}`
 
   return (
-    <div className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground">
+    <div className="flex items-center gap-1.5 text-xs font-mono text-bakin-text-muted">
       <Clock className={`size-3 ${isDispatching ? 'animate-pulse' : ''}`} />
       <span title="Next dispatch">{display}</span>
-      <button
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
         onClick={triggerDispatch}
         disabled={running || isDispatching}
-        className="hover:text-foreground transition-colors disabled:opacity-50"
+        className="text-bakin-text-muted hover:text-bakin-text-primary"
         title="Run dispatch now"
+        aria-label="Run dispatch now"
       >
         <Play className={`size-3 ${running ? 'animate-pulse' : ''}`} />
-      </button>
+      </Button>
     </div>
   )
 }

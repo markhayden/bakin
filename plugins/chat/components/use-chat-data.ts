@@ -10,13 +10,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { emitPluginEvent, usePluginEvent } from '@makinbakin/sdk/hooks'
 import {
   useConversationThread,
-  type ContextMeterStats,
   type ConversationMessage,
   type ConversationQueuedItem,
   type ConversationTurnUsage,
-} from '@makinbakin/sdk/components'
+} from '@makinbakin/sdk/conversation'
 import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
 import { pluginFetch } from '@makinbakin/sdk/utils'
+
+import type { ContextMeterStats } from './context-meter'
 
 export interface ChatSummaryDto {
   id: string

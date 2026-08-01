@@ -1,17 +1,21 @@
 'use client'
 
-import { RefreshCw, AlertTriangle } from 'lucide-react'
-import { Button, Badge } from "@makinbakin/sdk/ui"
+import { useMemo } from 'react'
+import { RefreshCw } from 'lucide-react'
+import {
+  FacetFilter,
+  PageBody,
+  PageControls,
+  Pagination,
+} from '@makinbakin/sdk/patterns'
+import { Badge, Button, SystemState } from '@makinbakin/sdk/ui'
+
+import type { AvailableModel } from '../types'
 import { BrandIcon } from './brand-icon'
 import type { ModelsData } from './use-models-data'
 
-const TIER_STYLES: Record<string, string> = {
-  budget: 'bg-green-500/10 text-green-400',
-  standard: 'bg-blue-500/10 text-blue-400',
-  premium: 'bg-purple-500/10 text-purple-400',
-}
+const PAGE_SIZE = 8
 
-// Relative-time formatter — under 1h: minutes, under 24h: hours, else date.
 function formatRelativeTime(ts: number | null): string {
   if (!ts) return 'never'
   const delta = Date.now() - ts
@@ -24,157 +28,297 @@ function formatRelativeTime(ts: number | null): string {
   return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-export function AvailableModelsTab({ m }: { m: ModelsData }) {
-  const {
-    runtimeStatus, modelsLoaded, modelsCached, modelsCachedAt, modelsStale,
-    availableModels, modelOptions, availableProviders,
-    modelsError, refreshing, handleRefresh, setAsDefault,
-  } = m
+function providerLabel(model: AvailableModel): string {
+  return model.providerLabel ?? model.provider.replace(/[-_]/g, ' ')
+}
+
+function modelMatchesQuery(model: AvailableModel, query: string): boolean {
+  if (!query) return true
+  const searchable = [
+    model.name,
+    model.id,
+    providerLabel(model),
+    model.description,
+    model.bestFor,
+    model.input,
+    model.tier,
+    ...(model.tags ?? []),
+  ].filter(Boolean).join(' ').toLocaleLowerCase()
+  return searchable.includes(query)
+}
+
+function ModelRow({
+  defaultModel,
+  model,
+  saving,
+  setAsDefault,
+}: {
+  defaultModel: string
+  model: AvailableModel
+  saving: boolean
+  setAsDefault: (modelId: string) => Promise<void>
+}) {
+  const isDefault = model.isDefault || model.id === defaultModel
+  const context = model.contextWindowDisplay
+    ?? (model.contextWindow ? `${Math.round(model.contextWindow / 1_000).toLocaleString()}K context` : null)
 
   return (
-    <div className="space-y-6">
-        {/* Runtime-out-of-sync banner */}
-        {runtimeStatus.restartNeeded && (
-          <div className="flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="size-3.5" />
-              <span>
-                Runtime config changed since the last runtime restart. Model list may be out of date until you restart.
-              </span>
+    <li>
+      <div
+        data-model-row
+        data-default={isDefault || undefined}
+        aria-current={isDefault ? 'true' : undefined}
+        className={`grid min-w-0 gap-bakin-3 rounded-bakin-surface border px-bakin-4 py-bakin-4 transition-[background-color,border-color,box-shadow] duration-[var(--bakin-motion-duration-feedback)] motion-reduce:transition-none @lg/page-shell:grid-cols-[minmax(0,1fr)_auto] @lg/page-shell:items-center ${
+          isDefault
+            ? 'border-bakin-action-primary-background/60 bg-bakin-action-primary-background/10 ring-1 ring-bakin-action-primary-background/40'
+            : 'border-bakin-border-subtle/30 bg-bakin-surface-default hover:border-bakin-border-subtle'
+        }`}
+      >
+        <div className="flex min-w-0 items-start gap-bakin-3">
+          <BrandIcon
+            slug={model.brandIconSlug ?? model.providerBrandIconSlug}
+            fallbackText={providerLabel(model)}
+            fallbackColor={model.providerBrandColor}
+            size="md"
+            className="mt-bakin-1"
+          />
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1">
+              <strong className="min-w-0 truncate text-bakin-text-primary">{model.name}</strong>
+              {isDefault ? (
+                <Badge tone="success" variant="solid" size="xs">Default</Badge>
+              ) : model.configured ? (
+                <Badge tone="neutral" variant="solid" size="xs">Configured</Badge>
+              ) : null}
+              {model.local ? <Badge tone="neutral" variant="solid" size="xs">Local</Badge> : null}
             </div>
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={runtimeStatus.restarting}
-              onClick={runtimeStatus.restart}
-            >
-              {runtimeStatus.restarting ? 'Restarting…' : 'Restart runtime'}
-            </Button>
-          </div>
-        )}
-
-        {/* Refresh + cache-age header */}
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-xs text-muted-foreground">
-            {modelsLoaded && modelsCached && modelsCachedAt ? (
-              <span>
-                Last refreshed: <span className="font-medium text-foreground">{formatRelativeTime(modelsCachedAt)}</span>
-                {modelsStale && <span className="ml-2 text-amber-400">(stale — refreshing…)</span>}
-              </span>
-            ) : modelsLoaded && !modelsCached && availableModels.length > 0 ? (
-              <span>Just refreshed</span>
+            <p className="m-0 mt-bakin-1 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+              {model.id}
+            </p>
+            {model.description ? (
+              <p className="m-0 mt-bakin-2 line-clamp-2 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+                {model.description}
+              </p>
             ) : null}
+            <div className="mt-bakin-2 flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+              <span className="capitalize text-bakin-text-primary">{providerLabel(model)}</span>
+              <span className="capitalize">{model.tier}</span>
+              {context ? <span>{context}</span> : null}
+              {model.costRange ? <span>{model.costRange}</span> : null}
+              {model.bestFor ? <span>Best for: {model.bestFor}</span> : null}
+            </div>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleRefresh}
-            disabled={refreshing}
-          >
-            <RefreshCw className={`size-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            <span className="ml-1">{refreshing ? 'Refreshing…' : 'Refresh'}</span>
-          </Button>
         </div>
 
-        {/* States: loading / error / list */}
-        {!modelsLoaded || (refreshing && availableModels.length === 0) ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card py-12 gap-3 text-sm text-muted-foreground">
-            <RefreshCw className="size-5 animate-spin text-foreground/60" />
-            <div>Querying runtime adapter — this can take up to 30 seconds on first load.</div>
-          </div>
-        ) : availableModels.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card p-6 space-y-3">
-            <div className="flex items-center gap-2 text-sm text-foreground">
-              <AlertTriangle className="size-4 text-red-400" />
-              Could not load models from the runtime.
-            </div>
-            {modelsError && (
-              <div className="font-mono text-xs text-muted-foreground break-all">{modelsError}</div>
-            )}
-            <Button size="sm" onClick={handleRefresh} disabled={refreshing}>
-              <RefreshCw className={`size-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-              <span className="ml-1">Retry</span>
+        <div className="flex items-center justify-start @lg/page-shell:justify-end">
+          {!isDefault ? (
+            <Button
+              type="button"
+              size="xs"
+              disabled={saving}
+              onClick={() => void setAsDefault(model.id)}
+            >
+              Set default
             </Button>
-          </div>
-        ) : (
-          availableProviders.map((provider) => {
-            const models = modelOptions.filter((m) => m.provider === provider)
-            if (models.length === 0) return null
-            // Provider-level metadata from the first model (they all share provider fields).
-            const providerMeta = models.find((m) => m.providerLabel) ?? models[0]
-            const providerLabel = providerMeta.providerLabel ?? provider.replace(/[-_]/g, ' ')
-            return (
-              <div key={provider}>
-                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                  <BrandIcon
-                    slug={providerMeta.providerBrandIconSlug}
-                    fallbackText={providerLabel}
-                    fallbackColor={providerMeta.providerBrandColor}
-                    size="sm"
-                  />
-                  <span>{providerLabel}</span>
-                  <span className="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
-                    {models.length}
-                  </span>
-                </h3>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {models.map((m) => (
-                    <div
-                      key={m.id}
-                      className="rounded-xl border border-border bg-card p-4 space-y-2"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <BrandIcon
-                            slug={m.brandIconSlug ?? m.providerBrandIconSlug}
-                            fallbackText={m.providerLabel ?? m.provider}
-                            fallbackColor={m.providerBrandColor}
-                            size="sm"
-                          />
-                          <span className="font-medium truncate">{m.name}</span>
-                          {m.contextWindowDisplay && (
-                            <span className="font-mono text-[10px] text-muted-foreground shrink-0">
-                              {m.contextWindowDisplay}
-                            </span>
-                          )}
-                        </div>
-                        <Badge variant="secondary" className={`${TIER_STYLES[m.tier]} shrink-0`}>
-                          {m.tier}
-                        </Badge>
-                      </div>
-                      <div className="font-mono text-xs text-muted-foreground truncate">{m.id}</div>
-                      {m.description && (
-                        <p className="text-xs text-muted-foreground">{m.description}</p>
-                      )}
-                      <div className="flex flex-wrap items-center gap-1">
-                        {m.bestFor && (
-                          <Badge variant="outline" className="text-[10px] font-normal">
-                            {m.bestFor}
-                          </Badge>
-                        )}
-                        {m.tags && m.tags.map((tag) => (
-                          <Badge key={tag} variant="outline" className="text-[10px]">{tag}</Badge>
-                        ))}
-                      </div>
-                      <div className="flex items-center justify-between gap-2 pt-1">
-                        {m.costRange ? (
-                          <span className="text-[10px] text-muted-foreground">{m.costRange}</span>
-                        ) : <span />}
-                        <Button
-                          variant="outline"
-                          size="xs"
-                          onClick={() => setAsDefault(m.id)}
-                        >
-                          Set as Default
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          })
+          ) : null}
+        </div>
+      </div>
+    </li>
+  )
+}
+
+export interface AvailableModelsTabProps {
+  m: ModelsData
+  query: string
+  providers: string[]
+  pageValue: string
+  showAllValue: string
+  onQueryChange: (query: string) => void
+  onProvidersChange: (providers: string[]) => void
+  onPageChange: (page: string) => void
+  onShowAllChange: (showAll: string) => void
+}
+
+export function AvailableModelsTab({
+  m,
+  query,
+  providers,
+  pageValue,
+  showAllValue,
+  onQueryChange,
+  onProvidersChange,
+  onPageChange,
+  onShowAllChange,
+}: AvailableModelsTabProps) {
+  const {
+    availableProviders,
+    effectiveDefaultModel,
+    handleRefresh,
+    modelOptions,
+    modelsCached,
+    modelsCachedAt,
+    modelsError,
+    modelsLoaded,
+    modelsStale,
+    refreshing,
+    saving,
+    setAsDefault,
+  } = m
+
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const providerCounts = useMemo(() => Object.fromEntries(
+    availableProviders.map((provider) => [
+      provider,
+      modelOptions.filter((model) => model.provider === provider).length,
+    ]),
+  ), [availableProviders, modelOptions])
+  const providerOptions = useMemo(() => availableProviders.map((provider) => {
+    const representative = modelOptions.find((model) => model.provider === provider)
+    return {
+      value: provider,
+      label: representative ? providerLabel(representative) : provider,
+      icon: representative ? (
+        <BrandIcon
+          slug={representative.providerBrandIconSlug}
+          fallbackText={providerLabel(representative)}
+          fallbackColor={representative.providerBrandColor}
+          size="sm"
+        />
+      ) : undefined,
+    }
+  }), [availableProviders, modelOptions])
+  const filteredModels = useMemo(() => modelOptions.filter((model) => (
+    (providers.length === 0 || providers.includes(model.provider))
+    && modelMatchesQuery(model, normalizedQuery)
+  )), [modelOptions, normalizedQuery, providers])
+
+  const parsedPage = Number.parseInt(pageValue, 10)
+  const requestedPage = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1
+  const pageCount = Math.max(1, Math.ceil(filteredModels.length / PAGE_SIZE))
+  const page = Math.min(requestedPage, pageCount)
+  const showAll = showAllValue === 'true'
+  const visibleModels = showAll
+    ? filteredModels
+    : filteredModels.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  const resetPaging = () => {
+    onPageChange('1')
+    onShowAllChange('false')
+  }
+  const setProviderFilters = (nextProviders: string[]) => {
+    onProvidersChange(nextProviders)
+    resetPaging()
+  }
+  const clearFilters = () => {
+    onQueryChange('')
+    onProvidersChange([])
+    resetPaging()
+  }
+
+  const state = !modelsLoaded || (refreshing && modelOptions.length === 0) ? (
+    <SystemState
+      kind="loading"
+      title="Loading available models"
+      description="Asking the runtime which models are ready to use."
+    />
+  ) : modelOptions.length === 0 && modelsError ? (
+    <SystemState
+      kind="error"
+      title="Models could not be loaded"
+      description={modelsError}
+      action={(
+        <Button type="button" variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+          <RefreshCw className={refreshing ? 'animate-spin motion-reduce:animate-none' : undefined} />
+          Retry
+        </Button>
+      )}
+    />
+  ) : modelOptions.length === 0 ? (
+    <SystemState
+      kind="initial-empty"
+      title="No models are available"
+      description="The connected runtime did not report any usable models."
+      action={(
+        <Button type="button" variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+          <RefreshCw className={refreshing ? 'animate-spin motion-reduce:animate-none' : undefined} />
+          Refresh catalog
+        </Button>
+      )}
+    />
+  ) : filteredModels.length === 0 ? (
+    <SystemState
+      kind="no-results"
+      title="No models match this view"
+      description="Clear the current search and provider filters to return to the full catalog."
+      action={<Button type="button" variant="outline" size="sm" onClick={clearFilters}>Clear filters</Button>}
+    />
+  ) : undefined
+
+  return (
+    <>
+      <PageControls
+        label="Available model controls"
+        className="!flex-row !flex-wrap !items-center border-t-0 pt-0"
+        actions={(
+          <>
+            {modelsLoaded && modelsCachedAt ? (
+              <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+                Refreshed {formatRelativeTime(modelsCachedAt)}
+                {modelsCached ? ' · cached' : ''}
+                {modelsStale ? ' · stale' : ''}
+              </span>
+            ) : null}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleRefresh}
+              disabled={refreshing}
+            >
+              <RefreshCw className={refreshing ? 'animate-spin motion-reduce:animate-none' : undefined} />
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </Button>
+          </>
         )}
-    </div>
+      >
+        <FacetFilter
+          label="Provider"
+          options={providerOptions}
+          selected={providers}
+          onChange={setProviderFilters}
+          counts={providerCounts}
+        />
+      </PageControls>
+
+      <PageBody
+        label="Available model results"
+        busy={refreshing && modelOptions.length > 0}
+        state={state}
+      >
+        <ul className="m-0 flex list-none flex-col gap-bakin-2 p-0" aria-label="Available models">
+          {visibleModels.map((model) => (
+            <ModelRow
+              key={model.id}
+              model={model}
+              defaultModel={effectiveDefaultModel}
+              saving={saving === 'defaults'}
+              setAsDefault={setAsDefault}
+            />
+          ))}
+        </ul>
+        <Pagination
+          ariaLabel="Available model pagination"
+          page={page}
+          pageSize={PAGE_SIZE}
+          showAll={showAll}
+          total={filteredModels.length}
+          onPageChange={(nextPage) => onPageChange(String(nextPage))}
+          onShowAllChange={(nextShowAll) => {
+            onShowAllChange(String(nextShowAll))
+            onPageChange('1')
+          }}
+        />
+      </PageBody>
+    </>
   )
 }

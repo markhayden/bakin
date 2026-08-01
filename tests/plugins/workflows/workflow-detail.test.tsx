@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -62,10 +62,6 @@ mock.module('@makinbakin/sdk/hooks', () => ({
   }),
 }))
 
-mock.module('@makinbakin/sdk/components', () => ({
-  AgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid={`agent-${agentId}`} />,
-}))
-
 mock.module('../../../plugins/workflows/components/workflow-canvas', () => ({
   WorkflowCanvas: (props: Record<string, unknown>) => {
     workflowCanvasCalls.push(props)
@@ -78,10 +74,6 @@ mock.module('../../../plugins/workflows/components/step-detail-drawer', () => ({
     stepDetailDrawerCalls.push(props)
     return null
   },
-}))
-
-mock.module('../../../plugins/workflows/components/workflow-card', () => ({
-  collectAgents: () => [],
 }))
 
 import { WorkflowDetail } from '../../../plugins/workflows/components/workflow-detail'
@@ -114,6 +106,26 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json' },
   })
+}
+
+function getWorkflowHeaderActions(): HTMLElement {
+  const actions = document.querySelector('[data-workflow-header-actions]')
+  if (!(actions instanceof HTMLElement)) {
+    throw new Error('Expected the full workflow header actions to be rendered')
+  }
+  return actions
+}
+
+function getFullWorkspaceHeader(): HTMLElement {
+  const header = document.querySelector('[data-slot="workspace-page-header"]')
+  if (!(header instanceof HTMLElement)) {
+    throw new Error('Expected the full workspace page header to render')
+  }
+  return header
+}
+
+function getWorkflowEditButton(): HTMLButtonElement {
+  return within(getWorkflowHeaderActions()).getByRole('button', { name: /^edit$/i }) as HTMLButtonElement
 }
 
 function setupPluginDefinitionFetch(options: { disabled?: boolean; availabilityStatus?: number; skillDrift?: unknown } = {}) {
@@ -165,6 +177,7 @@ function setupUserDefinitionFetch() {
 }
 
 afterEach(() => {
+  cleanup()
   vi.unstubAllGlobals()
   routerPush.mockClear()
   workflowCanvasCalls.length = 0
@@ -185,7 +198,8 @@ describe('WorkflowDetail', () => {
       render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
     })
 
-    const edit = await screen.findByRole('button', { name: /^edit$/i })
+    await screen.findByText('Draft a video script')
+    const edit = getWorkflowEditButton()
     expect(screen.getByText(/This workflow is managed by Bakin directly/i)).toBeDefined()
     expect(screen.queryByRole('button', { name: /delete workflow/i })).toBeNull()
     await act(async () => { fireEvent.click(edit) })
@@ -206,7 +220,8 @@ describe('WorkflowDetail', () => {
       render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
     })
 
-    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /^edit$/i })) })
+    await screen.findByText('Draft a video script')
+    await act(async () => { fireEvent.click(getWorkflowEditButton()) })
     const dialog = screen.getByRole('dialog')
     await act(async () => {
       fireEvent.change(within(dialog).getByLabelText(/copy name/i), {
@@ -235,7 +250,8 @@ describe('WorkflowDetail', () => {
       render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
     })
 
-    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /^edit$/i })) })
+    await screen.findByText('Draft a video script')
+    await act(async () => { fireEvent.click(getWorkflowEditButton()) })
     const dialog = screen.getByRole('dialog')
     await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: /create copy/i })) })
 
@@ -251,7 +267,9 @@ describe('WorkflowDetail', () => {
     })
 
     expect(await screen.findByText('Enabled')).toBeDefined()
-    await act(async () => { fireEvent.click(screen.getByRole('switch', { name: /disable workflow/i })) })
+    const availabilitySwitch = screen.getByRole('switch', { name: /disable workflow/i })
+    expect(availabilitySwitch.parentElement?.className).not.toContain('border')
+    await act(async () => { fireEvent.click(availabilitySwitch) })
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     const [, availabilityInit] = fetchMock.mock.calls[1]
@@ -259,7 +277,7 @@ describe('WorkflowDetail', () => {
     expect(JSON.parse(availabilityInit!.body as string)).toEqual({ disabled: true })
     expect(screen.getByText('Disabled')).toBeDefined()
     expect(screen.getByText(/matching and automatic starts skip this workflow/i)).toBeDefined()
-    expect((screen.getByRole('button', { name: /^edit$/i }) as HTMLButtonElement).disabled).toBe(true)
+    expect(getWorkflowEditButton().disabled).toBe(true)
   })
 
   it('surfaces workflow skill drift in the detail header and child components', async () => {
@@ -301,7 +319,7 @@ describe('WorkflowDetail', () => {
 
     expect(await screen.findByText('Disabled')).toBeDefined()
     expect(screen.getByText(/matching and automatic starts skip this workflow/i)).toBeDefined()
-    expect((screen.getByRole('button', { name: /^edit$/i }) as HTMLButtonElement).disabled).toBe(true)
+    expect(getWorkflowEditButton().disabled).toBe(true)
     await act(async () => { fireEvent.click(screen.getByRole('switch', { name: /enable workflow/i })) })
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
@@ -310,7 +328,7 @@ describe('WorkflowDetail', () => {
     expect(JSON.parse(availabilityInit!.body as string)).toEqual({ disabled: false })
     expect(screen.getByText('Enabled')).toBeDefined()
     expect(screen.queryByText(/matching and automatic starts skip this workflow/i)).toBeNull()
-    expect((screen.getByRole('button', { name: /^edit$/i }) as HTMLButtonElement).disabled).toBe(false)
+    expect(getWorkflowEditButton().disabled).toBe(false)
   })
 
   it('deletes a custom workflow from the detail header after confirmation', async () => {
@@ -321,13 +339,26 @@ describe('WorkflowDetail', () => {
       render(<WorkflowDetail workflowId="clip-creation-copy" onBack={onBack} />)
     })
 
-    expect(await screen.findByText('Clip Creation Copy')).toBeDefined()
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-slot="page-header-title"]')?.textContent,
+      ).toBe('Clip Creation Copy'),
+    )
+    const headerActions = document.querySelector('[data-workflow-header-actions]')
+    expect(headerActions).not.toBeNull()
+    expect(within(headerActions as HTMLElement).getByRole('button', { name: /^edit$/i })).toBeDefined()
+    expect(headerActions?.className).toContain('items-center')
     expect(screen.getByText(/shadows a managed default/i)).toBeDefined()
     expect(screen.queryByText(/steps/i)).toBeNull()
     expect(screen.queryByTestId(/agent-/i)).toBeNull()
     expect(screen.queryByRole('switch')).toBeNull()
 
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /delete workflow/i })) })
+    await act(async () => {
+      fireEvent.click(
+        within(getFullWorkspaceHeader()).getByRole('button', { name: 'Workflow actions' }),
+      )
+    })
+    await act(async () => { fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' })) })
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
     const dialog = screen.getByRole('dialog')

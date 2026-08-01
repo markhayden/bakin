@@ -39,6 +39,21 @@ describe('assertProductionAssets', () => {
     expect(() => assertProductionAssets({ rootDir: root })).toThrow('react/jsx-dev-runtime')
   })
 
+  it('fails when production assets contain Storybook or Vite workbench dependencies', () => {
+    const root = makeRoot()
+    writeFileSync(join(root, 'packages/host/dist/main.js'), [
+      'import { channel } from "storybook/internal/channels"',
+      'import { createServer } from "vite"',
+    ].join('\n'))
+
+    expect(() => assertProductionAssets({ rootDir: root })).toThrow(
+      'main.js contains development-only UI workbench dependency storybook/internal/',
+    )
+    expect(() => assertProductionAssets({ rootDir: root })).toThrow(
+      'main.js contains development-only UI workbench dependency from "vite"',
+    )
+  })
+
   it('fails when the host production build emits source maps', () => {
     const root = makeRoot()
     writeFileSync(join(root, 'packages/host/dist/main.js'), 'export const ok = true\n')

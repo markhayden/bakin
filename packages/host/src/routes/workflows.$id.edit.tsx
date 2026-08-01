@@ -57,7 +57,7 @@ function WorkflowEditPage() {
 
   if (error || !definition) {
     return (
-      <div className="p-6 max-w-3xl mx-auto text-sm text-muted-foreground">
+      <div className="p-6 max-w-3xl mx-auto text-sm text-bakin-text-muted">
         {error ?? 'Workflow not found'}
       </div>
     )

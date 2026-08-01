@@ -1,7 +1,7 @@
 /**
  * Chat attention logic — chat's facade over the kit's conversation
  * attention rules (generalized out of this module in #703; the S6
- * suppression matrix lives in @makinbakin/sdk/components now). Chat keeps
+ * suppression matrix lives in @makinbakin/sdk/conversation now). Chat keeps
  * its chatId-shaped signatures so provider code and tests read in chat
  * vocabulary; the decisions are the kit's, shared by every conversational
  * surface.
@@ -12,7 +12,7 @@ import {
   visibleIdFromLocation,
   withUnreadPrefix,
   type AttentionActions,
-} from '@makinbakin/sdk/components'
+} from '@makinbakin/sdk/conversation'
 
 export { badgeFor, withUnreadPrefix }
 

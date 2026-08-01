@@ -1,0 +1,186 @@
+.bakin-chart-story,
+.bakin-chart-story *,
+.bakin-chart-story *::before,
+.bakin-chart-story *::after {
+  box-sizing: border-box;
+}
+
+.bakin-chart-story {
+  min-block-size: 100vh;
+  background: var(--bakin-color-canvas-default);
+  color: var(--bakin-color-text-primary);
+}
+
+.bakin-chart-story p,
+.bakin-chart-story h1,
+.bakin-chart-story h2 {
+  margin: 0;
+}
+
+.bakin-chart-story__intro {
+  display: grid;
+  min-inline-size: 0;
+  gap: var(--bakin-layout-space-3);
+  padding-block-end: var(--bakin-layout-space-6);
+  border-block-end: 1px solid var(--bakin-color-border-subtle);
+}
+
+.bakin-chart-story__intro > p:first-child {
+  color: var(--bakin-color-signal-accent);
+  font-size: var(--bakin-typography-size-meta);
+  font-weight: var(--bakin-typography-weight-bold);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.bakin-chart-story__intro h1 {
+  max-inline-size: 20ch;
+  overflow-wrap: anywhere;
+  font-size: clamp(2rem, 6vw, 3.75rem);
+  line-height: 1.02;
+  text-wrap: balance;
+}
+
+.bakin-chart-story__intro > p:last-child,
+.bakin-chart-story__section > div:first-child > p,
+.bakin-chart-story__trend p {
+  max-inline-size: 66ch;
+  overflow-wrap: anywhere;
+  color: var(--bakin-color-text-muted);
+  line-height: 1.6;
+}
+
+.bakin-chart-story__section {
+  display: grid;
+  min-inline-size: 0;
+  gap: var(--bakin-layout-space-4);
+  padding: var(--bakin-layout-space-6);
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-radius-surface);
+  background: var(--bakin-color-surface-default);
+}
+
+.bakin-chart-story__section--quiet {
+  background: transparent;
+}
+
+.bakin-chart-story__section > div:first-child {
+  display: grid;
+  min-inline-size: 0;
+  gap: var(--bakin-layout-space-2);
+}
+
+.bakin-chart-story__section h2,
+.bakin-chart-story__trend h2 {
+  overflow-wrap: anywhere;
+  font-size: var(--bakin-typography-size-section-title);
+  line-height: 1.25;
+}
+
+.bakin-chart-story__palette,
+.bakin-chart-story__entities {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bakin-chart-story__palette {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: var(--bakin-layout-space-2);
+}
+
+.bakin-chart-story__palette li,
+.bakin-chart-story__entities li {
+  display: grid;
+  min-inline-size: 0;
+  align-items: center;
+  gap: var(--bakin-layout-space-2);
+}
+
+.bakin-chart-story__palette li {
+  grid-template-columns: 1rem minmax(0, 1fr);
+  padding: var(--bakin-layout-space-3);
+  border-block-start: 1px solid var(--bakin-color-border-subtle);
+}
+
+.bakin-chart-story__palette li > span,
+.bakin-chart-story__entities li > span:first-child {
+  inline-size: .75rem;
+  block-size: .75rem;
+  border-radius: var(--bakin-radius-pill);
+}
+
+.bakin-chart-story__palette code {
+  grid-column: 2;
+  overflow-wrap: anywhere;
+  color: var(--bakin-color-text-muted);
+  font-family: var(--bakin-typography-family-mono);
+  font-size: var(--bakin-typography-size-meta);
+}
+
+.bakin-chart-story__entities {
+  gap: var(--bakin-layout-space-1);
+}
+
+.bakin-chart-story__entities li {
+  grid-template-columns: 1rem minmax(0, 1fr) auto;
+  min-block-size: var(--bakin-layout-size-row-dense);
+  border-block-start: 1px solid var(--bakin-color-border-subtle);
+}
+
+.bakin-chart-story__entities small {
+  color: var(--bakin-color-text-muted);
+  font-family: var(--bakin-typography-family-mono);
+  font-size: var(--bakin-typography-size-meta);
+}
+
+.bakin-chart-story__trend {
+  display: flex;
+  min-inline-size: 0;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--bakin-layout-space-4);
+  padding: var(--bakin-layout-space-4);
+  border-block-start: 1px solid var(--bakin-color-border-subtle);
+}
+
+.bakin-chart-story__trend > div {
+  display: grid;
+  min-inline-size: 0;
+  gap: var(--bakin-layout-space-1);
+}
+
+.bakin-chart-story__trend strong {
+  font-family: var(--bakin-typography-family-mono);
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.bakin-chart-story__chart-grid {
+  align-items: start;
+}
+
+.bakin-chart-story__chart-grid > * {
+  min-inline-size: 0;
+}
+
+@media (max-width: 30rem) {
+  .bakin-chart-story__section {
+    padding: var(--bakin-layout-space-4);
+  }
+
+  .bakin-chart-story__entities li {
+    grid-template-columns: 1rem minmax(0, 1fr);
+    padding-block: var(--bakin-layout-space-2);
+  }
+
+  .bakin-chart-story__entities small {
+    grid-column: 2;
+  }
+
+  .bakin-chart-story__trend {
+    align-items: start;
+    flex-direction: column;
+  }
+}

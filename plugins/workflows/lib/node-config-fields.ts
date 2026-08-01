@@ -10,6 +10,14 @@
  */
 import type { FormField } from '@bakin/core/workflows/node-type-registry'
 
+/**
+ * Client-safe bridge: browser components reach the node-type registry
+ * through this lib module instead of importing `@bakin/core` directly
+ * (same pattern as `lib/team-token.ts`).
+ */
+export { getNodeType } from '@bakin/core/workflows/node-type-registry'
+export type { FormField, EdgeRules } from '@bakin/core/workflows/node-type-registry'
+
 export type ParallelChildRow = {
   id: string
   type: string
@@ -220,6 +228,6 @@ export function stepKindLabel(kind: string): string {
 
 export const FIELD_GROUP_CLASS = 'space-y-2.5'
 export const FIELD_LABEL_CLASS = 'text-sm font-medium leading-none'
-export const FIELD_HELP_CLASS = 'text-xs leading-relaxed text-muted-foreground/60'
+export const FIELD_HELP_CLASS = 'text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted/60'
 export const CONTROL_CLASS = 'min-h-10 text-sm'
 export const TEXTAREA_CLASS = 'min-h-24 text-sm leading-relaxed'

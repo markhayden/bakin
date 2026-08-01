@@ -1,0 +1,164 @@
+.bakin-conversation-story,
+.bakin-conversation-story *,
+.bakin-conversation-story *::before,
+.bakin-conversation-story *::after {
+  box-sizing: border-box;
+}
+
+.bakin-conversation-story {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 85% 10%, color-mix(in srgb, var(--bakin-color-signal-accent) 9%, transparent), transparent 28rem),
+    var(--bakin-color-canvas-default);
+  color: var(--bakin-color-text-primary);
+}
+
+.bakin-conversation-story p,
+.bakin-conversation-story h1,
+.bakin-conversation-story h2 {
+  margin: 0;
+}
+
+.bakin-conversation-story__intro,
+.bakin-conversation-story__section,
+.bakin-conversation-story__section > header {
+  display: grid;
+  gap: var(--bakin-layout-space-2);
+}
+
+.bakin-conversation-story__intro > p:first-child {
+  color: var(--bakin-color-signal-accent);
+  font-family: var(--bakin-typography-family-mono);
+  font-size: var(--bakin-typography-size-meta);
+  font-weight: var(--bakin-typography-weight-semibold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.bakin-conversation-story__intro h1 {
+  max-width: 18ch;
+  font-size: clamp(2rem, 7vw, 4rem);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  overflow-wrap: anywhere;
+}
+
+.bakin-conversation-story__intro > p:last-child,
+.bakin-conversation-story__section > header p,
+.bakin-conversation-story__selection {
+  max-width: 64ch;
+  color: var(--bakin-color-text-muted);
+  line-height: 1.6;
+}
+
+.bakin-conversation-story__composer-frame {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-radius-surface);
+  background: var(--bakin-color-canvas-default);
+}
+
+.bakin-conversation-story__panel-frame {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--bakin-radius-overlay);
+  box-shadow: var(--bakin-elevation-overlay);
+}
+
+.bakin-conversation-story__panel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--bakin-layout-space-6);
+  align-items: start;
+}
+
+.bakin-conversation-story__composer-frame [data-slot='conversation-page-composer'] {
+  padding-top: 0;
+}
+
+.bakin-conversation-story__composer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--bakin-layout-space-6);
+  align-items: start;
+}
+
+.bakin-conversation-story__transcript {
+  display: grid;
+  min-width: 0;
+  gap: var(--bakin-layout-space-4);
+  padding: var(--bakin-layout-space-4);
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-radius-surface);
+  background: color-mix(in srgb, var(--bakin-color-surface-default) 35%, transparent);
+}
+
+.bakin-conversation-story__section {
+  padding-top: var(--bakin-layout-space-4);
+  border-top: 1px solid var(--bakin-color-border-subtle);
+}
+
+.bakin-conversation-story__section h2 {
+  font-size: var(--bakin-typography-size-title);
+}
+
+.bakin-conversation-story__section--quiet {
+  padding-bottom: var(--bakin-layout-space-4);
+}
+
+.bakin-conversation-story__selection {
+  min-height: 1.5em;
+  font-family: var(--bakin-typography-family-mono);
+  font-size: var(--bakin-typography-size-meta);
+}
+
+.bakin-conversation-story__examples {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--bakin-layout-space-6);
+  align-items: start;
+}
+
+.bakin-conversation-story__contained,
+.bakin-conversation-story__empty {
+  min-width: 0;
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-radius-surface);
+  background: color-mix(in srgb, var(--bakin-color-surface-default) 35%, transparent);
+}
+
+.bakin-conversation-story__contained {
+  height: 25rem;
+  overflow: hidden;
+}
+
+.bakin-conversation-story__empty {
+  min-height: 25rem;
+  display: grid;
+  place-items: center;
+}
+
+@media (max-width: 30rem) {
+  .bakin-conversation-story__intro h1 {
+    font-size: 2.25rem;
+  }
+
+  .bakin-conversation-story__examples {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bakin-conversation-story__composer-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bakin-conversation-story__panel-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bakin-conversation-story__contained,
+  .bakin-conversation-story__empty {
+    height: 22rem;
+    min-height: 22rem;
+  }
+}

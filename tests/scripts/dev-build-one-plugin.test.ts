@@ -39,11 +39,11 @@ const EXTERNAL = [
   'react/jsx-runtime', 'react/jsx-dev-runtime',
   '@tanstack/react-router',
   '@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks',
-  '@makinbakin/sdk/components', '@makinbakin/sdk/slots',
+  '@makinbakin/sdk/slots',
   '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
   '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing',
   '@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks',
-  '@makinbakin/sdk/components', '@makinbakin/sdk/slots',
+  '@makinbakin/sdk/slots',
   '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
   '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing',
 ]
@@ -65,11 +65,13 @@ export default {
 }
 `)
   writeFileSync(join(okDir, 'client.tsx'), `
+import './domain.css'
 import { registerPlugin } from '@makinbakin/sdk'
 const Badge = () => <span>OK</span>
 void Badge
 registerPlugin({ id: 'ok-plugin', navItems: [] })
 `)
+  writeFileSync(join(okDir, 'domain.css'), '.card{display:grid}\n')
 
   // Server-only plugin (no client.tsx) — hits the `if (existsSync(clientEntry))` false branch.
   const serverOnlyDir = join(pluginsDir, 'server-only')
@@ -87,6 +89,12 @@ export default {
   writeFileSync(join(brokenDir, 'index.ts'), `
 this is not valid typescript {{{
 `)
+
+  const unsafeCssDir = join(pluginsDir, 'unsafe-css')
+  mkdirSync(unsafeCssDir, { recursive: true })
+  writeFileSync(join(unsafeCssDir, 'index.ts'), 'export default { id: "unsafe-css", activate() {} }\n')
+  writeFileSync(join(unsafeCssDir, 'client.tsx'), "import './domain.css'\n")
+  writeFileSync(join(unsafeCssDir, 'domain.css'), 'body .card{display:grid}\n')
 })
 
 afterAll(() => {
@@ -147,6 +155,17 @@ describe('buildOnePlugin — happy path', () => {
     expect(client).not.toContain('jsxDEV')
     expect(client).not.toContain('react/jsx-dev-runtime')
   }, 60_000)
+
+  it('scopes emitted client CSS to the plugin owner', async () => {
+    const result = await buildOnePlugin('ok-plugin', {
+      external: EXTERNAL,
+      pluginsDir,
+    })
+    expect(result.ok).toBe(true)
+    expect(readFileSync(join(pluginsDir, 'ok-plugin', 'dist', 'client.css'), 'utf-8')).toContain(
+      ':where([data-bakin-plugin="ok-plugin"]) .card',
+    )
+  }, 60_000)
 })
 
 describe('buildOnePlugin — error path', () => {
@@ -160,5 +179,19 @@ describe('buildOnePlugin — error path', () => {
       expect(result.stderr).toMatch(/server entry for broken/)
       expect(result.stderr.length).toBeGreaterThan(0)
     }
+  }, 60_000)
+
+  it('returns an actionable failure and removes unsafe client CSS', async () => {
+    const result = await buildOnePlugin('unsafe-css', {
+      external: EXTERNAL,
+      pluginsDir,
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.stderr).toContain('domain.css:1:1')
+      expect(result.stderr).toContain('document selector "body"')
+    }
+    expect(existsSync(join(pluginsDir, 'unsafe-css', 'dist', 'client.css'))).toBe(false)
+    expect(existsSync(join(pluginsDir, 'unsafe-css', 'dist', 'client.js'))).toBe(false)
   }, 60_000)
 })

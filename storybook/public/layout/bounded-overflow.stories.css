@@ -1,0 +1,26 @@
+.bakin-bounded-overflow-story__table {
+  min-inline-size: 64rem;
+  inline-size: 100%;
+  border-collapse: collapse;
+  color: var(--bakin-color-text-primary);
+  font-size: var(--bakin-typography-size-meta);
+  text-align: left;
+}
+
+.bakin-bounded-overflow-story__table th,
+.bakin-bounded-overflow-story__table td {
+  border-block-end: 1px solid var(--bakin-color-border-subtle);
+  padding: var(--bakin-layout-space-3) var(--bakin-layout-space-4);
+  white-space: nowrap;
+}
+
+.bakin-bounded-overflow-story__table th {
+  color: var(--bakin-color-text-muted);
+  font-weight: var(--bakin-typography-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.bakin-bounded-overflow-story__table tbody tr:last-child td {
+  border-block-end: 0;
+}

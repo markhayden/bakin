@@ -202,8 +202,8 @@ describe('GlobalSearchOverlay', () => {
     const input = await screen.findByPlaceholderText(/Search assets/)
     await act(async () => { fireEvent.input(input, { target: { value: 'rose' } }) })
     await waitFor(() => expect(screen.getByTestId('search-partial-chip')).toBeTruthy(), { timeout: 3000 })
-    // tooltip names the slow source, stripped of the table prefix
-    expect(screen.getByTestId('search-partial-chip').getAttribute('title')).toContain('memory: no answer in time')
+    // The control's accessible name explains the slow source, stripped of the table prefix.
+    expect(screen.getByTestId('search-partial-chip').getAttribute('aria-label')).toContain('memory: no answer in time')
   })
 
   it('renders no partial chip when every source answered in budget', async () => {

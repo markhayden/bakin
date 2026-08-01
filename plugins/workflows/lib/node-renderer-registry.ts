@@ -90,3 +90,11 @@ export function subscribeNodeRenderers(listener: () => void): () => void {
   listeners.add(listener)
   return () => { listeners.delete(listener) }
 }
+
+/**
+ * Client-safe bridge: hot-reload teardown reaches the workflow source
+ * registry through the plugin's own lib boundary instead of importing
+ * `@bakin/core` directly from `client.tsx` (same pattern as
+ * `lib/team-token.ts`).
+ */
+export { unregisterPluginDefinitions } from '@bakin/core/workflows/source-registry'

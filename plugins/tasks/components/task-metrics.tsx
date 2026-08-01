@@ -1,6 +1,8 @@
 'use client'
 
 import { useMemo } from 'react'
+import { Stack } from '@makinbakin/sdk/layout'
+import { StatGroup, StatTile } from '@makinbakin/sdk/patterns'
 import type { TaskColumns } from '../types'
 
 interface TaskMetricsProps {
@@ -28,27 +30,19 @@ export function TaskMetrics({ columns, timestamp }: TaskMetricsProps) {
   }, [columns])
 
   return (
-    <div className="flex items-center gap-5">
-      <Stat label="Active" value={metrics.active} color="text-blue-400" dotColor="bg-blue-400" />
-      <Stat label="Blocked" value={metrics.blocked} color={metrics.blocked > 0 ? 'text-red-400' : 'text-muted-foreground'} dotColor={metrics.blocked > 0 ? 'bg-red-400' : 'bg-muted-foreground/50'} />
-      <Stat label="Done Today" value={metrics.completedToday} color="text-green-400" dotColor="bg-green-400" />
-      <Stat label="Total" value={metrics.total} color="text-foreground" dotColor="bg-foreground/50" />
-      <Stat label="Agents" value={metrics.agentsActive} color="text-violet-400" dotColor="bg-violet-400" />
+    <Stack gap="dense">
+      <StatGroup label="Task summary metrics">
+        <StatTile label="Active" value={metrics.active} valueTone="accent" />
+        <StatTile label="Blocked" value={metrics.blocked} valueTone={metrics.blocked > 0 ? 'danger' : 'neutral'} />
+        <StatTile label="Done today" value={metrics.completedToday} valueTone="success" />
+        <StatTile label="Total" value={metrics.total} />
+        <StatTile label="Agents" value={metrics.agentsActive} valueTone="accent" />
+      </StatGroup>
       {timestamp && (
-        <span className="ml-auto text-[10px] text-muted-foreground font-mono">
+        <span className="self-end font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
           Updated {timestamp}
         </span>
       )}
-    </div>
-  )
-}
-
-function Stat({ label, value, color, dotColor }: { label: string; value: number; color: string; dotColor: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className={`size-1.5 rounded-full ${dotColor} shrink-0`} />
-      <span className="text-[11px] text-muted-foreground">{label}</span>
-      <span className={`text-sm font-mono font-semibold tabular-nums ${color}`}>{value}</span>
-    </div>
+    </Stack>
   )
 }

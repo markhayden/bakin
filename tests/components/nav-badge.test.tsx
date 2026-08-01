@@ -42,29 +42,34 @@ describe('NavBadge', () => {
   })
 
   it('renders a dot (no count) when count is omitted', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ tone: 'info' }} />)).toContain('bg-sky-400')
+    expect(renderToStaticMarkup(<NavBadge badge={{ tone: 'info' }} />)).toContain('bg-bakin-signal-info')
   })
 
-  it('applies the attention palette by default', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1 }} />)).toContain('bg-amber-500/20')
+  // Counted pills ride the kit Badge (size xs, solid) — tone maps to the
+  // Badge tone vocabulary and the data attributes are the contract.
+  it('applies the attention tone by default', () => {
+    const html = renderToStaticMarkup(<NavBadge badge={{ count: 1 }} />)
+    expect(html).toContain('data-tone="attention"')
+    expect(html).toContain('data-size="xs"')
+    expect(html).toContain('data-variant="solid"')
   })
 
-  it('applies the info palette when tone is info', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'info' }} />)).toContain('bg-sky-500/20')
+  it('maps info tone onto the kit info tone', () => {
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'info' }} />)).toContain('data-tone="info"')
   })
 
-  it('applies the success palette when tone is success', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'success' }} />)).toContain('bg-emerald-500/20')
+  it('maps success tone onto the kit success tone', () => {
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'success' }} />)).toContain('data-tone="success"')
   })
 
-  it('applies the error palette (red) when tone is error', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'error' }} />)).toContain('bg-red-500/20')
+  it('maps error tone onto the kit danger tone', () => {
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'error' }} />)).toContain('data-tone="danger"')
   })
 })
 
 describe('NavBadgeDot', () => {
   it('renders a small dot using the given tone', () => {
-    expect(renderToStaticMarkup(<NavBadgeDot tone="attention" />)).toContain('bg-amber-400')
+    expect(renderToStaticMarkup(<NavBadgeDot tone="attention" />)).toContain('bg-bakin-signal-highlight')
   })
 })
 

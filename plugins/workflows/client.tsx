@@ -30,8 +30,8 @@ import {
   registerNodeRenderer,
   unregisterNodeRenderer,
   listNodeRendererKinds,
+  unregisterPluginDefinitions,
 } from './lib/node-renderer-registry'
-import { unregisterPluginDefinitions } from '@bakin/core/workflows/source-registry'
 
 registerPlugin({
   search: {

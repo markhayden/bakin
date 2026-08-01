@@ -29,7 +29,7 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-mock.module('@makinbakin/sdk/components', () => ({
+mock.module('@makinbakin/sdk/content', () => ({
   MarkdownContent: ({ content }: { content: string }) => <div data-testid="markdown">{content}</div>,
 }))
 
@@ -61,6 +61,7 @@ describe('HeartbeatTab', () => {
     await act(async () => {
       resolveFetch!({ ok: true, json: () => Promise.resolve({ ok: true, heartbeat: null }) } as Response)
     })
+    await waitFor(() => expect(screen.getByText(/No heartbeat yet/)).toBeDefined())
   })
 
   it('renders the empty state when heartbeat is null', async () => {
@@ -68,7 +69,8 @@ describe('HeartbeatTab', () => {
     await act(async () => {
       render(<HeartbeatTab agentId="pixel" />)
     })
-    await waitFor(() => expect(screen.getByText(/No heartbeat yet/)).toBeDefined())
+    const title = await screen.findByText(/No heartbeat yet/)
+    expect(title.closest('[data-slot="system-state"]')?.getAttribute('data-scope')).toBe('page')
   })
 
   it('renders the markdown content + last updated badge for a populated heartbeat', async () => {

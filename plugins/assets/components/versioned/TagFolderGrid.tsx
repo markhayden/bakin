@@ -5,8 +5,10 @@ import {
   Badge, Button, Input,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  SystemState,
 } from '@makinbakin/sdk/ui'
-import { ConfirmDialog } from '@makinbakin/sdk/components'
+import { Grid } from '@makinbakin/sdk/layout'
+import { ConfirmDialog } from '@makinbakin/sdk/patterns'
 import { FolderOpen, MoreVertical, Pencil, Trash2, Loader2 } from 'lucide-react'
 import { AssetThumb } from './atoms'
 import { TAGS_API } from './asset-urls'
@@ -50,10 +52,10 @@ function FolderCard({ folder, onOpen, onRename, onDelete }: {
   return (
     <div
       onClick={onOpen}
-      className="group flex cursor-pointer flex-col overflow-hidden rounded-lg border border-border bg-card transition-all duration-150 hover:-translate-y-0.5 hover:border-[rgba(255,255,255,0.15)]"
+      className="group flex cursor-pointer flex-col overflow-hidden rounded-lg border border-bakin-border-subtle bg-bakin-surface-default transition-all duration-150 hover:-translate-y-0.5 hover:border-bakin-border-subtle/80 motion-reduce:transition-none"
       data-testid={`tag-folder-${folder.tag}`}
     >
-      <div className="relative grid aspect-square grid-cols-2 grid-rows-2 gap-px overflow-hidden bg-zinc-900/50">
+      <div className="relative grid aspect-square grid-cols-2 grid-rows-2 gap-px overflow-hidden bg-bakin-canvas-default">
         {thumbs.map(a => (
           <div key={a.assetId} className="overflow-hidden">
             <AssetThumb assetId={a.assetId} type={a.type} version={a.currentVersion} hasThumb={a.hasThumb} />
@@ -61,13 +63,13 @@ function FolderCard({ folder, onOpen, onRename, onDelete }: {
         ))}
         {/* Pad the collage so a 1–3 asset folder still reads as a 2x2 grid. */}
         {Array.from({ length: Math.max(0, 4 - thumbs.length) }, (_, i) => (
-          <div key={`pad-${i}`} className="bg-zinc-900/30" />
+          <div key={`pad-${i}`} className="bg-bakin-canvas-default/50" />
         ))}
         {real && (
           <DropdownMenu>
             <DropdownMenuTrigger
               onClick={(e) => e.stopPropagation()}
-              className="absolute right-1.5 top-1.5 z-10 rounded bg-black/60 p-1.5 text-zinc-300 opacity-0 transition-opacity hover:text-white group-hover:opacity-100 data-[state=open]:opacity-100"
+              className="absolute right-1.5 top-1.5 z-10 rounded-bakin-control bg-bakin-canvas-default/80 p-1.5 text-bakin-text-muted opacity-0 transition-opacity hover:text-bakin-text-primary group-hover:opacity-100 data-[state=open]:opacity-100"
               aria-label={`Folder actions for ${folder.label}`}
               data-testid={`folder-menu-${folder.tag}`}
             >
@@ -77,17 +79,17 @@ function FolderCard({ folder, onOpen, onRename, onDelete }: {
               <DropdownMenuItem onClick={onRename} data-testid={`folder-rename-${folder.tag}`}>
                 <Pencil className="size-3.5" /> Rename
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={onDelete} className="text-red-400 focus:text-red-300" data-testid={`folder-delete-${folder.tag}`}>
-                <Trash2 className="size-3.5" /> Delete tag
+              <DropdownMenuItem onClick={onDelete} variant="danger" data-testid={`folder-delete-${folder.tag}`}>
+                <Trash2 className="size-3.5" /> Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
       </div>
       <div className="flex items-center gap-2 p-3">
-        <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
-        <span className="truncate text-sm font-medium text-foreground" title={folder.label}>{folder.label}</span>
-        <Badge variant="secondary" className="ml-auto shrink-0 text-[10px]" data-testid={`folder-count-${folder.tag}`}>
+        <FolderOpen className="size-4 shrink-0 text-bakin-text-muted" />
+        <span className="truncate text-sm font-medium text-bakin-text-primary" title={folder.label}>{folder.label}</span>
+        <Badge variant="secondary" size="xs" className="ml-auto shrink-0" data-testid={`folder-count-${folder.tag}`}>
           {folder.assets.length}
         </Badge>
       </div>
@@ -139,10 +141,23 @@ export function TagFolderGrid({ assets, filter = '', onOpenFolder, onChanged }: 
   }
 
   if (folders.length === 0) {
-    return (
-      <div className="p-8 text-sm text-muted-foreground" data-testid="folders-empty">
-        {filter ? 'No folders match your filter.' : 'No assets yet — tags you add will appear here as folders.'}
-      </div>
+    return filter ? (
+      <SystemState
+        kind="no-results"
+        scope="section"
+        title="No folders match your filter"
+        description="Clear the folder search above to see every tag folder."
+        action={null}
+        data-testid="folders-empty"
+      />
+    ) : (
+      <SystemState
+        kind="initial-empty"
+        scope="section"
+        title="No assets yet"
+        description="Tags you add will appear here as folders."
+        data-testid="folders-empty"
+      />
     )
   }
 
@@ -150,7 +165,7 @@ export function TagFolderGrid({ assets, filter = '', onOpenFolder, onChanged }: 
     <>
       {/* mt-4: the grid/list views get header spacing from the filters row,
           which the folders view doesn't render. */}
-      <div className="mt-4 grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]" data-testid="tag-folders">
+      <Grid layout="auto-fill" gap="item" className="mt-4" data-testid="tag-folders">
         {folders.map(folder => (
           <FolderCard
             key={folder.tag}
@@ -160,7 +175,7 @@ export function TagFolderGrid({ assets, filter = '', onOpenFolder, onChanged }: 
             onDelete={() => { setError(null); setDeleting(folder.tag) }}
           />
         ))}
-      </div>
+      </Grid>
 
       {/* Rename dialog */}
       <Dialog open={renaming !== null} onOpenChange={(open) => { if (!open) setRenaming(null) }}>
@@ -176,7 +191,7 @@ export function TagFolderGrid({ assets, filter = '', onOpenFolder, onChanged }: 
             autoFocus
             data-testid="folder-rename-input"
           />
-          {error && renaming !== null && <p className="text-xs text-destructive">{error}</p>}
+          {error && renaming !== null && <p className="text-xs text-bakin-signal-danger">{error}</p>}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setRenaming(null)}>Cancel</Button>
             <Button

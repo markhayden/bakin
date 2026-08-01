@@ -1,19 +1,15 @@
 'use client'
 
-/**
- * Heartbeat tab — view-only render of HEARTBEAT.md with a "last updated"
- * indicator. No edit affordance — heartbeats are agent-authored
- * narrative; user editing is meaningless.
- *
- * Reads from /api/plugins/team/:agentId/heartbeat which returns
- * { content, lastUpdated } or null when the file doesn't exist yet.
- */
-import { Loader2, Heart, Pencil } from 'lucide-react'
-import { MarkdownContent, EmptyState } from '@makinbakin/sdk/components'
+import { Heart, Pencil } from 'lucide-react'
+import { MarkdownContent } from '@makinbakin/sdk/content'
+import { Section } from '@makinbakin/sdk/layout'
+import { StatusBadge } from '@makinbakin/sdk/patterns'
+import { Button, SystemState } from '@makinbakin/sdk/ui'
 import { useJsonFetch } from '@makinbakin/sdk/hooks'
 import type { HeartbeatRaw } from '../types'
 
-const HEARTBEAT_DISABLED_REASON = 'HEARTBEAT.md is an agent-maintained narrative — the agent updates it itself as it works. Editing from the UI would conflict with what the agent next writes.'
+const HEARTBEAT_DISABLED_REASON =
+  'HEARTBEAT.md is maintained by the agent. Editing it here would conflict with the next agent-written update.'
 
 export interface HeartbeatTabProps {
   agentId: string
@@ -21,80 +17,104 @@ export interface HeartbeatTabProps {
 
 function formatRelative(isoTimestamp: string | null): string {
   if (!isoTimestamp) return ''
-  const ts = new Date(isoTimestamp).getTime()
-  if (Number.isNaN(ts)) return ''
-  const deltaSec = Math.round((Date.now() - ts) / 1000)
-  if (deltaSec < 60) return `${deltaSec}s ago`
-  const deltaMin = Math.round(deltaSec / 60)
-  if (deltaMin < 60) return `${deltaMin}m ago`
-  const deltaHr = Math.round(deltaMin / 60)
-  if (deltaHr < 24) return `${deltaHr}h ago`
-  const deltaDay = Math.round(deltaHr / 24)
-  return `${deltaDay}d ago`
+  const timestamp = new Date(isoTimestamp).getTime()
+  if (Number.isNaN(timestamp)) return ''
+  const seconds = Math.round((Date.now() - timestamp) / 1000)
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.round(hours / 24)}d ago`
 }
 
 export function HeartbeatTab({ agentId }: HeartbeatTabProps) {
-  const { data, loading, error: fetchError } = useJsonFetch<{ ok: boolean; heartbeat: HeartbeatRaw | null; error?: string }>(
-    `/api/plugins/team/${agentId}/heartbeat`,
-  )
+  const { data, loading, error: fetchError } = useJsonFetch<{
+    ok: boolean
+    heartbeat: HeartbeatRaw | null
+    error?: string
+  }>(`/api/plugins/team/${agentId}/heartbeat`)
   const heartbeat = data?.ok ? data.heartbeat : null
-  const error = fetchError ?? (data && !data.ok ? (data.error ?? 'Failed to load heartbeat') : null)
+  const error = fetchError ?? (data && !data.ok
+    ? (data.error ?? 'Failed to load heartbeat')
+    : null)
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 text-muted-foreground">
-        <Loader2 className="size-4 animate-spin mr-2" />
-        Loading heartbeat...
-      </div>
+      <SystemState
+        kind="loading"
+        scope="page"
+        title="Loading heartbeat"
+        description="The agent-authored status narrative will appear when ready."
+      />
     )
   }
 
   if (error) {
     return (
-      <div className="text-sm text-destructive py-12 text-center">{error}</div>
+      <SystemState
+        kind="error"
+        recovery="unavailable"
+        scope="page"
+        title="Heartbeat unavailable"
+        description={error}
+      />
     )
   }
 
   if (!heartbeat) {
     return (
-      <EmptyState
-        variant="panel"
-        icon={Heart}
+      <SystemState
+        kind="initial-empty"
+        scope="page"
         title="No heartbeat yet"
-        description={
-          <>
-            This agent hasn't written a
-            {' '}
-            <code className="font-mono text-foreground/80">HEARTBEAT.md</code>
-            {' '}
-            yet — it appears here once they do. (Distinct from the JSON
-            status signal at <code className="font-mono text-foreground/80">~/.bakin/heartbeats/{'{id}'}.json</code>;
-            this tab shows the agent's narrative file in their workspace.)
-          </>
-        }
+        description="HEARTBEAT.md appears after this agent writes its first narrative status update."
+        action={(
+          <span className="inline-flex items-center gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
+            <Heart aria-hidden="true" className="size-bakin-4" />
+            Waiting for an agent update
+          </span>
+        )}
       />
     )
   }
 
+  const lastUpdated = formatRelative(heartbeat.lastUpdated)
+
   return (
-    <div className="relative w-full">
-      <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
-        <span className="text-xs text-muted-foreground bg-muted/40 backdrop-blur-sm rounded-full px-3 py-1">
-          Last updated {formatRelative(heartbeat.lastUpdated)}
-        </span>
-        <button
-          disabled
-          aria-disabled="true"
-          title={HEARTBEAT_DISABLED_REASON}
-          aria-label={`Edit disabled — ${HEARTBEAT_DISABLED_REASON}`}
-          className="size-8 rounded-full bg-zinc-700/40 text-zinc-500 flex items-center justify-center cursor-not-allowed shadow-lg backdrop-blur-sm"
-        >
-          <Pencil className="size-4" />
-        </button>
+    <Section spacing="compact">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-3">
+        <div>
+          <h2 className="m-0 text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+            Agent heartbeat
+          </h2>
+          <p className="m-0 mt-bakin-1 text-bakin-text-muted">
+            Read-only narrative maintained by the agent while it works.
+          </p>
+        </div>
+        <div className="flex items-center gap-bakin-2">
+          {lastUpdated ? (
+            <StatusBadge tone="neutral" variant="solid" size="xs">
+              Last updated {lastUpdated}
+            </StatusBadge>
+          ) : null}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            disabled
+            aria-disabled="true"
+            title={HEARTBEAT_DISABLED_REASON}
+            aria-label={`Edit disabled — ${HEARTBEAT_DISABLED_REASON}`}
+          >
+            <Pencil aria-hidden="true" />
+          </Button>
+        </div>
       </div>
-      <div className="w-full min-h-[calc(100vh-260px)] pr-14 overflow-auto">
+
+      <div className="min-h-96 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4">
         <MarkdownContent content={heartbeat.content} />
       </div>
-    </div>
+    </Section>
   )
 }

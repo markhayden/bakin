@@ -7,7 +7,7 @@
  *                       namespace; client routes like /assets/<assetId> must
  *                       reach the SPA fallback on hard refresh)
  *   /vendor/<name>    → packages/host/public/vendor/<name>  (react, sdk, etc.)
- *   /globals.css      → packages/host/public/globals.css
+ *   /globals.css      → packages/sdk/styles.css
  *   /favicon.ico      → packages/host/public/favicon.ico (404 ok if absent)
  *   anything else     → packages/host/public/index.html  (SPA fallback;
  *                        TanStack Router handles client-side routing)
@@ -20,9 +20,9 @@
  *      — one path per file, imported via `type: 'file'` so Bun's --compile
  *      embeds bytes into the binary at build time. Dev runs hit the same
  *      map but the values are absolute on-disk paths, so nothing changes.
- *   2. Disk fallback under process.cwd()/packages/host/{dist,public} — kept
- *      so a freshly regenerated dist/ works without re-running the
- *      embedded-assets generator during inner dev loops.
+ *   2. Disk fallback under process.cwd()/packages/host/{dist,public}, plus
+ *      packages/sdk/styles.css — kept so freshly regenerated assets work
+ *      without re-running the embedded-assets generator during inner loops.
  */
 import type { IncomingMessage, ServerResponse } from 'http'
 import { createReadStream, existsSync, readFileSync, statSync } from 'fs'
@@ -39,6 +39,7 @@ import {
 // covers everything these dirs would have held.
 const DIST_DIR = resolve(process.cwd(), 'packages/host/dist')
 const PUBLIC_DIR = resolve(process.cwd(), 'packages/host/public')
+const SDK_STYLES_PATH = resolve(process.cwd(), 'packages/sdk/styles.css')
 
 const DEV_CLIENT_TAG = '<script type="module" src="/__bakin-dev/client.js"></script>'
 
@@ -181,8 +182,15 @@ export async function serveHostClient(req: IncomingMessage, res: ServerResponse,
     return true
   }
 
-  if (pathname === '/globals.css' || pathname === '/favicon.ico') {
-    if (await sendDiskFile(req, res, join(PUBLIC_DIR, pathname.slice(1)))) return true
+  if (pathname === '/globals.css') {
+    if (await sendDiskFile(req, res, SDK_STYLES_PATH)) return true
+    res.writeHead(404, { 'Content-Type': 'text/plain' })
+    res.end('Not found')
+    return true
+  }
+
+  if (pathname === '/favicon.ico') {
+    if (await sendDiskFile(req, res, join(PUBLIC_DIR, 'favicon.ico'))) return true
     res.writeHead(404, { 'Content-Type': 'text/plain' })
     res.end('Not found')
     return true

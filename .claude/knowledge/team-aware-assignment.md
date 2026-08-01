@@ -145,7 +145,7 @@ clears (only ABSENT preserves the existing value).
 - **CLI** `bakin tasks create <title> [agent] [--team=<id>]`.
 - **UI** — `AgentSelect includeTeams` renders a Teams group; `team:<id>`
   is a UI-only value encoding via `TEAM_VALUE_PREFIX` /
-  `isTeamValue` / `teamIdFromValue` from `@makinbakin/sdk/components`
+  `isTeamValue` / `teamIdFromValue` from `@makinbakin/sdk/patterns`
   (the ONLY parsing — no hand-rolled prefix slicing; post-review R9);
   board cards show a team chip (violet, Users icon) until resolved, then
   avatar + chip; the detail form notes "Routed from team X".

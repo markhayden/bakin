@@ -1,0 +1,84 @@
+.bakin-plugin-fixture-story {
+  width: 100%;
+  min-height: 100dvh;
+  margin-inline: auto;
+  overflow-x: clip;
+  background: var(--bakin-color-canvas-default);
+  color: var(--bakin-color-text-primary);
+}
+
+.bakin-plugin-fixture-story[data-bakin-plugin-fixture-viewport="desktop"] {
+  max-width: 90rem;
+}
+
+.bakin-plugin-fixture-story[data-bakin-plugin-fixture-viewport="mobile"] {
+  max-width: 20rem;
+}
+
+.bakin-plugin-fixture-story__page {
+  min-height: 32rem;
+}
+
+.bakin-plugin-fixture-story__muted {
+  color: var(--bakin-color-text-muted);
+}
+
+/*
+ * This public fixture models the builder's compiled ownership prefix. Plugin
+ * source authors write only the domain selector; the CSS contract adds this
+ * data-bakin-plugin boundary during packaging.
+ */
+[data-bakin-plugin="fixture-alpha"] {
+  --plugin-fixture-accent: var(--bakin-color-data-series-1);
+}
+
+[data-bakin-plugin="fixture-bravo"] {
+  --plugin-fixture-accent: var(--bakin-color-data-series-5);
+}
+
+[data-bakin-plugin="fixture-alpha"] .bakin-plugin-fixture-story__domain-overlay,
+[data-bakin-plugin="fixture-bravo"] .bakin-plugin-fixture-story__domain-overlay {
+  border-inline-start: var(--bakin-layout-space-1) solid var(--plugin-fixture-accent);
+}
+
+.bakin-plugin-fixture-story__state-explorer {
+  display: grid;
+  gap: var(--bakin-layout-space-6);
+  min-height: 100dvh;
+  padding: var(--bakin-layout-space-6);
+  background: var(--bakin-color-canvas-default);
+  color: var(--bakin-color-text-primary);
+}
+
+.bakin-plugin-fixture-story__state-explorer header {
+  display: grid;
+  gap: var(--bakin-layout-space-2);
+}
+
+.bakin-plugin-fixture-story__state-explorer h1,
+.bakin-plugin-fixture-story__state-explorer p {
+  margin: 0;
+}
+
+.bakin-plugin-fixture-story__state-explorer h1 {
+  font-size: var(--bakin-typography-size-page-title);
+  line-height: 1.1;
+}
+
+.bakin-plugin-fixture-story__eyebrow {
+  color: var(--bakin-color-signal-accent);
+  font-size: var(--bakin-typography-size-meta);
+  font-weight: var(--bakin-typography-weight-semibold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.bakin-plugin-fixture-story--state {
+  min-height: 24rem;
+}
+
+@media (max-width: 40rem) {
+  .bakin-plugin-fixture-story__state-explorer {
+    padding: var(--bakin-layout-space-4);
+  }
+}

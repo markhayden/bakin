@@ -8,24 +8,13 @@
  *
  * Pure logic — no DOM, no React.
  */
-import { describe, expect, it, mock } from 'bun:test'
-import { join } from 'path'
-import { tmpdir } from 'os'
-
-// Pure logic — content-dir mocks are belt-and-braces per the isolation rules.
-const testDir = join(tmpdir(), `bakin-test-conversation-fold-${Date.now()}`)
-const contentDirMock = () => ({
-  getContentDir: () => testDir,
-  getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db') }),
-})
-mock.module('../../src/core/content-dir', contentDirMock)
-mock.module('../../packages/core/src/content-dir', contentDirMock)
+import { describe, expect, it } from 'bun:test'
 
 import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
 import {
   foldConversation,
   type ConversationMessage,
-} from '../../src/components/conversation/fold'
+} from '@makinbakin/sdk/conversation'
 
 const text = (content: string, format?: 'markdown' | 'plain' | 'code'): RuntimeChatChunk =>
   ({ type: 'text', content, ...(format ? { format } : {}) })

@@ -3,19 +3,16 @@
 /**
  * Reusable view/edit tab for markdown workspace files.
  *
- * Default state: rendered markdown (read mode). Pencil button in the
- * top-right corner toggles to a textarea (edit mode). Save (green check)
- * or Cancel (X) replace the pencil while editing. Cmd+S triggers save.
- *
- * Mirrors the Assets-detail edit pattern so the agent-detail tabs feel
- * consistent with the rest of the app.
- *
- * Used by Soul / Rules / Tools tabs (writes to
- * /api/plugins/team/:agentId/files/:filename via the existing endpoint).
+ * The host owns the draft and persistence state. MarkdownEditor owns the
+ * supported edit/preview surface, while SaveBar owns retry and discard
+ * presentation.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Check, Loader2, Pencil, X } from 'lucide-react'
-import { MarkdownContent } from '@makinbakin/sdk/components'
+import { useCallback, useEffect, useState } from 'react'
+import { Pencil } from 'lucide-react'
+import { MarkdownEditor } from '@makinbakin/sdk/content'
+import { Section, Stack } from '@makinbakin/sdk/layout'
+import { SaveBar } from '@makinbakin/sdk/patterns'
+import { Button, SystemState } from '@makinbakin/sdk/ui'
 
 export interface MarkdownEditTabProps {
   agentId: string
@@ -28,45 +25,47 @@ export function MarkdownEditTab({ agentId, filename, initialContent }: MarkdownE
   const [content, setContent] = useState(initialContent ?? '')
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
-  const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [saveError, setSaveError] = useState<string | undefined>()
   const dirty = editing && draft !== content
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   useEffect(() => {
     setContent(initialContent ?? '')
     setEditing(false)
     setDraft('')
-    setSavedAt(null)
+    setSaveError(undefined)
   }, [initialContent, agentId, filename])
 
   const handleStartEdit = useCallback(() => {
     setDraft(content)
     setEditing(true)
-    setSavedAt(null)
-    requestAnimationFrame(() => textareaRef.current?.focus())
+    setSaveError(undefined)
   }, [content])
 
   const handleCancel = useCallback(() => {
     setEditing(false)
     setDraft('')
+    setSaveError(undefined)
   }, [])
 
   const handleSave = useCallback(async () => {
     if (!dirty) return
     setSaving(true)
+    setSaveError(undefined)
     try {
-      const res = await fetch(`/api/plugins/team/${agentId}/files/${filename}`, {
+      const response = await fetch(`/api/plugins/team/${agentId}/files/${filename}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: draft }),
       })
-      if (res.ok) {
-        setContent(draft)
-        setEditing(false)
-        setDraft('')
-        setSavedAt(Date.now())
-        setTimeout(() => setSavedAt(null), 2000)
+      if (!response.ok) {
+        setSaveError(`${filename} could not be saved. Your draft is still available.`)
+        return
       }
+      setContent(draft)
+      setEditing(false)
+      setDraft('')
+    } catch {
+      setSaveError(`${filename} could not be saved. Your draft is still available.`)
     } finally {
       setSaving(false)
     }
@@ -74,76 +73,83 @@ export function MarkdownEditTab({ agentId, filename, initialContent }: MarkdownE
 
   useEffect(() => {
     if (!editing) return
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-        e.preventDefault()
-        if (dirty) handleSave()
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 's') {
+        event.preventDefault()
+        if (dirty) void handleSave()
       }
-      if (e.key === 'Escape') handleCancel()
+      if (event.key === 'Escape' && !saving) handleCancel()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [editing, dirty, handleSave, handleCancel])
+  }, [editing, dirty, handleSave, handleCancel, saving])
 
   if (initialContent === null) {
     return (
-      <div className="text-sm text-muted-foreground py-12 text-center">
-        <code className="font-mono">{filename}</code> does not exist in this agent&apos;s workspace.
-      </div>
+      <SystemState
+        kind="initial-empty"
+        scope="page"
+        headingLevel={3}
+        title={`${filename} is not available`}
+        description={`This file does not exist in this agent's workspace.`}
+      />
     )
   }
 
   return (
-    <div className="relative w-full">
-      <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
-        {savedAt && !editing && (
-          <span className="text-xs text-green-400 mr-1">saved</span>
-        )}
-        {editing ? (
-          <>
-            <button
-              onClick={handleSave}
-              disabled={saving || !dirty}
-              className="size-8 rounded-full bg-green-600/90 hover:bg-green-500 text-white flex items-center justify-center transition-colors shadow-lg backdrop-blur-sm disabled:opacity-50"
-              title="Save (Cmd+S)"
-              aria-label="Save changes"
-            >
-              {saving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-            </button>
-            <button
-              onClick={handleCancel}
-              disabled={saving}
-              className="size-8 rounded-full bg-zinc-700/90 hover:bg-zinc-600 text-zinc-300 flex items-center justify-center transition-colors shadow-lg backdrop-blur-sm disabled:opacity-50"
-              title="Cancel (Esc)"
-              aria-label="Cancel edit"
-            >
-              <X className="size-4" />
-            </button>
-          </>
-        ) : (
-          <button
-            onClick={handleStartEdit}
-            className="size-8 rounded-full bg-zinc-700/90 hover:bg-zinc-600 text-zinc-300 hover:text-white flex items-center justify-center transition-colors shadow-lg backdrop-blur-sm"
-            title="Edit content"
-            aria-label="Edit markdown"
+    <Section spacing="compact" aria-labelledby="agent-markdown-heading">
+      <Stack gap="dense">
+        <div
+          data-slot="markdown-file-header"
+          className="flex min-w-0 flex-col gap-bakin-1 border-b border-bakin-border-subtle pb-bakin-4"
+        >
+          <div
+            data-slot="markdown-file-title-row"
+            className="flex min-w-0 items-center justify-between gap-bakin-3"
           >
-            <Pencil className="size-4" />
-          </button>
-        )}
-      </div>
-      {editing ? (
-        <textarea
-          ref={textareaRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          spellCheck={false}
-          className="w-full min-h-[calc(100vh-260px)] bg-muted/30 border border-border rounded-lg p-6 pr-14 text-sm font-mono leading-relaxed text-foreground resize-y focus:outline-none focus:ring-1 focus:ring-primary"
-        />
-      ) : (
-        <div className="w-full min-h-[calc(100vh-260px)] pr-14 overflow-auto">
-          <MarkdownContent content={content} />
+            <h2 id="agent-markdown-heading" className="m-0 min-w-0 flex-1 truncate">{filename}</h2>
+            {!editing ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={handleStartEdit}
+                aria-label="Edit markdown"
+              >
+                <Pencil aria-hidden="true" />
+                Edit
+              </Button>
+            ) : null}
+          </div>
+          <p
+            data-slot="markdown-file-description"
+            className="m-0 text-bakin-text-muted"
+          >
+            {editing ? 'Editing this workspace file.' : 'Rendered from the current workspace file.'}
+          </p>
         </div>
-      )}
-    </div>
+
+        <MarkdownEditor
+          label={`${filename} content`}
+          content={editing ? draft : content}
+          mode={editing ? 'edit' : 'preview'}
+          height="viewport"
+          onChange={setDraft}
+          className="pt-bakin-2"
+          description={editing ? 'Use Command-S or Control-S to save. Escape cancels the draft.' : undefined}
+        />
+      </Stack>
+
+      <SaveBar
+        dirty={dirty}
+        saving={saving}
+        error={saveError}
+        discardLabel="Cancel edit"
+        onSave={() => void handleSave()}
+        onDiscard={handleCancel}
+      >
+        {filename}
+      </SaveBar>
+    </Section>
   )
 }

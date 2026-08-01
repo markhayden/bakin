@@ -11,7 +11,7 @@
  * stays the source of truth.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -75,8 +75,6 @@ mock.module('../../../plugins/team/hooks/use-agent-store', () => ({
 // Keep the heavy tab content out of the render tree — we only care about the
 // header/tab-bar wiring here.
 mock.module('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))
-mock.module('@/components/markdown-content', () => ({ MarkdownContent: () => <div /> }))
-mock.module('@/components/model-select', () => ({ ModelSelect: () => <div /> }))
 
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'
 import { HEALTHY_TEAM_HEALTH_REPORT } from './health-report-fixture'
@@ -173,22 +171,33 @@ describe('AgentDetail — tab URL contract', () => {
     render(<AgentDetail agentId="explorer" />)
 
     const tablist = await screen.findByRole('tablist', { name: 'Agent sections' })
-    const sharedTabs = tablist.closest('[data-slot="underline-tabs"]')
-    expect(sharedTabs).not.toBeNull()
-    expect(sharedTabs?.className).toContain('overflow-x-auto')
+    expect(tablist.getAttribute('data-variant')).toBe('underline')
+    expect(tablist.className).toContain('overflow-x-auto')
 
     const overview = screen.getByRole('tab', { name: 'Overview' })
     expect(overview.getAttribute('aria-controls')).toBe('agent-detail-panel-overview')
-    overview.focus()
+    act(() => { overview.focus() })
     fireEvent.keyDown(overview, { key: 'ArrowRight' })
 
-    expect(setTabSpy).toHaveBeenCalledWith('diagnostics')
+    await waitFor(() => expect(setTabSpy).toHaveBeenCalledWith('diagnostics'))
   })
 
   it('gives icon-only back and delete controls accessible names', async () => {
     render(<AgentDetail agentId="explorer" />)
 
     expect(await screen.findByRole('button', { name: 'Back to agents' })).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Delete Explorer' })).toBeDefined()
+    const menu = screen.getByRole('button', { name: 'Agent actions' })
+    fireEvent.click(menu)
+    expect(await screen.findByRole('menuitem', { name: 'Delete' })).toBeDefined()
+  })
+
+  it('keeps secondary image and delete actions in the shared context menu', async () => {
+    render(<AgentDetail agentId="explorer" />)
+
+    expect(await screen.findByRole('button', { name: 'Change agent image' })).toBeDefined()
+    const menu = await screen.findByRole('button', { name: 'Agent actions' })
+    fireEvent.click(menu)
+    expect(await screen.findByRole('menuitem', { name: 'Change image' })).toBeDefined()
+    expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeDefined()
   })
 })

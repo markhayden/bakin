@@ -2,8 +2,21 @@
 
 import { useId, useMemo, useState, type ReactNode } from 'react'
 import type { AgentUsage } from '@makinbakin/sdk/types'
-import { EmptyState, ErrorState, PluginLink, SectionCard, StatusBadge } from '@makinbakin/sdk/components'
-import { Button, Skeleton } from '@makinbakin/sdk/ui'
+import { CompositionBar } from '@makinbakin/sdk/charts'
+import { PluginLink } from '@makinbakin/sdk/navigation'
+import { ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
+import {
+  Button,
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Progress,
+  Skeleton,
+  SystemState,
+} from '@makinbakin/sdk/ui'
 import { Activity, ArrowUpRight, Bot, ChevronDown } from 'lucide-react'
 import type {
   AgentEffortData,
@@ -61,8 +74,8 @@ function latestSessionCostLabel(session: AgentUsage): string | null {
 function Metric({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <div className="mt-1">{children}</div>
+      <p className="text-bakin-typography-size-meta font-bakin-typography-weight-medium uppercase tracking-wide text-bakin-text-muted">{label}</p>
+      <div className="mt-bakin-1">{children}</div>
     </div>
   )
 }
@@ -72,7 +85,7 @@ function ReviewStatus({ row, checking }: { row: AgentPulseRow; checking: boolean
     return <StatusBadge tone="neutral" variant="outline">Checking review</StatusBadge>
   }
   if (row.reviewState === 'review') {
-    return <StatusBadge tone="warning" variant="outline">Review</StatusBadge>
+    return <StatusBadge tone="attention" variant="outline">Review</StatusBadge>
   }
   if (row.reviewState === 'clear') {
     return <StatusBadge tone="success" variant="outline">No review flags</StatusBadge>
@@ -95,15 +108,6 @@ function UsageMetric({ row, pending }: { row: AgentPulseRow; pending: AgentPulse
   const attributed = alignedObserved !== null && outside !== null
     ? Math.max(0, alignedObserved - outside)
     : null
-  const attributedPercent = alignedObserved && attributed !== null
-    ? Math.min(100, (attributed / alignedObserved) * 100)
-    : 0
-  const interactivePercent = alignedObserved && interactive !== null
-    ? Math.min(100, (interactive / alignedObserved) * 100)
-    : 0
-  const unexplainedPercent = alignedObserved && unexplained !== null
-    ? Math.min(100, (unexplained / alignedObserved) * 100)
-    : 0
   const reportedCost = row.historyCostUsdMicros
   const trackedCost = row.effort?.windowCostUsdMicros ?? null
   const checkingUsage = observed === null && (pending.history || pending.effort)
@@ -113,7 +117,7 @@ function UsageMetric({ row, pending }: { row: AgentPulseRow; pending: AgentPulse
 
   return (
     <Metric label="Usage & cost">
-      <p className="font-semibold tabular-nums text-foreground">
+      <p className="font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">
         {checkingUsage
           ? 'Checking usage…'
           : observed === null
@@ -121,17 +125,20 @@ function UsageMetric({ row, pending }: { row: AgentPulseRow; pending: AgentPulse
             : `${formatTokenCount(observed)} tokens`}
       </p>
       {alignedObserved !== null && alignedObserved > 0 && attributed !== null && interactive !== null && unexplained !== null && (
-        <div
-          role="img"
-          aria-label={`${Math.round(attributedPercent)}% tracked work, ${Math.round(interactivePercent)}% interactive sessions, and ${Math.round(unexplainedPercent)}% unexplained`}
-          className="my-1.5 flex h-1.5 overflow-hidden rounded-full bg-muted"
-        >
-          <span className="bg-primary" style={{ width: `${attributedPercent}%` }} />
-          <span className="bg-muted-foreground/50" style={{ width: `${interactivePercent}%` }} />
-          <span className="bg-warning" style={{ width: `${unexplainedPercent}%` }} />
+        <div className="my-bakin-1">
+          <CompositionBar
+            size="inline"
+            data={[
+              { key: 'attributed', label: 'Tracked work', value: attributed },
+              { key: 'interactive', label: 'Interactive sessions', value: interactive },
+              { key: 'unexplained', label: 'Unexplained', value: unexplained },
+            ]}
+            label={`${row.agent} usage mix`}
+            formatValue={formatTokenCount}
+          />
         </div>
       )}
-      <p className="text-xs text-muted-foreground">
+      <p className="text-bakin-typography-size-meta text-bakin-text-muted">
         {reportedCost !== null
           ? `${formatRuntimeCost(reportedCost / 1_000_000)}${row.costedMessages < row.messageCount ? '+' : ''} reported cost${row.costedMessages < row.messageCount ? ` · partial (${row.costedMessages}/${row.messageCount} messages)` : ''}`
           : trackedCost !== null
@@ -149,29 +156,22 @@ function ContextMetric({ row, checking }: { row: AgentPulseRow; checking: boolea
   return (
     <Metric label="Startup context">
       {checking ? (
-        <p className="text-sm text-muted-foreground">Checking…</p>
+        <p className="text-bakin-typography-size-body text-bakin-text-muted">Checking…</p>
       ) : percent === null ? (
-        <p className="text-sm text-muted-foreground">Unavailable</p>
+        <p className="text-bakin-typography-size-body text-bakin-text-muted">Unavailable</p>
       ) : (
         <>
-          <div className="flex items-baseline justify-between gap-3">
-            <p className="font-semibold tabular-nums text-foreground">{percent}%</p>
-            <p className="text-xs text-muted-foreground">of budget</p>
+          <div className="flex items-baseline justify-between gap-bakin-3">
+            <p className="font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">{percent}%</p>
+            <p className="text-bakin-typography-size-meta text-bakin-text-muted">of budget</p>
           </div>
-          <div
-            role="progressbar"
+          <Progress
+            className="mt-bakin-1"
             aria-label={`${row.agent} startup context budget`}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.min(100, percent)}
-            aria-valuetext={`${percent}% of budget`}
-            className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted"
-          >
-            <span
-              className={percent > 90 ? 'block h-full bg-warning' : 'block h-full bg-accent'}
-              style={{ width: `${Math.min(100, percent)}%` }}
-            />
-          </div>
+            value={Math.min(100, percent)}
+            getAriaValueText={() => `${percent}% of budget`}
+            tone={percent > 90 ? 'attention' : 'accent'}
+          />
         </>
       )}
     </Metric>
@@ -191,14 +191,14 @@ function LatestSessionDetails({ row, id, checking, unavailable }: {
       id={id}
       role="region"
       aria-label={`${row.agent} details`}
-      className="border-t border-foreground/10 bg-foreground/[0.018] px-4 py-3"
+      className="border-t border-bakin-border-subtle pt-bakin-3"
     >
       {session ? (
         <div>
-          <div className="grid gap-3 @[36rem]/agent-pulse:grid-cols-[minmax(11rem,1.5fr)_repeat(4,minmax(5rem,1fr))]">
+          <div className="grid gap-bakin-3 @[36rem]/agent-pulse:grid-cols-[minmax(11rem,1.5fr)_repeat(4,minmax(5rem,1fr))]">
             <div className="min-w-0">
-              <p className="truncate font-medium text-foreground" title={session.model}>{session.model}</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="truncate font-bakin-typography-weight-medium text-bakin-text-primary" title={session.model}>{session.model}</p>
+              <p className="text-bakin-typography-size-meta text-bakin-text-muted">
                 {plural(session.messages, 'message')} · {formatTokenCount(session.tokens.total)} tokens
               </p>
             </div>
@@ -209,27 +209,27 @@ function LatestSessionDetails({ row, id, checking, unavailable }: {
               ['Cache write', session.tokens.cacheWrite],
             ] as const).map(([label, value]) => (
               <dl key={label}>
-                <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
-                <dd className="mt-0.5 font-medium tabular-nums text-foreground">{formatTokenCount(value)}</dd>
+                <dt className="text-bakin-typography-size-meta uppercase tracking-wide text-bakin-text-muted">{label}</dt>
+                <dd className="mt-bakin-0 font-bakin-typography-weight-medium tabular-nums text-bakin-text-primary">{formatTokenCount(value)}</dd>
               </dl>
             ))}
           </div>
           {costLabel && (
-            <p className="mt-2 text-xs text-muted-foreground">{costLabel}</p>
+            <p className="mt-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">{costLabel}</p>
           )}
         </div>
       ) : checking ? (
-        <p className="text-sm text-muted-foreground">Checking latest session…</p>
+        <p className="text-bakin-typography-size-body text-bakin-text-muted">Checking latest session…</p>
       ) : unavailable ? (
-        <p className="text-sm text-muted-foreground">Latest-session detail is unavailable.</p>
+        <p className="text-bakin-typography-size-body text-bakin-text-muted">Latest-session detail is unavailable.</p>
       ) : (
-        <p className="text-sm text-muted-foreground">No latest-session token breakdown is available.</p>
+        <p className="text-bakin-typography-size-body text-bakin-text-muted">No latest-session token breakdown is available.</p>
       )}
       <PluginLink
         to={`/team/${encodeURIComponent(row.agent)}?tab=diagnostics`}
-        className="mt-3 inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="mt-bakin-3 inline-flex items-center gap-bakin-1 rounded-bakin-control text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-signal-accent underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring"
       >
-        Open {row.agent} diagnostics <ArrowUpRight className="size-3.5" aria-hidden="true" />
+        Open {row.agent} diagnostics <ArrowUpRight className="size-bakin-3" aria-hidden="true" />
       </PluginLink>
     </div>
   )
@@ -271,84 +271,85 @@ function AgentPulseRowView({ row, expanded, pending, unavailable, liveNowStale, 
           ? 'Live state is stale'
           : 'No active task reported')
   return (
-    <article
+    <ListRow
       aria-labelledby={headingId}
       data-agent-pulse-row
-      className="overflow-hidden rounded-xl bg-foreground/[0.025] ring-1 ring-foreground/10"
+      className="p-bakin-4"
     >
-      <div className="grid min-w-0 gap-4 p-4 @[44rem]/agent-pulse:grid-cols-[minmax(8rem,1.2fr)_minmax(9rem,1fr)_minmax(8rem,.8fr)_minmax(7rem,.7fr)_auto] @[44rem]/agent-pulse:items-center @[44rem]/agent-pulse:gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 id={headingId} className="font-semibold text-foreground">{row.agent}</h4>
-            <ReviewStatus row={row} checking={pending.effort} />
-            {row.liveRun
-              ? liveNowStale
-                ? <StatusBadge tone="neutral">Last seen working</StatusBadge>
-                : <StatusBadge tone="accent">Working</StatusBadge>
-              : pending.liveNow
-                ? <StatusBadge tone="neutral">Checking live state</StatusBadge>
-                : unavailable.liveNow
-                  ? <StatusBadge tone="neutral">Live state unavailable</StatusBadge>
-                  : liveNowStale
-                    ? <StatusBadge tone="neutral">Live state stale</StatusBadge>
-                : null}
-          </div>
-          <p
-            className={flag && !row.liveRun
-              ? 'mt-1 line-clamp-2 text-xs text-muted-foreground'
-              : 'mt-1 truncate text-xs text-muted-foreground'}
-            title={activitySummary}
-          >
-            {activitySummary}
-          </p>
-          {row.liveRunCount > 1 && (
-            <p className="mt-1 text-[10px] text-accent">{plural(row.liveRunCount, 'concurrent run')}</p>
-          )}
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-bakin-2">
+          <h4 id={headingId} className="font-bakin-typography-weight-semibold text-bakin-text-primary">{row.agent}</h4>
+          <ReviewStatus row={row} checking={pending.effort} />
+          {row.liveRun
+            ? liveNowStale
+              ? <StatusBadge tone="neutral">Last seen working</StatusBadge>
+              : <StatusBadge tone="accent">Working</StatusBadge>
+            : pending.liveNow
+              ? <StatusBadge tone="neutral">Checking live state</StatusBadge>
+              : unavailable.liveNow
+                ? <StatusBadge tone="neutral">Live state unavailable</StatusBadge>
+                : liveNowStale
+                  ? <StatusBadge tone="neutral">Live state stale</StatusBadge>
+              : null}
         </div>
-        <UsageMetric row={row} pending={pending} />
-        <Metric label="Tracked work">
-          {pending.effort ? (
-            <p className="text-sm text-muted-foreground">Checking…</p>
-          ) : row.effort ? (
-            <>
-              <p className="font-medium text-foreground">{plural(row.effort.runs, 'tracked run')}</p>
-              <p className="text-xs text-muted-foreground">
-                {row.effort.windowTokens === null
-                  ? `Token totals unavailable${tokenCoverage ? ` · ${tokenCoverage}` : ''}`
-                  : `${formatTokenCount(row.effort.windowTokens)} tracked tokens`}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {plural(row.effort.completions, 'task completion')}
-                {costCoverage ? ` · cost ${costCoverage}` : ''}
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">Work evidence unavailable</p>
-          )}
-        </Metric>
-        <ContextMetric row={row} checking={pending.context || pending.settings} />
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label={`View ${row.agent} details`}
-          aria-expanded={expanded}
-          aria-controls={detailsId}
-          onClick={onToggle}
+        <p
+          className={flag && !row.liveRun
+            ? 'mt-bakin-1 line-clamp-2 text-bakin-typography-size-meta text-bakin-text-muted'
+            : 'mt-bakin-1 truncate text-bakin-typography-size-meta text-bakin-text-muted'}
+          title={activitySummary}
         >
-          Details
-          <ChevronDown className={expanded ? 'rotate-180 transition-transform motion-reduce:transition-none' : 'transition-transform motion-reduce:transition-none'} aria-hidden="true" />
-        </Button>
+          {activitySummary}
+        </p>
+        {row.liveRunCount > 1 && (
+          <p className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-signal-accent">{plural(row.liveRunCount, 'concurrent run')}</p>
+        )}
       </div>
+      <UsageMetric row={row} pending={pending} />
+      <Metric label="Tracked work">
+        {pending.effort ? (
+          <p className="text-bakin-typography-size-body text-bakin-text-muted">Checking…</p>
+        ) : row.effort ? (
+          <>
+            <p className="font-bakin-typography-weight-medium text-bakin-text-primary">{plural(row.effort.runs, 'tracked run')}</p>
+            <p className="text-bakin-typography-size-meta text-bakin-text-muted">
+              {row.effort.windowTokens === null
+                ? `Token totals unavailable${tokenCoverage ? ` · ${tokenCoverage}` : ''}`
+                : `${formatTokenCount(row.effort.windowTokens)} tracked tokens`}
+            </p>
+            <p className="text-bakin-typography-size-meta text-bakin-text-muted">
+              {plural(row.effort.completions, 'task completion')}
+              {costCoverage ? ` · cost ${costCoverage}` : ''}
+            </p>
+          </>
+        ) : (
+          <p className="text-bakin-typography-size-body text-bakin-text-muted">Work evidence unavailable</p>
+        )}
+      </Metric>
+      <ContextMetric row={row} checking={pending.context || pending.settings} />
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="justify-self-start @3xl/list-rows:justify-self-end"
+        aria-label={`View ${row.agent} details`}
+        aria-expanded={expanded}
+        aria-controls={detailsId}
+        onClick={onToggle}
+      >
+        Details
+        <ChevronDown className={expanded ? 'rotate-180 transition-transform motion-reduce:transition-none' : 'transition-transform motion-reduce:transition-none'} aria-hidden="true" />
+      </Button>
       {expanded && (
-        <LatestSessionDetails
-          row={row}
-          id={detailsId}
-          checking={pending.latestSessions}
-          unavailable={unavailable.latestSessions}
-        />
+        <div className="col-span-full min-w-0">
+          <LatestSessionDetails
+            row={row}
+            id={detailsId}
+            checking={pending.latestSessions}
+            unavailable={unavailable.latestSessions}
+          />
+        </div>
       )}
-    </article>
+    </ListRow>
   )
 }
 
@@ -384,43 +385,65 @@ export function AgentPulse({
   const failedLatestSessions = new Set(latestSessionFailedAgents)
 
   return (
-    <SectionCard
-      title={<h3>Agent pulse</h3>}
-      icon={Bot}
-      description="Selected-period usage and tracked work, alongside live state, latest-session detail, and startup context."
-      action={rows.length > 0 ? (
-        <p className="text-xs tabular-nums text-muted-foreground">
-          {pending.liveNow
-            ? 'Checking live activity'
-            : unavailable.liveNow
-              ? 'Live activity unavailable'
-            : liveNowStale && working > 0
-              ? plural(working, 'agent last seen working', 'agents last seen working')
-              : liveNowStale
-                ? 'Live activity stale'
-              : plural(working, 'working agent')}
-          {' · '}
-          {pending.effort ? 'Checking review flags' : plural(review, 'to review', 'to review')}
-        </p>
-      ) : undefined}
-      className="min-w-0"
-    >
-      <div className="@container/agent-pulse space-y-3">
+    <Card className="min-w-0" data-section-card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-bakin-2">
+          <Bot className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
+          <h3>Agent pulse</h3>
+        </CardTitle>
+        <CardDescription className="max-w-3xl">
+          Selected-period usage and tracked work, alongside live state, latest-session detail, and startup context.
+        </CardDescription>
+        {rows.length > 0 && (
+          <CardAction>
+            <p className="text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
+              {pending.liveNow
+                ? 'Checking live activity'
+                : unavailable.liveNow
+                  ? 'Live activity unavailable'
+                : liveNowStale && working > 0
+                  ? plural(working, 'agent last seen working', 'agents last seen working')
+                  : liveNowStale
+                    ? 'Live activity stale'
+                  : plural(working, 'working agent')}
+              {' · '}
+              {pending.effort ? 'Checking review flags' : plural(review, 'to review', 'to review')}
+            </p>
+          </CardAction>
+        )}
+      </CardHeader>
+      <CardContent>
+      <div className="@container/agent-pulse space-y-bakin-3">
         {loading && rows.length === 0 ? (
-          <div role="status" aria-label="Loading agent pulse" className="space-y-2">
+          <div role="status" aria-label="Loading agent pulse" className="space-y-bakin-2">
             <Skeleton className="h-28 w-full" />
             <Skeleton className="h-28 w-full" />
           </div>
         ) : error && rows.length === 0 ? (
-          <ErrorState title="Agent pulse unavailable" message={error} retry={onRetry} className="py-8" />
+          <SystemState
+            kind="error"
+            scope="section"
+            headingLevel={4}
+            title="Agent pulse unavailable"
+            description={error}
+            action={<Button size="sm" variant="outline" onClick={onRetry}>Try again</Button>}
+          />
         ) : rows.length === 0 ? (
-          <EmptyState
-            variant="section"
+          <SystemState
+            kind="initial-empty"
+            scope="section"
+            headingLevel={4}
             title="No agent evidence is available in this window."
             description="Choose a longer window if you expected recent activity."
           />
         ) : (
-          <div className="space-y-2">
+          <ListRows
+            variant="bordered"
+            aria-label="Agent pulse"
+            columns="minmax(8rem,1.2fr) minmax(9rem,1fr) minmax(8rem,.8fr) minmax(7rem,.7fr) auto"
+            columnsAt="3xl"
+            columnsAlign="center"
+          >
             {rows.map((row) => (
               <AgentPulseRowView
                 key={row.agent}
@@ -434,19 +457,20 @@ export function AgentPulse({
                 onToggle={() => setExpandedAgent((current) => current === row.agent ? null : row.agent)}
               />
             ))}
-          </div>
+          </ListRows>
         )}
         {mixedEvidence && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-bakin-typography-size-meta text-bakin-text-muted">
             Usage and tracked-work evidence came from separate refreshes.
           </p>
         )}
         {rows.length > 0 && error && (
-          <p role="status" className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Activity className="size-3.5" aria-hidden="true" /> Some agent evidence is unavailable: {error}.
+          <p role="status" className="flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+            <Activity className="size-bakin-3" aria-hidden="true" /> Some agent evidence is unavailable: {error}.
           </p>
         )}
       </div>
-    </SectionCard>
+      </CardContent>
+    </Card>
   )
 }

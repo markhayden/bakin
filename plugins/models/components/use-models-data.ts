@@ -82,6 +82,13 @@ export interface PaceWire {
   subscriptionTokens: number | null
   endsMs: number
 }
+export interface SpendTimelineWire {
+  startMs: number
+  endMs: number
+  costUsdMicros: number | null
+  subscriptionTokens: number
+  unpricedMeteredTokens: number
+}
 export interface SpendResponse {
   window: string
   estimated: boolean
@@ -89,6 +96,7 @@ export interface SpendResponse {
   byAgent: SpendRowAgent[]
   byModel: SpendRowModel[]
   byWorkClass?: SpendRowWorkClass[]
+  timeline?: SpendTimelineWire[]
   facets?: {
     computedAt: number
     observedUsageEvidence?:
@@ -487,6 +495,7 @@ export function useModelsData() {
   // -------------------------------------------------------------------------
   const addAlias = async () => {
     if (!newAliasName.trim() || !newAliasTarget.trim()) return
+    setSaving('aliases')
     try {
       const res = await fetch('/api/plugins/models/aliases', {
         method: 'POST',
@@ -502,10 +511,13 @@ export function useModelsData() {
       }
     } catch (err) {
       console.error('Failed to add alias:', err)
+    } finally {
+      setSaving(null)
     }
   }
 
   const deleteAlias = async (name: string) => {
+    setSaving('aliases')
     try {
       const res = await fetch('/api/plugins/models/aliases', {
         method: 'POST',
@@ -519,10 +531,13 @@ export function useModelsData() {
       }
     } catch (err) {
       console.error('Failed to delete alias:', err)
+    } finally {
+      setSaving(null)
     }
   }
 
   const prepopulateAliases = async () => {
+    setSaving('aliases')
     try {
       const res = await fetch('/api/plugins/models/aliases', {
         method: 'POST',
@@ -536,6 +551,8 @@ export function useModelsData() {
       }
     } catch (err) {
       console.error('Failed to prepopulate aliases:', err)
+    } finally {
+      setSaving(null)
     }
   }
 

@@ -11,7 +11,7 @@ const testDir = join(tmpdir(), 'bakin-test-spend-rollup')
 mock.module('../../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db') }) }))
 mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db') }) }))
 
-import { rollupSpend } from '../../../plugins/models/lib/spend-rollup'
+import { buildSpendTimeline, rollupSpend } from '../../../plugins/models/lib/spend-rollup'
 import type { RunCostSpendRow } from '../../../src/core/execution-ledger'
 
 function row(over: Partial<RunCostSpendRow>): RunCostSpendRow {
@@ -64,5 +64,55 @@ describe('rollupSpend', () => {
 
   it('empty input yields empty rollups with a zero total', () => {
     expect(rollupSpend([])).toEqual({ totalUsdMicros: 0, byAgent: [], byModel: [], byWorkClass: [] })
+  })
+})
+
+describe('buildSpendTimeline', () => {
+  it('builds an ordered 24-hour trend without mixing dollars and subscription tokens', () => {
+    const now = Date.UTC(2026, 6, 26, 20)
+    const timeline = buildSpendTimeline([
+      row({ runId: 'priced', occurredAt: now - 60 * 60 * 1000, costUsdMicros: 1_250_000 }),
+      row({
+        runId: 'subscription',
+        occurredAt: now - 2 * 60 * 60 * 1000,
+        lane: 'subscription',
+        totalTokens: 800,
+        costUsdMicros: null,
+      }),
+      row({
+        runId: 'unpriced',
+        occurredAt: now - 5 * 60 * 60 * 1000,
+        totalTokens: 300,
+        costUsdMicros: null,
+      }),
+    ], '24h', now)
+
+    expect(timeline).toHaveLength(6)
+    expect(timeline.map((bucket) => bucket.startMs)).toEqual([...timeline.map((bucket) => bucket.startMs)].sort((a, b) => a - b))
+    expect(timeline.at(-1)).toMatchObject({
+      endMs: now,
+      costUsdMicros: 1_250_000,
+      subscriptionTokens: 800,
+      unpricedMeteredTokens: 0,
+    })
+    expect(timeline.at(-2)).toMatchObject({
+      costUsdMicros: null,
+      subscriptionTokens: 0,
+      unpricedMeteredTokens: 300,
+    })
+  })
+
+  it('keeps empty observed buckets at zero and bounds all-time history without dropping rows', () => {
+    const now = Date.UTC(2026, 6, 26, 20)
+    const old = now - 400 * 24 * 60 * 60 * 1000
+    const timeline = buildSpendTimeline([
+      row({ runId: 'old', occurredAt: old, costUsdMicros: 2_000_000 }),
+      row({ runId: 'new', occurredAt: now - 1, costUsdMicros: 3_000_000 }),
+    ], 'all', now)
+
+    expect(timeline.length).toBeLessThanOrEqual(12)
+    expect(timeline[0]?.startMs).toBeLessThanOrEqual(old)
+    expect(timeline.at(-1)?.endMs).toBe(now)
+    expect(timeline.reduce((sum, bucket) => sum + (bucket.costUsdMicros ?? 0), 0)).toBe(5_000_000)
   })
 })

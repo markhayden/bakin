@@ -28,12 +28,28 @@ import { basename, join, resolve } from 'node:path'
 import { PLUGIN_CLIENT_EXTERNALS, PLUGIN_SERVER_EXTERNALS } from './externals'
 import { validatePluginImports, type PluginPackageJson } from './import-scan'
 import { commandFailure, runSystemBun, DEFAULT_BUILD_TIMEOUT_MS } from './command'
+import { processBuiltPluginCss } from './plugin-css'
 import { WhiskitBuildError, type WhiskitBuildRequest, type WhiskitBuildResult } from './types'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
 
 /** SDK sub-path names ('' is the package root). Mirrors the package exports. */
-const SDK_SUBPATHS = ['', 'ui', 'hooks', 'components', 'slots', 'types', 'utils', 'metadata', 'routing'] as const
+export const SDK_SUBPATHS = [
+  '',
+  'ui',
+  'layout',
+  'patterns',
+  'charts',
+  'conversation',
+  'content',
+  'hooks',
+  'slots',
+  'types',
+  'utils',
+  'metadata',
+  'routing',
+  'navigation',
+] as const
 
 export interface SdkResolution {
   /** Where the SDK came from — recorded in diagnostics. */
@@ -274,13 +290,18 @@ function assertServerBundleExternalsClean(plugin: ValidatedPlugin): void {
     `server bundle for "${plugin.pluginId}" retains host-provided browser externals: ` +
     retained.map((spec) => `"${spec}"`).join(', ') +
     `. These resolve only in the browser via the host import map — a binary install fails at activation. ` +
-    `Server entries must not import client-only SDK subpaths (slots/components/ui/hooks); ` +
+    `Server entries must not import client-only SDK subpaths (ui/layout/patterns/charts/conversation/slots/hooks); ` +
     `the SDK root, routing, types, utils, and metadata are server-safe.`,
   )
 }
 
 async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: ValidatedPlugin): Promise<void> {
   if (!plugin.clientEntry) return
+  // A rebuild after the plugin removes its final CSS import must not leave the
+  // previous client.css active in the host.
+  rmSync(join(plugin.distDir, 'client.css'), { force: true })
+  rmSync(join(plugin.distDir, 'client.css.map'), { force: true })
+  rmSync(join(plugin.distDir, 'client.js.map'), { force: true })
   const result = await runSystemBun(
     [
       'build', plugin.clientEntry,
@@ -288,6 +309,7 @@ async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: Valida
       '--target', 'browser',
       '--format', 'esm',
       '--entry-naming', 'client.[ext]',
+      '--sourcemap=external',
       ...(req.production ? ['--production'] : []),
       ...PLUGIN_CLIENT_EXTERNALS.flatMap((e) => ['--external', e]),
     ],
@@ -300,6 +322,23 @@ async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: Valida
   })
   if (result.exitCode !== 0) {
     throw commandFailure('client-build', `Client build for "${plugin.pluginId}"`, result)
+  }
+
+  const cssStartedAt = Date.now()
+  try {
+    await processBuiltPluginCss({
+      pluginId: plugin.pluginId,
+      distDir: plugin.distDir,
+      sourceRoot: req.pluginDir,
+    })
+    req.onStage?.({ stage: 'css-validate', status: 'ok', durationMs: Date.now() - cssStartedAt })
+  } catch (error) {
+    rmSync(join(plugin.distDir, 'client.js'), { force: true })
+    req.onStage?.({ stage: 'css-validate', status: 'error', durationMs: Date.now() - cssStartedAt })
+    throw new WhiskitBuildError(
+      'css-validate',
+      error instanceof Error ? error.message : String(error),
+    )
   }
 }
 

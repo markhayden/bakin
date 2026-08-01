@@ -1,20 +1,21 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Button, SystemState } from '@makinbakin/sdk/ui'
 import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
-} from "@makinbakin/sdk/ui"
-import { SortableHead, type SortDir } from "@makinbakin/sdk/components"
-import { EmptyState } from "@makinbakin/sdk/components"
-import { Skeleton } from "@makinbakin/sdk/ui"
-import { ClipboardList } from 'lucide-react'
-import { STATUS_BADGE_STYLES } from '../constants'
+  AgentAvatar,
+  DataTable,
+  StatusBadge,
+  type DataTableColumn,
+  type SortDir,
+  type StatusTone,
+} from '@makinbakin/sdk/patterns'
+import { COLUMN_CONFIG } from '../constants'
 import { formatDateTime, formatDuration } from "@makinbakin/sdk/utils"
 import { useAgent } from "@makinbakin/sdk/hooks"
-import { AgentAvatar } from "@makinbakin/sdk/components"
 import type { FlatTask } from '../hooks/use-task-filters'
 import type { TaskScoreInfo } from './task-card'
-import type { ColumnId } from '../types'
+import type { ColumnId, Task } from '../types'
 
 interface AuditEntry {
   type: string
@@ -39,6 +40,27 @@ interface HistoricalTask {
 
 type TaskRow = FlatTask | HistoricalTask
 
+const STATUS_TONES: Record<ColumnId, StatusTone> = {
+  backlog: 'neutral',
+  todo: 'accent',
+  inProgress: 'accent',
+  review: 'attention',
+  done: 'success',
+  archived: 'neutral',
+  blocked: 'danger',
+}
+
+function taskForDrawer(task: TaskRow): Task {
+  if ('checked' in task) return task
+  return {
+    id: task.id,
+    title: task.title,
+    agent: task.agent,
+    checked: task.status === 'done' || task.status === 'archived',
+    date: task.createdAt,
+  }
+}
+
 function getCreatedAt(t: TaskRow): string | undefined {
   if ('createdAt' in t) return (t as HistoricalTask).createdAt
   return (t as FlatTask).date
@@ -52,6 +74,17 @@ function getCompletedAt(t: TaskRow): string | undefined {
 
 type SortField = 'title' | 'agent' | 'status' | 'createdAt' | 'completedAt'
 
+function formatDate(d?: string) {
+  return d ? formatDateTime(d) : '—'
+}
+
+function taskDuration(created?: string, completed?: string) {
+  if (!created || !completed) return '—'
+  const ms = new Date(completed).getTime() - new Date(created).getTime()
+  if (!Number.isFinite(ms) || ms < 0) return '—'
+  return formatDuration(ms) ?? '—'
+}
+
 interface TaskLogTableProps {
   /** Pre-filtered tasks from the parent (search + agent already applied) */
   currentTasks: FlatTask[]
@@ -61,9 +94,11 @@ interface TaskLogTableProps {
   isSearching?: boolean
   /** Per-task search score info, keyed by task id. Only set when debug + active search. */
   scoreMap?: Map<string, TaskScoreInfo>
+  /** Opens the canonical task detail drawer for current and historical rows. */
+  onTaskOpen: (task: Task, columnId: ColumnId) => void
 }
 
-export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap }: TaskLogTableProps) {
+export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap, onTaskOpen }: TaskLogTableProps) {
   const [auditTasks, setAuditTasks] = useState<HistoricalTask[]>([])
   const [loading, setLoading] = useState(true)
   const [sortField, setSortField] = useState<SortField>('completedAt')
@@ -72,7 +107,10 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
   useEffect(() => {
     async function fetchAudit() {
       try {
-        const res = await fetch('/api/plugins/memory/audit')
+        // Dev rebuilds and engine hiccups can strand a response forever; a hung
+        // request must degrade to the current-tasks-only view, not an eternal
+        // loading state.
+        const res = await fetch('/api/plugins/memory/audit', { signal: AbortSignal.timeout(15_000) })
         if (!res.ok) return
         const { entries } = await res.json() as { entries: AuditEntry[] }
 
@@ -151,106 +189,163 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
     }
   }, [sortField])
 
-  function formatDate(d?: string) {
-    return d ? formatDateTime(d) : '—'
-  }
-
-  function taskDuration(created?: string, completed?: string) {
-    if (!created || !completed) return '—'
-    const ms = new Date(completed).getTime() - new Date(created).getTime()
-    if (!Number.isFinite(ms) || ms < 0) return '—'
-    return formatDuration(ms) ?? '—'
-  }
+  const columns = useMemo((): ReadonlyArray<DataTableColumn<TaskRow, SortField>> => [
+    {
+      key: 'id',
+      header: 'ID',
+      narrow: 'meta',
+      cellClassName: 'font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted',
+      cell: (task) => task.id.slice(0, 8),
+    },
+    {
+      key: 'title',
+      header: 'Title',
+      sortable: true,
+      narrow: 'primary',
+      cellClassName: 'max-w-sm',
+      cell: (task) => {
+        const drawerTask = taskForDrawer(task)
+        const scoreInfo = scoreMap?.get(task.id)
+        const semKey = 'embeddings'
+        const bm25Key = scoreInfo?.indexScores
+          ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
+          : undefined
+        return (
+          <div className="flex min-w-0 items-center gap-bakin-2">
+            <Button
+              type="button"
+              variant="link"
+              size="xs"
+              aria-label={`Open ${task.title}`}
+              className="!h-auto min-w-0 max-w-full !justify-start !p-0 text-left font-bakin-typography-weight-semibold text-bakin-text-primary"
+              onClick={(event) => {
+                event.stopPropagation()
+                onTaskOpen(drawerTask, task.status)
+              }}
+            >
+              <span className="truncate">{task.title}</span>
+            </Button>
+            {scoreInfo && (
+              <span className="flex shrink-0 items-center gap-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta">
+                <span className="text-bakin-signal-highlight">RRF {scoreInfo.score.toFixed(3)}</span>
+                <span className="text-bakin-data-series-1">
+                  BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
+                </span>
+                <span className="text-bakin-data-series-5">
+                  SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
+                </span>
+              </span>
+            )}
+          </div>
+        )
+      },
+    },
+    {
+      key: 'agent',
+      header: 'Agent',
+      sortable: true,
+      narrow: 'leading',
+      cell: (task) => task.agent
+        ? <AgentCell agentId={task.agent} />
+        : <span className="text-bakin-typography-size-meta text-bakin-text-muted">—</span>,
+      narrowCell: (task) => task.agent ? <AgentCell agentId={task.agent} avatarOnly /> : null,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      sortable: true,
+      narrow: 'trailing',
+      cell: (task) => (
+        <StatusBadge tone={STATUS_TONES[task.status]} size="xs">{COLUMN_CONFIG[task.status].label}</StatusBadge>
+      ),
+    },
+    {
+      key: 'createdAt',
+      header: 'Created',
+      sortable: true,
+      narrow: 'meta',
+      cellClassName: 'text-bakin-typography-size-meta text-bakin-text-muted',
+      cell: (task) => formatDate(getCreatedAt(task)),
+      narrowCell: (task) => getCreatedAt(task) ? formatDate(getCreatedAt(task)) : null,
+    },
+    {
+      key: 'completedAt',
+      header: 'Completed',
+      sortable: true,
+      narrow: 'meta',
+      cellClassName: 'text-bakin-typography-size-meta text-bakin-text-muted',
+      cell: (task) => formatDate(getCompletedAt(task)),
+      narrowCell: (task) => getCompletedAt(task) ? formatDate(getCompletedAt(task)) : null,
+    },
+    {
+      key: 'duration',
+      header: 'Duration',
+      narrow: 'meta',
+      cellClassName: 'font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted',
+      cell: (task) => taskDuration(getCreatedAt(task), getCompletedAt(task)),
+      narrowCell: (task) => {
+        const duration = taskDuration(getCreatedAt(task), getCompletedAt(task))
+        return duration === '—' ? null : duration
+      },
+    },
+  ], [scoreMap, onTaskOpen])
 
   return (
-    <div className="flex flex-col gap-3 h-full">
-      <div className="flex-1 overflow-auto min-h-0">
+    <div className="min-w-0" data-task-log="">
+      <div className="min-w-0">
         {loading ? (
-          <div className="flex flex-col gap-2 p-2">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
+          <SystemState
+            kind="loading"
+            scope="section"
+            title="Loading task log"
+            description="Current and historical tasks will appear here when the activity log is ready."
+          />
         ) : sorted.length === 0 ? (
-          <EmptyState icon={ClipboardList} title="No tasks found" />
+          <SystemState
+            kind="initial-empty"
+            scope="section"
+            title="No tasks found"
+            description="This task view has no current or historical rows to display."
+          />
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-20">ID</TableHead>
-                <SortableHead field="title" current={sortField} dir={sortDir} onSort={toggleSort}>Title</SortableHead>
-                <SortableHead field="agent" current={sortField} dir={sortDir} onSort={toggleSort}>Agent</SortableHead>
-                <SortableHead field="status" current={sortField} dir={sortDir} onSort={toggleSort}>Status</SortableHead>
-                <SortableHead field="createdAt" current={sortField} dir={sortDir} onSort={toggleSort}>Created</SortableHead>
-                <SortableHead field="completedAt" current={sortField} dir={sortDir} onSort={toggleSort}>Completed</SortableHead>
-                <TableHead>Duration</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sorted.map(task => {
-                const created = getCreatedAt(task)
-                const completed = getCompletedAt(task)
-                const badgeStyle = STATUS_BADGE_STYLES[task.status as ColumnId]
-                const scoreInfo = scoreMap?.get(task.id)
-                const semKey = 'embeddings'
-                const bm25Key = scoreInfo?.indexScores
-                  ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
-                  : undefined
-                return (
-                  <TableRow key={task.id}>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{task.id.slice(0, 8)}</TableCell>
-                    <TableCell className="max-w-[300px] truncate">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate">{task.title}</span>
-                        {scoreInfo && (
-                          <span className="flex items-center gap-1.5 font-mono text-[10px] shrink-0">
-                            <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
-                            <span className="text-cyan-400">
-                              BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
-                            </span>
-                            <span className="text-purple-400">
-                              SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
-                            </span>
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {task.agent ? (
-                        <AgentCell agentId={task.agent} />
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {badgeStyle && (
-                        <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${badgeStyle.bg}`}>
-                          {badgeStyle.label}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{formatDate(created)}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{formatDate(completed)}</TableCell>
-                    <TableCell className="text-xs font-mono text-muted-foreground">
-                      {taskDuration(created, completed)}
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+          <DataTable
+            label="Task log"
+            columns={columns}
+            rows={sorted}
+            rowKey={(task) => task.id}
+            sort={{ field: sortField, dir: sortDir }}
+            onSortChange={toggleSort}
+            rowProps={(task) => ({
+              'data-task-log-row': '',
+              className: 'cursor-pointer',
+              onClick: () => onTaskOpen(taskForDrawer(task), task.status),
+            })}
+          />
         )}
       </div>
     </div>
   )
 }
 
-function AgentCell({ agentId }: { agentId: string }) {
+function AgentCell({ agentId, avatarOnly = false }: { agentId: string; avatarOnly?: boolean }) {
   const agent = useAgent(agentId)
+  const name = agent?.name ?? agentId
+  if (avatarOnly) {
+    return (
+      <AgentAvatar
+        agent={{ id: agentId, name, imageSrc: agent?.headshot }}
+        size="sm"
+      />
+    )
+  }
   return (
-    <span className="flex items-center gap-1.5">
-      <AgentAvatar agentId={agentId} size="xs" />
-      <span className="text-xs">{agent?.name ?? agentId}</span>
+    <span className="flex items-center gap-bakin-2">
+      <AgentAvatar
+        agent={{ id: agentId, name, imageSrc: agent?.headshot }}
+        size="xs"
+        decorative
+      />
+      <span className="text-bakin-typography-size-meta text-bakin-text-primary">{name}</span>
     </span>
   )
 }

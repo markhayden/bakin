@@ -12,18 +12,7 @@ const testDir = join(tmpdir(), 'bakin-test-asset-picker')
 mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 
-mock.module('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children }: { open: boolean; children?: React.ReactNode }) =>
-    open ? <div role="dialog">{children}</div> : null,
-  DialogContent: ({ children, ...rest }: { children?: React.ReactNode }) => (
-    <div data-asset-picker={(rest as Record<string, unknown>)['data-asset-picker'] !== undefined ? '' : undefined}>{children}</div>
-  ),
-  DialogHeader: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-  DialogTitle: ({ children }: { children?: React.ReactNode }) => <h2>{children}</h2>,
-  DialogDescription: ({ children }: { children?: React.ReactNode }) => <p>{children}</p>,
-}))
-
-import { AssetPicker } from '../../src/components/asset-picker'
+import { AssetLibraryPicker } from '@makinbakin/sdk/patterns'
 
 const LIBRARY = {
   assets: [
@@ -50,11 +39,11 @@ beforeEach(() => {
 
 afterEach(() => cleanup())
 
-describe('AssetPicker', () => {
+describe('AssetLibraryPicker', () => {
   it('loads the library and picks an asset', async () => {
     const onPick = mock()
     const onOpenChange = mock()
-    render(<AssetPicker open onOpenChange={onOpenChange} onPick={onPick} />)
+    render(<AssetLibraryPicker open onOpenChange={onOpenChange} onPick={onPick} />)
 
     await waitFor(() => expect(screen.getByText('Primary logo')).toBeDefined())
     fireEvent.click(document.querySelector('[data-asset-picker-item="logo-1"]')!)
@@ -64,7 +53,7 @@ describe('AssetPicker', () => {
   })
 
   it('filters by search query over description and id', async () => {
-    render(<AssetPicker open onOpenChange={() => {}} onPick={() => {}} />)
+    render(<AssetLibraryPicker open onOpenChange={() => {}} onPick={() => {}} />)
     await waitFor(() => expect(screen.getByText('Primary logo')).toBeDefined())
 
     fireEvent.change(document.querySelector('[data-asset-picker-search]')!, { target: { value: 'billing' } })
@@ -74,7 +63,7 @@ describe('AssetPicker', () => {
   })
 
   it('applies the caller filter', async () => {
-    render(<AssetPicker open onOpenChange={() => {}} onPick={() => {}} filter={(a) => a.type === 'images'} />)
+    render(<AssetLibraryPicker open onOpenChange={() => {}} onPick={() => {}} filter={(a) => a.type === 'images'} />)
     await waitFor(() => expect(screen.getByText('Primary logo')).toBeDefined())
     expect(screen.queryByText('Spec PDF')).toBeNull()
     await settleReact()
@@ -82,7 +71,7 @@ describe('AssetPicker', () => {
 
   it('upload picks the fresh asset', async () => {
     const onPick = mock()
-    render(<AssetPicker open onOpenChange={() => {}} onPick={onPick} />)
+    render(<AssetLibraryPicker open onOpenChange={() => {}} onPick={onPick} />)
     await waitFor(() => expect(screen.getByText('Primary logo')).toBeDefined())
 
     const fileInput = document.querySelector('input[type="file"]')!
@@ -95,7 +84,7 @@ describe('AssetPicker', () => {
   it('renders an honest error state when the library is unreachable', async () => {
     fetchMock = mock(async () => new Response('down', { status: 503 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
-    render(<AssetPicker open onOpenChange={() => {}} onPick={() => {}} />)
+    render(<AssetLibraryPicker open onOpenChange={() => {}} onPick={() => {}} />)
     await waitFor(() => expect(screen.getByText(/Couldn't load your assets/)).toBeDefined())
     await settleReact()
   })
@@ -103,7 +92,7 @@ describe('AssetPicker', () => {
   it('renders an empty state when the library has nothing', async () => {
     fetchMock = mock(async () => new Response(JSON.stringify({ assets: [] }), { status: 200 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
-    render(<AssetPicker open onOpenChange={() => {}} onPick={() => {}} />)
+    render(<AssetLibraryPicker open onOpenChange={() => {}} onPick={() => {}} />)
     await waitFor(() => expect(screen.getByText('No assets yet')).toBeDefined())
     await settleReact()
   })

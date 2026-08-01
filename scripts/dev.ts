@@ -222,7 +222,8 @@ function startTailwindWatch(): void {
     [
       TAILWIND_BIN,
       '-i', './packages/host/src/globals.css',
-      '-o', './packages/host/public/globals.css',
+      '-o', './packages/sdk/styles.css',
+      '--minify',
       '--watch=always',
     ],
     { stdio: ['ignore', DEV_VERBOSE ? 'inherit' : 'pipe', DEV_VERBOSE ? 'inherit' : 'pipe'], cwd: REPO_ROOT },
@@ -469,10 +470,10 @@ function startSdkWatcher(): void {
 function startCssWatcher(): void {
   // Watch the parent directory + filter by path; watching a single file
   // directly misses atomic-rename writes that Tailwind's --watch produces.
-  const publicDir = join(REPO_ROOT, 'packages/host/public')
-  const cssOutput = join(publicDir, 'globals.css')
+  const sdkDir = join(REPO_ROOT, 'packages/sdk')
+  const cssOutput = join(sdkDir, 'styles.css')
   let lastMtime = existsSync(cssOutput) ? statSync(cssOutput).mtimeMs : 0
-  const watcher = chokidar.watch(publicDir, { ignoreInitial: true, depth: 0 })
+  const watcher = chokidar.watch(sdkDir, { ignoreInitial: true, depth: 0 })
   watcher.on('all', (event, path) => {
     if (path !== cssOutput) return
     if (event !== 'change' && event !== 'add') return

@@ -11,17 +11,7 @@ const testDir = join(tmpdir(), 'bakin-test-danger-zone')
 mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 
-mock.module('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children }: { open: boolean; children?: React.ReactNode }) =>
-    open ? <div role="dialog">{children}</div> : null,
-  DialogContent: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-  DialogHeader: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-  DialogTitle: ({ children }: { children?: React.ReactNode }) => <h2>{children}</h2>,
-  DialogDescription: ({ children }: { children?: React.ReactNode }) => <p>{children}</p>,
-  DialogFooter: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-}))
-
-import { DangerZone } from '../../src/components/danger-zone'
+import { DangerZone } from '@makinbakin/sdk/patterns'
 
 afterEach(() => cleanup())
 

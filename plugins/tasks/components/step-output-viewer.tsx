@@ -1,6 +1,6 @@
 'use client'
 
-import { TurnOutputView } from "@makinbakin/sdk/components"
+import { TurnOutputView } from '@makinbakin/sdk/conversation'
 import { isRenderableAssetRef } from '../lib/output-assets'
 
 /** Normalize step output — handles string (possibly JSON), object, or unexpected types. */
@@ -29,9 +29,14 @@ function OutputValue({ value }: { value: unknown }) {
     if (isRenderableAssetRef(value)) {
       const ref = value
       return (
-        <div className="mt-0.5">
-          <p className="text-xs text-zinc-400 break-all">{ref}</p>
-          <img src={`/api/assets/${encodeURIComponent(ref)}`} alt={ref} className="mt-1 max-h-48 rounded border border-border object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+        <div className="mt-bakin-1 grid min-w-0 gap-bakin-1">
+          <p className="m-0 break-all font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">{ref}</p>
+          <img
+            src={`/api/assets/${encodeURIComponent(ref)}`}
+            alt={ref}
+            className="max-h-48 max-w-full rounded-bakin-surface border border-bakin-border-subtle object-contain"
+            onError={(event) => { event.currentTarget.hidden = true }}
+          />
         </div>
       )
     }
@@ -41,43 +46,50 @@ function OutputValue({ value }: { value: unknown }) {
       // leaves ARE turn output, so they render through the single chunk
       // renderer (markdown default) instead of a local format heuristic.
       return (
-        <div className="text-xs text-zinc-300 mt-0.5">
+        <div className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-primary">
           <TurnOutputView chunks={[{ type: 'text', content: str }]} />
         </div>
       )
     }
-    return <p className="text-xs text-zinc-300 mt-0.5">{str}</p>
+    return <p className="m-0 mt-bakin-1 break-words text-bakin-typography-size-body text-bakin-text-primary">{str}</p>
   }
   if (typeof value === 'boolean' || typeof value === 'number') {
-    return <p className="text-xs text-zinc-300 mt-0.5">{String(value)}</p>
+    return <p className="m-0 mt-bakin-1 text-bakin-typography-size-body text-bakin-text-primary">{String(value)}</p>
   }
   if (value && typeof value === 'object') {
     const entries = Object.entries(value as Record<string, unknown>)
     return (
-      <div className="mt-1 pl-3 border-l border-zinc-700 space-y-2">
+      <dl className="m-0 mt-bakin-2 grid min-w-0 gap-bakin-3 border-s border-bakin-border-subtle ps-bakin-3">
         {entries.map(([k, v]) => (
           <div key={k}>
-            <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{humanizeKey(k)}</p>
-            <OutputValue value={v} />
+            <dt className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
+              {humanizeKey(k)}
+            </dt>
+            <dd className="m-0"><OutputValue value={v} /></dd>
           </div>
         ))}
-      </div>
+      </dl>
     )
   }
-  return <p className="text-xs text-zinc-400 mt-0.5">{String(value ?? '—')}</p>
+  return <p className="m-0 mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">{String(value ?? '—')}</p>
 }
 
 /** Render prior step output in a human-readable layout. */
 export function StepOutputViewer({ output }: { output: Record<string, unknown> | string | unknown }) {
   const data = normalizeOutput(output)
   return (
-    <div className="rounded-md border border-border bg-zinc-900 px-3 py-2 max-h-80 overflow-y-auto space-y-3">
+    <dl
+      data-step-output=""
+      className="m-0 grid max-h-80 min-w-0 gap-bakin-3 overflow-y-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default p-bakin-3"
+    >
       {Object.entries(data).map(([key, value]) => (
         <div key={key}>
-          <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{humanizeKey(key)}</p>
-          <OutputValue value={value} />
+          <dt className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
+            {humanizeKey(key)}
+          </dt>
+          <dd className="m-0"><OutputValue value={value} /></dd>
         </div>
       ))}
-    </div>
+    </dl>
   )
 }

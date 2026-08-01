@@ -19,7 +19,10 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 import { fireEvent, render } from '@testing-library/react'
 import '../rtl-settle'
 
-import { QueuedMessageList, type ConversationQueuedItem } from '@makinbakin/sdk/components'
+import {
+  QueuedMessageList,
+  type ConversationQueuedItem,
+} from '@makinbakin/sdk/conversation'
 
 const ITEMS: ConversationQueuedItem[] = [
   { id: 'q1', ts: '2026-07-25T00:00:00Z', content: 'first correction' },

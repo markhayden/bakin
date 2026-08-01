@@ -41,21 +41,27 @@ import {
   ArrowDown,
   ArrowUp,
   Copy,
-  GitBranch,
   LayoutGrid,
   Pencil,
   Save,
-  ShieldAlert,
   Trash2,
-  Workflow as WorkflowIcon,
 } from 'lucide-react'
-import { Button } from "@makinbakin/sdk/ui"
+import {
+  PageHeader,
+  WorkspacePage,
+  WorkspacePageBody,
+  WorkspacePageCompactHeader,
+  WorkspacePageHeader,
+  PageBody,
+  PageCanvas,
+} from '@makinbakin/sdk/patterns'
+import { useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
+import { Badge, Banner, Button, DropdownMenuItem } from '@makinbakin/sdk/ui'
 
 import { getNodeRendererSnapshot, subscribeNodeRenderers } from '../lib/node-renderer-registry'
 import { NodeTypePalette, PALETTE_DRAG_MIME_TYPE } from './node-type-palette'
 import { NodeConfigDrawer } from './node-config-drawer'
 import { WorkflowDetailsDrawer } from './workflow-details-drawer'
-import { useUnsavedChangesGuard } from '@makinbakin/sdk/components'
 import { ManagedWorkflowCopyDialog } from './managed-workflow-copy-dialog'
 import {
   clearWorkflowDialogFieldError,
@@ -64,7 +70,7 @@ import {
   validateWorkflowDialogFields,
   type WorkflowDialogFieldErrors,
 } from './workflow-dialog-validation'
-import { WorkflowDeleteAction } from './workflow-delete-action'
+import { WorkflowDeleteDialog } from './workflow-delete-action'
 import {
   TRIGGER_NODE_ID,
   APPEND_NODE_ID,
@@ -95,10 +101,10 @@ const RESET_NODE_STYLES = `
     border-radius: 0 !important;
   }
   .react-flow__node.bakin-workflow-node-selected > div {
-    box-shadow: 0 0 0 2px rgb(96 165 250 / 0.9), 0 18px 48px rgb(0 0 0 / 0.35) !important;
+    box-shadow: 0 0 0 2px var(--bakin-color-focus-ring), var(--bakin-elevation-overlay) !important;
   }
   .react-flow__node {
-    transition: transform 160ms ease, opacity 160ms ease;
+    transition: transform var(--bakin-motion-duration-transition, 160ms) ease, opacity var(--bakin-motion-duration-transition, 160ms) ease;
   }
 `
 
@@ -170,7 +176,6 @@ function InsertableEdge({
   targetY,
   sourcePosition,
   targetPosition,
-  style,
   markerEnd,
   data,
 }: EdgeProps) {
@@ -187,17 +192,17 @@ function InsertableEdge({
 
   return (
     <>
-      <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
+      <BaseEdge path={edgePath} markerEnd={markerEnd} />
       {insertData && (
         <EdgeLabelRenderer>
           <button
             type="button"
             aria-label="Drop node here"
             title="Drop a node here"
-            className={`nodrag nopan pointer-events-auto flex items-center justify-center rounded-full border transition ${
+            className={`nodrag nopan pointer-events-auto flex items-center justify-center rounded-bakin-pill border transition ${
               isDragOver
-                ? 'size-8 border-blue-300/80 bg-blue-500/20 shadow-[0_0_0_4px_rgba(59,130,246,0.16)]'
-                : 'size-5 border-transparent bg-transparent hover:border-blue-400/40 hover:bg-blue-500/10'
+                ? 'size-8 border-bakin-signal-info/80 bg-bakin-signal-info/20 ring-4 ring-bakin-signal-info/15'
+                : 'size-5 border-transparent bg-transparent hover:border-bakin-signal-info/40 hover:bg-bakin-signal-info/10'
             }`}
             style={{
               position: 'absolute',
@@ -233,10 +238,10 @@ function InsertableEdge({
             }}
           >
             <span
-              className={`rounded-full transition-all ${
+              className={`rounded-bakin-pill transition-all ${
                 isDragOver
-                  ? 'size-4 bg-blue-300'
-                  : 'size-2.5 bg-zinc-500 hover:bg-blue-300'
+                  ? 'size-4 bg-bakin-signal-info'
+                  : 'size-2.5 bg-bakin-text-muted hover:bg-bakin-signal-info'
               }`}
             />
           </button>
@@ -264,6 +269,7 @@ export function WorkflowCanvasEditor({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [isDirty, setIsDirty] = useState(false)
   const [nodeDrawerDirty, setNodeDrawerDirty] = useState(false)
   const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false)
@@ -277,7 +283,11 @@ export function WorkflowCanvasEditor({
   const [copyIdEdited, setCopyIdEdited] = useState(false)
   const [copyDescription, setCopyDescription] = useState(baseDefinition.description ?? '')
   const [disableOriginal, setDisableOriginal] = useState(true)
-  const [paletteCollapsed, setPaletteCollapsed] = useState(false)
+  const [paletteCollapsed, setPaletteCollapsed] = useState(() => (
+    typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(max-width: 47.999rem)').matches
+  ))
   const [createSetupOpen, setCreateSetupOpen] = useState(mode === 'create' && !initialDefinition?.id)
 
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
@@ -858,87 +868,186 @@ export function WorkflowCanvasEditor({
   const workflowDescriptionLabel = definition.description?.trim() || 'No description'
 
   return (
-    <div className="flex h-full w-full flex-col">
-      <div className="flex items-center justify-between gap-4 border-b border-border bg-card px-4 py-3">
-        <div className="flex min-w-0 flex-1 items-start gap-3">
-          {onCancel && (
+    <WorkspacePage mode="immersive">
+      <WorkspacePageHeader>
+        <PageHeader
+        navigation={onCancel ? (
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
-              className="self-center"
               aria-label="Back to workflows"
               title="Back to workflows"
               onClick={unsavedChangesGuard.requestExit}
             >
-              <ArrowLeft className="size-4" />
+              <ArrowLeft aria-hidden="true" />
             </Button>
-          )}
-          <WorkflowIcon className="size-4 shrink-0 self-center text-amber-400" />
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <h1 className="min-w-0 truncate text-lg font-semibold leading-tight text-foreground">
-                {workflowNameLabel}
-              </h1>
-              <code className="min-w-0 max-w-full truncate font-mono text-[11px] leading-snug text-muted-foreground">
-                {workflowIdLabel}
-              </code>
+        ) : undefined}
+        eyebrow={mode === 'create' ? 'Workflows / new' : 'Workflows / edit'}
+        measure="wide"
+        title={workflowNameLabel}
+        description={workflowDescriptionLabel}
+        meta={(
+          <>
+            <code className="font-bakin-typography-family-mono">{workflowIdLabel}</code>
+            {isManagedSource ? (
+              <Badge tone="accent" variant="solid" size="xs">Managed workflow</Badge>
+            ) : null}
+            {effectiveSource === 'user' && shadowedSource ? (
+              <Badge tone="accent" variant="soft" size="xs">Shadows managed default</Badge>
+            ) : null}
+          </>
+        )}
+        actions={(
+          <div
+            className="flex w-full min-w-0 items-center gap-bakin-2 @3xl/page-header:w-auto"
+            data-workflow-editor-header-actions
+          >
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-w-0 flex-1 @3xl/page-header:flex-none"
+              aria-label="Edit workflow details"
+              onClick={openWorkflowDetails}
+              disabled={workflowDetailsOpen || Boolean(selectedStep)}
+            >
+              <Pencil aria-hidden="true" />
+              Details
+            </Button>
+            {canSaveInPlace && (
               <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Edit workflow details"
-                title="Edit workflow details"
+                size="sm"
+                className="min-w-0 flex-1 @3xl/page-header:flex-none"
+                onClick={handleSave}
+                disabled={saving || workflowDetailsOpen || createSetupOpen || Boolean(selectedStep)}
+              >
+                <Save aria-hidden="true" /> Save
+              </Button>
+            )}
+          </div>
+        )}
+        overflowActionsLabel="Workflow actions"
+        overflowActions={canDelete ? (
+          <DropdownMenuItem
+            variant="danger"
+            disabled={saving}
+            onClick={() => {
+              setError(null)
+              setDeleteDialogOpen(true)
+            }}
+          >
+            <Trash2 aria-hidden="true" />
+            Delete
+          </DropdownMenuItem>
+        ) : undefined}
+        />
+      </WorkspacePageHeader>
+      <WorkspacePageCompactHeader
+        navigation={onCancel ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Back to workflows"
+            title="Back to workflows"
+            onClick={unsavedChangesGuard.requestExit}
+          >
+            <ArrowLeft aria-hidden="true" />
+          </Button>
+        ) : undefined}
+        title={workflowNameLabel}
+        action={canSaveInPlace ? (
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={saving || workflowDetailsOpen || createSetupOpen || Boolean(selectedStep)}
+          >
+            <Save aria-hidden="true" />
+            Save
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label="Edit workflow details"
+            onClick={openWorkflowDetails}
+            disabled={workflowDetailsOpen || Boolean(selectedStep)}
+          >
+            <Pencil aria-hidden="true" />
+            Details
+          </Button>
+        )}
+        overflowActionsLabel="Workflow actions"
+        overflowActions={canSaveInPlace || canDelete ? (
+          <>
+            {canSaveInPlace ? (
+              <DropdownMenuItem
+                disabled={workflowDetailsOpen || Boolean(selectedStep)}
                 onClick={openWorkflowDetails}
               >
-                <Pencil className="size-3.5" />
-              </Button>
-              {isManagedSource && (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs font-medium leading-none text-amber-200">
-                  <ShieldAlert className="size-3.5" />
-                  Managed workflow
-                </span>
-              )}
-              {effectiveSource === 'user' && shadowedSource && (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-xs font-medium leading-none text-cyan-200">
-                  <GitBranch className="size-3.5" />
-                  Shadows managed default
-                </span>
-              )}
+                <Pencil aria-hidden="true" />
+                Details
+              </DropdownMenuItem>
+            ) : null}
+            {canDelete ? (
+              <DropdownMenuItem
+                variant="danger"
+                disabled={saving}
+                onClick={() => {
+                  setError(null)
+                  setDeleteDialogOpen(true)
+                }}
+              >
+                <Trash2 aria-hidden="true" />
+                Delete
+              </DropdownMenuItem>
+            ) : null}
+          </>
+        ) : undefined}
+      />
+
+      <WorkflowDeleteDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open)
+          if (!open) setError(null)
+        }}
+        workflowName={definition.name || editingId || initialId || 'this workflow'}
+        deleting={saving}
+        error={error}
+        onDelete={handleDelete}
+      />
+
+      <WorkspacePageBody>
+        <PageBody
+          gap="content"
+          className="w-full gap-0"
+          feedback={error ? (
+            <div className="px-bakin-4 pb-bakin-4 @md/page-shell:px-bakin-6 @xl/page-shell:px-bakin-8">
+              <Banner
+                tone="danger"
+                title="Workflow change failed"
+                description={error}
+                announce="polite"
+              />
             </div>
-            <p className="mt-1 line-clamp-3 min-w-0 max-w-5xl text-sm leading-snug text-muted-foreground">
-              {workflowDescriptionLabel}
-            </p>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {error && <span className="max-w-[18rem] truncate text-xs text-red-300">{error}</span>}
-          {canSaveInPlace && (
-            <Button size="sm" onClick={handleSave} disabled={saving || workflowDetailsOpen || createSetupOpen || Boolean(selectedStep)}>
-              <Save className="mr-1 size-3.5" /> Save
-            </Button>
-          )}
-          {canDelete && (
-            <WorkflowDeleteAction
-              workflowName={definition.name || editingId || initialId || 'this workflow'}
-              disabled={saving}
-              deleting={saving}
-              error={error}
-              onClearError={() => setError(null)}
-              onDelete={handleDelete}
+          ) : undefined}
+        >
+          <PageCanvas
+            orientation="vertical"
+            className="min-h-32 flex-1 overflow-hidden rounded-none border-x-0 border-y-0 @md/page-shell:border-t"
+            label="Workflow editor"
+          >
+            <div className="flex h-full min-h-0 min-w-0">
+            <NodeTypePalette
+              collapsed={paletteCollapsed}
+              disabledKinds={disabledPaletteKinds}
+              onCollapsedChange={setPaletteCollapsed}
             />
-          )}
-        </div>
-      </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        <NodeTypePalette
-          collapsed={paletteCollapsed}
-          disabledKinds={disabledPaletteKinds}
-          onCollapsedChange={setPaletteCollapsed}
-        />
-
-        <div className="relative flex-1 bg-zinc-950">
+            <div className="relative min-h-0 min-w-0 flex-1 bg-bakin-canvas-default [--xy-edge-stroke:var(--bakin-color-border-subtle)] [--xy-edge-stroke-width:2]">
           <style dangerouslySetInnerHTML={{ __html: RESET_NODE_STYLES }} />
           <ReactFlow
             nodes={nodes}
@@ -968,9 +1077,6 @@ export function WorkflowCanvasEditor({
             proOptions={{ hideAttribution: true }}
             nodesDraggable={true}
             nodesConnectable={false}
-            defaultEdgeOptions={{
-              style: { stroke: '#525252', strokeWidth: 2 },
-            }}
           >
             {selectedStep && (
               <NodeToolbar
@@ -979,7 +1085,7 @@ export function WorkflowCanvasEditor({
                 position={Position.Top}
                 align="end"
                 offset={8}
-                className="flex items-center gap-1 rounded-md border border-border bg-card/95 p-1 shadow-lg backdrop-blur"
+                className="flex items-center gap-1 rounded-bakin-control border border-bakin-border-subtle bg-bakin-surface-default/95 p-1 shadow-lg backdrop-blur"
               >
                 <Button
                   aria-label="Move selected step up"
@@ -1025,41 +1131,48 @@ export function WorkflowCanvasEditor({
             )}
             <Panel
               position="top-left"
-              className="m-2 flex rounded-md border border-border bg-card/95 p-1 shadow-lg backdrop-blur"
+              className="m-bakin-2 flex rounded-bakin-control border border-bakin-border-subtle bg-bakin-surface-default/95 p-bakin-1 shadow-bakin-elevation-overlay backdrop-blur"
             >
               <Button variant="ghost" size="sm" onClick={handleAutoArrange} disabled={saving}>
-                <LayoutGrid className="mr-1 size-3.5" /> Auto-arrange
+                <LayoutGrid aria-hidden="true" /> Auto-arrange
               </Button>
             </Panel>
-            <Background variant={BackgroundVariant.Dots} color="#3f3f46" gap={24} size={1.5} />
+            <Background variant={BackgroundVariant.Dots} color="var(--bakin-color-border-subtle)" gap={24} size={1.5} />
             <Controls position="bottom-left" showInteractive={false} />
-            <MiniMap nodeColor="#3f3f46" maskColor="rgba(0,0,0,0.7)" />
+            <MiniMap
+              className="hidden md:block"
+              nodeColor="var(--bakin-color-border-subtle)"
+              maskColor="color-mix(in srgb, var(--bakin-color-canvas-default) 78%, transparent)"
+            />
           </ReactFlow>
-        </div>
+            </div>
 
-        {workflowDetailsOpen && !selectedStep && (
-          <WorkflowDetailsDrawer
-            definition={definition}
-            onApply={handleWorkflowDetailsApply}
-            onClose={closeWorkflowDetails}
-            applyLabel={mode === 'edit' && canSaveInPlace ? 'Save details' : 'Apply'}
-            applying={saving}
-          />
-        )}
+            {workflowDetailsOpen && !selectedStep && (
+              <WorkflowDetailsDrawer
+                definition={definition}
+                onApply={handleWorkflowDetailsApply}
+                onClose={closeWorkflowDetails}
+                applyLabel={mode === 'edit' && canSaveInPlace ? 'Save details' : 'Apply'}
+                applying={saving}
+              />
+            )}
 
-        {selectedStep && !workflowDetailsOpen && (
-          <NodeConfigDrawer
-            key={`${selectedStep.id}:${selectedStep.type ?? ''}`}
-            step={selectedStep}
-            onApply={handleApply}
-            onDelete={deleteSelectedStep}
-            onClose={closeNodeDrawer}
-            onDirtyChange={setDrawerDirty}
-            existingStepIds={state.order}
-            reservedStepIds={RESERVED_STEP_IDS}
-          />
-        )}
-      </div>
+            {selectedStep && !workflowDetailsOpen && (
+              <NodeConfigDrawer
+                key={`${selectedStep.id}:${selectedStep.type ?? ''}`}
+                step={selectedStep}
+                onApply={handleApply}
+                onDelete={deleteSelectedStep}
+                onClose={closeNodeDrawer}
+                onDirtyChange={setDrawerDirty}
+                existingStepIds={state.order}
+                reservedStepIds={RESERVED_STEP_IDS}
+              />
+            )}
+            </div>
+          </PageCanvas>
+        </PageBody>
+      </WorkspacePageBody>
 
       <ManagedWorkflowCopyDialog
         open={createSetupOpen}
@@ -1151,6 +1264,6 @@ export function WorkflowCanvasEditor({
       />
 
       {unsavedChangesGuard.dialog}
-    </div>
+    </WorkspacePage>
   )
 }

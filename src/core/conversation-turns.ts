@@ -741,4 +741,3 @@ async function runTurn(
 function firstLine(text: string): string {
   return text.trim().split('\n')[0]?.slice(0, PREVIEW_MAX) ?? ''
 }
-

@@ -4,10 +4,10 @@
  * At boot, instead of blindly trusting an installed plugin's dist/, we verify
  * the `.whiskit/build.json` provenance:
  *   - no provenance → legacy/local/dev plugin; not our concern (unchanged path).
- *   - provenance present + externals contract matches → safe to activate.
- *   - provenance present but externals contract DOESN'T match → the host has
- *     moved past what the artifact was built for (e.g. a React/SDK bump). Mark
- *     it needs-update rather than activating a plugin that will break at
+ *   - provenance present + externals contract supported → safe to activate.
+ *   - provenance present but contract unsupported → the artifact expects a
+ *     different family or a newer additive contract than this host provides.
+ *     Mark it needs-update rather than activating a plugin that will break at
  *     runtime; the repair is to refetch a compatible published artifact.
  *
  * This is the host-upgrade safety the spec calls for: consumers never rebuild,

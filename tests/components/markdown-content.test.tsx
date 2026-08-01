@@ -22,12 +22,13 @@ mock.module('../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({ root: testDir }),
 }))
 
-import { act, cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 
-import { MarkdownContent } from '@makinbakin/sdk/components'
+import { MarkdownContent } from '@makinbakin/sdk/content'
 
 const CODE_MD = '```typescript\nconst x: number = 1\n```'
+const JSON_MD = '```json\n{"state":"ready","count":2}\n```'
 
 describe('MarkdownContent code blocks', () => {
   it('syntax-highlights fenced code and shows a language label', async () => {
@@ -41,6 +42,15 @@ describe('MarkdownContent code blocks', () => {
     expect(container.textContent).toContain('typescript')
   })
 
+  it('syntax-highlights JSON keys and values as distinct tokens', () => {
+    const { container } = render(<MarkdownContent content={JSON_MD} />)
+    const code = container.querySelector('pre code.language-json')
+    expect(code).not.toBeNull()
+    expect(code!.querySelector('.hljs-attr')?.textContent).toContain('state')
+    expect(code!.querySelector('.hljs-string')?.textContent).toContain('ready')
+    expect(code!.querySelector('.hljs-number')?.textContent).toBe('2')
+  })
+
   it('copy button writes the code text to the clipboard', async () => {
     const writes: string[] = []
     Object.defineProperty(globalThis.navigator, 'clipboard', {
@@ -52,6 +62,7 @@ describe('MarkdownContent code blocks', () => {
     expect(copy).not.toBeNull()
     await act(async () => { fireEvent.click(copy!) })
     expect(writes).toEqual(['const x: number = 1'])
+    await waitFor(() => expect(copy!.textContent).toContain('Copied'))
   })
 
   it('inline code gets no header chrome or copy button', async () => {
@@ -77,8 +88,8 @@ describe('MarkdownContent media', () => {
     // full-size image inside the overlay
     expect(lightbox!.querySelector('img')?.getAttribute('src')).toBe('/api/assets/a1/thumb')
 
-    fireEvent.click(lightbox!)
-    expect(document.querySelector('[data-md-lightbox]')).toBeNull()
+    fireEvent.click(document.querySelector('button[aria-label="Close image preview"]')!)
+    await waitFor(() => expect(document.querySelector('[data-md-lightbox]')).toBeNull())
   })
 
   it('renders video-extension image URLs as a video element', async () => {

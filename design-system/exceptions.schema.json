@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bakin.local/design-system/exceptions.schema.json",
+  "title": "Bakin UI design-system exceptions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "policy", "exceptions"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "policy": { "type": "string", "minLength": 40 },
+    "exceptions": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/exception" }
+    }
+  },
+  "definitions": {
+    "repositoryPath": {
+      "type": "string",
+      "minLength": 1,
+      "not": { "pattern": "^(?:/|[A-Za-z]:\\\\|\\.\\./)" }
+    },
+    "explanation": {
+      "type": "string",
+      "minLength": 40
+    },
+    "exception": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "status",
+        "scope",
+        "closestPattern",
+        "mismatch",
+        "compositionLimit",
+        "alternative",
+        "safeguards",
+        "approvedBy",
+        "approvedOn",
+        "approvalEvidence",
+        "reviewBy",
+        "removalCondition"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "status": { "const": "approved-temporary" },
+        "scope": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/repositoryPath" }
+        },
+        "allowances": {
+          "description": "Per-path legacy-style scanner findings this exception covers. Keys must be scope paths; the style ratchet subtracts exactly these counts and fails when a recorded count is stale.",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/definitions/repositoryPath" },
+          "additionalProperties": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": false,
+            "properties": {
+              "raw-palette": { "type": "integer", "minimum": 1 },
+              "arbitrary-size": { "type": "integer", "minimum": 1 },
+              "raw-control": { "type": "integer", "minimum": 1 },
+              "inline-style": { "type": "integer", "minimum": 1 },
+              "generic-token": { "type": "integer", "minimum": 1 },
+              "unscoped-css": { "type": "integer", "minimum": 1 },
+              "private-import": { "type": "integer", "minimum": 1 }
+            }
+          }
+        },
+        "closestPattern": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["storyPath", "storyExport"],
+          "properties": {
+            "storyPath": {
+              "type": "string",
+              "pattern": "^storybook/public/.+\\.stories\\.tsx?$"
+            },
+            "storyExport": {
+              "type": "string",
+              "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$"
+            }
+          }
+        },
+        "mismatch": { "$ref": "#/definitions/explanation" },
+        "compositionLimit": { "$ref": "#/definitions/explanation" },
+        "alternative": { "$ref": "#/definitions/explanation" },
+        "safeguards": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["accessibility", "responsiveness", "routing", "isolation"],
+          "properties": {
+            "accessibility": { "$ref": "#/definitions/explanation" },
+            "responsiveness": { "$ref": "#/definitions/explanation" },
+            "routing": { "$ref": "#/definitions/explanation" },
+            "isolation": { "$ref": "#/definitions/explanation" }
+          }
+        },
+        "approvedBy": { "type": "string", "minLength": 2 },
+        "approvedOn": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "approvalEvidence": { "$ref": "#/definitions/explanation" },
+        "reviewBy": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "removalCondition": { "$ref": "#/definitions/explanation" }
+      }
+    }
+  }
+}

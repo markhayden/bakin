@@ -107,6 +107,15 @@ jobs:
             echo "release_id=${tag}-${commit}"
           } >> "${GITHUB_OUTPUT}"
 
+  ui:
+    name: UI visuals
+    needs: gate
+    uses: ./.github/workflows/ui-visual.yml
+    with:
+      checkout_ref: ${{ needs.gate.outputs.commit }}
+    permissions:
+      contents: read
+
   build:
     name: Build and pre-publish gates
     runs-on: ubuntu-latest
@@ -123,6 +132,13 @@ jobs:
           ref: ${{ needs.gate.outputs.commit }}
           fetch-depth: 0
 
+      - name: Clone pinned bakin-bits-official
+        run: |
+          BITS_REF="$(node -p "require('./design-system/compatibility.json').repositories['bakin-bits-official'].ref")"
+          git clone --filter=blob:none --no-checkout https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/external/bakin-bits-official"
+          git -C "${{ runner.workspace }}/external/bakin-bits-official" fetch --depth 1 origin "$BITS_REF"
+          git -C "${{ runner.workspace }}/external/bakin-bits-official" checkout --detach FETCH_HEAD
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -130,6 +146,20 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Install official Bits dependencies
+        working-directory: ${{ runner.workspace }}/external/bakin-bits-official
+        run: bun install --frozen-lockfile
+
+      - name: Official UI census
+        env:
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
+        run: bun run ui:census:check
+
+      - name: Legacy UI style ratchet
+        env:
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
+        run: bun run ui:legacy-styles:check
 
       - name: Stamp release version
         run: bun run scripts/stamp-version.ts
@@ -169,6 +199,11 @@ jobs:
 
       - name: Build host shell
         run: bun run build:host-shell
+
+      - name: Browser UI performance ratchet
+        env:
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
+        run: bun run ui:performance
 
       - name: Regenerate embedded-asset manifest
         run: bun run build:assets-manifest
@@ -253,6 +288,7 @@ jobs:
       - gate
       - build
       - sign-macos
+      - ui
     env:
       TAG: ${{ needs.gate.outputs.tag }}
       VERSION: ${{ needs.gate.outputs.version }}

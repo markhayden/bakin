@@ -142,6 +142,7 @@ export default defineConfig({
               ],
             },
             { label: 'SDK', slug: 'extending/sdk/overview' },
+            { label: 'UI Style Guide', slug: 'extending/ui/overview' },
             { label: 'Architecture', slug: 'extending/architecture' },
             { label: "Bakin' Core", slug: 'extending/development-workflow' },
             { label: 'Quality Control', slug: 'extending/quality-control' },
@@ -158,6 +159,7 @@ export default defineConfig({
             { label: 'Defaults', slug: 'reference/generated/settings' },
             { label: 'Runtime Paths', slug: 'reference/generated/runtime-paths' },
             { label: 'SDK Reference', slug: 'reference/generated/sdk' },
+            { label: 'UI Tokens', slug: 'reference/generated/ui-tokens' },
           ],
         },
         {

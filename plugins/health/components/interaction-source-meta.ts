@@ -5,36 +5,28 @@ export interface InteractionSourceMeta {
   label: 'Tools' | 'API' | 'Agents'
   icon: LucideIcon
   iconColorClass: string
-  backgroundClass: string
-  barColor: string
 }
 
 /**
- * Canonical presentation for the three kinds of Bakin interaction.
- * Source colors describe where a call went; destructive red is layered on
- * separately wherever a call failed.
+ * Canonical presentation for the three kinds of Bakin interaction. Source
+ * identity is carried by the label and icon; chart colors come from the chart
+ * kit's palette assignment, and destructive red stays reserved for failures.
  */
 export const INTERACTION_SOURCE_META: Readonly<Record<UsageKind, InteractionSourceMeta>> = {
   mcp: {
     label: 'Tools',
     icon: Wrench,
-    iconColorClass: 'text-chart-1',
-    backgroundClass: 'bg-chart-1',
-    barColor: 'var(--chart-1)',
+    iconColorClass: 'text-bakin-text-muted',
   },
   rest: {
     label: 'API',
     icon: Braces,
-    iconColorClass: 'text-chart-2',
-    backgroundClass: 'bg-chart-2',
-    barColor: 'var(--chart-2)',
+    iconColorClass: 'text-bakin-text-muted',
   },
   agent: {
     label: 'Agents',
     icon: Bot,
-    iconColorClass: 'text-chart-3',
-    backgroundClass: 'bg-chart-3',
-    barColor: 'var(--chart-3)',
+    iconColorClass: 'text-bakin-text-muted',
   },
 }
 

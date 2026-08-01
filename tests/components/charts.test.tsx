@@ -16,16 +16,19 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import { StackedColumnChart } from '../../src/components/charts/stacked-column-chart'
-import { LineChart } from '../../src/components/charts/line-chart'
-import { BarChart } from '../../src/components/charts/bar-chart'
-import { Sparkline } from '../../src/components/charts/sparkline'
-import { ChartExplainer } from '../../src/components/charts/chart-explainer'
+import {
+  BarChart,
+  ChartExplainer,
+  LineChart,
+  RankedBarChart,
+  Sparkline,
+  StackedColumnChart,
+} from '@makinbakin/sdk/charts'
 import {
   assignSeriesColors,
   CHART_SERIES_COLORS,
   CHART_OTHER_COLOR,
-} from '../../src/components/charts/palette'
+} from '@makinbakin/sdk/charts'
 
 
 describe('assignSeriesColors', () => {
@@ -45,7 +48,7 @@ describe('assignSeriesColors', () => {
 })
 
 describe('StackedColumnChart', () => {
-  const data: import('../../src/components/charts/stacked-column-chart').StackedColumnDatum[] = [
+  const data: import('@makinbakin/sdk/charts').StackedColumnDatum[] = [
     { x: '2026-07-01', xLabel: 'Jul 1', values: { pixel: 100, scout: 50 } },
     { x: '2026-07-02', xLabel: 'Jul 2', values: { pixel: 700 } },
   ]
@@ -78,12 +81,12 @@ describe('StackedColumnChart', () => {
       values: Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`a${i}`, 10 + i])),
     }]
     render(<StackedColumnChart data={wide} />)
-    expect(screen.getByText('Other (3)')).toBeDefined()
+    expect(screen.getByText('Other (2)')).toBeDefined()
   })
 
   it('honest empty state', () => {
     render(<StackedColumnChart data={[]} emptyLabel="No usage recorded yet." />)
-    expect(screen.getByText('No usage recorded yet.')).toBeDefined()
+    expect(screen.getByRole('status').textContent).toBe('No usage recorded yet.')
   })
 
   it('mirrors each column tooltip on keyboard focus and exposes the exact table', () => {
@@ -167,7 +170,7 @@ describe('LineChart', () => {
     )
 
     expect(screen.getByRole('group', { name: 'Agent throughput' })).toBeDefined()
-    expect(container.querySelector('[data-series="completed"]')?.getAttribute('stroke')).toBe('var(--chart-1)')
+    expect(container.querySelector('[data-series="completed"]')?.getAttribute('stroke')).toBe('var(--bakin-color-data-series-1)')
     const table = screen.getByRole('table', { name: 'Agent throughput data', hidden: true })
     expect(table.textContent).toContain('Jul 1')
     expect(table.textContent).toContain('4')
@@ -200,7 +203,7 @@ describe('BarChart', () => {
     )
 
     expect(screen.getByRole('group', { name: 'Run outcomes' })).toBeDefined()
-    expect(container.querySelector('[data-series="completed"]')?.getAttribute('fill')).toBe('var(--chart-1)')
+    expect(container.querySelector('[data-series="completed"]')?.getAttribute('fill')).toBe('var(--bakin-color-data-series-1)')
     const table = screen.getByRole('table', { name: 'Run outcomes data', hidden: true })
     expect(table.textContent).toContain('Jul 2')
     expect(table.textContent).toContain('7')
@@ -226,6 +229,44 @@ describe('BarChart', () => {
   })
 })
 
+describe('RankedBarChart', () => {
+  it('sorts long labels by value while keeping exact values visible and keyboard readable', () => {
+    const { container } = render(
+      <RankedBarChart
+        data={[
+          { x: 'haiku', xLabel: 'anthropic/claude-haiku-4-5', values: { cost: 1_250_000 } },
+          { x: 'sonnet', xLabel: 'anthropic/claude-sonnet-4-20250514', values: { cost: 4_500_000 } },
+          { x: 'unpriced', xLabel: 'provider/model-with-unpriced-usage', values: {}, missingLabels: { cost: 'Cost unavailable' } },
+        ]}
+        series={{ key: 'cost', label: 'Estimated cost' }}
+        label="Model spend ranking"
+        formatValue={(value) => `$${(value / 1_000_000).toFixed(2)}`}
+      />,
+    )
+
+    const rows = Array.from(container.querySelectorAll('[data-slot="ranked-bar-row"]'))
+    expect(rows.map((row) => row.getAttribute('data-row-key'))).toEqual(['sonnet', 'haiku', 'unpriced'])
+    expect(screen.getByRole('img', { name: 'anthropic/claude-sonnet-4-20250514 — Estimated cost: $4.50' })).toBeDefined()
+    expect(screen.getAllByText('Cost unavailable')).toHaveLength(2)
+    expect(screen.getByRole('table', { name: 'Model spend ranking data', hidden: true }).textContent)
+      .toContain('anthropic/claude-haiku-4-5')
+  })
+
+  it('renders an honest empty state without inventing bars', () => {
+    render(
+      <RankedBarChart
+        data={[]}
+        series={{ key: 'cost', label: 'Estimated cost' }}
+        label="Agent spend ranking"
+        emptyLabel="No priced agent spend in this window."
+      />,
+    )
+
+    expect(screen.getByRole('status').textContent).toBe('No priced agent spend in this window.')
+    expect(screen.queryByRole('group', { name: 'Agent spend ranking' })).toBeNull()
+  })
+})
+
 describe('Sparkline', () => {
   it('renders focusable points, a semantic stroke, and an exact hidden table', () => {
     const { container } = render(
@@ -237,7 +278,7 @@ describe('Sparkline', () => {
       />,
     )
     expect(container.querySelector('svg[aria-label="Tokens over runs"]')).toBeDefined()
-    expect(container.querySelector('polyline')?.getAttribute('stroke')).toBe('var(--chart-1)')
+    expect(container.querySelector('polyline')?.getAttribute('stroke')).toBe('var(--bakin-color-data-series-1)')
     const mark = screen.getByRole('img', { name: 'Run 2: 5 tokens' })
     fireEvent.focus(mark)
     expect(screen.getByRole('tooltip').textContent).toBe('Run 2: 5 tokens')

@@ -10,7 +10,25 @@
  */
 import { useEffect, useState } from 'react'
 import { useDebug, useJsonFetch } from '@makinbakin/sdk/hooks'
-import { PluginLink } from '@makinbakin/sdk/components'
+import { PluginLink } from '@makinbakin/sdk/navigation'
+import { StatusBadge } from '@makinbakin/sdk/patterns'
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  DrawerSection,
+  Banner,
+  Button,
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  Form,
+  FormActions,
+  Input,
+  Textarea,
+  buttonVariants,
+} from '@makinbakin/sdk/ui'
 
 interface TaskBrandInfo {
   brandId: string
@@ -73,120 +91,196 @@ export function TaskBrandPanel({ taskId }: { taskId?: string }) {
   }
 
   return (
-    <div className="rounded-lg border p-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="size-2 rounded-full bg-fuchsia-500/50" />
-          <span className="text-sm font-medium">{brand.name || brand.brandId}</span>
-          <span className="text-xs text-muted-foreground">({SOURCE_LABEL[brand.source]})</span>
-        </div>
-        {brand.blocked && (
-          <PluginLink to="/brands" className="text-xs font-medium text-amber-400 hover:underline">
-            brand unavailable — dispatch is waiting
-          </PluginLink>
-        )}
-      </div>
-
-      {injections.length > 0 && (
-        <div className="mt-2 space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">Brand injections (what the agent saw)</p>
-          {injections.slice(0, 5).map((inj, i) => (
-            <div key={inj.runId || i} className="text-xs text-muted-foreground">
-              {inj.ts ? new Date(inj.ts).toLocaleString() : ''} · {inj.agent} · {inj.cardBytes} B
-              {inj.lessonsIncluded?.length ? ` · ${inj.lessonsIncluded.length} lesson(s)` : ''}
-              {inj.omitted?.length ? (
-                <span className="text-amber-400/80"> · {inj.omitted.length} omitted for size</span>
-              ) : ''}
-              {inj.warnings?.length ? (
-                <span className="text-amber-400/80"> · ⚠ missing assets</span>
-              ) : ''}
-            </div>
-          ))}
-        </div>
+    <DrawerSection
+      title="Brand context"
+      actions={(
+        <PluginLink
+          to={`/brands/${encodeURIComponent(brand.brandId)}`}
+          className={buttonVariants({ variant: 'link', size: 'xs' })}
+        >
+          Open brand
+        </PluginLink>
       )}
-      {injections.length === 0 && !brand.blocked && (
-        <p className="mt-1 text-xs text-muted-foreground">No dispatches yet — the brand card will inject on the next run.</p>
-      )}
+    >
+      <div className="grid gap-bakin-4">
+        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+          <p className="m-0 min-w-0 font-bakin-typography-weight-semibold text-bakin-text-primary">
+            {brand.name || brand.brandId}
+          </p>
+          <StatusBadge size="xs" tone="accent">{SOURCE_LABEL[brand.source]}</StatusBadge>
+        </div>
 
-      {/* Quick-add lesson (#419 §6): close the correction loop from the task
-          itself — no trip to the Brands page. */}
-      <div className="mt-2">
+        {brand.blocked ? (
+          <Banner
+            tone="attention"
+            headingLevel={4}
+            title="Brand unavailable"
+            description="Dispatch is waiting until this brand is published and available."
+            action={(
+              <PluginLink
+                to={`/brands/${encodeURIComponent(brand.brandId)}`}
+                className={buttonVariants({ variant: 'outline', size: 'xs' })}
+              >
+                Review brand
+              </PluginLink>
+            )}
+          />
+        ) : null}
+
+        {injections.length > 0 ? (
+          <div className="grid gap-bakin-2">
+            <p className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-muted">
+              Recent injections
+            </p>
+            <ul className="m-0 grid list-none gap-bakin-2 p-0" aria-label="What the agent saw">
+              {injections.slice(0, 5).map((inj, i) => (
+                <li
+                  key={inj.runId || i}
+                  className="grid gap-bakin-1 border-t border-bakin-border-subtle py-bakin-2 first:border-t-0 first:pt-0"
+                >
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+                    <span>{inj.ts ? new Date(inj.ts).toLocaleString() : 'Unknown time'}</span>
+                    <span>{inj.agent || 'Unknown agent'}</span>
+                    <span className="font-bakin-typography-family-mono">{inj.cardBytes ?? 0} B</span>
+                    {inj.lessonsIncluded?.length ? <span>{inj.lessonsIncluded.length} lesson(s)</span> : null}
+                  </div>
+                  {inj.omitted?.length || inj.warnings?.length ? (
+                    <div className="flex min-w-0 flex-wrap gap-bakin-1">
+                      {inj.omitted?.length ? (
+                        <StatusBadge size="xs" tone="attention">
+                          {inj.omitted.length} omitted for size
+                        </StatusBadge>
+                      ) : null}
+                      {inj.warnings?.length ? (
+                        <StatusBadge size="xs" tone="attention">Missing assets</StatusBadge>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : !brand.blocked ? (
+          <p className="m-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+            No dispatches yet. The brand card will inject on the next run.
+          </p>
+        ) : null}
+
+        {/* Quick-add lesson (#419 §6): close the correction loop from the task
+            itself — no trip to the Brands page. */}
         {!lessonOpen ? (
-          <button
-            className="rounded-md border px-2 py-1 text-xs hover:bg-accent"
+          <Button
+            variant="outline"
+            size="sm"
+            className="justify-self-start"
             onClick={() => { setLessonOpen(true); setLessonState('idle') }}
           >
             Save as brand lesson
-          </button>
+          </Button>
         ) : (
-          <div className="space-y-1.5">
-            <input
-              className="w-full rounded-md border bg-background px-2 py-1 text-xs"
-              placeholder="Lesson title (e.g. Never use threads on LinkedIn)"
-              value={lessonTitle}
-              onChange={(e) => setLessonTitle(e.target.value)}
-            />
-            <textarea
-              className="w-full rounded-md border bg-background px-2 py-1 text-xs"
-              rows={3}
-              placeholder="What happened on this task, and what to do instead. (Absolute always-rules belong in the brand's Rules list.)"
-              value={lessonBody}
-              onChange={(e) => setLessonBody(e.target.value)}
-            />
-            <div className="flex items-center gap-2">
-              <button
-                className="rounded-md border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
+          <Form
+            aria-label="Save as brand lesson"
+            busy={lessonState === 'saving'}
+            onSubmit={async (event) => {
+              event.preventDefault()
+              setLessonState('saving')
+              try {
+                // Append-only route — never overwrites a same-slug lesson.
+                const res = await fetch(
+                  `/api/plugins/brands/${brand.brandId}/lessons`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: lessonTitle.trim(), body: lessonBody.trim() }),
+                  },
+                )
+                if (!res.ok) throw new Error(String(res.status))
+                setLessonState('saved')
+                setLessonOpen(false)
+                setLessonTitle('')
+                setLessonBody('')
+              } catch {
+                setLessonState('error')
+              }
+            }}
+          >
+            <FieldGroup>
+              <Field name="lesson-title">
+                <FieldLabel htmlFor="brand-lesson-title" requirement="required">Lesson title</FieldLabel>
+                <FieldDescription>Make the reusable guidance easy to recognize.</FieldDescription>
+                <Input
+                  id="brand-lesson-title"
+                  required
+                  placeholder="e.g. Prefer concrete launch copy"
+                  value={lessonTitle}
+                  onChange={(e) => setLessonTitle(e.target.value)}
+                />
+              </Field>
+              <Field name="lesson-guidance">
+                <FieldLabel htmlFor="brand-lesson-guidance" requirement="required">Lesson guidance</FieldLabel>
+                <FieldDescription>Describe what happened and what to do instead.</FieldDescription>
+                <Textarea
+                  id="brand-lesson-guidance"
+                  required
+                  rows={3}
+                  placeholder="Absolute always-rules belong in the brand's Rules list."
+                  value={lessonBody}
+                  onChange={(e) => setLessonBody(e.target.value)}
+                />
+              </Field>
+            </FieldGroup>
+            {lessonState === 'error' ? (
+              <Alert tone="danger">
+                <AlertTitle>Lesson could not be saved</AlertTitle>
+                <AlertDescription>Try again. Your draft remains in this form.</AlertDescription>
+              </Alert>
+            ) : null}
+            <FormActions>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setLessonOpen(false)}
+                disabled={lessonState === 'saving'}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
                 disabled={!lessonTitle.trim() || !lessonBody.trim() || lessonState === 'saving'}
-                onClick={async () => {
-                  setLessonState('saving')
-                  try {
-                    // Append-only route — never overwrites a same-slug lesson.
-                    const res = await fetch(
-                      `/api/plugins/brands/${brand.brandId}/lessons`,
-                      {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ title: lessonTitle.trim(), body: lessonBody.trim() }),
-                      },
-                    )
-                    if (!res.ok) throw new Error(String(res.status))
-                    setLessonState('saved')
-                    setLessonOpen(false)
-                    setLessonTitle('')
-                    setLessonBody('')
-                  } catch {
-                    setLessonState('error')
-                  }
-                }}
               >
                 {lessonState === 'saving' ? 'Saving…' : 'Save lesson'}
-              </button>
-              <button className="text-xs text-muted-foreground hover:underline" onClick={() => setLessonOpen(false)}>
-                Cancel
-              </button>
-              {lessonState === 'error' && <span className="text-xs text-destructive">save failed</span>}
-            </div>
-          </div>
+              </Button>
+            </FormActions>
+          </Form>
         )}
-        {lessonState === 'saved' && !lessonOpen && (
-          <p className="mt-1 text-xs text-muted-foreground">Lesson saved — it will inject on relevant future dispatches.</p>
-        )}
-      </div>
+        {lessonState === 'saved' && !lessonOpen ? (
+          <Alert tone="success">
+            <AlertTitle>Lesson saved</AlertTitle>
+            <AlertDescription>It will inject on relevant future dispatches.</AlertDescription>
+          </Alert>
+        ) : null}
 
-      {debug && (
-        <div className="mt-2">
-          {preview === null ? (
-            <button
-              className="rounded-md border px-2 py-1 text-xs hover:bg-accent"
-              onClick={() => void loadPreview()}
-            >
-              Render current card (debug)
-            </button>
-          ) : (
-            <pre className="mt-1 max-h-64 overflow-auto rounded-md bg-muted/40 p-2 text-[11px] whitespace-pre-wrap">{preview}</pre>
-          )}
-        </div>
-      )}
-    </div>
+        {debug ? (
+          <div className="grid gap-bakin-2">
+            {preview === null ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="justify-self-start"
+                onClick={() => void loadPreview()}
+              >
+                Render current card
+              </Button>
+            ) : (
+              <pre className="m-0 max-h-64 overflow-auto rounded-bakin-surface bg-bakin-canvas-default p-bakin-3 whitespace-pre-wrap font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                {preview}
+              </pre>
+            )}
+          </div>
+        ) : null}
+      </div>
+    </DrawerSection>
   )
 }

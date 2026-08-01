@@ -1,4 +1,5 @@
 import type { HealthOverviewViewModel } from '../lib/health-view-model'
+import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
 import { OverviewAgentSpend } from './overview-agent-spend'
 import { OverviewContextTraffic } from './overview-context-traffic'
 import { OverviewInteractions } from './overview-interactions'
@@ -12,21 +13,26 @@ export function OverviewOperations({
   telemetry: OverviewTelemetry
 }) {
   return (
-    <section
+    <Section
       aria-labelledby="overview-operations-title"
-      className="min-w-0 overflow-hidden rounded-xl border border-border/80 bg-card"
+      divider="top"
+      spacing="compact"
+      data-layout="operational-telemetry"
       data-testid="overview-operations"
     >
-      <h2 id="overview-operations-title" className="sr-only">Operations</h2>
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] @[48rem]/health:grid-cols-[minmax(0,1.6fr)_minmax(20rem,.85fr)]">
+      <Stack gap="dense">
+        <h2 id="overview-operations-title">Operating telemetry</h2>
+        <p className="text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+          Token use, context pressure, cache efficiency, and recorded interactions.
+        </p>
+      </Stack>
+      <Grid layout="main-aside" gap="section" align="start">
         <OverviewAgentSpend resource={telemetry.history} model={model} />
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] border-t border-border/70 @[40rem]/health:grid-cols-2 @[48rem]/health:grid-cols-1 @[48rem]/health:border-l @[48rem]/health:border-t-0">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-bakin-6 @[40rem]/health:grid-cols-2 @[48rem]/health:grid-cols-1">
           <OverviewContextTraffic context={telemetry.context} sessions={telemetry.sessions} />
-          <div className="border-t border-border/70 @[40rem]/health:border-l @[40rem]/health:border-t-0 @[48rem]/health:border-l-0 @[48rem]/health:border-t">
-            <OverviewInteractions resource={telemetry.interactions} />
-          </div>
+          <OverviewInteractions resource={telemetry.interactions} />
         </div>
-      </div>
-    </section>
+      </Grid>
+    </Section>
   )
 }

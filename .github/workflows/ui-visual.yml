@@ -1,0 +1,97 @@
+name: UI Visual Checks
+
+on:
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: Commit or ref whose UI is being verified
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  # Keep this job id/name stable for existing required-check configuration.
+  visual:
+    name: Canonical Playwright visuals
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      options: --init --ipc=host
+    permissions:
+      contents: read
+    env:
+      CI: true
+      BAKIN_UI_CANONICAL_IMAGE: mcr.microsoft.com/playwright:v1.60.0-noble
+      # Firefox refuses to launch when $HOME (/github/home) isn't owned by
+      # the current user inside the container.
+      HOME: /root
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      # The playwright container image ships without unzip, which setup-bun
+      # needs to extract the bun archive.
+      - name: Install unzip for setup-bun
+        run: apt-get update && apt-get install -y unzip
+
+      # The storybook build compiles the stylesheet, whose @source globs scan
+      # the SIBLING bakin-bits-official checkout — pin it beside the repo so
+      # rendered classes match the committed baselines.
+      - name: Clone bakin-bits-official (stylesheet sources)
+        run: |
+          BITS_REF="$(node -p "require('./design-system/compatibility.json').repositories['bakin-bits-official'].ref")"
+          git clone --filter=blob:none --no-checkout https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/bakin-bits-official"
+          git -C "${{ runner.workspace }}/bakin-bits-official" fetch --depth 1 origin "$BITS_REF"
+          git -C "${{ runner.workspace }}/bakin-bits-official" checkout --detach FETCH_HEAD
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify UI design-system governance
+        run: bun run ui:governance:check
+
+      - name: Verify canonical image
+        run: node scripts/ui/canonical-playwright.mjs --check-render
+
+      - name: Verify design tokens
+        run: bun run ui:tokens:check
+
+      - name: Verify focused SDK public API freeze
+        run: bun run ui:public-api:check
+
+      - name: Verify deterministic public catalog
+        run: bun run ui:build:public:verify
+
+      - name: Run story accessibility and interactions
+        run: bun run ui:test:stories
+
+      - name: Run visual baselines
+        run: bun run ui:test:visual
+
+      - name: Run cross-browser behavior checks
+        run: bun run ui:test:browsers
+
+      - name: Verify plugin UI conformance runner
+        run: bun run ui:test:conformance
+
+      - name: Upload UI failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ui-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            test-results/ui-stories
+            playwright-report/ui
+            test-results/ui-visual
+            playwright-report/ui-browser
+            test-results/ui-browser
+            test-results/plugin-ui-conformance

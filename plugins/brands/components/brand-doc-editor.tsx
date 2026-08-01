@@ -5,11 +5,25 @@
  * via `?create=1` (first save creates the file).
  */
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
-import { ArrowLeft, FileText, Sparkles } from 'lucide-react'
-import { MarkdownEditor, SaveBar, ErrorState, SegmentedControl, useUnsavedChangesGuard } from '@makinbakin/sdk/components'
-import { Button } from '@makinbakin/sdk/ui'
+import { ArrowLeft, Sparkles } from 'lucide-react'
+import { MarkdownEditor, type MarkdownEditorMode } from '@makinbakin/sdk/content'
 import { toast } from '@makinbakin/sdk/hooks'
+import {
+  useParams,
+  useRouter,
+  useSearchParams,
+  useUnsavedChangesGuard,
+} from '@makinbakin/sdk/navigation'
+import {
+  Page,
+  PageAside,
+  PageBody,
+  PageHeader,
+  SaveBar,
+  SegmentedControl,
+  StatusBadge,
+} from '@makinbakin/sdk/patterns'
+import { Button, SystemState } from '@makinbakin/sdk/ui'
 import { DocBrainstormPanel } from './brand-doc-brainstorm'
 
 type LoadState =
@@ -21,7 +35,7 @@ type LoadState =
 const KIND_LABEL: Record<string, string> = { guidelines: 'Guidelines', lessons: 'Lessons' }
 
 export function BrandDocEditorPage() {
-  const { brandId, kind, name } = useParams({ strict: false }) as { brandId: string; kind: string; name: string }
+  const { brandId, kind, name } = useParams<{ brandId: string; kind: string; name: string }>()
   // key: same-route param navigation (doc A → doc B via history) reuses the
   // mounted component — without a remount, doc A's content/dirty/created
   // state survives under doc B's URL and Save would cross-write files.
@@ -32,14 +46,14 @@ function BrandDocEditorInner({ brandId, kind, name }: { brandId: string; kind: s
   // The host router keeps search values as plain strings (PR3 3.1), so
   // `?create=1` arrives as '1'; String() also tolerates older number-coerced
   // history entries from before that change.
-  const search = useSearch({ strict: false }) as { create?: string | number }
-  const isCreate = String(search.create ?? '') === '1'
-  const navigate = useNavigate()
+  const search = useSearchParams()
+  const isCreate = search.get('create') === '1'
+  const router = useRouter()
 
   const [state, setState] = useState<LoadState>({ status: 'loading' })
   const [content, setContent] = useState('')
   const [brandName, setBrandName] = useState(brandId)
-  const [mode, setMode] = useState<'edit' | 'preview'>('edit')
+  const [mode, setMode] = useState<MarkdownEditorMode>('edit')
   const [brainstormOpen, setBrainstormOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -96,8 +110,8 @@ function BrandDocEditorInner({ brandId, kind, name }: { brandId: string; kind: s
   }, [load])
 
   const backToDocs = useCallback(
-    () => void navigate({ to: '/brands/$brandId', params: { brandId }, search: { tab: kind } as never }),
-    [navigate, brandId, kind],
+    () => router.push(`/brands/${encodeURIComponent(brandId)}?tab=${encodeURIComponent(kind)}`),
+    [router, brandId, kind],
   )
 
   const save = useCallback(async (): Promise<boolean> => {
@@ -128,7 +142,7 @@ function BrandDocEditorInner({ brandId, kind, name }: { brandId: string; kind: s
   // In-app navigation guard — a dirty doc must never be silently dropped by a
   // route change (breadcrumb, sidebar, ⌘K).
   const unsavedGuard = useUnsavedChangesGuard({
-    hasUnsavedChanges: dirty || (isCreate && !created),
+    hasUnsavedChanges: state.status === 'ready' && (dirty || (isCreate && !created)),
     saving,
     title: 'Unsaved doc changes',
     description: `${name} has unsaved changes. Save before leaving, discard them, or stay here.`,
@@ -141,104 +155,126 @@ function BrandDocEditorInner({ brandId, kind, name }: { brandId: string; kind: s
     },
   })
 
-  if (state.status === 'error') {
-    return (
-      <div className="p-6">
-        <ErrorState
-          title="Couldn't load this doc"
-          message="The server didn't respond — the doc is probably fine. Retry, or go back to the brand."
-          retry={() => void load()}
+  const editorState = state.status === 'loading'
+    ? (
+        <SystemState
+          kind="loading"
+          scope="section"
+          title="Loading brand document"
+          description="The latest saved content will appear here."
         />
-        <Button variant="ghost" size="sm" className="mt-3" onClick={backToDocs}>
-          <ArrowLeft className="size-3.5" /> Back to the brand
-        </Button>
-      </div>
-    )
-  }
-
-  if (state.status === 'not-found') {
-    return (
-      <div className="p-6">
-        <ErrorState
-          title="This doc doesn't exist"
-          message={`${name} isn't in this brand's ${KIND_LABEL[kind]?.toLowerCase() ?? kind} — it may have been deleted.`}
-          retry={backToDocs}
-        />
-      </div>
-    )
-  }
+      )
+    : state.status === 'error'
+      ? (
+          <SystemState
+            kind="error"
+            recovery="available"
+            scope="section"
+            title="Couldn't load this document"
+            description="The server did not respond. The saved document is probably still intact."
+            action={(
+              <>
+                <Button onClick={() => void load()}>Retry</Button>
+                <Button variant="outline" onClick={backToDocs}>Back to brand</Button>
+              </>
+            )}
+          />
+        )
+      : state.status === 'not-found'
+        ? (
+            <SystemState
+              kind="error"
+              recovery="available"
+              scope="section"
+              title="This document doesn't exist"
+              description={`${name} is not in this brand's ${KIND_LABEL[kind]?.toLowerCase() ?? kind}. It may have been deleted.`}
+              action={<Button onClick={backToDocs}>Back to brand</Button>}
+            />
+          )
+        : undefined
 
   return (
-    <div className="flex w-full flex-col gap-4 p-4 sm:p-6" data-brand-doc-editor>
-      {/* One header row: breadcrumb left, mode toggle + brainstorm right. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <nav className="flex min-w-0 items-center gap-1 text-sm text-muted-foreground">
-          <Button variant="ghost" size="sm" className="-ml-2" onClick={backToDocs}>
-            <ArrowLeft className="size-3.5" /> {brandName}
+    <Page data-brand-doc-editor>
+      <PageHeader
+        measure="wide"
+        navigation={(
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Back to ${brandName}`}
+            onClick={backToDocs}
+          >
+            <ArrowLeft />
           </Button>
-          <span>/</span>
-          <span>{KIND_LABEL[kind] ?? kind}</span>
-          <span>/</span>
-          <span className="flex min-w-0 items-center gap-1.5 font-mono text-foreground">
-            <FileText className="size-3.5 shrink-0" /> <span className="truncate">{name}</span>
-            {isCreate && !created && <span className="rounded bg-foreground/10 px-1.5 py-0.5 text-[10px]">new</span>}
-          </span>
-        </nav>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        )}
+        eyebrow={`Branding / ${KIND_LABEL[kind] ?? kind}`}
+        title={name}
+        meta={(
+          <>
+            <span>{brandName}</span>
+            {isCreate && !created ? <StatusBadge size="xs" tone="accent">New</StatusBadge> : null}
+          </>
+        )}
+        controls={(
           <SegmentedControl
             ariaLabel="Editor mode"
             options={[
-              { value: 'edit', label: 'edit' },
-              { value: 'preview', label: 'preview' },
+              { value: 'edit', label: 'Edit' },
+              { value: 'preview', label: 'Preview' },
             ]}
             value={mode}
             onValueChange={setMode}
           />
+        )}
+        actions={(
           <Button
             variant={brainstormOpen ? 'secondary' : 'outline'}
-            size="sm"
             onClick={() => setBrainstormOpen((v) => !v)}
             data-brainstorm-toggle
           >
-            <Sparkles className="size-3.5" /> Brainstorm
+            <Sparkles /> Brainstorm
           </Button>
-        </div>
-      </div>
-
-      {state.status === 'loading' ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : (
-        <div className="flex min-h-0 items-stretch gap-4">
-          <div className="min-w-0 flex-1">
-            <MarkdownEditor
-              content={content}
-              editing={mode === 'edit'}
-              onChange={setContent}
-              minHeight="70vh"
-            />
-          </div>
-          {brainstormOpen && (
-            <aside className="flex h-[75vh] w-[26rem] shrink-0 flex-col overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10" data-brainstorm-panel>
-              <DocBrainstormPanel brandId={brandId} kind={kind} name={name} getDocContent={() => content} />
-            </aside>
-          )}
-        </div>
-      )}
-
-      <SaveBar
-        dirty={dirty || (isCreate && !created)}
-        saving={saving}
-        error={saveError}
-        saveLabel="Save doc"
-        onSave={() => void save()}
-        onDiscard={() => {
-          // A brand-new unsaved doc has nothing to reset to — discarding means
-          // leaving, which routes through the guard's one exit dialog.
-          if (isCreate && !created) unsavedGuard.requestExit()
-          else if (state.status === 'ready') setContent(state.serverContent)
-        }}
+        )}
       />
+
+      <PageBody
+        layout={brainstormOpen ? 'aside' : 'single'}
+        state={editorState}
+      >
+        <div className="flex min-w-0 flex-1 flex-col gap-bakin-6">
+          {state.status === 'ready' ? (
+            <MarkdownEditor
+              label={`${brandName} ${KIND_LABEL[kind]?.toLowerCase() ?? kind} content`}
+              content={content}
+              mode={mode}
+              onChange={setContent}
+              height="viewport"
+            />
+          ) : null}
+        </div>
+        {brainstormOpen && state.status === 'ready' ? (
+          <PageAside label="Brand document brainstorm" data-brainstorm-panel>
+              <DocBrainstormPanel brandId={brandId} kind={kind} name={name} getDocContent={() => content} />
+          </PageAside>
+        ) : null}
+      </PageBody>
+
+      {state.status === 'ready' ? (
+        <SaveBar
+          dirty={dirty || (isCreate && !created)}
+          saving={saving}
+          error={saveError}
+          saveLabel="Save doc"
+          onSave={() => void save()}
+          onDiscard={() => {
+            // A brand-new unsaved doc has nothing to reset to — discarding means
+            // leaving, which routes through the guard's one exit dialog.
+            if (isCreate && !created) unsavedGuard.requestExit()
+            else setContent(state.serverContent)
+          }}
+        />
+      ) : null}
       {unsavedGuard.dialog}
-    </div>
+    </Page>
   )
 }

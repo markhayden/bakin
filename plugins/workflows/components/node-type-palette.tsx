@@ -11,6 +11,7 @@
 
 import { useState, type DragEvent } from 'react'
 import { usePluginJsonFetch } from '@makinbakin/sdk/hooks'
+import { Button, SystemState } from '@makinbakin/sdk/ui'
 import {
   CheckCircle2,
   ChevronLeft,
@@ -24,7 +25,7 @@ import {
   Workflow as WorkflowIcon,
   type LucideIcon,
 } from 'lucide-react'
-import type { FormField, EdgeRules } from '@bakin/core/workflows/node-type-registry'
+import type { FormField, EdgeRules } from '../lib/node-config-fields'
 
 export interface PaletteNodeType {
   kind: string
@@ -57,43 +58,43 @@ const BUILTIN_DISPLAY: Record<string, {
     label: 'Agent Task',
     description: 'Assign a unit of work to the task agent or a specific agent.',
     icon: UserRound,
-    toneClass: 'bg-emerald-500/10 text-emerald-300',
+    toneClass: 'bg-bakin-action-primary-background/10 text-bakin-action-primary-background',
   },
   gate: {
     label: 'Approval Gate',
     description: 'Pause the workflow until a person approves or rejects.',
     icon: CheckCircle2,
-    toneClass: 'bg-amber-500/10 text-amber-300',
+    toneClass: 'bg-bakin-signal-highlight/10 text-bakin-signal-highlight',
   },
   parallel: {
     label: 'Parallel Group',
     description: 'Run a grouped set of child steps at the same time.',
     icon: GitBranch,
-    toneClass: 'bg-blue-500/10 text-blue-300',
+    toneClass: 'bg-bakin-signal-info/10 text-bakin-signal-info',
   },
   output: {
     label: 'Completion',
     description: 'Finish the workflow by publishing, handing off, or recording results.',
     icon: Radio,
-    toneClass: 'bg-violet-500/10 text-violet-300',
+    toneClass: 'bg-bakin-signal-accent/10 text-bakin-signal-accent',
   },
   workflow: {
     label: 'Nested Workflow',
     description: 'Run another workflow as a step in this one.',
     icon: WorkflowIcon,
-    toneClass: 'bg-zinc-700/60 text-zinc-300',
+    toneClass: 'bg-bakin-signal-info/10 text-bakin-signal-info',
   },
   map_workflow: {
     label: 'Map Fan-out',
     description: "Run a child workflow per element of an earlier step's output array.",
     icon: Layers,
-    toneClass: 'bg-violet-500/10 text-violet-300',
+    toneClass: 'bg-bakin-signal-accent/10 text-bakin-signal-accent',
   },
   createTask: {
     label: 'Create Task',
     description: 'Create a follow-up task from workflow context.',
     icon: ClipboardPlus,
-    toneClass: 'bg-sky-500/10 text-sky-300',
+    toneClass: 'bg-bakin-signal-info/10 text-bakin-signal-info',
   },
 }
 
@@ -104,13 +105,13 @@ function setPaletteDragImage(event: DragEvent<HTMLElement>, label: string) {
   ghost.style.top = '-1000px'
   ghost.style.left = '-1000px'
   ghost.style.pointerEvents = 'none'
-  ghost.style.border = '1px solid rgba(96, 165, 250, 0.65)'
-  ghost.style.borderRadius = '6px'
-  ghost.style.background = 'rgb(24, 24, 27)'
-  ghost.style.color = 'rgb(229, 231, 235)'
-  ghost.style.font = '12px system-ui, sans-serif'
+  ghost.style.border = '1px solid var(--bakin-color-signal-info)'
+  ghost.style.borderRadius = 'var(--bakin-radius-control)'
+  ghost.style.background = 'var(--bakin-color-surface-default)'
+  ghost.style.color = 'var(--bakin-color-text-primary)'
+  ghost.style.font = `12px var(--bakin-typography-family-ui, system-ui, sans-serif)`
   ghost.style.padding = '4px 8px'
-  ghost.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.35)'
+  ghost.style.boxShadow = 'var(--bakin-elevation-overlay)'
   document.body.appendChild(ghost)
   if (typeof event.dataTransfer.setDragImage === 'function') {
     try {
@@ -144,15 +145,16 @@ export function NodeTypePalette({
 
   if (collapsed) {
     return (
-      <aside className="flex w-10 flex-col items-center border-r border-border bg-card py-2">
-        <button
+      <aside className="flex w-10 flex-col items-center border-r border-bakin-border-subtle bg-bakin-surface-default py-2">
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           aria-label="Expand palette"
-          className="rounded p-1 text-muted-foreground hover:bg-muted"
           onClick={() => setCollapsed(false)}
         >
-          <ChevronRight className="size-4" />
-        </button>
+          <ChevronRight aria-hidden="true" className="size-4" />
+        </Button>
       </aside>
     )
   }
@@ -161,24 +163,40 @@ export function NodeTypePalette({
   const plugins = nodeTypes.filter((n) => n.runtime === 'plugin')
 
   return (
-    <aside className="flex w-56 flex-col border-r border-border bg-card">
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <aside className="flex w-56 flex-col border-r border-bakin-border-subtle bg-bakin-surface-default">
+      <div className="flex items-center justify-between border-b border-bakin-border-subtle px-3 py-2">
+        <span className="text-bakin-typography-size-meta font-bakin-typography-weight-medium uppercase tracking-wide text-bakin-text-muted">
           Step Types
         </span>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           aria-label="Collapse palette"
-          className="rounded p-1 text-muted-foreground hover:bg-muted"
           onClick={() => setCollapsed(true)}
         >
-          <ChevronLeft className="size-4" />
-        </button>
+          <ChevronLeft aria-hidden="true" className="size-4" />
+        </Button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
-        {loading && <p className="p-2 text-xs text-muted-foreground">Loading…</p>}
-        {error && <p className="p-2 text-xs text-red-300">{error}</p>}
+        {loading && (
+          <SystemState
+            kind="loading"
+            scope="inline"
+            title="Loading step types"
+            description="Registered node types are on their way."
+          />
+        )}
+        {error && (
+          <SystemState
+            kind="error"
+            recovery="unavailable"
+            scope="inline"
+            title="Step types unavailable"
+            description={error}
+          />
+        )}
 
         {!loading && builtins.length > 0 && (
           <PaletteGroup
@@ -197,7 +215,12 @@ export function NodeTypePalette({
           />
         )}
         {!loading && !error && nodeTypes.length === 0 && (
-          <p className="p-2 text-xs text-muted-foreground">No step types registered.</p>
+          <SystemState
+            kind="initial-empty"
+            scope="inline"
+            title="No step types registered"
+            description="Step types appear when their providing plugin is active."
+          />
         )}
       </div>
     </aside>
@@ -217,7 +240,7 @@ function PaletteGroup({
 }) {
   return (
     <div className="mb-3">
-      <div className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="mb-1 px-1 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
         {title}
       </div>
       <ul className="flex flex-col gap-1">
@@ -251,7 +274,7 @@ function PaletteItem({
       ? builtinDisplay?.description ?? 'Add this built-in workflow step.'
       : `Provided by ${item.pluginId ?? 'a plugin'}.`
   const Icon = builtinDisplay?.icon ?? Puzzle
-  const iconTone = builtinDisplay?.toneClass ?? 'bg-muted text-muted-foreground'
+  const iconTone = builtinDisplay?.toneClass ?? 'bg-bakin-canvas-default text-bakin-text-muted'
   return (
     <li
       draggable={!disabled}
@@ -268,27 +291,27 @@ function PaletteItem({
         setPaletteDragImage(e, displayKind)
         onDragKind?.(item.kind)
       }}
-      className={`group flex flex-col gap-1 rounded border border-border bg-background px-2 py-2 text-xs ${
+      className={`group flex flex-col gap-1 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default px-2 py-2 text-bakin-typography-size-meta ${
         disabled
           ? 'cursor-not-allowed opacity-50'
-          : 'cursor-grab hover:border-primary/50 active:cursor-grabbing'
+          : 'cursor-grab hover:border-bakin-focus-ring/50 active:cursor-grabbing'
       }`}
     >
       <span className="flex w-full items-center gap-2">
         <span
           aria-hidden="true"
-          className={`inline-flex size-6 shrink-0 items-center justify-center rounded-md ${iconTone}`}
+          className={`inline-flex size-6 shrink-0 items-center justify-center rounded-bakin-control ${iconTone}`}
         >
           <Icon className="size-3.5" />
         </span>
-        <span className="min-w-0 flex-1 truncate font-medium">{displayKind}</span>
+        <span className="min-w-0 flex-1 truncate font-bakin-typography-weight-medium">{displayKind}</span>
         {item.pluginId && (
-          <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-medium text-muted-foreground">
+          <span className="rounded-bakin-control bg-bakin-surface-default px-1 py-0.5 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">
             {item.pluginId}
           </span>
         )}
       </span>
-      <span className="line-clamp-2 w-full text-[11px] leading-snug text-muted-foreground">
+      <span className="line-clamp-2 w-full text-bakin-typography-size-meta leading-snug text-bakin-text-muted">
         {description}
       </span>
     </li>

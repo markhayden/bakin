@@ -1,32 +1,30 @@
 'use client'
 
-/**
- * Active Context tab — read-only render of the agent's most recent
- * session JSONL parsed into a message stream. Shows what was actually
- * sent to and produced by the model.
- *
- * Per-message: role-colored badge + content. Plain text bodies render as
- * markdown; tool calls (object payloads stringified into JSON by the
- * server-side parser) render as a <pre> code block.
- *
- * Truncation banner appears when the underlying transcript was capped
- * (default 200 messages on the server).
- */
-import { Loader2, MessageCircle } from 'lucide-react'
-import { Badge } from '@makinbakin/sdk/ui'
-import { MarkdownContent, EmptyState } from '@makinbakin/sdk/components'
-import { useJsonFetch } from '@makinbakin/sdk/hooks'
+import { MessageCircle } from 'lucide-react'
+import { MarkdownContent } from '@makinbakin/sdk/content'
+import { Section } from '@makinbakin/sdk/layout'
+import { Pagination, StatusBadge } from '@makinbakin/sdk/patterns'
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  SystemState,
+} from '@makinbakin/sdk/ui'
+import { useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
 import type { SessionMessage, SessionTranscript } from '../types'
 
 export interface ActiveContextTabProps {
   agentId: string
 }
 
-const ROLE_STYLES: Record<SessionMessage['role'], string> = {
-  system: 'bg-zinc-700 text-zinc-200',
-  user: 'bg-blue-600/30 text-blue-200',
-  assistant: 'bg-emerald-600/30 text-emerald-200',
-  tool: 'bg-amber-600/30 text-amber-200',
+const ROLE_TONES: Record<
+  SessionMessage['role'],
+  'neutral' | 'accent' | 'success' | 'attention'
+> = {
+  system: 'neutral',
+  user: 'accent',
+  assistant: 'success',
+  tool: 'attention',
 }
 
 function isJsonLike(content: string): boolean {
@@ -34,88 +32,193 @@ function isJsonLike(content: string): boolean {
   return trimmed.startsWith('{') || trimmed.startsWith('[')
 }
 
-function MessageRow({ message }: { message: SessionMessage }) {
+function textBlockContent(content: string): string | null {
+  if (!isJsonLike(content)) return content
+  try {
+    const parsed = JSON.parse(content) as unknown
+    if (!Array.isArray(parsed) || parsed.length === 0) return null
+    if (!parsed.every((block) => (
+      typeof block === 'object'
+      && block !== null
+      && (block as { type?: unknown }).type === 'text'
+      && typeof (block as { text?: unknown }).text === 'string'
+    ))) return null
+    return parsed
+      .map((block) => (block as { text: string }).text)
+      .filter(Boolean)
+      .join('\n\n')
+  } catch {
+    return null
+  }
+}
+
+function MessageRow({ message, index }: { message: SessionMessage; index: number }) {
+  const readableText = message.role === 'tool' ? null : textBlockContent(message.content)
+  const hasStructuredMessage = message.role !== 'tool'
+    && readableText !== null
+    && isJsonLike(message.content)
   return (
-    <article className="rounded-lg border border-border bg-muted/20 p-4">
-      <header className="flex items-center gap-2 mb-2">
-        <Badge className={`${ROLE_STYLES[message.role]} text-[10px] uppercase tracking-wider`} variant="secondary">
+    <article
+      aria-label={`Turn ${index + 1}: ${message.role}`}
+      className="rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4"
+    >
+      <header className="mb-bakin-3 flex min-w-0 flex-wrap items-center gap-bakin-2">
+        <span className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+          #{index + 1}
+        </span>
+        <StatusBadge tone={ROLE_TONES[message.role]} variant="solid" size="xs">
           {message.role}
-        </Badge>
-        {message.toolName && (
-          <span className="text-xs font-mono text-muted-foreground">{message.toolName}</span>
-        )}
-        {message.model && (
-          <span className="text-[10px] text-muted-foreground">{message.model}</span>
-        )}
-        {message.ts && (
-          <span className="text-[10px] text-muted-foreground ml-auto font-mono">
+        </StatusBadge>
+        {message.toolName ? (
+          <code className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-primary">
+            {message.toolName}
+          </code>
+        ) : null}
+        {message.model ? (
+          <span className="text-bakin-typography-size-meta text-bakin-text-muted">{message.model}</span>
+        ) : null}
+        {message.ts ? (
+          <time
+            dateTime={message.ts}
+            className="ml-auto font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted"
+          >
             {new Date(message.ts).toLocaleTimeString()}
-          </span>
-        )}
+          </time>
+        ) : null}
       </header>
-      <div className="text-sm">
-        {message.role === 'tool' || isJsonLike(message.content) ? (
-          <pre className="bg-muted/40 rounded p-3 text-xs font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap break-words">
-            {message.content}
-          </pre>
-        ) : (
-          <MarkdownContent content={message.content} />
-        )}
-      </div>
+
+      {readableText === null ? (
+        <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded-bakin-control bg-bakin-canvas-default p-bakin-3 font-bakin-typography-family-mono text-bakin-typography-size-meta leading-relaxed text-bakin-text-primary">
+          {message.content}
+        </pre>
+      ) : (
+        <div className="grid min-w-0 gap-bakin-3">
+          <MarkdownContent content={readableText} />
+          {hasStructuredMessage ? (
+            <details className="min-w-0 border-t border-bakin-border-subtle pt-bakin-3">
+              <summary className="cursor-pointer text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-muted">
+                Structured message
+              </summary>
+              <pre className="m-0 mt-bakin-2 overflow-x-auto whitespace-pre-wrap break-words rounded-bakin-control bg-bakin-canvas-default p-bakin-3 font-bakin-typography-family-mono text-bakin-typography-size-meta leading-relaxed text-bakin-text-primary">
+                {message.content}
+              </pre>
+            </details>
+          ) : null}
+        </div>
+      )}
     </article>
   )
 }
 
 export function ActiveContextTab({ agentId }: ActiveContextTabProps) {
-  const { data, loading, error: fetchError } = useJsonFetch<{ ok: boolean; transcript: SessionTranscript | null; error?: string }>(
-    `/api/plugins/team/${agentId}/active-context`,
-  )
+  const [pageParam, setPageParam] = useQueryState('contextPage', '1')
+  const { data, loading, error: fetchError } = useJsonFetch<{
+    ok: boolean
+    transcript: SessionTranscript | null
+    error?: string
+  }>(`/api/plugins/team/${agentId}/active-context`)
   const transcript = data?.ok ? data.transcript : null
-  const error = fetchError ?? (data && !data.ok ? (data.error ?? 'Failed to load active context') : null)
+  const error = fetchError ?? (data && !data.ok
+    ? (data.error ?? 'Failed to load active context')
+    : null)
+  const pageSize = 8
+  const messages = transcript?.messages ?? []
+  const showAll = pageParam === 'all'
+  const requestedPage = Number.parseInt(pageParam, 10)
+  const pageCount = Math.max(1, Math.ceil(messages.length / pageSize))
+  const page = Number.isFinite(requestedPage)
+    ? Math.min(Math.max(requestedPage, 1), pageCount)
+    : 1
+  const startIndex = showAll ? 0 : (page - 1) * pageSize
+  const visibleMessages = showAll
+    ? messages
+    : messages.slice(startIndex, startIndex + pageSize)
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 text-muted-foreground">
-        <Loader2 className="size-4 animate-spin mr-2" />
-        Loading session context...
-      </div>
+      <SystemState
+        kind="loading"
+        scope="page"
+        title="Loading session context"
+        description="The latest model and tool turns will appear when ready."
+      />
     )
   }
 
   if (error) {
     return (
-      <div className="text-sm text-destructive py-12 text-center">{error}</div>
+      <SystemState
+        kind="error"
+        recovery="unavailable"
+        scope="page"
+        title="Active context unavailable"
+        description={error}
+      />
     )
   }
 
   if (!transcript || transcript.messages.length === 0) {
     return (
-      <EmptyState
-        variant="panel"
-        icon={MessageCircle}
+      <SystemState
+        kind="initial-empty"
+        scope="page"
         title="No session context yet"
-        description="The most recent dispatch's full message stream appears here — the system prompt, every user/assistant turn, and every tool call. Run a task with this agent to populate it."
+        description="Run a task with this agent to populate the system prompt, conversation turns, and tool calls."
+        action={(
+          <span className="inline-flex items-center gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
+            <MessageCircle aria-hidden="true" className="size-bakin-4" />
+            Waiting for the first dispatch
+          </span>
+        )}
       />
     )
   }
 
   return (
-    <div className="w-full space-y-3">
-      {transcript.truncated && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">
-          Showing latest {transcript.messages.length} of {transcript.totalMessages} messages.
-          Older messages omitted for performance.
+    <Section spacing="compact">
+      {transcript.truncated ? (
+        <Alert tone="attention">
+          <AlertTitle>
+            Showing latest {transcript.messages.length} of {transcript.totalMessages} messages
+          </AlertTitle>
+          <AlertDescription>Older messages were omitted to keep this transcript responsive.</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <header className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
+        <div className="min-w-0">
+          <h2 className="m-0">Current session</h2>
+          <div className="mt-bakin-1 flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+            <code className="font-bakin-typography-family-mono text-bakin-text-primary">
+              {transcript.sessionId || 'Unknown session'}
+            </code>
+            {transcript.sessionStarted ? (
+              <time dateTime={transcript.sessionStarted}>
+                Started {new Date(transcript.sessionStarted).toLocaleString()}
+              </time>
+            ) : null}
+          </div>
         </div>
-      )}
-      <div className="text-xs text-muted-foreground font-mono">
-        Session: {transcript.sessionId || 'unknown'}
-        {transcript.sessionStarted && ` · started ${new Date(transcript.sessionStarted).toLocaleString()}`}
-      </div>
-      <div className="space-y-2">
-        {transcript.messages.map((msg, i) => (
-          <MessageRow key={`${msg.ts ?? i}-${i}`} message={msg} />
+        <StatusBadge tone="neutral" variant="solid" size="xs">
+          {transcript.messages.length} {transcript.messages.length === 1 ? 'turn' : 'turns'}
+        </StatusBadge>
+      </header>
+
+      <ol aria-label="Session turns" className="m-0 grid min-w-0 gap-bakin-3 p-0">
+        {visibleMessages.map((message, index) => (
+          <li key={`${message.ts ?? index}-${index}`} className="min-w-0">
+            <MessageRow message={message} index={startIndex + index} />
+          </li>
         ))}
-      </div>
-    </div>
+      </ol>
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        showAll={showAll}
+        total={messages.length}
+        onPageChange={(nextPage) => setPageParam(String(nextPage))}
+        onShowAllChange={(nextShowAll) => setPageParam(nextShowAll ? 'all' : '1')}
+      />
+    </Section>
   )
 }

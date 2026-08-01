@@ -251,7 +251,7 @@ multi-tag assets in every matching folder, pinned Untagged bucket, recency
 sort, kebab rename/delete wired to the global tag routes) / `trash`. Tag
 filtering: `Tags` FacetFilter (`?tags=a,b`; `__untagged__` sentinel from
 `tag-filter.ts`) with a `Folders / <tag> ✕` breadcrumb back to `?view=tags`.
-Metadata editing: `AssetEditDrawer` (BakinDrawer; description + `TagInput`
+Metadata editing: `AssetEditDrawer` (Drawer; description + `TagInput`
 chips with suggestions) opens from card hover pencil, list-row action, and the
 detail Edit button → PATCH metadata. Bulk tagging: Select mode in grid/list +
 floating bar → `POST /tags/apply`.

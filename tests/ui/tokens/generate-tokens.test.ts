@@ -1,0 +1,538 @@
+import { afterEach, describe, expect, it } from 'bun:test'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
+
+import {
+  checkTokenArtifacts,
+  compileTokenSources,
+  generateTokenArtifacts,
+  loadTokenSources,
+  renderTokenManifest,
+  TOKEN_DOCS_OUTPUT_PATH,
+  TOKEN_METADATA_OUTPUT_PATH,
+  TOKEN_OUTPUT_PATH,
+  TOKEN_RUNTIME_CSS_OUTPUT_PATH,
+  TOKEN_SOURCE_FILES,
+  TOKEN_STORY_OUTPUT_PATH,
+  TOKEN_TAILWIND_OUTPUT_PATH,
+  type TokenLayer,
+  type TokenSourceFile,
+} from '../../../scripts/ui/generate-tokens'
+
+const fixtureRoots: string[] = []
+const REPO_ROOT = resolve(import.meta.dir, '../../..')
+
+function source(layer: TokenLayer, document: Record<string, unknown>): TokenSourceFile {
+  return { path: `${layer}.tokens.json`, layer, document }
+}
+
+function layerDocument(layer: TokenLayer, contents: Record<string, unknown>): Record<string, unknown> {
+  return {
+    $extensions: {
+      'dev.bakin.tokens': {
+        layer,
+        status: 'candidate',
+      },
+    },
+    [layer]: contents,
+  }
+}
+
+function reverseObjectOrder(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(reverseObjectOrder)
+  if (typeof value !== 'object' || value === null) return value
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .reverse()
+      .map(([key, entry]) => [key, reverseObjectOrder(entry)]),
+  )
+}
+
+function validSources(): TokenSourceFile[] {
+  return [
+    source('reference', layerDocument('reference', {
+      color: {
+        $type: 'color',
+        ink: {
+          $value: {
+            colorSpace: 'srgb',
+            components: [0.058824, 0.054902, 0.054902],
+            hex: '#0f0e0e',
+          },
+        },
+      },
+      space: {
+        $type: 'dimension',
+        compact: { $value: { value: 0.5, unit: 'rem' } },
+      },
+    })),
+    source('semantic', layerDocument('semantic', {
+      canvas: {
+        $type: 'color',
+        $description: 'The application canvas.',
+        $value: '{reference.color.ink}',
+      },
+      controlGap: {
+        $ref: '#/reference/space/compact',
+      },
+    })),
+    source('component', layerDocument('component', {
+      button: {
+        background: { $value: '{semantic.canvas}' },
+        gap: { $ref: '#/semantic/controlGap' },
+      },
+    })),
+  ]
+}
+
+function writeSourceTree(root: string, sources = validSources()): void {
+  for (const entry of sources) {
+    const relativePath = TOKEN_SOURCE_FILES[entry.layer]
+    const target = join(root, relativePath)
+    mkdirSync(dirname(target), { recursive: true })
+    writeFileSync(target, `${JSON.stringify(entry.document, null, 2)}\n`)
+  }
+}
+
+function sourcesWithTypographySize(): TokenSourceFile[] {
+  const sources = validSources()
+  const reference = sources[0].document.reference as Record<string, unknown>
+  const semantic = sources[1].document.semantic as Record<string, unknown>
+  reference.font = {
+    size: {
+      $type: 'dimension',
+      body: { $value: { value: 0.8, unit: 'rem' } },
+    },
+  }
+  semantic.typography = {
+    size: {
+      body: { $ref: '#/reference/font/size/body' },
+    },
+  }
+  return sources
+}
+
+afterEach(() => {
+  for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
+
+describe('compileTokenSources', () => {
+  it('resolves DTCG aliases across three mechanically distinct layers', () => {
+    const manifest = compileTokenSources(validSources())
+
+    expect(manifest).toMatchObject({
+      schemaVersion: 1,
+      format: 'DTCG 2025.10',
+      generatedBy: 'bun run ui:tokens:generate',
+    })
+    expect(manifest.tokens.map((token) => ({
+      path: token.path,
+      layer: token.layer,
+      visibility: token.visibility,
+      type: token.type,
+    }))).toEqual([
+      { path: 'component.button.background', layer: 'component', visibility: 'internal', type: 'color' },
+      { path: 'component.button.gap', layer: 'component', visibility: 'internal', type: 'dimension' },
+      { path: 'reference.color.ink', layer: 'reference', visibility: 'internal', type: 'color' },
+      { path: 'reference.space.compact', layer: 'reference', visibility: 'internal', type: 'dimension' },
+      { path: 'semantic.canvas', layer: 'semantic', visibility: 'public', type: 'color' },
+      { path: 'semantic.controlGap', layer: 'semantic', visibility: 'public', type: 'dimension' },
+    ])
+
+    const canvas = manifest.tokens.find((token) => token.path === 'semantic.canvas')
+    expect(canvas).toMatchObject({
+      source: 'semantic.tokens.json#/semantic/canvas',
+      description: 'The application canvas.',
+      references: ['reference.color.ink'],
+      value: {
+        colorSpace: 'srgb',
+        components: [0.058824, 0.054902, 0.054902],
+        hex: '#0f0e0e',
+      },
+    })
+  })
+
+  it('emits the same bytes regardless of source and object insertion order', () => {
+    const forwards = validSources()
+    const backwards = [...validSources()].reverse().map((entry) => ({
+      ...entry,
+      document: reverseObjectOrder(entry.document) as Record<string, unknown>,
+    }))
+
+    expect(renderTokenManifest(forwards)).toBe(renderTokenManifest(backwards))
+  })
+
+  it('validates the planned DTCG typography and shadow composite types', () => {
+    const sources = validSources()
+    sources[0] = source('reference', layerDocument('reference', {
+      color: {
+        $type: 'color',
+        shadow: { $value: { colorSpace: 'srgb', components: [0, 0, 0], alpha: 0.25 } },
+      },
+      font: {
+        family: { $type: 'fontFamily', sans: { $value: ['Inter', 'sans-serif'] } },
+        size: { $type: 'dimension', body: { $value: { value: 1, unit: 'rem' } } },
+        weight: { $type: 'fontWeight', strong: { $value: 600 } },
+      },
+      text: {
+        $type: 'typography',
+        body: {
+          $value: {
+            fontFamily: { $ref: '#/reference/font/family/sans/$value' },
+            fontSize: { $ref: '#/reference/font/size/body/$value' },
+            fontWeight: '{reference.font.weight.strong}',
+            letterSpacing: { value: 0, unit: 'px' },
+            lineHeight: 1.5,
+          },
+        },
+      },
+      shadow: {
+        $type: 'shadow',
+        raised: {
+          $value: {
+            color: { $ref: '#/reference/color/shadow/$value' },
+            offsetX: { value: 0, unit: 'px' },
+            offsetY: { value: 0.25, unit: 'rem' },
+            blur: { value: 0.5, unit: 'rem' },
+            spread: { value: 0, unit: 'px' },
+            inset: false,
+          },
+        },
+      },
+    }))
+    sources[1] = source('semantic', layerDocument('semantic', {}))
+    sources[2] = source('component', layerDocument('component', {}))
+
+    const manifest = compileTokenSources(sources)
+    expect(manifest.tokens.find((token) => token.path === 'reference.text.body')?.type).toBe('typography')
+    expect(manifest.tokens.find((token) => token.path === 'reference.shadow.raised')?.type).toBe('shadow')
+
+    const invalidInset = structuredClone(sources)
+    const shadow = invalidInset[0].document.reference as Record<string, unknown>
+    const raised = (shadow.shadow as Record<string, unknown>).raised as Record<string, unknown>
+    ;(raised.$value as Record<string, unknown>).inset = 'false'
+    expect(() => compileTokenSources(invalidInset)).toThrow(
+      'reference.tokens.json#/reference/shadow/raised/$value: shadow inset must be a boolean when present',
+    )
+  })
+
+  it('rejects missing aliases and cycles with source pointers', () => {
+    const missing = validSources()
+    missing[1] = source('semantic', layerDocument('semantic', {
+      canvas: { $type: 'color', $value: '{reference.color.missing}' },
+    }))
+    expect(() => compileTokenSources(missing)).toThrow(
+      'semantic.tokens.json#/semantic/canvas/$value: unknown token reference "reference.color.missing"',
+    )
+
+    const cyclic = validSources()
+    cyclic[1] = source('semantic', layerDocument('semantic', {
+      first: { $type: 'color', $value: '{semantic.second}' },
+      second: { $type: 'color', $value: '{semantic.first}' },
+    }))
+    cyclic[2] = source('component', layerDocument('component', {}))
+    expect(() => compileTokenSources(cyclic)).toThrow(
+      'semantic.tokens.json#/semantic/second/$value: circular token reference: semantic.first -> semantic.second -> semantic.first',
+    )
+  })
+
+  it('rejects values and aliases whose resolved type is wrong', () => {
+    const wrongValue = validSources()
+    wrongValue[0] = source('reference', layerDocument('reference', {
+      space: { $type: 'dimension', compact: { $value: '0.5rem' } },
+    }))
+    wrongValue[1] = source('semantic', layerDocument('semantic', {
+      controlGap: { $value: '{reference.space.compact}' },
+    }))
+    wrongValue[2] = source('component', layerDocument('component', {}))
+    expect(() => compileTokenSources(wrongValue)).toThrow(
+      'reference.tokens.json#/reference/space/compact/$value: dimension must be an object with finite value and unit "px" or "rem"',
+    )
+
+    const wrongAlias = validSources()
+    wrongAlias[1] = source('semantic', layerDocument('semantic', {
+      canvas: { $type: 'dimension', $value: '{reference.color.ink}' },
+    }))
+    wrongAlias[2] = source('component', layerDocument('component', {}))
+    expect(() => compileTokenSources(wrongAlias)).toThrow(
+      'semantic.tokens.json#/semantic/canvas/$type: declared type "dimension" does not match referenced type "color"',
+    )
+  })
+
+  it('blocks public raw values and cross-layer escapes', () => {
+    const rawPublic = validSources()
+    rawPublic[1] = source('semantic', layerDocument('semantic', {
+      canvas: {
+        $type: 'color',
+        $value: { colorSpace: 'srgb', components: [0, 0, 0], hex: '#000000' },
+      },
+    }))
+    rawPublic[2] = source('component', layerDocument('component', {}))
+    expect(() => compileTokenSources(rawPublic)).toThrow(
+      'semantic.tokens.json#/semantic/canvas/$value: public semantic tokens must alias reference or semantic tokens; raw values are internal',
+    )
+
+    const componentLeak = validSources()
+    componentLeak[2] = source('component', layerDocument('component', {
+      button: { background: { $value: '{reference.color.ink}' } },
+    }))
+    expect(() => compileTokenSources(componentLeak)).toThrow(
+      'component.tokens.json#/component/button/background/$value: component tokens may reference only semantic or component tokens; received reference.color.ink',
+    )
+
+    const referenceLeak = validSources()
+    referenceLeak[0] = source('reference', layerDocument('reference', {
+      color: {
+        $type: 'color',
+        ink: {
+          $value: {
+            colorSpace: 'srgb',
+            components: [0.058824, 0.054902, 0.054902],
+            hex: '#0f0e0e',
+          },
+        },
+      },
+      space: {
+        $type: 'dimension',
+        compact: { $value: { value: 0.5, unit: 'rem' } },
+      },
+      leaked: { $type: 'color', $value: '{semantic.canvas}' },
+    }))
+    expect(() => compileTokenSources(referenceLeak)).toThrow(
+      'reference.tokens.json#/reference/leaked/$value: reference tokens may reference only reference tokens; received semantic.canvas',
+    )
+  })
+
+  it('rejects a file whose declared layer and root group do not match', () => {
+    const sources = validSources()
+    sources[1] = source('semantic', layerDocument('reference', {}))
+
+    expect(() => compileTokenSources(sources)).toThrow(
+      'semantic.tokens.json#/$extensions/dev.bakin.tokens/layer: expected layer "semantic", received "reference"',
+    )
+  })
+
+  it('validates document-root DTCG properties instead of silently ignoring them', () => {
+    const sources = validSources()
+    sources[0].document.$description = false
+
+    expect(() => compileTokenSources(sources)).toThrow(
+      'reference.tokens.json#/$description: $description must be a string',
+    )
+
+    sources[0].document.$description = 'Reference values.'
+    sources[0].document.$unknown = true
+    expect(() => compileTokenSources(sources)).toThrow(
+      'reference.tokens.json#/$unknown: unknown group property "$unknown"',
+    )
+  })
+})
+
+describe('token artifact generation', () => {
+  it('emits aligned public CSS, internal Tailwind mappings, and typed metadata', () => {
+    const root = mkdtempSync(join(tmpdir(), 'bakin-token-artifacts-'))
+    fixtureRoots.push(root)
+    writeSourceTree(root, sourcesWithTypographySize())
+
+    generateTokenArtifacts(root)
+
+    const runtimeCss = readFileSync(join(root, TOKEN_RUNTIME_CSS_OUTPUT_PATH), 'utf-8')
+    const tailwindCss = readFileSync(join(root, TOKEN_TAILWIND_OUTPUT_PATH), 'utf-8')
+    const metadata = readFileSync(join(root, TOKEN_METADATA_OUTPUT_PATH), 'utf-8')
+
+    expect(runtimeCss).toContain('--bakin-canvas: #0f0e0e;')
+    expect(runtimeCss).toContain('--bakin-control-gap: 0.5rem;')
+    expect(runtimeCss).not.toMatch(/--(?:background|accent|radius)\s*:/)
+    expect(runtimeCss).not.toContain('reference.')
+    expect(runtimeCss).not.toContain('component.')
+
+    expect(tailwindCss).toContain('--color-bakin-canvas: var(--bakin-canvas);')
+    expect(tailwindCss).toContain('--text-bakin-typography-size-body: var(--bakin-typography-size-body);')
+    expect(tailwindCss).not.toContain('component')
+    expect(metadata).toContain('export const BAKIN_SEMANTIC_TOKENS = [')
+    expect(metadata).toContain('"cssVariable": "--bakin-canvas"')
+    expect(metadata).toContain('"cssValue": "#0f0e0e"')
+    expect(metadata).toContain('"tailwindVariable": "--color-bakin-canvas"')
+    expect(metadata).toContain("export type BakinSemanticTokenName = typeof BAKIN_SEMANTIC_TOKENS[number]['name']")
+  })
+
+  it('emits one source-linked public catalog row per semantic token and no internal author contracts', () => {
+    const root = mkdtempSync(join(tmpdir(), 'bakin-token-catalog-'))
+    fixtureRoots.push(root)
+    writeSourceTree(root)
+
+    generateTokenArtifacts(root)
+
+    const story = readFileSync(join(root, TOKEN_STORY_OUTPUT_PATH), 'utf-8')
+    const docs = readFileSync(join(root, TOKEN_DOCS_OUTPUT_PATH), 'utf-8')
+    const expectedNames = ['semantic.canvas', 'semantic.controlGap']
+    const storyNames = [...story.matchAll(/"name": "(semantic\.[^"]+)"/g)].map((match) => match[1])
+    const docsNames = docs.split('\n')
+      .filter((line) => line.startsWith('| `semantic.'))
+      .map((line) => line.match(/^\| `([^`]+)`/)?.[1])
+
+    expect(storyNames).toEqual(expectedNames)
+    expect(docsNames).toEqual(expectedNames)
+    expect(story).toContain("tags: ['public']")
+    expect(story).toContain('Public semantic')
+    expect(docs).toContain('Public semantic')
+    expect(docs).toContain('https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json')
+    expect(story).not.toContain('reference.color.ink')
+    expect(story).not.toContain('component.button.background')
+    expect(docs).not.toContain('reference.color.ink')
+    expect(docs).not.toContain('component.button.background')
+  })
+
+  it('updates every derived surface deterministically from one semantic source addition', () => {
+    const root = mkdtempSync(join(tmpdir(), 'bakin-token-propagation-'))
+    fixtureRoots.push(root)
+    writeSourceTree(root)
+    generateTokenArtifacts(root)
+    const derivedPaths = [
+      TOKEN_OUTPUT_PATH,
+      TOKEN_RUNTIME_CSS_OUTPUT_PATH,
+      TOKEN_TAILWIND_OUTPUT_PATH,
+      TOKEN_METADATA_OUTPUT_PATH,
+      TOKEN_STORY_OUTPUT_PATH,
+      TOKEN_DOCS_OUTPUT_PATH,
+    ]
+    const before = new Map(derivedPaths.map((path) => [path, readFileSync(join(root, path), 'utf-8')]))
+    const sources = validSources()
+    const semantic = sources[1].document.semantic as Record<string, unknown>
+    semantic.panel = {
+      $type: 'color',
+      $description: 'A newly added public panel surface.',
+      $value: '{reference.color.ink}',
+    }
+    writeSourceTree(root, sources)
+
+    generateTokenArtifacts(root)
+
+    for (const path of derivedPaths) {
+      const next = readFileSync(join(root, path), 'utf-8')
+      expect(next).not.toBe(before.get(path))
+      expect(next).toContain(path.endsWith('.css') ? 'bakin-panel' : 'semantic.panel')
+    }
+    expect(checkTokenArtifacts(root)).toEqual({ tokens: 7, publicTokens: 3 })
+  })
+
+  it('blocks generated specimens when an approved contrast role misses its WCAG threshold', () => {
+    const root = mkdtempSync(join(tmpdir(), 'bakin-token-contrast-'))
+    fixtureRoots.push(root)
+    const sources = [
+      source('reference', layerDocument('reference', {
+        color: {
+          $type: 'color',
+          dark: {
+            $value: { colorSpace: 'srgb', components: [0.058824, 0.054902, 0.054902], hex: '#0f0e0e' },
+          },
+          almostDark: {
+            $value: { colorSpace: 'srgb', components: [0.082353, 0.07451, 0.07451], hex: '#151313' },
+          },
+        },
+      })),
+      source('semantic', layerDocument('semantic', {
+        color: {
+          canvas: {
+            $description: 'Canvas color.',
+            $value: '{reference.color.dark}',
+            $extensions: {
+              'dev.bakin.tokens': {
+                contrastAgainst: 'semantic.color.text',
+                contrastRole: 'normal-text',
+              },
+            },
+          },
+          text: {
+            $description: 'Text color.',
+            $value: '{reference.color.almostDark}',
+          },
+        },
+      })),
+      source('component', layerDocument('component', {})),
+    ]
+    writeSourceTree(root, sources)
+
+    expect(() => generateTokenArtifacts(root)).toThrow(
+      'WCAG AA normal text minimum of 4.5:1',
+    )
+  })
+
+  it('keeps production public intent and color contrast data complete', () => {
+    const manifest = compileTokenSources(loadTokenSources(REPO_ROOT))
+    const publicTokens = manifest.tokens.filter((token) => token.visibility === 'public')
+    const publicColors = publicTokens.filter((token) => token.type === 'color')
+
+    expect(publicTokens.every((token) => Boolean(token.description?.trim()))).toBe(true)
+    expect(publicColors.every((token) => token.contrast !== undefined)).toBe(true)
+    expect(publicColors.every((token) => ['pass', 'reference'].includes(token.contrast?.status ?? ''))).toBe(true)
+  })
+
+  it('codifies the approved Product Character foundation in generated semantic tokens', () => {
+    const manifest = compileTokenSources(loadTokenSources(REPO_ROOT))
+    const tokens = new Map(manifest.tokens.map((token) => [token.path, token]))
+    const docs = readFileSync(join(REPO_ROOT, TOKEN_DOCS_OUTPUT_PATH), 'utf-8')
+
+    expect(manifest.sourceStatus).toBe('approved')
+    expect(tokens.get('semantic.typography.family.ui')?.value).toEqual([
+      'Space Grotesk',
+      'ui-sans-serif',
+      'system-ui',
+      'sans-serif',
+    ])
+    expect(tokens.get('semantic.typography.family.mono')?.value).toEqual([
+      'JetBrains Mono',
+      'ui-monospace',
+      'monospace',
+    ])
+    expect(tokens.get('semantic.typography.size.pageTitle')?.value).toEqual({ value: 2.25, unit: 'rem' })
+    expect(tokens.get('semantic.layout.gap.page')?.value).toEqual({ value: 2, unit: 'rem' })
+    expect(tokens.get('semantic.layout.gap.dense')?.value).toEqual({ value: 0.5, unit: 'rem' })
+    expect(tokens.get('semantic.layout.size.rowDense')?.value).toEqual({ value: 2.5, unit: 'rem' })
+    expect(tokens.get('semantic.radius.control')?.value).toEqual({ value: 0.5, unit: 'rem' })
+    expect(tokens.get('semantic.elevation.overlay')?.type).toBe('shadow')
+    expect(docs).toContain('The approved foundation contains')
+    expect(docs).not.toContain('The current candidate contains')
+  })
+
+  it('rejects public token names that normalize to the same generated CSS variable', () => {
+    const root = mkdtempSync(join(tmpdir(), 'bakin-token-collision-'))
+    fixtureRoots.push(root)
+    const sources = validSources()
+    sources[1] = source('semantic', layerDocument('semantic', {
+      controlGap: { $value: '{reference.space.compact}' },
+      'control-gap': { $value: '{reference.space.compact}' },
+    }))
+    sources[2] = source('component', layerDocument('component', {}))
+    writeSourceTree(root, sources)
+
+    expect(() => generateTokenArtifacts(root)).toThrow(
+      'packages/ui/tokens/semantic.tokens.json#/semantic/controlGap: generated CSS variable "--bakin-control-gap" collides with semantic.control-gap',
+    )
+  })
+
+  it('detects missing and stale output without changing the working tree', () => {
+    const root = mkdtempSync(join(tmpdir(), 'bakin-token-generator-'))
+    fixtureRoots.push(root)
+    writeSourceTree(root)
+
+    expect(() => checkTokenArtifacts(root)).toThrow(`missing ${TOKEN_OUTPUT_PATH}`)
+    generateTokenArtifacts(root)
+    expect(checkTokenArtifacts(root)).toEqual({ tokens: 6, publicTokens: 2 })
+
+    const output = join(root, TOKEN_OUTPUT_PATH)
+    const generated = readFileSync(output, 'utf-8')
+    writeFileSync(output, generated.replace('DTCG 2025.10', 'stale'))
+    expect(() => checkTokenArtifacts(root)).toThrow(
+      `${TOKEN_OUTPUT_PATH} is stale; run bun run ui:tokens:generate`,
+    )
+
+    writeFileSync(output, generated)
+    const docsOutput = join(root, TOKEN_DOCS_OUTPUT_PATH)
+    writeFileSync(docsOutput, readFileSync(docsOutput, 'utf-8').replace('Semantic UI Tokens', 'Stale UI Tokens'))
+    expect(() => checkTokenArtifacts(root)).toThrow(
+      `${TOKEN_DOCS_OUTPUT_PATH} is stale; run bun run ui:tokens:generate`,
+    )
+  })
+})

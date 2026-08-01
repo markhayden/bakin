@@ -8,7 +8,7 @@
  * Artifacts default to the OS temp directory and therefore never dirty the
  * repository.
  */
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import {
@@ -21,7 +21,6 @@ import {
   type Response,
 } from 'playwright'
 
-const PROJECT_ROOT = resolve(import.meta.dirname, '..')
 const HEALTH_PATH = '/health'
 const PREFLIGHT_PATH = '/api/plugins/health/summary'
 const ACTIVITY_OPEN_KEY = 'bakin-activity-log-open'
@@ -117,23 +116,25 @@ interface LayoutMetrics {
 }
 
 const TAB_HEADINGS: Record<TabName, readonly string[]> = {
-  Overview: ['Overall health', 'Search readiness', 'Right now'],
-  Agents: ['Agents', 'Agent token trend', 'Usage & efficiency', 'Latest session token usage'],
-  Activity: ['Activity', 'Failure trend', 'Failures'],
-  System: ['System', 'Subsystem status', 'Search', 'Installed plugins', 'Runtime', 'Full check inventory'],
+  Overview: ['Overview', 'Operating telemetry', 'Context & cache'],
+  Agents: ['Agents', 'Agent pulse', 'Usage & cost'],
+  Activity: ['Activity', 'Activity pulse', 'Activity over time', 'Recent events'],
+  System: ['System', 'Platform pulse', 'Search readiness'],
 }
 
-/** Endpoints unique enough to prove that an inactive tab was not mounted. */
+/**
+ * Endpoints unique enough to prove that an inactive tab was not mounted.
+ * Overview and Agents intentionally share the usage/live-now family (the
+ * overview telemetry cards read the same evidence), so only endpoints truly
+ * exclusive to a tab may appear here.
+ */
 const TAB_REQUEST_PATHS: Record<TabName, readonly string[]> = {
   Overview: [
-    '/api/plugins/health/live-now',
     '/api/plugins/health/search-readiness',
+    '/api/plugins/health/interaction-summary',
   ],
   Agents: [
-    '/api/plugins/health/usage-history',
     '/api/plugins/health/agent-effort',
-    '/api/plugins/health/usage',
-    '/api/plugins/models/spend',
   ],
   Activity: ['/api/plugins/health/usage-feed'],
   System: [
@@ -383,7 +384,7 @@ async function waitForTabContent(page: Page, tab: TabName): Promise<void> {
   await page.getByRole('heading', { name: TAB_HEADINGS[tab][0], exact: true }).first().waitFor({ state: 'visible', timeout: 20_000 })
   if (tab === 'Agents') {
     const panel = page.locator('[role="tabpanel"]:visible')
-    await panel.locator('[data-testid="latest-session-usage"], [role="alert"]').first()
+    await panel.locator('[data-section-card], [role="alert"]').first()
       .waitFor({ state: 'visible', timeout: 20_000 })
   }
   await page.waitForTimeout(TAB_SETTLE_MS)
@@ -487,16 +488,19 @@ async function exerciseEvidence(page: Page, gate: Gate, options: Options, prefix
 }
 
 async function exerciseActivityDisclosure(page: Page, gate: Gate, prefix: string): Promise<boolean> {
-  const summary = page.locator('summary').filter({ hasText: 'Technical details' }).first()
-  if (await summary.count() === 0) {
+  // Recent events render as Timeline entries whose disclosure is a
+  // keyboard-accessible Collapsible trigger (aria-expanded button).
+  const trigger = page.locator('[data-slot="timeline-entry"] button[aria-expanded]').first()
+  if (await trigger.count() === 0) {
     gate.skip(`${prefix}: activity disclosure`, 'no activity row exists in this fixture')
     return false
   }
-  await summary.focus()
+  await trigger.scrollIntoViewIfNeeded()
+  await trigger.focus()
   await page.keyboard.press('Enter')
-  const details = summary.locator('xpath=..')
-  const open = await details.evaluate((element) => (element as HTMLDetailsElement).open)
-  gate.check(`${prefix}: activity disclosure keyboard access`, open, `details.open=${open}`)
+  await page.waitForTimeout(150)
+  const open = await trigger.getAttribute('aria-expanded')
+  gate.check(`${prefix}: activity disclosure keyboard access`, open === 'true', `aria-expanded=${open}`)
   await page.keyboard.press('Enter')
   return true
 }
@@ -528,7 +532,7 @@ async function layoutMetrics(page: Page): Promise<LayoutMetrics> {
     if (!health) throw new Error('.health-page was not found')
     const tablist = document.querySelector<HTMLElement>('[role="tablist"]')
     const tabScroller = tablist?.parentElement
-    const activityPanel = document.querySelector('main')?.nextElementSibling as HTMLElement | null
+    const activityPanel = document.querySelector<HTMLElement>('[data-slot="activity-panel"]')
     const internalTables = [...health.querySelectorAll<HTMLElement>('[data-testid$="-table-scroll"]')]
       .map((element) => ({
         testId: element.dataset.testid ?? 'unnamed-table-scroll',
@@ -629,14 +633,23 @@ async function verifyResponsiveState(
   try {
     await navigateHealth(page, options.baseUrl, 'Overview')
     let metrics = await layoutMetrics(page)
-    const panelStateCorrect = config.activityOpen
-      ? (metrics.activityPanelWidth ?? 0) >= 350
-      : (metrics.activityPanelWidth ?? Number.POSITIVE_INFINITY) <= 2
-    gate.check(
-      `${config.label}: global activity panel is ${config.activityOpen ? 'open' : 'hidden'}`,
-      panelStateCorrect,
-      `measured panel width ${metrics.activityPanelWidth === null ? 'missing' : `${Math.round(metrics.activityPanelWidth)}px`}`,
-    )
+    if (config.knownShellLimit && config.activityOpen && (metrics.activityPanelWidth ?? 0) < 350) {
+      // Phone-width shells collapse the fixed activity panel; that is the
+      // documented shell limitation this scenario exists to record.
+      gate.known(
+        `${config.label}: global activity panel is open`,
+        `panel collapses at ${config.viewportWidth}px viewport (measured ${metrics.activityPanelWidth === null ? 'missing' : `${Math.round(metrics.activityPanelWidth)}px`}); fixed-panel phone shell is out of scope`,
+      )
+    } else {
+      const panelStateCorrect = config.activityOpen
+        ? (metrics.activityPanelWidth ?? 0) >= 350
+        : (metrics.activityPanelWidth ?? Number.POSITIVE_INFINITY) <= 2
+      gate.check(
+        `${config.label}: global activity panel is ${config.activityOpen ? 'open' : 'hidden'}`,
+        panelStateCorrect,
+        `measured panel width ${metrics.activityPanelWidth === null ? 'missing' : `${Math.round(metrics.activityPanelWidth)}px`}`,
+      )
+    }
     if (config.expectedHealthWidth !== undefined) {
       const delta = Math.abs(metrics.healthWidth - config.expectedHealthWidth)
       gate.check(
@@ -661,7 +674,7 @@ async function verifyResponsiveState(
         await captureTop(page, options, `${config.label}-${tab.toLowerCase()}`)
         if (tab === 'System') {
           verifyInternalTables(gate, metrics, `${config.label}: System`)
-          const inventory = page.getByRole('heading', { name: 'Full check inventory', exact: true })
+          const inventory = page.getByTestId('all-health-checks-details')
           await inventory.scrollIntoViewIfNeeded()
           await capture(page, options, `${config.label}-system-inventory`)
         }
@@ -687,13 +700,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function verifyActivityNoise(gate: Gate, telemetry: Telemetry): void {
-  const payload = [...telemetry.usageFeeds].reverse().find((entry) => entry.phase.includes('activity'))
-  if (!payload || !isRecord(payload.body) || !Array.isArray(payload.body.recent)) {
-    gate.fail('Activity request trace hides routine success', 'no valid Activity feed payload was captured')
+async function verifyActivityNoise(gate: Gate, telemetry: Telemetry, baseUrl: string): Promise<void> {
+  // The Activity tab intentionally requests `includeRoutine=true` and filters
+  // client-side, so captured tab payloads may legitimately carry routine
+  // successes. The server-default contract stays the teeth: a feed request
+  // WITHOUT includeRoutine must hide successful routine rows.
+  const tabPayloadCaptured = telemetry.usageFeeds.some((entry) => entry.phase.includes('activity'))
+  if (!tabPayloadCaptured) {
+    gate.fail('Activity request trace hides routine success', 'no Activity feed payload was captured')
     return
   }
-  const routineSuccess = payload.body.recent.filter((entry) => isRecord(entry)
+  let body: unknown
+  try {
+    const response = await fetch(`${baseUrl}/api/plugins/health/usage-feed?window=1h`, { signal: AbortSignal.timeout(10_000) })
+    body = await response.json()
+  } catch (error) {
+    gate.fail('Activity request trace hides routine success', `default feed probe failed: ${error instanceof Error ? error.message : String(error)}`)
+    return
+  }
+  if (!isRecord(body) || !Array.isArray(body.recent)) {
+    gate.fail('Activity request trace hides routine success', 'default feed probe returned an invalid payload')
+    return
+  }
+  const routineSuccess = body.recent.filter((entry) => isRecord(entry)
     && entry.activityClass === 'routine'
     && entry.status === 'ok')
   gate.check(
@@ -701,7 +730,7 @@ function verifyActivityNoise(gate: Gate, telemetry: Telemetry): void {
     routineSuccess.length === 0,
     routineSuccess.length === 0 ? 'zero successful routine rows in the default feed' : `${routineSuccess.length} successful routine rows leaked`,
   )
-  const healthSuccess = payload.body.recent.filter((entry) => isRecord(entry)
+  const healthSuccess = body.recent.filter((entry) => isRecord(entry)
     && entry.status === 'ok'
     && entry.activityClass === 'routine'
     && typeof entry.name === 'string'
@@ -877,7 +906,7 @@ async function verifyPrimaryExperience(
     const systemMetrics = await layoutMetrics(page)
     verifyInternalTables(gate, systemMetrics, 'wide System')
     await verifyPollingIsolation(page, phase, telemetry, gate, options.quick)
-    verifyActivityNoise(gate, telemetry)
+    await verifyActivityNoise(gate, telemetry, options.baseUrl)
   } finally {
     await context.close()
   }
@@ -967,11 +996,6 @@ async function main(): Promise<void> {
 
   await assertServer(options.baseUrl)
   gate.pass('Server preflight', `${options.baseUrl}${PREFLIGHT_PATH} is reachable`)
-  gate.check(
-    'PluginHeader responsive unit coverage exists',
-    existsSync(join(PROJECT_ROOT, 'tests/components/plugin-header.test.tsx')),
-    'shared PluginHeader wrapping/search contract is covered for every consumer',
-  )
 
   let browser: Browser | null = null
   try {

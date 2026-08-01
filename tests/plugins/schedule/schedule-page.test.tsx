@@ -167,21 +167,12 @@ mock.module('@bakin/team/hooks/use-agent-store', () => ({
   useAgentDisplayName: () => undefined,
 }))
 
-mock.module('@/components/plugin-header', () => ({
-  PluginHeader: ({ title, count }: { title: string; count?: number }) => (
-    <div data-testid="plugin-header">
-      <span>{title}</span>
-      <span data-testid="header-count">{count ?? '—'}</span>
-    </div>
-  ),
-}))
-
 mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span>{agentId}</span>,
 }))
 
-mock.module('@/components/bakin-drawer', () => ({
-  BakinDrawer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+mock.module('@/components/drawer', () => ({
+  Drawer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }))
 
 mock.module('@/components/ui/button', () => ({
@@ -286,7 +277,7 @@ describe('SchedulePage smoke', () => {
 
     const { container } = render(<SchedulePage />)
 
-    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0)
+    expect(screen.getByText('Loading scheduled jobs')).toBeDefined()
   })
 
   it('shows an honest notice when ?jobId= matches no job (stale deep link)', () => {
@@ -349,7 +340,23 @@ describe('SchedulePage smoke', () => {
     expect(screen.getByTestId('job-a')).toBeDefined()
     expect(screen.getByTestId('job-b')).toBeDefined()
     expect(screen.getByTestId('job-c')).toBeDefined()
-    expect(screen.getByTestId('header-count').textContent).toBe('3')
+    expect(screen.getByTestId('header-count').textContent).toBe('3 shown')
+  })
+
+  it('pages long job lists with the shared list navigator', () => {
+    scheduleState.jobs = Array.from({ length: 12 }, (_, index) => makeJob({
+      id: `job-${index + 1}`,
+      displayName: `Scheduled job ${index + 1}`,
+    }))
+    queryStateRefs.view = 'list'
+
+    render(<SchedulePage />)
+
+    expect(screen.getByTestId('job-job-1')).toBeDefined()
+    expect(screen.getByTestId('job-job-10')).toBeDefined()
+    expect(screen.queryByTestId('job-job-11')).toBeNull()
+    expect(screen.getByText('Showing 1–10 of 12')).toBeDefined()
+    expect(screen.getByRole('navigation', { name: 'Scheduled jobs pagination' })).toBeDefined()
   })
 
   it('filters and reorders by score when useSearch returns hits', () => {
@@ -371,7 +378,7 @@ describe('SchedulePage smoke', () => {
     const jobNodes = screen.getAllByTestId(/^job-[a-c]$/)
     expect(jobNodes.map(n => n.getAttribute('data-testid'))).toEqual(['job-c', 'job-b'])
     expect(screen.queryByTestId('job-a')).toBeNull()
-    expect(screen.getByTestId('header-count').textContent).toBe('2')
+    expect(screen.getByTestId('header-count').textContent).toBe('2 shown')
   })
 
   it('falls back to local substring filter when useSearch returns no hits', () => {
@@ -390,7 +397,7 @@ describe('SchedulePage smoke', () => {
     expect(screen.getByTestId('job-job-beta')).toBeDefined()
     expect(screen.queryByTestId('job-job-alpha')).toBeNull()
     expect(screen.queryByTestId('job-job-gamma')).toBeNull()
-    expect(screen.getByTestId('header-count').textContent).toBe('1')
+    expect(screen.getByTestId('header-count').textContent).toBe('1 shown')
   })
 
   it('renders agent filter buttons for All + each agent id', () => {
@@ -399,7 +406,7 @@ describe('SchedulePage smoke', () => {
 
     render(<SchedulePage />)
 
-    expect(screen.getByText('All')).toBeDefined()
+    expect(screen.getByRole('radio', { name: 'All' })).toBeDefined()
     // AgentAvatar stubs render the agent id as text
     expect(screen.getAllByText('chef').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('pixel').length).toBeGreaterThanOrEqual(1)

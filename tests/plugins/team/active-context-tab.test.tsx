@@ -5,8 +5,8 @@
  * session JSONL parsed into a message stream.
  *
  * Covers: loading, error, empty, populated, role badges per message,
- * truncation banner, JSON content rendered as <pre>, plain text
- * rendered via MarkdownContent.
+ * truncation banner, bounded turn records, JSON content rendered as <pre>,
+ * and plain or text-block content rendered via MarkdownContent.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, render, screen, waitFor } from '@testing-library/react'
@@ -31,7 +31,7 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-mock.module('@makinbakin/sdk/components', () => ({
+mock.module('@makinbakin/sdk/content', () => ({
   MarkdownContent: ({ content }: { content: string }) => <div data-testid="markdown">{content}</div>,
 }))
 
@@ -75,6 +75,7 @@ describe('ActiveContextTab', () => {
     await act(async () => {
       resolveFetch!({ ok: true, json: () => Promise.resolve({ ok: true, transcript: null }) } as Response)
     })
+    await waitFor(() => expect(screen.getByText(/No session context yet/)).toBeDefined())
   })
 
   it('renders the empty state when transcript is null', async () => {
@@ -121,6 +122,10 @@ describe('ActiveContextTab', () => {
     expect(screen.getByText('tool')).toBeDefined()
     expect(screen.getByText('bakin_exec_log')).toBeDefined()
     expect(screen.getByText('claude-opus-4-7')).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Current session' })).toBeDefined()
+    expect(screen.getByText('4 turns')).toBeDefined()
+    expect(screen.getByRole('article', { name: 'Turn 1: system' })).toBeDefined()
+    expect(screen.getByRole('article', { name: 'Turn 4: tool' })).toBeDefined()
   })
 
   it('shows the truncation banner when transcript.truncated is true', async () => {
@@ -156,6 +161,28 @@ describe('ActiveContextTab', () => {
     })
     await waitFor(() => expect(screen.getByTestId('markdown')).toBeDefined())
     expect(screen.getByTestId('markdown').textContent).toBe('# Heading')
+  })
+
+  it('renders text-block arrays as readable content with expandable structured detail', async () => {
+    setupFetch({
+      ok: true,
+      transcript: {
+        sessionId: 'sess-blocks',
+        sessionStarted: null,
+        messages: [{
+          role: 'assistant',
+          content: JSON.stringify([{ type: 'text', text: 'Drafted the outline.' }], null, 2),
+          model: 'gpt-5.5',
+        }],
+        truncated: false,
+        totalMessages: 1,
+      },
+    })
+    render(<ActiveContextTab agentId="pixel" />)
+    await waitFor(() => expect(screen.getByTestId('markdown')).toBeDefined())
+    expect(screen.getByTestId('markdown').textContent).toBe('Drafted the outline.')
+    expect(screen.getByText('Structured message')).toBeDefined()
+    expect(screen.getByText(/"type": "text"/)).toBeDefined()
   })
 
   it('renders tool/JSON content as a <pre> code block, not markdown', async () => {

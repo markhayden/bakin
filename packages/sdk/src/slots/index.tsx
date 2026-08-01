@@ -22,7 +22,8 @@
  * Test-only helpers are not exported — tests use the public unregister path.
  */
 
-import { Component, useEffect, useSyncExternalStore, type JSX, type ReactNode } from 'react'
+import { Component, Fragment, useEffect, useSyncExternalStore, type JSX, type ReactNode } from 'react'
+import { PluginOwnershipRoot } from '../internal/plugin-ownership'
 import { subscribeRegistry, getRegistryVersion } from '../register'
 import {
   getLazyPluginsVersion,
@@ -80,7 +81,7 @@ class SlotEntryBoundary extends Component<
   render(): ReactNode {
     if (this.state.error) {
       return (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
+        <div className="rounded-md border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 px-3 py-2 text-xs text-bakin-signal-danger" role="alert">
           {this.props.owner ? `Plugin "${this.props.owner}"` : 'A plugin'} failed to render this section.
         </div>
       )
@@ -92,14 +93,14 @@ class SlotEntryBoundary extends Component<
 /** Fallback shown in place of slot content when an owning plugin's client bundle failed to load. */
 function SlotLoadError({ slotName, pluginIds }: { slotName: string; pluginIds: string[] }): JSX.Element {
   return (
-    <div className="flex flex-col items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+    <div className="flex flex-col items-start gap-2 rounded-md border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 px-4 py-3 text-sm text-bakin-signal-danger" role="alert">
       <span>
         {pluginIds.length === 1 ? `Plugin "${pluginIds[0]}" failed to load` : `Plugins ${pluginIds.map((id) => `"${id}"`).join(', ')} failed to load`}
         {getPluginLoadError(pluginIds[0]) ? ` — ${getPluginLoadError(pluginIds[0])}` : ''}
       </span>
       <button
         type="button"
-        className="rounded border border-destructive/40 px-2 py-1 text-xs hover:bg-destructive/20"
+        className="rounded border border-bakin-signal-danger/40 px-2 py-1 text-xs hover:bg-bakin-signal-danger/20"
         onClick={() => pluginIds.forEach(retryPluginLoad)}
         aria-label={`Retry loading ${slotName}`}
       >
@@ -143,10 +144,17 @@ export function Slot({ name, ...props }: SlotProps): JSX.Element | null {
     <>
       {entries.map((entry, i) => {
         const C = entry.component
-        return (
-          <SlotEntryBoundary key={`${name}-${i}`} owner={entry.owner} slotName={name}>
+        const contribution = (
+          <SlotEntryBoundary owner={entry.owner} slotName={name}>
             <C {...props} />
           </SlotEntryBoundary>
+        )
+        return entry.owner ? (
+          <PluginOwnershipRoot key={`${name}-${i}`} pluginId={entry.owner}>
+            {contribution}
+          </PluginOwnershipRoot>
+        ) : (
+          <Fragment key={`${name}-${i}`}>{contribution}</Fragment>
         )
       })}
     </>

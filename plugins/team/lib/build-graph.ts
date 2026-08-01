@@ -29,7 +29,10 @@ const FOUNDER_W = CARD_W
 const FOUNDER_ROW_H = 80
 const SECTION_ROW_H = 30
 
-const EDGE_STYLE: Record<string, unknown> = { stroke: '#525252', strokeWidth: 2 }
+const EDGE_STYLE: Record<string, unknown> = {
+  stroke: 'var(--bakin-color-border-subtle)',
+  strokeWidth: 2,
+}
 const EDGE_DASHED: Record<string, unknown> = { ...EDGE_STYLE }
 
 // ─── Types ─────────────────────────────────────────────────────────────────

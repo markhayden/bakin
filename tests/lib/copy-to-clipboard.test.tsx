@@ -22,7 +22,7 @@ import { act, fireEvent, render } from '@testing-library/react'
 import '../rtl-settle'
 
 import { copyToClipboard } from '../../src/lib/copy-to-clipboard'
-import { CopyButton } from '../../src/components/conversation/agent-turn'
+import { CopyButton } from '@makinbakin/sdk/conversation'
 import { waitUntil } from '../helpers/wait'
 
 type NavigatorWithClipboard = Navigator & { clipboard?: unknown }

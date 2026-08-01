@@ -1,15 +1,20 @@
 import { afterAll, describe, expect, it } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
+import { pathToFileURL } from 'node:url'
 import {
   SDK_EXPORTS,
+  SDK_STYLES_SPECIFIER,
   PUBLIC_SDK_PACKAGE_NAME,
+  assertSdkStylesheetIdentity,
   buildSdkPackage,
   findForbiddenPackageImports,
 } from '../../scripts/build-sdk-package'
 
 const testRoot = join(tmpdir(), `bakin-test-build-sdk-package-${Date.now()}`)
+const repoRoot = resolve(import.meta.dir, '../..')
 
 afterAll(() => {
   rmSync(testRoot, { recursive: true, force: true })
@@ -38,8 +43,11 @@ describe('buildSdkPackage', () => {
       name: string
       version: string
       type: string
-      exports: Record<string, { import: string; types: string }>
+      exports: Record<string, { import: string; types: string } | string>
+      sideEffects: string[]
+      bin: Record<string, string>
       peerDependencies: Record<string, string>
+      peerDependenciesMeta: Record<string, { optional?: boolean }>
       dependencies: Record<string, string>
     }>(join(outDir, 'package.json'))
 
@@ -47,19 +55,111 @@ describe('buildSdkPackage', () => {
     expect(pkg.version).toBe('0.9.0-rc.1')
     expect(pkg.type).toBe('module')
     expect(pkg.peerDependencies).toEqual({
+      '@tanstack/react-router': '^1.168.23',
+      'axe-core': '^4.12.0',
+      playwright: '^1.60.0',
       react: '^19.0.0',
       'react-dom': '^19.0.0',
     })
+    expect(pkg.peerDependenciesMeta).toEqual({
+      'axe-core': { optional: true },
+      playwright: { optional: true },
+    })
+    expect(pkg.bin).toEqual({ 'bakin-plugin-test-ui': './bin/bakin-plugin-test-ui.js' })
+    expect(readFileSync(join(outDir, 'bin/bakin-plugin-test-ui.js'), 'utf8')).toStartWith('#!/usr/bin/env bun')
+    expect(statSync(join(outDir, 'bin/bakin-plugin-test-ui.js')).mode & 0o111).not.toBe(0)
+    const cliHelp = spawnSync('bun', [join(outDir, 'bin/bakin-plugin-test-ui.js'), '--help'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+    })
+    expect(cliHelp.status).toBe(0)
+    expect(cliHelp.stdout).toContain('Usage: bakin-plugin-test-ui')
     expect(pkg.dependencies.zod).toBeDefined()
     expect(pkg.dependencies['@base-ui/react']).toBeDefined()
+    expect(SDK_STYLES_SPECIFIER).toBe('@makinbakin/sdk/styles.css')
+    expect(pkg.exports['./styles.css']).toBe('./styles.css')
+    expect(pkg.sideEffects).toEqual(['./styles.css'])
+    expect(existsSync(join(outDir, 'styles.css'))).toBe(true)
+    expect(readFileSync(join(outDir, 'styles.css'), 'utf-8')).toContain('--bakin-color-canvas-default')
+    expect(readFileSync(join(outDir, 'styles.css'))).toEqual(
+      readFileSync(join(repoRoot, 'packages/sdk/styles.css')),
+    )
 
     for (const entry of SDK_EXPORTS) {
       const exportConfig = pkg.exports[entry.exportPath]
       expect(exportConfig).toBeDefined()
+      if (typeof exportConfig === 'string') throw new Error(`${entry.exportPath} must be a JS/types export`)
       expect(existsSync(join(outDir, exportConfig.import))).toBe(true)
       expect(existsSync(join(outDir, exportConfig.types))).toBe(true)
       expect(statSync(join(outDir, exportConfig.import)).size).toBeGreaterThan(0)
       expect(statSync(join(outDir, exportConfig.types)).size).toBeGreaterThan(0)
+      expect(readFileSync(join(outDir, exportConfig.import), 'utf8')).not.toContain('react/jsx-dev-runtime')
+    }
+
+    const runtime = await import(`${pathToFileURL(join(outDir, 'index.js')).href}?test=${Date.now()}`)
+    expect(runtime.registerPlugin).toBeFunction()
+    expect(runtime.defineRoute).toBeFunction()
+    expect(runtime.definePlugin).toBeFunction()
+
+    const consumerDir = join(repoRoot, `.tmp-sdk-focused-consumer-${Date.now()}`)
+    try {
+      mkdirSync(join(consumerDir, 'node_modules/@makinbakin'), { recursive: true })
+      symlinkSync(outDir, join(consumerDir, 'node_modules/@makinbakin/sdk'), 'dir')
+      cpSync(join(repoRoot, 'tests/fixtures/sdk-focused-consumer/index.ts'), join(consumerDir, 'index.ts'))
+      writeFileSync(join(consumerDir, 'tsconfig.json'), JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          module: 'ESNext',
+          moduleResolution: 'Bundler',
+          skipLibCheck: true,
+          preserveSymlinks: true,
+        },
+        include: ['index.ts'],
+      }))
+      const result = spawnSync(join(repoRoot, 'node_modules/.bin/tsc'), ['-p', 'tsconfig.json'], {
+        cwd: consumerDir,
+        encoding: 'utf8',
+      })
+      expect(`${result.stdout}${result.stderr}`).toBe('')
+      expect(result.status).toBe(0)
+    } finally {
+      rmSync(consumerDir, { recursive: true, force: true })
+    }
+
+    const referenceDir = join(repoRoot, `.tmp-reference-plugin-consumer-${Date.now()}`)
+    try {
+      cpSync(join(repoRoot, 'examples/reference-plugin'), referenceDir, {
+        recursive: true,
+        filter: (source) => !/(?:^|\/)(?:dist|node_modules|test-results)(?:\/|$)/.test(source),
+      })
+      mkdirSync(join(referenceDir, 'node_modules/@makinbakin'), { recursive: true })
+      cpSync(outDir, join(referenceDir, 'node_modules/@makinbakin/sdk'), { recursive: true })
+      const result = spawnSync(join(repoRoot, 'node_modules/.bin/tsc'), ['-p', 'tsconfig.json'], {
+        cwd: referenceDir,
+        encoding: 'utf8',
+      })
+      expect(`${result.stdout}${result.stderr}`).toBe('')
+      expect(result.status).toBe(0)
+
+      const browserBuild = spawnSync('bun', [
+        'build',
+        'tests/ui.fixture.tsx',
+        '--outdir',
+        'test-results/package-build',
+        '--target',
+        'browser',
+        '--format',
+        'esm',
+        '--splitting',
+      ], {
+        cwd: referenceDir,
+        encoding: 'utf8',
+      })
+      expect(`${browserBuild.stdout}${browserBuild.stderr}`).not.toContain('is not declared in this file')
+      expect(browserBuild.status).toBe(0)
+    } finally {
+      rmSync(referenceDir, { recursive: true, force: true })
     }
   }, 120_000)
 
@@ -72,6 +172,22 @@ describe('buildSdkPackage', () => {
 
     expect(leaks).toEqual([])
   }, 120_000)
+
+  it('rejects a compiled package stylesheet that differs from the canonical artifact', () => {
+    const dir = join(testRoot, 'stylesheet-identity')
+    const canonicalPath = join(dir, 'canonical.css')
+    const candidatePath = join(dir, 'candidate.css')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(canonicalPath, ':root { --bakin-test: canonical; }\n')
+    writeFileSync(candidatePath, ':root { --bakin-test: stale; }\n')
+
+    expect(() => assertSdkStylesheetIdentity(candidatePath, canonicalPath)).toThrow(
+      'SDK stylesheet does not match the canonical artifact',
+    )
+
+    writeFileSync(candidatePath, readFileSync(canonicalPath))
+    expect(() => assertSdkStylesheetIdentity(candidatePath, canonicalPath)).not.toThrow()
+  })
 
   it('copies the npm README with the public package name', async () => {
     const outDir = join(testRoot, 'package-readme')

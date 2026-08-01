@@ -28,6 +28,7 @@ export type WhiskitBuildStage =
   | 'install'
   | 'server-build'
   | 'client-build'
+  | 'css-validate'
 
 export class WhiskitBuildError extends Error {
   readonly stage: WhiskitBuildStage
@@ -44,7 +45,7 @@ export class WhiskitBuildError extends Error {
 
 /** Stage progress event for observability (startup spans, dev overlay). */
 export interface WhiskitStageEvent {
-  stage: 'install' | 'server-build' | 'client-build'
+  stage: 'install' | 'server-build' | 'client-build' | 'css-validate'
   status: 'ok' | 'error'
   durationMs: number
 }
@@ -52,7 +53,7 @@ export interface WhiskitStageEvent {
 /** A request to build one plugin source dir into dist/. */
 export interface WhiskitBuildRequest {
   pluginDir: string
-  /** Defaults to basename(pluginDir). Used in logs/errors only. */
+  /** Defaults to basename(pluginDir). Used in diagnostics and the browser CSS ownership root. */
   pluginId?: string
   /** Minify the client bundle (publish/release builds). */
   production?: boolean

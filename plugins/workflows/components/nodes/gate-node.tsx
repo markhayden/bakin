@@ -12,19 +12,19 @@ export function GateNode({ data }: NodeProps) {
   const { label, description } = data as GateNodeData
 
   return (
-    <div className="flex h-full w-full flex-col justify-center rounded-lg border-2 border-amber-400 bg-zinc-900 px-4 py-3 shadow-lg">
-      <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-400">
-        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-amber-500/10">
+    <div className="flex h-full w-full flex-col justify-center rounded-bakin-surface border-2 border-bakin-signal-highlight bg-bakin-surface-default px-4 py-3 shadow-lg">
+      <div className="mb-2 flex items-center gap-2 text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-wider text-bakin-signal-highlight">
+        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-signal-highlight/10">
           <CheckCircle2 className="size-3.5" />
         </span>
         Approval Gate
       </div>
-      <div className="truncate text-sm font-medium text-zinc-100">{label}</div>
+      <div className="truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{label}</div>
       {description && (
-        <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-zinc-500">{description}</p>
+        <p className="mt-1 line-clamp-2 text-bakin-typography-size-meta leading-snug text-bakin-text-muted">{description}</p>
       )}
-      <Handle type="target" position={Position.Top} className="!bg-zinc-500" />
-      <Handle type="source" position={Position.Bottom} className="!bg-zinc-500" />
+      <Handle type="target" position={Position.Top} className="!bg-bakin-text-muted" />
+      <Handle type="source" position={Position.Bottom} className="!bg-bakin-text-muted" />
     </div>
   )
 }

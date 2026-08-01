@@ -1,0 +1,22 @@
+html,
+body,
+#storybook-root {
+  font-family: var(--bakin-typography-family-ui);
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--bakin-typography-family-mono);
+}
+
+html[data-bakin-reduced-motion='true'] *,
+html[data-bakin-reduced-motion='true'] *::before,
+html[data-bakin-reduced-motion='true'] *::after {
+  animation-delay: 0s !important;
+  animation-duration: 0s !important;
+  scroll-behavior: auto !important;
+  transition-delay: 0s !important;
+  transition-duration: 0s !important;
+}

@@ -1,23 +1,21 @@
 /**
  * /settings — plugin + system settings route.
  *
- * Mirrors `src/app/settings/page.tsx`. Unlike the other 20 routes this
- * one is the single page not covered by the post-#145 slot decoupling
- * — the settings UI lives directly in core (not a plugin), so we port
- * the logic verbatim: schema discovery via /api/plugin-settings/schemas,
- * per-plugin form render via PluginSettingsRenderer, and a synthetic
- * "System & Alerts" tab backed by /api/settings.
+ * The single page not covered by the post-#145 slot decoupling — the
+ * settings UI lives directly in core (not a plugin): schema discovery via
+ * /api/plugin-settings/schemas, per-plugin form render via
+ * PluginSettingsRenderer, and a synthetic "System & Alerts" tab backed by
+ * /api/settings.
  *
- * Imports reach into the Next.js-era `src/components/*` tree. That's
- * fine during TC migration — the root tsconfig maps `@/*` to `./src/*`
- * and packages/host inherits it — but TC26/TC27 should revisit whether
- * these components want to move under packages/host/src/components or
- * get promoted into @makinbakin/sdk.
+ * Composed on the Page archetype (storybook-refit T6.1/T6.2): Page +
+ * PageHeader own page identity and padding; the NavList master-detail
+ * category navigator sits beside ONE PageBody region so state replacement
+ * touches only the active category (Recipes/Settings and dashboard pages).
  */
 import { createRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { Settings } from 'lucide-react'
-import { PageLayout } from '@/components/page-layout'
+import { NavList, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
+import { Skeleton, SystemState } from '@makinbakin/sdk/ui'
 import { PluginSettingsRenderer, type PluginSettingsSchema } from '@/components/plugin-settings-renderer'
 import {
   SYSTEM_SETTINGS_TAB_ID,
@@ -25,8 +23,6 @@ import {
   flattenSystemSettings,
   unflattenSystemSettings,
 } from '@/components/system-settings'
-import { Skeleton } from '@/components/ui/skeleton'
-import { EmptyState } from '@/components/empty-state'
 import { ProviderKeysTab, PROVIDER_KEYS_TAB_ID } from '@/components/provider-keys-tab'
 import { Route as RootRoute } from './__root'
 
@@ -67,7 +63,16 @@ export function groupAndSortSchemas(schemas: PluginSchemaEntry[]): GroupedSchema
   return { core: [...system, ...providerKeys, ...core], extensions }
 }
 
-function SettingsPage() {
+function SettingsFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <Page>
+      <PageHeader title="Settings" description="Configure plugin behavior" />
+      {children}
+    </Page>
+  )
+}
+
+function SettingsRoute() {
   const [plugins, setPlugins] = useState<PluginSchemaEntry[]>([])
   const [activePlugin, setActivePlugin] = useState<string>('')
   const [values, setValues] = useState<Record<string, unknown>>({})
@@ -140,78 +145,70 @@ function SettingsPage() {
 
   if (schemasLoading) {
     return (
-      <PageLayout title="Settings" subtitle="Configure plugin behavior">
-        <div className="space-y-4">
-          <Skeleton className="h-8 w-60" />
-          <Skeleton className="h-8 w-40" />
-        </div>
-      </PageLayout>
+      <SettingsFrame>
+        <PageBody label="Settings categories" state={<SystemState kind="loading" />} />
+      </SettingsFrame>
     )
   }
 
   if (plugins.length === 0) {
     return (
-      <PageLayout title="Settings" subtitle="Configure plugin behavior">
-        <EmptyState
-          icon={Settings}
-          title="No plugin settings"
-          description="No plugins have declared configurable settings."
+      <SettingsFrame>
+        <PageBody
+          label="Settings categories"
+          state={
+            <SystemState
+              kind="initial-empty"
+              title="No plugin settings"
+              description="No plugins have declared configurable settings."
+            />
+          }
         />
-      </PageLayout>
+      </SettingsFrame>
     )
   }
 
   const grouped = groupAndSortSchemas(plugins)
-  const renderTab = (p: PluginSchemaEntry) => (
-    <button
-      key={p.id}
-      onClick={() => setActivePlugin(p.id)}
-      className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
-        p.id === activePlugin
-          ? 'bg-muted text-foreground font-medium'
-          : 'text-muted-foreground hover:text-foreground'
-      }`}
-    >
-      {p.name}
-    </button>
-  )
-  const sectionLabel = 'px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60'
+  const toNavItem = (p: PluginSchemaEntry) => ({ id: p.id, label: p.name })
+  const navSections = [
+    ...(grouped.core.length > 0 ? [{ label: 'Core', items: grouped.core.map(toNavItem) }] : []),
+    ...(grouped.extensions.length > 0 ? [{ label: 'Extensions', items: grouped.extensions.map(toNavItem) }] : []),
+  ]
 
   return (
-    <PageLayout title="Settings" subtitle="Configure plugin behavior">
-      <div className="flex gap-8">
-        {/* Plugin list */}
-        <nav className="w-40 shrink-0">
-          {grouped.core.length > 0 && (
-            <div className="space-y-1">
-              <div className={sectionLabel}>Core</div>
-              {grouped.core.map(renderTab)}
-            </div>
-          )}
-          {grouped.extensions.length > 0 && (
-            <div className="space-y-1 mt-6">
-              <div className={sectionLabel}>Extensions</div>
-              {grouped.extensions.map(renderTab)}
-            </div>
-          )}
-        </nav>
+    <SettingsFrame>
+      <div className="flex min-w-0 flex-1 flex-col gap-bakin-6 @3xl/page-shell:flex-row @3xl/page-shell:items-start @3xl/page-shell:gap-bakin-8">
+        {/* Master-detail category navigation (NavList) — the active category
+            stays visible while PageBody swaps its state. */}
+        <NavList
+          label="Settings categories"
+          sections={navSections}
+          selectedId={activePlugin || null}
+          onSelect={setActivePlugin}
+          className="w-full min-w-0 @3xl/page-shell:w-56 @3xl/page-shell:shrink-0"
+        />
 
-        {/* Settings form */}
-        <div className="flex-1">
+        {/* Active category — the ONE PageBody region for this page. */}
+        <PageBody labelledBy="active-settings-heading" gap="content" className="min-w-0">
           {plugin && (
             <>
-              <h2 className="text-base font-semibold mb-4">{plugin.name}</h2>
+              <h2
+                id="active-settings-heading"
+                className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
+              >
+                {plugin.name}
+              </h2>
               {activePlugin === PROVIDER_KEYS_TAB_ID ? (
                 <ProviderKeysTab />
               ) : loading ? (
-                <div className="space-y-4">
+                <div className="flex flex-col gap-bakin-4">
                   <Skeleton className="h-8 w-60" />
                   <Skeleton className="h-8 w-40" />
                   <Skeleton className="h-8 w-60" />
                 </div>
               ) : plugin.schema.fields.length === 0 ? (
-                <EmptyState
-                  icon={Settings}
+                <SystemState
+                  kind="initial-empty"
                   title="No settings"
                   description="This plugin has no configurable settings."
                 />
@@ -225,14 +222,14 @@ function SettingsPage() {
               )}
             </>
           )}
-        </div>
+        </PageBody>
       </div>
-    </PageLayout>
+    </SettingsFrame>
   )
 }
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
   path: '/settings',
-  component: SettingsPage,
+  component: SettingsRoute,
 })

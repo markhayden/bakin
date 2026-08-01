@@ -97,7 +97,7 @@ Calendar views respect each job's `createdAt` date — jobs don't render on days
 
 ### Drawers
 
-- **Job detail** (`job-drawer.tsx`): Shows job config, run history, pause controls. Actions menu (duplicate, delete) via `BakinDrawer` actions prop.
+- **Job detail** (`job-drawer.tsx`): Shows job config, run history, pause controls. Actions menu (duplicate, delete) via `Drawer` actions prop.
 - **Job form** (`job-form.tsx`): Create/edit/duplicate form with schedule input, agent select, advanced options (workflow, title template, overlap, max failures).
 
 Native or legacy runtime cron jobs can carry a runtime tool allowlist. When the runtime adapter reports `toolsAllow`, Schedule shows it in the detail drawer. When a non-Bakin runtime timer has no allowlist, Schedule marks it with a missing cron-tools warning so the operator can decide whether to repair the native cron policy.

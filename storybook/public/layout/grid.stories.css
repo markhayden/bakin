@@ -1,0 +1,33 @@
+.bakin-grid-story__signals {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bakin-grid-story__signals [data-slot='card-title'] {
+  font-family: var(--bakin-typography-family-mono);
+  font-size: 1.75rem;
+}
+
+.bakin-grid-story__signals [data-slot='badge'] {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: start;
+}
+
+.bakin-grid-story__queue {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bakin-layout-space-1);
+  color: var(--bakin-color-text-muted);
+  font-size: var(--bakin-typography-size-meta);
+}
+
+.bakin-grid-story__cards {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

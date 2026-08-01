@@ -33,7 +33,7 @@ Server bundles inline `@makinbakin/sdk`. The build resolves SDK sources in order
 bakin plugins install github:owner/repo#plugins/my-plugin
 ```
 
-For a `#subpath` GitHub source, install prefers a published artifact: it reads `whiskit-artifacts.json` from the release's `releases/latest/download/` redirect (or `releases/download/<tag>/` when the source pins `@<tag>`), downloads the artifact, verifies the checksum, safely extracts it, and checks that the artifact's externals contract matches the host. Only when no published artifact exists does install fall back to git clone + local build.
+For a `#subpath` GitHub source, install prefers a published artifact: it reads `whiskit-artifacts.json` from the release's `releases/latest/download/` redirect (or `releases/download/<tag>/` when the source pins `@<tag>`), downloads the artifact, verifies the checksum, safely extracts it, and checks that the host supports the artifact's externals contract. Contract versions are additive within one family, so newer hosts can load artifacts built against an earlier compatible version. Only when no published artifact exists does install fall back to git clone + local build.
 
 ## Check and Upgrade
 

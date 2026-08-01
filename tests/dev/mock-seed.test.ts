@@ -83,6 +83,62 @@ describe('mock seed', () => {
     expect(fs.readdirSync(join(home, 'assets', 'inbox')).length).toBeGreaterThanOrEqual(2)
   })
 
+  it('seeds representative brand records for list and detail UI review', () => {
+    const home = configureTempHome()
+    seed(true)
+    const fs = require('fs') as typeof import('fs')
+    const brandsRoot = join(home, 'brands')
+    const ids = fs.readdirSync(brandsRoot)
+      .filter((id) => existsSync(join(brandsRoot, id, 'brand.json')))
+      .sort()
+    const manifests = ids.map((id) =>
+      JSON.parse(readFileSync(join(brandsRoot, id, 'brand.json'), 'utf-8')) as {
+        id: string
+        draft?: boolean
+        logos: Array<{ assetId: string }>
+        source?: { repo: string }
+      },
+    )
+
+    expect(ids).toEqual([
+      'copper-and-bloom',
+      'daybreak-studio',
+      'harvest-and-hearth',
+      'northstar-trails',
+    ])
+    expect(manifests.some((brand) => brand.draft)).toBe(true)
+    expect(manifests.some((brand) => !brand.draft)).toBe(true)
+    expect(manifests.some((brand) => brand.logos.length > 0)).toBe(true)
+    expect(manifests.some((brand) => brand.logos.length === 0)).toBe(true)
+    expect(manifests.some((brand) => brand.source?.repo)).toBe(true)
+    expect(existsSync(join(brandsRoot, 'harvest-and-hearth', 'guidelines', 'voice.md'))).toBe(true)
+    expect(existsSync(join(brandsRoot, 'northstar-trails', 'lessons', 'weather-first.md'))).toBe(true)
+  })
+
+  it('seeds representative chats for launcher, rail, transcript, tool, and attachment review', () => {
+    const home = configureTempHome()
+    seed(true)
+    const chatRoot = join(home, 'chat')
+    const index = JSON.parse(readFileSync(join(chatRoot, 'index.json'), 'utf-8')) as {
+      chats: Array<{ id: string; agentId: string; pinned: boolean; unreadCount: number }>
+    }
+
+    expect(index.chats.length).toBeGreaterThanOrEqual(3)
+    expect(index.chats.some((chat) => chat.pinned)).toBe(true)
+    expect(index.chats.some((chat) => chat.unreadCount > 0)).toBe(true)
+    expect(new Set(index.chats.map((chat) => chat.agentId)).size).toBeGreaterThanOrEqual(3)
+
+    const transcripts = index.chats.flatMap((chat) =>
+      readFileSync(join(chatRoot, `${chat.id}.jsonl`), 'utf-8')
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { kind: string; attachments?: unknown[] }),
+    )
+    expect(transcripts.some((row) => row.kind === 'tool')).toBe(true)
+    expect(transcripts.some((row) => row.kind === 'error')).toBe(true)
+    expect(transcripts.some((row) => row.attachments?.length)).toBe(true)
+  })
+
   it('seeds plugin symlinks when bakin-bits-official is available', () => {
     const home = configureTempHome()
     seed(true)

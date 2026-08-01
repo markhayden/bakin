@@ -102,9 +102,10 @@ describe('ChatRail', () => {
     expect(labels[0]).toBe('Pinned')
     expect(container.querySelector('[data-chat-unread]')).toBeNull() // streaming spinner wins over the pill
     expect(container.querySelector('[data-chat-working]')).not.toBeNull()
-    // selected-state contrast comes from paired tokens, never accent-on-accent
+    // Rows are kit ListRow + ghost Button (refit T6.5): hover state comes
+    // from the Button's own surface token, never accent-on-accent.
     const row = container.querySelector(`[data-chat-row="${CHAT_B}"]`)
-    expect(row?.className).toContain('hover:bg-foreground/5')
+    expect(row?.querySelector('button')?.className).toContain('hover:bg-bakin-surface-default')
   })
 
   it('unread pill renders when idle; selected row uses the muted-gray token', async () => {
@@ -122,8 +123,8 @@ describe('ChatRail', () => {
     const { container } = __view1
     expect(container.querySelector('[data-chat-unread]')?.textContent).toBe('2')
     const row = container.querySelector(`[data-chat-row="${CHAT_A}"]`)
-    expect(row?.className).toContain('bg-foreground/10')
-    // never the theme accent (pink) — selection reads as a subtle gray
+    // selection reads as the subtle surface token, never the theme accent (pink)
+    expect(row?.querySelector('button')?.className).toContain('bg-bakin-surface-default')
     expect(row?.className).not.toContain('bg-accent')
   })
 
@@ -456,7 +457,8 @@ describe('ChatView', () => {
       expect(meter).not.toBeNull()
       expect(meter!.textContent).toContain('45.3k / 272k (16%)')
     })
-    expect(container.querySelector('[data-context-tick]')).not.toBeNull()
+    // The threshold tick rides the kit Progress marker slot.
+    expect(container.querySelector('[data-slot="progress-marker"]')).not.toBeNull()
     cleanup()
   })
 
@@ -535,9 +537,13 @@ describe('ChatView', () => {
     await waitFor(() => expect(container.querySelector('[data-chat-title]')).not.toBeNull())
     const avatarWrap = container.querySelector('span[title="main"]')
     expect(avatarWrap).not.toBeNull()
+    const header = container.querySelector('[data-chat-header]')
+    // Refit T6.5: the header rides flex rows, not a hand-rolled grid template.
+    expect(header?.className).toContain('flex')
+    expect(container.querySelector('[data-chat-header-title]')?.className).toContain('min-w-0')
+    expect(container.querySelector('[data-chat-header-meta]')).toBeNull()
     // The name never renders as visible header text …
-    const headerLine = container.querySelector('.min-h-4')
-    expect(headerLine?.textContent).not.toContain('main')
+    expect(header?.textContent ?? '').not.toContain('main')
     // … and the removed working ticker stays removed.
     expect(container.querySelector('[data-chat-header-working]')).toBeNull()
     cleanup()

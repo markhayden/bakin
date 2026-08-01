@@ -3,7 +3,7 @@ title: Client UI
 description: Register plugin navigation, pages, routes, slots, and shell-integrated UI through @makinbakin/sdk.
 ---
 
-Client entries use `registerPlugin()` from `@makinbakin/sdk`. Beyond `navItems`/`routes`/`slots`, a plugin can register `search: { hitRenderers }` — plain data-mapping functions (`(hit) => { title, subtitle?, href, thumbnailUrl?, icon?, meta? }`; `meta` is the small type · agent · date line under the subtitle) that render its content type in the global ⌘K search overlay; unknown types get a default renderer (see [Search](/docs/extending/plugins/search/)). For live UI updates when server-side data changes, subscribe with `usePluginEvent` — see [Realtime Events](/docs/extending/plugins/realtime/). Keep UI contributions predictable and built from SDK components where practical (`pluginFetch`/`usePluginJsonFetch` for your own routes, `PluginHeader`, `EmptyState`, `ConfirmDialog`, `TurnOutputView` for agent turn output). The reference plugin's [`client.tsx`](https://github.com/markhayden/bakin/tree/main/examples/reference-plugin) is the worked example. Plugin UI should feel like part of Bakin: dense enough for repeated work, accessible, and clear about loading, empty, error, and permission states.
+Client entries use `registerPlugin()` from `@makinbakin/sdk`. Beyond `navItems`/`routes`/`slots`, a plugin can register `search: { hitRenderers }` — plain data-mapping functions (`(hit) => { title, subtitle?, href, thumbnailUrl?, icon?, meta? }`; `meta` is the small type · agent · date line under the subtitle) that render its content type in the global ⌘K search overlay; unknown types get a default renderer (see [Search](/docs/extending/plugins/search/)). For live UI updates when server-side data changes, subscribe with `usePluginEvent` — see [Realtime Events](/docs/extending/plugins/realtime/). Keep UI contributions predictable and compose them from the focused SDK contracts: `PageShell`/`PageHeader`, `SystemState`, `ConfirmDialog`, and `TurnOutputView` cover the common examples. The reference plugin's [`client-registration.tsx`](https://github.com/markhayden/bakin/blob/main/examples/reference-plugin/client-registration.tsx), [`BookmarksPage`](https://github.com/markhayden/bakin/blob/main/examples/reference-plugin/components/bookmarks-page.tsx), and [`ui.fixture.tsx`](https://github.com/markhayden/bakin/blob/main/examples/reference-plugin/tests/ui.fixture.tsx) are the worked production registration, page, slot, and browser-test examples. Plugin UI should feel like part of Bakin: dense enough for repeated work, accessible, and clear about loading, empty, error, and permission states.
 
 The tested minimal client entry lives at `docs/snippets/plugin-basic/client.tsx`.
 
@@ -135,8 +135,7 @@ Patterns support exact paths and dynamic segments in `:id`, `[id]`, or `$id` for
 Internal navigation must stay client-side — a raw `<a href="/…">` or `window.location` assignment reloads the whole shell (and fails Bakin's lint/architecture checks for in-tree plugins). Use:
 
 ```tsx
-import { PluginLink } from '@makinbakin/sdk/components'
-import { useRouter } from '@makinbakin/sdk/hooks'
+import { PluginLink, useRouter } from '@makinbakin/sdk/navigation'
 
 // Links: a real anchor (copy / cmd-click / middle-click all work) that
 // routes primary clicks through the client router.
@@ -148,6 +147,13 @@ router.push(`/docs-basic/${item.id}`)          // history entry; scrolls to top
 router.push(url, { scroll: false })            // keep scroll position
 router.replace(`/docs-basic?view=grid`)        // no history entry; keeps scroll
 ```
+
+:::note[One browser navigation boundary]
+`@makinbakin/sdk/navigation` also publishes URL-state hooks, history-aware back
+behavior, and the complete unsaved-changes guard. Keep server HTTP declarations
+in `@makinbakin/sdk/routing`; do not copy either implementation or add another
+router abstraction.
+:::
 
 Query values are always plain strings (`?id=123` reads back as `'123'`), and multiple `useQueryState` setter calls in one handler compose into a single navigation.
 
@@ -208,22 +214,33 @@ Register with `registerSlot()` directly when you need a custom order. Lower orde
 
 ## UI Primitives
 
-Import common UI from `@makinbakin/sdk/ui` and shared app components from `@makinbakin/sdk/components`.
+Import primitives from `@makinbakin/sdk/ui`, layout from
+`@makinbakin/sdk/layout`, and application patterns from
+`@makinbakin/sdk/patterns`. The legacy `@makinbakin/sdk/components`
+barrel has been removed; every import comes from a focused entrypoint.
 
 ```tsx
 import { Button } from '@makinbakin/sdk/ui'
-import { PluginHeader } from '@makinbakin/sdk/components'
+import { PageShell } from '@makinbakin/sdk/layout'
+import { PageHeader } from '@makinbakin/sdk/patterns'
 ```
 
 Custom UI is fine when the domain needs it, but keep Bakin conventions: small radii, clear tables and filters, keyboard-friendly controls, visible empty states, and no layout shift when data loads.
+
+Start in the public Storybook catalog and record any deliberate exception in
+the change. The explanation must name the domain requirement, the closest
+defined pattern, why that pattern does not fit, and the smallest accessible
+exception being introduced. The reference plugin's `bun run test:ui` command
+is the copyable page-and-slot conformance setup for external packages.
 
 ## Agent Chat Surfaces
 
 Use the conversation kit's `ConversationPanel` when a plugin needs a durable
 agent chat panel inside its own page. Keep the plugin-owned record as the
-source of truth for visible messages and pass a stable thread id (built with
-`conversationThreadId`) to the server route so the runtime adapter can
-preserve conversation continuity.
+source of truth for visible messages. Create the server-owned background turn
+with `ctx.conversations.createTurnService(...)`, and use
+`useConversationThread` to load the transcript and consume the service's
+plugin-namespaced events. The turn survives navigation and request teardown.
 
 `transformText` lets the plugin post-process assistant text and render
 structured artifacts below it without forking the chat component. For
@@ -231,31 +248,54 @@ example, a content planning plugin can strip proposal JSON from an assistant
 message and render a review badge inline:
 
 ```tsx
-import { ConversationPanel, useConversationStream } from '@makinbakin/sdk/components'
+import {
+  ConversationPanel,
+  useConversationThread,
+  type ConversationMessage,
+} from '@makinbakin/sdk/conversation'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
-function PlanningChat({ sessionId, agentId, messages, refresh }) {
-  const stream = useConversationStream({
-    fetcher: (content, { signal }) =>
-      pluginFetch('messaging', `sessions/${sessionId}/messages`, {
+function PlanningChat({ sessionId, agentId }) {
+  const thread = useConversationThread({
+    threadKey: sessionId,
+    events: {
+      chunk: 'messaging.plan.chunk',
+      done: 'messaging.plan.done',
+      error: 'messaging.plan.error',
+    },
+    keyOf: (payload) => payload.sessionId,
+    load: async () => {
+      const response = await pluginFetch('messaging', `sessions/${sessionId}`)
+      if (!response.ok) return null
+      return response.json() as Promise<{
+        messages: ConversationMessage[]
+        streaming?: boolean
+        streamingText?: string
+      }>
+    },
+    post: async (_key, content) => {
+      const response = await pluginFetch('messaging', `sessions/${sessionId}/messages`, {
         method: 'POST',
         body: { content },
-        signal,
-      }),
-    onCustom: (event, data) => {
-      if (event === 'proposal') mergeProposal(data)
+      })
+      return response.ok
+        ? { ok: true }
+        : { ok: false, status: response.status }
     },
-    onDone: refresh,
   })
 
   return (
     <ConversationPanel
-      messages={messages}
-      liveChunks={stream.liveChunks}
-      streaming={stream.streaming}
-      agentId={agentId}
-      onSend={stream.send}
-      onAbort={stream.abort}
+      messages={thread.messages}
+      liveChunks={thread.liveChunks}
+      streaming={thread.streaming}
+      agent={{ id: agentId, name: agentId }}
+      onSend={thread.send}
+      onAbort={() => {
+        void pluginFetch('messaging', `sessions/${sessionId}/abort`, {
+          method: 'POST',
+        })
+      }}
       storageKey={`messaging:${sessionId}`}
       fitParent
       showHeader={false}

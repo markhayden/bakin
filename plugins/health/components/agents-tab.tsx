@@ -1,7 +1,7 @@
 'use client'
 
 import { useQueryState } from '@makinbakin/sdk/hooks'
-import { SegmentedControl } from '@makinbakin/sdk/components'
+import { SegmentedControl } from '@makinbakin/sdk/patterns'
 import { useAgentsData, type AgentsWindow } from '../hooks/use-agents-data'
 import { useAgentOperationalData } from '../hooks/use-agent-operational-data'
 import { AgentPulse } from './agent-pulse'
@@ -51,7 +51,7 @@ export function AgentsTab() {
       />
 
       {backgroundErrors.length > 0 && (
-        <p role="status" className="text-xs text-warning-foreground">
+        <p role="status" className="text-bakin-typography-size-meta text-bakin-signal-highlight">
           Some agent evidence is incomplete: {backgroundErrors.length === 1 ? backgroundErrors[0] : `${backgroundErrors.length} sources could not be fully verified`}.
         </p>
       )}

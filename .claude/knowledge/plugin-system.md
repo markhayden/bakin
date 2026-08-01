@@ -910,13 +910,15 @@ Produces the bundles that the browser import map points at:
 packages/host/public/vendor/
   react.js, react-dom.js
   jsx-runtime.js, jsx-dev-runtime.js, tanstack-router.js
-  sdk-index.js, sdk-ui.js, sdk-hooks.js, sdk-components.js,
+  sdk-index.js, sdk-ui.js, sdk-layout.js, sdk-patterns.js,
+  sdk-charts.js, sdk-conversation.js, sdk-content.js,
+  sdk-navigation.js, sdk-hooks.js, sdk-components.js,
   sdk-slots.js, sdk-types.js, sdk-utils.js, sdk-metadata.js,
-  sdk-routing.js
+  sdk-routing.js, sdk-internal.js
   sdk-shared-<hash>.js   ← code-split chunks shared by the SDK bundles
 ```
 
-The nine SDK sub-paths are built in one `bun build --splitting`
+All browser-resolvable SDK entrypoints are built in one `bun build --splitting`
 invocation, so code shared between sub-paths exists once in the
 `sdk-shared-*` chunks (loaded via relative imports — they need no
 import-map entries). Only the chunk names are content-hashed; the entry
@@ -938,7 +940,7 @@ Plugin authors import from `@makinbakin/sdk/*`. Full sub-path map:
 | `@makinbakin/sdk` | `registerPlugin`, `getAllNavItems`, `NavItem` type |
 | `@makinbakin/sdk/ui` | shadcn primitives (Button, Card, Dialog, Input, Select, Table, Tabs, Tooltip, ...) |
 | `@makinbakin/sdk/hooks` | React hooks (`useAgent`, `useAgentList`, `useSSE`, `usePluginEvent`, `useJsonFetch`, `useAvailableModels`, `useSearch`, `useQueryState`, `useQueryArrayState`, `useDebug`, `useNotificationChannels`, ...) |
-| `@makinbakin/sdk/components` | Shared components (`PluginHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ConfirmDialog`, `EmptyState`, `ChannelIcon`, `BakinDrawer`, ...) |
+| `@makinbakin/sdk/patterns` | Application patterns (`PageHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ConfirmDialog`, `ChannelIcon`, `StatusBadge`, ...) — the former `@makinbakin/sdk/components` barrel is REMOVED (storybook-refit P-final) |
 | `@makinbakin/sdk/slots` | `Slot`, `registerSlot`, `__clearSlot` |
 | `@makinbakin/sdk/types` | Canonical, self-contained contract types (`PluginContext`, `BakinPlugin`, `Task`, `WorkflowDefinition`, ...), split into primitives/manifest/runtime/services/registration/context behind a barrel. The single source of truth — `packages/core/src/plugin-types.ts` re-exports the identical leaf types from here and keeps its own fuller internal tier (see repo-architecture.md § two-tier type contract). |
 | `@makinbakin/sdk/utils` | `cn`, `formatAge`, `formatDateTime`, `formatDuration`, `formatSize`, `isStale`, `toneBadgeClass` |

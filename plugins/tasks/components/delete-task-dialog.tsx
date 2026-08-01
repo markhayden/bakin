@@ -1,6 +1,6 @@
 'use client'
 
-import { ConfirmDialog } from "@makinbakin/sdk/components"
+import { ConfirmDialog } from "@makinbakin/sdk/patterns"
 
 interface DeleteTaskDialogProps {
   title: { id: string; title: string } | null

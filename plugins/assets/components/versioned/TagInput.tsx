@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { Badge, Input } from '@makinbakin/sdk/ui'
+import { Badge, Button, Input } from '@makinbakin/sdk/ui'
 import { X } from 'lucide-react'
 import { normalizeTag } from '../../lib/tags'
 
@@ -10,11 +10,12 @@ import { normalizeTag } from '../../lib/tags'
  * tags while typing, Enter/comma adds freeform. Normalization mirrors the
  * server's normalizeTags (which remains the authority on save).
  */
-export function TagInput({ value, onChange, suggestions = [], placeholder = 'Add tag…' }: {
+export function TagInput({ value, onChange, suggestions = [], placeholder = 'Add tag…', ariaLabel = 'Tags' }: {
   value: string[]
   onChange: (tags: string[]) => void
   suggestions?: string[]
   placeholder?: string
+  ariaLabel?: string
 }) {
   const [draft, setDraft] = useState('')
   const [focused, setFocused] = useState(false)
@@ -37,17 +38,25 @@ export function TagInput({ value, onChange, suggestions = [], placeholder = 'Add
 
   return (
     <div className="relative" data-testid="tag-input">
-      <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-transparent px-2 py-1.5">
+      <div className="flex flex-wrap items-center gap-1.5 rounded-bakin-control border border-bakin-border-subtle bg-transparent px-2 py-1.5">
         {value.map(tag => (
           <Badge key={tag} variant="secondary" className="gap-1 pr-1 text-xs font-normal" data-testid={`tag-chip-${tag}`}>
             {tag}
-            <button onClick={() => remove(tag)} aria-label={`Remove tag ${tag}`} className="rounded-full p-0.5 hover:bg-muted">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => remove(tag)}
+              aria-label={`Remove tag ${tag}`}
+              className="size-auto min-h-0 min-w-0 rounded-bakin-pill p-0.5"
+            >
               <X className="size-3" />
-            </button>
+            </Button>
           </Badge>
         ))}
         <Input
           ref={inputRef}
+          aria-label={ariaLabel}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onFocus={() => setFocused(true)}
@@ -66,16 +75,19 @@ export function TagInput({ value, onChange, suggestions = [], placeholder = 'Add
         />
       </div>
       {focused && matches.length > 0 && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-auto rounded-md border border-border bg-popover py-1 shadow-md" data-testid="tag-suggestions">
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-auto rounded-bakin-control border border-bakin-border-subtle bg-bakin-surface-default py-1 shadow-bakin-elevation-overlay" data-testid="tag-suggestions">
           {matches.map(s => (
-            <button
+            <Button
               key={s}
+              type="button"
+              variant="ghost"
+              size="sm"
               onMouseDown={(e) => { e.preventDefault(); add(s) }}
-              className="block w-full px-2.5 py-1 text-left text-sm text-popover-foreground hover:bg-accent"
+              className="!h-auto w-full justify-start rounded-none px-2.5 py-1 text-left text-sm font-bakin-typography-weight-regular"
               data-testid={`tag-suggestion-${s}`}
             >
               {s}
-            </button>
+            </Button>
           ))}
         </div>
       )}

@@ -1,9 +1,11 @@
 'use client'
 
 import type { HealthIncident } from '@makinbakin/sdk/types'
-import { PluginLink, StatusBadge } from '@makinbakin/sdk/components'
-import { Popover, PopoverContent, PopoverTrigger } from '@makinbakin/sdk/ui'
-import { CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react'
+import { PluginLink } from '@makinbakin/sdk/navigation'
+import { Section, Stack } from '@makinbakin/sdk/layout'
+import { StatusBadge } from '@makinbakin/sdk/patterns'
+import { Banner, Popover, PopoverContent, PopoverTrigger } from '@makinbakin/sdk/ui'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { HealthOverviewViewModel, OverviewIncident } from '../lib/health-view-model'
 import { IncidentRow } from './incident-row'
 
@@ -19,12 +21,12 @@ interface OverviewAlertsProps {
 function AcknowledgedSection({ model, onRepair, onRerun, onAck }: OverviewAlertsProps) {
   if (model.acknowledged.length === 0) return null
   return (
-    <details className="group rounded-lg border border-border/70 bg-foreground/[0.02]" data-testid="overview-acknowledged">
-      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-        <ChevronDown className="size-4 -rotate-90 transition-transform group-open:rotate-0 motion-reduce:transition-none" aria-hidden="true" />
+    <details className="group rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default" data-testid="overview-acknowledged">
+      <summary className="flex cursor-pointer list-none items-center gap-bakin-2 rounded-bakin-surface px-bakin-3 py-bakin-2 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring [&::-webkit-details-marker]:hidden">
+        <ChevronDown className="size-bakin-3 -rotate-90 transition-transform duration-[var(--bakin-motion-duration-transition)] group-open:rotate-0 motion-reduce:transition-none" aria-hidden="true" />
         Acknowledged ({model.acknowledged.length})
       </summary>
-      <div className="border-t border-border/70 p-3">
+      <div className="border-t border-bakin-border-subtle p-bakin-3">
         <AlertGrid incidents={model.acknowledged} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
       </div>
     </details>
@@ -74,7 +76,7 @@ function AlertGrid({
   return (
     <ul
       data-testid={testId}
-      className={`grid gap-3 ${columnClasses}`}
+      className={`grid gap-bakin-3 ${columnClasses}`}
     >
       {incidents.map((item) => (
         <li key={item.incident.id} className="min-w-0">
@@ -85,39 +87,39 @@ function AlertGrid({
   )
 }
 
-function noticeBadge(item: OverviewIncident): { label: string; tone: 'neutral' | 'warning' } {
+function noticeBadge(item: OverviewIncident): { label: string; tone: 'neutral' | 'attention' } {
   if (item.incident.status === 'unknown') return { label: 'Verify', tone: 'neutral' }
   // Advisory here includes sensitivity-demoted findings (#690) — calm, but
   // still listed: demotion means quiet, never hidden.
   if (item.incident.effectiveDisposition === 'advisory') return { label: 'Advisory', tone: 'neutral' }
-  return { label: 'Watch', tone: 'warning' }
+  return { label: 'Watch', tone: 'attention' }
 }
 
 function Notices({ incidents }: { incidents: OverviewIncident[] }) {
   if (incidents.length === 0) return null
   return (
     <Popover>
-      <PopoverTrigger className="group flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <PopoverTrigger className="group flex items-center gap-bakin-1 rounded-bakin-control px-bakin-2 py-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted hover:bg-bakin-surface-default hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring">
         {incidents.length} {incidents.length === 1 ? 'notice' : 'notices'}
-        <ChevronDown className="size-3.5 transition-transform group-data-[popup-open]:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
+        <ChevronDown className="size-bakin-3 transition-transform duration-[var(--bakin-motion-duration-transition)] group-data-[popup-open]:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(24rem,calc(100vw-2rem))] p-2">
-        <ul className="max-h-72 space-y-1 overflow-auto">
+      <PopoverContent align="end" className="w-[min(24rem,calc(100vw-2rem))] p-bakin-2">
+        <ul className="max-h-72 space-y-bakin-1 overflow-auto">
           {incidents.map((item) => {
             const badge = noticeBadge(item)
             return (
-              <li key={item.incident.id} className="flex items-start gap-2 rounded-lg px-2 py-2 text-sm">
+              <li key={item.incident.id} className="flex items-start gap-bakin-2 rounded-bakin-control px-bakin-2 py-bakin-2 text-bakin-typography-size-meta">
                 <StatusBadge tone={badge.tone} variant="outline">{badge.label}</StatusBadge>
-                <span className="min-w-0 leading-snug text-foreground">{item.incident.title}</span>
+                <span className="min-w-0 leading-snug text-bakin-text-primary">{item.incident.title}</span>
               </li>
             )
           })}
         </ul>
         <PluginLink
           to="/health?tab=system"
-          className="mt-1 flex items-center justify-end gap-1 rounded-md px-2 py-2 text-sm font-medium text-primary hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="mt-bakin-1 flex items-center justify-end gap-bakin-1 rounded-bakin-control px-bakin-2 py-bakin-2 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-signal-accent hover:bg-bakin-surface-default focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
         >
-          Review system details <ChevronRight className="size-3.5" aria-hidden="true" />
+          Review system details <ChevronRight className="size-bakin-3" aria-hidden="true" />
         </PluginLink>
       </PopoverContent>
     </Popover>
@@ -134,24 +136,31 @@ export function OverviewAlerts({ model, onRepair, onRerun, onAck }: OverviewAler
   if (primary.length === 0) {
     return (
       <>
-      <section className="flex min-h-12 items-center gap-3 rounded-xl border border-success/20 bg-success/[0.035] px-4 py-3">
-        <CheckCircle2 className="size-5 shrink-0 text-success" aria-hidden="true" />
-        <h2 className="text-sm font-semibold text-success">No problems need attention</h2>
-        <div className="ml-auto"><Notices incidents={[...model.watching, ...model.advisories]} /></div>
-      </section>
-      <AcknowledgedSection model={model} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
+        <Banner
+          tone="success"
+          title="No problems need attention"
+          action={<Notices incidents={[...model.watching, ...model.advisories]} />}
+        />
+        <AcknowledgedSection model={model} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
       </>
     )
   }
 
   return (
-    <section aria-labelledby="overview-fix-first-title" className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 id="overview-fix-first-title" className="text-lg font-semibold text-foreground">Fix first</h2>
-        <StatusBadge tone={model.needsAction.length > 0 ? 'destructive' : 'neutral'}>
-          {actionLabel}
-        </StatusBadge>
-        <div className="ml-auto"><Notices incidents={[...model.watching, ...model.advisories]} /></div>
+    <Section spacing="compact" aria-labelledby="overview-fix-first-title">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-3">
+        <Stack gap="dense">
+          <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+            <h2 id="overview-fix-first-title" className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">Fix first</h2>
+            <StatusBadge tone={model.needsAction.length > 0 ? 'danger' : 'neutral'} variant="solid">
+              {actionLabel}
+            </StatusBadge>
+          </div>
+          <p className="m-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+            Actionable conditions come before supporting telemetry.
+          </p>
+        </Stack>
+        <Notices incidents={[...model.watching, ...model.advisories]} />
       </div>
 
       <AlertGrid
@@ -163,17 +172,17 @@ export function OverviewAlerts({ model, onRepair, onRerun, onAck }: OverviewAler
       />
 
       {hidden.length > 0 && (
-        <details className="group rounded-lg border border-border/70 bg-foreground/[0.02]">
-          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-            <ChevronDown className="size-4 -rotate-90 transition-transform group-open:rotate-0 motion-reduce:transition-none" aria-hidden="true" />
+        <details className="group rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default">
+          <summary className="flex cursor-pointer list-none items-center gap-bakin-2 rounded-bakin-surface px-bakin-3 py-bakin-2 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring [&::-webkit-details-marker]:hidden">
+            <ChevronDown className="size-bakin-3 -rotate-90 transition-transform duration-[var(--bakin-motion-duration-transition)] group-open:rotate-0 motion-reduce:transition-none" aria-hidden="true" />
             View {hidden.length} more {hidden.length === 1 ? 'problem' : 'problems'}
           </summary>
-          <div className="border-t border-border/70 p-3">
+          <div className="border-t border-bakin-border-subtle p-bakin-3">
             <AlertGrid incidents={hidden} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
           </div>
         </details>
       )}
       <AcknowledgedSection model={model} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
-    </section>
+    </Section>
   )
 }

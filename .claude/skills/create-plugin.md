@@ -1,165 +1,68 @@
 # Create Plugin
 
-Scaffold a new Bakin plugin with all required files following the established patterns.
+Create a Bakin plugin from the maintained runtime-plugin scaffold. Do not
+reproduce the scaffold from memory: `src/core/plugin-scaffold.ts`,
+`examples/reference-plugin/`, and the public plugin docs are the current
+contract.
 
-## Steps
+If the plugin has browser UI, load and follow
+`.claude/skills/bakin-ui-conformance/SKILL.md` before choosing its page,
+component, CSS, story, or test structure.
 
-1. Ask for: plugin id (kebab-case), display name, description, dependencies (other plugin ids), required secrets (canonical env var names), and—if it has a page—its Lucide icon and navigation section (`plan-and-automate`, `create`, `operations`, or omitted for Mix-ins).
+## Required workflow
 
-2. Create `plugins/{id}/bakin-plugin.json`:
-```json
-{
-  "id": "{id}",
-  "name": "{name}",
-  "version": "1.0.0",
-  "bakin": ">=1.0.0",
-  "description": "{description}",
-  "contentFiles": [],
-  "secrets": [
-    {
-      "name": "{ENV_VAR_NAME}",
-      "description": "{what this secret is used for}",
-      "required": true
-    }
-  ],
-  "dependencies": ["{dependencies}"],
-  "permissions": ["storage.read", "storage.write", "events.emit"],
-  "contributes": {
-    "nav": [
-      {
-        "id": "{id}",
-        "label": "{name}",
-        "icon": "{icon}",
-        "href": "/{id}",
-        "order": 100,
-        "section": "{section}"
-      }
-    ],
-    "routes": [
-      { "path": "/{id}" }
-    ],
-    "clientRoutes": [
-      { "path": "/{id}", "summary": "{name} page" }
-    ]
-  }
-}
+1. Establish the plugin id, display name, purpose, server/client surfaces,
+   dependencies, permissions, declared secrets, navigation icon, and optional
+   navigation section. Plugin ids are kebab-case and must match the scaffold's
+   validation rules.
+2. Run `bakin plugins scaffold <id>` to create the canonical root layout:
+   `bakin-plugin.json`, `index.ts`, optional `client.tsx`, tests, package
+   metadata, and TypeScript configuration.
+3. Customize the generated files. Use only public `@makinbakin/sdk` imports in
+   a portable plugin. Never import Bakin `src`, `packages/host`, private
+   `packages/ui`, another plugin's internals, or repository-only `@bakin/*`
+   aliases.
+4. Define server routes with `definePlugin()` and `defineRoute()`. Put routes,
+   tools, hooks, search, health checks, skills, and workflows behind the public
+   SDK contracts. Keep activation idempotent and clean up timers, sockets,
+   watchers, and subscriptions in `onShutdown()`.
+5. Keep manifest declarations aligned with code. Server-derived
+   `contributes.apiRoutes` and `contributes.execTools` are maintained with
+   `bakin plugins sync-manifest`; client `nav`, `routes`, `clientRoutes`, and
+   `slots` remain explicit author-owned declarations.
+6. For browser UI, register pages or slots from root `client.tsx`; there is no
+   host `src/app/{id}` page. Select the closest public Storybook contract and
+   compose focused SDK entrypoints under the UI conformance skill.
+7. Test through `@makinbakin/sdk/testing`, including route validation, tool
+   behavior, settings defaults, storage, error cases, and cleanup where
+   applicable.
+8. Run the checks below, then use `bakin plugins link .` for the live dev loop.
+
+## Verification
+
+From the plugin directory:
+
+```sh
+bun install
+bun test
+bun x tsc --noEmit
+bakin plugins sync-manifest --check
 ```
 
-Omit the `section` property entirely when the plugin should appear under Mix-ins. Never invent a section name or use placement/expansion fields.
-
-3. Create `plugins/{id}/index.ts`:
-```typescript
-import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
-import { createLogger } from '../../src/core/logger'
-
-const log = createLogger('{id}')
-
-function json(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}
-
-const plugin: BakinPlugin = {
-  id: '{id}',
-  name: '{name}',
-  version: '1.0.0',
-
-  // Settings schema — auto-renders into a plugin config screen
-  settingsSchema: {
-    // example: featureToggle: { type: 'boolean', default: true, label: 'Enable feature', description: '...' },
-  },
-
-  async activate(ctx: PluginContext) {
-    ctx.registerRoute({
-      path: '/list',
-      method: 'GET',
-      handler: async () => json({ items: [] }),
-      description: 'List all {name} items',
-    })
-
-    log.info('{name} plugin activated')
-  },
-}
-
-export default plugin
-```
-
-4. Create `plugins/{id}/client.tsx` with a runtime declaration matching the manifest exactly:
-```tsx
-import { registerPlugin, type NavItem } from '@makinbakin/sdk'
-
-function PluginPage() {
-  return <div>{name}</div>
-}
-
-const navItems: NavItem[] = [
-  { id: '{id}', label: '{name}', icon: '{icon}', href: '/{id}', order: 100, section: '{section}' },
-]
-
-registerPlugin({
-  id: '{id}',
-  navItems,
-  routes: { '/{id}': PluginPage },
-})
-```
-
-As in the manifest, omit `section` from the runtime object for Mix-ins.
-
-5. Create `plugins/{id}/types.ts` with placeholder types
-
-6. Create `plugins/{id}/components/` directory
-
-7. Create `src/app/{id}/page.tsx` with a basic page component
-
-8. Add the plugin to `bakin.config.ts`:
-```typescript
-{ path: 'plugins/{id}' },
-```
-
-9. Add tsconfig path alias:
-```json
-"@bakin/{id}": ["./plugins/{id}"],
-"@bakin/{id}/*": ["./plugins/{id}/*"]
-```
-
-10. Add client import to `src/lib/plugin-manifest.ts`
-
-## Plugin Configuration Pattern
-
-Plugins have three tiers of configuration:
-
-### Settings (non-sensitive, schema-driven)
-Declared via `settingsSchema` on the plugin object. Each key defines a setting with type, default, label, and description. Supported types: `boolean`, `string`, `number`, `select` (with options array).
-
-```typescript
-settingsSchema: {
-  thumbnails: { type: 'boolean', default: true, label: 'Generate thumbnails', description: 'Auto-create optimized thumbnails on upload' },
-  maxFileSize: { type: 'number', default: 50, label: 'Max file size (MB)', description: 'Reject uploads larger than this' },
-  defaultFormat: { type: 'select', default: 'webp', options: ['webp', 'png', 'jpg'], label: 'Default image format' },
-}
-```
-
-A generic `<PluginSettings pluginId="{id}" />` component auto-renders the schema into a form (toggles for booleans, number inputs, dropdowns for selects, text inputs for strings) with dirty state tracking, save/cancel, and validation. Plugins never build custom settings UIs unless they need something exotic.
-
-Stored in `~/.bakin/plugin-settings/{id}.json`. Accessed via `ctx.getSettings()` / `ctx.updateSettings()`.
-
-### Secrets (sensitive)
-Declared in manifest `secrets` array as metadata objects keyed by canonical env var name. Secret values are never persisted in plugin settings, manifests, or lockfiles.
-Bakin declares and checks required secret names; the runtime adapter or local environment owns value storage and lookup.
-
-### Dependencies
-Manifest `dependencies` array lists required plugins. `secrets` array lists required runtime secret declarations.
-`bakin doctor` validates all requirements are met.
+For a client-bearing plugin, also run the focused checks required by
+`bakin-ui-conformance`; run `bun run ui:conformance --quick` from a Bakin or
+official Bits checkout that includes the plugin in the official census.
 
 ## Checklist
-- [ ] bakin-plugin.json exists with valid schema
-- [ ] index.ts exports BakinPlugin with activate() and settingsSchema
-- [ ] client.tsx exports navItems
-- [ ] Page route exists in src/app/
-- [ ] Plugin added to bakin.config.ts
-- [ ] tsconfig paths updated
-- [ ] Plugin manifest updated
-- [ ] Secrets declared if needed, env var names documented
-- [ ] `npm run dev` starts without errors
+
+- [ ] The generated root layout is retained; no host page or import-map edits
+- [ ] Manifest identity, compatibility floor, permissions, secrets, and dependencies are accurate
+- [ ] Registered server routes and tools match the manifest
+- [ ] Registered client routes, navigation, and slots match the manifest
+- [ ] Portable code imports only public `@makinbakin/sdk` surfaces
+- [ ] Settings use the current `fields` schema and reapply defaults when read
+- [ ] Runtime resources have deterministic shutdown cleanup
+- [ ] Tests exercise real SDK dispatch rather than private host helpers
+- [ ] Browser UI records its closest public Storybook pattern and conformance evidence
+- [ ] `bakin plugins sync-manifest --check` passes
+- [ ] `bakin plugins link .` loads the plugin without manifest-drift warnings

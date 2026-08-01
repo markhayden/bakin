@@ -4,9 +4,10 @@
  */
 import { useState } from 'react'
 import { MessageCirclePlus } from 'lucide-react'
-import { AgentAvatar } from '@makinbakin/sdk/components'
 import { useAgentList } from '@makinbakin/sdk/hooks'
+import { AgentAvatar } from '@makinbakin/sdk/patterns'
 import {
+  Button,
   Command,
   CommandEmpty,
   CommandGroup,
@@ -32,16 +33,12 @@ export function AgentPicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
+        render={<Button variant="primary" size={iconOnly ? 'icon-md' : 'md'} />}
         data-chat-start
         aria-label="Start a chat"
         title="Start a chat (⌘⇧O)"
-        className={
-          iconOnly
-            ? 'inline-flex items-center justify-center rounded-md bg-primary p-2 text-primary-foreground shadow-sm transition-colors hover:bg-primary/90'
-            : 'inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-foreground/10'
-        }
       >
-        <MessageCirclePlus className="size-4" />
+        <MessageCirclePlus />
         {iconOnly ? null : 'Start a chat'}
       </PopoverTrigger>
       <PopoverContent className="w-64 p-0" align="start">
@@ -59,11 +56,15 @@ export function AgentPicker({
                     onPick(agent.id)
                   }}
                 >
-                  <AgentAvatar agentId={agent.id} size="xs" />
-                  <span className="ml-2 min-w-0">
+                  <AgentAvatar
+                    agent={{ id: agent.id, name: agent.name || agent.id, imageSrc: agent.headshot || null }}
+                    size="xs"
+                    decorative
+                  />
+                  <span className="ml-bakin-2 min-w-0">
                     <span className="block truncate">{agent.name || agent.id}</span>
                     {agent.role ? (
-                      <span className="block truncate text-xs text-muted-foreground">{agent.role}</span>
+                      <span className="block truncate text-bakin-typography-size-meta text-bakin-text-muted">{agent.role}</span>
                     ) : null}
                   </span>
                 </CommandItem>

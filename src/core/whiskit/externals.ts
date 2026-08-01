@@ -25,13 +25,18 @@ export const REACT_EXTERNALS: string[] = [
 export const SDK_EXTERNALS: string[] = [
   '@makinbakin/sdk',
   '@makinbakin/sdk/ui',
+  '@makinbakin/sdk/layout',
+  '@makinbakin/sdk/patterns',
+  '@makinbakin/sdk/charts',
+  '@makinbakin/sdk/conversation',
+  '@makinbakin/sdk/content',
   '@makinbakin/sdk/hooks',
-  '@makinbakin/sdk/components',
   '@makinbakin/sdk/slots',
   '@makinbakin/sdk/types',
   '@makinbakin/sdk/utils',
   '@makinbakin/sdk/metadata',
   '@makinbakin/sdk/routing',
+  '@makinbakin/sdk/navigation',
   '@makinbakin/sdk/internal',
 ]
 
@@ -48,8 +53,32 @@ export const PLUGIN_CLIENT_EXTERNALS: string[] = [...REACT_EXTERNALS, ...SDK_EXT
 export const PLUGIN_SERVER_EXTERNALS: string[] = [...REACT_EXTERNALS]
 
 /**
- * Stable identifier for this externals contract, recorded in build provenance
- * (Phase 3) so startup can detect a host that no longer matches an installed
- * artifact. Bump when the externalized set changes incompatibly.
+ * Stable identifier for this externals contract, recorded in build provenance.
+ * Versions in this family are additive: a newer host can satisfy artifacts
+ * built against any earlier version. Breaking changes require a new family.
  */
-export const EXTERNALS_CONTRACT = 'react19-sdk-makinbakin-v1'
+export const EXTERNALS_CONTRACT = 'react19-sdk-makinbakin-v2'
+
+interface ParsedExternalsContract {
+  family: string
+  version: number
+}
+
+function parseExternalsContract(contract: string): ParsedExternalsContract | null {
+  const match = /^(.+)-v([1-9]\d*)$/.exec(contract)
+  if (!match) return null
+  return { family: match[1], version: Number(match[2]) }
+}
+
+/** Whether this host provides every external expected by an artifact. */
+export function supportsExternalsContract(
+  artifactContract: string,
+  hostContract = EXTERNALS_CONTRACT,
+): boolean {
+  const artifact = parseExternalsContract(artifactContract)
+  const host = parseExternalsContract(hostContract)
+  return artifact !== null
+    && host !== null
+    && artifact.family === host.family
+    && artifact.version <= host.version
+}

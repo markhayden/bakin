@@ -1,18 +1,40 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { useSearchParams, useRouter, usePathname } from '@makinbakin/sdk/hooks'
-import { List, CalendarDays, CalendarRange, Clock, Plus, Loader2 } from 'lucide-react'
-import { Button } from "@makinbakin/sdk/ui"
-import { BakinDrawer } from "@makinbakin/sdk/components"
-import { PluginHeader, SearchDegradedChip, SearchPartialChip, SegmentedControl, type SegmentedControlOption } from "@makinbakin/sdk/components"
-import { Skeleton } from "@makinbakin/sdk/ui"
-import { AgentFilter } from "@makinbakin/sdk/components"
-import { useAgentIds } from "@makinbakin/sdk/hooks"
-import { useQueryState } from "@makinbakin/sdk/hooks"
-import { useSearch } from "@makinbakin/sdk/hooks"
-import { useDebug } from "@makinbakin/sdk/hooks"
-import { useScheduleJobs, type ScheduleJob } from "@makinbakin/sdk/hooks"
+import { useState, useEffect, useMemo, type ReactNode } from 'react'
+import { usePathname, useQueryState, useRouter, useSearchParams } from '@makinbakin/sdk/navigation'
+import {
+  AgentAvatar,
+  AgentFilter,
+  Page,
+  PageBody,
+  PageControls,
+  PageHeader,
+  Pagination,
+  SearchDegradedChip,
+  SearchInput,
+  SearchPartialChip,
+  SegmentedControl,
+  type SegmentedControlOption,
+} from '@makinbakin/sdk/patterns'
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Drawer,
+  Button,
+  SystemState,
+} from '@makinbakin/sdk/ui'
+import {
+  useAgentIds,
+  useAgentStore,
+  useDebug,
+  useScheduleJobs,
+  useSearch,
+  type ScheduleJob,
+} from '@makinbakin/sdk/hooks'
+import { List, CalendarDays, CalendarRange, Clock, Plus } from 'lucide-react'
 import { JobList } from './job-list'
 import { JobDrawer } from './job-drawer'
 import { JobForm, type JobFormData } from './job-form'
@@ -22,6 +44,7 @@ import { CalendarWeekly } from './calendar-weekly'
 import { CalendarToday } from './calendar-today'
 
 type ViewMode = 'list' | 'today' | 'week' | 'month'
+const LIST_PAGE_SIZE = 10
 
 const VIEWS: SegmentedControlOption<ViewMode>[] = [
   { value: 'list', icon: List, label: 'List', hideLabel: true },
@@ -32,6 +55,8 @@ const VIEWS: SegmentedControlOption<ViewMode>[] = [
 
 export function SchedulePage() {
   const agentIds = useAgentIds()
+  const agentMap = useAgentStore((state) => state.agentMap)
+  const displaySettings = useAgentStore((state) => state.displaySettings)
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -39,6 +64,7 @@ export function SchedulePage() {
   const [view, setView] = useQueryState('view', 'week')
   const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
   const [search, setSearch] = useQueryState('q', '')
+  const [pageParam, setPageParam] = useQueryState('page', '1')
   const [jobIdParam, setJobIdParam, pushJobId] = useQueryState('jobId', '')
   const [mode, setMode, pushMode] = useQueryState('mode', '')
 
@@ -64,9 +90,6 @@ export function SchedulePage() {
   // Honest search signal (spec D11): the substring fallback below keeps the
   // page browsable when the engine is down, but never silently — surface
   // loading, engine-down, and partial-results states next to the filters.
-  const searchSignalActive = Boolean(search.trim()) &&
-    (searchHook.status === 'loading' || searchHook.status === 'unavailable' || Boolean(searchHook.meta?.partial))
-
   // Build a score map keyed by job id. Schedule indexes by the raw jobId
   // (see plugins/schedule/index.ts → ctx.search.index(jobId, ...)), so no
   // prefix-strip is needed. Used for both the relevance reorder AND the
@@ -94,6 +117,38 @@ export function SchedulePage() {
       j.humanSchedule.toLowerCase().includes(q)
     )
   }, [jobs, search, searchHook.results, scoreMap])
+
+  const agentOptions = useMemo(() => agentIds.map((id) => {
+    const agent = agentMap[id]
+    const display = displaySettings[id]
+    const name = display?.displayName ?? agent?.name ?? id
+    return {
+      value: id,
+      label: name,
+      visual: (
+        <AgentAvatar
+          agent={{
+            id,
+            name,
+            imageSrc: agent?.headshot || null,
+            color: display?.accentColor,
+          }}
+          size="xs"
+          decorative
+        />
+      ),
+    }
+  }), [agentIds, agentMap, displaySettings])
+
+  const showAllJobs = pageParam === 'all'
+  const requestedPage = Number.parseInt(pageParam, 10)
+  const pageCount = Math.max(1, Math.ceil(filtered.length / LIST_PAGE_SIZE))
+  const page = Number.isFinite(requestedPage)
+    ? Math.min(Math.max(requestedPage, 1), pageCount)
+    : 1
+  const visibleListJobs = showAllJobs
+    ? filtered
+    : filtered.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE)
 
   // Derive drawer/form visibility from URL state. Deep links resolve
   // against the UNFILTERED list — a ?jobId= must open its job even when the
@@ -234,86 +289,169 @@ export function SchedulePage() {
         ? `Adopt: ${selectedJob?.displayName}`
         : 'New Scheduled Job'
 
-  return (
-    <div className="p-6 flex flex-col h-full min-h-0 gap-4">
-      {/* Header: title + count + search + view toggle + New Job */}
-      <PluginHeader
-        title="Schedule"
-        count={loading ? undefined : filtered.length}
-        search={{ value: search, onChange: setSearch, placeholder: 'Search jobs...' }}
-        actions={
-          <div className="flex items-center gap-2">
-            <SegmentedControl
-              options={VIEWS}
-              value={view as ViewMode}
-              onValueChange={setView}
-              ariaLabel="Calendar view"
-            />
-            <Button size="sm" onClick={openCreate}>
-              <Plus className="size-4" />
-              New Job
+  const hasActiveResultFilters = agentFilter !== 'all' || Boolean(search.trim())
+  const clearResultFilters = () => {
+    setAgentFilter('all')
+    setSearch('')
+  }
+  let resultState: ReactNode
+  if (loading) {
+    resultState = (
+      <SystemState
+        kind="loading"
+        title="Loading scheduled jobs"
+        description="The latest schedule will appear here when it is ready."
+      />
+    )
+  } else if (fetchFailed) {
+    resultState = (
+      <SystemState
+        kind="error"
+        recovery="available"
+        title="Schedule could not be loaded"
+        description="The schedule service did not return a usable job list."
+        action={<Button variant="outline" onClick={() => void refresh()}>Try again</Button>}
+      />
+    )
+  } else if (filtered.length === 0) {
+    resultState = hasActiveResultFilters ? (
+      <SystemState
+        kind="no-results"
+        title="No scheduled jobs match this view"
+        description="Clear the current search and agent filter to return to the complete schedule."
+        action={<Button variant="outline" onClick={clearResultFilters}>Clear search and filters</Button>}
+      />
+    ) : (
+      <SystemState
+        kind="initial-empty"
+        title="No scheduled jobs yet"
+        description="Create the first job to automate recurring work."
+        action={<Button onClick={openCreate}><Plus />Create first job</Button>}
+      />
+    )
+  }
+
+  const searchFeedback = searchHook.status === 'unavailable' || searchHook.meta?.partial ? (
+    <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+      {searchHook.status === 'unavailable' ? <SearchDegradedChip testId="schedule-search-degraded" /> : null}
+      {searchHook.meta?.partial ? <SearchPartialChip meta={searchHook.meta} /> : null}
+    </div>
+  ) : null
+
+  const pageFeedback = jobNotFound || searchFeedback ? (
+    <div className="grid min-w-0 gap-bakin-3">
+      {jobNotFound ? (
+        <Alert tone="danger" data-testid="schedule-job-not-found">
+          <AlertTitle>Scheduled job not found</AlertTitle>
+          <AlertDescription>It may have been deleted since this link was created.</AlertDescription>
+          <AlertAction>
+            <Button type="button" variant="outline" size="xs" onClick={closeJob}>
+              Dismiss
             </Button>
+          </AlertAction>
+        </Alert>
+      ) : null}
+      {searchFeedback}
+    </div>
+  ) : null
+
+  return (
+    <>
+      <Page scroll="contained">
+      <PageHeader
+        title="Schedule"
+        description="Plan recurring work and see exactly when each agent, workflow, and system event will run."
+        meta={loading ? undefined : (
+          <Badge data-testid="header-count" size="xs" variant="outline">
+            {filtered.length} shown
+          </Badge>
+        )}
+        controlsLabel="Schedule search, view, and actions"
+        controls={(
+          <div className="grid w-full min-w-0 gap-bakin-2 @3xl/page-header:flex @3xl/page-header:items-start">
+            <SearchInput
+              align="end"
+              label="Schedule search"
+              value={search}
+              onValueChange={setSearch}
+              placeholder="Search jobs…"
+              busy={searchHook.status === 'loading'}
+              mobileFullWidth
+              className="@3xl/page-header:w-[22rem] @3xl/page-header:shrink-0"
+            />
+            <div className="flex min-w-0 flex-wrap items-center gap-bakin-2 @3xl/page-header:shrink-0 @3xl/page-header:flex-nowrap">
+              <SegmentedControl
+                options={VIEWS}
+                value={view as ViewMode}
+                onValueChange={setView}
+                ariaLabel="Schedule view"
+                idPrefix="schedule-view"
+                size="md"
+                className="shrink-0 [&_[role=tab]]:px-bakin-3"
+              />
+              <Button className="min-w-28 flex-1 @3xl/page-header:flex-none" onClick={openCreate}>
+                <Plus />
+                New Job
+              </Button>
+            </div>
           </div>
-        }
+        )}
       />
 
-      {/* Filters */}
-      <AgentFilter agentIds={agentIds} value={agentFilter} onChange={setAgentFilter} />
+      <PageControls label="Schedule filters">
+        <AgentFilter
+          options={agentOptions}
+          value={agentFilter}
+          onValueChange={setAgentFilter}
+          compact
+        />
+      </PageControls>
 
-      {searchSignalActive && (
-        <div className="flex items-center gap-2">
-          {searchHook.status === 'loading' && (
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground" data-testid="schedule-search-loading">
-              <Loader2 className="size-3 animate-spin" />
-              Searching…
-            </span>
-          )}
-          {searchHook.status === 'unavailable' && <SearchDegradedChip testId="schedule-search-degraded" />}
-          {searchHook.meta?.partial && <SearchPartialChip meta={searchHook.meta} />}
-        </div>
-      )}
-
-      {jobNotFound && (
+      <PageBody
+        label="Scheduled jobs"
+        busy={!loading && searchHook.status === 'loading'}
+        feedback={pageFeedback}
+        state={resultState}
+        className="min-h-0 flex-1"
+      >
         <div
-          className="flex items-center justify-between rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          data-testid="schedule-job-not-found"
+          id={`schedule-view-panel-${view}`}
+          role="tabpanel"
+          aria-labelledby={`schedule-view-tab-${view}`}
+          className="min-h-0 min-w-0 flex-1 overflow-auto"
         >
-          <span>Job not found — it may have been deleted.</span>
-          <button type="button" className="text-xs underline" onClick={closeJob}>
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      {/* Content */}
-      <div className="flex-1 min-h-0 overflow-auto">
-        {loading ? (
-          <div className="flex flex-col gap-2">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
-            ))}
-          </div>
-        ) : view === 'list' ? (
-          <JobList
-            jobs={filtered}
-            onSelect={openJob}
-            onPause={(id) => pauseJob(id)}
-            onResume={(id) => resumeJob(id)}
-            onRunNow={(id) => runNow(id)}
-            onDelete={requestDelete}
-            onEdit={openEditFor}
-            onDuplicate={openDuplicateFor}
-            onAdopt={(job) => {
-              const params = new URLSearchParams(searchParams.toString())
-              params.set('jobId', job.id)
-              params.set('mode', 'adopt')
-              router.push(`${pathname}?${params.toString()}`, { scroll: false })
-            }}
-            onRestoreNative={restoreNative}
-            onSkipNext={(id) => skipNext(id)}
-            scoreMap={scoreMap}
-            showScores={debug && !!search.trim()}
-          />
+          {view === 'list' ? (
+            <div className="flex min-w-0 flex-col gap-bakin-3">
+              <JobList
+                jobs={visibleListJobs}
+                onSelect={openJob}
+                onPause={(id) => pauseJob(id)}
+                onResume={(id) => resumeJob(id)}
+                onRunNow={(id) => runNow(id)}
+                onDelete={requestDelete}
+                onEdit={openEditFor}
+                onDuplicate={openDuplicateFor}
+                onAdopt={(job) => {
+                  const params = new URLSearchParams(searchParams.toString())
+                  params.set('jobId', job.id)
+                  params.set('mode', 'adopt')
+                  router.push(`${pathname}?${params.toString()}`, { scroll: false })
+                }}
+                onRestoreNative={restoreNative}
+                onSkipNext={(id) => skipNext(id)}
+                scoreMap={scoreMap}
+                showScores={debug && !!search.trim()}
+              />
+              <Pagination
+                ariaLabel="Scheduled jobs pagination"
+                page={page}
+                pageSize={LIST_PAGE_SIZE}
+                showAll={showAllJobs}
+                total={filtered.length}
+                onPageChange={(nextPage) => setPageParam(String(nextPage))}
+                onShowAllChange={(nextShowAll) => setPageParam(nextShowAll ? 'all' : '1')}
+              />
+            </div>
         ) : view === 'today' ? (
           <CalendarToday jobs={filtered} onSelectJob={openJob} />
         ) : view === 'month' ? (
@@ -321,7 +459,9 @@ export function SchedulePage() {
         ) : (
           <CalendarWeekly jobs={filtered} onSelectJob={openJob} />
         )}
-      </div>
+        </div>
+      </PageBody>
+      </Page>
 
       {/* Detail drawer */}
       <JobDrawer
@@ -347,7 +487,7 @@ export function SchedulePage() {
       />
 
       {/* Create / Edit / Duplicate form */}
-      <BakinDrawer
+      <Drawer
         open={showForm}
         onOpenChange={(o) => { if (!o) closeForm() }}
         title={formTitle}
@@ -360,7 +500,7 @@ export function SchedulePage() {
           initial={formInitial}
           mode={mode === 'duplicate' ? 'duplicate' : mode === 'edit' ? 'edit' : mode === 'adopt' ? 'adopt' : 'create'}
         />
-      </BakinDrawer>
-    </div>
+      </Drawer>
+    </>
   )
 }

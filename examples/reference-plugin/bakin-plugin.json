@@ -35,6 +35,9 @@
     "routes": [
       { "path": "/reference-bookmarks", "summary": "Bookmarks page" }
     ],
+    "clientRoutes": [
+      { "path": "/reference-bookmarks", "summary": "Bookmarks page" }
+    ],
     "nav": [
       {
         "id": "reference-bookmarks",
@@ -44,6 +47,7 @@
         "order": 200
       }
     ],
+    "slots": ["home-widget"],
     "execTools": [
       {
         "name": "bakin_exec_reference-bookmarks_save",

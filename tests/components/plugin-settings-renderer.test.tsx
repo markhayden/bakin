@@ -125,7 +125,10 @@ describe('PluginSettingsRenderer — list field', () => {
   })
 
   it('saves edited values through onSave', async () => {
-    const onSave = mock().mockResolvedValue(undefined)
+    let finishSave: (() => void) | undefined
+    const onSave = mock((_nextValues: Record<string, unknown>) => (
+      new Promise<void>((resolve) => { finishSave = resolve })
+    ))
     render(
       <PluginSettingsRenderer
         pluginId="messaging"
@@ -140,6 +143,10 @@ describe('PluginSettingsRenderer — list field', () => {
     await vi.waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
     expect(onSave.mock.calls[0][0]).toEqual({
       contentTypes: [{ id: 'post', label: 'Blog Post' }],
+    })
+    await act(async () => finishSave?.())
+    await vi.waitFor(() => {
+      expect(screen.getByRole('button', { name: /^save$/i }).hasAttribute('disabled')).toBe(false)
     })
   })
 
@@ -219,7 +226,7 @@ describe('PluginSettingsRenderer — list field', () => {
     )
   })
 
-  it('renders list-row sub-fields in a responsive auto-fit grid', () => {
+  it('renders list-row sub-fields in a finite responsive container grid', () => {
     render(
       <PluginSettingsRenderer
         pluginId="messaging"
@@ -229,8 +236,11 @@ describe('PluginSettingsRenderer — list field', () => {
       />
     )
     const row = screen.getByTestId('list-row-contentTypes-0')
-    const gridContainer = row.querySelector('.grid') as HTMLElement | null
+    const gridContainer = row.firstElementChild as HTMLElement | null
     expect(gridContainer).not.toBeNull()
-    expect(gridContainer!.style.gridTemplateColumns).toBe('repeat(auto-fit, minmax(180px, 1fr))')
+    expect(gridContainer!.className).toContain('grid-cols-1')
+    expect(gridContainer!.className).toContain('@md/settings-row:grid-cols-2')
+    expect(gridContainer!.className).toContain('@2xl/settings-row:grid-cols-3')
+    expect(gridContainer!.style.gridTemplateColumns).toBe('')
   })
 })

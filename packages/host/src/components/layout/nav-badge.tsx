@@ -1,17 +1,18 @@
 import type { NavBadge as NavBadgeData, NavBadgeTone } from '@makinbakin/sdk'
+import { Badge, type BadgeTone } from '@makinbakin/sdk/ui'
 
-const PILL_TONE: Record<NavBadgeTone, string> = {
-  error: 'bg-red-500/20 text-red-300',
-  attention: 'bg-amber-500/20 text-amber-300',
-  info: 'bg-sky-500/20 text-sky-300',
-  success: 'bg-emerald-500/20 text-emerald-300',
+const BADGE_TONE: Record<NavBadgeTone, BadgeTone> = {
+  error: 'danger',
+  attention: 'attention',
+  info: 'info',
+  success: 'success',
 }
 
 const DOT_TONE: Record<NavBadgeTone, string> = {
-  error: 'bg-red-400',
-  attention: 'bg-amber-400',
-  info: 'bg-sky-400',
-  success: 'bg-emerald-400',
+  error: 'bg-bakin-signal-danger',
+  attention: 'bg-bakin-signal-highlight',
+  info: 'bg-bakin-signal-info',
+  success: 'bg-bakin-action-primary-background',
 }
 
 /**
@@ -43,18 +44,21 @@ export function NavBadge({ badge }: { badge: NavBadgeData | undefined }) {
   if (typeof badge.count === 'number') {
     if (badge.count <= 0) return null
     return (
-      <span
+      <Badge
         data-testid="nav-badge-pill"
-        className={`ml-auto inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium leading-none ${PILL_TONE[tone]}`}
+        tone={BADGE_TONE[tone]}
+        variant="solid"
+        size="xs"
+        className="ml-auto"
       >
         {formatCount(badge.count)}
-      </span>
+      </Badge>
     )
   }
   return (
     <span
       data-testid="nav-badge-pill"
-      className={`ml-auto inline-block size-1.5 rounded-full ${DOT_TONE[tone]}`}
+      className={`ml-auto inline-block size-1.5 rounded-bakin-pill ${DOT_TONE[tone]}`}
     />
   )
 }
@@ -68,7 +72,7 @@ export function NavBadgeDot({ tone }: { tone: NavBadgeTone }) {
     <span
       data-testid="nav-badge-dot"
       aria-hidden="true"
-      className={`absolute right-1 top-1 size-1.5 rounded-full ring-2 ring-background ${DOT_TONE[tone]}`}
+      className={`absolute right-1 top-1 size-1.5 rounded-bakin-pill ring-2 ring-bakin-canvas-default ${DOT_TONE[tone]}`}
     />
   )
 }

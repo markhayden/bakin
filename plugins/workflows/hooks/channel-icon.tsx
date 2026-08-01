@@ -1,42 +1,10 @@
 'use client'
 
-import {
-  HelpCircle,
-  Instagram,
-  Mail,
-  MessageSquare,
-  Music2,
-  Twitter,
-  Youtube,
-  type LucideIcon,
-} from 'lucide-react'
-import { useNotificationChannels } from './use-notification-channels'
-
 /**
- * Explicit lucide name → component map. We avoid `import * as Lucide` because
- * that bundles the entire icon set (~1000 icons) into the client. Channel
- * icons beyond this set (contributed by third-party plugins) render as
- * HelpCircle until we expand the map or switch to a different strategy.
+ * ChannelIcon's focused home is `@makinbakin/sdk/patterns` (kit-additions
+ * batch): dependency-free glyphs over the channel registry. This module
+ * stays as the plugin-local alias for existing workflows consumers and the
+ * frozen `@makinbakin/sdk/components` barrel.
  */
-const CHANNEL_ICON_MAP: Record<string, LucideIcon> = {
-  HelpCircle,
-  Instagram,
-  Mail,
-  MessageSquare,
-  Music2,
-  Twitter,
-  Youtube,
-}
-
-interface ChannelIconProps {
-  channelId: string
-  className?: string
-}
-
-export function ChannelIcon({ channelId, className }: ChannelIconProps) {
-  const channels = useNotificationChannels()
-  const channel = channels.find((c) => c.id === channelId)
-  const iconName = channel?.icon
-  const Icon: LucideIcon = iconName ? (CHANNEL_ICON_MAP[iconName] ?? HelpCircle) : HelpCircle
-  return <Icon className={className} />
-}
+export { ChannelIcon } from '@makinbakin/sdk/patterns'
+export type { ChannelIconProps } from '@makinbakin/sdk/patterns'

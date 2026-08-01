@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import '../../rtl-settle'
+import { settleReact } from '../../rtl-settle'
 
 // Pure component tests (fixtured fetch, no storage), but isolation rules are
 // blanket: nothing in a test run may resolve the real ~/.bakin.
@@ -26,6 +26,7 @@ const occurrenceFixtures: Array<Record<string, unknown>> = []
 const eventFixtures: Array<Record<string, unknown>> = []
 const fetchCalls: string[] = []
 const postCalls: Array<{ url: string; body: unknown }> = []
+const navigationPushes: string[] = []
 let reschedulePostStatus = 200
 const realFetch = globalThis.fetch
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -61,8 +62,30 @@ mock.module('@makinbakin/sdk/hooks', () => {
   }
 })
 
-mock.module('@makinbakin/sdk/components', () => ({
-  AgentAvatar: ({ agentId }: { agentId: string }) => <span>{agentId}</span>,
+mock.module('@makinbakin/sdk/navigation', () => ({
+  PluginLink: ({
+    to,
+    children,
+    onClick,
+    ...props
+  }: {
+    to: string
+    children?: React.ReactNode
+    onClick?: React.MouseEventHandler<HTMLAnchorElement>
+  }) => (
+    <a
+      href={to}
+      onClick={(event) => {
+        onClick?.(event)
+        if (event.defaultPrevented) return
+        event.preventDefault()
+        navigationPushes.push(to)
+      }}
+      {...props}
+    >
+      {children}
+    </a>
+  ),
 }))
 
 import { CalendarToday } from '../../../plugins/schedule/components/calendar-today'
@@ -95,11 +118,20 @@ function todayAtLocal(hour: number, minute: number): string {
   return d.toISOString()
 }
 
+/** An instant in the currently displayed Sunday–Saturday week. */
+function currentWeekAtLocal(day: number, hour: number, minute = 0): string {
+  const d = new Date()
+  d.setDate(d.getDate() - d.getDay() + day)
+  d.setHours(hour, minute, 0, 0)
+  return d.toISOString()
+}
+
 afterEach(() => {
   occurrenceFixtures.length = 0
   eventFixtures.length = 0
   fetchCalls.length = 0
   postCalls.length = 0
+  navigationPushes.length = 0
   reschedulePostStatus = 200
 })
 
@@ -142,6 +174,205 @@ describe('Schedule calendar views (occurrence-fed)', () => {
     expect(screen.getByTitle('Skipped — overlap')).toBeDefined()
   })
 
+  it('Week: collapses a multi-occurrence daily series into one day summary', async () => {
+    occurrenceFixtures.push(
+      { jobId: 'hourly-inbox', at: currentWeekAtLocal(2, 1), past: false },
+      { jobId: 'hourly-inbox', at: currentWeekAtLocal(2, 2), past: false },
+      { jobId: 'hourly-inbox', at: currentWeekAtLocal(2, 3), past: false },
+      { jobId: 'late-night-release', at: currentWeekAtLocal(2, 9), past: false },
+    )
+    render(
+      <CalendarWeekly
+        jobs={[
+          makeJob({
+            id: 'hourly-inbox',
+            displayName: 'Hourly Inbox Sync',
+            humanSchedule: 'Every hour',
+            cron: '0 * * * *',
+          }),
+          makeJob(),
+        ]}
+        onSelectJob={() => {}}
+      />,
+    )
+    await settleReact()
+
+    expect(screen.getByRole('button', {
+      name: 'Hourly Inbox Sync. 0 done · 3 scheduled',
+    })).toBeDefined()
+    expect(screen.getAllByText('Hourly Inbox Sync')).toHaveLength(1)
+    expect(screen.getByText('Late night release')).toBeDefined()
+  })
+
+  it('Week: reports a skipped beat in the daily summary without repeating the recurring card', async () => {
+    occurrenceFixtures.push(
+      {
+        jobId: 'hourly-inbox',
+        at: currentWeekAtLocal(1, 1),
+        past: true,
+        disposition: 'created',
+        taskId: 'task-1',
+      },
+      {
+        jobId: 'hourly-inbox',
+        at: currentWeekAtLocal(1, 2),
+        past: true,
+        disposition: 'created',
+        taskId: 'task-2',
+      },
+      {
+        jobId: 'hourly-inbox',
+        at: currentWeekAtLocal(1, 3),
+        past: true,
+        disposition: 'skipped',
+        skipReason: 'overlap',
+      },
+    )
+    render(
+      <CalendarWeekly
+        jobs={[makeJob({
+          id: 'hourly-inbox',
+          displayName: 'Hourly Inbox Sync',
+          humanSchedule: 'Every hour',
+          cron: '0 * * * *',
+        })]}
+        onSelectJob={() => {}}
+      />,
+    )
+    await settleReact()
+
+    expect(screen.getByRole('button', {
+      name: 'Hourly Inbox Sync. 2 done · 1 skipped',
+    })).toBeDefined()
+    expect(screen.queryByTitle('Skipped — overlap')).toBeNull()
+    expect(screen.getAllByText('Hourly Inbox Sync')).toHaveLength(1)
+  })
+
+  it('Week: keeps the remaining scheduled count visible beside past exceptions', async () => {
+    occurrenceFixtures.push(
+      {
+        jobId: 'hourly-inbox',
+        at: currentWeekAtLocal(1, 1),
+        past: true,
+        disposition: 'skipped',
+        skipReason: 'overlap',
+      },
+      { jobId: 'hourly-inbox', at: currentWeekAtLocal(1, 2), past: false },
+      { jobId: 'hourly-inbox', at: currentWeekAtLocal(1, 3), past: false },
+    )
+    render(
+      <CalendarWeekly
+        jobs={[makeJob({
+          id: 'hourly-inbox',
+          displayName: 'Hourly Inbox Sync',
+          humanSchedule: 'Every hour',
+          cron: '0 * * * *',
+        })]}
+        onSelectJob={() => {}}
+      />,
+    )
+    await settleReact()
+
+    expect(screen.getByRole('button', {
+      name: 'Hourly Inbox Sync. 0 done · 1 skipped · 2 scheduled',
+    })).toBeDefined()
+    expect(screen.getAllByText('Hourly Inbox Sync')).toHaveLength(1)
+  })
+
+  it('Week: does not map the next week boundary back onto the current Sunday column', async () => {
+    occurrenceFixtures.push(
+      { jobId: 'late-night-release', at: currentWeekAtLocal(0, 1), past: false },
+      { jobId: 'late-night-release', at: currentWeekAtLocal(7, 0), past: false },
+    )
+    render(<CalendarWeekly jobs={[makeJob()]} onSelectJob={() => {}} />)
+    await settleReact()
+
+    expect(screen.getAllByText('Late night release')).toHaveLength(1)
+    expect(screen.queryByText('12am')).toBeNull()
+  })
+
+  it('Week: keeps compact job and domain-event details inside their card boxes', async () => {
+    occurrenceFixtures.push({
+      jobId: 'late-night-release',
+      at: currentWeekAtLocal(2, 9),
+      past: false,
+    })
+    eventFixtures.push({
+      id: 'publish-1',
+      pluginId: 'messaging',
+      title: 'No-Knead Artisan Bread Recipe',
+      kind: 'publish',
+      status: 'published',
+      startsAt: currentWeekAtLocal(2, 10),
+      reschedulable: false,
+    })
+
+    render(<CalendarWeekly jobs={[makeJob()]} onSelectJob={() => {}} />)
+    await settleReact()
+
+    const occurrenceButton = screen.getByText('Late night release').closest('button')
+    const occurrencePrompt = screen.getByText('Build release notes')
+    const occurrenceTime = screen.getByText('9am')
+    const eventButton = screen.getByText('No-Knead Artisan Bread Recipe').closest('button')
+    const eventMetadata = screen.getByText('messaging · publish · published')
+    const eventTime = screen.getByText('10am')
+
+    expect(occurrenceButton?.className).toContain('!h-auto')
+    expect(occurrenceButton?.className).toContain('overflow-hidden')
+    expect(occurrenceButton?.className).toContain('!p-0')
+    // Refit T6.5: icon/content columns ride flex layout, not a grid template.
+    expect(occurrenceButton?.firstElementChild?.className).toContain('flex')
+    expect(occurrenceButton?.firstElementChild?.className).toContain('px-bakin-2')
+    expect(occurrenceButton?.firstElementChild?.className).toContain('py-bakin-2')
+    expect(occurrenceButton?.firstElementChild?.className).not.toContain('gap-y-bakin-1')
+    expect(occurrenceButton?.querySelector('[data-slot="avatar"]')?.getAttribute('data-size')).toBe('sm')
+    expect(occurrenceButton?.textContent).not.toContain('Margo')
+    expect(occurrencePrompt.className).toContain('line-clamp-1')
+    expect(occurrencePrompt.className.split(' ')).not.toContain('block')
+    expect(occurrenceTime.className).toContain('text-right')
+    expect(eventButton?.className).toContain('!h-auto')
+    expect(eventButton?.className).toContain('overflow-hidden')
+    expect(eventButton?.className).toContain('flex')
+    expect(eventButton?.className).toContain('px-bakin-2')
+    expect(eventButton?.className).toContain('py-bakin-2')
+    expect(eventButton?.className).not.toContain('gap-y-bakin-1')
+    expect(eventMetadata.className).toContain('truncate')
+    expect(eventTime.className).toContain('text-right')
+  })
+
+  it('Week: reserves the second line for authored description copy, not a runtime slug', async () => {
+    occurrenceFixtures.push(
+      { jobId: 'daily-brief', at: currentWeekAtLocal(2, 9), past: false },
+      { jobId: 'social-metrics', at: currentWeekAtLocal(2, 10), past: false },
+    )
+
+    render(
+      <CalendarWeekly
+        jobs={[
+          makeJob({
+            id: 'daily-brief',
+            displayName: 'Daily Brief',
+            taskPrompt: 'daily-brief',
+          }),
+          makeJob({
+            id: 'social-metrics',
+            displayName: 'Social Metrics Collector',
+            description: 'Collect yesterday’s channel metrics.',
+            taskPrompt: 'social-metrics',
+          }),
+        ]}
+        onSelectJob={() => {}}
+      />,
+    )
+    await settleReact()
+
+    const dailyBrief = screen.getByText('Daily Brief').closest('button')
+    const socialMetrics = screen.getByText('Social Metrics Collector').closest('button')
+
+    expect(dailyBrief?.textContent).not.toContain('daily-brief')
+    expect(socialMetrics?.textContent).toContain('Collect yesterday’s channel metrics.')
+  })
+
   it('Month: renders a day dot for the fetched occurrence', async () => {
     occurrenceFixtures.push({ jobId: 'late-night-release', at: todayAtLocal(9, 0), past: false })
     await act(async () => {
@@ -162,6 +393,21 @@ describe('Schedule calendar views (occurrence-fed)', () => {
 
     expect(screen.getByText('Waiting task')).toBeDefined()
     expect(screen.getByText(/tasks · task-scheduled/)).toBeDefined()
+  })
+
+  it('opens an event owner through the shared client router without reloading the shell', async () => {
+    eventFixtures.push({
+      id: 't-wait:scheduled', pluginId: 'tasks', title: 'Waiting task', kind: 'task-scheduled',
+      startsAt: todayAtLocal(9, 0), url: '/tasks?taskId=t-wait', reschedulable: true,
+    })
+    render(<CalendarToday jobs={[]} onSelectJob={() => {}} />)
+    await settleReact()
+
+    fireEvent.click(screen.getByText('Waiting task'))
+    await settleReact()
+    fireEvent.click(screen.getByRole('link', { name: /^open$/i }))
+
+    expect(navigationPushes).toEqual(['/tasks?taskId=t-wait'])
   })
 
   it('reschedules an event through the owner and refetches on success', async () => {

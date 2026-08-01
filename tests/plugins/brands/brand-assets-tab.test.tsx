@@ -6,6 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import '../../rtl-settle'
 import { settleReact } from '../../rtl-settle'
 import { join } from 'path'
@@ -28,9 +29,6 @@ mock.module('@/hooks/use-query-state', () => ({
     const React = require('react') as typeof import('react')
     return React.useState(defaultValue)
   },
-}))
-mock.module('@/components/markdown-content', () => ({
-  MarkdownContent: ({ content }: { content: string }) => <pre>{content}</pre>,
 }))
 
 import { BrandDetail } from '../../../plugins/brands/components/brand-detail'
@@ -96,8 +94,10 @@ describe('assets tab', () => {
 
   it('logo variant is a labeled select and changing it stages', async () => {
     await renderAssets()
-    const select = screen.getByLabelText('Logo variant')
-    fireEvent.change(select, { target: { value: 'dark' } })
+    // Kit Select (refit T6.5): trigger + listbox option, not a native <select>.
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('combobox', { name: 'Logo variant' }))
+    await user.click(await screen.findByRole('option', { name: 'dark' }))
     await waitFor(() => expect(document.querySelector('[data-savebar]')).not.toBeNull())
     expect(putCount).toBe(0)
     await settleReact()
@@ -118,10 +118,10 @@ describe('assets tab', () => {
 
   it('no raw asset-id select exists anywhere on the tab', async () => {
     await renderAssets()
-    const selects = Array.from(document.querySelectorAll('select'))
-    // the only select is the labeled logo-variant picker
-    expect(selects.length).toBe(1)
-    expect(selects[0].getAttribute('aria-label')).toBe('Logo variant')
+    // Zero native selects (refit T6.5): the logo-variant picker is the kit
+    // Select (combobox trigger), and asset ids only ever ride the AssetPicker.
+    expect(document.querySelectorAll('select').length).toBe(0)
+    expect(screen.getByRole('combobox', { name: 'Logo variant' })).toBeDefined()
     await settleReact()
   })
 })

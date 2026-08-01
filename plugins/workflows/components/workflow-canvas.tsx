@@ -345,7 +345,7 @@ export function WorkflowCanvas({ definition, subWorkflows, skillDrift, onNodeCli
   }, [initialNodes])
 
   return (
-    <div className="h-full w-full bg-zinc-950">
+    <div className="h-full w-full bg-bakin-canvas-default [--xy-edge-stroke:var(--bakin-color-border-subtle)] [--xy-edge-stroke-width:2]">
       <style dangerouslySetInnerHTML={{ __html: RESET_NODE_STYLES }} />
       <ReactFlow
         nodes={nodes}
@@ -358,13 +358,14 @@ export function WorkflowCanvas({ definition, subWorkflows, skillDrift, onNodeCli
         proOptions={{ hideAttribution: true }}
         nodesDraggable={true}
         nodesConnectable={false}
-        defaultEdgeOptions={{
-          style: { stroke: '#525252', strokeWidth: 2 },
-        }}
       >
-        <Background variant={BackgroundVariant.Dots} color="#3f3f46" gap={24} size={1.5} />
+        <Background variant={BackgroundVariant.Dots} color="var(--bakin-color-border-subtle)" gap={24} size={1.5} />
         <Controls showInteractive={false} />
-        <MiniMap nodeColor="#3f3f46" maskColor="rgba(0,0,0,0.7)" />
+        <MiniMap
+          className="hidden md:block"
+          nodeColor="var(--bakin-color-border-subtle)"
+          maskColor="color-mix(in srgb, var(--bakin-color-canvas-default) 78%, transparent)"
+        />
       </ReactFlow>
     </div>
   )

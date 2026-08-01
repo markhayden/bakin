@@ -3,15 +3,15 @@
  * published artifact at build time and used by the consumer install path +
  * startup verifier to decide whether an artifact is valid for this host.
  *
- * Schema is versioned (WHISKIT_PROVENANCE_VERSION); a host that no longer
- * matches an artifact's `externalsContract` marks it needs-update rather than
- * rebuilding (consumers never build). Part of the Whiskit artifact format
+ * Schema is versioned (WHISKIT_PROVENANCE_VERSION); a host that cannot satisfy
+ * an artifact's `externalsContract` marks it needs-update rather than rebuilding
+ * (consumers never build). Part of the Whiskit artifact format
  * (Phase 3). See `.claude/specs/whiskit-plugin-builder.md` (Build Provenance).
  */
 import { readFileSync } from 'fs'
 import { z } from 'zod'
 import { atomicWriteJson } from '@bakin/core/install-core/atomic-write'
-import { EXTERNALS_CONTRACT } from './externals'
+import { supportsExternalsContract } from './externals'
 
 export const WHISKIT_PROVENANCE_VERSION = 2
 
@@ -78,10 +78,9 @@ export function writeProvenance(path: string, provenance: WhiskitBuildProvenance
 }
 
 /**
- * True iff this host's externals contract matches the artifact's — i.e. the
- * host still provides the React/SDK surface the artifact was built against. A
- * false result means the artifact needs a newer published build (Phase 9).
+ * True iff this host provides every external expected by the artifact. Contract
+ * versions are additive within one family, so a v2 host can load a v1 artifact.
  */
 export function isExternalsContractCompatible(provenance: WhiskitBuildProvenance): boolean {
-  return provenance.externalsContract === EXTERNALS_CONTRACT
+  return supportsExternalsContract(provenance.externalsContract)
 }

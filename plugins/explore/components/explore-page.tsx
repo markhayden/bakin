@@ -1,8 +1,29 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { Compass, Plus, RefreshCw, Search, Sparkles } from 'lucide-react'
-import { PluginHeader, EmptyState, ErrorBanner, FacetFilter, UnderlineTabs } from '@makinbakin/sdk/components'
-import { toast, useJsonFetch, useQueryState, useQueryArrayState } from '@makinbakin/sdk/hooks'
-import { Button, Input } from '@makinbakin/sdk/ui'
+import { Check, Plus, RefreshCw, Sparkles } from 'lucide-react'
+import { Grid } from '@makinbakin/sdk/layout'
+import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
+import {
+  FacetFilter,
+  Page,
+  PageBody,
+  PageControls,
+  PageHeader,
+  SearchInput,
+} from '@makinbakin/sdk/patterns'
+import {
+  Badge,
+  Banner,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  Skeleton,
+  SystemState,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from '@makinbakin/sdk/ui'
+import { toast, useJsonFetch } from '@makinbakin/sdk/hooks'
 import { CatalogCard } from './catalog-card'
 import { DetailDrawer } from './detail-drawer'
 import { HubSkillsSection } from './hub-skills-section'
@@ -55,6 +76,8 @@ const TAB_INTROS: Record<string, { title: string; blurb: string }> = {
       'install once, reuse everywhere.',
   },
 }
+
+const CATALOG_GRID_CLASSES = '@xl/page-shell:grid-cols-2 @3xl/page-shell:grid-cols-3 @5xl/page-shell:grid-cols-4'
 
 function ExplorePageInner() {
   const { data, loading, error, refresh } = useJsonFetch<ExploreCatalogResponse>('/api/plugins/explore/catalog')
@@ -194,143 +217,193 @@ function ExplorePageInner() {
     () => new Set(entries.filter((entry) => entry.kind === 'plugin' && entry.installed).map((entry) => entry.id)),
     [entries],
   )
+  const catalogState = override ?? data
+  const filtered = searchDraft.trim().length > 0 || activeCategories.length > 0
+  const clearFilters = () => {
+    onSearchChange('')
+    setQuery('')
+    setCategories([])
+  }
+  const maintenanceActions = (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="refresh-catalog"
+        disabled={busyAction !== null}
+        onClick={() => void runAction('refresh')}
+        title="Fetch the latest official catalog from GitHub"
+      >
+        <RefreshCw className={busyAction === 'refresh' ? 'animate-spin' : undefined} />
+        Refresh catalog
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="check-updates"
+        disabled={busyAction !== null}
+        onClick={() => void runAction('check')}
+        title="Probe installed plugins and agents for available updates"
+      >
+        <Sparkles />
+        {busyAction === 'check' ? 'Checking…' : 'Check for updates'}
+      </Button>
+    </>
+  )
+  const resultState = error ? (
+    <SystemState
+      kind="error"
+      scope="page"
+      title="The catalog could not be loaded"
+      description={error}
+      action={<Button variant="outline" onClick={refresh}>Try again</Button>}
+    />
+  ) : loading ? (
+    <SystemState
+      kind="loading"
+      scope="page"
+      title="Loading the catalog"
+      description="Official agents, plugins, lessons, and capabilities will appear here."
+      preview={(
+        <Grid layout="single" gap="item" className={CATALOG_GRID_CLASSES}>
+          {Array.from({ length: 6 }, (_, index) => (
+            <Card key={index} size="sm">
+              <CardHeader>
+                <div className="flex min-w-0 items-center gap-bakin-3">
+                  <Skeleton shape="circle" className="size-bakin-8" />
+                  <Skeleton shape="text" className="min-w-0 flex-1" />
+                </div>
+              </CardHeader>
+              <CardContent className="grid gap-bakin-2">
+                <Skeleton shape="text" />
+                <Skeleton shape="text" className="w-2/3" />
+              </CardContent>
+            </Card>
+          ))}
+        </Grid>
+      )}
+    />
+  ) : visible.length === 0 ? (
+    <SystemState
+      kind={filtered ? 'no-results' : 'initial-empty'}
+      scope="page"
+      title={filtered
+        ? 'No catalog items match'
+        : tab === 'lessons' ? 'Lesson packs are coming'
+          : tab === 'capabilities'
+            ? (tabEntries.length > 0 ? 'All official capabilities installed' : 'Capability packs are coming')
+            : 'Nothing here yet'}
+      description={filtered
+        ? 'Clear the current search and category filters, or browse another section.'
+        : tab === 'lessons'
+          ? 'Official lesson packs will appear here as they are published. Installed agents can also include lessons you manage from Team.'
+          : tab === 'capabilities' && tabEntries.length > 0
+            ? 'Every curated capability is already on your team — paste a link above to bring in more from the ecosystem.'
+            : 'The official catalog has no entries for this section yet.'}
+      {...(filtered
+        ? { action: <Button variant="outline" onClick={clearFilters}>Clear search and filters</Button> }
+        : {})}
+    />
+  ) : undefined
 
   return (
-    <div className="p-6 flex flex-col flex-1 gap-6">
-      <PluginHeader
-        title="Extend Bakin"
-        count={entries.length}
-        subtitle="Do more with Bakin — official agents, plugins, and packs"
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              data-testid="refresh-catalog"
-              disabled={busyAction !== null}
-              onClick={() => runAction('refresh')}
-              title="Fetch the latest official catalog from GitHub"
-            >
-              <RefreshCw className={`mr-1.5 size-3.5 ${busyAction === 'refresh' ? 'animate-spin' : ''}`} />
-              Refresh catalog
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              data-testid="check-updates"
-              disabled={busyAction !== null}
-              onClick={() => runAction('check')}
-              title="Probe installed plugins and agents for available updates"
-            >
-              <Sparkles className="mr-1.5 size-3.5" />
-              {busyAction === 'check' ? 'Checking…' : 'Check for updates'}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              data-testid="install-from-source"
-              onClick={() => {
-                setInstallEntry(null)
-                setInstallOpen(true)
-              }}
-            >
-              <Plus className="mr-1.5 size-3.5" />
-              Install from source…
-            </Button>
-          </div>
-        }
+    <Page>
+      <PageHeader
+        title="Explore"
+        description="Find and install official agents, plugins, lessons, and capabilities to extend your Bakin workspace."
+        meta={catalogState ? <Badge size="xs" variant="outline">{entries.length} available</Badge> : undefined}
+        controlsLabel="Catalog search"
+        controls={(
+          <SearchInput
+            align="end"
+            label="Catalog search"
+            value={searchDraft}
+            onValueChange={onSearchChange}
+            placeholder="Search the catalog…"
+            mobileFullWidth
+            className="@3xl/page-header:w-[22rem] @3xl/page-header:shrink-0"
+          />
+        )}
+        actionsLabel="Catalog actions"
+        actions={(
+          <Button
+            data-testid="install-from-source"
+            onClick={() => {
+              setInstallEntry(null)
+              setInstallOpen(true)
+            }}
+          >
+            <Plus />
+            Install from source
+          </Button>
+        )}
       />
 
-      {error && <ErrorBanner message={error} onRetry={refresh} />}
-      {actionError && <ErrorBanner message={actionError} onRetry={() => setActionError(null)} />}
+      <Tabs value={tab} onValueChange={(value) => setTab(value as string)}>
+        <TabsList variant="underline" activateOnFocus aria-label="Catalog sections">
+          {tabs.map((item) => (
+            <TabsTrigger
+              key={item.id}
+              value={item.id}
+              id={`explore-tab-${item.id}`}
+              aria-controls={`explore-panel-${item.id}`}
+            >
+              {item.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
-      <div
-        data-testid="explore-banner"
-        className="relative flex min-h-32 flex-col justify-center overflow-hidden rounded-2xl border border-pink-500/20 bg-gradient-to-r from-pink-500/25 via-fuchsia-500/15 to-amber-400/20 px-8 py-6"
+      <PageControls
+        label="Catalog filters and maintenance"
+        className="border-t-0 pt-0"
+        actions={maintenanceActions}
       >
-        <span className="text-lg font-semibold text-foreground">Make Bakin yours</span>
-        <span className="max-w-xl text-sm text-foreground/70">
-          Hire agents, bolt on plugins, and teach your team new tricks — everything here is official, curated, and one click away.
-        </span>
-      </div>
-
-      {/* Toolbar: search + facets left, section tabs right (matches the
-          filter-row convention of the other plugin pages). */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Grows on focus so there's room to type; collapses back on blur. */}
-          <div className="relative w-64 transition-[width] duration-200 ease-out focus-within:w-[36rem] max-w-full">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              data-testid="explore-search"
-              value={searchDraft}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search agents, plugins, lessons…"
-              className="h-8 w-full pl-8 text-sm"
-            />
-          </div>
+        {categoryOptions.length > 0 ? (
           <FacetFilter
             label="Category"
             options={categoryOptions}
             selected={categories}
             onChange={setCategories}
           />
-        </div>
-        <UnderlineTabs
-          tabs={tabs}
-          value={tab}
-          onValueChange={setTab}
-        />
-      </div>
+        ) : <span className="text-bakin-typography-size-meta text-bakin-text-muted">No categories in this section</span>}
+      </PageControls>
 
-      {TAB_INTROS[tab] && (
-        <div data-testid="tab-intro" className="max-w-3xl">
-          <h2 className="text-sm font-semibold text-foreground">{TAB_INTROS[tab].title}</h2>
-          <p className="text-sm text-muted-foreground">{TAB_INTROS[tab].blurb}</p>
-        </div>
-      )}
+      <PageBody
+        label="Catalog results"
+        busy={busyAction !== null}
+        feedback={actionError ? (
+          <Banner
+            tone="danger"
+            title="The catalog action could not be completed"
+            description={actionError}
+            action={<Button variant="outline" size="sm" onClick={() => setActionError(null)}>Dismiss</Button>}
+          />
+        ) : undefined}
+        state={resultState}
+      >
+        {TAB_INTROS[tab] ? (
+          <section data-testid="tab-intro" className="grid max-w-3xl gap-bakin-1">
+            <h2 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+              {TAB_INTROS[tab].title}
+            </h2>
+            <p className="m-0 text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+              {TAB_INTROS[tab].blurb}
+            </p>
+          </section>
+        ) : null}
 
-      {/* The ecosystem lane (#687) lives INSIDE Capabilities — one unified
-          "teach your agents" surface: paste-a-link CTA + installed hub
-          skills above the curated grid, never a separate tab. */}
-      {tab === 'capabilities' && <HubSkillsSection />}
+        {/* The ecosystem lane (#687) lives INSIDE Capabilities — one unified
+            "teach your agents" surface: paste-a-link CTA + installed hub
+            skills above the curated grid, never a separate tab. */}
+        {tab === 'capabilities' && <HubSkillsSection />}
 
-      {loading && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="h-36 animate-pulse rounded-xl border border-border bg-card" />
-          ))}
-        </div>
-      )}
-
-      {!loading && !error && visible.length === 0 && (
-        <EmptyState
-          icon={Compass}
-          title={searchDraft.trim()
-            ? 'No matches'
-            : tab === 'lessons' ? 'Lesson packs are coming'
-              : tab === 'capabilities'
-                ? (tabEntries.length > 0 && activeCategories.length === 0 ? 'All official capabilities installed' : 'Capability packs are coming')
-                : 'Nothing here yet'}
-          description={searchDraft.trim()
-            ? `Nothing on this tab matches "${searchDraft.trim()}" — try another tab or clear the search.`
-            : activeCategories.length > 0
-              ? 'No entries match the selected categories.'
-              : tab === 'lessons'
-                ? 'Official lesson packs will appear here as they\'re published. Agents you install often ship their own lessons — manage those from the agent\'s Team page.'
-                : tab === 'capabilities' && tabEntries.length > 0 && activeCategories.length === 0
-                  ? 'Every curated capability is already on your team — paste a link above to bring in more from the ecosystem.'
-                  : 'The catalog has no entries for this tab yet.'}
-        />
-      )}
-
-      {!loading && visible.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <Grid layout="single" gap="item" className={CATALOG_GRID_CLASSES}>
           {visible.map((entry) => (
             <CatalogCard
               key={`${entry.kind}:${entry.id}`}
               entry={entry}
-              activeAdapter={data?.activeAdapter}
+              activeAdapter={catalogState?.activeAdapter}
               onSelect={(selectedEntry) => setSelectedKey(`${selectedEntry.kind}:${selectedEntry.id}`)}
               onInstall={(installTarget) => {
                 setInstallEntry(installTarget)
@@ -338,8 +411,8 @@ function ExplorePageInner() {
               }}
             />
           ))}
-        </div>
-      )}
+        </Grid>
+      </PageBody>
 
       <DetailDrawer
         entry={selected}
@@ -348,17 +421,34 @@ function ExplorePageInner() {
           if (!open) setSelectedKey('')
         }}
         actions={
-          selected && !selected.builtin && !selected.installed ? (
-            <Button
-              data-testid="drawer-install"
-              onClick={() => {
-                setInstallEntry(selected)
-                setInstallOpen(true)
-              }}
-            >
-              Install
-            </Button>
-          ) : undefined
+          selected && !selected.builtin
+            ? selected.installed
+              ? (
+                  <Button
+                    data-testid="drawer-installed"
+                    size="xs"
+                    variant="primary"
+                    disabled
+                  >
+                    <Check />
+                    Installed
+                  </Button>
+                )
+              : (
+                  <Button
+                    data-testid="drawer-install"
+                    size="xs"
+                    variant="primary"
+                    onClick={() => {
+                      setInstallEntry(selected)
+                      setInstallOpen(true)
+                    }}
+                  >
+                    <Plus />
+                    Install
+                  </Button>
+                )
+            : undefined
         }
       />
 
@@ -372,7 +462,7 @@ function ExplorePageInner() {
           refresh()
         }}
       />
-    </div>
+    </Page>
   )
 }
 

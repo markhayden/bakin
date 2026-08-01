@@ -3,7 +3,7 @@
 /**
  * MemoryContentRenderer — auto-detects the format of a memory row's body.
  *
- *   JSON      → pretty-printed with 2-space indent and monospace rendering
+ *   JSON      → pretty-printed, syntax-highlighted canonical code presentation
  *   Markdown  → rendered via the shared MarkdownContent (ReactMarkdown)
  *   Text      → <pre> with preserved whitespace
  *
@@ -16,7 +16,7 @@
  * Callers can override detection via `format` when they already know — turn
  * `tool_call` rows, for example, are always JSON-stringified toolCall blocks.
  */
-import { MarkdownContent } from "@makinbakin/sdk/components"
+import { MarkdownContent } from '@makinbakin/sdk/content'
 
 export type ContentFormat = 'json' | 'markdown' | 'text'
 
@@ -34,7 +34,7 @@ export function MemoryContentRenderer({ content, format }: Props) {
   }
   if (resolved === 'markdown') {
     return (
-      <div className="text-sm [&_pre]:bg-muted [&_pre]:rounded-md [&_pre]:p-3 [&_code]:text-xs">
+      <div className="text-bakin-typography-size-body [&_pre]:rounded-bakin-surface [&_pre]:bg-bakin-canvas-subtle [&_pre]:p-bakin-3 [&_code]:text-bakin-typography-size-meta">
         <MarkdownContent content={content} />
       </div>
     )
@@ -50,15 +50,25 @@ function JsonBlock({ raw }: { raw: string }) {
     pretty = raw
   }
   return (
-    <pre className="text-xs font-mono bg-muted/60 rounded-md p-3 overflow-x-auto whitespace-pre-wrap break-words">
-      {pretty}
-    </pre>
+    <MarkdownContent
+      content={fencedCode('json', pretty)}
+      className="[&_[data-md-code]]:my-0"
+    />
   )
+}
+
+function fencedCode(language: string, code: string): string {
+  const longestBacktickRun = Math.max(
+    0,
+    ...(code.match(/`+/g) ?? []).map((run) => run.length),
+  )
+  const fence = '`'.repeat(Math.max(3, longestBacktickRun + 1))
+  return `${fence}${language}\n${code}\n${fence}`
 }
 
 function TextBlock({ content }: { content: string }) {
   return (
-    <pre className="text-sm font-sans whitespace-pre-wrap break-words leading-relaxed">
+    <pre className="m-0 whitespace-pre-wrap break-words font-bakin-typography-family-ui text-bakin-typography-size-body leading-relaxed text-bakin-text-primary">
       {content}
     </pre>
   )

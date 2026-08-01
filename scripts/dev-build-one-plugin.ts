@@ -13,6 +13,8 @@ import { rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 
+import { processBuiltPluginCss } from '../src/core/whiskit/plugin-css'
+
 export interface BuildOnePluginOptions {
   /** Directory containing the plugin. Defaults to 'plugins' (core plugins). */
   pluginsDir?: string
@@ -93,11 +95,21 @@ export async function buildOnePlugin(
     '--target', 'browser',
     '--format', 'esm',
     '--entry-naming', 'client.[ext]',
+    '--sourcemap=external',
     ...(opts.production ? ['--production'] : []),
     ...externalArgs,
   ])
   if (clientRes.exitCode !== 0) {
     return { ok: false, stderr: `client entry for ${id}:\n${clientRes.stderr}` }
+  }
+  try {
+    await processBuiltPluginCss({ pluginId: id, distDir, sourceRoot: pluginDir })
+  } catch (error) {
+    rmSync(join(distDir, 'client.js'), { force: true })
+    return {
+      ok: false,
+      stderr: `client CSS for ${id}:\n${error instanceof Error ? error.message : String(error)}`,
+    }
   }
 
   return { ok: true, clientBuilt: true }

@@ -6,6 +6,8 @@ import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } fr
 import { dirname, join } from 'path'
 import { randomUUID } from 'crypto'
 
+import { IMITATION_CRAB_MODELS } from './model-catalog'
+
 /** 1x1 transparent PNG — enough for the mock to return a real image file. */
 const ONE_PX_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
 
@@ -211,7 +213,7 @@ async function main(): Promise<void> {
   } else if (command === 'gateway' && subcommand === 'restart') {
     console.log('[mock] Gateway restart acknowledged')
   } else if (command === 'models' && subcommand === 'list') {
-    process.stdout.write(JSON.stringify([]))
+    process.stdout.write(JSON.stringify({ models: IMITATION_CRAB_MODELS }))
   } else if (command === 'infer' && subcommand === 'image') {
     const action = args[2]
     if (action === 'providers') {

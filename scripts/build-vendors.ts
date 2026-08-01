@@ -12,11 +12,11 @@
  *
  * - React family + tanstack-router: one bundle per specifier, built from
  *   generated wrapper entries (see below).
- * - @makinbakin/sdk/*: all nine subpath entries built in a SINGLE
+ * - @makinbakin/sdk/*: all browser subpath entries built in a SINGLE
  *   `bun build --splitting` invocation, so code shared between subpaths
  *   (shadcn primitives, @bakin/core helpers, plugin hooks) lands once in
  *   `sdk-shared-<hash>.js` chunks instead of being inlined into every
- *   subpath bundle (#422). The nine entry filenames are stable
+ *   subpath bundle (#422). The entry filenames are stable
  *   (`sdk-index.js`, `sdk-ui.js`, ...) and the import map is unchanged;
  *   only the chunk filenames are content-hashed. Chunk names CANNOT be
  *   deterministic: Bun rejects non-unique chunk output paths.
@@ -51,17 +51,22 @@ import { jsxDevRuntimeEntrySource } from './vendor-entrypoints'
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const VENDOR_DIR = join(REPO_ROOT, 'packages/host/public/vendor')
 
-/** The nine published SDK subpaths and their stable vendor bundle names. */
+/** The browser-resolvable SDK subpaths and their stable vendor bundle names. */
 export const SDK_VENDOR_TARGETS: ReadonlyArray<{ specifier: string; name: string; entrypoint: string }> = [
   { specifier: '@makinbakin/sdk', name: 'sdk-index', entrypoint: 'packages/sdk/src/index.ts' },
   { specifier: '@makinbakin/sdk/ui', name: 'sdk-ui', entrypoint: 'packages/sdk/src/ui/index.ts' },
+  { specifier: '@makinbakin/sdk/layout', name: 'sdk-layout', entrypoint: 'packages/sdk/src/layout/index.ts' },
+  { specifier: '@makinbakin/sdk/patterns', name: 'sdk-patterns', entrypoint: 'packages/sdk/src/patterns/index.ts' },
+  { specifier: '@makinbakin/sdk/charts', name: 'sdk-charts', entrypoint: 'packages/sdk/src/charts/index.ts' },
+  { specifier: '@makinbakin/sdk/conversation', name: 'sdk-conversation', entrypoint: 'packages/sdk/src/conversation/index.ts' },
+  { specifier: '@makinbakin/sdk/content', name: 'sdk-content', entrypoint: 'packages/sdk/src/content/index.ts' },
   { specifier: '@makinbakin/sdk/hooks', name: 'sdk-hooks', entrypoint: 'packages/sdk/src/hooks/index.ts' },
-  { specifier: '@makinbakin/sdk/components', name: 'sdk-components', entrypoint: 'packages/sdk/src/components/index.ts' },
   { specifier: '@makinbakin/sdk/slots', name: 'sdk-slots', entrypoint: 'packages/sdk/src/slots/index.tsx' },
   { specifier: '@makinbakin/sdk/types', name: 'sdk-types', entrypoint: 'packages/sdk/src/types/index.ts' },
   { specifier: '@makinbakin/sdk/utils', name: 'sdk-utils', entrypoint: 'packages/sdk/src/utils/index.ts' },
   { specifier: '@makinbakin/sdk/metadata', name: 'sdk-metadata', entrypoint: 'packages/sdk/src/metadata/index.ts' },
   { specifier: '@makinbakin/sdk/routing', name: 'sdk-routing', entrypoint: 'packages/sdk/src/routing/index.ts' },
+  { specifier: '@makinbakin/sdk/navigation', name: 'sdk-navigation', entrypoint: 'packages/sdk/src/navigation/index.ts' },
   { specifier: '@makinbakin/sdk/internal', name: 'sdk-internal', entrypoint: 'packages/sdk/src/internal/index.ts' },
 ]
 
@@ -115,6 +120,7 @@ export async function buildSdkVendorBundles(opts: { outDir: string; production: 
       '--chunk-naming', 'sdk-shared-[hash].[ext]',
       ...(opts.production ? ['--production'] : []),
       '--external', 'react',
+      '--external', 'react-dom',
       '--external', '@tanstack/react-router',
     ], { cwd: REPO_ROOT, stdout: 'pipe', stderr: 'pipe' })
 

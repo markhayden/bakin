@@ -7,17 +7,15 @@
  *   Runtimes     — the runtime roster + guided switch: preview (dry run)
  *                  first, confirm, live progress, grouped result cards
  * Sections fetch and fault independently (health-page pattern); tab state is
- * URL-backed for deep links.
+ * URL-backed for deep links. Page + PageHeader own page identity and padding
+ * (storybook-refit T6.1 — the legacy p-6 frame + PluginHeader are gone).
  */
 import { createRoute } from '@tanstack/react-router'
 import { Suspense, useCallback, useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
-import { PluginHeader } from '@/components/plugin-header'
-import { UnderlineTabs } from '@/components/underline-tabs'
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
-import { ErrorBanner } from '@/components/error-banner'
-import { useQueryState } from '@/hooks/use-query-state'
+import { useQueryState } from '@makinbakin/sdk/navigation'
+import { Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
+import { Banner, Button, Skeleton, Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
 import { OverviewTab } from '../components/runtime/overview-tab'
 import { CapabilitiesTab } from '../components/runtime/capabilities-tab'
 import { RuntimesTab } from '../components/runtime/runtimes-tab'
@@ -72,27 +70,39 @@ function RuntimePage() {
   useEffect(() => { refresh() }, [refresh])
 
   return (
-    // PluginHeader ships unpadded — it lives INSIDE the p-6 frame, exactly
-    // like the health page wraps it.
-    <div className="flex flex-1 flex-col space-y-6 p-6">
-      <PluginHeader
+    <Page>
+      <PageHeader
         title="Runtime"
-        subtitle={report ? `${report.adapter} · ${report.runtime.name}@${report.runtime.version}` : 'The engine that runs your agents'}
+        description={report ? `${report.adapter} · ${report.runtime.name}@${report.runtime.version}` : 'The engine that runs your agents'}
         actions={
           <Button size="sm" variant="outline" onClick={refresh}>
             <RefreshCw className="mr-2 size-3.5" /> Refresh
           </Button>
         }
       />
-      <div className="flex-1 space-y-6">
-        <UnderlineTabs tabs={TABS} value={activeTab} onValueChange={setTab} />
+      <PageBody label="Runtime report">
+        <Tabs value={activeTab} onValueChange={(id) => setTab(id as string)}>
+          <TabsList variant="underline" activateOnFocus aria-label="Runtime sections">
+            {TABS.map((item) => (
+              <TabsTrigger key={item.id} value={item.id}>
+                {item.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
         {reportError && (
-          <ErrorBanner message={`The runtime report failed to load: ${reportError}`} onRetry={refresh} />
+          <Banner
+            tone="danger"
+            announce="polite"
+            title="The runtime report failed to load"
+            description={reportError}
+            action={<Button size="sm" variant="outline" onClick={refresh}>Retry</Button>}
+          />
         )}
 
         {!report && !reportError && (
-          <div className="space-y-3">
+          <div className="flex flex-col gap-bakin-3">
             <Skeleton className="h-24 w-full" />
             <Skeleton className="h-40 w-full" />
           </div>
@@ -101,8 +111,8 @@ function RuntimePage() {
         {report && activeTab === 'overview' && <OverviewTab report={report} onboarding={onboarding} onRefreshOnboarding={() => void loadOnboarding()} />}
         {activeTab === 'capabilities' && <CapabilitiesTab />}
         {report && activeTab === 'runtimes' && <RuntimesTab report={report} onSwitched={refresh} />}
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   )
 }
 

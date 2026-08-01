@@ -3,7 +3,8 @@
  * the palette as its base edge, then name/status/completeness/meta. The
  * brand's OWN colors are the only strong color — chrome stays neutral.
  */
-import { StatusBadge } from '@makinbakin/sdk/components'
+import { StatusBadge } from '@makinbakin/sdk/patterns'
+import { Button } from '@makinbakin/sdk/ui'
 import { Progress, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@makinbakin/sdk/ui'
 import type { BrandManifest } from '../types'
 
@@ -33,7 +34,7 @@ const isHex = (h: string) => /^#[0-9a-fA-F]{6}$/.test(h)
 function Monogram({ name, tint }: { name: string; tint?: string }) {
   return (
     <span
-      className="flex size-16 items-center justify-center rounded-2xl text-2xl font-semibold text-foreground/70 ring-1 ring-foreground/10"
+      className="flex size-16 items-center justify-center rounded-2xl text-2xl font-semibold text-bakin-text-primary/70 ring-1 ring-bakin-text-primary/10"
       style={tint ? { backgroundColor: `${tint}33` } : undefined}
       data-brand-monogram
     >
@@ -49,8 +50,11 @@ export function BrandCoverCard({ brand, onOpen }: { brand: ListedBrand; onOpen: 
   const completeness = brand.completeness
 
   return (
-    <button
-      className="group overflow-hidden rounded-xl bg-card text-left ring-1 ring-foreground/10 transition-shadow hover:ring-foreground/25"
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="group flex !h-auto w-full flex-col items-stretch justify-start gap-0 overflow-hidden whitespace-normal rounded-xl bg-bakin-surface-default p-0 text-left font-bakin-typography-weight-regular ring-1 ring-bakin-text-primary/10 transition-shadow hover:bg-bakin-surface-default hover:ring-bakin-text-primary/25 motion-reduce:transition-none"
       onClick={onOpen}
       data-brand-card={brand.id}
     >
@@ -61,9 +65,10 @@ export function BrandCoverCard({ brand, onOpen }: { brand: ListedBrand; onOpen: 
       >
         {logo ? (
           <img
-            src={`/api/assets/${logo.assetId}/thumb`}
+            src={`/api/assets/${logo.assetId}`}
             alt=""
-            className="max-h-16 max-w-[55%] object-contain drop-shadow-sm"
+            className="max-h-16 max-w-1/2 object-contain drop-shadow-sm"
+            data-brand-logo
             onError={(e) => {
               ;(e.currentTarget as HTMLImageElement).style.display = 'none'
             }}
@@ -79,21 +84,21 @@ export function BrandCoverCard({ brand, onOpen }: { brand: ListedBrand; onOpen: 
             <div key={`${c.name}-${i}`} title={`${c.name} ${c.hex}`} style={{ backgroundColor: c.hex, flexGrow: swatches.length - i }} />
           ))
         ) : (
-          <div className="w-full bg-muted/40" />
+          <div className="w-full bg-bakin-border-subtle/40" />
         )}
       </div>
 
-      <div className="space-y-2 p-4">
+      <div className="flex-1 space-y-2 p-4" data-brand-card-body>
         <div className="flex items-center gap-2">
           <h3 className="min-w-0 truncate font-medium">{brand.name}</h3>
-          <StatusBadge tone={brand.draft ? 'warning' : 'success'} className="ml-auto shrink-0">
+          <StatusBadge tone={brand.draft ? 'attention' : 'success'} className="ml-auto shrink-0">
             {brand.draft ? 'Draft' : 'Published'}
           </StatusBadge>
         </div>
         {brand.description ? (
-          <p className="line-clamp-2 text-sm text-muted-foreground">{brand.description}</p>
+          <p className="line-clamp-2 text-sm text-bakin-text-muted">{brand.description}</p>
         ) : (
-          <p className="text-sm text-muted-foreground/60">No description yet.</p>
+          <p className="text-sm text-bakin-text-muted/60">No description yet.</p>
         )}
 
         {completeness && (
@@ -107,7 +112,7 @@ export function BrandCoverCard({ brand, onOpen }: { brand: ListedBrand; onOpen: 
                     className="h-1.5 flex-1"
                     aria-label={`Brand kit ${completeness.percent}% complete`}
                   />
-                  <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                  <span className="shrink-0 text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
                     {completeness.percent}% complete
                   </span>
                 </div>
@@ -123,12 +128,12 @@ export function BrandCoverCard({ brand, onOpen }: { brand: ListedBrand; onOpen: 
         )}
 
         {brand.counts && (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-bakin-typography-size-meta text-bakin-text-muted">
             {brand.counts.guidelines} docs · {brand.counts.lessons} lessons · {brand.counts.assets} assets
             {brand.source ? ' · imported' : ''}
           </p>
         )}
       </div>
-    </button>
+    </Button>
   )
 }

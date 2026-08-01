@@ -48,6 +48,28 @@ declare namespace Bun {
     publicPath?: string
     define?: Record<string, string>
     loader?: Record<string, 'js' | 'jsx' | 'ts' | 'tsx' | 'json' | 'toml' | 'text' | 'file' | 'napi' | 'wasm'>
+    plugins?: BunPlugin[]
+  }
+
+  interface OnResolveArgs {
+    path: string
+    importer: string
+  }
+
+  interface PluginBuilder {
+    onResolve(
+      options: { filter: RegExp; namespace?: string },
+      callback: (args: OnResolveArgs) => { path: string; namespace?: string } | null | undefined,
+    ): void
+    onLoad(
+      options: { filter: RegExp; namespace?: string },
+      callback: () => { contents: string; loader: 'css' } | null | undefined,
+    ): void
+  }
+
+  interface BunPlugin {
+    name: string
+    setup(builder: PluginBuilder): void
   }
 
   interface BuildResult {

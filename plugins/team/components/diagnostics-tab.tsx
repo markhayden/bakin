@@ -18,29 +18,43 @@
  * incidents and their structured agent resources.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, RefreshCw } from 'lucide-react'
-import { Button, Badge, Skeleton } from '@makinbakin/sdk/ui'
-import { Sparkline, ChartExplainer } from '@makinbakin/sdk/components'
-import { usePluginEvent, useJsonFetch } from '@makinbakin/sdk/hooks'
+import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
+import { ChartExplainer, Sparkline } from '@makinbakin/sdk/charts'
+import { usePluginEvent, useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
+import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
+import { Pagination, SegmentedControl, StatusBadge } from '@makinbakin/sdk/patterns'
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
+  Progress,
+  ProgressLabel,
+  ProgressValue,
+  Skeleton,
+  SystemState,
+} from '@makinbakin/sdk/ui'
 import { formatDuration } from '@makinbakin/sdk/utils'
 import type { HealthReport } from '@makinbakin/sdk/types'
 import type { ScanFinding, TimelineEventView } from '../types'
 
 // ── Small shared bits ────────────────────────────────────────────────────────
 
-function Panel({ title, actions, children }: {
+function Panel({ title, actions, children, divider = 'top' }: {
   title: string
   actions?: React.ReactNode
   children: React.ReactNode
+  divider?: 'none' | 'top'
 }) {
+  const headingId = `diagnostics-${title.toLowerCase().replaceAll(' ', '-')}`
   return (
-    <section className="rounded-lg border border-border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold">{title}</h3>
+    <Section spacing="compact" divider={divider} aria-labelledby={headingId}>
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
+        <h2 id={headingId} className="m-0">{title}</h2>
         {actions}
       </div>
       {children}
-    </section>
+    </Section>
   )
 }
 
@@ -200,23 +214,20 @@ export function DiagnosticsChipsView({ attention, onOpen }: { attention: AgentAt
     { key: 'burn', label: 'Burn', flagged: attention.burn },
   ]
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-bakin-2">
       {chips.map((chip) => (
-        <button
+        <Button
           key={chip.key}
           type="button"
+          size="xs"
+          variant={chip.flagged ? 'warning' : 'outline'}
           onClick={onOpen}
           title={`Open the Diagnostics tab (${chip.label.toLowerCase()} details)`}
-          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs transition-colors hover:bg-accent ${
-            chip.flagged
-              ? 'border-amber-500/50 text-amber-400'
-              : 'border-border text-muted-foreground'
-          }`}
         >
-          <span className={`inline-block h-1.5 w-1.5 rounded-full ${chip.flagged ? 'bg-amber-400' : 'bg-emerald-500'}`} />
+          {chip.flagged ? <AlertTriangle aria-hidden="true" /> : null}
           {chip.label}
-          {!attention.loaded && chip.key === 'drift' ? '…' : chip.flagged ? ' ⚠' : ' ok'}
-        </button>
+          {!attention.loaded && chip.key === 'drift' ? '…' : chip.flagged ? ' needs attention' : ' ok'}
+        </Button>
       ))}
     </div>
   )
@@ -347,76 +358,134 @@ function DriftPanel({ agentId }: { agentId: string }) {
 
   const findings = scan?.findings ?? []
   const locked = findings.filter((f) => f.type === 'user-edited')
+  const findingLabel = (finding: ScanFinding) => {
+    if (finding.type === 'block-missing') return 'Managed block missing'
+    if (finding.type === 'block-stale') return 'Managed block out of date'
+    if (finding.type === 'user-edited') return 'Protected user edit'
+    return finding.type.replaceAll('-', ' ')
+  }
 
   return (
-    <Panel
-      title="Drift"
-      actions={
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setRetryNonce((nonce) => nonce + 1)}
-            disabled={loading}
-          >
-            <RefreshCw className="mr-1 size-3" /> Rescan
-          </Button>
-          <Button size="sm" onClick={() => void handleSync()} disabled={syncing || !scan?.packageId}>
-            {syncing ? <Loader2 className="mr-1 size-3 animate-spin" /> : null}
-            Sync now
-          </Button>
+    <Section spacing="compact" divider="none" aria-labelledby="diagnostics-drift">
+      <div
+        data-drift-checklist=""
+        className="relative overflow-hidden rounded-bakin-surface border border-bakin-border-strong bg-bakin-surface-default px-bakin-4 py-bakin-4 before:absolute before:inset-y-0 before:start-0 before:w-bakin-1 before:bg-bakin-text-muted"
+      >
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
+          <div className="min-w-0">
+            <h2 id="diagnostics-drift" className="m-0">Drift</h2>
+            <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+              {loading
+                ? 'Comparing managed files with the installed package.'
+                : findings.length === 0
+                  ? 'Managed files match the package and composed context.'
+                  : `${findings.length} ${findings.length === 1 ? 'finding needs' : 'findings need'} review.`}
+            </p>
+          </div>
+          <div className="flex items-center gap-bakin-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRetryNonce((nonce) => nonce + 1)}
+              disabled={loading}
+            >
+              <RefreshCw className="mr-1 size-3" /> Rescan
+            </Button>
+            <Button size="sm" onClick={() => void handleSync()} disabled={syncing || !scan?.packageId}>
+              {syncing ? <Loader2 className="mr-1 size-3 animate-spin" /> : null}
+              Sync now
+            </Button>
+          </div>
         </div>
-      }
-    >
-      {loading ? (
-        <Skeleton className="h-16 w-full" />
-      ) : !scan ? (
-        <p className="text-sm text-muted-foreground">Drift scan unavailable.</p>
-      ) : findings.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No drift — this agent&apos;s files match what its package and context layers expect.
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {findings.map((finding, i) => (
-            <li key={i} className="rounded border border-border/60 px-3 py-2 text-sm">
-              <div className="flex items-center gap-2">
-                <Badge variant={finding.severity === 'error' ? 'destructive' : 'secondary'}>
-                  {finding.type}
-                </Badge>
-                <span className="truncate font-mono text-xs text-muted-foreground">
-                  {finding.file ?? finding.target ?? ''}
-                </span>
-              </div>
-              <p className="mt-1 text-muted-foreground">{finding.message}</p>
-              {finding.staleInputs && finding.staleInputs.length > 0 && (
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Changed inputs: <span className="font-mono">{finding.staleInputs.join(', ')}</span>
-                </p>
-              )}
-              {finding.hint && <p className="mt-0.5 text-xs text-muted-foreground/80">{finding.hint}</p>}
-            </li>
-          ))}
-        </ul>
-      )}
-      {syncError && <p className="mt-2 text-sm text-red-400">{syncError}</p>}
-      {locked.length > 0 && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          {locked.length} file(s) are locked from sync because you edited them — reclaim from the CLI if you want the package version back.
-        </p>
-      )}
-      {receipt && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Last sync {new Date(receipt.syncedAt).toLocaleString()}
-          {receipt.checkOnly ? ' (check only)' : ''} · verification {receipt.verification?.status ?? 'unknown'}
-        </p>
-      )}
-      <ChartExplainer>
-        Drift means this agent&apos;s live files no longer match what Bakin composed for it — usually a
-        stale layer or an in-place edit. &ldquo;Sync now&rdquo; recomposes managed content; your own edits
-        outside managed blocks are never touched.
-      </ChartExplainer>
-    </Panel>
+
+        <div className="mt-bakin-4">
+          {loading ? (
+            <SystemState
+              kind="loading"
+              scope="inline"
+              headingLevel={3}
+              title="Scanning agent files"
+              description="Comparing managed content with the installed package."
+              preview={<Skeleton className="h-10 w-full" />}
+            />
+          ) : !scan ? (
+            <Alert tone="danger">
+              <AlertTitle>Drift scan unavailable.</AlertTitle>
+              <AlertDescription>Rescan to compare the current files with the installed package.</AlertDescription>
+            </Alert>
+          ) : findings.length === 0 ? (
+            <SystemState
+              kind="initial-empty"
+              scope="inline"
+              headingLevel={3}
+              title="No drift detected"
+              description="This agent's files match what its package and context layers expect."
+            />
+          ) : (
+            <ul className="m-0 grid gap-bakin-1 p-0">
+              {findings.map((finding, i) => (
+                <li
+                  key={i}
+                  data-drift-finding={finding.type}
+                  className="flex min-w-0 gap-bakin-3 rounded-bakin-control px-bakin-2 py-bakin-2"
+                >
+                  <span
+                    aria-hidden="true"
+                    data-drift-checkbox="incomplete"
+                    className="mt-0.5 size-bakin-4 shrink-0 rounded-bakin-control border border-bakin-text-muted/80 bg-bakin-canvas-default"
+                  />
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 flex-wrap items-baseline gap-x-bakin-2 gap-y-bakin-1">
+                      <strong className="capitalize">{findingLabel(finding)}</strong>
+                      <span className="truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                        {finding.file ?? finding.target ?? ''}
+                      </span>
+                    </div>
+                    <p className="m-0 mt-bakin-1 text-bakin-text-muted">{finding.message}</p>
+                    {finding.staleInputs && finding.staleInputs.length > 0 && (
+                      <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+                        Changed inputs: <span className="font-bakin-typography-family-mono">{finding.staleInputs.join(', ')}</span>
+                      </p>
+                    )}
+                    {finding.hint ? <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">{finding.hint}</p> : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {syncError ? (
+          <div className="mt-bakin-3">
+            <Alert tone="danger">
+              <AlertTitle>Agent files were not synced</AlertTitle>
+              <AlertDescription>{syncError}</AlertDescription>
+            </Alert>
+          </div>
+        ) : null}
+        {locked.length > 0 && (
+          <div className="mt-bakin-3">
+            <Alert tone="attention">
+              <AlertTitle>{locked.length} edited {locked.length === 1 ? 'file is' : 'files are'} protected</AlertTitle>
+              <AlertDescription>
+                Reclaim from the CLI if you want to replace {locked.length === 1 ? 'it' : 'them'} with the package version.
+              </AlertDescription>
+            </Alert>
+          </div>
+        )}
+        <div className="mt-bakin-4 flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1 border-t border-bakin-border-subtle pt-bakin-3 text-bakin-typography-size-meta text-bakin-text-muted">
+          {receipt ? (
+            <span>
+              Last sync {new Date(receipt.syncedAt).toLocaleString()}
+              {receipt.checkOnly ? ' (check only)' : ''} · verification {receipt.verification?.status ?? 'unknown'}
+            </span>
+          ) : null}
+          <span>
+            Sync recomposes managed content; edits outside managed blocks are never touched.
+          </span>
+        </div>
+      </div>
+    </Section>
   )
 }
 
@@ -455,7 +524,20 @@ function ContextPanel({ agentId }: { agentId: string }) {
   const budget =
     typeof configured === 'number' && configured > 0 ? configured : null
 
-  if (loading) return <Panel title="Context budget"><Skeleton className="h-16 w-full" /></Panel>
+  if (loading) {
+    return (
+      <Panel title="Context budget">
+        <SystemState
+          kind="loading"
+          scope="inline"
+          headingLevel={3}
+          title="Loading context report"
+          description="Calculating prompt sections, workspace files, and observed input."
+          preview={<Skeleton className="h-10 w-full" />}
+        />
+      </Panel>
+    )
+  }
   const report = payload?.report
   if (!report) {
     return (
@@ -473,15 +555,17 @@ function ContextPanel({ agentId }: { agentId: string }) {
           </Button>
         )}
       >
-        <p className="text-sm text-muted-foreground">
-          Context report unavailable{reportRes.error === 'Request timed out.' ? ' because the request timed out.' : '.'}
-        </p>
+        <Alert tone="danger">
+          <AlertTitle>
+            Context report unavailable{reportRes.error === 'Request timed out.' ? ' because the request timed out.' : '.'}
+          </AlertTitle>
+          <AlertDescription>Retry to calculate this agent&apos;s current context footprint.</AlertDescription>
+        </Alert>
       </Panel>
     )
   }
 
   const estimated = report.dispatch.estimatedMaxTaskBytes
-  const pct = budget === null ? null : Math.min(100, (estimated / budget) * 100)
   const over = budget === null ? false : estimated > budget
   const topSections = [...report.dispatch.task.sections].sort((a, b) => b.bytes - a.bytes).slice(0, 5)
   const observedInputs = report.observed.runs
@@ -491,84 +575,101 @@ function ContextPanel({ agentId }: { agentId: string }) {
 
   return (
     <Panel title="Context budget">
-      <div className="space-y-4">
-        <div>
-          <div className="mb-1 flex items-baseline justify-between text-sm">
-            <span>
-              Estimated per-dispatch context:{' '}
-              <span className={`font-medium ${over ? 'text-amber-400' : ''}`}>{formatBytes(estimated)}</span>
-              {budget !== null && (
-                <span className="text-muted-foreground"> of {formatBytes(budget)} budget</span>
-              )}
-            </span>
-            {budget === null ? (
-              <Badge variant="secondary">budget unknown</Badge>
-            ) : over ? (
-              <Badge variant="secondary" className="text-amber-400">over budget</Badge>
-            ) : null}
-          </div>
-          {pct === null ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/60 px-3 py-2">
-              <p className="text-sm text-muted-foreground">Configured budget unavailable.</p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={settingsRes.refresh}
-                disabled={settingsRes.loading}
-                aria-label="Retry context budget"
-              >
-                Retry
-              </Button>
-            </div>
-          ) : (
-            <div className="h-2 overflow-hidden rounded-full bg-border/60">
-              <div
-                className={`h-full rounded-full ${over ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          )}
-        </div>
-
-        <div>
-          <h4 className="mb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Largest prompt sections</h4>
-          {topSections.map((s) => (
-            <div key={s.source} className="flex items-center justify-between text-sm">
-              <span className="truncate font-mono text-xs text-muted-foreground">{s.source}</span>
-              <span className="tabular-nums">{formatBytes(s.bytes)}</span>
-            </div>
-          ))}
-        </div>
-
-        {report.workspace.available && report.workspace.files.length > 0 && (
-          <div>
-            <h4 className="mb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Workspace files ({formatBytes(report.workspace.totalBytes)} total)
-            </h4>
-            {report.workspace.files.slice(0, 8).map((f) => (
-              <div key={f.name} className="flex items-center justify-between text-sm">
-                <span className="truncate font-mono text-xs text-muted-foreground">{f.name}</span>
-                <span className="tabular-nums">
-                  {formatBytes(f.bytes)}
-                  {typeof f.managedBlockBytes === 'number' && (
-                    <span className="text-muted-foreground"> ({formatBytes(f.managedBlockBytes)} managed)</span>
-                  )}
-                </span>
+      <Stack gap="item">
+        <div className="grid gap-bakin-2">
+          {budget === null ? (
+            <Alert tone="neutral">
+              <AlertTitle>Configured budget unavailable.</AlertTitle>
+              <AlertDescription>
+                The estimate is still available, but Bakin cannot determine whether it exceeds the configured limit.
+              </AlertDescription>
+              <div className="mt-bakin-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={settingsRes.refresh}
+                  disabled={settingsRes.loading}
+                  aria-label="Retry context budget"
+                >
+                  Retry
+                </Button>
               </div>
-            ))}
+            </Alert>
+          ) : (
+            <Progress
+              value={estimated}
+              max={budget}
+              tone={over ? 'attention' : 'primary'}
+              size="md"
+              aria-label="Estimated per-dispatch context"
+            >
+              <ProgressLabel>Estimated per-dispatch context</ProgressLabel>
+              <ProgressValue>
+                {() => `${formatBytes(estimated)} of ${formatBytes(budget)} budget`}
+              </ProgressValue>
+            </Progress>
+          )}
+          <div className="flex flex-wrap items-center gap-bakin-2">
+            <strong>{formatBytes(estimated)}</strong>
+            {budget === null ? (
+              <StatusBadge tone="neutral" variant="outline" size="xs">Budget unknown</StatusBadge>
+            ) : over ? (
+              <StatusBadge tone="attention" variant="solid" size="xs">over budget</StatusBadge>
+            ) : (
+              <StatusBadge tone="success" variant="solid" size="xs">Within budget</StatusBadge>
+            )}
           </div>
-        )}
+        </div>
+
+        <Grid layout="split" gap="section" align="start">
+          <div className="grid gap-bakin-2">
+            <h3 className="m-0 text-bakin-typography-size-body">Largest prompt sections</h3>
+            <dl className="m-0 divide-y divide-bakin-border-subtle">
+              {topSections.map((section) => (
+                <div key={section.source} className="flex min-w-0 items-center justify-between gap-bakin-3 py-bakin-2">
+                  <dt className="truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                    {section.source}
+                  </dt>
+                  <dd className="m-0 shrink-0 tabular-nums">{formatBytes(section.bytes)}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+
+          {report.workspace.available && report.workspace.files.length > 0 ? (
+            <div className="grid gap-bakin-2">
+              <h3 className="m-0 text-bakin-typography-size-body">
+                Workspace files ({formatBytes(report.workspace.totalBytes)} total)
+              </h3>
+              <dl className="m-0 divide-y divide-bakin-border-subtle">
+                {report.workspace.files.slice(0, 8).map((file) => (
+                  <div key={file.name} className="flex min-w-0 items-center justify-between gap-bakin-3 py-bakin-2">
+                    <dt className="truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                      {file.name}
+                    </dt>
+                    <dd className="m-0 shrink-0 tabular-nums">
+                      {formatBytes(file.bytes)}
+                      {typeof file.managedBlockBytes === 'number' ? (
+                        <span className="text-bakin-text-muted"> ({formatBytes(file.managedBlockBytes)} managed)</span>
+                      ) : null}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ) : <div />}
+        </Grid>
 
         {observedInputs.length >= 2 && (
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-bakin-3">
             <Sparkline values={observedInputs} label="Observed turn input tokens, oldest to newest" />
-            <span className="text-xs text-muted-foreground">
+            <span className="text-bakin-typography-size-meta text-bakin-text-muted">
               Observed turn input over the last {observedInputs.length} dispatches
               (latest {formatTokens(observedInputs[observedInputs.length - 1]!)})
             </span>
           </div>
         )}
-      </div>
+      </Stack>
       <ChartExplainer>
         This is what a fresh session costs before the agent does any work. A growing number usually
         means bloated workspace files or lessons — compare the sections above with
@@ -580,11 +681,101 @@ function ContextPanel({ agentId }: { agentId: string }) {
 
 // ── Timeline panel ───────────────────────────────────────────────────────────
 
-const STATUS_STYLES: Record<string, string> = {
-  running: 'text-blue-400',
-  settled: 'text-emerald-500',
-  superseded: 'text-amber-500',
-  lost: 'text-red-400',
+type TimelineRun = Extract<TimelineEventView, { type: 'run' }>
+type TimelineAuditEvent = Extract<TimelineEventView, { type: 'event' }>
+type TimelineActivityItem =
+  | { type: 'run'; run: TimelineRun; relatedEvents: TimelineAuditEvent[]; ts: number }
+  | { type: 'event'; event: TimelineAuditEvent; ts: number }
+
+const FAILED_SETTLE_REASON = /fail|error|unauthori[sz]ed|invalid|denied|timeout|timed out|exhausted|cancel(?:led|ed)|mismatch/i
+const RELATED_EVENT_GRACE_MS = 60_000
+
+function timelineOutcome(event: TimelineRun): {
+  label: string
+  tone: 'accent' | 'success' | 'attention' | 'danger' | 'neutral'
+  failed: boolean
+} {
+  if (event.status === 'running') return { label: 'Running', tone: 'accent', failed: false }
+  if (event.status === 'superseded') return { label: 'Superseded', tone: 'attention', failed: false }
+  if (event.status === 'lost') return { label: 'Failed', tone: 'danger', failed: true }
+  if (event.settleReason && FAILED_SETTLE_REASON.test(event.settleReason)) {
+    return { label: 'Failed', tone: 'danger', failed: true }
+  }
+  if (event.status === 'settled') return { label: 'Completed', tone: 'success', failed: false }
+  return { label: event.status, tone: 'neutral', failed: false }
+}
+
+/**
+ * Audit records and ledger runs arrive as one chronological stream. When an
+ * audit record names the same task and lands inside (or immediately around)
+ * a run, keep it subordinate to that dispatch attempt instead of presenting
+ * two unrelated top-level rows.
+ */
+function groupTimelineActivity(events: readonly TimelineEventView[]): TimelineActivityItem[] {
+  const runs = events.filter((event): event is TimelineRun => event.type === 'run')
+  const relatedByRun = new Map<string, TimelineAuditEvent[]>()
+  const standaloneEvents: TimelineAuditEvent[] = []
+
+  for (const event of events) {
+    if (event.type !== 'event') continue
+    if (!event.taskId) {
+      standaloneEvents.push(event)
+      continue
+    }
+
+    const matchingRun = runs
+      .filter((run) => {
+        if (run.taskId !== event.taskId) return false
+        const end = run.settledAt ?? Number.POSITIVE_INFINITY
+        return event.ts >= run.startedAt - RELATED_EVENT_GRACE_MS
+          && event.ts <= end + RELATED_EVENT_GRACE_MS
+      })
+      .sort((left, right) => (
+        Math.abs(event.ts - left.startedAt) - Math.abs(event.ts - right.startedAt)
+      ))[0]
+
+    if (!matchingRun) {
+      standaloneEvents.push(event)
+      continue
+    }
+
+    const related = relatedByRun.get(matchingRun.runId) ?? []
+    related.push(event)
+    relatedByRun.set(matchingRun.runId, related)
+  }
+
+  return [
+    ...runs.map((run): TimelineActivityItem => {
+      const relatedEvents = relatedByRun.get(run.runId) ?? []
+      return {
+        type: 'run',
+        run,
+        relatedEvents,
+        ts: Math.max(run.ts, ...relatedEvents.map((event) => event.ts)),
+      }
+    }),
+    ...standaloneEvents.map((event): TimelineActivityItem => ({
+      type: 'event',
+      event,
+      ts: event.ts,
+    })),
+  ].sort((left, right) => right.ts - left.ts)
+}
+
+function eventCategory(event: TimelineAuditEvent): string {
+  if (event.severity === 'warn') return 'Warning'
+  if (event.event.startsWith('agent_pkg.lessons_')) return 'Context'
+  if (event.event === 'task.routed') return 'Routing'
+  if (event.event.includes('worktree')) return 'Workspace'
+  return 'System'
+}
+
+function runRailClass(outcome: ReturnType<typeof timelineOutcome>): string {
+  if (outcome.tone === 'danger') return 'border-l-bakin-signal-danger'
+  if (outcome.tone === 'attention') return 'border-l-bakin-signal-highlight'
+  if (outcome.tone === 'success') return 'border-l-bakin-action-primary-background'
+  if (outcome.tone === 'accent') return 'border-l-bakin-signal-accent'
+  return 'border-l-bakin-border-strong'
 }
 
 /** Sweep a live chip this long after its last chunk (tap is best-effort —
@@ -629,11 +820,23 @@ function useAgentLiveActivity(agentId: string): { label: string; ts: number } | 
 
 function TimelinePanel({ agentId }: { agentId: string }) {
   const [window, setWindow] = useState<'24h' | '7d'>('24h')
+  const [pageParam, setPageParam] = useQueryState('activityPage', '1')
   const [events, setEvents] = useState<TimelineEventView[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [retryNonce, setRetryNonce] = useState(0)
   const live = useAgentLiveActivity(agentId)
+  const pageSize = 10
+  const activityItems = useMemo(() => groupTimelineActivity(events), [events])
+  const showAll = pageParam === 'all'
+  const requestedPage = Number.parseInt(pageParam, 10)
+  const pageCount = Math.max(1, Math.ceil(activityItems.length / pageSize))
+  const page = Number.isFinite(requestedPage)
+    ? Math.min(Math.max(requestedPage, 1), pageCount)
+    : 1
+  const visibleItems = showAll
+    ? activityItems
+    : activityItems.slice((page - 1) * pageSize, page * pageSize)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -677,102 +880,243 @@ function TimelinePanel({ agentId }: { agentId: string }) {
     <Panel
       title="Activity timeline"
       actions={
-        <span className="flex gap-1">
-          {(['24h', '7d'] as const).map((w) => (
-            <button
-              key={w}
-              type="button"
-              onClick={() => setWindow(w)}
-              className={`rounded px-2 py-0.5 text-xs ${w === window ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              {w}
-            </button>
-          ))}
-        </span>
+        <SegmentedControl
+          ariaLabel="Activity timeline window"
+          options={[
+            { value: '24h', label: '24 hours' },
+            { value: '7d', label: '7 days' },
+          ]}
+          value={window}
+          onValueChange={(next) => {
+            setWindow(next)
+            setPageParam('1')
+          }}
+        />
       }
     >
       {live && (
-        <div className="mb-2 flex items-center gap-2 rounded border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-sm">
-          <span className="relative flex size-2 shrink-0">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-60" />
-            <span className="relative inline-flex size-2 rounded-full bg-blue-500" />
-          </span>
-          <span className="text-blue-300 text-xs">live</span>
-          <span className="truncate text-xs text-blue-200/90" title={live.label}>{live.label}</span>
-        </div>
+        <Alert tone="accent">
+          <AlertTitle>Live activity</AlertTitle>
+          <AlertDescription>
+            <span className="block truncate" title={live.label}>{live.label}</span>
+          </AlertDescription>
+        </Alert>
       )}
       {loading ? (
-        <Skeleton className="h-16 w-full" />
+        <SystemState
+          kind="loading"
+          scope="inline"
+          headingLevel={3}
+          title="Loading activity"
+          description="Recent runs and operational events will appear here."
+          preview={<Skeleton className="h-10 w-full" />}
+        />
       ) : error ? (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/60 px-3 py-2">
-          <p className="text-sm text-muted-foreground">{error}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setRetryNonce((nonce) => nonce + 1)}
-            aria-label="Retry activity timeline"
-          >
-            Retry
-          </Button>
-        </div>
+        <SystemState
+          kind="error"
+          scope="inline"
+          headingLevel={3}
+          title={error}
+          description="Retry to load the latest dispatch runs and events."
+          action={(
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRetryNonce((nonce) => nonce + 1)}
+              aria-label="Retry activity timeline"
+            >
+              Retry
+            </Button>
+          )}
+        />
       ) : events.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No activity in this window.</p>
+        <SystemState
+          kind="initial-empty"
+          scope="inline"
+          headingLevel={3}
+          title="No activity in this window."
+          description="Choose a longer window or wait for the next dispatch."
+        />
       ) : (
-        <ol className="space-y-2">
-          {events.map((event) => (
-            <li key={event.type === 'run' ? event.runId : `${event.ts}:${event.event}`} className="text-sm">
-              {event.type === 'run' ? (
-                <div className="rounded border border-border/60 px-3 py-2">
-                  <div className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="text-xs tabular-nums text-muted-foreground">
-                      {new Date(event.startedAt).toLocaleTimeString()}
-                    </span>
-                    <span className="font-medium">{event.taskTitle ?? event.taskId}</span>
-                    <span className={`text-xs ${STATUS_STYLES[event.status] ?? ''}`}>
-                      {event.status === 'settled' ? (event.settleReason ?? 'settled') : event.status}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">
-                    {event.model && <span>{event.model} · </span>}
-                    {event.durationMs !== null ? `${formatDuration(event.durationMs) ?? ''} · ` : 'in flight · '}
-                    {event.inputTokens !== null && `${formatTokens(event.inputTokens)} in`}
-                    {event.outputTokens !== null && ` / ${formatTokens(event.outputTokens)} out`}
-                    {event.costUsdMicros !== null && ` · $${(event.costUsdMicros / 1_000_000).toFixed(2)}`}
-                    {event.routeSource && ` · via ${event.routeSource === 'class' ? 'class route' : event.routeSource}`}
-                  </div>
-                  {event.logs.length > 0 && (
-                    <details className="mt-1">
-                      <summary className="cursor-pointer text-xs text-muted-foreground">
-                        {event.logs.length} progress log line(s){event.logsTruncated ? ' (truncated)' : ''}
-                      </summary>
-                      <ul className="mt-1 space-y-0.5 border-l border-border/60 pl-3">
-                        {event.logs.map((line, i) => (
-                          <li key={i} className="text-xs text-muted-foreground">
-                            <span className="tabular-nums">{new Date(line.ts).toLocaleTimeString()}</span> {line.message}
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
-                </div>
-              ) : (
-                <div className="flex items-baseline gap-2 px-3">
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {new Date(event.ts).toLocaleTimeString()}
-                  </span>
-                  <span className={event.severity === 'warn' ? 'text-amber-400' : 'text-muted-foreground'}>
-                    {event.severity === 'warn' ? '⚠ ' : ''}{event.message}
-                  </span>
-                </div>
-              )}
-            </li>
-          ))}
-        </ol>
+        <>
+          <ChartExplainer className="mb-bakin-2 mt-0">
+            Each entry is one dispatch attempt. Context, routing, warnings, and logs recorded
+            during that attempt stay inside it; only unrelated system events appear on their own.
+          </ChartExplainer>
+          <ol className="m-0 grid gap-bakin-2 p-0">
+            {visibleItems.map((item) => (
+              <li
+                key={item.type === 'run' ? item.run.runId : `${item.event.ts}:${item.event.event}`}
+                className="min-w-0"
+              >
+                {item.type === 'run' ? (() => {
+                  const event = item.run
+                  const outcome = timelineOutcome(event)
+                  const showReason = event.settleReason && event.settleReason !== 'turn-ok'
+                  const title = event.taskTitle ?? event.taskId
+                  return (
+                    <article
+                      aria-label={`Dispatch attempt ${event.seq}: ${title}`}
+                      className={`grid min-w-0 gap-bakin-3 rounded-bakin-surface border-l-2 bg-bakin-surface-default p-bakin-4 ${runRailClass(outcome)}`}
+                    >
+                      <header className="flex min-w-0 flex-wrap items-start gap-bakin-3">
+                        <div className="grid min-w-0 flex-1 gap-bakin-1">
+                          <strong className="min-w-0 break-words">{title}</strong>
+                          <div className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+                            <span>Attempt {event.seq}</span>
+                            <time
+                              dateTime={new Date(event.startedAt).toISOString()}
+                              className="tabular-nums"
+                            >
+                              {new Date(event.startedAt).toLocaleTimeString()}
+                            </time>
+                            <span>
+                              Duration{' '}
+                              <span className="tabular-nums text-bakin-text-primary">
+                                {event.durationMs !== null ? (formatDuration(event.durationMs) ?? `${event.durationMs} ms`) : 'In flight'}
+                              </span>
+                            </span>
+                          </div>
+                        </div>
+                        <StatusBadge tone={outcome.tone} variant="solid" size="xs">
+                          {outcome.label}
+                        </StatusBadge>
+                      </header>
+
+                      {event.model || event.inputTokens !== null || event.outputTokens !== null || event.costUsdMicros !== null || event.routeSource ? (
+                        <dl className="m-0 flex min-w-0 flex-wrap gap-x-bakin-4 gap-y-bakin-1 text-bakin-typography-size-meta">
+                          {event.model ? (
+                            <div className="flex gap-bakin-1">
+                              <dt className="text-bakin-text-muted">Model</dt>
+                              <dd className="m-0 text-bakin-text-primary">{event.model}</dd>
+                            </div>
+                          ) : null}
+                          {event.inputTokens !== null || event.outputTokens !== null ? (
+                            <div className="flex gap-bakin-1">
+                              <dt className="text-bakin-text-muted">Tokens</dt>
+                              <dd className="m-0 tabular-nums text-bakin-text-primary">
+                                {event.inputTokens !== null ? `${formatTokens(event.inputTokens)} in` : '—'}
+                                {event.outputTokens !== null ? ` / ${formatTokens(event.outputTokens)} out` : ''}
+                              </dd>
+                            </div>
+                          ) : null}
+                          {event.costUsdMicros !== null ? (
+                            <div className="flex gap-bakin-1">
+                              <dt className="text-bakin-text-muted">Cost</dt>
+                              <dd className="m-0 tabular-nums text-bakin-text-primary">
+                                ${(event.costUsdMicros / 1_000_000).toFixed(2)}
+                              </dd>
+                            </div>
+                          ) : null}
+                          {event.routeSource ? (
+                            <div className="flex gap-bakin-1">
+                              <dt className="text-bakin-text-muted">Route</dt>
+                              <dd className="m-0 text-bakin-text-primary">
+                                {event.routeSource === 'class' ? 'Class route' : event.routeSource}
+                              </dd>
+                            </div>
+                          ) : null}
+                        </dl>
+                      ) : null}
+
+                      {item.relatedEvents.length > 0 ? (
+                        <ul aria-label="Related events" className="m-0 grid gap-bakin-2 p-0">
+                          {item.relatedEvents.map((related) => (
+                            <li
+                              key={`${related.ts}:${related.event}`}
+                              data-related-event={related.event}
+                              className="flex min-w-0 items-start gap-bakin-2 text-bakin-typography-size-meta"
+                            >
+                              {related.severity === 'warn' ? (
+                                <AlertTriangle aria-hidden="true" className="mt-px size-bakin-3 shrink-0 text-bakin-signal-highlight" />
+                              ) : (
+                                <span aria-hidden="true" className="mt-bakin-1 size-bakin-1 shrink-0 rounded-bakin-pill bg-bakin-text-muted" />
+                              )}
+                              <span className={`shrink-0 font-bakin-typography-weight-semibold ${
+                                related.severity === 'warn' ? 'text-bakin-signal-highlight' : 'text-bakin-text-muted'
+                              }`}>
+                                {eventCategory(related)}
+                              </span>
+                              <span className="min-w-0 text-bakin-text-muted">{related.message}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+
+                      {showReason ? (
+                        <p
+                          className={`m-0 border-l-2 pl-bakin-3 text-bakin-typography-size-meta leading-relaxed ${
+                            outcome.failed
+                              ? 'border-bakin-signal-danger text-bakin-signal-danger'
+                              : 'border-bakin-border-subtle text-bakin-text-muted'
+                          }`}
+                        >
+                          <span className="font-bakin-typography-weight-semibold">
+                            {outcome.failed ? 'Failure reason: ' : 'Completion detail: '}
+                          </span>
+                          {event.settleReason}
+                        </p>
+                      ) : null}
+
+                      {event.logs.length > 0 ? (
+                        <details>
+                          <summary className="cursor-pointer text-bakin-typography-size-meta text-bakin-text-muted">
+                            {event.logs.length} progress log line(s){event.logsTruncated ? ' (truncated)' : ''}
+                          </summary>
+                          <ul className="mt-bakin-2 grid gap-bakin-1 border-l border-bakin-border-subtle pl-bakin-3">
+                            {event.logs.map((line, i) => (
+                              <li key={i} className="text-bakin-typography-size-meta text-bakin-text-muted">
+                                <span className="tabular-nums">{new Date(line.ts).toLocaleTimeString()}</span> {line.message}
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      ) : null}
+                    </article>
+                  )
+                })() : (
+                  <article
+                    aria-label={`Standalone ${item.event.severity === 'warn' ? 'warning' : 'event'}: ${item.event.message}`}
+                    className={`grid min-w-0 gap-bakin-2 rounded-bakin-surface border-l-2 bg-bakin-surface-default p-bakin-4 ${
+                      item.event.severity === 'warn' ? 'border-l-bakin-signal-highlight' : 'border-l-bakin-border-strong'
+                    }`}
+                  >
+                    <header className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1">
+                      <span
+                        className={`text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider ${
+                          item.event.severity === 'warn' ? 'text-bakin-signal-highlight' : 'text-bakin-text-muted'
+                        }`}
+                      >
+                        {item.event.severity === 'warn' ? 'Standalone warning' : 'System event'}
+                      </span>
+                      <time
+                        dateTime={new Date(item.event.ts).toISOString()}
+                        className="text-bakin-typography-size-meta tabular-nums text-bakin-text-muted"
+                      >
+                        {new Date(item.event.ts).toLocaleTimeString()}
+                      </time>
+                    </header>
+                    <p className="m-0 text-bakin-text-primary">{item.event.message}</p>
+                    {item.event.taskId ? (
+                      <p className="m-0 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                        Task {item.event.taskId}
+                      </p>
+                    ) : null}
+                  </article>
+                )}
+              </li>
+            ))}
+          </ol>
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            showAll={showAll}
+            total={activityItems.length}
+            onPageChange={(nextPage) => setPageParam(String(nextPage))}
+            onShowAllChange={(nextShowAll) => setPageParam(nextShowAll ? 'all' : '1')}
+          />
+        </>
       )}
-      <ChartExplainer>
-        Every row is one dispatched run — what it cost and how it ended. Warnings between runs
-        (session deaths, tool-path bypasses) are the events worth reading when something feels off.
-      </ChartExplainer>
     </Panel>
   )
 }
@@ -781,10 +1125,10 @@ function TimelinePanel({ agentId }: { agentId: string }) {
 
 export function DiagnosticsTab({ agentId }: { agentId: string }) {
   return (
-    <div className="space-y-4">
+    <Stack gap="section">
       <DriftPanel agentId={agentId} />
       <ContextPanel agentId={agentId} />
       <TimelinePanel agentId={agentId} />
-    </div>
+    </Stack>
   )
 }

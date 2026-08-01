@@ -13,10 +13,15 @@
  */
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, render, screen, waitFor } from '@testing-library/react'
+import { rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { settleReact } from '../rtl-settle'
 import type { Task, TaskColumns } from '../../plugins/tasks/types'
+
+const testDir = join(tmpdir(), `bakin-test-kanban-dnd-${process.pid}-${Date.now()}`)
 
 const { mockMove, mockUseSortable } = (() => ({
   mockMove: mock(),
@@ -28,6 +33,7 @@ const { queryStateDefaults } = (() => ({
 }))()
 
 let capturedProviderProps: Record<string, any> = {}
+let capturedPointerSensorOptions: Record<string, any> = {}
 
 const COLUMN_IDS = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived'] as const
 
@@ -105,9 +111,31 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
+mock.module('@/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+}))
+mock.module('../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+}))
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+}))
+mock.module('@bakin/adapter-openclaw/home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+}))
+
+afterAll(() => {
+  rmSync(testDir, { recursive: true, force: true })
+})
+
 mock.module('@dnd-kit/dom', () => {
   class MockPointerSensor {
-    static configure() {
+    static configure(options: Record<string, any>) {
+      capturedPointerSensorOptions = options
       return {}
     }
   }
@@ -137,8 +165,12 @@ mock.module('@dnd-kit/react/sortable', () => ({
 }))
 
 mock.module('../../plugins/tasks/components/kanban-column', () => ({
-  KanbanColumn: ({ id, tasks }: { id: string; tasks: Task[] }) => (
-    <div data-testid={`column-${id}`}>
+  KanbanColumn: ({ id, tasks, activeDrop, dropBeforeTaskId }: { id: string; tasks: Task[]; activeDrop?: boolean; dropBeforeTaskId?: string | null }) => (
+    <div
+      data-testid={`column-${id}`}
+      data-active-drop={activeDrop || undefined}
+      data-drop-before-task={dropBeforeTaskId || undefined}
+    >
       {tasks.map((task) => (
         <div key={task.id} data-testid={`task-${task.id}`}>{task.title}</div>
       ))}
@@ -170,26 +202,33 @@ mock.module('../../plugins/tasks/components/task-log-table', () => ({
   TaskLogTable: () => null,
 }))
 
-mock.module('@/components/plugin-header', () => ({
-  PluginHeader: () => null,
-}))
-
 mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: any) => <div>{agentId}</div>,
 }))
 
-mock.module('@/components/ui/button', () => ({
-  Button: ({ children, onClick }: any) => <button onClick={onClick}>{children}</button>,
-}))
-
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('@makinbakin/sdk/navigation', () => ({
+  toNavigationOptions: (options: unknown) => options,
+  PluginLink: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
+  usePathname: () => '/tasks',
+  useParams: () => ({}),
+  useRouter: () => ({
+    push: mock(),
+    replace: mock(),
+    back: mock(),
+    forward: mock(),
+    refresh: mock(),
+    prefetch: mock(),
+  }),
+  useSearchParams: () => new URLSearchParams(),
+  useHistoryBack: () => mock(),
+  useUnsavedChangesGuard: () => ({ confirmExit: mock(), guardedNavigate: mock() }),
   useQueryState: (_key: string, defaultValue: string) => {
     const React = require('react') as typeof import('react')
     return React.useState(queryStateDefaults[_key] ?? defaultValue)
   },
   useQueryArrayState: () => {
     const React = require('react') as typeof import('react')
-    return React.useState([])
+    return React.useState<string[]>([])
   },
 }))
 
@@ -298,7 +337,12 @@ describe('KanbanBoard drag and drop', () => {
     mock.restore()
   })
 
-  async function renderBoard(columns: Partial<TaskColumns>) {
+  async function renderBoard(
+    columns: Partial<TaskColumns>,
+    options: {
+      searchResults?: Array<{ id: string; score: number }>
+    } = {},
+  ) {
     const boardResponse = makeBoardResponse(columns)
 
     /** Wrap a response so it counts as in-flight until its body is consumed. */
@@ -316,6 +360,26 @@ describe('KanbanBoard drag and drop', () => {
 
     vi.stubGlobal('fetch', mock(async (url: string, init?: RequestInit) => {
       fetchCount++ // every call, incl. the post-persist GET refetch
+      if (url.startsWith('/api/plugins/tasks/search?')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            results: (options.searchResults ?? []).map((result) => ({
+              ...result,
+              table: 'tasks',
+              fields: {},
+            })),
+            aggregations: {},
+            meta: {
+              query: queryStateDefaults.q ?? '',
+              total: options.searchResults?.length ?? 0,
+              took_ms: 1,
+              source: 'search',
+            },
+          }),
+        } as Response
+      }
       if (init?.method && init.method !== 'GET') {
         fetchCalls.push({
           url,
@@ -352,6 +416,72 @@ describe('KanbanBoard drag and drop', () => {
     const column = screen.getByTestId(`column-${columnId}`)
     return Array.from(column.querySelectorAll('[data-testid^="task-"]')).map((el) => el.textContent)
   }
+
+  it('uses the sortable surface and library defaults to arbitrate clicks from drags', async () => {
+    await renderBoard({ todo: [makeTask('task-1', 'Click or drag')] })
+
+    const element = document.createElement('div')
+    const handle = document.createElement('button')
+    expect(capturedPointerSensorOptions.activationConstraints).toBeUndefined()
+    expect(capturedPointerSensorOptions.activatorElements({ element, handle })).toEqual([element, handle])
+  })
+
+  it('preserves the stable accessible scroll, track, and keyed-column shell used by browser DnD', async () => {
+    await renderBoard({ todo: [makeTask('task-1', 'Stable task')] })
+
+    const board = screen.getByRole('region', { name: 'Task board' })
+    expect(board.getAttribute('tabindex')).toBe('0')
+    expect(board.hasAttribute('data-task-board-scroll')).toBe(true)
+
+    const track = board.firstElementChild
+    expect(track?.hasAttribute('data-task-board-track')).toBe(true)
+    expect(track?.className).toContain('inline-flex')
+    expect(Array.from(track?.children ?? [])).toHaveLength(COLUMN_IDS.length)
+    expect(Array.from(track?.children ?? []).every((element) => (
+      element.hasAttribute('data-task-board-column')
+    ))).toBe(true)
+  })
+
+  it('does not maintain a second drop-target model alongside DnD Kit collision state', async () => {
+    const moveMe = makeTask('task-1', 'Move Me')
+    const existing = makeTask('task-2', 'Existing')
+
+    await renderBoard({ todo: [moveMe], inProgress: [existing] })
+
+    act(() => {
+      capturedProviderProps.onDragStart(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: moveMe, columnId: 'todo', group: 'todo' },
+      }))
+    })
+
+    act(() => {
+      capturedProviderProps.onDragOver(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: moveMe, columnId: 'todo', group: 'todo' },
+        targetId: 'task-2',
+        targetData: { columnId: 'inProgress', group: 'inProgress', insertIndex: 0 },
+      }))
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('column-inProgress').getAttribute('data-active-drop')).toBeNull()
+      expect(screen.getByTestId('column-inProgress').getAttribute('data-drop-before-task')).toBeNull()
+    })
+
+    await act(async () => {
+      await capturedProviderProps.onDragEnd(makeDragEvent({
+        sourceId: 'task-1',
+        sourceData: { task: moveMe, columnId: 'todo', group: 'todo' },
+        targetId: 'task-2',
+        targetData: { columnId: 'inProgress', group: 'inProgress', insertIndex: 0 },
+        canceled: true,
+      }))
+    })
+
+    expect(screen.getByTestId('column-inProgress').getAttribute('data-active-drop')).toBeNull()
+    expect(screen.getByTestId('column-inProgress').getAttribute('data-drop-before-task')).toBeNull()
+  })
 
   it('same-column reorder calls /reorder with the optimistic order', async () => {
     const task1 = makeTask('task-1', 'First')
@@ -714,6 +844,66 @@ describe('KanbanBoard drag and drop', () => {
     // assertion above races the response-handling setState (see rtl-settle).
     await settleReact()
   })
+
+  it('moves semantic search matches using the same visible collection rendered by the board', async () => {
+    queryStateDefaults.q = 'test'
+
+    const semanticOnly = makeTask('task-semantic', 'Research competitor pricing models')
+    const populatedTarget = makeTask('task-target', 'Review weekly performance report')
+
+    await renderBoard(
+      { todo: [semanticOnly], inProgress: [populatedTarget] },
+      {
+        searchResults: [
+          { id: semanticOnly.id, score: 0.9 },
+          { id: populatedTarget.id, score: 0.8 },
+        ],
+      },
+    )
+
+    await waitFor(() => {
+      expect(getColumnTaskTitles('todo')).toEqual([semanticOnly.title])
+      expect(getColumnTaskTitles('inProgress')).toEqual([populatedTarget.title])
+    })
+
+    act(() => {
+      capturedProviderProps.onDragStart(makeDragEvent({
+        sourceId: semanticOnly.id,
+        sourceData: { task: semanticOnly, columnId: 'todo', group: 'todo' },
+      }))
+    })
+
+    act(() => {
+      capturedProviderProps.onDragOver(makeDragEvent({
+        sourceId: semanticOnly.id,
+        sourceData: { task: semanticOnly, columnId: 'todo', group: 'todo' },
+        targetId: populatedTarget.id,
+        targetData: { columnId: 'inProgress', group: 'inProgress', insertIndex: 0 },
+      }))
+    })
+
+    await waitFor(() => {
+      expect(getColumnTaskTitles('inProgress')).toEqual([semanticOnly.title, populatedTarget.title])
+    })
+
+    await act(async () => {
+      await capturedProviderProps.onDragEnd(makeDragEvent({
+        sourceId: semanticOnly.id,
+        sourceData: { task: semanticOnly, columnId: 'todo', group: 'todo' },
+        targetId: populatedTarget.id,
+        targetData: { columnId: 'inProgress', group: 'inProgress', insertIndex: 0 },
+      }))
+    })
+
+    await waitFor(() => {
+      const moveCall = fetchCalls.find((call) => call.url.includes('/move'))
+      expect(moveCall).toBeTruthy()
+      expect(moveCall!.body.from).toBe('todo')
+      expect(moveCall!.body.to).toBe('inProgress')
+    })
+
+    await settleReact()
+  })
 })
 
 describe('TaskCard rendering', () => {
@@ -750,7 +940,7 @@ describe('TaskCard rendering', () => {
     const { container } = __view0
 
     expect(container.textContent).toContain('Test Task')
-    expect(container.querySelector('.ring-\\[var\\(--accent\\)\\]\\/30')).toBeTruthy()
+    expect(container.querySelector('.ring-bakin-focus-ring')).toBeTruthy()
   })
 
   it('renders the normal draggable card when isDragging is false', async () => {
@@ -782,6 +972,41 @@ describe('TaskCard rendering', () => {
     const { container } = __view1
 
     expect(container.textContent).toContain('Test Task')
+    expect(container.querySelector('[data-slot="card"]')).toBeTruthy()
     expect(container.querySelector('.cursor-grab')).toBeTruthy()
+    expect(mockUseSortable).toHaveBeenCalledWith(expect.objectContaining({
+      feedback: 'clone',
+    }))
+  })
+
+  it('keeps the sortable element free of an explicit handle so nested actions remain interactive', async () => {
+    const ref = mock()
+    const handleRef = mock()
+    mockUseSortable.mockReturnValue({
+      handleRef,
+      ref,
+      sourceRef: mock(),
+      targetRef: mock(),
+      isDragging: false,
+      isDropping: false,
+      isDragSource: false,
+      isDropTarget: false,
+    })
+
+    const { TaskCard } = require('../../plugins/tasks/components/task-card') as typeof import('../../plugins/tasks/components/task-card')
+
+    const { container } = render(
+      <TaskCard
+        task={makeTask('task-1', 'Drag from this headline')}
+        columnId="todo"
+        onDelete={mock()}
+        onClick={mock()}
+      />
+    )
+
+    const wrapper = container.querySelector('[data-task-id="task-1"]')
+    expect(wrapper).toBeTruthy()
+    expect(ref).toHaveBeenCalledWith(wrapper)
+    expect(handleRef).not.toHaveBeenCalled()
   })
 })

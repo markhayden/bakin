@@ -8,25 +8,54 @@
   "exports": {
     ".": "./src/index.ts",
     "./ui": "./src/ui/index.ts",
+    "./layout": "./src/layout/index.ts",
+    "./patterns": "./src/patterns/index.ts",
+    "./charts": "./src/charts/index.ts",
+    "./conversation": "./src/conversation/index.ts",
+    "./content": "./src/content/index.ts",
     "./hooks": "./src/hooks/index.ts",
-    "./components": "./src/components/index.ts",
     "./slots": "./src/slots/index.tsx",
     "./types": "./src/types/index.ts",
     "./utils": "./src/utils/index.ts",
     "./metadata": "./src/metadata/index.ts",
     "./routing": "./src/routing/index.ts",
+    "./navigation": "./src/navigation/index.ts",
     "./testing": "./src/testing/index.ts",
-    "./internal": "./src/internal/index.ts"
+    "./testing/ui": "./src/testing/ui/index.ts",
+    "./testing/ui/conformance": "./src/testing/ui/conformance/index.ts",
+    "./internal": "./src/internal/index.ts",
+    "./styles.css": "./styles.css"
   },
   "files": [
     "src",
+    "styles.css",
     "README.md"
   ],
+  "bin": {
+    "bakin-plugin-test-ui": "./src/testing/ui/conformance/cli.ts"
+  },
+  "sideEffects": [
+    "./styles.css"
+  ],
   "peerDependencies": {
+    "@tanstack/react-router": "^1.168.23",
+    "axe-core": "^4.12.0",
+    "playwright": "^1.60.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
+  "peerDependenciesMeta": {
+    "axe-core": {
+      "optional": true
+    },
+    "playwright": {
+      "optional": true
+    }
+  },
   "dependencies": {},
+  "devDependencies": {
+    "@bakin/ui": "workspace:*"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/markhayden/bakin.git",

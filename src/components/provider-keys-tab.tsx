@@ -127,16 +127,16 @@ export function ProviderKeysTab() {
   return (
     <div className="space-y-3 max-w-2xl">
       {error && (
-        <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <p role="alert" className="rounded-md border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 px-3 py-2 text-sm text-bakin-signal-danger">
           {error}
         </p>
       )}
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-bakin-text-muted">
         Runtime-managed providers are configured in {runtimeLabel} and shown here read-only. Bakin keys are
         used only when the runtime can&apos;t serve a route; an environment variable always overrides a stored key.
       </p>
       {rows.length === 0 && (
-        <p className="text-sm text-muted-foreground">No image providers are available yet.</p>
+        <p className="text-sm text-bakin-text-muted">No image providers are available yet.</p>
       )}
       {rows.map(row => {
         const storeable = (row.source ?? '').startsWith('native')
@@ -158,7 +158,7 @@ export function ProviderKeysTab() {
               <span className="text-sm font-medium">{row.label}</span>
               <Badge variant={badge.variant}>{badge.label}</Badge>
             </div>
-            <p className="text-xs text-muted-foreground">{detail}</p>
+            <p className="text-xs text-bakin-text-muted">{detail}</p>
             {storeable && !envSet && (
               <div className="flex items-center gap-2">
                 <Input
@@ -183,7 +183,7 @@ export function ProviderKeysTab() {
 
       <div className="pt-4 space-y-2">
         <h3 className="text-sm font-medium">Integration secrets</h3>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-bakin-text-muted">
           Named secrets used by installed capabilities and integrations (e.g. a search API key or a bot
           token). Values are write-only — they never leave the server. An environment variable with the
           matching name always overrides a stored value.
@@ -198,7 +198,7 @@ export function ProviderKeysTab() {
                   <button
                     type="button"
                     aria-label={`Remove ${provider} ${name}`}
-                    className="text-muted-foreground hover:text-destructive"
+                    className="text-bakin-text-muted hover:text-bakin-signal-danger"
                     disabled={busy === `${provider}.${name}`}
                     onClick={() => removeSecret(provider, name)}
                   >

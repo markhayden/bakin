@@ -11,7 +11,7 @@ const testDir = join(tmpdir(), 'bakin-test-status-badge')
 mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 
-import { StatusBadge } from '../../src/components/status-badge'
+import { StatusBadge } from '@makinbakin/sdk/patterns'
 
 afterEach(() => cleanup())
 
@@ -27,7 +27,7 @@ describe('StatusBadge', () => {
   })
 
   it('each tone stamps its data attribute', () => {
-    for (const tone of ['success', 'warning', 'destructive', 'accent'] as const) {
+    for (const tone of ['success', 'attention', 'danger', 'accent'] as const) {
       const { unmount } = render(<StatusBadge tone={tone}>x</StatusBadge>)
       expect(document.querySelector(`[data-status-badge="${tone}"]`)).not.toBeNull()
       unmount()

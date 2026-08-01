@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bakin UI Conformance"
+  short_description: "Keep Bakin UI aligned with its public system"
+  default_prompt: "Use $bakin-ui-conformance to review this UI change for Storybook-first design-system conformance."

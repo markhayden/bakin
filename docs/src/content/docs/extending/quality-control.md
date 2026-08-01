@@ -32,6 +32,7 @@ If a change adds or renames a public surface, update the contract next to it.
 | MCP tool | Tool description, parameter schema, and manifest contribution |
 | Setting | Settings schema, summary, and generated docs |
 | SDK export | Public export, TSDoc, and generated SDK reference |
+| SDK UI contract | Public catalog story, interaction/a11y coverage, responsive states, and SDK-only imports |
 | Plugin manifest field | Parser, fixture, docs, and generated snippets |
 | Agent kit field | Package schema, fixture, docs, and install behavior |
 
@@ -44,7 +45,7 @@ bun run docs:generate
 bun run docs:check
 ```
 
-Generated docs live under `docs/src/content/docs/reference/generated` and `docs/public/llms`. Generated blocks inside guide pages use `docs:*` markers, and `bun run docs:check` fails when they drift.
+Generated docs live under `docs/src/content/docs/reference/generated` and `docs/public/llms`. Generated blocks inside guide pages use `docs:*` markers. `bun run docs:check` also builds and validates the public SDK component catalog under `/docs/ui/`; it fails when generated content, route contracts, public-story boundaries, or the combined artifact drift.
 
 ## Examples
 

@@ -338,10 +338,10 @@ SSE fan-out. Deliberately NOT mirrored into the SDK's reduced
 normalize runtime output into the chunk taxonomy above — per-runtime
 formatting differences are absorbed here, invisibly to the UI. (2) Client
 seam: ONE SDK component turns chunks into pixels — `TurnOutputView` from
-`@makinbakin/sdk/components` (`src/components/turn-output-view.tsx`:
-format-hinted text via MarkdownContent or a mono block, folded tool chips,
-the live thinking status, typed error rows; `foldTurnChunks` is the
-exported folding primitive). No third path: new turn-output surfaces
+`@makinbakin/sdk/conversation` (`packages/ui/src/conversation/turn-output.tsx`:
+consumer-supplied rich text rendering via `renderText` or a mono block,
+folded tool chips, the live thinking status, typed error rows;
+`foldTurnChunks` is the exported folding primitive). No third path: new turn-output surfaces
 consume normalized chunks through the single renderer, never hand-rolled
 dumps or per-surface format heuristics. Chat (live region + durable
 assistant/tool/error rows) and the tasks step-output viewer render

@@ -1,12 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { BakinDrawer } from "@makinbakin/sdk/components"
-import { Badge } from "@makinbakin/sdk/ui"
-import { Button } from "@makinbakin/sdk/ui"
-import { Separator } from "@makinbakin/sdk/ui"
-import { AgentAvatar } from "@makinbakin/sdk/components"
-import { useAgent } from "@makinbakin/sdk/hooks"
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Drawer, DrawerSection, Separator } from '@makinbakin/sdk/ui'
+import { useAgent } from '@makinbakin/sdk/hooks'
+import { WorkflowAgentAvatar } from './workflow-agent-identity'
 import {
   useNotificationChannels,
   getChannelLabel,
@@ -16,8 +13,6 @@ import {
   User,
   Users,
   ShieldCheck,
-  Megaphone,
-  Ban,
   ArrowRight,
   AlertTriangle,
   Clock,
@@ -26,7 +21,7 @@ import {
   RefreshCw,
   Wrench,
 } from 'lucide-react'
-import { isTeamStepToken, teamIdFromToken } from '@bakin/core/workflows/team-token'
+import { isTeamStepToken, teamIdFromToken } from '../lib/team-token'
 import type {
   WorkflowStep,
   AgentStep,
@@ -39,39 +34,31 @@ import type {
 } from '../types'
 import type { WorkflowSkillDriftReport } from '../lib/workflow-skill-drift'
 
+const STEP_TYPE_TONES: Record<string, 'success' | 'attention' | 'accent' | 'primary' | 'neutral'> = {
+  agent: 'success',
+  gate: 'attention',
+  output: 'accent',
+  parallel: 'primary',
+  workflow: 'neutral',
+  map_workflow: 'accent',
+}
+
 function StepTypeBadge({ type }: { type: string }) {
-  const colors: Record<string, string> = {
-    agent: 'bg-emerald-500/20 text-emerald-400',
-    gate: 'bg-amber-500/20 text-amber-400',
-    output: 'bg-purple-500/20 text-purple-400',
-    parallel: 'bg-blue-500/20 text-blue-400',
-    workflow: 'bg-cyan-500/20 text-cyan-400',
-    map_workflow: 'bg-violet-500/20 text-violet-400',
-  }
   return (
-    <Badge className={`text-[10px] border-0 ${colors[type] || ''}`}>
+    <Badge tone={STEP_TYPE_TONES[type] ?? 'neutral'} variant="soft" size="xs">
       {type}
     </Badge>
   )
 }
 
-function SectionLabel({ icon: Icon, children }: { icon?: React.ElementType; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground uppercase tracking-wider mb-2">
-      {Icon && <Icon className="size-3" />}
-      {children}
-    </div>
-  )
-}
-
 function MetadataCard({ icon: Icon, label, children }: { icon?: React.ElementType; label: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg bg-surface p-3 space-y-1">
-      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground uppercase tracking-wider">
+    <div className="rounded-bakin-surface bg-bakin-surface-default p-3 space-y-1">
+      <div className="flex items-center gap-1.5 text-bakin-typography-size-meta text-bakin-text-muted uppercase tracking-wider">
         {Icon && <Icon className="size-3" />}
         {label}
       </div>
-      <div className="text-sm font-medium">{children}</div>
+      <div className="text-bakin-typography-size-body font-bakin-typography-weight-medium">{children}</div>
     </div>
   )
 }
@@ -79,16 +66,15 @@ function MetadataCard({ icon: Icon, label, children }: { icon?: React.ElementTyp
 function DeniedToolsSection({ tools }: { tools?: string[] }) {
   if (!tools || tools.length === 0) return null
   return (
-    <div>
-      <SectionLabel icon={Ban}>Denied Tools</SectionLabel>
+    <DrawerSection title="Denied tools">
       <div className="flex flex-wrap gap-1.5">
         {tools.map((tool) => (
-          <Badge key={tool} variant="outline" className="text-[10px] text-red-400 border-red-500/30">
+          <Badge key={tool} tone="danger" variant="outline" size="xs">
             {tool}
           </Badge>
         ))}
       </div>
-    </div>
+    </DrawerSection>
   )
 }
 
@@ -102,20 +88,20 @@ function AgentStepDetail({ step }: { step: AgentStep }) {
   return (
     <div className="space-y-6">
       {/* Agent hero */}
-      <div className="flex items-center gap-4 rounded-lg p-4 border border-border bg-surface">
+      <div className="flex items-center gap-4 rounded-bakin-surface p-4 border border-bakin-border-subtle bg-bakin-surface-default">
         {step.agent === '$assigned' ? (
-          <span className="inline-flex size-10 items-center justify-center rounded-full bg-blue-900/50 ring-1 ring-blue-500/40">
-            <User className="size-5 text-blue-400" />
+          <span className="inline-flex size-10 items-center justify-center rounded-bakin-pill bg-bakin-signal-info/15 ring-1 ring-bakin-signal-info/40">
+            <User className="size-5 text-bakin-signal-info" />
           </span>
         ) : isTeamStepToken(step.agent) ? (
-          <span className="inline-flex size-10 items-center justify-center rounded-full bg-purple-900/50 ring-1 ring-purple-500/40">
-            <Users className="size-5 text-purple-400" />
+          <span className="inline-flex size-10 items-center justify-center rounded-bakin-pill bg-bakin-signal-accent/15 ring-1 ring-bakin-signal-accent/40">
+            <Users className="size-5 text-bakin-signal-accent" />
           </span>
         ) : (
-          <AgentAvatar agentId={step.agent} size="lg" />
+          <WorkflowAgentAvatar agentId={step.agent} size="lg" />
         )}
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-foreground">
+          <div className="text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">
             {step.agent === '$assigned'
               ? 'Assigned Agent'
               : isTeamStepToken(step.agent)
@@ -125,7 +111,7 @@ function AgentStepDetail({ step }: { step: AgentStep }) {
           <div className="flex items-center gap-2 mt-1">
             <StepTypeBadge type="agent" />
             {step.skill && (
-              <Badge variant="secondary" className="text-[10px] font-mono">{step.skill}</Badge>
+              <Badge tone="neutral" variant="soft" size="xs" className="font-bakin-typography-family-mono">{step.skill}</Badge>
             )}
           </div>
         </div>
@@ -133,22 +119,20 @@ function AgentStepDetail({ step }: { step: AgentStep }) {
 
       {/* Task description */}
       {step.task && (
-        <div>
-          <SectionLabel>Task</SectionLabel>
-          <div className="text-sm text-foreground/90 rounded-lg p-4 border-l-2 border-emerald-500/40 bg-surface whitespace-pre-wrap leading-relaxed">
+        <DrawerSection title="Task">
+          <div className="text-bakin-typography-size-body text-bakin-text-primary rounded-bakin-surface p-4 border-l-2 border-bakin-action-primary-background/40 bg-bakin-surface-default whitespace-pre-wrap leading-relaxed">
             {step.task}
           </div>
-        </div>
+        </DrawerSection>
       )}
 
       {/* Description */}
       {step.description && (
-        <div>
-          <SectionLabel>Description</SectionLabel>
-          <div className="text-sm text-foreground/90 rounded-lg p-4 bg-surface whitespace-pre-wrap leading-relaxed">
+        <DrawerSection title="Description">
+          <div className="text-bakin-typography-size-body text-bakin-text-primary rounded-bakin-surface p-4 bg-bakin-surface-default whitespace-pre-wrap leading-relaxed">
             {step.description}
           </div>
-        </div>
+        </DrawerSection>
       )}
 
       {/* Metadata grid */}
@@ -157,17 +141,17 @@ function AgentStepDetail({ step }: { step: AgentStep }) {
           <Separator />
           <div className="grid grid-cols-2 gap-3">
             {step.outputs && step.outputs.length > 0 && (
-              <div className="col-span-2 rounded-lg bg-surface p-3 space-y-1">
-                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground uppercase tracking-wider">
+              <div className="col-span-2 rounded-bakin-surface bg-bakin-surface-default p-3 space-y-1">
+                <div className="flex items-center gap-1.5 text-bakin-typography-size-meta text-bakin-text-muted uppercase tracking-wider">
                   <Package className="size-3" />
                   Expected Outputs
                 </div>
                 <div className="space-y-1.5 mt-2">
                   {step.outputs.map((out) => (
                     <div key={out.id} className="flex items-center gap-2">
-                      <span className="text-sm font-medium font-mono">{out.id}</span>
-                      {out.type && <Badge variant="outline" className="text-[9px]">{out.type}</Badge>}
-                      {out.path && <span className="text-xs text-muted-foreground font-mono">{out.path}</span>}
+                      <span className="text-bakin-typography-size-body font-bakin-typography-weight-medium font-bakin-typography-family-mono">{out.id}</span>
+                      {out.type && <Badge variant="outline" size="xs">{out.type}</Badge>}
+                      {out.path && <span className="text-bakin-typography-size-meta text-bakin-text-muted font-bakin-typography-family-mono">{out.path}</span>}
                     </div>
                   ))}
                 </div>
@@ -189,12 +173,11 @@ function GateStepDetail({ step }: { step: GateStep }) {
     <div className="space-y-6">
       {/* Description */}
       {step.description && (
-        <div>
-          <SectionLabel>Description</SectionLabel>
-          <div className="text-sm text-foreground/90 rounded-lg p-4 border-l-2 border-amber-500/40 bg-surface whitespace-pre-wrap leading-relaxed">
+        <DrawerSection title="Description">
+          <div className="text-bakin-typography-size-body text-bakin-text-primary rounded-bakin-surface p-4 border-l-2 border-bakin-signal-highlight/40 bg-bakin-surface-default whitespace-pre-wrap leading-relaxed">
             {step.description}
           </div>
-        </div>
+        </DrawerSection>
       )}
 
       {/* Metadata grid */}
@@ -207,7 +190,7 @@ function GateStepDetail({ step }: { step: GateStep }) {
           <MetadataCard label="Preview Steps">
             <div className="flex flex-wrap gap-1">
               {step.preview.map((id) => (
-                <Badge key={id} variant="secondary" className="text-[10px] font-mono">{id}</Badge>
+                <Badge key={id} tone="neutral" variant="soft" size="xs" className="font-bakin-typography-family-mono">{id}</Badge>
               ))}
             </div>
           </MetadataCard>
@@ -217,48 +200,45 @@ function GateStepDetail({ step }: { step: GateStep }) {
 
       {/* Notification channels */}
       {step.notify && step.notify.length > 0 && (
-        <div>
-          <SectionLabel icon={Megaphone}>Notifications</SectionLabel>
+        <DrawerSection title="Notifications">
           <div className="space-y-2">
             {step.notify.map((ch, i) => (
-              <div key={i} className="flex items-center gap-2 rounded-lg bg-surface p-3">
-                <Badge variant="outline" className="text-[10px] inline-flex items-center gap-1">
+              <div key={i} className="flex items-center gap-2 rounded-bakin-surface bg-bakin-surface-default p-3">
+                <Badge variant="outline" size="xs" className="inline-flex items-center gap-1">
                   <ChannelIcon channelId={ch.channel} className="size-3" />
                   {getChannelLabel(ch.channel, channels)}
                 </Badge>
-                <span className="text-sm font-mono text-muted-foreground">{ch.target}</span>
+                <span className="text-bakin-typography-size-body font-bakin-typography-family-mono text-bakin-text-muted">{ch.target}</span>
               </div>
             ))}
           </div>
-        </div>
+        </DrawerSection>
       )}
 
       <Separator />
 
       {/* Paths */}
       <div className="space-y-4">
-        <div>
-          <SectionLabel>On Approve</SectionLabel>
-          <div className="flex items-center gap-2 rounded-lg bg-surface p-3">
-            <ArrowRight className="size-4 text-green-400 shrink-0" />
-            <span className="text-sm font-medium">Continue to the next step</span>
+        <DrawerSection title="On Approve">
+          <div className="flex items-center gap-2 rounded-bakin-surface bg-bakin-surface-default p-3">
+            <ArrowRight className="size-4 text-bakin-action-primary-background shrink-0" />
+            <span className="text-bakin-typography-size-body font-bakin-typography-weight-medium">Continue to the next step</span>
           </div>
-        </div>
+        </DrawerSection>
 
         {step.on_reject && (
-          <div>
-            <SectionLabel>On Reject</SectionLabel>
-            <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 space-y-1.5">
+          <DrawerSection title="On Reject">
+            <div className="rounded-bakin-surface bg-bakin-signal-danger/10 border border-bakin-signal-danger/20 p-3 space-y-1.5">
               <div className="flex items-center gap-2">
-                <ArrowRight className="size-4 text-red-400 shrink-0" />
-                <span className="text-sm font-medium">Rewind to</span>
-                <Badge variant="secondary" className="text-[10px] font-mono">{step.on_reject.goto}</Badge>
+                <ArrowRight className="size-4 text-bakin-signal-danger shrink-0" />
+                <span className="text-bakin-typography-size-body font-bakin-typography-weight-medium">Rewind to</span>
+                <Badge tone="neutral" variant="soft" size="xs" className="font-bakin-typography-family-mono">{step.on_reject.goto}</Badge>
               </div>
               {step.on_reject.note_to_agent && (
-                <p className="text-xs text-muted-foreground ml-6">Rejection reason forwarded to agent</p>
+                <p className="text-bakin-typography-size-meta text-bakin-text-muted ml-6">Rejection reason forwarded to agent</p>
               )}
             </div>
-          </div>
+          </DrawerSection>
         )}
       </div>
     </div>
@@ -270,22 +250,22 @@ function OutputStepDetail({ step }: { step: OutputStep }) {
     <div className="space-y-6">
       {/* Agent hero (if present) */}
       {step.agent && (
-        <div className="flex items-center gap-4 rounded-lg p-4 border border-border bg-surface">
+        <div className="flex items-center gap-4 rounded-bakin-surface p-4 border border-bakin-border-subtle bg-bakin-surface-default">
           {isTeamStepToken(step.agent) ? (
-            <span className="inline-flex size-10 items-center justify-center rounded-full bg-purple-900/50 ring-1 ring-purple-500/40">
-              <Users className="size-5 text-purple-400" />
+            <span className="inline-flex size-10 items-center justify-center rounded-bakin-pill bg-bakin-signal-accent/15 ring-1 ring-bakin-signal-accent/40">
+              <Users className="size-5 text-bakin-signal-accent" />
             </span>
           ) : (
-            <AgentAvatar agentId={step.agent} size="lg" />
+            <WorkflowAgentAvatar agentId={step.agent} size="lg" />
           )}
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-foreground">
+            <div className="text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">
               {isTeamStepToken(step.agent) ? `Team · ${teamIdFromToken(step.agent)}` : step.agent}
             </div>
             <div className="flex items-center gap-2 mt-1">
               <StepTypeBadge type="output" />
               {step.skill && (
-                <Badge variant="secondary" className="text-[10px] font-mono">{step.skill}</Badge>
+                <Badge tone="neutral" variant="soft" size="xs" className="font-bakin-typography-family-mono">{step.skill}</Badge>
               )}
             </div>
           </div>
@@ -294,21 +274,20 @@ function OutputStepDetail({ step }: { step: OutputStep }) {
 
       {/* Description */}
       {step.description && (
-        <div>
-          <SectionLabel>Description</SectionLabel>
-          <div className="text-sm text-foreground/90 rounded-lg p-4 border-l-2 border-purple-500/40 bg-surface whitespace-pre-wrap leading-relaxed">
+        <DrawerSection title="Description">
+          <div className="text-bakin-typography-size-body text-bakin-text-primary rounded-bakin-surface p-4 border-l-2 border-bakin-signal-accent/40 bg-bakin-surface-default whitespace-pre-wrap leading-relaxed">
             {step.description}
           </div>
-        </div>
+        </DrawerSection>
       )}
 
       {/* Metadata grid */}
       <div className="grid grid-cols-2 gap-3">
         {step.channels && step.channels.length > 0 && (
-          <MetadataCard icon={Megaphone} label="Channels">
+          <MetadataCard icon={Zap} label="Channels">
             <div className="flex flex-wrap gap-1">
               {step.channels.map((ch) => (
-                <Badge key={ch} variant="secondary" className="text-[10px]">{ch}</Badge>
+                <Badge key={ch} tone="neutral" variant="soft" size="xs">{ch}</Badge>
               ))}
             </div>
           </MetadataCard>
@@ -316,7 +295,7 @@ function OutputStepDetail({ step }: { step: OutputStep }) {
 
         {step.schedule && (
           <MetadataCard icon={Clock} label="Schedule">
-            <span className="font-mono">{step.schedule}</span>
+            <span className="font-bakin-typography-family-mono">{step.schedule}</span>
           </MetadataCard>
         )}
 
@@ -326,17 +305,16 @@ function OutputStepDetail({ step }: { step: OutputStep }) {
       {step.content && Object.keys(step.content).length > 0 && (
         <>
           <Separator />
-          <div>
-            <SectionLabel>Content Templates</SectionLabel>
+          <DrawerSection title="Content Templates">
             <div className="space-y-3">
               {Object.entries(step.content).map(([key, value]) => (
-                <div key={key} className="rounded-lg bg-surface p-3">
-                  <div className="text-[11px] font-mono text-muted-foreground uppercase tracking-wider mb-1.5">{key}</div>
-                  <pre className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{value}</pre>
+                <div key={key} className="rounded-bakin-surface bg-bakin-surface-default p-3">
+                  <div className="text-bakin-typography-size-meta font-bakin-typography-family-mono text-bakin-text-muted uppercase tracking-wider mb-1.5">{key}</div>
+                  <pre className="text-bakin-typography-size-body text-bakin-text-primary whitespace-pre-wrap leading-relaxed">{value}</pre>
                 </div>
               ))}
             </div>
-          </div>
+          </DrawerSection>
         </>
       )}
 
@@ -349,32 +327,31 @@ function OutputStepDetail({ step }: { step: OutputStep }) {
 function ParallelStepDetail({ step }: { step: ParallelStep }) {
   return (
     <div className="space-y-6">
-      <div>
-        <SectionLabel icon={Zap}>Parallel Steps ({step.steps.length})</SectionLabel>
+      <DrawerSection title={`Parallel Steps (${step.steps.length})`}>
         <div className="space-y-3">
           {step.steps.map((child) => (
-            <div key={child.id} className="rounded-lg border border-border bg-surface p-4">
+            <div key={child.id} className="rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-4">
               <div className="flex items-center gap-3 mb-2">
                 <StepTypeBadge type={child.type} />
-                <span className="text-sm font-medium">{child.label}</span>
+                <span className="text-bakin-typography-size-body font-bakin-typography-weight-medium">{child.label}</span>
               </div>
               {child.type === 'agent' && (
                 <div className="flex items-center gap-2">
-                  <AgentAvatar agentId={(child as AgentStep).agent} size="sm" />
-                  <span className="text-xs text-muted-foreground">
+                  <WorkflowAgentAvatar agentId={(child as AgentStep).agent} size="sm" />
+                  <span className="text-bakin-typography-size-meta text-bakin-text-muted">
                     {(child as AgentStep).agent}
                   </span>
                 </div>
               )}
               {(child as AgentStep).task && (
-                <p className="text-xs text-muted-foreground mt-2 leading-relaxed line-clamp-3">
+                <p className="text-bakin-typography-size-meta text-bakin-text-muted mt-2 leading-relaxed line-clamp-3">
                   {(child as AgentStep).task}
                 </p>
               )}
             </div>
           ))}
         </div>
-      </div>
+      </DrawerSection>
     </div>
   )
 }
@@ -385,18 +362,17 @@ function WorkflowStepDetail({ step }: { step: NestedWorkflowStep }) {
       {/* Metadata grid */}
       <div className="grid grid-cols-2 gap-3">
         <MetadataCard icon={RefreshCw} label="Workflow ID">
-          <span className="font-mono">{step.workflow_id}</span>
+          <span className="font-bakin-typography-family-mono">{step.workflow_id}</span>
         </MetadataCard>
       </div>
 
       {/* Description */}
       {step.description && (
-        <div>
-          <SectionLabel>Description</SectionLabel>
-          <div className="text-sm text-foreground/90 rounded-lg p-4 border-l-2 border-cyan-500/40 bg-surface whitespace-pre-wrap leading-relaxed">
+        <DrawerSection title="Description">
+          <div className="text-bakin-typography-size-body text-bakin-text-primary rounded-bakin-surface p-4 border-l-2 border-bakin-signal-info/40 bg-bakin-surface-default whitespace-pre-wrap leading-relaxed">
             {step.description}
           </div>
-        </div>
+        </DrawerSection>
       )}
     </div>
   )
@@ -407,32 +383,31 @@ function MapWorkflowStepDetail({ step }: { step: MapWorkflowStep }) {
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3">
         <MetadataCard icon={RefreshCw} label="Child Workflow">
-          <span className="font-mono">{step.workflow_id}</span>
+          <span className="font-bakin-typography-family-mono">{step.workflow_id}</span>
         </MetadataCard>
         <MetadataCard icon={Zap} label="Source Array">
-          <span className="font-mono">{step.source}</span>
+          <span className="font-bakin-typography-family-mono">{step.source}</span>
         </MetadataCard>
         <MetadataCard icon={Package} label="Item Key">
-          <span className="font-mono">{step.item_key || 'item'}</span>
+          <span className="font-bakin-typography-family-mono">{step.item_key || 'item'}</span>
         </MetadataCard>
         <MetadataCard icon={AlertTriangle} label="Max Children">
-          <span className="font-mono">{step.max_children ?? 32}</span>
+          <span className="font-bakin-typography-family-mono">{step.max_children ?? 32}</span>
         </MetadataCard>
       </div>
 
-      <p className="text-[11px] text-muted-foreground leading-relaxed">
+      <p className="text-bakin-typography-size-meta text-bakin-text-muted leading-relaxed">
         Fans out one child workflow per element of the source array at runtime.
         Live children appear as sub-tasks on the board; per-child retry and
         cancel live on the parent task's detail panel.
       </p>
 
       {step.description && (
-        <div>
-          <SectionLabel>Description</SectionLabel>
-          <div className="text-sm text-foreground/90 rounded-lg p-4 border-l-2 border-violet-500/40 bg-surface whitespace-pre-wrap leading-relaxed">
+        <DrawerSection title="Description">
+          <div className="text-bakin-typography-size-body text-bakin-text-primary rounded-bakin-surface p-4 border-l-2 border-bakin-signal-accent/40 bg-bakin-surface-default whitespace-pre-wrap leading-relaxed">
             {step.description}
           </div>
-        </div>
+        </DrawerSection>
       )}
     </div>
   )
@@ -542,62 +517,60 @@ function SkillDriftSection({
   return (
     <div className="space-y-3">
       {reports.map((report) => (
-        <div key={report.skillName} className="rounded-lg border border-amber-500/35 bg-amber-500/10 p-4">
-          <div className="flex items-start gap-3">
-            <span className="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-amber-500/15 ring-1 ring-amber-500/25">
-              <AlertTriangle className="size-3.5 text-amber-200" />
+        <Alert key={report.skillName} tone="attention">
+          <AlertTriangle aria-hidden="true" />
+          <AlertTitle>
+            <span className="flex flex-wrap items-center gap-2">
+              This step is using old instructions
+              <Badge tone="attention" variant="outline" size="xs" className="font-bakin-typography-family-mono">
+                {report.skillName}
+              </Badge>
             </span>
-            <div className="min-w-0 flex-1 space-y-3">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="text-sm font-medium text-amber-100">This step is using old instructions</div>
-                  <Badge variant="outline" className="border-amber-500/35 text-[10px] font-mono text-amber-100">
-                    {report.skillName}
-                  </Badge>
-                </div>
-                <p className="mt-1 text-xs leading-relaxed text-amber-100/80">
-                  A local copy is overriding the current {sourceLabel(report)} version.
-                </p>
-              </div>
+          </AlertTitle>
+          <AlertDescription>
+            <div className="min-w-0 space-y-3">
+              <p className="m-0 leading-relaxed">
+                A local copy is overriding the current {sourceLabel(report)} version.
+              </p>
 
-              <div className="space-y-3 border-t border-amber-500/20 pt-3">
+              <div className="space-y-3 border-t border-bakin-border-subtle pt-3">
                 <div>
-                  <div className="text-[10px] font-medium uppercase tracking-wider text-amber-100/60">What can break</div>
-                  <p className="mt-1 text-xs leading-relaxed text-amber-100/80">{driftImpactText(report)}</p>
+                  <div className="text-bakin-typography-size-meta font-bakin-typography-weight-medium uppercase tracking-wider text-bakin-text-muted">What can break</div>
+                  <p className="m-0 mt-1 leading-relaxed">{driftImpactText(report)}</p>
                 </div>
                 <div>
-                  <div className="text-[10px] font-medium uppercase tracking-wider text-amber-100/60">What the fix does</div>
-                  <p className="mt-1 text-xs leading-relaxed text-amber-100/80">{repairActionText(report)}</p>
+                  <div className="text-bakin-typography-size-meta font-bakin-typography-weight-medium uppercase tracking-wider text-bakin-text-muted">What the fix does</div>
+                  <p className="m-0 mt-1 leading-relaxed">{repairActionText(report)}</p>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {report.findings.map((finding) => (
-                    <Badge key={finding.id} variant="outline" className="border-amber-500/35 text-[10px] text-amber-100">
+                    <Badge key={finding.id} tone="attention" variant="outline" size="xs">
                       {findingDisplayLabel(finding.id, finding.label)}
                     </Badge>
                   ))}
                 </div>
               </div>
 
-              <p className="text-xs leading-relaxed text-amber-100/75">{repairabilityText(report)}</p>
+              <p className="m-0 leading-relaxed">{repairabilityText(report)}</p>
               {repairError && (
-                <p className="text-xs leading-relaxed text-red-300">{repairError}</p>
+                <p className="m-0 leading-relaxed text-bakin-signal-danger">{repairError}</p>
+              )}
+              {report.repairable && (
+                <div className="flex justify-stretch sm:justify-end">
+                  <Button
+                    variant="outline"
+                    onClick={() => onRepair(report)}
+                    disabled={repairingSkill === report.skillName}
+                    className="w-full sm:w-auto"
+                  >
+                    <Wrench aria-hidden="true" className="mr-2 size-4" />
+                    {repairingSkill === report.skillName ? 'Upgrading...' : 'Upgrade to latest instructions'}
+                  </Button>
+                </div>
               )}
             </div>
-          </div>
-          {report.repairable && (
-            <div className="mt-4 flex justify-stretch sm:justify-end">
-              <Button
-                variant="outline"
-                onClick={() => onRepair(report)}
-                disabled={repairingSkill === report.skillName}
-                className="h-10 w-full border-amber-500/35 px-4 text-sm font-semibold text-amber-100 hover:bg-amber-500/15 sm:w-auto"
-              >
-                <Wrench className="mr-2 size-4" />
-                {repairingSkill === report.skillName ? 'Upgrading...' : 'Upgrade to latest instructions'}
-              </Button>
-            </div>
-          )}
-        </div>
+          </AlertDescription>
+        </Alert>
       ))}
     </div>
   )
@@ -645,7 +618,7 @@ export function StepDetailDrawer({
   }
 
   return (
-    <BakinDrawer
+    <Drawer
       open={open}
       onOpenChange={onOpenChange}
       title={
@@ -673,6 +646,6 @@ export function StepDetailDrawer({
           />
         </div>
       )}
-    </BakinDrawer>
+    </Drawer>
   )
 }

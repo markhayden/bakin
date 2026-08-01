@@ -53,8 +53,6 @@ mock.module('@/hooks/use-runtime-status', () => ({
   useRuntimeStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock() }),
 }))
 mock.module('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))
-mock.module('@/components/markdown-content', () => ({ MarkdownContent: () => <div /> }))
-mock.module('@/components/model-select', () => ({ ModelSelect: () => <div /> }))
 
 import { useAgentStore } from '../../../plugins/team/hooks/use-agent-store'
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'
@@ -152,7 +150,7 @@ describe('PackageCard — Adopt flow', () => {
         target: { value: 'github:examples/pixel@v0.1.0' },
       })
     })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Adopt' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Adopt agent' })) })
 
     await waitFor(() => expect(installCalls.length).toBe(1))
     const call = installCalls[0]
@@ -170,7 +168,7 @@ describe('PackageCard — Adopt flow', () => {
         target: { value: 'github:examples/pixel' },
       })
     })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Adopt' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Adopt agent' })) })
 
     // After successful adopt the store should pick up the new state
     // from /api/agent-packages?check=1 (which our mock returns as managed).

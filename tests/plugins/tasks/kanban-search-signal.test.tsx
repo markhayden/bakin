@@ -16,7 +16,7 @@
  * Child components are stubbed following tests/components/kanban-dnd.test.tsx.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '../../rtl-settle'
 import { settleReact } from '../../rtl-settle'
 import { rmSync } from 'fs'
@@ -45,6 +45,11 @@ mock.module('../../../src/core/content-dir', () => ({
 mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
+}))
+
+mock.module('@bakin/adapter-openclaw/home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
 }))
 
 mock.module('@/core/logger', () => ({
@@ -136,16 +141,10 @@ mock.module('../../../plugins/tasks/hooks/use-gate-status', () => ({
   useGateStatus: () => ({}),
 }))
 
-mock.module('@/components/plugin-header', () => ({
-  PluginHeader: ({ search }: { search?: { value: string; onChange: (v: string) => void } }) => (
-    <div data-testid="plugin-header">
-      {search && <input aria-label="search" value={search.value} onChange={(e) => search.onChange(e.target.value)} />}
-    </div>
-  ),
-}))
+let contentLoading = false
 
 mock.module('@/hooks/use-content-store', () => ({
-  useContentStore: () => 0,
+  useContentStore: () => contentLoading,
 }))
 
 mock.module('@/hooks/use-toast', () => ({
@@ -156,15 +155,29 @@ mock.module('@/hooks/use-toast', () => ({
 // URL state — primed per test.
 const queryStateDefaults: Record<string, string> = {}
 
-mock.module('@/hooks/use-query-state', () => ({
-  useQueryState: (key: string, defaultValue: string) => {
-    const React = require('react') as typeof import('react')
-    return React.useState(queryStateDefaults[key] ?? defaultValue)
-  },
-  useQueryArrayState: () => {
-    const React = require('react') as typeof import('react')
-    return React.useState([])
-  },
+function useTestQueryState(key: string, defaultValue: string) {
+  const React = require('react') as typeof import('react')
+  return React.useState(queryStateDefaults[key] ?? defaultValue)
+}
+
+function useTestQueryArrayState() {
+  const React = require('react') as typeof import('react')
+  return React.useState<string[]>([])
+}
+
+mock.module('@makinbakin/sdk/navigation', () => ({
+  usePathname: () => '/tasks',
+  useRouter: () => ({
+    push: mock(),
+    replace: mock(),
+    back: mock(),
+    forward: mock(),
+    refresh: mock(),
+    prefetch: mock(),
+  }),
+  useSearchParams: () => new URLSearchParams(),
+  useQueryState: useTestQueryState,
+  useQueryArrayState: useTestQueryArrayState,
 }))
 
 // Import AFTER mocks. useTaskFilters + useSearch stay REAL — the degraded
@@ -199,26 +212,130 @@ const BOARD = boardResponse({
 })
 
 /** Board loads fine; the search leg is controlled per test. */
-function stubFetch(searchImpl: () => Response) {
+function stubFetch(searchImpl: () => Response, board = BOARD) {
   vi.stubGlobal('fetch', mock(async (url: string | URL) => {
     const u = String(url)
     if (u.includes('/search')) return searchImpl()
-    if (u.includes('/api/plugins/tasks/')) return json(BOARD)
+    if (u.includes('/api/plugins/tasks/')) return json(board)
     return json({})
   }))
 }
 
 beforeEach(() => {
+  contentLoading = false
   for (const key of Object.keys(queryStateDefaults)) delete queryStateDefaults[key]
 })
 
 afterEach(() => {
+  cleanup()
   vi.unstubAllGlobals()
 })
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe('KanbanBoard — search signals', () => {
+  it('keeps canonical page identity and controls around the task result region', async () => {
+    stubFetch(() => json({
+      results: [],
+      aggregations: {},
+      meta: { query: '', total: 0, took_ms: 1, source: 'search' },
+    }))
+
+    await act(async () => {
+      render(<KanbanBoard />)
+    })
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-archetype="page"]')).toBeTruthy()
+    })
+    expect(screen.getByRole('heading', { level: 1, name: 'Tasks' })).toBeTruthy()
+    expect(screen.getByRole('group', { name: 'Task search, view, and actions' })).toBeTruthy()
+    const search = screen.getByRole('searchbox', { name: 'Task search' })
+    const board = screen.getByRole('tab', { name: 'Board' })
+    const newTask = screen.getByRole('button', { name: 'New Task' })
+    expect(search.className).toContain('h-[var(--bakin-layout-size-control)]')
+    expect(board.className).toContain('h-[var(--bakin-layout-size-control)]')
+    expect(newTask.className).toContain('h-[var(--bakin-layout-size-control)]')
+    expect(screen.getByRole('region', { name: 'Task results' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Task board' })).toBeTruthy()
+  })
+
+  it('keeps the page identity visible while only the result region is loading', async () => {
+    contentLoading = true
+    stubFetch(() => json({ results: [], aggregations: {} }))
+
+    await act(async () => {
+      render(<KanbanBoard />)
+    })
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Tasks' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Loading tasks' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Task results' }).getAttribute('data-content-state')).toBe('replaced')
+  })
+
+  it('uses the canonical first-use state when the board has no tasks', async () => {
+    stubFetch(
+      () => json({ results: [], aggregations: {} }),
+      boardResponse({}),
+    )
+
+    await act(async () => {
+      render(<KanbanBoard />)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'No tasks yet' })).toBeTruthy()
+    })
+    expect(within(screen.getByRole('region', { name: 'Task results' })).getByRole('button', { name: 'Create first task' })).toBeTruthy()
+  })
+
+  it('replaces only the result region with a recoverable board-load error', async () => {
+    let boardAttempts = 0
+    vi.stubGlobal('fetch', mock(async (url: string | URL) => {
+      if (String(url).includes('/api/plugins/tasks/')) {
+        boardAttempts += 1
+        return boardAttempts === 1
+          ? json({ error: 'unavailable' }, 503)
+          : json(BOARD)
+      }
+      return json({})
+    }))
+
+    await act(async () => {
+      render(<KanbanBoard />)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Tasks could not be loaded' })).toBeTruthy()
+    })
+    expect(screen.getByRole('heading', { level: 1, name: 'Tasks' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Task results' }).getAttribute('data-content-state')).toBe('replaced')
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Task results' }).getAttribute('data-content-state')).toBe('ready')
+    })
+    expect(boardAttempts).toBe(2)
+  })
+
+  it('offers one clear action when active filters return no board tasks', async () => {
+    stubFetch(() => json({
+      results: [],
+      aggregations: {},
+      meta: { query: 'missing', total: 0, took_ms: 2, source: 'search' },
+    }))
+    queryStateDefaults.q = 'missing'
+
+    await act(async () => {
+      render(<KanbanBoard />)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'No tasks match this view' })).toBeTruthy()
+    })
+    expect(screen.getByRole('button', { name: 'Clear search and filters' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Task results' }).getAttribute('data-content-state')).toBe('replaced')
+  })
+
   it('shows loading, then the degraded chip on 503 — and keeps the substring fallback browsable', async () => {
     stubFetch(() => json({ error: 'search_unavailable' }, 503))
     queryStateDefaults.q = 'beef'
@@ -227,16 +344,18 @@ describe('KanbanBoard — search signals', () => {
       render(<KanbanBoard />)
     })
 
-    // In-flight search (debounce + request) → visible loading indicator.
+    // In-flight search (debounce + request) stays inside the search field so
+    // the result region does not jump when a request begins.
     await waitFor(() => {
-      expect(screen.getByTestId('tasks-search-loading')).toBeDefined()
+      expect(screen.getByRole('searchbox', { name: 'Task search' }).getAttribute('aria-busy')).toBe('true')
     })
+    expect(screen.queryAllByTestId('tasks-search-loading')).toHaveLength(0)
 
     // Engine down → the honest degraded chip…
     await waitFor(() => {
       expect(screen.getByTestId('tasks-search-degraded')).toBeDefined()
     }, { timeout: 3000 })
-    expect(screen.queryAllByTestId('tasks-search-loading').length).toBe(0)
+    expect(screen.getByRole('searchbox', { name: 'Task search' }).getAttribute('aria-busy')).toBeNull()
 
     // …while basic text matching keeps the board usable (the fix is the
     // SIGNAL — the fallback stays).

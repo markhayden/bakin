@@ -3,7 +3,6 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
-import type { ReactNode } from 'react'
 
 // Pure client-component test — the isolation mocks are belt-and-braces per
 // the repo's test rules.
@@ -14,12 +13,19 @@ const contentDirMock = () => ({
 mock.module('../../../src/core/content-dir', contentDirMock)
 mock.module('../../../packages/core/src/content-dir', contentDirMock)
 
-mock.module('@makinbakin/sdk/ui', () => ({
-  Badge: ({ children }: { children: ReactNode }) => <span>{children}</span>,
+mock.module('@makinbakin/sdk/hooks', () => ({
+  useAgent: (agentId: string) => agentId ? { name: 'Pixel', headshot: '/agents/pixel.png' } : null,
+  useAgentColor: () => '#ff4f91',
+  useAgentDisplayName: (agentId: string) => agentId ? 'Pixel' : null,
 }))
 
-mock.module('@makinbakin/sdk/components', () => ({
-  AgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid={`avatar-${agentId}`} />,
+mock.module('@makinbakin/sdk/patterns', () => ({
+  AgentAvatar: ({ agent }: { agent: { id: string } }) => <span data-testid={`avatar-${agent.id}`} />,
+  StatusBadge: ({
+    children,
+    icon: _Icon,
+    ...props
+  }: React.HTMLAttributes<HTMLSpanElement> & { icon?: unknown }) => <span {...props}>{children}</span>,
 }))
 
 import { CatalogCard, entryStatusBadge } from '../../../plugins/explore/components/catalog-card'
@@ -65,11 +71,12 @@ describe('entryStatusBadge', () => {
 })
 
 describe('CatalogCard', () => {
-  it('renders name, category, and first use case', () => {
+  it('renders a compact identity, category, and description', () => {
     render(<CatalogCard entry={entry()} onSelect={mock()} />)
     expect(screen.getByText('Pixel')).toBeTruthy()
     expect(screen.getByText('Creative')).toBeTruthy()
-    expect(screen.getByText(/Generate on-brand social images/)).toBeTruthy()
+    expect(screen.getByText('Image artist agent.')).toBeTruthy()
+    expect(screen.queryByText(/Best for:/)).toBeNull()
   })
 
   it('shows the Built in badge for builtin entries', () => {

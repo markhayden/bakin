@@ -22,7 +22,7 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 import { act, renderHook, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 
-import { useConversationThread, type ConversationMessage } from '@makinbakin/sdk/components'
+import { useConversationThread, type ConversationMessage } from '@makinbakin/sdk/conversation'
 import { emitPluginEvent } from '@makinbakin/sdk/hooks'
 
 const EVENTS = { chunk: 'probe.chunk', done: 'probe.done', error: 'probe.error' }

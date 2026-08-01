@@ -1,21 +1,52 @@
-# Bakin UI Style Guide (preliminary)
+# Bakin Browser UI Style Guide
 
-The decided visual + interaction system, distilled from the chat overhaul
-(2026-07) and the brands UX pass. This is the PRELIMINARY cut — a full style
-guide (with visual specimens and a lint story) is a tracked follow-up. Sister
-docs: `ui-patterns.md` (gotchas + war stories), `repo-architecture.md`.
+The decided visual and interaction system for Bakin product UI and plugins.
+This file records composition decisions; public Storybook demonstrates them,
+and machine-readable design-system ledgers enforce their objective boundaries.
+Sister docs: `ui-patterns.md` (gotchas and war stories) and
+`repo-architecture.md`.
 
-Rule zero: **assemble from the SDK first**. If a pattern below has a named
-component, hand-rolling it is a defect, not a preference.
+The authoritative executable reference is the public SDK-only Storybook at
+`/docs/ui/`; curated plugin-author guidance begins at
+`/docs/extending/ui/overview/`. The local maintainer Storybook may also contain
+explicitly internal migration stories, which are not SDK contracts. Routing is
+owned by `.claude/specs/routing-overhaul.md` and
+`.claude/knowledge/url-state-deep-linking.md`; UI migrations consume that
+taxonomy rather than inventing a parallel navigation model.
+
+Rule zero: **assemble from the focused SDK first**. If public Storybook defines
+the pattern, hand-rolling it is a defect, not a preference. When no pattern can
+satisfy the domain requirement, follow the concrete explanation and explicit
+approval protocol in `.claude/skills/bakin-ui-conformance/SKILL.md`; never
+silently diverge.
+
+## Approved foundation
+
+Product Character is the approved default as of 2026-07-18. Product and
+plugin chrome use locally bundled **Space Grotesk**; identifiers, code,
+numerals, and technical data use locally bundled **JetBrains Mono**. The warm
+dark foundation, green primary action, pink signal, and yellow highlight keep
+their roles through namespaced semantic tokens.
+
+There is one compact-professional density. Product Character spacing governs
+pages, sections, controls, and normal content. Tables, repeated rows, and
+operational data use the approved tighter dense gap and row height. This is a
+contextual recipe inside the same system—not a selectable density mode, a
+second theme, or an Inter-based alternative.
+
+The side-by-side Storybook specimens remain internal decision evidence.
+Operational Neutral is not an implementation target. New component work uses
+the selected Product Character values generated from
+`packages/ui/tokens/*.tokens.json`.
 
 ## 1. Text hierarchy — four tiers, never adjacent at the same weight
 
 | Tier | Treatment | Examples |
 |---|---|---|
-| Title | `text-sm font-medium` (+ icon `size-4 text-muted-foreground`) | SectionCard titles |
-| Caption / chrome | `text-xs text-muted-foreground/80`, width-capped (`max-w-3xl`) | SectionCard descriptions — "why this matters" one-liners |
-| Body / content | `text-sm` (or `text-xs` in dense cards), full contrast | user notes, doc rows, rule text |
-| Machine detail | `font-mono text-[10px] text-muted-foreground/60`, **hover-reveal or demoted** | asset ids, slugs, commits |
+| Page identity | `PageHeader` title/eyebrow contract | one page `h1`, domain context |
+| Section title and chrome | Canonical section/card headings plus muted description | “why this matters” one-liners |
+| Body and user content | Default UI/body typography at full content contrast | notes, document rows, rule text |
+| Machine detail | Mono technical/meta typography, **hover-reveal or demoted** | asset ids, slugs, commits |
 
 The busy-page failure mode is tiers 2–4 rendering alike. Our explanations are
 chrome and must recede; the user's content is the only body text. Machine ids
@@ -26,35 +57,63 @@ never sit at rest in a card — surface on hover or behind the detail view.
 - **No hardcoded palettes** (`zinc-*`, hex, `amber-*`); theme tokens only.
   Brand-OWNED colors (palette swatches, cover tints) are data, not styling —
   inline `style` from manifest values is correct there.
-- **Neutral chrome**: hover `hover:bg-foreground/10` (buttons) /
-  `hover:bg-foreground/5` (rows); selection `bg-foreground/10`. The accent
-  (pink) is SIGNAL ONLY: unread pills, working indicators — never hover or
-  selection.
+- **Neutral chrome**: use the canonical neutral hover and selected treatments
+  from SDK components. The accent (pink) is SIGNAL ONLY: unread pills, working
+  indicators—never generic hover or selection.
 - **Status tones** are the `StatusBadge` scale and nothing else:
-  `neutral` (queued/imported) · `success` (published/ready) · `warning`
-  (draft/attention/working) · `destructive` (blocked/failed) · `accent`
+  `neutral` (queued/imported) · `success` (published/ready) · `attention`
+  (draft/attention/working) · `danger` (blocked/failed) · `accent`
   (unread/special signal). One tone scale for every "what state is this in"
-  chip.
-- Warning tokens (`bg-warning/10 ring-warning/20`) for attention banners
-  (draft banner); destructive tokens for danger surfaces.
+  chip. Use the filled treatment by default so status reads immediately;
+  reserve outline for secondary, uncertain, historical, or low-emphasis
+  context. Use soft badges for metadata rather than primary state.
+- Use `Banner`, `Alert`, and canonical danger patterns for attention and danger
+  surfaces; do not restyle status colors locally.
 
 ## 3. Surfaces & elevation
 
-- Cards: `rounded-xl bg-card ring-1 ring-foreground/10` (no hard borders);
-  hover affordance = `hover:ring-foreground/25`, never a background flip.
-- Row tiles inside a card: `rounded-lg bg-foreground/[0.04] ring-1
-  ring-foreground/5` — list items must be individually distinguishable, not a
-  flat text block.
-- Nested containers (group tiles): `bg-surface` one step up.
-- `SectionCard` is THE titled section: icon + title, caption description,
-  right-aligned header `action`. Every user-facing section explains itself in
-  one caption line.
+- Page hierarchy comes first from type, spacing, surface shifts, and subtle
+  dividers. Cards are reserved for genuinely bounded objects and coherent
+  grouped data; nested card stacks are a defect.
+- Searchable, filterable, and repeated-object indexes use the full available
+  plugin canvas through `Page`. The bounded `width="standard"` measure is an
+  explicit, evidenced exception rather than a page-by-page default.
+- `PageBody` owns the remaining results canvas. Terminal result states
+  use page scope so they center within that available height instead of
+  leaving a shallow panel above an empty page.
+- Approved radii and overlay elevation come from semantic tokens. Do not
+  choose `rounded-*` or shadow utilities ad hoc.
+- Repeated rows use separators or a restrained surface shift. Explicit dense
+  data rows use the canonical dense gap/height without changing typography.
+- Kanban lanes are low-chrome structure with a named header, quiet divider,
+  and task stack. The lane is never a bordered card around bordered cards;
+  only the bounded records inside it use the canonical Card surface. Inside a
+  task card, use a solid `StatusBadge` for the record's state, quiet icon-led
+  text for provenance such as workflow or project, and full-width
+  `KanbanCardSignal` rows for approval, live-turn, blocked, or failure
+  feedback. Do not turn every metadata value into another outlined chip.
+  Domain drag-and-drop keeps its stable scroll, lane, and keyed sortable
+  wrappers rather than reshaping proven interaction DOM to match a
+  presentation-only wrapper. During a drag, render the record at its exact
+  in-flow insertion position; replace an empty state with that preview when
+  relevant. A pointer clone is supplemental. Whole-lane highlighting is not a
+  placement signal, and every required move needs a named keyboard-accessible
+  alternative.
+- `Section` owns page rhythm; canonical cards own bounded-object structure.
+  Titled regions pair one heading with a short description and a right-aligned
+  action when needed. Every user-facing section explains itself in one caption
+  line.
 
 ## 4. Controls & actions
 
-- ONE primary action per header, right-aligned (`PluginHeader actions`,
-  SectionCard `action`). Never stack competing primaries (the three-publish-
-  buttons bug).
+- ONE primary action per header, right-aligned (`PageHeader actions` or the
+  owning section action). `PageHeader controls` owns compact search and view
+  navigation beside it; the reserved search slot must not repack the desktop
+  row on focus. `SearchInput` expands on focus, collapses to the controlled
+  query width, truncates longer values with an ellipsis, and supplies the
+  neutral accessible clear action; do not expose a browser-native search
+  cancel control. Never stack competing primaries (the three-publish-buttons
+  bug).
 - Add-row actions live right-aligned in the section header ("+ Add color"),
   not stuffed left under content.
 - Destructive row actions are the trash ICON (with `aria-label` + `title`),
@@ -74,7 +133,10 @@ never sit at rest in a card — surface on hover or behind the detail view.
 - Long-form docs: dedicated editor route with its own `SaveBar`.
 - Guard rails for staged drafts (all four, always): key the component by the
   route param; freshness-gate whole-record PUTs; clear the draft by
-  snapshot-compare; wire `useUnsavedChangesGuard`.
+  snapshot-compare; wire `useUnsavedChangesGuard` from
+  `@makinbakin/sdk/navigation`. Do not use the deprecated unload-only
+  `useUnsavedGuard`, copy the complete guard, or create a parallel navigation
+  engine.
 - Cross-domain writes (e.g. asset notes from a brand page) stay immediate —
   they're not part of this page's draft.
 
@@ -92,18 +154,24 @@ never sit at rest in a card — surface on hover or behind the detail view.
 ## 7. Navigation & routing
 
 - Detail surfaces are path routes (`/thing/$id`), tabs/filters are URL query
-  state (`useQueryState` — CLAUDE.md mandate; search filters included).
-- Back is `useHistoryBack(fallback)` + icon-only arrow. Exception: after
+  state (`useQueryState` from `@makinbakin/sdk/navigation`; search filters
+  included).
+- Back is `useHistoryBack(fallback)` from the navigation entrypoint plus an
+  icon-only circular arrow aligned to the page content edge, with an
+  accessible label and title. When an eyebrow supplies detail context, the
+  back action sits immediately to its left in the same compact context row.
+  Exception: after
   DELETING the thing, navigate to the list explicitly.
 - Deep-linkable editors follow the workflows-edit precedent: route wrapper
   passes params + onSaved/back callbacks into the slot component.
-- TanStack search params are JSON-parsed (`?x=1` → number) — String()-coerce.
+- Query values are plain strings: `?id=123` stays the string `'123'`. Use the
+  navigation entrypoint's query-state hooks and their default omission/batching behavior;
+  never add JSON coercion or rebuild query strings locally.
 
 ## 8. Empty, loading, error
 
 - A blank pane is a bug. Route-level: skeletons shaped like the layout.
-- Section-level empties: centered, breathing (`SectionEmpty` shape: min-h,
-  soft `bg-foreground/[0.03]` container, centered caption) — never a muted
+- Section-level empties use the appropriate `SystemState` scope—never a muted
   sentence blended into section copy. Teach by example ("e.g. product-ui …").
 - First-run empty states ARE the create flow (empty list = inline chooser).
 - Errors are honest and distinct from absence: transient failure = retryable
@@ -124,8 +192,13 @@ never sit at rest in a card — surface on hover or behind the detail view.
 ## 10. Cards & media
 
 - Content with imagery leads with the image. Reference-media cards are
-  HORIZONTAL: fixed square thumbnail left (`w-36`), text right with the
-  width, 2-across stretch grid. Note clamps (2–3 lines); id is hover-reveal.
+  horizontal: a stable square thumbnail, bounded text, and the canonical card
+  grid. Note previews clamp; machine ids are hover-reveal or detail content.
+- Media-led record pages use the full `Page` canvas and a wide
+  `PageHeader` measure: preview in the
+  main column; core context first, quieter machine enrichment nested beneath
+  it, then downloads and version history in the named aside. Growing history
+  uses the host document scroll, not a nested vertical scroller.
 - Long text previews fade into a SOLID overlay (opaque base ~45%) carrying a
   summary + real CTA button (`FadeMore` shape) — never a trailing ghost of
   masked text, never a full dump beside a faded sibling.
@@ -142,59 +215,45 @@ never sit at rest in a card — surface on hover or behind the detail view.
 - `data-*` test hooks on every meaningful element; tests assert behavior,
   not styling classes.
 
-## 12. Pattern census (2026-07) — status + backlog
+### Plugin CSS ownership
 
-Full census ran across `src/components/` + all plugin `components/`. First
-wave landed in the brands-ux-cleanup branch; the rest is the backlog for the
-full style-guide pass.
+- The host owns one `@makinbakin/sdk/styles.css`; plugin clients never import
+  or copy it. `--bakin-*` declarations are reserved for that system artifact.
+- Domain CSS enters through `client.tsx`. The build scopes safe selectors to
+  the plugin's `data-bakin-plugin` root, localizes standalone `:root` rules,
+  and namespaces keyframes. Author selectors for the domain element, not the
+  ownership wrapper.
+- Document selectors, generic or foreign plugin roots, global fonts/imports,
+  and cross-plugin asset references fail the build with an author-facing
+  location and repair. Do not add an exception by weakening the validator;
+  a genuine system-owned case requires the style-guide deviation protocol.
+- Failed CSS validation removes both emitted CSS and its paired client bundle.
+  Fresh local artifacts are rechecked before activation, so cached output is
+  not an enforcement bypass.
+- SDK dialogs, sheets, popovers, menus, selects, and tooltips automatically
+  carry the host-injected plugin identity through their portals. Plugin code
+  uses the normal public primitive APIs and must not add a manual ownership
+  wrapper or portal container just to recover scoped styles. Shell toasts stay
+  host-owned; plugins request them through `toast()` instead of mounting a
+  `ToastRegion`.
+- Plugin browser fixtures use `PluginUiFixtureHost` from
+  `@makinbakin/sdk/testing/ui`. They pass real client registrations through the
+  production matcher, slots, ownership roots, and portal bridge; they do not
+  recreate host routing or scope wrappers. Freeze route, time, randomness,
+  theme, motion, viewport intent, and every network response, then apply the
+  exported desktop/mobile dimensions in the browser runner. Unhandled network
+  traffic is a fixture failure.
 
-**Done in the first wave:**
-- `SegmentedControl` promoted; adopted at all 5 hand-rolled sites (brands
-  doc editor, schedule view switcher, kanban Board|Log, health ×2 windows).
-  Note: schedule/kanban deliberately lost their accent-active styling —
-  selection is neutral, accent is signal.
-- `StatTile` promoted (from brands, with a `progress` slot); brands adopted.
-- `EmptyState` gained `variant="section"` (from brands' SectionEmpty);
-  `title` widened to ReactNode.
-- `StatusBadge` gained `variant="outline"`; schedule job-row's four ad-hoc
-  state chips adopted (its local wrapper renamed `JobStatusBadge`).
-- `useFileDrop` promoted (headless drag-drop intake); AssetPicker + brands
-  LogoDrop/MaterialsDrop adopted.
-- `useHistoryBack` adopted by team agent-detail + team-detail back buttons.
-- SDK `markdown-editor.tsx` de-zinc'd (was leaking off-token color into
-  every consumer).
+## 12. Migration tracking and exceptions
 
-**Backlog (full style-guide pass):**
-1. **Token migration** — ~517 hardcoded palette classes across ~70 plugin
-   files. Worst: tasks/task-workflow-panels (39), tasks/task-card (37),
-   workflows/step-detail-drawer (32) + nodes/* family, team/team-grid (25,
-   incl. hex), schedule/calendar-weekly,
-   assets/VersionedAssetGrid. Workflow node-kind colors deserve a shared
-   semantic token map, not inline literals. Also: AgentAvatar status-dot
-   colors, models/brand-icon `#475569`, workflow-canvas `#525252` edges.
-2. **StatTile adoption sweep** — tasks/task-metrics `Stat`, team/overview
-   tiles, memory/tier-overview-cards, models/spend-tab, health metric
-   readouts, schedule calendar count tiles.
-3. **SaveBar adoption** — `PluginSettingsRenderer` (SDK itself), models
-   routing-tab + spend-tab staged saves, tasks/task-detail-modes inline
-   Save. Single-submit forms (job-form, agent-form) are a different
-   pattern — leave.
-4. **EmptyState section-variant sweep** — ~12 hand-rolled muted `<p>` empty
-   one-liners (schedule/run-history, tasks/task-notes-section,
-   chat/launcher, team/team-detail + overview-tab, assets/TagFolderGrid,
-   workflows-page custom empty prop, brands/task-brand-panel + brand-card).
-5. **StatusBadge sweep** — health/plugins-section strips,
-   team/package-card, team/package-state-badge (whole local component
-   overlaps StatusBadge).
-6. **Hover-reveal a11y** — ~7 sites missing `focus-visible:opacity-100`
-   (keyboard users can't reach the action): tasks/task-card,
-   schedule/job-row, chat/chat-rail, team/agent-detail, assets ×3. Consider
-   a shared `revealOnHover` util or `HoverActions` wrapper.
-7. **package-card remove Dialog** — adopt ConfirmDialog if reducible to one
-   confirm action.
-8. Deliberate one-offs (do NOT unify): FadeMore (single consumer),
-   monogram/avatar fallbacks (distinct entities), workflow-canvas node drop
-   (canvas, not file intake), form/wizard Dialogs.
+Do not maintain hand-counted migration backlogs in prose. The generated
+`design-system/census.json` and `design-system/migrations.json` files own the
+complete core-plus-official-Bits fleet and its exact legacy ceilings. Every
+completed migration lowers those ceilings; no new legacy use is allowed.
+
+`design-system/exceptions.json` contains only explicitly approved, temporary,
+path-scoped deviations from the current public Storybook contract. It is not a
+second migration ledger and cannot be used to preserve known legacy debt.
 
 ## 13. Health-derived operator patterns (2026-07)
 
@@ -220,8 +279,11 @@ and administrative surfaces during the full style-guide sweep:
   Empty charts stay honest and reduced motion removes animation.
 - **Container responsiveness is the contract.** Named containers drive card,
   control, and table layout. Headers wrap; essential state never truncates;
-  dense raw tables scroll inside their own card. Verify at 1024/720/480/320,
-  including the surrounding shell.
+  dense raw tables scroll inside their own card. A `split` grid remains
+  single-column until both objects have a comfortable reading width. Verify at 1024/720/480/320,
+  including the surrounding shell. Below the desktop breakpoint, secondary
+  shell rails collapse by default and reopen as overlays; they never consume
+  the page canvas.
 - **Only mounted views poll.** URL-backed tabs mount only the selected panel.
   Resource hooks cancel superseded requests, retain last good data after a
   background failure, and distinguish initial error, refreshing, and stale.

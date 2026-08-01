@@ -1,17 +1,43 @@
-# Shared UI Patterns
+# Shared UI Patterns (legacy migration reference)
 
-All shared UI primitives in this doc are re-exported from `@bakin/sdk/components` (plus `@bakin/sdk/ui` for shadcn primitives and `@bakin/sdk/hooks` for React hooks). Plugin authors should always import via the SDK, never directly from `packages/host/src/components/*` or the legacy `src/components/*` shims:
+> New browser UI must use public Storybook and the focused SDK entrypoints.
+> This document explains existing compatibility adapters and historical
+> product behavior; it is not an authoring API. Follow
+> `.claude/skills/bakin-ui-conformance/SKILL.md` before using any example here.
+
+> **Visual-authoring status (2026-07-18):** Product Character is the approved
+> default. The token, typography, spacing, surface, and state guidance in
+> `design-system.md` and `style-guide.md` supersede the hard-coded visual class
+> examples below. Keep using this document for component behavior, ownership,
+> and migration inventory; do not treat its legacy utility strings as a new
+> styling API.
+
+Promoted patterns in this document now resolve from focused
+`@makinbakin/sdk/*` entrypoints. `PluginHeader` is gone — use `PageHeader`
+from `@makinbakin/sdk/patterns`. Plugins never import directly from
+`packages/host/src/components/*`, `packages/ui/*`, or root `src/components/*`
+(the barrel-era shims there were deleted in storybook-refit P-final; only a
+handful of host-internal bridges remain):
 
 ```tsx
-import { BakinDrawer, PluginHeader, FacetFilter, AgentAvatar } from '@bakin/sdk/components'
-import { useSearch, useRuntimeStatus } from '@bakin/sdk/hooks'
+import { AgentAvatar, FacetFilter } from '@makinbakin/sdk/patterns'
+import { Drawer } from '@makinbakin/sdk/ui'
+import { useSearch, useRuntimeStatus } from '@makinbakin/sdk/hooks'
 ```
 
-Core plugins use the same imports. The path-style `src/components/*.tsx` entries in the tables below are the source-of-truth locations inside the repo — plugins never reach them directly.
+The frozen `@makinbakin/sdk/components` migration barrel is REMOVED
+(storybook-refit P-final) — every UI import comes from a focused entrypoint.
 
-## BakinDrawer
+Core plugins use the same public imports. Path-style `src/components/*.tsx`
+entries in the historical tables below describe compatibility implementations
+that have since been DELETED (P-final), not an authoring contract; verify
+every current owner in public Storybook and `design-system/public-api.json`.
 
-`src/components/bakin-drawer.tsx` — Resizable right-side drawer used by all detail views. Exposed to plugins as `BakinDrawer` from `@bakin/sdk/components`.
+## Drawer
+
+`src/components/drawer.tsx` — Historical compatibility implementation of
+the resizable right-side detail drawer. The supported public contract is
+`Drawer` from `@makinbakin/sdk/ui`.
 
 ### Props
 
@@ -38,7 +64,7 @@ The header renders as a single row: `[Title] ... [actions] [X close]`
 ### Usage with Action Menu
 
 ```tsx
-<BakinDrawer
+<Drawer
   open={isOpen}
   onOpenChange={(open) => { if (!open) onClose() }}
   title="Task Details"
@@ -95,7 +121,7 @@ Always use `min-w-36` on `DropdownMenuContent` to prevent narrow popups from sma
 
 ### Drawer Content Sections
 
-All drawers follow the same section patterns inside `BakinDrawer`:
+All drawers follow the same section patterns inside `Drawer`:
 
 - **Hero card** (first element): `flex items-center gap-4 rounded-lg p-4 border border-border bg-surface` — AgentAvatar left, info right
 - **Metadata grid**: `grid grid-cols-2 gap-3` with `rounded-lg bg-surface p-3 space-y-1` cards. Label: `text-[11px] text-muted-foreground uppercase tracking-wider` with optional icon.
@@ -105,7 +131,7 @@ All drawers follow the same section patterns inside `BakinDrawer`:
 - **Spacing**: `space-y-6` between major sections, `Separator` between groups
 - **Quick actions**: `flex flex-wrap items-center gap-2` with `Button variant="outline" size="sm"`
 
-### Where BakinDrawer Is Used
+### Where Drawer Is Used
 
 | Plugin | Component | Detail |
 |--------|-----------|--------|
@@ -166,7 +192,7 @@ Create mode is derived: `isCreate = editing && !existingItem`
 
 ### Edit Form
 
-- BakinDrawer with `onBack={isCreate ? undefined : onCancelEdit}` and `dirty={dirty}`
+- Drawer with `onBack={isCreate ? undefined : onCancelEdit}` and `dirty={dirty}`
 - Form fields with `bg-surface` inputs
 - Save/Cancel buttons
 
@@ -203,7 +229,7 @@ Create mode is derived: `isCreate = editing && !existingItem`
 | `taskId` | `string` | Task to show assets for |
 | `readOnly` | `boolean` | Hides "Add" button when true (use in detail view) |
 
-## PluginHeader Actions
+## PluginHeader Actions (legacy consumers)
 
 `PluginHeader` has an `actions` slot for controls that sit to the right of the search bar.
 
@@ -331,7 +357,7 @@ Set `disabled` while a search is active so the upstream relevance order (e.g. An
 ## Key Files
 
 ```
-src/components/bakin-drawer.tsx          — Resizable drawer shell
+src/components/drawer.tsx          — Resizable drawer shell
 src/components/agent-filter.tsx          — Single-select agent pill strip
 src/components/agent-select.tsx          — Agent picker with avatars
 src/components/model-select.tsx          — Model picker grouped by tier
@@ -343,6 +369,6 @@ src/hooks/use-search.ts                  — Search hook (Antfly-backed) with de
 src/hooks/use-runtime-status.ts          — Runtime restart sync checker
 src/hooks/use-vertical-resize.ts         — Drag-to-resize hook (messaging panels + brainstorm)
 src/components/ui/dropdown-menu.tsx      — Base dropdown (focus: bg-secondary)
-src/components/ui/sheet.tsx              — Sheet primitive (used by BakinDrawer)
+src/components/ui/sheet.tsx              — Sheet primitive (used by Drawer)
 src/core/app-services.ts                 — boot-created runtime/search/task services
 ```

@@ -37,8 +37,8 @@ const agents = new Map([[
 mock.module('@makinbakin/sdk/hooks', () => ({
   useAgent: (id: string) => (id ? agents.get(id) : undefined),
 }))
-mock.module('@makinbakin/sdk/components', () => ({
-  AgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid="avatar">{agentId}</span>,
+mock.module('../../../plugins/workflows/components/workflow-agent-identity', () => ({
+  WorkflowAgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid="avatar">{agentId}</span>,
 }))
 
 import { AgentAssignmentLabel } from '../../../plugins/workflows/components/nodes/agent-assignment-label'

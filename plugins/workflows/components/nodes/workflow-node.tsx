@@ -13,24 +13,24 @@ export function WorkflowNode({ data }: NodeProps) {
   const { label, workflow_id, description } = data as WorkflowNodeData
 
   return (
-    <div className="flex h-full w-full flex-col justify-center rounded-lg border-2 border-dashed border-cyan-500/60 bg-zinc-900 px-4 py-3 shadow-lg">
+    <div className="flex h-full w-full flex-col justify-center rounded-bakin-surface border-2 border-dashed border-bakin-signal-info/60 bg-bakin-surface-default px-4 py-3 shadow-lg">
       <div className="mb-2 flex items-center gap-2">
-        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-cyan-900/50 ring-1 ring-cyan-500/40">
-          <Workflow className="size-3.5 text-cyan-400" />
+        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-signal-info/15 ring-1 ring-bakin-signal-info/40">
+          <Workflow className="size-3.5 text-bakin-signal-info" />
         </span>
-        <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">
+        <span className="text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-wider text-bakin-signal-info">
           Nested Workflow
         </span>
       </div>
-      <div className="truncate text-sm font-medium text-zinc-100">{label}</div>
+      <div className="truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{label}</div>
       {workflow_id && (
-        <div className="mt-1 truncate font-mono text-[10px] text-zinc-500">{workflow_id}</div>
+        <div className="mt-1 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">{workflow_id}</div>
       )}
       {description && (
-        <p className="mt-0.5 truncate text-[11px] leading-snug text-zinc-500">{description}</p>
+        <p className="mt-0.5 truncate text-bakin-typography-size-meta leading-snug text-bakin-text-muted">{description}</p>
       )}
-      <Handle type="target" position={Position.Top} className="!bg-zinc-500" />
-      <Handle type="source" position={Position.Bottom} className="!bg-zinc-500" />
+      <Handle type="target" position={Position.Top} className="!bg-bakin-text-muted" />
+      <Handle type="source" position={Position.Bottom} className="!bg-bakin-text-muted" />
     </div>
   )
 }

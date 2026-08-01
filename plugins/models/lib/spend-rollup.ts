@@ -41,6 +41,17 @@ export interface SpendRollups {
   byWorkClass: SpendWorkClassRollup[]
 }
 
+export type SpendTimelineWindow = '24h' | '7d' | '30d' | 'all'
+
+export interface SpendTimelineBucket {
+  startMs: number
+  endMs: number
+  /** Known priced metered cost; null when a bucket has only unpriced metered usage. */
+  costUsdMicros: number | null
+  subscriptionTokens: number
+  unpricedMeteredTokens: number
+}
+
 interface Bucket {
   runs: number
   pricedRuns: number
@@ -48,6 +59,72 @@ interface Bucket {
   tokens: number
   hasTokens: boolean
   subscriptionTokens: number
+}
+
+const HOUR_MS = 60 * 60 * 1000
+const DAY_MS = 24 * HOUR_MS
+
+function timelineShape(
+  rows: RunCostSpendRow[],
+  window: SpendTimelineWindow,
+  now: number,
+): { startMs: number; bucketMs: number; count: number } {
+  if (window === '24h') return { startMs: now - DAY_MS, bucketMs: 4 * HOUR_MS, count: 6 }
+  if (window === '7d') return { startMs: now - 7 * DAY_MS, bucketMs: DAY_MS, count: 7 }
+  if (window === '30d') return { startMs: now - 30 * DAY_MS, bucketMs: DAY_MS, count: 30 }
+
+  const earliest = rows.reduce((min, row) => Math.min(min, row.occurredAt), now)
+  const span = Math.max(1, now - earliest)
+  const count = Math.min(12, Math.max(1, Math.ceil(span / (30 * DAY_MS))))
+  const bucketMs = Math.max(1, Math.ceil(span / count))
+  return { startMs: now - bucketMs * count, bucketMs, count }
+}
+
+/**
+ * Builds a bounded, ascending trend series. Cost and subscription usage stay
+ * in separate fields so consumers cannot accidentally plot unlike units on
+ * one axis.
+ */
+export function buildSpendTimeline(
+  rows: RunCostSpendRow[],
+  window: SpendTimelineWindow,
+  now: number,
+): SpendTimelineBucket[] {
+  const { startMs, bucketMs, count } = timelineShape(rows, window, now)
+  const buckets = Array.from({ length: count }, (_, index) => ({
+    startMs: startMs + index * bucketMs,
+    endMs: index === count - 1 ? now : startMs + (index + 1) * bucketMs,
+    pricedCost: 0,
+    pricedRuns: 0,
+    subscriptionTokens: 0,
+    unpricedMeteredTokens: 0,
+  }))
+
+  for (const row of rows) {
+    if (row.occurredAt < startMs || row.occurredAt > now) continue
+    const index = Math.min(count - 1, Math.max(0, Math.floor((row.occurredAt - startMs) / bucketMs)))
+    const target = buckets[index]!
+    if (row.costUsdMicros !== null) {
+      target.pricedCost += row.costUsdMicros
+      target.pricedRuns += 1
+    } else if (row.lane === 'subscription') {
+      target.subscriptionTokens += row.totalTokens ?? 0
+    } else {
+      target.unpricedMeteredTokens += row.totalTokens ?? 0
+    }
+  }
+
+  return buckets.map((item) => ({
+    startMs: item.startMs,
+    endMs: item.endMs,
+    costUsdMicros: item.pricedRuns > 0
+      ? item.pricedCost
+      : item.unpricedMeteredTokens > 0
+        ? null
+        : 0,
+    subscriptionTokens: item.subscriptionTokens,
+    unpricedMeteredTokens: item.unpricedMeteredTokens,
+  }))
 }
 
 function bucket(): Bucket {

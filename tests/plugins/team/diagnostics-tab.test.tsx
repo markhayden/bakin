@@ -18,7 +18,7 @@ const contentDirMock = () => ({
 mock.module('../../../src/core/content-dir', contentDirMock)
 mock.module('../../../packages/core/src/content-dir', contentDirMock)
 
-mock.module('@makinbakin/sdk/components', () => ({
+mock.module('@makinbakin/sdk/charts', () => ({
   Sparkline: ({ label }: { label: string }) => <svg aria-label={label} />,
   ChartExplainer: ({ children }: { children: ReactNode }) => <p role="note">{children}</p>,
 }))
@@ -84,6 +84,10 @@ const ROUTES: Record<string, unknown> = {
         model: 'sonnet-5', inputTokens: 41_000, outputTokens: 2_100, totalTokens: 43_100, costUsdMicros: 40_000,
         logs: [{ ts: '2026-07-05T00:00:10Z', message: 'starting' }], logsTruncated: false,
       },
+      {
+        type: 'event', ts: 2100, event: 'agent_pkg.lessons_retrieved', severity: 'info',
+        message: 'Retrieved 1 lesson(s) for this dispatch', taskId: 't1',
+      },
       { type: 'event', ts: 1000, event: 'task.bypass_detected', severity: 'warn', message: 'Bypass detected on t9', taskId: 't9' },
     ],
   },
@@ -109,7 +113,9 @@ describe('DiagnosticsTab', () => {
     })
 
     // Drift panel: finding + attribution + receipt line
-    expect(await screen.findByText('block-stale')).toBeDefined()
+    expect(await screen.findByText('Managed block out of date')).toBeDefined()
+    expect(document.querySelector('[data-drift-checklist]')).toBeDefined()
+    expect(document.querySelector('[data-drift-checkbox="incomplete"]')).toBeDefined()
     expect(screen.getByText(/Changed inputs:/)).toBeDefined()
     expect(screen.getByText(/verification ok/)).toBeDefined()
 
@@ -120,9 +126,23 @@ describe('DiagnosticsTab', () => {
 
     // Timeline panel: run row + warn event
     expect(await screen.findByText('resize hero images')).toBeDefined()
-    expect(screen.getByText(/turn-ok/)).toBeDefined()
+    expect(screen.getByText('Completed')).toBeDefined()
+    expect(screen.getByText('Duration')).toBeDefined()
     expect(screen.getByText(/Bypass detected/)).toBeDefined()
     expect(screen.getByText(/1 progress log line/)).toBeDefined()
+  })
+
+  it('nests related audit evidence inside its dispatch attempt and leaves unrelated events standalone', async () => {
+    stubFetch()
+    render(<DiagnosticsTab agentId="pixel" />)
+
+    const run = await screen.findByRole('article', {
+      name: 'Dispatch attempt 1: resize hero images',
+    })
+    expect(run.textContent).toContain('Retrieved 1 lesson(s) for this dispatch')
+    expect(run.textContent).toContain('Attempt 1')
+    expect(screen.getByRole('article', { name: 'Standalone warning: Bypass detected on t9' })).toBeDefined()
+    expect(screen.getAllByRole('article')).toHaveLength(2)
   })
 
   it('Sync now posts to the sync endpoint and rescans', async () => {
@@ -264,7 +284,10 @@ describe('DiagnosticsTab', () => {
     expect(screen.queryByText(/of 64\.0 KiB budget/)).toBeNull()
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry context budget' })) })
-    await waitFor(() => expect(screen.getByText(/of 64\.0 KiB budget/)).toBeDefined())
+    await waitFor(() => {
+      const progress = screen.getByRole('progressbar', { name: 'Estimated per-dispatch context' })
+      expect(progress.getAttribute('aria-valuemax')).toBe('65536')
+    })
     expect(settingsAttempts).toBe(2)
   })
 
@@ -414,7 +437,7 @@ describe('DiagnosticsChipsView', () => {
     const buttons = screen.getAllByRole('button')
     expect(buttons).toHaveLength(3)
     expect(buttons[0]!.textContent).toContain('Drift')
-    expect(buttons[0]!.textContent).toContain('⚠')
+    expect(buttons[0]!.textContent).toContain('needs attention')
     expect(buttons[1]!.textContent).toContain('ok')
   })
 })

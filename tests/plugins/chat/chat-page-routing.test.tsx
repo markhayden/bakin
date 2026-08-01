@@ -120,6 +120,10 @@ describe('ChatPage path-based identity', () => {
     await waitFor(() => {
       expect(container.textContent).toContain('Start a chat')
     })
+    expect(container.querySelector('[data-archetype="workspace"]')).not.toBeNull()
+    expect(container.querySelector('[data-slot="page-header"]')).not.toBeNull()
+    expect(container.querySelector('[data-slot="search-input-control"]')).not.toBeNull()
+    expect(container.querySelector('[data-chat-workspace]')).not.toBeNull()
   })
 
   it('selecting a rail chat pushes /chat/<id>', async () => {
@@ -133,10 +137,22 @@ describe('ChatPage path-based identity', () => {
     await waitFor(() => {
       expect(container.querySelector(`[data-chat-row="${CHAT_A}"]`)).not.toBeNull()
     })
-    await act(async () => { fireEvent.click(container.querySelector(`[data-chat-row="${CHAT_A}"]`)!) })
+    // The row is a kit ListRow whose full-width ghost Button owns the click (refit T6.5).
+    await act(async () => { fireEvent.click(container.querySelector(`[data-chat-row="${CHAT_A}"] button`)!) })
     const pushed = navigations.find(
       (n) => (n as { to?: string }).to === `/chat/${CHAT_A}`,
     )
     expect(pushed).toBeDefined()
+  })
+
+  it('active conversations expose a mobile-safe route back to the chat list', async () => {
+    mockFetch()
+    setURL(`http://localhost:3737/chat/${CHAT_A}`)
+    const { container } = render(<ChatPage chatId={CHAT_A} />)
+    await waitFor(() => {
+      expect(container.querySelector('[data-chat-mobile-back]')).not.toBeNull()
+    })
+    fireEvent.click(container.querySelector('[data-chat-mobile-back]')!)
+    expect(navigations.some((value) => (value as { to?: string }).to === '/chat')).toBe(true)
   })
 })

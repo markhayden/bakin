@@ -2,17 +2,25 @@
 
 import { useState, type FormEvent } from 'react'
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Button,
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  Field,
+  FieldControl,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  Form,
+  FormActions,
   Input,
-  Label,
+  SubmitButton,
 } from '@makinbakin/sdk/ui'
-import { Loader2 } from 'lucide-react'
 
 /**
  * Adopt-flow dialog — pre-targets a specific runtime agent. Used from
@@ -66,7 +74,7 @@ export function AdoptDialog({ open, onOpenChange, agentId, onAdopted }: AdoptDia
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog busy={submitting} open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Adopt {agentId} into a package</DialogTitle>
@@ -76,40 +84,50 @@ export function AdoptDialog({ open, onOpenChange, agentId, onAdopted }: AdoptDia
             assets and lessons.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="adopt-source">Package source</Label>
-            <Input
-              id="adopt-source"
-              placeholder="github:user/repo@v0.1.0 or ./agents/pixel"
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-              autoFocus
-            />
-          </div>
-          <div className="rounded border border-blue-300/40 bg-blue-50/40 p-3 text-sm text-blue-900 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-200">
-            <p className="font-medium">Adopt mode keeps your workspace files.</p>
-            <p className="mt-1 text-xs">
+        <Form busy={submitting} onSubmit={handleSubmit}>
+          <FieldGroup>
+            <Field name="source">
+              <FieldLabel htmlFor="adopt-source" requirement="required">Package source</FieldLabel>
+              <FieldDescription>A GitHub shorthand or a local package path.</FieldDescription>
+              <FieldControl
+                required
+                render={(
+                  <Input
+                    id="adopt-source"
+                    aria-label="Package source"
+                    placeholder="github:user/repo@v0.1.0 or ./agents/pixel"
+                    value={source}
+                    onChange={(e) => setSource(e.target.value)}
+                    autoFocus
+                  />
+                )}
+              />
+            </Field>
+          </FieldGroup>
+
+          <Alert tone="neutral">
+            <AlertTitle>Adopt mode keeps your workspace files</AlertTitle>
+            <AlertDescription>
               SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md as they are now —
               the package's templates won't overwrite them. Only the bakin:lesson
               markers + asset files + (optionally) skills get projected.
-            </p>
-          </div>
-          {error && (
-            <div className="rounded border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+            </AlertDescription>
+          </Alert>
+
+          {error ? (
+            <Alert tone="danger">
+              <AlertTitle>Agent was not adopted</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <FormActions>
+            <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Adopt
-            </Button>
-          </DialogFooter>
-        </form>
+            <SubmitButton size="sm" busyLabel="Adopting…">Adopt agent</SubmitButton>
+          </FormActions>
+        </Form>
       </DialogContent>
     </Dialog>
   )

@@ -1,18 +1,18 @@
 'use client'
 
-import { AgentFilter } from "@makinbakin/sdk/components"
-import { FacetFilter } from "@makinbakin/sdk/components"
-import { useAgentIds } from "@makinbakin/sdk/hooks"
+import { useMemo } from 'react'
+import { AgentAvatar, AgentFilter, FacetFilter, StatusMarker } from '@makinbakin/sdk/patterns'
+import { useAgentIds, useAgentStore } from '@makinbakin/sdk/hooks'
 import { Switch } from "@makinbakin/sdk/ui"
 import { Eye, EyeOff } from 'lucide-react'
-import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
+import { COLUMN_CONFIG, STATUS_TONES } from '../constants'
 import type { ColumnId } from '../types'
 
 const STATUS_OPTIONS: { value: string; label: string; icon: React.ReactNode }[] =
   (['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived'] as ColumnId[]).map(id => ({
     value: id,
     label: COLUMN_CONFIG[id].label,
-    icon: <span className={`size-2 rounded-full ${STATUS_DOT_COLORS[id]}`} />,
+    icon: <StatusMarker tone={STATUS_TONES[id]} />,
   }))
 
 /** Brand-facet sentinel for unbranded tasks — mirrors NO_BRAND in use-task-filters. */
@@ -44,23 +44,51 @@ export function TaskFilters({
   brandFilter, onBrandChange, brandOptions,
 }: TaskFiltersProps) {
   const agentIds = useAgentIds()
+  const agentMap = useAgentStore((state) => state.agentMap)
+  const displaySettings = useAgentStore((state) => state.displaySettings)
+  const agentOptions = useMemo(() => agentIds.map((id) => {
+    const agent = agentMap[id]
+    const display = displaySettings[id]
+    const name = display?.displayName ?? agent?.name ?? id
+    return {
+      value: id,
+      label: name,
+      visual: (
+        <AgentAvatar
+          agent={{
+            id,
+            name,
+            imageSrc: agent?.headshot,
+            color: display?.accentColor,
+          }}
+          size="sm"
+          decorative
+        />
+      ),
+    }
+  }), [agentIds, agentMap, displaySettings])
 
   const brandFacetOptions = (brandOptions ?? []).map(b => ({
     value: b.id,
     label: b.name,
-    icon: <span className="size-2 rounded-full bg-fuchsia-500/50" />,
+    icon: <span className="size-bakin-2 rounded-bakin-pill bg-bakin-signal-accent/50" />,
   }))
   if (brandFacetOptions.length > 0) {
     brandFacetOptions.push({
       value: NO_BRAND_VALUE,
       label: 'No brand',
-      icon: <span className="size-2 rounded-full border border-muted-foreground/50 bg-transparent" />,
+      icon: <span className="size-bakin-2 rounded-bakin-pill border border-bakin-text-muted/50 bg-transparent" />,
     })
   }
 
   return (
-    <div className="flex items-center gap-3 overflow-x-auto">
-      <AgentFilter agentIds={agentIds} value={agentFilter} onChange={onAgentChange} />
+    <div className="flex min-w-0 flex-wrap items-center gap-bakin-3">
+      <AgentFilter
+        options={agentOptions}
+        value={agentFilter}
+        onValueChange={onAgentChange}
+        compact
+      />
 
       {/* Brand facet (#419) — appears once at least one brand exists */}
       {onBrandChange && brandFacetOptions.length > 0 && (
@@ -84,19 +112,22 @@ export function TaskFilters({
       )}
 
       {onShowScheduledChange && (
-        <label
-          className="flex h-8 items-center gap-2 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground cursor-pointer select-none"
+        <div
+          data-slot="scheduled-tasks-filter"
+          role="group"
+          aria-label="Scheduled task visibility"
+          className="flex h-bakin-8 select-none items-center gap-bakin-2 rounded-bakin-control px-bakin-2 font-bakin-typography-weight-semibold text-bakin-text-muted"
           title={showScheduled ? 'Hide scheduled tasks' : 'Show scheduled tasks'}
         >
-          {showScheduled ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
-          <span>Scheduled Tasks</span>
+          {showScheduled ? <Eye className="size-bakin-4" aria-hidden="true" /> : <EyeOff className="size-bakin-4" aria-hidden="true" />}
+          <span className="text-bakin-typography-size-body">Scheduled Tasks</span>
           <Switch
             checked={showScheduled}
             onCheckedChange={(checked: boolean) => onShowScheduledChange(checked)}
             size="sm"
             aria-label={showScheduled ? 'Hide scheduled tasks' : 'Show scheduled tasks'}
           />
-        </label>
+        </div>
       )}
 
     </div>

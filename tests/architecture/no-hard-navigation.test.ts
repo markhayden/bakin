@@ -59,7 +59,7 @@ const BANS: Ban[] = [
     allow: (rel) =>
       // Deliberately re-issues an intercepted same-origin navigation as a
       // full load after the user confirms discarding unsaved changes.
-      rel === 'src/components/unsaved-changes-guard.tsx'
+      rel === 'packages/sdk/src/navigation/unsaved-changes-guard.tsx'
       // Hard-navigation fallback when the shell's navigate bridge isn't
       // registered (notification clicked before boot).
       || rel === 'src/lib/browser-notify.ts',
@@ -93,7 +93,7 @@ const BANS: Ban[] = [
       // Explicit "Reload" button in the plugin-boot-failure banner.
       || rel === 'packages/host/src/plugin-host/PluginHost.tsx'
       // The public router.refresh() API — a full reload is its contract.
-      || rel === 'packages/sdk/src/hooks/router.ts'
+      || rel === 'packages/sdk/src/navigation/router.ts'
       // Runtime manifest changed; non-dev tabs must re-boot to pick it up.
       || rel === 'src/hooks/use-sse.ts',
     catches: ['window.location.reload()'],
@@ -180,11 +180,11 @@ describe('no hard navigation for internal routes', () => {
 
   it('allowlisted files still exist (stale entries rot the allowlist)', () => {
     const pinned = [
-      'src/components/unsaved-changes-guard.tsx',
+      'packages/sdk/src/navigation/unsaved-changes-guard.tsx',
       'src/lib/browser-notify.ts',
       'packages/host/src/components/layout/header.tsx',
       'packages/host/src/plugin-host/PluginHost.tsx',
-      'packages/sdk/src/hooks/router.ts',
+      'packages/sdk/src/navigation/router.ts',
       'src/hooks/use-sse.ts',
     ]
     for (const rel of pinned) {

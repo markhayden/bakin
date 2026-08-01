@@ -1,18 +1,6 @@
 'use client'
 
-import { Badge } from '@makinbakin/sdk/ui'
-
-/**
- * Visual badge for an agent's agent-package state. Five states map to
- * five color variants so the team grid surfaces install status at a
- * glance.
- *
- *   unmanaged          gray   — exists in runtime, no Bakin tracking
- *   adopted            blue   — package attached, workspace files preserved
- *   managed            green  — fully package-managed
- *   drifted            yellow — projection sha mismatch (warn from doctor)
- *   update-available   orange — newer version of the source pkg published
- */
+import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 
 export type PackageState =
   | 'absent'
@@ -23,66 +11,74 @@ export type PackageState =
 
 export interface PackageStateBadgeProps {
   state: PackageState
-  /** Optional package id — shown in a secondary line under the badge */
   packageId?: string
-  /** Hover tooltip override; defaults to a state-specific explainer */
   title?: string
-  /**
-   * Compact mode — drops the text label, renders a small colored pill.
-   * For cramped contexts like the agent grid card. Tooltip is preserved
-   * so the user can still read the state on hover.
-   */
   compact?: boolean
 }
 
-const STATE_STYLES: Record<PackageState, { label: string; cls: string; tip: string }> = {
+const STATE_PRESENTATION: Record<PackageState, {
+  label: string
+  tone: StatusTone
+  dot: string
+  tip: string
+}> = {
   absent: {
     label: 'absent',
-    cls: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400',
+    tone: 'neutral',
+    dot: 'bg-bakin-text-muted',
     tip: 'No runtime entry and no package tracking.',
   },
   unmanaged: {
     label: 'unmanaged',
-    cls: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400',
-    tip: 'Exists in the active runtime but no Bakin agent-package tracks it. Install or adopt to enable lessons / project asset management.',
+    tone: 'neutral',
+    dot: 'bg-bakin-text-muted',
+    tip: 'This runtime agent is not tracked by a Bakin package.',
   },
   managed: {
     label: 'managed',
-    cls: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-    tip: 'Agent package-managed. Bakin owns the composed workspace-file blocks; skills + assets project from the package source.',
+    tone: 'success',
+    dot: 'bg-bakin-action-primary-background',
+    tip: 'Bakin manages this agent package and its projected workspace files.',
   },
   drifted: {
     label: 'drifted',
-    cls: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
-    tip: 'Projection sha mismatch detected. Run `bakin agents sync` (or `bakin install agent-sync`) to repair.',
+    tone: 'attention',
+    dot: 'bg-bakin-signal-highlight',
+    tip: 'Projected files no longer match the recorded package state.',
   },
   'update-available': {
     label: 'update available',
-    cls: 'bg-info/10 text-info',
-    tip: 'Source repo has moved past the recorded commit. Run `bakin agents sync` to pull.',
+    tone: 'accent',
+    dot: 'bg-bakin-signal-accent',
+    tip: 'A newer version of the source package is available.',
   },
 }
 
 export function PackageStateBadge({ state, packageId, title, compact }: PackageStateBadgeProps) {
-  const style = STATE_STYLES[state]
+  const presentation = STATE_PRESENTATION[state]
+  const tooltip = title ?? presentation.tip
+
   if (compact) {
     return (
       <span
-        title={title ?? `${style.label} — ${style.tip}`}
-        aria-label={`Package state: ${style.label}`}
+        title={`${presentation.label} — ${tooltip}`}
+        aria-label={`Package state: ${presentation.label}`}
         data-state={state}
-        className={`inline-block size-2 rounded-full ${style.cls}`}
+        className={`inline-block size-bakin-2 shrink-0 rounded-bakin-pill ${presentation.dot}`}
       />
     )
   }
+
   return (
-    <span title={title ?? style.tip} className="inline-flex items-center gap-2">
-      <Badge className={style.cls} variant="secondary">
-        {style.label}
-      </Badge>
-      {packageId && state !== 'unmanaged' && state !== 'absent' && (
-        <span className="text-xs text-muted-foreground">[{packageId}]</span>
-      )}
+    <span title={tooltip} className="inline-flex min-w-0 flex-wrap items-center gap-bakin-2">
+      <StatusBadge tone={presentation.tone} variant="solid" size="xs">
+        {presentation.label}
+      </StatusBadge>
+      {packageId && state !== 'unmanaged' && state !== 'absent' ? (
+        <code className="break-all font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+          {packageId}
+        </code>
+      ) : null}
     </span>
   )
 }

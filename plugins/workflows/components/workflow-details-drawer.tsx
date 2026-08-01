@@ -6,12 +6,19 @@ import { Button } from "@makinbakin/sdk/ui"
 import { Input } from "@makinbakin/sdk/ui"
 import { Label } from "@makinbakin/sdk/ui"
 import { Textarea } from "@makinbakin/sdk/ui"
+import {
+  InspectorPanel,
+  InspectorPanelContent,
+  InspectorPanelFooter,
+  InspectorPanelHeader,
+} from "@makinbakin/sdk/patterns"
 import type { WorkflowDefinition } from '../types'
 
 /**
- * Controlled drawer for editing a workflow's name + description. Self-contained:
- * owns its draft name/description state (re-seeded when the definition prop
- * changes), props-only interface, no closure over editor state.
+ * Controlled inspector panel for editing a workflow's name + description.
+ * Self-contained: owns its draft name/description state (re-seeded when the
+ * definition prop changes), props-only interface, no closure over editor
+ * state. Composes the vetted InspectorPanel pattern beside the canvas.
  */
 export function WorkflowDetailsDrawer({
   definition,
@@ -36,28 +43,30 @@ export function WorkflowDetailsDrawer({
   }, [definition.description, definition.name])
 
   return (
-    <aside className="flex w-[25rem] flex-col border-l border-border bg-card">
-      <div className="flex items-start justify-between gap-3 border-b border-border p-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-medium">Workflow details</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Edit the workflow name and description.
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Close workflow details"
-          onClick={onClose}
-        >
-          <X className="size-3.5" />
-        </Button>
-      </div>
-      <div className="flex-1 overflow-y-auto p-3">
+    <InspectorPanel
+      label="Workflow details"
+      className="w-100 shrink-0 gap-0 border-l border-bakin-border-subtle bg-bakin-surface-default"
+    >
+      <InspectorPanelHeader
+        className="px-3 pt-3"
+        title="Workflow details"
+        description="Edit the workflow name and description."
+        actions={(
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Close workflow details"
+            onClick={onClose}
+          >
+            <X aria-hidden="true" className="size-3.5" />
+          </Button>
+        )}
+      />
+      <InspectorPanelContent className="flex-1 overflow-y-auto p-3">
         <div className="mb-3">
-          <Label className="text-xs" htmlFor="workflow-details-name">
-            Name <span className="text-red-400">*</span>
+          <Label className="text-bakin-typography-size-meta" htmlFor="workflow-details-name">
+            Name <span className="text-bakin-signal-danger">*</span>
           </Label>
           <Input
             id="workflow-details-name"
@@ -67,11 +76,11 @@ export function WorkflowDetailsDrawer({
             aria-invalid={!canApply || undefined}
           />
           {!canApply && (
-            <p className="mt-1 text-[11px] font-medium text-red-300">Enter a workflow name.</p>
+            <p className="mt-1 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-signal-danger">Enter a workflow name.</p>
           )}
         </div>
         <div className="mb-3">
-          <Label className="text-xs" htmlFor="workflow-details-description">
+          <Label className="text-bakin-typography-size-meta" htmlFor="workflow-details-description">
             Description
           </Label>
           <Textarea
@@ -82,8 +91,8 @@ export function WorkflowDetailsDrawer({
             placeholder="Describe when this workflow should be used"
           />
         </div>
-      </div>
-      <div className="flex items-center justify-between gap-2 border-t border-border p-3">
+      </InspectorPanelContent>
+      <InspectorPanelFooter className="justify-between p-3">
         <Button size="sm" variant="ghost" onClick={onClose} disabled={applying}>
           Cancel
         </Button>
@@ -100,7 +109,7 @@ export function WorkflowDetailsDrawer({
         >
           {applying ? 'Saving...' : applyLabel}
         </Button>
-      </div>
-    </aside>
+      </InspectorPanelFooter>
+    </InspectorPanel>
   )
 }

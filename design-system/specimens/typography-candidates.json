@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "status": "approved",
+  "selectedPair": "product-character",
+  "reviewRequired": false,
+  "approvedAt": "2026-07-18",
+  "fonts": [
+    {
+      "id": "inter",
+      "family": "Inter",
+      "role": "sans",
+      "package": "@fontsource/inter",
+      "version": "5.2.8",
+      "license": "OFL-1.1",
+      "upstream": "https://github.com/rsms/inter",
+      "distribution": "Fontsource Latin subsets bundled in the Storybook build"
+    },
+    {
+      "id": "space-grotesk",
+      "family": "Space Grotesk",
+      "role": "sans",
+      "package": "@fontsource/space-grotesk",
+      "version": "5.2.10",
+      "license": "OFL-1.1",
+      "upstream": "https://github.com/floriankarsten/space-grotesk",
+      "distribution": "Fontsource Latin subsets bundled in the Storybook build"
+    },
+    {
+      "id": "jetbrains-mono",
+      "family": "JetBrains Mono",
+      "role": "mono",
+      "package": "@fontsource/jetbrains-mono",
+      "version": "5.2.8",
+      "license": "OFL-1.1",
+      "upstream": "https://github.com/JetBrains/JetBrainsMono",
+      "distribution": "Fontsource Latin subsets bundled in the Storybook build"
+    }
+  ],
+  "directions": [
+    {
+      "id": "operational-neutral",
+      "label": "Operational neutral",
+      "disposition": "comparison-evidence",
+      "sans": "inter",
+      "mono": "jetbrains-mono",
+      "intent": "Maximize compact-data legibility and familiarity across operational surfaces."
+    },
+    {
+      "id": "product-character",
+      "label": "Product character",
+      "disposition": "selected-default",
+      "sans": "space-grotesk",
+      "mono": "jetbrains-mono",
+      "intent": "Add a more recognizable product voice while retaining a dedicated technical-data face."
+    }
+  ],
+  "coverage": [
+    "desktop",
+    "mobile-320",
+    "text-200",
+    "fallback-missing",
+    "fallback-slow"
+  ]
+}

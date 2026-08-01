@@ -1,6 +1,7 @@
 'use client'
 
-import { BarChart, ChartExplainer } from '@makinbakin/sdk/components'
+import { AreaChart, BarChart, ChartDataTable, ChartExplainer, type ChartSeries } from '@makinbakin/sdk/charts'
+import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
 import type { InteractionCoverage, UsageFeedData } from '../types'
 import { coveredActivityBuckets } from './activity-time-buckets'
 
@@ -10,6 +11,14 @@ function bucketLabel(value: string): string {
     ? value
     : date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
+
+const VOLUME_SERIES: readonly ChartSeries[] = [
+  { key: 'other', label: 'Other outcomes' },
+  { key: 'failed', label: 'Failed' },
+]
+
+/** Beyond this many intervals, stacked columns get unreadable — long windows render as a stacked area. */
+const LONG_WINDOW_BUCKETS = 12
 
 /**
  * Stacked activity volume across the window's time buckets. The buckets only
@@ -32,30 +41,70 @@ export function ActivityVolumeChart({
   )
 
   return (
-    <section
+    <Section
       aria-labelledby="activity-volume-title"
-      className="rounded-xl border border-border/80 bg-card p-4"
+      divider="top"
+      spacing="compact"
       data-testid="activity-volume-chart"
       data-chart-layout="split"
     >
-      <div>
+      <Stack gap="dense">
         <h3 id="activity-volume-title" className="font-semibold">Activity over time</h3>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
           Calls recorded in each interval of the selected window, split by result.
         </p>
         {!coverage.hasFullWindow && (
-          <p className="mt-1 text-xs text-warning">
+          <p className="text-bakin-typography-size-meta text-bakin-signal-highlight">
             Partial history since {bucketLabel(coverage.startsAt)}; intervals entirely before that are omitted.
           </p>
         )}
-      </div>
-      <div className="mt-3 grid items-start gap-4 @[52rem]/health:grid-cols-[minmax(0,1.6fr)_minmax(18rem,0.8fr)]">
+      </Stack>
+      <Grid layout="main-aside" gap="section" align="start">
         <div className="min-w-0">
-          <BarChart
-            stacked
-            label="Activity over time"
-            description="Recorded calls per interval. Other outcomes include succeeded, canceled, and unverified results; failures stack on top. Values are listed beside the chart."
-            data={visibleBuckets.map((bucket) => ({
+          {visibleBuckets.length > LONG_WINDOW_BUCKETS ? (
+            <AreaChart
+              stacked
+              label="Activity over time"
+              description="Recorded calls per interval. Other outcomes include succeeded, canceled, and unverified results; failures stack on top. Values are listed beside the chart."
+              data={visibleBuckets.map((bucket) => ({
+                x: bucket.start,
+                xLabel: bucketLabel(bucket.start),
+                values: {
+                  other: Math.max(0, bucket.count - bucket.failureCount),
+                  failed: bucket.failureCount,
+                },
+              }))}
+              series={VOLUME_SERIES}
+              height={120}
+              formatValue={(value) => Math.round(value).toLocaleString()}
+              emptyLabel="No activity was recorded in this window."
+              compactData
+            />
+          ) : (
+            <BarChart
+              stacked
+              label="Activity over time"
+              description="Recorded calls per interval. Other outcomes include succeeded, canceled, and unverified results; failures stack on top. Values are listed beside the chart."
+              data={visibleBuckets.map((bucket) => ({
+                x: bucket.start,
+                xLabel: bucketLabel(bucket.start),
+                values: {
+                  other: Math.max(0, bucket.count - bucket.failureCount),
+                  failed: bucket.failureCount,
+                },
+              }))}
+              series={VOLUME_SERIES}
+              height={120}
+              formatValue={(value) => Math.round(value).toLocaleString()}
+              emptyLabel="No activity was recorded in this window."
+              showDataTable={false}
+            />
+          )}
+        </div>
+        {visibleBuckets.length <= LONG_WINDOW_BUCKETS && (
+          <ChartDataTable
+            className="mt-bakin-0"
+            data={[...visibleBuckets].reverse().map((bucket) => ({
               x: bucket.start,
               xLabel: bucketLabel(bucket.start),
               values: {
@@ -63,46 +112,41 @@ export function ActivityVolumeChart({
                 failed: bucket.failureCount,
               },
             }))}
-            series={[
-              { key: 'other', label: 'Other outcomes', color: 'var(--chart-2)' },
-              { key: 'failed', label: 'Failed', color: 'var(--destructive)' },
-            ]}
-            height={120}
-            formatValue={(value) => Math.round(value).toLocaleString()}
-            emptyLabel="No activity was recorded in this window."
-            showDataTable={false}
+            series={VOLUME_SERIES}
+            caption="Activity over time data"
+            defaultOpen
+            renderTable={(context) => (
+              <div className="max-h-64 min-w-0 overflow-auto">
+                <table className="w-full text-bakin-typography-size-meta tabular-nums">
+                  <caption className="sr-only">{context.caption}</caption>
+                  <thead className="sticky top-0 bg-bakin-canvas-default text-bakin-text-muted">
+                    <tr className="border-b border-bakin-border-subtle">
+                      <th scope="col" className="px-bakin-3 py-bakin-2 text-left font-bakin-typography-weight-medium">Interval</th>
+                      {context.series.map((item) => (
+                        <th key={item.key} scope="col" className="px-bakin-3 py-bakin-2 text-right font-bakin-typography-weight-medium">{item.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {context.data.map((datum) => (
+                      <tr key={datum.x} className="border-b border-bakin-border-subtle last:border-b-0">
+                        <th scope="row" className="whitespace-nowrap px-bakin-3 py-bakin-2 text-left font-bakin-typography-weight-medium text-bakin-text-primary">
+                          <time dateTime={datum.x}>{datum.xLabel ?? datum.x}</time>
+                        </th>
+                        {context.series.map((item) => (
+                          <td key={item.key} className="px-bakin-3 py-bakin-2 text-right text-bakin-text-primary">
+                            {context.formatValue(datum.values[item.key] ?? 0)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           />
-        </div>
-        <div className="min-w-0 overflow-hidden rounded-lg border border-border/70 bg-background/35">
-          <div className="max-h-64 overflow-auto">
-            <table className="w-full text-xs tabular-nums">
-              <caption className="sr-only">Activity over time data</caption>
-              <thead className="sticky top-0 bg-card text-muted-foreground">
-                <tr className="border-b border-border/70">
-                  <th scope="col" className="px-3 py-2 text-left font-medium">Interval</th>
-                  <th scope="col" className="px-3 py-2 text-right font-medium">Other outcomes</th>
-                  <th scope="col" className="px-3 py-2 text-right font-medium">Failed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...visibleBuckets].reverse().map((bucket) => (
-                  <tr key={bucket.start} className="border-b border-border/50 last:border-b-0">
-                    <th scope="row" className="whitespace-nowrap px-3 py-1.5 text-left font-medium text-foreground">
-                      <time dateTime={bucket.start}>{bucketLabel(bucket.start)}</time>
-                    </th>
-                    <td className="px-3 py-1.5 text-right text-foreground">
-                      {Math.max(0, bucket.count - bucket.failureCount).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-1.5 text-right text-foreground">
-                      {bucket.failureCount.toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+        )}
+      </Grid>
       {visibleBuckets.length > 0 && (
         <ChartExplainer>
           {total.toLocaleString()} {total === 1 ? 'call' : 'calls'} in this window
@@ -112,6 +156,6 @@ export function ActivityVolumeChart({
             : ''}
         </ChartExplainer>
       )}
-    </section>
+    </Section>
   )
 }

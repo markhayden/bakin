@@ -9,11 +9,31 @@
  * editors that round-trip through the manifest PUT / doc routes.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
-import { MarkdownContent, UnderlineTabs, SaveBar, SectionCard, ConfirmDialog, AssetPicker, DangerZone, EmptyState, ErrorState, StatTile, StatusBadge, useUnsavedChangesGuard } from '@makinbakin/sdk/components'
+import { MarkdownContent } from '@makinbakin/sdk/content'
+import { Grid, Inline, Section, Stack } from '@makinbakin/sdk/layout'
+import { useRouter, useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
 import {
-  Button, Input, Textarea, Switch, Label, Skeleton, Progress,
+  ConfirmDialog,
+  DangerZone,
+  Page,
+  PageBody,
+  PageHeader,
+  SaveBar,
+  StatGroup,
+  StatTile,
+  StatusBadge,
+  // AssetLibraryPicker is the app-aware data adapter (library fetch +
+  // upload) — the presentation-only AssetPicker composed with the assets
+  // plugin wiring, promoted from the frozen barrel in the kit-additions batch.
+  AssetLibraryPicker,
+  ColorInput,
+} from '@makinbakin/sdk/patterns'
+import {
+  Banner, Button, Input, Textarea, Switch, Label, Skeleton, Progress, SystemState,
+  Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle,
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Tabs, TabsList, TabsTrigger,
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@makinbakin/sdk/ui'
 import { useQueryState, usePluginEvent, toast } from '@makinbakin/sdk/hooks'
@@ -40,10 +60,45 @@ const TABS = [
 const isHex = (h: string) => /^#[0-9a-fA-F]{6}$/.test(h)
 /** Frontmatter is machine metadata — previews render the body only. */
 const stripFrontmatter = (md: string) => md.replace(/^---\n[\s\S]*?\n---\n?/, '')
+/** A page preview already has its own title hierarchy; omit a document's leading H1. */
+const stripPreviewTitle = (md: string) => stripFrontmatter(md).replace(/^\s*#\s+[^\n]*(?:\n+|$)/, '')
 
-/** Thin alias over the SDK's section-variant empty state (promoted from here). */
+/** Soft in-card empty for a section body — the kit's inline system state. */
 function SectionEmpty({ children }: { children: React.ReactNode }) {
-  return <EmptyState variant="section" title={children} />
+  return <SystemState kind="initial-empty" scope="inline" title={children} />
+}
+
+/**
+ * The titled section card: icon + title, muted "why this matters" line, an
+ * optional header action, and the body — composed from the kit's Card
+ * primitives (the frozen-barrel SectionCard retired in the storybook refit).
+ */
+function SectionCard({
+  title, icon: Icon, description, action, children, className, contentClassName,
+}: {
+  title: React.ReactNode
+  icon?: React.ComponentType<{ className?: string }>
+  description?: React.ReactNode
+  action?: React.ReactNode
+  children: React.ReactNode
+  className?: string
+  contentClassName?: string
+}) {
+  return (
+    <Card className={className} data-section-card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          {Icon && <Icon className="size-4 text-bakin-text-muted" />}
+          {title}
+        </CardTitle>
+        {description && <CardDescription>{description}</CardDescription>}
+        {action && <CardAction>{action}</CardAction>}
+      </CardHeader>
+      <CardContent className={contentClassName ? `space-y-3 ${contentClassName}` : 'space-y-3'}>
+        {children}
+      </CardContent>
+    </Card>
+  )
 }
 
 /**
@@ -83,10 +138,10 @@ function FadeMore({
       </div>
       {showOverlay && (
         <div
-          className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-card from-45% to-transparent px-1 pb-1 pt-20"
+          className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-bakin-surface-default from-45% to-transparent px-1 pb-1 pt-20"
           data-fade-more
         >
-          <span className="min-w-0 truncate pb-1 text-xs text-muted-foreground">{summary}</span>
+          <span className="min-w-0 truncate pb-1 text-xs text-bakin-text-muted">{summary}</span>
           <Button variant="outline" size="sm" className="shrink-0" onClick={onAction} data-fade-more-action>
             {actionLabel}
           </Button>
@@ -100,7 +155,7 @@ const BLANK_HEX = '#888888'
 
 export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () => void }) {
   const [detail, setDetail] = useState<DetailResponse | null>(null)
-  const navigate = useNavigate()
+  const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [tabParam, setTab] = useQueryState('tab', 'overview')
@@ -265,19 +320,18 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
 
   /** Every doc opens in the dedicated editor route — never an inline swap (spec §7e). */
   const editDoc = useCallback(
-    (kind: DocKind, name: string, create = false) =>
-      void navigate({
-        to: '/brands/$brandId/docs/$kind/$name',
-        params: { brandId, kind, name },
-        search: (create ? { create: '1' } : {}) as never,
-      }),
-    [navigate, brandId],
+    (kind: DocKind, name: string, create = false) => {
+      const path = `/brands/${encodeURIComponent(brandId)}/docs/${encodeURIComponent(kind)}/${encodeURIComponent(name)}`
+      router.push(create ? `${path}?create=1` : path)
+    },
+    [router, brandId],
   )
 
   // Publishing gets a light confirm — it flips the switch agents act on.
   const [publishConfirm, setPublishConfirm] = useState(false)
   const [publishBusy, setPublishBusy] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
+  const [logoPickerRequested, setLogoPickerRequested] = useState(false)
   const publish = useCallback(async () => {
     setPublishBusy(true)
     setPublishError(null)
@@ -296,35 +350,62 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
 
   if (notFound) {
     return (
-      <div className="p-6">
-        <ErrorState
-          title="This brand doesn't exist"
-          message="It may have been deleted, or the link is stale."
-          retry={onBack}
+      <Page data-brand-detail-not-found>
+        <BrandStateHeader brandId={brandId} onBack={onBack} />
+        <PageBody
+          state={(
+            <SystemState
+              kind="initial-empty"
+              scope="page"
+              title="This brand doesn't exist"
+              description="It may have been deleted, or the link is stale."
+              action={<Button variant="outline" onClick={onBack}>Open brands</Button>}
+            />
+          )}
         />
-      </div>
+      </Page>
     )
   }
   if (error && !detail) {
     return (
-      <div className="p-6">
-        <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="size-3.5" /> Branding</Button>
-        <p className="mt-3 text-sm text-destructive">{error}</p>
-      </div>
+      <Page data-brand-detail-error>
+        <BrandStateHeader brandId={brandId} onBack={onBack} />
+        <PageBody
+          state={(
+            <SystemState
+              kind="error"
+              scope="page"
+              recovery="available"
+              title="Brand details couldn't load"
+              description={error}
+              action={<Button variant="outline" onClick={() => void refresh()}>Try again</Button>}
+            />
+          )}
+        />
+      </Page>
     )
   }
   if (!detail) {
-    // Hero + tabs skeleton — never a blank pane while loading.
     return (
-      <div className="flex flex-col gap-6 p-4 sm:p-6" data-brand-detail-loading>
-        <Skeleton className="h-8 w-24" />
-        <Skeleton className="h-40 rounded-2xl" />
-        <Skeleton className="h-8 w-96" />
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Skeleton className="h-40 rounded-xl" />
-          <Skeleton className="h-40 rounded-xl" />
-        </div>
-      </div>
+      <Page data-brand-detail-loading>
+        <BrandStateHeader brandId={brandId} onBack={onBack} />
+        <PageBody
+          state={(
+            <SystemState
+              kind="loading"
+              scope="page"
+              title="Loading brand"
+              description="The brand identity, guidance, lessons, and assets will appear here."
+              preview={(
+                <Stack gap="item">
+                  <Skeleton className="h-bakin-8 w-full max-w-lg" />
+                  <Skeleton className="h-24 w-full rounded-bakin-surface" />
+                </Stack>
+              )}
+            />
+          )}
+        />
+      </Page>
     )
   }
 
@@ -332,14 +413,15 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
   const b = staged ?? detail.brand
 
   return (
-    <div className="flex flex-col gap-6 p-4 sm:p-6">
-      {/* Icon-only history back — same pattern as the asset viewer. */}
-      <Button variant="ghost" size="sm" className="w-fit -ml-2 text-muted-foreground" onClick={onBack} aria-label="Back">
-        <ArrowLeft className="size-4" />
-      </Button>
-
-      {/* Publish lives in the draft banner (and Settings) — ONE prominent button, not three. */}
-      <PaletteHero brand={b} />
+    <Page data-brand-detail>
+      <BrandPageHeader
+        brand={b}
+        onBack={onBack}
+        onAddLogo={() => {
+          setTab('assets')
+          setLogoPickerRequested(true)
+        }}
+      />
 
       {b.draft && <DraftBanner brand={b} brandId={brandId} onPublish={() => setPublishConfirm(true)} />}
 
@@ -357,11 +439,38 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         }}
       />
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <Banner
+          tone="danger"
+          title="The latest brand data couldn't load"
+          description={error}
+          action={<Button variant="outline" size="sm" onClick={() => void refresh()}>Try again</Button>}
+        />
+      )}
 
-      <UnderlineTabs tabs={TABS} value={tab} onValueChange={(id) => setTab(id as typeof tab)} />
+      <Tabs value={tab} onValueChange={(id) => setTab(id as typeof tab)}>
+        <TabsList variant="underline" activateOnFocus aria-label={`${b.name} sections`}>
+          {TABS.map((item) => (
+            <TabsTrigger
+              key={item.id}
+              value={item.id}
+              id={`brand-detail-tab-${item.id}`}
+              aria-controls={`brand-detail-panel-${item.id}`}
+            >
+              {item.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
-      {tab === 'overview' && <OverviewTab brand={b} detail={detail} brandId={brandId} onGoTo={setTab} onEditDoc={editDoc} />}
+      <PageBody>
+        <div
+          id={`brand-detail-panel-${tab}`}
+          role="tabpanel"
+          aria-labelledby={`brand-detail-tab-${tab}`}
+          className="flex min-w-0 flex-1 flex-col gap-bakin-6"
+        >
+          {tab === 'overview' && <OverviewTab brand={b} detail={detail} brandId={brandId} onGoTo={setTab} onEditDoc={editDoc} />}
 
       {tab === 'identity' && (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -406,16 +515,14 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
                 <div key={i} data-palette-row={i}>
                   <div className="flex items-center gap-2">
                     {/* Swatch and hex field are two views of ONE value — either edits both. */}
-                    <input
-                      type="color"
-                      aria-label={`${c.name || 'color'} swatch`}
-                      value={isHex(c.hex) ? c.hex : '#000000'}
-                      onChange={(e) => update({ ...c, hex: e.target.value })}
-                      className="h-8 w-10 shrink-0 cursor-pointer rounded-md bg-transparent"
+                    <ColorInput
+                      ariaLabel={`${c.name || 'color'} swatch`}
+                      value={c.hex}
+                      onValueChange={(hex) => update({ ...c, hex })}
                     />
                     <Input className="w-32" placeholder="Primary" aria-label="Color name" value={c.name} onChange={(e) => update({ ...c, name: e.target.value })} />
                     <Input
-                      className={`w-28 font-mono ${hexInvalid ? 'ring-1 ring-destructive' : ''}`}
+                      className={`w-28 font-mono ${hexInvalid ? 'ring-1 ring-bakin-signal-danger' : ''}`}
                       aria-label="Hex value"
                       aria-invalid={hexInvalid || undefined}
                       value={c.hex}
@@ -424,7 +531,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
                     <Input className="flex-1" placeholder="buttons, links, calls-to-action" aria-label="Where it's used" value={c.usage ?? ''} onChange={(e) => update({ ...c, usage: e.target.value || undefined })} />
                     <RemoveBtn onClick={() => stage({ palette: b.palette.filter((_, j) => j !== i) })} />
                   </div>
-                  {hexInvalid && <p className="mt-1 pl-12 text-xs text-destructive">Hex colors look like #FF5A00</p>}
+                  {hexInvalid && <p className="mt-1 pl-12 text-xs text-bakin-signal-danger">Hex colors look like #FF5A00</p>}
                 </div>
               )
             })}
@@ -491,7 +598,14 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         />
       )}
 
-      {tab === 'assets' && <BrandAssetsSection brand={b} onSave={stage} />}
+      {tab === 'assets' && (
+        <BrandAssetsSection
+          brand={b}
+          onSave={stage}
+          logoPickerRequested={logoPickerRequested}
+          onLogoPickerRequestHandled={() => setLogoPickerRequested(false)}
+        />
+      )}
 
       {tab === 'settings' && (
         <BrandSettingsTab
@@ -504,11 +618,13 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
           // and offers to Save to a brand that no longer exists.
           onDeleted={() => {
             discard()
-            setTimeout(() => void navigate({ to: '/brands' }), 0)
+            setTimeout(() => router.push('/brands'), 0)
           }}
           onChanged={() => void refresh()}
         />
       )}
+        </div>
+      </PageBody>
 
       {/* ONE save path for the whole manifest — appears whenever anything is staged. */}
       <SaveBar
@@ -520,68 +636,137 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         onDiscard={discard}
       />
       {unsavedGuard.dialog}
-    </div>
+    </Page>
   )
 }
 
 // ─── Shared shells ────────────────────────────────────────────────────────────
 
-const inputCls = 'w-full rounded-md bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/70 outline-none ring-1 ring-inset ring-outline-variant/30 transition-shadow focus-visible:ring-2 focus-visible:ring-ring/60'
-
 function RemoveBtn({ onClick }: { onClick: () => void }) {
   return (
-    <button className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-surface-bright hover:text-destructive" onClick={onClick} aria-label="Remove">
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-xs"
+      className="shrink-0 text-bakin-text-muted hover:text-bakin-signal-danger"
+      onClick={onClick}
+      aria-label="Remove"
+    >
       <Trash2 className="size-3.5" />
-    </button>
+    </Button>
   )
 }
 
-// ─── Hero: the brand paints its own header ────────────────────────────────────
+// ─── Shared detail identity ───────────────────────────────────────────────────
 
-function PaletteHero({ brand }: { brand: BrandManifest }) {
-  const colors = brand.palette.filter((c) => isHex(c.hex))
-  const primary = colors[0]?.hex
-  const logo = brand.logos.find((l) => l.variant === 'primary') ?? brand.logos[0]
+function BrandBackButton({ onBack }: { onBack: () => void }) {
   return (
-    <div className="overflow-hidden rounded-2xl ring-1 ring-foreground/10">
-      {/* Proportioned palette band — primary widest; muted when empty. */}
-      <div className="flex h-20 motion-safe:transition-all" aria-hidden={colors.length === 0}>
-        {colors.length > 0 ? colors.map((c, i) => (
-          <div key={`${c.name}-${i}`} title={`${c.name} ${c.hex}${c.usage ? ` — ${c.usage}` : ''}`} style={{ backgroundColor: c.hex, flexGrow: colors.length - i }} />
-        )) : (
-          <div className="flex w-full items-center justify-center bg-surface-container text-xs text-muted-foreground">
-            No palette yet — add colors under Identity so image tools have brand colors to follow
-          </div>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className="rounded-bakin-pill"
+      onClick={onBack}
+      aria-label="Back to brands"
+      title="Back to brands"
+    >
+      <ArrowLeft />
+    </Button>
+  )
+}
+
+function BrandStateHeader({ brandId, onBack }: { brandId: string; onBack: () => void }) {
+  return (
+    <PageHeader
+      measure="wide"
+      navigation={<BrandBackButton onBack={onBack} />}
+      eyebrow="Branding / Detail"
+      title="Brand detail"
+      meta={<code className="font-bakin-typography-family-mono">{brandId}</code>}
+    />
+  )
+}
+
+function BrandPageHeader({
+  brand,
+  onAddLogo,
+  onBack,
+}: {
+  brand: BrandManifest
+  onAddLogo: () => void
+  onBack: () => void
+}) {
+  const colors = brand.palette.filter((c) => isHex(c.hex))
+  const logo = brand.logos.find((l) => l.variant === 'primary') ?? brand.logos[0]
+
+  return (
+    <Grid
+      layout="single"
+      gap="item"
+      align="start"
+      className="@3xl/layout-grid:grid-cols-4 @3xl/layout-grid:gap-x-bakin-6"
+      data-brand-header
+    >
+      <PageHeader
+        className="@3xl/layout-grid:col-span-3"
+        measure="wide"
+        navigation={<BrandBackButton onBack={onBack} />}
+        eyebrow="Branding / Detail"
+        title={brand.name}
+        description={brand.description}
+        meta={(
+          <>
+            <code className="font-bakin-typography-family-mono">{brand.id}</code>
+            {brand.draft
+              ? <StatusBadge tone="attention" variant="solid">Draft</StatusBadge>
+              : <StatusBadge tone="success" variant="solid" icon={Check}>Published</StatusBadge>}
+            {brand.source ? <StatusBadge tone="neutral" variant="soft" icon={ExternalLink}>Imported</StatusBadge> : null}
+          </>
         )}
-      </div>
-      {/* Identity panel, ambient-tinted by the primary color. */}
-      <div
-        className="flex flex-wrap items-start justify-between gap-4 bg-card p-5"
-        style={primary ? { background: `linear-gradient(115deg, color-mix(in oklab, ${primary} 12%, var(--card)) 0%, var(--card) 55%)` } : undefined}
+      />
+      <Stack
+        align="start"
+        className="w-full @3xl/layout-grid:col-start-4 @3xl/layout-grid:row-start-1 @3xl/layout-grid:mt-bakin-8 @3xl/layout-grid:items-end @3xl/layout-grid:pt-bakin-3"
+        data-brand-visual-identity
       >
-        <div className="flex min-w-0 items-start gap-4">
-          {logo && (
-            <img
-              src={`/api/assets/${logo.assetId}`}
-              alt={`${brand.name} logo`}
-              className="size-14 shrink-0 rounded-xl bg-background/40 object-contain p-1.5 ring-1 ring-foreground/10"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+        {logo ? (
+          <img
+            src={`/api/assets/${logo.assetId}`}
+            alt={`${brand.name} logo`}
+            className="size-24 shrink-0 object-contain"
+            data-brand-logo
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+          />
+        ) : (
+          <Button
+            variant="outline"
+            className="h-24 w-full flex-col whitespace-normal border-dashed text-center"
+            onClick={onAddLogo}
+            data-add-logo-from-header
+          >
+            <ImageIcon className="size-bakin-6" />
+            Add logo
+          </Button>
+        )}
+      </Stack>
+      {colors.length > 0 ? (
+        <span
+          role="img"
+          aria-label={`Brand palette: ${colors.map((color) => `${color.name} ${color.hex}`).join(', ')}`}
+          className="flex h-bakin-2 w-full overflow-hidden border border-bakin-border-subtle @3xl/layout-grid:col-span-2 @3xl/layout-grid:col-start-1 @3xl/layout-grid:row-start-2"
+          data-brand-palette
+        >
+          {colors.map((color) => (
+            <span
+              key={`${color.name}-${color.hex}`}
+              aria-hidden="true"
+              title={`${color.name} ${color.hex}${color.usage ? ` — ${color.usage}` : ''}`}
+              className="h-full min-w-0 flex-1"
+              style={{ backgroundColor: color.hex }}
             />
-          )}
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-2xl font-semibold tracking-tight">{brand.name}</h1>
-              <span className="font-mono text-xs text-muted-foreground">{brand.id}</span>
-              {brand.draft
-                ? <StatusBadge tone="warning">Draft</StatusBadge>
-                : <StatusBadge tone="success" icon={Check}>Published</StatusBadge>}
-              {brand.source && <StatusBadge tone="neutral" icon={ExternalLink}>imported</StatusBadge>}
-            </div>
-            {brand.description && <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{brand.description}</p>}
-          </div>
-        </div>
-      </div>
-    </div>
+          ))}
+        </span>
+      ) : null}
+    </Grid>
   )
 }
 
@@ -636,63 +821,89 @@ function OverviewTab({
   const completeness = detail.completeness
 
   return (
-    <div className="flex flex-col gap-6">
+    <Stack gap="section" data-brand-overview>
       {/* Finish-your-kit checklist: server-computed, every miss is a jump link. */}
       {completeness && completeness.percent < 100 && (
-        <SectionCard
-          title="Finish your kit"
-          icon={Check}
-          description="What's still missing before agents have the full picture — each item jumps to where you fix it."
-          action={
-            <span className="flex items-center gap-2">
-              <Progress value={completeness.percent} className="h-1.5 w-24" aria-label={`Kit ${completeness.percent}% complete`} />
-              <span className="text-xs tabular-nums text-muted-foreground">{completeness.percent}%</span>
-            </span>
-          }
+        <Section
+          spacing="compact"
+          data-kit-completeness
+          data-tone="neutral"
+          className="relative overflow-hidden rounded-bakin-surface border border-bakin-border-strong bg-bakin-surface-default px-bakin-4 py-bakin-4 before:absolute before:inset-y-0 before:start-0 before:w-bakin-1 before:bg-bakin-text-muted"
         >
-          <div className="grid gap-1 sm:grid-cols-2" data-kit-checklist>
+          <OverviewSectionHeader
+            title="Finish your kit"
+            icon={Info}
+            iconClassName="text-bakin-text-muted"
+            description="What's still missing before agents have the full picture — each item jumps to where you fix it."
+            action={(
+              <Inline gap="dense" wrap={false}>
+              <Progress value={completeness.percent} className="h-1.5 w-24" aria-label={`Kit ${completeness.percent}% complete`} />
+                <span className="text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">{completeness.percent}%</span>
+              </Inline>
+            )}
+          />
+          <Grid layout="split" gap="dense" data-kit-checklist>
             {completeness.items.map((item) => (
-              <button
+              <Button
                 key={item.key}
-                className="flex items-start gap-2.5 rounded-lg px-1 py-1 text-left transition-colors hover:bg-foreground/5"
+                variant="ghost"
+                className="h-auto min-h-bakin-8 justify-start whitespace-normal px-bakin-2 py-bakin-2 text-left"
                 onClick={() => onGoTo(item.fixTab)}
                 data-kit-item={item.key}
               >
                 {item.done
-                  ? <Check className="mt-0.5 size-4 shrink-0 text-success" />
-                  : <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />}
-                <span className="text-sm">
-                  <span className={item.done ? '' : 'text-warning'}>{item.label}</span>
-                  {!item.done && <span className="text-muted-foreground"> — {item.hint}</span>}
+                  ? (
+                      <span
+                        aria-hidden="true"
+                        className="flex size-bakin-4 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-action-primary-background text-bakin-action-primary-foreground"
+                        data-kit-checkbox="complete"
+                      >
+                        <Check className="size-bakin-3" />
+                      </span>
+                    )
+                  : (
+                      <span
+                        aria-hidden="true"
+                        className="size-bakin-4 shrink-0 rounded-bakin-control border border-bakin-text-muted/80 bg-bakin-canvas-default"
+                        data-kit-checkbox="incomplete"
+                      />
+                    )}
+                <span className="min-w-0 text-bakin-typography-size-body leading-relaxed">
+                  <span>{item.label}</span>
+                  {!item.done && <span className="text-bakin-text-muted"> — {item.hint}</span>}
                 </span>
-              </button>
+              </Button>
             ))}
-          </div>
-        </SectionCard>
+          </Grid>
+        </Section>
       )}
 
       {/* Stat tiles */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <StatGroup
+        label="Brand summary metrics"
+        className="[&>[data-stat-tile]]:min-w-[min(100%,12rem)] [&>[data-stat-tile]]:flex-1 @4xl/page-shell:[&>[data-stat-tile]]:max-w-72"
+      >
         <CardFootprintTile card={card} />
         <StatTile icon={FileText} label="Guidelines" value={detail.guidelines.length} sub="docs" onClick={() => onGoTo('guidelines')} />
         <StatTile icon={BookOpen} label="Lessons" value={detail.lessons.length} sub="banked" onClick={() => onGoTo('lessons')} />
         <StatTile icon={ImageIcon} label="Assets" value={assetCount} sub={`${brand.assetGroups.length} group(s)`} onClick={() => onGoTo('assets')} />
-      </div>
+      </StatGroup>
 
-      <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
-        <SectionCard
-          title="Voice"
-          icon={Sparkles}
-          description="How the brand talks — the biggest lever on how on-brand output reads."
-          action={
+      <Grid layout="main-aside" gap="section" align="start">
+        <Section divider="top" spacing="compact">
+          <OverviewSectionHeader
+            title="Voice"
+            icon={Sparkles}
+            description="How the brand talks — the biggest lever on how on-brand output reads."
+            action={(
             <Button
-              variant="ghost" size="xs" className="text-muted-foreground"
+              variant="ghost" size="xs" className="text-bakin-text-muted"
               onClick={() => onEditDoc('guidelines', 'voice.md', voice === null)}
             >
               <Pencil className="size-3" /> Edit voice
             </Button>
-          }
-        >
+            )}
+          />
           {voice === null
             ? <SectionEmpty>No voice.md yet — the biggest lever on how on-brand output reads.</SectionEmpty>
             : (
@@ -701,36 +912,69 @@ function OverviewTab({
                 actionLabel="Read the full voice guide"
                 onAction={() => onEditDoc('guidelines', 'voice.md')}
               >
-                <div className="prose-invert max-w-none text-sm"><MarkdownContent content={stripFrontmatter(voice)} /></div>
+                <div className="prose-invert max-w-none text-sm"><MarkdownContent content={stripPreviewTitle(voice)} /></div>
               </FadeMore>
             )}
-        </SectionCard>
+        </Section>
 
-        <SectionCard
-          title="Rules & terminology"
-          icon={AlertTriangle}
-          description="Non-negotiables that ride every branded task inline."
-          action={<Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => onGoTo('identity')}><Pencil className="size-3" /> Edit</Button>}
-        >
+        <Section divider="top" spacing="compact">
+          <OverviewSectionHeader
+            title="Rules & terminology"
+            icon={AlertTriangle}
+            description="Non-negotiables that ride every branded task inline."
+            action={<Button variant="ghost" size="xs" className="text-bakin-text-muted" onClick={() => onGoTo('identity')}><Pencil className="size-3" /> Edit</Button>}
+          />
           <RulesTermsSummary brand={brand} onGoTo={onGoTo} />
-        </SectionCard>
-      </div>
+        </Section>
+      </Grid>
 
-      <SectionCard
-        title="Recent activity"
-        icon={Rocket}
-        description="Edits, imports, publishes, and dispatch injections for this brand."
-      >
+      <Section divider="top" spacing="compact">
+        <OverviewSectionHeader
+          title="Recent activity"
+          icon={Rocket}
+          description="Edits, imports, publishes, and dispatch injections for this brand."
+        />
         {activity.length === 0
           ? <SectionEmpty>Nothing yet — activity shows up as the brand gets used.</SectionEmpty>
           : activity.slice(0, 8).map((a, i) => (
-            <div key={`${a.ts}-${i}`} className="flex items-baseline justify-between gap-2 text-sm">
+            <Inline key={`${a.ts}-${i}`} align="baseline" justify="between" gap="dense">
               <span>{activityLabel(a)}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">{relTime(a.ts)}</span>
-            </div>
+              <span className="shrink-0 text-bakin-typography-size-meta text-bakin-text-muted">{relTime(a.ts)}</span>
+            </Inline>
           ))}
-      </SectionCard>
-    </div>
+      </Section>
+    </Stack>
+  )
+}
+
+function OverviewSectionHeader({
+  action,
+  description,
+  icon: Icon,
+  iconClassName = 'text-bakin-signal-accent',
+  title,
+}: {
+  action?: React.ReactNode
+  description: string
+  icon: React.ComponentType<{ className?: string }>
+  iconClassName?: string
+  title: string
+}) {
+  return (
+    <Inline align="start" justify="between" gap="item">
+      <Stack gap="dense">
+        <Inline gap="dense" wrap={false}>
+          <Icon className={`size-bakin-4 shrink-0 ${iconClassName}`} aria-hidden="true" />
+          <h2 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+            {title}
+          </h2>
+        </Inline>
+        <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+          {description}
+        </p>
+      </Stack>
+      {action}
+    </Inline>
   )
 }
 
@@ -754,10 +998,10 @@ function RulesTermsSummary({ brand, onGoTo }: { brand: BrandManifest; onGoTo: (t
       className="space-y-2.5"
     >
       {rules.map((r) => (
-        <div key={r} className="flex gap-2 text-sm"><span className="text-muted-foreground">›</span><span>{r}</span></div>
+        <div key={r} className="flex gap-2 text-sm"><span className="text-bakin-text-muted">›</span><span>{r}</span></div>
       ))}
       {terms.map((t) => (
-        <div key={t.term} className="text-sm"><span className="font-medium">{t.term}</span> <span className="text-muted-foreground">— {t.rule}</span></div>
+        <div key={t.term} className="text-sm"><span className="font-medium">{t.term}</span> <span className="text-bakin-text-muted">— {t.rule}</span></div>
       ))}
     </FadeMore>
   )
@@ -776,10 +1020,10 @@ function CardFootprintTile({ card }: { card: CardPreview | null }) {
       value={
         <>
           {kb.toFixed(1)}
-          <span className="text-sm font-normal text-muted-foreground"> / {maxKb.toFixed(0)} KB</span>
+          <span className="text-sm font-normal text-bakin-text-muted"> / {maxKb.toFixed(0)} KB</span>
         </>
       }
-      progress={{ percent: pct, tone: pct > 85 ? 'warning' : 'success' }}
+      progress={{ percent: pct, tone: pct > 85 ? 'attention' : 'success' }}
       sub={card.omitted > 0 ? `${card.omitted} omitted for size` : 'nothing omitted'}
     />
   )
@@ -895,24 +1139,30 @@ function DocsEditor({
           // Benched lessons read as benched.
           <div
             key={d.name}
-            className={`flex items-center gap-3 rounded-lg bg-foreground/[0.04] px-3 py-2.5 ring-1 ring-foreground/5 transition-colors hover:bg-foreground/[0.07] ${
+            className={`flex items-center gap-3 rounded-lg bg-bakin-text-primary/5 px-3 py-2.5 ring-1 ring-bakin-text-primary/5 transition-colors hover:bg-bakin-text-primary/10 motion-reduce:transition-none ${
               kind === 'lessons' && (brand.disabledLessons ?? []).includes(d.name) ? 'opacity-60' : ''
             }`}
             data-doc-row={d.name}
           >
             {/* The filename is the identity — it never yields space to the description. */}
-            <button className="flex max-w-72 shrink-0 items-center gap-1.5 text-left" onClick={() => onEditDoc(kind, d.name)}>
-              <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="!h-auto max-w-72 shrink-0 justify-start gap-1.5 p-0 text-left font-bakin-typography-weight-regular hover:bg-transparent"
+              onClick={() => onEditDoc(kind, d.name)}
+            >
+              <FileText className="size-3.5 shrink-0 text-bakin-text-muted" />
               <span className="truncate font-mono text-sm">{d.name}</span>
-            </button>
-            {d.description && <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{d.description}</span>}
+            </Button>
+            {d.description && <span className="min-w-0 flex-1 truncate text-xs text-bakin-text-muted">{d.description}</span>}
             <div className="ml-auto flex shrink-0 items-center gap-3">
               {kind === 'guidelines' && (
                 <TooltipProvider delay={200}>
                   <Tooltip>
                     <TooltipTrigger
                       render={
-                        <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <label className="flex items-center gap-1.5 text-bakin-typography-size-meta text-bakin-text-muted">
                           <Switch
                             checked={cardDocs.includes(d.name)}
                             onCheckedChange={(on: boolean) => onToggleCardDoc(d.name, on)}
@@ -935,7 +1185,7 @@ function DocsEditor({
                   <Tooltip>
                     <TooltipTrigger
                       render={
-                        <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <label className="flex items-center gap-1.5 text-bakin-typography-size-meta text-bakin-text-muted">
                           <Switch
                             checked={!(brand.disabledLessons ?? []).includes(d.name)}
                             onCheckedChange={(active: boolean) => onToggleLesson(d.name, active)}
@@ -953,13 +1203,13 @@ function DocsEditor({
                   </Tooltip>
                 </TooltipProvider>
               )}
-              <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => onEditDoc(kind, d.name)}>
+              <Button variant="ghost" size="xs" className="text-bakin-text-muted" onClick={() => onEditDoc(kind, d.name)}>
                 <Pencil className="size-3" /> Edit
               </Button>
               <Button
                 variant="ghost"
                 size="xs"
-                className="text-muted-foreground hover:text-destructive"
+                className="text-bakin-text-muted hover:text-bakin-signal-danger"
                 onClick={() => setDeleting(d.name)}
                 aria-label={`Delete ${d.name}`}
               >
@@ -983,7 +1233,7 @@ function DocsEditor({
       />
 
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
-        <DialogContent className="bg-card border-border sm:max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>New {copy.noun}</DialogTitle>
             <DialogDescription>Name the file — the editor opens on a fresh page and the first save creates it.</DialogDescription>
@@ -1000,7 +1250,7 @@ function DocsEditor({
                 if (e.key === 'Enter') submitNewDoc()
               }}
             />
-            <p className="text-[11px] text-muted-foreground">.md is added for you{newDocName.trim() && !newDocName.trim().endsWith('.md') ? ` — creates ${newDocName.trim()}.md` : ''}</p>
+            <p className="text-bakin-typography-size-meta text-bakin-text-muted">.md is added for you{newDocName.trim() && !newDocName.trim().endsWith('.md') ? ` — creates ${newDocName.trim()}.md` : ''}</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewOpen(false)}>Cancel</Button>
@@ -1021,7 +1271,17 @@ const TYPE_ICON: Record<string, string> = { images: '🖼', pdf: '📄', video: 
 
 const LOGO_VARIANTS = ['primary', 'dark', 'light', 'mono', 'icon', 'wordmark']
 
-function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (patch: ManifestPatch) => void }) {
+function BrandAssetsSection({
+  brand,
+  logoPickerRequested,
+  onLogoPickerRequestHandled,
+  onSave,
+}: {
+  brand: BrandManifest
+  logoPickerRequested: boolean
+  onLogoPickerRequestHandled: () => void
+  onSave: (patch: ManifestPatch) => void
+}) {
   const [assets, setAssets] = useState<Record<string, AssetInfo>>({})
   const [groupDraft, setGroupDraft] = useState<{ name: string; description: string } | null>(null)
   // ONE AssetPicker instance; whichever section opens it provides the target.
@@ -1032,7 +1292,6 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
   // snapshot from when the dialog opened (the drafting agent may have written
   // meanwhile; a stale-closure apply silently erased its work).
   const [removeTarget, setRemoveTarget] = useState<{ title: string; description: string; patch: (current: BrandManifest) => ManifestPatch } | null>(null)
-
   const loadAssets = useCallback(async () => {
     try {
       const res = await fetch('/api/plugins/assets/versioned')
@@ -1057,6 +1316,22 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
   const openPicker = (title: string, description: string, onPick: (assetId: string) => void) =>
     setPickTarget({ title, description, onPick })
 
+  const openLogoPicker = useCallback(() => {
+    setPickTarget({
+      title: 'Add a logo',
+      description: 'Pick or upload the logo image agents should use.',
+      onPick: (assetId) => onSave({
+        logos: [...brand.logos, { assetId, variant: brand.logos.length === 0 ? 'primary' : 'dark' }],
+      }),
+    })
+  }, [brand.logos, onSave])
+
+  useEffect(() => {
+    if (!logoPickerRequested) return
+    openLogoPicker()
+    onLogoPickerRequestHandled()
+  }, [logoPickerRequested, onLogoPickerRequestHandled, openLogoPicker])
+
   const tile = (assetId: string, patch: (current: BrandManifest) => ManifestPatch, extra?: React.ReactNode) => (
     <AssetTile
       key={assetId}
@@ -1076,7 +1351,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
 
   return (
     <div className="flex flex-col gap-4">
-      <AssetPicker
+      <AssetLibraryPicker
         open={pickTarget !== null}
         onOpenChange={(open) => {
           if (!open) setPickTarget(null)
@@ -1111,7 +1386,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
         action={
           <Button
             variant="outline" size="sm" data-add-logo
-            onClick={() => openPicker('Add a logo', 'Pick or upload the logo image agents should use.', (assetId) => onSave({ logos: [...brand.logos, { assetId, variant: brand.logos.length === 0 ? 'primary' : 'dark' }] }))}
+            onClick={openLogoPicker}
           >
             <Plus className="size-3.5" /> Add logo
           </Button>
@@ -1152,13 +1427,13 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
           <SectionEmpty>No groups yet — e.g. "product-ui" for real screenshots agents should reference instead of inventing UI.</SectionEmpty>
         )}
         {brand.assetGroups.map((group, gi) => (
-          <div key={group.name} className="space-y-2 rounded-lg bg-surface p-3">
+          <div key={group.name} className="space-y-2 rounded-lg bg-bakin-surface-default p-3">
             <div className="flex items-center gap-2 text-sm">
               <span className="font-medium">{group.name}</span>
-              {group.description && <span className="text-xs text-muted-foreground">— {group.description}</span>}
+              {group.description && <span className="text-xs text-bakin-text-muted">— {group.description}</span>}
               <div className="ml-auto flex shrink-0 items-center gap-1">
                 <Button
-                  variant="ghost" size="xs" className="text-muted-foreground"
+                  variant="ghost" size="xs" className="text-bakin-text-muted"
                   onClick={() => openPicker(`Add to ${group.name}`, group.description || 'Pick or upload reference material for this group.', (assetId) => onSave({ assetGroups: brand.assetGroups.map((g, j) => (j === gi && !g.assetIds.includes(assetId) ? { ...g, assetIds: [...g.assetIds, assetId] } : g)) }))}
                 >
                   <Plus className="size-3" /> Add
@@ -1166,7 +1441,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
                 <Button
                   variant="ghost"
                   size="xs"
-                  className="text-muted-foreground hover:text-destructive"
+                  className="text-bakin-text-muted hover:text-bakin-signal-danger"
                   onClick={() =>
                     setRemoveTarget({
                       title: `Remove group ${group.name}?`,
@@ -1181,7 +1456,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
                 </Button>
               </div>
             </div>
-            {group.assetIds.length === 0 && <p className="text-xs text-muted-foreground">Empty group — add screenshots or imagery.</p>}
+            {group.assetIds.length === 0 && <p className="text-xs text-bakin-text-muted">Empty group — add screenshots or imagery.</p>}
             {group.assetIds.length > 0 && (
               <div className="grid gap-3 lg:grid-cols-2">
                 {group.assetIds.map((assetId) =>
@@ -1192,7 +1467,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
           </div>
         ))}
         {groupDraft && (
-          <div className="flex items-center gap-2 rounded-lg bg-surface p-2">
+          <div className="flex items-center gap-2 rounded-lg bg-bakin-surface-default p-2">
             <Input className="w-40" placeholder="product-ui" aria-label="Group name" value={groupDraft.name} onChange={(e) => setGroupDraft({ ...groupDraft, name: e.target.value })} />
             <Input className="flex-1" placeholder="real product UI — use for any product visual" aria-label="Group usage note" value={groupDraft.description} onChange={(e) => setGroupDraft({ ...groupDraft, description: e.target.value })} />
             <Button variant="default" size="sm" disabled={!groupDraft.name.trim()} onClick={() => { onSave({ assetGroups: [...brand.assetGroups, { name: groupDraft.name.trim(), description: groupDraft.description.trim() || undefined, assetIds: [] }] }); setGroupDraft(null) }}>Add group</Button>
@@ -1217,7 +1492,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
               <Plus className="size-3.5" /> Add reference
             </Button>
           ) : (
-            <span className="text-[11px] text-muted-foreground">4 of 4 — remove one to swap</span>
+            <span className="text-bakin-typography-size-meta text-bakin-text-muted">4 of 4 — remove one to swap</span>
           )
         }
       >
@@ -1240,19 +1515,19 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
 function VariantSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const options = LOGO_VARIANTS.includes(value) ? LOGO_VARIANTS : [value, ...LOGO_VARIANTS]
   return (
-    <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+    <span className="flex items-center gap-1.5 text-bakin-typography-size-meta text-bakin-text-muted">
       variant
-      <select
-        className="rounded-md bg-surface px-1.5 py-1 text-[11px] text-foreground ring-1 ring-inset ring-outline-variant/30"
-        value={value}
-        aria-label="Logo variant"
-        onChange={(e) => onChange(e.target.value)}
-      >
-        {options.map((v) => (
-          <option key={v} value={v}>{v}</option>
-        ))}
-      </select>
-    </label>
+      <Select value={value} onValueChange={(next) => { if (next) onChange(next) }}>
+        <SelectTrigger size="sm" aria-label="Logo variant" className="w-auto shrink-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((v) => (
+            <SelectItem key={v} value={v}>{v}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </span>
   )
 }
 
@@ -1266,38 +1541,49 @@ function AssetTile({
 }: {
   assetId: string; info?: AssetInfo; onDescription: (description: string) => void; onRemove: () => void; extra?: React.ReactNode
 }) {
-  const navigate = useNavigate()
+  const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(info?.description ?? '')
   const isImage = info?.type === 'images'
-  const open = () => navigate({ to: '/assets/$assetId', params: { assetId } })
+  const open = () => router.push(`/assets/${encodeURIComponent(assetId)}`)
   const commit = () => { setEditing(false); if (draft !== (info?.description ?? '')) onDescription(draft) }
 
   return (
     // Horizontal card: compact image LEFT, the description gets the width it
     // deserves on the right. Two across, stretch to fit.
-    <div className="group relative flex overflow-hidden rounded-xl bg-surface ring-1 ring-foreground/10 transition-shadow hover:ring-foreground/25" data-asset-card={assetId}>
-      <button className="block min-h-36 w-36 shrink-0 self-stretch overflow-hidden bg-background/50" title="Open in the asset viewer" onClick={open}>
+    <div className="group relative flex overflow-hidden rounded-xl bg-bakin-surface-default ring-1 ring-bakin-text-primary/10 transition-shadow hover:ring-bakin-text-primary/25" data-asset-card={assetId}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="block !h-auto min-h-36 w-36 shrink-0 self-stretch overflow-hidden rounded-none bg-bakin-canvas-default/50 p-0 hover:bg-bakin-canvas-default/60"
+        title="Open in the asset viewer"
+        aria-label="Open in the asset viewer"
+        onClick={open}
+      >
         {isImage && info?.hasThumb
           ? <img src={`/api/assets/${assetId}/thumb`} alt="" className="size-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-          : <span className="flex size-full items-center justify-center text-3xl text-muted-foreground">{TYPE_ICON[info?.type ?? 'other'] ?? '⊟'}</span>}
-      </button>
-      <button
-        className="absolute right-1.5 top-1.5 rounded-md bg-background/70 p-1 text-muted-foreground opacity-0 backdrop-blur transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+          : <span className="flex size-full items-center justify-center text-3xl text-bakin-text-muted">{TYPE_ICON[info?.type ?? 'other'] ?? '⊟'}</span>}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        className="absolute right-1.5 top-1.5 bg-bakin-canvas-default/70 text-bakin-text-muted opacity-0 backdrop-blur transition-opacity hover:text-bakin-signal-danger focus-visible:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
         onClick={onRemove}
         aria-label="Remove"
       >
         <Trash2 className="size-3.5" />
-      </button>
+      </Button>
 
       {/* pr-9 reserves the hover-trash gutter — the floating icon must never sit on the note text. */}
       <div className="flex min-w-0 flex-1 flex-col gap-1.5 py-3 pl-3 pr-9">
         {extra}
         {editing ? (
-          <textarea
+          <Textarea
             autoFocus
             rows={2}
-            className={`${inputCls} text-xs`}
+            className="text-xs"
             placeholder="What is this, and how should agents use it?"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -1305,14 +1591,20 @@ function AssetTile({
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) commit(); if (e.key === 'Escape') { setDraft(info?.description ?? ''); setEditing(false) } }}
           />
         ) : (
-          <button className="text-left text-xs" onClick={() => { setDraft(info?.description ?? ''); setEditing(true) }}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="!h-auto justify-start whitespace-normal p-0 text-left text-xs font-bakin-typography-weight-regular hover:bg-transparent"
+            onClick={() => { setDraft(info?.description ?? ''); setEditing(true) }}
+          >
             {info?.description
-              ? <span className="line-clamp-3 text-foreground/90">{info.description} <Pencil className="inline size-3 text-muted-foreground" /></span>
-              : <span className="flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"><Plus className="size-3" /> Add a note</span>}
-          </button>
+              ? <span className="line-clamp-3 text-bakin-text-primary/90">{info.description} <Pencil className="inline size-3 text-bakin-text-muted" /></span>
+              : <span className="flex items-center gap-1 text-bakin-text-muted transition-colors hover:text-bakin-text-primary"><Plus className="size-3" /> Add a note</span>}
+          </Button>
         )}
         {/* Machine detail — surfaces on hover only; the thumbnail + note identify the card. */}
-        <span className="truncate font-mono text-[10px] text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100">{assetId}</span>
+        <span className="truncate font-mono text-bakin-typography-size-meta text-bakin-text-muted/60 opacity-0 transition-opacity group-hover:opacity-100">{assetId}</span>
       </div>
     </div>
   )
@@ -1354,7 +1646,7 @@ const DRAFT_TASK_STATUS: Record<string, { label: string; tone: 'working' | 'queu
  * here, refreshed on every taskboard SSE tick.
  */
 function DraftBanner({ brand, brandId, onPublish }: { brand: BrandManifest; brandId: string; onPublish: () => void }) {
-  const navigate = useNavigate()
+  const router = useRouter()
   const [draftTaskParam] = useQueryState('draftTask', '')
   const taskId = brand.draftTaskId || draftTaskParam
   const blocked = useBlockedCount(brandId, true)
@@ -1388,45 +1680,48 @@ function DraftBanner({ brand, brandId, onPublish }: { brand: BrandManifest; bran
   usePluginEvent('taskboard', () => void loadTask())
 
   const status = taskColumn ? DRAFT_TASK_STATUS[taskColumn] : null
+  const availability = 'You can keep editing and reviewing it, but tasks and image tools cannot use it yet. Publishing makes it available to agents immediately.'
+  const description = status
+    ? `${status.label} ${availability}${blocked > 0 ? ` ${blocked} task${blocked === 1 ? ' is' : 's are'} waiting on this brand.` : ''}`
+    : `${taskId
+      ? `An agent is drafting it from your intake — usually takes a few minutes. ${availability}`
+      : availability
+    }${blocked > 0 ? ` ${blocked} task${blocked === 1 ? ' is' : 's are'} waiting on this brand.` : ''}`
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl bg-warning/10 p-4 ring-1 ring-warning/20" data-draft-banner>
-      <Sparkles className="size-4 shrink-0 text-warning" />
-      <div className="min-w-0 flex-1 text-sm">
-        <p className="flex items-center gap-2 font-medium">
+    <Banner
+      tone="attention"
+      data-draft-banner
+      title={(
+        <span className="inline-flex min-w-0 flex-wrap items-center gap-bakin-2">
           This brand is a draft
           {status && (
             <span data-draft-task-status={taskColumn}>
               <StatusBadge
-                tone={status.tone === 'working' ? 'warning' : status.tone === 'done' ? 'success' : status.tone === 'blocked' ? 'destructive' : 'neutral'}
+                tone={status.tone === 'working' ? 'attention' : status.tone === 'done' ? 'success' : status.tone === 'blocked' ? 'danger' : 'neutral'}
                 className="font-normal"
               >
-                {status.tone === 'working' && <span className="size-1.5 animate-pulse rounded-full bg-warning" aria-hidden />}
+                {status.tone === 'working' && <span className="size-bakin-1 animate-pulse rounded-bakin-pill bg-bakin-signal-highlight" aria-hidden />}
                 {status.tone === 'working' ? 'Agent working' : status.tone === 'done' ? 'Draft ready' : status.tone === 'blocked' ? 'Blocked' : 'Queued'}
               </StatusBadge>
             </span>
           )}
-        </p>
-        <p className="text-muted-foreground">
-          {status
-            ? status.label
-            : taskId
-              ? 'An agent is drafting it from your intake — usually takes a few minutes. Review the tabs as they fill in, then publish.'
-              : 'Invisible to tasks and image tools until you publish it.'}
-          {blocked > 0 && ` ${blocked} task${blocked === 1 ? ' is' : 's are'} waiting on this brand.`}
-        </p>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        {taskId && (
-          <Button variant="outline" size="sm" onClick={() => void navigate({ to: '/tasks', search: { taskId } as never })} data-draft-task-link>
-            View the drafting task
+        </span>
+      )}
+      description={description}
+      action={(
+        <>
+          {taskId && (
+            <Button variant="outline" size="sm" onClick={() => router.push(`/tasks?taskId=${encodeURIComponent(taskId)}`)} data-draft-task-link>
+              View the drafting task
+            </Button>
+          )}
+          <Button size="sm" onClick={onPublish}>
+            <Rocket className="size-3.5" /> Publish
           </Button>
-        )}
-        <Button size="sm" onClick={onPublish}>
-          <Rocket className="size-3.5" /> Publish
-        </Button>
-      </div>
-    </div>
+        </>
+      )}
+    />
   )
 }
 
@@ -1516,8 +1811,8 @@ function BrandSettingsTab({
       >
         {brand.draft ? (
           <>
-            <p className="text-sm text-muted-foreground">
-              Review the tabs, then publish. Delete <code className="rounded bg-surface px-1 text-xs">_intake.md</code> under
+            <p className="text-sm text-bakin-text-muted">
+              Review the tabs, then publish. Delete <code className="rounded bg-bakin-surface-default px-1 text-xs">_intake.md</code> under
               Guidelines if you don't want the builder intake kept.
               {blocked > 0 && ` ${blocked} task${blocked === 1 ? ' is' : 's are'} waiting on this brand right now.`}
             </p>
@@ -1527,8 +1822,8 @@ function BrandSettingsTab({
           </>
         ) : (
           <>
-            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Check className="size-4 text-success" /> Live since {new Date(brand.updatedAt).toLocaleDateString()}
+            <p className="flex items-center gap-1.5 text-sm text-bakin-text-muted">
+              <Check className="size-4 text-bakin-action-primary-background" /> Live since {new Date(brand.updatedAt).toLocaleDateString()}
               {linked !== null && ` — linked to ${linked} open task${linked === 1 ? '' : 's'}.`}
             </p>
             <Button variant="outline" size="sm" className="w-fit" onClick={() => setUnpublishConfirm(true)} data-unpublish>
@@ -1561,10 +1856,10 @@ function BrandSettingsTab({
           icon={ExternalLink}
           description="Where this brand kit came from — local edits win over the upstream copy."
         >
-          <p className="text-sm text-muted-foreground">
-            <span className="font-mono text-foreground/80">{brand.source.repo}</span>
+          <p className="text-sm text-bakin-text-muted">
+            <span className="font-mono text-bakin-text-primary/80">{brand.source.repo}</span>
             {brand.source.commit ? ` @ ${brand.source.commit.slice(0, 8)}` : ''}. Check for upstream changes:
-            <code className="ml-1 rounded bg-surface px-1 text-xs">bakin brands check {brand.id}</code>
+            <code className="ml-1 rounded bg-bakin-surface-default px-1 text-xs">bakin brands check {brand.id}</code>
           </p>
         </SectionCard>
       )}
@@ -1575,16 +1870,16 @@ function BrandSettingsTab({
         description="Every branded task carries a compact card of this brand — rules, palette, terminology, and the always-in-context docs."
       >
         {cardInfo ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-bakin-text-muted">
             The card currently adds ~{(cardInfo.cardBytes / 1024).toFixed(1)} KB of its {(cardInfo.maxBytes / 1024).toFixed(0)} KB allowance to every branded task
             {cardInfo.omitted > 0 ? ` — ${cardInfo.omitted} item${cardInfo.omitted === 1 ? ' is' : 's are'} left out for size (agents fetch them on demand).` : ' — nothing is left out.'}
           </p>
         ) : (
-          <p className="text-sm text-muted-foreground">Measuring the card…</p>
+          <p className="text-sm text-bakin-text-muted">Measuring the card…</p>
         )}
         {dangling.length > 0 && (
-          <div className="rounded-lg bg-warning/10 p-3 ring-1 ring-warning/20">
-            {dangling.map((d) => <p key={d.assetId} className="flex items-center gap-1.5 text-xs text-warning"><AlertTriangle className="size-3" /> asset {d.assetId} is missing ({d.where}) — remove or replace it under Assets</p>)}
+          <div className="rounded-lg bg-bakin-signal-highlight/10 p-3 ring-1 ring-bakin-signal-highlight/20">
+            {dangling.map((d) => <p key={d.assetId} className="flex items-center gap-1.5 text-xs text-bakin-signal-highlight"><AlertTriangle className="size-3" /> asset {d.assetId} is missing ({d.where}) — remove or replace it under Assets</p>)}
           </div>
         )}
       </SectionCard>

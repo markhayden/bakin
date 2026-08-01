@@ -75,6 +75,11 @@ describe('verifyInstalledArtifact', () => {
     expect(v.status).toBe('compatible')
   })
 
+  it('keeps artifacts built against an older compatible contract loadable', () => {
+    const v = verifyInstalledArtifact(pluginDir({ externalsContract: 'react19-sdk-makinbakin-v1' }))
+    expect(v.status).toBe('compatible')
+  })
+
   it('returns needs-update when the externals contract does not match', () => {
     const v = verifyInstalledArtifact(pluginDir({ externalsContract: 'react18-old-vX' }))
     expect(v.status).toBe('needs-update')

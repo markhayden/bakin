@@ -1,6 +1,8 @@
 'use client'
 
-import { formatAbsoluteTime, formatRelativeTime, PluginLink, StatusBadge } from '@makinbakin/sdk/components'
+import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
+import { PluginLink } from '@makinbakin/sdk/navigation'
+import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { Button, Skeleton } from '@makinbakin/sdk/ui'
 import {
   Activity,
@@ -23,26 +25,35 @@ interface OverviewPlatformPulseProps {
 
 const TONE = {
   neutral: {
-    cell: 'bg-foreground/[0.02]',
-    icon: 'bg-foreground/10 text-muted-foreground',
-    text: 'text-muted-foreground',
+    panel: 'border-bakin-border-subtle bg-bakin-surface-default',
+    icon: 'bg-bakin-border-subtle/20 text-bakin-text-muted',
+    text: 'text-bakin-text-primary',
+    badge: 'neutral',
   },
   success: {
-    cell: 'bg-success/[0.045]',
-    icon: 'bg-success/15 text-success',
-    text: 'text-success',
+    panel: 'border-bakin-action-primary-background/60 bg-bakin-action-primary-background/10',
+    icon: 'bg-bakin-action-primary-background/15 text-bakin-action-primary-background',
+    text: 'text-bakin-action-primary-background',
+    badge: 'success',
   },
   warning: {
-    cell: 'bg-warning/[0.055]',
-    icon: 'bg-warning/15 text-warning',
-    text: 'text-warning',
+    panel: 'border-bakin-signal-highlight/60 bg-bakin-signal-highlight/10',
+    icon: 'bg-bakin-signal-highlight/15 text-bakin-signal-highlight',
+    text: 'text-bakin-signal-highlight',
+    badge: 'attention',
   },
   destructive: {
-    cell: 'bg-destructive/[0.055]',
-    icon: 'bg-destructive/15 text-destructive',
-    text: 'text-destructive',
+    panel: 'border-bakin-signal-danger/60 bg-bakin-signal-danger/10',
+    icon: 'bg-bakin-signal-danger/15 text-bakin-signal-danger',
+    text: 'text-bakin-signal-danger',
+    badge: 'danger',
   },
-} satisfies Record<OverviewTone, { cell: string; icon: string; text: string }>
+} satisfies Record<OverviewTone, {
+  panel: string
+  icon: string
+  text: string
+  badge: StatusTone
+}>
 
 function relativeObservedAt(value: string): string {
   const relative = formatRelativeTime(value)
@@ -78,88 +89,124 @@ export function OverviewPlatformPulse({
   const workingAgents = model.rightNow.runningDispatches === null
     ? null
     : model.rightNow.runningAgents.length
+  const pulseDescription = error
+    ? 'Health evidence could not be verified. Retry before acting on this snapshot.'
+    : primaryCount > 0
+      ? `${primaryLabel} ${primaryCount === 1 ? 'needs' : 'need'} attention. Resolve the affected conditions before relying on that work.`
+      : 'No current conditions require action. Supporting evidence and recent activity remain available below.'
 
   return (
     <section
       aria-labelledby="overview-platform-pulse-title"
+      data-layout="priority-signal"
       data-testid="overview-platform-pulse"
-      className="overflow-hidden rounded-xl border border-border/80 bg-border/70"
+      className="flex min-w-0 flex-col gap-bakin-6"
     >
-      <h2 id="overview-platform-pulse-title" className="sr-only">Platform pulse</h2>
-      <div className="grid grid-cols-2 gap-px @[49rem]/health:grid-cols-[minmax(15rem,1.35fr)_minmax(9rem,1fr)_minmax(10rem,1fr)_minmax(8rem,.8fr)_auto]">
-        <div className={`col-span-2 flex min-h-20 items-center gap-3 px-4 py-3 @[49rem]/health:col-span-1 ${TONE[overallTone].cell}`}>
-          <span className={`flex size-10 shrink-0 items-center justify-center rounded-full ${TONE[overallTone].icon}`}>
-            <OverallIcon className="size-5" aria-hidden="true" />
+      <div
+        className={`flex min-w-0 flex-wrap items-end justify-between gap-bakin-6 rounded-bakin-surface border p-bakin-6 ${TONE[overallTone].panel}`}
+      >
+        <div className="grid min-w-0 max-w-[64ch] grid-cols-[auto_minmax(0,1fr)] items-start gap-x-bakin-4 gap-y-bakin-2">
+          <span className={`row-span-3 flex size-10 shrink-0 items-center justify-center rounded-bakin-pill ${TONE[overallTone].icon}`}>
+            <OverallIcon className="size-bakin-4" aria-hidden="true" />
           </span>
-          <span className="min-w-0">
-            <span className="block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Bakin</span>
+          <p className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-[0.12em] text-bakin-text-primary">
+            Bakin · platform pulse
+          </p>
+          <h2
+            id="overview-platform-pulse-title"
+            className={`m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold leading-tight ${TONE[overallTone].text}`}
+          >
             {loading && !error
-              ? <Skeleton className="mt-1 h-5 w-28" aria-label="Checking health" />
-              : <strong className={`block text-base ${TONE[overallTone].text}`}>{overallLabel}</strong>}
-          </span>
-          {primaryCount > 0 && !loading && (
-            <StatusBadge tone={model.needsAction.length > 0 ? 'destructive' : 'neutral'} className="ml-auto">
-              {primaryLabel}
-            </StatusBadge>
-          )}
+              ? (
+                  <>
+                    <span className="sr-only">Checking health</span>
+                    <Skeleton className="h-bakin-6 w-40" aria-hidden="true" />
+                  </>
+                )
+              : overallLabel}
+          </h2>
+          <p className="m-0 leading-relaxed text-bakin-text-muted">{pulseDescription}</p>
         </div>
 
+        <div className="flex min-w-0 flex-wrap items-center gap-bakin-3">
+          {!loading ? (
+            <StatusBadge tone={TONE[overallTone].badge} variant="solid">
+              {primaryCount > 0 ? primaryLabel : overallLabel}
+            </StatusBadge>
+          ) : null}
+          <span className="flex items-center gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
+            {checking
+              ? <Clock3 className="size-bakin-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              : <Clock3 className="size-bakin-3" aria-hidden="true" />}
+            <span className="font-bakin-typography-weight-medium text-bakin-text-primary">Checked</span>
+            {model.evidenceObservedAt
+              ? (
+                  <time dateTime={model.evidenceObservedAt} title={formatAbsoluteTime(model.evidenceObservedAt)}>
+                    {relativeObservedAt(model.evidenceObservedAt)}
+                  </time>
+                )
+              : <span>not yet</span>}
+          </span>
+        </div>
+      </div>
+
+      <div
+        role="group"
+        aria-label="Health summary metrics"
+        className="grid min-w-0 grid-cols-1 border-y border-bakin-border-subtle @md/health:grid-cols-3"
+      >
         <PluginLink
           to="/health?tab=system&section=search"
           aria-label={`Search: ${model.search.statusLabel}`}
-          className="group flex min-h-20 items-center gap-3 bg-card px-4 py-3 hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          data-slot="health-summary-metric"
+          className="group flex min-w-0 items-center gap-bakin-3 border-b border-bakin-border-subtle px-bakin-4 py-bakin-4 transition-colors duration-[var(--bakin-motion-duration-feedback)] hover:bg-bakin-surface-default focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring @md/health:border-b-0"
         >
-          <Search className={`size-5 shrink-0 ${TONE[model.search.tone].text}`} aria-hidden="true" />
+          <Search className={`size-bakin-4 shrink-0 ${TONE[model.search.tone].text}`} aria-hidden="true" />
           <span className="min-w-0">
-            <span className="block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Search</span>
-            <span className={`block font-semibold ${TONE[model.search.tone].text}`}>{model.search.statusLabel}</span>
+            <span className="block text-bakin-typography-size-meta text-bakin-text-muted">Search</span>
+            <span className={`block font-bakin-typography-weight-semibold ${TONE[model.search.tone].text}`}>{model.search.statusLabel}</span>
           </span>
-          <ChevronRight className="ml-auto size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
+          <ChevronRight className="ml-auto size-bakin-3 text-bakin-text-muted transition-transform duration-[var(--bakin-motion-duration-transition)] group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
         </PluginLink>
 
         <PluginLink
           to="/health?tab=agents"
           aria-label={`Agents: ${count(workingAgents, 'working')}, ${count(model.rightNow.connectedSessions, 'sessions')}`}
-          className="group flex min-h-20 items-center gap-3 bg-card px-4 py-3 hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          data-slot="health-summary-metric"
+          className="group flex min-w-0 items-center gap-bakin-3 border-b border-bakin-border-subtle px-bakin-4 py-bakin-4 transition-colors duration-[var(--bakin-motion-duration-feedback)] hover:bg-bakin-surface-default focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring @md/health:border-b-0 @md/health:border-l"
         >
-          <Bot className={model.rightNow.runningDispatches ? 'size-5 shrink-0 text-primary' : 'size-5 shrink-0 text-muted-foreground'} aria-hidden="true" />
+          <Bot
+            className={model.rightNow.runningDispatches
+              ? 'size-bakin-4 shrink-0 text-bakin-action-primary-background'
+              : 'size-bakin-4 shrink-0 text-bakin-text-muted'}
+            aria-hidden="true"
+          />
           <span className="min-w-0">
-            <span className="block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Agents</span>
-            <strong className="block whitespace-nowrap text-sm text-foreground">{count(workingAgents, 'working')}</strong>
-            <span className="block whitespace-nowrap text-xs text-muted-foreground">{count(model.rightNow.connectedSessions, 'sessions')}</span>
+            <span className="block text-bakin-typography-size-meta text-bakin-text-muted">Agents</span>
+            <strong className="block whitespace-nowrap font-bakin-typography-weight-semibold text-bakin-text-primary">{count(workingAgents, 'working')}</strong>
+            <span className="block whitespace-nowrap text-bakin-typography-size-meta text-bakin-text-muted">{count(model.rightNow.connectedSessions, 'sessions')}</span>
           </span>
-          <ChevronRight className="ml-auto size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
+          <ChevronRight className="ml-auto size-bakin-3 text-bakin-text-muted transition-transform duration-[var(--bakin-motion-duration-transition)] group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
         </PluginLink>
 
         <PluginLink
           to="/health?tab=activity&activity_window=1h#activity-needs-attention"
           aria-label={`Recent failures: ${count(recentFailures, 'failed')}`}
-          className="group flex min-h-20 items-center gap-3 bg-card px-4 py-3 hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          data-slot="health-summary-metric"
+          className="group flex min-w-0 items-center gap-bakin-3 px-bakin-4 py-bakin-4 transition-colors duration-[var(--bakin-motion-duration-feedback)] hover:bg-bakin-surface-default focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring @md/health:border-l @md/health:border-bakin-border-subtle"
         >
-          <Activity className={`size-5 shrink-0 ${TONE[failureTone].text}`} aria-hidden="true" />
+          <Activity className={`size-bakin-4 shrink-0 ${TONE[failureTone].text}`} aria-hidden="true" />
           <span className="min-w-0">
-            <span className="block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Failures · 1h</span>
-            <strong className={`block whitespace-nowrap text-sm ${TONE[failureTone].text}`}>{count(recentFailures, 'failed')}</strong>
+            <span className="block text-bakin-typography-size-meta text-bakin-text-muted">Failures · 1h</span>
+            <strong className={`block whitespace-nowrap font-bakin-typography-weight-semibold ${TONE[failureTone].text}`}>{count(recentFailures, 'failed')}</strong>
           </span>
-          <ChevronRight className="ml-auto size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
+          <ChevronRight className="ml-auto size-bakin-3 text-bakin-text-muted transition-transform duration-[var(--bakin-motion-duration-transition)] group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
         </PluginLink>
-
-        <div className="flex min-h-20 items-center justify-center gap-2 bg-card px-4 py-3 text-xs text-muted-foreground">
-          {checking ? <Clock3 className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Clock3 className="size-3.5" aria-hidden="true" />}
-          <span className="font-medium text-foreground">Checked</span>
-          {model.evidenceObservedAt
-            ? (
-                <time dateTime={model.evidenceObservedAt} title={formatAbsoluteTime(model.evidenceObservedAt)}>
-                  {relativeObservedAt(model.evidenceObservedAt)}
-                </time>
-              )
-            : <span>not yet</span>}
-        </div>
       </div>
 
       {error && (
-        <div role="alert" className="flex flex-col gap-3 border-t border-destructive/25 bg-destructive/[0.06] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <span className="text-sm text-destructive">{error}</span>
+        <div role="alert" className="flex flex-col gap-bakin-3 border-l-2 border-bakin-signal-danger bg-bakin-signal-danger/10 px-bakin-4 py-bakin-3 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-bakin-typography-size-meta text-bakin-signal-danger">{error}</span>
           {onRetry && <Button size="sm" variant="outline" onClick={onRetry}>Try again</Button>}
         </div>
       )}

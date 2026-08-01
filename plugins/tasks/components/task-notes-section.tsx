@@ -1,7 +1,20 @@
 'use client'
 
-import { Button } from "@makinbakin/sdk/ui"
-import { Input } from "@makinbakin/sdk/ui"
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  DrawerSection,
+  Button,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@makinbakin/sdk/ui'
+import { formatDateTime } from '@makinbakin/sdk/utils'
 import { AlertTriangle, Send } from 'lucide-react'
 import type { Task, TaskLogEntry } from '../types'
 import { compactDispatchFailureLabel, getDispatchFailureDetail, specificDispatchFailureLabel, type DispatchFailureDetail } from '../lib/dispatch-failure'
@@ -15,38 +28,40 @@ function DispatchFailureLogPanel({ detail }: { detail: DispatchFailureDetail }) 
   ] as Array<[string, string]>
 
   return (
-    <div className="mt-2 rounded-md border border-amber-500/20 bg-amber-500/10 p-3">
-      <div className="flex items-start gap-2">
-        <AlertTriangle className="size-4 text-amber-400 shrink-0 mt-0.5" />
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold text-amber-300">{compactDispatchFailureLabel(detail)}</p>
-          <p className="mt-0.5 text-xs text-amber-200/80">{specificDispatchFailureLabel(detail)}</p>
-        </div>
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        {rows.map(([label, value]) => (
-          <div key={label} className="min-w-0">
-            <p className="text-[10px] uppercase tracking-wider text-amber-200/60">{label}</p>
-            <p className="truncate text-xs text-amber-100">{value}</p>
-          </div>
-        ))}
-      </div>
-      {detail.rawError && (
-        <details className="mt-3">
-          <summary className="cursor-pointer text-[11px] font-medium text-amber-200/80">Technical details</summary>
-          <pre className="mt-2 max-h-36 overflow-auto whitespace-pre-wrap break-words rounded bg-background/70 p-2 text-[11px] text-muted-foreground">
-            {detail.rawError}
-          </pre>
-        </details>
-      )}
-    </div>
+    <Alert tone="danger" className="@container/dispatch mt-bakin-2">
+      <AlertTriangle aria-hidden="true" />
+      <AlertTitle>{compactDispatchFailureLabel(detail)}</AlertTitle>
+      <AlertDescription>
+        <p>{specificDispatchFailureLabel(detail)}</p>
+        <dl className="mt-bakin-3 grid min-w-0 grid-cols-1 gap-bakin-2 @sm/dispatch:grid-cols-2">
+          {rows.map(([label, value]) => (
+            <div key={label} className="min-w-0">
+              <dt className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
+                {label}
+              </dt>
+              <dd className="m-0 break-words text-bakin-typography-size-meta text-bakin-text-primary">{value}</dd>
+            </div>
+          ))}
+        </dl>
+        {detail.rawError ? (
+          <Collapsible className="mt-bakin-3 border-b-0">
+            <CollapsibleTrigger className="text-bakin-typography-size-meta">Technical details</CollapsibleTrigger>
+            <CollapsibleContent>
+              <pre className="m-0 max-h-36 overflow-auto whitespace-pre-wrap break-words rounded-bakin-surface bg-bakin-canvas-default p-bakin-3 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                {detail.rawError}
+              </pre>
+            </CollapsibleContent>
+          </Collapsible>
+        ) : null}
+      </AlertDescription>
+    </Alert>
   )
 }
 
 function TaskLogMessage({ entry }: { entry: TaskLogEntry }) {
   const dispatchFailure = getDispatchFailureDetail(entry)
   if (dispatchFailure) return <DispatchFailureLogPanel detail={dispatchFailure} />
-  return <p className="text-xs text-muted-foreground">{entry.message}</p>
+  return <p className="m-0 text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">{entry.message}</p>
 }
 
 interface TaskNotesSectionProps {
@@ -71,52 +86,69 @@ export function TaskNotesSection({ task, logMessage, setLogMessage, addingLog, o
     const visible = showAllNotes ? reversed : reversed.slice(0, NOTES_PAGE_SIZE)
     const hasMore = reversed.length > NOTES_PAGE_SIZE
     return (
-      <div className="flex flex-col gap-2 pb-4">
-        {visible.map((entry, i) => (
-          <div key={i} className="rounded-md border border-border bg-background px-3 py-2">
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-xs font-mono text-muted-foreground">{entry.timestamp}</span>
-              <span className="text-xs font-medium text-foreground">{entry.author}</span>
-            </div>
-            <TaskLogMessage entry={entry} />
-          </div>
-        ))}
-        {hasMore && !showAllNotes && (
-          <button
+      <div className="pb-bakin-4">
+        <ol className="m-0 list-none divide-y divide-bakin-border-subtle p-0">
+          {visible.map((entry, i) => (
+            <li key={`${entry.timestamp}-${entry.author}-${i}`} className="min-w-0 py-bakin-3 first:pt-0">
+              <div className="mb-bakin-1 flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1">
+                <time className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                  {formatDateTime(entry.timestamp)}
+                </time>
+                <span className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-primary">
+                  {entry.author}
+                </span>
+              </div>
+              <TaskLogMessage entry={entry} />
+            </li>
+          ))}
+        </ol>
+        {hasMore && !showAllNotes ? (
+          <Button
+            type="button"
+            variant="link"
+            size="xs"
             onClick={() => setShowAllNotes(true)}
-            className="text-xs text-accent hover:underline self-start"
+            className="mt-bakin-2"
           >
             Show {reversed.length - NOTES_PAGE_SIZE} older notes
-          </button>
-        )}
+          </Button>
+        ) : null}
       </div>
     )
   })() : null
 
   return (
-    <div>
-      <h3 className="text-[11px] text-muted-foreground uppercase tracking-wider mb-3">Notes</h3>
-      <div className="flex gap-2 mb-3">
-        <Input
-          value={logMessage}
-          onChange={(e) => setLogMessage(e.target.value)}
-          placeholder="Add a note..."
-          className="flex-1 h-8 bg-surface"
-          onKeyDown={(e) => { if (e.key === 'Enter') onAddLog() }}
-        />
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={onAddLog}
-          disabled={addingLog || !logMessage.trim()}
-        >
-          <Send className="size-3.5" />
-        </Button>
-      </div>
+    <DrawerSection title="Notes">
+      <form
+        className="mb-bakin-3"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (!addingLog && logMessage.trim()) onAddLog()
+        }}
+      >
+        <InputGroup aria-label="Add task note">
+          <InputGroupInput
+            value={logMessage}
+            onChange={(event) => setLogMessage(event.target.value)}
+            placeholder="Add a note…"
+            aria-label="Task note"
+          />
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton
+              type="submit"
+              size="icon-xs"
+              aria-label={addingLog ? 'Adding note' : 'Add note'}
+              disabled={addingLog || !logMessage.trim()}
+            >
+              <Send className="size-bakin-3" />
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+      </form>
       {(!task.log || task.log.length === 0) && (
-        <p className="text-xs text-muted-foreground">No notes yet.</p>
+        <p className="m-0 text-bakin-typography-size-body text-bakin-text-muted">No notes yet.</p>
       )}
       {notesListJSX}
-    </div>
+    </DrawerSection>
   )
 }

@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryState } from '@makinbakin/sdk/hooks'
+import { Grid } from '@makinbakin/sdk/layout'
+import { StatTile, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { Button } from '@makinbakin/sdk/ui'
-import { StatusBadge, type StatusTone } from '@makinbakin/sdk/components'
 import { Puzzle, RefreshCw, Search, Server, ShieldCheck } from 'lucide-react'
 import { SystemSearchSection } from './system-search-section'
 import { SystemInventory, type SystemInventoryHandle } from './system-inventory'
@@ -19,12 +20,12 @@ import {
   type SummaryStatus,
 } from '../lib/system-summary-view-model'
 
-const SUMMARY_STYLE: Record<SummaryStatus, { tone: StatusTone; accent: string; icon: string }> = {
-  healthy: { tone: 'success', accent: 'bg-success', icon: 'text-success' },
-  watching: { tone: 'warning', accent: 'bg-warning', icon: 'text-warning' },
-  attention: { tone: 'destructive', accent: 'bg-destructive', icon: 'text-destructive' },
-  unknown: { tone: 'neutral', accent: 'bg-muted-foreground', icon: 'text-muted-foreground' },
-  neutral: { tone: 'accent', accent: 'bg-accent', icon: 'text-accent' },
+const SUMMARY_TONE: Record<SummaryStatus, StatusTone> = {
+  healthy: 'success',
+  watching: 'attention',
+  attention: 'danger',
+  unknown: 'neutral',
+  neutral: 'accent',
 }
 
 const SUMMARY_ICON = {
@@ -162,50 +163,58 @@ export function SystemTabView({
         <div className="mb-2 flex items-end justify-between gap-3">
           <div>
             <h2 id="system-subsystems-title" className="text-base font-semibold">Platform pulse</h2>
-            <p className="text-xs text-muted-foreground">A stable snapshot of the services that keep Bakin usable.</p>
+            <p className="text-bakin-typography-size-meta text-bakin-text-muted">A stable snapshot of the services that keep Bakin usable.</p>
           </div>
         </div>
-        <div
+        <Grid
+          as="div"
           role="list"
+          layout="quarters"
+          gap="dense"
           data-testid="system-platform-pulse"
-          className="grid overflow-hidden rounded-xl border border-border/80 bg-border/70 @[36rem]/health-system:grid-cols-2 @[68rem]/health-system:grid-cols-4"
         >
           {summaries.map((summary) => {
-            const style = SUMMARY_STYLE[summary.status]
+            const tone = SUMMARY_TONE[summary.status]
             const Icon = SUMMARY_ICON[summary.key as keyof typeof SUMMARY_ICON]
             return (
               <article
                 key={summary.key}
                 role="listitem"
                 data-subsystem={summary.key}
-                className="relative min-w-0 bg-card"
+                className="min-w-0"
               >
-                <span aria-hidden="true" className={`absolute inset-x-0 top-0 z-10 h-1 ${style.accent}`} />
-                <button
-                  type="button"
-                  className="h-full w-full cursor-pointer px-4 py-3.5 text-left hover:bg-foreground/[0.025] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                  onClick={() => revealSubsystem(summary.key)}
-                  aria-label={`Open ${summary.label} detail: ${summary.headline}`}
-                >
-                  <span className="flex min-w-0 items-center justify-between gap-2">
-                    <span className="flex min-w-0 items-center gap-2 text-xs font-medium text-muted-foreground">
-                      <Icon className={`size-4 shrink-0 ${style.icon}`} aria-hidden="true" />
-                      <span className="truncate">{summary.label}</span>
+                <StatTile
+                  variant="surface"
+                  className="h-full w-full"
+                  icon={Icon}
+                  label={summary.label}
+                  valueTone={tone}
+                  value={(
+                    <span className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-2">
+                      <span>{summary.headline}</span>
+                      <StatusBadge variant="outline" tone={tone}>{summary.statusLabel}</StatusBadge>
                     </span>
-                    <StatusBadge variant="outline" tone={style.tone}>{summary.statusLabel}</StatusBadge>
-                  </span>
-                  <span className="mt-3 block text-lg font-semibold tracking-tight text-foreground">{summary.headline}</span>
-                  <span className="mt-1 block text-xs font-medium text-muted-foreground">{summary.fact}</span>
-                  <span className="mt-3 line-clamp-2 min-h-8 text-xs leading-relaxed text-muted-foreground/80">{summary.summary}</span>
-                </button>
+                  )}
+                  sub={(
+                    <>
+                      <span className="block font-bakin-typography-weight-medium text-bakin-text-primary">
+                        {summary.fact}
+                      </span>
+                      <span className="mt-bakin-2 line-clamp-2 block min-h-bakin-8">
+                        {summary.summary}
+                      </span>
+                    </>
+                  )}
+                  onClick={() => revealSubsystem(summary.key)}
+                />
               </article>
             )
           })}
-        </div>
+        </Grid>
       </section>
 
       {data.report.error && !data.report.data && (
-        <div role="alert" className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div role="alert" className="rounded-bakin-control border border-bakin-signal-danger/25 bg-bakin-signal-danger/10 px-bakin-3 py-bakin-2 text-bakin-typography-size-body text-bakin-signal-danger">
           The canonical health report is unavailable: {data.report.error}
         </div>
       )}
@@ -224,7 +233,7 @@ export function SystemTabView({
         ref={searchDetailRef}
         tabIndex={-1}
         aria-label="Search subsystem detail"
-        className="scroll-mt-4 outline-none focus-visible:rounded-xl focus-visible:ring-2 focus-visible:ring-ring"
+        className="scroll-mt-4 outline-none focus-visible:rounded-bakin-surface focus-visible:ring-2 focus-visible:ring-bakin-focus-ring"
       >
         <SystemSearchSection
           readiness={data.report.data?.subsystems.search ?? null}

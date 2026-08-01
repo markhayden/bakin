@@ -204,13 +204,14 @@ describe('SystemTabView', () => {
     const identity = screen.getByRole('heading', { level: 2, name: 'System' })
     expect(identity.className).toContain('sr-only')
     const intro = screen.getByText(/See whether Bakin can serve work, Search can be trusted, plugins are active, and health evidence is current/i)
-    expect(intro.className).toContain('text-xs')
+    expect(intro.className).toContain('text-bakin-typography-size-meta')
     expect(intro.className).toContain('leading-relaxed')
-    expect(intro.className).toContain('text-muted-foreground/80')
+    expect(intro.className).toContain('text-bakin-text-muted')
     expect(screen.getByRole('heading', { name: 'Platform pulse' })).toBeDefined()
     const pulse = screen.getByTestId('system-platform-pulse')
     const cards = [...pulse.querySelectorAll('[role="listitem"]')]
     expect(cards).toHaveLength(4)
+    expect(pulse.querySelectorAll('[data-stat-tile][data-variant="surface"]')).toHaveLength(4)
     expect(cards.map((card) => card.getAttribute('data-subsystem'))).toEqual([
       'runtime',
       'search',
@@ -222,7 +223,10 @@ describe('SystemTabView', () => {
     expect(pulse.textContent).toContain('Plugin issue')
     expect(pulse.textContent).toContain('Checks incomplete')
     expect(container.querySelector('[data-testid="system-search-details"]')).toBeNull()
-    expect(screen.getByTestId('search-readiness-pipeline').querySelectorAll('[role="listitem"]')).toHaveLength(4)
+    const searchPipeline = screen.getByTestId('search-readiness-pipeline')
+    expect(searchPipeline.querySelectorAll('[role="listitem"]')).toHaveLength(4)
+    expect(searchPipeline.querySelector('[data-slot="grid"]')?.getAttribute('data-layout')).toBe('quarters')
+    expect(searchPipeline.querySelectorAll('[data-stat-tile][data-variant="plain"]')).toHaveLength(4)
     expect((screen.getByTestId('search-technical-details') as HTMLDetailsElement).open).toBe(false)
   })
 
@@ -273,6 +277,8 @@ describe('SystemTabView', () => {
 
     const watchList = screen.getByTestId('system-watch-list')
     expect(watchList.querySelectorAll('[data-system-finding]')).toHaveLength(3)
+    expect(watchList.querySelector('[data-list-rows]')?.getAttribute('data-variant')).toBe('separated')
+    expect(watchList.querySelectorAll('[data-slot="list-row"]')).toHaveLength(3)
     expect(screen.getByRole('button', { name: 'Show 2 more system findings' })).toBeDefined()
     expect((screen.getByTestId('all-health-checks-details') as HTMLDetailsElement).open).toBe(false)
 
@@ -288,10 +294,10 @@ describe('SystemTabView', () => {
   it('lets every pulse card reveal its corresponding evidence without navigating away', () => {
     render(<SystemTabView data={systemData()} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open Bakin host detail: Host online' }))
+    fireEvent.click(screen.getByRole('button', { name: /Bakin host.*Host online/i }))
     expect((screen.getByTestId('bakin-host-details') as HTMLDetailsElement).open).toBe(true)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open Installed features detail: Plugin issue' }))
+    fireEvent.click(screen.getByRole('button', { name: /Installed features.*Plugin issue/i }))
     expect((screen.getByTestId('installed-features-details') as HTMLDetailsElement).open).toBe(true)
 
     const healthDetails = screen.getByTestId('all-health-checks-details') as HTMLDetailsElement
@@ -300,19 +306,19 @@ describe('SystemTabView', () => {
     const disclosureScroll = mock()
     healthSummary.scrollIntoView = summaryScroll
     healthDetails.scrollIntoView = disclosureScroll
-    fireEvent.click(screen.getByRole('button', { name: 'Open Health checks detail: Checks incomplete' }))
+    fireEvent.click(screen.getByRole('button', { name: /Health checks.*Checks incomplete/i }))
     expect(healthDetails.open).toBe(true)
     expect(summaryScroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
     expect(disclosureScroll).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open Search detail: Search degraded' }))
+    fireEvent.click(screen.getByRole('button', { name: /Search.*Search degraded/i }))
     expect(document.activeElement?.getAttribute('aria-label')).toBe('Search subsystem detail')
   })
 
   it('reveals System evidence without querying test-only selectors', () => {
     render(<SystemTabView data={systemData()} />)
 
-    const hostButton = screen.getByRole('button', { name: 'Open Bakin host detail: Host online' })
+    const hostButton = screen.getByRole('button', { name: /Bakin host.*Host online/i })
     const checkButton = screen.getByRole('button', { name: 'View evidence for Search verification probe' })
     const hostDetails = screen.getByTestId('bakin-host-details') as HTMLDetailsElement
     const checkDetails = screen.getByTestId('all-health-checks-details') as HTMLDetailsElement
@@ -423,6 +429,7 @@ describe('SystemTabView', () => {
     expect(screen.getByText('Port').closest('[data-stat-tile]')?.textContent).toContain('3737')
     expect(screen.getByText('PID').closest('[data-stat-tile]')?.textContent).toContain('4321')
     expect(screen.getByText('Node').closest('[data-stat-tile]')?.textContent).toContain('v24.3.0')
+    expect(hostDetails.querySelector('[data-list-rows]')?.getAttribute('data-variant')).toBe('separated')
   })
 
   it('clears an installed-feature filter before revealing plugin evidence', async () => {
@@ -630,6 +637,7 @@ describe('SystemTabView', () => {
     expect(screen.getAllByText('Healthy').length).toBeGreaterThan(0)
     expect(screen.getByText('Not applicable')).toBeDefined()
     expect(screen.getByText('Cloud sync is not configured.')).toBeDefined()
+    expect(inventory.querySelectorAll('[data-list-rows][data-variant="separated"]').length).toBeGreaterThan(0)
     const groups = [...inventory.querySelectorAll<HTMLDetailsElement>(':scope > div > div > details')]
     const healthyGroup = groups.find((group) => group.querySelector('summary')?.textContent?.includes('Runtime checks'))
     const concernGroup = groups.find((group) => group.querySelector('summary')?.textContent?.includes('Search checks'))

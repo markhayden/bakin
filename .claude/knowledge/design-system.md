@@ -1,8 +1,41 @@
 # Design System
 
-## Color Theme
+## Approved visual direction (2026-07-18)
 
-Bakin uses a warm dark theme with neon pink as the primary accent and electric yellow as the secondary/selection color. All colors are defined as CSS custom properties in `packages/host/src/globals.css` (compiled to `packages/host/public/globals.css` by `bun run build:css`) and mapped to Tailwind via the `@theme inline` block.
+**Product Character** is the approved default for Bakin product UI and plugin
+chrome. It uses bundled Space Grotesk for interface copy and bundled JetBrains
+Mono for identifiers, code, numerals, and technical data. Its expressive
+hierarchy, warm surfaces, selective brand signal, and restrained elevation are
+the foundation for all Phase 3 component contracts and later migrations.
+
+Operational Neutral was rejected as the global default because it felt more
+generic and produced a weaker hierarchy. Its tighter row rhythm remains useful
+evidence for tables, repeated rows, and operational data. That exception is a
+contextual part of the one **compact-professional** density; it is not a
+user-selectable density mode, alternate theme, or permission to switch fonts.
+
+The approved source of truth is:
+
+- `packages/ui/tokens/*.tokens.json` for DTCG reference, semantic, and
+  component layers;
+- generated `packages/ui/src/styles/tokens.generated.css`, typed metadata,
+  public Storybook token specimens, and token documentation;
+- `design-system/specimens/*-candidates.json` for the review decision and
+  retained comparison evidence;
+- `.claude/knowledge/style-guide.md` for composition and interaction rules.
+
+The public semantic contract uses namespaced `--bakin-*` properties. Generic
+aliases such as `--background`, `--accent`, or `--radius`, raw palette values,
+and arbitrary Tailwind utilities are migration evidence rather than new author
+contracts.
+
+## Legacy color inventory (superseded authoring API)
+
+Bakin retains the recognizable warm dark foundation, green primary action,
+pink signal/accent, and yellow highlight. The tables below describe legacy
+aliases still present during migration. Do not use their names as the future
+SDK contract; use the generated semantic `--bakin-*` properties and supported
+components instead.
 
 ### Surface Hierarchy (darkest → lightest)
 
@@ -62,15 +95,16 @@ These form the layering system. Use surface shifts instead of hard borders to se
 
 ### Design Rules
 
-1. **No hard borders** — use surface hierarchy shifts and `outline-variant` at low opacity (10–30%) for ghost borders.
-2. **Shadows are color-tinted** — pink or yellow glow, never gray/black.
-3. **Selection color** is electric yellow (`#eaea00`).
-4. **Background is warm near-black** (`#0f0e0e`), never pure `#000`.
-5. **Active/hover states** use subtle alpha overlays or surface step-ups, not color changes.
+1. Build hierarchy with typography, spacing, surface shifts, and subtle semantic dividers; do not wrap every region in a card.
+2. Use restrained elevation only where spatial hierarchy requires it, primarily overlays.
+3. Green is primary action, pink is selective product signal, and yellow is high-attention highlight; none is generic hover chrome.
+4. The canvas remains warm near-black rather than pure black.
+5. Active and hover states use neutral surface changes; focus uses the semantic focus token and remains visibly distinct.
+6. Product Character spacing is canonical for pages and sections. Only explicit dense data contexts use the reviewed tighter row gap and height.
 
-### Tailwind Usage
+### Legacy Tailwind examples
 
-All tokens are available as Tailwind utilities via the `@theme inline` mapping:
+These aliases remain during migration and are not the focused SDK contract:
 
 ```
 bg-surface-low        → var(--surface-low)
@@ -81,9 +115,60 @@ text-secondary        → var(--secondary) — electric yellow
 border-outline-variant → var(--outline-variant)
 ```
 
+## Storybook taxonomy (refit P2, 2026-07-30)
+
+Public entries are one-component-per-entry under intent sections; every entry
+leads with a `CanonicalUsage` story (minimal, SDK-imports-only). The tree:
+
+`Foundations/` tokens · `Primitives/` button, input, badge, avatar, card, … ·
+`Overlays/` dialog, sheet, drawer, popover, tooltip, dropdown-menu ·
+`Feedback/` system-state, alert, toast, banner, progress, skeleton,
+status-badge/marker, confirm-dialog, danger-zone, search-trust ·
+`Forms/` field composition, settings renderer, save-bar, unsaved-changes,
+asset/model/color pickers · `Navigation/` command, tabs, facet-filter,
+search-input, segmented-control, pagination, sortable-head ·
+`Layout/` page-shell, stack/inline, grid, section, bounded-overflow ·
+`Pages/` archetypes (WorkspacePage now; Page lands in refit P5) ·
+`Lists/` list-rows, kanban (+ P5: data-table, timeline, calendar-grid, …) ·
+`Charts/` line, area, bar, stacked-column, ranked-bar, pie, composition-bar,
+sparkline, data-table, explainer, stat-tile, stat-group ·
+`Conversation/` (sanctioned domain, unchanged) · `Agents/` avatar, select,
+status (sanctioned domain) · `Content/` markdown content/editor ·
+`Recipes/` assembly proofs (CanonicalUsage-exempt) · `Testing/` plugin UI
+fixture host · `Internal/` direction studies + containment (maintainer only).
+
+Shared scaffolding: `storybook/support/` (StoryStage/StorySection/StoryCluster/
+OverlayBackdrop + icons). Visual baselines are named `<section>-<entry>.png`.
+
+## Storybook refit gates (2026-07-29)
+
+The storybook-refit effort (spec/audit/plan in `.claude/specs/storybook-refit*.md`)
+added two monotonic ratchets that run inside `ui:conformance --quick`:
+
+- **Story compliance** (`scripts/ui/story-compliance.ts`, baseline
+  `design-system/story-compliance.json`): every public entry needs a
+  `CanonicalUsage` first story (minimal, `@makinbakin/sdk/*`-imports-only JSX;
+  `Recipes/` exempt), ≥1 play assertion, `parameters.bakinCoverage`,
+  `parameters.docs.description.component`, and a `tests/ui/visual` reference.
+  The baseline was deleted 2026-07-30 (refit P3) — the gate runs in ABSOLUTE mode; every gap fails immediately.
+- **Kit growth** (`scripts/ui/kit-growth.ts`, baseline
+  `design-system/kit-coverage.json`): every PascalCase value export of the
+  supported SDK UI entrypoints must be imported by the public catalog —
+  new kit components cannot land without a story (D9).
+
+Shared story scaffolding lives in `storybook/support/` (`StoryStage`,
+`StoryIntro`, `OverlayBackdrop`, inline icons). It is an allowed import root
+for public stories (walked by the same boundary checks), banned inside
+`CanonicalUsage` stories, and banned from app code
+(`tests/architecture/storybook-support-boundary.test.ts`).
+
+Autodocs is on globally (`.storybook/preview.tsx` `tags: ['autodocs']`):
+docs pages + source panels render for every entry; props tables come from
+TS types via react-docgen.
+
 ## Logo
 
-The Bakin logo (`public/bakin-logo.svg`) is `bakin-hop.svg` — a leaping bison rendered in `#ff4d94`. Source variants live on the Desktop (`bakin-1.svg`, `bakin.svg`, `bakin-traditional.svg`, `bakin-basic.svg`, `bakin-basic-nose.svg`, `bakin-primary.svg`, `bakin-full.svg`, `bakin-hat.svg`, `bakin-hop.svg`). Header text is Inter bold italic, white, `text-base`.
+The Bakin logo (`public/bakin-logo.svg`) is `bakin-hop.svg` — a leaping bison rendered in `#ff4d94`. Product chrome pairs it with the approved Space Grotesk family; logo artwork itself remains brand content rather than a UI token.
 
 ## Agent Avatars
 

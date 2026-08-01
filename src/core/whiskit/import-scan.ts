@@ -23,10 +23,18 @@ const BUILTIN_IMPORTS = new Set<string>([
   ...builtinModules.map((name) => `node:${name}`),
 ])
 const SOURCE_EXT_RE = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/
-/** Directories skipped when walking a plugin's source tree (also reused by the
- *  builder's mtime/staleness walk). */
-export const NON_RUNTIME_DIRS = new Set(['dist', 'node_modules', 'tests', '__tests__', 'coverage'])
+/** Entries skipped when walking a plugin's runtime source tree (also reused by
+ *  source hashing and the builder's mtime/staleness walk). */
+export const NON_RUNTIME_DIRS = new Set([
+  'dist',
+  'node_modules',
+  'tests',
+  '__tests__',
+  'coverage',
+  'bakin.ui-test.ts',
+])
 const OLD_SDK_PACKAGE_NAME = '@bakin' + '/sdk'
+const PRIVATE_UI_PACKAGE_NAME = '@bakin' + '/ui'
 
 type SourceLoader = 'ts' | 'tsx' | 'js' | 'jsx'
 interface BunImportScanEntry {
@@ -116,6 +124,10 @@ export function validatePluginImports(pluginDir: string, pkg: PluginPackageJson)
 
       if (specifier === OLD_SDK_PACKAGE_NAME || specifier.startsWith(`${OLD_SDK_PACKAGE_NAME}/`)) {
         violations.push(`${file}: ${specifier} is no longer supported; use @makinbakin/sdk`)
+        continue
+      }
+      if (specifier === PRIVATE_UI_PACKAGE_NAME || specifier.startsWith(`${PRIVATE_UI_PACKAGE_NAME}/`)) {
+        violations.push(`${file}: ${specifier} is private; use @makinbakin/sdk/*`)
         continue
       }
       if (specifier === '@bakin/core' || specifier.startsWith('@bakin/core/') || specifier.startsWith('@bakin/')) {

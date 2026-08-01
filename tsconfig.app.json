@@ -13,12 +13,19 @@
     "tests/**/*.ts",
     "tests/**/*.tsx",
     "scripts/**/*.ts",
+    ".storybook/**/*.ts",
+    ".storybook/**/*.tsx",
+    "storybook/**/*.ts",
+    "storybook/**/*.tsx",
     "docs/snippets/**/*.ts",
     "docs/snippets/**/*.tsx",
     "dev/**/*.ts",
     "cli/**/*.ts",
     "server.ts",
-    "bakin.config.ts"
+    "bakin.config.ts",
+    "playwright.ui.config.ts",
+    "playwright.browser.config.ts",
+    "vitest.config.ts"
   ],
   "exclude": [
     "node_modules",

@@ -20,7 +20,7 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import '../rtl-settle'
 
-import { Composer } from '@makinbakin/sdk/components'
+import { Composer } from '@makinbakin/sdk/conversation'
 
 const getTextarea = (container: HTMLElement) => container.querySelector('textarea')!
 
@@ -143,7 +143,7 @@ describe('Composer attachments', () => {
     expect(added).toEqual(['pasted.png'])
   })
 
-  it('acceptImages=false: PDFs pass the picker filter, images are refused, accept narrows (#742)', () => {
+  it('PDF-only acceptedTypes: PDFs pass the picker filter, images are refused, accept narrows (#742)', () => {
     const added: string[] = []
     const { container } = render(
       <Composer
@@ -151,7 +151,7 @@ describe('Composer attachments', () => {
         onSend={() => {}}
         attachments={{
           enabled: true,
-          acceptImages: false,
+          acceptedTypes: ['application/pdf'],
           disabledReason: "main's model can't see images",
           items: [],
           onAdd: (files) => added.push(...files.map((f) => f.name)),

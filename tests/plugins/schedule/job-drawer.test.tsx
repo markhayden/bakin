@@ -7,27 +7,6 @@ mock.module('@makinbakin/sdk/hooks', () => ({
   useAgent: (id: string) => id ? { id, name: id } : null,
 }))
 
-mock.module('@makinbakin/sdk/components', () => ({
-  AgentAvatar: ({ agentId }: { agentId: string }) => <span>{agentId}</span>,
-  BakinDrawer: ({
-    open,
-    title,
-    actions,
-    children,
-  }: {
-    open: boolean
-    title?: React.ReactNode
-    actions?: React.ReactNode
-    children?: React.ReactNode
-  }) => open ? (
-    <section>
-      <div>{title}</div>
-      <div>{actions}</div>
-      <div>{children}</div>
-    </section>
-  ) : null,
-}))
-
 mock.module('@makinbakin/sdk/ui', () => ({
   Badge: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
   Button: ({ children, onClick }: { children?: React.ReactNode; onClick?: () => void }) => (

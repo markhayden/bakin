@@ -35,7 +35,7 @@ function seed(rel: string, content = '// stub\n'): void {
 // Fixture tree mirroring the real walk roots.
 seed('packages/host/dist/main.js')
 seed('packages/host/dist/main.js.map')                 // must be skipped
-seed('packages/host/public/globals.css')
+seed('packages/sdk/styles.css')
 seed('packages/host/public/index.html')
 seed('packages/host/public/vendor/react.js')
 seed('packages/host/public/__bakin-dev/client.js')     // must never be walked
@@ -105,7 +105,7 @@ describe('collectAssets', () => {
     expect(second.every(a => !/_\d+$/.test(a.varName))).toBe(true)
   })
 
-  it('preserves the walk order: host dist → public → vendor → plugins → data', () => {
+  it('preserves the walk order: host dist → SDK stylesheet → public → vendor → plugins → data', () => {
     const urls = collectAssets(root).map(a => a.urlPath)
 
     const order = [

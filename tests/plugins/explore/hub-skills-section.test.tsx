@@ -21,6 +21,13 @@ mock.module('../../../packages/core/src/content-dir', contentDirMock)
 mock.module('@makinbakin/sdk/ui', () => ({
   Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
   Input: (props: InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
+  Drawer: ({ children, open, title }: { children: ReactNode; open: boolean; title?: ReactNode }) =>
+    open ? (
+      <div role="dialog" aria-label="drawer">
+        <h2>{title}</h2>
+        {children}
+      </div>
+    ) : null,
 }))
 
 const toasts: string[] = []
@@ -38,14 +45,7 @@ mock.module('@makinbakin/sdk/hooks', () => ({
   }),
 }))
 
-mock.module('@makinbakin/sdk/components', () => ({
-  BakinDrawer: ({ children, open, title }: { children: ReactNode; open: boolean; title?: ReactNode }) =>
-    open ? (
-      <div role="dialog" aria-label="drawer">
-        <h2>{title}</h2>
-        {children}
-      </div>
-    ) : null,
+mock.module('@makinbakin/sdk/patterns', () => ({
   ConfirmDialog: ({ open, title, onConfirm }: { open: boolean; title: string; onConfirm: () => void }) =>
     open ? (
       <div role="alertdialog">

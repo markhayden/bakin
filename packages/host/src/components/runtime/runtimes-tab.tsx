@@ -5,43 +5,66 @@
  * options, consequences, preview trigger, typed confirm; nothing actionable
  * lives inline on the page (repair-button precedent). Preview is a dry run
  * (zero writes) whose grouped result cards render on the page as read-only
- * output, with live progress steps over the runtime:switch SSE stream.
+ * output, with live progress steps (Timeline) over the runtime:switch SSE
+ * stream.
  */
 import { useCallback, useRef, useState } from 'react'
 import { Cpu, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { ConfirmDialog } from '@/components/confirm-dialog'
+import {
+  ConfirmDialog,
+  StatGroup,
+  StatTile,
+  StatusBadge,
+  Timeline,
+  TimelineEntry,
+  type StatusTone,
+} from '@makinbakin/sdk/patterns'
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Checkbox,
+  Field,
+  FieldDescription,
+  FieldLabel,
+} from '@makinbakin/sdk/ui'
 import { reduceSwitchProgress, SWITCH_PHASE_LABELS, type SwitchStepRow } from '../../lib/runtime-report'
 import { ExtensionsSection } from './extensions-section'
 import type { CapabilityReport, SwitchResultPayload } from './types'
 
-function StepDot({ status }: { status: SwitchStepRow['status'] }) {
-  const cls = status === 'ok'
-    ? 'bg-emerald-500'
-    : status === 'error'
-      ? 'bg-red-500'
-      : status === 'skip'
-        ? 'bg-zinc-400'
-        : 'animate-pulse bg-sky-500'
-  return <span className={`mt-1 inline-block size-2 shrink-0 rounded-full ${cls}`} />
+const STEP_TONE: Record<SwitchStepRow['status'], StatusTone> = {
+  ok: 'success',
+  error: 'danger',
+  skip: 'neutral',
+  running: 'accent',
+}
+
+const STEP_MARKER_LABEL: Record<SwitchStepRow['status'], string> = {
+  ok: 'complete',
+  error: 'failed',
+  skip: 'skipped',
+  running: 'running',
 }
 
 function ProgressSteps({ steps }: { steps: SwitchStepRow[] }) {
   if (steps.length === 0) return null
   return (
     <Card data-testid="switch-progress">
-      <CardContent className="space-y-1.5 p-4">
-        {steps.map((step) => (
-          <div key={step.phase} className="flex items-start gap-2 text-sm">
-            <StepDot status={step.status} />
-            <div className="min-w-0">
-              <span>{SWITCH_PHASE_LABELS[step.phase] ?? step.phase}</span>
-              {step.detail && <span className="ml-2 text-xs text-muted-foreground">{step.detail}</span>}
-            </div>
-          </div>
-        ))}
+      <CardContent className="p-4">
+        <Timeline aria-label="Switch progress">
+          {steps.map((step) => (
+            <TimelineEntry
+              key={step.phase}
+              tone={STEP_TONE[step.status]}
+              markerLabel={STEP_MARKER_LABEL[step.status]}
+              title={SWITCH_PHASE_LABELS[step.phase] ?? step.phase}
+              meta={step.detail ? <span className="text-xs text-bakin-text-muted">{step.detail}</span> : undefined}
+            />
+          ))}
+        </Timeline>
       </CardContent>
     </Card>
   )
@@ -69,9 +92,9 @@ function ResultCards({ result, onProceed, busy = false }: { result: SwitchResult
   return (
     <div className="space-y-3" data-testid="switch-result">
       {!result.ok && (
-        <Card className="border-red-500/30">
+        <Card className="border-bakin-signal-danger/40">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-red-600 dark:text-red-400">Switch failed</CardTitle>
+            <CardTitle className="text-sm text-bakin-signal-danger">Switch failed</CardTitle>
             <CardDescription>
               {result.error}
               {result.restored !== undefined && (result.restored ? ' — the previous runtime was restored.' : ' — restore ALSO failed; check settings backup.')}
@@ -91,18 +114,18 @@ function ResultCards({ result, onProceed, busy = false }: { result: SwitchResult
             )}
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-              <div><p className="text-lg font-semibold">{result.roster?.carried.length ?? 0}</p><p className="text-xs text-muted-foreground">agents {verb.toLowerCase()}</p></div>
-              <div><p className="text-lg font-semibold">{result.roster?.existing.length ?? 0}</p><p className="text-xs text-muted-foreground">already on {result.to}</p></div>
-              <div><p className="text-lg font-semibold">{workspaceFiles + workspaceSkills}</p><p className="text-xs text-muted-foreground">files + skills {verb.toLowerCase()}</p></div>
-              <div><p className="text-lg font-semibold">{result.cron ? result.cron.adopted.length : '—'}</p><p className="text-xs text-muted-foreground">cron jobs {result.dryRun ? 'would be adopted' : 'adopted'}</p></div>
-            </div>
+            <StatGroup label="Switch summary">
+              <StatTile label={`agents ${verb.toLowerCase()}`} value={result.roster?.carried.length ?? 0} />
+              <StatTile label={`already on ${result.to}`} value={result.roster?.existing.length ?? 0} />
+              <StatTile label={`files + skills ${verb.toLowerCase()}`} value={workspaceFiles + workspaceSkills} />
+              <StatTile label={`cron jobs ${result.dryRun ? 'would be adopted' : 'adopted'}`} value={result.cron ? result.cron.adopted.length : '—'} />
+            </StatGroup>
             {result.dryRun && onProceed && (
-              <div className="flex items-center gap-2 border-t border-border/60 pt-3">
+              <div className="flex items-center gap-2 border-t border-bakin-border-subtle/60 pt-3">
                 <Button size="sm" onClick={onProceed} disabled={busy} data-testid="switch-execute">
                   Switch to {RUNTIME_LABELS[result.to] ?? result.to}…
                 </Button>
-                <span className="text-xs text-muted-foreground">Opens the confirmation — nothing has been written yet.</span>
+                <span className="text-xs text-bakin-text-muted">Opens the confirmation — nothing has been written yet.</span>
               </div>
             )}
           </CardContent>
@@ -110,12 +133,12 @@ function ResultCards({ result, onProceed, busy = false }: { result: SwitchResult
       )}
 
       {attention.length > 0 && (
-        <Card className="border-amber-500/30">
+        <Card className="border-bakin-signal-highlight/40">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Needs your attention</CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-1 text-xs text-muted-foreground">
+            <ul className="space-y-1 text-xs text-bakin-text-muted">
               {attention.map((line) => <li key={line}>→ {line}</li>)}
             </ul>
           </CardContent>
@@ -129,7 +152,7 @@ function ResultCards({ result, onProceed, busy = false }: { result: SwitchResult
             <CardDescription>Runtime-owned things that never cross a switch.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-1 text-xs text-muted-foreground">
+            <ul className="space-y-1 text-xs text-bakin-text-muted">
               {result.cantCarry!.map((line) => (
                 <li key={line.concern}>{line.detail}{line.count !== undefined ? ` (${line.count})` : ''}</li>
               ))}
@@ -139,7 +162,7 @@ function ResultCards({ result, onProceed, busy = false }: { result: SwitchResult
       )}
 
       {result.backupPath && !result.dryRun && (
-        <p className="text-xs text-muted-foreground">Settings backup: {result.backupPath}</p>
+        <p className="text-xs text-bakin-text-muted">Settings backup: {result.backupPath}</p>
       )}
     </div>
   )
@@ -231,12 +254,12 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
   }, [target, running, adoptCron, copyWorkspaces, report.adapter, onSwitched])
 
   if (others.length === 0) {
-    return <p className="text-sm text-muted-foreground">No other runtime adapters are available to switch to.</p>
+    return <p className="text-sm text-bakin-text-muted">No other runtime adapters are available to switch to.</p>
   }
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-bakin-text-muted">
         The runtime is the engine that runs your agents. Switching is a real migration, not a toggle —
         agents start fresh sessions on the target and runtime-owned state stays behind. Preview first.
       </p>
@@ -250,27 +273,27 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
               disabled={isActive || running !== null}
               data-testid={`switch-target-${name}`}
               onClick={() => { setTarget(name); setResult(null); setSteps([]); setConfirming(true) }}
-              className={`rounded-xl border bg-card p-5 text-left text-card-foreground shadow transition-colors ${
+              className={`rounded-bakin-surface border bg-bakin-surface-default p-5 text-left text-bakin-text-primary shadow transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring ${
                 isActive
-                  ? 'cursor-default border-emerald-500/40 bg-emerald-500/5 ring-1 ring-emerald-500/40'
-                  : 'border-border hover:bg-muted/40'
+                  ? 'cursor-default border-bakin-action-primary-background/40 bg-bakin-action-primary-background/5 ring-1 ring-bakin-action-primary-background/40'
+                  : 'border-bakin-border-subtle hover:bg-bakin-canvas-default/40'
               }`}
             >
               <div className="flex items-start gap-4">
-                <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${isActive ? 'bg-emerald-500/10' : 'bg-muted/60'}`}>
-                  <Cpu className={`size-5 ${isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`} />
+                <div className={`flex size-10 shrink-0 items-center justify-center rounded-bakin-control ${isActive ? 'bg-bakin-action-primary-background/10' : 'bg-bakin-canvas-default/60'}`}>
+                  <Cpu className={`size-5 ${isActive ? 'text-bakin-action-primary-background' : 'text-bakin-text-muted'}`} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-base font-semibold">{RUNTIME_LABELS[name] ?? name}</p>
                     {isActive && (
-                      <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">Active</Badge>
+                      <StatusBadge tone="success" variant="soft">Active</StatusBadge>
                     )}
-                    <span className="ml-auto text-[11px] text-muted-foreground/60">
+                    <span className="ml-auto text-bakin-typography-size-meta text-bakin-text-muted/60">
                       {isActive ? `${report.runtime.name}@${report.runtime.version}` : name}
                     </span>
                   </div>
-                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                  <p className="mt-1.5 text-sm leading-relaxed text-bakin-text-muted">
                     {RUNTIME_BLURBS[name] ?? 'Runtime adapter.'}
                   </p>
                 </div>
@@ -283,7 +306,7 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
       <ExtensionsSection />
 
       {running !== null && steps.length === 0 && (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <p className="flex items-center gap-2 text-sm text-bakin-text-muted">
           <Loader2 className="size-4 animate-spin" />
           {running === 'preview' ? 'Running preview…' : `Switching to ${target}…`}
         </p>
@@ -315,25 +338,28 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
         }}
       >
         <div className="space-y-3">
-          <label className="flex items-start gap-2.5 text-sm">
-            <input type="checkbox" className="mt-1 rounded" checked={copyWorkspaces} onChange={(e) => setCopyWorkspaces(e.target.checked)} />
-            <span className="flex flex-col">
-              <span>Carry workspace content</span>
-              <span className="text-xs text-muted-foreground">Soul, memory, and agent-authored skills copy onto agents the switch creates.</span>
-            </span>
-          </label>
-          <label className="flex items-start gap-2.5 text-sm">
-            <input type="checkbox" className="mt-1 rounded" checked={adoptCron} onChange={(e) => setAdoptCron(e.target.checked)} data-testid="switch-adopt-cron" />
-            <span className="flex flex-col">
-              <span>Adopt the runtime's cron jobs into Bakin schedules</span>
-              <span className="text-xs text-muted-foreground">Native cron jobs stop with the old runtime — adopting keeps them running as Bakin schedules.</span>
-            </span>
-          </label>
-          <div className="flex items-center gap-2 border-t border-border/60 pt-3">
+          <Field orientation="horizontal" name="copy-workspaces">
+            <Checkbox
+              checked={copyWorkspaces}
+              onCheckedChange={(checked) => setCopyWorkspaces(checked === true)}
+            />
+            <FieldLabel>Carry workspace content</FieldLabel>
+            <FieldDescription>Soul, memory, and agent-authored skills copy onto agents the switch creates.</FieldDescription>
+          </Field>
+          <Field orientation="horizontal" name="adopt-cron">
+            <Checkbox
+              checked={adoptCron}
+              onCheckedChange={(checked) => setAdoptCron(checked === true)}
+              data-testid="switch-adopt-cron"
+            />
+            <FieldLabel>Adopt the runtime's cron jobs into Bakin schedules</FieldLabel>
+            <FieldDescription>Native cron jobs stop with the old runtime — adopting keeps them running as Bakin schedules.</FieldDescription>
+          </Field>
+          <div className="flex items-center gap-2 border-t border-bakin-border-subtle/60 pt-3">
             <Button size="sm" variant="outline" data-testid="switch-preview" onClick={() => { setConfirming(false); void run(true) }}>
               Preview switch
             </Button>
-            <span className="text-xs text-muted-foreground">Dry run — nothing is written.</span>
+            <span className="text-xs text-bakin-text-muted">Dry run — nothing is written.</span>
           </div>
         </div>
       </ConfirmDialog>

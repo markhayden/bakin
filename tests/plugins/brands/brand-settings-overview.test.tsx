@@ -36,9 +36,6 @@ mock.module('@/hooks/use-query-state', () => ({
     return [v, setV]
   },
 }))
-mock.module('@/components/markdown-content', () => ({
-  MarkdownContent: ({ content }: { content: string }) => <pre>{content}</pre>,
-}))
 
 import { BrandDetail } from '../../../plugins/brands/components/brand-detail'
 
@@ -65,7 +62,7 @@ const COMPLETENESS = {
 }
 
 let calls: Array<{ url: string; method: string }>
-function mockApi({ draft = false, blocked = {} as Record<string, string>, notFound = false } = {}) {
+function mockApi({ draft = false, blocked = {} as Record<string, string>, logo = false, notFound = false } = {}) {
   calls = []
   globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
@@ -74,7 +71,16 @@ function mockApi({ draft = false, blocked = {} as Record<string, string>, notFou
     if (url.endsWith('/api/plugins/brands/acme') && method === 'GET') {
       if (notFound) return new Response(JSON.stringify({ error: 'brand not found' }), { status: 404 })
       return new Response(
-        JSON.stringify({ brand: makeBrand(draft), guidelines: [], lessons: [], fingerprint: 'sha256:x', completeness: COMPLETENESS }),
+        JSON.stringify({
+          brand: {
+            ...makeBrand(draft),
+            ...(logo ? { logos: [{ assetId: 'acme-logo', variant: 'primary' }] } : {}),
+          },
+          guidelines: [],
+          lessons: [],
+          fingerprint: 'sha256:x',
+          completeness: COMPLETENESS,
+        }),
         { status: 200 },
       )
     }
@@ -101,11 +107,66 @@ async function renderDetail(onBack = () => {}) {
   await waitFor(() => expect(screen.getAllByText('Acme').length).toBeGreaterThan(0))
 }
 
+describe('canonical detail shell', () => {
+  it('uses the full-width detail archetype, one page heading, named tabs, and low-chrome overview metrics', async () => {
+    await renderDetail()
+
+    const page = document.querySelector('[data-archetype="page"]')
+    const header = document.querySelector('[data-slot="page-header"]')
+    const metrics = screen.getByRole('group', { name: 'Brand summary metrics' })
+
+    expect(page?.getAttribute('data-width')).toBe('full')
+    expect(header?.getAttribute('data-measure')).toBe('wide')
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Back to brands' }).textContent).toBe('')
+    expect(screen.getByRole('tablist', { name: 'Acme sections' })).toBeDefined()
+    expect(metrics.querySelectorAll('[data-stat-tile]')).toHaveLength(4)
+    expect(document.querySelector('[data-slot="page-body"]')).not.toBeNull()
+    expect(document.querySelector('[data-brand-overview] [data-section-card]')).toBeNull()
+    await settleReact()
+  })
+
+  it('uses the existing asset picker when the header has no logo', async () => {
+    await renderDetail()
+
+    fireEvent.click(document.querySelector('[data-add-logo-from-header]')!)
+
+    await waitFor(() => {
+      expect(document.getElementById('brand-detail-tab-assets')?.getAttribute('aria-selected')).toBe('true')
+      expect(document.querySelector('[data-asset-picker]')).not.toBeNull()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
+    await waitFor(() => expect(document.querySelector('[data-asset-picker]')).toBeNull())
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Assets' }))
+    await waitFor(() => expect(document.querySelector('[data-add-logo]')).not.toBeNull())
+    expect(document.querySelector('[data-asset-picker]')).toBeNull()
+    await settleReact()
+  })
+
+  it('renders a transparent-capable original logo without a forced tile background', async () => {
+    mockApi({ logo: true })
+    await renderDetail()
+
+    const logo = document.querySelector('[data-brand-header] [data-brand-logo]')
+    expect(logo?.getAttribute('src')).toBe('/api/assets/acme-logo')
+    expect(logo?.getAttribute('class')).not.toContain('bg-')
+    expect(logo?.getAttribute('class')).not.toContain('p-bakin-')
+    await settleReact()
+  })
+})
+
 describe('overview kit checklist', () => {
   it('renders server completeness with percent and jump links', async () => {
     await renderDetail()
+    const completeness = document.querySelector('[data-kit-completeness]')
+
+    expect(completeness?.getAttribute('data-tone')).toBe('neutral')
     expect(screen.getByText('Finish your kit')).toBeDefined()
     expect(screen.getByText('25%')).toBeDefined()
+    expect(document.querySelectorAll('[data-kit-checkbox="complete"]')).toHaveLength(1)
+    expect(document.querySelectorAll('[data-kit-checkbox="incomplete"]')).toHaveLength(2)
     fireEvent.click(document.querySelector('[data-kit-item="logo"]')!)
     // jump link lands on the assets tab
     await waitFor(() => expect(screen.getByText(/The face of the brand — the first logo/)).toBeDefined())
@@ -296,6 +357,8 @@ describe('route states', () => {
     mockApi({ notFound: true })
     render(<BrandDetail brandId="acme" onBack={() => {}} />)
     await waitFor(() => expect(screen.getByText("This brand doesn't exist")).toBeDefined())
+    expect(document.querySelector('[data-archetype="page"]')?.getAttribute('data-width')).toBe('full')
+    expect(document.querySelector('[data-slot="system-state"]')?.getAttribute('data-kind')).toBe('initial-empty')
     await settleReact()
   })
 
@@ -303,5 +366,6 @@ describe('route states', () => {
     globalThis.fetch = mock(() => new Promise(() => {})) as unknown as typeof fetch
     render(<BrandDetail brandId="acme" onBack={() => {}} />)
     expect(document.querySelector('[data-brand-detail-loading]')).not.toBeNull()
+    expect(document.querySelector('[data-slot="system-state"]')?.getAttribute('data-kind')).toBe('loading')
   })
 })

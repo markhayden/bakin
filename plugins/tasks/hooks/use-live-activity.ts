@@ -3,13 +3,13 @@
 import { useEffect, useState } from 'react'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
 
-/** Latest live chip for one task's in-flight turn (ephemeral UI state). */
+/** Latest live feedback for one task's in-flight turn (ephemeral UI state). */
 export interface LiveActivity {
   label: string
   ts: number
 }
 
-/** A chip with no fresh activity for this long is swept (turn likely settled
+/** Feedback with no fresh activity for this long is swept (turn likely settled
  *  or gone quiet — the tap is best-effort, so absence of a terminal signal
  *  is normal). */
 const TTL_MS = 45_000
@@ -32,7 +32,7 @@ export function chipLabel(chunk: LiveActivityChunk): string {
 
 /** The event's own timestamp when parseable, else receipt time — and stale
  *  events (older than the TTL) are dropped outright so a replayed or
- *  delayed event can never re-chip a settled task. */
+ *  delayed event can never re-surface a settled task. */
 export function liveActivityTs(rawTs: unknown, now = Date.now()): number | null {
   const eventTs = Date.parse(String(rawTs ?? ''))
   const ts = Number.isFinite(eventTs) ? eventTs : now
@@ -40,9 +40,9 @@ export function liveActivityTs(rawTs: unknown, now = Date.now()): number | null 
 }
 
 /**
- * Live turn-activity chips keyed by task id, fed by the ephemeral
+ * Live turn-activity feedback keyed by task id, fed by the ephemeral
  * 'turn-activity' SSE events (never persisted server-side). A nested-
- * workflow step turn chips BOTH the parent task and the child board task.
+ * workflow step turn updates BOTH the parent task and the child board task.
  */
 export function useLiveActivity(): Record<string, LiveActivity> {
   const [byTask, setByTask] = useState<Record<string, LiveActivity>>({})

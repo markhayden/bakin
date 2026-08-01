@@ -1,0 +1,2799 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "bun run ui:census:generate",
+  "scope": {
+    "mode": "official",
+    "repositories": [
+      "bakin",
+      "bakin-bits-official"
+    ],
+    "includes": [
+      "host routes",
+      "Bakin reference plugin author contract",
+      "core plugin page and embedded slots",
+      "shared TSX component units",
+      "official Bits runtime routes and redirect aliases",
+      "official Bits page and embedded slots",
+      "official Bits plugin author template"
+    ]
+  },
+  "summary": {
+    "total": 102,
+    "byKind": {
+      "host-route": 26,
+      "plugin-route": 10,
+      "plugin-slot": 31,
+      "plugin-template": 2,
+      "shared-component": 33,
+      "sdk-ui-export": 0
+    },
+    "nonVisualAliases": 3
+  },
+  "entries": [
+    {
+      "id": "host-route:__root",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "__root"
+      },
+      "sourcePath": "packages/host/src/routes/__root.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/__root.tsx",
+          "detail": "createRootRoute shell"
+        }
+      ]
+    },
+    {
+      "id": "host-route:assets",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/assets"
+      },
+      "sourcePath": "packages/host/src/routes/assets.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/assets.tsx",
+          "detail": "createRoute path \"/assets\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:assets.$assetId",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/assets/$assetId"
+      },
+      "sourcePath": "packages/host/src/routes/assets.$assetId.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/assets.$assetId.tsx",
+          "detail": "createRoute path \"/assets/$assetId\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:brands",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/brands"
+      },
+      "sourcePath": "packages/host/src/routes/brands.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/brands.tsx",
+          "detail": "createRoute path \"/brands\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:brands.$brandId",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/brands/$brandId"
+      },
+      "sourcePath": "packages/host/src/routes/brands.$brandId.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/brands.$brandId.tsx",
+          "detail": "createRoute path \"/brands/$brandId\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:brands.$brandId.docs.$kind.$name",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/brands/$brandId/docs/$kind/$name"
+      },
+      "sourcePath": "packages/host/src/routes/brands.$brandId.docs.$kind.$name.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/brands.$brandId.docs.$kind.$name.tsx",
+          "detail": "createRoute path \"/brands/$brandId/docs/$kind/$name\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:chat",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/chat"
+      },
+      "sourcePath": "packages/host/src/routes/chat.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/chat.tsx",
+          "detail": "createRoute path \"/chat\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:chat.$chatId",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/chat/$chatId"
+      },
+      "sourcePath": "packages/host/src/routes/chat.$chatId.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/chat.$chatId.tsx",
+          "detail": "createRoute path \"/chat/$chatId\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:chat.new",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/chat/new"
+      },
+      "sourcePath": "packages/host/src/routes/chat.new.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/chat.new.tsx",
+          "detail": "createRoute path \"/chat/new\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:explore",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/explore"
+      },
+      "sourcePath": "packages/host/src/routes/explore.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/explore.tsx",
+          "detail": "createRoute path \"/explore\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:health",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/health"
+      },
+      "sourcePath": "packages/host/src/routes/health.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/health.tsx",
+          "detail": "createRoute path \"/health\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:index",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/"
+      },
+      "sourcePath": "packages/host/src/routes/index.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "non-visual-alias",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/index.tsx",
+          "detail": "createRoute path \"/\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:memory",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/memory"
+      },
+      "sourcePath": "packages/host/src/routes/memory.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/memory.tsx",
+          "detail": "createRoute path \"/memory\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:models",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/models"
+      },
+      "sourcePath": "packages/host/src/routes/models.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/models.tsx",
+          "detail": "createRoute path \"/models\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:plugin-catchall",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "$"
+      },
+      "sourcePath": "packages/host/src/routes/plugin-catchall.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/plugin-catchall.tsx",
+          "detail": "createRoute path \"$\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:runtime",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/runtime"
+      },
+      "sourcePath": "packages/host/src/routes/runtime.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/runtime.tsx",
+          "detail": "createRoute path \"/runtime\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:schedule",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/schedule"
+      },
+      "sourcePath": "packages/host/src/routes/schedule.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/schedule.tsx",
+          "detail": "createRoute path \"/schedule\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:settings",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/settings"
+      },
+      "sourcePath": "packages/host/src/routes/settings.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/settings.tsx",
+          "detail": "createRoute path \"/settings\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:tasks",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/tasks"
+      },
+      "sourcePath": "packages/host/src/routes/tasks.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/tasks.tsx",
+          "detail": "createRoute path \"/tasks\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:team.$id",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/team/$id"
+      },
+      "sourcePath": "packages/host/src/routes/team.$id.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/team.$id.tsx",
+          "detail": "createRoute path \"/team/$id\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:team.index",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/team/"
+      },
+      "sourcePath": "packages/host/src/routes/team.index.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/team.index.tsx",
+          "detail": "createRoute path \"/team/\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:team.teams.$teamId",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/team/teams/$teamId"
+      },
+      "sourcePath": "packages/host/src/routes/team.teams.$teamId.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/team.teams.$teamId.tsx",
+          "detail": "createRoute path \"/team/teams/$teamId\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:workflows.$id.edit",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/workflows/$id/edit"
+      },
+      "sourcePath": "packages/host/src/routes/workflows.$id.edit.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/workflows.$id.edit.tsx",
+          "detail": "createRoute path \"/workflows/$id/edit\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:workflows.$id.index",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/workflows/$id/"
+      },
+      "sourcePath": "packages/host/src/routes/workflows.$id.index.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/workflows.$id.index.tsx",
+          "detail": "createRoute path \"/workflows/$id/\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:workflows.index",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/workflows/"
+      },
+      "sourcePath": "packages/host/src/routes/workflows.index.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/workflows.index.tsx",
+          "detail": "createRoute path \"/workflows/\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:workflows.new",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/workflows/new"
+      },
+      "sourcePath": "packages/host/src/routes/workflows.new.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/workflows.new.tsx",
+          "detail": "createRoute path \"/workflows/new\""
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:_template:/_template",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "_template"
+      },
+      "identity": {
+        "route": "/_template"
+      },
+      "sourcePath": "bakin-bits-official/plugins/_template/client-registration.tsx",
+      "symbols": [
+        "TemplatePage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/_template/bakin-plugin.json",
+          "detail": "contributes.routes[0].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/_template/client-registration.tsx",
+          "detail": "registerPlugin routes \"/_template\" -> TemplatePage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:messaging:/messaging",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "messaging"
+      },
+      "identity": {
+        "route": "/messaging"
+      },
+      "sourcePath": "bakin-bits-official/plugins/messaging/client.tsx",
+      "symbols": [
+        "MessagingIndexRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "non-visual-alias",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/messaging/bakin-plugin.json",
+          "detail": "contributes.routes[0].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/messaging/client.tsx",
+          "detail": "registerPlugin routes \"/messaging\" -> MessagingIndexRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:messaging:/messaging/brainstorm",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "messaging"
+      },
+      "identity": {
+        "route": "/messaging/brainstorm"
+      },
+      "sourcePath": "bakin-bits-official/plugins/messaging/client.tsx",
+      "symbols": [
+        "MessagingBrainstormRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/messaging/bakin-plugin.json",
+          "detail": "contributes.routes[4].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/messaging/client.tsx",
+          "detail": "registerPlugin routes \"/messaging/brainstorm\" -> MessagingBrainstormRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:messaging:/messaging/calendar",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "messaging"
+      },
+      "identity": {
+        "route": "/messaging/calendar"
+      },
+      "sourcePath": "bakin-bits-official/plugins/messaging/client.tsx",
+      "symbols": [
+        "MessagingCalendarRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/messaging/bakin-plugin.json",
+          "detail": "contributes.routes[1].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/messaging/client.tsx",
+          "detail": "registerPlugin routes \"/messaging/calendar\" -> MessagingCalendarRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:messaging:/messaging/plans",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "messaging"
+      },
+      "identity": {
+        "route": "/messaging/plans"
+      },
+      "sourcePath": "bakin-bits-official/plugins/messaging/client.tsx",
+      "symbols": [
+        "MessagingPlansRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/messaging/bakin-plugin.json",
+          "detail": "contributes.routes[2].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/messaging/client.tsx",
+          "detail": "registerPlugin routes \"/messaging/plans\" -> MessagingPlansRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:messaging:/messaging/plans/[id]",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "messaging"
+      },
+      "identity": {
+        "route": "/messaging/plans/[id]"
+      },
+      "sourcePath": "bakin-bits-official/plugins/messaging/client.tsx",
+      "symbols": [
+        "MessagingPlanWorkspaceRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/messaging/bakin-plugin.json",
+          "detail": "contributes.routes[3].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/messaging/client.tsx",
+          "detail": "registerPlugin routes \"/messaging/plans/[id]\" -> MessagingPlanWorkspaceRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:projects:/projects",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "projects"
+      },
+      "identity": {
+        "route": "/projects"
+      },
+      "sourcePath": "bakin-bits-official/plugins/projects/client.tsx",
+      "symbols": [
+        "ProjectsIndexRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/projects/bakin-plugin.json",
+          "detail": "contributes.routes[0].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/projects/client.tsx",
+          "detail": "registerPlugin routes \"/projects\" -> ProjectsIndexRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:projects:/projects/[id]",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "projects"
+      },
+      "identity": {
+        "route": "/projects/[id]"
+      },
+      "sourcePath": "bakin-bits-official/plugins/projects/client.tsx",
+      "symbols": [
+        "ProjectDetailRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/projects/bakin-plugin.json",
+          "detail": "contributes.routes[2].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/projects/client.tsx",
+          "detail": "registerPlugin routes \"/projects/[id]\" -> ProjectDetailRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:projects:/projects/[id]/edit",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "projects"
+      },
+      "identity": {
+        "route": "/projects/[id]/edit"
+      },
+      "sourcePath": "bakin-bits-official/plugins/projects/client.tsx",
+      "symbols": [
+        "ProjectEditRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/projects/bakin-plugin.json",
+          "detail": "contributes.routes[3].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/projects/client.tsx",
+          "detail": "registerPlugin routes \"/projects/[id]/edit\" -> ProjectEditRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:projects:/projects/new",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "projects"
+      },
+      "identity": {
+        "route": "/projects/new"
+      },
+      "sourcePath": "bakin-bits-official/plugins/projects/client.tsx",
+      "symbols": [
+        "ProjectsNewRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "non-visual-alias",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/projects/bakin-plugin.json",
+          "detail": "contributes.routes[1].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/projects/client.tsx",
+          "detail": "registerPlugin routes \"/projects/new\" -> ProjectsNewRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:_template:home-widget",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "_template"
+      },
+      "identity": {
+        "slot": "home-widget"
+      },
+      "sourcePath": "bakin-bits-official/plugins/_template/client-registration.tsx",
+      "symbols": [
+        "TemplateWidget"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "embedded-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "bakin-bits-official/plugins/_template/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/_template/client-registration.tsx",
+          "detail": "registerPlugin slots \"home-widget\" -> TemplateWidget"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:assets:nav-badge-providers",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "assets"
+      },
+      "identity": {
+        "slot": "nav-badge-providers"
+      },
+      "sourcePath": "plugins/assets/client.tsx",
+      "symbols": [
+        "AssetsBadgeProvider"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "embedded-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/assets/bakin-plugin.json",
+          "detail": "contributes.slots[3]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/assets/client.tsx",
+          "detail": "registerPlugin slots \"nav-badge-providers\" -> AssetsBadgeProvider"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:assets:page:/assets",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "assets"
+      },
+      "identity": {
+        "slot": "page:/assets",
+        "route": "/assets"
+      },
+      "sourcePath": "plugins/assets/client.tsx",
+      "symbols": [
+        "VersionedAssetGrid"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/assets/bakin-plugin.json",
+          "detail": "contributes.slots[1]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/assets/client.tsx",
+          "detail": "registerPlugin slots \"page:/assets\" -> VersionedAssetGrid"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:assets:page:/assets/:assetId",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "assets"
+      },
+      "identity": {
+        "slot": "page:/assets/:assetId",
+        "route": "/assets/:assetId"
+      },
+      "sourcePath": "plugins/assets/client.tsx",
+      "symbols": [
+        "VersionedAssetDetail"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/assets/bakin-plugin.json",
+          "detail": "contributes.slots[2]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/assets/client.tsx",
+          "detail": "registerPlugin slots \"page:/assets/:assetId\" -> VersionedAssetDetail"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:assets:task-assets",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "assets"
+      },
+      "identity": {
+        "slot": "task-assets"
+      },
+      "sourcePath": "plugins/assets/client.tsx",
+      "symbols": [
+        "TaskAssets"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "embedded-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/assets/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/assets/client.tsx",
+          "detail": "registerPlugin slots \"task-assets\" -> TaskAssets"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:brands:page:/brands",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "brands"
+      },
+      "identity": {
+        "slot": "page:/brands",
+        "route": "/brands"
+      },
+      "sourcePath": "plugins/brands/client.tsx",
+      "symbols": [
+        "BrandsPage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/brands/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/brands/client.tsx",
+          "detail": "registerPlugin slots \"page:/brands\" -> BrandsPage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:brands:page:/brands/:brandId",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "brands"
+      },
+      "identity": {
+        "slot": "page:/brands/:brandId",
+        "route": "/brands/:brandId"
+      },
+      "sourcePath": "plugins/brands/client.tsx",
+      "symbols": [
+        "BrandDetailPage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/brands/bakin-plugin.json",
+          "detail": "contributes.slots[1]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/brands/client.tsx",
+          "detail": "registerPlugin slots \"page:/brands/:brandId\" -> BrandDetailPage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:brands:page:/brands/:brandId/docs",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "brands"
+      },
+      "identity": {
+        "slot": "page:/brands/:brandId/docs",
+        "route": "/brands/:brandId/docs"
+      },
+      "sourcePath": "plugins/brands/client.tsx",
+      "symbols": [
+        "BrandDocEditorPage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/brands/bakin-plugin.json",
+          "detail": "contributes.slots[2]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/brands/client.tsx",
+          "detail": "registerPlugin slots \"page:/brands/:brandId/docs\" -> BrandDocEditorPage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:brands:task-brand",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "brands"
+      },
+      "identity": {
+        "slot": "task-brand"
+      },
+      "sourcePath": "plugins/brands/client.tsx",
+      "symbols": [
+        "TaskBrandPanel"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "embedded-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/brands/bakin-plugin.json",
+          "detail": "contributes.slots[3]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/brands/client.tsx",
+          "detail": "registerPlugin slots \"task-brand\" -> TaskBrandPanel"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:chat:nav-badge-providers",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "chat"
+      },
+      "identity": {
+        "slot": "nav-badge-providers"
+      },
+      "sourcePath": "plugins/chat/client.tsx",
+      "symbols": [
+        "ChatBadgeProvider"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "embedded-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/chat/bakin-plugin.json",
+          "detail": "contributes.slots[3]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/chat/client.tsx",
+          "detail": "registerPlugin slots \"nav-badge-providers\" -> ChatBadgeProvider"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:chat:page:/chat",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "chat"
+      },
+      "identity": {
+        "slot": "page:/chat",
+        "route": "/chat"
+      },
+      "sourcePath": "plugins/chat/client.tsx",
+      "symbols": [
+        "ChatListPage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/chat/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/chat/client.tsx",
+          "detail": "registerPlugin slots \"page:/chat\" -> ChatListPage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:chat:page:/chat/[chatId]",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "chat"
+      },
+      "identity": {
+        "slot": "page:/chat/[chatId]",
+        "route": "/chat/[chatId]"
+      },
+      "sourcePath": "plugins/chat/client.tsx",
+      "symbols": [
+        "ChatDetailPage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/chat/bakin-plugin.json",
+          "detail": "contributes.slots[1]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/chat/client.tsx",
+          "detail": "registerPlugin slots \"page:/chat/[chatId]\" -> ChatDetailPage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:chat:page:/chat/new",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "chat"
+      },
+      "identity": {
+        "slot": "page:/chat/new",
+        "route": "/chat/new"
+      },
+      "sourcePath": "plugins/chat/client.tsx",
+      "symbols": [
+        "ChatDraftPage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/chat/bakin-plugin.json",
+          "detail": "contributes.slots[2]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/chat/client.tsx",
+          "detail": "registerPlugin slots \"page:/chat/new\" -> ChatDraftPage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:explore:page:/explore",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "explore"
+      },
+      "identity": {
+        "slot": "page:/explore",
+        "route": "/explore"
+      },
+      "sourcePath": "plugins/explore/client.tsx",
+      "symbols": [
+        "ExplorePage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/explore/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/explore/client.tsx",
+          "detail": "registerPlugin slots \"page:/explore\" -> ExplorePage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:health:nav-badge-providers",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "health"
+      },
+      "identity": {
+        "slot": "nav-badge-providers"
+      },
+      "sourcePath": "plugins/health/client.tsx",
+      "symbols": [
+        "HealthBadgeProvider"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "embedded-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/health/bakin-plugin.json",
+          "detail": "contributes.slots[1]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/health/client.tsx",
+          "detail": "registerPlugin slots \"nav-badge-providers\" -> HealthBadgeProvider"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:health:page:/health",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "health"
+      },
+      "identity": {
+        "slot": "page:/health",
+        "route": "/health"
+      },
+      "sourcePath": "plugins/health/client.tsx",
+      "symbols": [
+        "HealthPage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/health/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/health/client.tsx",
+          "detail": "registerPlugin slots \"page:/health\" -> HealthPage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:memory:page:/memory",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "memory"
+      },
+      "identity": {
+        "slot": "page:/memory",
+        "route": "/memory"
+      },
+      "sourcePath": "plugins/memory/client.tsx",
+      "symbols": [
+        "MemoryShell"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/memory/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/memory/client.tsx",
+          "detail": "registerPlugin slots \"page:/memory\" -> MemoryShell"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:messaging:nav-badge-providers",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "messaging"
+      },
+      "identity": {
+        "slot": "nav-badge-providers"
+      },
+      "sourcePath": "bakin-bits-official/plugins/messaging/client.tsx",
+      "symbols": [
+        "MessagingBadgeProviders"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "embedded-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "bakin-bits-official/plugins/messaging/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/messaging/client.tsx",
+          "detail": "registerPlugin slots \"nav-badge-providers\" -> MessagingBadgeProviders"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:models:page:/models",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "models"
+      },
+      "identity": {
+        "slot": "page:/models",
+        "route": "/models"
+      },
+      "sourcePath": "plugins/models/client.tsx",
+      "symbols": [
+        "ModelsPage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/models/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/models/client.tsx",
+          "detail": "registerPlugin slots \"page:/models\" -> ModelsPage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:projects:nav-badge-providers",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "projects"
+      },
+      "identity": {
+        "slot": "nav-badge-providers"
+      },
+      "sourcePath": "bakin-bits-official/plugins/projects/client.tsx",
+      "symbols": [
+        "BrainstormBadgeProvider"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "embedded-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "bakin-bits-official/plugins/projects/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/projects/client.tsx",
+          "detail": "registerPlugin slots \"nav-badge-providers\" -> BrainstormBadgeProvider"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:schedule:page:/schedule",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "schedule"
+      },
+      "identity": {
+        "slot": "page:/schedule",
+        "route": "/schedule"
+      },
+      "sourcePath": "plugins/schedule/client.tsx",
+      "symbols": [
+        "SchedulePage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/schedule/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/schedule/client.tsx",
+          "detail": "registerPlugin slots \"page:/schedule\" -> SchedulePage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:tasks:nav-badge-providers",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "tasks"
+      },
+      "identity": {
+        "slot": "nav-badge-providers"
+      },
+      "sourcePath": "plugins/tasks/client.tsx",
+      "symbols": [
+        "TasksBadgeProvider"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "embedded-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/tasks/bakin-plugin.json",
+          "detail": "contributes.slots[1]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/tasks/client.tsx",
+          "detail": "registerPlugin slots \"nav-badge-providers\" -> TasksBadgeProvider"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:tasks:page:/tasks",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "tasks"
+      },
+      "identity": {
+        "slot": "page:/tasks",
+        "route": "/tasks"
+      },
+      "sourcePath": "plugins/tasks/client.tsx",
+      "symbols": [
+        "KanbanBoard"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/tasks/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/tasks/client.tsx",
+          "detail": "registerPlugin slots \"page:/tasks\" -> KanbanBoard"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:team:page:/team",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "team"
+      },
+      "identity": {
+        "slot": "page:/team",
+        "route": "/team"
+      },
+      "sourcePath": "plugins/team/client.tsx",
+      "symbols": [
+        "TeamGrid"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/team/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/team/client.tsx",
+          "detail": "registerPlugin slots \"page:/team\" -> TeamGrid"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:team:page:/team/[id]",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "team"
+      },
+      "identity": {
+        "slot": "page:/team/[id]",
+        "route": "/team/[id]"
+      },
+      "sourcePath": "plugins/team/client.tsx",
+      "symbols": [
+        "AgentDetail"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/team/bakin-plugin.json",
+          "detail": "contributes.slots[1]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/team/client.tsx",
+          "detail": "registerPlugin slots \"page:/team/[id]\" -> AgentDetail"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:team:page:/team/teams/[teamId]",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "team"
+      },
+      "identity": {
+        "slot": "page:/team/teams/[teamId]",
+        "route": "/team/teams/[teamId]"
+      },
+      "sourcePath": "plugins/team/client.tsx",
+      "symbols": [
+        "TeamDetail"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/team/bakin-plugin.json",
+          "detail": "contributes.slots[2]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/team/client.tsx",
+          "detail": "registerPlugin slots \"page:/team/teams/[teamId]\" -> TeamDetail"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:workflows:nav-badge-providers",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "workflows"
+      },
+      "identity": {
+        "slot": "nav-badge-providers"
+      },
+      "sourcePath": "plugins/workflows/client.tsx",
+      "symbols": [
+        "ApprovalsBadgeProvider"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "embedded-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/workflows/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/workflows/client.tsx",
+          "detail": "registerPlugin slots \"nav-badge-providers\" -> ApprovalsBadgeProvider"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:workflows:page:/workflows",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "workflows"
+      },
+      "identity": {
+        "slot": "page:/workflows",
+        "route": "/workflows"
+      },
+      "sourcePath": "plugins/workflows/client.tsx",
+      "symbols": [
+        "WorkflowsPage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/workflows/bakin-plugin.json",
+          "detail": "contributes.slots[1]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/workflows/client.tsx",
+          "detail": "registerPlugin slots \"page:/workflows\" -> WorkflowsPage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:workflows:page:/workflows/[id]",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "workflows"
+      },
+      "identity": {
+        "slot": "page:/workflows/[id]",
+        "route": "/workflows/[id]"
+      },
+      "sourcePath": "plugins/workflows/client.tsx",
+      "symbols": [
+        "WorkflowDetail"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/workflows/bakin-plugin.json",
+          "detail": "contributes.slots[2]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/workflows/client.tsx",
+          "detail": "registerPlugin slots \"page:/workflows/[id]\" -> WorkflowDetail"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:workflows:page:/workflows/[id]/edit",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "workflows"
+      },
+      "identity": {
+        "slot": "page:/workflows/[id]/edit",
+        "route": "/workflows/[id]/edit"
+      },
+      "sourcePath": "plugins/workflows/client.tsx",
+      "symbols": [
+        "WorkflowCanvasEditor"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/workflows/bakin-plugin.json",
+          "detail": "contributes.slots[4]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/workflows/client.tsx",
+          "detail": "registerPlugin slots \"page:/workflows/[id]/edit\" -> WorkflowCanvasEditor"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:workflows:page:/workflows/new",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "workflows"
+      },
+      "identity": {
+        "slot": "page:/workflows/new",
+        "route": "/workflows/new"
+      },
+      "sourcePath": "plugins/workflows/client.tsx",
+      "symbols": [
+        "WorkflowCanvasEditor"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/workflows/bakin-plugin.json",
+          "detail": "contributes.slots[3]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/workflows/client.tsx",
+          "detail": "registerPlugin slots \"page:/workflows/new\" -> WorkflowCanvasEditor"
+        }
+      ]
+    },
+    {
+      "id": "plugin-template:_template",
+      "kind": "plugin-template",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "_template"
+      },
+      "identity": {
+        "component": "_template"
+      },
+      "sourcePath": "bakin-bits-official/plugins/_template/bakin-plugin.json",
+      "symbols": [],
+      "exportStatus": "not-applicable",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "manifest-template",
+          "path": "bakin-bits-official/plugins/_template/bakin-plugin.json",
+          "detail": "official plugin author template manifest"
+        }
+      ]
+    },
+    {
+      "id": "plugin-template:reference-plugin",
+      "kind": "plugin-template",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "reference-bookmarks"
+      },
+      "identity": {
+        "component": "reference-plugin"
+      },
+      "sourcePath": "examples/reference-plugin/bakin-plugin.json",
+      "symbols": [],
+      "exportStatus": "not-applicable",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "manifest-template",
+          "path": "examples/reference-plugin/bakin-plugin.json",
+          "detail": "Bakin reference plugin author contract"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/layout/app-sidebar",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/layout/app-sidebar"
+      },
+      "sourcePath": "packages/host/src/components/layout/app-sidebar.tsx",
+      "symbols": [
+        "AppSidebar"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/layout/app-sidebar.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/layout/connection-dot",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/layout/connection-dot"
+      },
+      "sourcePath": "packages/host/src/components/layout/connection-dot.tsx",
+      "symbols": [
+        "ConnectionDot"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/layout/connection-dot.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/layout/dispatch-timer",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/layout/dispatch-timer"
+      },
+      "sourcePath": "packages/host/src/components/layout/dispatch-timer.tsx",
+      "symbols": [
+        "DispatchTimer"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/layout/dispatch-timer.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/layout/header",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/layout/header"
+      },
+      "sourcePath": "packages/host/src/components/layout/header.tsx",
+      "symbols": [
+        "Header"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/layout/header.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/layout/layout-shell",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/layout/layout-shell"
+      },
+      "sourcePath": "packages/host/src/components/layout/layout-shell.tsx",
+      "symbols": [
+        "LayoutShell",
+        "shouldAutoCollapseActivity",
+        "shouldAutoCollapseActivityForViewport"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/layout/layout-shell.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/layout/nav-badge",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/layout/nav-badge"
+      },
+      "sourcePath": "packages/host/src/components/layout/nav-badge.tsx",
+      "symbols": [
+        "NavBadge",
+        "NavBadgeDot",
+        "TONE_LABEL",
+        "navBadgeAriaSuffix"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/layout/nav-badge.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/layout/notification-toggle",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/layout/notification-toggle"
+      },
+      "sourcePath": "packages/host/src/components/layout/notification-toggle.tsx",
+      "symbols": [
+        "NotificationToggle"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/layout/notification-toggle.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/layout/sidebar-nav-item",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/layout/sidebar-nav-item"
+      },
+      "sourcePath": "packages/host/src/components/layout/sidebar-nav-item.tsx",
+      "symbols": [
+        "SidebarNavItem",
+        "resolveNavIcon"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/layout/sidebar-nav-item.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/layout/sidebar-promo",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/layout/sidebar-promo"
+      },
+      "sourcePath": "packages/host/src/components/layout/sidebar-promo.tsx",
+      "symbols": [
+        "SidebarPromo"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/layout/sidebar-promo.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/layout/toaster",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/layout/toaster"
+      },
+      "sourcePath": "packages/host/src/components/layout/toaster.tsx",
+      "symbols": [
+        "Toaster"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/layout/toaster.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/not-found",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/not-found"
+      },
+      "sourcePath": "packages/host/src/components/not-found.tsx",
+      "symbols": [
+        "NotFoundPage"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/not-found.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/runtime/capabilities-tab",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/runtime/capabilities-tab"
+      },
+      "sourcePath": "packages/host/src/components/runtime/capabilities-tab.tsx",
+      "symbols": [
+        "CapabilitiesTab"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/runtime/capabilities-tab.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/runtime/extensions-section",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/runtime/extensions-section"
+      },
+      "sourcePath": "packages/host/src/components/runtime/extensions-section.tsx",
+      "symbols": [
+        "ExtensionsSection"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/runtime/extensions-section.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/runtime/overview-tab",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/runtime/overview-tab"
+      },
+      "sourcePath": "packages/host/src/components/runtime/overview-tab.tsx",
+      "symbols": [
+        "OverviewTab"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/runtime/overview-tab.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/runtime/runtimes-tab",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/runtime/runtimes-tab"
+      },
+      "sourcePath": "packages/host/src/components/runtime/runtimes-tab.tsx",
+      "symbols": [
+        "RuntimesTab"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/runtime/runtimes-tab.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/runtime/shared",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/runtime/shared"
+      },
+      "sourcePath": "packages/host/src/components/runtime/shared.tsx",
+      "symbols": [
+        "MODE_LEGEND",
+        "ModeBadge",
+        "StatusBadge",
+        "capabilityStateCopy"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/runtime/shared.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/search/global-search-overlay",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/search/global-search-overlay"
+      },
+      "sourcePath": "packages/host/src/components/search/global-search-overlay.tsx",
+      "symbols": [
+        "GlobalSearchOverlay"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/search/global-search-overlay.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/agent-avatar",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/agent-avatar"
+      },
+      "sourcePath": "src/components/agent-avatar.tsx",
+      "symbols": [
+        "AgentAvatar"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/agent-avatar.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/conversation/reply-toast",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/conversation/reply-toast"
+      },
+      "sourcePath": "src/components/conversation/reply-toast.tsx",
+      "symbols": [
+        "ConversationReplyToast"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/conversation/reply-toast.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/conversation/use-conversation-attention",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/conversation/use-conversation-attention"
+      },
+      "sourcePath": "src/components/conversation/use-conversation-attention.tsx",
+      "symbols": [
+        "useConversationAttention"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/conversation/use-conversation-attention.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/drawer",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/drawer"
+      },
+      "sourcePath": "src/components/drawer.tsx",
+      "symbols": [
+        "DEFAULT_WIDTH",
+        "DRAWER_WIDTH_STORAGE_KEY",
+        "Drawer",
+        "MAX_WIDTH",
+        "MIN_WIDTH",
+        "clampDrawerWidth",
+        "getDrawerWidthStorageKey",
+        "getStoredDrawerWidth"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/drawer.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/plugin-settings-renderer",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/plugin-settings-renderer"
+      },
+      "sourcePath": "src/components/plugin-settings-renderer.tsx",
+      "symbols": [
+        "PluginSettingsRenderer"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/plugin-settings-renderer.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/provider-keys-tab",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/provider-keys-tab"
+      },
+      "sourcePath": "src/components/provider-keys-tab.tsx",
+      "symbols": [
+        "PROVIDER_KEYS_TAB_ID",
+        "ProviderKeysTab"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/provider-keys-tab.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/tasks/activity-feed",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/tasks/activity-feed"
+      },
+      "sourcePath": "src/components/tasks/activity-feed.tsx",
+      "symbols": [
+        "ActivityFeed"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/tasks/activity-feed.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/ui/badge",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/ui/badge"
+      },
+      "sourcePath": "src/components/ui/badge.tsx",
+      "symbols": [
+        "Badge",
+        "badgeVariants"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/ui/badge.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/ui/button",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/ui/button"
+      },
+      "sourcePath": "src/components/ui/button.tsx",
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/ui/button.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/ui/dialog",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/ui/dialog"
+      },
+      "sourcePath": "src/components/ui/dialog.tsx",
+      "symbols": [
+        "Dialog",
+        "DialogClose",
+        "DialogContent",
+        "DialogDescription",
+        "DialogFooter",
+        "DialogHeader",
+        "DialogOverlay",
+        "DialogPortal",
+        "DialogTitle",
+        "DialogTrigger"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/ui/dialog.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/ui/input",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/ui/input"
+      },
+      "sourcePath": "src/components/ui/input.tsx",
+      "symbols": [
+        "Input"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/ui/input.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/ui/sheet",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/ui/sheet"
+      },
+      "sourcePath": "src/components/ui/sheet.tsx",
+      "symbols": [
+        "Sheet",
+        "SheetClose",
+        "SheetContent",
+        "SheetDescription",
+        "SheetFooter",
+        "SheetHeader",
+        "SheetOverlay",
+        "SheetPortal",
+        "SheetTitle",
+        "SheetTrigger"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/ui/sheet.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/ui/skeleton",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/ui/skeleton"
+      },
+      "sourcePath": "src/components/ui/skeleton.tsx",
+      "symbols": [
+        "Skeleton"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/ui/skeleton.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/ui/table",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/ui/table"
+      },
+      "sourcePath": "src/components/ui/table.tsx",
+      "symbols": [
+        "Table",
+        "TableBody",
+        "TableCaption",
+        "TableCell",
+        "TableFooter",
+        "TableHead",
+        "TableHeader",
+        "TableRow"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/ui/table.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/ui/tabs",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/ui/tabs"
+      },
+      "sourcePath": "src/components/ui/tabs.tsx",
+      "symbols": [
+        "Tabs",
+        "TabsContent",
+        "TabsList",
+        "TabsTrigger",
+        "tabsListVariants"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/ui/tabs.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/ui/tooltip",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/ui/tooltip"
+      },
+      "sourcePath": "src/components/ui/tooltip.tsx",
+      "symbols": [
+        "Tooltip",
+        "TooltipContent",
+        "TooltipPortal",
+        "TooltipProvider",
+        "TooltipTrigger"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/ui/tooltip.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    }
+  ]
+}

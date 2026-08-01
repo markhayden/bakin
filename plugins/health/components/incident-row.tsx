@@ -2,10 +2,11 @@
 
 import { useId, useState } from 'react'
 import type { HealthIncident } from '@makinbakin/sdk/types'
-import { PluginLink, StatusBadge } from '@makinbakin/sdk/components'
+import { PluginLink } from '@makinbakin/sdk/navigation'
+import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { Button, Popover, PopoverContent, PopoverTrigger, buttonVariants } from '@makinbakin/sdk/ui'
 import { AlertTriangle, BellOff, ChevronRight, CircleHelp, Wrench } from 'lucide-react'
-import type { OverviewIncident, OverviewTone } from '../lib/health-view-model'
+import type { OverviewIncident } from '../lib/health-view-model'
 
 export interface IncidentRowProps {
   item: OverviewIncident
@@ -16,20 +17,20 @@ export interface IncidentRowProps {
 
 function incidentStatus(incident: HealthIncident): {
   label: string
-  tone: OverviewTone
+  tone: StatusTone
   icon: typeof AlertTriangle
 } {
   // Cards render EFFECTIVE urgency (#690) — error and unknown are never
   // demoted (evidence state is not a presentation choice), so Critical and
   // Verify keep precedence; a demoted or advisory incident reads calm.
-  if (incident.status === 'error') return { label: 'Critical', tone: 'destructive', icon: AlertTriangle }
+  if (incident.status === 'error') return { label: 'Critical', tone: 'danger', icon: AlertTriangle }
   if (incident.status === 'unknown') return { label: 'Verify', tone: 'neutral', icon: CircleHelp }
   if (incident.effectiveDisposition === 'advisory') {
     return { label: 'Advisory', tone: 'neutral', icon: CircleHelp }
   }
   return {
     label: incident.effectiveDisposition === 'action_required' ? 'Action' : 'Watch',
-    tone: 'warning',
+    tone: 'attention',
     icon: AlertTriangle,
   }
 }
@@ -54,11 +55,12 @@ const DISPOSITION_LABEL: Record<HealthIncident['disposition'], string> = {
   action_required: 'action',
 }
 
-const TONE_CLASS: Record<OverviewTone, string> = {
-  neutral: 'border-foreground/15 bg-foreground/[0.025]',
-  success: 'border-success/25 bg-success/[0.035]',
-  warning: 'border-warning/30 bg-warning/[0.045]',
-  destructive: 'border-destructive/30 bg-destructive/[0.05]',
+const TONE_CLASS: Record<StatusTone, string> = {
+  neutral: 'before:bg-bakin-text-muted',
+  success: 'before:bg-bakin-action-primary-background',
+  attention: 'before:bg-bakin-signal-highlight',
+  danger: 'before:bg-bakin-signal-danger',
+  accent: 'before:bg-bakin-signal-accent',
 }
 
 export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps) {
@@ -114,16 +116,23 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
 
   return (
     <article
-      className={`flex h-full min-w-0 flex-col rounded-xl border p-4 ${TONE_CLASS[status.tone]}`}
+      className={`relative flex h-full min-w-0 flex-col overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4 before:absolute before:inset-y-0 before:start-0 before:w-bakin-1 ${TONE_CLASS[status.tone]}`}
       data-incident-id={incident.id}
     >
-      <div className="flex min-w-0 items-start gap-3">
-        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-background/70 ring-1 ring-foreground/10">
-          <Icon className={status.tone === 'destructive' ? 'size-4 text-destructive' : status.tone === 'warning' ? 'size-4 text-warning' : 'size-4 text-muted-foreground'} aria-hidden="true" />
+      <div className="flex min-w-0 items-start gap-bakin-3">
+        <span className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-canvas-default text-bakin-text-muted">
+          <Icon
+            className={status.tone === 'danger'
+              ? 'size-bakin-4 text-bakin-signal-danger'
+              : status.tone === 'attention'
+                ? 'size-bakin-4 text-bakin-signal-highlight'
+                : 'size-bakin-4 text-bakin-text-muted'}
+            aria-hidden="true"
+          />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+          <div className="flex flex-wrap items-center gap-bakin-2">
+            <StatusBadge tone={status.tone} variant="solid">{status.label}</StatusBadge>
             {incident.class && (
               <StatusBadge tone="neutral" variant="outline">{CLASS_LABEL[incident.class]}</StatusBadge>
             )}
@@ -139,10 +148,10 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
               </StatusBadge>
             )}
           </div>
-          <h3 className="mt-2 font-semibold leading-snug text-foreground">{incident.title}</h3>
+          <h3 className="m-0 mt-bakin-2 font-bakin-typography-weight-semibold leading-snug text-bakin-text-primary">{incident.title}</h3>
           <p
             id={impactId}
-            className={`mt-1 text-sm leading-snug text-muted-foreground ${showImpact ? '' : 'line-clamp-2'}`}
+            className={`m-0 mt-bakin-1 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted ${showImpact ? '' : 'line-clamp-2'}`}
           >
             {incident.impact}
           </p>
@@ -150,7 +159,7 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
             type="button"
             size="xs"
             variant="ghost"
-            className="mt-1 h-auto px-0 py-0 text-xs text-muted-foreground hover:bg-transparent"
+            className="mt-bakin-1 h-auto px-bakin-0 py-bakin-0 text-bakin-typography-size-meta text-bakin-text-muted hover:bg-transparent"
             aria-expanded={showImpact}
             aria-controls={impactId}
             aria-label={`${showImpact ? 'Collapse' : 'Show full'} explanation for ${incident.title}`}
@@ -162,19 +171,19 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
       </div>
 
       {resolution.type === 'instructions' && showInstructions && (
-        <div id={instructionsId} className="mt-3 rounded-lg bg-background/70 p-3 text-sm ring-1 ring-foreground/10">
-          <ol className="list-decimal space-y-1 pl-5">
+        <div id={instructionsId} className="mt-bakin-3 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default p-bakin-3 text-bakin-typography-size-meta">
+          <ol className="list-decimal space-y-bakin-1 pl-bakin-6">
             {resolution.steps.map((step) => <li key={step}>{step}</li>)}
           </ol>
           {resolution.command && (
-            <code className="mt-3 block overflow-auto rounded bg-background p-2 text-xs ring-1 ring-foreground/10">
+            <code className="mt-bakin-3 block overflow-auto rounded-bakin-control border border-bakin-border-subtle bg-bakin-surface-default p-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta">
               {resolution.command}
             </code>
           )}
         </div>
       )}
 
-      <div className="mt-auto flex items-center justify-end gap-2 pt-4">
+      <div className="mt-auto flex items-center justify-end gap-bakin-2 pt-bakin-4">
         {onAck && (incident.ackState ? (
           <Button size="sm" variant="ghost" onClick={() => onAck(incident, 'clear')}>
             Un-ack

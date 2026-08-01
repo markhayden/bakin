@@ -1,0 +1,295 @@
+{
+  "$description": "Approved public semantic foundation for the Product Character direction.",
+  "$extensions": {
+    "dev.bakin.tokens": {
+      "layer": "semantic",
+      "status": "approved"
+    }
+  },
+  "semantic": {
+    "color": {
+      "canvas": {
+        "default": {
+          "$description": "The application background behind default surfaces and page content.",
+          "$value": "{reference.color.warm.950}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.text.primary",
+              "contrastRole": "normal-text"
+            }
+          }
+        }
+      },
+      "surface": {
+        "default": {
+          "$description": "The default bounded surface placed above the application canvas.",
+          "$value": "{reference.color.warm.900}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.text.primary",
+              "contrastRole": "normal-text"
+            }
+          }
+        },
+        "elevated": {
+          "$description": "The raised surface step above the default surface: nested panels, hover targets, and emphasized cards. The top solid step of the elevation ladder; anything higher floats on the overlay shadow.",
+          "$value": "{reference.color.warm.850}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.text.primary",
+              "contrastRole": "normal-text"
+            }
+          }
+        }
+      },
+      "text": {
+        "primary": {
+          "$description": "Primary copy, labels, and high-emphasis interface text on the application canvas.",
+          "$value": "{reference.color.warm.0}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.canvas.default",
+              "contrastRole": "normal-text"
+            }
+          }
+        },
+        "muted": {
+          "$description": "Secondary copy, metadata, and helper text on the application canvas.",
+          "$value": "{reference.color.warm.100}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.canvas.default",
+              "contrastRole": "normal-text"
+            }
+          }
+        }
+      },
+      "border": {
+        "subtle": {
+          "$description": "Low-emphasis separators and nonessential boundaries; never the only state indicator.",
+          "$value": "{reference.color.warm.500}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.surface.default",
+              "contrastRole": "reference"
+            }
+          }
+        }
+      },
+      "action": {
+        "primary": {
+          "background": {
+            "$description": "Fill for the primary action on a surface.",
+            "$value": "{reference.color.green.500}",
+            "$extensions": {
+              "dev.bakin.tokens": {
+                "contrastAgainst": "semantic.color.action.primary.foreground",
+                "contrastRole": "normal-text"
+              }
+            }
+          },
+          "foreground": {
+            "$description": "Text and icon color placed on the primary action fill.",
+            "$value": "{reference.color.green.950}",
+            "$extensions": {
+              "dev.bakin.tokens": {
+                "contrastAgainst": "semantic.color.action.primary.background",
+                "contrastRole": "normal-text"
+              }
+            }
+          }
+        }
+      },
+      "signal": {
+        "info": {
+          "$description": "Informational guidance and non-urgent progress signals on the canvas.",
+          "$value": "{reference.color.blue.500}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.canvas.default",
+              "contrastRole": "non-text"
+            }
+          }
+        },
+        "accent": {
+          "$description": "Brand accent for selected or emphasized non-text signal marks on the canvas.",
+          "$value": "{reference.color.pink.500}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.canvas.default",
+              "contrastRole": "non-text"
+            }
+          }
+        },
+        "highlight": {
+          "$description": "High-attention non-text highlight on the canvas.",
+          "$value": "{reference.color.yellow.400}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.canvas.default",
+              "contrastRole": "non-text"
+            }
+          }
+        },
+        "danger": {
+          "$description": "Destructive and error signal marks on the canvas.",
+          "$value": "{reference.color.red.500}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.canvas.default",
+              "contrastRole": "non-text"
+            }
+          }
+        }
+      },
+      "data": {
+        "series": {
+          "1": {
+            "$description": "First categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.blue}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "2": {
+            "$description": "Second categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.aqua}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "3": {
+            "$description": "Third categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.yellow}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "4": {
+            "$description": "Fourth categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.green}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "5": {
+            "$description": "Fifth categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.violet}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "6": {
+            "$description": "Sixth categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.red}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "7": {
+            "$description": "Seventh categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.magenta}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "8": {
+            "$description": "Eighth categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.orange}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          }
+        },
+        "other": {
+          "$description": "Low-chroma slot for categorical series folded into the visible Other group.",
+          "$value": "{reference.color.data.other}",
+          "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+        },
+        "status": {
+          "success": {
+            "$description": "Chart-fill step for series that mean a good outcome; validated with the danger and attention steps for color-vision-deficiency separation, never a categorical slot.",
+            "$value": "{reference.color.data.status.success}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "danger": {
+            "$description": "Chart-fill step for series that mean a failed outcome; validated with the success and attention steps for color-vision-deficiency separation, never a categorical slot.",
+            "$value": "{reference.color.data.status.danger}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "attention": {
+            "$description": "Chart-fill step for series that mean a warning outcome; stepped away from the categorical amber slot so a status wedge never impersonates a series.",
+            "$value": "{reference.color.data.status.attention}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "neutral": {
+            "$description": "Chart-fill step for outcome series that make no good-or-bad claim (canceled, unattributed remainder).",
+            "$value": "{reference.color.data.status.neutral}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          }
+        }
+      },
+      "focus": {
+        "ring": {
+          "$description": "Keyboard focus indicator on the application canvas.",
+          "$value": "{reference.color.green.500}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.canvas.default",
+              "contrastRole": "non-text"
+            }
+          }
+        }
+      }
+    },
+    "layout": {
+      "space": {
+        "0": { "$description": "Removes structural separation without introducing a magic value.", "$ref": "#/reference/space/0" },
+        "1": { "$description": "Tight internal separation for compact details.", "$ref": "#/reference/space/1" },
+        "2": { "$description": "Compact separation between closely related controls or content.", "$ref": "#/reference/space/2" },
+        "3": { "$description": "Comfortable separation within a control group or content cluster.", "$ref": "#/reference/space/3" },
+        "4": { "$description": "Default separation between sibling interface regions.", "$ref": "#/reference/space/4" },
+        "6": { "$description": "Section-level separation between distinct content groups.", "$ref": "#/reference/space/6" },
+        "8": { "$description": "Strong page-level separation between major regions.", "$ref": "#/reference/space/8" }
+      },
+      "gap": {
+        "page": { "$description": "Canonical separation and inset for major Product Character page regions.", "$value": "{reference.space.8}" },
+        "section": { "$description": "Canonical separation between distinct sections within a page.", "$value": "{reference.space.6}" },
+        "item": { "$description": "Canonical separation within ordinary control groups and content clusters.", "$value": "{reference.space.3}" },
+        "dense": { "$description": "Contextual compact separation for tables, repeated rows, and operational data only.", "$value": "{reference.space.2}" }
+      },
+      "size": {
+        "control": { "$description": "Canonical minimum height for standard interactive controls.", "$value": "{reference.size.control}" },
+        "row": { "$description": "Canonical minimum height for ordinary repeated object rows.", "$value": "{reference.size.row}" },
+        "rowDense": { "$description": "Minimum height for explicitly dense tables and operational rows; not a global density mode.", "$value": "{reference.size.rowDense}" }
+      }
+    },
+    "typography": {
+      "family": {
+        "ui": { "$description": "Bundled Product Character family for product and plugin chrome.", "$value": "{reference.font.family.ui}" },
+        "mono": { "$description": "Bundled technical family for identifiers, code, and tabular operational data.", "$value": "{reference.font.family.mono}" }
+      },
+      "size": {
+        "pageTitle": { "$description": "Canonical page-title size before responsive clamping.", "$value": "{reference.font.size.pageTitle}" },
+        "title": { "$description": "Canonical title size for overlays and contextual panels.", "$value": "{reference.font.size.title}" },
+        "sectionTitle": { "$description": "Canonical section-title size for content hierarchy.", "$value": "{reference.font.size.sectionTitle}" },
+        "body": { "$description": "Canonical body and control-copy size.", "$value": "{reference.font.size.body}" },
+        "meta": { "$description": "Canonical metadata and technical-chrome size.", "$value": "{reference.font.size.meta}" }
+      },
+      "weight": {
+        "regular": { "$description": "Regular weight for body copy and input values.", "$value": "{reference.font.weight.regular}" },
+        "medium": { "$description": "Medium weight for restrained emphasis and table headings.", "$value": "{reference.font.weight.medium}" },
+        "semibold": { "$description": "Semibold weight for controls and hierarchy labels.", "$value": "{reference.font.weight.semibold}" },
+        "bold": { "$description": "Bold weight for high-emphasis labels and signal text.", "$value": "{reference.font.weight.bold}" }
+      }
+    },
+    "radius": {
+      "control": { "$description": "Corner radius for controls and small interactive elements in the Product Character direction.", "$value": "{reference.radius.md}" },
+      "surface": { "$description": "Corner radius for bounded content surfaces.", "$value": "{reference.radius.md}" },
+      "overlay": { "$description": "Corner radius for dialogs, popovers, and other elevated overlays.", "$value": "{reference.radius.lg}" },
+      "pill": { "$description": "Fully rounded shape for badges, chips, and pill controls.", "$value": "{reference.radius.full}" }
+    },
+    "motion": {
+      "duration": {
+        "instant": { "$description": "No-transition response for reduced motion and immediate state changes.", "$value": "{reference.duration.instant}" },
+        "feedback": { "$description": "Short response for direct control feedback and micro-state changes.", "$value": "{reference.duration.fast}" },
+        "transition": { "$description": "Standard duration for functional spatial and hierarchy transitions.", "$value": "{reference.duration.standard}" }
+      },
+      "easing": {
+        "standard": { "$description": "Default restrained easing for functional interface transitions.", "$value": "{reference.easing.standard}" }
+      }
+    },
+    "elevation": {
+      "overlay": { "$description": "Restrained depth for dialogs, popovers, and other top-layer overlays.", "$value": "{reference.shadow.overlay}" }
+    },
+    "state": {
+      "opacity": {
+        "disabled": { "$description": "Opacity applied to a disabled control while preserving its semantic state.", "$value": "{reference.opacity.disabled}" }
+      }
+    }
+  }
+}

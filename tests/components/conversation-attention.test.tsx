@@ -27,7 +27,7 @@ import {
   withUnreadPrefix,
   useConversationAttention,
   type ConversationAttentionConfig,
-} from '@makinbakin/sdk/components'
+} from '@makinbakin/sdk/conversation'
 import { emitPluginEvent, useToastStore } from '@makinbakin/sdk/hooks'
 import { getNavBadge } from '@makinbakin/sdk'
 

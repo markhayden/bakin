@@ -1,6 +1,6 @@
 'use client'
 
-import { Badge } from '@makinbakin/sdk/ui'
+import { ListRow, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import type { UsageEntry } from '../types'
 
 export function formatActivityName(value: string): string {
@@ -90,36 +90,41 @@ export function ActivityRow({ entry }: { entry: UsageEntry }) {
   const failed = entry.status === 'error'
   const aborted = isCanceledActivity(entry)
   const unverified = isUnverifiedActivity(entry)
+  const state = failed
+    ? { label: 'Failed', tone: 'danger' as StatusTone }
+    : aborted
+      ? { label: 'Canceled', tone: 'neutral' as StatusTone }
+      : unverified
+        ? { label: 'Result not observed', tone: 'attention' as StatusTone }
+        : { label: 'Succeeded', tone: 'success' as StatusTone }
   return (
-    <li className="rounded-xl border border-border/80 bg-card p-4" data-status={aborted ? 'aborted' : unverified ? 'unverified' : entry.status}>
-      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-foreground">{formatActivityName(entry.name)}</span>
-            <Badge variant="outline" className={failed ? 'border-destructive/30 text-destructive' : 'text-muted-foreground'}>
-              {failed ? 'Failed' : aborted ? 'Canceled' : unverified ? 'Result not observed' : 'Succeeded'}
-            </Badge>
-            {entry.activityClass === 'routine' && <Badge variant="secondary">Routine</Badge>}
+    <ListRow data-status={aborted ? 'aborted' : unverified ? 'unverified' : entry.status}>
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
+        <div className="min-w-0 space-y-bakin-1">
+          <div className="flex flex-wrap items-center gap-bakin-2">
+            <span className="font-bakin-typography-weight-medium text-bakin-text-primary">{formatActivityName(entry.name)}</span>
+            <StatusBadge tone={state.tone} variant="solid">{state.label}</StatusBadge>
+            {entry.activityClass === 'routine' && <StatusBadge tone="neutral" variant="soft">Routine</StatusBadge>}
           </div>
-          {failed && <p className="text-sm text-foreground/90">{activityFailureReason(entry)}</p>}
-          <p className={failed ? 'text-xs text-muted-foreground' : 'text-sm text-muted-foreground'}>{activityImpact(entry)}</p>
+          {failed && <p className="text-bakin-typography-size-body text-bakin-text-primary">{activityFailureReason(entry)}</p>}
+          <p className={failed ? 'text-bakin-typography-size-meta text-bakin-text-muted' : 'text-bakin-typography-size-body text-bakin-text-muted'}>{activityImpact(entry)}</p>
         </div>
-        <time dateTime={entry.ts} className="shrink-0 text-xs text-muted-foreground">{formatWhen(entry.ts)}</time>
+        <time dateTime={entry.ts} className="shrink-0 text-bakin-typography-size-meta text-bakin-text-muted">{formatWhen(entry.ts)}</time>
       </div>
 
-      <details className="mt-3 text-xs text-muted-foreground">
-        <summary className="w-fit rounded-sm underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <details className="mt-bakin-3 text-bakin-typography-size-meta text-bakin-text-muted">
+        <summary className="w-fit rounded-bakin-control underline-offset-4 hover:text-bakin-text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring">
           Technical details
         </summary>
-        <dl className="mt-2 grid gap-x-4 gap-y-1 rounded-lg bg-muted/40 p-3 sm:grid-cols-[max-content_1fr]">
-          <dt>Raw name</dt><dd className="break-all font-mono text-foreground">{entry.name}</dd>
-          <dt>Kind</dt><dd className="text-foreground">{entry.kind}</dd>
-          <dt>Class</dt><dd className="text-foreground">{entry.activityClass}</dd>
-          <dt>Agent</dt><dd className="text-foreground">{activityOwner(entry)}</dd>
-          <dt>Duration</dt><dd className="text-foreground">{entry.durationMs === null ? 'Not recorded' : `${entry.durationMs.toLocaleString()} ms`}</dd>
-          {entry.meta && <><dt>Metadata</dt><dd className="min-w-0 overflow-x-auto whitespace-pre-wrap break-all font-mono text-foreground">{JSON.stringify(entry.meta, null, 2)}</dd></>}
+        <dl className="mt-bakin-2 grid gap-x-bakin-4 gap-y-bakin-1 border-l-2 border-bakin-border-strong bg-bakin-canvas-default px-bakin-3 py-bakin-2 sm:grid-cols-[max-content_1fr]">
+          <dt>Raw name</dt><dd className="break-all font-bakin-typography-family-mono text-bakin-text-primary">{entry.name}</dd>
+          <dt>Kind</dt><dd className="text-bakin-text-primary">{entry.kind}</dd>
+          <dt>Class</dt><dd className="text-bakin-text-primary">{entry.activityClass}</dd>
+          <dt>Agent</dt><dd className="text-bakin-text-primary">{activityOwner(entry)}</dd>
+          <dt>Duration</dt><dd className="text-bakin-text-primary">{entry.durationMs === null ? 'Not recorded' : `${entry.durationMs.toLocaleString()} ms`}</dd>
+          {entry.meta && <><dt>Metadata</dt><dd className="min-w-0 overflow-x-auto whitespace-pre-wrap break-all font-bakin-typography-family-mono text-bakin-text-primary">{JSON.stringify(entry.meta, null, 2)}</dd></>}
         </dl>
       </details>
-    </li>
+    </ListRow>
   )
 }

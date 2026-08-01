@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import type { HealthRepairTarget } from '@makinbakin/sdk/types'
+import { StatusBadge } from '@makinbakin/sdk/patterns'
 import {
-  Badge,
   Button,
   Checkbox,
   Dialog,
@@ -16,10 +16,10 @@ import {
 import { AlertTriangle, CircleCheck, RefreshCw, Wrench } from 'lucide-react'
 import { useRepairPlan } from '../hooks/use-repair-plan'
 
-const SAFETY_STYLES = {
-  safe: 'border-success/30 bg-success/10 text-success',
-  manual: 'border-warning/30 bg-warning/10 text-warning',
-  destructive: 'border-destructive/30 bg-destructive/10 text-destructive',
+const SAFETY_TONE = {
+  safe: 'success',
+  manual: 'attention',
+  destructive: 'danger',
 } as const
 
 function repairErrorTitle(stale: boolean, outcomeUnknown: boolean): string {
@@ -103,8 +103,8 @@ export function RepairDialog({
     >
       <DialogContent className="max-h-[min(88vh,52rem)] max-w-2xl overflow-hidden">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Wrench className="size-4" aria-hidden="true" /> {title}
+          <DialogTitle className="flex items-center gap-bakin-2">
+            <Wrench className="size-bakin-4" aria-hidden="true" /> {title}
           </DialogTitle>
           <DialogDescription>
             Safe changes are selected for you. Manual or destructive changes remain off until you confirm each one.
@@ -114,51 +114,51 @@ export function RepairDialog({
         <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
 
         {repair.planning && (
-          <div role="status" className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-            <RefreshCw className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          <div role="status" className="flex items-center gap-bakin-2 py-bakin-6 text-bakin-typography-size-body text-bakin-text-muted">
+            <RefreshCw className="size-bakin-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
             Planning against the current evidence…
           </div>
         )}
 
         {repair.error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
-            <p className="font-medium text-destructive">{repairErrorTitle(repair.stale, repair.outcomeUnknown)}</p>
-            <p className="mt-1 text-muted-foreground">{repair.error}</p>
-            {repair.stale && <Button className="mt-3" size="sm" variant="outline" onClick={() => void replan()}>Re-plan from fresh evidence</Button>}
+          <div role="alert" className="rounded-bakin-control border border-bakin-signal-danger/30 bg-bakin-signal-danger/5 p-bakin-3 text-bakin-typography-size-body">
+            <p className="font-bakin-typography-weight-medium text-bakin-signal-danger">{repairErrorTitle(repair.stale, repair.outcomeUnknown)}</p>
+            <p className="mt-bakin-1 text-bakin-text-muted">{repair.error}</p>
+            {repair.stale && <Button className="mt-bakin-3" size="sm" variant="outline" onClick={() => void replan()}>Re-plan from fresh evidence</Button>}
           </div>
         )}
 
         {!repair.planning && repair.plan && !repair.result && !repair.stale && (
           <div className="max-h-[min(52vh,28rem)] space-y-3 overflow-y-auto pr-1">
             {repair.plan.items.length === 0 && (
-              <p className="rounded-lg border border-border/70 p-4 text-sm text-muted-foreground">
+              <p className="rounded-bakin-control border border-bakin-border-subtle p-bakin-4 text-bakin-typography-size-body text-bakin-text-muted">
                 No deterministic repair is available for this issue. Follow its resolution steps instead.
               </p>
             )}
             {repair.plan.items.map((item) => {
               const nonSafe = item.safety !== 'safe'
               return (
-                <div key={item.id} className="flex items-start gap-3 rounded-xl border border-border/80 p-4 focus-within:ring-2 focus-within:ring-ring">
+                <div key={item.id} className="flex items-start gap-bakin-3 rounded-bakin-surface border border-bakin-border-subtle p-bakin-4 focus-within:ring-2 focus-within:ring-bakin-focus-ring">
                   <Checkbox
-                    className="mt-1"
+                    className="mt-bakin-1"
                     checked={selected.has(item.id)}
                     onCheckedChange={() => toggle(item.id)}
                     aria-label={`${nonSafe ? 'Select and confirm' : 'Select'} repair: ${item.title}`}
                   />
-                  <span className="min-w-0 space-y-2 text-sm">
-                    <span className="flex flex-wrap items-center gap-2 font-medium text-foreground">
+                  <span className="min-w-0 space-y-bakin-2 text-bakin-typography-size-body">
+                    <span className="flex flex-wrap items-center gap-bakin-2 font-bakin-typography-weight-medium text-bakin-text-primary">
                       {item.title}
-                      <Badge variant="outline" className={SAFETY_STYLES[item.safety]}>{item.safety}</Badge>
+                      <StatusBadge variant="outline" tone={SAFETY_TONE[item.safety]}>{item.safety}</StatusBadge>
                     </span>
-                    <span className="block text-muted-foreground">{item.reason}</span>
+                    <span className="block text-bakin-text-muted">{item.reason}</span>
                     {item.changes.length > 0 && (
-                      <span className="block rounded-lg bg-muted/50 p-2 text-xs text-muted-foreground">
+                      <span className="block rounded-bakin-control bg-bakin-canvas-default p-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
                         {item.changes.map((change) => `${change.action} ${change.target}: ${change.description}`).join(' · ')}
                       </span>
                     )}
                     {nonSafe && (
-                      <span className="flex items-start gap-1.5 text-xs text-warning">
-                        <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+                      <span className="flex items-start gap-bakin-1 text-bakin-typography-size-meta text-bakin-signal-highlight">
+                        <AlertTriangle className="mt-bakin-0 size-bakin-3 shrink-0" aria-hidden="true" />
                         Selecting this item is its individual confirmation. Review the described change first.
                       </span>
                     )}
@@ -172,18 +172,18 @@ export function RepairDialog({
         {repair.result && (
           <div className="max-h-[min(52vh,28rem)] space-y-3 overflow-y-auto" data-testid="repair-result">
             {repair.result.results.map((item) => (
-              <div key={item.itemId} className="flex items-start gap-2 rounded-lg border border-border/70 p-3 text-sm">
+              <div key={item.itemId} className="flex items-start gap-bakin-2 rounded-bakin-control border border-bakin-border-subtle p-bakin-3 text-bakin-typography-size-body">
                 {item.status === 'applied'
-                  ? <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
-                  : <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />}
-                <div><p className="font-medium capitalize">{item.status}</p><p className="text-muted-foreground">{item.message}</p></div>
+                  ? <CircleCheck className="mt-bakin-0 size-bakin-4 shrink-0 text-bakin-action-primary-background" aria-hidden="true" />
+                  : <AlertTriangle className="mt-bakin-0 size-bakin-4 shrink-0 text-bakin-signal-highlight" aria-hidden="true" />}
+                <div><p className="font-bakin-typography-weight-medium capitalize">{item.status}</p><p className="text-bakin-text-muted">{item.message}</p></div>
               </div>
             ))}
             <div className={repair.result.verifiedIncidentIds.length === 0
-              ? 'rounded-lg border border-success/30 bg-success/5 p-3 text-sm'
-              : 'rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm'}>
-              <p className="font-medium">Verification</p>
-              <p className="mt-1 text-muted-foreground">
+              ? 'rounded-bakin-control border border-bakin-action-primary-background/30 bg-bakin-action-primary-background/5 p-bakin-3 text-bakin-typography-size-body'
+              : 'rounded-bakin-control border border-bakin-signal-highlight/30 bg-bakin-signal-highlight/5 p-bakin-3 text-bakin-typography-size-body'}>
+              <p className="font-bakin-typography-weight-medium">Verification</p>
+              <p className="mt-bakin-1 text-bakin-text-muted">
                 {repair.result.verifiedIncidentIds.length === 0
                   ? 'Fresh checks no longer show the selected issue.'
                   : `The repair ran, but ${repair.result.verifiedIncidentIds.length} related incident${repair.result.verifiedIncidentIds.length === 1 ? '' : 's'} remain.`}

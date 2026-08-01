@@ -25,6 +25,7 @@ mock.module('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
   useParams: () => routeParams,
   useSearch: () => routeSearch,
+  useLocation: () => ({ pathname: '/brands/acme/docs/guidelines/voice.md', search: routeSearch }),
   useRouter: () => ({ history: { block: () => () => {} }, parseLocation: (l: unknown) => l }),
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
 }))
@@ -33,14 +34,6 @@ mock.module('@/hooks/use-query-state', () => ({
     const React = require('react') as typeof import('react')
     return React.useState(defaultValue)
   },
-}))
-mock.module('@/components/markdown-content', () => ({
-  MarkdownContent: ({ content }: { content: string }) => <pre>{content}</pre>,
-}))
-mock.module('@/components/markdown-editor', () => ({
-  MarkdownEditor: ({ content, onChange }: { content: string; onChange: (v: string) => void }) => (
-    <textarea aria-label="doc content" value={content} onChange={(e) => onChange(e.target.value)} />
-  ),
 }))
 // The brainstorm panel pulls the conversation kit + agent store — its own concern.
 mock.module('../../../plugins/brands/components/brand-doc-brainstorm', () => ({
@@ -124,8 +117,7 @@ describe('doc lists', () => {
     await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /Edit/ })[0]) })
     expect(navigateMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: '/brands/$brandId/docs/$kind/$name',
-        params: { brandId: 'acme', kind: 'guidelines', name: 'voice.md' },
+        to: '/brands/acme/docs/guidelines/voice.md',
       }),
     )
     await settleReact()
@@ -148,7 +140,7 @@ describe('doc lists', () => {
     await act(async () => { fireEvent.click(document.querySelector('[data-new-doc-create]')!) })
     expect(navigateMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        params: { brandId: 'acme', kind: 'guidelines', name: 'imagery.md' },
+        to: '/brands/acme/docs/guidelines/imagery.md',
         search: { create: '1' },
       }),
     )
@@ -187,11 +179,13 @@ describe('BrandDocEditorPage', () => {
     await act(async () => {
       render(<BrandDocEditorPage />)
     })
-    await waitFor(() => expect(screen.getByLabelText('doc content')).toBeDefined())
-    expect((screen.getByLabelText('doc content') as HTMLTextAreaElement).value).toContain('Sharp and warm')
+    await waitFor(() => expect(screen.getByLabelText('Acme guidelines content')).toBeDefined())
+    expect((screen.getByLabelText('Acme guidelines content') as HTMLTextAreaElement).value).toContain('Sharp and warm')
+    expect(document.querySelector('[data-archetype="page"][data-width="full"]')).not.toBeNull()
+    expect(document.querySelector('[data-slot="page-header"]')).not.toBeNull()
     expect(document.querySelector('[data-savebar]')).toBeNull()
 
-    await act(async () => { fireEvent.change(screen.getByLabelText('doc content'), { target: { value: '# Voice\n\nSharper.' } }) })
+    await act(async () => { fireEvent.change(screen.getByLabelText('Acme guidelines content'), { target: { value: '# Voice\n\nSharper.' } }) })
     await waitFor(() => expect(document.querySelector('[data-savebar]')).not.toBeNull())
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save doc' })) })
     await waitFor(() =>
@@ -208,10 +202,11 @@ describe('BrandDocEditorPage', () => {
     await act(async () => {
       render(<BrandDocEditorPage />)
     })
-    await waitFor(() => expect(screen.getByLabelText('doc content')).toBeDefined())
+    await waitFor(() => expect(screen.getByLabelText('Acme guidelines content')).toBeDefined())
     expect(screen.queryByTestId('brainstorm-panel')).toBeNull()
     await act(async () => { fireEvent.click(document.querySelector('[data-brainstorm-toggle]')!) })
     await waitFor(() => expect(screen.getByTestId('brainstorm-panel')).toBeDefined())
+    expect(document.querySelector('[data-slot="page-aside"]')).not.toBeNull()
     await settleReact()
   })
 
@@ -223,8 +218,8 @@ describe('BrandDocEditorPage', () => {
     await act(async () => {
       render(<BrandDocEditorPage />)
     })
-    await waitFor(() => expect(screen.getByLabelText('doc content')).toBeDefined())
-    expect((screen.getByLabelText('doc content') as HTMLTextAreaElement).value).toContain('description:')
+    await waitFor(() => expect(screen.getByLabelText('Acme guidelines content')).toBeDefined())
+    expect((screen.getByLabelText('Acme guidelines content') as HTMLTextAreaElement).value).toContain('description:')
     expect(document.querySelector('[data-savebar]')).not.toBeNull() // unsaved new doc
     await settleReact()
   })
@@ -234,7 +229,8 @@ describe('BrandDocEditorPage', () => {
     await act(async () => {
       render(<BrandDocEditorPage />)
     })
-    await waitFor(() => expect(screen.getByText(/This doc doesn't exist/)).toBeDefined())
+    await waitFor(() => expect(screen.getByText(/This document doesn't exist/)).toBeDefined())
+    expect(document.querySelector('[data-slot="page-header"]')).not.toBeNull()
     await settleReact()
   })
 
@@ -244,8 +240,8 @@ describe('BrandDocEditorPage', () => {
     await act(async () => {
       render(<BrandDocEditorPage />)
     })
-    await waitFor(() => expect(screen.getByLabelText('doc content')).toBeDefined())
-    expect((screen.getByLabelText('doc content') as HTMLTextAreaElement).value).toContain('Already authored')
+    await waitFor(() => expect(screen.getByLabelText('Acme guidelines content')).toBeDefined())
+    expect((screen.getByLabelText('Acme guidelines content') as HTMLTextAreaElement).value).toContain('Already authored')
     expect(document.querySelector('[data-savebar]')).toBeNull() // it exists; nothing unsaved
     await settleReact()
   })
@@ -262,7 +258,9 @@ describe('BrandDocEditorPage', () => {
       render(<BrandDocEditorPage />)
     })
     await waitFor(() => expect(screen.getByText(/Couldn't load this doc/)).toBeDefined())
-    expect(screen.queryByText(/This doc doesn't exist/)).toBeNull()
+    expect(screen.queryByText(/This document doesn't exist/)).toBeNull()
+    expect(document.querySelector('[data-slot="page-header"]')).not.toBeNull()
+    expect(document.querySelector('[data-slot="system-state"]')).not.toBeNull()
     await settleReact()
   })
 })

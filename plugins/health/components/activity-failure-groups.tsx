@@ -1,6 +1,8 @@
 'use client'
 
-import { formatAbsoluteTime, formatRelativeTime, StatusBadge } from '@makinbakin/sdk/components'
+import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
+import { Grid, Section } from '@makinbakin/sdk/layout'
+import { ListRows, Pagination, StatusBadge } from '@makinbakin/sdk/patterns'
 import { Button } from '@makinbakin/sdk/ui'
 import { AlertCircle, ChevronDown } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -80,9 +82,13 @@ function matchesFailureRequest(group: UsageFailureGroup, request: ActivityFailur
     && (group.method ?? null) === request.method
 }
 
-function eventButtonLabel(visible: number, total: number): string {
+function showEventButtonLabel(visible: number, total: number): string {
   if (visible === total) return `View ${visible.toLocaleString()} failure ${visible === 1 ? 'event' : 'events'}`
   return `View ${visible.toLocaleString()} of ${total.toLocaleString()} recent failure events`
+}
+
+function hideEventButtonLabel(visible: number): string {
+  return `Hide ${visible.toLocaleString()} failure ${visible === 1 ? 'event' : 'events'}`
 }
 
 function relativeFailureTime(value: string): string {
@@ -127,29 +133,34 @@ function FailureGroup({
   const relative = relativeFailureTime(group.lastFailureAt)
   const agents = failureAgents(group)
   const disclosureId = `activity-failure-events-${group.kind}-${group.method ?? 'none'}-${encodeURIComponent(destination)}`
+  const disclosureLabel = expanded
+    ? hideEventButtonLabel(events.length)
+    : showEventButtonLabel(events.length, group.failures)
 
   return (
     <div
       id={failureGroupElementId(group)}
       role="group"
       aria-label={label}
-      className={`overflow-hidden rounded-xl border bg-card outline-none transition-shadow ${selected ? 'border-destructive/40 ring-2 ring-destructive/30' : 'border-border/80'} focus-visible:ring-2 focus-visible:ring-ring`}
+      className={`min-w-0 border-b border-bakin-border-subtle outline-none last:border-b-0 ${selected ? 'border-l-2 border-l-bakin-signal-danger bg-bakin-surface-default' : ''} focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-bakin-focus-ring`}
       data-selected={selected ? 'true' : undefined}
       tabIndex={-1}
     >
-      <div className="grid min-w-0 gap-3 p-4 @[38rem]/health:grid-cols-[minmax(0,1fr)_auto] @[38rem]/health:items-center">
+      <div className="grid min-w-0 gap-bakin-3 px-bakin-3 py-bakin-4 @[38rem]/health:grid-cols-[minmax(0,1fr)_auto] @[38rem]/health:items-center">
         <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Icon className={`size-4 shrink-0 ${meta.iconColorClass}`} aria-hidden="true" />
-            <h4 className="min-w-0 truncate font-semibold text-foreground" title={destination}>
+          <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+            <Icon className={`size-bakin-4 shrink-0 `} aria-hidden="true" />
+            <h4 className="min-w-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary" title={destination}>
               {displayName}
             </h4>
-            <StatusBadge tone="destructive" variant="outline">{meta.label}</StatusBadge>
+            <span className="text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">
+              {meta.label}
+            </span>
           </div>
 
-          <p className="mt-2 truncate text-sm text-foreground" title={reason}>{reason}</p>
-          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            <strong className="font-medium tabular-nums text-destructive">{failureCountLabel(group)}</strong>
+          <p className="mt-bakin-2 truncate text-bakin-typography-size-body text-bakin-text-primary" title={reason}>{reason}</p>
+          <div className="mt-bakin-2 flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+            <StatusBadge tone="danger" variant="solid">{failureCountLabel(group)}</StatusBadge>
             <span className="min-w-0 truncate" title={agents}>
               {agents}
             </span>
@@ -163,15 +174,15 @@ function FailureGroup({
         </div>
 
         <Button
-          size="sm"
+          size="xs"
           variant="outline"
-          aria-label={`${eventButtonLabel(events.length, group.failures)} for ${label}`}
+          aria-label={`${disclosureLabel} for ${label}`}
           aria-expanded={expanded}
           aria-controls={disclosureId}
           onClick={() => setExpanded((value) => !value)}
           disabled={events.length === 0}
         >
-          {eventButtonLabel(events.length, group.failures)}
+          {disclosureLabel}
           <ChevronDown
             className={expanded ? 'rotate-180 transition-transform motion-reduce:transition-none' : 'transition-transform motion-reduce:transition-none'}
             aria-hidden="true"
@@ -182,18 +193,18 @@ function FailureGroup({
       {expanded && (
         <div
           id={disclosureId}
-          className="border-t border-border/70 bg-foreground/[0.015] p-3"
+          className="border-t border-bakin-border-subtle bg-bakin-surface-default px-bakin-3 py-bakin-3"
         >
           {events.length < group.failures && (
-            <p className="mb-3 text-xs text-muted-foreground">
+            <p className="mb-bakin-3 text-bakin-typography-size-meta text-bakin-text-muted">
               Showing the {events.length.toLocaleString()} most recent of {group.failures.toLocaleString()} failures in this window.
             </p>
           )}
-          <ul className="space-y-2" aria-label={`Failure events for ${label}`}>
+          <ListRows aria-label={`Failure events for ${label}`}>
             {events.map((entry, index) => (
               <ActivityRow key={entry.id || `${entry.ts}:${entry.kind}:${entry.name}:${index}`} entry={entry} />
             ))}
-          </ul>
+          </ListRows>
         </div>
       )}
     </div>
@@ -213,9 +224,11 @@ function FailurePatternHighlights({
 
   return (
     <div className="min-w-0">
-      <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</h4>
+      <h4 className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
+        {label}
+      </h4>
       {highlights.length > 0 ? (
-        <ol className="mt-2 divide-y divide-border/70" aria-label={label}>
+        <ol className="mt-bakin-2 divide-y divide-bakin-border-subtle" aria-label={label}>
           {highlights.map((group) => {
             const meta = INTERACTION_SOURCE_META[group.kind]
             const Icon = meta.icon
@@ -225,21 +238,21 @@ function FailurePatternHighlights({
             return (
               <li
                 key={`${group.kind}:${group.method ?? ''}:${destination}`}
-                className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-2 first:pt-0 last:pb-0"
+                className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-bakin-3 py-bakin-2 first:pt-0 last:pb-0"
               >
-                <span className="flex min-w-0 items-center gap-2">
-                  <Icon className={`size-3.5 shrink-0 ${meta.iconColorClass}`} aria-hidden="true" />
+                <span className="flex min-w-0 items-center gap-bakin-2">
+                  <Icon className={`size-bakin-3 shrink-0 `} aria-hidden="true" />
                   <span className="min-w-0">
-                    <strong className="block truncate text-sm font-medium text-foreground" title={destination}>
+                    <strong className="block truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary" title={destination}>
                       {failureGroupDisplayName(group)}
                     </strong>
-                    <span className="block truncate text-xs text-muted-foreground" title={`${meta.label} · ${reason}`}>
+                    <span className="block truncate text-bakin-typography-size-meta text-bakin-text-muted" title={`${meta.label} · ${reason}`}>
                       <span>{meta.label} · </span>
                       <span>{reason}</span>
                     </span>
                   </span>
                 </span>
-                <strong className="whitespace-nowrap text-right text-xs font-medium tabular-nums text-foreground">
+                <strong className="whitespace-nowrap text-right text-bakin-typography-size-meta font-bakin-typography-weight-medium tabular-nums text-bakin-text-primary">
                   {failureCountLabel(group)}
                 </strong>
               </li>
@@ -247,7 +260,7 @@ function FailurePatternHighlights({
           })}
         </ol>
       ) : (
-        <p className="mt-2 text-sm text-muted-foreground">Refreshing failure patterns…</p>
+        <p className="mt-bakin-2 text-bakin-typography-size-body text-bakin-text-muted">Refreshing failure patterns…</p>
       )}
     </div>
   )
@@ -263,28 +276,28 @@ function ResultsToVerify({
   if (totalUnverified === 0) return null
 
   return (
-    <div className="space-y-2">
-      <div className="flex min-w-0 flex-wrap items-end justify-between gap-2">
+    <div className="space-y-bakin-2">
+      <div className="flex min-w-0 flex-wrap items-end justify-between gap-bakin-2">
         <div>
-          <h4 className="font-semibold text-foreground">Results to verify</h4>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h4 className="font-bakin-typography-weight-semibold text-bakin-text-primary">Results to verify</h4>
+          <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">
             Confirm whether these calls completed before retrying them.
           </p>
         </div>
         {unverified.length < totalUnverified && (
-          <span className="text-xs tabular-nums text-muted-foreground">
+          <span className="text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
             Showing {unverified.length.toLocaleString()} of {totalUnverified.toLocaleString()}
           </span>
         )}
       </div>
       {unverified.length > 0 ? (
-        <ul className="space-y-2" aria-label="Results to verify">
+        <ListRows aria-label="Results to verify">
           {unverified.map((entry, index) => (
             <ActivityRow key={entry.id || `${entry.ts}:${entry.kind}:${entry.name}:${index}`} entry={entry} />
           ))}
-        </ul>
+        </ListRows>
       ) : (
-        <p className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm text-muted-foreground">
+        <p className="border-l-2 border-bakin-signal-highlight bg-bakin-surface-default px-bakin-4 py-bakin-3 text-bakin-typography-size-body text-bakin-text-muted">
           No recent raw evidence is available for these result gaps.
         </p>
       )}
@@ -367,21 +380,23 @@ export function ActivityFailureGroups({
   if (totalFailures === 0 && totalUnverified === 0) return null
 
   return (
-    <section
+    <Section
       id="activity-needs-attention"
       aria-labelledby="activity-needs-attention-title"
-      className="scroll-mt-4 overflow-hidden rounded-xl border border-border/80 bg-card outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      divider="top"
+      spacing="compact"
+      className="scroll-mt-bakin-4 outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring"
       tabIndex={-1}
     >
-      <div className="flex min-w-0 flex-wrap items-end justify-between gap-2 px-4 py-3">
+      <div className="flex min-w-0 flex-wrap items-end justify-between gap-bakin-2">
         <div>
-          <div className="flex items-center gap-2">
-            <AlertCircle className={`size-4 ${totalFailures > 0 ? 'text-destructive' : 'text-warning'}`} aria-hidden="true" />
-            <h3 id="activity-needs-attention-title" className="font-semibold">Hiccups</h3>
+          <div className="flex items-center gap-bakin-2">
+            <AlertCircle className={`size-4 ${totalFailures > 0 ? 'text-bakin-signal-danger' : 'text-bakin-signal-highlight'}`} aria-hidden="true" />
+            <h3 id="activity-needs-attention-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">Hiccups</h3>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+          <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">{description}</p>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5 text-xs tabular-nums text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-end gap-bakin-2 text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
           {totalFailures > 0 && (
             <span>
               {failures.length < totalFailures
@@ -412,46 +427,48 @@ export function ActivityFailureGroups({
 
       {totalFailures > 0 && (
         <>
-          <div className="grid min-w-0 items-start gap-5 border-t border-border/70 px-4 py-4 @[54rem]/health:grid-cols-[minmax(0,1.35fr)_minmax(18rem,.65fr)]">
+          <div className="relative overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default px-bakin-4 py-bakin-4 before:absolute before:inset-y-0 before:start-0 before:w-bakin-1 before:bg-bakin-signal-danger">
+            <Grid layout="main-aside" gap="section" align="start">
             <div className="min-w-0">
-              <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Failures over time</h4>
+              <h4 className="mb-bakin-2 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
+                Failures over time
+              </h4>
               <ActivityFailureTrend buckets={buckets} coverage={coverage} />
             </div>
             <FailurePatternHighlights groups={groups} page={page} />
+            </Grid>
           </div>
 
           {hasPatterns && (
-            <div className="border-t border-border/70 p-2">
-              <Button
-                id="activity-failure-pattern-disclosure"
-                size="sm"
-                variant="ghost"
-                className="w-full justify-center text-muted-foreground hover:text-foreground"
-                aria-expanded={detailsExpanded}
-                aria-controls="activity-failure-pattern-details"
-                onClick={() => {
-                  if (detailsExpanded && page && page.offset > 0) {
-                    setDetailsExpanded(false)
-                    onPageChange?.(0, { expanded: false, focusTarget: 'disclosure' })
-                    return
-                  }
-                  const nextExpanded = !detailsExpanded
-                  setDetailsExpanded(nextExpanded)
-                  onDetailsExpandedChange?.(nextExpanded)
-                }}
-              >
-                {detailsExpanded ? 'Hide failure details' : reviewLabel}
-                <ChevronDown
-                  className={detailsExpanded ? 'rotate-180 transition-transform motion-reduce:transition-none' : 'transition-transform motion-reduce:transition-none'}
-                  aria-hidden="true"
-                />
-              </Button>
-            </div>
+            <Button
+              id="activity-failure-pattern-disclosure"
+              size="sm"
+              variant="outline"
+              className="w-fit max-w-full text-bakin-text-muted hover:text-bakin-text-primary"
+              aria-expanded={detailsExpanded}
+              aria-controls="activity-failure-pattern-details"
+              onClick={() => {
+                if (detailsExpanded && page && page.offset > 0) {
+                  setDetailsExpanded(false)
+                  onPageChange?.(0, { expanded: false, focusTarget: 'disclosure' })
+                  return
+                }
+                const nextExpanded = !detailsExpanded
+                setDetailsExpanded(nextExpanded)
+                onDetailsExpandedChange?.(nextExpanded)
+              }}
+            >
+              {detailsExpanded ? 'Hide failure details' : reviewLabel}
+              <ChevronDown
+                className={detailsExpanded ? 'rotate-180 transition-transform motion-reduce:transition-none' : 'transition-transform motion-reduce:transition-none'}
+                aria-hidden="true"
+              />
+            </Button>
           )}
 
           {hasPatterns && detailsExpanded && (
-            <div id="activity-failure-pattern-details" className="space-y-3 border-t border-border/70 p-3">
-              <div className="space-y-2">
+            <div id="activity-failure-pattern-details" className="space-y-bakin-4">
+              <div className="border-y border-bakin-border-subtle">
                 {groups.map((group) => (
                   <FailureGroup
                     key={failureGroupKey(group)}
@@ -462,27 +479,14 @@ export function ActivityFailureGroups({
                 ))}
               </div>
 
-              {showPaging && (
-                <nav aria-label="Failure pattern pages" className="flex flex-wrap items-center justify-end gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    aria-label="Previous failure patterns"
-                    disabled={page.offset === 0 || !onPageChange}
-                    onClick={() => onPageChange?.(Math.max(0, page.offset - page.limit))}
-                  >
-                    Previous patterns
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    aria-label="Next failure patterns"
-                    disabled={!page.hasMore || !onPageChange}
-                    onClick={() => onPageChange?.(page.offset + page.limit)}
-                  >
-                    Next patterns
-                  </Button>
-                </nav>
+              {showPaging && page && onPageChange && (
+                <Pagination
+                  ariaLabel="Failure pattern pages"
+                  page={Math.floor(page.offset / page.limit) + 1}
+                  pageSize={page.limit}
+                  total={page.total}
+                  onPageChange={(nextPage) => onPageChange((nextPage - 1) * page.limit)}
+                />
               )}
 
               <ResultsToVerify unverified={unverified} totalUnverified={totalUnverified} />
@@ -490,7 +494,7 @@ export function ActivityFailureGroups({
           )}
 
           {!hasPatterns && totalUnverified > 0 && (
-            <div className="border-t border-border/70 p-4">
+            <div>
               <ResultsToVerify unverified={unverified} totalUnverified={totalUnverified} />
             </div>
           )}
@@ -498,10 +502,10 @@ export function ActivityFailureGroups({
       )}
 
       {totalFailures === 0 && totalUnverified > 0 && (
-        <div className="border-t border-border/70 p-4">
+        <div className="relative overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default px-bakin-4 py-bakin-4 before:absolute before:inset-y-0 before:start-0 before:w-bakin-1 before:bg-bakin-signal-highlight">
           <ResultsToVerify unverified={unverified} totalUnverified={totalUnverified} />
         </div>
       )}
-    </section>
+    </Section>
   )
 }

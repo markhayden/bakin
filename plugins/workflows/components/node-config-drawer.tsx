@@ -1,19 +1,21 @@
 'use client'
 
 /**
- * Inline node config drawer.
+ * Inline node config panel.
  *
  * Opens when a node is clicked on the canvas editor. Renders a form
  * generated from the selected node type's `formFields` metadata and
  * validates the merged step payload against the node type's Zod schema
- * before Apply, so the drawer and the loader cannot drift.
+ * before Apply, so the panel and the loader cannot drift.
  *
- * Pure field/coercion helpers live in `lib/node-config-fields`; the header
- * bar and parallel-children editor are sibling components (FW4 split).
+ * Composition: the vetted InspectorPanel pattern (the canvas-adjacent
+ * inspector from Recipes/Workflow and action pages). Pure field/coercion
+ * helpers live in `lib/node-config-fields`; the parallel-children editor is
+ * a sibling component (FW4 split).
  */
 
 import { useMemo, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Trash2, X } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
 import { Input } from "@makinbakin/sdk/ui"
 import { Textarea } from "@makinbakin/sdk/ui"
@@ -26,13 +28,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@makinbakin/sdk/ui"
-import { AgentSelect } from "@makinbakin/sdk/components"
+import {
+  InspectorPanel,
+  InspectorPanelContent,
+  InspectorPanelFooter,
+  InspectorPanelHeader,
+} from "@makinbakin/sdk/patterns"
+import { WorkflowAgentSelect } from './workflow-agent-identity'
 import { useJsonFetch } from '@makinbakin/sdk/hooks'
-import { getNodeType, type FormField } from '@bakin/core/workflows/node-type-registry'
 
 import {
   type ParallelChildRow,
   type WorkflowSelectOption,
+  type FormField,
+  getNodeType,
   isDrawerEditableField,
   fieldInitialValue,
   coerceFieldValue,
@@ -50,8 +59,10 @@ import {
   CONTROL_CLASS,
   TEXTAREA_CLASS,
 } from '../lib/node-config-fields'
-import { DrawerHeader } from './node-config-drawer-header'
 import { ParallelChildrenEditor } from './parallel-children-editor'
+
+const PANEL_CLASS = 'w-112 shrink-0 gap-0 border-l border-bakin-border-subtle bg-bakin-surface-default'
+const FIELD_ERROR_CLASS = 'text-bakin-typography-size-meta font-bakin-typography-weight-medium leading-relaxed text-bakin-signal-danger'
 
 export interface NodeConfigDrawerProps {
   /** Step currently under edit, or null when nothing selected. */
@@ -70,6 +81,26 @@ export interface NodeConfigDrawerProps {
   onDirtyChange?: (dirty: boolean) => void
   existingStepIds?: string[]
   reservedStepIds?: string[]
+}
+
+function PanelHeader({ title, onClose }: { title: string; onClose: () => void }) {
+  return (
+    <InspectorPanelHeader
+      className="px-5 pt-4"
+      title={title}
+      actions={(
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Close drawer"
+          onClick={onClose}
+        >
+          <X aria-hidden="true" className="size-4" />
+        </Button>
+      )}
+    />
+  )
 }
 
 export function NodeConfigDrawer({
@@ -138,21 +169,23 @@ export function NodeConfigDrawer({
 
   if (!def) {
     return (
-      <aside className="flex w-[28rem] flex-col border-l border-border bg-card">
-        <DrawerHeader onClose={onClose} title={stepKindLabel(kind)} />
-        <div className="flex-1 p-5 text-sm leading-relaxed text-amber-300">
-          No registered node type for <code>{kind || '(missing)'}</code>. Step is preserved
-          but cannot be edited here - the plugin may not be active.
-        </div>
+      <InspectorPanel label="Step configuration" className={PANEL_CLASS}>
+        <PanelHeader onClose={onClose} title={stepKindLabel(kind)} />
+        <InspectorPanelContent className="p-5 text-bakin-typography-size-body leading-relaxed text-bakin-signal-highlight">
+          <p className="m-0">
+            No registered node type for <code>{kind || '(missing)'}</code>. Step is preserved
+            but cannot be edited here - the plugin may not be active.
+          </p>
+        </InspectorPanelContent>
         {onDelete && (
-          <div className="border-t border-border p-5">
+          <InspectorPanelFooter className="justify-start p-5">
             <Button type="button" size="sm" variant="destructive" onClick={onDelete}>
               <Trash2 className="mr-1 size-3.5" />
               Delete step
             </Button>
-          </div>
+          </InspectorPanelFooter>
         )}
-      </aside>
+      </InspectorPanel>
     )
   }
 
@@ -267,10 +300,10 @@ export function NodeConfigDrawer({
   const canApply = id.trim().length > 0 && label.trim().length > 0
 
   return (
-    <aside className="flex w-[28rem] flex-col border-l border-border bg-card">
-      <DrawerHeader onClose={onClose} title={stepKindLabel(kind)} />
+    <InspectorPanel label="Step configuration" className={PANEL_CLASS}>
+      <PanelHeader onClose={onClose} title={stepKindLabel(kind)} />
 
-      <div className="flex-1 overflow-y-auto p-5">
+      <InspectorPanelContent className="flex-1 overflow-y-auto p-5">
         <div className="space-y-6">
           <div className={FIELD_GROUP_CLASS}>
             <Label className={FIELD_LABEL_CLASS} htmlFor="node-config-id">Step ID</Label>
@@ -288,7 +321,7 @@ export function NodeConfigDrawer({
               aria-describedby={idError ? 'node-config-id-error' : undefined}
             />
             {idError && (
-              <p id="node-config-id-error" className="text-xs font-medium leading-relaxed text-red-300">
+              <p id="node-config-id-error" className={FIELD_ERROR_CLASS}>
                 {idError}
               </p>
             )}
@@ -312,7 +345,7 @@ export function NodeConfigDrawer({
               aria-describedby={labelError ? 'node-config-label-error' : undefined}
             />
             {labelError && (
-              <p id="node-config-label-error" className="text-xs font-medium leading-relaxed text-red-300">
+              <p id="node-config-label-error" className={FIELD_ERROR_CLASS}>
                 {labelError}
               </p>
             )}
@@ -328,11 +361,11 @@ export function NodeConfigDrawer({
             return (
               <div key={field.name} className={FIELD_GROUP_CLASS}>
                 <Label
-                  className={`${FIELD_LABEL_CLASS} ${fieldError ? 'text-red-300' : ''}`}
+                  className={`${FIELD_LABEL_CLASS} ${fieldError ? 'text-bakin-signal-danger' : ''}`}
                   htmlFor={`node-config-${field.name}`}
                 >
                   {fieldLabel(field)}
-                  {field.required && <span className="ml-1 text-red-400">*</span>}
+                  {field.required && <span className="ml-1 text-bakin-signal-danger">*</span>}
                 </Label>
                 <FieldControl
                   field={field}
@@ -343,7 +376,7 @@ export function NodeConfigDrawer({
                   onChange={(v) => updateFieldValue(field.name, v)}
                 />
                 {fieldError && (
-                  <p id={errorId} className="text-xs font-medium leading-relaxed text-red-300">
+                  <p id={errorId} className={FIELD_ERROR_CLASS}>
                     {fieldError}
                   </p>
                 )}
@@ -365,7 +398,7 @@ export function NodeConfigDrawer({
           )}
 
           {errors.length > 0 && (
-            <div className="rounded border border-red-500/40 bg-red-500/10 p-3 text-xs leading-relaxed text-red-200">
+            <div className="rounded-bakin-control border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 p-3 text-bakin-typography-size-meta leading-relaxed text-bakin-signal-danger">
               <ul className="list-disc pl-4">
                 {errors.map((err, i) => (
                   <li key={i}>{err}</li>
@@ -374,9 +407,9 @@ export function NodeConfigDrawer({
             </div>
           )}
         </div>
-      </div>
+      </InspectorPanelContent>
 
-      <div className="flex items-center justify-between gap-2 border-t border-border p-5">
+      <InspectorPanelFooter className="justify-between p-5">
         {onDelete && (
           <Button
             type="button"
@@ -396,8 +429,8 @@ export function NodeConfigDrawer({
             Apply
           </Button>
         </div>
-      </div>
-    </aside>
+      </InspectorPanelFooter>
+    </InspectorPanel>
   )
 }
 
@@ -511,20 +544,15 @@ function FieldControl({
       )
     case 'agent':
       return (
-        <AgentSelect
+        <WorkflowAgentSelect
           id={`node-config-${field.name}`}
           value={str}
           onValueChange={(v) => onChange(v || undefined)}
           includeAssigned
-          includeTeams
           allowNone={!field.required}
           aria-invalid={invalid || undefined}
           aria-describedby={describedBy}
-          className={
-            invalid
-              ? `${CONTROL_CLASS} border-destructive ring-3 ring-destructive/20 dark:border-destructive/50 dark:ring-destructive/40`
-              : CONTROL_CLASS
-          }
+          className={CONTROL_CLASS}
         />
       )
     case 'skill':

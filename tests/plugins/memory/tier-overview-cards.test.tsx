@@ -3,14 +3,15 @@
 /**
  * Tests for plugins/memory/components/tier-overview-cards.tsx.
  *
- * The overview renders one card per memory tier. It fetches /status on
- * mount, shows skeletons while loading, shows the per-tier counts once
- * data arrives, and tolerates a missing tier (→ 0). It is the fastest
+ * The overview renders compact metrics for the everyday memory tiers and
+ * adds the noisy system-log tiers only when explicitly requested. It fetches
+ * /status on mount, shows skeletons while loading, shows the per-tier counts
+ * once data arrives, and tolerates a missing tier (→ 0). It is the fastest
  * feedback surface on the /memory landing page, so render-stability on
  * partial data matters more than exhaustive prettiness.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 
 // Defensive isolation per CLAUDE.md.
@@ -39,15 +40,6 @@ mock.module('../../../packages/core/src/content-dir', () => {
   }
 })
 
-mock.module('@/components/ui/card', () => ({
-  Card: ({ children, ...props }: Record<string, unknown>) => (
-    <div data-testid="card" {...props}>{children as React.ReactNode}</div>
-  ),
-}))
-mock.module('@/components/ui/skeleton', () => ({
-  Skeleton: (props: Record<string, unknown>) => <div data-testid="skeleton" {...props} />,
-}))
-
 import { TierOverviewCards } from '../../../plugins/memory/components/tier-overview-cards'
 
 type FetchFn = typeof global.fetch
@@ -67,11 +59,12 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  cleanup()
   ;(global as { fetch: FetchFn }).fetch = originalFetch
 })
 
 describe('TierOverviewCards', () => {
-  it('renders a card for every tier', async () => {
+  it('renders compact metrics for the five everyday tiers by default', async () => {
     global.fetch = mockFetchOnce({
       countsByTier: {
         audit: 10, durable: 4, daily_note: 7, session: 3, turn: 200, checkpoint: 1, dream: 5,
@@ -82,8 +75,29 @@ describe('TierOverviewCards', () => {
     })
     render(<TierOverviewCards />)
     await waitFor(() => {
-      expect(screen.getAllByTestId('card').length).toBe(7)
+      expect(document.querySelectorAll('[data-stat-tile]').length).toBe(5)
     })
+    expect(screen.getByText('Sessions')).toBeDefined()
+    expect(screen.getByText('Daily Notes')).toBeDefined()
+    expect(screen.queryByText('Audit')).toBeNull()
+    expect(screen.queryByText('Turns')).toBeNull()
+  })
+
+  it('adds audit and turn metrics when system logs are enabled', async () => {
+    global.fetch = mockFetchOnce({
+      countsByTier: {
+        audit: 10, durable: 4, daily_note: 7, session: 3, turn: 200, checkpoint: 1, dream: 5,
+      },
+      totalRows: 230,
+      offsetsTracked: 2,
+      lastUpdated: Date.now(),
+    })
+    render(<TierOverviewCards includeSystemLogs />)
+    await waitFor(() => {
+      expect(document.querySelectorAll('[data-stat-tile]').length).toBe(7)
+    })
+    expect(screen.getByText('Audit')).toBeDefined()
+    expect(screen.getByText('Turns')).toBeDefined()
   })
 
   it('displays the count for each tier once /status responds', async () => {
@@ -95,7 +109,7 @@ describe('TierOverviewCards', () => {
       offsetsTracked: 2,
       lastUpdated: Date.now(),
     })
-    render(<TierOverviewCards />)
+    render(<TierOverviewCards includeSystemLogs />)
     await waitFor(() => {
       // each count shows up somewhere
       expect(screen.getByText('200')).toBeDefined()
@@ -106,8 +120,8 @@ describe('TierOverviewCards', () => {
 
   it('shows skeletons before the first response', () => {
     global.fetch = mock(() => new Promise(() => {})) as unknown as FetchFn
-    render(<TierOverviewCards />)
-    expect(screen.getAllByTestId('skeleton').length).toBeGreaterThan(0)
+    const { container } = render(<TierOverviewCards />)
+    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0)
   })
 
   it('fetches /api/plugins/memory/status', async () => {
@@ -131,9 +145,9 @@ describe('TierOverviewCards', () => {
       countsByTier: { audit: 10 }, // missing every other tier
       totalRows: 10, offsetsTracked: 0, lastUpdated: Date.now(),
     })
-    render(<TierOverviewCards />)
+    render(<TierOverviewCards includeSystemLogs />)
     await waitFor(() => {
-      expect(screen.getAllByTestId('card').length).toBe(7)
+      expect(document.querySelectorAll('[data-stat-tile]').length).toBe(7)
     })
     // 6 tiers should show 0 — so at least 6 zero values present.
     const zeros = screen.getAllByText('0')

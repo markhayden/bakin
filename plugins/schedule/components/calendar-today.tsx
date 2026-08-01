@@ -2,9 +2,15 @@
 
 import { useMemo } from 'react'
 import { Clock } from 'lucide-react'
-import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from "@makinbakin/sdk/hooks"
-import { OccurrenceCard, formatHour, jobsById, CALENDAR_HOURS } from './calendar-weekly'
+import { CalendarGrid } from '@makinbakin/sdk/patterns'
+import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from '@makinbakin/sdk/hooks'
+import { OccurrenceCard, jobsById } from './calendar-weekly'
 import { EventChip, eventInstant } from './event-popover'
+
+/** Occurrence or domain event flattened into the shared CalendarGrid item shape. */
+type TodayCalendarItem =
+  | { kind: 'occurrence'; key: string; date: string; occurrence: ScheduleOccurrence; job: ScheduleJob }
+  | { kind: 'event'; key: string; date: string; event: ScheduledDomainEvent }
 
 export function CalendarToday({
   jobs,
@@ -14,13 +20,11 @@ export function CalendarToday({
   onSelectJob: (job: ScheduleJob) => void
 }) {
   const now = new Date()
-  const currentHour = now.getHours()
 
   const dayStart = useMemo(() => {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
     return d
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const dayEnd = useMemo(() => {
     const d = new Date(dayStart)
@@ -38,92 +42,60 @@ export function CalendarToday({
     year: 'numeric',
   })
 
-  // Group today's occurrences + domain events by local hour.
-  const hourGrid = useMemo(() => {
-    const map: Record<number, ScheduleOccurrence[]> = {}
-    for (const occurrence of occurrences) {
-      const hour = new Date(occurrence.at).getHours()
-      if (!map[hour]) map[hour] = []
-      map[hour]!.push(occurrence)
-    }
-    return { map, total: occurrences.length + events.length }
-  }, [occurrences, events])
+  const total = occurrences.length + events.length
 
-  const eventHourGrid = useMemo(() => {
-    const map: Record<number, ScheduledDomainEvent[]> = {}
-    for (const event of events) {
-      const hour = new Date(eventInstant(event)).getHours()
-      if (!map[hour]) map[hour] = []
-      map[hour]!.push(event)
+  // The shared CalendarGrid owns hour-row placement and current-hour marking.
+  const items = useMemo<TodayCalendarItem[]>(() => {
+    const list: TodayCalendarItem[] = []
+    for (const occurrence of occurrences) {
+      const job = byId.get(occurrence.jobId)
+      if (!job) continue
+      list.push({
+        kind: 'occurrence',
+        key: `occurrence-${occurrence.jobId}-${occurrence.at}`,
+        date: occurrence.at,
+        occurrence,
+        job,
+      })
     }
-    return map
-  }, [events])
+    for (const event of events) {
+      list.push({
+        kind: 'event',
+        key: `event-${event.pluginId}-${event.id}`,
+        date: eventInstant(event),
+        event,
+      })
+    }
+    return list
+  }, [byId, events, occurrences])
 
   return (
-    <div className="flex flex-col gap-3 h-full min-h-0">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Clock className="size-4 text-muted-foreground" />
-        <span className="text-sm font-medium">{todayFormatted}</span>
-        <span className="text-xs text-muted-foreground">
-          {hourGrid.total} run{hourGrid.total !== 1 ? 's' : ''} scheduled
+    <div className="flex h-full min-h-0 flex-col gap-bakin-3">
+      <div className="flex flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1">
+        <Clock className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
+        <span className="font-bakin-typography-weight-medium text-bakin-text-primary">{todayFormatted}</span>
+        <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+          {total} run{total !== 1 ? 's' : ''} scheduled
         </span>
       </div>
 
-      {/* Timeline */}
-      <div className="overflow-auto flex-1 min-h-0 border border-border/30 rounded-lg bg-background/50">
-        <div className="divide-y divide-border/[0.06]">
-          {CALENDAR_HOURS.map(hour => {
-            const hourOccurrences = hourGrid.map[hour] || []
-            const hourEvents = eventHourGrid[hour] || []
-            const isCurrent = hour === currentHour
-
-            return (
-              <div
-                key={hour}
-                className={`
-                  flex gap-4 px-4 py-3 min-h-[56px]
-                  ${isCurrent ? 'bg-blue-500/[0.04]' : ''}
-                `}
-              >
-                {/* Time gutter */}
-                <div className="w-[60px] shrink-0 pt-0.5">
-                  <span className={`text-xs font-mono tabular-nums ${isCurrent ? 'text-blue-400 font-medium' : 'text-zinc-600'}`}>
-                    {formatHour(hour)}
-                  </span>
-                  {isCurrent && (
-                    <div className="mt-1 h-[2px] w-full rounded-full bg-blue-500/40" />
-                  )}
-                </div>
-
-                {/* Occurrence cards */}
-                <div className="flex-1 min-w-0">
-                  {hourOccurrences.length + hourEvents.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                      {hourOccurrences.map(occurrence => {
-                        const job = byId.get(occurrence.jobId)
-                        if (!job) return null
-                        return (
-                          <OccurrenceCard
-                            key={`${occurrence.jobId}-${occurrence.at}`}
-                            occurrence={occurrence}
-                            job={job}
-                            onClick={() => onSelectJob(job)}
-                            expanded
-                          />
-                        )
-                      })}
-                      {hourEvents.map(event => (
-                        <EventChip key={`${event.pluginId}-${event.id}`} event={event} onRescheduled={refresh} />
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
+      <CalendarGrid
+        view="day"
+        date={dayStart}
+        label="Today's schedule"
+        items={items}
+        className="min-h-0 flex-1"
+        renderItem={(item) => item.kind === 'occurrence' ? (
+          <OccurrenceCard
+            occurrence={item.occurrence}
+            job={item.job}
+            onClick={() => onSelectJob(item.job)}
+            expanded
+          />
+        ) : (
+          <EventChip event={item.event} onRescheduled={refresh} />
+        )}
+      />
     </div>
   )
 }

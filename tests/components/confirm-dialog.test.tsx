@@ -11,26 +11,7 @@ const testDir = join(tmpdir(), 'bakin-test-confirm-dialog')
 mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 
-mock.module('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children, onOpenChange }: { open: boolean; children?: React.ReactNode; onOpenChange?: (o: boolean) => void }) =>
-    open ? (
-      <div role="dialog">
-        <button data-testid="backdrop-close" onClick={() => onOpenChange?.(false)}>x</button>
-        {children}
-      </div>
-    ) : null,
-  DialogContent: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-  DialogHeader: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-  DialogTitle: ({ children }: { children?: React.ReactNode }) => <h2>{children}</h2>,
-  DialogDescription: ({ children }: { children?: React.ReactNode }) => <p>{children}</p>,
-  DialogFooter: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-}))
-mock.module('@/components/ui/button', () => ({
-  Button: ({ children, onClick, disabled, ...rest }: { children?: React.ReactNode; onClick?: () => void; disabled?: boolean }) =>
-    <button onClick={onClick} disabled={disabled} data-testid={(rest as Record<string, string>)['data-testid']}>{children}</button>,
-}))
-
-import { ConfirmDialog } from '../../src/components/confirm-dialog'
+import { ConfirmDialog } from '@makinbakin/sdk/patterns'
 
 afterEach(() => cleanup())
 
@@ -72,14 +53,14 @@ describe('ConfirmDialog', () => {
     expect(screen.getByText('Delete failed')).toBeDefined()
   })
 
-  it('cancels on backdrop close when idle, but not while busy', () => {
+  it('cancels on the canonical close control when idle, but not while busy', () => {
     const onCancel = mock()
     const { rerender } = render(<ConfirmDialog open title="t" onConfirm={() => {}} onCancel={onCancel} />)
-    fireEvent.click(screen.getByTestId('backdrop-close'))
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
     expect(onCancel).toHaveBeenCalledTimes(1)
 
     rerender(<ConfirmDialog open busy title="t" onConfirm={() => {}} onCancel={onCancel} />)
-    fireEvent.click(screen.getByTestId('backdrop-close'))
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
     expect(onCancel).toHaveBeenCalledTimes(1) // unchanged — busy blocks self-close
   })
 

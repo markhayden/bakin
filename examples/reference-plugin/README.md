@@ -1,52 +1,89 @@
 # Bookmarks — the Bakin reference plugin
 
-The canonical, copyable template for Bakin plugin authors. A small but real
-bookmarks manager that exercises **every** plugin surface with the smallest
-honest example of each — written entirely against `@makinbakin/sdk/*`, which
-is the whole public authoring API.
+This is the canonical, copyable plugin for external Bakin builders. It is a
+small real bookmarks manager that exercises the public server contracts, a
+plugin-owned page, a host slot, live events, and the same UI conformance suite
+used by Bakin. It imports only `@makinbakin/sdk/*`.
 
 | Surface | Where |
 |---|---|
-| Declarative HTTP routes (zod params/query/body) | `index.ts` `routes` |
-| Exec tool for agents (`bakin_exec_<id>_*`) | `index.ts` `activate()` |
-| Settings schema + `ctx.getSettings()` | `index.ts` (`maxBookmarks`, `defaultTag`) |
-| Search content type + reindex + ⌘K hit renderer | `index.ts` / `client.tsx` |
-| Health check (`bakin doctor`, health dashboard) | `index.ts` `activate()` |
-| SSE events (`ctx.events.emit` ↔ `usePluginEvent`) | `index.ts` / `components/bookmarks-page.tsx` |
-| Plugin-scoped storage (`readJson`/`writeJson`) | `store.ts` |
-| Nav item + client route/page | `client.tsx` |
-| `pluginFetch` / `usePluginJsonFetch` | `components/bookmarks-page.tsx` |
-| `TurnOutputView` (canonical agent-turn renderer) | `components/bookmarks-page.tsx` |
-| Tests via `@makinbakin/sdk/testing` | `tests/bookmarks.test.ts` |
+| Declarative HTTP routes | `index.ts` |
+| Exec tool for agents | `index.ts` `activate()` |
+| Settings, search, health, events, and storage | `index.ts` / `store.ts` |
+| Production page and `home-widget` registration | `client-registration.tsx` |
+| Host-loaded browser entry | `client.tsx` |
+| Canonical list, form, state, and conversation UI | `components/` |
+| Plugin-owned domain CSS | `styles.css` |
+| Deterministic page-and-slot browser fixture | `tests/ui.fixture.tsx` |
+| Server and UI tests | `tests/` / `bakin.ui-test.ts` |
 
-## Patterns worth copying
+## UI contract worth copying
 
-- **One creation path for humans and agents** — the POST route and the exec
-  tool share `createBookmark()`, so limits, defaults, indexing, and change
-  events can never drift between the two surfaces. The shared function takes
-  a narrow structural interface (`BookmarkServices`) that both
-  `PluginContext` and `PluginToolContext` satisfy — no casts.
-- **Declare-twice, generated** — every route/tool in code is mirrored in
-  `bakin-plugin.json` `contributes` (what users consent to at install).
-  Don't hand-maintain it: `bakin plugins sync-manifest .` regenerates the
-  server-derived sections; `--check` fails CI on drift.
-- **Storage is the source of truth, search is derived** — mutations write
-  storage first, then fire-and-forget `search.index()`/`remove()`; the
-  `reindex` generator can always rebuild the table from storage.
-- **Set a real `bakin` floor** — this template uses a low floor; set yours to
-  the Bakin version you actually develop against.
+The page starts from the public Storybook recipes, not local styling:
 
-## Develop
+- `Recipes/List and detail pages` owns page identity, list rhythm, and the
+  replaceable result region.
+- `Forms/Field and form composition` owns labels, descriptions, validation,
+  actions, and busy state.
+- `States/System feedback` distinguishes initial loading, empty, recoverable
+  error, and retained mutation feedback.
+- `Foundation/Collapsible`, `Foundation/Button`, `Foundation/Card`, and the
+  focused `Conversation/Turn output` contract supply the remaining pieces.
+
+The plugin imports UI from the focused `/layout`, `/patterns`, `/ui`,
+`/navigation`, and `/conversation` entrypoints. Do not add new imports from
+the frozen `@makinbakin/sdk/components` barrel, copy host Tailwind utilities,
+or recreate a raw control that the SDK already defines.
+
+`styles.css` contains only domain layout that the catalog does not own. Bakin
+scopes those selectors to `[data-bakin-plugin="reference-bookmarks"]` while
+building the plugin. The installed client does not import the canonical SDK
+stylesheet because the host already supplies it; the standalone fixture
+imports it exactly once.
+
+If a real domain requirement cannot use a defined Storybook pattern, keep the
+smallest accessible exception and give the maintainer a concrete,
+human-readable explanation of the requirement, the pattern considered, why
+it does not fit, and the intended follow-up. An unexplained visual fork is a
+conformance failure, not a styling preference.
+
+## Data contract worth copying
+
+- One creation path serves people and agents: the POST route and exec tool
+  share `createBookmark()`.
+- Storage is the source of truth; search is derived and can be rebuilt.
+- Manifest contributions mirror code. Run
+  `bakin plugins sync-manifest . --check` in CI.
+- `usePluginEvent` refreshes both the page and widget after human- or
+  agent-driven changes.
+- `client-registration.tsx` exports the real production registration so the
+  test fixture cannot drift into a fake implementation.
+
+## Develop and verify
 
 ```sh
-bun install         # SDK + react types (for typechecking + tests)
-bun test            # tests/ via @makinbakin/sdk/testing
-bun x tsc --noEmit
+bun install
+bun run typecheck
+bun test
+bun run test:ui
+```
+
+`bun run test:ui` renders the production page and `home-widget` through
+`PluginUiFixtureHost` at 1440×900 and 320×800. It checks plugin CSS scope,
+canonical stylesheet identity, overflow, axe accessibility, keyboard focus,
+and browser errors, then writes HTML, JSON, and screenshots under
+`test-results/bakin-ui/`.
+
+Install Chromium once on a new development machine:
+
+```sh
+bunx playwright install chromium
 ```
 
 ## Install into Bakin
 
 ```sh
-bakin plugins install .    # copy-install; server builds dist/
-bakin plugins link .       # or: live dev loop against a running server
+bakin plugins install .
+# or use the live development loop:
+bakin plugins link .
 ```

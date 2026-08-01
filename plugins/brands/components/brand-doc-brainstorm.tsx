@@ -7,9 +7,15 @@
  * the conversation (including a mid-flight streaming indicator).
  */
 import { useCallback, useEffect, useState } from 'react'
-import { ConversationPanel, useConversationThread, type ConversationMessage } from '@makinbakin/sdk/components'
+import {
+  ConversationPanel,
+  useConversationThread,
+  type ConversationMessage,
+} from '@makinbakin/sdk/conversation'
 import { toast, useMainAgentId } from '@makinbakin/sdk/hooks'
+import { AgentSelect } from '@makinbakin/sdk/patterns'
 import { pluginFetch } from '@makinbakin/sdk/utils'
+import { useBrandAgentOptions } from './use-brand-agent-options'
 
 export function DocBrainstormPanel({
   brandId, kind, name, getDocContent,
@@ -21,8 +27,10 @@ export function DocBrainstormPanel({
   getDocContent: () => string
 }) {
   const mainAgentId = useMainAgentId()
+  const agentOptions = useBrandAgentOptions()
   const [agentId, setAgentId] = useState<string | null>(null)
   const effectiveAgent = agentId ?? mainAgentId ?? ''
+  const selectedAgent = agentOptions.find((agent) => agent.id === effectiveAgent)
   const key = `${brandId}/${kind}/${name}`
   const docPath = `${encodeURIComponent(brandId)}/docs/${encodeURIComponent(kind)}/${encodeURIComponent(name)}`
 
@@ -64,7 +72,7 @@ export function DocBrainstormPanel({
       }
       await thread.send(content)
     },
-    [effectiveAgent, thread],
+    [effectiveAgent, thread.send],
   )
 
   const abort = useCallback(() => {
@@ -76,18 +84,29 @@ export function DocBrainstormPanel({
       messages={thread.messages}
       liveChunks={thread.liveChunks}
       streaming={thread.streaming}
-      agentId={effectiveAgent}
-      onAgentChange={setAgentId}
+      agent={{
+        id: effectiveAgent || undefined,
+        name: selectedAgent?.name ?? (effectiveAgent || 'Agent'),
+        avatarUrl: selectedAgent?.imageSrc ?? undefined,
+      }}
+      agentControl={(
+        <AgentSelect
+          value={effectiveAgent}
+          onValueChange={setAgentId}
+          agents={agentOptions}
+          ariaLabel="Brainstorm agent"
+          placeholder="Choose agent"
+        />
+      )}
       onSend={send}
       onAbort={abort}
       storageKey={`brand-doc-brainstorm:${brandId}:${kind}:${name}`}
       title="Brainstorm"
-      fitParent
       placeholder="Ask for feedback, a rewrite, missing sections..."
       emptyState={
-        <div className="px-6 text-center text-sm text-muted-foreground">
-          <p className="font-medium text-foreground">Ask an agent about this doc</p>
-          <p className="mt-1">
+        <div className="px-bakin-6 text-center text-bakin-text-muted">
+          <p className="m-0 font-bakin-typography-weight-semibold text-bakin-text-primary">Ask an agent about this document</p>
+          <p className="m-0 mt-bakin-1 leading-relaxed">
             It sees your current draft (even unsaved). Try "what's missing?", "tighten the personality section",
             or "draft 5 example sentences". Replies stay here — paste what you like into the editor.
           </p>

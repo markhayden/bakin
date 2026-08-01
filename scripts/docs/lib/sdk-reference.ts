@@ -454,7 +454,7 @@ export function renderSdkReference(): string {
     '```ts',
     "import { registerPlugin } from '@makinbakin/sdk'",
     "import { useSearch } from '@makinbakin/sdk/hooks'",
-    "import { PluginHeader } from '@makinbakin/sdk/components'",
+    "import { Button } from '@makinbakin/sdk/ui'",
     "import type { BakinPlugin, PluginContext } from '@makinbakin/sdk/types'",
     '```',
     '',
@@ -467,10 +467,14 @@ export function renderSdkReference(): string {
   renderMainSubpath(lines, bySubpath.get('@makinbakin/sdk'))
   // Hooks
   renderHooks(lines, bySubpath.get('@makinbakin/sdk/hooks'))
-  // Components
-  renderComponents(lines, bySubpath.get('@makinbakin/sdk/components'))
   // UI
   renderUi(lines, bySubpath.get('@makinbakin/sdk/ui'))
+  // Focused visual boundaries (populated by their owned migration tasks)
+  renderFocusedVisualEntrypoint(lines, bySubpath.get('@makinbakin/sdk/layout'), 'Canonical page and responsive composition.')
+  renderFocusedVisualEntrypoint(lines, bySubpath.get('@makinbakin/sdk/patterns'), 'Reusable application-aware presentation patterns.')
+  renderFocusedVisualEntrypoint(lines, bySubpath.get('@makinbakin/sdk/charts'), 'Isolated data-visualization components and contracts.')
+  renderFocusedVisualEntrypoint(lines, bySubpath.get('@makinbakin/sdk/conversation'), 'Isolated conversation UI and models.')
+  renderFocusedVisualEntrypoint(lines, bySubpath.get('@makinbakin/sdk/content'), 'Opt-in rich content rendering and editing.')
   // Slots
   renderSimpleTable(lines, bySubpath.get('@makinbakin/sdk/slots'), 'Slot system')
   // Types (special case: core types + domain grouping)
@@ -481,6 +485,8 @@ export function renderSdkReference(): string {
   renderSimpleTable(lines, bySubpath.get('@makinbakin/sdk/metadata'), 'Contract helper')
   // Routing
   renderSimpleTable(lines, bySubpath.get('@makinbakin/sdk/routing'), 'Routing')
+  // Browser navigation
+  renderSimpleTable(lines, bySubpath.get('@makinbakin/sdk/navigation'), 'Browser navigation')
 
   validateSdkCoverage(subpaths)
 
@@ -546,27 +552,30 @@ function renderHooks(lines: string[], sp: SdkSubpath | undefined): void {
   }
 }
 
-function renderComponents(lines: string[], sp: SdkSubpath | undefined): void {
+function renderFocusedVisualEntrypoint(
+  lines: string[],
+  sp: SdkSubpath | undefined,
+  description: string,
+): void {
   if (!sp) return
-  lines.push('## `@makinbakin/sdk/components`', '')
-  lines.push(`Source: \`${sp.source}\`.`, '')
-  lines.push('```ts')
-  lines.push("import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/components'")
-  lines.push('```', '')
-  lines.push('| Component | Description |')
-  lines.push('| --- | --- |')
-  for (const sym of sp.symbols) {
-    lines.push(`| \`${sym.name}\` | ${escapeMd(sym.jsdoc || '—')} |`)
+  lines.push(`## \`${sp.importPath}\``, '')
+  lines.push(`${description} Source: \`${sp.source}\`.`, '')
+  if (sp.symbols.length === 0) {
+    lines.push('The boundary is established; public exports arrive with its owned component migration.', '')
+    return
   }
+  lines.push('| Export | Description |')
+  lines.push('| --- | --- |')
+  for (const sym of sp.symbols) lines.push(`| \`${sym.name}\` | ${escapeMd(sym.jsdoc || '—')} |`)
   lines.push('')
 }
 
 function renderUi(lines: string[], sp: SdkSubpath | undefined): void {
   if (!sp) return
   lines.push('## `@makinbakin/sdk/ui`', '')
-  lines.push(`Source: \`${sp.source}\`. Re-exports of [shadcn/ui](https://ui.shadcn.com) primitives bundled with Bakin's design tokens. For usage, see the upstream component docs.`, '')
+  lines.push(`Source: \`${sp.source}\`. Supported Bakin primitives backed by the canonical design-system stylesheet. Use semantic props and the [UI style guide](/docs/extending/ui/) rather than relying on upstream-library APIs or arbitrary utility classes.`, '')
   lines.push('```ts')
-  lines.push("import { Button, Card, Dialog, Input } from '@makinbakin/sdk/ui'")
+  lines.push("import { Alert, Badge, Button, Progress } from '@makinbakin/sdk/ui'")
   lines.push('```', '')
   if (sp.symbols.length > 0) {
     const names = sp.symbols.map((s) => `\`${s.name}\``).join(', ')

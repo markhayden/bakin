@@ -1,0 +1,189 @@
+.bakin-workflow-story,
+.bakin-workflow-story *,
+.bakin-workflow-story *::before,
+.bakin-workflow-story *::after {
+  box-sizing: border-box;
+}
+
+.bakin-workflow-story p,
+.bakin-workflow-story h2,
+.bakin-workflow-story dl {
+  margin: 0;
+}
+
+.bakin-workflow-story [data-page-canvas] {
+  container-type: inline-size;
+}
+
+/* Page-level commit and recovery decisions stay outside the canvas
+   interaction model; the group boundary mirrors the toolbar divider. */
+.bakin-workflow-story__actions {
+  display: flex;
+  min-inline-size: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--bakin-layout-space-2);
+  padding-block-start: var(--bakin-layout-space-4);
+  border-block-start: 1px solid var(--bakin-color-border-subtle);
+}
+
+.bakin-workflow-story__graph-shell {
+  inline-size: max(100%, 46rem);
+  block-size: 36rem;
+}
+
+.bakin-workflow-story__graph {
+  inline-size: 100%;
+  block-size: 100%;
+  background: color-mix(in srgb, var(--bakin-color-canvas-default) 88%, var(--bakin-color-surface-default));
+  --xy-background-color: var(--bakin-color-canvas-default);
+  --xy-background-pattern-color: var(--bakin-color-border-subtle);
+  --xy-controls-button-background-color: var(--bakin-color-surface-default);
+  --xy-controls-button-background-color-hover: var(--bakin-color-canvas-default);
+  --xy-controls-button-border-color: var(--bakin-color-border-subtle);
+  --xy-controls-button-color: var(--bakin-color-text-primary);
+  --xy-controls-button-color-hover: var(--bakin-color-text-primary);
+  --xy-controls-box-shadow: none;
+  --xy-edge-stroke: var(--bakin-color-text-muted);
+  --xy-edge-stroke-selected: var(--bakin-color-focus-ring);
+  --xy-minimap-background-color: var(--bakin-color-surface-default);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--bakin-color-canvas-default) 72%, transparent);
+  --xy-minimap-mask-stroke-color: var(--bakin-color-border-subtle);
+}
+
+.bakin-workflow-story__graph .react-flow__node {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.bakin-workflow-story__graph .react-flow__node:focus-visible {
+  outline: 2px solid var(--bakin-color-focus-ring);
+  outline-offset: 3px;
+}
+
+.bakin-workflow-story__graph .react-flow__node.selected .bakin-workflow-story__node {
+  border-color: var(--bakin-color-focus-ring);
+}
+
+.bakin-workflow-story__graph .react-flow__controls,
+.bakin-workflow-story__graph .react-flow__minimap {
+  overflow: hidden;
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-radius-control);
+}
+
+.bakin-workflow-story__node {
+  position: relative;
+  display: grid;
+  align-content: start;
+  inline-size: 13rem;
+  min-block-size: 6.5rem;
+  gap: var(--bakin-layout-space-2);
+  padding: var(--bakin-layout-space-3);
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-inline-start-width: 4px;
+  border-radius: var(--bakin-radius-surface);
+  background: var(--bakin-color-surface-default);
+  color: var(--bakin-color-text-primary);
+}
+
+.bakin-workflow-story__node[data-domain='trigger'] {
+  border-inline-start-color: var(--bakin-color-signal-highlight);
+}
+
+.bakin-workflow-story__node[data-domain='agent'] {
+  border-inline-start-color: var(--bakin-color-signal-accent);
+}
+
+.bakin-workflow-story__node[data-domain='transform'] {
+  border-inline-start-color: var(--bakin-color-action-primary-background);
+}
+
+.bakin-workflow-story__node[data-domain='output'] {
+  border-inline-start-color: var(--bakin-color-signal-danger);
+}
+
+.bakin-workflow-story__node > span {
+  color: var(--bakin-color-text-muted);
+  font-size: var(--bakin-typography-size-meta);
+  font-weight: var(--bakin-typography-weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bakin-workflow-story__node strong,
+.bakin-workflow-story__node code {
+  overflow-wrap: anywhere;
+}
+
+.bakin-workflow-story__node code,
+.bakin-workflow-story__facts code,
+.bakin-workflow-story__selection {
+  color: var(--bakin-color-text-muted);
+  font-family: var(--bakin-typography-family-mono);
+  font-size: var(--bakin-typography-size-meta);
+}
+
+.bakin-workflow-story__handle {
+  inline-size: var(--bakin-layout-space-3);
+  block-size: var(--bakin-layout-space-3);
+  border: 2px solid var(--bakin-color-text-muted);
+  background: var(--bakin-color-surface-default);
+}
+
+.bakin-workflow-story [data-slot='inspector-panel'] {
+  padding: var(--bakin-layout-space-4);
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-radius-surface);
+  background: var(--bakin-color-surface-default);
+}
+
+.bakin-workflow-story__facts {
+  display: grid;
+}
+
+.bakin-workflow-story__facts > div {
+  display: grid;
+  grid-template-columns: minmax(5rem, 0.45fr) minmax(0, 1fr);
+  gap: var(--bakin-layout-space-3);
+  padding-block: var(--bakin-layout-space-3);
+  border-block-start: 1px solid var(--bakin-color-border-subtle);
+}
+
+.bakin-workflow-story__facts dt {
+  color: var(--bakin-color-text-muted);
+  font-size: var(--bakin-typography-size-meta);
+}
+
+.bakin-workflow-story__facts dd {
+  min-inline-size: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.bakin-workflow-story__selection {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+
+@container (max-width: 32rem) {
+  .bakin-workflow-story__graph .react-flow__minimap {
+    display: none;
+  }
+}
+
+@media (max-width: 24rem) {
+  .bakin-workflow-story [data-slot='page-controls'] > *,
+  .bakin-workflow-story__actions [data-slot='button'],
+  .bakin-workflow-story [data-slot='inspector-panel-footer'] [data-slot='button'] {
+    inline-size: 100%;
+  }
+
+  .bakin-workflow-story__facts > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--bakin-layout-space-1);
+  }
+}

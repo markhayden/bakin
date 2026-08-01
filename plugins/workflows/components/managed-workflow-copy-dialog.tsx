@@ -81,7 +81,7 @@ export function ManagedWorkflowCopyDialog({
         onOpenChange(nextOpen)
       }}
     >
-      <DialogContent className="bg-card border-border sm:max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
@@ -92,7 +92,7 @@ export function ManagedWorkflowCopyDialog({
           <div className="flex flex-col gap-1.5">
             <Label
               htmlFor="workflow-copy-name"
-              className={fieldErrors.name ? 'text-red-300' : undefined}
+              className={fieldErrors.name ? 'text-bakin-signal-danger' : undefined}
             >
               {nameLabel}
             </Label>
@@ -105,7 +105,7 @@ export function ManagedWorkflowCopyDialog({
               aria-describedby={nameErrorId}
             />
             {fieldErrors.name && (
-              <p id={nameErrorId} className="text-xs font-medium leading-relaxed text-red-300">
+              <p id={nameErrorId} className="text-bakin-typography-size-meta font-bakin-typography-weight-medium leading-relaxed text-bakin-signal-danger">
                 {fieldErrors.name}
               </p>
             )}
@@ -113,7 +113,7 @@ export function ManagedWorkflowCopyDialog({
           <div className="flex flex-col gap-1.5">
             <Label
               htmlFor="workflow-copy-id"
-              className={fieldErrors.id ? 'text-red-300' : undefined}
+              className={fieldErrors.id ? 'text-bakin-signal-danger' : undefined}
             >
               Workflow id
             </Label>
@@ -126,7 +126,7 @@ export function ManagedWorkflowCopyDialog({
               aria-describedby={idErrorId}
             />
             {fieldErrors.id && (
-              <p id={idErrorId} className="text-xs font-medium leading-relaxed text-red-300">
+              <p id={idErrorId} className="text-bakin-typography-size-meta font-bakin-typography-weight-medium leading-relaxed text-bakin-signal-danger">
                 {fieldErrors.id}
               </p>
             )}
@@ -135,7 +135,7 @@ export function ManagedWorkflowCopyDialog({
             <div className="flex flex-col gap-1.5">
               <Label
                 htmlFor="workflow-copy-description"
-                className={fieldErrors.description ? 'text-red-300' : undefined}
+                className={fieldErrors.description ? 'text-bakin-signal-danger' : undefined}
               >
                 Description
               </Label>
@@ -149,22 +149,22 @@ export function ManagedWorkflowCopyDialog({
                 aria-describedby={descriptionErrorId}
               />
               {fieldErrors.description && (
-                <p id={descriptionErrorId} className="text-xs font-medium leading-relaxed text-red-300">
+                <p id={descriptionErrorId} className="text-bakin-typography-size-meta font-bakin-typography-weight-medium leading-relaxed text-bakin-signal-danger">
                   {fieldErrors.description}
                 </p>
               )}
             </div>
           )}
           {showDisableOriginal && (
-            <Label className="items-start gap-2 rounded-md border border-border bg-muted/30 p-2 text-foreground">
+            <Label className="items-start gap-2 rounded-bakin-control border border-bakin-border-subtle bg-bakin-surface-default/30 p-2 text-bakin-text-primary">
               <Checkbox
                 checked={disableOriginal}
                 onCheckedChange={(checked) => onDisableOriginalChange(checked === true)}
                 className="mt-0.5"
               />
               <span className="flex flex-col gap-1">
-                <span className="text-xs font-medium">Disable the managed workflow</span>
-                <span className="text-[11px] font-normal leading-snug text-muted-foreground">
+                <span className="text-bakin-typography-size-meta font-bakin-typography-weight-medium">Disable the managed workflow</span>
+                <span className="text-bakin-typography-size-meta font-bakin-typography-weight-regular leading-snug text-bakin-text-muted">
                   The original stays visible in Managed workflows, but matching and automatic starts will skip it.
                 </span>
               </span>
@@ -172,7 +172,7 @@ export function ManagedWorkflowCopyDialog({
           )}
         </div>
         {error && (
-          <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-200">
+          <div className="rounded-bakin-control border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 p-2 text-bakin-typography-size-meta text-bakin-signal-danger">
             {error}
           </div>
         )}

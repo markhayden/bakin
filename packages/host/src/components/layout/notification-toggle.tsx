@@ -1,6 +1,7 @@
 import { useState, useEffect, createElement } from 'react'
 import { Bell, BellOff } from 'lucide-react'
 import { toast } from '@makinbakin/sdk/hooks'
+import { Button } from '@makinbakin/sdk/ui'
 import {
   isNotificationsSupported,
   isNotificationsEnabled,
@@ -76,12 +77,17 @@ export function NotificationToggle() {
   }
 
   return (
-    <button
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
       onClick={handleClick}
       title={enabled ? 'Disable gate notifications' : 'Enable gate notifications'}
-      className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)]"
+      aria-label={enabled ? 'Disable gate notifications' : 'Enable gate notifications'}
+      aria-pressed={enabled}
+      className="text-bakin-text-muted hover:text-bakin-text-primary"
     >
       {enabled ? <Bell className="size-4" /> : <BellOff className="size-4" />}
-    </button>
+    </Button>
   )
 }

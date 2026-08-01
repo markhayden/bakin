@@ -1,0 +1,21 @@
+:where([data-bakin-plugin="reference-bookmarks"]) .reference-bookmarks__list,
+:where([data-bakin-plugin="reference-bookmarks"]) .reference-bookmarks__tags {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+:where([data-bakin-plugin="reference-bookmarks"]) .reference-bookmarks__bookmark-link {
+  justify-content: flex-start;
+  height: auto;
+  max-width: 100%;
+  min-height: var(--bakin-layout-size-control);
+  padding-inline: 0;
+  overflow-wrap: anywhere;
+  text-align: left;
+  white-space: normal;
+}
+
+:where([data-bakin-plugin="reference-bookmarks"]) .reference-bookmarks__bookmark-url {
+  overflow-wrap: anywhere;
+}

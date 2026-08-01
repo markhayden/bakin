@@ -19,48 +19,77 @@ export function VersionRow({ assetId, assetType, version, isCurrent, isSelected,
   onDelete: (version: number) => void
 }) {
   return (
-    <div
-      onClick={() => onSelect?.(version.version)}
-      className={`relative flex cursor-pointer gap-3 rounded-lg border p-2.5 pr-10 transition-colors ${
-        isSelected ? 'border-blue-400 ring-1 ring-blue-400/40' : isCurrent ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-border hover:border-[rgba(255,255,255,0.15)]'
+    <article
+      className={`relative flex min-w-0 gap-bakin-3 border-t border-bakin-border-subtle px-bakin-2 py-bakin-3 transition-colors ${
+        isSelected
+          ? 'border-l-2 border-l-bakin-signal-accent bg-bakin-surface-default/70 pl-bakin-3'
+          : 'hover:bg-bakin-surface-default/40'
       }`}
       data-testid={`version-row-${version.version}`}
+      data-selected={isSelected || undefined}
     >
-      {/* Delete — far top-right of the box. */}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`Preview version ${version.version}`}
+        aria-pressed={isSelected}
+        className="absolute inset-0 z-0 h-auto min-h-0 min-w-0 w-auto rounded-bakin-surface p-0 hover:bg-transparent"
+        onClick={() => onSelect?.(version.version)}
+      />
+
       {canDelete && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(version.version) }}
-          className="absolute right-2 top-2 text-red-400 hover:text-red-300"
-          title="Delete version"
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          onClick={() => onDelete(version.version)}
+          className="absolute right-bakin-2 top-bakin-2 z-20 text-bakin-signal-danger"
+          aria-label={`Delete version ${version.version}`}
           data-testid={`delete-version-${version.version}`}
         >
-          <Trash2 className="size-4" />
-        </button>
+          <Trash2 />
+        </Button>
       )}
-      {/* Timestamp — far bottom-right. */}
-      <span className="absolute bottom-2 right-2 text-[10px] text-muted-foreground">{formatAge(version.created)}</span>
 
-      <div className="size-16 shrink-0 overflow-hidden rounded-md bg-zinc-900/50">
+      <div className="pointer-events-none relative z-10 size-12 shrink-0 overflow-hidden rounded-bakin-control bg-bakin-surface-default">
         <AssetThumb assetId={assetId} type={assetType} version={version.version} hasThumb={version.thumb !== null} />
       </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">v{version.version}</span>
-          <Badge variant="outline" className="h-4 px-1.5 text-[9px]">{version.op}</Badge>
+
+      <div className="pointer-events-none relative z-10 flex min-w-0 flex-col gap-bakin-2 pr-bakin-8">
+        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+          <span className="font-bakin-typography-family-mono text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
+            v{version.version}
+          </span>
+          <Badge tone="neutral" variant="soft" size="xs">{version.op}</Badge>
           {isCurrent && (
-            <Badge className="h-4 bg-emerald-600 px-1.5 text-[9px] text-white" data-testid="current-badge">current</Badge>
+            <Badge tone="success" variant="solid" size="xs" data-testid="current-badge">current</Badge>
           )}
+          <span className="ml-auto text-bakin-typography-size-meta text-bakin-text-muted">
+            {formatAge(version.created)}
+          </span>
         </div>
-        {version.prompt && <p className="line-clamp-2 text-xs text-muted-foreground">{version.prompt}</p>}
+        {version.prompt ? (
+          <p className="m-0 line-clamp-2 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+            {version.prompt}
+          </p>
+        ) : null}
         <ProvenanceChips generation={version.generation} />
         {!isCurrent && (
-          <div className="pt-1">
-            <Button size="sm" variant="outline" className="h-6 text-xs" onClick={(e) => { e.stopPropagation(); onPromote(version.version) }} data-testid={`promote-${version.version}`}>
-              <Star className="size-3 mr-1" /> Make current
+          <div className="pointer-events-auto relative z-20">
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              aria-label={`Make version ${version.version} current`}
+              onClick={() => onPromote(version.version)}
+              data-testid={`promote-${version.version}`}
+            >
+              <Star /> Make current
             </Button>
           </div>
         )}
       </div>
-    </div>
+    </article>
   )
 }

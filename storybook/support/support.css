@@ -1,0 +1,94 @@
+/*
+ * Shared story scaffolding styles. One home for the intro/stage chrome and
+ * the overlay backdrop that story files previously copy-pasted per file.
+ * Scaffolding only — never part of a CanonicalUsage story.
+ */
+
+.bakin-story-stage {
+  min-height: 100dvh;
+  background: var(--bakin-color-canvas-default);
+  color: var(--bakin-color-text-primary);
+  font-family: var(--bakin-typography-family-ui);
+}
+
+.bakin-story-stage__intro {
+  display: grid;
+  min-inline-size: 0;
+  gap: var(--bakin-layout-space-3);
+  padding-block-end: var(--bakin-layout-space-6);
+  border-block-end: 1px solid var(--bakin-color-border-subtle);
+}
+
+.bakin-story-stage__intro > p:first-child {
+  color: var(--bakin-color-signal-accent);
+  font-size: var(--bakin-typography-size-meta);
+  font-weight: var(--bakin-typography-weight-bold);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.bakin-story-stage__intro h1 {
+  max-inline-size: 20ch;
+  overflow-wrap: anywhere;
+  font-size: clamp(2rem, 6vw, 3.75rem);
+  line-height: 1.02;
+  text-wrap: balance;
+}
+
+.bakin-story-stage__intro > p:last-child {
+  max-inline-size: 64ch;
+  overflow-wrap: anywhere;
+  color: var(--bakin-color-text-muted);
+  line-height: 1.6;
+}
+
+.bakin-story-stage__section {
+  display: grid;
+  gap: var(--bakin-layout-gap-item);
+  min-width: 0;
+  padding-top: var(--bakin-layout-gap-section);
+  border-top: 1px solid var(--bakin-color-border-subtle);
+}
+
+.bakin-story-stage__section > header {
+  display: grid;
+  gap: var(--bakin-layout-space-1);
+}
+
+.bakin-story-stage__section h2 {
+  font-size: var(--bakin-typography-size-section-title);
+  letter-spacing: -.01em;
+}
+
+.bakin-story-stage__section > header p {
+  color: var(--bakin-color-text-muted);
+  line-height: 1.55;
+}
+
+.bakin-story-stage__cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bakin-layout-gap-item);
+  align-items: center;
+}
+
+.bakin-story-stage__overlay-workspace {
+  display: grid;
+  width: min(100%, 68rem);
+  margin: 0 auto;
+  padding: var(--bakin-layout-space-8);
+  grid-template-columns: 14rem minmax(0, 1fr);
+  grid-template-rows: 5rem minmax(28rem, 1fr);
+  gap: var(--bakin-layout-gap-item);
+  opacity: .72;
+}
+
+.bakin-story-stage__overlay-workspace > div {
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-radius-surface);
+  background: var(--bakin-color-surface-default);
+}
+
+.bakin-story-stage__overlay-workspace > div:first-child {
+  grid-row: 1 / span 2;
+}

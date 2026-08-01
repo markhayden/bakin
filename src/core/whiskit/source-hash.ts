@@ -18,9 +18,9 @@ export function hashFile(path: string): string {
 
 /**
  * Deterministic SHA256 of a directory's file tree: sorted relative paths each
- * paired with their content hash, skipping NON_RUNTIME_DIRS (dist, node_modules,
- * tests, …) and dotfiles/dotdirs (so `.whiskit/` provenance never feeds the
- * source hash).
+ * paired with their content hash, skipping non-runtime entries (dist,
+ * node_modules, tests, bakin.ui-test.ts, …) and dotfiles/dotdirs (so
+ * `.whiskit/` provenance never feeds the source hash).
  */
 export function hashSourceTree(dir: string): string {
   const lines: string[] = []

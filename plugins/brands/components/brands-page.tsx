@@ -4,11 +4,11 @@
  * cover-art brand cards with completeness; the empty state IS the chooser.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
-import { Paintbrush, Plus } from 'lucide-react'
-import { PluginHeader, EmptyState } from '@makinbakin/sdk/components'
-import { useQueryState } from '@makinbakin/sdk/hooks'
-import { Button, Skeleton } from '@makinbakin/sdk/ui'
+import { Plus } from 'lucide-react'
+import { Grid } from '@makinbakin/sdk/layout'
+import { useQueryState, useRouter } from '@makinbakin/sdk/navigation'
+import { Page, PageBody, PageHeader, SearchInput } from '@makinbakin/sdk/patterns'
+import { Badge, Banner, Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 import { BrandBuilder } from './brand-builder'
 import { BrandCoverCard, type ListedBrand } from './brand-card'
@@ -20,10 +20,10 @@ interface ListResponse {
 }
 
 export function BrandsPage() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const openBrand = useCallback(
-    (brandId: string) => void navigate({ to: '/brands/$brandId', params: { brandId } }),
-    [navigate],
+    (brandId: string) => router.push(`/brands/${encodeURIComponent(brandId)}`),
+    [router],
   )
   const [data, setData] = useState<ListResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -37,8 +37,8 @@ export function BrandsPage() {
   // showing the list.
   useEffect(() => {
     const legacy = new URLSearchParams(window.location.search).get('brand')
-    if (legacy) void navigate({ to: '/brands/$brandId', params: { brandId: legacy }, replace: true })
-  }, [navigate])
+    if (legacy) router.replace(`/brands/${encodeURIComponent(legacy)}`)
+  }, [router])
 
   const refresh = useCallback(async () => {
     try {
@@ -78,26 +78,91 @@ export function BrandsPage() {
     (brandId: string, taskId?: string) => {
       // Straight to the new brand (the drafting banner links the dispatched
       // task); the list refetches on its own next mount — no refresh here.
-      void navigate({
-        to: '/brands/$brandId',
-        params: { brandId },
-        search: (taskId ? { draftTask: taskId } : {}) as never,
-      })
+      const path = `/brands/${encodeURIComponent(brandId)}`
+      router.push(taskId ? `${path}?draftTask=${encodeURIComponent(taskId)}` : path)
     },
-    [navigate],
+    [router],
   )
 
   const empty = data !== null && data.brands.length === 0
+  const loading = data === null && !error
+  const invalidFeedback = data && data.invalid.length > 0 ? (
+    <Banner
+      tone="danger"
+      title="Some brand records could not be loaded"
+      description={(
+        <>
+          {data.invalid.map((brand) => (
+            <span key={brand.id} className="block">
+              {brand.id}: {brand.error}
+            </span>
+          ))}
+        </>
+      )}
+    />
+  ) : undefined
+
+  const resultState = error ? (
+    <SystemState
+      kind="error"
+      title="Brands could not be loaded"
+      description={error}
+      action={<Button variant="outline" onClick={() => void refresh()}>Try again</Button>}
+    />
+  ) : loading ? (
+    <SystemState
+      kind="loading"
+      title="Loading brands"
+      description="Your brand kits will appear here when they are ready."
+      preview={(
+        <Grid layout="split" gap="item" data-brands-loading>
+          {Array.from({ length: 4 }, (_, index) => (
+            <Skeleton key={index} className="h-56 rounded-xl" />
+          ))}
+        </Grid>
+      )}
+    />
+  ) : empty ? (
+    <div className="mx-auto w-full max-w-2xl space-y-6 py-10" data-brands-empty>
+      <SystemState
+        kind="initial-empty"
+        title="Give your agents a brand kit"
+        description="Colors, voice, logos, and rules keep everything they make on-brand. Pick a way to start."
+      />
+      <CreatePathCards size="tile" onPick={startFlow} />
+    </div>
+  ) : visible.length === 0 ? (
+    <SystemState
+      kind="no-results"
+      scope="page"
+      title="No brands match your search"
+      description="Clear the current search to return to every brand kit."
+      action={<Button variant="outline" onClick={() => setQuery('')}>Clear search</Button>}
+    />
+  ) : undefined
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <PluginHeader
+    <Page>
+      <PageHeader
         title="Branding"
-        count={data?.brands.length ?? 0}
-        search={{ value: query, onChange: setQuery, placeholder: 'Search brands...' }}
+        description="Define the voice, visual identity, rules, and references agents use to keep every output on-brand."
+        meta={data ? <Badge size="xs" variant="outline">{visible.length} shown</Badge> : undefined}
+        controlsLabel="Brand search"
+        controls={(
+          <SearchInput
+            align="end"
+            label="Brand search"
+            value={query}
+            onValueChange={setQuery}
+            placeholder="Search brands…"
+            mobileFullWidth
+            className="@3xl/page-header:w-[22rem] @3xl/page-header:shrink-0"
+          />
+        )}
+        actionsLabel="Brand actions"
         actions={
           <Button onClick={() => setChooserOpen(true)} data-new-brand>
-            <Plus className="size-4" /> New Brand
+            <Plus /> New Brand
           </Button>
         }
       />
@@ -107,56 +172,19 @@ export function BrandsPage() {
       <FromWebsiteDialog open={activeFlow === 'website'} onOpenChange={(o) => !o && setActiveFlow(null)} onCreated={flowDone} />
       <ImportBrandDialog open={activeFlow === 'import'} onOpenChange={(o) => !o && setActiveFlow(null)} onImported={flowDone} />
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
-
-      {data && data.invalid.length > 0 && (
-        <div className="rounded-lg bg-destructive/5 p-3 text-sm ring-1 ring-destructive/40">
-          <p className="font-medium text-destructive">Invalid brand records</p>
-          {data.invalid.map((b) => (
-            <p key={b.id} className="text-muted-foreground">
-              {b.id}: {b.error}
-            </p>
-          ))}
-        </div>
-      )}
-
-      {/* Loading: skeleton cards, never a blank pane. */}
-      {data === null && !error && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" data-brands-loading>
-          {Array.from({ length: 4 }, (_, i) => (
-            <Skeleton key={i} className="h-56 rounded-xl" />
-          ))}
-        </div>
-      )}
-
-      {/* First run: the empty state IS the chooser. */}
-      {empty && (
-        <div className="mx-auto w-full max-w-2xl space-y-6 py-10" data-brands-empty>
-          <EmptyState
-            variant="panel"
-            icon={Paintbrush}
-            title="Give your agents a brand kit"
-            description="Colors, voice, logos, and rules — so everything they make stays on-brand. Pick a way to start:"
-          />
-          <CreatePathCards size="tile" onPick={startFlow} />
-        </div>
-      )}
-
-      {data !== null && !empty && (
-        <>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <PageBody
+        label="Brand results"
+        feedback={invalidFeedback}
+        state={resultState}
+      >
+        {data !== null && !empty ? (
+          <Grid layout="split" gap="item">
             {visible.map((brand) => (
               <BrandCoverCard key={brand.id} brand={brand} onOpen={() => openBrand(brand.id)} />
             ))}
-          </div>
-          {visible.length === 0 && (
-            <EmptyState
-              title="No brands match your search"
-              description="Try a different word, or create a new brand."
-            />
-          )}
-        </>
-      )}
-    </div>
+          </Grid>
+        ) : null}
+      </PageBody>
+    </Page>
   )
 }

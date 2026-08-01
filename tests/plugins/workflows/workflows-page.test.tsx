@@ -15,7 +15,6 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import type { ReactNode } from 'react'
 
 // ─── Test isolation mocks (mandatory per CLAUDE.md) ────────────────────────
 //
@@ -69,9 +68,8 @@ mock.module('@/core/task-store', () => ({
 
 const routerPush = mock()
 mock.module('@makinbakin/sdk/hooks', () => {
-  const actual = require('@/core/content-dir') as Record<string, unknown>
+  const React = require('react') as typeof import('react')
   return {
-    ...actual,
     useRouter: () => ({
       push: routerPush,
       replace: () => {},
@@ -80,6 +78,8 @@ mock.module('@makinbakin/sdk/hooks', () => {
       refresh: () => {},
       prefetch: () => {},
     }),
+    useQueryState: (_key: string, defaultValue: string) => React.useState(defaultValue),
+    useQueryArrayState: () => React.useState<string[]>([]),
   }
 })
 
@@ -118,47 +118,6 @@ mock.module('@/hooks/use-search', () => ({
   }),
 }))
 
-// PluginHeader — render only the parts we need to inspect.
-mock.module('@/components/plugin-header', () => ({
-  PluginHeader: ({
-    title,
-    search,
-    actions,
-  }: {
-    title: string
-    search?: { value: string; onChange: (v: string) => void; placeholder?: string }
-    actions?: ReactNode
-  }) => (
-    <div>
-      <h1>{title}</h1>
-      {search && (
-        <input
-          aria-label="search"
-          placeholder={search.placeholder}
-          value={search.value}
-          onChange={(e) => search.onChange(e.target.value)}
-        />
-      )}
-      {actions}
-    </div>
-  ),
-}))
-
-// WorkflowCard — emit a clickable element with the template name.
-mock.module('@bakin/workflows/components/workflow-card', () => ({
-  WorkflowCard: ({
-    template,
-    onClick,
-  }: {
-    template: { filename: string; definition: { name: string } }
-    onClick: () => void
-  }) => (
-    <button data-testid={`card-${template.filename}`} onClick={onClick}>
-      {template.definition.name}
-    </button>
-  ),
-}))
-
 // ─── Fixtures ──────────────────────────────────────────────────────────────
 
 const TEMPLATES = [
@@ -169,7 +128,13 @@ const TEMPLATES = [
     definition: {
       name: 'Content Pipeline',
       description: 'Generate and publish content',
-      steps: [],
+      steps: [
+        {
+          id: 'review',
+          type: 'gate',
+          label: 'Review',
+        },
+      ],
     },
   },
   {
@@ -179,7 +144,14 @@ const TEMPLATES = [
     definition: {
       name: 'onboarding',
       description: 'Welcome new agents',
-      steps: [],
+      steps: [
+        {
+          id: 'welcome',
+          type: 'workflow',
+          label: 'Welcome sequence',
+          workflow_id: 'welcome-sequence',
+        },
+      ],
     },
   },
   {
@@ -190,7 +162,21 @@ const TEMPLATES = [
     definition: {
       name: 'release',
       description: 'Ship a new build',
-      steps: [],
+      steps: [
+        {
+          id: 'release-work',
+          type: 'parallel',
+          label: 'Release work',
+          steps: [
+            {
+              id: 'notes',
+              type: 'agent',
+              label: 'Release notes',
+              agent: '$assigned',
+            },
+          ],
+        },
+      ],
     },
   },
 ]
@@ -251,6 +237,23 @@ describe('WorkflowsPage', () => {
     expect(screen.getByTestId('card-release')).toBeDefined()
   })
 
+  it('filters workflows by reusable workflow features', async () => {
+    render(<WorkflowsPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Features, 0 selected' }))
+    fireEvent.click(within(document.body).getByRole('option', { name: /Approval gates 1/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
+      expect(screen.queryByTestId('card-onboarding')).toBeNull()
+      expect(screen.queryByTestId('card-release')).toBeNull()
+    })
+  })
+
   it('filters templates via useSearch results when results are present', async () => {
     await act(async () => {
       render(<WorkflowsPage />)
@@ -271,7 +274,7 @@ describe('WorkflowsPage', () => {
     ]
     searchState.meta = { query: 'pipeline', total: 1, took_ms: 1, source: 'search' }
 
-    const input = screen.getByLabelText('search') as HTMLInputElement
+    const input = screen.getByRole('searchbox', { name: 'Workflow search' }) as HTMLInputElement
     await act(async () => { fireEvent.change(input, { target: { value: 'pipeline' } }) })
 
     // search() should be invoked with the new query.
@@ -305,7 +308,7 @@ describe('WorkflowsPage', () => {
       },
     ]
 
-    const input = screen.getByLabelText('search') as HTMLInputElement
+    const input = screen.getByRole('searchbox', { name: 'Workflow search' }) as HTMLInputElement
     await act(async () => { fireEvent.change(input, { target: { value: 'onboard' } }) })
 
     await waitFor(() => {
@@ -327,7 +330,7 @@ describe('WorkflowsPage', () => {
     // useSearch returns no results — the page must use the local substring filter.
     searchState.results = []
 
-    const input = screen.getByLabelText('search') as HTMLInputElement
+    const input = screen.getByRole('searchbox', { name: 'Workflow search' }) as HTMLInputElement
     await act(async () => { fireEvent.change(input, { target: { value: 'onboard' } }) })
 
     await waitFor(() => {
@@ -356,7 +359,7 @@ describe('WorkflowsPage', () => {
     ]
     searchState.meta = { query: 'content', total: 1, took_ms: 1, source: 'search' }
 
-    const input = screen.getByLabelText('search') as HTMLInputElement
+    const input = screen.getByRole('searchbox', { name: 'Workflow search' }) as HTMLInputElement
     await act(async () => { fireEvent.change(input, { target: { value: 'onboard' } }) })
 
     await waitFor(() => {
@@ -374,7 +377,7 @@ describe('WorkflowsPage', () => {
       expect(screen.getByTestId('card-onboarding')).toBeDefined()
     })
 
-    await act(async () => { fireEvent.click(screen.getByTestId('card-onboarding')) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Open onboarding/i })) })
 
     expect(routerPush).toHaveBeenCalledWith('/workflows/onboarding')
   })

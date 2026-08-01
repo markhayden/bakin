@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HealthIncident, HealthRepairTarget } from '@makinbakin/sdk/types'
-import { PluginHeader, UnderlineTabs } from '@makinbakin/sdk/components'
 import { usePathname, useQueryState } from '@makinbakin/sdk/hooks'
-import { Button } from '@makinbakin/sdk/ui'
+import {
+  Page,
+  PageBody,
+  PageHeader,
+} from '@makinbakin/sdk/patterns'
+import { Button, Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
 import { useOverviewData } from '../hooks/use-overview-data'
 import {
@@ -101,7 +105,7 @@ function OverviewPanel({ onRunChecksReady, onRunChecks }: OverviewPanelProps) {
   return (
     <>
       {ackError && (
-        <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+        <p role="alert" className="rounded-bakin-control border border-bakin-signal-danger/30 bg-bakin-signal-danger/5 px-bakin-3 py-bakin-2 text-bakin-typography-size-body text-bakin-signal-danger">
           {ackError}
         </p>
       )}
@@ -181,19 +185,20 @@ export function HealthPage() {
   }, [])
 
   return (
-    <div
-      className="health-page @container/health min-w-0 space-y-5 p-4 sm:space-y-6 sm:p-6"
+    <Page
+      className="health-page"
       data-testid="health-page"
     >
-      <PluginHeader
+      <PageHeader
         title="Health"
+        description="Monitor operational readiness, investigate failed work, and repair issues before they block agents."
         meta={announcement ? (
           <span
             className={runningChecks
-              ? 'text-xs font-medium text-muted-foreground'
+              ? 'font-bakin-typography-weight-medium text-bakin-text-muted'
               : announcement === 'Health checks completed.'
-                ? 'text-xs font-medium text-success'
-                : 'text-xs font-medium text-destructive'}
+                ? 'font-bakin-typography-weight-medium text-bakin-action-primary-background'
+                : 'font-bakin-typography-weight-medium text-bakin-signal-danger'}
             data-testid="health-action-visible-status"
             aria-hidden="true"
           >
@@ -221,35 +226,56 @@ export function HealthPage() {
         {announcement}
       </p>
 
-      <div className="min-w-0">
-        <UnderlineTabs
-          tabs={HEALTH_TABS}
+      <div className="@container/health min-w-0" data-slot="health-tab-frame">
+        <Tabs
           value={activeTab}
           onValueChange={(value) => {
             if (isHealthTab(value)) setTabParam(value)
           }}
-          ariaLabel="Health sections"
-          idPrefix="health"
-          className="min-w-0 overflow-x-auto overflow-y-hidden"
-        />
-
-        <div
-          id={`health-panel-${activeTab}`}
-          role="tabpanel"
-          aria-labelledby={`health-tab-${activeTab}`}
-          className="min-w-0 pt-4"
         >
-          {activeTab === 'overview' && (
-            <OverviewPanel
-              onRunChecksReady={registerOverviewRunChecks}
-              onRunChecks={runChecks}
-            />
-          )}
-          {activeTab === 'agents' && <AgentsTab />}
-          {activeTab === 'activity' && <ActivityTab />}
-          {activeTab === 'system' && <SystemTab />}
-        </div>
+          <TabsList
+            variant="underline"
+            activateOnFocus
+            aria-label="Health sections"
+            className="min-w-0 overflow-x-auto overflow-y-hidden"
+          >
+            {HEALTH_TABS.map((tab) => (
+              <TabsTrigger
+                key={tab.id}
+                value={tab.id}
+                id={`health-tab-${tab.id}`}
+                aria-controls={`health-panel-${tab.id}`}
+              >
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+
+        <PageBody
+          gap="page"
+          label={`${HEALTH_TABS.find((tab) => tab.id === activeTab)?.label ?? 'Health'} health view`}
+          busy={runningChecks}
+          className="pt-bakin-6"
+        >
+          <div
+            id={`health-panel-${activeTab}`}
+            role="tabpanel"
+            aria-labelledby={`health-tab-${activeTab}`}
+            className="min-w-0"
+          >
+            {activeTab === 'overview' && (
+              <OverviewPanel
+                onRunChecksReady={registerOverviewRunChecks}
+                onRunChecks={runChecks}
+              />
+            )}
+            {activeTab === 'agents' && <AgentsTab />}
+            {activeTab === 'activity' && <ActivityTab />}
+            {activeTab === 'system' && <SystemTab />}
+          </div>
+        </PageBody>
       </div>
-    </div>
+    </Page>
   )
 }

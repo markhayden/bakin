@@ -9,6 +9,9 @@
 import { useState } from 'react'
 import { Copy, Info, RefreshCw, Trash2 } from 'lucide-react'
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Badge,
   Button,
   Dialog,
@@ -18,7 +21,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@makinbakin/sdk/ui'
-import { toast, useAgentStore, useMainAgentId, useRouter } from '@makinbakin/sdk/hooks'
+import { useRouter } from '@makinbakin/sdk/navigation'
+import { StatusBadge } from '@makinbakin/sdk/patterns'
+import { toast, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
 import { copyToClipboard } from '@makinbakin/sdk/utils'
 import { PackageStateBadge } from './package-state-badge'
 import { AdoptDialog } from './adopt-dialog'
@@ -38,8 +43,10 @@ function CliHint({ command }: { command: string }) {
     }
   }
   return (
-    <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
-      <code className="flex-1 font-mono text-foreground">{command}</code>
+    <div className="flex min-w-0 items-center gap-bakin-2 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default px-bakin-3 py-bakin-2">
+      <code className="min-w-0 flex-1 break-all font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-primary">
+        {command}
+      </code>
       <Button
         variant="ghost"
         size="icon-sm"
@@ -47,7 +54,7 @@ function CliHint({ command }: { command: string }) {
         title={copied ? 'Copied' : 'Copy'}
         aria-label="Copy command"
       >
-        <Copy className="size-3.5" />
+        <Copy aria-hidden="true" />
       </Button>
     </div>
   )
@@ -64,41 +71,43 @@ function PackageEntryFields({
 }) {
   const installedVersion = version ?? entry.version
   return (
-    <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
+    <dl className="grid min-w-0 grid-cols-3 gap-x-bakin-4 gap-y-bakin-2 text-bakin-typography-size-meta">
       {packageId && (
         <>
-          <dt className="text-muted-foreground">Package</dt>
-          <dd className="font-mono text-foreground break-all">{packageId}</dd>
+          <dt className="text-bakin-text-muted">Package</dt>
+          <dd className="col-span-2 break-all font-bakin-typography-family-mono text-bakin-text-primary">{packageId}</dd>
         </>
       )}
       {installedVersion && (
         <>
-          <dt className="text-muted-foreground">Version</dt>
-          <dd className="font-mono text-foreground">{installedVersion}</dd>
+          <dt className="text-bakin-text-muted">Version</dt>
+          <dd className="col-span-2 font-bakin-typography-family-mono text-bakin-text-primary">{installedVersion}</dd>
         </>
       )}
-      <dt className="text-muted-foreground">Source</dt>
-      <dd className="font-mono text-foreground break-all">{entry.source}</dd>
+      <dt className="text-bakin-text-muted">Source</dt>
+      <dd className="col-span-2 break-all font-bakin-typography-family-mono text-bakin-text-primary">{entry.source}</dd>
       {entry.ref && (
         <>
-          <dt className="text-muted-foreground">Ref</dt>
-          <dd className="font-mono text-foreground">{entry.ref}</dd>
+          <dt className="text-bakin-text-muted">Ref</dt>
+          <dd className="col-span-2 font-bakin-typography-family-mono text-bakin-text-primary">{entry.ref}</dd>
         </>
       )}
       {entry.commitSha && (
         <>
-          <dt className="text-muted-foreground">Commit</dt>
-          <dd className="font-mono text-foreground">{entry.commitSha.slice(0, 7)}</dd>
+          <dt className="text-bakin-text-muted">Commit</dt>
+          <dd className="col-span-2 font-bakin-typography-family-mono text-bakin-text-primary">{entry.commitSha.slice(0, 7)}</dd>
         </>
       )}
-      <dt className="text-muted-foreground">Installed</dt>
-      <dd className="text-foreground">{entry.installedAt}</dd>
+      <dt className="text-bakin-text-muted">Installed</dt>
+      <dd className="col-span-2 text-bakin-text-primary">{entry.installedAt}</dd>
       {entry.dependencies && entry.dependencies.length > 0 && (
         <>
-          <dt className="text-muted-foreground">Depends on</dt>
-          <dd className="flex flex-wrap gap-1">
+          <dt className="text-bakin-text-muted">Depends on</dt>
+          <dd className="col-span-2 flex min-w-0 flex-wrap gap-bakin-1">
             {entry.dependencies.map((d) => (
-              <Badge key={d} variant="outline" className="text-[10px] font-mono">{d}</Badge>
+              <Badge key={d} tone="neutral" variant="soft" size="xs" className="font-bakin-typography-family-mono">
+                {d}
+              </Badge>
             ))}
           </dd>
         </>
@@ -215,12 +224,12 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   // sense. Show a different framing instead of the Adopt button.
   if (isMain && (state === 'unmanaged' || state === 'absent')) {
     return (
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="bg-zinc-800 text-zinc-300">Self-managed</Badge>
-          <span className="text-xs text-muted-foreground">main agent</span>
+      <div className="grid gap-bakin-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+          <StatusBadge tone="neutral" variant="solid" size="xs">Self-managed</StatusBadge>
+          <span className="text-bakin-typography-size-meta text-bakin-text-muted">main agent</span>
         </div>
-        <p className="text-xs text-muted-foreground leading-relaxed">
+        <p className="m-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
           Your main agent is your own persona — its workspace files live with you, not a package template. Adoption is intentionally not offered here.
         </p>
       </div>
@@ -228,14 +237,14 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+    <div className="grid gap-bakin-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-2">
         <PackageStateBadge state={displayState} packageId={packageState?.packageId} />
-        <div className="flex items-center gap-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
           {hasPackage && (
             <Button
               size="sm"
-              variant={updateAvailable ? 'info' : 'outline'}
+              variant={updateAvailable ? 'primary' : 'outline'}
               onClick={() => {
                 setActionError(null)
                 setActionMessage(null)
@@ -243,7 +252,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
               }}
               aria-label={updateAvailable ? 'Upgrade agent package' : 'Sync agent package'}
             >
-              <RefreshCw className="size-3 mr-1.5" />
+              <RefreshCw aria-hidden="true" />
               {updateAvailable ? 'Upgrade' : 'Sync'}
             </Button>
           )}
@@ -258,7 +267,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
               }}
               aria-label="Delete or orphan agent package"
             >
-              <Trash2 className="size-3 mr-1.5" />
+              <Trash2 aria-hidden="true" />
               Delete
             </Button>
           )}
@@ -269,47 +278,47 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
               title={ADOPT_INFO}
               aria-label={`Adopt this agent into a package — ${ADOPT_INFO}`}
             >
-              <Info className="size-3 mr-1.5" />
+              <Info aria-hidden="true" />
               Adopt
             </Button>
           )}
         </div>
       </div>
       {state === 'unmanaged' && (
-        <p className="text-xs text-muted-foreground leading-relaxed">
+        <p className="m-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
           Adopt to enable lesson toggles, automatic skill projection, and update-from-source tracking. Your workspace files stay as-is.
         </p>
       )}
       {hasPackage && packageState?.entry && (
-        <div className="space-y-2">
+        <div className="grid gap-bakin-2">
           <PackageEntryFields
             entry={packageState.entry}
             packageId={packageState.packageId}
             version={packageState.version}
           />
           {packageState.updateStatus?.upgradeAvailable && (
-            <p className="text-xs text-info">
+            <p className="m-0 text-bakin-typography-size-meta text-bakin-signal-accent">
               Latest version {packageState.updateStatus.latestVersion ?? 'available'} is available.
             </p>
           )}
           {packageState.updateStatus?.error && (
-            <p className="text-xs text-destructive">
+            <p className="m-0 text-bakin-typography-size-meta text-bakin-signal-danger">
               Update check failed: {packageState.updateStatus.error}
             </p>
           )}
         </div>
       )}
       {state === 'drifted' && (
-        <div className="space-y-1.5">
-          <p className="text-xs text-muted-foreground">
+        <div className="grid gap-bakin-2">
+          <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">
             Projection sha mismatch detected. Repair from the CLI:
           </p>
           <CliHint command="bakin install agent-sync" />
         </div>
       )}
       {state === 'update-available' && !hasPackage && (
-        <div className="space-y-1.5">
-          <p className="text-xs text-muted-foreground">
+        <div className="grid gap-bakin-2">
+          <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">
             A newer version of the source package is available. Update from the CLI:
           </p>
           <CliHint command={`bakin agents sync ${agentId}`} />
@@ -330,45 +339,50 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
             </DialogDescription>
           </DialogHeader>
           {packageState?.updateStatus && (
-            <div className="rounded-md border border-border bg-muted/30 px-3 py-3">
-              <div className="grid grid-cols-2 gap-3">
+            <div className="border-y border-bakin-border-subtle py-bakin-4">
+              <div className="grid min-w-0 gap-bakin-4 sm:grid-cols-2">
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Current version</p>
-                  <p className="mt-1 font-mono text-lg font-semibold text-foreground">
+                  <p className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-widest text-bakin-text-muted">
+                    Current version
+                  </p>
+                  <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-text-primary">
                     {packageState.updateStatus.currentVersion || packageState.version || packageState.entry?.version || 'unknown'}
                   </p>
-                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                  <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
                     commit {packageState.updateStatus.currentCommitSha?.slice(0, 7) || packageState.entry?.commitSha?.slice(0, 7) || 'unknown'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Available version</p>
-                  <p className="mt-1 font-mono text-lg font-semibold text-info">
+                  <p className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-widest text-bakin-text-muted">
+                    Available version
+                  </p>
+                  <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-signal-accent">
                     {packageState.updateStatus.latestVersion ?? 'latest'}
                   </p>
-                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                  <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
                     commit {packageState.updateStatus.latestCommitSha?.slice(0, 7) || 'unknown'}
                   </p>
                 </div>
               </div>
             </div>
           )}
-          {actionError && (
-            <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {actionError}
-            </div>
-          )}
-          {actionMessage && (
-            <div className="rounded-md border border-success/20 bg-success/10 px-3 py-2 text-sm text-success">
-              {actionMessage}
-            </div>
-          )}
+          {actionError ? (
+            <Alert tone="danger">
+              <AlertTitle>Package was not synced</AlertTitle>
+              <AlertDescription>{actionError}</AlertDescription>
+            </Alert>
+          ) : null}
+          {actionMessage ? (
+            <Alert tone="success">
+              <AlertTitle>{actionMessage}</AlertTitle>
+            </Alert>
+          ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setUpdateOpen(false)}>
               Close
             </Button>
-            <Button variant="info" disabled={actionBusy || Boolean(actionMessage)} onClick={() => syncPackage()} className="gap-1.5">
-              {actionBusy && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+            <Button disabled={actionBusy || Boolean(actionMessage)} onClick={() => syncPackage()}>
+              {actionBusy ? <RefreshCw className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
               {actionBusy ? 'Syncing…' : 'Sync agent'}
             </Button>
           </DialogFooter>
@@ -382,16 +396,16 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
               Choose what happens to {agentId}.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 text-sm">
-            <div className="flex items-start justify-between gap-4 rounded-md border border-border bg-muted/20 px-3 py-3">
+          <div className="grid gap-bakin-3">
+            <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 border-l-2 border-bakin-border-subtle pl-bakin-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <p className="font-medium text-foreground">Orphan package</p>
-                <p className="mt-1 text-muted-foreground">
+                <p className="m-0 font-bakin-typography-weight-semibold text-bakin-text-primary">Orphan package</p>
+                <p className="m-0 mt-bakin-1 text-bakin-text-muted">
                   Keeps the OpenClaw agent and workspace. Removes Bakin package tracking and Bakin-managed projected files.
                 </p>
               </div>
               <Button
-                variant="info"
+                variant="outline"
                 disabled={actionBusy || Boolean(actionMessage)}
                 onClick={() => removePackage(false)}
                 className="shrink-0"
@@ -399,10 +413,10 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
                 Orphan package
               </Button>
             </div>
-            <div className="flex items-start justify-between gap-4 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-3">
+            <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 border-l-2 border-bakin-signal-danger pl-bakin-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <p className="font-medium text-destructive">Delete agent</p>
-                <p className="mt-1 text-muted-foreground">
+                <p className="m-0 font-bakin-typography-weight-semibold text-bakin-signal-danger">Delete agent</p>
+                <p className="m-0 mt-bakin-1 text-bakin-text-muted">
                   Runs orphan cleanup, then deletes the OpenClaw runtime agent.
                 </p>
               </div>
@@ -416,16 +430,17 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
               </Button>
             </div>
           </div>
-          {actionError && (
-            <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {actionError}
-            </div>
-          )}
-          {actionMessage && (
-            <div className="rounded-md border border-success/20 bg-success/10 px-3 py-2 text-sm text-success">
-              {actionMessage}
-            </div>
-          )}
+          {actionError ? (
+            <Alert tone="danger">
+              <AlertTitle>Package was not removed</AlertTitle>
+              <AlertDescription>{actionError}</AlertDescription>
+            </Alert>
+          ) : null}
+          {actionMessage ? (
+            <Alert tone="success">
+              <AlertTitle>{actionMessage}</AlertTitle>
+            </Alert>
+          ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setRemoveOpen(false)}>
               Cancel

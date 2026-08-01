@@ -30,9 +30,6 @@ mock.module('@/hooks/use-query-state', () => ({
   },
 }))
 // Markdown rendering is its own tested concern.
-mock.module('@/components/markdown-content', () => ({
-  MarkdownContent: ({ content }: { content: string }) => <pre>{content}</pre>,
-}))
 mock.module('@/components/markdown-editor', () => ({
   MarkdownEditor: ({ content }: { content: string }) => <textarea defaultValue={content} />,
 }))
@@ -175,7 +172,7 @@ describe('BrandDetail staged save model', () => {
     await waitFor(() => expect(screen.getByText(/changed while you were editing/)).toBeDefined())
     expect(putCalls.length).toBe(0) // held — never a silent overwrite
 
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save brand' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry save' })) })
     await waitFor(() => expect(putCalls.length).toBe(1)) // deliberate overwrite
     await settleReact()
   })

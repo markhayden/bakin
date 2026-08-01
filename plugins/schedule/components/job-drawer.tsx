@@ -1,22 +1,77 @@
 'use client'
-import { Play, Pencil, Copy, Trash2, SkipForward, MoreHorizontal, Clock, Timer, Workflow, Terminal, CirclePlus, Undo2, Power, ShieldAlert, ShieldCheck } from 'lucide-react'
-import { BakinDrawer } from "@makinbakin/sdk/components"
-import { AgentAvatar } from "@makinbakin/sdk/components"
-import { Badge } from "@makinbakin/sdk/ui"
-import { Button } from "@makinbakin/sdk/ui"
-import { Separator } from "@makinbakin/sdk/ui"
-import { useAgent } from "@makinbakin/sdk/hooks"
+
 import {
+  CirclePlus,
+  Clock,
+  Copy,
+  MoreHorizontal,
+  Pencil,
+  Play,
+  Power,
+  ShieldAlert,
+  ShieldCheck,
+  SkipForward,
+  Terminal,
+  Timer,
+  Trash2,
+  Undo2,
+  Workflow,
+} from 'lucide-react'
+import { AgentAvatar, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import {
+  Drawer,
+  DrawerSection,
+  Button,
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-} from "@makinbakin/sdk/ui"
+  DropdownMenuTrigger,
+} from '@makinbakin/sdk/ui'
+import { useAgent, type ScheduleJob } from '@makinbakin/sdk/hooks'
 import { AgentBadge } from './agent-badge'
 import { RunHistory } from './run-history'
 import { PauseControls } from './pause-controls'
-import type { ScheduleJob } from "@makinbakin/sdk/hooks"
+
+function jobStatus(job: ScheduleJob): { label: string; tone: StatusTone } {
+  if (job.paused) return { label: 'Paused', tone: 'attention' }
+  if (job.completed) return { label: 'Completed', tone: 'success' }
+  if (job.enabled) return { label: 'Active', tone: 'success' }
+  return { label: 'Disabled', tone: 'neutral' }
+}
+
+function sourceLabel(job: ScheduleJob): string {
+  if (job.source === 'adopted') return 'Adopted'
+  return job.isBakinJob ? 'Bakin schedule' : 'Runtime cron'
+}
+
+function MetadataItem({
+  icon: Icon,
+  label,
+  value,
+  mono = false,
+  className,
+}: {
+  icon?: typeof Clock
+  label: string
+  value: React.ReactNode
+  mono?: boolean
+  className?: string
+}) {
+  return (
+    <div className={`min-w-0 rounded-bakin-surface bg-bakin-surface-default p-bakin-3 ${className ?? ''}`}>
+      <dt className="flex items-center gap-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
+        {Icon ? <Icon aria-hidden="true" className="size-bakin-3" /> : null}
+        {label}
+      </dt>
+      <dd className={`m-0 mt-bakin-1 break-words text-bakin-text-primary ${
+        mono ? 'font-bakin-typography-family-mono text-bakin-typography-size-meta' : 'font-bakin-typography-weight-medium'
+      }`}>
+        {value}
+      </dd>
+    </div>
+  )
+}
 
 export function JobDrawer({
   job,
@@ -49,235 +104,180 @@ export function JobDrawer({
 
   if (!job) return null
 
-  const handleDelete = () => {
-    onDelete(job.id)
-  }
+  const status = jobStatus(job)
+  const nextRunCopy = job.completed && job.completedAt
+    ? `Ran once — ${new Date(job.completedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+    : job.nextRun
+      ? `Next: ${new Date(job.nextRun).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+      : null
 
   return (
-    <BakinDrawer
+    <Drawer
       open={open}
-      onOpenChange={(o) => {
-        if (!o) {
-          onClose()
-        }
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose()
       }}
-      title={
-        <span className="flex items-center gap-2">
-          {job.displayName || job.id}
-          <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
-            {job.source === 'adopted' ? 'Adopted' : job.isBakinJob ? 'Bakin schedule' : 'Runtime cron'}
-          </Badge>
+      storageKey="schedule-job-detail"
+      title={(
+        <span className="flex min-w-0 items-center gap-bakin-2">
+          <span className="truncate">{job.displayName || job.id}</span>
+          <StatusBadge tone="neutral" variant="soft" size="xs">
+            {sourceLabel(job)}
+          </StatusBadge>
         </span>
-      }
-      actions={
+      )}
+      actions={(
         <DropdownMenu>
-          <DropdownMenuTrigger className="p-1.5 rounded-md hover:bg-accent transition-colors">
-            <MoreHorizontal className="size-4" />
+          <DropdownMenuTrigger
+            render={(
+              <Button type="button" variant="ghost" size="icon-sm" aria-label="Job actions" />
+            )}
+          >
+            <MoreHorizontal aria-hidden="true" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-36">
+          <DropdownMenuContent align="end">
             {job.isBakinJob ? (
               <DropdownMenuItem onClick={onDuplicate}>
-                <Copy className="size-3.5 mr-2" />
+                <Copy aria-hidden="true" />
                 Duplicate
               </DropdownMenuItem>
             ) : (
               <DropdownMenuItem onClick={onAdopt}>
-                <CirclePlus className="size-3.5 mr-2" />
+                <CirclePlus aria-hidden="true" />
                 Adopt into Bakin
               </DropdownMenuItem>
             )}
-            {job.canRestoreNative && (
+            {job.canRestoreNative ? (
               <DropdownMenuItem onClick={() => onRestoreNative(job.id)}>
-                <Undo2 className="size-3.5 mr-2" />
-                Restore Native
+                <Undo2 aria-hidden="true" />
+                Restore native
               </DropdownMenuItem>
-            )}
+            ) : null}
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleDelete}
-              className="text-red-400 focus:text-red-400"
-            >
-              <Trash2 className="size-3.5 mr-2" />
+            <DropdownMenuItem onClick={() => onDelete(job.id)} variant="danger">
+              <Trash2 aria-hidden="true" />
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      }
+      )}
     >
-      <div className="space-y-6">
-        {/* Agent hero */}
-        {(() => {
-          const agentId = job.agentId || 'system'
-          return (
-            <div className="flex items-center gap-4 rounded-lg p-4 border border-border bg-surface">
-              {jobAgent ? (
-                <AgentAvatar agentId={agentId} size="lg" />
-              ) : (
-                <AgentBadge agentId={undefined} size="lg" showName={false} />
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-foreground">{jobAgent?.name || 'System'}</div>
-                <div className="flex items-center gap-2 mt-1">
-                  {job.paused ? (
-                    <Badge className="bg-amber-500/20 text-amber-400">Paused</Badge>
-                  ) : job.completed ? (
-                    <Badge className="bg-sky-500/20 text-sky-400">Completed</Badge>
-                  ) : job.enabled ? (
-                    <Badge className="bg-emerald-500/20 text-emerald-400">Active</Badge>
-                  ) : (
-                    <Badge className="bg-zinc-500/20 text-zinc-400">Disabled</Badge>
-                  )}
-                  <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
-                    {job.source === 'adopted' ? 'Adopted' : job.isBakinJob ? 'Bakin schedule' : 'Runtime cron'}
-                  </Badge>
-                  {job.completed && job.completedAt ? (
-                    <span className="text-xs text-muted-foreground">
-                      Ran once — {new Date(job.completedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                    </span>
-                  ) : job.nextRun ? (
-                    <span className="text-xs text-muted-foreground">
-                      Next: {new Date(job.nextRun).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
+      <div className="flex min-w-0 flex-col gap-bakin-6 pb-bakin-6">
+        <div className="flex min-w-0 items-center gap-bakin-4 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4">
+          {jobAgent ? (
+            <AgentAvatar
+              agent={{
+                id: jobAgent.id,
+                name: jobAgent.name,
+                imageSrc: jobAgent.headshot || null,
+              }}
+              size="lg"
+              decorative
+            />
+          ) : (
+            <AgentBadge agentId={undefined} size="lg" showName={false} />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="m-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">
+              {jobAgent?.name || 'System'}
+            </p>
+            <div className="mt-bakin-2 flex min-w-0 flex-wrap items-center gap-bakin-2">
+              <StatusBadge tone={status.tone} variant="solid" size="xs">{status.label}</StatusBadge>
+              {nextRunCopy ? (
+                <span className="min-w-0 text-bakin-typography-size-meta text-bakin-text-muted">
+                  {nextRunCopy}
+                </span>
+              ) : null}
             </div>
-          )
-        })()}
+          </div>
+        </div>
 
-        {/* Quick actions */}
-        <div className="flex flex-wrap items-center gap-2">
+        <DrawerSection title="Actions" contentClassName="flex flex-wrap gap-bakin-2">
           <Button variant="outline" size="sm" onClick={() => onRunNow(job.id)}>
-            <Play className="size-3.5 mr-1.5" /> Run Now
+            <Play aria-hidden="true" /> Run now
           </Button>
           {job.isBakinJob ? (
             <>
               <Button variant="outline" size="sm" onClick={() => onSkipNext(job.id, 1)}>
-                <SkipForward className="size-3.5 mr-1.5" /> Skip Next
+                <SkipForward aria-hidden="true" /> Skip next
               </Button>
               <Button variant="outline" size="sm" onClick={onEdit}>
-                <Pencil className="size-3.5 mr-1.5" /> Edit
+                <Pencil aria-hidden="true" /> Edit
               </Button>
             </>
           ) : (
             <Button variant="outline" size="sm" onClick={onAdopt}>
-              <CirclePlus className="size-3.5 mr-1.5" /> Adopt into Bakin
+              <CirclePlus aria-hidden="true" /> Adopt into Bakin
             </Button>
           )}
-          {job.canRestoreNative && (
+          {job.canRestoreNative ? (
             <Button variant="outline" size="sm" onClick={() => onRestoreNative(job.id)}>
-              <Undo2 className="size-3.5 mr-1.5" /> Restore Native
+              <Undo2 aria-hidden="true" /> Restore native
             </Button>
-          )}
-          {!job.isBakinJob && (
+          ) : null}
+          {!job.isBakinJob ? (
             <Button variant="outline" size="sm" onClick={() => job.enabled ? onPause(job.id) : onResume(job.id)}>
-              <Power className="size-3.5 mr-1.5" /> {job.enabled ? 'Disable' : 'Enable'}
+              <Power aria-hidden="true" /> {job.enabled ? 'Disable' : 'Enable'}
             </Button>
-          )}
-        </div>
+          ) : null}
+        </DrawerSection>
 
-        {/* Metadata grid */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-lg bg-surface p-3 space-y-1">
-            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground uppercase tracking-wider">
-              <Clock className="size-3" />
-              Schedule
+        <DrawerSection title="Details">
+          <dl className="m-0 grid grid-cols-1 gap-bakin-3 sm:grid-cols-2">
+            <MetadataItem
+              icon={Clock}
+              label="Schedule"
+              value={(
+                <>
+                  {job.humanSchedule}
+                  {job.tz ? <span className="ml-bakin-1 font-bakin-typography-weight-regular text-bakin-text-muted">({job.tz})</span> : null}
+                </>
+              )}
+            />
+            {job.cron ? <MetadataItem icon={Timer} label="Cron" value={job.cron} mono /> : null}
+            {job.workflowId ? <MetadataItem icon={Workflow} label="Workflow" value={job.workflowId} /> : null}
+            {job.owner ? <MetadataItem label="Owner" value={job.owner} /> : null}
+            {job.lastTaskId ? <MetadataItem label="Last task" value={job.lastTaskId.slice(0, 8)} mono /> : null}
+            {job.toolsAllow?.length || job.toolsAllowMissing ? (
+              <MetadataItem
+                icon={job.toolsAllowMissing ? ShieldAlert : ShieldCheck}
+                label="Cron tools"
+                value={job.toolsAllow?.length ? job.toolsAllow.join(', ') : 'Missing allowlist'}
+                mono={!job.toolsAllowMissing}
+                className="sm:col-span-2"
+              />
+            ) : null}
+            <MetadataItem label="Job ID" value={job.id} mono className="sm:col-span-2" />
+          </dl>
+          {job.requireTriage || job.allowOverlap ? (
+            <div className="mt-bakin-3 flex flex-wrap gap-bakin-2">
+              {job.requireTriage ? <StatusBadge tone="attention" variant="soft" size="xs">Triage required</StatusBadge> : null}
+              {job.allowOverlap ? <StatusBadge tone="neutral" variant="soft" size="xs">Overlap allowed</StatusBadge> : null}
             </div>
-            <div className="text-sm font-medium">
-              {job.humanSchedule}
-              {job.tz && <span className="ml-1 text-xs font-normal text-muted-foreground">({job.tz})</span>}
-            </div>
-          </div>
-          {job.cron && (
-            <div className="rounded-lg bg-surface p-3 space-y-1">
-              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground uppercase tracking-wider">
-                <Timer className="size-3" />
-                Cron
-              </div>
-              <div className="text-sm font-medium font-mono">{job.cron}</div>
-            </div>
-          )}
-          {job.workflowId && (
-            <div className="rounded-lg bg-surface p-3 space-y-1">
-              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground uppercase tracking-wider">
-                <Workflow className="size-3" />
-                Workflow
-              </div>
-              <div className="text-sm font-medium">{job.workflowId}</div>
-            </div>
-          )}
-          {job.owner && (
-            <div className="rounded-lg bg-surface p-3 space-y-1">
-              <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Owner</div>
-              <div className="text-sm font-medium">{job.owner}</div>
-            </div>
-          )}
-          {job.lastTaskId && (
-            <div className="rounded-lg bg-surface p-3 space-y-1">
-              <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Last Task</div>
-              <div className="text-sm font-medium font-mono">{job.lastTaskId.slice(0, 8)}</div>
-            </div>
-          )}
-          {(job.toolsAllow?.length || job.toolsAllowMissing) && (
-            <div className="rounded-lg bg-surface p-3 space-y-1 col-span-2">
-              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground uppercase tracking-wider">
-                {job.toolsAllowMissing ? <ShieldAlert className="size-3 text-amber-400" /> : <ShieldCheck className="size-3 text-emerald-400" />}
-                Cron tools
-              </div>
-              <div className={job.toolsAllowMissing ? 'text-sm font-medium text-amber-400' : 'text-sm font-medium font-mono'}>
-                {job.toolsAllow?.length ? job.toolsAllow.join(', ') : 'Missing allowlist'}
-              </div>
-            </div>
-          )}
-          <div className="rounded-lg bg-surface p-3 space-y-1 col-span-2">
-            <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Job ID</div>
-            <div className="text-sm font-mono text-muted-foreground">{job.id}</div>
-          </div>
-        </div>
+          ) : null}
+        </DrawerSection>
 
-        {/* Flags */}
-        {(job.requireTriage || job.allowOverlap) && (
-          <div className="flex flex-wrap gap-2">
-            {job.requireTriage && <Badge variant="outline" className="text-xs">Triage Required</Badge>}
-            {job.allowOverlap && <Badge variant="outline" className="text-xs">Overlap Allowed</Badge>}
-          </div>
-        )}
-
-        {/* Task prompt */}
-        {job.taskPrompt && (
-          <div>
-            <h3 className="text-[11px] text-muted-foreground uppercase tracking-wider mb-2">
-              <Terminal className="size-3 inline mr-1.5" />
-              Task Prompt
-            </h3>
-            <div
-              className="text-sm text-foreground/90 leading-relaxed rounded-lg p-4 border-l-2 bg-surface whitespace-pre-wrap"
-              style={job.agentId ? { borderLeftColor: `var(--agent-${job.agentId})` } : { borderLeftColor: 'var(--outline-variant)' }}
-            >
+        {job.taskPrompt ? (
+          <DrawerSection
+            title="Task prompt"
+            actions={<Terminal aria-hidden="true" className="size-bakin-4 text-bakin-text-muted" />}
+          >
+            <div className="whitespace-pre-wrap rounded-bakin-surface border-l-2 border-bakin-signal-accent bg-bakin-surface-default p-bakin-4 leading-relaxed text-bakin-text-primary">
               {job.taskPrompt}
             </div>
-          </div>
-        )}
+          </DrawerSection>
+        ) : null}
 
-        <Separator />
+        {job.isBakinJob ? (
+          <DrawerSection title="Pause or resume">
+            <PauseControls job={job} onPause={onPause} onResume={onResume} />
+          </DrawerSection>
+        ) : null}
 
-        {job.isBakinJob && (
-          <>
-            <div>
-              <h3 className="text-[11px] text-muted-foreground uppercase tracking-wider mb-3">Pause / Resume</h3>
-              <PauseControls job={job} onPause={onPause} onResume={onResume} />
-            </div>
-
-            <Separator />
-          </>
-        )}
-
-        {/* Run history */}
-        <div>
-          <h3 className="text-[11px] text-muted-foreground uppercase tracking-wider mb-3">Run History</h3>
+        <DrawerSection title="Run history">
           <RunHistory jobId={job.id} />
-        </div>
+        </DrawerSection>
       </div>
-    </BakinDrawer>
+    </Drawer>
   )
 }

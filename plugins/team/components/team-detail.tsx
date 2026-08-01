@@ -1,32 +1,27 @@
 'use client'
 
-/**
- * Team detail page (layered-context spec, C11) — the home of the shared-rules
- * confidence loop. Renders for a real OrgTeam OR the `global` pseudo-team
- * ("the team everyone's on"):
- *
- *   - header: name, color, member avatars
- *   - shared context editor: the team's (or global) context file with the
- *     two-zone ownership made visible — user content edits in place; the
- *     Bakin-managed block (role files only) is never editable here
- *   - members with per-agent sync state (from the last receipts/doctor data)
- *   - "Sync team" → POST /teams/:teamId/sync (global: syncs every agent via
- *     the per-agent route) → combined receipt summary
- */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter, useHistoryBack } from '@makinbakin/sdk/hooks'
+import { ArrowLeft, RefreshCw } from 'lucide-react'
+import { Section } from '@makinbakin/sdk/layout'
+import { useHistoryBack, useRouter } from '@makinbakin/sdk/navigation'
 import {
+  AgentAvatar,
+  Page,
+  PageAside,
+  PageBody,
+  PageHeader,
+  SaveBar,
+  StatusBadge,
+} from '@makinbakin/sdk/patterns'
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Skeleton,
+  SystemState,
   Textarea,
 } from '@makinbakin/sdk/ui'
-import { PluginHeader } from '@makinbakin/sdk/components'
-import { ArrowLeft, CircleCheck, Globe, RefreshCw, TriangleAlert, Users } from 'lucide-react'
 
 interface TeamInfo {
   id: string
@@ -60,6 +55,7 @@ export function TeamDetail({ teamId }: { teamId: string }) {
   const [team, setTeam] = useState<TeamInfo | null>(isGlobal ? GLOBAL_TEAM : null)
   const [members, setMembers] = useState<MemberMeta[] | null>(null)
   const [content, setContent] = useState<string | null>(null)
+  const [savedContent, setSavedContent] = useState('')
   const [contentPath, setContentPath] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -73,49 +69,65 @@ export function TeamDetail({ teamId }: { teamId: string }) {
     : `/api/plugins/team/context/team?id=${encodeURIComponent(teamId)}`
 
   const load = useCallback(async () => {
+    setLoadError(null)
     try {
       if (isGlobal) {
-        const agentsRes = await fetch('/api/plugins/team/')
-        const agentsJson = await agentsRes.json()
-        const list = Array.isArray(agentsJson) ? agentsJson : agentsJson.agents ?? []
-        setMembers(list.map((a: MemberMeta) => ({ id: a.id, name: a.name ?? a.id, emoji: (a as { emoji?: string }).emoji })))
+        const agentsResponse = await fetch('/api/plugins/team/')
+        const agentsBody = await agentsResponse.json()
+        const list = Array.isArray(agentsBody) ? agentsBody : agentsBody.agents ?? []
+        setMembers(list.map((agent: MemberMeta) => ({
+          id: agent.id,
+          name: agent.name ?? agent.id,
+          emoji: agent.emoji,
+        })))
       } else {
-        const res = await fetch(`/api/plugins/team/teams/${encodeURIComponent(teamId)}/members`)
-        if (!res.ok) throw new Error(`Team "${teamId}" not found`)
-        const json = await res.json()
-        setTeam(json.team)
-        setMembers((json.members ?? []).map((a: MemberMeta) => ({ id: a.id, name: a.name ?? a.id, emoji: (a as { emoji?: string }).emoji })))
+        const response = await fetch(`/api/plugins/team/teams/${encodeURIComponent(teamId)}/members`)
+        if (!response.ok) throw new Error(`Team "${teamId}" not found`)
+        const body = await response.json()
+        setTeam(body.team)
+        setMembers((body.members ?? []).map((agent: MemberMeta) => ({
+          id: agent.id,
+          name: agent.name ?? agent.id,
+          emoji: agent.emoji,
+        })))
       }
 
-      const ctxRes = await fetch(contextUrl)
-      const ctxJson = await ctxRes.json()
-      if (ctxJson.ok) {
-        setContent(ctxJson.content ?? '')
-        setContentPath(ctxJson.path ?? null)
+      const contextResponse = await fetch(contextUrl)
+      const contextBody = await contextResponse.json()
+      if (contextBody.ok) {
+        const nextContent = contextBody.content ?? ''
+        setContent(nextContent)
+        setSavedContent(nextContent)
+        setContentPath(contextBody.path ?? null)
+        setDirty(false)
       }
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : String(err))
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : String(error))
     }
   }, [contextUrl, isGlobal, teamId])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    void load()
+  }, [load])
 
   const save = async () => {
     if (content === null) return
     setSaving(true)
     setSaveError(null)
     try {
-      const res = await fetch(contextUrl, {
+      const response = await fetch(contextUrl, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content }),
       })
-      const json = await res.json()
-      if (!json.ok) throw new Error(json.error ?? `save failed (${res.status})`)
-      setContent(json.content ?? content)
+      const body = await response.json()
+      if (!body.ok) throw new Error(body.error ?? `save failed (${response.status})`)
+      const nextContent = body.content ?? content
+      setContent(nextContent)
+      setSavedContent(nextContent)
       setDirty(false)
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err))
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error))
     } finally {
       setSaving(false)
     }
@@ -126,165 +138,239 @@ export function TeamDetail({ teamId }: { teamId: string }) {
     setSyncResults(null)
     try {
       if (isGlobal) {
-        // Global pseudo-team: sync every agent via the per-agent route.
         const rows: SyncResultRow[] = []
         for (const member of members ?? []) {
           try {
-            const res = await fetch(`/api/agent-packages/${encodeURIComponent(member.id)}/sync`, {
+            const response = await fetch(`/api/agent-packages/${encodeURIComponent(member.id)}/sync`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({}),
             })
-            const json = await res.json()
-            rows.push(json.ok ? { agentId: member.id, receipt: json.receipt } : { agentId: member.id, error: json.error ?? `sync failed (${res.status})` })
-          } catch (err) {
-            rows.push({ agentId: member.id, error: err instanceof Error ? err.message : String(err) })
+            const body = await response.json()
+            rows.push(body.ok
+              ? { agentId: member.id, receipt: body.receipt }
+              : { agentId: member.id, error: body.error ?? `sync failed (${response.status})` })
+          } catch (error) {
+            rows.push({ agentId: member.id, error: error instanceof Error ? error.message : String(error) })
           }
         }
         setSyncResults(rows)
       } else {
-        const res = await fetch(`/api/plugins/team/teams/${encodeURIComponent(teamId)}/sync`, {
+        const response = await fetch(`/api/plugins/team/teams/${encodeURIComponent(teamId)}/sync`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({}),
         })
-        const json = await res.json()
-        if (!json.ok) throw new Error(json.error ?? `sync failed (${res.status})`)
-        setSyncResults(json.results ?? [])
+        const body = await response.json()
+        if (!body.ok) throw new Error(body.error ?? `sync failed (${response.status})`)
+        setSyncResults(body.results ?? [])
       }
-    } catch (err) {
-      setSyncResults([{ agentId: '(team)', error: err instanceof Error ? err.message : String(err) }])
+    } catch (error) {
+      setSyncResults([{ agentId: '(team)', error: error instanceof Error ? error.message : String(error) }])
     } finally {
       setSyncing(false)
     }
   }
 
   const resultByAgent = useMemo(
-    () => new Map((syncResults ?? []).map((r) => [r.agentId, r])),
+    () => new Map((syncResults ?? []).map((result) => [result.agentId, result])),
     [syncResults],
   )
 
-  if (loadError) {
-    return <p className="text-sm text-red-400">{loadError}</p>
-  }
+  const skippedResults = useMemo(
+    () => (syncResults ?? []).flatMap((result) => (result.receipt?.skipped ?? []).map((skip) => ({
+      ...skip,
+      agentId: result.agentId,
+    }))),
+    [syncResults],
+  )
 
-  if (!members) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-48 w-full" />
-      </div>
+  const pageTitle = team?.label ?? (isGlobal ? 'Global' : teamId)
+  let bodyState
+  if (loadError) {
+    bodyState = (
+      <SystemState
+        kind="error"
+        recovery="available"
+        scope="page"
+        title="Team could not be loaded"
+        description={loadError}
+        action={<Button variant="outline" onClick={() => void load()}>Try again</Button>}
+      />
+    )
+  } else if (!members) {
+    bodyState = (
+      <SystemState
+        kind="loading"
+        scope="page"
+        title="Loading team context"
+        description="Shared rules and member state will appear here when they are ready."
+      />
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" className="gap-1" onClick={goBack}>
-            <ArrowLeft className="size-4" /> Team
+    <Page>
+      <PageHeader
+        navigation={(
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Back to Team" onClick={goBack}>
+            <ArrowLeft aria-hidden="true" />
           </Button>
-          {isGlobal
-            ? <Globe className="size-5 text-muted-foreground" />
-            : <Users className="size-5" style={team?.color ? { color: team.color } : undefined} />}
-          <PluginHeader title={team?.label ?? teamId} count={members.length} />
-        </div>
-        <Button onClick={syncTeam} disabled={syncing} className="gap-1">
-          <RefreshCw className={`size-4 ${syncing ? 'animate-spin' : ''}`} />
-          {syncing ? 'Syncing…' : isGlobal ? 'Sync all agents' : 'Sync team'}
-        </Button>
-      </div>
+        )}
+        eyebrow="Team / shared context"
+        title={pageTitle}
+        meta={members ? (
+          <>
+            <Badge size="xs" variant="outline">{members.length} members</Badge>
+            <code className="font-bakin-typography-family-mono">{teamId}</code>
+          </>
+        ) : undefined}
+        actions={members ? (
+          <Button type="button" onClick={() => void syncTeam()} disabled={syncing}>
+            <RefreshCw className={syncing ? 'animate-spin motion-reduce:animate-none' : undefined} aria-hidden="true" />
+            {syncing ? 'Syncing…' : isGlobal ? 'Sync all agents' : 'Sync team'}
+          </Button>
+        ) : undefined}
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-baseline justify-between text-base">
-            <span>Shared context</span>
-            {contentPath && <span className="text-xs font-normal text-muted-foreground">{contentPath}</span>}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <p className="text-xs text-muted-foreground">
-            Standing instructions for {isGlobal ? 'every agent' : `every ${team?.label ?? teamId} member`} —
-            write them once here instead of editing each agent. On <span className="font-medium text-foreground">Sync</span>,
-            Bakin composes this into each agent's AGENTS.md managed block; their own notes outside the block are never touched.
-          </p>
-          {(content ?? '').trim() === '' && (
-            <p className="text-xs text-muted-foreground">
-              Good fits: house rules, tone, conventions, escalation. Personalize with{' '}
-              <code className="text-[11px]">{'{{agentName}}'}</code>, <code className="text-[11px]">{'{{agentId}}'}</code>,{' '}
-              <code className="text-[11px]">{'{{mainAgentName}}'}</code>.
-            </p>
-          )}
-          <Textarea
-            value={content ?? ''}
-            onChange={(e) => { setContent(e.target.value); setDirty(true) }}
-            className="min-h-96 font-mono text-xs"
-            placeholder={isGlobal
-              ? `# House rules\n\n- Keep replies short and direct.\n- {{agentName}} reports blockers to {{mainAgentName}} immediately.`
-              : `# ${team?.label ?? teamId} team rules\n\n- Follow the team style guide.\n- Hand finished work back by assetId, never file paths.`}
-            aria-label="Shared context content"
-          />
-          <div className="flex items-center justify-end gap-2">
-            {saveError && <span className="text-xs text-red-400">{saveError}</span>}
-            {dirty && <span className="text-xs text-yellow-500">Unsaved changes — members go stale after save until synced.</span>}
-            <Button size="sm" onClick={save} disabled={!dirty || saving}>
-              {saving ? 'Saving…' : 'Save'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Members</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {members.length === 0 && <p className="text-sm text-muted-foreground">No members assigned yet.</p>}
-            {members.map((member) => {
-              const result = resultByAgent.get(member.id)
-              return (
-                <div key={member.id} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 hover:underline"
-                    onClick={() => router.push(`/team/${member.id}`)}
-                  >
-                    <span>{member.emoji ?? '🤖'}</span>
-                    <span className="font-medium">{member.name}</span>
-                    <span className="text-muted-foreground text-xs">{member.id}</span>
-                  </button>
-                  {result && (
-                    result.error ? (
-                      <Badge className="bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 gap-1">
-                        <TriangleAlert className="size-3" /> {result.error.slice(0, 60)}
-                      </Badge>
-                    ) : (
-                      <Badge className={result.receipt?.verification?.status === 'ok'
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 gap-1'
-                        : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 gap-1'}>
-                        <CircleCheck className="size-3" />
-                        {result.receipt?.verification?.status === 'ok' ? 'synced' : 'issues'}
-                        {(result.receipt?.blocks ?? []).filter((b) => b.action === 'recomposed').length > 0 &&
-                          ` · ${(result.receipt?.blocks ?? []).filter((b) => b.action === 'recomposed').length} block(s)`}
-                      </Badge>
-                    )
-                  )}
-                </div>
-              )
-            })}
-          </div>
-          {syncResults && syncResults.some((r) => (r.receipt?.skipped?.length ?? 0) > 0) && (
-            <div className="mt-3 space-y-1 text-xs text-yellow-600 dark:text-yellow-400">
-              {syncResults.flatMap((r) => (r.receipt?.skipped ?? []).map((skip, i) => (
-                <p key={`${r.agentId}-${i}`}>
-                  Skipped (user-edited; preserved): {skip.target}{skip.hint ? ` — ${skip.hint}` : ''}
+      <PageBody layout="aside" busy={syncing} state={bodyState}>
+        <div className="flex min-w-0 flex-1 flex-col gap-bakin-6">
+          <Section spacing="compact">
+            <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
+              <div className="min-w-0">
+                <h2 className="m-0 text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+                  Shared context
+                </h2>
+                <p className="m-0 mt-bakin-1 max-w-prose text-bakin-text-muted">
+                  Standing instructions for {isGlobal ? 'every agent' : `every ${pageTitle} member`}. Sync composes
+                  these rules into managed blocks without changing personal notes outside those blocks.
                 </p>
-              )))}
+              </div>
+              {contentPath ? (
+                <code className="break-all font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                  {contentPath}
+                </code>
+              ) : null}
+            </div>
+
+            {(content ?? '').trim() === '' ? (
+              <Alert tone="neutral">
+                <AlertTitle>Start with the rules this group shares</AlertTitle>
+                <AlertDescription>
+                  Good fits include house style, escalation, and handoff conventions. Personalize with{' '}
+                  <code>{'{{agentName}}'}</code>, <code>{'{{agentId}}'}</code>, or <code>{'{{mainAgentName}}'}</code>.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            <Textarea
+              value={content ?? ''}
+              onChange={(event) => {
+                setContent(event.target.value)
+                setDirty(event.target.value !== savedContent)
+              }}
+              className="min-h-96 resize-y font-bakin-typography-family-mono"
+              placeholder={isGlobal
+                ? `# House rules\n\n- Keep replies short and direct.\n- {{agentName}} reports blockers to {{mainAgentName}} immediately.`
+                : `# ${pageTitle} team rules\n\n- Follow the team style guide.\n- Hand finished work back by assetId, never file paths.`}
+              aria-label="Shared context content"
+            />
+          </Section>
+
+          {skippedResults.length > 0 ? (
+            <Alert tone="attention">
+              <AlertTitle>User-edited content was preserved</AlertTitle>
+              <AlertDescription>
+                <ul className="m-0 grid gap-bakin-1 pl-bakin-4">
+                  {skippedResults.map((skip) => (
+                    <li key={`${skip.agentId}-${skip.target}`}>
+                      {skip.agentId}: {skip.target}{skip.hint ? ` — ${skip.hint}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          ) : null}
+        </div>
+
+        <PageAside label="Team members">
+          <div>
+            <h2 className="m-0 text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+              Members
+            </h2>
+            <p className="m-0 mt-bakin-1 text-bakin-text-muted">
+              Open an agent to inspect its individual context and diagnostics.
+            </p>
+          </div>
+
+          {members?.length === 0 ? (
+            <SystemState
+              kind="initial-empty"
+              scope="inline"
+              title="No members assigned"
+              description="Assign an agent from Team management to include it here."
+            />
+          ) : (
+            <div className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default">
+              {members?.map((member, index) => {
+                const result = resultByAgent.get(member.id)
+                const recomposedCount = (result?.receipt?.blocks ?? []).filter((block) => block.action === 'recomposed').length
+                const status = result?.error
+                  ? { label: 'Sync failed', tone: 'danger' as const }
+                  : result
+                    ? {
+                        label: result.receipt?.verification?.status === 'ok'
+                          ? recomposedCount > 0 ? `Synced · ${recomposedCount} updated` : 'Synced'
+                          : 'Needs attention',
+                        tone: result.receipt?.verification?.status === 'ok' ? 'success' as const : 'attention' as const,
+                      }
+                    : null
+
+                return (
+                  <div
+                    key={member.id}
+                    className={`flex min-w-0 items-center gap-bakin-3 p-bakin-3 ${index > 0 ? 'border-t border-bakin-border-subtle' : ''}`}
+                  >
+                    <AgentAvatar
+                      agent={{ id: member.id, name: member.name, initials: member.emoji }}
+                      size="sm"
+                      decorative
+                    />
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="xs"
+                      className="min-w-0 flex-1 justify-start"
+                      onClick={() => router.push(`/team/${member.id}`)}
+                    >
+                      <span className="truncate">{member.name}</span>
+                    </Button>
+                    {status ? (
+                      <StatusBadge tone={status.tone} variant="solid" size="xs" title={result?.error}>
+                        {status.label}
+                      </StatusBadge>
+                    ) : null}
+                  </div>
+                )
+              })}
             </div>
           )}
-        </CardContent>
-      </Card>
-    </div>
+        </PageAside>
+      </PageBody>
+
+      <SaveBar
+        dirty={dirty}
+        saving={saving}
+        error={saveError}
+        onSave={() => void save()}
+        onDiscard={() => {
+          setContent(savedContent)
+          setDirty(false)
+          setSaveError(null)
+        }}
+      >
+        Saved context must be synced before members receive it.
+      </SaveBar>
+    </Page>
   )
 }

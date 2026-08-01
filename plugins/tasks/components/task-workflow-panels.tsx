@@ -1,101 +1,161 @@
 'use client'
 
-import { Button } from "@makinbakin/sdk/ui"
-import { Check, X, RefreshCw, AlertTriangle } from 'lucide-react'
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  DrawerSection,
+  Button,
+  Field,
+  FieldControl,
+  FieldLabel,
+  Textarea,
+} from '@makinbakin/sdk/ui'
+import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { AlertTriangle, Check, Hourglass, RefreshCw, X } from 'lucide-react'
 import { StepOutputViewer } from './step-output-viewer'
 import type { TaskDetail } from './use-task-detail'
 
-const STEP_DOT_COLORS: Record<string, string> = {
-  complete: 'bg-green-400',
-  in_progress: 'bg-blue-400',
-  pending_approval: 'bg-amber-400 animate-pulse',
-  rejected: 'bg-red-400',
-  pending: 'bg-zinc-600',
-  failed: 'bg-red-600',
+const STEP_TONE: Record<string, StatusTone> = {
+  complete: 'success',
+  in_progress: 'accent',
+  pending_approval: 'attention',
+  rejected: 'danger',
+  pending: 'neutral',
+  failed: 'danger',
+  cancelled: 'neutral',
+  missing: 'danger',
 }
 
-/** Read-only workflow step progress row (detail + edit views). */
+function statusTone(status: string): StatusTone {
+  return STEP_TONE[status] ?? 'neutral'
+}
+
+function statusLabel(status: string): string {
+  return status.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())
+}
+
+function WorkflowStepList({
+  definition,
+  instance,
+}: {
+  definition: NonNullable<TaskDetail['wfDefinition']>
+  instance: TaskDetail['wfInstance']
+}) {
+  return (
+    <ol
+      data-workflow-step-list=""
+      data-orientation="vertical"
+      className="m-0 list-none divide-y divide-bakin-border-subtle rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default px-bakin-3"
+    >
+      {definition.steps.map((step, index) => {
+        const state = instance?.stepStates[step.id]
+        const status = state?.status || 'pending'
+        const isGate = step.type === 'gate'
+        return (
+          <li key={step.id} className="flex min-w-0 items-start gap-bakin-3 py-bakin-3">
+            <span
+              aria-hidden="true"
+              className="grid size-bakin-6 shrink-0 place-items-center rounded-bakin-pill border border-bakin-border-subtle bg-bakin-canvas-default font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted"
+            >
+              {index + 1}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+                <span className="font-bakin-typography-weight-semibold text-bakin-text-primary">
+                  {step.label || step.id}
+                </span>
+                <StatusBadge tone={statusTone(status)} variant={status === 'pending' ? 'outline' : 'solid'} size="xs">
+                  {statusLabel(status)}
+                </StatusBadge>
+              </div>
+              <div className="mt-bakin-1 flex min-w-0 flex-wrap items-center gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
+                {isGate ? (
+                  <span className="inline-flex items-center gap-bakin-1">
+                    <Hourglass aria-hidden="true" className="size-bakin-3" />
+                    Approval gate
+                  </span>
+                ) : (
+                  <span>{statusLabel(step.type)}</span>
+                )}
+                {state?.childTaskId && status === 'in_progress' ? (
+                  <span className="break-all font-bakin-typography-family-mono">
+                    Sub-task {state.childTaskId.split('--').pop()?.slice(0, 8) || state.childTaskId.slice(0, 6)}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+/** Read-only vertical workflow progress for detail and edit views. */
 export function WorkflowProgressPanel({ m }: { m: TaskDetail }) {
   const { activeWorkflowId, wfDefinition, wfInstance } = m
   if (!activeWorkflowId || !wfDefinition) return null
   return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-[11px] text-muted-foreground uppercase tracking-wider">Workflow</h3>
-        <span className="text-[11px] font-medium text-muted-foreground bg-muted/50 border border-border rounded-full px-2.5 py-0.5">{activeWorkflowId}</span>
-      </div>
-      <div className="flex items-center gap-1 flex-wrap rounded-lg bg-surface p-3">
-        {wfDefinition.steps.map((step, i) => {
-          const state = wfInstance?.stepStates[step.id]
-          const status = state?.status || 'pending'
-          const dotColor = STEP_DOT_COLORS[status] || STEP_DOT_COLORS.pending
-          const isGate = step.type === 'gate'
-          return (
-            <div key={step.id} className="flex flex-col gap-0.5">
-              <div className="flex items-center gap-1">
-                {i > 0 && <span className="text-zinc-600 text-[10px]">&rarr;</span>}
-                <div className="flex items-center gap-1 group relative">
-                  <span className={`size-2 rounded-full ${dotColor} shrink-0`} />
-                  <span className={`text-[10px] ${status === 'pending_approval' ? 'text-amber-400 font-semibold' : 'text-zinc-500'}`}>
-                    {isGate ? '⏳' : ''}{step.label || step.id}
-                  </span>
-                </div>
-              </div>
-              {state?.childTaskId && status === 'in_progress' && (
-                <span className="text-[10px] text-cyan-400 ml-3">
-                  ↳ sub-task #{state.childTaskId.split('--').pop()?.slice(0, 8) || state.childTaskId.slice(0, 6)}
-                </span>
-              )}
-            </div>
-          )
-        })}
-      </div>
-    </div>
+    <DrawerSection
+      title="Workflow"
+      actions={(
+        <span className="max-w-48 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+          {activeWorkflowId}
+        </span>
+      )}
+    >
+      <WorkflowStepList definition={wfDefinition} instance={wfInstance} />
+    </DrawerSection>
   )
 }
 
-const CHILD_STATUS_COLORS: Record<string, string> = {
-  complete: 'text-green-400',
-  in_progress: 'text-blue-400',
-  pending_approval: 'text-amber-400',
-  failed: 'text-red-400',
-  cancelled: 'text-zinc-500',
-  missing: 'text-red-400',
-}
-
 /**
- * Map fan-out children panel: live rollup + per-child retry/cancel for the
- * active map_workflow step, and a typed-failure banner (map_source_invalid)
- * with a re-run-source affordance for failed instances.
+ * Map fan-out children: live rollup plus retry/cancel controls, or a typed
+ * recovery alert when the source output cannot be mapped.
  */
 export function MapChildrenPanel({ m }: { m: TaskDetail }) {
-  const { wfInstance, wfDefinition, mapStepId, mapChildren, mapActionLoading, handleMapChildAction, failedStep, handleReopenWorkflow } = m
+  const {
+    wfInstance,
+    wfDefinition,
+    mapStepId,
+    mapChildren,
+    mapActionLoading,
+    handleMapChildAction,
+    failedStep,
+    handleReopenWorkflow,
+  } = m
 
-  // Typed-failure banner (the source step is the recovery unit).
   if (failedStep?.code === 'map_source_invalid') {
-    const failedDefStep = wfDefinition?.steps.find(s => s.id === failedStep.stepId)
+    const failedDefStep = wfDefinition?.steps.find(step => step.id === failedStep.stepId)
     const sourceStepId = (failedDefStep as { source?: string } | undefined)?.source?.split('.')[0]
     return (
-      <div className="rounded-lg border-2 border-red-500/30 bg-red-500/5 p-4 space-y-2">
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="size-4 text-red-400" />
-          <h3 className="text-sm font-semibold text-red-400">Fan-out failed</h3>
-          <span className="text-[10px] font-mono text-red-400/70 bg-red-500/10 rounded px-1.5 py-0.5">map_source_invalid</span>
-        </div>
-        {failedStep.error && <p className="text-xs text-zinc-400">{failedStep.error}</p>}
-        <div className="flex justify-end">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={mapActionLoading || !sourceStepId}
-            onClick={() => handleReopenWorkflow(sourceStepId)}
-            className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-          >
-            <RefreshCw className="size-3 mr-1" />
-            Re-run source step
-          </Button>
-        </div>
-      </div>
+      <Alert tone="danger">
+        <AlertTriangle aria-hidden="true" />
+        <AlertTitle>
+          Fan-out failed
+          <code className="ms-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta font-bakin-typography-weight-regular">
+            map_source_invalid
+          </code>
+        </AlertTitle>
+        <AlertDescription>
+          {failedStep.error ? <p>{failedStep.error}</p> : null}
+          <div className="mt-bakin-3 flex justify-end">
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              disabled={mapActionLoading || !sourceStepId}
+              onClick={() => {
+                if (sourceStepId) void handleReopenWorkflow(sourceStepId)
+              }}
+            >
+              <RefreshCw aria-hidden="true" />
+              Re-run source step
+            </Button>
+          </div>
+        </AlertDescription>
+      </Alert>
     )
   }
 
@@ -103,13 +163,12 @@ export function MapChildrenPanel({ m }: { m: TaskDetail }) {
   const entries = wfInstance.stepStates[mapStepId]?.children
   if (!entries || entries.length === 0) return null
 
-  const mapStepLabel = wfDefinition?.steps.find(s => s.id === mapStepId)?.label || mapStepId
-  // Live statuses win over cached entries when available.
-  const liveByIndex = new Map(mapChildren.map(c => [c.index, c.liveStatus]))
-  const rows = entries.map(e => ({ ...e, status: liveByIndex.get(e.index) ?? e.status }))
-  const counts = rows.reduce<Record<string, number>>((acc, r) => {
-    acc[r.status] = (acc[r.status] || 0) + 1
-    return acc
+  const mapStepLabel = wfDefinition?.steps.find(step => step.id === mapStepId)?.label || mapStepId
+  const liveByIndex = new Map(mapChildren.map(child => [child.index, child.liveStatus]))
+  const rows = entries.map(entry => ({ ...entry, status: liveByIndex.get(entry.index) ?? entry.status }))
+  const counts = rows.reduce<Record<string, number>>((accumulator, row) => {
+    accumulator[row.status] = (accumulator[row.status] || 0) + 1
+    return accumulator
   }, {})
   const rollup = [
     `${counts.complete || 0}/${rows.length} complete`,
@@ -118,181 +177,191 @@ export function MapChildrenPanel({ m }: { m: TaskDetail }) {
   ].filter(Boolean).join(' · ')
 
   return (
-    <div className="rounded-lg border border-violet-500/30 bg-violet-500/5 p-3 space-y-2">
-      <div className="flex items-center justify-between">
-        <h3 className="text-[11px] text-violet-400 uppercase tracking-wider font-semibold">{mapStepLabel}</h3>
-        <span className="text-[11px] text-muted-foreground">{rollup}</span>
-      </div>
-      <div className="space-y-1">
+    <DrawerSection
+      title={mapStepLabel}
+      actions={<span className="text-bakin-typography-size-meta text-bakin-text-muted">{rollup}</span>}
+    >
+      <ul className="m-0 list-none divide-y divide-bakin-border-subtle p-0">
         {rows.map((row) => (
-          <div key={row.childTaskId} className="flex items-center gap-2 text-xs">
-            <span className={`font-mono ${CHILD_STATUS_COLORS[row.status] || 'text-zinc-500'}`}>
-              {row.index + 1}/{rows.length}
-            </span>
-            <span className="font-mono text-[10px] text-zinc-500 truncate flex-1">
-              {row.childTaskId}
-            </span>
-            <span className={`text-[10px] ${CHILD_STATUS_COLORS[row.status] || 'text-zinc-500'}`}>
-              {row.status}
-            </span>
-            {row.status !== 'complete' && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-5 px-1.5 text-[10px] text-blue-400 hover:text-blue-300"
-                disabled={mapActionLoading}
-                onClick={() => handleMapChildAction('retry', row.index)}
-              >
-                <RefreshCw className="size-2.5 mr-0.5" /> Retry
-              </Button>
-            )}
-            {(row.status === 'in_progress' || row.status === 'pending_approval') && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-5 px-1.5 text-[10px] text-red-400 hover:text-red-300"
-                disabled={mapActionLoading}
-                onClick={() => handleMapChildAction('cancel', row.index)}
-              >
-                <X className="size-2.5 mr-0.5" /> Cancel
-              </Button>
-            )}
-          </div>
+          <li key={row.childTaskId} className="grid min-w-0 gap-bakin-2 py-bakin-3 first:pt-0">
+            <div className="flex min-w-0 items-center gap-bakin-2">
+              <span className="shrink-0 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                {row.index + 1}/{rows.length}
+              </span>
+              <code className="min-w-0 flex-1 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                {row.childTaskId}
+              </code>
+              <StatusBadge tone={statusTone(row.status)} size="xs">{statusLabel(row.status)}</StatusBadge>
+            </div>
+            {row.status !== 'complete' ? (
+              <div className="flex flex-wrap justify-end gap-bakin-2">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="secondary"
+                  disabled={mapActionLoading}
+                  onClick={() => { void handleMapChildAction('retry', row.index) }}
+                >
+                  <RefreshCw aria-hidden="true" /> Retry
+                </Button>
+                {row.status === 'in_progress' || row.status === 'pending_approval' ? (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="danger"
+                    disabled={mapActionLoading}
+                    onClick={() => { void handleMapChildAction('cancel', row.index) }}
+                  >
+                    <X aria-hidden="true" /> Cancel
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </li>
         ))}
-      </div>
-    </div>
+      </ul>
+    </DrawerSection>
   )
 }
 
-/** Approval-gate action panel (detail + edit views), including prior-step output. */
+/** Approval-gate decision panel, including the prior step's normalized output. */
 export function GateApprovalPanel({ m }: { m: TaskDetail }) {
   const {
-    isGatePending, gateStep, outputLoading, outputUnavailable, priorStepOutput, fetchPriorOutput,
-    showRejectInput, setShowRejectInput, rejectReason, setRejectReason, gateLoading,
-    handleRejectGate, handleApproveGate,
+    isGatePending,
+    gateStep,
+    outputLoading,
+    outputUnavailable,
+    priorStepOutput,
+    fetchPriorOutput,
+    showRejectInput,
+    setShowRejectInput,
+    rejectReason,
+    setRejectReason,
+    gateLoading,
+    handleRejectGate,
+    handleApproveGate,
   } = m
   if (!isGatePending || !gateStep) return null
+
   return (
-    <div className="rounded-lg border-2 border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="size-2 rounded-full bg-amber-400 animate-pulse" />
-        <h3 className="text-sm font-semibold text-amber-400">
-          Approval Gate: {gateStep.label || gateStep.id}
-        </h3>
-      </div>
+    <Alert tone="attention">
+      <Hourglass aria-hidden="true" />
+      <AlertTitle>Approval required: {gateStep.label || gateStep.id}</AlertTitle>
+      <AlertDescription>
+        {outputLoading ? (
+          <p role="status" className="inline-flex items-center gap-bakin-2">
+            <RefreshCw aria-hidden="true" className="size-bakin-3 animate-spin motion-reduce:animate-none" />
+            Loading step output…
+          </p>
+        ) : null}
 
-      {outputLoading && (
-        <div className="flex items-center gap-2 text-xs text-zinc-400">
-          <RefreshCw className="size-3 animate-spin" />
-          Loading step output...
-        </div>
-      )}
-
-      {outputUnavailable && !priorStepOutput && (
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-zinc-500">Step output unavailable</span>
-          <button
-            onClick={() => fetchPriorOutput()}
-            className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1"
-          >
-            <RefreshCw className="size-2.5" /> Retry
-          </button>
-        </div>
-      )}
-
-      {priorStepOutput && (
-        <div>
-          <p className="text-[11px] text-zinc-400 uppercase tracking-wider mb-1.5">Prior Step Output</p>
-          <StepOutputViewer output={priorStepOutput} />
-        </div>
-      )}
-
-      {showRejectInput ? (
-        <div className="space-y-2">
-          <textarea
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="Describe what needs to change..."
-            rows={3}
-            className="w-full rounded-md border border-red-500/30 bg-background px-3 py-2 text-sm text-foreground"
-            autoFocus
-          />
-          <div className="flex gap-2 justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => { setShowRejectInput(false); setRejectReason('') }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleRejectGate}
-              disabled={gateLoading || !rejectReason.trim()}
-            >
-              <X className="size-3 mr-1" />
-              {gateLoading ? 'Rejecting...' : 'Reject'}
+        {outputUnavailable && !priorStepOutput ? (
+          <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+            <span>Step output unavailable.</span>
+            <Button type="button" variant="link" size="xs" onClick={() => { void fetchPriorOutput() }}>
+              <RefreshCw aria-hidden="true" /> Retry
             </Button>
           </div>
-        </div>
-      ) : (
-        <div className="flex gap-2 justify-end">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowRejectInput(true)}
-            disabled={gateLoading}
-            className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-          >
-            <X className="size-3 mr-1" />
-            Reject
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleApproveGate}
-            disabled={gateLoading}
-          >
-            <Check className="size-3 mr-1" />
-            {gateLoading ? 'Approving...' : 'Approve'}
-          </Button>
-        </div>
-      )}
-    </div>
+        ) : null}
+
+        {priorStepOutput ? (
+          <section aria-label="Prior step output" className="mt-bakin-3 grid min-w-0 gap-bakin-2">
+            <h4 className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
+              Prior step output
+            </h4>
+            <StepOutputViewer output={priorStepOutput} />
+          </section>
+        ) : null}
+
+        {showRejectInput ? (
+          <div className="mt-bakin-3 grid min-w-0 gap-bakin-3">
+            <Field name="rejectReason">
+              <FieldLabel requirement="required">Rejection reason</FieldLabel>
+              <FieldControl
+                render={(
+                  <Textarea
+                    value={rejectReason}
+                    onChange={event => setRejectReason(event.target.value)}
+                    placeholder="Describe what needs to change…"
+                    rows={3}
+                    autoFocus
+                  />
+                )}
+              />
+            </Field>
+            <div className="flex flex-wrap justify-end gap-bakin-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowRejectInput(false)
+                  setRejectReason('')
+                }}
+                disabled={gateLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                onClick={() => { void handleRejectGate() }}
+                disabled={gateLoading || !rejectReason.trim()}
+              >
+                <X aria-hidden="true" />
+                {gateLoading ? 'Rejecting…' : 'Reject'}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-bakin-3 flex flex-wrap justify-end gap-bakin-2">
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              onClick={() => setShowRejectInput(true)}
+              disabled={gateLoading}
+            >
+              <X aria-hidden="true" /> Reject
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => { void handleApproveGate() }}
+              disabled={gateLoading}
+            >
+              <Check aria-hidden="true" />
+              {gateLoading ? 'Approving…' : 'Approve'}
+            </Button>
+          </div>
+        )}
+      </AlertDescription>
+    </Alert>
   )
 }
 
-/** Edit-mode inline preview of the selected workflow's steps. */
+/** Edit-mode preview of the selected workflow using the same vertical language. */
 export function WorkflowPreview({ m }: { m: TaskDetail }) {
   const { workflowId, wfDefinition, wfInstance, workflows } = m
   if (!workflowId || !wfDefinition) return null
+  const description = workflows.find(workflow => workflow.filename.replace('.yaml', '') === workflowId)?.description
+
   return (
-    <div className="rounded-lg border border-border bg-surface p-3 space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-medium text-muted-foreground bg-muted/50 border border-border rounded-full px-2.5 py-0.5">{wfDefinition.name || workflowId}</span>
-        <span className="text-[11px] text-muted-foreground">{wfDefinition.steps.length} steps</span>
+    <DrawerSection
+      title="Workflow preview"
+      actions={(
+        <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+          {wfDefinition.steps.length} steps
+        </span>
+      )}
+    >
+      <div className="grid min-w-0 gap-bakin-3">
+        {description ? (
+          <p className="m-0 text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">{description}</p>
+        ) : null}
+        <WorkflowStepList definition={wfDefinition} instance={wfInstance} />
       </div>
-      {(() => {
-        const desc = workflows.find(w => w.filename.replace('.yaml', '') === workflowId)?.description
-        return desc ? <p className="text-xs text-muted-foreground">{desc}</p> : null
-      })()}
-      <div className="flex items-center gap-1 flex-wrap">
-        {wfDefinition.steps.map((step, i) => {
-          const state = wfInstance?.stepStates[step.id]
-          const status = state?.status || 'pending'
-          const dotColor = STEP_DOT_COLORS[status] || STEP_DOT_COLORS.pending
-          const isGate = step.type === 'gate'
-          return (
-            <div key={step.id} className="flex items-center gap-1">
-              {i > 0 && <span className="text-zinc-600 text-[10px]">&rarr;</span>}
-              <span className={`size-2 rounded-full ${dotColor} shrink-0`} />
-              <span className={`text-[10px] ${status === 'pending_approval' ? 'text-amber-400 font-semibold' : 'text-zinc-500'}`}>
-                {isGate ? '⏳' : ''}{step.label || step.id}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-    </div>
+    </DrawerSection>
   )
 }

@@ -13,11 +13,9 @@ import { Route as RootRoute } from './__root'
 function TeamDetailPage() {
   const { teamId } = Route.useParams()
   return (
-    <div className="p-6 flex flex-col h-full min-h-0">
-      <Suspense fallback={null}>
-        <Slot name="page:/team/teams/[teamId]" teamId={teamId} />
-      </Suspense>
-    </div>
+    <Suspense fallback={null}>
+      <Slot name="page:/team/teams/[teamId]" teamId={teamId} />
+    </Suspense>
   )
 }
 

@@ -17,7 +17,7 @@
  * All state (query, tiers, agents, debug) is URL-backed so the page is
  * bookmarkable and browser back/forward round-trip the view.
  */
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ClipboardList,
   MessagesSquare,
@@ -36,24 +36,32 @@ import {
   NotebookText,
   Play,
   Sparkles,
-  ListFilter,
   Microscope,
+  Eraser,
 } from 'lucide-react'
-import { PluginHeader } from "@makinbakin/sdk/components"
-import { FacetFilter, type FacetOption } from "@makinbakin/sdk/components"
-import { AgentFilter } from "@makinbakin/sdk/components"
-import { SearchUnavailable } from "@makinbakin/sdk/components"
-import { Switch } from "@makinbakin/sdk/ui"
-import { useSearch, type SearchResult } from "@makinbakin/sdk/hooks"
-import { useQueryState, useQueryArrayState } from "@makinbakin/sdk/hooks"
-import { useAgentList } from "@makinbakin/sdk/hooks"
+import {
+  AgentAvatar,
+  AgentFilter,
+  FacetFilter,
+  Page,
+  PageBody,
+  PageControls,
+  Pagination,
+  PageHeader,
+  SearchInput,
+  SearchUnavailable,
+  type AgentIdentity,
+  type AgentFilterOption,
+  type FacetOption,
+} from '@makinbakin/sdk/patterns'
+import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
+import { Badge, Banner, Button, Switch } from '@makinbakin/sdk/ui'
+import { useAgentList, useSearch, type SearchResult } from '@makinbakin/sdk/hooks'
 import { TierOverviewCards } from './tier-overview-cards'
 import { MemorySearchResults } from './memory-search-results'
 import { MemoryDetailDrawer } from './memory-detail-drawer'
 import { useRecordDeepLink } from './use-record-deep-link'
 import { MemoryCleanup } from './memory-cleanup'
-import { Button } from "@makinbakin/sdk/ui"
-import { Eraser } from 'lucide-react'
 
 // Tiers hidden unless the page-local Debug toggle is on. See spec §Memory
 // Debug View — turns are 12k+ per-message rows, audits are operational
@@ -152,6 +160,7 @@ function MemoryShellInner() {
   const [kinds, setKinds] = useQueryArrayState('kind')
   const [debugParam, setDebugParam] = useQueryState('debug', '')
   const [mode, setMode] = useQueryState('mode', '')
+  const [pageParam, setPageParam] = useQueryState('memoryPage', '1')
   const cleanupMode = mode === 'cleanup'
   const debug = debugParam === '1'
 
@@ -241,6 +250,31 @@ function MemoryShellInner() {
   // making them guess why "workflow" returned nothing.
   const hiddenByDebug = searchActive && !debug && sourceResults.length > 0 && filtered.length === 0
 
+  const pageSize = 8
+  const showAll = pageParam === 'all'
+  const requestedPage = Number.parseInt(pageParam, 10)
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const page = Number.isFinite(requestedPage)
+    ? Math.min(Math.max(requestedPage, 1), pageCount)
+    : 1
+  const visibleResults = showAll
+    ? filtered
+    : filtered.slice((page - 1) * pageSize, page * pageSize)
+
+  const resultViewKey = [
+    query,
+    tiers.slice().sort().join(','),
+    agent,
+    kinds.slice().sort().join(','),
+    debug ? 'debug' : 'standard',
+  ].join('|')
+  const previousResultViewKey = useRef(resultViewKey)
+  useEffect(() => {
+    if (previousResultViewKey.current === resultViewKey) return
+    previousResultViewKey.current = resultViewKey
+    setPageParam('1')
+  }, [resultViewKey, setPageParam])
+
   // When debug is off, hide turn/audit options — UNLESS one is already
   // selected via URL (bookmarked link, browser-back, etc.). Otherwise the
   // chip stays active but invisible with no way to remove it.
@@ -273,6 +307,38 @@ function MemoryShellInner() {
     return ids
   }, [roster, aggregations])
 
+  const agentOptions = useMemo<AgentFilterOption[]>(() => {
+    const rosterById = new Map(roster.map((item) => [item.id, item]))
+    return agentIds.map((id) => {
+      const item = rosterById.get(id)
+      const label = item?.name || id
+      return {
+        value: id,
+        label,
+        visual: (
+          <AgentAvatar
+            agent={{
+              id,
+              name: label,
+              imageSrc: item?.headshot || null,
+            }}
+            size="sm"
+            decorative
+          />
+        ),
+      }
+    })
+  }, [agentIds, roster])
+
+  const resultAgents = useMemo<AgentIdentity[]>(
+    () => roster.map((item) => ({
+      id: item.id,
+      name: item.name || item.id,
+      imageSrc: item.headshot || null,
+    })),
+    [roster],
+  )
+
   const tierCounts = useMemo(() => {
     const agg = aggregations?.tier ?? []
     return Object.fromEntries(agg.map((a) => [a.value, a.count]))
@@ -297,110 +363,136 @@ function MemoryShellInner() {
     return [...KIND_OPTIONS, ...extras]
   }, [aggregations])
 
+  const recordFeedback = record.error ? (
+    <Banner
+      tone="danger"
+      title="That memory record could not be opened"
+      description={`${record.error}${searchActive ? ' Showing the closest matches below.' : ''}`}
+      action={<Button variant="outline" size="sm" onClick={record.close}>Dismiss</Button>}
+      data-testid="memory-record-error"
+    />
+  ) : undefined
+
   return (
-    <div className="flex h-full flex-col gap-6 p-6">
-      <PluginHeader
+    <Page>
+      <PageHeader
         title="Memory"
-        count={filtered.length}
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: 'Search across every tier…',
-        }}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant={cleanupMode ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setMode(cleanupMode ? '' : 'cleanup')}
-            >
-              <Eraser className="size-3.5" /> Cleanup
-            </Button>
-            <label
-              className="flex items-center gap-2 px-2 h-8 rounded-md text-xs cursor-pointer select-none hover:bg-accent/50 transition-colors"
-              title={debug ? 'Hide turns + audit' : 'Include turns + audit'}
-            >
-              <Microscope className="size-3.5 text-muted-foreground" />
-              <span className="text-muted-foreground">System Logs</span>
-              <Switch
-                checked={debug}
-                onCheckedChange={(checked: boolean) => setDebugParam(checked ? '1' : '')}
-                size="sm"
-              />
-            </label>
-          </div>
-        }
+        description="Search what your agents remember, inspect saved context, and clean up stale or unnecessary records."
+        meta={<Badge size="xs" variant="outline">{visibleResults.length} shown</Badge>}
+        controlsLabel="Memory search"
+        controls={(
+          <SearchInput
+            align="end"
+            label="Memory search"
+            value={query}
+            onValueChange={setQuery}
+            placeholder="Search memory…"
+            busy={searchLoading}
+            mobileFullWidth
+            className="@3xl/page-header:w-[22rem] @3xl/page-header:shrink-0"
+          />
+        )}
+        actionsLabel="Memory actions"
+        actions={(
+          <Button
+            variant={cleanupMode ? 'secondary' : 'outline'}
+            onClick={() => setMode(cleanupMode ? '' : 'cleanup')}
+          >
+            <Eraser />
+            {cleanupMode ? 'Close cleanup' : 'Cleanup'}
+          </Button>
+        )}
       />
 
       {cleanupMode ? (
-        <MemoryCleanup />
+        <PageBody label="Memory cleanup">
+          <MemoryCleanup />
+        </PageBody>
       ) : (
-      <>
-      <TierOverviewCards />
+        <>
+          <TierOverviewCards includeSystemLogs={debug} />
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <ListFilter className="size-3.5 text-muted-foreground shrink-0" />
-        <FacetFilter
-          label="Tier"
-          options={tierOptions}
-          selected={tiers}
-          onChange={setTiers}
-          counts={tierCounts}
-        />
-        <AgentFilter
-          agentIds={agentIds}
-          value={agent || 'all'}
-          onChange={(id) => setAgent(id === 'all' ? '' : id)}
-          showIcon={false}
-        />
-        {kindFacetVisible && (
-          <FacetFilter
-            label="Kind"
-            options={kindOptions}
-            selected={kinds}
-            onChange={setKinds}
-            counts={kindCounts}
+          <PageControls
+            label="Memory filters"
+            actions={(
+              <div
+                role="group"
+                aria-label="System log visibility"
+                className="flex h-bakin-8 select-none items-center gap-bakin-2 rounded-bakin-control px-bakin-2 font-bakin-typography-weight-semibold text-bakin-text-muted"
+                title={debug ? 'Hide turns and audit records' : 'Include turns and audit records'}
+              >
+                <Microscope className="size-bakin-4" aria-hidden="true" />
+                <span className="text-bakin-typography-size-body">System Logs</span>
+                <Switch
+                  checked={debug}
+                  onCheckedChange={(checked: boolean) => setDebugParam(checked ? '1' : '')}
+                  size="sm"
+                  aria-label={debug ? 'Hide system logs' : 'Include system logs'}
+                />
+              </div>
+            )}
+          >
+            <FacetFilter
+              label="Tier"
+              options={tierOptions}
+              selected={tiers}
+              onChange={setTiers}
+              counts={tierCounts}
+            />
+            <AgentFilter
+              options={agentOptions}
+              value={agent || 'all'}
+              onValueChange={(id) => setAgent(id === 'all' ? '' : id)}
+              compact
+            />
+            {kindFacetVisible ? (
+              <FacetFilter
+                label="Kind"
+                options={kindOptions}
+                selected={kinds}
+                onChange={setKinds}
+                counts={kindCounts}
+              />
+            ) : null}
+          </PageControls>
+
+          <PageBody
+            label="Memory results"
+            busy={loading && filtered.length > 0}
+            feedback={recordFeedback}
+            state={searchUnavailable ? <SearchUnavailable retry={retry} scope="page" /> : undefined}
+          >
+            <MemorySearchResults
+              results={visibleResults}
+              agents={resultAgents}
+              loading={loading}
+              error={error}
+              query={query}
+              hiddenByDebug={hiddenByDebug}
+              onEnableDebug={() => setDebugParam('1')}
+              onClear={() => setQuery('')}
+              onSelect={record.open}
+            />
+            <Pagination
+              ariaLabel="Memory results pagination"
+              page={page}
+              pageSize={pageSize}
+              showAll={showAll}
+              total={filtered.length}
+              onPageChange={(nextPage) => setPageParam(String(nextPage))}
+              onShowAllChange={(nextShowAll) => setPageParam(nextShowAll ? 'all' : '1')}
+            />
+          </PageBody>
+
+          <MemoryDetailDrawer
+            result={record.row}
+            agents={resultAgents}
+            open={record.row !== null}
+            onOpenChange={(open) => { if (!open) record.close() }}
           />
-        )}
-      </div>
-
-      {record.error && (
-        <div
-          className="flex items-center justify-between rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          data-testid="memory-record-error"
-        >
-          <span>
-            {record.error}
-            {searchActive && ' Showing the closest matches below.'}
-          </span>
-          <button type="button" className="text-xs underline" onClick={record.close}>
-            Dismiss
-          </button>
-        </div>
+        </>
       )}
-
-      {searchUnavailable ? (
-        <SearchUnavailable retry={retry} />
-      ) : (
-        <MemorySearchResults
-          results={filtered}
-          loading={loading}
-          error={error}
-          query={query}
-          hiddenByDebug={hiddenByDebug}
-          onEnableDebug={() => setDebugParam('1')}
-          onSelect={record.open}
-        />
-      )}
-
-      <MemoryDetailDrawer
-        result={record.row}
-        open={record.row !== null}
-        onOpenChange={(open) => { if (!open) record.close() }}
-      />
-      </>
-      )}
-    </div>
+    </Page>
   )
 }
 

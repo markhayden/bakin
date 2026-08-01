@@ -27,7 +27,7 @@ CP2 and CP3 both depend only on CP1. CP4–CP6 touch disjoint files and can land
 **Files:** `src/core/health-acks.ts` (new), `src/core/doctor-report-cache.ts`, `packages/sdk/src/types/health.ts`, `plugins/health/lib/route-schemas.ts`, tests.
 
 Tasks:
-1. `health-acks.ts`: flat store at `~/.bakin/health/acks.json` (engine-watch pattern: sync fs, ENOENT→`{}`, validated, corrupt→typed error the projection surfaces as evidence_gap—not a crash). API: `getAckRecords()`, `setAck(record)`, `clearAck(incidentId)`, `resolveAckState(incident, record, now)` — the ONE re-fire comparison: 
+1. `health-acks.ts`: flat store at `~/.bakin/health/acks.json` (engine-watch pattern: sync fs, ENOENT→`{}`, validated, corrupt→typed error the projection surfaces as evidence_gap—not a crash). API: `getAckRecords()`, `setAck(record)`, `clearAck(incidentId)`, `resolveAckState(incident, record, now)` — the ONE re-fire comparison:
    - record expired (`until < now`) → none (record pruned lazily)
    - ack: effective tier order > `tierAtAck` OR sorted-resource-id fingerprint differs → none (pruned) ; else `'acked'`
    - snooze (`action_required`): any change in `{status, class, observationIds, evidenceSha}` → none ; else `'snoozed'`
