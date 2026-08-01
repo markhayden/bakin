@@ -18,11 +18,11 @@
     ]
   },
   "summary": {
-    "total": 101,
+    "total": 102,
     "byKind": {
       "host-route": 26,
       "plugin-route": 10,
-      "plugin-slot": 30,
+      "plugin-slot": 31,
       "plugin-template": 2,
       "shared-component": 33,
       "sdk-ui-export": 0
@@ -1488,7 +1488,7 @@
       },
       "sourcePath": "bakin-bits-official/plugins/messaging/client.tsx",
       "symbols": [
-        "PlansBadgeProvider"
+        "MessagingBadgeProviders"
       ],
       "exportStatus": "not-applicable",
       "classification": "embedded-surface",
@@ -1501,7 +1501,7 @@
         {
           "type": "client-registration",
           "path": "bakin-bits-official/plugins/messaging/client.tsx",
-          "detail": "registerPlugin slots \"nav-badge-providers\" -> PlansBadgeProvider"
+          "detail": "registerPlugin slots \"nav-badge-providers\" -> MessagingBadgeProviders"
         }
       ]
     },
@@ -1533,6 +1533,36 @@
           "type": "client-registration",
           "path": "plugins/models/client.tsx",
           "detail": "registerPlugin slots \"page:/models\" -> ModelsPage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:projects:nav-badge-providers",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "projects"
+      },
+      "identity": {
+        "slot": "nav-badge-providers"
+      },
+      "sourcePath": "bakin-bits-official/plugins/projects/client.tsx",
+      "symbols": [
+        "BrainstormBadgeProvider"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "embedded-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "bakin-bits-official/plugins/projects/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/projects/client.tsx",
+          "detail": "registerPlugin slots \"nav-badge-providers\" -> BrainstormBadgeProvider"
         }
       ]
     },
