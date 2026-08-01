@@ -14,6 +14,9 @@ import {
   SelectTrigger,
   SelectValue,
   ShimmerText,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
   type AvatarSize,
 } from '@bakin/ui'
 
@@ -60,6 +63,13 @@ export interface AgentAvatarProps {
   status?: AgentPresenceStatus
   /** Hide redundant identity semantics when an adjacent label already names the agent. */
   decorative?: boolean
+  /**
+   * Hover card with a larger portrait and the agent's name — on by default so
+   * identity is inspectable wherever an avatar renders. Hover-only: the
+   * avatar's aria-label already carries the name for assistive tech, so the
+   * card adds no tab stop. Disable where the interaction would be noise.
+   */
+  tooltip?: boolean
   className?: string
 }
 
@@ -70,12 +80,13 @@ export function AgentAvatar({
   showStatus = false,
   status,
   decorative = false,
+  tooltip = true,
   className,
 }: AgentAvatarProps) {
   const statusLabel = showStatus && status ? presence[status].label : null
   const label = statusLabel ? `${agent.name}, ${statusLabel}` : agent.name
   const fallbackColor = safePresentationColor(agent.color)
-  return (
+  const core = (
     <span
       data-agent-avatar=""
       data-agent-id={agent.id}
@@ -83,7 +94,7 @@ export function AgentAvatar({
       role={decorative ? undefined : 'img'}
       aria-hidden={decorative || undefined}
       aria-label={decorative ? undefined : label}
-      className={`relative inline-flex shrink-0 items-center justify-center align-middle leading-none ${className ?? ''}`}
+      className={`relative inline-flex shrink-0 items-center justify-center align-middle leading-none ${tooltip ? 'cursor-help' : ''} ${className ?? ''}`}
     >
       <Avatar size={size}>
         {agent.imageSrc ? <AvatarImage src={agent.imageSrc} alt="" className="object-cover object-top" /> : null}
@@ -102,6 +113,21 @@ export function AgentAvatar({
         ) : null}
       </Avatar>
     </span>
+  )
+  if (!tooltip) return core
+  return (
+    <Tooltip>
+      <TooltipTrigger render={core} />
+      <TooltipContent data-agent-avatar-card="">
+        <span className="flex items-center gap-bakin-3">
+          <AgentAvatar agent={agent} size="lg" decorative tooltip={false} />
+          <span className="font-bakin-typography-weight-semibold">
+            {agent.name}
+            {statusLabel ? <span className="ml-bakin-2 font-bakin-typography-weight-regular opacity-80">{statusLabel}</span> : null}
+          </span>
+        </span>
+      </TooltipContent>
+    </Tooltip>
   )
 }
 

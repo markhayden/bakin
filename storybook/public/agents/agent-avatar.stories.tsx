@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect } from 'storybook/test'
+import { expect, within } from 'storybook/test'
 
 import { AgentAvatar, AgentDot, type AgentIdentity } from '@makinbakin/sdk/patterns'
 
@@ -117,5 +117,30 @@ export const SizesAndPresence = {
   play: async ({ canvas }) => {
     await expect(canvas.getByLabelText('Release Operations With A Deliberately Long Name, Working')).toBeVisible()
     await expect(canvas.getByRole('img', { name: 'Needs attention' })).toBeVisible()
+  },
+} satisfies Story
+
+export const IdentityHoverCard = {
+  render: () => (
+    <StoryStage
+      eyebrow="Agents / identity"
+      title="Every avatar is inspectable on hover"
+      description="Hovering any avatar reveals a larger portrait and the agent's name — no tab stop is added, and the avatar's accessible name is unchanged. Pass tooltip={false} where the interaction would be noise (dense pickers, decorative clusters)."
+    >
+      <StoryCluster>
+        <AgentAvatar agent={{ id: 'maya', name: 'Maya Chen', initials: 'MC', color: 'var(--bakin-color-data-series-2)' }} size="sm" />
+        <AgentAvatar agent={{ id: 'rolo', name: 'Rolo', initials: 'RO' }} size="sm" tooltip={false} />
+      </StoryCluster>
+    </StoryStage>
+  ),
+  play: async ({ canvas, userEvent }) => {
+    const withCard = canvas.getByRole('img', { name: 'Maya Chen' })
+    await userEvent.hover(withCard)
+    const card = await within(document.body).findByText('Maya Chen', { selector: '[data-agent-avatar-card] *' })
+    await expect(card).toBeVisible()
+    await userEvent.unhover(withCard)
+    // Opted-out avatar has no tooltip trigger wiring.
+    const plain = canvas.getByRole('img', { name: 'Rolo' })
+    await expect(plain).not.toHaveAttribute('data-popup-open')
   },
 } satisfies Story
