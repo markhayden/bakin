@@ -31,6 +31,16 @@ new dirty surfaces use the complete guard.
 
 Do not copy host components into a plugin. If the same need recurs across official or third-party plugins, propose it as an SDK contract with its public story, interaction test, accessibility coverage, and responsive states.
 
+:::note[Vertical rhythm: status hugs, content breathes]
+When a line sits under a title, its gap encodes what it is. Status and
+metadata annotations (presence labels, timestamps, counts) hug their title —
+no extra margin, line-height alone separates them. Content previews (message
+snippets, descriptions, body excerpts) breathe — one spacing step
+(`mt-bakin-2`) below the title. Tight for annotation, spaced for content:
+readers parse a hugging line as *about* the title and a spaced line as its
+own material.
+:::
+
 ## Page and Flow Layout
 
 Use `PageShell`, `Stack`, and `Inline` from `@makinbakin/sdk/layout` for routine page composition. They expose finite semantic choices instead of host Tailwind classes:
