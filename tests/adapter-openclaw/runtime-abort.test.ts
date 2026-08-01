@@ -41,6 +41,7 @@ mock.module('../../packages/core/src/logger', loggerMock)
 import { createOpenClawRuntimeAdapter } from '@bakin/adapter-openclaw'
 import { RuntimeError } from '../../packages/core/src/adapters/runtime/errors'
 import { openClawCliSessionId, openClawExplicitSessionKey } from '../../packages/adapter-openclaw/src/session-store'
+import { waitUntil } from '../helpers/wait'
 
 afterAll(() => rmSync(testHome, { recursive: true, force: true }))
 
@@ -98,8 +99,9 @@ describe('messaging.send with MessageArgs.signal', () => {
       signal: controller.signal,
     })
     pending.catch(() => {})
-    // Let the send reach the hanging gateway request before aborting.
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    // The abort is only meaningful once the frame is actually in flight.
+    await waitUntil(() => captured.some((c) => c.method === 'agent'),
+      { label: 'the agent frame to reach the hanging gateway request' })
     controller.abort('task-deleted')
 
     expect.assertions(5)
@@ -131,7 +133,8 @@ describe('messaging.send with MessageArgs.signal', () => {
       signal: controller.signal,
     })
     pending.catch(() => {})
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await waitUntil(() => captured.some((c) => c.method === 'agent'),
+      { label: 'the agent frame to be sent' })
     const agentFrames = captured.filter((c) => c.method === 'agent')
     expect(agentFrames.length).toBe(1)
     const cliSessionId = openClawCliSessionId('a1', 'task:t9:d1')
@@ -273,7 +276,8 @@ describe('messaging.send with MessageArgs.signal', () => {
 
     const pending = adapter.messaging.send({ agentId: 'a1', content: 'unthreaded', signal: controller.signal })
     pending.catch(() => {})
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await waitUntil(() => captured.some((c) => c.method === 'agent'),
+      { label: 'the unthreaded send to reach the gateway before the sweep aborts it' })
     controller.abort('orphan-sweep')
 
     expect.assertions(3)

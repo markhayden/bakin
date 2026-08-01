@@ -41,6 +41,7 @@ mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 import { handleGatewayRpcRequest, resetGatewayObservations } from '../../dev/imitation-crab/gateway'
+import { waitUntil } from '../helpers/wait'
 
 afterAll(() => {
   rmSync(tempDir, { recursive: true, force: true })
@@ -73,7 +74,8 @@ describe('openclaw 2026.6.11 workaround regressions', () => {
         },
         { requestId: 'req-defect', push: (frame) => frames.push(frame as Frame) },
       )
-      await new Promise((r) => setTimeout(r, 50))
+      await waitUntil(() => frames.some((f) => f.type === 'res'),
+        { label: 'the ack frame to land' })
 
       // The ack omits sessionKey — the run was never abort-registered.
       const ack = frames.find((f) => f.type === 'res')
@@ -115,7 +117,8 @@ describe('openclaw 2026.6.11 workaround regressions', () => {
         },
         { requestId: 'req-workaround', push: (frame) => frames.push(frame as Frame) },
       )
-      await new Promise((r) => setTimeout(r, 50))
+      await waitUntil(() => frames.some((f) => f.type === 'res'),
+        { label: 'the ack frame to land' })
 
       const ack = frames.find((f) => f.type === 'res')
       expect(ack?.payload).toMatchObject({

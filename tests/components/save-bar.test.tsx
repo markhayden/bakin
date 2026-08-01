@@ -12,6 +12,7 @@ mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir,
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 
 import { SaveBar } from '../../src/components/save-bar'
+import { settleFor } from '../helpers/wait'
 
 afterEach(() => cleanup())
 
@@ -50,8 +51,10 @@ describe('SaveBar', () => {
     rerender(<SaveBar dirty={false} saving={false} onSave={() => {}} onDiscard={() => {}} />)
     expect(screen.getByText('Saved ✓')).toBeDefined()
     expect(document.querySelector('[data-savebar]')?.getAttribute('data-savebar-state')).toBe('saved')
+    // The auto-dismiss is a 2s wall-clock timer inside the component; the
+    // elapsed window IS the behaviour under test.
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 2100))
+      await settleFor(2100, 'outlast the SaveBar 2s auto-dismiss timer')
     })
     expect(document.querySelector('[data-savebar]')).toBeNull()
   })

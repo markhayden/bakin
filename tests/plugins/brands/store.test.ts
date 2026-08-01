@@ -50,6 +50,7 @@ import {
 } from '../../../plugins/brands/lib/store'
 import { computeBrandFingerprint } from '../../../plugins/brands/lib/fingerprint'
 import { scaffoldBrand } from '../../../plugins/brands/lib/scaffold'
+import { settleFor } from '../../helpers/wait'
 
 beforeEach(() => {
   rmSync(join(testDir, 'brands'), { recursive: true, force: true })
@@ -93,7 +94,7 @@ describe('brand store CRUD', () => {
 
   it('saveManifest replaces validated content, preserves createdAt, bumps updatedAt', async () => {
     const created = createBrand({ id: 'acme', name: 'Acme' })
-    await new Promise((r) => setTimeout(r, 2))
+    await settleFor(2, 'advance the clock so updatedAt is provably later than createdAt')
     const saved = saveManifest({ ...created, name: 'Acme Inc', rules: ['Never use emojis'] })
     expect(saved.name).toBe('Acme Inc')
     expect(saved.createdAt).toBe(created.createdAt)

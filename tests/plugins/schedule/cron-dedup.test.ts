@@ -60,6 +60,7 @@ mock.module('../../../src/core/audit', () => ({
 let createDelayMs = 0
 let createdTasks: string[] = []
 const mockCreateTask = mock(async (opts?: unknown) => {
+  // Simulated create latency — the delay IS the condition under test (fire dedup).
   if (createDelayMs > 0) await new Promise((r) => setTimeout(r, createDelayMs))
   // Honor the caller-minted id (runClaimedFire now pre-mints task ids).
   const id = (opts as { id?: string })?.id ?? `task-${createdTasks.length + 1}`

@@ -33,6 +33,7 @@ mock.module('../../packages/core/src/logger', loggerMock)
 import { createEngineStatusProbe, parsePsCpuTime, scanLogDelta } from '../../packages/adapter-antfly/src/engine-status'
 import { servicePaths, type ServiceIo } from '../../packages/adapter-antfly/src/service'
 import { DEFAULT_SETTINGS } from '../../packages/adapter-antfly/src/defaults'
+import { settleFor } from '../helpers/wait'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -157,7 +158,9 @@ describe('createEngineStatusProbe', () => {
     expect(first!.pid).toBe(4242)
     expect(first!.cpuUtilization).toBeNull()
 
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    // CPU utilization is sampled BETWEEN probes, so real elapsed time is the
+    // input under test — there is no condition that could be polled instead.
+    await settleFor(20, 'let real time elapse between probes so CPU utilization can be sampled')
     const second = await probe()
     expect(second!.cpuUtilization).toBeGreaterThan(0)
     expect(Number.isFinite(second!.cpuUtilization!)).toBe(true)

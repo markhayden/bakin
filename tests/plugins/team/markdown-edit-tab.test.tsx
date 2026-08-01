@@ -38,6 +38,7 @@ mock.module('@makinbakin/sdk/components', () => ({
 }))
 
 import { MarkdownEditTab } from '../../../plugins/team/components/markdown-edit-tab'
+import { settleFor } from '../../helpers/wait'
 
 const fetchCalls: Array<{ url: string; init?: RequestInit }> = []
 
@@ -138,8 +139,7 @@ describe('MarkdownEditTab', () => {
     render(<MarkdownEditTab agentId="pixel" filename="SOUL.md" initialContent="hello" />)
     fireEvent.click(screen.getByLabelText('Edit markdown'))
     fireEvent.keyDown(window, { key: 's', metaKey: true })
-    // Wait briefly so any spurious fetch would have fired.
-    await new Promise((r) => setTimeout(r, 30))
+    await settleFor(30, 'cmd-S outside edit mode must NOT save — a fetch never firing is the assertion')
     expect(fetchCalls.length).toBe(0)
   })
 })

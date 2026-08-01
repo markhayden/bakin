@@ -85,6 +85,7 @@ import {
 import { invalidateSkillCache } from '@bakin/workflows/lib/skill-loader'
 import { setEventBus } from '@bakin/workflows/lib/notifications'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
+import { settleFor, waitUntil } from '../../helpers/wait'
 
 describe('runtime — gates', () => {
 
@@ -243,8 +244,9 @@ describe('runtime — gates', () => {
       createInstance('task-gate-dur', 'gate', testDir)
       completeStep('task-gate-dur', 'write-copy', { text: 'hello' }, undefined, testDir)
 
-      // Wait briefly so durationMs is non-zero
-      await new Promise(r => setTimeout(r, 5))
+      // A real elapsed window is the point: durationMs is computed from the
+      // wall clock, so there is no condition to poll for.
+      await settleFor(5, 'let real time pass so the gate records a non-zero durationMs')
 
       const result = approveGate('task-gate-dur', 'review-gate', {
         contentDir: testDir,
@@ -298,7 +300,8 @@ describe('runtime — gates', () => {
       expect(instance.stepStates['review-gate'].status).toBe('pending')
       expect(instance.stepStates.publish.status).toBe('pending')
 
-      await new Promise(resolve => setTimeout(resolve, 0))
+      await waitUntil(() => addTaskLogHook.mock.calls.length > 0,
+        { label: 'the task-log hook to fire after the gate reopens' })
       expect(addTaskLogHook).toHaveBeenCalledWith(expect.objectContaining({
         identifier: 'task-reopen-gate',
         author: 'workflow',

@@ -31,6 +31,7 @@ import '../rtl-settle'
 import { settleReact } from '../rtl-settle'
 import { emitPluginEvent } from '@makinbakin/sdk/hooks'
 import { useLiveActivity, chipLabel, liveActivityTs, type LiveActivity } from '../../plugins/tasks/hooks/use-live-activity'
+import { settleFor } from '../helpers/wait'
 
 let latest: Record<string, LiveActivity> = {}
 function Probe() {
@@ -95,7 +96,7 @@ describe('useLiveActivity', () => {
   it('drops stale events entirely — replay can never re-chip', async () => {
     render(<Probe />)
     emitActivity({ ts: new Date(Date.now() - 60_000).toISOString() })
-    await new Promise((r) => setTimeout(r, 20))
+    await settleFor(20, 'a stale-timestamped activity must NOT be recorded — its absence is the assertion')
     expect(latest['t-1']).toBeUndefined()
   })
 
@@ -103,7 +104,7 @@ describe('useLiveActivity', () => {
     render(<Probe />)
     emitActivity({ chunk: undefined })
     emitActivity({ taskId: undefined, childTaskId: undefined })
-    await new Promise((r) => setTimeout(r, 20))
+    await settleFor(20, 'malformed activity events must NOT be recorded — an empty map is the assertion')
     expect(Object.keys(latest)).toHaveLength(0)
   })
 

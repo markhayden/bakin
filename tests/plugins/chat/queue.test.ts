@@ -57,7 +57,7 @@ import { createChat, readTranscript, readQueue } from '../../../plugins/chat/lib
 import { restoreQueues, startChatTurn, waitForTurn, isTurnInFlight } from '../../../plugins/chat/lib/stream-bridge'
 import { activatePlugin, callRoute, findRoute, type ActivatedPlugin } from '../test-helpers'
 import type { ChatChunk, MessageArgs } from '../../../packages/core/src/adapters/runtime/concepts'
-import { waitUntil } from '../../helpers/wait'
+import { settleFor, waitUntil } from '../../helpers/wait'
 
 let activated: ActivatedPlugin
 
@@ -233,7 +233,7 @@ describe('chat queue — management', () => {
     expect(res.status).toBe(200)
     release()
     await settleAll(chat.id)
-    await new Promise((r) => setTimeout(r, 30))
+    await settleFor(30, 'the orphaned message must NOT become a turn — no drain arriving is the assertion')
     expect(existsSync(queueFile)).toBe(false)
     // The orphaned message never became a turn.
     expect(seenArgs.filter((a) => a.content.includes('orphan'))).toHaveLength(0)

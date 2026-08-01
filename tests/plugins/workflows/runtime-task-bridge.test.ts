@@ -78,6 +78,7 @@ import {
 import { invalidateSkillCache } from '@bakin/workflows/lib/skill-loader'
 import { setEventBus } from '@bakin/workflows/lib/notifications'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
+import { waitUntil } from '../../helpers/wait'
 
 describe('runtime — task-bridge', () => {
 
@@ -102,7 +103,8 @@ describe('runtime — task-bridge', () => {
       completeStep('task-ledger-done', 'step-two', { r: 2 }, undefined, testDir)
       completeStep('task-ledger-done', 'step-three', { r: 3 }, undefined, testDir)
 
-      await new Promise(resolve => setTimeout(resolve, 0))
+      await waitUntil(() => syncLedgerForStoreMoveHook.mock.calls.length > 0,
+        { label: 'the ledger sync hook to fire for the completed step' })
       expect(syncLedgerForStoreMoveHook).toHaveBeenCalledWith(
         'task-ledger-done', 'done', 'workflow', expect.anything(),
       )
@@ -123,7 +125,8 @@ describe('runtime — task-bridge', () => {
       })
       expect(result.success).toBe(true)
 
-      await new Promise(resolve => setTimeout(resolve, 0))
+      await waitUntil(() => syncLedgerForStoreMoveHook.mock.calls.length > 0,
+        { label: 'the ledger sync hook to fire for the reopened task' })
       expect(syncLedgerForStoreMoveHook).toHaveBeenCalledWith(
         'task-ledger-reopen', 'inProgress', 'workflow', expect.anything(),
       )

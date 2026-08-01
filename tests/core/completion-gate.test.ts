@@ -80,6 +80,7 @@ const mockMoveTask = mock(async (taskId: unknown, to: unknown) => {
       throw new Error('Invalid transition: done -> done. Allowed: archived, todo, inProgress')
     }
   }
+  // Simulated store latency — the delay IS the condition under test (racing moves).
   if (moveDelayMs > 0) await new Promise((r) => setTimeout(r, moveDelayMs))
 })
 const mockAddTaskLog = mock((..._args: unknown[]) => Promise.resolve())

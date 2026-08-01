@@ -47,6 +47,7 @@ import {
 import { createMockSearchAdapter } from '../../packages/core/src/adapters/search/testing'
 import { closeAllDbs } from '../../packages/core/src/storage/db'
 import type { SearchAdapter } from '../../packages/core/src/adapters/search'
+import { settleFor } from '../helpers/wait'
 
 afterAll(() => {
   closeAllDbs()
@@ -554,8 +555,8 @@ describe('2026-07-21 redesign: identity, progress-aware converge, chain split', 
       return r
     })
 
-    // Give A time to clear its backfill (which DOES hold the chain).
-    await new Promise((resolve) => setTimeout(resolve, 300))
+    // A's backfill holds the chain; the overlap window is the point of the test.
+    await settleFor(300, "let table A's backfill clear while B's lifecycle runs concurrently")
 
     // Table B's whole lifecycle completes while A is still converging.
     const b = await ensureTable(adapter, makeDef({ logical: 'bakin_other' }), 'fp-a')

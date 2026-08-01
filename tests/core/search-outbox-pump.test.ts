@@ -39,6 +39,7 @@ import { resetOutboxForTests } from '../../packages/core/src/search/outbox'
 import { SearchEngineUnavailableError } from '../../packages/core/src/adapters/search/errors'
 import { createMockSearchAdapter } from '../../packages/core/src/adapters/search/testing'
 import { closeAllDbs } from '../../packages/core/src/storage/db'
+import { settleFor } from '../helpers/wait'
 
 afterAll(() => {
   stopOutboxPump()
@@ -75,7 +76,7 @@ describe('outbox pump', () => {
     // simulate the safety tick (clears the pump gate) after the row-level
     // transient backoff (1s first step) has elapsed — ticks deliberately
     // respect per-row backoff so deep-backoff rows aren't hammered
-    await new Promise((resolve) => setTimeout(resolve, 1_100))
+    await settleFor(1_100, 'outlast the 1s transient backoff step — ticks respect per-row backoff by design')
     const pumpState = (globalThis as Record<string, unknown>).__bakinSearchOutboxPump as { nextAttemptAt: number }
     pumpState.nextAttemptAt = 0
     const landed = await nudgeOutboxPump()

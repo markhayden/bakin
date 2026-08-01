@@ -32,7 +32,7 @@ import type {
   TurnOutcome,
 } from '../../src/core/conversation-turns'
 import type { ChatChunk, MessageArgs } from '../../packages/core/src/adapters/runtime/concepts'
-import { waitUntil } from '../helpers/wait'
+import { settleFor, waitUntil } from '../helpers/wait'
 
 // Dynamic import AFTER the mock.module calls — a hoisted static import would
 // bind the engine's module-level logger to the real one before the mock lands.
@@ -613,10 +613,8 @@ describe('conversation turn service', () => {
     })
     expect(service.inflightPreview('t18')).toBeNull()
     expect(await service.start(h.ctx, 't18', 'go')).toBe('accepted')
-    // Wait for both text chunks to land before peeking.
-    for (let i = 0; i < 50 && service.inflightPreview('t18') !== 'stream so far'; i++) {
-      await new Promise((r) => setTimeout(r, 2))
-    }
+    await waitUntil(() => service.inflightPreview('t18') === 'stream so far',
+      { label: 'both text chunks to land in the in-flight preview' })
     expect(service.inflightPreview('t18')).toBe('stream so far')
     release()
     await service.waitFor('t18')
@@ -809,7 +807,7 @@ describe('conversation turn service — pending queue', () => {
     release()
     await service.waitFor('q5')
     // Cleared queue: nothing drains — exactly one runtime call ever.
-    await new Promise((r) => setTimeout(r, 20))
+    await settleFor(20, 'a cleared queue must NOT drain — a second runtime call never arriving is the assertion')
     expect(h.seenArgs).toHaveLength(1)
   })
 
@@ -834,7 +832,7 @@ describe('conversation turn service — pending queue', () => {
     })
     expect(await service.start(h.ctx, 'q7', 'live')).toBe('accepted')
     service.restore(h.ctx, 'q7', [{ id: 'r3', ts: new Date().toISOString(), content: 'parked', agentId: 'main' }])
-    await new Promise((r) => setTimeout(r, 20))
+    await settleFor(20, 'a restored parked item must NOT be dispatched — its absence is the assertion')
     expect(h.seenArgs.filter((a) => a.content === 'parked')).toHaveLength(0)
     release()
     await service.waitFor('q7')
@@ -855,7 +853,7 @@ describe('conversation turn service — pending queue', () => {
     await waitUntil(() => service.listQueued('q8').length === 0, { label: 'queue dropped' })
     expect(persisted[persisted.length - 1]).toMatchObject({ key: 'q8', items: [] })
     // Only the original call — the drained turn never ran.
-    await new Promise((r) => setTimeout(r, 20))
+    await settleFor(20, 'the drained turn must NOT run — no second runtime call is the assertion')
     expect(h.seenArgs).toHaveLength(1)
     expect((h.rows.get('q8') ?? []).filter((r) => r.kind === 'user')).toHaveLength(1)
   })
