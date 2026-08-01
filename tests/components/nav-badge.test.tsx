@@ -45,20 +45,25 @@ describe('NavBadge', () => {
     expect(renderToStaticMarkup(<NavBadge badge={{ tone: 'info' }} />)).toContain('bg-bakin-signal-info')
   })
 
-  it('applies the attention palette by default', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1 }} />)).toContain('bg-bakin-signal-highlight/20')
+  // Counted pills ride the kit Badge (size xs, solid) — tone maps to the
+  // Badge tone vocabulary and the data attributes are the contract.
+  it('applies the attention tone by default', () => {
+    const html = renderToStaticMarkup(<NavBadge badge={{ count: 1 }} />)
+    expect(html).toContain('data-tone="attention"')
+    expect(html).toContain('data-size="xs"')
+    expect(html).toContain('data-variant="solid"')
   })
 
-  it('applies the info palette when tone is info', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'info' }} />)).toContain('bg-bakin-signal-info/20')
+  it('maps info tone onto the kit info tone', () => {
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'info' }} />)).toContain('data-tone="info"')
   })
 
-  it('applies the success palette when tone is success', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'success' }} />)).toContain('bg-bakin-action-primary-background/20')
+  it('maps success tone onto the kit success tone', () => {
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'success' }} />)).toContain('data-tone="success"')
   })
 
-  it('applies the error palette (red) when tone is error', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'error' }} />)).toContain('bg-bakin-signal-danger/20')
+  it('maps error tone onto the kit danger tone', () => {
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'error' }} />)).toContain('data-tone="danger"')
   })
 })
 

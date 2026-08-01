@@ -4,7 +4,7 @@ import { cva } from 'class-variance-authority'
 
 import { cn } from '../utils'
 
-export type BadgeTone = 'neutral' | 'primary' | 'success' | 'attention' | 'danger' | 'accent'
+export type BadgeTone = 'neutral' | 'primary' | 'success' | 'attention' | 'danger' | 'accent' | 'info'
 export type BadgeVariant = 'soft' | 'solid' | 'outline' | 'ghost' | 'link'
 export type BadgeSize = 'xs' | 'sm' | 'md'
 
@@ -53,6 +53,7 @@ const badgeStyles = cva(
         success: '',
         attention: '',
         danger: '',
+        info: '',
         accent: '',
       },
       variant: {
@@ -86,6 +87,10 @@ const badgeStyles = cva(
       { tone: 'attention', variant: 'outline', className: 'border-bakin-signal-highlight text-bakin-text-primary' },
       { tone: 'attention', variant: ['ghost', 'link'], className: 'text-bakin-text-primary' },
       { tone: 'danger', variant: 'soft', className: 'border-bakin-signal-danger/25 bg-bakin-signal-danger/15 text-bakin-text-primary' },
+      { tone: 'info', variant: 'soft', className: 'border-bakin-signal-info/25 bg-bakin-signal-info/15 text-bakin-text-primary' },
+      { tone: 'info', variant: 'solid', className: 'border-bakin-signal-info bg-bakin-signal-info text-bakin-canvas-default' },
+      { tone: 'info', variant: 'outline', className: 'border-bakin-signal-info text-bakin-text-primary' },
+      { tone: 'info', variant: ['ghost', 'link'], className: 'text-bakin-text-primary' },
       { tone: 'danger', variant: 'solid', className: 'border-bakin-signal-danger bg-bakin-signal-danger text-bakin-canvas-default' },
       { tone: 'danger', variant: 'outline', className: 'border-bakin-signal-danger text-bakin-text-primary' },
       { tone: 'danger', variant: ['ghost', 'link'], className: 'text-bakin-text-primary' },

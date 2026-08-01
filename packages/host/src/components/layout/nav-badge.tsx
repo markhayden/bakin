@@ -1,10 +1,11 @@
 import type { NavBadge as NavBadgeData, NavBadgeTone } from '@makinbakin/sdk'
+import { Badge, type BadgeTone } from '@makinbakin/sdk/ui'
 
-const PILL_TONE: Record<NavBadgeTone, string> = {
-  error: 'bg-bakin-signal-danger/20 text-bakin-signal-danger',
-  attention: 'bg-bakin-signal-highlight/20 text-bakin-signal-highlight',
-  info: 'bg-bakin-signal-info/20 text-bakin-signal-info',
-  success: 'bg-bakin-action-primary-background/20 text-bakin-action-primary-background',
+const BADGE_TONE: Record<NavBadgeTone, BadgeTone> = {
+  error: 'danger',
+  attention: 'attention',
+  info: 'info',
+  success: 'success',
 }
 
 const DOT_TONE: Record<NavBadgeTone, string> = {
@@ -43,12 +44,15 @@ export function NavBadge({ badge }: { badge: NavBadgeData | undefined }) {
   if (typeof badge.count === 'number') {
     if (badge.count <= 0) return null
     return (
-      <span
+      <Badge
         data-testid="nav-badge-pill"
-        className={`ml-auto inline-flex h-4 min-w-4 items-center justify-center rounded-bakin-pill px-1 text-bakin-typography-size-meta font-medium leading-none ${PILL_TONE[tone]}`}
+        tone={BADGE_TONE[tone]}
+        variant="solid"
+        size="xs"
+        className="ml-auto"
       >
         {formatCount(badge.count)}
-      </span>
+      </Badge>
     )
   }
   return (

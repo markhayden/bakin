@@ -51,6 +51,7 @@ export const Tones = {
           <Badge tone="success">Published</Badge>
           <Badge tone="attention">Needs review</Badge>
           <Badge tone="danger">Blocked</Badge>
+          <Badge tone="info">Scheduled</Badge>
           <Badge tone="accent">New signal</Badge>
         </StoryCluster>
       </StorySection>
