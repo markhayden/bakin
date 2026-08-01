@@ -90,7 +90,7 @@ export function Banner({
           <p
             id={descriptionId}
             data-slot="banner-description"
-            className="m-0 mt-bakin-1 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted"
+            className="m-0 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted"
           >
             {description}
           </p>

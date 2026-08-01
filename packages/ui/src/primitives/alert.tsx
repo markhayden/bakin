@@ -19,7 +19,7 @@ export type AlertProps = ComponentProps<'div'> & {
 
 const alertStyles = cva(
   [
-    'group/alert relative grid w-full gap-bakin-1 rounded-bakin-surface border px-bakin-4 py-bakin-3',
+    'group/alert relative grid w-full gap-x-bakin-1 gap-y-bakin-0 rounded-bakin-surface border px-bakin-4 py-bakin-3',
     'font-bakin-typography-family-ui text-left text-[length:var(--bakin-typography-size-body)] text-bakin-text-primary',
     'has-data-[slot=alert-action]:relative has-data-[slot=alert-action]:pr-[calc(var(--bakin-layout-space-8)*3)]',
     'has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-bakin-3',

@@ -14,7 +14,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'ColorInput is the freeform color choice: a kit-styled swatch over the platform color dialog, emitting normalized `#rrggbb` values. Use it when any color is valid and the consumer owns the value — typically paired with a hex text field showing the same value. For a fixed palette of named options use ColorPicker instead.',
+        component: 'ColorInput is the freeform color choice: a kit-styled swatch over the platform color dialog, emitting normalized `#rrggbb` values. Use it when any color is valid and the consumer owns the value — typically paired with a hex text field showing the same value. For a fixed palette of named options use ColorPicker instead. The popup is the platform color dialog today; a kit-owned picker may replace it later without any consumer contract change — value in, normalized hex out is the whole interface.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'disabled', 'validation'],
