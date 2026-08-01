@@ -210,6 +210,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The stylesheet build scans the SIBLING bakin-bits-official checkout
+      # (@source in globals.css) — see the test job's clone step. The stamped
+      # variant compiles the same candidate and needs the same sources.
+      - name: Clone bakin-bits-official (stylesheet sources)
+        run: |
+          BITS_REF="$(node -p "require('./design-system/compatibility.json').repositories['bakin-bits-official'].ref")"
+          git clone --filter=blob:none --no-checkout https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/bakin-bits-official"
+          git -C "${{ runner.workspace }}/bakin-bits-official" fetch --depth 1 origin "$BITS_REF"
+          git -C "${{ runner.workspace }}/bakin-bits-official" checkout --detach FETCH_HEAD
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
