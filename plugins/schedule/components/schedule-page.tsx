@@ -370,12 +370,14 @@ export function SchedulePage() {
         controls={(
           <div className="grid w-full min-w-0 gap-bakin-2 @3xl/page-header:flex @3xl/page-header:items-start">
             <SearchInput
+              align="end"
               label="Schedule search"
               value={search}
               onValueChange={setSearch}
               placeholder="Search jobs…"
               busy={searchHook.status === 'loading'}
               mobileFullWidth
+              className="@3xl/page-header:w-[22rem] @3xl/page-header:shrink-0"
             />
             <div className="flex min-w-0 flex-wrap items-center gap-bakin-2 @3xl/page-header:shrink-0 @3xl/page-header:flex-nowrap">
               <SegmentedControl

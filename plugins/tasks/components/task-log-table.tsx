@@ -107,7 +107,10 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
   useEffect(() => {
     async function fetchAudit() {
       try {
-        const res = await fetch('/api/plugins/memory/audit')
+        // Dev rebuilds and engine hiccups can strand a response forever; a hung
+        // request must degrade to the current-tasks-only view, not an eternal
+        // loading state.
+        const res = await fetch('/api/plugins/memory/audit', { signal: AbortSignal.timeout(15_000) })
         if (!res.ok) return
         const { entries } = await res.json() as { entries: AuditEntry[] }
 
@@ -248,7 +251,7 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
       header: 'Status',
       sortable: true,
       cell: (task) => (
-        <StatusBadge tone={STATUS_TONES[task.status]}>{COLUMN_CONFIG[task.status].label}</StatusBadge>
+        <StatusBadge tone={STATUS_TONES[task.status]} size="xs">{COLUMN_CONFIG[task.status].label}</StatusBadge>
       ),
     },
     {

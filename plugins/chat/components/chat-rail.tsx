@@ -118,7 +118,7 @@ function ChatRow({
           >
             {chat.title || 'New chat'}
           </span>
-          <span className="block truncate text-bakin-typography-size-meta text-bakin-text-muted">
+          <span className="mt-bakin-2 block truncate text-bakin-typography-size-meta text-bakin-text-muted">
             {chat.lastMessagePreview || chat.agentId} · {formatRelativeTime(chat.updatedAt)}
           </span>
         </span>

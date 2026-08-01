@@ -67,19 +67,23 @@ export function ModelsPage() {
 
   const headerControls = tab === 'available' ? (
     <SearchInput
+              align="end"
       label="Search available models"
       value={modelQuery}
       onValueChange={updateModelQuery}
       placeholder="Search models…"
       mobileFullWidth
+              className="@3xl/page-header:w-[22rem] @3xl/page-header:shrink-0"
     />
   ) : tab === 'aliases' ? (
     <SearchInput
+              align="end"
       label="Search aliases"
       value={aliasQuery}
       onValueChange={updateAliasQuery}
       placeholder="Search aliases…"
       mobileFullWidth
+              className="@3xl/page-header:w-[22rem] @3xl/page-header:shrink-0"
     />
   ) : tab === 'spend' ? (
     <SegmentedControl

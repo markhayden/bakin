@@ -111,7 +111,7 @@ export function Launcher({
                       <span className={`block truncate ${chat.unreadCount > 0 ? 'font-bakin-typography-weight-bold' : ''}`}>
                         {chat.title || 'New chat'}
                       </span>
-                      <span className="block truncate text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">
+                      <span className="mt-bakin-2 block truncate text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">
                         {chat.lastMessagePreview || chat.agentId}
                       </span>
                     </span>

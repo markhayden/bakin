@@ -127,8 +127,8 @@ export function EventChip({
         </PopoverTrigger>
         <PopoverContent align="start">
           <PopoverHeader>
-            <PopoverTitle>{event.title}</PopoverTitle>
-            <PopoverDescription className="uppercase tracking-wider">
+            <PopoverTitle className="text-bakin-typography-size-section-title">{event.title}</PopoverTitle>
+            <PopoverDescription className="text-bakin-typography-size-body">
               {event.pluginId} · {event.kind}{event.status ? ` · ${event.status}` : ''}
             </PopoverDescription>
           </PopoverHeader>

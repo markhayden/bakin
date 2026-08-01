@@ -55,7 +55,7 @@ function MobileJobRow({
           </span>
 
           <span className="flex min-w-0 items-center gap-bakin-3">
-            <AgentBadge agentId={job.agentId} size="sm" />
+            <AgentBadge agentId={job.agentId} size="sm" showName={false} />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-bakin-typography-size-body text-bakin-text-muted">
                 {job.humanSchedule}
