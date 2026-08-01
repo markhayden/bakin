@@ -37,7 +37,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Explore<br/><span>Discover and install official agents, plugins, and packs — the do-more-with-Bakin storefront</span></td>
       <td><code>explore</code></td>
       <td>Core</td>
-      <td><code>0.1.0</code></td>
+      <td><code>0.1.1</code></td>
       <td>none</td>
     </tr>
     <tr>
@@ -121,5 +121,5 @@ description: Generated catalog of official plugins supported by Bakin.
 </table>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 26, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 31, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -650,14 +650,14 @@ bakin_exec_models_list {
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="pdf-read" name="bakin_exec_pdf_read" label="Read PDF" description="Read a PDF file: metadata (page count, title) plus extracted per-page text." source="src/core/exec-tools/tools/pdf.ts:83" parameters={[{"name":"path","type":"string","required":true,"description":"Absolute path to the PDF file"}]}>
+<McpToolCard id="pdf-read" name="bakin_exec_pdf_read" label="Read PDF" description="Read a PDF file: metadata (page count, title) plus extracted per-page text." source="src/core/exec-tools/tools/pdf.ts:101" parameters={[{"name":"path","type":"string","required":true,"description":"Absolute path to the PDF file"}]}>
 ```sh frame="terminal"
 bakin_exec_pdf_read {
   "path": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="pdf-render" name="bakin_exec_pdf_render" label="Render PDF pages" description="Render PDF pages to PNG images (max 10 per call) and return their paths —" source="src/core/exec-tools/tools/pdf.ts:97" parameters={[{"name":"path","type":"string","required":true,"description":"Absolute path to the PDF file"}]}>
+<McpToolCard id="pdf-render" name="bakin_exec_pdf_render" label="Render PDF pages" description="Render PDF pages to PNG images (max 10 per call) and return their paths —" source="src/core/exec-tools/tools/pdf.ts:115" parameters={[{"name":"path","type":"string","required":true,"description":"Absolute path to the PDF file"}]}>
 ```sh frame="terminal"
 bakin_exec_pdf_render {
   "path": "value"
@@ -1332,5 +1332,5 @@ bakin_exec_workflows_start {
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 26, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 31, 2026 · Bakin 0.0.0-dev</span>
 </aside>
