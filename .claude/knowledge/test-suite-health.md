@@ -115,6 +115,30 @@ warnings under parallel load that no amount of fixing that test could remove —
 belonged to the teardown, not the test. Nested act is legal, so callers already inside an
 act window pay nothing.
 
+**The un-acted alternative was tried and rejected — do not re-litigate without new
+evidence.** Making the drain un-acted looks stricter: the teardown then *reports* work
+landing during it instead of joining it. Measured on the full suite, the only thing it
+surfaces is `KanbanBoard drag and drop > same-column reorder with search filter`, which
+leaks 6 updates under parallel load (and passes in isolation) via a post-persist refetch
+cascade. Wrapping that test's own trailing `settleReact` is **not** sufficient — the
+cascade outlives it under contention.
+
+The reason to reject it is not the churn, it is the semantics. The gate exists to catch
+work that pins a worker open. Work that the drain *joins* has **completed** by the end of
+teardown — nothing is pinned. Work that never completes is invisible to both forms,
+because no update ever lands to warn about. So the un-acted drain reports work that
+finished anyway: strictly noisier, not safer, at the cost of a permanently red
+load-sensitive test.
+
+What the gate does and does not cover, stated plainly:
+
+| | caught |
+|---|---|
+| update lands after the test body, unjoined | **yes** — this is the #687 regression class |
+| update lands during teardown's drain | no — it is joined and completes |
+| work that never lands at all | no — nothing warns; only the per-test `--timeout` bounds it |
+| a warning raised while a test holds `spyOn(console, 'error')` | no — the spy replaces the gate's interceptor for its duration (7 files do this) |
+
 ## 3. Waiting: `tests/helpers/wait.ts`
 
 ```
