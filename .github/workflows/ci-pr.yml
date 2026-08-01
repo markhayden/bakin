@@ -60,9 +60,9 @@ jobs:
       - name: Clone bakin-bits-official (extracted plugins)
         run: |
           BITS_REF="$(node -p "require('./design-system/compatibility.json').repositories['bakin-bits-official'].ref")"
-          git clone --filter=blob:none --no-checkout https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/external/bakin-bits-official"
-          git -C "${{ runner.workspace }}/external/bakin-bits-official" fetch --depth 1 origin "$BITS_REF"
-          git -C "${{ runner.workspace }}/external/bakin-bits-official" checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/bakin-bits-official"
+          git -C "${{ runner.workspace }}/bakin-bits-official" fetch --depth 1 origin "$BITS_REF"
+          git -C "${{ runner.workspace }}/bakin-bits-official" checkout --detach FETCH_HEAD
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -73,7 +73,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Install official Bits dependencies
-        working-directory: ${{ runner.workspace }}/external/bakin-bits-official
+        working-directory: ${{ runner.workspace }}/bakin-bits-official
         run: bun install --frozen-lockfile
 
       - name: UI design-system governance
@@ -81,12 +81,12 @@ jobs:
 
       - name: Official UI census
         env:
-          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/bakin-bits-official/plugins
         run: bun run ui:census:check
 
       - name: Legacy UI style ratchet
         env:
-          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/bakin-bits-official/plugins
         run: bun run ui:legacy-styles:check
 
       - name: Check for ~/.bakin and ~/.openclaw bypasses
@@ -103,7 +103,7 @@ jobs:
 
       - name: Docs build
         env:
-          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/bakin-bits-official/plugins
         run: bun run docs:check
 
       - name: Build production browser assets
@@ -115,7 +115,7 @@ jobs:
 
       - name: Browser UI performance ratchet
         env:
-          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/bakin-bits-official/plugins
         run: bun run ui:performance
 
   # Tests are SHARDED across runners, and the static checks above no longer
@@ -143,6 +143,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      # The stylesheet build scans the SIBLING bakin-bits-official checkout
+      # (@source in globals.css), and buildSdkPackage asserts the compiled
+      # candidate matches the committed canonical artifact — so every job
+      # that compiles CSS needs Bits at the sibling path, pinned by
+      # design-system/compatibility.json. Cloned ABOVE $GITHUB_WORKSPACE so
+      # `bun test` doesn't recurse into it.
+      - name: Clone bakin-bits-official (stylesheet sources)
+        run: |
+          BITS_REF="$(node -p "require('./design-system/compatibility.json').repositories['bakin-bits-official'].ref")"
+          git clone --filter=blob:none --no-checkout https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/bakin-bits-official"
+          git -C "${{ runner.workspace }}/bakin-bits-official" fetch --depth 1 origin "$BITS_REF"
+          git -C "${{ runner.workspace }}/bakin-bits-official" checkout --detach FETCH_HEAD
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -244,6 +257,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      # The stylesheet build scans the SIBLING bakin-bits-official checkout
+      # (@source in globals.css), and buildSdkPackage asserts the compiled
+      # candidate matches the committed canonical artifact — so every job
+      # that compiles CSS needs Bits at the sibling path, pinned by
+      # design-system/compatibility.json. Cloned ABOVE $GITHUB_WORKSPACE so
+      # `bun test` doesn't recurse into it.
+      - name: Clone bakin-bits-official (stylesheet sources)
+        run: |
+          BITS_REF="$(node -p "require('./design-system/compatibility.json').repositories['bakin-bits-official'].ref")"
+          git clone --filter=blob:none --no-checkout https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/bakin-bits-official"
+          git -C "${{ runner.workspace }}/bakin-bits-official" fetch --depth 1 origin "$BITS_REF"
+          git -C "${{ runner.workspace }}/bakin-bits-official" checkout --detach FETCH_HEAD
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
