@@ -40,6 +40,7 @@ import {
   getChannelInitials,
   __resetNotificationChannelsCache,
 } from '../../../plugins/workflows/hooks/use-notification-channels'
+import { settleFor } from '../../helpers/wait'
 
 const MOCK_CHANNELS = [
   { runtime: 'builtin' as const, id: 'general',       label: 'General',       initials: 'GE', icon: 'MessageSquare' },
@@ -102,7 +103,9 @@ describe('useNotificationChannels', () => {
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
     // After the rejection settles, the probe gets a re-render with cached = []
     // (state starts as empty; fetch failure just persists that).
-    await act(async () => { await new Promise(r => setTimeout(r, 20)) })
+    await act(async () => {
+      await settleFor(20, 'a failed fetch must leave the cached list empty — no late population is the assertion')
+    })
     expect(seen[seen.length - 1]).toEqual([])
   })
 })

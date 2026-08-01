@@ -57,6 +57,7 @@ import { createChat, readTranscript, readQueue } from '../../../plugins/chat/lib
 import { restoreQueues, startChatTurn, waitForTurn, isTurnInFlight } from '../../../plugins/chat/lib/stream-bridge'
 import { activatePlugin, callRoute, findRoute, type ActivatedPlugin } from '../test-helpers'
 import type { ChatChunk, MessageArgs } from '../../../packages/core/src/adapters/runtime/concepts'
+import { settleFor, waitUntil } from '../../helpers/wait'
 
 let activated: ActivatedPlugin
 
@@ -78,11 +79,6 @@ function gated(scripts: Array<() => AsyncIterable<ChatChunk>>) {
     yield { type: 'done' } as ChatChunk
   })
   return () => release()
-}
-
-async function waitUntil(cond: () => boolean, label: string) {
-  for (let i = 0; i < 300 && !cond(); i++) await new Promise((r) => setTimeout(r, 2))
-  if (!cond()) throw new Error(`timed out waiting for ${label}`)
 }
 
 /** Settle everything: active turn + any drained turn it triggers. */
@@ -144,7 +140,7 @@ describe('chat queue — send route', () => {
 
     release()
     await settleAll(chat.id)
-    await waitUntil(() => readQueue(chat.id).length === 0 && !isTurnInFlight(chat.id), 'drain settle')
+    await waitUntil(() => readQueue(chat.id).length === 0 && !isTurnInFlight(chat.id), { label: 'drain settle' })
     off()
 
     // ONE combined drained turn.
@@ -237,7 +233,7 @@ describe('chat queue — management', () => {
     expect(res.status).toBe(200)
     release()
     await settleAll(chat.id)
-    await new Promise((r) => setTimeout(r, 30))
+    await settleFor(30, 'the orphaned message must NOT become a turn — no drain arriving is the assertion')
     expect(existsSync(queueFile)).toBe(false)
     // The orphaned message never became a turn.
     expect(seenArgs.filter((a) => a.content.includes('orphan'))).toHaveLength(0)
@@ -266,7 +262,7 @@ describe('chat queue — boot restore', () => {
     // The activate() sequence: sweep FIRST, then restore.
     await sweepInterruptedTurns()
     await restoreQueues(activated.ctx)
-    await waitUntil(() => seenArgs.some((a) => a.content.includes('queued before the crash')), 'boot drain')
+    await waitUntil(() => seenArgs.some((a) => a.content.includes('queued before the crash')), { label: 'boot drain' })
     await settleAll(chat.id)
 
     const rows = readTranscript(chat.id)
@@ -299,7 +295,7 @@ describe('chat queue — boot restore', () => {
 
     await sweepInterruptedTurns()
     await restoreQueues(activated.ctx)
-    await waitUntil(() => seenArgs.some((a) => a.content.includes('queued during the dead turn')), 'boot drain')
+    await waitUntil(() => seenArgs.some((a) => a.content.includes('queued during the dead turn')), { label: 'boot drain' })
     await settleAll(chat.id)
 
     const rows = readTranscript(chat.id)
@@ -334,7 +330,7 @@ describe('chat queue — boot restore', () => {
     expect(await startChatTurn(activated.ctx, chat.id, 'first')).toBe('accepted')
     release()
     await settleAll(chat.id)
-    await waitUntil(() => !isTurnInFlight(chat.id), 'first turn settle')
+    await waitUntil(() => !isTurnInFlight(chat.id), { label: 'first turn settle' })
 
     const { writeQueue } = await import('../../../plugins/chat/lib/store')
     await writeQueue(chat.id, [
@@ -345,7 +341,7 @@ describe('chat queue — boot restore', () => {
       yield { type: 'done' } as ChatChunk
     })
     await restoreQueues(activated.ctx)
-    await waitUntil(() => seenArgs.some((a) => a.content.includes('restored instruction')), 'boot drain')
+    await waitUntil(() => seenArgs.some((a) => a.content.includes('restored instruction')), { label: 'boot drain' })
     await settleAll(chat.id)
     expect(readQueue(chat.id)).toHaveLength(0)
     const users = readTranscript(chat.id).filter((r) => r.kind === 'user').map((r) => (r as { content: string }).content)

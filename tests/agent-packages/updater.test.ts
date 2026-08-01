@@ -169,6 +169,7 @@ import { installPackage } from '../../src/core/agent-packages/installer'
 import { updatePackageById } from '../../src/core/agent-packages/updater'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { extractBlock } from '../../packages/core/src/agent-packages/managed-blocks'
+import { settleFor } from '../helpers/wait'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -250,7 +251,7 @@ describe('updatePackageById — happy paths', () => {
     await installPackage({ source: v1Src })
     const installedAt = readLockfile().packages.pixel.installedAt
 
-    await new Promise((r) => setTimeout(r, 5))
+    await settleFor(5, 'advance the clock so installedAt visibly changes after the update')
     await updatePackageById({ packageId: 'pixel' })
 
     expect(readLockfile().packages.pixel.installedAt).toBe(installedAt)

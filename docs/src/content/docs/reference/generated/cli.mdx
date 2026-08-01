@@ -907,6 +907,52 @@ bakin agents sync [agent-id] [--check] [--reclaim <target>] [--reclaim-all] [--y
     </tbody>
   </table>
 </CliCommandCard>
+<CliCommandCard id="skills-install" name="skills install" summary="Install a skill from a hub." description="Installs an Agent-Skills bundle from ClawHub, GitHub, or a local path onto the active runtime. Accepts pasted clawhub.ai/github.com URLs or clawhub:/github: refs. Shows a trust preview (files, translated requirements, hub verdict, security warnings) and requires consent; hub-flagged malicious skills are refused with no override. Re-running install on the same ref re-checks and re-pins — that is the update path.">
+```sh frame="terminal"
+bakin skills install <url-or-ref> [--yes]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;url-or-ref&gt;</code></td><td>argument</td><td>yes</td><td>Required value.</td></tr>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="skills-list" name="skills list" summary="List managed and unmanaged skills." description="Lists Bakin-managed skills (hub-installed and pack-installed) with version and source, plus unmanaged skills discovered in the active runtime.">
+```sh frame="terminal"
+bakin skills list [--json]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="skills-remove" name="skills remove" summary="Remove an installed skill." description="Uninstalls a managed skill by its bare name (unprojects from the runtime, updates the lockfile).">
+```sh frame="terminal"
+bakin skills remove <name>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;name&gt;</code></td><td>argument</td><td>yes</td><td>Name to create.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="skills-map" name="skills map" summary="Map unrecognized skill requirements via an agent." description="Dispatches an agent to read an installed hub skill and propose a requirements mapping (keys, binaries). The proposal is mechanically verified (only literally-present names survive; secret slots are core-minted) and shown as a diff for approval before the manifest is amended.">
+```sh frame="terminal"
+bakin skills map <name> [--yes]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;name&gt;</code></td><td>argument</td><td>yes</td><td>Name to create.</td></tr>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
 <CliCommandCard id="diagnostics-startup" name="diagnostics startup" summary="Manage startup diagnostics." description="Reads or updates the local startup diagnostics setting in ~/.bakin/settings.json. This does not require the server to be running; changes apply on the next server start. Environment variables still override it for one-off runs.">
 ```sh frame="terminal"
 bakin diagnostics startup <status|on|off> [--slow-ms <ms>] [--json]
@@ -1030,5 +1076,5 @@ bakin brands remove <id> [--yes]
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 26, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 31, 2026 · Bakin 0.0.0-dev</span>
 </aside>

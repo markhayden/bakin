@@ -1,5 +1,8 @@
 [test]
 preload = ["./tests/setup.ts"]
 
-[test.env]
-NODE_ENV = "test"
+# NOTE: there is deliberately no [test.env] section. bun 1.3.13 does not read one —
+# probed directly: a var set there arrives `undefined` in the test process, while
+# NODE_ENV appears only because `bun test` sets it itself. The section this file used
+# to carry was decorative. Test-run env belongs in the preload (tests/setup.ts), which
+# actually executes.

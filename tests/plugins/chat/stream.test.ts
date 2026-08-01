@@ -58,6 +58,7 @@ import { createChat, readTranscript } from '../../../plugins/chat/lib/store'
 import { abortChatTurn, isTurnInFlight, startChatTurn, waitForTurn } from '../../../plugins/chat/lib/stream-bridge'
 import { activatePlugin, callRoute, findRoute, type ActivatedPlugin } from '../test-helpers'
 import type { ChatChunk, MessageArgs } from '../../../packages/core/src/adapters/runtime/concepts'
+import { waitUntil } from '../../helpers/wait'
 
 let activated: ActivatedPlugin
 
@@ -216,8 +217,10 @@ describe('chat stream bridge', () => {
     }, seenArgs)
 
     expect(await startChatTurn(activated.ctx, chat.id, 'go long')).toBe('accepted')
-    // Give the generator a beat to yield the first chunk, then abort.
-    await new Promise((r) => setTimeout(r, 10))
+    // Abort is only meaningful mid-stream, so wait for real streamed output
+    // rather than assuming 10ms was enough to produce it.
+    await waitUntil(() => events.some((e) => e.event === 'chat.chunk'),
+      { label: 'the generator to yield its first chunk' })
     expect(abortChatTurn(chat.id)).toBe(true)
     await waitForTurn(chat.id)
     off()
@@ -344,7 +347,7 @@ describe('chat stream bridge', () => {
     await waitForTurn(chat.id)
     // Drained turn (the queued 'second') settles too.
     await waitForTurn(chat.id)
-    for (let i = 0; i < 200 && isTurnInFlight(chat.id); i++) await new Promise((r) => setTimeout(r, 2))
+    await waitUntil(() => !isTurnInFlight(chat.id), { label: 'the drained queued turn to settle' })
 
     const done = await callRoute(send, activated.ctx, { path: `/chats/${chat.id}/messages`, body: { content: 'third' } })
     expect(done.status).toBe(202)

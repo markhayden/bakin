@@ -18,7 +18,7 @@ const contentDirMock = () => ({
 mock.module('@/core/content-dir', contentDirMock)
 mock.module('../../../packages/core/src/content-dir', contentDirMock)
 
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { settleReact } from '../../rtl-settle'
 
@@ -83,17 +83,21 @@ const railProps = {
 }
 
 describe('ChatRail', () => {
-  it('groups pinned chats first, shows unread pills and a working spinner', () => {
-    const { container } = render(
-      <ChatRail
-        {...railProps}
-        chats={[
-          summary({ id: CHAT_A, title: 'Working chat', unreadCount: 3 }),
-          summary({ id: CHAT_B, title: 'Pinned chat', pinned: true }),
-        ]}
-        streamingIds={new Set([CHAT_A])}
-      />,
-    )
+  it('groups pinned chats first, shows unread pills and a working spinner', async () => {
+    let __view0!: ReturnType<typeof render>
+    await act(async () => {
+      __view0 = render(
+        <ChatRail
+          {...railProps}
+          chats={[
+            summary({ id: CHAT_A, title: 'Working chat', unreadCount: 3 }),
+            summary({ id: CHAT_B, title: 'Pinned chat', pinned: true }),
+          ]}
+          streamingIds={new Set([CHAT_A])}
+        />,
+      )
+    })
+    const { container } = __view0
     const labels = Array.from(container.querySelectorAll('.uppercase')).map((el) => el.textContent)
     expect(labels[0]).toBe('Pinned')
     expect(container.querySelector('[data-chat-unread]')).toBeNull() // streaming spinner wins over the pill
@@ -103,15 +107,19 @@ describe('ChatRail', () => {
     expect(row?.className).toContain('hover:bg-foreground/5')
   })
 
-  it('unread pill renders when idle; selected row uses the muted-gray token', () => {
-    const { container } = render(
-      <ChatRail
-        {...railProps}
-        selectedId={CHAT_A}
-        chats={[summary({ unreadCount: 2 })]}
-        streamingIds={new Set()}
-      />,
-    )
+  it('unread pill renders when idle; selected row uses the muted-gray token', async () => {
+    let __view1!: ReturnType<typeof render>
+    await act(async () => {
+      __view1 = render(
+        <ChatRail
+          {...railProps}
+          selectedId={CHAT_A}
+          chats={[summary({ unreadCount: 2 })]}
+          streamingIds={new Set()}
+        />,
+      )
+    })
+    const { container } = __view1
     expect(container.querySelector('[data-chat-unread]')?.textContent).toBe('2')
     const row = container.querySelector(`[data-chat-row="${CHAT_A}"]`)
     expect(row?.className).toContain('bg-foreground/10')
@@ -119,41 +127,57 @@ describe('ChatRail', () => {
     expect(row?.className).not.toContain('bg-accent')
   })
 
-  it('collapsed rail renders only the expand affordance', () => {
-    const { container } = render(
-      <ChatRail {...railProps} chats={[summary()]} streamingIds={new Set()} collapsed />,
-    )
+  it('collapsed rail renders only the expand affordance', async () => {
+    let __view2!: ReturnType<typeof render>
+    await act(async () => {
+      __view2 = render(
+        <ChatRail {...railProps} chats={[summary()]} streamingIds={new Set()} collapsed />,
+      )
+    })
+    const { container } = __view2
     expect(container.querySelector('[data-chat-row]')).toBeNull()
     expect(container.querySelector('[aria-label="Expand chat list"]')).not.toBeNull()
   })
 
-  it('loading shows skeleton rows, never a blank rail', () => {
-    const { container } = render(
-      <ChatRail {...railProps} chats={[]} streamingIds={new Set()} loading />,
-    )
+  it('loading shows skeleton rows, never a blank rail', async () => {
+    let __view3!: ReturnType<typeof render>
+    await act(async () => {
+      __view3 = render(
+        <ChatRail {...railProps} chats={[]} streamingIds={new Set()} loading />,
+      )
+    })
+    const { container } = __view3
     expect(container.querySelector('[data-chat-rail-skeleton]')).not.toBeNull()
     cleanup()
   })
 })
 
 describe('Launcher', () => {
-  it('shows the start heading and recent conversations', () => {
-    const { container } = render(
-      <Launcher
-        chats={[summary(), summary({ id: CHAT_B, title: 'Ops standup' })]}
-        loading={false}
-        onStartChat={() => {}}
-        onOpenChat={() => {}}
-      />,
-    )
+  it('shows the start heading and recent conversations', async () => {
+    let __view4!: ReturnType<typeof render>
+    await act(async () => {
+      __view4 = render(
+        <Launcher
+          chats={[summary(), summary({ id: CHAT_B, title: 'Ops standup' })]}
+          loading={false}
+          onStartChat={() => {}}
+          onOpenChat={() => {}}
+        />,
+      )
+    })
+    const { container } = __view4
     expect(container.textContent).toContain('Start a chat')
     expect(container.textContent).toContain('Recent')
     expect(container.textContent).toContain('Ops standup')
     expect(container.textContent).toContain('Found the post.')
   })
 
-  it('loading renders skeletons', () => {
-    const { container } = render(<Launcher chats={[]} loading onStartChat={() => {}} onOpenChat={() => {}} />)
+  it('loading renders skeletons', async () => {
+    let __view5!: ReturnType<typeof render>
+    await act(async () => {
+      __view5 = render(<Launcher chats={[]} loading onStartChat={() => {}} onOpenChat={() => {}} />)
+    })
+    const { container } = __view5
     expect(container.querySelector('[data-chat-launcher-skeleton]')).not.toBeNull()
     cleanup()
   })
@@ -163,20 +187,24 @@ describe('DraftChatView', () => {
   it('creates the chat on first send and reports the new id', async () => {
     const created: string[] = []
     const calls: Array<[string, string]> = []
-    const { container } = render(
-      <DraftChatView
-        agentId="main"
-        onCreated={(id) => created.push(id)}
-        createAndSend={async (agentId, content) => {
-          calls.push([agentId, content])
-          return { chatId: CHAT_A, sent: true }
-        }}
-      />,
-    )
+    let __view6!: ReturnType<typeof render>
+    await act(async () => {
+      __view6 = render(
+        <DraftChatView
+          agentId="main"
+          onCreated={(id) => created.push(id)}
+          createAndSend={async (agentId, content) => {
+            calls.push([agentId, content])
+            return { chatId: CHAT_A, sent: true }
+          }}
+        />,
+      )
+    })
+    const { container } = __view6
     expect(container.textContent).toContain('Chat with main')
     const ta = container.querySelector('textarea')!
-    fireEvent.change(ta, { target: { value: 'first message' } })
-    fireEvent.keyDown(ta, { key: 'Enter' })
+    await act(async () => { fireEvent.change(ta, { target: { value: 'first message' } }) })
+    await act(async () => { fireEvent.keyDown(ta, { key: 'Enter' }) })
     await waitFor(() => expect(created).toEqual([CHAT_A]))
     expect(calls).toEqual([['main', 'first message']])
     cleanup()
@@ -188,16 +216,20 @@ describe('DraftChatView', () => {
     try {
       mockFetch({ capabilities: { imageInput: true } })
       const sends: Array<{ content: string; files: File[] }> = []
-      const { container } = render(
-        <DraftChatView
-          agentId="main"
-          onCreated={() => {}}
-          createAndSend={async (_agentId, content, files) => {
-            sends.push({ content, files: files ?? [] })
-            return { chatId: CHAT_A, sent: true }
-          }}
-        />,
-      )
+      let __view7!: ReturnType<typeof render>
+      await act(async () => {
+        __view7 = render(
+          <DraftChatView
+            agentId="main"
+            onCreated={() => {}}
+            createAndSend={async (_agentId, content, files) => {
+              sends.push({ content, files: files ?? [] })
+              return { chatId: CHAT_A, sent: true }
+            }}
+          />,
+        )
+      })
+      const { container } = __view7
       // Capability-gated affordance appears for an image-capable agent.
       await waitFor(() => {
         const attach = container.querySelector('[data-composer-attach]') as HTMLButtonElement | null
@@ -206,14 +238,14 @@ describe('DraftChatView', () => {
       })
       const file = new File(['png-bytes'], 'first.png', { type: 'image/png' })
       const input = container.querySelector('input[type="file"]')!
-      fireEvent.change(input, { target: { files: [file] } })
+      await act(async () => { fireEvent.change(input, { target: { files: [file] } }) })
       // Local stage: instant thumbnail, no upload yet.
       await waitFor(() => expect(container.querySelector('img')?.getAttribute('src')).toBe('blob:draft-preview'))
       expect(fetchCalls.some((c) => c.url.includes('/attachments'))).toBe(false)
 
       const ta = container.querySelector('textarea')!
-      fireEvent.change(ta, { target: { value: 'look at this' } })
-      fireEvent.keyDown(ta, { key: 'Enter' })
+      await act(async () => { fireEvent.change(ta, { target: { value: 'look at this' } }) })
+      await act(async () => { fireEvent.keyDown(ta, { key: 'Enter' }) })
       await waitFor(() => expect(sends).toHaveLength(1))
       expect(sends[0].content).toBe('look at this')
       expect(sends[0].files.map((f) => f.name)).toEqual(['first.png'])
@@ -225,9 +257,13 @@ describe('DraftChatView', () => {
 
   it('text-only agent: attach stays ENABLED for PDFs, images filtered via accept (#742)', async () => {
     mockFetch({ capabilities: { imageInput: false } })
-    const { container } = render(
-      <DraftChatView agentId="texty" onCreated={() => {}} createAndSend={async () => ({ chatId: CHAT_A, sent: true })} />,
-    )
+    let __view8!: ReturnType<typeof render>
+    await act(async () => {
+      __view8 = render(
+        <DraftChatView agentId="texty" onCreated={() => {}} createAndSend={async () => ({ chatId: CHAT_A, sent: true })} />,
+      )
+    })
+    const { container } = __view8
     await settleReact()
     const attach = container.querySelector('[data-composer-attach]') as HTMLButtonElement | null
     // PDFs ride the file lane (tools read them) — only image acceptance is
@@ -299,7 +335,11 @@ describe('ChatView', () => {
         ],
       },
     })
-    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    let __view9!: ReturnType<typeof render>
+    await act(async () => {
+      __view9 = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    })
+    const { container } = __view9
     await waitFor(() => {
       expect(container.textContent).toContain('find the post')
     })
@@ -335,7 +375,11 @@ describe('ChatView', () => {
         usageTotals: { turns: 2, inputTokens: 36_300, outputTokens: 2_090, totalTokens: 38_390, costUsd: 0.03 },
       },
     })
-    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    let __view10!: ReturnType<typeof render>
+    await act(async () => {
+      __view10 = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    })
+    const { container } = __view10
     await waitFor(() => {
       expect(container.querySelectorAll('[data-conv-usage]').length).toBe(2)
     })
@@ -371,7 +415,11 @@ describe('ChatView', () => {
         streamingText: 'x'.repeat(400),
       },
     })
-    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    let __view11!: ReturnType<typeof render>
+    await act(async () => {
+      __view11 = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    })
+    const { container } = __view11
     await waitFor(() => {
       const live = container.querySelector('[data-conv-usage-live]')
       expect(live).not.toBeNull()
@@ -398,7 +446,11 @@ describe('ChatView', () => {
         contextStats: { tokens: 45_300, contextWindow: 272_000, compactionThreshold: 255_616, model: 'gpt-5.5' },
       },
     })
-    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    let __view12!: ReturnType<typeof render>
+    await act(async () => {
+      __view12 = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    })
+    const { container } = __view12
     await waitFor(() => {
       const meter = container.querySelector('[data-context-meter]')
       expect(meter).not.toBeNull()
@@ -421,7 +473,11 @@ describe('ChatView', () => {
         contextStats: { tokens: null, contextWindow: 272_000, compactionThreshold: null },
       },
     })
-    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    let __view13!: ReturnType<typeof render>
+    await act(async () => {
+      __view13 = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    })
+    const { container } = __view13
     await waitFor(() => {
       expect(container.querySelector('[data-chat-usage-totals]')).not.toBeNull()
     })
@@ -447,7 +503,11 @@ describe('ChatView', () => {
         },
       },
     })
-    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    let __view14!: ReturnType<typeof render>
+    await act(async () => {
+      __view14 = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    })
+    const { container } = __view14
     await waitFor(() => {
       const meter = container.querySelector('[data-context-meter]')
       expect(meter).not.toBeNull()
@@ -467,7 +527,11 @@ describe('ChatView', () => {
         usage: {},
       },
     })
-    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    let __view15!: ReturnType<typeof render>
+    await act(async () => {
+      __view15 = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    })
+    const { container } = __view15
     await waitFor(() => expect(container.querySelector('[data-chat-title]')).not.toBeNull())
     const avatarWrap = container.querySelector('span[title="main"]')
     expect(avatarWrap).not.toBeNull()
@@ -485,7 +549,11 @@ describe('ChatView', () => {
       capabilities: { imageInput: false },
       [`/chats/${CHAT_A}`]: { chat: summary(), messages: [], usage: {} },
     })
-    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    let __view16!: ReturnType<typeof render>
+    await act(async () => {
+      __view16 = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    })
+    const { container } = __view16
     await settleReact()
     expect(container.querySelector('[data-context-meter]')).toBeNull()
     cleanup()
@@ -504,7 +572,11 @@ describe('ChatView', () => {
         usage: {},
       },
     })
-    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    let __view17!: ReturnType<typeof render>
+    await act(async () => {
+      __view17 = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    })
+    const { container } = __view17
     await waitFor(() => expect(container.textContent).toContain('hello'))
     expect(container.querySelector('[data-conv-usage]')).toBeNull()
     expect(container.querySelector('[data-chat-usage-totals]')).toBeNull()
@@ -522,14 +594,18 @@ describe('ChatView', () => {
         queued: [{ id: 'q1', ts: '2026-07-25T00:00:00.000Z', content: 'queued correction' }],
       },
     })
-    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    let __view18!: ReturnType<typeof render>
+    await act(async () => {
+      __view18 = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    })
+    const { container } = __view18
     await waitFor(() => {
       expect(container.querySelector('[data-queued-list]')?.textContent).toContain('queued correction')
     })
     // Streaming + empty composer → the morphing button shows Stop.
     expect(container.querySelector('[data-composer-stop]')).not.toBeNull()
 
-    fireEvent.click(container.querySelector('[data-queued-remove]')!)
+    await act(async () => { fireEvent.click(container.querySelector('[data-queued-remove]')!) })
     await waitFor(() => {
       expect((container.querySelector('textarea') as HTMLTextAreaElement).value).toBe('queued correction')
     })

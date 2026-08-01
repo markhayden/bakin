@@ -18,11 +18,12 @@ const contentDirMock = () => ({
 mock.module('@/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import { fireEvent, render } from '@testing-library/react'
+import { act, fireEvent, render } from '@testing-library/react'
 import '../rtl-settle'
 
 import { copyToClipboard } from '../../src/lib/copy-to-clipboard'
 import { CopyButton } from '../../src/components/conversation/agent-turn'
+import { waitUntil } from '../helpers/wait'
 
 type NavigatorWithClipboard = Navigator & { clipboard?: unknown }
 
@@ -78,9 +79,10 @@ describe('CopyButton over the fallback path', () => {
     }) as typeof document.execCommand
 
     const { container, findByLabelText } = render(<CopyButton text="and also oregon" label="Copy message" />)
-    fireEvent.click(await findByLabelText('Copy message'))
+    await act(async () => { fireEvent.click(await findByLabelText('Copy message')) })
     // The check icon appears only on a REAL copy.
-    await new Promise((r) => setTimeout(r, 10))
+    await waitUntil(() => copied.value === 'and also oregon',
+      { label: 'the clipboard write to complete' })
     expect(copied.value).toBe('and also oregon')
     expect(container.querySelector('svg')).not.toBeNull()
   })

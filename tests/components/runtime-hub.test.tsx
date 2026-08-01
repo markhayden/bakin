@@ -63,16 +63,18 @@ afterEach(() => {
 
 describe('OverviewTab', () => {
   it('speaks plain language: honest unavailable copy, legend, credential tiles, setup rows', async () => {
-    render(
-      <OverviewTab
-        report={report}
-        onRefreshOnboarding={() => {}}
-        onboarding={[
-          { name: 'runtime', status: 'ok', message: 'pi runtime adapter is available' },
-          { name: 'budget', status: 'warn', message: 'No spending budget is set', remediation: 'Set one in Settings' },
-        ]}
-      />,
-    )
+    await act(async () => {
+      render(
+        <OverviewTab
+          report={report}
+          onRefreshOnboarding={() => {}}
+          onboarding={[
+            { name: 'runtime', status: 'ok', message: 'pi runtime adapter is available' },
+            { name: 'budget', status: 'warn', message: 'No spending budget is set', remediation: 'Set one in Settings' },
+          ]}
+        />,
+      )
+    })
     // Identity + credentials
     expect(screen.getByText('pi')).toBeTruthy()
     expect(screen.getByText(/anthropic · subscription/)).toBeTruthy()
@@ -98,13 +100,15 @@ describe('OverviewTab', () => {
     }) as unknown as typeof fetch
 
     const refreshed: number[] = []
-    render(
-      <OverviewTab
-        report={report}
-        onRefreshOnboarding={() => refreshed.push(1)}
-        onboarding={[{ name: 'agent-sync', status: 'warn', message: '3 findings', remediation: 'Run bakin install agent-sync' }]}
-      />,
-    )
+    await act(async () => {
+      render(
+        <OverviewTab
+          report={report}
+          onRefreshOnboarding={() => refreshed.push(1)}
+          onboarding={[{ name: 'agent-sync', status: 'warn', message: '3 findings', remediation: 'Run bakin install agent-sync' }]}
+        />,
+      )
+    })
     useToastStore.setState({ toasts: [] })
     await act(async () => { fireEvent.click(screen.getByTestId('setup-fix-agent-sync')) })
     await settleReact()
@@ -128,13 +132,15 @@ describe('OverviewTab', () => {
       return new Response('{}', { status: 200 })
     }) as unknown as typeof fetch
 
-    render(
-      <OverviewTab
-        report={report}
-        onRefreshOnboarding={() => {}}
-        onboarding={[{ name: 'plugin-assets', status: 'warn', message: '1 drifted' }]}
-      />,
-    )
+    await act(async () => {
+      render(
+        <OverviewTab
+          report={report}
+          onRefreshOnboarding={() => {}}
+          onboarding={[{ name: 'plugin-assets', status: 'warn', message: '1 drifted' }]}
+        />,
+      )
+    })
     await act(async () => { fireEvent.click(screen.getByTestId('setup-fix-plugin-assets')) })
     await settleReact()
     // Flush the repair fetch inside act instead of polling for it: leaning on
@@ -220,7 +226,9 @@ describe('RuntimesTab', () => {
   })
 
   it('preview posts a dry run with the chosen options and renders grouped result cards', async () => {
-    render(<RuntimesTab report={report} onSwitched={() => {}} />)
+    await act(async () => {
+      render(<RuntimesTab report={report} onSwitched={() => {}} />)
+    })
     // Clicking a runtime card opens the dialog — options + preview live THERE.
     await act(async () => { fireEvent.click(screen.getByTestId('switch-target-openclaw')) })
     await settleReact()
@@ -243,14 +251,18 @@ describe('RuntimesTab', () => {
   })
 
   it('the active runtime is marked and not selectable', async () => {
-    render(<RuntimesTab report={report} onSwitched={() => {}} />)
+    await act(async () => {
+      render(<RuntimesTab report={report} onSwitched={() => {}} />)
+    })
     expect(screen.getByText('Active')).toBeTruthy()
     expect((screen.getByTestId('switch-target-pi') as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByTestId('switch-target-openclaw') as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('the real switch is gated behind a TYPED confirm dialog', async () => {
-    render(<RuntimesTab report={report} onSwitched={() => {}} />)
+    await act(async () => {
+      render(<RuntimesTab report={report} onSwitched={() => {}} />)
+    })
     await act(async () => { fireEvent.click(screen.getByTestId('switch-target-openclaw')) })
     await settleReact()
 

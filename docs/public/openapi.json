@@ -29041,7 +29041,8 @@
                             "enrichment",
                             "relay",
                             "team-routing",
-                            "send"
+                            "send",
+                            "skill-mapping"
                           ]
                         },
                         "model": {

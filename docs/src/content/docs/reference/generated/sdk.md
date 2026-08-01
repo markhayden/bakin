@@ -488,5 +488,5 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `DefinePluginInput` | — |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 26, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 31, 2026 · Bakin 0.0.0-dev</span>
 </aside>

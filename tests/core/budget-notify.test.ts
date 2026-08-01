@@ -28,6 +28,7 @@ const metered: Array<Record<string, unknown>> = []
 mock.module('../../src/core/agent-cost', () => ({ meterAgentTurn: async (o: Record<string, unknown>) => { metered.push(o) } }))
 
 import { notifyBudgetIncidentOpened, emitBudgetIncidentResolved, describeBudgetIncident } from '../../src/core/budget-notify'
+import { waitUntil } from '../helpers/wait'
 
 const INCIDENT = {
   incidentId: 7,
@@ -48,14 +49,6 @@ const INCIDENT = {
  * failed CI with the send still in flight. Poll for the terminal state; the
  * deadline only bounds a genuine hang.
  */
-async function waitFor(predicate: () => boolean, label: string, timeoutMs = 10_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (!predicate()) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${label}`)
-    await new Promise((r) => setTimeout(r, 5))
-  }
-}
-
 beforeEach(() => {
   broadcasts.length = 0
   sends.length = 0
@@ -68,7 +61,7 @@ describe('notifyBudgetIncidentOpened', () => {
     notifyBudgetIncidentOpened(INCIDENT, () => stubRuntime)
     // Metering is the last step of the relay — waiting on it proves the whole
     // chain ran, so every assertion below observes a settled state.
-    await waitFor(() => metered.length > 0, 'the relay to be metered')
+    await waitUntil(() => metered.length > 0, { label: 'the relay to be metered' })
     expect(broadcasts).toHaveLength(1)
     expect(broadcasts[0]).toMatchObject({ type: 'plugin-event', event: 'budget.incident_opened', incidentId: 7, scope: 'provider', scopeId: 'google' })
     expect(String(broadcasts[0].message)).toContain("provider 'google'")
@@ -84,7 +77,7 @@ describe('notifyBudgetIncidentOpened', () => {
     expect(() => notifyBudgetIncidentOpened(INCIDENT, () => stubRuntime)).not.toThrow()
     // Reaching the send is the last observable step on the failing path;
     // metering is downstream of a throw, so it can never run from here.
-    await waitFor(() => sends.length > 0, 'the relay send to be attempted')
+    await waitUntil(() => sends.length > 0, { label: 'the relay send to be attempted' })
     expect(broadcasts).toHaveLength(1) // SSE still went out
     expect(metered).toHaveLength(0)
   })

@@ -816,6 +816,7 @@ class FakeWebSocket {
   }
 }
 
+/** Yield one macrotask. Not a settle — callers poll their own condition. */
 async function tick(): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, 0))
 }

@@ -5,7 +5,7 @@
  * restores server state, and invalid palette rows hold the save honestly.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { settleReact } from '../../rtl-settle'
 import { join } from 'path'
@@ -73,9 +73,11 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 async function renderIdentity() {
-  render(<BrandDetail brandId="acme" onBack={() => {}} />)
+  await act(async () => {
+    render(<BrandDetail brandId="acme" onBack={() => {}} />)
+  })
   await waitFor(() => expect(screen.getAllByText('Acme').length).toBeGreaterThan(0))
-  fireEvent.click(screen.getByRole('tab', { name: 'Identity' }))
+  await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Identity' })) })
   await waitFor(() => expect(screen.getByLabelText('Brand name')).toBeDefined())
 }
 
@@ -88,11 +90,11 @@ describe('BrandDetail staged save model', () => {
 
   it('editing any field stages a draft and raises the SaveBar; Save PUTs the FULL manifest once', async () => {
     await renderIdentity()
-    fireEvent.change(screen.getByLabelText('Brand name'), { target: { value: 'Acme Inc' } })
-    fireEvent.change(screen.getByLabelText('Brand description'), { target: { value: 'Sharper tools.' } })
+    await act(async () => { fireEvent.change(screen.getByLabelText('Brand name'), { target: { value: 'Acme Inc' } }) })
+    await act(async () => { fireEvent.change(screen.getByLabelText('Brand description'), { target: { value: 'Sharper tools.' } }) })
     await waitFor(() => expect(document.querySelector('[data-savebar]')).not.toBeNull())
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save brand' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save brand' })) })
     await waitFor(() => expect(putCalls.length).toBe(1))
     // one PUT carries EVERY manifest field, not a per-section patch
     expect(putCalls[0].name).toBe('Acme Inc')
@@ -108,9 +110,9 @@ describe('BrandDetail staged save model', () => {
 
   it('Discard restores server state without a PUT', async () => {
     await renderIdentity()
-    fireEvent.change(screen.getByLabelText('Brand name'), { target: { value: 'Renamed' } })
+    await act(async () => { fireEvent.change(screen.getByLabelText('Brand name'), { target: { value: 'Renamed' } }) })
     await waitFor(() => expect(document.querySelector('[data-savebar]')).not.toBeNull())
-    fireEvent.click(screen.getByRole('button', { name: 'Discard' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Discard' })) })
     await waitFor(() => expect(document.querySelector('[data-savebar]')).toBeNull())
     expect((screen.getByLabelText('Brand name') as HTMLInputElement).value).toBe('Acme')
     expect(putCalls.length).toBe(0)
@@ -120,10 +122,10 @@ describe('BrandDetail staged save model', () => {
   it('hex field and swatch are one value; invalid hex shows the teaching error and HOLDS save', async () => {
     await renderIdentity()
     const hexInput = screen.getByDisplayValue('#FF5A00')
-    fireEvent.change(hexInput, { target: { value: 'blueish' } })
+    await act(async () => { fireEvent.change(hexInput, { target: { value: 'blueish' } }) })
     await waitFor(() => expect(screen.getByText('Hex colors look like #FF5A00')).toBeDefined())
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save brand' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save brand' })) })
     await waitFor(() => expect(screen.getByText(/Fix the highlighted colors/)).toBeDefined())
     expect(putCalls.length).toBe(0) // held — no PUT with invalid rows
     await settleReact()
@@ -131,9 +133,9 @@ describe('BrandDetail staged save model', () => {
 
   it('a pristine added row is dropped on save, not blocked', async () => {
     await renderIdentity()
-    fireEvent.click(document.querySelector('[data-add-color]')!)
+    await act(async () => { fireEvent.click(document.querySelector('[data-add-color]')!) })
     await waitFor(() => expect(document.querySelector('[data-savebar]')).not.toBeNull())
-    fireEvent.click(screen.getByRole('button', { name: 'Save brand' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save brand' })) })
     await waitFor(() => expect(putCalls.length).toBe(1))
     expect((putCalls[0].palette as unknown[]).length).toBe(1) // blank row dropped
     await settleReact()
@@ -141,9 +143,9 @@ describe('BrandDetail staged save model', () => {
 
   it('staged edits survive tab switches (one draft spans tabs)', async () => {
     await renderIdentity()
-    fireEvent.change(screen.getByLabelText('Brand name'), { target: { value: 'Acme Inc' } })
-    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }))
-    fireEvent.click(screen.getByRole('tab', { name: 'Identity' }))
+    await act(async () => { fireEvent.change(screen.getByLabelText('Brand name'), { target: { value: 'Acme Inc' } }) })
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Overview' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Identity' })) })
     await waitFor(() => expect((screen.getByLabelText('Brand name') as HTMLInputElement).value).toBe('Acme Inc'))
     expect(document.querySelector('[data-savebar]')).not.toBeNull()
     await settleReact()
@@ -168,12 +170,12 @@ describe('BrandDetail staged save model', () => {
     }) as unknown as typeof fetch
 
     await renderIdentity()
-    fireEvent.change(screen.getByLabelText('Brand name'), { target: { value: 'Acme Inc' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save brand' }))
+    await act(async () => { fireEvent.change(screen.getByLabelText('Brand name'), { target: { value: 'Acme Inc' } }) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save brand' })) })
     await waitFor(() => expect(screen.getByText(/changed while you were editing/)).toBeDefined())
     expect(putCalls.length).toBe(0) // held — never a silent overwrite
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save brand' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save brand' })) })
     await waitFor(() => expect(putCalls.length).toBe(1)) // deliberate overwrite
     await settleReact()
   })
@@ -195,11 +197,11 @@ describe('BrandDetail staged save model', () => {
     }) as unknown as typeof fetch
 
     await renderIdentity()
-    fireEvent.change(screen.getByLabelText('Brand name'), { target: { value: 'Acme Inc' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save brand' }))
+    await act(async () => { fireEvent.change(screen.getByLabelText('Brand name'), { target: { value: 'Acme Inc' } }) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save brand' })) })
     await waitFor(() => expect(putCalls.length).toBe(1))
     // keep typing while the PUT is in flight
-    fireEvent.change(screen.getByLabelText('Brand description'), { target: { value: 'Typed mid-save.' } })
+    await act(async () => { fireEvent.change(screen.getByLabelText('Brand description'), { target: { value: 'Typed mid-save.' } }) })
     resolvePut(new Response(JSON.stringify({ brand: BRAND }), { status: 200 }))
     // the mid-flight edit is still staged: bar stays up, text stays put
     await waitFor(() => expect(document.querySelector('[data-savebar]')?.getAttribute('data-savebar-state')).toBe('dirty'))

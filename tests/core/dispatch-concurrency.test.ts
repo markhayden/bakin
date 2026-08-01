@@ -142,6 +142,7 @@ import { resetSameAgentTurnsModeCache } from '../../src/core/dispatch-turns'
 import { readRunSidecar } from '../../src/core/run-workspace'
 import { getLiveRun } from '../../src/core/execution-ledger'
 import { closeDb } from '../../packages/core/src/storage/db'
+import { waitUntil } from '../helpers/wait'
 
 let tempDir: string
 
@@ -156,14 +157,6 @@ const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms))
 // CPU contention: a starved 50ms tick fires before dispatch prep finishes,
 // the assertion fails, and the still-preparing turn wedges the file (its
 // send lands after afterEach's drain and nothing ever releases it).
-async function waitUntil(cond: () => boolean, what: string, timeoutMs = 10_000) {
-  const deadline = Date.now() + timeoutMs
-  while (!cond()) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
-    await tick(10)
-  }
-}
-
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), 'bakin-dispatch-conc-'))
   pendingSends.clear()
@@ -275,7 +268,7 @@ describe('concurrent dispatch', () => {
     await dispatchTasks(tempDir, 3737)
     // Worktree materialization is a real git subprocess — wait for the send,
     // don't guess its duration.
-    await waitUntil(() => sendCalls.some((c) => c.agentId === 'jessica'), 'repo-bound send')
+    await waitUntil(() => sendCalls.some((c) => c.agentId === 'jessica'), { label: 'repo-bound send' })
 
     const send = sendCalls.find((c) => c.agentId === 'jessica')
     expect(send?.runWorkspace?.endsWith('/repo')).toBe(true)
@@ -287,7 +280,7 @@ describe('concurrent dispatch', () => {
     releaseSend('jessica')
     await awaitDispatchIdle()
     // Worktree removal after settle is async — bounded wait, not a fixed tick.
-    await waitUntil(() => !existsSync(send!.runWorkspace!), 'post-settle worktree removal')
+    await waitUntil(() => !existsSync(send!.runWorkspace!), { label: 'post-settle worktree removal' })
 
     // Worktree died at settle; the branch (the deliverable) survives.
     expect(existsSync(send!.runWorkspace!)).toBe(false)
@@ -603,7 +596,7 @@ describe('concurrent dispatch', () => {
     // for the write, don't guess its duration.
     await waitUntil(() => {
       try { return readState().failedDispatches['t-fail'] !== undefined } catch { return false }
-    }, 'failed-dispatch reconciliation write')
+    }, { label: 'failed-dispatch reconciliation write' })
     // jessica's failure is reconciled while pixel is still mid-turn.
     expect(readState().failedDispatches['t-fail']).toBeDefined()
     expect(getInFlightTurnCount('pixel')).toBe(1)

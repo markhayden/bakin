@@ -477,7 +477,6 @@ describe('schedule routes', () => {
     // Legacy hand-validation: pre-T8 the handler returned 400 when neither
     // url.searchParams.get('jobId') nor body.jobId was set. T8+ routing
     // requires :jobId in the path, so this case never reaches the handler.
-    it.skip('returns 400 when jobId is not provided — legacy', () => {})
 
     it('returns 404 for non-existent job', async () => {
       const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
@@ -541,8 +540,6 @@ describe('schedule routes', () => {
       expect(status).toBe(400)
       expect(body.error).toContain('Could not parse')
     })
-
-    it.skip('reads jobId from body when not in searchParams — legacy fallback; routing requires :jobId in path', () => {})
 
     it('audits and logs the update', async () => {
       upsertJob(makeMeta({ jobId: 'job-123' }))
@@ -754,10 +751,6 @@ describe('schedule routes', () => {
       expect(getJob('job-del-empty-body')).toBeNull()
     })
 
-    it.skip('returns 400 when jobId is not provided — legacy: routing requires :jobId in path', () => {})
-
-    it.skip('reads jobId from body when not in searchParams — legacy fallback; routing requires :jobId in path', () => {})
-
     it('audits and logs the deletion', async () => {
       upsertJob(makeMeta({ jobId: 'job-audit-del' }))
 
@@ -946,8 +939,6 @@ describe('schedule routes', () => {
       expect(mockCreateTask).toHaveBeenCalledTimes(2)
     })
 
-    it.skip('returns 400 when jobId is missing — legacy: routing requires :jobId in path', () => {})
-
     it('audits and logs the run_now action', async () => {
       upsertJob(makeMeta({ jobId: 'job-audit-run', schedule: { kind: 'cron', expr: '0 9 * * *' } }))
       const route = findRoute(plugin.routes, 'POST', '/:jobId/run')!
@@ -1002,8 +993,6 @@ describe('schedule routes', () => {
       expect(runs.find(r => r.runId === 'run-a')).toMatchObject({ status: 'success', taskId: 'task-aaaaaaaa' })
       expect(runs.find(r => r.runId === 'run-b')).toMatchObject({ status: 'skipped', skippedReason: 'overlap' })
     })
-
-    it.skip('returns 400 when jobId is missing — legacy: routing requires :jobId in path', () => {})
 
     it('returns empty array when no runs exist', async () => {
       const route = findRoute(plugin.routes, 'GET', '/:jobId/runs')!

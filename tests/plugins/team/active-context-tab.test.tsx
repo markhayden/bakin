@@ -9,7 +9,7 @@
  * rendered via MarkdownContent.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -60,20 +60,28 @@ afterAll(() => {
 })
 
 describe('ActiveContextTab', () => {
-  it('renders the loading state before the fetch resolves', () => {
+  it('renders the loading state before the fetch resolves', async () => {
     let resolveFetch: (value: Response) => void
     global.fetch = mock(
       () => new Promise<Response>((res) => { resolveFetch = res }),
     ) as unknown as typeof global.fetch
 
-    render(<ActiveContextTab agentId="pixel" />)
+    await act(async () => {
+      render(<ActiveContextTab agentId="pixel" />)
+    })
     expect(screen.getByText(/Loading session context/)).toBeDefined()
-    resolveFetch!({ ok: true, json: () => Promise.resolve({ ok: true, transcript: null }) } as Response)
+    // Resolve INSIDE act so the resulting re-render lands in this test rather
+    // than during the settle hook — the loading assertion above already ran.
+    await act(async () => {
+      resolveFetch!({ ok: true, json: () => Promise.resolve({ ok: true, transcript: null }) } as Response)
+    })
   })
 
   it('renders the empty state when transcript is null', async () => {
     setupFetch({ ok: true, transcript: null })
-    render(<ActiveContextTab agentId="pixel" />)
+    await act(async () => {
+      render(<ActiveContextTab agentId="pixel" />)
+    })
     await waitFor(() => expect(screen.getByText(/No session context yet/)).toBeDefined())
   })
 
@@ -82,7 +90,9 @@ describe('ActiveContextTab', () => {
       ok: true,
       transcript: { sessionId: 'sess-x', sessionStarted: null, messages: [], truncated: false, totalMessages: 0 },
     })
-    render(<ActiveContextTab agentId="pixel" />)
+    await act(async () => {
+      render(<ActiveContextTab agentId="pixel" />)
+    })
     await waitFor(() => expect(screen.getByText(/No session context yet/)).toBeDefined())
   })
 
@@ -102,7 +112,9 @@ describe('ActiveContextTab', () => {
         totalMessages: 4,
       },
     })
-    render(<ActiveContextTab agentId="pixel" />)
+    await act(async () => {
+      render(<ActiveContextTab agentId="pixel" />)
+    })
     await waitFor(() => expect(screen.getByText('system')).toBeDefined())
     expect(screen.getByText('user')).toBeDefined()
     expect(screen.getByText('assistant')).toBeDefined()
@@ -122,7 +134,9 @@ describe('ActiveContextTab', () => {
         totalMessages: 500,
       },
     })
-    render(<ActiveContextTab agentId="pixel" />)
+    await act(async () => {
+      render(<ActiveContextTab agentId="pixel" />)
+    })
     await waitFor(() => expect(screen.getByText(/Showing latest 1 of 500 messages/)).toBeDefined())
   })
 
@@ -137,7 +151,9 @@ describe('ActiveContextTab', () => {
         totalMessages: 1,
       },
     })
-    render(<ActiveContextTab agentId="pixel" />)
+    await act(async () => {
+      render(<ActiveContextTab agentId="pixel" />)
+    })
     await waitFor(() => expect(screen.getByTestId('markdown')).toBeDefined())
     expect(screen.getByTestId('markdown').textContent).toBe('# Heading')
   })
@@ -153,7 +169,9 @@ describe('ActiveContextTab', () => {
         totalMessages: 1,
       },
     })
-    render(<ActiveContextTab agentId="pixel" />)
+    await act(async () => {
+      render(<ActiveContextTab agentId="pixel" />)
+    })
     await waitFor(() => expect(screen.getByText(/"ok": true/)).toBeDefined())
     // Markdown stub should not have been used for tool content
     expect(screen.queryByTestId('markdown')).toBeNull()
@@ -161,7 +179,9 @@ describe('ActiveContextTab', () => {
 
   it('renders an error state when the API returns ok:false', async () => {
     setupFetch({ ok: false, transcript: null, error: 'denied' })
-    render(<ActiveContextTab agentId="pixel" />)
+    await act(async () => {
+      render(<ActiveContextTab agentId="pixel" />)
+    })
     await waitFor(() => expect(screen.getByText('denied')).toBeDefined())
   })
 })

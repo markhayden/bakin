@@ -30,7 +30,7 @@ git clone git@github.com:markhayden/bakin.git
 cd bakin
 bun install
 bun run typecheck
-bun test --isolate
+bun run test
 ```
 
 ## Common Commands
@@ -41,8 +41,9 @@ bun run start               # build assets, then boot server.ts
 bun run server              # boot server.ts without rebuilding
 bun run build               # production binary build
 bun run typecheck           # TypeScript
-bun test --isolate          # full test suite
-bun test --watch --isolate  # test watch mode
+bun run test                # full test suite (the flags CI uses live in package.json)
+bun run test:watch          # test watch mode
+bun test <file> --isolate   # one file, fresh process
 bun run lint                # ESLint
 bun run docs:check          # generate, validate, and build public docs
 ```
@@ -87,7 +88,8 @@ Run targeted tests while iterating, then run the broader checks before review:
 
 ```sh
 bun run typecheck
-bun test --isolate
+bun run lint
+bun run test
 bun run docs:check
 ```
 

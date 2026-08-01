@@ -264,6 +264,7 @@ describe('postChannel', () => {
   })
 
   it('shares an in-flight identical channel post instead of sending twice', async () => {
+    // Simulated in-flight delivery — the overlap IS the condition under test.
     deliverContent.mockImplementationOnce(async () => {
       await new Promise(resolve => setTimeout(resolve, 10))
       return {

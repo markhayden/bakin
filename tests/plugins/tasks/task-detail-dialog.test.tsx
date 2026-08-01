@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -79,38 +79,40 @@ beforeEach(() => {
 })
 
 describe('TaskDetailDrawer dispatch failure context', () => {
-  it('renders specific provider failure details from structured log data', () => {
-    render(
-      <TaskDetailDrawer
-        task={makeTask({
-          log: [
-            {
-              timestamp: '2026-06-03T00:01:00Z',
-              author: 'system',
-              message: 'Dispatch failed',
-              data: {
-                dispatchFailure: {
-                  category: 'model_provider_unavailable',
-                  reasonCode: 'auth_profile_unavailable',
-                  summary: 'Dispatch failed: model provider unavailable',
-                  specificReason: 'Auth profile unavailable',
-                  provider: 'openai-codex',
-                  model: 'openai-codex/gpt-5.5',
-                  retryable: true,
-                  rawError: 'No available auth profile for openai-codex',
+  it('renders specific provider failure details from structured log data', async () => {
+    await act(async () => {
+      render(
+        <TaskDetailDrawer
+          task={makeTask({
+            log: [
+              {
+                timestamp: '2026-06-03T00:01:00Z',
+                author: 'system',
+                message: 'Dispatch failed',
+                data: {
+                  dispatchFailure: {
+                    category: 'model_provider_unavailable',
+                    reasonCode: 'auth_profile_unavailable',
+                    summary: 'Dispatch failed: model provider unavailable',
+                    specificReason: 'Auth profile unavailable',
+                    provider: 'openai-codex',
+                    model: 'openai-codex/gpt-5.5',
+                    retryable: true,
+                    rawError: 'No available auth profile for openai-codex',
+                  },
                 },
               },
-            },
-          ],
-        })}
-        columnId="todo"
-        open
-        editing={false}
-        onClose={() => {}}
-        onEdit={() => {}}
-        onCancelEdit={() => {}}
-      />,
-    )
+            ],
+          })}
+          columnId="todo"
+          open
+          editing={false}
+          onClose={() => {}}
+          onEdit={() => {}}
+          onCancelEdit={() => {}}
+        />,
+      )
+    })
 
     expect(screen.getByText('Dispatch failed: model provider unavailable')).toBeDefined()
     expect(screen.getAllByText('Auth profile unavailable').length).toBeGreaterThan(0)

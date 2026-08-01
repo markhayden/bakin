@@ -53,6 +53,7 @@ import {
 } from '@bakin/assets/lib/unmanaged-tracker'
 import { getAsset } from '@bakin/assets/lib/asset-service'
 import { isValidAssetId } from '@bakin/assets/lib/asset-id'
+import { waitUntil } from '../../helpers/wait'
 
 function drop(relPath: string, content = 'file-content'): string {
   const abs = join(testDir, relPath)
@@ -166,7 +167,8 @@ describe('assets/import-unmanaged', () => {
       setUnmanagedEmitter(c => counts.push(c))
       noteUnmanagedSync('assets/inbox/one.png')
       noteUnmanagedSync('assets/inbox/two.png')
-      await new Promise(r => setTimeout(r, 450))
+      await waitUntil(() => counts.length > 0,
+        { label: 'the unmanaged-file debounce to emit its batched count' })
       expect(counts).toEqual([2])
     })
   })

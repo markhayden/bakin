@@ -15,26 +15,116 @@
  *     OPENCLAW_HOME to a temp directory.
  */
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
-import { mock, setSystemTime, spyOn } from 'bun:test'
+import { afterEach, mock, setSystemTime, spyOn } from 'bun:test'
+
+// ---------------------------------------------------------------------------
+// Test-run environment.
+//
+// This lives here, not in bunfig.toml: bun 1.3.13 does not read a [test.env]
+// section (probed — a var set there arrives `undefined`; NODE_ENV shows up only
+// because `bun test` sets it itself). The preload is the earliest thing that
+// actually runs.
+//
+// Logger chatter buried real failures under ~3,958 lines (1,641 from storage-db
+// alone) of an 11,885-line run. `silent` is a format the logger already supports,
+// so no logging code changes shape.
+//
+// `??=` keeps the escape hatch honest — an explicit shell value always wins:
+//   BAKIN_CONSOLE_FORMAT=pretty bun test path/to.test.ts --isolate
+// Tests that assert the logger WRITES must set the format themselves rather than
+// inherit it (see tests/core/logger.test.ts's withConsoleEnv).
+// ---------------------------------------------------------------------------
+process.env.BAKIN_CONSOLE_FORMAT ??= 'silent'
+
+// Disable RTL's auto-registration. Read the block in tests/rtl-settle.ts before
+// changing this — RTL otherwise installs a bare synchronous afterEach(cleanup)
+// that races the settle-then-unmount hook written specifically to replace it,
+// and flips React's act environment on for every RTL file as a side effect.
+// We own both, deliberately, in rtl-settle.
+process.env.RTL_SKIP_AUTO_CLEANUP = 'true'
 
 GlobalRegistrator.register()
 
 // ---------------------------------------------------------------------------
+// The act gate.
+//
+// React reports every state update that lands outside act() while the act
+// environment is on. That report is the ONLY signal we have for a test ending
+// with work still in flight — the confirmed mechanism for pinning an --isolate
+// worker open forever (#753). For a long time the suite emitted ~300 of them a
+// run and nobody could act on the noise, so they were treated as cosmetic.
+//
+// They are now failures. Each is attributed to the exact test that caused it,
+// because the buffer is drained per test rather than at the end of the run.
+//
+// There is NO allowlist, deliberately. One file legitimately needs to end a
+// test mid-flight — tests/components/rtl-settle-probe.test.tsx, which exists to
+// prove the settle hook survives exactly that — and it opts out by disabling the
+// act environment for itself. Putting the exception in the file keeps it under
+// the eye of anyone reading that test; putting it here would create a list that
+// grows quietly whenever someone is in a hurry.
+//
+// How to fix a failure this produces: wrap the interaction that triggers the
+// async state in `await act(async () => { ... })`. Do NOT "fix" it by deleting
+// the assertion, widening a timeout, or sleeping. Deep reference:
+// .claude/knowledge/test-suite-health.md.
+// ---------------------------------------------------------------------------
+const ACT_WARNING = 'not wrapped in act'
+const pendingActWarnings: string[] = []
+const passThroughConsoleError = console.error.bind(console)
+
+console.error = (...args: unknown[]): void => {
+  const first = String(args[0] ?? '')
+  if (first.includes(ACT_WARNING)) {
+    // React formats with %s; args[1] carries the component name.
+    const component = typeof args[1] === 'string' ? args[1] : 'unknown component'
+    pendingActWarnings.push(component)
+    return
+  }
+  passThroughConsoleError(...args)
+}
+
+afterEach(() => {
+  if (pendingActWarnings.length === 0) return
+  const seen = pendingActWarnings.slice()
+  pendingActWarnings.length = 0
+  const counts = new Map<string, number>()
+  for (const name of seen) counts.set(name, (counts.get(name) ?? 0) + 1)
+  const detail = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, n]) => (n > 1 ? `${name} x${n}` : name))
+    .join(', ')
+  throw new Error(
+    `act gate: ${seen.length} React update(s) landed outside act() during this test `
+    + `(${detail}). The test finished with work still in flight, which is what wedges a `
+    + `worker under --isolate. Wrap the interaction in await act(async () => { ... }). `
+    + `See .claude/knowledge/test-suite-health.md.`,
+  )
+})
+
+// ---------------------------------------------------------------------------
 // Cross-file isolation is provided by `--isolate` (in the test script AND the
-// CI workflows), NOT by cleanup hooks here. Two hard-won facts before you
-// "improve" this:
-//  1. RTL auto-cleanup is inert under bun:test — bun's test globals are not
-//     visible at module-eval time, so RTL's `typeof beforeAll === 'function'`
-//     feature-detect fails in every test file. Files sharing a process
-//     therefore leak mounted React roots into each other (the "Attempted to
-//     synchronously unmount a root while React was already rendering" /
-//     empty-container CI failures).
-//  2. Do NOT fix that by importing @testing-library/react here. An eager
-//     preload import lets RTL self-register (globals ARE visible during
-//     preload) — which also sets React's act-environment for EVERY file and
-//     fails ~450 component tests written without act() discipline. A lazy
-//     require() inside a hook is worse ("Cannot call beforeAll() inside a
-//     test", ~5.7k failures).
+// CI workflows), NOT by cleanup hooks here. Facts before you "improve" this:
+//  1. RTL auto-registration IS active under bun 1.3.13 — its test globals ARE
+//     visible when a test file imports RTL, so `typeof beforeAll === 'function'`
+//     succeeds and @testing-library/react/dist/index.js:46 installs BOTH a bare
+//     synchronous afterEach(cleanup) AND beforeAll(setReactActEnvironment(true)).
+//     (An older comment here claimed the opposite. It was wrong, and that error
+//     is why ~294 act warnings accumulated unnoticed: they looked like sloppy
+//     test authorship rather than a global mode nobody had chosen. Verified by
+//     defineProperty-probing globalThis.IS_REACT_ACT_ENVIRONMENT and logging the
+//     setter's stack — see .claude/knowledge/test-suite-health.md.)
+//     We therefore set RTL_SKIP_AUTO_CLEANUP above and own both behaviors in
+//     tests/rtl-settle.ts, where the settle-then-unmount hook can't be raced.
+//  2. Do NOT import @testing-library/react here. A preload import makes RTL
+//     self-register before any test file loads, and a lazy require() inside a
+//     hook is worse ("Cannot call beforeAll() inside a test", ~5.7k failures).
+//  3. Do NOT set React's act environment globally from this preload. It is
+//     scoped to rtl-settle on purpose: Ink is also a React renderer, and act
+//     mode changes how React flushes, so a global flag breaks 31 CLI TUI tests
+//     (measured). The "~450 component tests" an older comment warned about was
+//     real but misattributed — the casualties are Ink's terminal renderer, not
+//     RTL's DOM tests.
 // `--isolate` gives each file its own process, which also contains
 // mock.module overlay leakage (see CLAUDE.md Testing Rules).
 //

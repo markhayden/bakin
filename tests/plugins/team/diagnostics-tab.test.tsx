@@ -7,6 +7,7 @@
 import { describe, expect, it, mock } from 'bun:test'
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
+import { actRender } from '../../rtl-settle'
 import type { ReactNode } from 'react'
 import { TEAM_ATTENTION_HEALTH_REPORT } from './health-report-fixture'
 
@@ -103,7 +104,9 @@ function stubFetch() {
 describe('DiagnosticsTab', () => {
   it('renders all three panels from their endpoints', async () => {
     stubFetch()
-    render(<DiagnosticsTab agentId="pixel" />)
+    await act(async () => {
+      render(<DiagnosticsTab agentId="pixel" />)
+    })
 
     // Drift panel: finding + attribution + receipt line
     expect(await screen.findByText('block-stale')).toBeDefined()
@@ -124,9 +127,11 @@ describe('DiagnosticsTab', () => {
 
   it('Sync now posts to the sync endpoint and rescans', async () => {
     const fetchMock = stubFetch()
-    render(<DiagnosticsTab agentId="pixel" />)
+    await act(async () => {
+      render(<DiagnosticsTab agentId="pixel" />)
+    })
     const syncButton = await screen.findByRole('button', { name: /Sync now/ })
-    fireEvent.click(syncButton)
+    await act(async () => { fireEvent.click(syncButton) })
     await waitFor(() => {
       const calls = (fetchMock.mock.calls as unknown as Array<[string, RequestInit | undefined]>).map(
         (c) => [c[0], c[1]?.method ?? 'GET'] as const,
@@ -150,7 +155,9 @@ describe('DiagnosticsTab', () => {
         return Promise.resolve(jsonResponse({}))
       }) as unknown as typeof fetch
 
-      render(<DiagnosticsTab agentId="pixel" />)
+      await act(async () => {
+        render(<DiagnosticsTab agentId="pixel" />)
+      })
       await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
 
       expect(screen.getByText('Drift scan unavailable.')).toBeDefined()
@@ -194,7 +201,11 @@ describe('DiagnosticsTab', () => {
       return Promise.resolve(jsonResponse({}))
     }) as unknown as typeof fetch
 
-    const { rerender } = render(<DiagnosticsTab agentId="pixel" />)
+    let __view0!: ReturnType<typeof render>
+    await act(async () => {
+      __view0 = render(<DiagnosticsTab agentId="pixel" />)
+    })
+    const { rerender } = __view0
     await waitFor(() => expect(pixelSignal).toBeDefined())
 
     rerender(<DiagnosticsTab agentId="enrich" />)
@@ -219,10 +230,12 @@ describe('DiagnosticsTab', () => {
       return Promise.resolve(jsonResponse({}))
     }) as unknown as typeof fetch
 
-    render(<DiagnosticsTab agentId="pixel" />)
+    await act(async () => {
+      render(<DiagnosticsTab agentId="pixel" />)
+    })
 
     expect(await screen.findByText('Activity timeline unavailable.')).toBeDefined()
-    fireEvent.click(screen.getByRole('button', { name: 'Retry activity timeline' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry activity timeline' })) })
 
     expect(await screen.findByText('resize hero images')).toBeDefined()
     expect(timelineAttempts).toBe(2)
@@ -243,12 +256,14 @@ describe('DiagnosticsTab', () => {
       return Promise.resolve(jsonResponse({}))
     }) as unknown as typeof fetch
 
-    render(<DiagnosticsTab agentId="pixel" />)
+    await act(async () => {
+      render(<DiagnosticsTab agentId="pixel" />)
+    })
 
     expect(await screen.findByText('Configured budget unavailable.')).toBeDefined()
     expect(screen.queryByText(/of 64\.0 KiB budget/)).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retry context budget' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry context budget' })) })
     await waitFor(() => expect(screen.getByText(/of 64\.0 KiB budget/)).toBeDefined())
     expect(settingsAttempts).toBe(2)
   })
@@ -264,7 +279,9 @@ describe('DiagnosticsTab', () => {
         return Promise.resolve(jsonResponse({}))
       }) as unknown as typeof fetch
 
-      render(<DiagnosticsTab agentId="pixel" />)
+      await act(async () => {
+        render(<DiagnosticsTab agentId="pixel" />)
+      })
       await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
 
       expect(screen.getByText('Context report unavailable because the request timed out.')).toBeDefined()
@@ -280,12 +297,14 @@ describe('DiagnosticsTab', () => {
       if (url === '/api/agent-packages/pixel/sync') return new Promise<Response>(() => {})
       return baseFetch(url)
     }) as unknown as typeof fetch
-    render(<DiagnosticsTab agentId="pixel" />)
+    await act(async () => {
+      render(<DiagnosticsTab agentId="pixel" />)
+    })
     const sync = await screen.findByRole('button', { name: /Sync now/ })
 
     vi.useFakeTimers()
     try {
-      fireEvent.click(sync)
+      await act(async () => { fireEvent.click(sync) })
       await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
 
       expect(screen.getByText('Sync timed out. Try again.')).toBeDefined()
@@ -305,8 +324,12 @@ describe('DiagnosticsTab', () => {
       return baseFetch(url)
     }) as unknown as typeof fetch
 
-    const view = render(<DiagnosticsTab agentId="pixel" />)
-    fireEvent.click(await screen.findByRole('button', { name: /Sync now/ }))
+    let __view1!: ReturnType<typeof render>
+    await act(async () => {
+      __view1 = render(<DiagnosticsTab agentId="pixel" />)
+    })
+    const view = __view1
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Sync now/ })) })
     await waitFor(() => expect(resolveSync).toBeDefined())
 
     view.rerender(<DiagnosticsTab agentId="enrich" />)
@@ -328,7 +351,11 @@ describe('DiagnosticsTab', () => {
       return Promise.resolve(jsonResponse({}))
     }) as unknown as typeof fetch
 
-    const { unmount } = render(<DiagnosticsTab agentId="pixel" />)
+    let __view2!: ReturnType<typeof render>
+    await act(async () => {
+      __view2 = render(<DiagnosticsTab agentId="pixel" />)
+    })
+    const { unmount } = __view2
     await waitFor(() => expect(timelineSignal).toBeDefined())
 
     unmount()
@@ -352,7 +379,9 @@ describe('DiagnosticsTab', () => {
         return Promise.resolve(jsonResponse({}))
       }) as unknown as typeof fetch
 
-      render(<DiagnosticsTab agentId="pixel" />)
+      await act(async () => {
+        render(<DiagnosticsTab agentId="pixel" />)
+      })
       await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
 
       expect(screen.getByText('Activity timeline unavailable.')).toBeDefined()
@@ -366,20 +395,22 @@ describe('DiagnosticsTab', () => {
 describe('DiagnosticsChipsView', () => {
   it('derives flags from canonical incident resources and observation check IDs', async () => {
     const fetchMock = stubFetch()
-    const { result } = renderHook(() => useAgentAttention('pixel'))
+    const { result } = await actRender(() => renderHook(() => useAgentAttention('pixel')))
 
     await waitFor(() => expect(result.current.loaded).toBe(true))
     expect(result.current).toEqual({ loaded: true, drift: true, context: true, burn: false })
     expect(fetchMock.mock.calls.some((call: unknown[]) => String(call[0]).startsWith('/api/plugins/health/doctor'))).toBe(true)
   })
 
-  it('renders flagged and ok chips', () => {
-    render(
-      <DiagnosticsChipsView
-        attention={{ loaded: true, drift: true, context: false, burn: false }}
-        onOpen={() => {}}
-      />,
-    )
+  it('renders flagged and ok chips', async () => {
+    await act(async () => {
+      render(
+        <DiagnosticsChipsView
+          attention={{ loaded: true, drift: true, context: false, burn: false }}
+          onOpen={() => {}}
+        />,
+      )
+    })
     const buttons = screen.getAllByRole('button')
     expect(buttons).toHaveLength(3)
     expect(buttons[0]!.textContent).toContain('Drift')

@@ -39,6 +39,7 @@ import {
   appendTranscriptRow,
   attachmentsDir,
 } from '../../../plugins/chat/lib/store'
+import { settleFor } from '../../helpers/wait'
 
 type BusHandler = (event: string, data: Record<string, unknown>) => void
 
@@ -142,7 +143,7 @@ describe('chat channel inbound wiring', () => {
     expect(typing.length).toBeGreaterThanOrEqual(1)
     const pulses = typing.length
     emit('chat.done', { chatId: chat.id, agentId: 'main', aborted: true })
-    await new Promise(resolve => setTimeout(resolve, 30))
+    await settleFor(30, 'chat.done must clear the typing interval — no further pulses is the assertion')
     expect(typing.length).toBe(pulses) // interval cleared — no further pulses
   })
 

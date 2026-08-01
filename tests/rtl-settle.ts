@@ -12,25 +12,33 @@
  * 1. bun:test itself CLEARS document.body between tests when happy-dom is
  *    registered — but it does not unmount React roots. Roots survive their
  *    test, detached, with whatever async work they still had in flight.
- * 2. RTL auto-cleanup is inert under bun — test globals are invisible at
- *    module-eval time, so RTL's feature-detect fails in every file. Roots
- *    accumulate unless a hook unmounts them.
- * 3. A bare synchronous `cleanup()` (which several files already had) still
- *    races: on a slow machine an in-flight time-sliced render can be
+ * 2. RTL's auto-registration IS active under bun 1.3.13 (an older comment here
+ *    claimed it was inert — it is not; see tests/setup.ts). It is disabled via
+ *    RTL_SKIP_AUTO_CLEANUP in the preload precisely so this module can be the
+ *    single owner of both cleanup and the act environment.
+ * 3. A bare synchronous `cleanup()` — which is exactly what RTL's auto-cleanup
+ *    installs — races: on a slow machine an in-flight time-sliced render can be
  *    mid-slice when the unmount lands — "Attempted to synchronously unmount
  *    a root while React was already rendering" — poisoning the next tests
  *    in the file (the kanban/TaskCard CI failures, unreproducible on fast
- *    dev hardware).
+ *    dev hardware). For a long stretch RTL's copy was silently running
+ *    alongside ours, which is the race this module exists to prevent.
  *
  * The fix: unmount INSIDE act(). act's contract is to flush/join in-flight
  * React work before running its callback, so the unmount can never land
- * mid-render. The act-environment flag is enabled only for the hook's
- * duration — leaving it on globally fails ~450 component tests written
- * without act() discipline, and importing RTL from the PRELOAD trips its
- * self-registration (see tests/setup.ts). This module must be imported by
- * the test file itself.
+ * mid-render.
+ *
+ * ACT ENVIRONMENT. Set here, for the whole file, and scoped on purpose: this
+ * module is imported by RTL-rendering test files and nothing else. Setting it
+ * in the preload instead breaks 31 Ink/CLI TUI tests, because Ink is a React
+ * renderer too and act mode changes how React flushes its work (measured —
+ * .claude/knowledge/test-suite-health.md). With it on, React reports any state
+ * update that lands outside act(), which is the ONLY signal we have for a test
+ * ending with work still in flight — the confirmed mechanism for pinning an
+ * --isolate worker open forever (#753). tests/setup.ts fails the run on any
+ * such warning, so this flag is load-bearing, not diagnostic.
  */
-import { afterEach } from 'bun:test'
+import { afterEach, beforeAll } from 'bun:test'
 import { act, cleanup, configure } from '@testing-library/react'
 
 /**
@@ -44,6 +52,16 @@ import { act, cleanup, configure } from '@testing-library/react'
  * hung is caught by bun's per-test --timeout instead.
  */
 configure({ asyncUtilTimeout: 15_000 })
+
+/**
+ * Own the act environment for every RTL file (see the module docblock for why
+ * it is set here and not in the preload). RTL used to do this as a side effect
+ * of its auto-registration; that is now disabled, so this is the single place
+ * the mode is chosen.
+ */
+beforeAll(() => {
+  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+})
 
 // Captured at module eval — BEFORE any test can install fake timers (the vi
 // shim replaces globalThis.setTimeout). Yielding through a faked setTimeout
@@ -84,25 +102,45 @@ function schedulerTick(): Promise<void> {
  * makes the test honest about its terminal state.
  */
 export async function settleReact(rounds = 3): Promise<void> {
-  for (let i = 0; i < rounds; i++) {
-    await schedulerTick()    // let paused render slices resume + finish
-    await realTimerYield(0)  // let timer-scheduled work (happy-dom rAF) land
-  }
+  // The drain runs INSIDE act. A drain that flushes updates from outside act is
+  // self-defeating: every update it lands is, by definition, an un-acted update,
+  // so the gate fires on a test that was doing the right thing. Nested act is
+  // legal, so callers already inside an act window pay nothing.
+  await act(async () => {
+    for (let i = 0; i < rounds; i++) {
+      await schedulerTick()    // let paused render slices resume + finish
+      await realTimerYield(0)  // let timer-scheduled work (happy-dom rAF) land
+    }
+  })
+}
+
+/**
+ * Run a render/renderHook inside an async act and return its result.
+ *
+ * The async act window is what lets mount effects — and the fetches they start —
+ * settle before the test body continues, instead of landing loose afterwards.
+ * Generic so `renderHook`'s result type survives: hoisting the value out of the
+ * act callback with an explicit `ReturnType<typeof renderHook>` annotation erases
+ * the hook's type and leaves `result.current` as `unknown`.
+ */
+export async function actRender<T>(render: () => T): Promise<T> {
+  let value!: T
+  await act(async () => {
+    value = render()
+  })
+  return value
 }
 
 afterEach(async () => {
-  const g = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-  const prev = g.IS_REACT_ACT_ENVIRONMENT
-  g.IS_REACT_ACT_ENVIRONMENT = true
-  try {
-    await settleReact()
-    await act(async () => {
-      // The unmount runs under act (joins act-visible work) AFTER the
-      // scheduler drain above let any yielded render complete — unmounting
-      // between paused slices is what React 19 forbids.
-      cleanup()
-    })
-  } finally {
-    g.IS_REACT_ACT_ENVIRONMENT = prev
-  }
+  // No flag juggling here any more — beforeAll set the act environment for the
+  // whole file, so this hook simply runs in it.
+  //
+  // settleReact drains inside its own act (see above). The unmount then runs
+  // under act too — joining act-visible work AFTER the scheduler drain let any
+  // yielded render complete, since unmounting between paused slices is what
+  // React 19 forbids.
+  await settleReact()
+  await act(async () => {
+    cleanup()
+  })
 })

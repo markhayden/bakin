@@ -57,6 +57,7 @@ import {
   freshActionRequiredIncidents,
   notifyActionRequiredIncidents,
 } from '../../src/core/doctor-escalation'
+import { waitUntil } from '../helpers/wait'
 
 function incident(overrides: Partial<HealthIncident> = {}): HealthIncident {
   return {
@@ -175,9 +176,10 @@ describe('canonical Health escalation', () => {
 
     const first = notifyActionRequiredIncidents(report([incident()]))
     const second = notifyActionRequiredIncidents(report([incident()]))
-    // Macrotask flush — the send now sits behind route resolution's async
-    // hops, so a fixed microtask count is too tight.
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    // The send sits behind route resolution's async hops — poll for it rather
+    // than guessing how many hops that is today.
+    await waitUntil(() => send.mock.calls.length > 0,
+      { label: 'the escalation send to fire after route resolution' })
     expect(send).toHaveBeenCalledTimes(1)
 
     releaseSend()

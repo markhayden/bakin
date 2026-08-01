@@ -56,6 +56,7 @@ import {
 import { broadcast } from '../../src/core/sse'
 import { appendAudit } from '../../src/core/audit'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
+import { waitUntil } from '../helpers/wait'
 
 describe('watcher', () => {
   let tempDir: string
@@ -185,8 +186,9 @@ describe('watcher', () => {
       const onInboxFile = mock()
       const eventBus = new BakinEventBus(() => {})
       start({ contentDir: tempDir, eventBus, onInboxFile })
-      // sweep fires hooks fire-and-forget — let them settle
-      await new Promise((r) => setTimeout(r, 20))
+      // sweep fires hooks fire-and-forget — poll for the one we care about
+      await waitUntil(() => seen.includes(join('inbox', 'report.json')),
+        { label: 'the fire-and-forget inbox hook to record report.json' })
 
       expect(seen).toContain(join('inbox', 'report.json'))
       expect(seen).not.toContain(join('assets', 'inbox', 'dropped.png'))

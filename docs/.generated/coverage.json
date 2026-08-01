@@ -4,8 +4,8 @@
   "surfaces": {
     "cliCommands": {
       "status": "active",
-      "count": 77,
-      "examples": 93,
+      "count": 81,
+      "examples": 98,
       "source": "src/core/cli/registry.ts"
     },
     "httpRoutes": {

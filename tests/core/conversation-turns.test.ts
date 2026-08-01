@@ -32,6 +32,7 @@ import type {
   TurnOutcome,
 } from '../../src/core/conversation-turns'
 import type { ChatChunk, MessageArgs } from '../../packages/core/src/adapters/runtime/concepts'
+import { settleFor, waitUntil } from '../helpers/wait'
 
 // Dynamic import AFTER the mock.module calls — a hoisted static import would
 // bind the engine's module-level logger to the real one before the mock lands.
@@ -612,10 +613,8 @@ describe('conversation turn service', () => {
     })
     expect(service.inflightPreview('t18')).toBeNull()
     expect(await service.start(h.ctx, 't18', 'go')).toBe('accepted')
-    // Wait for both text chunks to land before peeking.
-    for (let i = 0; i < 50 && service.inflightPreview('t18') !== 'stream so far'; i++) {
-      await new Promise((r) => setTimeout(r, 2))
-    }
+    await waitUntil(() => service.inflightPreview('t18') === 'stream so far',
+      { label: 'both text chunks to land in the in-flight preview' })
     expect(service.inflightPreview('t18')).toBe('stream so far')
     release()
     await service.waitFor('t18')
@@ -666,11 +665,6 @@ describe('conversation turn service — pending queue', () => {
     return () => release()
   }
 
-  async function waitUntil(cond: () => boolean, label: string) {
-    for (let i = 0; i < 200 && !cond(); i++) await new Promise((r) => setTimeout(r, 2))
-    if (!cond()) throw new Error(`timed out waiting for ${label}`)
-  }
-
   test('enqueue while busy: queued result, queued event, persisted snapshot, listQueued', async () => {
     const { h, service, persisted, scripts } = makeQueueHarness()
     const release = gatedScript(scripts)
@@ -688,7 +682,7 @@ describe('conversation turn service — pending queue', () => {
 
     release()
     await service.waitFor('q1')
-    await waitUntil(() => !service.isInFlight('q1') && service.listQueued('q1').length === 0, 'drain settle')
+    await waitUntil(() => !service.isInFlight('q1') && service.listQueued('q1').length === 0, { label: 'drain settle' })
   })
 
   test('combined drain after done: FIFO user rows, ONE runtime call with joined content + merged attachments, one meter', async () => {
@@ -717,7 +711,7 @@ describe('conversation turn service — pending queue', () => {
 
     release()
     await service.waitFor('q2')
-    await waitUntil(() => h.events.filter((e) => e.event === 'test.done').length === 2, 'drained turn done')
+    await waitUntil(() => h.events.filter((e) => e.event === 'test.done').length === 2, { label: 'drained turn done' })
 
     // Exactly two runtime calls total: original + ONE combined drained turn.
     expect(h.seenArgs).toHaveLength(2)
@@ -757,7 +751,7 @@ describe('conversation turn service — pending queue', () => {
     expect(await service.start(h.ctx, 'q3', 'follow-up', { queueIfBusy: true })).toMatchObject({ queued: true })
     releaseErr()
     await service.waitFor('q3')
-    await waitUntil(() => h.events.some((e) => e.event === 'test.done'), 'drained turn after error')
+    await waitUntil(() => h.events.some((e) => e.event === 'test.done'), { label: 'drained turn after error' })
 
     const rows = h.rows.get('q3') ?? []
     expect(rows.some((r) => r.kind === 'error')).toBe(true)
@@ -775,12 +769,12 @@ describe('conversation turn service — pending queue', () => {
     })
 
     expect(await service.start(h.ctx, 'q4', 'first')).toBe('accepted')
-    await waitUntil(() => service.inflightPreview('q4') === 'wrong direction', 'first text chunk')
+    await waitUntil(() => service.inflightPreview('q4') === 'wrong direction', { label: 'first text chunk' })
     expect(await service.start(h.ctx, 'q4', 'correction', { queueIfBusy: true })).toMatchObject({ queued: true })
     expect(service.abort('q4')).toBe(true)
     release()
     await service.waitFor('q4')
-    await waitUntil(() => h.events.filter((e) => e.event === 'test.done').length === 2, 'drained turn after abort')
+    await waitUntil(() => h.events.filter((e) => e.event === 'test.done').length === 2, { label: 'drained turn after abort' })
 
     const rows = h.rows.get('q4') ?? []
     const abortedIdx = rows.findIndex((r) => r.kind === 'aborted')
@@ -804,16 +798,16 @@ describe('conversation turn service — pending queue', () => {
     await waitUntil(() => {
       const last = persisted[persisted.length - 1]
       return last?.key === 'q5' && last.items.length === 1
-    }, 'remove persisted')
+    }, { label: 'remove persisted' })
 
     service.clearQueue('q5')
     expect(service.listQueued('q5')).toHaveLength(0)
-    await waitUntil(() => persisted[persisted.length - 1]?.items.length === 0, 'clear persisted')
+    await waitUntil(() => persisted[persisted.length - 1]?.items.length === 0, { label: 'clear persisted' })
 
     release()
     await service.waitFor('q5')
     // Cleared queue: nothing drains — exactly one runtime call ever.
-    await new Promise((r) => setTimeout(r, 20))
+    await settleFor(20, 'a cleared queue must NOT drain — a second runtime call never arriving is the assertion')
     expect(h.seenArgs).toHaveLength(1)
   })
 
@@ -827,7 +821,7 @@ describe('conversation turn service — pending queue', () => {
       { id: 'r1', ts: new Date().toISOString(), content: 'restored A', agentId: 'main' },
       { id: 'r2', ts: new Date().toISOString(), content: 'restored B', agentId: 'main' },
     ])
-    await waitUntil(() => h.seenArgs.length === 1, 'boot drain')
+    await waitUntil(() => h.seenArgs.length === 1, { label: 'boot drain' })
     expect(h.seenArgs[0].content).toBe('restored A\n\nrestored B')
     await service.waitFor('q6')
 
@@ -838,11 +832,11 @@ describe('conversation turn service — pending queue', () => {
     })
     expect(await service.start(h.ctx, 'q7', 'live')).toBe('accepted')
     service.restore(h.ctx, 'q7', [{ id: 'r3', ts: new Date().toISOString(), content: 'parked', agentId: 'main' }])
-    await new Promise((r) => setTimeout(r, 20))
+    await settleFor(20, 'a restored parked item must NOT be dispatched — its absence is the assertion')
     expect(h.seenArgs.filter((a) => a.content === 'parked')).toHaveLength(0)
     release()
     await service.waitFor('q7')
-    await waitUntil(() => h.seenArgs.some((a) => a.content === 'parked'), 'parked drain after settle')
+    await waitUntil(() => h.seenArgs.some((a) => a.content === 'parked'), { label: 'parked drain after settle' })
   })
 
   test('drain against a deleted thread drops the queue and persists empty — no throw, no runtime call', async () => {
@@ -856,10 +850,10 @@ describe('conversation turn service — pending queue', () => {
     gone = true
     release()
     await service.waitFor('q8')
-    await waitUntil(() => service.listQueued('q8').length === 0, 'queue dropped')
+    await waitUntil(() => service.listQueued('q8').length === 0, { label: 'queue dropped' })
     expect(persisted[persisted.length - 1]).toMatchObject({ key: 'q8', items: [] })
     // Only the original call — the drained turn never ran.
-    await new Promise((r) => setTimeout(r, 20))
+    await settleFor(20, 'the drained turn must NOT run — no second runtime call is the assertion')
     expect(h.seenArgs).toHaveLength(1)
     expect((h.rows.get('q8') ?? []).filter((r) => r.kind === 'user')).toHaveLength(1)
   })
@@ -875,13 +869,13 @@ describe('conversation turn service — pending queue', () => {
     expect(await service.start(h.ctx, 'q9', 'first')).toBe('accepted')
     expect(await service.start(h.ctx, 'q9', 'queued-1', { queueIfBusy: true })).toMatchObject({ queued: true })
     releaseFirst()
-    await waitUntil(() => h.seenArgs.length === 2, 'drained turn started')
+    await waitUntil(() => h.seenArgs.length === 2, { label: 'drained turn started' })
     // The drained turn holds the slot — a new send queues behind it.
     expect(await service.start(h.ctx, 'q9', 'queued-2', { queueIfBusy: true })).toMatchObject({ queued: true })
     releaseDrain()
-    await waitUntil(() => h.seenArgs.length === 3, 'second drain')
+    await waitUntil(() => h.seenArgs.length === 3, { label: 'second drain' })
     expect(h.seenArgs.map((a) => a.content)).toEqual(['first', 'queued-1', 'queued-2'])
-    await waitUntil(() => !service.isInFlight('q9'), 'all settled')
+    await waitUntil(() => !service.isInFlight('q9'), { label: 'all settled' })
   })
 
   test('concurrent enqueues each get THEIR OWN queueId even when persist parks (review: no tail re-read)', async () => {
@@ -917,7 +911,7 @@ describe('conversation turn service — pending queue', () => {
     expect([ra.queueLength, rb.queueLength].sort()).toEqual([1, 2])
     releaseTurn()
     await service.waitFor('q11')
-    await waitUntil(() => !service.isInFlight('q11'), 'drain settle')
+    await waitUntil(() => !service.isInFlight('q11'), { label: 'drain settle' })
   })
 
   test('abort during the drained turn\'s async prefix settles CLEAN as aborted — never an error row', async () => {
@@ -944,11 +938,11 @@ describe('conversation turn service — pending queue', () => {
     releaseTurn()
     await service.waitFor('q12')
     // The drain is now parked in resolveThread — Stop lands mid-prefix.
-    await waitUntil(() => service.isInFlight('q12'), 'drain slot reserved')
+    await waitUntil(() => service.isInFlight('q12'), { label: 'drain slot reserved' })
     expect(service.abort('q12')).toBe(true)
     releaseResolve()
     await service.waitFor('q12')
-    await waitUntil(() => !service.isInFlight('q12'), 'drain settled')
+    await waitUntil(() => !service.isInFlight('q12'), { label: 'drain settled' })
 
     const rows = h.rows.get('q12') ?? []
     // Clean abort settle: aborted marker, NO error row, done carries aborted.
@@ -972,9 +966,9 @@ describe('conversation turn service — pending queue', () => {
     ])
     release()
     await service.waitFor('q13')
-    await waitUntil(() => h.seenArgs.length === 2, 'combined drain')
+    await waitUntil(() => h.seenArgs.length === 2, { label: 'combined drain' })
     expect(h.seenArgs[1].content).toBe('from before the restart\n\ntyped after boot')
-    await waitUntil(() => !service.isInFlight('q13'), 'settled')
+    await waitUntil(() => !service.isInFlight('q13'), { label: 'settled' })
   })
 
   test('attachment-only queued message gets the visible placeholder at enqueue', async () => {
@@ -996,7 +990,7 @@ describe('conversation turn service — pending queue', () => {
     expect(service.listQueued('q10')[0].content).toBe('See the attached image.')
     release()
     await service.waitFor('q10')
-    await waitUntil(() => !service.isInFlight('q10') && service.listQueued('q10').length === 0, 'drained')
+    await waitUntil(() => !service.isInFlight('q10') && service.listQueued('q10').length === 0, { label: 'drained' })
   })
 
   test('terminalMarkerRows: the drained combined turn gets its own marker — one done row per settled turn (#735)', async () => {
@@ -1010,8 +1004,8 @@ describe('conversation turn service — pending queue', () => {
     expect(await service.start(h.ctx, 'qm1', 'follow-up', { queueIfBusy: true })).toMatchObject({ queued: true })
     release()
     await service.waitFor('qm1')
-    await waitUntil(() => h.events.filter((e) => e.event === 'test.done').length === 2, 'drained turn done')
-    await waitUntil(() => !service.isInFlight('qm1'), 'settled')
+    await waitUntil(() => h.events.filter((e) => e.event === 'test.done').length === 2, { label: 'drained turn done' })
+    await waitUntil(() => !service.isInFlight('qm1'), { label: 'settled' })
 
     const rows = h.rows.get('qm1') ?? []
     const dones = rows.filter((r) => r.kind === 'done') as Array<{ turnId?: string }>
@@ -1041,11 +1035,11 @@ describe('conversation turn service — pending queue', () => {
     expect(await service.start(h.ctx, 'qm2', 'correction', { queueIfBusy: true })).toMatchObject({ queued: true })
     releaseTurn()
     await service.waitFor('qm2')
-    await waitUntil(() => service.isInFlight('qm2'), 'drain slot reserved')
+    await waitUntil(() => service.isInFlight('qm2'), { label: 'drain slot reserved' })
     expect(service.abort('qm2')).toBe(true)
     releaseResolve()
     await service.waitFor('qm2')
-    await waitUntil(() => !service.isInFlight('qm2'), 'drain settled')
+    await waitUntil(() => !service.isInFlight('qm2'), { label: 'drain settled' })
 
     const rows = h.rows.get('qm2') ?? []
     // First turn completed cleanly → exactly one done marker; the aborted

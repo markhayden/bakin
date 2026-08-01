@@ -143,13 +143,20 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-      # Identical invocation to PR CI: same parallelism means the same file
-      # partitioning and execution order, so a suite that's green on the PR
-      # can't fail here from ordering-dependent leaks (rc.21 attempt 2: a TZ
-      # env leak only surfaced under this job's previously-serial run). Also
-      # ~7 min faster (#634).
+      # Identical invocation to PR CI — literally, now: the flags live in
+      # package.json's `test:ci` and every workflow calls that one script.
+      # They had drifted apart while this comment still claimed they matched;
+      # release was running unsharded at a 15s timeout against PR CI's sharded
+      # 60s, on the one job where a red run is most expensive. Same script means
+      # the same partitioning and execution order, so a suite that's green on the
+      # PR can't fail here from ordering-dependent leaks (rc.21 attempt 2: a TZ
+      # env leak only surfaced under this job's previously-serial run).
+      #
+      # NOTE: unsharded on purpose. This job is a single gate before an
+      # irreversible publish, so it runs the whole suite in one place; the
+      # per-shard split is a PR-latency optimization, not a correctness one.
       - name: Test
-        run: bun test --parallel --isolate --timeout 15000
+        run: bun run test:ci
 
       - name: Build CSS
         run: bun run build:css

@@ -11,7 +11,7 @@
  *  5. Clicking a card triggers router.push.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -227,7 +227,7 @@ afterEach(() => {
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 describe('WorkflowsPage', () => {
-  it('renders the loading state initially', () => {
+  it('renders the loading state initially', async () => {
     // Pin fetch to a never-resolving promise so we stay in loading.
     vi.stubGlobal('fetch', mock(() => new Promise(() => {})))
 
@@ -237,7 +237,9 @@ describe('WorkflowsPage', () => {
   })
 
   it('renders workflow cards after fetch resolves', async () => {
-    render(<WorkflowsPage />)
+    await act(async () => {
+      render(<WorkflowsPage />)
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
@@ -250,7 +252,9 @@ describe('WorkflowsPage', () => {
   })
 
   it('filters templates via useSearch results when results are present', async () => {
-    render(<WorkflowsPage />)
+    await act(async () => {
+      render(<WorkflowsPage />)
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
@@ -268,7 +272,7 @@ describe('WorkflowsPage', () => {
     searchState.meta = { query: 'pipeline', total: 1, took_ms: 1, source: 'search' }
 
     const input = screen.getByLabelText('search') as HTMLInputElement
-    fireEvent.change(input, { target: { value: 'pipeline' } })
+    await act(async () => { fireEvent.change(input, { target: { value: 'pipeline' } }) })
 
     // search() should be invoked with the new query.
     await waitFor(() => {
@@ -284,7 +288,9 @@ describe('WorkflowsPage', () => {
   })
 
   it('falls back to local filtering when search returns only workflow instance rows', async () => {
-    render(<WorkflowsPage />)
+    await act(async () => {
+      render(<WorkflowsPage />)
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
@@ -300,7 +306,7 @@ describe('WorkflowsPage', () => {
     ]
 
     const input = screen.getByLabelText('search') as HTMLInputElement
-    fireEvent.change(input, { target: { value: 'onboard' } })
+    await act(async () => { fireEvent.change(input, { target: { value: 'onboard' } }) })
 
     await waitFor(() => {
       expect(screen.getByTestId('card-onboarding')).toBeDefined()
@@ -310,7 +316,9 @@ describe('WorkflowsPage', () => {
   })
 
   it('falls back to local substring filter when useSearch.results is empty', async () => {
-    render(<WorkflowsPage />)
+    await act(async () => {
+      render(<WorkflowsPage />)
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
@@ -320,7 +328,7 @@ describe('WorkflowsPage', () => {
     searchState.results = []
 
     const input = screen.getByLabelText('search') as HTMLInputElement
-    fireEvent.change(input, { target: { value: 'onboard' } })
+    await act(async () => { fireEvent.change(input, { target: { value: 'onboard' } }) })
 
     await waitFor(() => {
       expect(screen.queryByTestId('card-content-pipeline')).toBeNull()
@@ -330,7 +338,9 @@ describe('WorkflowsPage', () => {
   })
 
   it('ignores stale search results from a previous query while filtering the current query', async () => {
-    render(<WorkflowsPage />)
+    await act(async () => {
+      render(<WorkflowsPage />)
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
@@ -347,7 +357,7 @@ describe('WorkflowsPage', () => {
     searchState.meta = { query: 'content', total: 1, took_ms: 1, source: 'search' }
 
     const input = screen.getByLabelText('search') as HTMLInputElement
-    fireEvent.change(input, { target: { value: 'onboard' } })
+    await act(async () => { fireEvent.change(input, { target: { value: 'onboard' } }) })
 
     await waitFor(() => {
       expect(screen.getByTestId('card-onboarding')).toBeDefined()
@@ -356,13 +366,15 @@ describe('WorkflowsPage', () => {
   })
 
   it('navigates via router.push when a card is clicked', async () => {
-    render(<WorkflowsPage />)
+    await act(async () => {
+      render(<WorkflowsPage />)
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('card-onboarding')).toBeDefined()
     })
 
-    fireEvent.click(screen.getByTestId('card-onboarding'))
+    await act(async () => { fireEvent.click(screen.getByTestId('card-onboarding')) })
 
     expect(routerPush).toHaveBeenCalledWith('/workflows/onboarding')
   })
@@ -386,32 +398,42 @@ describe('WorkflowsPage', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<WorkflowsPage />)
+    await act(async () => {
+      render(<WorkflowsPage />)
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('card-onboarding')).toBeDefined()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /new workflow/i }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /new workflow/i })) })
     expect(routerPush).not.toHaveBeenCalled()
 
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getAllByText('Create workflow').length).toBeGreaterThan(0)
-    fireEvent.change(within(dialog).getByLabelText(/workflow name/i), {
-      target: { value: 'Launch Plan' },
+    await act(async () => {
+      fireEvent.change(within(dialog).getByLabelText(/workflow name/i), {
+        target: { value: 'Launch Plan' },
+      })
     })
     expect((within(dialog).getByLabelText(/workflow id/i) as HTMLInputElement).value).toBe('launch-plan')
-    fireEvent.change(within(dialog).getByLabelText(/workflow id/i), {
-      target: { value: 'custom-launch' },
+    await act(async () => {
+      fireEvent.change(within(dialog).getByLabelText(/workflow id/i), {
+        target: { value: 'custom-launch' },
+      })
     })
-    fireEvent.change(within(dialog).getByLabelText(/workflow name/i), {
-      target: { value: 'Launch Plan Updated' },
+    await act(async () => {
+      fireEvent.change(within(dialog).getByLabelText(/workflow name/i), {
+        target: { value: 'Launch Plan Updated' },
+      })
     })
     expect((within(dialog).getByLabelText(/workflow id/i) as HTMLInputElement).value).toBe('custom-launch')
-    fireEvent.change(within(dialog).getByLabelText(/description/i), {
-      target: { value: 'Plan and approve a campaign launch.' },
+    await act(async () => {
+      fireEvent.change(within(dialog).getByLabelText(/description/i), {
+        target: { value: 'Plan and approve a campaign launch.' },
+      })
     })
-    fireEvent.click(within(dialog).getByRole('button', { name: /create workflow/i }))
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: /create workflow/i })) })
 
     await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/workflows/custom-launch/edit'))
     const [, init] = fetchMock.mock.calls.find(([url, request]) => (
@@ -428,15 +450,17 @@ describe('WorkflowsPage', () => {
   })
 
   it('shows field-level create workflow validation before posting', async () => {
-    render(<WorkflowsPage />)
+    await act(async () => {
+      render(<WorkflowsPage />)
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('card-onboarding')).toBeDefined()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /new workflow/i }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /new workflow/i })) })
     const dialog = screen.getByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: /create workflow/i }))
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: /create workflow/i })) })
 
     expect(within(dialog).getByText('Workflow name is required.')).toBeDefined()
     expect(within(dialog).getByText('Workflow id is required.')).toBeDefined()
@@ -472,18 +496,22 @@ describe('WorkflowsPage', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<WorkflowsPage />)
+    await act(async () => {
+      render(<WorkflowsPage />)
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('card-onboarding')).toBeDefined()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /new workflow/i }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /new workflow/i })) })
     const dialog = screen.getByRole('dialog')
-    fireEvent.change(within(dialog).getByLabelText(/workflow name/i), {
-      target: { value: 'Testing' },
+    await act(async () => {
+      fireEvent.change(within(dialog).getByLabelText(/workflow name/i), {
+        target: { value: 'Testing' },
+      })
     })
-    fireEvent.click(within(dialog).getByRole('button', { name: /create workflow/i }))
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: /create workflow/i })) })
 
     await waitFor(() => {
       expect(within(dialog).getByText(/old server schema/i)).toBeDefined()

@@ -288,7 +288,10 @@ export function OverviewTab({
           />
           <MetricTile
             label="Tokens"
-            value={loading ? '—' : fmtNum(usage?.tokens.total ?? 0)}
+            // No usage means UNKNOWN, not zero. Rendering 0 here claimed the agent
+            // had spent nothing when the stats call simply returned nothing — the
+            // same null-honesty rule the burn buckets and the doctor already follow.
+            value={loading || !usage ? '—' : fmtNum(usage.tokens.total)}
             sublabel={usage ? `in ${fmtNum(usage.tokens.input)} · out ${fmtNum(usage.tokens.output)}` : undefined}
             icon={MessageSquare}
             accent="text-blue-300"
