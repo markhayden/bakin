@@ -9,12 +9,28 @@ import { SortableHead, type SortDir } from './sortable-head'
 
 export type DataTableAlign = 'start' | 'center' | 'end'
 
+/**
+ * Role a column plays in the narrow list render. Declaring a role on ANY
+ * column switches the narrow render from the flat label/value fallback to the
+ * composed card: `leading` sits beside the text stack (avatars), `primary` is
+ * the bold identity line with `trailing` right-aligned on it (status chips),
+ * `meta` columns fold into one muted dot-separated line hugging the primary,
+ * `label` keeps the label/value line, and `hidden` drops from the narrow
+ * render entirely (the wide table always shows every column).
+ */
+export type DataTableNarrowRole = 'primary' | 'leading' | 'trailing' | 'meta' | 'label' | 'hidden'
+
 interface DataTableColumnBase<Row> {
   /** Column header content. Kept for screen readers when `hideLabel` is set. */
   header: ReactNode
   /** Visually hide the header text (action/menu columns) while keeping it accessible. */
   hideLabel?: boolean
   align?: DataTableAlign
+  /**
+   * Narrow-render role. Omitted everywhere = the legacy first-column-primary
+   * fallback; declared anywhere = the composed narrow card.
+   */
+  narrow?: DataTableNarrowRole
   headClassName?: string
   cellClassName?: string
   /**
@@ -22,6 +38,11 @@ interface DataTableColumnBase<Row> {
    * record whose property renders directly.
    */
   cell?: (row: Row) => ReactNode
+  /**
+   * Compact representation for the composed narrow render only (e.g. an
+   * avatar without its name in a `leading` slot). Defaults to `cell`.
+   */
+  narrowCell?: (row: Row) => ReactNode
 }
 
 /**
@@ -108,6 +129,89 @@ const ALIGN_CLASS: Record<DataTableAlign, string> = {
 function cellContent<Row, F extends string>(column: DataTableColumn<Row, F>, row: Row): ReactNode {
   if (column.cell) return column.cell(row)
   return (row as Record<string, ReactNode>)[column.key]
+}
+
+/** Screen-reader column name for narrow cells whose visible label is dropped. */
+function srHeader<Row, F extends string>(column: DataTableColumn<Row, F>): ReactNode {
+  return <span className="sr-only">{column.header}: </span>
+}
+
+function narrowCellContent<Row, F extends string>(column: DataTableColumn<Row, F>, row: Row): ReactNode {
+  if (column.narrowCell) return column.narrowCell(row)
+  return cellContent(column, row)
+}
+
+function ComposedNarrowRow<Row, F extends string>({
+  columns,
+  row,
+}: {
+  columns: ReadonlyArray<DataTableColumn<Row, F>>
+  row: Row
+}) {
+  const primary = columns.find((column) => column.narrow === 'primary') ?? columns.find((column) => !column.narrow)
+  const leading = columns.filter((column) => column.narrow === 'leading')
+  const trailing = columns.filter((column) => column.narrow === 'trailing')
+  const metaColumns = columns.filter((column) => column.narrow === 'meta')
+  const labelColumns = columns.filter(
+    (column) => (column.narrow === 'label' || !column.narrow) && column !== primary,
+  )
+  const meta = metaColumns
+    .map((column) => ({ column, content: narrowCellContent(column, row) }))
+    .filter(({ content }) => content !== null && content !== undefined && content !== '')
+
+  return (
+    <div className="flex min-w-0 items-start gap-bakin-3">
+      {leading.map((column) => (
+        <span key={column.key} className="inline-flex shrink-0">
+          {srHeader(column)}
+          {narrowCellContent(column, row)}
+        </span>
+      ))}
+      <div className="grid min-w-0 flex-1 gap-bakin-1">
+        <div className="grid min-w-0">
+          <span className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1">
+            {primary ? (
+              <span className="min-w-0 break-words font-bakin-typography-weight-semibold text-bakin-text-primary">
+                {narrowCellContent(primary, row)}
+              </span>
+            ) : null}
+            {trailing.map((column) => (
+              <span key={column.key} className="ml-auto inline-flex shrink-0">
+                {srHeader(column)}
+                {narrowCellContent(column, row)}
+              </span>
+            ))}
+          </span>
+          {meta.length > 0 ? (
+            <span className="flex min-w-0 flex-wrap items-baseline gap-x-bakin-2 text-[length:var(--bakin-typography-size-meta)]">
+              {meta.map(({ column, content }, index) => (
+                <span key={column.key} className="inline-flex min-w-0 items-baseline gap-x-bakin-1">
+                  {index > 0 ? <span aria-hidden="true" className="text-bakin-text-muted">·</span> : null}
+                  {column.hideLabel
+                    ? srHeader(column)
+                    : <span className="text-bakin-text-muted">{column.header}</span>}
+                  <span className="min-w-0 break-words text-bakin-text-primary">{content}</span>
+                </span>
+              ))}
+            </span>
+          ) : null}
+        </div>
+        {labelColumns.map((column) => (
+          <span
+            key={column.key}
+            className="flex min-w-0 flex-wrap items-baseline gap-x-bakin-2 text-[length:var(--bakin-typography-size-meta)]"
+          >
+            {!column.hideLabel ? (
+              <span className="text-bakin-text-muted">{column.header}</span>
+            ) : null}
+            <span className="min-w-0 break-words text-bakin-text-primary">
+              {narrowCellContent(column, row)}
+            </span>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 /**
@@ -231,6 +335,13 @@ export function DataTable<Row, F extends string = string>({
       >
         {rows.map((row) => {
           if (renderRow) return renderRow(row)
+          if (columns.some((column) => column.narrow)) {
+            return (
+              <ListRow key={rowKey(row)}>
+                <ComposedNarrowRow columns={columns} row={row} />
+              </ListRow>
+            )
+          }
           const [primary, ...rest] = columns
           return (
             <ListRow key={rowKey(row)}>

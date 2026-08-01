@@ -247,6 +247,18 @@ export function WorkflowDetail() {
 
 The host owns the page's `main` landmark and vertical scroll. These recipes therefore render no nested `main`, fixed-height page pane, or vertical scroller. Put a truly wide table or canvas inside `BoundedOverflow`; do not make the entire list or detail body horizontally scrollable.
 
+:::note[Mobile table rows: declare narrow roles]
+`DataTable` collapses to `ListRows` in narrow containers. Do not leave a
+data-dense table on the flat label/value fallback — declare a `narrow` role
+per column (`primary`, `leading`, `trailing`, `meta`, `label`, `hidden`) so
+the kit composes one consistent mobile card: identity bold, status trailing
+on the same line, metadata folded into one muted dot-separated line. Use
+`narrowCell` for a compact representation (an avatar without its name;
+`null` to drop an absent value). `renderRow` remains the escape hatch for
+genuinely bespoke rows, not the default. See the DataTable `NarrowRoles`
+story for the executable contract.
+:::
+
 For media-led detail pages, use the default full `Page` canvas and
 `PageHeader measure="wide"` with the preview in the primary column and
 context, enrichment, downloads, and version history in the named `PageAside`.

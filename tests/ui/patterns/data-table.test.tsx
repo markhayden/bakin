@@ -185,4 +185,55 @@ describe('DataTable', () => {
     expect(within(firstRow).getByRole('button', { name: 'Menu' })).toBeDefined()
     expect(firstRow.textContent).not.toContain('Actions')
   })
+
+  it('composes the narrow card when any column declares a narrow role', () => {
+    interface TaskRow {
+      id: string
+      title: string
+      agent: string
+      status: string
+      created?: string
+    }
+    const columns: ReadonlyArray<DataTableColumn<TaskRow>> = [
+      { key: 'id', header: 'ID', narrow: 'hidden' },
+      { key: 'title', header: 'Title', narrow: 'primary' },
+      {
+        key: 'agent',
+        header: 'Agent',
+        narrow: 'leading',
+        cell: (row) => `${row.agent} (full)`,
+        narrowCell: (row) => row.agent,
+      },
+      { key: 'status', header: 'Status', narrow: 'trailing' },
+      { key: 'created', header: 'Created', narrow: 'meta', narrowCell: (row) => row.created ?? null },
+    ]
+    const rows: TaskRow[] = [
+      { id: 't1', title: 'Publish launch announcement', agent: 'Margo', status: 'Done', created: '09:41' },
+      { id: 't2', title: 'Reconcile provider usage', agent: 'Pixel', status: 'Running' },
+    ]
+    render(
+      <DataTable label="Task log" columns={columns} rows={rows} rowKey={(row) => row.id} />,
+    )
+
+    const list = screen.getByRole('list', { name: 'Task log' })
+    const [first, second] = within(list).getAllByRole('listitem') as HTMLElement[]
+
+    // Primary + leading (compact narrowCell) + trailing + meta compose one card.
+    expect(first!.textContent).toContain('Publish launch announcement')
+    expect(first!.textContent).toContain('Margo')
+    expect(first!.textContent).not.toContain('Margo (full)')
+    expect(first!.textContent).toContain('Done')
+    expect(first!.textContent).toContain('09:41')
+    // Hidden columns leave the narrow render entirely.
+    expect(first!.textContent).not.toContain('t1')
+    // Dropped visible labels stay accessible as sr-only column names.
+    expect(first!.textContent).toContain('Agent')
+    expect(first!.textContent).toContain('Status')
+    // Null narrowCell content drops the meta item, label and all.
+    expect(second!.textContent).not.toContain('Created')
+
+    // The wide table render still uses the full cell for every column.
+    const tableRegion = document.querySelector('[data-slot="data-table-table"]') as HTMLElement
+    expect(within(tableRegion).getAllByText('Margo (full)').length).toBe(1)
+  })
 })

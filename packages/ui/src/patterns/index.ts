@@ -157,6 +157,7 @@ export type {
   DataTableAlign,
   DataTableCollapse,
   DataTableColumn,
+  DataTableNarrowRole,
   DataTableProps,
   DataTableSort,
 } from './data-table'

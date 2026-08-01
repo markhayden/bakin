@@ -11,7 +11,7 @@
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
     "valueExports": 283,
-    "typeExports": 366
+    "typeExports": 367
   },
   "entrypoints": [
     {
@@ -477,6 +477,7 @@
         "DataTableAlign",
         "DataTableCollapse",
         "DataTableColumn",
+        "DataTableNarrowRole",
         "DataTableProps",
         "DataTableSort",
         "FacetFilterProps",

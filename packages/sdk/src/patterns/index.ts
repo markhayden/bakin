@@ -187,6 +187,7 @@ export type {
   DataTableAlign,
   DataTableCollapse,
   DataTableColumn,
+  DataTableNarrowRole,
   DataTableProps,
   DataTableSort,
   FacetFilterProps,

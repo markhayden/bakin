@@ -164,6 +164,104 @@ function DualRenderExample() {
   )
 }
 
+interface NarrowRunRow {
+  id: string
+  task: string
+  owner: string
+  status: 'Done' | 'Running' | 'Failed'
+  updated: string
+  duration: string
+}
+
+const NARROW_RUNS: NarrowRunRow[] = [
+  { id: 'n1', task: 'Publish launch announcement', owner: 'Margo', status: 'Done', updated: '09:41', duration: '4m 12s' },
+  { id: 'n2', task: 'Refresh curated catalog and verify every remote source still resolves', owner: 'Patch', status: 'Running', updated: '09:12', duration: '' },
+  { id: 'n3', task: 'Reconcile provider usage', owner: 'Pixel', status: 'Failed', updated: '08:56', duration: '18s' },
+]
+
+const NARROW_COLUMNS: ReadonlyArray<DataTableColumn<NarrowRunRow>> = [
+  { key: 'id', header: 'Run', narrow: 'meta', cell: (row) => row.id },
+  { key: 'task', header: 'Task', narrow: 'primary' },
+  {
+    key: 'owner',
+    header: 'Owner',
+    narrow: 'leading',
+    // The wide table names the owner; the narrow leading slot compacts to
+    // initials the way an avatar column would.
+    narrowCell: (row) => (
+      <span
+        aria-hidden="true"
+        style={{
+          display: 'inline-flex',
+          inlineSize: '2rem',
+          blockSize: '2rem',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: '50%',
+          background: 'var(--bakin-color-surface-elevated)',
+          color: 'var(--bakin-color-text-primary)',
+          fontSize: 'var(--bakin-typography-size-meta)',
+          fontWeight: 600,
+        }}
+      >
+        {row.owner.slice(0, 2).toUpperCase()}
+      </span>
+    ),
+  },
+  {
+    key: 'status',
+    header: 'Status',
+    narrow: 'trailing',
+    cell: (row) => <StatusBadge tone={RUN_TONES[row.status]} size="xs">{row.status}</StatusBadge>,
+  },
+  { key: 'updated', header: 'Updated', narrow: 'meta' },
+  { key: 'duration', header: 'Duration', narrow: 'meta', narrowCell: (row) => row.duration || null },
+]
+
+export const NarrowRoles = {
+  parameters: {
+    docs: {
+      description: {
+        story: 'Declaring a `narrow` role on any column replaces the flat label/value fallback with the composed narrow card: `leading` beside the text stack, `primary` bold with `trailing` right-aligned on the same line, `meta` columns folded into one muted dot-separated line hugging the primary (status hugs, content breathes), `label` keeping the label/value line, `hidden` dropped. `narrowCell` supplies a compact representation for the narrow render only; returning null drops that item. Dropped visible labels remain accessible as sr-only column names. `renderRow` stays the escape hatch for genuinely bespoke rows.',
+      },
+    },
+  },
+  render: () => (
+    <StoryStage
+      eyebrow="Lists / tables"
+      title="Narrow roles compose the mobile card"
+      description="The same columns that shape the wide table declare what they become when the container collapses — one consistent mobile row across every list."
+    >
+      <StorySection title="Collapsed run log (22rem container)">
+        <div data-testid="narrow-stage" style={{ inlineSize: '22rem', maxInlineSize: '100%' }}>
+          <DataTable
+            label="Narrow run log"
+            columns={NARROW_COLUMNS}
+            rows={NARROW_RUNS}
+            rowKey={(row) => row.id}
+          />
+        </div>
+      </StorySection>
+    </StoryStage>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const list = canvas.getByRole('list', { name: 'Narrow run log' })
+    await expect(list).toBeVisible()
+    const [first, second] = within(list).getAllByRole('listitem')
+
+    // Primary, trailing chip, and the joined meta line share one card.
+    await expect(first!).toHaveTextContent('Publish launch announcement')
+    await expect(first!).toHaveTextContent('Done')
+    await expect(first!).toHaveTextContent('09:41')
+    await expect(first!).toHaveTextContent('4m 12s')
+    // sr-only column names keep dropped labels accessible.
+    await expect(first!).toHaveTextContent('Owner')
+    // Empty narrowCell content drops its meta item, label included.
+    await expect(second!).not.toHaveTextContent('Duration')
+  },
+} satisfies Story
+
 export const SortedPagedDualRender = {
   render: () => (
     <StoryStage

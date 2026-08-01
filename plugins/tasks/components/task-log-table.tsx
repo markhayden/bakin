@@ -193,6 +193,7 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
     {
       key: 'id',
       header: 'ID',
+      narrow: 'meta',
       cellClassName: 'font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted',
       cell: (task) => task.id.slice(0, 8),
     },
@@ -200,6 +201,7 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
       key: 'title',
       header: 'Title',
       sortable: true,
+      narrow: 'primary',
       cellClassName: 'max-w-sm',
       cell: (task) => {
         const drawerTask = taskForDrawer(task)
@@ -242,14 +244,17 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
       key: 'agent',
       header: 'Agent',
       sortable: true,
+      narrow: 'leading',
       cell: (task) => task.agent
         ? <AgentCell agentId={task.agent} />
         : <span className="text-bakin-typography-size-meta text-bakin-text-muted">—</span>,
+      narrowCell: (task) => task.agent ? <AgentCell agentId={task.agent} avatarOnly /> : null,
     },
     {
       key: 'status',
       header: 'Status',
       sortable: true,
+      narrow: 'trailing',
       cell: (task) => (
         <StatusBadge tone={STATUS_TONES[task.status]} size="xs">{COLUMN_CONFIG[task.status].label}</StatusBadge>
       ),
@@ -258,21 +263,30 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
       key: 'createdAt',
       header: 'Created',
       sortable: true,
+      narrow: 'meta',
       cellClassName: 'text-bakin-typography-size-meta text-bakin-text-muted',
       cell: (task) => formatDate(getCreatedAt(task)),
+      narrowCell: (task) => getCreatedAt(task) ? formatDate(getCreatedAt(task)) : null,
     },
     {
       key: 'completedAt',
       header: 'Completed',
       sortable: true,
+      narrow: 'meta',
       cellClassName: 'text-bakin-typography-size-meta text-bakin-text-muted',
       cell: (task) => formatDate(getCompletedAt(task)),
+      narrowCell: (task) => getCompletedAt(task) ? formatDate(getCompletedAt(task)) : null,
     },
     {
       key: 'duration',
       header: 'Duration',
+      narrow: 'meta',
       cellClassName: 'font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted',
       cell: (task) => taskDuration(getCreatedAt(task), getCompletedAt(task)),
+      narrowCell: (task) => {
+        const duration = taskDuration(getCreatedAt(task), getCompletedAt(task))
+        return duration === '—' ? null : duration
+      },
     },
   ], [scoreMap, onTaskOpen])
 
@@ -313,9 +327,17 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
   )
 }
 
-function AgentCell({ agentId }: { agentId: string }) {
+function AgentCell({ agentId, avatarOnly = false }: { agentId: string; avatarOnly?: boolean }) {
   const agent = useAgent(agentId)
   const name = agent?.name ?? agentId
+  if (avatarOnly) {
+    return (
+      <AgentAvatar
+        agent={{ id: agentId, name, imageSrc: agent?.headshot }}
+        size="sm"
+      />
+    )
+  }
   return (
     <span className="flex items-center gap-bakin-2">
       <AgentAvatar
