@@ -25,8 +25,22 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
-  render: () => (
-    <Grid layout="split" gap="item">
+  args: {
+    layout: 'split',
+    gap: 'item',
+    align: 'stretch',
+  },
+  // Grid is polymorphic, so docgen cannot infer its props.
+  argTypes: {
+    layout: {
+      control: 'select',
+      options: ['single', 'split', 'thirds', 'quarters', 'cards', 'auto-fill', 'main-aside'],
+    },
+    gap: { control: 'select', options: ['none', 'dense', 'item', 'section', 'page'] },
+    align: { control: 'select', options: ['stretch', 'start', 'center', 'end'] },
+  },
+  render: (args) => (
+    <Grid layout={args.layout} gap={args.gap} align={args.align}>
       <Card>
         <CardHeader>
           <CardTitle>Daybreak Studio</CardTitle>
@@ -41,10 +55,12 @@ export const CanonicalUsage = {
       </Card>
     </Grid>
   ),
-  play: async ({ canvas, canvasElement }) => {
+  play: async ({ canvas, canvasElement, args }) => {
     await expect(canvas.getByText('Daybreak Studio')).toBeVisible()
     const grid = canvasElement.querySelector('[data-slot="grid"]')
-    await expect(grid).toHaveAttribute('data-layout', 'split')
+    await expect(grid).toHaveAttribute('data-layout', args.layout ?? 'single')
+    await expect(grid).toHaveAttribute('data-gap', args.gap ?? 'item')
+    await expect(grid).toHaveAttribute('data-align', args.align ?? 'stretch')
     await expect(grid!.parentElement).toHaveAttribute('data-slot', 'grid-container')
   },
 } satisfies Story

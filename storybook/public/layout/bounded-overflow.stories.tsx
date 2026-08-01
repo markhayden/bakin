@@ -41,14 +41,26 @@ function OperationsTable() {
   )
 }
 
+interface BoundedOverflowCanonicalArgs {
+  /** Accessible name announced for the labelled scroll region. */
+  label: string
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
+  args: {
+    label: 'Active operation details',
+  },
+  // No meta `component` (see above), so the label knob declares its own control.
+  argTypes: {
+    label: { control: 'text' },
+  },
   // Width frame: the centered (shrink-to-fit) canvas would let the region
   // grow to its content, hiding the one thing this component does — the
   // frame is the bounded width the wide table scrolls inside.
-  render: () => (
+  render: (args: BoundedOverflowCanonicalArgs) => (
     <div style={{ inlineSize: '24rem', maxInlineSize: '100%' }}>
-      <BoundedOverflow label="Active operation details">
+      <BoundedOverflow label={args.label}>
         <table className="bakin-bounded-overflow-story__table">
           <thead><tr><th>Operation</th><th>Area</th><th>Status</th><th>Age</th><th>Owner</th></tr></thead>
           <tbody>
@@ -59,8 +71,8 @@ export const CanonicalUsage = {
       </BoundedOverflow>
     </div>
   ),
-  play: async ({ canvas }) => {
-    const region = canvas.getByRole('region', { name: 'Active operation details' })
+  play: async ({ canvas, args }) => {
+    const region = canvas.getByRole('region', { name: args.label })
     await expect(region).toHaveAttribute('tabindex', '0')
     region.focus()
     await expect(region).toHaveFocus()
@@ -69,7 +81,7 @@ export const CanonicalUsage = {
     await expect(region.scrollWidth).toBeGreaterThan(region.clientWidth)
     await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth)
   },
-} satisfies Story
+} satisfies StoryObj<BoundedOverflowCanonicalArgs>
 
 export const WideOperationsTable = {
   render: () => (

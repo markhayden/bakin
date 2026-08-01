@@ -27,22 +27,47 @@ type Story = StoryObj<typeof meta>
 const motionStoryFixture = { ...DEFAULT_STORY_FIXTURE, reducedMotion: false }
 const longSearchQuery = 'blocked launch approval tasks with a deliberately long owner name'
 
+interface SearchInputCanonicalArgs {
+  /** Which edge the compact field grows from inside its reserved space. */
+  align: 'start' | 'end'
+  /** Span the full row width on narrow containers. */
+  mobileFullWidth: boolean
+  /** Announce an in-flight search without moving the layout. */
+  busy: boolean
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    align: 'end',
+    mobileFullWidth: false,
+    busy: false,
+  },
+  // The controlled value/onValueChange pair stays fixed, so the presentation
+  // knobs declare themselves.
+  argTypes: {
+    align: { control: 'select', options: ['start', 'end'] },
+    mobileFullWidth: { control: 'boolean' },
+    busy: { control: 'boolean' },
+  },
+  render: (args: SearchInputCanonicalArgs) => (
     <SearchInput
       label="Search tasks"
       value=""
       onValueChange={() => {}}
       placeholder="Search tasks…"
+      align={args.align}
+      mobileFullWidth={args.mobileFullWidth}
+      busy={args.busy}
     />
   ),
-  play: async ({ canvas }) => {
+  play: async ({ canvas, args }) => {
     const search = canvas.getByRole('searchbox', { name: 'Search tasks' })
     await expect(search).toBeVisible()
     await expect(search.closest('[data-slot="search-input-control"]')).toHaveAttribute('data-state', 'empty')
+    if (args.busy) await expect(search).toHaveAttribute('aria-busy', 'true')
   },
-} satisfies Story
+} satisfies StoryObj<SearchInputCanonicalArgs>
 
 function SearchInputExample({ initialQuery = '', busy = false }: { initialQuery?: string; busy?: boolean }) {
   const [query, setQuery] = useState(initialQuery)

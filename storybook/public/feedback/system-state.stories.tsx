@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect } from 'storybook/test'
 
 import { Grid } from '@makinbakin/sdk/layout'
-import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import { Button, Skeleton, SystemState, type SystemStateProps } from '@makinbakin/sdk/ui'
 
 import { StorySection, StoryStage } from '../../support'
 
@@ -25,23 +25,53 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+interface SystemStateCanonicalArgs {
+  /** Cause of the state — each kind names a different next action. */
+  kind: 'initial-empty' | 'no-results' | 'loading' | 'error' | 'permission-denied'
+  /** Inline compact row, or section/page region replacement. */
+  scope: 'inline' | 'section' | 'page'
+  /** Copy alignment; every state centers by default. */
+  align: 'center' | 'left' | 'right'
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    kind: 'no-results',
+    scope: 'section',
+    align: 'center',
+  },
+  // The discriminated union ties `action` to specific kinds (see the meta
+  // note), so the knobs declare themselves and the fixture casts once.
+  argTypes: {
+    kind: { control: 'select', options: ['initial-empty', 'no-results', 'loading', 'error', 'permission-denied'] },
+    scope: { control: 'select', options: ['inline', 'section', 'page'] },
+    align: { control: 'select', options: ['center', 'left', 'right'] },
+  },
+  render: (args: SystemStateCanonicalArgs) => (
     <SystemState
-      kind="no-results"
-      title="No workflows match"
-      description="Three workflows are hidden by the current owner and status filters."
-      action={<Button variant="outline">Clear filters</Button>}
+      {...({
+        kind: args.kind,
+        scope: args.scope,
+        align: args.align,
+        title: 'No workflows match',
+        description: 'Three workflows are hidden by the current owner and status filters.',
+        action: <Button variant="outline">Clear filters</Button>,
+      } as SystemStateProps)}
     />
   ),
-  play: async ({ canvas }) => {
-    const state = canvas.getByRole('status', { name: 'No workflows match' })
-    await expect(state).toHaveAttribute('aria-live', 'polite')
-    await expect(state).toHaveAttribute('data-kind', 'no-results')
-    await expect(canvas.getByRole('button', { name: 'Clear filters' })).toBeVisible()
+  play: async ({ canvas, canvasElement, args }) => {
+    const state = canvasElement.querySelector('[data-slot="system-state"]')
+    await expect(state).toBeTruthy()
+    await expect(state).toHaveAttribute('data-kind', args.kind)
+    await expect(state).toHaveAttribute('data-scope', args.scope)
+    await expect(state).toHaveAttribute('data-align', args.align)
+    if (args.kind === 'no-results') {
+      await expect(state).toHaveAttribute('aria-live', 'polite')
+      await expect(canvas.getByRole('button', { name: 'Clear filters' })).toBeVisible()
+    }
   },
-} satisfies Story
+} satisfies StoryObj<SystemStateCanonicalArgs>
 
 function LoadingPreview() {
   return (

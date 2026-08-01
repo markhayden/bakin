@@ -45,10 +45,22 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+interface KanbanCanonicalArgs {
+  /** Accessible name announced for the board's overflow boundary. */
+  label: string
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <KanbanBoard label="Task board">
+  args: {
+    label: 'Task board',
+  },
+  // No meta `component` (the board composes columns), so the knob declares itself.
+  argTypes: {
+    label: { control: 'text' },
+  },
+  render: (args: KanbanCanonicalArgs) => (
+    <KanbanBoard label={args.label}>
       <KanbanColumn labelledBy="canonical-todo-heading">
         <KanbanColumnHeader>
           <h2 id="canonical-todo-heading">Todo</h2>
@@ -67,13 +79,13 @@ export const CanonicalUsage = {
       </KanbanColumn>
     </KanbanBoard>
   ),
-  play: async ({ canvas }) => {
-    const board = canvas.getByRole('region', { name: 'Task board' })
+  play: async ({ canvas, args }) => {
+    const board = canvas.getByRole('region', { name: args.label })
     await expect(board).toBeVisible()
     await expect(canvas.getByRole('region', { name: 'Todo' })).toBeVisible()
     await expect(canvas.getByRole('region', { name: 'In progress' })).toBeVisible()
   },
-} satisfies Story
+} satisfies StoryObj<KanbanCanonicalArgs>
 
 interface ExampleTaskProps {
   id: string

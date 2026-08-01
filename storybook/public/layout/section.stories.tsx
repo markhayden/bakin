@@ -24,18 +24,27 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <Section aria-labelledby="runtime-signals-title">
+  args: {
+    spacing: 'default',
+    divider: 'none',
+  },
+  // Section is polymorphic, so docgen cannot infer its props.
+  argTypes: {
+    spacing: { control: 'select', options: ['compact', 'default', 'generous'] },
+    divider: { control: 'select', options: ['none', 'top'] },
+  },
+  render: (args) => (
+    <Section spacing={args.spacing} divider={args.divider} aria-labelledby="runtime-signals-title">
       <h2 id="runtime-signals-title">Runtime signals</h2>
       <p>18 healthy agents reported in the last five minutes.</p>
     </Section>
   ),
-  play: async ({ canvas }) => {
+  play: async ({ canvas, args }) => {
     const region = canvas.getByRole('region', { name: 'Runtime signals' })
     await expect(region).toBeVisible()
     await expect(region).toHaveAttribute('data-slot', 'section')
-    await expect(region).toHaveAttribute('data-spacing', 'default')
-    await expect(region).toHaveAttribute('data-divider', 'none')
+    await expect(region).toHaveAttribute('data-spacing', args.spacing ?? 'default')
+    await expect(region).toHaveAttribute('data-divider', args.divider ?? 'none')
   },
 } satisfies Story
 

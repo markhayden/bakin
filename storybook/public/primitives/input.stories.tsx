@@ -22,14 +22,34 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    disabled: false,
+    readOnly: false,
+    'aria-invalid': false,
+  },
+  argTypes: {
+    disabled: { control: 'boolean' },
+    readOnly: { control: 'boolean' },
+    'aria-invalid': { control: 'boolean' },
+  },
+  // aria-invalid only lands in the DOM when true so the default render stays
+  // byte-identical to a plain valid field.
+  render: ({ 'aria-invalid': invalid, ...args }) => (
     <Field name="workflowName">
       <FieldLabel>Workflow name</FieldLabel>
-      <Input placeholder="Nightly digest" />
+      <Input placeholder="Nightly digest" {...args} aria-invalid={invalid || undefined} />
     </Field>
   ),
-  play: async ({ canvas, userEvent }) => {
+  play: async ({ canvas, userEvent, args }) => {
     const input = canvas.getByRole('textbox', { name: 'Workflow name' })
+    if (args.disabled) {
+      await expect(input).toBeDisabled()
+      return
+    }
+    if (args.readOnly) {
+      await expect(input).toHaveAttribute('readonly')
+      return
+    }
     await userEvent.type(input, 'Publish weekly digest')
     await expect(input).toHaveValue('Publish weekly digest')
   },

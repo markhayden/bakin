@@ -22,14 +22,32 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    rows: 4,
+    disabled: false,
+    readOnly: false,
+  },
+  argTypes: {
+    rows: { control: { type: 'number', min: 1 } },
+    disabled: { control: 'boolean' },
+    readOnly: { control: 'boolean' },
+  },
+  render: (args) => (
     <Field name="handoff">
       <FieldLabel>Operator handoff</FieldLabel>
-      <FieldControl render={<Textarea rows={4} placeholder="What should the next operator know?" />} />
+      <FieldControl render={<Textarea placeholder="What should the next operator know?" {...args} />} />
     </Field>
   ),
-  play: async ({ canvas, userEvent }) => {
+  play: async ({ canvas, userEvent, args }) => {
     const textarea = canvas.getByRole('textbox', { name: 'Operator handoff' })
+    if (args.disabled) {
+      await expect(textarea).toBeDisabled()
+      return
+    }
+    if (args.readOnly) {
+      await expect(textarea).toHaveAttribute('readonly')
+      return
+    }
     await userEvent.type(textarea, 'Confirm the launch checklist.')
     await expect(textarea).toHaveValue('Confirm the launch checklist.')
   },

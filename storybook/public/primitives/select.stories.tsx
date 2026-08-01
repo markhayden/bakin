@@ -31,17 +31,33 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+interface SelectCanonicalArgs {
+  /** Trigger density: `default` control height or the compact `sm`. */
+  size: 'default' | 'sm'
+  /** Disable the whole select. */
+  disabled: boolean
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
+  args: {
+    size: 'default',
+    disabled: false,
+  },
+  // `size` styles SelectTrigger, not the Select root, so docgen cannot infer it.
+  argTypes: {
+    size: { control: 'select', options: ['default', 'sm'] },
+    disabled: { control: 'boolean' },
+  },
   // Width frame: the centered (shrink-to-fit) canvas collapses the full-width
   // trigger to min-content. In the app selects sit in field layouts with
   // inherited width.
-  render: () => (
+  render: (args: SelectCanonicalArgs) => (
     <div style={{ inlineSize: '20rem', maxInlineSize: '100%' }}>
       <Field>
         <FieldLabel>Execution runtime</FieldLabel>
-        <Select items={{ pi: 'Pi', openclaw: 'OpenClaw' }} defaultValue="openclaw">
-          <SelectTrigger style={{ width: '100%' }}>
+        <Select items={{ pi: 'Pi', openclaw: 'OpenClaw' }} defaultValue="openclaw" disabled={args.disabled}>
+          <SelectTrigger size={args.size} style={{ width: '100%' }}>
             <SelectValue placeholder="Choose a runtime" />
           </SelectTrigger>
           <SelectContent>
@@ -52,16 +68,21 @@ export const CanonicalUsage = {
       </Field>
     </div>
   ),
-  play: async ({ canvas, userEvent }) => {
+  play: async ({ canvas, userEvent, args }) => {
     const trigger = canvas.getByRole('combobox', { name: 'Execution runtime' })
     await expect(trigger).toHaveTextContent('OpenClaw')
+    await expect(trigger).toHaveAttribute('data-size', args.size)
+    if (args.disabled) {
+      await expect(trigger.matches('[disabled], [data-disabled]')).toBe(true)
+      return
+    }
     await userEvent.click(trigger)
     const page = within(document.body)
     const option = await page.findByRole('option', { name: 'Pi' })
     await userEvent.click(option)
     await waitFor(() => expect(trigger).toHaveTextContent('Pi'))
   },
-} satisfies Story
+} satisfies StoryObj<SelectCanonicalArgs>
 
 function RuntimeSelect({ disabled = false, invalid = false, compact = false }: { disabled?: boolean; invalid?: boolean; compact?: boolean }) {
   const label = disabled ? 'Managed runtime' : invalid ? 'Required runtime' : compact ? 'Dense-row runtime' : 'Execution runtime'

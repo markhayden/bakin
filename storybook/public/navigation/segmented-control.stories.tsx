@@ -23,11 +23,25 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+interface SegmentedControlCanonicalArgs {
+  /** Control density: `sm` is the compact default; `md` carries page-level switchers. */
+  size: 'sm' | 'md'
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    size: 'sm',
+  },
+  // SegmentedControl is generic over its option values, so docgen cannot
+  // infer its props; the knob declares itself.
+  argTypes: {
+    size: { control: 'select', options: ['sm', 'md'] },
+  },
+  render: (args: SegmentedControlCanonicalArgs) => (
     <SegmentedControl
       ariaLabel="Task view"
+      size={args.size}
       options={[
         { value: 'board', label: 'Board' },
         { value: 'list', label: 'List' },
@@ -41,7 +55,7 @@ export const CanonicalUsage = {
     await expect(canvas.getByRole('tab', { name: 'Board' })).toHaveAttribute('aria-selected', 'true')
     await expect(canvas.getByRole('tab', { name: 'List' })).toHaveAttribute('aria-selected', 'false')
   },
-} satisfies Story
+} satisfies StoryObj<SegmentedControlCanonicalArgs>
 
 const views = [
   { value: 'board', label: 'Board' },

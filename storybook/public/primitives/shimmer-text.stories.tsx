@@ -25,14 +25,28 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => <ShimmerText>Generating summary…</ShimmerText>,
-  play: async ({ canvas }) => {
+  args: {
+    active: true,
+    highlight: 'ink',
+    base: 'muted',
+  },
+  argTypes: {
+    active: { control: 'boolean' },
+    highlight: { control: 'select', options: ['ink', 'accent'] },
+    base: { control: 'select', options: ['muted', 'primary'] },
+    children: { control: false },
+  },
+  render: ({ children: _children, ...args }) => <ShimmerText {...args}>Generating summary…</ShimmerText>,
+  play: async ({ canvas, args }) => {
     const label = canvas.getByText('Generating summary…')
     await expect(label).toHaveAttribute('data-slot', 'shimmer-text')
-    await expect(label).toHaveAttribute('data-active', 'true')
-    await expect(label).toHaveAttribute('data-highlight', 'ink')
-    await expect(label.className).toContain('animate-shimmer-sweep')
-    await expect(label.className).toContain('motion-reduce:animate-none')
+    await expect(label).toHaveAttribute('data-active', String(args.active ?? true))
+    await expect(label).toHaveAttribute('data-highlight', args.highlight ?? 'ink')
+    await expect(label).toHaveAttribute('data-base', args.base ?? 'muted')
+    if (args.active ?? true) {
+      await expect(label.className).toContain('animate-shimmer-sweep')
+      await expect(label.className).toContain('motion-reduce:animate-none')
+    }
   },
 } satisfies Story
 

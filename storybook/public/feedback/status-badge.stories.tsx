@@ -29,17 +29,38 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+interface StatusBadgeCanonicalArgs {
+  /** Canonical semantic status color. */
+  tone: 'neutral' | 'success' | 'attention' | 'danger' | 'accent'
+  /** Emphasis treatment. */
+  variant: 'soft' | 'solid' | 'outline'
+  /** Badge density. */
+  size: 'xs' | 'sm' | 'md'
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => <StatusBadge tone="success">Published</StatusBadge>,
-  play: async ({ canvas }) => {
+  args: {
+    tone: 'success',
+    variant: 'solid',
+    size: 'sm',
+  },
+  argTypes: {
+    tone: { control: 'select', options: ['neutral', 'success', 'attention', 'danger', 'accent'] },
+    variant: { control: 'select', options: ['soft', 'solid', 'outline'] },
+    size: { control: 'select', options: ['xs', 'sm', 'md'] },
+  },
+  render: (args: StatusBadgeCanonicalArgs) => (
+    <StatusBadge tone={args.tone} variant={args.variant} size={args.size}>Published</StatusBadge>
+  ),
+  play: async ({ canvas, args }) => {
     const badge = canvas.getByText('Published').closest('[data-status-badge]')
     await expect(badge).toBeVisible()
     // The visible label is the non-color cue; tone and treatment ride data attributes.
-    await expect(badge).toHaveAttribute('data-tone', 'success')
-    await expect(badge).toHaveAttribute('data-variant', 'solid')
+    await expect(badge).toHaveAttribute('data-tone', args.tone)
+    await expect(badge).toHaveAttribute('data-variant', args.variant)
   },
-} satisfies Story
+} satisfies StoryObj<StatusBadgeCanonicalArgs>
 
 export const StatusVocabulary = {
   render: () => (

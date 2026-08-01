@@ -21,14 +21,21 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    shape: 'rectangle',
+  },
+  // The shape knob drives the block placeholder; the two text lines stay fixed.
+  argTypes: {
+    shape: { control: 'select', options: ['rectangle', 'text', 'circle'] },
+  },
+  render: (args) => (
     <section aria-label="Loading task summary" aria-busy="true" style={{ display: 'grid', gap: '0.5rem', width: '16rem' }}>
       <Skeleton shape="text" style={{ width: '33%' }} />
       <Skeleton shape="text" style={{ width: '67%' }} />
-      <Skeleton style={{ height: '3rem' }} />
+      <Skeleton shape={args.shape} style={args.shape === 'circle' ? { width: '3rem' } : { height: '3rem' }} />
     </section>
   ),
-  play: async ({ canvas }) => {
+  play: async ({ canvas, args }) => {
     const region = canvas.getByRole('region', { name: 'Loading task summary' })
     await expect(region).toHaveAttribute('aria-busy', 'true')
     const placeholders = region.querySelectorAll('[data-slot="skeleton"]')
@@ -36,6 +43,7 @@ export const CanonicalUsage = {
     for (const placeholder of placeholders) {
       await expect(placeholder).toHaveAttribute('aria-hidden', 'true')
     }
+    await expect(placeholders[2]).toHaveAttribute('data-shape', args.shape ?? 'rectangle')
   },
 } satisfies Story
 

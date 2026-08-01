@@ -22,14 +22,32 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+interface TimelineCanonicalArgs {
+  /** StatusMarker tone on the first entry's rail. */
+  tone: 'neutral' | 'success' | 'danger' | 'attention' | 'accent'
+  /** Collapse the first entry's detail behind a keyboard-operable disclosure. */
+  expandable: boolean
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'padded' },
-  render: () => (
+  args: {
+    tone: 'success',
+    expandable: false,
+  },
+  // TimelineEntry carries the knobs (the Timeline root has no visual props),
+  // so the controls declare themselves against the first entry.
+  argTypes: {
+    tone: { control: 'select', options: ['neutral', 'success', 'danger', 'attention', 'accent'] },
+    expandable: { control: 'boolean' },
+  },
+  render: (args: TimelineCanonicalArgs) => (
     <Timeline aria-label="Recent activity">
       <TimelineEntry
         timestamp="09:41"
         dateTime="2026-07-29T09:41:00Z"
-        tone="success"
+        tone={args.tone}
+        expandable={args.expandable}
         title="Catalog refreshed"
       >
         24 records indexed without errors.
@@ -44,13 +62,20 @@ export const CanonicalUsage = {
       </TimelineEntry>
     </Timeline>
   ),
-  play: async ({ canvas }) => {
+  play: async ({ canvas, args }) => {
     const feed = canvas.getByRole('list', { name: 'Recent activity' })
     await expect(feed).toBeVisible()
     await expect(feed.tagName).toBe('OL')
-    await expect(canvas.getAllByRole('listitem')).toHaveLength(2)
+    const entries = canvas.getAllByRole('listitem')
+    await expect(entries).toHaveLength(2)
+    await expect(entries[0]).toHaveAttribute('data-tone', args.tone)
+    if (args.expandable) {
+      await expect(canvas.getByRole('button', { name: /Catalog refreshed/ })).toHaveAttribute('aria-expanded', 'false')
+    } else {
+      await expect(canvas.getByText('24 records indexed without errors.')).toBeVisible()
+    }
   },
-} satisfies Story
+} satisfies StoryObj<TimelineCanonicalArgs>
 
 export const StatusRailExpansionNesting = {
   render: () => (

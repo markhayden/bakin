@@ -30,22 +30,52 @@ const agents = [
   { id: 'release', name: 'Release Operations With A Deliberately Long Name', color: '#14b8a6' },
 ] as const satisfies readonly AgentIdentity[]
 
+const presenceLabels = {
+  online: 'Online',
+  working: 'Working',
+  available: 'Available',
+  offline: 'Offline',
+  error: 'Needs attention',
+} as const
+
+interface AgentAvatarCanonicalArgs {
+  /** Semantic avatar size. */
+  size: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+  /** Show the presence badge (requires `status`). */
+  showStatus: boolean
+  /** Presence state announced with the agent name. */
+  status: keyof typeof presenceLabels
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    size: 'md',
+    showStatus: true,
+    status: 'online',
+  },
+  // No meta `component` (the entry also documents AgentDot), so the knobs
+  // declare themselves.
+  argTypes: {
+    size: { control: 'select', options: ['xs', 'sm', 'md', 'lg', 'xl'] },
+    showStatus: { control: 'boolean' },
+    status: { control: 'select', options: ['online', 'working', 'available', 'offline', 'error'] },
+  },
+  render: (args: AgentAvatarCanonicalArgs) => (
     <AgentAvatar
       agent={{ id: 'maya', name: 'Maya Chen', color: '#8b5cf6' }}
-      size="md"
-      showStatus
-      status="online"
+      size={args.size}
+      showStatus={args.showStatus}
+      status={args.status}
     />
   ),
-  play: async ({ canvas }) => {
-    const avatar = canvas.getByRole('img', { name: 'Maya Chen, Online' })
+  play: async ({ canvas, args }) => {
+    const name = args.showStatus ? `Maya Chen, ${presenceLabels[args.status]}` : 'Maya Chen'
+    const avatar = canvas.getByRole('img', { name })
     await expect(avatar).toBeVisible()
-    await expect(avatar).toHaveAttribute('data-status', 'online')
+    if (args.showStatus) await expect(avatar).toHaveAttribute('data-status', args.status)
   },
-} satisfies Story
+} satisfies StoryObj<AgentAvatarCanonicalArgs>
 
 export const SizesAndPresence = {
   render: () => (

@@ -33,17 +33,32 @@ function SwitchBehaviorFixture() {
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    defaultChecked: false,
+    disabled: false,
+  },
+  argTypes: {
+    defaultChecked: { control: 'boolean' },
+    disabled: { control: 'boolean' },
+  },
+  render: (args) => (
     <Field orientation="horizontal">
-      <Switch />
+      <Switch {...args} />
       <FieldLabel>Automatic retry</FieldLabel>
     </Field>
   ),
-  play: async ({ canvas, userEvent }) => {
+  play: async ({ canvas, userEvent, args }) => {
     const control = canvas.getByRole('switch', { name: 'Automatic retry' })
-    await expect(control).not.toBeChecked()
+    const startsChecked = Boolean(args.defaultChecked)
+    if (startsChecked) await expect(control).toBeChecked()
+    else await expect(control).not.toBeChecked()
+    if (args.disabled) {
+      await expect(control).toBeDisabled()
+      return
+    }
     await userEvent.click(control)
-    await expect(control).toBeChecked()
+    if (startsChecked) await expect(control).not.toBeChecked()
+    else await expect(control).toBeChecked()
   },
 } satisfies Story
 

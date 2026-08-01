@@ -25,21 +25,33 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+interface ListRowsCanonicalArgs {
+  /** Row boundary treatment: bordered resources, separated log rows, or plain structure. */
+  variant: 'bordered' | 'separated' | 'plain'
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'padded' },
-  render: () => (
-    <ListRows aria-label="Recent activity">
+  args: {
+    variant: 'bordered',
+  },
+  // No meta `component` (ListRows + ListRow compose), so the knob declares itself.
+  argTypes: {
+    variant: { control: 'select', options: ['bordered', 'separated', 'plain'] },
+  },
+  render: (args: ListRowsCanonicalArgs) => (
+    <ListRows aria-label="Recent activity" variant={args.variant}>
       <ListRow>Catalog refreshed</ListRow>
       <ListRow>Agent package synced</ListRow>
     </ListRows>
   ),
-  play: async ({ canvas }) => {
+  play: async ({ canvas, args }) => {
     const list = canvas.getByRole('list', { name: 'Recent activity' })
     await expect(list).toBeVisible()
-    await expect(list).toHaveAttribute('data-variant', 'bordered')
+    await expect(list).toHaveAttribute('data-variant', args.variant)
     await expect(canvas.getAllByRole('listitem')).toHaveLength(2)
   },
-} satisfies Story
+} satisfies StoryObj<ListRowsCanonicalArgs>
 
 function ListPattern({
   title,

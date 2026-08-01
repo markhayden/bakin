@@ -31,11 +31,22 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+interface ChannelIconCanonicalArgs {
+  /** Contextual size: `sm` beside meta text, `md` beside body text, `lg` standalone. */
+  size: 'sm' | 'md' | 'lg'
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    size: 'md',
+  },
+  argTypes: {
+    size: { control: 'select', options: ['sm', 'md', 'lg'] },
+  },
+  render: (args: ChannelIconCanonicalArgs) => (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-      <ChannelIcon channelId="email" channels={[{ id: 'email', icon: 'Mail' }]} />
+      <ChannelIcon channelId="email" size={args.size} channels={[{ id: 'email', icon: 'Mail' }]} />
       Email
     </span>
   ),
@@ -45,7 +56,7 @@ export const CanonicalUsage = {
     await expect(icon).not.toBeNull()
     await expect(icon!).toHaveAttribute('aria-hidden', 'true')
   },
-} satisfies Story
+} satisfies StoryObj<ChannelIconCanonicalArgs>
 
 export const KnownAndUnknownChannels = {
   render: () => (

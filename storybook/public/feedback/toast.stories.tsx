@@ -25,25 +25,38 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+interface ToastCanonicalArgs {
+  /** Semantic tone: info and success announce politely; error is an assertive alert. */
+  tone: 'info' | 'success' | 'error'
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    tone: 'success',
+  },
+  // No meta `component` (see above), so the tone knob declares itself.
+  argTypes: {
+    tone: { control: 'select', options: ['info', 'success', 'error'] },
+  },
+  render: (args: ToastCanonicalArgs) => (
     <ToastRegion label="Notifications">
-      <Toast tone="success" title="Task created" description="Draft launch brief is ready for review." />
+      <Toast tone={args.tone} title="Task created" description="Draft launch brief is ready for review." />
     </ToastRegion>
   ),
-  play: async ({ canvas }) => {
-    const toast = canvas.getByRole('status', { name: 'Task created' })
+  play: async ({ canvas, args }) => {
+    const urgent = args.tone === 'error'
+    const toast = canvas.getByRole(urgent ? 'alert' : 'status', { name: 'Task created' })
     // The mount animation starts at opacity 0 — wait for it to settle.
     await waitFor(() => expect(toast).toBeVisible())
-    await expect(toast).toHaveAttribute('aria-live', 'polite')
-    await expect(toast).toHaveAttribute('data-tone', 'success')
+    await expect(toast).toHaveAttribute('aria-live', urgent ? 'assertive' : 'polite')
+    await expect(toast).toHaveAttribute('data-tone', args.tone)
     // Shrink-to-fit parents (the centered stage, any flex row) must not
     // collapse the copy column: the toast has to render at the region's
     // real width, not its dot + close button.
     await expect(toast.getBoundingClientRect().width).toBeGreaterThan(300)
   },
-} satisfies Story
+} satisfies StoryObj<ToastCanonicalArgs>
 
 export const TonesAndActions = {
   render: () => (

@@ -43,11 +43,23 @@ const stateCounts = {
   archived: 14,
 }
 
+interface FacetFilterCanonicalArgs {
+  /** Facet name shown on the trigger and announced with the selection count. */
+  label: string
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    label: 'State',
+  },
+  // The controlled selected/onChange pair stays fixed, so the knob declares itself.
+  argTypes: {
+    label: { control: 'text' },
+  },
+  render: (args: FacetFilterCanonicalArgs) => (
     <FacetFilter
-      label="State"
+      label={args.label}
       options={[
         { value: 'running', label: 'Running' },
         { value: 'blocked', label: 'Blocked' },
@@ -57,11 +69,11 @@ export const CanonicalUsage = {
       onChange={() => {}}
     />
   ),
-  play: async ({ canvas }) => {
-    await expect(canvas.getByRole('button', { name: 'State, 1 selected' })).toBeVisible()
+  play: async ({ canvas, args }) => {
+    await expect(canvas.getByRole('button', { name: `${args.label}, 1 selected` })).toBeVisible()
     await expect(canvas.getByRole('button', { name: 'Remove Blocked filter' })).toBeVisible()
   },
-} satisfies Story
+} satisfies StoryObj<FacetFilterCanonicalArgs>
 
 function FacetFilteringExample() {
   const [selected, setSelected] = useState<string[]>(['blocked'])

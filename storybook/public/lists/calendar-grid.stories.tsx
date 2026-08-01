@@ -22,12 +22,40 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+interface CalendarGridCanonicalArgs {
+  /** Zoom level: month day grid, week hour-by-day grid, or day agenda. */
+  view: 'month' | 'week' | 'day'
+  /** Month view: hide adjacent-month days or render them muted. */
+  outsideDays: 'hidden' | 'muted'
+  /** `day` drops the hour grid for date-scoped calendars. */
+  granularity: 'hour' | 'day'
+  /** Opt-in dimming for days that precede `now`. */
+  dimPastDays: boolean
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'padded' },
-  render: () => (
+  args: {
+    view: 'month',
+    outsideDays: 'hidden',
+    granularity: 'hour',
+    dimPastDays: false,
+  },
+  // No meta `component` (CalendarGrid is generic over its item type), so the
+  // knobs declare themselves. The date fixture stays pinned for determinism.
+  argTypes: {
+    view: { control: 'select', options: ['month', 'week', 'day'] },
+    outsideDays: { control: 'select', options: ['hidden', 'muted'] },
+    granularity: { control: 'select', options: ['hour', 'day'] },
+    dimPastDays: { control: 'boolean' },
+  },
+  render: (args: CalendarGridCanonicalArgs) => (
     <CalendarGrid
-      view="month"
-      date={new Date(2026, 6, 1)}
+      view={args.view}
+      outsideDays={args.outsideDays}
+      granularity={args.granularity}
+      dimPastDays={args.dimPastDays}
+      date={new Date(2026, 6, 15)}
       now={new Date(2026, 6, 15, 9, 30)}
       label="July 2026 releases"
       items={[
@@ -38,12 +66,20 @@ export const CanonicalUsage = {
       renderItem={(item) => <span>{item.title}</span>}
     />
   ),
-  play: async ({ canvas }) => {
-    await expect(canvas.getByRole('grid', { name: 'July 2026 releases' })).toBeVisible()
-    await expect(canvas.getByRole('gridcell', { name: 'Wednesday, July 15, 2 items' })).toBeVisible()
-    await expect(canvas.getByText('Ship v2.4')).toBeVisible()
+  play: async ({ canvas, args }) => {
+    const root =
+      args.view === 'day'
+        ? canvas.getByRole('region', { name: 'July 2026 releases' })
+        : canvas.getByRole('grid', { name: 'July 2026 releases' })
+    await expect(root).toBeVisible()
+    if (args.view === 'month') {
+      await expect(canvas.getByRole('gridcell', { name: 'Wednesday, July 15, 2 items' })).toBeVisible()
+      await expect(canvas.getByText('Ship v2.4')).toBeVisible()
+    } else {
+      await expect(canvas.getByText('Design standup')).toBeVisible()
+    }
   },
-} satisfies Story
+} satisfies StoryObj<CalendarGridCanonicalArgs>
 
 interface DemoItem {
   key: string

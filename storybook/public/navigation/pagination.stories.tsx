@@ -23,27 +23,64 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+interface PaginationCanonicalArgs {
+  /** Current 1-based page. */
+  page: number
+  /** Items rendered per page. */
+  pageSize: number
+  /** Total collection size. */
+  total: number
+  /** Whether the consumer currently renders every item. */
+  showAll: boolean
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    page: 2,
+    pageSize: 20,
+    total: 94,
+    showAll: false,
+  },
+  argTypes: {
+    page: { control: { type: 'number', min: 1 } },
+    pageSize: { control: { type: 'number', min: 1 } },
+    total: { control: { type: 'number', min: 0 } },
+    showAll: { control: 'boolean' },
+  },
+  render: (args: PaginationCanonicalArgs) => (
     <div style={{ inlineSize: 'min(90vw, 36rem)' }}>
       <Pagination
-        page={2}
-        pageSize={20}
-        total={94}
+        page={args.page}
+        pageSize={args.pageSize}
+        total={args.total}
+        showAll={args.showAll}
         onPageChange={() => {}}
       />
     </div>
   ),
-  play: async ({ canvas }) => {
+  play: async ({ canvas, args }) => {
+    // The component renders nothing when the collection fits on one page.
+    if (args.total <= args.pageSize) {
+      await expect(canvas.queryByRole('navigation')).toBeNull()
+      return
+    }
     const nav = canvas.getByRole('navigation', { name: 'Pagination' })
     await expect(nav).toBeVisible()
-    await expect(nav).toHaveTextContent('Showing 21–40 of 94')
-    await expect(canvas.getByLabelText('Page 2 of 5')).toBeVisible()
-    await expect(canvas.getByRole('button', { name: 'Previous' })).toBeEnabled()
-    await expect(canvas.getByRole('button', { name: 'Next' })).toBeEnabled()
+    const pageCount = Math.max(1, Math.ceil(args.total / args.pageSize))
+    const safePage = Math.min(Math.max(args.page, 1), pageCount)
+    const first = args.showAll ? 1 : ((safePage - 1) * args.pageSize) + 1
+    const last = args.showAll ? args.total : Math.min(safePage * args.pageSize, args.total)
+    await expect(nav).toHaveTextContent(`Showing ${first}–${last} of ${args.total}`)
+    if (args.showAll) {
+      await expect(canvas.queryByRole('button', { name: 'Previous' })).toBeNull()
+    } else {
+      await expect(canvas.getByLabelText(`Page ${safePage} of ${pageCount}`)).toBeVisible()
+      await expect(canvas.getByRole('button', { name: 'Previous' })).toBeVisible()
+      await expect(canvas.getByRole('button', { name: 'Next' })).toBeVisible()
+    }
   },
-} satisfies Story
+} satisfies StoryObj<PaginationCanonicalArgs>
 
 const runs = { total: 94, pageSize: 20 }
 

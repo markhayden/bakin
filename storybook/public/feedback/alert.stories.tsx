@@ -31,15 +31,23 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <Alert tone="danger" style={{ maxWidth: '26rem' }}>
+  args: {
+    tone: 'danger',
+  },
+  argTypes: {
+    tone: { control: 'select', options: ['neutral', 'success', 'attention', 'danger', 'accent'] },
+    children: { control: false },
+  },
+  render: ({ children: _children, ...args }) => (
+    <Alert {...args} style={{ maxWidth: '26rem' }}>
       <AlertTitle>Connection failed</AlertTitle>
       <AlertDescription>Bakin could not reach the configured runtime.</AlertDescription>
     </Alert>
   ),
-  play: async ({ canvas }) => {
-    const alert = canvas.getByRole('alert')
-    await expect(alert).toHaveAttribute('data-tone', 'danger')
+  play: async ({ canvas, args }) => {
+    // Danger announces assertively as an alert; routine tones use polite status.
+    const alert = canvas.getByRole(args.tone === 'danger' ? 'alert' : 'status')
+    await expect(alert).toHaveAttribute('data-tone', args.tone ?? 'neutral')
     await expect(alert).toHaveTextContent('Connection failed')
   },
 } satisfies Story

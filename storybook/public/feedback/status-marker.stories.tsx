@@ -24,12 +24,26 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => <StatusMarker tone="success" label="Published" />,
-  play: async ({ canvas }) => {
-    // With a label the marker is a named image — the state survives without color.
-    const marker = canvas.getByRole('img', { name: 'Published' })
-    await expect(marker).toBeVisible()
-    await expect(marker).toHaveAttribute('data-tone', 'success')
+  args: {
+    tone: 'success',
+    size: 'sm',
+    label: 'Published',
+  },
+  argTypes: {
+    tone: { control: 'select', options: ['neutral', 'success', 'attention', 'danger', 'accent'] },
+    size: { control: 'select', options: ['sm', 'md'] },
+    label: { control: 'text' },
+  },
+  play: async ({ canvas, canvasElement, args }) => {
+    if (args.label) {
+      // With a label the marker is a named image — the state survives without color.
+      const marker = canvas.getByRole('img', { name: args.label })
+      await expect(marker).toBeVisible()
+      await expect(marker).toHaveAttribute('data-tone', args.tone ?? 'neutral')
+    } else {
+      // Without a label the dot is decoration only.
+      await expect(canvasElement.querySelector('[aria-hidden="true"][data-tone]')).toBeTruthy()
+    }
   },
 } satisfies Story
 

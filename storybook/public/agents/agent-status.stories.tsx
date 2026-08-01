@@ -30,18 +30,42 @@ const statuses: Array<{ status: AgentPresenceStatus; detail: string }> = [
   { status: 'error', detail: 'Heartbeat reports an operational problem' },
 ]
 
+const presenceLabels: Record<AgentPresenceStatus, string> = {
+  online: 'Online',
+  working: 'Working',
+  available: 'Available',
+  offline: 'Offline',
+  error: 'Needs attention',
+}
+
+interface AgentStatusCanonicalArgs {
+  /** Presence state; the visible label carries the meaning, never color alone. */
+  status: AgentPresenceStatus
+  /** Optional current-activity line under the presence language. */
+  detail: string
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <AgentStatus name="Maya Chen" status="working" detail="Validating the release candidate" />
+  args: {
+    status: 'working',
+    detail: 'Validating the release candidate',
+  },
+  // No meta `component` (see the presence table below), so the knobs declare themselves.
+  argTypes: {
+    status: { control: 'select', options: ['online', 'working', 'available', 'offline', 'error'] },
+    detail: { control: 'text' },
+  },
+  render: (args: AgentStatusCanonicalArgs) => (
+    <AgentStatus name="Maya Chen" status={args.status} detail={args.detail} />
   ),
-  play: async ({ canvas }) => {
+  play: async ({ canvas, args }) => {
     const status = canvas.getByRole('status', { name: 'Maya Chen status' })
     await expect(status).toBeVisible()
-    await expect(status).toHaveTextContent('Working')
-    await expect(status).toHaveTextContent('Validating the release candidate')
+    await expect(status).toHaveTextContent(presenceLabels[args.status])
+    if (args.detail) await expect(status).toHaveTextContent(args.detail)
   },
-} satisfies Story
+} satisfies StoryObj<AgentStatusCanonicalArgs>
 
 export const PresenceLanguage = {
   render: () => (

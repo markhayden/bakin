@@ -21,17 +21,32 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    defaultChecked: false,
+    disabled: false,
+  },
+  argTypes: {
+    defaultChecked: { control: 'boolean' },
+    disabled: { control: 'boolean' },
+  },
+  render: (args) => (
     <Field orientation="horizontal">
-      <Checkbox />
+      <Checkbox {...args} />
       <FieldLabel>Include archived tasks</FieldLabel>
     </Field>
   ),
-  play: async ({ canvas, userEvent }) => {
+  play: async ({ canvas, userEvent, args }) => {
     const checkbox = canvas.getByRole('checkbox', { name: 'Include archived tasks' })
-    await expect(checkbox).not.toBeChecked()
+    const startsChecked = Boolean(args.defaultChecked)
+    if (startsChecked) await expect(checkbox).toBeChecked()
+    else await expect(checkbox).not.toBeChecked()
+    if (args.disabled) {
+      await expect(checkbox).toBeDisabled()
+      return
+    }
     await userEvent.click(checkbox)
-    await expect(checkbox).toBeChecked()
+    if (startsChecked) await expect(checkbox).not.toBeChecked()
+    else await expect(checkbox).toBeChecked()
   },
 } satisfies Story
 

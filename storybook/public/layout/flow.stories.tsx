@@ -1,9 +1,18 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect } from 'storybook/test'
-import { Inline, Stack } from '@makinbakin/sdk/layout'
+import {
+  Inline,
+  Stack,
+  type InlineAlign,
+  type InlineJustify,
+  type LayoutGap,
+  type StackAlign,
+} from '@makinbakin/sdk/layout'
 import { Badge } from '@makinbakin/sdk/ui'
 
 import { StorySection, StoryStage } from '../../support'
+
+const gapOptions = ['none', 'dense', 'item', 'section', 'page'] as const
 
 const meta = {
   title: 'Layout/Stack and Inline',
@@ -23,26 +32,57 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+interface FlowCanonicalArgs {
+  /** Stack gap from the finite semantic scale. */
+  gap: LayoutGap
+  /** Stack cross-axis alignment. */
+  align: StackAlign
+  /** Gap on the nested Inline row. */
+  inlineGap: LayoutGap
+  /** Alignment on the nested Inline row. */
+  inlineAlign: InlineAlign
+  /** Main-axis distribution on the nested Inline row. */
+  inlineJustify: InlineJustify
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <Stack gap="dense">
-      <Inline align="baseline" justify="between" gap="item">
+  args: {
+    gap: 'dense',
+    align: 'stretch',
+    inlineGap: 'item',
+    inlineAlign: 'baseline',
+    inlineJustify: 'between',
+  },
+  // Stack is polymorphic, so docgen cannot infer its props; the inline* knobs
+  // drive the nested Inline row so both flow primitives stay playable here.
+  argTypes: {
+    gap: { control: 'select', options: gapOptions },
+    align: { control: 'select', options: ['stretch', 'start', 'center', 'end'] },
+    inlineGap: { control: 'select', options: gapOptions },
+    inlineAlign: { control: 'select', options: ['stretch', 'start', 'center', 'end', 'baseline'] },
+    inlineJustify: { control: 'select', options: ['start', 'center', 'end', 'between'] },
+  },
+  render: (args: FlowCanonicalArgs) => (
+    <Stack gap={args.gap} align={args.align}>
+      <Inline align={args.inlineAlign} justify={args.inlineJustify} gap={args.inlineGap}>
         <strong>Task overview</strong>
         <Badge tone="success">Live</Badge>
       </Inline>
       <span>42 active tasks across 8 agents.</span>
     </Stack>
   ),
-  play: async ({ canvas, canvasElement }) => {
+  play: async ({ canvas, canvasElement, args }) => {
     await expect(canvas.getByText('Task overview')).toBeVisible()
     const stack = canvasElement.querySelector('[data-slot="stack"]')
-    await expect(stack).toHaveAttribute('data-gap', 'dense')
+    await expect(stack).toHaveAttribute('data-gap', args.gap)
+    await expect(stack).toHaveAttribute('data-align', args.align)
     const inline = canvasElement.querySelector('[data-slot="inline"]')
-    await expect(inline).toHaveAttribute('data-justify', 'between')
-    await expect(inline).toHaveAttribute('data-align', 'baseline')
+    await expect(inline).toHaveAttribute('data-gap', args.inlineGap)
+    await expect(inline).toHaveAttribute('data-justify', args.inlineJustify)
+    await expect(inline).toHaveAttribute('data-align', args.inlineAlign)
   },
-} satisfies Story
+} satisfies StoryObj<FlowCanonicalArgs>
 
 const gapScale = ['none', 'dense', 'item', 'section', 'page'] as const
 

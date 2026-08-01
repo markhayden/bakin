@@ -25,8 +25,19 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
-  render: () => (
-    <PageShell width="content">
+  args: {
+    width: 'content',
+    gap: 'page',
+    padding: 'default',
+  },
+  argTypes: {
+    width: { control: 'select', options: ['content', 'wide', 'full'] },
+    gap: { control: 'select', options: ['none', 'content', 'section', 'page'] },
+    padding: { control: 'select', options: ['default', 'compact', 'none'] },
+    children: { control: false },
+  },
+  render: ({ children: _children, ...args }) => (
+    <PageShell {...args}>
       <PageHeader
         eyebrow="Tasks / live operations"
         title="Coordinate active work"
@@ -35,10 +46,12 @@ export const CanonicalUsage = {
       <p>Page content joins the shell&apos;s single vertical rhythm.</p>
     </PageShell>
   ),
-  play: async ({ canvas, canvasElement }) => {
+  play: async ({ canvas, canvasElement, args }) => {
     await expect(canvas.getByRole('heading', { level: 1, name: 'Coordinate active work' })).toBeVisible()
     const shell = canvasElement.querySelector('[data-slot="page-shell"]')
-    await expect(shell).toHaveAttribute('data-width', 'content')
+    await expect(shell).toHaveAttribute('data-width', args.width ?? 'wide')
+    await expect(shell).toHaveAttribute('data-gap', args.gap ?? 'page')
+    await expect(shell).toHaveAttribute('data-padding', args.padding ?? 'default')
     await expect(shell!.querySelector('[data-slot="page-shell-content"]')).toBeTruthy()
   },
 } satisfies Story
