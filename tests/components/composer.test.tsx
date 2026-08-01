@@ -143,6 +143,55 @@ describe('Composer attachments', () => {
     expect(added).toEqual(['pasted.png'])
   })
 
+  it('PDF-only acceptedTypes: PDFs pass the picker filter, images are refused, accept narrows (#742)', () => {
+    const added: string[] = []
+    const { container } = render(
+      <Composer
+        storageKey="att-pdf"
+        onSend={() => {}}
+        attachments={{
+          enabled: true,
+          acceptedTypes: ['application/pdf'],
+          disabledReason: "main's model can't see images",
+          items: [],
+          onAdd: (files) => added.push(...files.map((f) => f.name)),
+          onRemove: () => {},
+        }}
+      />,
+    )
+    const attach = container.querySelector('[data-composer-attach]') as HTMLButtonElement
+    expect(attach.disabled).toBe(false) // PDFs still attach for non-vision agents
+    expect(attach.getAttribute('title')).toContain("can't see images")
+    const input = container.querySelector('input[type="file"]')!
+    expect(input.getAttribute('accept')).toBe('application/pdf')
+    fireEvent.change(input, {
+      target: {
+        files: [
+          new File(['%PDF'], 'doc.pdf', { type: 'application/pdf' }),
+          new File(['x'], 'smuggled.png', { type: 'image/png' }),
+        ],
+      },
+    })
+    expect(added).toEqual(['doc.pdf'])
+  })
+
+  it('non-image staged items render as name tiles, not <img> (#742)', () => {
+    const { container } = render(
+      <Composer
+        storageKey="att-tile"
+        onSend={() => {}}
+        attachments={{
+          enabled: true,
+          items: [{ id: 'p1', name: 'report.pdf', previewUrl: '' }],
+          onAdd: () => {},
+          onRemove: () => {},
+        }}
+      />,
+    )
+    expect(container.querySelector('[data-composer-attachments] img')).toBeNull()
+    expect(container.querySelector('[data-composer-attachments]')?.textContent).toContain('report.pdf')
+  })
+
   it('shows a disabled affordance with the honest reason when unsupported', () => {
     const { container } = render(
       <Composer

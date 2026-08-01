@@ -70,6 +70,7 @@ import { MANAGED_BLOCK_ID } from '../../packages/core/src/agent-packages/compose
 import { extractBlock, hasBlock } from '../../packages/core/src/agent-packages/managed-blocks'
 import { getGlobalContextPath, seedContextFiles } from '../../src/core/team-context'
 import { projectPackage } from '../../src/core/agent-packages/projector'
+import { settleFor } from '../helpers/wait'
 
 // ─── Disk-backed runtime mock (same shape as projector.test.ts) ─────────────
 
@@ -259,7 +260,7 @@ describe('syncAgent — local sync', () => {
     await seedSyncedBaseline()
     await syncAgent('pixel', { fetch: false })
     const first = readReceipt('pixel')
-    await new Promise((r) => setTimeout(r, 5))
+    await settleFor(5, 'advance the clock so the second receipt gets a distinct timestamp')
     await syncAgent('pixel', { fetch: false })
     const second = readReceipt('pixel')
     expect(second?.syncedAt && first?.syncedAt && second.syncedAt >= first.syncedAt).toBe(true)

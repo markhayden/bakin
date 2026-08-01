@@ -8,32 +8,21 @@ import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-// Mock pdf-parse — the real one needs a valid PDF. For unit tests we
-// just need to prove extractAssetContent ROUTES to the PDF branch and
-// surfaces whatever text the library returns. pdf-parse v2 exports a
-// PDFParse class with getText() and destroy() methods, so the mock
-// stands up a matching class.
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
   getMainAgentName: () => 'Main',
 }))
 
-mock.module('pdf-parse', () => {
-  class MockPDFParse {
-    private byteLen: number
-    constructor(options: { data: Uint8Array }) {
-      this.byteLen = options.data.length
-    }
-    async getText() {
-      return {
-        text: `pdf-parse returned ${this.byteLen} bytes of fake text: tzatziki Worcestershire`,
-      }
-    }
-    async destroy() {}
-  }
-  return { PDFParse: MockPDFParse }
-})
+const isolationDir = join(tmpdir(), `bakin-test-content-extractor-home-${Date.now()}`)
+mock.module('../../../src/core/content-dir', () => ({
+  getContentDir: () => isolationDir,
+  getBakinPaths: () => ({ db: join(isolationDir, 'bakin.db'), bin: join(isolationDir, 'bin') }),
+}))
+mock.module('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => isolationDir,
+  getBakinPaths: () => ({ db: join(isolationDir, 'bakin.db'), bin: join(isolationDir, 'bin') }),
+}))
 
 // Logger mock — silences warnings during tests and avoids the real
 // logger's globalThis side effects.
@@ -85,12 +74,20 @@ describe('extractAssetContent', () => {
     expect(await extractAssetContent(pathB, 'b.yml')).toContain('baz: qux')
   })
 
-  it('routes .pdf files through the pdf-parse library', async () => {
+  it('routes .pdf files through the core PDF engine (real fixture)', async () => {
+    const fixture = join(import.meta.dir, '../../fixtures/pdf/text.pdf')
+    const content = await extractAssetContent(fixture, 'text.pdf')
+    expect(content).toContain('BAKIN FIXTURE PAGE ONE')
+    expect(content).toContain('alpha-7291')
+    expect(content).toContain('omega-3348') // both pages joined
+  })
+
+  it('returns empty string for a non-PDF masquerading as .pdf', async () => {
     const path = join(testDir, 'doc.pdf')
     writeFileSync(path, 'fake-pdf-bytes')
-    const content = await extractAssetContent(path, 'doc.pdf')
-    expect(content).toContain('pdf-parse returned')
-    expect(content).toContain('tzatziki')
+    // Engine rejects by magic bytes; the extractor's never-throws contract
+    // degrades that to metadata-only indexing.
+    expect(await extractAssetContent(path, 'doc.pdf')).toBe('')
   })
 
   it('returns empty string for unsupported extensions', async () => {

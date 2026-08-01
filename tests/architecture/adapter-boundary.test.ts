@@ -110,8 +110,19 @@ const DENYLIST = [
     allow: (rel: string) => isDevRig(rel),
   },
   {
-    label: 'raw Discord provider endpoint outside runtime adapter',
+    // The delivery bridge (#669) is the ONE sanctioned Discord client
+    // upstream of the runtime adapters — confined to src/core/delivery/.
+    label: 'raw Discord provider endpoint outside runtime adapter or delivery bridge',
     regex: /(?:discord(?:app)?\.com|discord\.gg|discord\/api)/,
+    allow: (rel: string) => rel.startsWith('src/core/delivery/'),
+  },
+  {
+    // discord.js-family imports carry provider semantics; keep them inside
+    // the bridge so a second delivery platform requires zero changes
+    // upstream of src/core/delivery/.
+    label: 'discord library import outside the delivery bridge',
+    regex: /@discordjs\/|discord-api-types/,
+    allow: (rel: string) => rel.startsWith('src/core/delivery/'),
   },
   {
     // The contract's config surface is DELETED (P2.5): runtime config is
@@ -378,6 +389,17 @@ describe('adapter boundary architecture', () => {
       hits.push(...findErrorMessageMatchViolations(relative(ROOT, file), readFileSync(file, 'utf-8')))
     }
     expect(hits).toEqual([])
+  })
+
+  it('the discord confinement rules bite outside src/core/delivery/ (fixture)', () => {
+    const libraryRule = DENYLIST.find(rule => rule.label.includes('discord library'))!
+    const endpointRule = DENYLIST.find(rule => rule.label.includes('Discord provider endpoint'))!
+    expect(libraryRule.regex.test("import { Client } from '@discordjs/core'")).toBe(true)
+    expect(libraryRule.allow?.('src/core/delivery/discord/client.ts')).toBe(true)
+    expect(libraryRule.allow?.('src/core/watchdog.ts')).toBeFalsy()
+    expect(endpointRule.regex.test('https://discord.com/api/v10')).toBe(true)
+    expect(endpointRule.allow?.('src/core/delivery/discord/send.ts')).toBe(true)
+    expect(endpointRule.allow?.('plugins/chat/index.ts')).toBeFalsy()
   })
 
   it('the error-message-matching ban catches violations (fixture)', () => {

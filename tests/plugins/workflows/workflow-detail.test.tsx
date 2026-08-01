@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -194,13 +194,15 @@ describe('WorkflowDetail', () => {
   it('opens the edit dialog before creating a managed workflow copy', async () => {
     const fetchMock = setupPluginDefinitionFetch()
 
-    render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
+    await act(async () => {
+      render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
+    })
 
     await screen.findByText('Draft a video script')
     const edit = getWorkflowEditButton()
     expect(screen.getByText(/This workflow is managed by Bakin directly/i)).toBeDefined()
     expect(screen.queryByRole('button', { name: /delete workflow/i })).toBeNull()
-    fireEvent.click(edit)
+    await act(async () => { fireEvent.click(edit) })
 
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText(/Edit managed workflow/)).toBeDefined()
@@ -214,15 +216,19 @@ describe('WorkflowDetail', () => {
   it('creates the named copy, disables the managed original, and navigates to the copy editor', async () => {
     const fetchMock = setupPluginDefinitionFetch()
 
-    render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
+    await act(async () => {
+      render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
+    })
 
     await screen.findByText('Draft a video script')
-    fireEvent.click(getWorkflowEditButton())
+    await act(async () => { fireEvent.click(getWorkflowEditButton()) })
     const dialog = screen.getByRole('dialog')
-    fireEvent.change(within(dialog).getByLabelText(/copy name/i), {
-      target: { value: 'My Better Flow' },
+    await act(async () => {
+      fireEvent.change(within(dialog).getByLabelText(/copy name/i), {
+        target: { value: 'My Better Flow' },
+      })
     })
-    fireEvent.click(within(dialog).getByRole('button', { name: /create copy/i }))
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: /create copy/i })) })
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
     const [, createInit] = fetchMock.mock.calls[1]
@@ -240,12 +246,14 @@ describe('WorkflowDetail', () => {
   it('still navigates to the copy editor when disabling the managed original fails', async () => {
     const fetchMock = setupPluginDefinitionFetch({ availabilityStatus: 500 })
 
-    render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
+    await act(async () => {
+      render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
+    })
 
     await screen.findByText('Draft a video script')
-    fireEvent.click(getWorkflowEditButton())
+    await act(async () => { fireEvent.click(getWorkflowEditButton()) })
     const dialog = screen.getByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: /create copy/i }))
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: /create copy/i })) })
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
     expect(routerPush).toHaveBeenCalledWith('/workflows/video-script-copy/edit')
@@ -254,12 +262,14 @@ describe('WorkflowDetail', () => {
   it('toggles managed workflow availability from the detail header', async () => {
     const fetchMock = setupPluginDefinitionFetch()
 
-    render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
+    await act(async () => {
+      render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
+    })
 
     expect(await screen.findByText('Enabled')).toBeDefined()
     const availabilitySwitch = screen.getByRole('switch', { name: /disable workflow/i })
     expect(availabilitySwitch.parentElement?.className).not.toContain('border')
-    fireEvent.click(availabilitySwitch)
+    await act(async () => { fireEvent.click(availabilitySwitch) })
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     const [, availabilityInit] = fetchMock.mock.calls[1]
@@ -290,7 +300,9 @@ describe('WorkflowDetail', () => {
     }
     setupPluginDefinitionFetch({ skillDrift })
 
-    render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
+    await act(async () => {
+      render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
+    })
 
     expect(await screen.findByText(/uses a stale workflow skill/i)).toBeDefined()
     await waitFor(() => expect(workflowCanvasCalls.length).toBeGreaterThan(0))
@@ -301,12 +313,14 @@ describe('WorkflowDetail', () => {
   it('can re-enable a disabled managed workflow from the detail header', async () => {
     const fetchMock = setupPluginDefinitionFetch({ disabled: true })
 
-    render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
+    await act(async () => {
+      render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
+    })
 
     expect(await screen.findByText('Disabled')).toBeDefined()
     expect(screen.getByText(/matching and automatic starts skip this workflow/i)).toBeDefined()
     expect(getWorkflowEditButton().disabled).toBe(true)
-    fireEvent.click(screen.getByRole('switch', { name: /enable workflow/i }))
+    await act(async () => { fireEvent.click(screen.getByRole('switch', { name: /enable workflow/i })) })
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     const [, availabilityInit] = fetchMock.mock.calls[1]
@@ -321,7 +335,9 @@ describe('WorkflowDetail', () => {
     const fetchMock = setupUserDefinitionFetch()
     const onBack = mock()
 
-    render(<WorkflowDetail workflowId="clip-creation-copy" onBack={onBack} />)
+    await act(async () => {
+      render(<WorkflowDetail workflowId="clip-creation-copy" onBack={onBack} />)
+    })
 
     await waitFor(() =>
       expect(
@@ -337,15 +353,17 @@ describe('WorkflowDetail', () => {
     expect(screen.queryByTestId(/agent-/i)).toBeNull()
     expect(screen.queryByRole('switch')).toBeNull()
 
-    fireEvent.click(
-      within(getFullWorkspaceHeader()).getByRole('button', { name: 'Workflow actions' }),
-    )
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }))
+    await act(async () => {
+      fireEvent.click(
+        within(getFullWorkspaceHeader()).getByRole('button', { name: 'Workflow actions' }),
+      )
+    })
+    await act(async () => { fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' })) })
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText('Delete workflow?')).toBeDefined()
-    fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }))
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i })) })
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     const [url, init] = fetchMock.mock.calls[1]

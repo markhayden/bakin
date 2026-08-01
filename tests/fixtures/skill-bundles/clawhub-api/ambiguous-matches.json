@@ -1,0 +1,10 @@
+{
+  "code": "AMBIGUOUS_SKILL_SLUG",
+  "message": "Found multiple skills with the slug \"skill-vetter\"; specify which one you want to install:",
+  "slug": "skill-vetter",
+  "matches": [
+    { "ownerHandle": "spclaudehome", "slug": "skill-vetter", "ref": "@spclaudehome/skill-vetter", "url": "https://clawhub.ai/spclaudehome/skills/skill-vetter" },
+    { "ownerHandle": "thcjp", "slug": "skill-vetter", "ref": "@thcjp/skill-vetter", "url": "https://clawhub.ai/thcjp/skills/skill-vetter" },
+    { "ownerHandle": "sophia-amadeus", "slug": "skill-vetter", "ref": "@sophia-amadeus/skill-vetter", "url": "https://clawhub.ai/sophia-amadeus/skills/skill-vetter" }
+  ]
+}

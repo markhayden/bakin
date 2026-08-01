@@ -254,7 +254,10 @@ export function OverviewTab({
           />
           <StatTile
             label="Tokens"
-            value={loading ? '—' : formatNumber(usage?.tokens.total ?? 0)}
+            // No usage means UNKNOWN, not zero. Rendering 0 here claimed the agent
+            // had spent nothing when the stats call simply returned nothing — the
+            // same null-honesty rule the burn buckets and the doctor already follow.
+            value={loading || !usage ? '—' : formatNumber(usage.tokens.total)}
             sub={usage
               ? `in ${formatNumber(usage.tokens.input)} · out ${formatNumber(usage.tokens.output)}`
               : undefined}

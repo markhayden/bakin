@@ -641,6 +641,21 @@ describe('checkChannelAliases', () => {
     expect(results[0].summary).toContain('1 channel alias')
   })
 
+  it('resolves aliases against bridge-style fully-qualified channel ids (#669)', async () => {
+    // The delivery bridge lists per-channel ids (discord:channel:<id>), not
+    // provider-level ids — both the exact ref and its provider prefix count.
+    mockChannelAliases = { approvals: 'discord:channel:777' }
+    mockNotificationChannel = 'discord'
+    mockNotificationTarget = 'channel:888'
+    mockRuntime.channels!.list = async () => [
+      { id: 'discord:channel:777', platform: 'discord', label: '#approvals', capabilities: ['message'] },
+      { id: 'discord:channel:888', platform: 'discord', label: '#alerts', capabilities: ['message'] },
+    ]
+
+    const results = observed(await checkChannelAliases(mockRuntime))
+    expect(results[0].status).toBe('healthy')
+  })
+
   it('warns when an alias targets an unavailable runtime channel', async () => {
     mockChannelAliases = { general: 'slack:channel-123' }
     mockRuntime.channels!.list = async () => [{
@@ -1131,11 +1146,11 @@ describe('plugin registration', () => {
     }
     await healthPlugin.activate(ctx as unknown as Parameters<typeof healthPlugin.activate>[0])
 
-    expect(registeredIds).toHaveLength(23)
+    expect(registeredIds).toHaveLength(24)
     expect(registeredIds).not.toContain('search-outbox')
     expect(registeredIds).toEqual(expect.arrayContaining([
       'content-dir', 'capabilities', 'github-readiness', 'service', 'runtime', 'session-store',
-      'channel-approvals', 'channel-aliases', 'restart-recovery', 'execution-safety',
+      'channel-approvals', 'channel-aliases', 'delivery-discord', 'restart-recovery', 'execution-safety',
       'context.startup-size', 'budget', 'usage.agent-burn', 'search', 'dispatch.run-dirs',
       'search-consistency', 'search-spin', 'search-canary', 'search-engine-burn',
       'skill', 'plugin-assets', 'plugin-artifacts', 'plugin-registry',

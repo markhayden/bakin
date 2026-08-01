@@ -17,7 +17,9 @@ import { join } from 'path'
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { safeParseManifest, type SkillPackManifest } from '../../../packages/core/src/agent-packages/manifest'
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
-import { getStoredSecret } from '@bakin/core/media'
+import { getStoredSecret, parseSecretSlot } from '@bakin/core/media'
+import { SKILL_SECRET_PROVIDER } from '../../../packages/core/src/agent-packages/skill-secret-slot'
+import { isBindableSecretSlot } from '../secret-env'
 import { getContentDir, getBakinPaths } from '@/core/content-dir'
 import { createAppServices, maybeGetAppServices } from '@/core/app-services'
 import { createLogger } from '@/core/logger'
@@ -180,13 +182,23 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
       let status: CapabilitySecretStatus['status'] = 'missing'
       if (process.env[secret.name]) {
         status = 'env'
-      } else if (secret.secretSlot) {
-        const [provider, name] = secret.secretSlot.split('.', 2)
+      } else if (secret.secretSlot && isBindableSecretSlot(secret.name, secret.secretSlot)) {
+        // Only slots the env-injection layer will actually bind can count as
+        // satisfied. A pack declaring e.g. `notion.apiKey` is refused by
+        // collectPackSecretMappings, so treating a stored value there as
+        // "ready" would be a false green — the var never reaches the agent.
+        const parsedSlot = parseSecretSlot(secret.secretSlot)
+        const provider = parsedSlot?.provider
+        const name = parsedSlot?.name
         if (provider && name && getStoredSecret(provider, name)) status = 'store'
       }
       secrets.push({ name: secret.name, required: secret.required, secretSlot: secret.secretSlot, help: secret.help, status })
       if (status === 'missing' && secret.required) {
-        missing.push(`${secret.name} is not configured — add it in Settings → Integrations & Keys${secret.help ? ` (get one: ${secret.help})` : ''}`)
+        missing.push(
+          secret.secretSlot && !isBindableSecretSlot(secret.name, secret.secretSlot)
+            ? `${secret.name} declares an unsupported secret slot "${secret.secretSlot}" — packs may only bind ${SKILL_SECRET_PROVIDER}.* slots, so this key can never reach the agent`
+            : `${secret.name} is not configured — add it in Settings → Integrations & Keys${secret.help ? ` (get one: ${secret.help})` : ''}`,
+        )
       }
     }
 

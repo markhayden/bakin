@@ -11,7 +11,7 @@
  * model + team interactions fire the right round-trips.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '../../rtl-settle'
 import { join } from 'path'
@@ -91,8 +91,10 @@ beforeEach(() => {
 })
 
 describe('OverviewTab', () => {
-  function renderTab(packageState?: PackageStateRow) {
-    return render(
+  async function renderTab(packageState?: PackageStateRow) {
+    let view!: ReturnType<typeof render>
+    await act(async () => {
+      view = render(
       <OverviewTab
         agentId="pixel"
         profile={PROFILE}
@@ -100,17 +102,19 @@ describe('OverviewTab', () => {
         availableModels={[{ id: 'claude-opus-4-7', name: 'Opus 4.7', label: 'Opus' } as never, { id: 'claude-sonnet-4-6', name: 'Sonnet', label: 'Sonnet' } as never]}
         onModelChange={mock(async () => {})}
         savingModel={false}
-      />,
-    )
+        />,
+      )
+    })
+    return view
   }
 
   function holdUnrelatedPanelFetches() {
     global.fetch = mock(() => new Promise<Response>(() => {})) as unknown as typeof global.fetch
   }
 
-  it('does NOT render identity (name/role/emoji) — header owns that surface', () => {
+  it('does NOT render identity (name/role/emoji) — header owns that surface', async () => {
     holdUnrelatedPanelFetches()
-    renderTab()
+    await renderTab()
     // OverviewTab is rendered standalone in this test (no AgentDetail
     // header), so the identity strings should be entirely absent.
     expect(screen.queryByText('Pixel')).toBeNull()
@@ -118,23 +122,23 @@ describe('OverviewTab', () => {
     expect(screen.queryByText('🎨')).toBeNull()
   })
 
-  it('renders the model selector pre-set to the agent\'s model', () => {
+  it('renders the model selector pre-set to the agent\'s model', async () => {
     holdUnrelatedPanelFetches()
-    renderTab()
+    await renderTab()
     const select = screen.getByRole('combobox', { name: 'Model' })
     expect(select.textContent).toContain('Opus 4.7')
   })
 
-  it('renders the team selector with the current team', () => {
+  it('renders the team selector with the current team', async () => {
     holdUnrelatedPanelFetches()
-    renderTab()
+    await renderTab()
     const teamSelect = screen.getByRole('combobox', { name: 'Team' })
     expect(teamSelect.textContent).toContain('Design')
   })
 
-  it('does NOT render the workspace path — header owns that surface now', () => {
+  it('does NOT render the workspace path — header owns that surface now', async () => {
     holdUnrelatedPanelFetches()
-    renderTab()
+    await renderTab()
     expect(screen.queryByText('/tmp/openclaw/workspaces/pixel')).toBeNull()
   })
 
@@ -145,7 +149,7 @@ describe('OverviewTab', () => {
       skills: { skills: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] },
       lessons: { ok: true, lessons: [{ enabled: true }, { enabled: true }, { enabled: false }, { enabled: false }, { enabled: false }] },
     })
-    renderTab()
+    await renderTab()
     await waitFor(() => expect(screen.getByText('1,750')).toBeDefined())
     // Distinct values per tile so getByText is unambiguous
     expect(screen.getByText('3')).toBeDefined() // skills count
@@ -158,7 +162,7 @@ describe('OverviewTab', () => {
 
   it('shows em-dash placeholders + suppresses the secondary metric row when stats is null', async () => {
     setupFetch({ stats: { usage: null } })
-    renderTab()
+    await renderTab()
     // Top-row tiles render '—' for missing data
     await waitFor(() => expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2))
     // The secondary row (Model / Messages / Cache reads / Cache writes) only
@@ -182,7 +186,7 @@ describe('OverviewTab', () => {
         },
       },
     })
-    renderTab()
+    await renderTab()
     await waitFor(() => expect(screen.getByText('150')).toBeDefined())
     expect(screen.queryByText('$0.00')).toBeNull()
   })
@@ -203,7 +207,7 @@ describe('OverviewTab', () => {
       },
     })
 
-    renderTab()
+    await renderTab()
 
     await waitFor(() => expect(screen.getByText('$0.03+')).toBeDefined())
     expect(screen.getByText('Partial reported cost · 1 of 2 messages')).toBeDefined()
@@ -226,7 +230,7 @@ describe('OverviewTab', () => {
       },
     })
 
-    renderTab()
+    await renderTab()
 
     await waitFor(() => expect(screen.getByText('$0.04')).toBeDefined())
     expect(screen.getByText('$0.02/msg')).toBeDefined()
@@ -248,7 +252,7 @@ describe('OverviewTab', () => {
       },
     })
 
-    renderTab()
+    await renderTab()
 
     await waitFor(() => expect(screen.getByText('$0.03+')).toBeDefined())
     expect(screen.getByText('Reported cost · coverage unavailable')).toBeDefined()
@@ -257,7 +261,7 @@ describe('OverviewTab', () => {
 
   it('writes /team on team select change', async () => {
     const user = userEvent.setup()
-    renderTab()
+    await renderTab()
     await user.click(screen.getByRole('combobox', { name: 'Team' }))
     await user.click(screen.getByRole('option', { name: 'No team' }))
     await waitFor(() => {
@@ -266,9 +270,9 @@ describe('OverviewTab', () => {
     })
   })
 
-  it('renders the embedded PackageCard for the agent (delegating to its own surface)', () => {
+  it('renders the embedded PackageCard for the agent (delegating to its own surface)', async () => {
     holdUnrelatedPanelFetches()
-    renderTab({ agentId: 'pixel', state: 'managed', packageId: 'examples/pixel@0.1.0' })
+    await renderTab({ agentId: 'pixel', state: 'managed', packageId: 'examples/pixel@0.1.0' })
     expect(screen.getByText('managed')).toBeDefined()
   })
 

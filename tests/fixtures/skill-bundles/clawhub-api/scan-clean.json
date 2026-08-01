@@ -1,0 +1,26 @@
+{
+  "skill": { "slug": "weather", "displayName": "Weather" },
+  "version": { "version": "2.0.1", "createdAt": 1770000000000 },
+  "moderation": {
+    "scope": "skill",
+    "sourceVersion": { "version": "2.0.1", "createdAt": 1770000000000 },
+    "matchesRequestedVersion": true,
+    "isPendingScan": false,
+    "isMalwareBlocked": false,
+    "isSuspicious": false,
+    "isHiddenByMod": false,
+    "isRemoved": false
+  },
+  "security": {
+    "status": "clean",
+    "hasWarnings": false,
+    "checkedAt": 1780000000000,
+    "hasScanResult": true,
+    "sha256hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "scanners": {
+      "vt": { "status": "clean", "verdict": null, "normalizedStatus": "clean", "source": "engines", "checkedAt": 1780000000000 },
+      "skillspector": { "status": "clean", "normalizedStatus": "clean", "score": 0, "severity": "NONE", "recommendation": "OK", "issueCount": 0, "checkedAt": 1780000000000 },
+      "llm": { "status": "clean", "verdict": "clean", "normalizedStatus": "clean", "confidence": "high", "summary": "Fetches public weather data; no concerning behavior." }
+    }
+  }
+}

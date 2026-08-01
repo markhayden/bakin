@@ -91,6 +91,9 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // Restore the real clock — any test that pins it must not leak that pin into
+  // the next one.
+  setSystemTime()
   closeAllDbs()
   usageScanGlobal.__bakinUsageHistoryLastScan = null
   usageScanGlobal.__bakinUsageHistoryScanIntervalMs = undefined
@@ -247,6 +250,12 @@ describe('budget health check', () => {
   })
 
   it('uses monthly evidence for a monthly verdict without contaminating a daily-only rule', async () => {
+    // Pin the clock mid-month. This test's whole premise is that a row at the
+    // START of the month is older than TODAY, so a daily-cap rule ignores it
+    // while a monthly-cap rule sees it. On the 1st those are the same day and
+    // the premise collapses — the test failed on the 1st of every month, which
+    // is exactly the kind of failure nobody is around to see.
+    setSystemTime(new Date('2026-06-15T12:00:00Z'))
     const monthStart = new Date()
     monthStart.setDate(1)
     monthStart.setHours(1, 0, 0, 0)

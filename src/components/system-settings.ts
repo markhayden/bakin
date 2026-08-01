@@ -60,6 +60,59 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
     },
     // Gate approval alerts are owned by the workflows plugin
     // (approvalChannelAlerts in its plugin settings), not by system settings.
+    // ── Discord integration (#669) ────────────────────────────────────
+    // Non-secret bridge config. The bot token lives in the secret store
+    // (Settings → Integrations & Keys), never here. List fields are edited
+    // as comma-separated strings and stored as arrays (see CSV_LIST_KEYS).
+    {
+      key: 'integrations.discord.enabled',
+      type: 'boolean',
+      label: 'Discord bridge enabled',
+      description: 'Master switch for the Discord delivery bridge (Pi runtime). Also requires a bot token (Integrations & Keys) and at least one guild ID below. Only boots when the active runtime lacks native channels — stop the OpenClaw daemon if the bot ever answers twice. Turning this OFF stops approval decisions immediately, but the gateway stays connected until the next server restart.',
+      default: false,
+    },
+    {
+      key: 'integrations.discord.guildIds',
+      type: 'string',
+      label: 'Discord guild IDs',
+      description: 'Comma-separated guild (server) IDs whose text channels the bridge serves.',
+      default: '',
+    },
+    {
+      key: 'integrations.discord.approvers',
+      type: 'string',
+      label: 'Discord approvers',
+      description: 'Comma-separated Discord user IDs allowed to decide approval gates from Discord. Empty = nobody (fail closed).',
+      default: '',
+    },
+    {
+      key: 'integrations.discord.inbound.enabled',
+      type: 'boolean',
+      label: 'Discord inbound chat',
+      description: 'Let allowlisted users chat with a Bakin agent from Discord (@mention in guild channels, DMs directly). Messages become real Bakin chats; replies post back to the channel. Requires the bridge to be enabled and allowFrom below.',
+      default: false,
+    },
+    {
+      key: 'integrations.discord.inbound.agentId',
+      type: 'string',
+      label: 'Discord inbound agent',
+      description: 'The Bakin agent that answers inbound Discord chat. Default main.',
+      default: 'main',
+    },
+    {
+      key: 'integrations.discord.inbound.requireMention',
+      type: 'boolean',
+      label: 'Require @mention in channels',
+      description: 'Guild-channel messages must @mention the bot to get a reply. DMs are exempt.',
+      default: true,
+    },
+    {
+      key: 'integrations.discord.inbound.allowFrom',
+      type: 'string',
+      label: 'Discord inbound allowlist',
+      description: 'Comma-separated Discord user IDs allowed to chat with the bot. Empty = nobody (fail closed).',
+      default: '',
+    },
     // ── Watchdog tunables ─────────────────────────────────────────────
     {
       key: 'watchdog.intervalMs',
@@ -214,6 +267,26 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
   ],
 }
 
+/**
+ * Settings keys stored as string arrays but edited as comma-separated
+ * strings (the renderer has no array field type). flatten joins, unflatten
+ * splits; the server-side normalizer also accepts either shape.
+ */
+const CSV_LIST_KEYS = new Set([
+  'integrations.discord.guildIds',
+  'integrations.discord.approvers',
+  'integrations.discord.inbound.allowFrom',
+])
+
+function csvJoin(value: unknown): string {
+  return Array.isArray(value) ? value.filter(v => typeof v === 'string').join(', ') : ''
+}
+
+function csvSplit(value: unknown): string[] {
+  if (typeof value !== 'string') return []
+  return Array.from(new Set(value.split(',').map(v => v.trim()).filter(v => v.length > 0)))
+}
+
 /** Pluck a dotted-path value from a nested object. */
 function getPath(obj: Record<string, unknown>, path: string): unknown {
   return path.split('.').reduce<unknown>((acc, key) => {
@@ -243,7 +316,9 @@ export function flattenSystemSettings(settings: Record<string, unknown>): Record
   const flat: Record<string, unknown> = {}
   for (const field of SYSTEM_SETTINGS_SCHEMA.fields) {
     const v = getPath(settings, field.key)
-    flat[field.key] = v ?? field.default
+    flat[field.key] = CSV_LIST_KEYS.has(field.key)
+      ? (v === undefined ? field.default : csvJoin(v))
+      : v ?? field.default
   }
   return flat
 }
@@ -257,7 +332,8 @@ export function unflattenSystemSettings(flat: Record<string, unknown>): Record<s
   const nested: Record<string, unknown> = {}
   for (const field of SYSTEM_SETTINGS_SCHEMA.fields) {
     if (!(field.key in flat)) continue
-    setPath(nested, field.key, flat[field.key])
+    const value = flat[field.key]
+    setPath(nested, field.key, CSV_LIST_KEYS.has(field.key) ? csvSplit(value) : value)
   }
   return nested
 }

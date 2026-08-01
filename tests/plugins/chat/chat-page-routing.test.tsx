@@ -28,7 +28,7 @@ mock.module('@tanstack/react-router', () => ({
   useNavigate: () => (opts: unknown) => navigations.push(opts),
 }))
 
-import { fireEvent, render, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 
 import { ChatPage } from '../../../plugins/chat/components/chat-page'
@@ -82,7 +82,11 @@ describe('ChatPage path-based identity', () => {
   it('chatId prop renders the conversation (fetches that chat)', async () => {
     mockFetch()
     setURL(`http://localhost:3737/chat/${CHAT_A}`)
-    const { container } = render(<ChatPage chatId={CHAT_A} />)
+    let __view0!: ReturnType<typeof render>
+    await act(async () => {
+      __view0 = render(<ChatPage chatId={CHAT_A} />)
+    })
+    const { container } = __view0
     await waitFor(() => {
       expect(fetched.some((u) => u.includes(`/chats/${CHAT_A}`))).toBe(true)
     })
@@ -92,7 +96,11 @@ describe('ChatPage path-based identity', () => {
   it('draft prop + ?agent= renders the draft composer for that agent', async () => {
     mockFetch()
     setURL('http://localhost:3737/chat/new?agent=main')
-    const { container } = render(<ChatPage draft />)
+    let __view1!: ReturnType<typeof render>
+    await act(async () => {
+      __view1 = render(<ChatPage draft />)
+    })
+    const { container } = __view1
     await waitFor(() => {
       expect(container.textContent).toContain('Chat with main')
     })
@@ -104,7 +112,11 @@ describe('ChatPage path-based identity', () => {
   it('no props renders the launcher (list page)', async () => {
     mockFetch()
     setURL('http://localhost:3737/chat')
-    const { container } = render(<ChatPage />)
+    let __view2!: ReturnType<typeof render>
+    await act(async () => {
+      __view2 = render(<ChatPage />)
+    })
+    const { container } = __view2
     await waitFor(() => {
       expect(container.textContent).toContain('Start a chat')
     })
@@ -117,12 +129,16 @@ describe('ChatPage path-based identity', () => {
   it('selecting a rail chat pushes /chat/<id>', async () => {
     mockFetch()
     setURL('http://localhost:3737/chat')
-    const { container } = render(<ChatPage />)
+    let __view3!: ReturnType<typeof render>
+    await act(async () => {
+      __view3 = render(<ChatPage />)
+    })
+    const { container } = __view3
     await waitFor(() => {
       expect(container.querySelector(`[data-chat-row="${CHAT_A}"]`)).not.toBeNull()
     })
     // The row is a kit ListRow whose full-width ghost Button owns the click (refit T6.5).
-    fireEvent.click(container.querySelector(`[data-chat-row="${CHAT_A}"] button`)!)
+    await act(async () => { fireEvent.click(container.querySelector(`[data-chat-row="${CHAT_A}"] button`)!) })
     const pushed = navigations.find(
       (n) => (n as { to?: string }).to === `/chat/${CHAT_A}`,
     )

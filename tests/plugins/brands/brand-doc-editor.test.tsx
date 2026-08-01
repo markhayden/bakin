@@ -6,7 +6,7 @@
  * dirty state + honest not-found.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { settleReact } from '../../rtl-settle'
 import { join } from 'path'
@@ -102,9 +102,11 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 async function renderGuidelines() {
-  render(<BrandDetail brandId="acme" onBack={() => {}} />)
+  await act(async () => {
+    render(<BrandDetail brandId="acme" onBack={() => {}} />)
+  })
   await waitFor(() => expect(screen.getAllByText('Acme').length).toBeGreaterThan(0))
-  fireEvent.click(screen.getByRole('tab', { name: 'Guidelines' }))
+  await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Guidelines' })) })
   await waitFor(() => expect(document.querySelector('[data-doc-row="voice.md"]')).not.toBeNull())
 }
 
@@ -112,7 +114,7 @@ describe('doc lists', () => {
   it('doc rows show description and Edit navigates to the editor route', async () => {
     await renderGuidelines()
     expect(screen.getByText('How Acme talks')).toBeDefined()
-    fireEvent.click(screen.getAllByRole('button', { name: /Edit/ })[0])
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /Edit/ })[0]) })
     expect(navigateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         to: '/brands/acme/docs/guidelines/voice.md',
@@ -124,7 +126,7 @@ describe('doc lists', () => {
   it('Always-in-context switch STAGES cardDocs (SaveBar appears, no immediate PUT)', async () => {
     await renderGuidelines()
     const row = document.querySelector('[data-doc-row="style-guide.md"]')!
-    fireEvent.click(row.querySelector('[role="switch"]')!)
+    await act(async () => { fireEvent.click(row.querySelector('[role="switch"]')!) })
     await waitFor(() => expect(document.querySelector('[data-savebar]')).not.toBeNull())
     expect(fetchCalls.filter((c) => c.method === 'PUT').length).toBe(0)
     await settleReact()
@@ -132,10 +134,10 @@ describe('doc lists', () => {
 
   it('new-doc dialog auto-appends .md and navigates to the editor in create mode', async () => {
     await renderGuidelines()
-    fireEvent.click(document.querySelector('[data-new-doc]')!)
+    await act(async () => { fireEvent.click(document.querySelector('[data-new-doc]')!) })
     const input = await screen.findByLabelText('File name')
-    fireEvent.change(input, { target: { value: 'imagery' } })
-    fireEvent.click(document.querySelector('[data-new-doc-create]')!)
+    await act(async () => { fireEvent.change(input, { target: { value: 'imagery' } }) })
+    await act(async () => { fireEvent.click(document.querySelector('[data-new-doc-create]')!) })
     expect(navigateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         to: '/brands/acme/docs/guidelines/imagery.md',
@@ -146,13 +148,15 @@ describe('doc lists', () => {
   })
 
   it('lessons get an Active switch that STAGES disabledLessons (SaveBar up, no PUT)', async () => {
-    render(<BrandDetail brandId="acme" onBack={() => {}} />)
+    await act(async () => {
+      render(<BrandDetail brandId="acme" onBack={() => {}} />)
+    })
     await waitFor(() => expect(screen.getAllByText('Acme').length).toBeGreaterThan(0))
-    fireEvent.click(screen.getByRole('tab', { name: 'Lessons' }))
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Lessons' })) })
     await waitFor(() => expect(document.querySelector('[data-doc-row="launch-learnings.md"]')).not.toBeNull())
 
     const row = document.querySelector('[data-doc-row="launch-learnings.md"]')!
-    fireEvent.click(row.querySelector('[role="switch"]')!)
+    await act(async () => { fireEvent.click(row.querySelector('[role="switch"]')!) })
     await waitFor(() => expect(document.querySelector('[data-savebar]')).not.toBeNull())
     expect(fetchCalls.filter((c) => c.method === 'PUT').length).toBe(0)
     await settleReact()
@@ -160,9 +164,9 @@ describe('doc lists', () => {
 
   it('delete confirms then DELETEs and refreshes', async () => {
     await renderGuidelines()
-    fireEvent.click(screen.getByLabelText('Delete style-guide.md'))
+    await act(async () => { fireEvent.click(screen.getByLabelText('Delete style-guide.md')) })
     await screen.findByText('Delete style-guide.md?')
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Delete' })) })
     await waitFor(() =>
       expect(fetchCalls.some((c) => c.method === 'DELETE' && c.url.endsWith('/docs/guidelines/style-guide.md'))).toBe(true),
     )
@@ -172,16 +176,18 @@ describe('doc lists', () => {
 
 describe('BrandDocEditorPage', () => {
   it('loads the doc, edits raise the SaveBar, Save PUTs the content', async () => {
-    render(<BrandDocEditorPage />)
+    await act(async () => {
+      render(<BrandDocEditorPage />)
+    })
     await waitFor(() => expect(screen.getByLabelText('Acme guidelines content')).toBeDefined())
     expect((screen.getByLabelText('Acme guidelines content') as HTMLTextAreaElement).value).toContain('Sharp and warm')
     expect(document.querySelector('[data-archetype="page"][data-width="full"]')).not.toBeNull()
     expect(document.querySelector('[data-slot="page-header"]')).not.toBeNull()
     expect(document.querySelector('[data-savebar]')).toBeNull()
 
-    fireEvent.change(screen.getByLabelText('Acme guidelines content'), { target: { value: '# Voice\n\nSharper.' } })
+    await act(async () => { fireEvent.change(screen.getByLabelText('Acme guidelines content'), { target: { value: '# Voice\n\nSharper.' } }) })
     await waitFor(() => expect(document.querySelector('[data-savebar]')).not.toBeNull())
-    fireEvent.click(screen.getByRole('button', { name: 'Save doc' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save doc' })) })
     await waitFor(() =>
       expect(
         fetchCalls.some(
@@ -193,10 +199,12 @@ describe('BrandDocEditorPage', () => {
   })
 
   it('brainstorm toggle opens the side panel', async () => {
-    render(<BrandDocEditorPage />)
+    await act(async () => {
+      render(<BrandDocEditorPage />)
+    })
     await waitFor(() => expect(screen.getByLabelText('Acme guidelines content')).toBeDefined())
     expect(screen.queryByTestId('brainstorm-panel')).toBeNull()
-    fireEvent.click(document.querySelector('[data-brainstorm-toggle]')!)
+    await act(async () => { fireEvent.click(document.querySelector('[data-brainstorm-toggle]')!) })
     await waitFor(() => expect(screen.getByTestId('brainstorm-panel')).toBeDefined())
     expect(document.querySelector('[data-slot="page-aside"]')).not.toBeNull()
     await settleReact()
@@ -204,8 +212,12 @@ describe('BrandDocEditorPage', () => {
 
   it('create mode starts with the teaching template and the SaveBar up', async () => {
     routeParams = { brandId: 'acme', kind: 'guidelines', name: 'imagery.md' }
-    routeSearch = { create: '1' }
-    render(<BrandDocEditorPage />)
+    // TanStack Router JSON-parses search values: ?create=1 arrives as NUMBER 1.
+    // This pin broke live before the String() coercion — keep it a number.
+    routeSearch = { create: 1 as unknown as string }
+    await act(async () => {
+      render(<BrandDocEditorPage />)
+    })
     await waitFor(() => expect(screen.getByLabelText('Acme guidelines content')).toBeDefined())
     expect((screen.getByLabelText('Acme guidelines content') as HTMLTextAreaElement).value).toContain('description:')
     expect(document.querySelector('[data-savebar]')).not.toBeNull() // unsaved new doc
@@ -214,7 +226,9 @@ describe('BrandDocEditorPage', () => {
 
   it('missing doc renders the honest not-found state', async () => {
     routeParams = { brandId: 'acme', kind: 'guidelines', name: 'ghost.md' }
-    render(<BrandDocEditorPage />)
+    await act(async () => {
+      render(<BrandDocEditorPage />)
+    })
     await waitFor(() => expect(screen.getByText(/This document doesn't exist/)).toBeDefined())
     expect(document.querySelector('[data-slot="page-header"]')).not.toBeNull()
     await settleReact()
@@ -222,8 +236,10 @@ describe('BrandDocEditorPage', () => {
 
   it('create mode with a COLLIDING name loads the existing doc — never a blank template over real content', async () => {
     routeParams = { brandId: 'acme', kind: 'guidelines', name: 'existing.md' }
-    routeSearch = { create: '1' }
-    render(<BrandDocEditorPage />)
+    routeSearch = { create: 1 as unknown as string }
+    await act(async () => {
+      render(<BrandDocEditorPage />)
+    })
     await waitFor(() => expect(screen.getByLabelText('Acme guidelines content')).toBeDefined())
     expect((screen.getByLabelText('Acme guidelines content') as HTMLTextAreaElement).value).toContain('Already authored')
     expect(document.querySelector('[data-savebar]')).toBeNull() // it exists; nothing unsaved
@@ -238,7 +254,9 @@ describe('BrandDocEditorPage', () => {
       if (url.endsWith('/api/plugins/brands/acme')) return new Response(JSON.stringify(DETAIL), { status: 200 })
       return new Response('{}', { status: 200 })
     }) as unknown as typeof fetch
-    render(<BrandDocEditorPage />)
+    await act(async () => {
+      render(<BrandDocEditorPage />)
+    })
     await waitFor(() => expect(screen.getByText(/Couldn't load this doc/)).toBeDefined())
     expect(screen.queryByText(/This document doesn't exist/)).toBeNull()
     expect(document.querySelector('[data-slot="page-header"]')).not.toBeNull()

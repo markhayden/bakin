@@ -22,7 +22,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({ root: testDir }),
 }))
 
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 
 import { MarkdownContent } from '@makinbakin/sdk/content'
@@ -31,7 +31,7 @@ const CODE_MD = '```typescript\nconst x: number = 1\n```'
 const JSON_MD = '```json\n{"state":"ready","count":2}\n```'
 
 describe('MarkdownContent code blocks', () => {
-  it('syntax-highlights fenced code and shows a language label', () => {
+  it('syntax-highlights fenced code and shows a language label', async () => {
     const { container } = render(<MarkdownContent content={CODE_MD} />)
     const code = container.querySelector('pre code')
     expect(code).not.toBeNull()
@@ -60,12 +60,12 @@ describe('MarkdownContent code blocks', () => {
     const { container } = render(<MarkdownContent content={CODE_MD} />)
     const copy = container.querySelector('button[data-md-copy]')
     expect(copy).not.toBeNull()
-    fireEvent.click(copy!)
+    await act(async () => { fireEvent.click(copy!) })
     expect(writes).toEqual(['const x: number = 1'])
     await waitFor(() => expect(copy!.textContent).toContain('Copied'))
   })
 
-  it('inline code gets no header chrome or copy button', () => {
+  it('inline code gets no header chrome or copy button', async () => {
     const { container } = render(<MarkdownContent content={'use `bun test` here'} />)
     expect(container.querySelector('code')).not.toBeNull()
     expect(container.querySelector('button[data-md-copy]')).toBeNull()
@@ -92,7 +92,7 @@ describe('MarkdownContent media', () => {
     await waitFor(() => expect(document.querySelector('[data-md-lightbox]')).toBeNull())
   })
 
-  it('renders video-extension image URLs as a video element', () => {
+  it('renders video-extension image URLs as a video element', async () => {
     const { container } = render(
       <MarkdownContent content={'![demo](/api/assets/a1/export/demo.mp4)'} />,
     )
@@ -105,7 +105,7 @@ describe('MarkdownContent media', () => {
 })
 
 describe('MarkdownContent links', () => {
-  it('external links open in a new tab with noopener; internal links do not', () => {
+  it('external links open in a new tab with noopener; internal links do not', async () => {
     const { container } = render(
       <MarkdownContent content={'[ext](https://example.com) and [int](/tasks)'} />,
     )
@@ -120,7 +120,7 @@ describe('MarkdownContent links', () => {
 })
 
 describe('MarkdownContent pre-existing behaviors', () => {
-  it('still renders bakin marker blocks in the managed container', () => {
+  it('still renders bakin marker blocks in the managed container', async () => {
     const { container } = render(
       <MarkdownContent
         content={'before\n<!-- bakin:tools:start -->\nmanaged body\n<!-- bakin:tools:end -->\nafter'}
@@ -131,7 +131,7 @@ describe('MarkdownContent pre-existing behaviors', () => {
     expect(block!.textContent).toContain('managed body')
   })
 
-  it('still renders GFM tables', () => {
+  it('still renders GFM tables', async () => {
     const { container } = render(
       <MarkdownContent content={'| a | b |\n| - | - |\n| 1 | 2 |'} />,
     )

@@ -31,6 +31,8 @@ function DefaultAttachment({ attachment }: { attachment: DisplayAttachment }) {
   return (
     <a
       href={attachment.url}
+      download={attachment.name}
+      data-conv-file-chip=""
       className={cn(
         'inline-flex min-h-bakin-8 max-w-full items-center gap-bakin-2 rounded-bakin-control border border-bakin-border-subtle',
         'bg-bakin-surface-default px-bakin-3 py-bakin-2 text-bakin-text-primary underline-offset-4 hover:underline',

@@ -45,6 +45,8 @@ export type {
   ChatTextFormat,
   ContentDeliveryArgs,
   CreateApprovalArgs,
+  CreateThreadArgs,
+  CreatedThread,
   CreateCronJobInput,
   CreateRuntimeAgentInput,
   CronJob,
@@ -52,6 +54,9 @@ export type {
   DeliveryResult,
   DurableApprovalRecord,
   EditApprovalArgs,
+  EditChannelMessageArgs,
+  InboundChannelAttachment,
+  InboundChannelMessage,
   MessageArgs,
   MessageAttachment,
   MessageResult,
@@ -102,3 +107,4 @@ export type {
   WorkspaceFileStat,
 } from './concepts'
 export { RUNTIME_MEDIA_URI_SCHEME, DEFAULT_OVERSIZED_OUTPUT_BYTES } from './concepts'
+export { isSafeSkillFilePath, isExecutableSkillFile, readSkillTree, SKILL_SIDECAR_NAMES } from './skill-files'

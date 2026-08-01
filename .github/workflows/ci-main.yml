@@ -65,6 +65,9 @@ jobs:
       - name: Check for ~/.bakin and ~/.openclaw bypasses
         run: bun run lint:home-bypasses
 
+      - name: Lint
+        run: bun run lint
+
       - name: Typecheck
         run: bunx tsc --noEmit -p tsconfig.app.json
 
@@ -75,11 +78,6 @@ jobs:
         env:
           BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
         run: bun run docs:check
-
-      # --timeout 15000: worker contention on the 4-core runner can push
-      # render-heavy component tests past the 5s default (observed 5.4-7.2s).
-      - name: Tests
-        run: bun test --parallel --isolate --timeout 15000
 
       - name: Build (host + plugins, no binary compile)
         run: |
@@ -92,3 +90,90 @@ jobs:
         env:
           BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
         run: bun run ui:performance
+
+  # Tests are SHARDED across runners, and no longer share a runner with the
+  # static checks and build above. This suite (842 files, ~8.5k tests) exceeds
+  # what a single 4-vCPU runner absorbs: unsharded, contention starved tests
+  # that cost milliseconds locally out to 21-78s, and periodically wedged a
+  # worker so a job stalled silently with zero failures logged. Some tests are
+  # genuinely heavy — build-sdk-package spawns real builds and costs 8.4s even
+  # on a fast local box — so the fix is capacity, not ever-longer timeouts.
+  # Each shard gets a whole runner for a third of the files. Bisect record and
+  # the ruled-out hypotheses: issue #753.
+  #
+  # --timeout 60000 still bounds genuine hangs (which are unbounded) without
+  # failing correct-but-slow tests on a loaded runner.
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Both artifacts are needed by the completeness job: junit carries the
+      # file attribute for everything that ran, but a file whose tests are ALL
+      # skipped emits no <testsuite> at all — only stdout names it. pipefail so
+      # tee cannot mask a failing suite.
+      - name: Tests (shard ${{ matrix.shard }}/3)
+        shell: bash
+        run: |
+          set -o pipefail
+          bun run test:ci --shard=${{ matrix.shard }}/3 \
+            --reporter=junit --reporter-outfile=junit-${{ matrix.shard }}.xml \
+            2>&1 | tee shard-${{ matrix.shard }}.log
+
+      - name: Upload shard report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ github.job }}-${{ matrix.shard }}
+          path: |
+            junit-${{ matrix.shard }}.xml
+            shard-${{ matrix.shard }}.log
+          retention-days: 3
+
+  # A wedged worker reports GREEN: its chunk never runs, so nothing fails and the
+  # exit code is 0. #753 saw ~7 contiguous files silently undispatched. Outcome
+  # cannot detect that; coverage can. Every discovered test file must appear in
+  # some shard's report.
+  completeness:
+    name: Test completeness
+    needs: [test]
+    if: always() && needs.test.result != 'cancelled'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Download shard reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: junit-test-*
+          merge-multiple: true
+
+      - name: Every discovered test file ran
+        run: |
+          bun scripts/check-test-completeness.ts \
+            junit-1.xml junit-2.xml junit-3.xml \
+            shard-1.log shard-2.log shard-3.log

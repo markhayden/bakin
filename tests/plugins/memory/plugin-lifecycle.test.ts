@@ -87,6 +87,7 @@ afterAll(() => {
 })
 
 /** Flush the microtask queue so fire-and-forget promises settle. */
+/** Drain microtasks + one macrotask. Not a settle — callers assert after it. */
 async function flush(): Promise<void> {
   for (let i = 0; i < 5; i += 1) {
     await Promise.resolve()

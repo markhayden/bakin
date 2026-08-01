@@ -22,6 +22,7 @@ import {
   mockDeleteTask,
   mockAssignTask,
 } from './helpers/tasks-routes-harness'
+import { waitUntil } from '../../helpers/wait'
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 // (mock.module stays per-file — FW1.8 dual mocks on every split surface;
@@ -132,8 +133,9 @@ describe('Search index side effects', () => {
       searchParams: { taskId: 'task-rm' },
     })
 
-    // search.remove is fire-and-forget, give it a tick
-    await new Promise(r => setTimeout(r, 20))
+    // search.remove is fire-and-forget — poll for it rather than guessing a tick
+    await waitUntil(() => (activated.ctx.search.remove as ReturnType<typeof mock>).mock.calls.length > 0,
+      { label: 'the fire-and-forget search.remove to land' })
 
     expect(activated.ctx.search.remove).toHaveBeenCalledWith('task-rm')
   })
@@ -147,8 +149,9 @@ describe('Search index side effects', () => {
       body: { agent: 'pixel' },
     })
 
-    // search.transform is fire-and-forget, give it a tick
-    await new Promise(r => setTimeout(r, 20))
+    // search.transform is fire-and-forget — poll for it rather than guessing a tick
+    await waitUntil(() => (activated.ctx.search.transform as ReturnType<typeof mock>).mock.calls.length > 0,
+      { label: 'the fire-and-forget search.transform to land' })
 
     expect(activated.ctx.search.transform).toHaveBeenCalledWith(
       'task-asgn',

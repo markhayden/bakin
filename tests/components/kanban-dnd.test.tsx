@@ -294,10 +294,15 @@ function makeDragEvent(options: {
 describe('KanbanBoard drag and drop', () => {
   let fetchCalls: Array<{ url: string; body: any; method: string }>
   let fetchCount = 0
+  // Responses whose json() has not been read yet. fetchCount alone cannot end
+  // the drain honestly: it counts fetches STARTED, so it goes quiet while a
+  // response is still outstanding, and that response then lands after teardown.
+  let fetchesInFlight = 0
 
   beforeEach(() => {
     fetchCalls = []
     fetchCount = 0
+    fetchesInFlight = 0
     capturedProviderProps = {}
     mockMove.mockClear()
     mockUseSortable.mockClear()
@@ -307,14 +312,20 @@ describe('KanbanBoard drag and drop', () => {
   })
 
   async function settleBoard(): Promise<void> {
-    let stableRounds = 0
-    let lastCount = -1
-    for (let i = 0; i < 60 && stableRounds < 4; i++) {
-      await new Promise((r) => setTimeout(r, 0)) // macrotask: fetch json() + scheduler continuation
-      await settleReact(1)                       // let the resulting render slice commit
-      if (fetchCount === lastCount) stableRounds++
-      else { stableRounds = 0; lastCount = fetchCount }
-    }
+    // Inside act: this drain exists to flush the post-persist refetch cascade,
+    // and act is what joins those updates instead of letting them land loose
+    // (which is what the run-wide act gate fails on).
+    await act(async () => {
+      let stableRounds = 0
+      let lastCount = -1
+      for (let i = 0; i < 200 && stableRounds < 4; i++) {
+        await new Promise((r) => setTimeout(r, 0)) // macrotask: fetch json() + scheduler continuation
+        await settleReact(1)                       // let the resulting render slice commit
+        // Quiescent means BOTH: no new fetch started AND nothing outstanding.
+        if (fetchCount === lastCount && fetchesInFlight === 0) stableRounds++
+        else { stableRounds = 0; lastCount = fetchCount }
+      }
+    })
   }
 
   // Runs BEFORE the imported rtl-settle afterEach (describe-scoped hooks fire
@@ -333,6 +344,19 @@ describe('KanbanBoard drag and drop', () => {
     } = {},
   ) {
     const boardResponse = makeBoardResponse(columns)
+
+    /** Wrap a response so it counts as in-flight until its body is consumed. */
+    const tracked = (body: () => unknown): Response => {
+      fetchesInFlight++
+      let settled = false
+      return {
+        ok: true,
+        json: async () => {
+          if (!settled) { settled = true; fetchesInFlight-- }
+          return body()
+        },
+      } as Response
+    }
 
     vi.stubGlobal('fetch', mock(async (url: string, init?: RequestInit) => {
       fetchCount++ // every call, incl. the post-persist GET refetch
@@ -362,7 +386,7 @@ describe('KanbanBoard drag and drop', () => {
           body: init.body ? JSON.parse(init.body as string) : null,
           method: init.method,
         })
-        return { ok: true, json: async () => ({}) } as Response
+        return tracked(() => ({}))
       }
 
       // useTaskFilters' debounced useSearch GET fires mid-test only when the
@@ -371,10 +395,10 @@ describe('KanbanBoard drag and drop', () => {
       // (an empty results array keeps the client-side matchesSearch fallback
       // path these tests exercise).
       if (String(url).includes('/search?')) {
-        return { ok: true, json: async () => ({ results: [] }) } as Response
+        return tracked(() => ({ results: [] }))
       }
 
-      return { ok: true, json: async () => boardResponse } as Response
+      return tracked(() => boardResponse)
     }))
 
     const { KanbanBoard } = require('../../plugins/tasks/components/kanban-board') as typeof import('../../plugins/tasks/components/kanban-board')
@@ -902,14 +926,18 @@ describe('TaskCard rendering', () => {
     const { TaskCard } = require('../../plugins/tasks/components/task-card') as typeof import('../../plugins/tasks/components/task-card')
 
     const task = makeTask('task-1', 'Test Task')
-    const { container } = render(
-      <TaskCard
-        task={task}
-        columnId="todo"
-        onDelete={mock()}
-        onClick={mock()}
-      />
-    )
+    let __view0!: ReturnType<typeof render>
+    await act(async () => {
+      __view0 = render(
+        <TaskCard
+          task={task}
+          columnId="todo"
+          onDelete={mock()}
+          onClick={mock()}
+        />
+      )
+    })
+    const { container } = __view0
 
     expect(container.textContent).toContain('Test Task')
     expect(container.querySelector('.ring-bakin-focus-ring')).toBeTruthy()
@@ -930,14 +958,18 @@ describe('TaskCard rendering', () => {
     const { TaskCard } = require('../../plugins/tasks/components/task-card') as typeof import('../../plugins/tasks/components/task-card')
 
     const task = makeTask('task-1', 'Test Task')
-    const { container } = render(
-      <TaskCard
-        task={task}
-        columnId="todo"
-        onDelete={mock()}
-        onClick={mock()}
-      />
-    )
+    let __view1!: ReturnType<typeof render>
+    await act(async () => {
+      __view1 = render(
+        <TaskCard
+          task={task}
+          columnId="todo"
+          onDelete={mock()}
+          onClick={mock()}
+        />
+      )
+    })
+    const { container } = __view1
 
     expect(container.textContent).toContain('Test Task')
     expect(container.querySelector('[data-slot="card"]')).toBeTruthy()

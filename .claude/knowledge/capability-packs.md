@@ -135,6 +135,23 @@ the point; the keys are given to agents deliberately. Future 1Password
 integration = `op://` references resolved at the single read chokepoint
 (spec §13).
 
+**D18 (#687):** injection is no longer boot-only. Boot collects
+PACK-declared secretSlot mappings from installed manifests
+(`collectPackSecretMappings` — previously only the static list injected),
+and every secret save through `POST /api/secrets` live-injects the
+declared env vars for that slot (`injectSecretEnvForSlot`, unset-only,
+env wins) — the guided-key journey works without a server restart.
+Secret DELETE deliberately does not scrub `process.env`.
+
+**Translated-requirements variant (#687):** hub-installed skills
+(`hub-<name>` packs synthesized from raw SKILL.md bundles) declare
+secrets/prereqs via the frozen `metadata.openclaw` translation or the
+`bakin skills map` agent lane — slots always minted in the `skills.*`
+namespace, bins always probe-only prereqs (never pinned downloads).
+They ride this same readiness engine when requirement-bearing (a
+capability slug is synthesized only then). See
+`.claude/knowledge/skill-hub-interop.md`.
+
 ## Curation (bakin-bits-official)
 
 Packs live at `packs/<id>/` with the catalog entry in both the bits
@@ -144,6 +161,15 @@ the first pack (`web-search-brave`) ships the spike-validated bx skill with
 sha256-pinned brave-search-cli binaries. Keep packs à-la-carte: one
 capability per pack. `bakin packages upgrade` re-pins deliberately;
 upstream drift never lands silently.
+
+The `ocr` pack (#742 Phase 2) pins `ocrit` (Apple Vision OCR, BSD-2-Clause)
+via a **binary-mirror release** in the bits repo (`ocrit-v1.1` tag — upstream
+ships a .pkg, which the bin installer can't extract; the mirrored tar.gz
+carries the upstream LICENSE). darwin-only via `platforms` (transcribe
+precedent); the linux leg (tesseract) is a filed follow-up. Integration is
+**guidance-only** by design: `bakin_exec_pdf_read` mentions the `ocrit` bash
+lane when `listCapabilities()` reports the capability ready — the server
+never spawns the binary.
 
 ## Gotchas
 

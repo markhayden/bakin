@@ -23,7 +23,6 @@ mock.module('@/core/task-store', () => ({}))
 
 import { act, render, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
-import { settleReact } from '../../rtl-settle'
 
 import { emitPluginEvent, useToastStore } from '@makinbakin/sdk/hooks'
 import { getNavBadge } from '@makinbakin/sdk'
@@ -84,8 +83,9 @@ describe('ApprovalsBadgeProvider', () => {
 
   it('gate_reached elsewhere: toast fires and the badge refreshes', async () => {
     pendingGates = []
-    render(<ApprovalsBadgeProvider />)
-    await settleReact()
+    await act(async () => {
+      render(<ApprovalsBadgeProvider />)
+    })
     await waitFor(() => expect(getNavBadge('workflows')).toBeFalsy())
 
     pendingGates = [{ taskId: 't-42', stepId: 'g1', label: 'Publish' }]
@@ -98,8 +98,9 @@ describe('ApprovalsBadgeProvider', () => {
 
   it('gate resolution clears the badge without a toast', async () => {
     pendingGates = [{ taskId: 't-42', stepId: 'g1' }]
-    render(<ApprovalsBadgeProvider />)
-    await settleReact()
+    await act(async () => {
+      render(<ApprovalsBadgeProvider />)
+    })
     await waitFor(() => expect(getNavBadge('workflows')).toEqual({ count: 1, tone: 'attention' }))
 
     pendingGates = []

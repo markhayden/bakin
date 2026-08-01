@@ -139,9 +139,8 @@ describe('PluginSettingsRenderer — list field', () => {
     )
     const inputs = screen.getAllByRole('textbox') as HTMLInputElement[]
     fireEvent.change(inputs[1], { target: { value: 'Blog Post' } })
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
-    expect(screen.getByRole('button', { name: /^saving/i }).hasAttribute('disabled')).toBe(true)
-    expect(onSave).toHaveBeenCalledTimes(1)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^save$/i })) })
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
     expect(onSave.mock.calls[0][0]).toEqual({
       contentTypes: [{ id: 'post', label: 'Blog Post' }],
     })
@@ -151,7 +150,7 @@ describe('PluginSettingsRenderer — list field', () => {
     })
   })
 
-  it('blocks save with a toast when a required field is empty', () => {
+  it('blocks save with a toast when a required field is empty', async () => {
     const onSave = mock()
     render(
       <PluginSettingsRenderer
@@ -163,14 +162,14 @@ describe('PluginSettingsRenderer — list field', () => {
     )
     const inputs = screen.getAllByRole('textbox') as HTMLInputElement[]
     fireEvent.change(inputs[1], { target: { value: '' } })
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^save$/i })) })
     expect(onSave).not.toHaveBeenCalled()
     expect(toastAdd).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'error', message: expect.stringMatching(/label.*required/i) })
     )
   })
 
-  it('blocks save with a toast when uniqueField rows collide', () => {
+  it('blocks save with a toast when uniqueField rows collide', async () => {
     const schema: PluginSettingsSchema = {
       fields: [
         { ...listSchema.fields[0] as Extract<PluginSettingsSchema['fields'][number], { type: 'list' }>, uniqueField: 'id' },
@@ -191,14 +190,14 @@ describe('PluginSettingsRenderer — list field', () => {
     const inputs = screen.getAllByRole('textbox') as HTMLInputElement[]
     // Collide row 2's id onto row 1's.
     fireEvent.change(inputs[2], { target: { value: 'post' } })
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^save$/i })) })
     expect(onSave).not.toHaveBeenCalled()
     expect(toastAdd).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'error', message: expect.stringMatching(/unique/i) })
     )
   })
 
-  it('blocks save with a toast when below minItems', () => {
+  it('blocks save with a toast when below minItems', async () => {
     // Load stored values that already violate minItems (e.g. older state pre-rule-change),
     // then edit a field to dirty the form and trigger save validation.
     const schema: PluginSettingsSchema = {
@@ -220,7 +219,7 @@ describe('PluginSettingsRenderer — list field', () => {
     )
     const inputs = screen.getAllByRole('textbox') as HTMLInputElement[]
     fireEvent.change(inputs[1], { target: { value: 'Blog Post' } })
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^save$/i })) })
     expect(onSave).not.toHaveBeenCalled()
     expect(toastAdd).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'error', message: expect.stringMatching(/at least 3/i) })

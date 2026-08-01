@@ -1,0 +1,52 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<<  /Length 144 >>
+stream
+BT /F1 18 Tf 72 720 Td 22 TL
+(BAKIN FIXTURE PAGE ONE) Tj T*
+(The quick brown fox jumps over the lazy dog.) Tj T*
+(Sentinel: alpha-7291) Tj T*
+ET
+endstream
+endobj
+3 0 obj
+<<  /Length 143 >>
+stream
+BT /F1 18 Tf 72 720 Td 22 TL
+(BAKIN FIXTURE PAGE TWO) Tj T*
+(Second page body text for extraction tests.) Tj T*
+(Sentinel: omega-3348) Tj T*
+ET
+endstream
+endobj
+4 0 obj
+<< /Type /Page /Parent 6 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 2 0 R >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 6 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 3 0 R >>
+endobj
+6 0 obj
+<< /Type /Pages /Kids [4 0 R 5 0 R] /Count 2 >>
+endobj
+7 0 obj
+<< /Type /Catalog /Pages 6 0 R >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000015 00000 n 
+0000000085 00000 n 
+0000000281 00000 n 
+0000000476 00000 n 
+0000000602 00000 n 
+0000000728 00000 n 
+0000000791 00000 n 
+trailer
+<< /Size 8 /Root 7 0 R >>
+startxref
+840
+%%EOF

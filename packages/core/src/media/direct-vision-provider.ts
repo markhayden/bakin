@@ -35,6 +35,21 @@ export const VisionEnrichmentResultSchema = z.object({
 
 export type VisionEnrichmentResult = z.infer<typeof VisionEnrichmentResultSchema>
 
+/** Provider-reported token usage — surfaced verbatim for spend recording
+ * (#747); absent when the provider response carries none. Never estimated. */
+export interface DirectVisionUsage {
+  inputTokens?: number
+  outputTokens?: number
+}
+
+const usageFrom = (input: unknown, output: unknown): DirectVisionUsage | undefined =>
+  typeof input === 'number' || typeof output === 'number'
+    ? {
+        ...(typeof input === 'number' ? { inputTokens: input } : {}),
+        ...(typeof output === 'number' ? { outputTokens: output } : {}),
+      }
+    : undefined
+
 export interface DirectVisionRequest {
   provider: DirectProviderId
   /** Provider-native model id (catalog prefix stripped by the caller). */
@@ -84,7 +99,10 @@ function parseStrictJson(raw: string): unknown {
   return JSON.parse(trimmed)
 }
 
-async function callProvider(request: DirectVisionRequest, prompt: string): Promise<string> {
+async function callProvider(
+  request: DirectVisionRequest,
+  prompt: string,
+): Promise<{ text: string; usage?: DirectVisionUsage }> {
   const fetchImpl = request.fetchImpl ?? fetch
   const signal = AbortSignal.timeout(request.timeoutMs ?? 60_000)
   const needsMedia = request.kind !== 'document'
@@ -102,10 +120,13 @@ async function callProvider(request: DirectVisionRequest, prompt: string): Promi
       signal,
     })
     if (!response.ok) throw new Error(`anthropic vision ${response.status}: ${(await response.text()).slice(0, 300)}`)
-    const json = await response.json() as { content?: Array<{ type: string; text?: string }> }
+    const json = await response.json() as {
+      content?: Array<{ type: string; text?: string }>
+      usage?: { input_tokens?: number; output_tokens?: number }
+    }
     const text = json.content?.find((b) => b.type === 'text')?.text
     if (!text) throw new Error('anthropic vision: no text block in response')
-    return text
+    return { text, usage: usageFrom(json.usage?.input_tokens, json.usage?.output_tokens) }
   }
 
   if (request.provider === 'openai') {
@@ -120,10 +141,13 @@ async function callProvider(request: DirectVisionRequest, prompt: string): Promi
       signal,
     })
     if (!response.ok) throw new Error(`openai vision ${response.status}: ${(await response.text()).slice(0, 300)}`)
-    const json = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
+    const json = await response.json() as {
+      choices?: Array<{ message?: { content?: string } }>
+      usage?: { prompt_tokens?: number; completion_tokens?: number }
+    }
     const text = json.choices?.[0]?.message?.content
     if (!text) throw new Error('openai vision: no message content in response')
-    return text
+    return { text, usage: usageFrom(json.usage?.prompt_tokens, json.usage?.completion_tokens) }
   }
 
   // google — the one transport that also accepts audio inline_data.
@@ -140,10 +164,13 @@ async function callProvider(request: DirectVisionRequest, prompt: string): Promi
     },
   )
   if (!response.ok) throw new Error(`google vision ${response.status}: ${(await response.text()).slice(0, 300)}`)
-  const json = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
+  const json = await response.json() as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+  }
   const text = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('')
   if (!text) throw new Error('google vision: no candidate text in response')
-  return text
+  return { text, usage: usageFrom(json.usageMetadata?.promptTokenCount, json.usageMetadata?.candidatesTokenCount) }
 }
 
 /**
@@ -151,8 +178,10 @@ async function callProvider(request: DirectVisionRequest, prompt: string): Promi
  * transport, parse, or validation failure — callers record `failed`, never
  * a guess.
  */
-export async function callDirectVisionProvider(request: DirectVisionRequest): Promise<VisionEnrichmentResult> {
-  const raw = await callProvider(request, enrichmentPrompt(request))
+export async function callDirectVisionProvider(
+  request: DirectVisionRequest,
+): Promise<VisionEnrichmentResult & { usage?: DirectVisionUsage }> {
+  const { text: raw, usage } = await callProvider(request, enrichmentPrompt(request))
   let parsed: unknown
   try {
     parsed = parseStrictJson(raw)
@@ -163,5 +192,5 @@ export async function callDirectVisionProvider(request: DirectVisionRequest): Pr
   if (!result.success) {
     throw new Error(`direct-vision: model output failed validation: ${result.error.issues.map((i) => i.message).join('; ')}`)
   }
-  return result.data
+  return { ...result.data, ...(usage ? { usage } : {}) }
 }

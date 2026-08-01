@@ -20,6 +20,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
 
 import { OpenClawGatewayRpcClient } from '../../packages/adapter-openclaw/src/gateway-rpc'
 import { RuntimeError } from '../../packages/core/src/adapters/runtime'
+import { settleFor, waitUntil } from '../helpers/wait'
 
 type Frame = { type: string; id: string; method: string; params: Record<string, unknown> }
 
@@ -106,7 +107,10 @@ describe('gateway RPC abort signal', () => {
     request.catch(() => {})
 
     // Let the connect handshake settle and the agent frame go out.
-    await new Promise((r) => setTimeout(r, 10))
+    await waitUntil(
+      () => Boolean(FakeWebSocket.instances[0]?.sentFrames.some((f) => f.method === 'agent')),
+      { label: 'the agent frame to be sent after the connect handshake' },
+    )
     const ws = FakeWebSocket.instances[0]!
     const agentFrame = ws.sentFrames.find((f) => f.method === 'agent')
     expect(agentFrame).toBeDefined()
@@ -125,7 +129,7 @@ describe('gateway RPC abort signal', () => {
     // Pending entry is gone: a late final frame for the aborted id must be
     // ignored (no double settle, no unhandled rejection).
     ws.emitMessage({ type: 'res', id: agentFrame!.id, ok: true, payload: { result: { meta: { finalAssistantVisibleText: 'late' } } } })
-    await new Promise((r) => setTimeout(r, 10))
+    await settleFor(10, 'a late duplicate response must be ignored — no double settle and no unhandled rejection')
   })
 
   it('a pre-aborted signal rejects without sending the frame', async () => {
@@ -150,7 +154,10 @@ describe('connect caps + protocol gate', () => {
   it('the connect frame declares the tool-events cap', async () => {
     const request = client.request('health', {})
     request.catch(() => {})
-    await new Promise((r) => setTimeout(r, 10))
+    await waitUntil(
+      () => Boolean(FakeWebSocket.instances[0]?.sentFrames.some((f) => f.method === 'connect')),
+      { label: 'the connect frame to be sent' },
+    )
     const ws = FakeWebSocket.instances[0]!
     const connectFrame = ws.sentFrames.find((f) => f.method === 'connect')
     expect(connectFrame?.params.caps).toEqual(['tool-events'])
@@ -192,7 +199,10 @@ describe('accepted-ack surfacing', () => {
       { agentId: 'jessica', idempotencyKey: 'bakin-run-1' },
       { expectFinal: true, timeoutMs: 600_000, onAccepted: (ack) => acks.push(ack) },
     )
-    await new Promise((r) => setTimeout(r, 10))
+    await waitUntil(
+      () => Boolean(FakeWebSocket.instances[0]?.sentFrames.some((f) => f.method === 'agent')),
+      { label: 'the agent frame to be sent' },
+    )
     const ws = FakeWebSocket.instances[0]!
     const agentFrame = ws.sentFrames.find((f) => f.method === 'agent')!
 
@@ -202,13 +212,13 @@ describe('accepted-ack surfacing', () => {
       ok: true,
       payload: { runId: 'bakin-run-1', sessionKey: 'agent:jessica:main', status: 'accepted', acceptedAt: 1234 },
     })
-    await new Promise((r) => setTimeout(r, 5))
+    await waitUntil(() => acks.length > 0, { label: 'the accepted ack to reach onAccepted' })
     expect(acks).toEqual([{ runId: 'bakin-run-1', sessionKey: 'agent:jessica:main', acceptedAt: 1234 }])
 
     // Still pending: the ack must not settle the request.
     let settled = false
     request.then(() => { settled = true }).catch(() => { settled = true })
-    await new Promise((r) => setTimeout(r, 5))
+    await settleFor(5, 'an ack must NOT settle the request — the absence of a settle is the assertion')
     expect(settled).toBe(false)
 
     ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { runId: 'bakin-run-1', status: 'ok', summary: 'completed' } })
@@ -230,14 +240,17 @@ describe('accepted-ack surfacing', () => {
         },
       },
     )
-    await new Promise((r) => setTimeout(r, 10))
+    await waitUntil(
+      () => Boolean(FakeWebSocket.instances[0]?.sentFrames.some((f) => f.method === 'agent')),
+      { label: 'the agent frame to be sent' },
+    )
     const ws = FakeWebSocket.instances[0]!
     const agentFrame = ws.sentFrames.find((f) => f.method === 'agent')!
 
     const ack = { runId: 'r', sessionKey: 's', status: 'accepted', acceptedAt: 1 }
     ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: ack })
     ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: ack })
-    await new Promise((r) => setTimeout(r, 5))
+    await settleFor(5, 'a duplicate ack must NOT invoke onAccepted twice — the second call not arriving is the assertion')
     expect(calls).toBe(1)
 
     ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { status: 'ok' } })
@@ -247,14 +260,17 @@ describe('accepted-ack surfacing', () => {
 
   it('without onAccepted the ack is still swallowed (existing behavior)', async () => {
     const request = client.request('agent', { agentId: 'jessica' }, { expectFinal: true, timeoutMs: 600_000 })
-    await new Promise((r) => setTimeout(r, 10))
+    await waitUntil(
+      () => Boolean(FakeWebSocket.instances[0]?.sentFrames.some((f) => f.method === 'agent')),
+      { label: 'the agent frame to be sent' },
+    )
     const ws = FakeWebSocket.instances[0]!
     const agentFrame = ws.sentFrames.find((f) => f.method === 'agent')!
 
     ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { status: 'accepted', runId: 'r' } })
     let settled = false
     request.then(() => { settled = true }).catch(() => { settled = true })
-    await new Promise((r) => setTimeout(r, 5))
+    await settleFor(5, 'an ack must NOT settle the request — the absence of a settle is the assertion')
     expect(settled).toBe(false)
 
     ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { status: 'ok' } })

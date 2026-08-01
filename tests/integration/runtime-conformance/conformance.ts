@@ -591,6 +591,11 @@ export const runtimeConformanceChecks = {
     if (caps.delivery.mode === 'native' && !target.runtime.channels) {
       fail("capabilities() declares delivery 'native' but the channels surface is absent")
     }
+    // A shimmed declaration is the same promise through a bridge (#669):
+    // consumers will call runtime.channels — absence makes the claim a lie.
+    if (caps.delivery.mode === 'shimmed' && !target.runtime.channels) {
+      fail("capabilities() declares delivery 'shimmed' but the channels surface is absent")
+    }
     if (caps.sessions.mode === 'native' && opts?.sessionsPin !== false) {
       await target.prepareOkTurn?.()
       const threadId = target.newThreadId()

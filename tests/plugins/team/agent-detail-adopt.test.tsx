@@ -10,7 +10,7 @@
  *     state without a page reload
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -122,7 +122,9 @@ beforeEach(() => {
 })
 
 async function openDetail() {
-  render(<AgentDetail agentId="pixel" />)
+  await act(async () => {
+    render(<AgentDetail agentId="pixel" />)
+  })
   await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Pixel' })).toBeDefined())
 }
 
@@ -134,19 +136,21 @@ describe('PackageCard — Adopt flow', () => {
 
   it('opens AdoptDialog with the agentId baked in when Adopt is clicked', async () => {
     await openDetail()
-    fireEvent.click(screen.getByRole('button', { name: triggerName }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: triggerName })) })
     // Dialog title bakes in the agentId
     await waitFor(() => expect(screen.getByText(/Adopt pixel into a package/)).toBeDefined())
   })
 
   it('POSTs /api/agent-packages/install with { source, adopt: agentId } on submit', async () => {
     await openDetail()
-    fireEvent.click(screen.getByRole('button', { name: triggerName }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: triggerName })) })
     await waitFor(() => screen.getByLabelText('Package source'))
-    fireEvent.change(screen.getByLabelText('Package source'), {
-      target: { value: 'github:examples/pixel@v0.1.0' },
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Package source'), {
+        target: { value: 'github:examples/pixel@v0.1.0' },
+      })
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Adopt agent' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Adopt agent' })) })
 
     await waitFor(() => expect(installCalls.length).toBe(1))
     const call = installCalls[0]
@@ -157,12 +161,14 @@ describe('PackageCard — Adopt flow', () => {
 
   it('refreshes package state on successful adopt', async () => {
     await openDetail()
-    fireEvent.click(screen.getByRole('button', { name: triggerName }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: triggerName })) })
     await waitFor(() => screen.getByLabelText('Package source'))
-    fireEvent.change(screen.getByLabelText('Package source'), {
-      target: { value: 'github:examples/pixel' },
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Package source'), {
+        target: { value: 'github:examples/pixel' },
+      })
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Adopt agent' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Adopt agent' })) })
 
     // After successful adopt the store should pick up the new state
     // from /api/agent-packages?check=1 (which our mock returns as managed).

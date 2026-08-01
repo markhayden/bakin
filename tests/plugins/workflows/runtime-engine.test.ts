@@ -86,6 +86,7 @@ import {
 import { invalidateSkillCache } from '@bakin/workflows/lib/skill-loader'
 import { setEventBus } from '@bakin/workflows/lib/notifications'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
+import { waitUntil } from '../../helpers/wait'
 
 describe('runtime — engine', () => {
   const defsDir = join(testDir, 'workflows', 'definitions')
@@ -120,7 +121,8 @@ describe('runtime — engine', () => {
       createTaskWithEffectsHook.mockResolvedValueOnce({ id: 'task-parent--make-task', workflowId: undefined })
 
       const instance = createInstance('task-parent', 'task-node', testDir)
-      await new Promise(resolve => setTimeout(resolve, 0))
+      await waitUntil(() => loadInstance('task-parent', testDir)?.currentStepId === 'after-create',
+        { label: 'the createTask node to complete and advance to after-create' })
 
       const saved = loadInstance('task-parent', testDir)!
       expect(instance.workflowId).toBe('task-node')
@@ -156,7 +158,8 @@ describe('runtime — engine', () => {
       })
 
       createInstance('task-parent', 'task-node', testDir)
-      await new Promise(resolve => setTimeout(resolve, 0))
+      await waitUntil(() => loadInstance('task-parent', testDir)?.currentStepId === 'after-create',
+        { label: 'the createTask node to complete and advance to after-create' })
 
       const saved = loadInstance('task-parent', testDir)!
       expect(saved.currentStepId).toBe('after-create')
@@ -224,7 +227,8 @@ steps: []
       createInstance('task-review-from-todo', 'gate', testDir)
 
       completeStep('task-review-from-todo', 'write-copy', { text: 'hello' }, 'chef', testDir)
-      await new Promise(resolve => setTimeout(resolve, 0))
+      await waitUntil(() => moveTaskHook.mock.calls.length >= 2,
+        { label: 'both move-task hook calls (inProgress then review)' })
 
       expect(moveTaskHook).toHaveBeenNthCalledWith(1, {
         identifier: 'task-review-from-todo',
@@ -247,7 +251,10 @@ steps: []
       })
       createInstance('task-reconcile-review', 'gate', testDir)
       completeStep('task-reconcile-review', 'write-copy', { text: 'hello' }, 'chef', testDir)
-      await new Promise(resolve => setTimeout(resolve, 0))
+      // Both calls must land BEFORE mockClear, or a straggler pollutes the
+      // reconcile assertions below.
+      await waitUntil(() => moveTaskHook.mock.calls.length >= 2,
+        { label: 'both step-completion move-task calls to land before the mock is cleared' })
 
       hookTasks.get('task-reconcile-review')!.column = 'todo'
       moveTaskHook.mockClear()

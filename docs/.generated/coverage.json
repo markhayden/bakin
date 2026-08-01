@@ -4,8 +4,8 @@
   "surfaces": {
     "cliCommands": {
       "status": "active",
-      "count": 77,
-      "examples": 93,
+      "count": 81,
+      "examples": 98,
       "source": "src/core/cli/registry.ts"
     },
     "httpRoutes": {
@@ -34,7 +34,7 @@
     },
     "execTools": {
       "status": "audited",
-      "count": 134,
+      "count": 136,
       "source": "source scan"
     },
     "corePlugins": {
@@ -44,12 +44,12 @@
     },
     "settings": {
       "status": "active",
-      "count": 83,
+      "count": 90,
       "source": "packages/core/src/settings.ts"
     },
     "sdkSubpaths": {
       "status": "active",
-      "count": 18,
+      "count": 10,
       "source": "packages/sdk/package.json"
     },
     "agentPackageKinds": {

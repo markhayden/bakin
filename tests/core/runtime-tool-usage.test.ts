@@ -214,7 +214,10 @@ describe('createRuntimeToolUsageRecorder', () => {
     const feed = getUsageFeed({ kind: 'mcp', window: '1h', includeRoutine: true })
     expect(feed.totals).toEqual({ count: 2, errors: 0, errorRate: 0 })
     expect(feed.recent.filter((entry) => entry.name === 'bakin_exec_heartbeat')).toHaveLength(2)
-    expect(feed.recent.map((entry) => entry.activityClass)).toEqual(['routine', 'user'])
+    // Order is incidental and NOT part of this contract: getUsageFeed sorts
+    // newest-first, so these two only keep insertion order while they share a
+    // millisecond. Assert the set — the claim is that both were recorded.
+    expect(feed.recent.map((entry) => entry.activityClass).sort()).toEqual(['routine', 'user'])
   })
 
   it('never rewrites a previous success when a later started Bakin call fails before source metering', () => {

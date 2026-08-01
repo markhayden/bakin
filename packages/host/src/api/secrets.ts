@@ -17,6 +17,7 @@ import {
   setStoredSecret,
   unsetStoredSecret,
 } from '@bakin/core/media'
+import { injectSecretEnvForSlot } from '@/core/secret-env'
 
 const secretValue = z.string().min(1).max(8192)
 
@@ -49,7 +50,10 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   if (!parsed.success) return badRequest(parsed.error.issues[0]?.message ?? 'invalid request')
   const { provider, name, value } = parsed.data
   setStoredSecret(provider, name, value)
-  return Response.json({ ok: true, provider, name, stored: true })
+  // D18 (#687): take effect NOW — the guided-key journey must not require a
+  // server restart. Unset-only; a real env var still wins.
+  const injectedEnv = injectSecretEnvForSlot(provider, name)
+  return Response.json({ ok: true, provider, name, stored: true, injectedEnv })
 }
 
 export async function del(_req: Request, url: URL): Promise<Response> {

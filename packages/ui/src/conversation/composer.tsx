@@ -489,7 +489,11 @@ export function Composer({
                     variant="ghost"
                     size="icon-sm"
                     disabled={!attachments.enabled || disabled}
-                    title={attachments.enabled ? addLabel : attachments.disabledReason ?? 'Attachments unavailable'}
+                    title={attachments.enabled
+                      // An enabled affordance can still refuse a class of file
+                      // (image-blind model, PDFs pass) — surface that honestly.
+                      ? attachments.disabledReason ? `${addLabel} — ${attachments.disabledReason}` : addLabel
+                      : attachments.disabledReason ?? 'Attachments unavailable'}
                     aria-label={addLabel}
                     aria-describedby={!attachments.enabled ? attachmentReasonId : undefined}
                     onClick={() => fileRef.current?.click()}

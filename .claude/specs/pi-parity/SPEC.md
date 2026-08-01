@@ -390,6 +390,11 @@ initiative.
 
 ### 10.1 Discord delivery bridge
 
+> **SUPERSEDED (2026-07-26):** shipped via `.claude/specs/discord-bridge/`
+> (issue #669), which expands this design with inbound chat. Deep dive:
+> `.claude/knowledge/delivery-bridge.md`. The text below is the original
+> banked design, kept for provenance.
+
 - Runtime-neutral bridge in `src/core/delivery/` — `bridge.ts` (neutral
   `ChannelBridge` interface), `discord/client.ts` (discord.js lifecycle),
   `discord/send.ts` (messages, notifications, content, asset attachments via

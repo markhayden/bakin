@@ -5,10 +5,9 @@
  * the views are pure renderers of fetched instants in browser-local time.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import '../../rtl-settle'
 import { settleReact } from '../../rtl-settle'
 
 // Pure component tests (fixtured fetch, no storage), but isolation rules are
@@ -139,8 +138,9 @@ afterEach(() => {
 describe('Schedule calendar views (occurrence-fed)', () => {
   it('Today: renders a fetched 11:05pm occurrence in the 11 PM row', async () => {
     occurrenceFixtures.push({ jobId: 'late-night-release', at: todayAtLocal(23, 5), past: false })
-    render(<CalendarToday jobs={[makeJob()]} onSelectJob={() => {}} />)
-    await settleReact()
+    await act(async () => {
+      render(<CalendarToday jobs={[makeJob()]} onSelectJob={() => {}} />)
+    })
 
     expect(screen.getByText('11 PM')).toBeDefined()
     expect(screen.getByText('Late night release')).toBeDefined()
@@ -153,8 +153,9 @@ describe('Schedule calendar views (occurrence-fed)', () => {
       jobId: 'late-night-release', at: todayAtLocal(23, 5), past: true,
       disposition: 'created', taskId: 'task-1',
     })
-    render(<CalendarWeekly jobs={[makeJob()]} onSelectJob={() => {}} />)
-    await settleReact()
+    await act(async () => {
+      render(<CalendarWeekly jobs={[makeJob()]} onSelectJob={() => {}} />)
+    })
 
     expect(screen.getByText('11 PM')).toBeDefined()
     expect(screen.getAllByText('Late night release').length).toBeGreaterThan(0)
@@ -166,8 +167,9 @@ describe('Schedule calendar views (occurrence-fed)', () => {
       jobId: 'late-night-release', at: todayAtLocal(23, 5), past: true,
       disposition: 'skipped', skipReason: 'overlap',
     })
-    render(<CalendarWeekly jobs={[makeJob()]} onSelectJob={() => {}} />)
-    await settleReact()
+    await act(async () => {
+      render(<CalendarWeekly jobs={[makeJob()]} onSelectJob={() => {}} />)
+    })
 
     expect(screen.getByTitle('Skipped — overlap')).toBeDefined()
   })
@@ -373,8 +375,9 @@ describe('Schedule calendar views (occurrence-fed)', () => {
 
   it('Month: renders a day dot for the fetched occurrence', async () => {
     occurrenceFixtures.push({ jobId: 'late-night-release', at: todayAtLocal(9, 0), past: false })
-    render(<CalendarMonthly jobs={[makeJob()]} onSelectJob={() => {}} />)
-    await settleReact()
+    await act(async () => {
+      render(<CalendarMonthly jobs={[makeJob()]} onSelectJob={() => {}} />)
+    })
 
     expect(screen.getByText('Late night release')).toBeDefined()
   })
@@ -384,8 +387,9 @@ describe('Schedule calendar views (occurrence-fed)', () => {
       id: 't-wait:scheduled', pluginId: 'tasks', title: 'Waiting task', kind: 'task-scheduled',
       startsAt: todayAtLocal(9, 0), url: '/tasks?taskId=t-wait', reschedulable: true,
     })
-    render(<CalendarToday jobs={[]} onSelectJob={() => {}} />)
-    await settleReact()
+    await act(async () => {
+      render(<CalendarToday jobs={[]} onSelectJob={() => {}} />)
+    })
 
     expect(screen.getByText('Waiting task')).toBeDefined()
     expect(screen.getByText(/tasks · task-scheduled/)).toBeDefined()
@@ -411,18 +415,16 @@ describe('Schedule calendar views (occurrence-fed)', () => {
       id: 't-wait:scheduled', pluginId: 'tasks', title: 'Waiting task', kind: 'task-scheduled',
       startsAt: todayAtLocal(9, 0), reschedulable: true,
     })
-    render(<CalendarToday jobs={[]} onSelectJob={() => {}} />)
-    await settleReact()
+    await act(async () => {
+      render(<CalendarToday jobs={[]} onSelectJob={() => {}} />)
+    })
 
-    fireEvent.click(screen.getByText('Waiting task'))
-    await settleReact()
-    fireEvent.click(screen.getByRole('button', { name: /reschedule/i }))
-    await settleReact()
+    await act(async () => { fireEvent.click(screen.getByText('Waiting task')) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /reschedule/i })) })
 
     const input = screen.getByLabelText('New date and time') as HTMLInputElement
     fireEvent.change(input, { target: { value: '2026-08-01T10:30' } })
-    fireEvent.click(screen.getByRole('button', { name: /^reschedule$/i }))
-    await settleReact()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^reschedule$/i })) })
 
     expect(postCalls).toHaveLength(1)
     expect(postCalls[0]!.url).toContain('/events/reschedule')
@@ -437,24 +439,23 @@ describe('Schedule calendar views (occurrence-fed)', () => {
       id: 't-wait:scheduled', pluginId: 'tasks', title: 'Waiting task', kind: 'task-scheduled',
       startsAt: todayAtLocal(9, 0), reschedulable: true,
     })
-    render(<CalendarToday jobs={[]} onSelectJob={() => {}} />)
-    await settleReact()
+    await act(async () => {
+      render(<CalendarToday jobs={[]} onSelectJob={() => {}} />)
+    })
 
-    fireEvent.click(screen.getByText('Waiting task'))
-    await settleReact()
-    fireEvent.click(screen.getByRole('button', { name: /reschedule/i }))
-    await settleReact()
+    await act(async () => { fireEvent.click(screen.getByText('Waiting task')) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /reschedule/i })) })
     fireEvent.change(screen.getByLabelText('New date and time'), { target: { value: '2026-08-01T10:30' } })
-    fireEvent.click(screen.getByRole('button', { name: /^reschedule$/i }))
-    await settleReact()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^reschedule$/i })) })
 
     expect(screen.getByText('owner said no')).toBeDefined()
   })
 
   it('renders nothing for an occurrence whose job is unknown (stale feed)', async () => {
     occurrenceFixtures.push({ jobId: 'ghost-job', at: todayAtLocal(9, 0), past: false })
-    render(<CalendarToday jobs={[makeJob()]} onSelectJob={() => {}} />)
-    await settleReact()
+    await act(async () => {
+      render(<CalendarToday jobs={[makeJob()]} onSelectJob={() => {}} />)
+    })
 
     expect(screen.queryByText('ghost-job')).toBeNull()
   })

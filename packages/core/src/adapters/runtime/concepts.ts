@@ -1,10 +1,10 @@
-import type { AdapterInitOpts, MessageUsage, RuntimeExecToolProvider, Unsubscribe } from '../shared'
+import type { AdapterInitOpts, MessageUsage, RuntimeExecToolProvider } from '../shared'
 import type { ActivityClass } from '@makinbakin/sdk/types'
-import type { ChannelCapability } from './capabilities'
+import type { RuntimeChannelSurface, RuntimeMetadata } from './channels'
 
 export type { MessageUsage } from '../shared'
 
-export type RuntimeMetadata = Record<string, unknown>
+export type { RuntimeMetadata } from './channels'
 
 export interface RuntimeAgent {
   id: string
@@ -239,156 +239,34 @@ export type ChatChunk =
   /** Terminal failure — `data.kind` carries the RuntimeError kind when known. */
   | { type: 'error'; content?: string; data?: RuntimeMetadata }
 
-export interface ChannelInfo {
-  id: string
-  platform: string
-  label: string
-  capabilities: ChannelCapability[]
-  metadata?: RuntimeMetadata
-}
-
-export interface DeliveryResult {
-  deliveries: ApprovalDelivery[]
-}
-
-export interface NotificationArgs {
-  channels: string[]
-  notification: {
-    severity: 'info' | 'warn' | 'error' | 'success'
-    title: string
-    body: string
-    fields?: { label: string; value: string }[]
-    metadata?: RuntimeMetadata
-  }
-}
-
-export interface ChannelMessageArgs {
-  channels: string[]
-  message: {
-    body: string
-    title?: string
-    threadId?: string
-    metadata?: RuntimeMetadata
-  }
-}
-
-export interface ContentDeliveryArgs {
-  channels: string[]
-  content: {
-    title: string
-    body?: string
-    url?: string
-    files?: Array<{ name: string; path: string; contentType?: string } | { kind: 'asset'; filename: string; mimeType?: string }>
-    metadata?: RuntimeMetadata
-  }
-}
-
-export interface CreateThreadArgs {
-  /** Channel ref the anchor message lives in (provider or provider:target). */
-  channel: string
-  /** Delivery ref of the message to anchor the thread to (e.g. "message:<id>"). */
-  messageRef?: string
-  name: string
-}
-
-export interface CreatedThread {
-  threadId: string
-  /**
-   * Provider-addressable channel ref for posting INTO the thread (opaque to
-   * callers — provider target syntax stays inside the adapter).
-   */
-  channelRef: string
-}
-
-export interface EditChannelMessageArgs {
-  /** Channel ref the message lives in (provider or provider:target). */
-  channel: string
-  /** Delivery ref of the message to edit (e.g. "message:<id>"). */
-  messageRef: string
-  body: string
-}
-
-export interface ApprovalOption {
-  id: string
-  label: string
-  variant?: 'primary' | 'destructive' | 'neutral'
-}
-
-export interface ApprovalDelivery {
-  channelId: string
-  ref: string
-  renderedAt: string
-}
-
-export interface ApprovalPatch {
-  body?: string
-  options?: ApprovalOption[]
-  expiresAt?: string
-  context?: RuntimeMetadata
-}
-
-export interface ApprovalResponse {
-  selectedOption: string
-  respondedAt: string
-  actor: { type: 'agent' | 'human'; id: string; displayName?: string }
-  comment?: string
-}
-
-export interface ApprovalRenderResult {
-  deliveries: ApprovalDelivery[]
-}
-
-export interface ApprovalRenderRef {
-  approvalId: string
-  deliveries: ApprovalDelivery[]
-}
-
-export interface CreateApprovalArgs {
-  approvalId: string
-  channels: string[]
-  request: {
-    title: string
-    body: string
-    options: ApprovalOption[]
-    expiresAt?: string
-    context?: RuntimeMetadata
-  }
-}
-
-export interface EditApprovalArgs extends ApprovalRenderRef {
-  patch: ApprovalPatch
-}
-
-export interface CancelApprovalArgs extends ApprovalRenderRef {
-  reason?: string
-}
-
-export interface ResolveApprovalArgs extends ApprovalRenderRef {
-  response: ApprovalResponse
-}
-
-export interface ApprovalResolveEvent {
-  approvalId: string
-  response: ApprovalResponse
-  channelId: string
-}
-
-export interface DurableApprovalRecord {
-  approvalId: string
-  owner: {
-    workflowId: string
-    runId: string
-    stepId: string
-    taskId?: string
-  }
-  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired'
-  request: CreateApprovalArgs['request']
-  deliveries: ApprovalDelivery[]
-  response?: ApprovalResponse
-  createdAt: string
-  updatedAt: string
-  resolvedAt?: string
-}
+// Channel/delivery types live in ./channels (a leaf module shared with the
+// delivery bridge — see packages/core/src/delivery/bridge.ts); re-exported
+// here so consumers keep importing from concepts.
+export type {
+  ChannelInfo,
+  DeliveryResult,
+  NotificationArgs,
+  ChannelMessageArgs,
+  ContentDeliveryArgs,
+  CreateThreadArgs,
+  CreatedThread,
+  EditChannelMessageArgs,
+  ApprovalOption,
+  ApprovalDelivery,
+  ApprovalPatch,
+  ApprovalResponse,
+  ApprovalRenderResult,
+  ApprovalRenderRef,
+  CreateApprovalArgs,
+  EditApprovalArgs,
+  CancelApprovalArgs,
+  ResolveApprovalArgs,
+  ApprovalResolveEvent,
+  DurableApprovalRecord,
+  InboundChannelAttachment,
+  InboundChannelMessage,
+  RuntimeChannelSurface,
+} from './channels'
 
 export interface RuntimeSkill {
   name: string
@@ -941,24 +819,7 @@ export interface AgentRuntimeAdapter {
    * honestly: empty channel lists, log-only alerts, UI-only approval gates.
    * `capabilities().delivery.mode` reports the same fact declaratively.
    */
-  channels?: {
-    list(): Promise<ChannelInfo[]>
-    sendNotification(args: NotificationArgs): Promise<DeliveryResult>
-    sendMessage(args: ChannelMessageArgs): Promise<DeliveryResult>
-    deliverContent(args: ContentDeliveryArgs): Promise<DeliveryResult>
-    createApproval(args: CreateApprovalArgs): Promise<ApprovalRenderResult>
-    editApproval(args: EditApprovalArgs): Promise<ApprovalRenderResult>
-    cancelApproval(args: CancelApprovalArgs): Promise<void>
-    resolveApproval(args: ResolveApprovalArgs): Promise<void>
-    subscribeApprovalResponses(handler: (event: ApprovalResolveEvent) => void): Unsubscribe
-    /**
-     * Optional threading/editing capabilities. Adapters for providers without
-     * threads or message editing omit them; callers MUST feature-detect and
-     * fall back to flat channel messages — never error on absence.
-     */
-    createThread?(args: CreateThreadArgs): Promise<CreatedThread | null>
-    editMessage?(args: EditChannelMessageArgs): Promise<void>
-  }
+  channels?: RuntimeChannelSurface
 
   skills: {
     list(agentId?: string): Promise<RuntimeSkill[]>

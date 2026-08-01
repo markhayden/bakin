@@ -143,7 +143,7 @@ const result = await ctx.hooks.invoke(
 
 Label: chat.resolveActiveTurn
 Kind: rpc
-Source: plugins/chat/index.ts:45
+Source: plugins/chat/index.ts:48
 
 Example:
 
@@ -163,7 +163,7 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 Label: Get a health check.
 Purpose: Returns canonical metadata for one registered Health check by stable id without executing it.
 Kind: rpc
-Source: plugins/health/index.ts:846
+Source: plugins/health/index.ts:847
 
 Example:
 
@@ -181,7 +181,7 @@ const result = await ctx.hooks.invoke(
 Label: List health checks.
 Purpose: Returns canonical metadata for registered Health checks without executing them.
 Kind: rpc
-Source: plugins/health/index.ts:845
+Source: plugins/health/index.ts:846
 
 Example:
 
@@ -437,7 +437,7 @@ Task hooks let plugins enrich task details and react to task lifecycle changes.
 Label: Add project task context.
 Purpose: Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage.
 Kind: waterfall
-Source: bakin-bits-official/plugins/projects/index.ts:241
+Source: bakin-bits-official/plugins/projects/index.ts:316
 
 Example:
 
@@ -458,7 +458,7 @@ const next = await ctx.hooks.call(
 Label: Sync project task state.
 Purpose: Updates linked project checklist items when a task moves into a completed state. Use it to keep project progress in sync with task lifecycle events.
 Kind: event
-Source: bakin-bits-official/plugins/projects/index.ts:230
+Source: bakin-bits-official/plugins/projects/index.ts:305
 
 Example:
 

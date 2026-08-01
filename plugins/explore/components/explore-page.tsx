@@ -26,6 +26,7 @@ import {
 import { toast, useJsonFetch } from '@makinbakin/sdk/hooks'
 import { CatalogCard } from './catalog-card'
 import { DetailDrawer } from './detail-drawer'
+import { HubSkillsSection } from './hub-skills-section'
 import { InstallDialog } from './install-dialog'
 import type { ExploreCatalogEntry, ExploreCatalogResponse } from '../types'
 
@@ -64,8 +65,9 @@ const TAB_INTROS: Record<string, { title: string; blurb: string }> = {
     title: 'Teach your agents new tricks',
     blurb:
       'Capabilities give your agents real-world powers — web search, browser automation, transcription. ' +
-      'Install one and Bakin handles everything: the skill content, any pinned binaries, and a guided step ' +
-      'for the API key it needs. Works with any runtime unless badged otherwise.',
+      'Install a curated one below and Bakin handles everything: the skill content, any pinned binaries, and a ' +
+      'guided step for the API key it needs. Or bring skills from the wider ecosystem — ClawHub, GitHub skill ' +
+      'repos — the whole ecosystem shares one format, and Bakin installs it onto whichever runtime you run.',
   },
   packs: {
     title: 'Reusable building blocks',
@@ -191,16 +193,20 @@ function ExplorePageInner() {
   )
 
   const visible = useMemo(() => {
+    // Capabilities groups by installed-vs-available (live-test feedback):
+    // installed packs live in HubSkillsSection's "Installed" list, so the
+    // grid here is strictly "what you can get".
+    const pool = tab === 'capabilities' ? tabEntries.filter((entry) => !entry.installed) : tabEntries
     const byCategory = activeCategories.length === 0
-      ? tabEntries
-      : tabEntries.filter((entry) => activeCategories.includes(entry.category))
+      ? pool
+      : pool.filter((entry) => activeCategories.includes(entry.category))
     const needle = searchDraft.trim().toLowerCase()
     if (!needle) return byCategory
     return byCategory.filter((entry) =>
       [entry.name, entry.description, entry.category, ...entry.tags, ...entry.useCases]
         .some((haystack) => haystack.toLowerCase().includes(needle)),
     )
-  }, [tabEntries, activeCategories, searchDraft])
+  }, [tab, tabEntries, activeCategories, searchDraft])
 
   const selected = useMemo(
     () => entries.find((entry) => `${entry.kind}:${entry.id}` === selectedKey) ?? null,
@@ -284,12 +290,16 @@ function ExplorePageInner() {
       title={filtered
         ? 'No catalog items match'
         : tab === 'lessons' ? 'Lesson packs are coming'
-          : tab === 'capabilities' ? 'Capability packs are coming' : 'Nothing here yet'}
+          : tab === 'capabilities'
+            ? (tabEntries.length > 0 ? 'All official capabilities installed' : 'Capability packs are coming')
+            : 'Nothing here yet'}
       description={filtered
         ? 'Clear the current search and category filters, or browse another section.'
         : tab === 'lessons'
           ? 'Official lesson packs will appear here as they are published. Installed agents can also include lessons you manage from Team.'
-          : 'The official catalog has no entries for this section yet.'}
+          : tab === 'capabilities' && tabEntries.length > 0
+            ? 'Every curated capability is already on your team — paste a link above to bring in more from the ecosystem.'
+            : 'The official catalog has no entries for this section yet.'}
       {...(filtered
         ? { action: <Button variant="outline" onClick={clearFilters}>Clear search and filters</Button> }
         : {})}
@@ -382,6 +392,11 @@ function ExplorePageInner() {
             </p>
           </section>
         ) : null}
+
+        {/* The ecosystem lane (#687) lives INSIDE Capabilities — one unified
+            "teach your agents" surface: paste-a-link CTA + installed hub
+            skills above the curated grid, never a separate tab. */}
+        {tab === 'capabilities' && <HubSkillsSection />}
 
         <Grid layout="single" gap="item" className={CATALOG_GRID_CLASSES}>
           {visible.map((entry) => (

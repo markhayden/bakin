@@ -51,6 +51,11 @@ const ChatSummarySchema = z.object({
   // index entries parse as false (legacy sweep rules apply until their
   // transcript shows a done row).
   markerEra: z.boolean().default(false),
+  // #669 Phase B: binds this chat to an external channel (e.g. a Discord
+  // channel ref) — inbound messages route here and replies post back.
+  // Optional: pre-existing entries parse unchanged; deleting the chat
+  // deletes the binding with it.
+  externalKey: z.string().optional(),
 })
 
 const ChatIndexSchema = z.object({
@@ -258,7 +263,30 @@ export function getChatSummary(chatId: string): ChatSummary | null {
   return readIndex().chats.find((c) => c.id === chatId) ?? null
 }
 
-export function createChat(input: { agentId: string; title?: string }): Promise<ChatSummary> {
+/** Find the chat bound to an external channel (#669) — the index is small; a scan is fine. */
+export function findChatByExternalKey(externalKey: string): ChatSummary | null {
+  return readIndex().chats.find((c) => c.externalKey === externalKey) ?? null
+}
+
+/**
+ * Unbind a chat from its external channel (#669 /new-chat): the chat keeps
+ * its history in the UI; the channel's next inbound message binds a fresh
+ * chat (and with it a fresh runtime session — the escape hatch for a
+ * poisoned or overgrown conversation).
+ */
+export function clearExternalKey(chatId: string): Promise<boolean> {
+  return serialized(() => {
+    const index = readIndex()
+    const chat = index.chats.find((c) => c.id === chatId)
+    if (!chat?.externalKey) return false
+    delete chat.externalKey
+    chat.updatedAt = new Date().toISOString()
+    writeIndexAtomic(index)
+    return true
+  })
+}
+
+export function createChat(input: { agentId: string; title?: string; externalKey?: string }): Promise<ChatSummary> {
   return serialized(() => {
     const now = new Date().toISOString()
     const summary: ChatSummary = {
@@ -272,6 +300,7 @@ export function createChat(input: { agentId: string; title?: string }): Promise<
       messageCount: 0,
       unreadCount: 0,
       markerEra: true,
+      ...(input.externalKey ? { externalKey: input.externalKey } : {}),
     }
     const index = readIndex()
     index.chats.push(summary)

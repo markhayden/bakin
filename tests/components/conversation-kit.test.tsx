@@ -17,7 +17,7 @@ const contentDirMock = () => ({
 mock.module('@/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import '../rtl-settle'
 
 import {
@@ -335,7 +335,7 @@ describe('AgentTurn', () => {
     expect(container.textContent).not.toContain('Try again')
   })
 
-  it('copy action writes the concatenated text items to the clipboard', () => {
+  it('copy action writes the concatenated text items to the clipboard', async () => {
     const writes: string[] = []
     Object.defineProperty(globalThis.navigator, 'clipboard', {
       value: { writeText: (t: string) => (writes.push(t), Promise.resolve()) },
@@ -355,7 +355,7 @@ describe('AgentTurn', () => {
     )
     const btn = container.querySelector('button[data-conv-copy]')
     expect(btn).not.toBeNull()
-    fireEvent.click(btn!)
+    await act(async () => { fireEvent.click(btn!) })
     expect(writes).toEqual(['part one\n\npart two'])
   })
 })

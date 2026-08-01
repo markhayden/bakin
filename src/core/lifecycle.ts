@@ -10,6 +10,7 @@ import * as watchdog from './watchdog'
 import * as watcher from './watcher'
 import * as doctor from './doctor'
 import { maybeGetAppServices } from './app-services'
+import { shutdownDeliveryBridge } from './delivery'
 import { closeDb } from '../../packages/core/src/storage/db'
 import { releaseServerLock } from './server-lock'
 import { pluginRegistry } from './plugin-registry'
@@ -98,6 +99,9 @@ async function shutdown(signal: string, exitCode = 0): Promise<void> {
 
     // Stop file watching
     await watcher.stop()
+
+    // Disconnect the Discord delivery bridge (no-op when never booted).
+    await shutdownDeliveryBridge()
 
     // Release adapter-owned resources. The antfly child is deliberately LEFT
     // RUNNING (keep-alive lifecycle): the next boot adopts the warm instance

@@ -143,6 +143,20 @@ Full yank is only for leaked secrets or active security vulnerabilities:
 
 ## User Install UX
 
+## Compiled-binary PDF constraint (#746)
+
+Single-file binaries CANNOT render PDF pages: `@napi-rs/canvas`'s platform
+loader breaks under `$bunfs` (the raw `.node` addon itself DOES embed — the
+blocker is the package's resolution, not Bun). The engine handles the split:
+text extraction (`readPdf`, and therefore asset PDF indexing) works in
+binaries via canvas-less stubs + pdf-parse's embedded data-URL worker
+(`installCanvaslessStubs` + `setWorker(getData())` in
+`src/core/pdf/engine.ts`); `renderPdfPages` throws a typed `pdf_unavailable`
+with an honest message. `bun run verify:compiled-pdf` proves both halves
+against a real compiled binary — run it when touching the engine's import
+story or bumping pdf-parse. Re-evaluate full render support on future Bun
+releases (the `.node`-embeds finding suggests it may become tractable).
+
 Preferred macOS install:
 
 ```sh

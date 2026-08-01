@@ -2,6 +2,7 @@
 export { getSettings, updateSettings, resetSettingsCache } from '../../packages/core/src/settings'
 export type {
   BakinSettings,
+  DiscordIntegrationSettings,
   RuntimeAdapterName,
   RuntimeAdapterSettings,
   SearchAdapterName,

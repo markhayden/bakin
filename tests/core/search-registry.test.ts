@@ -88,6 +88,7 @@ import { sweepOrphanRegistryRows } from '@/core/search-orphan-sweep'
 import { tableStatus, sweepTombstones } from '@bakin/core/search/tables'
 import { enqueueIndex, outboxStats } from '@bakin/core/search/outbox'
 import { broadcast } from '@/core/sse'
+import { waitUntil } from '../helpers/wait'
 
 describe('search-registry', () => {
   let searchHarness: ReturnType<typeof createSearchAdapterHarness>
@@ -1164,10 +1165,8 @@ describe('reindex job (202 + poll contract)', () => {
     expect(getReindexJobStatus()!.id).toBe(job.id)
 
     // Poll to completion like the CLI does.
-    const deadline = Date.now() + 10_000
-    while (getReindexJobStatus()!.state === 'running' && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 25))
-    }
+    await waitUntil(() => getReindexJobStatus()!.state !== 'running',
+      { label: 'the reindex job to leave the running state', timeoutMs: 10_000 })
     const done = getReindexJobStatus()!
     expect(done.state).toBe('done')
     expect(done.finishedAt).toBeGreaterThan(0)

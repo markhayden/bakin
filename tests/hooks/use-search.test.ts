@@ -30,6 +30,7 @@ mock.module('@/core/watcher', () => ({
 }))
 
 import { useSearch } from '@/hooks/use-search'
+import { settleFor } from '../helpers/wait'
 
 // --- fetch helpers --------------------------------------------------------
 
@@ -125,9 +126,10 @@ describe('useSearch — abort on unmount', () => {
       result.current.search('x')
     })
 
-    // Allow the 0ms debounce timer to fire so fetch is in flight.
+    // Allow the 0ms debounce timer to fire so fetch is in flight. A real timer
+    // window, not a condition: the point is that the debounce has ELAPSED.
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 5))
+      await settleFor(5, 'let the 0ms search debounce timer fire so a fetch is in flight')
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -144,7 +146,7 @@ describe('useSearch — abort on unmount', () => {
       json: () => Promise.resolve({ results: [{ id: '1', table: 't', score: 1, fields: {} }] }),
     } as Response)
 
-    await new Promise((r) => setTimeout(r, 10))
+    await settleFor(10, 'a superseded response must NOT log an error — the absence of a log is the assertion')
 
     expect(errorSpy).not.toHaveBeenCalled()
     errorSpy.mockRestore()

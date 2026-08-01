@@ -10,7 +10,7 @@ import { exitUsage, exitUnknownSubcommand, promptYesNo } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
 import { parseAgentsFlags, printPackageActionTui, type AgentsCmdFlags } from './agents'
 
-interface InstallCapabilityInfo {
+export interface InstallCapabilityInfo {
   capability: string
   name: string
   ready: boolean
@@ -30,7 +30,7 @@ function legLine(ok: boolean, label: string): string {
 }
 
 /** Guided key step (story 3): offer to store each missing secretSlot-backed secret. */
-async function promptMissingSecrets(cap: InstallCapabilityInfo): Promise<boolean> {
+export async function promptMissingSecrets(cap: InstallCapabilityInfo): Promise<boolean> {
   let storedAny = false
   for (const secret of cap.secrets) {
     if (secret.status !== 'missing' || !secret.secretSlot) continue
@@ -40,7 +40,9 @@ async function promptMissingSecrets(cap: InstallCapabilityInfo): Promise<boolean
       if (secret.help) console.log(`  ${secret.name}: get one at ${secret.help}`)
       const value = (await rl.question(`  Paste ${secret.name} (Enter to skip): `)).trim()
       if (!value) continue
-      const [provider, name] = secret.secretSlot.split('.', 2)
+      const dot = secret.secretSlot.indexOf('.')
+      const provider = secret.secretSlot.slice(0, dot)
+      const name = secret.secretSlot.slice(dot + 1)
       await apiPost('/api/secrets', { provider, name, value })
       storedAny = true
       console.log(`  ✓ stored as ${secret.secretSlot} (Settings → Integrations & Keys)`)
@@ -51,7 +53,7 @@ async function promptMissingSecrets(cap: InstallCapabilityInfo): Promise<boolean
   return storedAny
 }
 
-function printCapabilityStatus(cap: InstallCapabilityInfo): void {
+export function printCapabilityStatus(cap: InstallCapabilityInfo): void {
   console.log(`\nCapability: ${cap.name} (${cap.capability})`)
   for (const s of cap.skills) console.log(legLine(s.status === 'ok', `skill ${s.name}`))
   for (const b of cap.bins) console.log(legLine(b.status === 'ok', `binary ${b.name}`))

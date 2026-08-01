@@ -16,6 +16,7 @@ import { createLogger } from '../../../../src/core/logger'
 import { recordUsage } from '../../../../src/core/usage'
 import { getAsset, resolveFile } from '../asset-core'
 import { canExtractAssetContent, extractAssetContent } from '../content-extractor'
+import { isPdfPath, runScannedPdfEnrichment } from './scanned-pdf'
 import {
   AssetGoneError,
   applyEnrichmentResult,
@@ -162,7 +163,23 @@ async function processJob(job: EnrichmentJob): Promise<void> {
       return
     }
 
-    const resolution = await resolveEnrichmentEngine(settings, { kind: kind.kind }, { runtime: readRuntime() })
+    const rawExtracted = kind.kind === 'document'
+      ? await extractAssetContent(file.absPath, file.absPath)
+      : undefined
+    const extractedText = rawExtracted?.trim() ? rawExtracted : undefined
+    // Scanned/image-only PDFs (#747): no text layer ⇒ render the first pages
+    // and run them through the IMAGE vision pipeline instead of skipping.
+    const scannedPdf = kind.kind === 'document' && !extractedText && isPdfPath(file.absPath)
+    if (kind.kind === 'document' && !extractedText && !scannedPdf) {
+      status = 'skipped'
+      counters.skipped++
+      await markEnrichmentSkipped(job.assetId, 'document has no extractable text to summarize')
+      return
+    }
+
+    // Scanned PDFs need an IMAGE-capable engine, not a document summarizer.
+    const effectiveKind = scannedPdf ? 'image' : kind.kind
+    const resolution = await resolveEnrichmentEngine(settings, { kind: effectiveKind }, { runtime: readRuntime() })
     if (!resolution.ok) {
       status = 'skipped'
       counters.skipped++
@@ -171,16 +188,6 @@ async function processJob(job: EnrichmentJob): Promise<void> {
     }
     const engine = resolution.engine
     model = engine.modelId
-
-    const extractedText = kind.kind === 'document'
-      ? await extractAssetContent(file.absPath, file.absPath)
-      : undefined
-    if (kind.kind === 'document' && !extractedText) {
-      status = 'skipped'
-      counters.skipped++
-      await markEnrichmentSkipped(job.assetId, 'document has no extractable text to summarize')
-      return
-    }
 
     await markEnrichmentPending(job.assetId)
     notifyActivity('asset.enrich_started', actingAgent(engine.modelId), {
@@ -194,7 +201,11 @@ async function processJob(job: EnrichmentJob): Promise<void> {
       .update([job.assetId, manifest.currentVersion, engine.modelId].join('|'))
       .digest('hex')
 
-    const callProvider = () => engine.run({
+    const callProvider = scannedPdf
+      ? () => runScannedPdfEnrichment(
+          engine, file.absPath, `${job.assetId}:v${manifest.currentVersion}`, manifest.description ?? undefined,
+        )
+      : () => engine.run({
           kind: kind.kind,
           jobKey: `${job.assetId}:v${manifest.currentVersion}`,
           ...(kind.kind !== 'document' ? { mediaPath: file.absPath, mediaMime: kind.mime } : {}),

@@ -43,7 +43,7 @@ export function QueuedMessageList({ items, onRemove }: QueuedMessageListProps) {
             {item.attachments?.length ? (
               <div className="flex min-w-0 flex-wrap gap-bakin-2">
                 {item.attachments.map((attachment) =>
-                  attachment.url ? (
+                  attachment.url && attachment.mimeType.startsWith('image/') ? (
                     <img
                       key={attachment.name}
                       src={attachment.url}

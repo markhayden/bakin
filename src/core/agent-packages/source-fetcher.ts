@@ -34,10 +34,10 @@
  * Pure failure mode: any error inside the fetch path cleans up the
  * staging directory before throwing. Callers never have to clean up.
  */
-import { cpSync, existsSync, mkdirSync, rmSync, statSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { execFileSync, spawn } from 'child_process'
 import { homedir, tmpdir } from 'os'
-import { isAbsolute, join, resolve } from 'path'
+import { basename, isAbsolute, join, resolve } from 'path'
 import { randomUUID } from 'crypto'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
@@ -47,10 +47,20 @@ import {
 } from '../github-source-cache'
 import { getStagingDir, getPackagesRoot } from '../../../packages/core/src/agent-packages/package-paths'
 import { checkSubpath } from '../../../packages/core/src/install-core/source-guards'
+import { synthesizeSkillPack, type SynthesisSourceInfo } from './skill-synthesis'
+import {
+  type ClawhubClient,
+  type ClawhubVerdictState,
+  createClawhubClient,
+  evaluateVerdict,
+  sha256Hex,
+} from './clawhub-client'
+import { parseClawhubRef } from './ref-normalize'
+import { SkillRefusalError } from './errors'
 
 const log = createLogger('agent-pkg:fetch')
 
-export type SourceKind = 'local' | 'github'
+export type SourceKind = 'local' | 'github' | 'clawhub'
 
 export interface FetchedSource {
   /** Absolute path to the staging directory containing the package source. */
@@ -61,6 +71,12 @@ export interface FetchedSource {
   kind: SourceKind
   /** The original ref string (tag/branch/sha for github; '' for local). */
   ref: string
+  /** Present when the source was a raw skill bundle synthesized in staging (#687). */
+  synthesis?: { skillName: string; warnings: string[]; mentions: string[] }
+  /** Non-fatal fetch-time warnings (e.g. hub verdict unavailable) for preview surfaces. */
+  fetchWarnings?: string[]
+  /** ClawHub trust verdict, carried verbatim (never re-derived from warning text). */
+  verdictState?: ClawhubVerdictState
 }
 
 interface ParsedGithubSpec {
@@ -222,11 +238,75 @@ function cleanupStaging(stagingDir: string): void {
 
 // ─── Manifest validation (presence only — full zod parse happens in installer) ─
 
-function ensureManifestPresent(stagingDir: string): void {
-  const manifestPath = join(stagingDir, 'bakin-package.json')
-  if (!existsSync(manifestPath)) {
-    throw new Error(`Source is missing bakin-package.json (looked for ${manifestPath})`)
+/**
+ * A staged source must either be a real pack (bakin-package.json) or a raw
+ * Agent-Skills bundle (SKILL.md at root, #687) — the latter is synthesized
+ * IN PLACE into a skill-pack so everything downstream sees a normal pack.
+ * Anything else throws the classic missing-manifest error, with the bundle
+ * shape mentioned so hub users get a hint.
+ */
+/** VCS/dependency dirs a raw bundle must never carry into synthesis or projection. */
+const NON_BUNDLE_DIRS = new Set(['.git', 'node_modules'])
+
+/** Raw-bundle sanity caps (github/local); clawhub enforces the same per-manifest. */
+function assertBundleWithinCaps(dir: string, count = { files: 0, bytes: 0 }): void {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) continue
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      assertBundleWithinCaps(full, count)
+    } else if (entry.isFile()) {
+      count.files += 1
+      count.bytes += statSync(full).size
+      if (count.files > CLAWHUB_MAX_FILES) {
+        throw new SkillRefusalError(`Skill bundle has over ${CLAWHUB_MAX_FILES} files — refusing`, 'size-cap')
+      }
+      if (count.bytes > CLAWHUB_MAX_TOTAL_BYTES) {
+        throw new SkillRefusalError(`Skill bundle exceeds ${CLAWHUB_MAX_TOTAL_BYTES} bytes — refusing`, 'size-cap')
+      }
+    }
   }
+}
+
+function ensureInstallableStaging(stagingDir: string, sourceInfo: SynthesisSourceInfo): FetchedSource['synthesis'] {
+  // A pasted repo root (or a local git clone) stages a .git dir whose pack
+  // files are binary — without this, the headline paste-a-repo flow always
+  // refused with a bogus "bundle contains binary files: .git/objects/…".
+  // Runs for EVERY staged source, not just raw bundles: a manifest-bearing
+  // repo would otherwise carry .git/node_modules into the preview file list,
+  // the content hash, and the committed install dir.
+  for (const entry of readdirSync(stagingDir, { withFileTypes: true })) {
+    if (entry.isDirectory() && NON_BUNDLE_DIRS.has(entry.name)) {
+      rmSync(join(stagingDir, entry.name), { recursive: true, force: true })
+    }
+  }
+  // Bound the tree before anything reads every file into memory (clawhub
+  // enforces this per-manifest; github/local had no cap).
+  assertBundleWithinCaps(stagingDir)
+
+  if (existsSync(join(stagingDir, 'bakin-package.json'))) return undefined
+  const hasSkillMd = readdirSync(stagingDir, { withFileTypes: true })
+    .some((e) => e.isFile() && /^skill\.md$/i.test(e.name))
+  if (!hasSkillMd) {
+    throw new Error(
+      `Source is missing bakin-package.json (and has no SKILL.md, so it is not a raw skill bundle either): ${stagingDir}`,
+    )
+  }
+  const result = synthesizeSkillPack(stagingDir, sourceInfo)
+  if (!result.ok) {
+    // binary-files / unsupported-os are trust refusals (403 + exit 2);
+    // no-skill-md / has-manifest / invalid-name are plain input errors.
+    if (result.reason === 'binary-files') throw new SkillRefusalError(`Cannot install skill bundle: ${result.error}`, 'binary-files')
+    if (result.reason === 'unsupported-os') throw new SkillRefusalError(`Cannot install skill bundle: ${result.error}`, 'unsupported-os')
+    throw new Error(`Cannot install skill bundle: ${result.error}`)
+  }
+  return { skillName: result.skillName, warnings: result.warnings, mentions: result.mentions }
+}
+
+/** Skill-name fallback from a github ref: the subpath basename, else the repo. */
+function githubFallbackName(spec: ParsedGithubSpec): string {
+  const fromSubpath = spec.subpath ? spec.subpath.split('/').filter(Boolean).pop() : undefined
+  return fromSubpath || spec.repo.replace(/\.git$/, '')
 }
 
 function resolveGithubSubpath(cloneDir: string, subpath: string): string {
@@ -243,10 +323,8 @@ function ensureGithubSubpathPackagePresent(cloneDir: string, subpath: string): s
   if (!existsSync(subpathDir) || !statSync(subpathDir).isDirectory()) {
     throw new Error(`Github source subpath "${subpath}" not found in repository`)
   }
-  const manifestPath = join(subpathDir, 'bakin-package.json')
-  if (!existsSync(manifestPath)) {
-    throw new Error(`Github source subpath "${subpath}" is missing bakin-package.json`)
-  }
+  // Manifest OR raw skill bundle — ensureInstallableStaging on the copied
+  // staging decides (raw bundles are synthesized there, #687).
   return subpathDir
 }
 
@@ -263,15 +341,16 @@ function fetchLocal(source: string): FetchedSource {
   }
 
   const stagingDir = freshStagingDir('local')
+  let synthesis: FetchedSource['synthesis']
   try {
     mkdirSync(stagingDir, { recursive: true })
     cpSync(absSource, stagingDir, { recursive: true, dereference: false })
-    ensureManifestPresent(stagingDir)
+    synthesis = ensureInstallableStaging(stagingDir, { source, fallbackName: basename(absSource) })
   } catch (err) {
     cleanupStaging(stagingDir)
     throw err
   }
-  return { stagingDir, commitSha: '', kind: 'local', ref: '' }
+  return { stagingDir, commitSha: '', kind: 'local', ref: '', ...(synthesis ? { synthesis } : {}) }
 }
 
 // ─── Github fetch ────────────────────────────────────────────────────────────
@@ -340,14 +419,17 @@ export function fetchGithubWithRunner(
     if (spec.subpath) {
       const packageDir = ensureGithubSubpathPackagePresent(cloneTarget, spec.subpath)
       cpSync(packageDir, staging, { recursive: true, dereference: false })
-      ensureManifestPresent(staging)
-    } else {
-      ensureManifestPresent(staging)
     }
 
     const commitSha = git(['-C', cloneTarget, 'rev-parse', 'HEAD']).trim()
+    const synthesis = ensureInstallableStaging(staging, {
+      source,
+      ref: spec.ref ?? undefined,
+      resolvedSha: commitSha,
+      fallbackName: githubFallbackName(spec),
+    })
     if (spec.subpath) cleanupStaging(cloneTarget)
-    return { stagingDir: staging, commitSha, kind: 'github', ref: spec.ref ?? '' }
+    return { stagingDir: staging, commitSha, kind: 'github', ref: spec.ref ?? '', ...(synthesis ? { synthesis } : {}) }
   } catch (err) {
     cleanupStaging(staging)
     if (spec.subpath) cleanupStaging(cloneTarget)
@@ -374,8 +456,13 @@ export async function fetchGithubWithRunnerAsync(
       subpath: spec.subpath || undefined,
       git,
     })
-    ensureManifestPresent(staging)
-    return { stagingDir: staging, commitSha: checkout.commitSha, kind: 'github', ref: spec.ref ?? '' }
+    const synthesis = ensureInstallableStaging(staging, {
+      source,
+      ref: spec.ref ?? undefined,
+      resolvedSha: checkout.commitSha,
+      fallbackName: githubFallbackName(spec),
+    })
+    return { stagingDir: staging, commitSha: checkout.commitSha, kind: 'github', ref: spec.ref ?? '', ...(synthesis ? { synthesis } : {}) }
   } catch (err) {
     cleanupStaging(staging)
     throw err
@@ -402,6 +489,117 @@ async function fetchGithubAsync(source: string): Promise<FetchedSource> {
   }
 }
 
+// ─── ClawHub fetch (#687) ────────────────────────────────────────────────────
+
+export function isClawhubSource(source: string): boolean {
+  return source.startsWith('clawhub:')
+}
+
+/** Bundle sanity caps — hub skills are text; anything bigger is wrong. */
+const CLAWHUB_MAX_FILES = 512
+const CLAWHUB_MAX_TOTAL_BYTES = 20 * 1024 * 1024
+
+function isSafeBundlePath(path: string): boolean {
+  return Boolean(path)
+    && !path.startsWith('/')
+    && !path.includes('\\')
+    && !path.split('/').some((part) => part === '..' || part === '' || part === '.')
+}
+
+/**
+ * Fetch a ClawHub skill into staging: resolve version, evaluate the hub
+ * verdict (hard refusal on malware/suspicious/moderation flags — D5, no
+ * override), then download each file individually and verify it against the
+ * version manifest's per-file sha256 pin. No archives touch disk. Split out
+ * with an injectable client so unit tests never hit the network.
+ */
+export async function fetchClawhubWithClient(
+  source: string,
+  client: ClawhubClient,
+  staging: string,
+): Promise<FetchedSource> {
+  const ref = parseClawhubRef(source)
+
+  cleanupStaging(staging)
+  mkdirSync(staging, { recursive: true })
+
+  try {
+    // Ambiguous bare slugs throw AmbiguousClawhubSlugError here — surfaces
+    // list the owner-qualified options.
+    const version = ref.version ?? await client.resolveLatestVersion(ref.slug, ref.owner)
+    const detail = await client.getVersionDetail(ref.slug, version, ref.owner)
+
+    // Trust gate teeth, engine-level (preview UX layers on top in T9):
+    const scan = await client.getScan(ref.slug, ref.owner)
+    const verdict = evaluateVerdict(scan, detail.version.security)
+    if (verdict.state === 'refused') {
+      throw new SkillRefusalError(
+        `Refusing to install "${ref.slug}" — ${verdict.refusals.join('; ')}. ` +
+          'There is no override for hub security refusals.',
+        'hub-verdict',
+      )
+    }
+
+    const files = detail.version.files
+    if (files.length > CLAWHUB_MAX_FILES) {
+      throw new SkillRefusalError(`Skill "${ref.slug}" lists ${files.length} files — over the ${CLAWHUB_MAX_FILES}-file sanity cap`, 'size-cap')
+    }
+    const totalBytes = files.reduce((sum, f) => sum + f.size, 0)
+    if (totalBytes > CLAWHUB_MAX_TOTAL_BYTES) {
+      throw new SkillRefusalError(`Skill "${ref.slug}" is ${totalBytes} bytes — over the ${CLAWHUB_MAX_TOTAL_BYTES}-byte sanity cap`, 'size-cap')
+    }
+    for (const file of files) {
+      if (!isSafeBundlePath(file.path)) {
+        throw new SkillRefusalError(`Skill "${ref.slug}" lists an unsafe file path "${file.path}" — refusing`, 'unsafe-path')
+      }
+    }
+
+    for (const file of files) {
+      const bytes = await client.getFileBytes(ref.slug, file.path, { owner: ref.owner, version, expectedSize: file.size })
+      const actual = sha256Hex(bytes)
+      if (actual !== file.sha256) {
+        throw new Error(
+          `Skill "${ref.slug}" file "${file.path}" failed sha256 verification ` +
+            `(expected ${file.sha256}, got ${actual}) — refusing`,
+        )
+      }
+      const target = join(staging, file.path)
+      mkdirSync(resolve(target, '..'), { recursive: true })
+      writeFileSync(target, bytes)
+    }
+
+    const synthesis = ensureInstallableStaging(staging, {
+      source,
+      ref: version,
+      resolvedSha: detail.version.security?.sha256hash,
+      hubVersion: version,
+      fallbackName: ref.slug,
+    })
+    return {
+      stagingDir: staging,
+      commitSha: detail.version.security?.sha256hash ?? '',
+      kind: 'clawhub',
+      ref: version,
+      verdictState: verdict.state,
+      ...(synthesis ? { synthesis } : {}),
+      ...(verdict.warnings.length > 0 ? { fetchWarnings: verdict.warnings } : {}),
+    }
+  } catch (err) {
+    cleanupStaging(staging)
+    throw err
+  }
+}
+
+async function fetchClawhub(source: string): Promise<FetchedSource> {
+  const staging = freshStagingDir('clawhub')
+  try {
+    return await fetchClawhubWithClient(source, createClawhubClient(), staging)
+  } catch (err) {
+    cleanupStaging(staging)
+    throw err
+  }
+}
+
 // ─── Public entry point ──────────────────────────────────────────────────────
 
 /**
@@ -414,12 +612,15 @@ export function fetchSource(source: string): FetchedSource {
   if (typeof source !== 'string' || source.length === 0) {
     throw new Error('Source must be a non-empty string')
   }
+  if (isClawhubSource(source)) {
+    throw new Error('clawhub: sources are network-fetched and only supported on the async path')
+  }
   if (isGithubSource(source)) return fetchGithub(source)
   if (isLocalPath(source)) return fetchLocal(source)
 
   // Bare name → explicit error per Q5 of the spec refinement.
   throw new Error(
-    `"${source}" is not a valid source. Use github:user/repo[@ref][#subpath] or a local path (./, ../, /, ~/).`,
+    `"${source}" is not a valid source. Use clawhub:@owner/slug, github:user/repo[@ref][#subpath], or a local path (./, ../, /, ~/).`,
   )
 }
 
@@ -427,10 +628,11 @@ export async function fetchSourceAsync(source: string): Promise<FetchedSource> {
   if (typeof source !== 'string' || source.length === 0) {
     throw new Error('Source must be a non-empty string')
   }
+  if (isClawhubSource(source)) return await fetchClawhub(source)
   if (isGithubSource(source)) return await fetchGithubAsync(source)
   if (isLocalPath(source)) return fetchLocal(source)
 
   throw new Error(
-    `"${source}" is not a valid source. Use github:user/repo[@ref][#subpath] or a local path (./, ../, /, ~/).`,
+    `"${source}" is not a valid source. Use clawhub:@owner/slug, github:user/repo[@ref][#subpath], or a local path (./, ../, /, ~/).`,
   )
 }

@@ -29,13 +29,14 @@ import { getContentDir, getBakinPaths } from './src/core/content-dir'
 import { broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
 import { createAppServices } from './src/core/app-services'
+import { bootDeliveryBridge } from './src/core/delivery'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import * as watcher from './src/core/watcher'
 import { runStartupRecovery } from './src/core/server/startup-recovery'
 import { createRequestHandler } from './src/core/server/request-handler'
 import { getBootId } from './src/core/boot-id'
 import { acquireServerLock, formatBindFailureHelp } from './src/core/server-lock'
-import { ensureBakinBinOnPath, injectIntegrationEnv, injectPackModelEnv } from './src/core/secret-env'
+import { STATIC_ENV_SECRET_MAPPINGS, collectPackSecretMappings, ensureBakinBinOnPath, injectIntegrationEnv, injectPackModelEnv } from './src/core/secret-env'
 import { registerShutdownHandlers, triggerShutdown } from './src/core/lifecycle'
 import { generateDocs } from './src/core/api-docs'
 import type { buildOpenApiDocument } from './packages/host/src/api/docs-runtime'
@@ -84,7 +85,7 @@ const CONTENT_DIR = getContentDir()
 // Integration env + PATH injection BEFORE services/dispatch: Pi agent shells
 // inherit this process's env, so stored integration secrets (unset-only,
 // env-first) and Bakin's bin dir must be in place before any turn can run.
-injectIntegrationEnv()
+injectIntegrationEnv([...STATIC_ENV_SECRET_MAPPINGS, ...collectPackSecretMappings()])
 injectPackModelEnv()
 ensureBakinBinOnPath()
 
@@ -119,6 +120,16 @@ const eventBus = new BakinEventBus(broadcast)
     await appServices.runtime.provisionToolAccess()
   } catch (err) {
     log.warn('Runtime tool-access provisioning failed at boot', err)
+  }
+
+  // Discord delivery bridge (#669): connects only when configured AND the
+  // active runtime lacks native delivery (D11). Server-boot only — never
+  // inside createAppServices. Never block boot on a transport failure; the
+  // delivery.discord doctor check surfaces a down bridge.
+  try {
+    await bootDeliveryBridge(appServices.runtime)
+  } catch (err) {
+    log.warn('Discord delivery bridge boot failed', err)
   }
   // The Bakin runtime skill previously only installed via the openclaw-gated
   // onboarding component, so fresh installs on other runtimes (Pi implements

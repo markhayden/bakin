@@ -108,6 +108,7 @@ export default defineConfig({
             { label: 'Workflows', slug: 'using/workflows' },
             { label: 'Memory', slug: 'using/memory' },
             { label: 'Team', slug: 'using/team' },
+            { label: 'Hub Skills', slug: 'using/skills' },
             { label: 'Models', slug: 'using/models' },
             { label: 'Development', slug: 'using/git' },
             { label: 'Health', slug: 'using/health' },

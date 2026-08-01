@@ -52,8 +52,12 @@ describe('HeartbeatTab', () => {
       () => new Promise<Response>((res) => { resolveFetch = res }),
     ) as unknown as typeof global.fetch
 
-    render(<HeartbeatTab agentId="pixel" />)
+    await act(async () => {
+      render(<HeartbeatTab agentId="pixel" />)
+    })
     expect(screen.getByText(/Loading heartbeat/)).toBeDefined()
+    // Resolve INSIDE act so the resulting re-render lands in this test rather
+    // than during the settle hook — the loading assertion above already ran.
     await act(async () => {
       resolveFetch!({ ok: true, json: () => Promise.resolve({ ok: true, heartbeat: null }) } as Response)
     })
@@ -62,7 +66,9 @@ describe('HeartbeatTab', () => {
 
   it('renders the empty state when heartbeat is null', async () => {
     setupFetch({ ok: true, heartbeat: null })
-    render(<HeartbeatTab agentId="pixel" />)
+    await act(async () => {
+      render(<HeartbeatTab agentId="pixel" />)
+    })
     const title = await screen.findByText(/No heartbeat yet/)
     expect(title.closest('[data-slot="system-state"]')?.getAttribute('data-scope')).toBe('page')
   })
@@ -75,7 +81,9 @@ describe('HeartbeatTab', () => {
         lastUpdated: new Date(Date.now() - 5 * 60 * 1000).toISOString(), // 5 minutes ago
       },
     })
-    render(<HeartbeatTab agentId="pixel" />)
+    await act(async () => {
+      render(<HeartbeatTab agentId="pixel" />)
+    })
     await waitFor(() => expect(screen.getByTestId('markdown')).toBeDefined())
     expect(screen.getByTestId('markdown').textContent).toBe('## Status\n\nAlive.')
     expect(screen.getByText(/Last updated 5m ago/)).toBeDefined()
@@ -86,7 +94,9 @@ describe('HeartbeatTab', () => {
       ok: true,
       heartbeat: { content: 'x', lastUpdated: new Date(Date.now() - 12 * 1000).toISOString() },
     })
-    render(<HeartbeatTab agentId="pixel" />)
+    await act(async () => {
+      render(<HeartbeatTab agentId="pixel" />)
+    })
     await waitFor(() => expect(screen.getByText(/Last updated/)).toBeDefined())
     expect(screen.getByText(/Last updated 1[12]s ago/)).toBeDefined()
   })
@@ -96,13 +106,17 @@ describe('HeartbeatTab', () => {
       ok: true,
       heartbeat: { content: 'x', lastUpdated: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() },
     })
-    render(<HeartbeatTab agentId="pixel" />)
+    await act(async () => {
+      render(<HeartbeatTab agentId="pixel" />)
+    })
     await waitFor(() => expect(screen.getByText(/Last updated 3d ago/)).toBeDefined())
   })
 
   it('renders an error state when the API returns ok:false', async () => {
     setupFetch({ ok: false, heartbeat: null, error: 'boom' })
-    render(<HeartbeatTab agentId="pixel" />)
+    await act(async () => {
+      render(<HeartbeatTab agentId="pixel" />)
+    })
     await waitFor(() => expect(screen.getByText('boom')).toBeDefined())
   })
 
@@ -111,7 +125,9 @@ describe('HeartbeatTab', () => {
       ok: true,
       heartbeat: { content: 'alive', lastUpdated: new Date().toISOString() },
     })
-    render(<HeartbeatTab agentId="pixel" />)
+    await act(async () => {
+      render(<HeartbeatTab agentId="pixel" />)
+    })
     await waitFor(() => expect(screen.getByTestId('markdown')).toBeDefined())
 
     // Button is present so the corner real-estate matches Soul/Rules/Tools

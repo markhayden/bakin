@@ -67,6 +67,15 @@ unconditionally). A channel button reject with no comment records the
 provider-neutral default reason `Rejected via runtime channel (no reason
 provided)` (`plugins/workflows/lib/channel-approvals.ts`).
 
+On Pi, the same surface is served by the Discord delivery bridge when
+configured (#669, `delivery: 'shimmed'` — `.claude/knowledge/delivery-bridge.md`):
+buttoned cards with a Review-in-Bakin link, an approver allowlist that fails
+closed, and — unlike the OpenClaw native path — a Discord MODAL that collects
+the typed reject reason (`requireRejectReason` makes the input required), so
+bridge rejects carry the real reason instead of the canned default. Consumers
+in this plugin are unchanged: the bridge emits the same
+`ApprovalResolveEvent` into `wireChannelApprovals`.
+
 Provider approval buttons are a convenience surface, not Bakin state. OpenClaw
 native approval requests can expire before a workflow gate does, and provider
 events may be missed if Bakin is offline. The durable Bakin approval record and

@@ -78,6 +78,24 @@ export interface SearchAdapterSettings extends Record<string, unknown> {
   cleanupInterval: string
 }
 
+export interface DiscordIntegrationSettings {
+  enabled: boolean
+  /** Guild(s) whose text channels the bridge enumerates for `channels.list()`. */
+  guildIds: string[]
+  /** Discord user IDs allowed to decide approval gates. Empty = deny all (fail closed). */
+  approvers: string[]
+  inbound: {
+    /** Effective only while the bridge itself is up. */
+    enabled: boolean
+    /** Bakin agent that answers inbound chat. */
+    agentId: string
+    /** Guild messages must @mention the bot; DMs are exempt. */
+    requireMention: boolean
+    /** Discord user IDs allowed to chat with the bot. Empty = deny all (fail closed). */
+    allowFrom: string[]
+  }
+}
+
 export interface BakinSettings {
   runtime: {
     adapter: RuntimeAdapterName
@@ -287,6 +305,16 @@ export interface BakinSettings {
     target: string
     channelAliases: Record<string, string>
   }
+  /**
+   * Owner-level integration config (#669). Non-secret only — settings.json
+   * is broadcast by GET /api/settings; transport secrets live in the secret
+   * store (`discord.botToken`). List fields accept comma-separated strings
+   * (the System & Alerts renderer has no array field type) and normalize to
+   * string arrays.
+   */
+  integrations: {
+    discord: DiscordIntegrationSettings
+  }
   workflow: {
     stepTimeoutMs: number
     maxRedispatches: number
@@ -448,6 +476,21 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     target: '',
     channelAliases: {},
   },
+  integrations: {
+    discord: {
+      enabled: false,
+      guildIds: [],
+      approvers: [],
+      inbound: {
+        // Ships OFF until the inbound feature exists (Phase B flips the
+        // default) — a default must never describe behavior that isn't built.
+        enabled: false,
+        agentId: 'main',
+        requireMention: true,
+        allowFrom: [],
+      },
+    },
+  },
   workflow: {
     stepTimeoutMs: 60 * 60 * 1000,       // 1 hour
     maxRedispatches: 2,
@@ -517,11 +560,56 @@ function normalizeDoctorSettings(input: BakinSettings['doctor']): BakinSettings[
   return { ...input, sensitivity }
 }
 
+/**
+ * Coerce a list field to a trimmed, deduped string array. Accepts a real
+ * array or a comma-separated string (the System & Alerts renderer edits
+ * these as CSV text fields); anything else falls back to the default.
+ */
+function normalizeStringList(input: unknown, fallback: string[]): string[] {
+  const entries = Array.isArray(input)
+    ? input
+    : typeof input === 'string'
+      ? input.split(',')
+      : null
+  if (!entries) return fallback
+  return Array.from(new Set(
+    entries
+      .filter((value): value is string => typeof value === 'string')
+      .map(value => value.trim())
+      .filter(value => value.length > 0),
+  ))
+}
+
+function normalizeIntegrationsSettings(input: unknown): BakinSettings['integrations'] {
+  const raw = isRecord(input) ? input : {}
+  const discord = isRecord(raw.discord) ? raw.discord : {}
+  const inbound = isRecord(discord.inbound) ? discord.inbound : {}
+  const defaults = DEFAULT_SETTINGS.integrations.discord
+  return {
+    discord: {
+      enabled: typeof discord.enabled === 'boolean' ? discord.enabled : defaults.enabled,
+      guildIds: normalizeStringList(discord.guildIds, defaults.guildIds),
+      approvers: normalizeStringList(discord.approvers, defaults.approvers),
+      inbound: {
+        enabled: typeof inbound.enabled === 'boolean' ? inbound.enabled : defaults.inbound.enabled,
+        agentId: typeof inbound.agentId === 'string' && inbound.agentId.trim().length > 0
+          ? inbound.agentId.trim()
+          : defaults.inbound.agentId,
+        requireMention: typeof inbound.requireMention === 'boolean'
+          ? inbound.requireMention
+          : defaults.inbound.requireMention,
+        allowFrom: normalizeStringList(inbound.allowFrom, defaults.inbound.allowFrom),
+      },
+    },
+  }
+}
+
 function normalizeSettings(settings: BakinSettings): BakinSettings {
   return {
     ...settings,
     diagnostics: normalizeDiagnosticsSettings(settings.diagnostics),
     doctor: normalizeDoctorSettings(settings.doctor),
+    integrations: normalizeIntegrationsSettings(settings.integrations),
     plugins: normalizePluginSettings(settings.plugins),
   }
 }

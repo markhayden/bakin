@@ -346,6 +346,18 @@ export const AgentManifestSchema = z.object({
   dependencies: DependenciesSchema,
 })
 
+/**
+ * Provenance of a pack synthesized from an external hub bundle (#687):
+ * the original source ref, the upstream version/ref it resolved to, and the
+ * content sha observed at fetch time. Recorded by manifest synthesis so a
+ * hub skill can always answer "where did this come from" without the hub.
+ */
+const UpstreamSchema = z.object({
+  source: z.string().min(1),
+  ref: z.string().optional(),
+  resolvedSha: z.string().optional(),
+})
+
 export const SkillPackManifestSchema = z.object({
   ...BaseManifestFields,
   kind: z.literal('skill-pack'),
@@ -356,6 +368,8 @@ export const SkillPackManifestSchema = z.object({
   runtimes: RuntimesSchema,
   requires: RequiresSchema,
   platforms: PlatformsSchema,
+  /** Hub provenance for synthesized packs (#687). */
+  upstream: UpstreamSchema.optional(),
 })
 
 export const WorkflowPackManifestSchema = z.object({

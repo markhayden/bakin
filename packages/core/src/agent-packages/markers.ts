@@ -17,7 +17,7 @@
  * functions of file contents, not affected by mtime/inode/permissions.
  */
 import { createHash } from 'crypto'
-import { closeSync, existsSync, openSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'fs'
+import { closeSync, existsSync, openSync, readFileSync, readdirSync, readlinkSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { z } from 'zod'
 
@@ -158,7 +158,20 @@ function walkSorted(root: string, dir: string, out: string[]): void {
     .sort((a, b) => a.name.localeCompare(b.name))
   for (const e of entries) {
     const full = join(dir, e.name)
-    if (e.isDirectory()) {
+    if (e.isSymbolicLink()) {
+      // Symlinks are never projected, but they ARE part of the tree the user
+      // consented to — hashing their target keeps a retarget from sliding
+      // past the drift check (#687 consent binding).
+      const rel = full.slice(root.length + 1)
+      let target = '<unreadable>'
+      try {
+        target = readlinkSync(full)
+      } catch {
+        // Broken/racing link — the placeholder still changes the hash if it
+        // appears or disappears, which is what the binding needs.
+      }
+      out.push(`${rel}\n@symlink:${target}\n`)
+    } else if (e.isDirectory()) {
       walkSorted(root, full, out)
     } else if (e.isFile()) {
       const rel = full.slice(root.length + 1)

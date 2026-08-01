@@ -58,8 +58,8 @@ afterEach(() => {
   unregisterPlugin('assets')
 })
 
-function openOverlay() {
-  fireEvent.keyDown(window, { key: 'k', metaKey: true })
+async function openOverlay() {
+  await act(async () => { fireEvent.keyDown(window, { key: 'k', metaKey: true }) })
 }
 
 describe('GlobalSearchOverlay', () => {
@@ -80,10 +80,12 @@ describe('GlobalSearchOverlay', () => {
       },
     }))
 
-    render(<GlobalSearchOverlay />)
-    openOverlay()
+    await act(async () => {
+      render(<GlobalSearchOverlay />)
+    })
+    await openOverlay()
     const input = await screen.findByPlaceholderText(/Search assets/)
-    fireEvent.input(input, { target: { value: 'dashboard' } })
+    await act(async () => { fireEvent.input(input, { target: { value: 'dashboard' } }) })
 
     await waitFor(() => expect(screen.getByTestId('global-search-hit-a1')).toBeTruthy(), { timeout: 3000 })
     // registered renderer shaped the assets hit
@@ -105,13 +107,15 @@ describe('GlobalSearchOverlay', () => {
       body: { results: [HIT('a1', 'bakin_assets')], meta: { query: 'x', total: 1, took_ms: 1, source: 'search' } },
     }))
 
-    render(<GlobalSearchOverlay />)
-    openOverlay()
+    await act(async () => {
+      render(<GlobalSearchOverlay />)
+    })
+    await openOverlay()
     const input = await screen.findByPlaceholderText(/Search assets/)
-    fireEvent.input(input, { target: { value: 'red' } })
+    await act(async () => { fireEvent.input(input, { target: { value: 'red' } }) })
     await waitFor(() => expect(screen.getByTestId('global-search-hit-a1')).toBeTruthy(), { timeout: 3000 })
 
-    fireEvent.click(screen.getByTestId('global-search-hit-a1'))
+    await act(async () => { fireEvent.click(screen.getByTestId('global-search-hit-a1')) })
     await waitFor(() => expect(navigateCalls.length).toBe(1))
     expect(navigateCalls[0]).toEqual({ to: '/assets/a1' })
     // closed: the input is gone
@@ -125,15 +129,17 @@ describe('GlobalSearchOverlay', () => {
       body: { results: [HIT('job-1', 'bakin_schedule', { title: 'Nightly sweep' })], meta: { query: 'x', total: 1, took_ms: 1, source: 'search' } },
     }))
 
-    render(<GlobalSearchOverlay />)
-    openOverlay()
+    await act(async () => {
+      render(<GlobalSearchOverlay />)
+    })
+    await openOverlay()
     const input = await screen.findByPlaceholderText(/Search assets/)
-    fireEvent.input(input, { target: { value: 'sweep' } })
+    await act(async () => { fireEvent.input(input, { target: { value: 'sweep' } }) })
     await waitFor(() => expect(screen.getByTestId('global-search-hit-job-1')).toBeTruthy(), { timeout: 3000 })
 
     const hit = screen.getByTestId('global-search-hit-job-1')
     expect(hit.getAttribute('data-inert')).toBe('true')
-    fireEvent.click(hit)
+    await act(async () => { fireEvent.click(hit) })
     expect(navigateCalls.length).toBe(0)
     // overlay stays open — a dead click must not close it
     expect(screen.queryByPlaceholderText(/Search assets/)).not.toBeNull()
@@ -141,10 +147,12 @@ describe('GlobalSearchOverlay', () => {
 
   it('renders the honest unavailable state on the 503 contract', async () => {
     mockSearchFetch(() => ({ status: 503, body: { error: 'search_unavailable' } }))
-    render(<GlobalSearchOverlay />)
-    openOverlay()
+    await act(async () => {
+      render(<GlobalSearchOverlay />)
+    })
+    await openOverlay()
     const input = await screen.findByPlaceholderText(/Search assets/)
-    fireEvent.input(input, { target: { value: 'down' } })
+    await act(async () => { fireEvent.input(input, { target: { value: 'down' } }) })
     await waitFor(() => expect(screen.getByTestId('search-unavailable')).toBeTruthy(), { timeout: 3000 })
   })
 
@@ -161,8 +169,10 @@ describe('GlobalSearchOverlay', () => {
       setPluginLoadState(id, 'loading')
     })
     try {
-      render(<GlobalSearchOverlay />)
-      openOverlay()
+      await act(async () => {
+        render(<GlobalSearchOverlay />)
+      })
+      await openOverlay()
       await screen.findByPlaceholderText(/Search assets/)
       expect(loaded.sort()).toEqual(['lzso-a', 'lzso-b'])
     } finally {
@@ -185,10 +195,12 @@ describe('GlobalSearchOverlay', () => {
         },
       },
     }))
-    render(<GlobalSearchOverlay />)
-    openOverlay()
+    await act(async () => {
+      render(<GlobalSearchOverlay />)
+    })
+    await openOverlay()
     const input = await screen.findByPlaceholderText(/Search assets/)
-    fireEvent.input(input, { target: { value: 'rose' } })
+    await act(async () => { fireEvent.input(input, { target: { value: 'rose' } }) })
     await waitFor(() => expect(screen.getByTestId('search-partial-chip')).toBeTruthy(), { timeout: 3000 })
     // The control's accessible name explains the slow source, stripped of the table prefix.
     expect(screen.getByTestId('search-partial-chip').getAttribute('aria-label')).toContain('memory: no answer in time')
@@ -199,10 +211,12 @@ describe('GlobalSearchOverlay', () => {
       status: 200,
       body: { results: [HIT('a1', 'bakin_assets')], meta: { query: 'x', total: 1, took_ms: 30, source: 'search', tables: [{ table: 'bakin_assets', hits: 1, took_ms: 30 }] } },
     }))
-    render(<GlobalSearchOverlay />)
-    openOverlay()
+    await act(async () => {
+      render(<GlobalSearchOverlay />)
+    })
+    await openOverlay()
     const input = await screen.findByPlaceholderText(/Search assets/)
-    fireEvent.input(input, { target: { value: 'rose' } })
+    await act(async () => { fireEvent.input(input, { target: { value: 'rose' } }) })
     await waitFor(() => expect(screen.getByTestId('global-search-hit-a1')).toBeTruthy(), { timeout: 3000 })
     expect(screen.queryAllByTestId('search-partial-chip').length).toBe(0)
   })
@@ -217,10 +231,12 @@ describe('GlobalSearchOverlay', () => {
     // already-initialized module graph as the component under test.
     const { useContentStore } = require('../../src/hooks/use-content-store')
     act(() => { useContentStore.setState({ debug: false }) })
-    render(<GlobalSearchOverlay />)
-    openOverlay()
+    await act(async () => {
+      render(<GlobalSearchOverlay />)
+    })
+    await openOverlay()
     const input = await screen.findByPlaceholderText(/Search assets/)
-    fireEvent.input(input, { target: { value: 'rose' } })
+    await act(async () => { fireEvent.input(input, { target: { value: 'rose' } }) })
     await waitFor(() => expect(screen.getByTestId('global-search-hit-a1')).toBeTruthy(), { timeout: 3000 })
     expect(screen.queryAllByTestId('score-overlay').length).toBe(0)
 
@@ -232,15 +248,17 @@ describe('GlobalSearchOverlay', () => {
   })
 
   it('does not hijack ⌘K while typing in an input', async () => {
-    render(
-      <div>
-        <input data-testid="outside-input" />
-        <GlobalSearchOverlay />
-      </div>,
-    )
+    await act(async () => {
+      render(
+        <div>
+          <input data-testid="outside-input" />
+          <GlobalSearchOverlay />
+        </div>,
+      )
+    })
     const outside = screen.getByTestId('outside-input')
     outside.focus()
-    fireEvent.keyDown(outside, { key: 'k', metaKey: true })
+    await act(async () => { fireEvent.keyDown(outside, { key: 'k', metaKey: true }) })
     expect(screen.queryByPlaceholderText(/Search assets/)).toBeNull()
   })
 })

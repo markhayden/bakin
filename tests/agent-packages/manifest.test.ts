@@ -538,3 +538,48 @@ describe('manifest schema — review hardening pins', () => {
     })).toThrow()
   })
 })
+
+describe('manifest schema — upstream provenance stanza (#687)', () => {
+  function skillPackWithUpstream(upstream: unknown): Record<string, unknown> {
+    const base = loadFixture('skill-pack') as Record<string, unknown>
+    return { ...base, upstream }
+  }
+
+  it('parses upstream on skill-packs and round-trips it', () => {
+    const m = parseManifest(skillPackWithUpstream({
+      source: 'clawhub:@steipete/weather',
+      ref: '2.0.1',
+      resolvedSha: 'b'.repeat(64),
+    }))
+    if (m.kind !== 'skill-pack') throw new Error('expected skill-pack')
+    expect(m.upstream).toEqual({
+      source: 'clawhub:@steipete/weather',
+      ref: '2.0.1',
+      resolvedSha: 'b'.repeat(64),
+    })
+  })
+
+  it('upstream is optional and partial (source-only is valid)', () => {
+    const m = parseManifest(skillPackWithUpstream({ source: 'github:badlogic/pi-skills#brave-search' }))
+    if (m.kind !== 'skill-pack') throw new Error('expected skill-pack')
+    expect(m.upstream?.source).toBe('github:badlogic/pi-skills#brave-search')
+    expect(m.upstream?.ref).toBeUndefined()
+
+    const plain = parseManifest(loadFixture('skill-pack') as Record<string, unknown>)
+    if (plain.kind !== 'skill-pack') throw new Error('expected skill-pack')
+    expect(plain.upstream).toBeUndefined()
+  })
+
+  it('rejects upstream without a source and non-string fields', () => {
+    expect(() => parseManifest(skillPackWithUpstream({ ref: '1.0.0' }))).toThrow()
+    expect(() => parseManifest(skillPackWithUpstream({ source: 42 }))).toThrow()
+  })
+
+  it('agent kind does not accept upstream (skill-pack only)', () => {
+    const base = loadFixture('agent') as Record<string, unknown>
+    const m = parseManifest({ ...base, upstream: { source: 'clawhub:@x/y' } })
+    // Unknown keys are stripped by default zod object parsing — the field
+    // must not surface on non-skill-pack kinds.
+    expect((m as Record<string, unknown>).upstream).toBeUndefined()
+  })
+})
