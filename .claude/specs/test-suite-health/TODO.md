@@ -92,28 +92,28 @@ sets it itself. The block this repo carried was decorative. Test-run env now liv
 `tests/setup.ts` preload, which actually executes, using `??=` so a shell override wins.
 
 ## CP-B — Act debt (294 → 0)
-- [ ] T3 schedule — `calendar-views` (130)
-- [ ] T4 workflows — `workflow-actions` (76) + `node-config-drawer` (4) + `approvals-attention` (1)
-- [ ] T5 team — `overview-tab` (50) + `heartbeat-tab` (2) + `active-context-tab` (2)
-- [ ] T6 tail — `task-detail-gate-refresh` (12), `chat-page` (8), `runtime-hub` (2), `brands-page` (2), `use-record-deep-link` (2), `task-detail-dialog` (1), `brand-detail-save` (1), `copy-to-clipboard` (1)
+- [x] T3 schedule — `calendar-views` (130)
+- [x] T4 workflows — `workflow-actions` (76) + `node-config-drawer` (4) + `approvals-attention` (1)
+- [x] T5 team — `overview-tab` (50) + `heartbeat-tab` (2) + `active-context-tab` (2)
+- [x] T6 tail — `task-detail-gate-refresh` (12), `chat-page` (8), `runtime-hub` (2), `brands-page` (2), `use-record-deep-link` (2), `task-detail-dialog` (1), `brand-detail-save` (1), `copy-to-clipboard` (1)
 
 ## CP-C — Gate
-- [ ] T7 act gate in `tests/setup.ts` + **prove it bites** (A2)
+- [x] T7 act gate in `tests/setup.ts` + **prove it bites** (A2)
 
 ## CP-D — Fixed sleeps (78 sites, 39 files)
-- [ ] T8 `tests/helpers/wait.ts` + replace 4 hand-rolled copies (`dispatch-concurrency`, `conversation-turns`, `chat/queue`, `budget-notify`)
-- [ ] T9 adapter-openclaw heavy — `trajectory-forensics` (11), `gateway-rpc` (10), `runtime-abort` (3), `runtime-channels` (1) · run 3×
-- [ ] T10 remaining 35 files
+- [x] T8 `tests/helpers/wait.ts` + replace 4 hand-rolled copies (`dispatch-concurrency`, `conversation-turns`, `chat/queue`, `budget-notify`)
+- [x] T9 adapter-openclaw heavy — `trajectory-forensics` (11), `gateway-rpc` (10), `runtime-abort` (3), `runtime-channels` (1) · run 3×
+- [x] T10 remaining files
 
 ## CP-E — Hygiene
-- [ ] T11 delete 11 zombie skips
+- [x] T11 delete 9 zombie skips (2 were env guards, correctly kept)
 
 ## CP-F — CI
-- [ ] T12 canonical `test:ci` + lint on PR/main + `release.yml` sharded
-- [ ] T13 completeness gate + **prove it bites** (A5)
+- [x] T12 canonical `test:ci` + lint on PR/main + `release.yml` sharded
+- [x] T13 completeness gate + **prove it bites** (A5)
 
 ## CP-G — Close
-- [ ] T14 `.claude/knowledge/test-suite-health.md` + CLAUDE.md + README check
+- [x] T14 `.claude/knowledge/test-suite-health.md` + CLAUDE.md + README check
 - [ ] T15 done bar — all 14 criteria with recorded output; suite 3× green; lint/typecheck/cycles
 - [ ] T16 push → PR → CI green → **Mark live-tests** → merge; update #753, leave it OPEN
 
@@ -121,24 +121,46 @@ sets it itself. The block this repo carried was decorative. Test-run env now liv
 
 | # | Criterion | Result |
 |---|---|---|
-| A1 | Zero act warnings suite-wide | |
-| A2 | Act gate bites (deliberate revert) | |
-| A3 | Suite green, count not fallen | |
-| A4 | `bun --version` == `.bun-version` == 1.3.14 | |
-| A5 | Completeness gate bites (forced skip) | |
-| A6 | Only `bun run test:ci` in workflows | |
-| A7 | Lint gates PR + main | |
-| A8 | Every surviving sleep is a justified `settleFor` | |
-| A9 | Output < 8,000 lines, zero `[INFO]` | |
-| A10 | No empty-body `it.skip` | |
-| A11 | Docs contain no false claim | |
-| A12 | Branch CI green incl. completeness job | |
-| A13 | 3737 healthy, adapter `pi` | |
-| A14 | `tests/cli/**` green (Ink canary) | |
+| A1 | Zero act warnings suite-wide | **PASS** — 0 across 3 consecutive full runs |
+| A2 | Act gate bites (deliberate revert) | **PASS** — reverting the heartbeat-tab fix produces `act gate: 2 React update(s)… (HeartbeatTab x2)` against that exact test; silent when clean |
+| A3 | Suite green, count not fallen | **PASS** — 8522 pass / 0 fail / 0 skip. Total moved 8531 → 8522 only because 9 empty zombie tests were deleted |
+| A4 | `bun --version` == `.bun-version` | **PASS** — both 1.3.13. Held there deliberately: 1.3.14 is a regression (F1, #755/#756) |
+| A5 | Completeness gate bites (forced skip) | **PASS** — healthy: 842 discovered / 842 accounted, exit 0. Dropping 7 contiguous files from a shard: exit 1, names all 7 |
+| A6 | Only `bun run test:ci` in workflows | **PASS** — `grep "run: bun test" .github/workflows` returns nothing |
+| A7 | Lint gates PR + main | **PASS** — present in both (was release-only) |
+| A8 | Every surviving sleep justified | **PASS** — 78 → 12, each either simulated mock latency or a real time window, all labelled |
+| A9 | Output < 8,000 lines, zero `[INFO]` | **PASS** — **740 lines** (from 11,885), 0 INFO |
+| A10 | No empty-body `it.skip` | **PASS** — 9 deleted; the 2 remaining are `if (!HAS_GIT)` env guards |
+| A11 | Docs contain no false claim | **PASS** — the "auto-cleanup is inert" / "~450 tests" claims are gone from CLAUDE.md, setup.ts, rtl-settle.ts |
+| A12 | Branch CI green incl. completeness | pending push |
+| A13 | 3737 healthy, adapter `pi` | pending — server was stopped by the owner for this work |
+| A14 | `tests/cli/**` green (Ink canary) | **PASS** — 282 pass / 0 fail |
 
 ## Findings log
 
 Record anything that contradicts the spec — especially a bun 1.3.14 behavior change, an
 act fix that appears to need a `src/` change, or a sleep whose class is ambiguous.
 
-- (none yet)
+- **F1** bun 1.3.14 regression → #755, #756 (above).
+- **F2** removing RTL's cleanup grew the census 294 → 315 across 23 files — detection
+  improving, not a regression (above).
+- **F3** `bunfig.toml [test.env]` is not read by bun 1.3.13 (above).
+- **F4 — two time bombs, both pre-existing, both triggered mid-initiative by a date
+  rollover.** `memory/routes/record.test.ts` hardcoded a `2026-07-01` fixture against the
+  route's 30-day audit retention: it aged out at midnight and would have 404'd forever.
+  `health/budget.test.ts` assumed "start of month" is older than "today" — false on the
+  1st, so it failed on the 1st of every month. Both fixed at the cause (relative fixture /
+  pinned clock). Neither was caused by this work; both were found because it re-ran the
+  suite repeatedly across a date boundary.
+- **F5 — the act gate's first real catch was the harness itself.** `rtl-settle`'s afterEach
+  drained OUTSIDE act, so every update it flushed was by definition un-acted and got blamed
+  on the test that had just finished (6 phantom `KanbanBoard` warnings under load). Drains
+  now run inside act.
+- **F6 — a product bug surfaced by the cleanup.** `OverviewTab`'s Tokens tile rendered
+  `fmtNum(usage?.tokens.total ?? 0)`, claiming zero tokens when usage was merely
+  unavailable; the test that should have caught it was asserting the LOADING state while
+  its name claimed otherwise. Fixed (owner-approved src/ change) to render `—`.
+- **F7 — automation is unsafe for this class of edit.** Two transformer rounds were
+  reverted rather than shipped: a regex that spanned test boundaries and merged two tests,
+  and a condition generator that emitted vacuous polls (`Boolean(counts)` on an array).
+  The remaining 78 sleep sites were read by hand.
