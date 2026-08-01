@@ -177,7 +177,7 @@ export function TimelineEntry({
           >
             <CollapsibleTrigger
               className={cn(
-                'group/timeline-trigger min-h-0 justify-start py-bakin-0 font-bakin-typography-weight-regular',
+                'group/timeline-trigger min-h-0 justify-start py-bakin-0! font-bakin-typography-weight-regular',
                 HEADER_LAYOUT,
               )}
             >

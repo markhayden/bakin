@@ -16,9 +16,9 @@ export type FieldProps = Omit<FieldPrimitive.Root.Props, 'className'> & {
 const fieldClasses = [
   'group/field grid min-w-0 gap-bakin-2 font-bakin-typography-family-ui',
   'data-[orientation=horizontal]:grid-cols-[auto_minmax(0,1fr)] data-[orientation=horizontal]:items-start',
-  'data-[orientation=horizontal]:[&_[data-slot=checkbox]]:col-start-1 data-[orientation=horizontal]:[&_[data-slot=checkbox]]:row-start-1',
-  'data-[orientation=horizontal]:[&_[data-slot=switch]]:col-start-1 data-[orientation=horizontal]:[&_[data-slot=switch]]:row-start-1',
-  'data-[orientation=horizontal]:[&_[data-slot=field-label]]:col-start-2 data-[orientation=horizontal]:[&_[data-slot=field-label]]:row-start-1',
+  'data-[orientation=horizontal]:[&_[data-slot=checkbox]]:col-start-1 data-[orientation=horizontal]:[&_[data-slot=checkbox]]:row-start-1 data-[orientation=horizontal]:[&_[data-slot=checkbox]]:self-center',
+  'data-[orientation=horizontal]:[&_[data-slot=switch]]:col-start-1 data-[orientation=horizontal]:[&_[data-slot=switch]]:row-start-1 data-[orientation=horizontal]:[&_[data-slot=switch]]:self-center',
+  'data-[orientation=horizontal]:[&_[data-slot=field-label]]:col-start-2 data-[orientation=horizontal]:[&_[data-slot=field-label]]:row-start-1 data-[orientation=horizontal]:[&_[data-slot=field-label]]:self-center',
   'data-[orientation=horizontal]:[&_[data-slot=field-description]]:col-start-2',
   'data-[orientation=horizontal]:[&_[data-slot=field-error]]:col-start-2',
 ].join(' ')

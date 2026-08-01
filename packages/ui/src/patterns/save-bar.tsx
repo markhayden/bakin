@@ -95,7 +95,7 @@ export function SaveBar({
             data-slot="save-bar-signal"
             className="size-bakin-2 shrink-0 animate-pulse rounded-bakin-pill bg-bakin-signal-highlight motion-reduce:animate-none"
           />
-          <p className="m-0 font-bakin-typography-weight-semibold">Unsaved changes</p>
+          <p className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold">Unsaved changes</p>
           {children ? (
             <div
               data-slot="save-bar-context"
@@ -108,7 +108,7 @@ export function SaveBar({
             <p
               role="alert"
               data-savebar-error=""
-              className="m-0 basis-full [overflow-wrap:anywhere] text-bakin-typography-size-meta text-bakin-text-primary"
+              className="m-0 ml-1.5 basis-full border-l-2 border-bakin-signal-danger pl-bakin-2 [overflow-wrap:anywhere] text-bakin-typography-size-meta text-bakin-signal-danger"
             >
               {error}
             </p>

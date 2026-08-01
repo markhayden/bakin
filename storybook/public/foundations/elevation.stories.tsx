@@ -139,7 +139,7 @@ function ElevationLadder() {
         </header>
         <div className="bakin-elevation-ladder" role="list" aria-label="Elevation ladder">
           {STEPS.map((step) => (
-            <section
+            <div
               key={step.id}
               role="listitem"
               aria-label={step.name}
@@ -155,7 +155,7 @@ function ElevationLadder() {
                   <code>{step.cssVariable}</code> · <code>{step.utility}</code>
                 </p>
               </div>
-            </section>
+            </div>
           ))}
         </div>
         <aside className="bakin-elevation-doc__policy" aria-label="Extension policy">

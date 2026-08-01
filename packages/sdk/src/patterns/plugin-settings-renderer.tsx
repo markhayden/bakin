@@ -177,7 +177,7 @@ function ScalarField({
   if (field.type === 'boolean') {
     return (
       <Field name={name} orientation="horizontal" invalid={Boolean(error)} disabled={disabled}>
-        <Switch checked={Boolean(value)} onCheckedChange={onChange} disabled={disabled} />
+        <Switch size="sm" checked={Boolean(value)} onCheckedChange={onChange} disabled={disabled} />
         <FieldLabel requirement={field.required ? 'required' : undefined}>{field.label}</FieldLabel>
         {!compact && field.description ? <FieldDescription>{field.description}</FieldDescription> : null}
         {error ? <FieldError match>{error}</FieldError> : null}
@@ -286,7 +286,7 @@ function ListField({ disabled, error, field, onChange, value }: ListFieldProps) 
               data-testid={`list-row-${field.key}-${rowIndex}`}
               className="@container/settings-row grid min-w-0 gap-bakin-3 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default/40 p-bakin-3"
             >
-              <div className="grid min-w-0 grid-cols-1 gap-bakin-3 @md/settings-row:grid-cols-2 @2xl/settings-row:grid-cols-3">
+              <div className="grid min-w-0 grid-cols-1 gap-bakin-3 @md/settings-row:grid-cols-2 @2xl/settings-row:grid-cols-3 *:row-span-2 *:grid-rows-subgrid [&>[data-orientation=horizontal]>[data-slot=switch]]:row-start-2! [&>[data-orientation=horizontal]>[data-slot=field-label]]:row-start-2!">
                 {entries.map(([key, subfield]) => (
                   <ScalarField
                     key={key}

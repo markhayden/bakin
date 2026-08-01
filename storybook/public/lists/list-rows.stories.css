@@ -67,7 +67,6 @@
 .bakin-lists-story__identity > span {
   display: grid;
   min-inline-size: 0;
-  gap: var(--bakin-layout-space-1);
 }
 
 .bakin-lists-story__identity strong,
@@ -78,6 +77,11 @@
 .bakin-lists-story__identity small,
 .bakin-lists-story__actions time,
 .bakin-lists-story__fact > span {
+  color: var(--bakin-color-text-muted);
+}
+
+.bakin-lists-story__row time {
+  font-size: var(--bakin-typography-size-meta);
   color: var(--bakin-color-text-muted);
 }
 
