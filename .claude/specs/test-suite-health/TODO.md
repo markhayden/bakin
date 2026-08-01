@@ -114,8 +114,9 @@ sets it itself. The block this repo carried was decorative. Test-run env now liv
 
 ## CP-G — Close
 - [x] T14 `.claude/knowledge/test-suite-health.md` + CLAUDE.md + README check
-- [ ] T15 done bar — all 14 criteria with recorded output; suite 3× green; lint/typecheck/cycles
-- [ ] T16 push → PR → CI green → **Mark live-tests** → merge; update #753, leave it OPEN
+- [x] T15 done bar — all 14 criteria with recorded output; suite 3× green; lint/typecheck/cycles
+- [x] T16 push → PR #757 → CI green → **awaiting Mark's live test** → merge; update #753, leave it OPEN
+- [ ] T16b merge after approval → CI green → **Mark live-tests** → merge; update #753, leave it OPEN
 
 ## Acceptance criteria ledger (SPEC §4)
 
@@ -132,8 +133,8 @@ sets it itself. The block this repo carried was decorative. Test-run env now liv
 | A9 | Output < 8,000 lines, zero `[INFO]` | **PASS** — **740 lines** (from 11,885), 0 INFO |
 | A10 | No empty-body `it.skip` | **PASS** — 9 deleted; the 2 remaining are `if (!HAS_GIT)` env guards |
 | A11 | Docs contain no false claim | **PASS** — the "auto-cleanup is inert" / "~450 tests" claims are gone from CLAUDE.md, setup.ts, rtl-settle.ts |
-| A12 | Branch CI green incl. completeness | pending push |
-| A13 | 3737 healthy, adapter `pi` | pending — server was stopped by the owner for this work |
+| A12 | Branch CI green incl. completeness | **PASS** — PR #757, all 8 jobs green. The completeness job reports 842 discovered / 842 accounted across 6 reports on the real runners; its shard logs contribute 281/281/280 files against junit's 280/281/279, so the stdout source is demonstrably catching the all-skipped files junit omits |
+| A13 | 3737 healthy, adapter `pi` | **PASS** — restarted on the branch, HTTP 200, pid 30084, adapter unchanged (`pi`) |
 | A14 | `tests/cli/**` green (Ink canary) | **PASS** — 282 pass / 0 fail |
 
 ## Findings log
