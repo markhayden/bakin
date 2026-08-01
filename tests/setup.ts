@@ -15,7 +15,7 @@
  *     OPENCLAW_HOME to a temp directory.
  */
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
-import { mock, setSystemTime, spyOn } from 'bun:test'
+import { afterEach, mock, setSystemTime, spyOn } from 'bun:test'
 
 // ---------------------------------------------------------------------------
 // Test-run environment.
@@ -44,6 +44,63 @@ process.env.BAKIN_CONSOLE_FORMAT ??= 'silent'
 process.env.RTL_SKIP_AUTO_CLEANUP = 'true'
 
 GlobalRegistrator.register()
+
+// ---------------------------------------------------------------------------
+// The act gate.
+//
+// React reports every state update that lands outside act() while the act
+// environment is on. That report is the ONLY signal we have for a test ending
+// with work still in flight — the confirmed mechanism for pinning an --isolate
+// worker open forever (#753). For a long time the suite emitted ~300 of them a
+// run and nobody could act on the noise, so they were treated as cosmetic.
+//
+// They are now failures. Each is attributed to the exact test that caused it,
+// because the buffer is drained per test rather than at the end of the run.
+//
+// There is NO allowlist, deliberately. One file legitimately needs to end a
+// test mid-flight — tests/components/rtl-settle-probe.test.tsx, which exists to
+// prove the settle hook survives exactly that — and it opts out by disabling the
+// act environment for itself. Putting the exception in the file keeps it under
+// the eye of anyone reading that test; putting it here would create a list that
+// grows quietly whenever someone is in a hurry.
+//
+// How to fix a failure this produces: wrap the interaction that triggers the
+// async state in `await act(async () => { ... })`. Do NOT "fix" it by deleting
+// the assertion, widening a timeout, or sleeping. Deep reference:
+// .claude/knowledge/test-suite-health.md.
+// ---------------------------------------------------------------------------
+const ACT_WARNING = 'not wrapped in act'
+const pendingActWarnings: string[] = []
+const passThroughConsoleError = console.error.bind(console)
+
+console.error = (...args: unknown[]): void => {
+  const first = String(args[0] ?? '')
+  if (first.includes(ACT_WARNING)) {
+    // React formats with %s; args[1] carries the component name.
+    const component = typeof args[1] === 'string' ? args[1] : 'unknown component'
+    pendingActWarnings.push(component)
+    return
+  }
+  passThroughConsoleError(...args)
+}
+
+afterEach(() => {
+  if (pendingActWarnings.length === 0) return
+  const seen = pendingActWarnings.slice()
+  pendingActWarnings.length = 0
+  const counts = new Map<string, number>()
+  for (const name of seen) counts.set(name, (counts.get(name) ?? 0) + 1)
+  const detail = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, n]) => (n > 1 ? `${name} x${n}` : name))
+    .join(', ')
+  throw new Error(
+    `act gate: ${seen.length} React update(s) landed outside act() during this test `
+    + `(${detail}). The test finished with work still in flight, which is what wedges a `
+    + `worker under --isolate. Wrap the interaction in await act(async () => { ... }). `
+    + `See .claude/knowledge/test-suite-health.md.`,
+  )
+})
 
 // ---------------------------------------------------------------------------
 // Cross-file isolation is provided by `--isolate` (in the test script AND the

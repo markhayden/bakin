@@ -102,10 +102,16 @@ function schedulerTick(): Promise<void> {
  * makes the test honest about its terminal state.
  */
 export async function settleReact(rounds = 3): Promise<void> {
-  for (let i = 0; i < rounds; i++) {
-    await schedulerTick()    // let paused render slices resume + finish
-    await realTimerYield(0)  // let timer-scheduled work (happy-dom rAF) land
-  }
+  // The drain runs INSIDE act. A drain that flushes updates from outside act is
+  // self-defeating: every update it lands is, by definition, an un-acted update,
+  // so the gate fires on a test that was doing the right thing. Nested act is
+  // legal, so callers already inside an act window pay nothing.
+  await act(async () => {
+    for (let i = 0; i < rounds; i++) {
+      await schedulerTick()    // let paused render slices resume + finish
+      await realTimerYield(0)  // let timer-scheduled work (happy-dom rAF) land
+    }
+  })
 }
 
 /**
@@ -129,17 +135,12 @@ afterEach(async () => {
   // No flag juggling here any more — beforeAll set the act environment for the
   // whole file, so this hook simply runs in it.
   //
-  // The drain runs INSIDE act. It used to run outside, which meant any update
-  // it flushed was — by definition — an update landing outside act, and the
-  // gate would blame the test that had just finished. Under parallel load that
-  // showed up as 6 phantom KanbanBoard warnings that no amount of fixing the
-  // test could remove, because the warning was the teardown's, not the test's.
-  // act still flushes the same work; it just joins it instead of watching it.
+  // settleReact drains inside its own act (see above). The unmount then runs
+  // under act too — joining act-visible work AFTER the scheduler drain let any
+  // yielded render complete, since unmounting between paused slices is what
+  // React 19 forbids.
+  await settleReact()
   await act(async () => {
-    await settleReact()
-    // The unmount runs under act (joins act-visible work) AFTER the
-    // scheduler drain above let any yielded render complete — unmounting
-    // between paused slices is what React 19 forbids.
     cleanup()
   })
 })
