@@ -40,9 +40,9 @@ jobs:
       - name: Clone bakin-bits-official (extracted plugins)
         run: |
           BITS_REF="$(node -p "require('./design-system/compatibility.json').repositories['bakin-bits-official'].ref")"
-          git clone --filter=blob:none --no-checkout https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/external/bakin-bits-official"
-          git -C "${{ runner.workspace }}/external/bakin-bits-official" fetch --depth 1 origin "$BITS_REF"
-          git -C "${{ runner.workspace }}/external/bakin-bits-official" checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/bakin-bits-official"
+          git -C "${{ runner.workspace }}/bakin-bits-official" fetch --depth 1 origin "$BITS_REF"
+          git -C "${{ runner.workspace }}/bakin-bits-official" checkout --detach FETCH_HEAD
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -57,17 +57,17 @@ jobs:
 
       - name: Official UI census
         env:
-          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/bakin-bits-official/plugins
         run: bun run ui:census:check
 
       - name: Legacy UI style ratchet
         env:
-          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/bakin-bits-official/plugins
         run: bun run ui:legacy-styles:check
 
       - name: Build docs
         env:
-          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/bakin-bits-official/plugins
         run: bun run docs:check
 
       - name: Upload docs artifact
