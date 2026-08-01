@@ -24,6 +24,7 @@ import {
 } from '../../packages/adapter-openclaw/src/trajectory-forensics'
 import { safeFileSize } from '../../packages/adapter-openclaw/src/file-utils'
 import { RuntimeTurnError } from '../../packages/core/src/adapters/runtime'
+import { settleFor, waitUntil } from '../helpers/wait'
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
@@ -247,7 +248,7 @@ describe('watchTrajectoryForDeath', () => {
 
     // Mid-run events only — no verdict yet.
     appendFileSync(trajectoryFile, event('session.started', {}, 1) + '\n' + event('tool.call', { name: 'x' }, 2) + '\n')
-    await new Promise((r) => setTimeout(r, 80))
+    await settleFor(80, 'mid-run events must NOT produce a verdict — several poll cycles of silence is the assertion')
     expect(settled).toBeNull()
 
     // Death lands → reject within a couple polls.
@@ -255,7 +256,7 @@ describe('watchTrajectoryForDeath', () => {
       event('model.completed', { assistantTexts: ['boom'] }, 3),
       event('session.ended', { status: 'interrupted', timedOut: false }, 4),
     ].join('\n') + '\n')
-    await new Promise((r) => setTimeout(r, 100))
+    await waitUntil(() => settled !== null, { label: 'the death verdict to reject the watch promise' })
     expect(settled).toBeInstanceOf(RuntimeTurnError)
     expect((settled as RuntimeTurnError).diagnosis.reason).toBe('session_interrupted')
     watch.stop()
@@ -268,11 +269,11 @@ describe('watchTrajectoryForDeath', () => {
 
     writeRun(trajectoryFile, { status: 'success', assistantTexts: ['fine'] })
     // Within the grace window: silent — the gateway frame is authoritative.
-    await new Promise((r) => setTimeout(r, 80))
+    await settleFor(80, 'inside the grace window the gateway frame is authoritative — silence is the assertion')
     expect(settled).toBeNull()
 
     // Grace elapsed without the frame → recovered-turn sentinel.
-    await new Promise((r) => setTimeout(r, 150))
+    await waitUntil(() => settled !== null, { label: 'the grace window to elapse into a recovered-turn sentinel' })
     expect(settled).toBeInstanceOf(TrajectoryRecoveredTurn)
     expect((settled as TrajectoryRecoveredTurn).content).toBe('fine')
     watch.stop()
@@ -286,14 +287,14 @@ describe('watchTrajectoryForDeath', () => {
 
     // Three append bursts with polls between them — a tool-heavy turn.
     appendFileSync(trajectoryFile, event('session.started', {}, 1) + '\n')
-    await new Promise((r) => setTimeout(r, 60))
+    await settleFor(60, 'space the append bursts so the watcher polls between them — the point is a multi-poll turn')
     appendFileSync(trajectoryFile, event('tool.call', { name: 'a' }, 2) + '\n' + event('tool.call', { name: 'b' }, 3) + '\n')
-    await new Promise((r) => setTimeout(r, 60))
+    await settleFor(60, 'space the append bursts so the watcher polls between them — the point is a multi-poll turn')
     appendFileSync(trajectoryFile, [
       event('model.completed', { assistantTexts: ['done'] }, 4),
       event('session.ended', { status: 'interrupted', timedOut: false }, 5),
     ].join('\n') + '\n')
-    await new Promise((r) => setTimeout(r, 80))
+    await waitUntil(() => settled !== null, { label: 'the interrupted session to settle the watch promise' })
 
     expect(settled).toBeInstanceOf(RuntimeTurnError)
     // 5 trajectory lines written; each JSON.parsed exactly once — the old
@@ -319,12 +320,12 @@ describe('watchTrajectoryForDeath', () => {
 
     appendFileSync(trajectoryFile, event('session.started', {}, 1) + '\n')
     appendFileSync(trajectoryFile, completedBytes.subarray(0, splitAt))
-    await new Promise((r) => setTimeout(r, 60))
+    await settleFor(60, 'half a written line must NOT yield a verdict — silence across polls is the assertion')
     expect(settled).toBeNull() // half a line — no verdict, no corruption
 
     appendFileSync(trajectoryFile, completedBytes.subarray(splitAt))
     appendFileSync(trajectoryFile, event('session.ended', { status: 'interrupted', timedOut: false }, 3) + '\n')
-    await new Promise((r) => setTimeout(r, 80))
+    await waitUntil(() => settled !== null, { label: 'the rejoined split line to produce a verdict' })
 
     expect(settled).toBeInstanceOf(RuntimeTurnError)
     // The split line decoded correctly — the salvaged text keeps the emoji.
@@ -338,9 +339,12 @@ describe('watchTrajectoryForDeath', () => {
     watch.promise.catch(() => { settled = true })
 
     writeRun(trajectoryFile, { status: 'success', assistantTexts: ['fine'] })
-    await new Promise((r) => setTimeout(r, 50))
+    // Both windows are load-bearing and tied to successGraceMs: 100 above —
+    // stop() must land INSIDE the grace window, and the assertion must then
+    // outlast it. Polling cannot express "and nothing fired afterwards".
+    await settleFor(50, 'land inside the 100ms grace window before stop()')
     watch.stop() // the gateway frame arrived; the race is over
-    await new Promise((r) => setTimeout(r, 150))
+    await settleFor(150, 'outlast the grace window to prove stop() suppressed the rejection')
     expect(settled).toBe(false)
   })
 })
