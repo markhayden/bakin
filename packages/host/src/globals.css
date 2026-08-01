@@ -1,13 +1,17 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "../../ui/src/styles/tokens.generated.css";
 @import "../../ui/src/styles/tailwind.generated.css";
 
 /*
- * Tailwind v4 auto-detects source files from the CSS file's directory, but
- * the host bundle pulls JSX from across the monorepo. Explicitly enumerate
- * every tree that contains utility classes we want generated.
+ * source(none) disables Tailwind's automatic content detection: the scan is
+ * EXACTLY these globs, nothing else. Auto-detection walked the whole repo —
+ * including the committed packages/sdk/styles.css artifact itself, whose
+ * previous contents fed back into the next build (a stale artifact once
+ * resurrected a deleted class's theme variable), plus tests/scripts/docs
+ * whose class-shaped strings injected junk. Hermetic inputs are what make
+ * the buildSdkPackage byte-identity check hold on every machine.
  *
  * Paths are resolved relative to this file (packages/host/src/globals.css).
  */
@@ -16,6 +20,8 @@
 @source "../../sdk/src/**/*.{ts,tsx}";
 @source "../../../src/**/*.{ts,tsx}";
 @source "../../../plugins/**/*.{ts,tsx}";
+@source "../../../storybook/**/*.{ts,tsx}";
+@source "../../../examples/**/*.{ts,tsx}";
 @source "../../../../bakin-bits-official/plugins/**/*.{ts,tsx}";
 
 @custom-variant dark (&:is(.dark *));
