@@ -812,10 +812,83 @@ const TOKEN_CATALOG_CSS = `
 .bakin-token-preview--radius span { width: 2rem; height: 2rem; border: 2px solid var(--bakin-color-signal-accent); border-radius: var(--token-value); }
 .bakin-token-preview--opacity span { width: 2rem; height: 2rem; border-radius: var(--bakin-radius-control); background: var(--bakin-color-action-primary-background); opacity: var(--token-value); }
 .bakin-token-preview--value { color: var(--bakin-color-text-muted); font-family: var(--bakin-typography-family-mono); font-size: .65rem; text-align: center; }
+.bakin-token-group { margin-top: var(--bakin-layout-space-4); }
+.bakin-token-group h3 {
+  margin: 0 0 var(--bakin-layout-space-2);
+  color: var(--bakin-color-text-muted);
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.bakin-token-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+  gap: var(--bakin-layout-space-3);
+}
+.bakin-token-swatch { display: grid; gap: var(--bakin-layout-space-1); align-content: start; min-width: 0; }
+.bakin-token-swatch__chip {
+  height: 3.25rem;
+  border-radius: var(--bakin-radius-control);
+  background: var(--token-value);
+  box-shadow: inset 0 0 0 1px var(--bakin-color-border-subtle);
+}
+.bakin-token-swatch__name {
+  font-family: var(--bakin-typography-family-mono);
+  font-size: .7rem;
+  color: var(--bakin-color-text-primary);
+  overflow-wrap: anywhere;
+}
+.bakin-token-swatch__value {
+  font-family: var(--bakin-typography-family-mono);
+  font-size: .66rem;
+  color: var(--bakin-color-text-muted);
+  overflow-wrap: anywhere;
+}
+.bakin-type-specimen {
+  display: grid;
+  grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr);
+  gap: var(--bakin-layout-space-6);
+  align-items: baseline;
+  border-bottom: 1px solid var(--bakin-color-border-subtle);
+  padding: var(--bakin-layout-space-3) 0;
+}
+.bakin-type-specimen__meta { display: grid; gap: var(--bakin-layout-space-1); min-width: 0; }
+.bakin-type-specimen__meta code {
+  font-family: var(--bakin-typography-family-mono);
+  font-size: .78rem;
+  color: var(--bakin-color-text-primary);
+  overflow-wrap: anywhere;
+}
+.bakin-type-specimen__meta span {
+  font-family: var(--bakin-typography-family-mono);
+  font-size: .68rem;
+  color: var(--bakin-color-text-muted);
+  overflow-wrap: anywhere;
+}
+.bakin-type-specimen__sample { margin: 0; font-size: 1rem; line-height: 1.3; overflow-wrap: anywhere; }
+.bakin-token-specs { margin-top: var(--bakin-layout-space-4); }
+.bakin-token-specs > summary {
+  display: inline-block;
+  cursor: pointer;
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-radius-pill);
+  padding: var(--bakin-layout-space-1) var(--bakin-layout-space-3);
+  background: var(--bakin-color-surface-default);
+  color: var(--bakin-color-text-muted);
+  font-size: .75rem;
+  font-weight: 600;
+}
+.bakin-token-specs > summary:focus-visible {
+  outline: 2px solid var(--bakin-color-focus-ring);
+  outline-offset: 3px;
+}
+.bakin-token-specs[open] > summary { margin-bottom: var(--bakin-layout-space-2); }
 @media (max-width: 44rem) {
   .bakin-token-catalog { padding: var(--bakin-layout-space-4); }
   .bakin-token-row { grid-template-columns: 1fr; gap: var(--bakin-layout-space-3); }
   .bakin-token-row__facts { padding-left: 0; }
+  .bakin-type-specimen { grid-template-columns: 1fr; gap: var(--bakin-layout-space-2); }
 }
 @media (prefers-reduced-motion: reduce) {
   .bakin-token-catalog *, .bakin-token-catalog *::before, .bakin-token-catalog *::after {
@@ -836,9 +909,63 @@ import { expect } from 'storybook/test'
 
 const TOKENS = ${JSON.stringify(metadata, null, 2)} as const
 const CATALOG_CSS = ${JSON.stringify(TOKEN_CATALOG_CSS)}
-const FAMILIES = [...new Set(TOKENS.map((token) => token.family))]
+const FAMILIES: string[] = [...new Set(TOKENS.map((token) => token.family))]
 
 type Token = (typeof TOKENS)[number]
+
+const LEAD_FAMILIES = ['Color', 'Typography']
+const ORDERED_FAMILIES = [
+  ...LEAD_FAMILIES.filter((family) => FAMILIES.includes(family)),
+  ...FAMILIES.filter((family) => !LEAD_FAMILIES.includes(family)),
+]
+
+const COLOR_TOKENS = TOKENS.filter((token) => token.family === 'Color')
+const COLOR_GROUP_ORDER = ['Canvas', 'Surface', 'Border', 'Text', 'Action', 'Signal', 'Focus', 'Data series', 'Data status']
+
+function colorShortName(token: Token): string {
+  return token.name.replace('semantic.color.', '')
+}
+
+function colorGroupName(token: Token): string {
+  const segments = token.name.split('.')
+  const head = segments[2] ?? 'color'
+  if (head === 'data') return segments[3] === 'status' ? 'Data status' : 'Data series'
+  return head.charAt(0).toUpperCase() + head.slice(1)
+}
+
+const COLOR_GROUPS = [
+  ...COLOR_GROUP_ORDER,
+  ...COLOR_TOKENS.map(colorGroupName).filter((group) => !COLOR_GROUP_ORDER.includes(group)),
+]
+  .filter((group, index, groups) => groups.indexOf(group) === index)
+  .map((group) => ({ group, tokens: COLOR_TOKENS.filter((token) => colorGroupName(token) === group) }))
+  .filter((entry) => entry.tokens.length > 0)
+
+function byName(left: Token, right: Token): number {
+  return left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+}
+
+const SIZE_TOKENS = TOKENS.filter((token) => token.name.startsWith('semantic.typography.size.'))
+  .sort((left, right) => Number.parseFloat(right.cssValue) - Number.parseFloat(left.cssValue) || byName(left, right))
+const WEIGHT_TOKENS = TOKENS.filter((token) => token.name.startsWith('semantic.typography.weight.'))
+  .sort((left, right) => Number.parseFloat(left.cssValue) - Number.parseFloat(right.cssValue) || byName(left, right))
+const FAMILY_TOKENS = TOKENS.filter((token) => token.name.startsWith('semantic.typography.family.'))
+
+const SPECIMEN_TEXT = 'The quick brown fox jumps over the lazy dog.'
+
+function typographyShortName(token: Token): string {
+  return token.name.replace('semantic.typography.', '')
+}
+
+function specimenSample(token: Token): string {
+  return token.name.split('.').pop() + '. ' + SPECIMEN_TEXT
+}
+
+function specimenDetail(token: Token): string {
+  if (!token.cssValue.endsWith('rem')) return token.cssValue
+  const px = Math.round(Number.parseFloat(token.cssValue) * 1600) / 100
+  return token.cssValue + ' · ' + px + 'px'
+}
 
 function TokenPreview({ token }: { token: Token }) {
   const style = { '--token-value': 'var(' + token.cssVariable + ')' } as CSSProperties
@@ -857,6 +984,117 @@ function contrastText(token: Token): string {
   return token.contrast.ratio + ':1 vs ' + token.contrast.againstCssVariable + ' · ' + threshold
 }
 
+function TokenSpecRow({ token }: { token: Token }) {
+  return (
+    <article className="bakin-token-row" aria-label={token.name}>
+      <div className="bakin-token-row__identity">
+        <TokenPreview token={token} />
+        <div>
+          <code className="bakin-token-row__name">{token.name}</code>
+          <p className="bakin-token-row__intent">{token.description}</p>
+        </div>
+      </div>
+      <dl className="bakin-token-row__facts">
+        <dt>Value</dt><dd className="bakin-token-row__value">{token.cssValue}</dd>
+        <dt>Property</dt><dd><code>{token.cssVariable}</code></dd>
+        <dt>Status</dt><dd><span className="bakin-token-catalog__status">Public semantic</span></dd>
+        <dt>Contrast</dt><dd>{contrastText(token)}</dd>
+        <dt>Source</dt><dd><a href={token.sourceUrl} target="_blank" rel="noreferrer">semantic.tokens.json{token.sourcePointer}</a></dd>
+      </dl>
+    </article>
+  )
+}
+
+function FamilySpec({ family, tokens }: { family: string; tokens: Token[] }) {
+  return (
+    <details className="bakin-token-specs">
+      <summary>{'View full spec — ' + family}</summary>
+      <div className="bakin-token-family__rows">
+        {tokens.map((token) => <TokenSpecRow token={token} key={token.name} />)}
+      </div>
+    </details>
+  )
+}
+
+function SpecimenRow({ token, detail, sampleStyle }: { token: Token; detail: string; sampleStyle: CSSProperties }) {
+  return (
+    <div className="bakin-type-specimen">
+      <div className="bakin-type-specimen__meta">
+        <code>{typographyShortName(token)}</code>
+        <span>{detail}</span>
+      </div>
+      <p className="bakin-type-specimen__sample" style={sampleStyle}>{specimenSample(token)}</p>
+    </div>
+  )
+}
+
+function ColorSection({ id, tokens }: { id: string; tokens: Token[] }) {
+  return (
+    <section className="bakin-token-family" aria-labelledby={id}>
+      <h2 id={id}>Color</h2>
+      {COLOR_GROUPS.map((entry) => (
+        <div className="bakin-token-group" key={entry.group}>
+          <h3>{entry.group}</h3>
+          <div className="bakin-token-swatch-grid">
+            {entry.tokens.map((token) => (
+              <div className="bakin-token-swatch" key={token.name}>
+                <span className="bakin-token-swatch__chip" style={{ '--token-value': 'var(' + token.cssVariable + ')' } as CSSProperties} aria-hidden="true" />
+                <code className="bakin-token-swatch__name">{colorShortName(token)}</code>
+                <span className="bakin-token-swatch__value">{token.cssValue}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <FamilySpec family="Color" tokens={tokens} />
+    </section>
+  )
+}
+
+function TypographySection({ id, tokens }: { id: string; tokens: Token[] }) {
+  return (
+    <section className="bakin-token-family" aria-labelledby={id}>
+      <h2 id={id}>Typography</h2>
+      <div className="bakin-token-group">
+        <h3>Type scale</h3>
+        <div>
+          {SIZE_TOKENS.map((token) => (
+            <SpecimenRow token={token} detail={specimenDetail(token)} sampleStyle={{ fontSize: 'var(' + token.cssVariable + ')' }} key={token.name} />
+          ))}
+        </div>
+      </div>
+      <div className="bakin-token-group">
+        <h3>Weights</h3>
+        <div>
+          {WEIGHT_TOKENS.map((token) => (
+            <SpecimenRow token={token} detail={token.cssValue} sampleStyle={{ fontWeight: 'var(' + token.cssVariable + ')' } as CSSProperties} key={token.name} />
+          ))}
+        </div>
+      </div>
+      <div className="bakin-token-group">
+        <h3>Families</h3>
+        <div>
+          {FAMILY_TOKENS.map((token) => (
+            <SpecimenRow token={token} detail={token.cssValue} sampleStyle={{ fontFamily: 'var(' + token.cssVariable + ')' }} key={token.name} />
+          ))}
+        </div>
+      </div>
+      <FamilySpec family="Typography" tokens={tokens} />
+    </section>
+  )
+}
+
+function SpecFamilySection({ id, family, tokens }: { id: string; family: string; tokens: Token[] }) {
+  return (
+    <section className="bakin-token-family" aria-labelledby={id}>
+      <h2 id={id}>{family}</h2>
+      <div className="bakin-token-family__rows">
+        {tokens.map((token) => <TokenSpecRow token={token} key={token.name} />)}
+      </div>
+    </section>
+  )
+}
+
 function SemanticTokenCatalog() {
   return (
     <main className="bakin-token-catalog" aria-labelledby="semantic-token-catalog-title">
@@ -872,33 +1110,12 @@ function SemanticTokenCatalog() {
             <span>Generated from DTCG JSON</span>
           </div>
         </header>
-        {FAMILIES.map((family) => {
+        {ORDERED_FAMILIES.map((family) => {
           const familyId = 'token-family-' + family.toLowerCase().replaceAll(' ', '-')
-          return (
-            <section className="bakin-token-family" aria-labelledby={familyId} key={family}>
-              <h2 id={familyId}>{family}</h2>
-              <div className="bakin-token-family__rows">
-                {TOKENS.filter((token) => token.family === family).map((token) => (
-                  <article className="bakin-token-row" aria-label={token.name} key={token.name}>
-                    <div className="bakin-token-row__identity">
-                      <TokenPreview token={token} />
-                      <div>
-                        <code className="bakin-token-row__name">{token.name}</code>
-                        <p className="bakin-token-row__intent">{token.description}</p>
-                      </div>
-                    </div>
-                    <dl className="bakin-token-row__facts">
-                      <dt>Value</dt><dd className="bakin-token-row__value">{token.cssValue}</dd>
-                      <dt>Property</dt><dd><code>{token.cssVariable}</code></dd>
-                      <dt>Status</dt><dd><span className="bakin-token-catalog__status">Public semantic</span></dd>
-                      <dt>Contrast</dt><dd>{contrastText(token)}</dd>
-                      <dt>Source</dt><dd><a href={token.sourceUrl} target="_blank" rel="noreferrer">semantic.tokens.json{token.sourcePointer}</a></dd>
-                    </dl>
-                  </article>
-                ))}
-              </div>
-            </section>
-          )
+          const familyTokens = TOKENS.filter((token) => token.family === family)
+          if (family === 'Color') return <ColorSection id={familyId} tokens={familyTokens} key={family} />
+          if (family === 'Typography') return <TypographySection id={familyId} tokens={familyTokens} key={family} />
+          return <SpecFamilySection id={familyId} family={family} tokens={familyTokens} key={family} />
         })}
       </div>
     </main>
@@ -913,7 +1130,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'The generated public semantic token contract: ${metadata.length} tokens across ${familyCount} families, each documented with its value, namespaced CSS custom property, contrast evidence, and DTCG source pointer. Internal reference values and component aliases are excluded. Regenerated by bun run ui:tokens:generate from packages/ui/tokens/semantic.tokens.json — edit the source tokens, never this file.',
+        component: 'The generated public semantic token contract as a browsable style guide: ${metadata.length} tokens across ${familyCount} families. Color leads with labeled swatch grids grouped by semantic role and Typography renders every type token as a specimen at its real size, weight, and family; both keep their complete spec rows — value, namespaced CSS custom property, status, contrast evidence, and DTCG source pointer — under a View full spec disclosure, while every other family documents the same spec rows inline. Internal reference values and component aliases are excluded. Regenerated by bun run ui:tokens:generate from packages/ui/tokens/semantic.tokens.json — edit the source tokens, never this file.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'reduced-motion'],
@@ -924,10 +1141,13 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Catalog: Story = {
-  play: async ({ canvas }) => {
+  play: async ({ canvas, userEvent }) => {
     await expect(canvas.getByRole('heading', { name: 'Semantic UI tokens' })).toBeVisible()
-    await expect(canvas.getByRole('article', { name: '${metadata[0]!.name}' })).toBeVisible()
-    await expect(canvas.getByText('${metadata[0]!.cssVariable}')).toBeVisible()
+    await expect(canvas.getByText(colorShortName(COLOR_TOKENS[0]))).toBeVisible()
+    await expect(canvas.getByText(specimenSample(SIZE_TOKENS[0]))).toBeVisible()
+    await userEvent.click(canvas.getByText('View full spec — Color'))
+    await expect(canvas.getByRole('article', { name: COLOR_TOKENS[0].name })).toBeVisible()
+    await expect(canvas.getByText(COLOR_TOKENS[0].cssVariable)).toBeVisible()
   },
 }
 `

@@ -1067,10 +1067,64 @@ const TOKENS = [
     "sourcePointer": "#/semantic/typography/weight/semibold"
   }
 ] as const
-const CATALOG_CSS = ".bakin-token-catalog {\n  min-height: 100vh;\n  background: var(--bakin-color-canvas-default);\n  color: var(--bakin-color-text-primary);\n  padding: var(--bakin-layout-space-8);\n  font-family: var(--bakin-typography-family-ui);\n}\n.bakin-token-catalog * { box-sizing: border-box; }\n.bakin-token-catalog__content { width: min(100%, 76rem); margin: 0 auto; }\n.bakin-token-catalog__eyebrow {\n  margin: 0 0 var(--bakin-layout-space-2);\n  color: var(--bakin-color-signal-accent);\n  font-size: .75rem;\n  font-weight: 700;\n  letter-spacing: .12em;\n  text-transform: uppercase;\n}\n.bakin-token-catalog h1 {\n  margin: 0;\n  font-size: clamp(2rem, 6vw, 3.75rem);\n  line-height: 1;\n  letter-spacing: -.045em;\n}\n.bakin-token-catalog__lede {\n  max-width: 46rem;\n  margin: var(--bakin-layout-space-3) 0 0;\n  color: var(--bakin-color-text-muted);\n  font-size: 1rem;\n  line-height: 1.65;\n}\n.bakin-token-catalog__summary {\n  display: flex;\n  flex-wrap: wrap;\n  gap: var(--bakin-layout-space-2);\n  margin: var(--bakin-layout-space-6) 0 var(--bakin-layout-space-8);\n}\n.bakin-token-catalog__summary span,\n.bakin-token-catalog__status {\n  border: 1px solid var(--bakin-color-border-subtle);\n  border-radius: var(--bakin-radius-pill);\n  padding: var(--bakin-layout-space-1) var(--bakin-layout-space-3);\n  background: var(--bakin-color-surface-default);\n  color: var(--bakin-color-text-muted);\n  font-size: .75rem;\n  font-weight: 600;\n}\n.bakin-token-family { margin-top: var(--bakin-layout-space-8); }\n.bakin-token-family h2 {\n  margin: 0 0 var(--bakin-layout-space-3);\n  font-size: 1.125rem;\n  letter-spacing: -.015em;\n}\n.bakin-token-family__rows { border-top: 1px solid var(--bakin-color-border-subtle); }\n.bakin-token-row {\n  display: grid;\n  grid-template-columns: minmax(17rem, 1.15fr) minmax(18rem, .85fr);\n  gap: var(--bakin-layout-space-6);\n  align-items: center;\n  border-bottom: 1px solid var(--bakin-color-border-subtle);\n  padding: var(--bakin-layout-space-4) 0;\n}\n.bakin-token-row > *, .bakin-token-row__identity > * { min-width: 0; }\n.bakin-token-row__identity {\n  display: grid;\n  grid-template-columns: 3rem minmax(0, 1fr);\n  gap: var(--bakin-layout-space-3);\n  align-items: center;\n}\n.bakin-token-row code,\n.bakin-token-row__value {\n  font-family: var(--bakin-typography-family-mono);\n  font-size: .78rem;\n  overflow-wrap: anywhere;\n}\n.bakin-token-row__name { display: block; color: var(--bakin-color-text-primary); }\n.bakin-token-row__intent {\n  margin: var(--bakin-layout-space-1) 0 0;\n  color: var(--bakin-color-text-muted);\n  font-size: .82rem;\n  line-height: 1.5;\n}\n.bakin-token-row__facts {\n  display: grid;\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: var(--bakin-layout-space-1) var(--bakin-layout-space-3);\n  margin: 0;\n  font-size: .75rem;\n  line-height: 1.45;\n  min-width: 0;\n}\n.bakin-token-row__facts dt { color: var(--bakin-color-text-muted); }\n.bakin-token-row__facts dd { min-width: 0; margin: 0; }\n.bakin-token-row__facts a { color: var(--bakin-color-action-primary-background); }\n.bakin-token-row__facts dd, .bakin-token-row__facts a, .bakin-token-row__facts code { overflow-wrap: anywhere; }\n.bakin-token-row__facts a:focus-visible {\n  outline: 2px solid var(--bakin-color-focus-ring);\n  outline-offset: 3px;\n  border-radius: var(--bakin-radius-control);\n}\n.bakin-token-preview {\n  --token-value: initial;\n  display: grid;\n  width: 3rem;\n  height: 3rem;\n  place-items: center;\n  overflow: hidden;\n  border: 1px solid var(--bakin-color-border-subtle);\n  border-radius: var(--bakin-radius-control);\n  background: var(--bakin-color-surface-default);\n}\n.bakin-token-preview--color { background: var(--token-value); }\n.bakin-token-preview--space span { display: block; width: max(2px, var(--token-value)); height: .5rem; background: var(--bakin-color-signal-highlight); }\n.bakin-token-preview--radius span { width: 2rem; height: 2rem; border: 2px solid var(--bakin-color-signal-accent); border-radius: var(--token-value); }\n.bakin-token-preview--opacity span { width: 2rem; height: 2rem; border-radius: var(--bakin-radius-control); background: var(--bakin-color-action-primary-background); opacity: var(--token-value); }\n.bakin-token-preview--value { color: var(--bakin-color-text-muted); font-family: var(--bakin-typography-family-mono); font-size: .65rem; text-align: center; }\n@media (max-width: 44rem) {\n  .bakin-token-catalog { padding: var(--bakin-layout-space-4); }\n  .bakin-token-row { grid-template-columns: 1fr; gap: var(--bakin-layout-space-3); }\n  .bakin-token-row__facts { padding-left: 0; }\n}\n@media (prefers-reduced-motion: reduce) {\n  .bakin-token-catalog *, .bakin-token-catalog *::before, .bakin-token-catalog *::after {\n    animation-duration: .01ms !important;\n    animation-iteration-count: 1 !important;\n    transition-duration: .01ms !important;\n  }\n}"
-const FAMILIES = [...new Set(TOKENS.map((token) => token.family))]
+const CATALOG_CSS = ".bakin-token-catalog {\n  min-height: 100vh;\n  background: var(--bakin-color-canvas-default);\n  color: var(--bakin-color-text-primary);\n  padding: var(--bakin-layout-space-8);\n  font-family: var(--bakin-typography-family-ui);\n}\n.bakin-token-catalog * { box-sizing: border-box; }\n.bakin-token-catalog__content { width: min(100%, 76rem); margin: 0 auto; }\n.bakin-token-catalog__eyebrow {\n  margin: 0 0 var(--bakin-layout-space-2);\n  color: var(--bakin-color-signal-accent);\n  font-size: .75rem;\n  font-weight: 700;\n  letter-spacing: .12em;\n  text-transform: uppercase;\n}\n.bakin-token-catalog h1 {\n  margin: 0;\n  font-size: clamp(2rem, 6vw, 3.75rem);\n  line-height: 1;\n  letter-spacing: -.045em;\n}\n.bakin-token-catalog__lede {\n  max-width: 46rem;\n  margin: var(--bakin-layout-space-3) 0 0;\n  color: var(--bakin-color-text-muted);\n  font-size: 1rem;\n  line-height: 1.65;\n}\n.bakin-token-catalog__summary {\n  display: flex;\n  flex-wrap: wrap;\n  gap: var(--bakin-layout-space-2);\n  margin: var(--bakin-layout-space-6) 0 var(--bakin-layout-space-8);\n}\n.bakin-token-catalog__summary span,\n.bakin-token-catalog__status {\n  border: 1px solid var(--bakin-color-border-subtle);\n  border-radius: var(--bakin-radius-pill);\n  padding: var(--bakin-layout-space-1) var(--bakin-layout-space-3);\n  background: var(--bakin-color-surface-default);\n  color: var(--bakin-color-text-muted);\n  font-size: .75rem;\n  font-weight: 600;\n}\n.bakin-token-family { margin-top: var(--bakin-layout-space-8); }\n.bakin-token-family h2 {\n  margin: 0 0 var(--bakin-layout-space-3);\n  font-size: 1.125rem;\n  letter-spacing: -.015em;\n}\n.bakin-token-family__rows { border-top: 1px solid var(--bakin-color-border-subtle); }\n.bakin-token-row {\n  display: grid;\n  grid-template-columns: minmax(17rem, 1.15fr) minmax(18rem, .85fr);\n  gap: var(--bakin-layout-space-6);\n  align-items: center;\n  border-bottom: 1px solid var(--bakin-color-border-subtle);\n  padding: var(--bakin-layout-space-4) 0;\n}\n.bakin-token-row > *, .bakin-token-row__identity > * { min-width: 0; }\n.bakin-token-row__identity {\n  display: grid;\n  grid-template-columns: 3rem minmax(0, 1fr);\n  gap: var(--bakin-layout-space-3);\n  align-items: center;\n}\n.bakin-token-row code,\n.bakin-token-row__value {\n  font-family: var(--bakin-typography-family-mono);\n  font-size: .78rem;\n  overflow-wrap: anywhere;\n}\n.bakin-token-row__name { display: block; color: var(--bakin-color-text-primary); }\n.bakin-token-row__intent {\n  margin: var(--bakin-layout-space-1) 0 0;\n  color: var(--bakin-color-text-muted);\n  font-size: .82rem;\n  line-height: 1.5;\n}\n.bakin-token-row__facts {\n  display: grid;\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: var(--bakin-layout-space-1) var(--bakin-layout-space-3);\n  margin: 0;\n  font-size: .75rem;\n  line-height: 1.45;\n  min-width: 0;\n}\n.bakin-token-row__facts dt { color: var(--bakin-color-text-muted); }\n.bakin-token-row__facts dd { min-width: 0; margin: 0; }\n.bakin-token-row__facts a { color: var(--bakin-color-action-primary-background); }\n.bakin-token-row__facts dd, .bakin-token-row__facts a, .bakin-token-row__facts code { overflow-wrap: anywhere; }\n.bakin-token-row__facts a:focus-visible {\n  outline: 2px solid var(--bakin-color-focus-ring);\n  outline-offset: 3px;\n  border-radius: var(--bakin-radius-control);\n}\n.bakin-token-preview {\n  --token-value: initial;\n  display: grid;\n  width: 3rem;\n  height: 3rem;\n  place-items: center;\n  overflow: hidden;\n  border: 1px solid var(--bakin-color-border-subtle);\n  border-radius: var(--bakin-radius-control);\n  background: var(--bakin-color-surface-default);\n}\n.bakin-token-preview--color { background: var(--token-value); }\n.bakin-token-preview--space span { display: block; width: max(2px, var(--token-value)); height: .5rem; background: var(--bakin-color-signal-highlight); }\n.bakin-token-preview--radius span { width: 2rem; height: 2rem; border: 2px solid var(--bakin-color-signal-accent); border-radius: var(--token-value); }\n.bakin-token-preview--opacity span { width: 2rem; height: 2rem; border-radius: var(--bakin-radius-control); background: var(--bakin-color-action-primary-background); opacity: var(--token-value); }\n.bakin-token-preview--value { color: var(--bakin-color-text-muted); font-family: var(--bakin-typography-family-mono); font-size: .65rem; text-align: center; }\n.bakin-token-group { margin-top: var(--bakin-layout-space-4); }\n.bakin-token-group h3 {\n  margin: 0 0 var(--bakin-layout-space-2);\n  color: var(--bakin-color-text-muted);\n  font-size: .72rem;\n  font-weight: 600;\n  letter-spacing: .08em;\n  text-transform: uppercase;\n}\n.bakin-token-swatch-grid {\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));\n  gap: var(--bakin-layout-space-3);\n}\n.bakin-token-swatch { display: grid; gap: var(--bakin-layout-space-1); align-content: start; min-width: 0; }\n.bakin-token-swatch__chip {\n  height: 3.25rem;\n  border-radius: var(--bakin-radius-control);\n  background: var(--token-value);\n  box-shadow: inset 0 0 0 1px var(--bakin-color-border-subtle);\n}\n.bakin-token-swatch__name {\n  font-family: var(--bakin-typography-family-mono);\n  font-size: .7rem;\n  color: var(--bakin-color-text-primary);\n  overflow-wrap: anywhere;\n}\n.bakin-token-swatch__value {\n  font-family: var(--bakin-typography-family-mono);\n  font-size: .66rem;\n  color: var(--bakin-color-text-muted);\n  overflow-wrap: anywhere;\n}\n.bakin-type-specimen {\n  display: grid;\n  grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr);\n  gap: var(--bakin-layout-space-6);\n  align-items: baseline;\n  border-bottom: 1px solid var(--bakin-color-border-subtle);\n  padding: var(--bakin-layout-space-3) 0;\n}\n.bakin-type-specimen__meta { display: grid; gap: var(--bakin-layout-space-1); min-width: 0; }\n.bakin-type-specimen__meta code {\n  font-family: var(--bakin-typography-family-mono);\n  font-size: .78rem;\n  color: var(--bakin-color-text-primary);\n  overflow-wrap: anywhere;\n}\n.bakin-type-specimen__meta span {\n  font-family: var(--bakin-typography-family-mono);\n  font-size: .68rem;\n  color: var(--bakin-color-text-muted);\n  overflow-wrap: anywhere;\n}\n.bakin-type-specimen__sample { margin: 0; font-size: 1rem; line-height: 1.3; overflow-wrap: anywhere; }\n.bakin-token-specs { margin-top: var(--bakin-layout-space-4); }\n.bakin-token-specs > summary {\n  display: inline-block;\n  cursor: pointer;\n  border: 1px solid var(--bakin-color-border-subtle);\n  border-radius: var(--bakin-radius-pill);\n  padding: var(--bakin-layout-space-1) var(--bakin-layout-space-3);\n  background: var(--bakin-color-surface-default);\n  color: var(--bakin-color-text-muted);\n  font-size: .75rem;\n  font-weight: 600;\n}\n.bakin-token-specs > summary:focus-visible {\n  outline: 2px solid var(--bakin-color-focus-ring);\n  outline-offset: 3px;\n}\n.bakin-token-specs[open] > summary { margin-bottom: var(--bakin-layout-space-2); }\n@media (max-width: 44rem) {\n  .bakin-token-catalog { padding: var(--bakin-layout-space-4); }\n  .bakin-token-row { grid-template-columns: 1fr; gap: var(--bakin-layout-space-3); }\n  .bakin-token-row__facts { padding-left: 0; }\n  .bakin-type-specimen { grid-template-columns: 1fr; gap: var(--bakin-layout-space-2); }\n}\n@media (prefers-reduced-motion: reduce) {\n  .bakin-token-catalog *, .bakin-token-catalog *::before, .bakin-token-catalog *::after {\n    animation-duration: .01ms !important;\n    animation-iteration-count: 1 !important;\n    transition-duration: .01ms !important;\n  }\n}"
+const FAMILIES: string[] = [...new Set(TOKENS.map((token) => token.family))]
 
 type Token = (typeof TOKENS)[number]
+
+const LEAD_FAMILIES = ['Color', 'Typography']
+const ORDERED_FAMILIES = [
+  ...LEAD_FAMILIES.filter((family) => FAMILIES.includes(family)),
+  ...FAMILIES.filter((family) => !LEAD_FAMILIES.includes(family)),
+]
+
+const COLOR_TOKENS = TOKENS.filter((token) => token.family === 'Color')
+const COLOR_GROUP_ORDER = ['Canvas', 'Surface', 'Border', 'Text', 'Action', 'Signal', 'Focus', 'Data series', 'Data status']
+
+function colorShortName(token: Token): string {
+  return token.name.replace('semantic.color.', '')
+}
+
+function colorGroupName(token: Token): string {
+  const segments = token.name.split('.')
+  const head = segments[2] ?? 'color'
+  if (head === 'data') return segments[3] === 'status' ? 'Data status' : 'Data series'
+  return head.charAt(0).toUpperCase() + head.slice(1)
+}
+
+const COLOR_GROUPS = [
+  ...COLOR_GROUP_ORDER,
+  ...COLOR_TOKENS.map(colorGroupName).filter((group) => !COLOR_GROUP_ORDER.includes(group)),
+]
+  .filter((group, index, groups) => groups.indexOf(group) === index)
+  .map((group) => ({ group, tokens: COLOR_TOKENS.filter((token) => colorGroupName(token) === group) }))
+  .filter((entry) => entry.tokens.length > 0)
+
+function byName(left: Token, right: Token): number {
+  return left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+}
+
+const SIZE_TOKENS = TOKENS.filter((token) => token.name.startsWith('semantic.typography.size.'))
+  .sort((left, right) => Number.parseFloat(right.cssValue) - Number.parseFloat(left.cssValue) || byName(left, right))
+const WEIGHT_TOKENS = TOKENS.filter((token) => token.name.startsWith('semantic.typography.weight.'))
+  .sort((left, right) => Number.parseFloat(left.cssValue) - Number.parseFloat(right.cssValue) || byName(left, right))
+const FAMILY_TOKENS = TOKENS.filter((token) => token.name.startsWith('semantic.typography.family.'))
+
+const SPECIMEN_TEXT = 'The quick brown fox jumps over the lazy dog.'
+
+function typographyShortName(token: Token): string {
+  return token.name.replace('semantic.typography.', '')
+}
+
+function specimenSample(token: Token): string {
+  return token.name.split('.').pop() + '. ' + SPECIMEN_TEXT
+}
+
+function specimenDetail(token: Token): string {
+  if (!token.cssValue.endsWith('rem')) return token.cssValue
+  const px = Math.round(Number.parseFloat(token.cssValue) * 1600) / 100
+  return token.cssValue + ' · ' + px + 'px'
+}
 
 function TokenPreview({ token }: { token: Token }) {
   const style = { '--token-value': 'var(' + token.cssVariable + ')' } as CSSProperties
@@ -1089,6 +1143,117 @@ function contrastText(token: Token): string {
   return token.contrast.ratio + ':1 vs ' + token.contrast.againstCssVariable + ' · ' + threshold
 }
 
+function TokenSpecRow({ token }: { token: Token }) {
+  return (
+    <article className="bakin-token-row" aria-label={token.name}>
+      <div className="bakin-token-row__identity">
+        <TokenPreview token={token} />
+        <div>
+          <code className="bakin-token-row__name">{token.name}</code>
+          <p className="bakin-token-row__intent">{token.description}</p>
+        </div>
+      </div>
+      <dl className="bakin-token-row__facts">
+        <dt>Value</dt><dd className="bakin-token-row__value">{token.cssValue}</dd>
+        <dt>Property</dt><dd><code>{token.cssVariable}</code></dd>
+        <dt>Status</dt><dd><span className="bakin-token-catalog__status">Public semantic</span></dd>
+        <dt>Contrast</dt><dd>{contrastText(token)}</dd>
+        <dt>Source</dt><dd><a href={token.sourceUrl} target="_blank" rel="noreferrer">semantic.tokens.json{token.sourcePointer}</a></dd>
+      </dl>
+    </article>
+  )
+}
+
+function FamilySpec({ family, tokens }: { family: string; tokens: Token[] }) {
+  return (
+    <details className="bakin-token-specs">
+      <summary>{'View full spec — ' + family}</summary>
+      <div className="bakin-token-family__rows">
+        {tokens.map((token) => <TokenSpecRow token={token} key={token.name} />)}
+      </div>
+    </details>
+  )
+}
+
+function SpecimenRow({ token, detail, sampleStyle }: { token: Token; detail: string; sampleStyle: CSSProperties }) {
+  return (
+    <div className="bakin-type-specimen">
+      <div className="bakin-type-specimen__meta">
+        <code>{typographyShortName(token)}</code>
+        <span>{detail}</span>
+      </div>
+      <p className="bakin-type-specimen__sample" style={sampleStyle}>{specimenSample(token)}</p>
+    </div>
+  )
+}
+
+function ColorSection({ id, tokens }: { id: string; tokens: Token[] }) {
+  return (
+    <section className="bakin-token-family" aria-labelledby={id}>
+      <h2 id={id}>Color</h2>
+      {COLOR_GROUPS.map((entry) => (
+        <div className="bakin-token-group" key={entry.group}>
+          <h3>{entry.group}</h3>
+          <div className="bakin-token-swatch-grid">
+            {entry.tokens.map((token) => (
+              <div className="bakin-token-swatch" key={token.name}>
+                <span className="bakin-token-swatch__chip" style={{ '--token-value': 'var(' + token.cssVariable + ')' } as CSSProperties} aria-hidden="true" />
+                <code className="bakin-token-swatch__name">{colorShortName(token)}</code>
+                <span className="bakin-token-swatch__value">{token.cssValue}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <FamilySpec family="Color" tokens={tokens} />
+    </section>
+  )
+}
+
+function TypographySection({ id, tokens }: { id: string; tokens: Token[] }) {
+  return (
+    <section className="bakin-token-family" aria-labelledby={id}>
+      <h2 id={id}>Typography</h2>
+      <div className="bakin-token-group">
+        <h3>Type scale</h3>
+        <div>
+          {SIZE_TOKENS.map((token) => (
+            <SpecimenRow token={token} detail={specimenDetail(token)} sampleStyle={{ fontSize: 'var(' + token.cssVariable + ')' }} key={token.name} />
+          ))}
+        </div>
+      </div>
+      <div className="bakin-token-group">
+        <h3>Weights</h3>
+        <div>
+          {WEIGHT_TOKENS.map((token) => (
+            <SpecimenRow token={token} detail={token.cssValue} sampleStyle={{ fontWeight: 'var(' + token.cssVariable + ')' } as CSSProperties} key={token.name} />
+          ))}
+        </div>
+      </div>
+      <div className="bakin-token-group">
+        <h3>Families</h3>
+        <div>
+          {FAMILY_TOKENS.map((token) => (
+            <SpecimenRow token={token} detail={token.cssValue} sampleStyle={{ fontFamily: 'var(' + token.cssVariable + ')' }} key={token.name} />
+          ))}
+        </div>
+      </div>
+      <FamilySpec family="Typography" tokens={tokens} />
+    </section>
+  )
+}
+
+function SpecFamilySection({ id, family, tokens }: { id: string; family: string; tokens: Token[] }) {
+  return (
+    <section className="bakin-token-family" aria-labelledby={id}>
+      <h2 id={id}>{family}</h2>
+      <div className="bakin-token-family__rows">
+        {tokens.map((token) => <TokenSpecRow token={token} key={token.name} />)}
+      </div>
+    </section>
+  )
+}
+
 function SemanticTokenCatalog() {
   return (
     <main className="bakin-token-catalog" aria-labelledby="semantic-token-catalog-title">
@@ -1104,33 +1269,12 @@ function SemanticTokenCatalog() {
             <span>Generated from DTCG JSON</span>
           </div>
         </header>
-        {FAMILIES.map((family) => {
+        {ORDERED_FAMILIES.map((family) => {
           const familyId = 'token-family-' + family.toLowerCase().replaceAll(' ', '-')
-          return (
-            <section className="bakin-token-family" aria-labelledby={familyId} key={family}>
-              <h2 id={familyId}>{family}</h2>
-              <div className="bakin-token-family__rows">
-                {TOKENS.filter((token) => token.family === family).map((token) => (
-                  <article className="bakin-token-row" aria-label={token.name} key={token.name}>
-                    <div className="bakin-token-row__identity">
-                      <TokenPreview token={token} />
-                      <div>
-                        <code className="bakin-token-row__name">{token.name}</code>
-                        <p className="bakin-token-row__intent">{token.description}</p>
-                      </div>
-                    </div>
-                    <dl className="bakin-token-row__facts">
-                      <dt>Value</dt><dd className="bakin-token-row__value">{token.cssValue}</dd>
-                      <dt>Property</dt><dd><code>{token.cssVariable}</code></dd>
-                      <dt>Status</dt><dd><span className="bakin-token-catalog__status">Public semantic</span></dd>
-                      <dt>Contrast</dt><dd>{contrastText(token)}</dd>
-                      <dt>Source</dt><dd><a href={token.sourceUrl} target="_blank" rel="noreferrer">semantic.tokens.json{token.sourcePointer}</a></dd>
-                    </dl>
-                  </article>
-                ))}
-              </div>
-            </section>
-          )
+          const familyTokens = TOKENS.filter((token) => token.family === family)
+          if (family === 'Color') return <ColorSection id={familyId} tokens={familyTokens} key={family} />
+          if (family === 'Typography') return <TypographySection id={familyId} tokens={familyTokens} key={family} />
+          return <SpecFamilySection id={familyId} family={family} tokens={familyTokens} key={family} />
         })}
       </div>
     </main>
@@ -1145,7 +1289,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'The generated public semantic token contract: 61 tokens across 8 families, each documented with its value, namespaced CSS custom property, contrast evidence, and DTCG source pointer. Internal reference values and component aliases are excluded. Regenerated by bun run ui:tokens:generate from packages/ui/tokens/semantic.tokens.json — edit the source tokens, never this file.',
+        component: 'The generated public semantic token contract as a browsable style guide: 61 tokens across 8 families. Color leads with labeled swatch grids grouped by semantic role and Typography renders every type token as a specimen at its real size, weight, and family; both keep their complete spec rows — value, namespaced CSS custom property, status, contrast evidence, and DTCG source pointer — under a View full spec disclosure, while every other family documents the same spec rows inline. Internal reference values and component aliases are excluded. Regenerated by bun run ui:tokens:generate from packages/ui/tokens/semantic.tokens.json — edit the source tokens, never this file.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'reduced-motion'],
@@ -1156,9 +1300,12 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Catalog: Story = {
-  play: async ({ canvas }) => {
+  play: async ({ canvas, userEvent }) => {
     await expect(canvas.getByRole('heading', { name: 'Semantic UI tokens' })).toBeVisible()
-    await expect(canvas.getByRole('article', { name: 'semantic.color.action.primary.background' })).toBeVisible()
-    await expect(canvas.getByText('--bakin-color-action-primary-background')).toBeVisible()
+    await expect(canvas.getByText(colorShortName(COLOR_TOKENS[0]))).toBeVisible()
+    await expect(canvas.getByText(specimenSample(SIZE_TOKENS[0]))).toBeVisible()
+    await userEvent.click(canvas.getByText('View full spec — Color'))
+    await expect(canvas.getByRole('article', { name: COLOR_TOKENS[0].name })).toBeVisible()
+    await expect(canvas.getByText(COLOR_TOKENS[0].cssVariable)).toBeVisible()
   },
 }
