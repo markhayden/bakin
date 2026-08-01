@@ -22,7 +22,7 @@ export function Card({ className, size = 'md', ...props }: CardProps) {
           'group/card flex min-w-0 flex-col overflow-hidden rounded-bakin-surface border border-bakin-border-subtle',
           'bg-bakin-surface-default font-bakin-typography-family-ui text-[length:var(--bakin-typography-size-body)] text-bakin-text-primary',
           'gap-bakin-4 py-bakin-4 data-[size=sm]:gap-bakin-3 data-[size=sm]:py-bakin-3',
-          'has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0',
+          'has-data-[slot=card-footer]:pb-0! has-[>img:first-child]:pt-0',
           '*:[img:first-child]:rounded-t-bakin-surface *:[img:last-child]:rounded-b-bakin-surface',
         ].join(' '),
         className,

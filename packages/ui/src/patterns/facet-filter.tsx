@@ -130,7 +130,7 @@ export function FacetFilter({
                       disabled={option.disabled}
                       onSelect={() => toggle(option.value)}
                     >
-                      {option.icon ? <span aria-hidden="true" className="shrink-0">{option.icon}</span> : null}
+                      {option.icon ? <span aria-hidden="true" className="inline-flex shrink-0 items-center">{option.icon}</span> : null}
                       <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{option.label}</span>
                       {checked ? <span className="sr-only">Selected</span> : null}
                       {count !== undefined ? (
@@ -166,7 +166,7 @@ export function FacetFilter({
           className="max-w-full"
           onClick={() => toggle(option.value)}
         >
-          {option.icon ? <span aria-hidden="true" className="shrink-0">{option.icon}</span> : null}
+          {option.icon ? <span aria-hidden="true" className="inline-flex shrink-0 items-center">{option.icon}</span> : null}
           <span className="truncate">{option.label}</span>
           <RemoveIcon />
         </Button>

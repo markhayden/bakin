@@ -162,7 +162,10 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         ? `/api/plugins/${plugin}/search?${params}`
         : `/api/search?${params}`
 
-      const res = await fetch(url, { signal: controller.signal })
+      // Abortable by newer queries AND self-expiring: a request stranded by a
+      // server restart resolves to the error state instead of pinning the
+      // consumer's busy spinner forever.
+      const res = await fetch(url, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) })
 
       if (!mountedRef.current) return
 
