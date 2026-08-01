@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 
 import { PluginOwnershipRoot } from '@makinbakin/sdk/internal'
@@ -66,8 +66,8 @@ describe('plugin portal containment', () => {
     expect(owner?.getAttribute('data-bakin-plugin')).toBe('bravo')
   })
 
-  it('lets two plugins open anchored overlays without losing either identity', () => {
-    render(
+  it('lets two plugins open anchored overlays without losing either identity', async () => {
+    await act(async () => { render(
       <>
         <PluginOwnershipRoot pluginId="charlie">
           <Popover defaultOpen>
@@ -84,7 +84,7 @@ describe('plugin portal containment', () => {
           </TooltipProvider>
         </PluginOwnershipRoot>
       </>,
-    )
+    ) })
 
     const popoverOwner = screen.getByText('Charlie context').closest('[data-bakin-plugin-portal]')
     const tooltipOwner = screen.getByRole('tooltip').closest('[data-bakin-plugin-portal]')
@@ -92,8 +92,8 @@ describe('plugin portal containment', () => {
     expect(tooltipOwner?.getAttribute('data-bakin-plugin')).toBe('delta')
   })
 
-  it('keeps option-list portals in the owning plugin scope', () => {
-    render(
+  it('keeps option-list portals in the owning plugin scope', async () => {
+    await act(async () => { render(
       <>
         <PluginOwnershipRoot pluginId="echo">
           <DropdownMenu defaultOpen>
@@ -108,7 +108,7 @@ describe('plugin portal containment', () => {
           </Select>
         </PluginOwnershipRoot>
       </>,
-    )
+    ) })
 
     const menuOwner = screen.getByRole('menuitem', { name: 'Echo item' })
       .closest('[data-bakin-plugin-portal]')

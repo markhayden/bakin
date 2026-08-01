@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 
 import {
@@ -30,10 +30,11 @@ import {
 afterEach(() => cleanup())
 
 describe('anchored overlay public contracts', () => {
-  it('supports a labelled, collision-sized Popover in an explicit portal container', () => {
+  it('supports a labelled, collision-sized Popover in an explicit portal container', async () => {
     const portalRoot = document.createElement('div')
     document.body.appendChild(portalRoot)
-    render(
+    await act(async () => {
+      render(
       <Popover defaultOpen>
         <PopoverTrigger>Inspect task</PopoverTrigger>
         <PopoverContent portalProps={{ container: portalRoot }}>
@@ -41,7 +42,8 @@ describe('anchored overlay public contracts', () => {
           <PopoverDescription>Review the active route.</PopoverDescription>
         </PopoverContent>
       </Popover>,
-    )
+      )
+    })
 
     const popover = portalRoot.querySelector('[data-slot="popover-content"]')
     expect(popover).toBeTruthy()
@@ -50,10 +52,11 @@ describe('anchored overlay public contracts', () => {
     portalRoot.remove()
   })
 
-  it('provides semantic menu items, nested-ready geometry, and silent shortcut hints', () => {
+  it('provides semantic menu items, nested-ready geometry, and silent shortcut hints', async () => {
     const portalRoot = document.createElement('div')
     document.body.appendChild(portalRoot)
-    render(
+    await act(async () => {
+      render(
       <DropdownMenu defaultOpen>
         <DropdownMenuTrigger>Task actions</DropdownMenuTrigger>
         <DropdownMenuContent portalProps={{ container: portalRoot }}>
@@ -64,7 +67,8 @@ describe('anchored overlay public contracts', () => {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>,
-    )
+      )
+    })
 
     expect(screen.getByRole('menuitem', { name: 'Duplicate' })).toBeTruthy()
     expect(screen.getByText('⌘D').getAttribute('aria-hidden')).toBe('true')
@@ -75,17 +79,19 @@ describe('anchored overlay public contracts', () => {
     portalRoot.remove()
   })
 
-  it('renders supplemental tooltip content through the tokenized layer contract', () => {
+  it('renders supplemental tooltip content through the tokenized layer contract', async () => {
     const portalRoot = document.createElement('div')
     document.body.appendChild(portalRoot)
-    render(
+    await act(async () => {
+      render(
       <TooltipProvider delay={0}>
         <Tooltip open>
           <TooltipTrigger aria-label="Explain blocked state">?</TooltipTrigger>
           <TooltipContent portalProps={{ container: portalRoot }}>Waiting for an approval.</TooltipContent>
         </Tooltip>
       </TooltipProvider>,
-    )
+      )
+    })
 
     const tooltip = screen.getByRole('tooltip')
     expect(tooltip.textContent).toContain('Waiting for an approval.')

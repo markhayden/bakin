@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { ActivityContext } from '@/context/activity-context'
 import { SidebarContext } from '@/context/sidebar-context'
@@ -101,15 +101,20 @@ describe('Header update banner', () => {
     expect(document.documentElement.style.getPropertyValue('--bakin-shell-top')).toBe('')
   })
 
-  it('puts Live Activity at the far right of the mobile header without an unread pulse', () => {
+  it('puts Live Activity at the far right of the mobile header without an unread pulse', async () => {
     const toggleActivity = mock()
-    render(
-      <ActivityContext.Provider value={{ open: false, toggle: toggleActivity, close: mock() }}>
-        <SidebarContext.Provider value={{ collapsed: false, toggle: mock() }}>
-          <Header />
-        </SidebarContext.Provider>
-      </ActivityContext.Provider>,
-    )
+    // Header fires version/dispatch fetches on mount — resolve them inside
+    // act so their state updates don't trip the act gate after the test.
+    global.fetch = mock(() => Promise.resolve(response({}))) as unknown as typeof global.fetch
+    await act(async () => {
+      render(
+        <ActivityContext.Provider value={{ open: false, toggle: toggleActivity, close: mock() }}>
+          <SidebarContext.Provider value={{ collapsed: false, toggle: mock() }}>
+            <Header />
+          </SidebarContext.Provider>
+        </ActivityContext.Provider>,
+      )
+    })
 
     const button = screen.getByRole('button', { name: 'Open Live Activity' })
     expect(button.className).toContain('md:hidden')

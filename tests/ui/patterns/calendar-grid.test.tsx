@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from 'bun:test'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { CalendarGrid } from '@makinbakin/sdk/patterns'
 import '../../rtl-settle'
 
@@ -79,7 +79,7 @@ describe('CalendarGrid month view', () => {
     expect(dimmed.querySelector('.opacity-50')).not.toBeNull()
   })
 
-  it('renders muted, navigable adjacent-month days with items when outsideDays="muted"', () => {
+  it('renders muted, navigable adjacent-month days with items when outsideDays="muted"', async () => {
     render(
       <CalendarGrid
         view="month"
@@ -100,7 +100,7 @@ describe('CalendarGrid month view', () => {
 
     // Outside days are real cells — arrow navigation reaches them.
     const first = screen.getByRole('gridcell', { name: 'Wednesday, July 1, no items' })
-    first.focus()
+    await act(async () => { first.focus() })
     fireEvent.keyDown(first, { key: 'ArrowLeft' })
     expect(document.activeElement).toBe(outside)
   })
@@ -150,7 +150,7 @@ describe('CalendarGrid month view', () => {
     expect(screen.queryByText('Four')).toBeNull()
   })
 
-  it('supports roving arrow navigation, Home/End, and Enter into cell content', () => {
+  it('supports roving arrow navigation, Home/End, and Enter into cell content', async () => {
     render(
       <CalendarGrid
         view="month"
@@ -165,7 +165,7 @@ describe('CalendarGrid month view', () => {
     // Today's cell is the single tab stop.
     const today = screen.getByRole('gridcell', { name: 'Wednesday, July 15, 1 item' })
     expect(today.tabIndex).toBe(0)
-    today.focus()
+    await act(async () => { today.focus() })
 
     fireEvent.keyDown(today, { key: 'ArrowRight' })
     const thursday = screen.getByRole('gridcell', { name: 'Thursday, July 16, no items' })
@@ -182,19 +182,19 @@ describe('CalendarGrid month view', () => {
     expect(document.activeElement).toBe(screen.getByRole('gridcell', { name: 'Saturday, July 11, no items' }))
 
     // Enter hands focus to the first interactive item in the cell.
-    today.focus()
+    await act(async () => { today.focus() })
     fireEvent.keyDown(today, { key: 'Enter' })
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Standup' }))
   })
 
-  it('does not navigate onto leading blank cells', () => {
+  it('does not navigate onto leading blank cells', async () => {
     render(
       <CalendarGrid view="month" date={JULY} now={NOW} label="July 2026" items={[]} renderItem={renderItem} />,
     )
 
     // July 1, 2026 is a Wednesday — Sunday–Tuesday of the first row are blanks.
     const first = screen.getByRole('gridcell', { name: 'Wednesday, July 1, no items' })
-    first.focus()
+    await act(async () => { first.focus() })
     fireEvent.keyDown(first, { key: 'ArrowLeft' })
     expect(document.activeElement).toBe(first)
     fireEvent.keyDown(first, { key: 'ArrowUp' })
