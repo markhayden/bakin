@@ -120,7 +120,7 @@ function SettingsCategoriesExample() {
                     <p className="bakin-settings-dashboard-story__section-description">Settings that affect every plugin remain explicit and readable.</p>
                   </Stack>
                   <Field orientation="horizontal" name="degradedAlerts">
-                    <Switch defaultChecked />
+                    <Switch size="sm" defaultChecked />
                     <FieldLabel>Notify when an official integration degrades</FieldLabel>
                     <FieldDescription>Alerts include the affected plugin and a supported recovery path.</FieldDescription>
                   </Field>
@@ -238,7 +238,7 @@ function DashboardOverviewExample() {
           </div>
           <div className="bakin-settings-dashboard-story__pulse-action">
             <Badge tone="attention" variant="outline">Needs attention</Badge>
-            <Button>Review credential</Button>
+            <Button size="sm">Review credential</Button>
           </div>
         </section>
 

@@ -69,7 +69,7 @@ export function DetailDrawer({
                     data-testid="gallery-placeholder"
                     className="flex aspect-video w-full items-center justify-center rounded-bakin-surface border border-dashed border-bakin-border-subtle bg-bakin-canvas-default"
                   >
-                    <ImageIcon className="size-bakin-5 text-bakin-text-muted opacity-50" />
+                    <ImageIcon className="size-5 text-bakin-text-muted opacity-50" />
                   </div>
                 ))}
           </div>

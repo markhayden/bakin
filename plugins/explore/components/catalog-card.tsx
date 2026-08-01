@@ -55,7 +55,7 @@ export function EntryVisual({ entry, size = 'md' }: { entry: ExploreCatalogEntry
         alt={entry.name}
         loading="lazy"
         data-testid={`icon-${entry.kind}-${entry.id}`}
-        className={`${size === 'lg' ? 'size-bakin-12' : 'size-bakin-8'} shrink-0 rounded-bakin-pill border border-bakin-border-subtle object-cover object-top`}
+        className={`${size === 'lg' ? 'size-12' : 'size-bakin-8'} shrink-0 rounded-bakin-pill border border-bakin-border-subtle object-cover object-top`}
       />
     )
   }
@@ -64,7 +64,7 @@ export function EntryVisual({ entry, size = 'md' }: { entry: ExploreCatalogEntry
       aria-hidden="true"
       className={`inline-grid shrink-0 place-items-center rounded-bakin-control bg-bakin-surface-default leading-none ${
         size === 'lg'
-          ? 'size-bakin-12 text-bakin-typography-size-title'
+          ? 'size-12 text-bakin-typography-size-title'
           : 'size-bakin-8 text-bakin-typography-size-section-title'
       }`}
     >

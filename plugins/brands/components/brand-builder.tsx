@@ -330,8 +330,8 @@ export function BrandBuilder({
               </CardHeader>
               <CardContent className="flex items-center gap-bakin-3">
               {logoPreview
-                ? <img src={logoPreview} alt="" className="size-bakin-10 rounded-bakin-control border border-bakin-border-subtle object-contain" />
-                : <div className="flex size-bakin-10 items-center justify-center rounded-bakin-control border border-bakin-border-subtle text-bakin-typography-size-meta text-bakin-text-muted">No logo</div>}
+                ? <img src={logoPreview} alt="" className="size-10 rounded-bakin-control border border-bakin-border-subtle object-contain" />
+                : <div className="flex size-10 items-center justify-center rounded-bakin-control border border-bakin-border-subtle text-bakin-typography-size-meta text-bakin-text-muted">No logo</div>}
                 <p className="min-w-0 text-bakin-text-muted">{a.product || 'No product description'}</p>
               </CardContent>
             </Card>
@@ -444,8 +444,8 @@ function LogoDrop({ preview, fileName, onPick }: { preview: string | null; fileN
         {...dropProps}
       >
         {preview
-          ? <img src={preview} alt="Logo preview" className="size-bakin-10 rounded-bakin-control border border-bakin-border-subtle object-contain" />
-          : <div className="flex size-bakin-10 items-center justify-center rounded-bakin-control border border-bakin-border-subtle text-bakin-text-muted"><ImagePlus aria-hidden="true" className="size-bakin-4" /></div>}
+          ? <img src={preview} alt="Logo preview" className="size-10 rounded-bakin-control border border-bakin-border-subtle object-contain" />
+          : <div className="flex size-10 items-center justify-center rounded-bakin-control border border-bakin-border-subtle text-bakin-text-muted"><ImagePlus aria-hidden="true" className="size-bakin-4" /></div>}
         <div className="min-w-0">
           {fileName
             ? <><p className="truncate font-bakin-typography-weight-semibold">{fileName}</p><p className="text-bakin-typography-size-meta text-bakin-text-muted">Browse or drop to replace</p></>

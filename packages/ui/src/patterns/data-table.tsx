@@ -177,7 +177,7 @@ export function DataTable<Row, F extends string = string>({
                       scope="col"
                       data-slot="table-head"
                       className={cn(
-                        'h-bakin-10 whitespace-nowrap px-bakin-2 align-middle text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-muted',
+                        'h-10 whitespace-nowrap px-bakin-2 align-middle text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-muted',
                         alignClass,
                         column.headClassName,
                       )}

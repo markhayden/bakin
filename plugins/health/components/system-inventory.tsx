@@ -224,7 +224,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
   }), [checkGroupById])
 
   return (
-    <div className="space-y-bakin-5">
+    <div className="space-y-5">
       {pluginMutation.status !== 'idle' && pluginMutation.message && (
         <Banner
           tone={mutationTone(pluginMutation.status)}

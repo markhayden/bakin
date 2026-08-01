@@ -389,7 +389,7 @@ export function TeamGrid() {
               data-team-graph-canvas=""
               label="Team reporting graph"
               orientation="vertical"
-              className="h-full min-h-bakin-32 flex-1 overflow-hidden rounded-none border-x-0 border-b-0"
+              className="h-full min-h-32 flex-1 overflow-hidden rounded-none border-x-0 border-b-0"
             >
               <ReactFlow
                 nodes={nodes}

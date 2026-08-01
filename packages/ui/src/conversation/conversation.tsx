@@ -144,7 +144,7 @@ export function Conversation({
             {emptyState}
           </div>
         ) : (
-          <div className="grid min-w-0 gap-bakin-5 px-bakin-4 py-bakin-4">
+          <div className="grid min-w-0 gap-5 px-bakin-4 py-bakin-4">
             {turns.map((turn, index) => {
               const day = dayKey(turn.ts)
               const followsAgent = turn.kind === 'user' && turns[index - 1]?.kind === 'agent'
@@ -172,7 +172,7 @@ export function Conversation({
                   key={turn.key}
                   data-conv-turn-group=""
                   data-kind={turn.kind}
-                  className={cn('grid min-w-0 gap-bakin-5', followsAgent && 'pt-bakin-4')}
+                  className={cn('grid min-w-0 gap-5', followsAgent && 'pt-bakin-4')}
                 >
                   {separator}
                   {turn.kind === 'user' ? (

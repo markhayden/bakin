@@ -406,7 +406,7 @@ function DriftPanel({ agentId }: { agentId: string }) {
               headingLevel={3}
               title="Scanning agent files"
               description="Comparing managed content with the installed package."
-              preview={<Skeleton className="h-bakin-10 w-full" />}
+              preview={<Skeleton className="h-10 w-full" />}
             />
           ) : !scan ? (
             <Alert tone="danger">
@@ -533,7 +533,7 @@ function ContextPanel({ agentId }: { agentId: string }) {
           headingLevel={3}
           title="Loading context report"
           description="Calculating prompt sections, workspace files, and observed input."
-          preview={<Skeleton className="h-bakin-10 w-full" />}
+          preview={<Skeleton className="h-10 w-full" />}
         />
       </Panel>
     )
@@ -909,7 +909,7 @@ function TimelinePanel({ agentId }: { agentId: string }) {
           headingLevel={3}
           title="Loading activity"
           description="Recent runs and operational events will appear here."
-          preview={<Skeleton className="h-bakin-10 w-full" />}
+          preview={<Skeleton className="h-10 w-full" />}
         />
       ) : error ? (
         <SystemState

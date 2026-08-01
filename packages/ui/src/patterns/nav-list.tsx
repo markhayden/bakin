@@ -86,7 +86,7 @@ export function NavList<T extends string = string>({
         <div
           key={section.label ?? `section-${sectionIndex}`}
           data-slot="nav-list-section"
-          className={cn(sectionIndex > 0 && 'mt-bakin-5')}
+          className={cn(sectionIndex > 0 && 'mt-5')}
         >
           {section.label ? (
             <div

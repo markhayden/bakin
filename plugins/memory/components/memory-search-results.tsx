@@ -73,7 +73,7 @@ export function MemorySearchResults({
     return (
       <div className="flex flex-col gap-bakin-2" data-testid="memory-search-results-loading">
         {Array.from({ length: 4 }).map((_, index) => (
-          <Skeleton key={index} className="h-bakin-20 w-full" />
+          <Skeleton key={index} className="h-20 w-full" />
         ))}
       </div>
     )

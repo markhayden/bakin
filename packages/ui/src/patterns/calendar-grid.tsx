@@ -564,7 +564,7 @@ export function CalendarGrid<T extends CalendarGridItem>({
                   {...cellProps(0, columnIndex, cellLabel([dayLabel(day), 'all day'], dayItems.length))}
                   data-today={isToday ? '' : undefined}
                   className={cn(
-                    'min-h-bakin-12 border-l border-t border-bakin-border-subtle p-bakin-1 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring',
+                    'min-h-12 border-l border-t border-bakin-border-subtle p-bakin-1 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring',
                     isToday && 'bg-bakin-signal-accent/5',
                   )}
                 >
@@ -596,7 +596,7 @@ export function CalendarGrid<T extends CalendarGridItem>({
                   )}
                   data-today={isToday ? '' : undefined}
                   className={cn(
-                    'min-h-bakin-12 border-l border-t border-bakin-border-subtle p-bakin-1 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring',
+                    'min-h-12 border-l border-t border-bakin-border-subtle p-bakin-1 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring',
                     isToday && 'bg-bakin-signal-accent/5',
                     cellItems.length === 0 && 'hover:bg-bakin-surface-default',
                   )}

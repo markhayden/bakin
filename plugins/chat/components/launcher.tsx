@@ -52,7 +52,7 @@ export function Launcher({
       <div className="w-full space-y-bakin-8 p-bakin-4 md:p-bakin-6">
         <div className="space-y-bakin-3">
           <h2 className="flex items-center gap-bakin-2 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold">
-            <MessageCirclePlus className="size-bakin-5 text-bakin-text-muted" /> Start a chat
+            <MessageCirclePlus className="size-5 text-bakin-text-muted" /> Start a chat
           </h2>
           {agents.length === 0 ? (
             <p className="text-bakin-typography-size-body text-bakin-text-muted">

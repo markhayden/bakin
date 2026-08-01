@@ -1037,7 +1037,7 @@ export function WorkflowCanvasEditor({
         >
           <PageCanvas
             orientation="vertical"
-            className="min-h-bakin-32 flex-1 overflow-hidden rounded-none border-x-0 border-y-0 @md/page-shell:border-t"
+            className="min-h-32 flex-1 overflow-hidden rounded-none border-x-0 border-y-0 @md/page-shell:border-t"
             label="Workflow editor"
           >
             <div className="flex h-full min-h-0 min-w-0">

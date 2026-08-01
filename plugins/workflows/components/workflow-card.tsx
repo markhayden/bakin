@@ -139,7 +139,7 @@ function WorkflowStepPreview({
                   const Icon = summary.icon
                   return (
                     <li key={step.id} className="flex min-w-0 items-start gap-bakin-2">
-                      <span className="flex size-bakin-5 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-canvas-default/10 font-bakin-typography-family-mono text-bakin-typography-size-meta">
+                      <span className="flex size-5 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-canvas-default/10 font-bakin-typography-family-mono text-bakin-typography-size-meta">
                         {index + 1}
                       </span>
                       <span className="flex min-w-0 items-start gap-bakin-1">

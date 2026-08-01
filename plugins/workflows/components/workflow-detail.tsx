@@ -314,7 +314,7 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
                 scope="page"
                 title="Loading workflow"
                 description="The workflow graph and step details will appear when ready."
-                preview={<Skeleton className="h-bakin-32 w-full" />}
+                preview={<Skeleton className="h-32 w-full" />}
               />
             )}
           />
@@ -546,7 +546,7 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
         >
           <PageCanvas
             orientation="vertical"
-            className="min-h-bakin-32 flex-1 overflow-hidden rounded-none border-x-0 border-y-0 @md/page-shell:border-t"
+            className="min-h-32 flex-1 overflow-hidden rounded-none border-x-0 border-y-0 @md/page-shell:border-t"
             label="Workflow graph"
           >
             <WorkflowCanvas

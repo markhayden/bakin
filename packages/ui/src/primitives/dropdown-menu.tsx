@@ -84,7 +84,7 @@ export function DropdownMenuGroup({ className, ...props }: DropdownMenuGroupProp
 }
 
 export function DropdownMenuLabel({ className, inset, ...props }: DropdownMenuLabelProps) {
-  return <MenuPrimitive.GroupLabel data-slot="dropdown-menu-label" data-inset={inset || undefined} className={mergeClassName(`${optionGroupLabelClasses} data-inset:pl-bakin-7`, className)} {...props} />
+  return <MenuPrimitive.GroupLabel data-slot="dropdown-menu-label" data-inset={inset || undefined} className={mergeClassName(`${optionGroupLabelClasses} data-inset:pl-7`, className)} {...props} />
 }
 
 export function DropdownMenuItem({ className, inset, variant = 'default', ...props }: DropdownMenuItemProps) {
@@ -95,7 +95,7 @@ export function DropdownMenuItem({ className, inset, variant = 'default', ...pro
       data-slot="dropdown-menu-item"
       data-inset={inset || undefined}
       data-variant={semanticVariant}
-      className={mergeClassName(`${optionItemClasses} group/dropdown-menu-item data-inset:pl-bakin-7 data-[variant=danger]:text-bakin-signal-danger data-[variant=danger]:data-highlighted:bg-bakin-signal-danger/10`, className)}
+      className={mergeClassName(`${optionItemClasses} group/dropdown-menu-item data-inset:pl-7 data-[variant=danger]:text-bakin-signal-danger data-[variant=danger]:data-highlighted:bg-bakin-signal-danger/10`, className)}
     />
   )
 }
@@ -110,7 +110,7 @@ export function DropdownMenuSubTrigger({ className, inset, children, ...props }:
       {...props}
       data-slot="dropdown-menu-sub-trigger"
       data-inset={inset || undefined}
-      className={mergeClassName(`${optionItemClasses} data-inset:pl-bakin-7 data-popup-open:bg-bakin-border-subtle/35`, className)}
+      className={mergeClassName(`${optionItemClasses} data-inset:pl-7 data-popup-open:bg-bakin-border-subtle/35`, className)}
     >
       {children}
       <svg aria-hidden="true" viewBox="0 0 16 16" className="ml-auto size-bakin-4 fill-none stroke-current stroke-[1.75]">
@@ -136,7 +136,7 @@ function ItemIndicator() {
 
 export function DropdownMenuCheckboxItem({ className, children, checked, inset, ...props }: DropdownMenuCheckboxItemProps) {
   return (
-    <MenuPrimitive.CheckboxItem {...props} checked={checked} data-slot="dropdown-menu-checkbox-item" data-inset={inset || undefined} className={mergeClassName(`${optionItemClasses} data-inset:pl-bakin-7`, className)}>
+    <MenuPrimitive.CheckboxItem {...props} checked={checked} data-slot="dropdown-menu-checkbox-item" data-inset={inset || undefined} className={mergeClassName(`${optionItemClasses} data-inset:pl-7`, className)}>
       {children}
       <MenuPrimitive.CheckboxItemIndicator><ItemIndicator /></MenuPrimitive.CheckboxItemIndicator>
     </MenuPrimitive.CheckboxItem>
@@ -149,7 +149,7 @@ export function DropdownMenuRadioGroup(props: DropdownMenuRadioGroupProps) {
 
 export function DropdownMenuRadioItem({ className, children, inset, ...props }: DropdownMenuRadioItemProps) {
   return (
-    <MenuPrimitive.RadioItem {...props} data-slot="dropdown-menu-radio-item" data-inset={inset || undefined} className={mergeClassName(`${optionItemClasses} data-inset:pl-bakin-7`, className)}>
+    <MenuPrimitive.RadioItem {...props} data-slot="dropdown-menu-radio-item" data-inset={inset || undefined} className={mergeClassName(`${optionItemClasses} data-inset:pl-7`, className)}>
       {children}
       <MenuPrimitive.RadioItemIndicator><ItemIndicator /></MenuPrimitive.RadioItemIndicator>
     </MenuPrimitive.RadioItem>

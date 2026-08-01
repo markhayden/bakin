@@ -88,7 +88,7 @@ export function OverviewAgentSpend({
   const running = new Set(model.rightNow.runningAgents)
 
   return (
-    <section className="min-w-0 p-bakin-4 @[52rem]/health:p-bakin-5" data-testid="overview-agent-spend" aria-labelledby="overview-agent-spend-title">
+    <section className="min-w-0 p-bakin-4 @[52rem]/health:p-5" data-testid="overview-agent-spend" aria-labelledby="overview-agent-spend-title">
       <div className="flex flex-wrap items-start justify-between gap-bakin-3">
         <div className="flex items-center gap-bakin-2">
           <Coins className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />

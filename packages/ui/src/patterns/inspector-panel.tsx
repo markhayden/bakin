@@ -21,7 +21,7 @@ export function InspectorPanel({ className, label, labelledBy, ...props }: Inspe
       aria-labelledby={labelledBy}
       data-slot="inspector-panel"
       className={cn(
-        'flex min-h-0 min-w-0 flex-col gap-bakin-5 font-bakin-typography-family-ui text-bakin-text-primary',
+        'flex min-h-0 min-w-0 flex-col gap-5 font-bakin-typography-family-ui text-bakin-text-primary',
         className,
       )}
     />
@@ -108,7 +108,7 @@ export function InspectorPanelContent({
       aria-busy={busy || undefined}
       data-content-state={hasState ? 'replaced' : 'ready'}
       data-slot="inspector-panel-content"
-      className={cn('flex min-w-0 flex-1 flex-col gap-bakin-5', className)}
+      className={cn('flex min-w-0 flex-1 flex-col gap-5', className)}
     >
       {feedback ? <div data-slot="inspector-panel-feedback">{feedback}</div> : null}
       {hasState ? <div data-slot="inspector-panel-state">{state}</div> : children}

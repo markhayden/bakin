@@ -82,13 +82,13 @@ const sheetContentClasses = [
   'transition-[opacity,transform] duration-[var(--bakin-motion-duration-transition)] ease-bakin-standard',
   'data-starting-style:opacity-0 data-ending-style:opacity-0 motion-reduce:transition-none',
   'data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-dvh data-[side=right]:w-full data-[side=right]:border-l data-[side=right]:sm:w-3/4 data-[side=right]:sm:max-w-xl',
-  'data-[side=right]:data-starting-style:translate-x-bakin-10 data-[side=right]:data-ending-style:translate-x-bakin-10',
+  'data-[side=right]:data-starting-style:translate-x-10 data-[side=right]:data-ending-style:translate-x-10',
   'data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-dvh data-[side=left]:w-full data-[side=left]:border-r data-[side=left]:sm:w-3/4 data-[side=left]:sm:max-w-xl',
-  'data-[side=left]:data-starting-style:-translate-x-bakin-10 data-[side=left]:data-ending-style:-translate-x-bakin-10',
+  'data-[side=left]:data-starting-style:-translate-x-10 data-[side=left]:data-ending-style:-translate-x-10',
   'data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:max-h-[calc(100dvh-var(--bakin-layout-space-4))] data-[side=bottom]:w-full data-[side=bottom]:rounded-t-bakin-overlay data-[side=bottom]:border-t',
-  'data-[side=bottom]:data-starting-style:translate-y-bakin-10 data-[side=bottom]:data-ending-style:translate-y-bakin-10',
+  'data-[side=bottom]:data-starting-style:translate-y-10 data-[side=bottom]:data-ending-style:translate-y-10',
   'data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:max-h-[calc(100dvh-var(--bakin-layout-space-4))] data-[side=top]:w-full data-[side=top]:rounded-b-bakin-overlay data-[side=top]:border-b',
-  'data-[side=top]:data-starting-style:-translate-y-bakin-10 data-[side=top]:data-ending-style:-translate-y-bakin-10',
+  'data-[side=top]:data-starting-style:-translate-y-10 data-[side=top]:data-ending-style:-translate-y-10',
   'motion-reduce:transform-none',
 ].join(' ')
 
@@ -131,7 +131,7 @@ export function SheetHeader({ className, inset = 'default', ...props }: SheetHea
     <div
       data-slot="sheet-header"
       data-inset={inset}
-      className={cn('flex min-w-0 flex-col gap-bakin-1', inset === 'default' && 'p-bakin-6 pr-bakin-12', className)}
+      className={cn('flex min-w-0 flex-col gap-bakin-1', inset === 'default' && 'p-bakin-6 pr-12', className)}
       {...props}
     />
   )

@@ -60,7 +60,7 @@ export function TierOverviewCards({ includeSystemLogs = false }: { includeSystem
     return (
       <StatGroup label="Memory totals" aria-busy="true">
         {visibleTiers.map((tier) => (
-          <Skeleton key={tier.key} className="h-bakin-16 w-bakin-32" />
+          <Skeleton key={tier.key} className="h-16 w-32" />
         ))}
       </StatGroup>
     )
@@ -74,7 +74,7 @@ export function TierOverviewCards({ includeSystemLogs = false }: { includeSystem
           icon={tier.icon}
           label={tier.label}
           value={data.countsByTier[tier.key] ?? 0}
-          className="min-w-bakin-32"
+          className="min-w-32"
         />
       ))}
     </StatGroup>

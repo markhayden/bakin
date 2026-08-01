@@ -54,7 +54,7 @@ export function SortableHead<F extends string>({
       aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : undefined}
       data-slot="table-head"
       data-sort-field={field}
-      className={cn('h-bakin-10 whitespace-nowrap px-bakin-2 text-left align-middle font-bakin-typography-weight-semibold text-bakin-text-primary', className)}
+      className={cn('h-10 whitespace-nowrap px-bakin-2 text-left align-middle font-bakin-typography-weight-semibold text-bakin-text-primary', className)}
     >
       <button
         type="button"

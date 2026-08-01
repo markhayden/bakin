@@ -106,7 +106,7 @@ export function OverviewPlatformPulse({
         className={`flex min-w-0 flex-wrap items-end justify-between gap-bakin-6 rounded-bakin-surface border p-bakin-6 ${TONE[overallTone].panel}`}
       >
         <div className="grid min-w-0 max-w-[64ch] grid-cols-[auto_minmax(0,1fr)] items-start gap-x-bakin-4 gap-y-bakin-2">
-          <span className={`row-span-3 flex size-bakin-10 shrink-0 items-center justify-center rounded-bakin-pill ${TONE[overallTone].icon}`}>
+          <span className={`row-span-3 flex size-10 shrink-0 items-center justify-center rounded-bakin-pill ${TONE[overallTone].icon}`}>
             <OverallIcon className="size-bakin-4" aria-hidden="true" />
           </span>
           <p className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-[0.12em] text-bakin-text-primary">
