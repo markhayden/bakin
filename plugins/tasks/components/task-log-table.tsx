@@ -317,8 +317,15 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
             onSortChange={toggleSort}
             rowProps={(task) => ({
               'data-task-log-row': '',
-              className: 'cursor-pointer',
+              className: 'cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
+              tabIndex: 0,
+              'aria-label': `Open ${task.title || task.id}`,
               onClick: () => onTaskOpen(taskForDrawer(task), task.status),
+              onKeyDown: (event: React.KeyboardEvent<HTMLTableRowElement>) => {
+                if (event.currentTarget !== event.target || (event.key !== 'Enter' && event.key !== ' ')) return
+                event.preventDefault()
+                onTaskOpen(taskForDrawer(task), task.status)
+              },
             })}
           />
         )}
