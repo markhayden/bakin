@@ -54,6 +54,7 @@ export {
   CardMedia,
   CardTitle,
 } from '@bakin/ui'
+export type { InteractiveAction } from '@bakin/ui'
 export type {
   CardFooterVariant,
   CardInteractive,

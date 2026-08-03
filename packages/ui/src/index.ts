@@ -146,6 +146,7 @@ export {
   CardMedia,
   CardTitle,
 } from './primitives/card'
+export type { InteractiveAction } from './primitives/interactive-surface'
 export type {
   CardFooterVariant,
   CardInteractive,

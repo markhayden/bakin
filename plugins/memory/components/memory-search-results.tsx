@@ -191,18 +191,9 @@ export function MemorySearchResults({
             <Card
               size="sm"
               data-memory-result=""
-              className="relative gap-0 border-bakin-border-subtle/30 px-bakin-3 transition-colors duration-[var(--bakin-motion-duration-feedback)] hover:border-bakin-border-subtle motion-reduce:transition-none"
+              interactive={clickable ? { label: `Open ${title}`, onActivate: () => onSelect(result) } : undefined}
+              className="gap-0 border-bakin-border-subtle/30 px-bakin-3"
             >
-              {clickable ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={`Open ${title}`}
-                  className="absolute inset-0 z-0 h-auto w-auto min-h-0 min-w-0 rounded-bakin-surface p-0 hover:bg-transparent"
-                  onClick={() => onSelect(result)}
-                />
-              ) : null}
               {content}
             </Card>
           </li>

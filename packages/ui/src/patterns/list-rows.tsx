@@ -2,6 +2,11 @@ import { createContext, forwardRef, useContext, useId } from 'react'
 import type { CSSProperties, ComponentPropsWithoutRef, ReactNode } from 'react'
 
 import { cn } from '../utils'
+import {
+  interactiveOverlay,
+  interactiveSurfaceClasses,
+  type InteractiveAction,
+} from '../primitives/interactive-surface'
 
 export type ListRowsVariant = 'bordered' | 'separated' | 'plain'
 
@@ -160,11 +165,20 @@ export function ListRows({
   )
 }
 
-export type ListRowProps = ComponentPropsWithoutRef<'li'>
+export type ListRowProps = ComponentPropsWithoutRef<'li'> & {
+  /**
+   * Whole-row activation: one overlay control (button, or `render` for links)
+   * with a real focus ring; nested controls keep their own behavior. Never
+   * re-create this with ghost Buttons stretched across a row.
+   */
+  interactive?: InteractiveAction
+  /** Canonical selected treatment for rows; consumers manage the state. */
+  selected?: boolean
+}
 
 /** Composition-friendly semantic row with canonical list spacing. */
 export const ListRow = forwardRef<HTMLLIElement, ListRowProps>(function ListRow(
-  { className, ...props },
+  { className, interactive, selected = false, children, ...props },
   ref,
 ) {
   const columns = useContext(ListRowsColumnsContext)
@@ -173,16 +187,23 @@ export const ListRow = forwardRef<HTMLLIElement, ListRowProps>(function ListRow(
       ref={ref}
       {...props}
       data-slot="list-row"
+      data-interactive={interactive ? '' : undefined}
+      data-selected={selected ? '' : undefined}
       className={cn(
-        'min-w-0 px-bakin-3 py-bakin-3',
+        'relative min-w-0 px-bakin-3 py-bakin-3',
         columns && [
           'grid gap-bakin-3',
           columnsTemplateClasses[columns.at],
           columnsAlignClasses[columns.at][columns.align],
         ],
+        'data-[selected]:bg-bakin-action-primary-background/10',
+        interactiveSurfaceClasses,
         className,
       )}
-    />
+    >
+      {interactive ? interactiveOverlay(interactive) : null}
+      {children}
+    </li>
   )
 })
 

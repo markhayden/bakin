@@ -11,7 +11,7 @@
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
     "valueExports": 286,
-    "typeExports": 377
+    "typeExports": 378
   },
   "entrypoints": [
     {
@@ -261,6 +261,7 @@
         "InputGroupTextareaProps",
         "InputGroupTextProps",
         "InputProps",
+        "InteractiveAction",
         "LabelProps",
         "LegacyAlertVariant",
         "LegacyAvatarSize",

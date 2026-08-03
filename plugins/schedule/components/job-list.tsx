@@ -32,15 +32,10 @@ function MobileJobRow({
       : 'Runtime cron'
 
   return (
-    <ListRow className="p-0">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="!h-auto w-full min-w-0 justify-start whitespace-normal rounded-bakin-surface px-bakin-3 py-bakin-4 text-left leading-normal"
-        aria-label={`Open ${label}`}
-        onClick={onSelect}
-      >
+    <ListRow
+      interactive={{ label: `Open ${label}`, onActivate: onSelect }}
+      className="px-bakin-3 py-bakin-4"
+    >
         <span className="flex w-full min-w-0 flex-col gap-y-bakin-2">
           <span className="flex min-w-0 items-start gap-x-bakin-3">
             <span className="min-w-0 flex-1">
@@ -91,7 +86,6 @@ function MobileJobRow({
             </span>
           ) : null}
         </span>
-      </Button>
     </ListRow>
   )
 }

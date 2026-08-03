@@ -102,10 +102,11 @@ describe('ChatRail', () => {
     expect(labels[0]).toBe('Pinned')
     expect(container.querySelector('[data-chat-unread]')).toBeNull() // streaming spinner wins over the pill
     expect(container.querySelector('[data-chat-working]')).not.toBeNull()
-    // Rows are kit ListRow + ghost Button (refit T6.5): hover state comes
-    // from the Button's own surface token, never accent-on-accent.
+    // Rows are interactive kit ListRows: the whole-row action is one labeled
+    // overlay control and hover comes from the row's own contract.
     const row = container.querySelector(`[data-chat-row="${CHAT_B}"]`)
-    expect(row?.querySelector('button')?.className).toContain('hover:bg-bakin-surface-default')
+    expect(row?.querySelector('button[aria-label^="Open chat"]')).not.toBeNull()
+    expect(row?.className).toContain('data-[interactive]:hover:bg-bakin-surface-elevated')
   })
 
   it('unread pill renders when idle; selected row uses the muted-gray token', async () => {
@@ -123,8 +124,8 @@ describe('ChatRail', () => {
     const { container } = __view1
     expect(container.querySelector('[data-chat-unread]')?.textContent).toBe('2')
     const row = container.querySelector(`[data-chat-row="${CHAT_A}"]`)
-    // selection reads as the subtle surface token, never the theme accent (pink)
-    expect(row?.querySelector('button')?.className).toContain('bg-bakin-surface-default')
+    // selection is the ListRow contract's canonical tint, never the theme accent (pink)
+    expect(row?.getAttribute('data-selected')).not.toBeNull()
     expect(row?.className).not.toContain('bg-accent')
   })
 

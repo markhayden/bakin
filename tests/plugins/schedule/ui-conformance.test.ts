@@ -32,7 +32,9 @@ describe('Schedule UI conformance', () => {
     expect(contents).toContain('renderRow=')
     expect(contents).toContain('renderTableRow=')
     expect(contents).toContain('<ListRow')
-    expect(contents).toMatch(/className="!h-auto[^"]*py-bakin-4/)
+    // Whole-row activation rides the ListRow interactive contract, never a
+    // ghost Button stretched across the row.
+    expect(contents).toContain('interactive={{')
     expect(contents).not.toMatch(/\b(?:w|min-w|max-w)-\[[^\]]+\]/)
     // The dual render is container-query driven inside DataTable — no viewport branches.
     expect(contents).not.toContain('md:hidden')

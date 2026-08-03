@@ -2,23 +2,18 @@ import * as React from 'react'
 import type { ComponentProps } from 'react'
 
 import { cn } from '../utils'
+import {
+  interactiveOverlay,
+  interactiveSurfaceClasses,
+  type InteractiveAction,
+} from './interactive-surface'
 
 export type CardSize = 'sm' | 'md'
 export type LegacyCardSize = 'default'
 export type CardTone = 'neutral' | 'success' | 'attention' | 'danger' | 'accent'
 export type CardOrientation = 'column' | 'row'
 
-export interface CardInteractive {
-  /** Accessible name for the whole-card action (required — the overlay is the card's one control). */
-  label: string
-  /** Activation handler; used when `render` is not supplied. */
-  onActivate?: (event: React.SyntheticEvent) => void
-  /**
-   * Custom overlay element for navigation semantics (e.g. a client-routed
-   * link). It receives the overlay styling, label, and slot marker.
-   */
-  render?: React.ReactElement<{ className?: string }>
-}
+export type CardInteractive = InteractiveAction
 
 export type CardProps = ComponentProps<'div'> & {
   size?: CardSize | LegacyCardSize
@@ -50,9 +45,6 @@ const toneRailClasses: Record<CardTone, string> = {
   accent: 'before:bg-bakin-signal-accent',
 }
 
-const overlayClassName =
-  'absolute inset-0 z-0 cursor-pointer rounded-bakin-surface outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring'
-
 /** A bounded object surface; page and section layout belongs to layout primitives. */
 export function Card({
   className,
@@ -65,22 +57,7 @@ export function Card({
   ...props
 }: CardProps) {
   const resolvedSize = canonicalSize(size)
-  const overlay = interactive
-    ? interactive.render
-      ? React.cloneElement(interactive.render, {
-          ...{ 'data-slot': 'card-overlay', 'aria-label': interactive.label },
-          className: cn(overlayClassName, interactive.render.props.className),
-        })
-      : (
-          <button
-            type="button"
-            data-slot="card-overlay"
-            aria-label={interactive.label}
-            className={overlayClassName}
-            onClick={interactive.onActivate}
-          />
-        )
-    : null
+  const overlay = interactive ? interactiveOverlay(interactive) : null
   return (
     <div
       data-slot="card"
@@ -98,7 +75,7 @@ export function Card({
           '*:[img:first-child]:rounded-t-bakin-surface *:[img:last-child]:rounded-b-bakin-surface',
           // Full-bleed media: drop the padding facing a leading/trailing CardMedia
           // (the overlay, when present, is the first DOM child — hence the sibling form).
-          'has-[>[data-slot=card-media]:first-child]:pt-0 has-[>[data-slot=card-overlay]+[data-slot=card-media]]:pt-0',
+          'has-[>[data-slot=card-media]:first-child]:pt-0 has-[>[data-slot=surface-overlay]+[data-slot=card-media]]:pt-0',
           'has-[>[data-slot=card-media]:last-child]:pb-0',
           // Row orientation: media and content side by side; the content column
           // owns its vertical rhythm (see the RowMedia story for the recipe).
@@ -109,13 +86,8 @@ export function Card({
           tone
             ? `before:absolute before:inset-y-0 before:start-0 before:w-bakin-1 before:content-[''] ${toneRailClasses[tone]}`
             : '',
-          // Interactive: hover affordance + the overlay click-through discipline —
-          // content sits above the overlay but lets clicks fall through to it,
-          // while real nested controls keep their own pointer events.
-          'data-[interactive]:transition-colors data-[interactive]:hover:bg-bakin-surface-elevated motion-reduce:transition-none',
-          'data-[interactive]:[&>*:not([data-slot=card-overlay])]:pointer-events-none',
-          'data-[interactive]:[&>*:not([data-slot=card-overlay])]:relative data-[interactive]:[&>*:not([data-slot=card-overlay])]:z-[1]',
-          'data-[interactive]:[&_:is(a,button,input,select,textarea,[role=button],[tabindex])]:pointer-events-auto',
+          // Interactive: shared overlay contract (see interactive-surface).
+          interactiveSurfaceClasses,
         ].join(' '),
         className,
       )}
