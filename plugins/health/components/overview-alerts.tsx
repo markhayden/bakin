@@ -2,7 +2,7 @@
 
 import type { HealthIncident } from '@makinbakin/sdk/types'
 import { PluginLink } from '@makinbakin/sdk/navigation'
-import { Section, Stack } from '@makinbakin/sdk/layout'
+import { DisclosurePanel, Section, Stack } from '@makinbakin/sdk/layout'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { Banner, Popover, PopoverContent, PopoverTrigger } from '@makinbakin/sdk/ui'
 import { ChevronDown, ChevronRight } from 'lucide-react'
@@ -21,15 +21,13 @@ interface OverviewAlertsProps {
 function AcknowledgedSection({ model, onRepair, onRerun, onAck }: OverviewAlertsProps) {
   if (model.acknowledged.length === 0) return null
   return (
-    <details className="group rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default" data-testid="overview-acknowledged">
-      <summary className="flex cursor-pointer list-none items-center gap-bakin-2 rounded-bakin-surface px-bakin-3 py-bakin-2 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring [&::-webkit-details-marker]:hidden">
-        <ChevronDown className="size-bakin-3 -rotate-90 transition-transform duration-[var(--bakin-motion-duration-transition)] group-open:rotate-0 motion-reduce:transition-none" aria-hidden="true" />
-        Acknowledged ({model.acknowledged.length})
-      </summary>
-      <div className="border-t border-bakin-border-subtle p-bakin-3">
-        <AlertGrid incidents={model.acknowledged} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
-      </div>
-    </details>
+    <DisclosurePanel
+      data-testid="overview-acknowledged"
+      summary="Acknowledged"
+      summaryMeta={String(model.acknowledged.length)}
+    >
+      <AlertGrid incidents={model.acknowledged} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
+    </DisclosurePanel>
   )
 }
 
@@ -172,15 +170,9 @@ export function OverviewAlerts({ model, onRepair, onRerun, onAck }: OverviewAler
       />
 
       {hidden.length > 0 && (
-        <details className="group rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default">
-          <summary className="flex cursor-pointer list-none items-center gap-bakin-2 rounded-bakin-surface px-bakin-3 py-bakin-2 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring [&::-webkit-details-marker]:hidden">
-            <ChevronDown className="size-bakin-3 -rotate-90 transition-transform duration-[var(--bakin-motion-duration-transition)] group-open:rotate-0 motion-reduce:transition-none" aria-hidden="true" />
-            View {hidden.length} more {hidden.length === 1 ? 'problem' : 'problems'}
-          </summary>
-          <div className="border-t border-bakin-border-subtle p-bakin-3">
-            <AlertGrid incidents={hidden} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
-          </div>
-        </details>
+        <DisclosurePanel summary={`View ${hidden.length} more ${hidden.length === 1 ? 'problem' : 'problems'}`}>
+          <AlertGrid incidents={hidden} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
+        </DisclosurePanel>
       )}
       <AcknowledgedSection model={model} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
     </Section>

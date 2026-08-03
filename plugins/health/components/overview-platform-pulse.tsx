@@ -3,7 +3,7 @@
 import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
-import { Button, Skeleton } from '@makinbakin/sdk/ui'
+import { Banner, Button, Skeleton } from '@makinbakin/sdk/ui'
 import {
   Activity,
   AlertTriangle,
@@ -205,10 +205,13 @@ export function OverviewPlatformPulse({
       </div>
 
       {error && (
-        <div role="alert" className="flex flex-col gap-bakin-3 border-l-2 border-bakin-signal-danger bg-bakin-signal-danger/10 px-bakin-4 py-bakin-3 sm:flex-row sm:items-center sm:justify-between">
-          <span className="text-bakin-typography-size-meta text-bakin-signal-danger">{error}</span>
-          {onRetry && <Button size="sm" variant="outline" onClick={onRetry}>Try again</Button>}
-        </div>
+        <Banner
+          announce="assertive"
+          tone="danger"
+          title="Platform pulse couldn't load"
+          description={error}
+          action={onRetry ? <Button size="sm" variant="outline" onClick={onRetry}>Try again</Button> : undefined}
+        />
       )}
     </section>
   )

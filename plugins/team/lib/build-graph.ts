@@ -128,7 +128,7 @@ export function buildGraph(input: BuildGraphInput): BuildGraphResult {
     id: 'mark',
     type: 'founder',
     position: { x: -FOUNDER_W / 2, y },
-    data: { label: 'Mark', subtitle: 'Founder' },
+    data: { label: 'Founder' },
   })
   y += FOUNDER_ROW_H + Y_GAP
 

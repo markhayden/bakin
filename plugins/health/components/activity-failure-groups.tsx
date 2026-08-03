@@ -1,7 +1,7 @@
 'use client'
 
 import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
-import { Grid, Section } from '@makinbakin/sdk/layout'
+import { Grid, Panel, Section } from '@makinbakin/sdk/layout'
 import { ListRows, Pagination, StatusBadge } from '@makinbakin/sdk/patterns'
 import { Button } from '@makinbakin/sdk/ui'
 import { AlertCircle, ChevronDown } from 'lucide-react'
@@ -427,7 +427,7 @@ export function ActivityFailureGroups({
 
       {totalFailures > 0 && (
         <>
-          <div className="relative overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default px-bakin-4 py-bakin-4 before:absolute before:inset-y-0 before:start-0 before:w-bakin-1 before:bg-bakin-signal-danger">
+          <Panel tone="danger">
             <Grid layout="main-aside" gap="section" align="start">
             <div className="min-w-0">
               <h4 className="mb-bakin-2 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
@@ -437,7 +437,7 @@ export function ActivityFailureGroups({
             </div>
             <FailurePatternHighlights groups={groups} page={page} />
             </Grid>
-          </div>
+          </Panel>
 
           {hasPatterns && (
             <Button
@@ -502,9 +502,9 @@ export function ActivityFailureGroups({
       )}
 
       {totalFailures === 0 && totalUnverified > 0 && (
-        <div className="relative overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default px-bakin-4 py-bakin-4 before:absolute before:inset-y-0 before:start-0 before:w-bakin-1 before:bg-bakin-signal-highlight">
+        <Panel tone="attention">
           <ResultsToVerify unverified={unverified} totalUnverified={totalUnverified} />
-        </div>
+        </Panel>
       )}
     </Section>
   )

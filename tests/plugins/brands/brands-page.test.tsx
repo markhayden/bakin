@@ -119,13 +119,16 @@ describe('BrandsPage', () => {
     await settleReact()
   })
 
-  it('cards carry the completeness meter and clicking navigates to the path route', async () => {
+  it('cards carry the completeness meter and the whole-card link navigates to the path route', async () => {
     await act(async () => {
       render(<BrandsPage />)
     })
     await waitFor(() => expect(screen.getByText('Acme')).toBeDefined())
     expect(document.querySelector('[data-brand-completeness="75"]')).not.toBeNull()
-    fireEvent.click(document.querySelector('[data-brand-card="acme"]')!)
+    // The card's action is a real link overlay (PluginLink) with an accessible name.
+    const overlay = screen.getByRole('link', { name: 'Open Acme' })
+    expect(overlay.getAttribute('href')).toBe('/brands/acme')
+    fireEvent.click(overlay)
     expect(routerPushMock).toHaveBeenCalledWith('/brands/acme')
     await settleReact()
   })

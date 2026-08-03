@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from '@makinbakin/sdk/ui'
 import { useRouter } from '@makinbakin/sdk/navigation'
+import { Panel } from '@makinbakin/sdk/layout'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { toast, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
 import { copyToClipboard } from '@makinbakin/sdk/utils'
@@ -43,8 +44,8 @@ function CliHint({ command }: { command: string }) {
     }
   }
   return (
-    <div className="flex min-w-0 items-center gap-bakin-2 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default px-bakin-3 py-bakin-2">
-      <code className="min-w-0 flex-1 break-all font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-primary">
+    <Panel variant="code" padding="compact" className="flex min-w-0 items-center gap-bakin-2">
+      <code className="min-w-0 flex-1 break-all text-bakin-text-primary">
         {command}
       </code>
       <Button
@@ -56,7 +57,7 @@ function CliHint({ command }: { command: string }) {
       >
         <Copy aria-hidden="true" />
       </Button>
-    </div>
+    </Panel>
   )
 }
 

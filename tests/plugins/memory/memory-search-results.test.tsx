@@ -70,7 +70,7 @@ describe('MemorySearchResults', () => {
     )
     expect(container.textContent).not.toMatch(/no results/i)
     expect(container.querySelectorAll('[data-memory-result]').length).toBe(0)
-    expect(container.querySelector('[data-scope="page"]')).not.toBeNull()
+    expect(container.querySelector('[data-scope="section"]')).not.toBeNull()
   })
 
   it('shows loading skeletons while fetching', () => {

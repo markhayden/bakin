@@ -3,8 +3,9 @@
  * the palette as its base edge, then name/status/completeness/meta. The
  * brand's OWN colors are the only strong color — chrome stays neutral.
  */
+import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
-import { Button } from '@makinbakin/sdk/ui'
+import { Card, CardAction, CardContent, CardHeader, CardMedia, CardTitle } from '@makinbakin/sdk/ui'
 import { Progress, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@makinbakin/sdk/ui'
 import type { BrandManifest } from '../types'
 
@@ -43,58 +44,64 @@ function Monogram({ name, tint }: { name: string; tint?: string }) {
   )
 }
 
-export function BrandCoverCard({ brand, onOpen }: { brand: ListedBrand; onOpen: () => void }) {
+export function BrandCoverCard({ brand }: { brand: ListedBrand }) {
   const swatches = brand.palette.filter((c) => isHex(c.hex))
   const primary = swatches[0]?.hex
   const logo = brand.logos[0]
   const completeness = brand.completeness
 
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="sm"
-      className="group flex !h-auto w-full flex-col items-stretch justify-start gap-0 overflow-hidden whitespace-normal rounded-xl bg-bakin-surface-default p-0 text-left font-bakin-typography-weight-regular ring-1 ring-bakin-text-primary/10 transition-shadow hover:bg-bakin-surface-default hover:ring-bakin-text-primary/25 motion-reduce:transition-none"
-      onClick={onOpen}
+    <Card
+      className="h-full"
+      interactive={{
+        label: `Open ${brand.name}`,
+        render: <PluginLink to={`/brands/${encodeURIComponent(brand.id)}`} />,
+      }}
       data-brand-card={brand.id}
     >
-      {/* Cover: ambient tint from the brand's primary color, logo centered. */}
-      <div
-        className="flex h-28 items-center justify-center"
-        style={primary ? { backgroundColor: `${primary}1f` } : undefined}
-      >
-        {logo ? (
-          <img
-            src={`/api/assets/${logo.assetId}`}
-            alt=""
-            className="max-h-16 max-w-1/2 object-contain drop-shadow-sm"
-            data-brand-logo
-            onError={(e) => {
-              ;(e.currentTarget as HTMLImageElement).style.display = 'none'
-            }}
-          />
-        ) : (
-          <Monogram name={brand.name} tint={primary} />
-        )}
-      </div>
-      {/* Palette strip = the cover's base edge. */}
-      <div className="flex h-2">
-        {swatches.length > 0 ? (
-          swatches.map((c, i) => (
-            <div key={`${c.name}-${i}`} title={`${c.name} ${c.hex}`} style={{ backgroundColor: c.hex, flexGrow: swatches.length - i }} />
-          ))
-        ) : (
-          <div className="w-full bg-bakin-border-subtle/40" />
-        )}
-      </div>
+      {/* Cover + palette strip: one full-bleed media unit. */}
+      <CardMedia>
+        {/* Cover: ambient tint from the brand's primary color, logo centered. */}
+        <div
+          className="flex h-28 items-center justify-center"
+          style={primary ? { backgroundColor: `${primary}1f` } : undefined}
+        >
+          {logo ? (
+            <img
+              src={`/api/assets/${logo.assetId}`}
+              alt=""
+              className="max-h-16 max-w-1/2 object-contain drop-shadow-sm"
+              data-brand-logo
+              onError={(e) => {
+                ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+              }}
+            />
+          ) : (
+            <Monogram name={brand.name} tint={primary} />
+          )}
+        </div>
+        {/* Palette strip = the cover's base edge. */}
+        <div className="flex h-2">
+          {swatches.length > 0 ? (
+            swatches.map((c, i) => (
+              <div key={`${c.name}-${i}`} title={`${c.name} ${c.hex}`} style={{ backgroundColor: c.hex, flexGrow: swatches.length - i }} />
+            ))
+          ) : (
+            <div className="w-full bg-bakin-border-subtle/40" />
+          )}
+        </div>
+      </CardMedia>
 
-      <div className="flex-1 space-y-2 p-4" data-brand-card-body>
-        <div className="flex items-center gap-2">
-          <h3 className="min-w-0 truncate font-medium">{brand.name}</h3>
-          <StatusBadge tone={brand.draft ? 'attention' : 'success'} className="ml-auto shrink-0">
+      <CardHeader>
+        <CardTitle className="truncate">{brand.name}</CardTitle>
+        <CardAction>
+          <StatusBadge tone={brand.draft ? 'attention' : 'success'} className="shrink-0">
             {brand.draft ? 'Draft' : 'Published'}
           </StatusBadge>
-        </div>
+        </CardAction>
+      </CardHeader>
+
+      <CardContent className="flex-1 space-y-2" data-brand-card-body>
         {brand.description ? (
           <p className="line-clamp-2 text-sm text-bakin-text-muted">{brand.description}</p>
         ) : (
@@ -106,7 +113,7 @@ export function BrandCoverCard({ brand, onOpen }: { brand: ListedBrand; onOpen: 
           <Tooltip>
             <TooltipTrigger
               render={
-                <div className="flex items-center gap-2" data-brand-completeness={completeness.percent}>
+                <div className="flex items-center gap-2" tabIndex={0} data-brand-completeness={completeness.percent}>
                   <Progress
                     value={completeness.percent}
                     className="h-1.5 flex-1"
@@ -133,7 +140,7 @@ export function BrandCoverCard({ brand, onOpen }: { brand: ListedBrand; onOpen: 
             {brand.source ? ' · imported' : ''}
           </p>
         )}
-      </div>
-    </Button>
+      </CardContent>
+    </Card>
   )
 }

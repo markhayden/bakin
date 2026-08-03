@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useCallback, useState } from 'react'
-import { useRouter } from '@makinbakin/sdk/navigation'
+import { PluginLink, useRouter } from '@makinbakin/sdk/navigation'
 import { Plus, Settings2, ScrollText } from 'lucide-react'
 import {
   ReactFlow,
@@ -32,6 +32,9 @@ import {
   AlertDescription,
   AlertTitle,
   Badge,
+  Card,
+  CardFooter,
+  CardMedia,
   Drawer,
   Button,
   Dialog,
@@ -64,20 +67,13 @@ const TEAM_PAGE_DESCRIPTION = 'Create and organize agents, choose how they work,
 
 interface FounderNodeData extends Record<string, unknown> {
   label: string
-  subtitle: string
 }
 
 function FounderNode({ data }: NodeProps) {
-  const { label, subtitle } = data as FounderNodeData
+  const { label } = data as FounderNodeData
   return (
-    <div className="flex w-52 items-center justify-center gap-bakin-3 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default px-bakin-4 py-bakin-3">
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-canvas-default" aria-hidden="true">
-        👤
-      </div>
-      <div className="min-w-0">
-        <div className="truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{label}</div>
-        <div className="text-bakin-typography-size-meta text-bakin-text-muted">{subtitle}</div>
-      </div>
+    <div className="flex w-52 items-center justify-center rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default px-bakin-4 py-bakin-3">
+      <div className="truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{label}</div>
       <Handle type="source" position={Position.Bottom} className="!bg-bakin-border-subtle" />
     </div>
   )
@@ -104,12 +100,16 @@ export function AgentCardNode({ data }: NodeProps) {
       : 'neutral'
 
   return (
-    <div
+    <Card
       data-team-agent-card=""
-      className="flex w-52 cursor-pointer flex-col overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default"
+      className="w-52 gap-0"
+      interactive={{
+        label: `Open ${agent.name}`,
+        render: <PluginLink to={`/team/${encodeURIComponent(agent.id)}`} />,
+      }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-bakin-border-subtle" />
-      <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden bg-bakin-canvas-default">
+      <CardMedia className="flex aspect-square w-full items-center justify-center bg-bakin-canvas-default">
+        <Handle type="target" position={Position.Top} className="!bg-bakin-border-subtle" />
         {agent.headshot ? (
           <img
             src={agent.headshot}
@@ -132,7 +132,7 @@ export function AgentCardNode({ data }: NodeProps) {
             {statusLabel}
           </StatusBadge>
         </div>
-      </div>
+      </CardMedia>
       <div className="flex min-h-20 flex-1 flex-col items-center gap-bakin-1 p-bakin-3 text-center">
         <div className="flex w-full items-center justify-center gap-bakin-2 leading-tight">
           <span className="truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{agent.name}</span>
@@ -147,14 +147,15 @@ export function AgentCardNode({ data }: NodeProps) {
           {agent.role || 'No role assigned'}
         </div>
       </div>
-      <div
-        className="truncate border-t border-bakin-border-subtle bg-bakin-canvas-default px-bakin-3 py-bakin-2 text-center font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted"
+      <CardFooter
+        variant="meta"
+        className="relative justify-center px-bakin-3 pb-bakin-2 pt-bakin-2 font-bakin-typography-family-mono"
         title={agent.model}
       >
-        {agent.model}
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-bakin-border-subtle" />
-    </div>
+        <span className="min-w-0 truncate">{agent.model}</span>
+        <Handle type="source" position={Position.Bottom} className="!bg-bakin-border-subtle" />
+      </CardFooter>
+    </Card>
   )
 }
 
@@ -228,12 +229,6 @@ export function TeamGrid() {
   const [pendingCreate, setPendingCreate] = useState<{ data: AgentFormData; avatarFile: File | null } | null>(null)
   const [createError, setCreateError] = useState<string | null>(null)
 
-  const onNodeClick = useCallback(
-    (_: React.MouseEvent, node: Node) => {
-      if (node.type === 'agentCard') router.push(`/team/${node.id}`)
-    },
-    [router],
-  )
 
   const { nodes, edges } = useMemo(
     () => loaded
@@ -395,7 +390,6 @@ export function TeamGrid() {
                 nodes={nodes}
                 edges={edges}
                 nodeTypes={nodeTypes}
-                onNodeClick={onNodeClick}
                 fitView
                 fitViewOptions={{ padding: 0.3 }}
                 minZoom={0.4}

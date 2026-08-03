@@ -12,7 +12,8 @@ import {
   PageHeader,
   SaveBar,
   StatusBadge,
-} from '@makinbakin/sdk/patterns'
+  ListRow,
+  ListRows,} from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertDescription,
@@ -311,8 +312,8 @@ export function TeamDetail({ teamId }: { teamId: string }) {
               description="Assign an agent from Team management to include it here."
             />
           ) : (
-            <div className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default">
-              {members?.map((member, index) => {
+            <ListRows variant="separated" aria-label="Team members">
+              {members?.map((member) => {
                 const result = resultByAgent.get(member.id)
                 const recomposedCount = (result?.receipt?.blocks ?? []).filter((block) => block.action === 'recomposed').length
                 const status = result?.error
@@ -327,10 +328,7 @@ export function TeamDetail({ teamId }: { teamId: string }) {
                     : null
 
                 return (
-                  <div
-                    key={member.id}
-                    className={`flex min-w-0 items-center gap-bakin-3 p-bakin-3 ${index > 0 ? 'border-t border-bakin-border-subtle' : ''}`}
-                  >
+                  <ListRow key={member.id} className="flex min-w-0 items-center gap-bakin-3">
                     <AgentAvatar
                       agent={{ id: member.id, name: member.name, initials: member.emoji }}
                       size="sm"
@@ -350,10 +348,10 @@ export function TeamDetail({ teamId }: { teamId: string }) {
                         {status.label}
                       </StatusBadge>
                     ) : null}
-                  </div>
+                  </ListRow>
                 )
               })}
-            </div>
+            </ListRows>
           )}
         </PageAside>
       </PageBody>

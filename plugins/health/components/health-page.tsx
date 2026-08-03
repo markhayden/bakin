@@ -8,7 +8,7 @@ import {
   PageBody,
   PageHeader,
 } from '@makinbakin/sdk/patterns'
-import { Button, Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, Button, Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
 import { useOverviewData } from '../hooks/use-overview-data'
 import {
@@ -105,9 +105,9 @@ function OverviewPanel({ onRunChecksReady, onRunChecks }: OverviewPanelProps) {
   return (
     <>
       {ackError && (
-        <p role="alert" className="rounded-bakin-control border border-bakin-signal-danger/30 bg-bakin-signal-danger/5 px-bakin-3 py-bakin-2 text-bakin-typography-size-body text-bakin-signal-danger">
-          {ackError}
-        </p>
+        <Alert tone="danger">
+          <AlertDescription>{ackError}</AlertDescription>
+        </Alert>
       )}
       <OverviewTab
         data={overview}

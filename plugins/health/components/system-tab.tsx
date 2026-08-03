@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryState } from '@makinbakin/sdk/hooks'
 import { Grid } from '@makinbakin/sdk/layout'
 import { StatTile, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
-import { Button } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, Button } from '@makinbakin/sdk/ui'
 import { Puzzle, RefreshCw, Search, Server, ShieldCheck } from 'lucide-react'
 import { SystemSearchSection } from './system-search-section'
 import { SystemInventory, type SystemInventoryHandle } from './system-inventory'
@@ -214,9 +214,9 @@ export function SystemTabView({
       </section>
 
       {data.report.error && !data.report.data && (
-        <div role="alert" className="rounded-bakin-control border border-bakin-signal-danger/25 bg-bakin-signal-danger/10 px-bakin-3 py-bakin-2 text-bakin-typography-size-body text-bakin-signal-danger">
-          The canonical health report is unavailable: {data.report.error}
-        </div>
+        <Alert tone="danger">
+          <AlertDescription>The canonical health report is unavailable: {data.report.error}</AlertDescription>
+        </Alert>
       )}
 
       <SystemWatchList

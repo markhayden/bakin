@@ -21,10 +21,6 @@ interface ListResponse {
 
 export function BrandsPage() {
   const router = useRouter()
-  const openBrand = useCallback(
-    (brandId: string) => router.push(`/brands/${encodeURIComponent(brandId)}`),
-    [router],
-  )
   const [data, setData] = useState<ListResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   // URL-backed filter state (CLAUDE.md) — the search survives reloads and deep-links.
@@ -180,7 +176,7 @@ export function BrandsPage() {
         {data !== null && !empty ? (
           <Grid layout="split" gap="item">
             {visible.map((brand) => (
-              <BrandCoverCard key={brand.id} brand={brand} onOpen={() => openBrand(brand.id)} />
+              <BrandCoverCard key={brand.id} brand={brand} />
             ))}
           </Grid>
         ) : null}

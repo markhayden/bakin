@@ -84,7 +84,7 @@ export function MemorySearchResults({
       <SystemState
         kind="error"
         recovery="unavailable"
-        scope="page"
+        scope="section"
         title="Memory could not be loaded"
         description={error}
       />
@@ -99,7 +99,7 @@ export function MemorySearchResults({
       return (
         <SystemState
           kind="no-results"
-          scope="page"
+          scope="section"
           title="Only system-log matches"
           description={`Every hit for "${query}" is a turn or audit row. Include System Logs to see them.`}
           action={
@@ -117,7 +117,7 @@ export function MemorySearchResults({
     return searching ? (
       <SystemState
         kind="no-results"
-        scope="page"
+        scope="section"
         title="No memory matches"
         description={`No results for "${query}". Clear the search or adjust the filters.`}
         action={<Button variant="outline" onClick={onClear} disabled={!onClear}>Clear search</Button>}
@@ -125,7 +125,7 @@ export function MemorySearchResults({
     ) : (
       <SystemState
         kind="initial-empty"
-        scope="page"
+        scope="section"
         title="No recent memory"
         description="Nothing has been indexed yet, or the current filters exclude every memory record."
       />

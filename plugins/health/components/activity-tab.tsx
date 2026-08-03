@@ -1,7 +1,7 @@
 'use client'
 
 import { useQueryState } from '@makinbakin/sdk/hooks'
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@makinbakin/sdk/ui'
+import { Banner, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { ActivityBreakdown, type ActivityFailureSelection } from './activity-breakdown'
@@ -239,13 +239,17 @@ export function ActivityTab() {
           Loading activity…
         </div>
       ) : resource.error && !data ? (
-        <div role="alert" className="rounded-bakin-surface border border-bakin-signal-danger/30 bg-bakin-signal-danger/5 p-5">
-          <h3 className="font-bakin-typography-weight-medium text-bakin-signal-danger">Activity could not be loaded.</h3>
-          <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">{resource.error}</p>
-          <Button className="mt-4" size="sm" variant="outline" onClick={() => void resource.refresh()}>
-            Try again
-          </Button>
-        </div>
+        <Banner
+          announce="assertive"
+          tone="danger"
+          title="Activity could not be loaded."
+          description={resource.error}
+          action={(
+            <Button size="sm" variant="outline" onClick={() => void resource.refresh()}>
+              Try again
+            </Button>
+          )}
+        />
       ) : (
         <>
           {resource.backgroundError && (

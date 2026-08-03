@@ -10,7 +10,7 @@ import {
   Settings2,
   Sparkles,
 } from 'lucide-react'
-import { Section } from '@makinbakin/sdk/layout'
+import { Panel, Section } from '@makinbakin/sdk/layout'
 import { ModelSelect, StatGroup, StatTile } from '@makinbakin/sdk/patterns'
 import {
   Field,
@@ -167,7 +167,7 @@ export function OverviewTab({
           title="Configuration"
           description="Runtime defaults and package ownership for this agent."
         />
-        <div className="grid min-w-0 gap-bakin-6 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4 lg:grid-cols-2">
+        <Panel className="grid gap-bakin-6 lg:grid-cols-2">
           <div className="grid min-w-0 content-start gap-bakin-4">
             <div className="flex items-center gap-bakin-2 text-bakin-text-primary">
               <Settings2 aria-hidden="true" className="size-bakin-4 text-bakin-text-muted" />
@@ -223,7 +223,7 @@ export function OverviewTab({
             </div>
             <PackageCardBody agentId={agentId} packageState={effectivePackageState} />
           </div>
-        </div>
+        </Panel>
       </Section>
 
       <Section spacing="compact">
