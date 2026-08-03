@@ -5,9 +5,10 @@
  * implementation classes are private and the legacy components barrel does
  * not receive compatibility re-exports.
  */
-export { BoundedOverflow, Grid, Inline, PageShell, Section, Stack } from '@bakin/ui/layout'
+export { BoundedOverflow, DisclosurePanel, Grid, Inline, PageShell, Panel, Section, Stack } from '@bakin/ui/layout'
 export type {
   BoundedOverflowProps,
+  DisclosurePanelProps,
   GridAlign,
   GridLayout,
   GridProps,
@@ -20,6 +21,11 @@ export type {
   PageShellPadding,
   PageShellProps,
   PageShellWidth,
+  PanelElement,
+  PanelPadding,
+  PanelProps,
+  PanelTone,
+  PanelVariant,
   SectionDivider,
   SectionElement,
   SectionProps,

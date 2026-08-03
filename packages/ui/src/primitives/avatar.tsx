@@ -18,7 +18,7 @@ function canonicalSize(size: AvatarProps['size']): AvatarSize {
 
 const avatarClasses = [
   'group/avatar relative inline-flex shrink-0 select-none overflow-visible rounded-bakin-pill',
-  'bg-bakin-surface-default font-bakin-typography-family-ui text-bakin-text-muted',
+  'bg-bakin-surface-elevated font-bakin-typography-family-ui text-bakin-text-muted',
   'ring-1 ring-inset ring-bakin-border-subtle',
   'data-[size=xs]:size-bakin-4 data-[size=sm]:size-bakin-6 data-[size=md]:size-bakin-8',
   'data-[size=lg]:size-[calc(var(--bakin-layout-space-8)+var(--bakin-layout-space-2))]',
@@ -54,7 +54,7 @@ export function AvatarFallback({ className, ...props }: AvatarPrimitive.Fallback
       data-slot="avatar-fallback"
       className={mergeClassName(
         [
-          'flex size-full items-center justify-center rounded-bakin-pill bg-bakin-surface-default',
+          'flex size-full items-center justify-center rounded-bakin-pill bg-bakin-surface-elevated',
           'font-bakin-typography-weight-semibold leading-none text-bakin-text-muted [text-transform:uppercase]',
           'text-[length:var(--bakin-typography-size-meta)] group-data-[size=xs]/avatar:text-[.625rem]',
           'group-data-[size=xl]/avatar:text-[length:var(--bakin-typography-size-body)]',
@@ -104,7 +104,7 @@ export function AvatarGroupCount({ className, ...props }: ComponentProps<'div'>)
       className={cn(
         [
           'relative flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-pill',
-          'bg-bakin-surface-default font-bakin-typography-family-ui text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted',
+          'bg-bakin-surface-elevated font-bakin-typography-family-ui text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted',
           'ring-2 ring-bakin-canvas-default',
           'group-has-data-[size=xs]/avatar-group:size-bakin-4 group-has-data-[size=sm]/avatar-group:size-bakin-6',
           'group-has-data-[size=lg]/avatar-group:size-[calc(var(--bakin-layout-space-8)+var(--bakin-layout-space-2))]',

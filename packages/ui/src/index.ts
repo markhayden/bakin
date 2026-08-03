@@ -143,9 +143,18 @@ export {
   CardDescription,
   CardFooter,
   CardHeader,
+  CardMedia,
   CardTitle,
 } from './primitives/card'
-export type { CardProps, CardSize, LegacyCardSize } from './primitives/card'
+export type {
+  CardFooterVariant,
+  CardInteractive,
+  CardOrientation,
+  CardProps,
+  CardSize,
+  CardTone,
+  LegacyCardSize,
+} from './primitives/card'
 
 export { Separator } from './primitives/separator'
 export type { SeparatorProps } from './primitives/separator'

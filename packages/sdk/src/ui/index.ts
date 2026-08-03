@@ -51,9 +51,18 @@ export {
   CardDescription,
   CardFooter,
   CardHeader,
+  CardMedia,
   CardTitle,
 } from '@bakin/ui'
-export type { CardProps, CardSize, LegacyCardSize } from '@bakin/ui'
+export type {
+  CardFooterVariant,
+  CardInteractive,
+  CardOrientation,
+  CardProps,
+  CardSize,
+  CardTone,
+  LegacyCardSize,
+} from '@bakin/ui'
 export { Checkbox } from '@bakin/ui'
 export type { CheckboxProps } from '@bakin/ui'
 export { Radio, RadioGroup } from '@bakin/ui'

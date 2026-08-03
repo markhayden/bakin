@@ -131,8 +131,8 @@ export type SystemStateAlign = 'center' | 'left' | 'right'
 const DOTLESS_KINDS: ReadonlySet<string> = new Set(['initial-empty', 'no-results'])
 
 const scopeClasses: Record<SystemStateScope, string> = {
-  inline: 'flex flex-col gap-bakin-1 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default px-bakin-4 py-bakin-3',
-  section: 'flex flex-col justify-center gap-bakin-3 rounded-bakin-surface bg-bakin-surface-default/55 px-bakin-6 py-bakin-8',
+  inline: 'flex flex-col gap-bakin-1 rounded-bakin-surface bg-bakin-surface-elevated/55 px-bakin-4 py-bakin-3',
+  section: 'flex flex-col justify-center gap-bakin-3 rounded-bakin-surface bg-bakin-surface-elevated/55 px-bakin-6 py-bakin-8',
   page: 'flex min-h-[calc(var(--bakin-layout-space-8)*12)] flex-1 flex-col justify-center gap-bakin-3 px-bakin-6 py-bakin-8',
 }
 

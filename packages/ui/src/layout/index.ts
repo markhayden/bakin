@@ -18,5 +18,11 @@ export type { GridAlign, GridLayout, GridProps } from './grid'
 export { Section } from './section'
 export type { SectionDivider, SectionElement, SectionProps, SectionSpacing } from './section'
 
+export { Panel } from './panel'
+export type { PanelElement, PanelPadding, PanelProps, PanelTone, PanelVariant } from './panel'
+
+export { DisclosurePanel } from './disclosure-panel'
+export type { DisclosurePanelProps } from './disclosure-panel'
+
 export { BoundedOverflow } from './bounded-overflow'
 export type { BoundedOverflowProps } from './bounded-overflow'
