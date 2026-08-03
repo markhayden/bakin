@@ -590,8 +590,9 @@ describe('ModelsPage component', () => {
 
     const defaultRow = screen.getByText('Claude Sonnet 4.6').closest('[data-model-row]')
     expect(defaultRow?.getAttribute('data-default')).toBe('true')
-    expect(defaultRow?.className).toContain('border-bakin-action-primary-background/60')
-    expect(defaultRow?.className).toContain('bg-bakin-action-primary-background/10')
+    // Selection is the kit Card contract, not a hand-rolled ring.
+    expect(defaultRow?.getAttribute('data-selected')).not.toBeNull()
+    expect(defaultRow?.className).toContain('data-[selected]:ring-1')
   })
 
   it('uses the settings form composition for routing while preserving staged saves', async () => {
