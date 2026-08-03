@@ -79,7 +79,23 @@ const passthrough = ({ children }: { children?: ReactNode }) => <div>{children}<
 mock.module('@makinbakin/sdk/ui', () => ({
   Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
   Badge: passthrough,
-  Card: passthrough,
+  // Mirrors the kit Card's interactive contract: one labeled overlay control.
+  Card: ({ children, interactive, selected: _selected, tone: _tone, orientation: _orientation, size: _size, ...props }: {
+    children?: ReactNode
+    interactive?: { label: string; onActivate?: () => void }
+    selected?: boolean
+    tone?: string
+    orientation?: string
+    size?: string
+  }) => (
+    <div {...props}>
+      {interactive ? (
+        <button type="button" aria-label={interactive.label} onClick={interactive.onActivate} />
+      ) : null}
+      {children}
+    </div>
+  ),
+  CardMedia: passthrough,
   CardAction: passthrough,
   CardContent: passthrough,
   CardDescription: passthrough,

@@ -5,7 +5,7 @@
  * overwrites via userEdited) and a billed re-run.
  */
 import { useState } from 'react'
-import { Section } from '@makinbakin/sdk/layout'
+import { Panel, Section } from '@makinbakin/sdk/layout'
 import {
   Alert,
   AlertDescription,
@@ -175,18 +175,18 @@ export function EnrichmentCard({ manifest, onChanged }: Props) {
       {enrichment.transcript && (
         <details className="text-bakin-typography-size-meta">
           <summary className="cursor-pointer text-bakin-text-muted">Transcript</summary>
-          <pre className="mt-bakin-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-bakin-surface bg-bakin-surface-default p-bakin-3 font-bakin-typography-family-mono text-bakin-text-muted">
-            {enrichment.transcript}
-          </pre>
+          <Panel variant="code" scroll padding="compact" aria-label="Transcript" className="mt-bakin-2 max-h-48 text-bakin-text-muted">
+            <pre>{enrichment.transcript}</pre>
+          </Panel>
         </details>
       )}
 
       {enrichment.ocrText && (
         <details className="text-bakin-typography-size-meta" open={ocrOpen} onToggle={(e) => setOcrOpen((e.target as HTMLDetailsElement).open)}>
           <summary className="cursor-pointer text-bakin-text-muted">Text found in media (OCR)</summary>
-          <pre className="mt-bakin-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-bakin-surface bg-bakin-surface-default p-bakin-3 font-bakin-typography-family-mono text-bakin-text-muted" data-testid="enrichment-ocr">
-            {enrichment.ocrText}
-          </pre>
+          <Panel variant="code" scroll padding="compact" aria-label="Text found in media" data-testid="enrichment-ocr" className="mt-bakin-2 max-h-48 text-bakin-text-muted">
+            <pre>{enrichment.ocrText}</pre>
+          </Panel>
         </details>
       )}
 

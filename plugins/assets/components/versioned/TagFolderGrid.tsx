@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import {
-  Badge, Button, Input,
+  Badge, Button, Card, CardMedia, Input,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
   SystemState,
@@ -50,12 +50,13 @@ function FolderCard({ folder, onOpen, onRename, onDelete }: {
   const thumbs = folder.assets.slice(0, 4)
   const real = folder.tag !== UNTAGGED
   return (
-    <div
-      onClick={onOpen}
-      className="group flex cursor-pointer flex-col overflow-hidden rounded-lg border border-bakin-border-subtle bg-bakin-surface-default transition-all duration-150 hover:-translate-y-0.5 hover:border-bakin-border-subtle/80 motion-reduce:transition-none"
+    <Card
+      size="sm"
+      interactive={{ label: `Open ${folder.label} folder`, onActivate: onOpen }}
+      className="gap-0 pb-0"
       data-testid={`tag-folder-${folder.tag}`}
     >
-      <div className="relative grid aspect-square grid-cols-2 grid-rows-2 gap-px overflow-hidden bg-bakin-canvas-default">
+      <CardMedia className="grid aspect-square grid-cols-2 grid-rows-2 gap-px bg-bakin-canvas-default">
         {thumbs.map(a => (
           <div key={a.assetId} className="overflow-hidden">
             <AssetThumb assetId={a.assetId} type={a.type} version={a.currentVersion} hasThumb={a.hasThumb} />
@@ -69,7 +70,7 @@ function FolderCard({ folder, onOpen, onRename, onDelete }: {
           <DropdownMenu>
             <DropdownMenuTrigger
               onClick={(e) => e.stopPropagation()}
-              className="absolute right-1.5 top-1.5 z-10 rounded-bakin-control bg-bakin-canvas-default/80 p-1.5 text-bakin-text-muted opacity-0 transition-opacity hover:text-bakin-text-primary group-hover:opacity-100 data-[state=open]:opacity-100"
+              className="absolute right-1.5 top-1.5 z-10 rounded-bakin-control bg-bakin-canvas-default/80 p-1.5 text-bakin-text-muted opacity-0 transition-opacity hover:text-bakin-text-primary group-hover/card:opacity-100 data-[state=open]:opacity-100"
               aria-label={`Folder actions for ${folder.label}`}
               data-testid={`folder-menu-${folder.tag}`}
             >
@@ -85,15 +86,15 @@ function FolderCard({ folder, onOpen, onRename, onDelete }: {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-      </div>
-      <div className="flex items-center gap-2 p-3">
-        <FolderOpen className="size-4 shrink-0 text-bakin-text-muted" />
-        <span className="truncate text-sm font-medium text-bakin-text-primary" title={folder.label}>{folder.label}</span>
+      </CardMedia>
+      <div className="flex items-center gap-bakin-2 p-bakin-3">
+        <FolderOpen className="size-bakin-4 shrink-0 text-bakin-text-muted" />
+        <span className="truncate font-bakin-typography-weight-medium text-bakin-text-primary" title={folder.label}>{folder.label}</span>
         <Badge variant="secondary" size="xs" className="ml-auto shrink-0" data-testid={`folder-count-${folder.tag}`}>
           {folder.assets.length}
         </Badge>
       </div>
-    </div>
+    </Card>
   )
 }
 
