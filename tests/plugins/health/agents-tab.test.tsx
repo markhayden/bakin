@@ -907,7 +907,8 @@ describe('AgentsTab', () => {
 
     expect(plot).not.toBeNull()
     expect(plot?.className).toContain('w-full')
-    expect(plot?.className).toContain('max-w-4xl')
+    // Plots fill the card — nothing renders beside them (width cap removed 2026-08-03).
+    expect(plot?.className).toContain('w-full')
     expect(within(chart).getByRole('img', { name: /07-13 \(in progress\)/ })).toBeDefined()
     expect(screen.getByRole('table', { name: 'Usage over time data', hidden: true })).toBeDefined()
   })

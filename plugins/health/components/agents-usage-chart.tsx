@@ -269,7 +269,7 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
                       </span>
                     </div>
                   ) : trend.data.length > WIDE_WINDOW_DAYS ? (
-                    <div className="w-full max-w-4xl" data-agent-token-trend-plot>
+                    <div className="w-full" data-agent-token-trend-plot>
                       <AreaChart
                         key={metric}
                         stacked
@@ -283,7 +283,7 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
                       />
                     </div>
                   ) : (
-                    <div className="w-full max-w-4xl" data-agent-token-trend-plot>
+                    <div className="w-full" data-agent-token-trend-plot>
                       <StackedColumnChart
                         key={metric}
                         data={trend.data}
