@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from 'react'
 import type { HealthRepairTarget } from '@makinbakin/sdk/types'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Button,
   Checkbox,
   Dialog,
@@ -121,11 +124,17 @@ export function RepairDialog({
         )}
 
         {repair.error && (
-          <div role="alert" className="rounded-bakin-control border border-bakin-signal-danger/30 bg-bakin-signal-danger/5 p-bakin-3 text-bakin-typography-size-body">
-            <p className="font-bakin-typography-weight-medium text-bakin-signal-danger">{repairErrorTitle(repair.stale, repair.outcomeUnknown)}</p>
-            <p className="mt-bakin-1 text-bakin-text-muted">{repair.error}</p>
-            {repair.stale && <Button className="mt-bakin-3" size="sm" variant="outline" onClick={() => void replan()}>Re-plan from fresh evidence</Button>}
-          </div>
+          <Alert tone="danger">
+            <AlertTitle>{repairErrorTitle(repair.stale, repair.outcomeUnknown)}</AlertTitle>
+            <AlertDescription>
+              {repair.error}
+              {repair.stale && (
+                <Button className="mt-bakin-3 block" size="sm" variant="outline" onClick={() => void replan()}>
+                  Re-plan from fresh evidence
+                </Button>
+              )}
+            </AlertDescription>
+          </Alert>
         )}
 
         {!repair.planning && repair.plan && !repair.result && !repair.stale && (

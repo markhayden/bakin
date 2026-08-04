@@ -82,21 +82,21 @@ function Metric({ label, children }: { label: string; children: ReactNode }) {
 
 function ReviewStatus({ row, checking }: { row: AgentPulseRow; checking: boolean }) {
   if (checking) {
-    return <StatusBadge tone="neutral" variant="outline">Checking review</StatusBadge>
+    return <StatusBadge tone="neutral" variant="solid">Checking review</StatusBadge>
   }
   if (row.reviewState === 'review') {
-    return <StatusBadge tone="attention" variant="outline">Review</StatusBadge>
+    return <StatusBadge tone="attention" variant="solid">Review</StatusBadge>
   }
   if (row.reviewState === 'clear') {
-    return <StatusBadge tone="success" variant="outline">No review flags</StatusBadge>
+    return <StatusBadge tone="success" variant="solid">No review flags</StatusBadge>
   }
   if (row.effort && !hasCurrentAgentEffortCoverage(row.effort)) {
-    return <StatusBadge tone="neutral" variant="outline">Coverage unavailable</StatusBadge>
+    return <StatusBadge tone="neutral" variant="solid">Coverage unavailable</StatusBadge>
   }
   if (row.effort && row.effort.runs > 0 && row.effort.windowTokens === null) {
-    return <StatusBadge tone="neutral" variant="outline">Metering incomplete</StatusBadge>
+    return <StatusBadge tone="neutral" variant="solid">Metering incomplete</StatusBadge>
   }
-  return <StatusBadge tone="neutral" variant="outline">Coverage unavailable</StatusBadge>
+  return <StatusBadge tone="neutral" variant="solid">Coverage unavailable</StatusBadge>
 }
 
 function UsageMetric({ row, pending }: { row: AgentPulseRow; pending: AgentPulsePending }) {

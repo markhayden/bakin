@@ -313,6 +313,8 @@ export const SortedPagedDualRender = {
       await expect(tableRegion).not.toBeVisible()
     })
     await expect(within(listRegion).getAllByRole('listitem')).toHaveLength(3)
+    // Settle focus so visual capture never races a lingering focus ring.
+    ;(document.activeElement as HTMLElement | null)?.blur?.()
 
     // Back to the natural container width: the wide render returns wherever
     // the viewport allows a wide container at all.

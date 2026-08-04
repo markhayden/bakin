@@ -21,7 +21,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
 import { ChartExplainer, Sparkline } from '@makinbakin/sdk/charts'
 import { usePluginEvent, useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
-import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
+import { Panel as LayoutPanel, Grid, Section, Stack, type PanelTone } from '@makinbakin/sdk/layout'
 import { Pagination, SegmentedControl, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -367,10 +367,7 @@ function DriftPanel({ agentId }: { agentId: string }) {
 
   return (
     <Section spacing="compact" divider="none" aria-labelledby="diagnostics-drift">
-      <div
-        data-drift-checklist=""
-        className="relative overflow-hidden rounded-bakin-surface border border-bakin-border-strong bg-bakin-surface-default px-bakin-4 py-bakin-4 before:absolute before:inset-y-0 before:start-0 before:w-bakin-1 before:bg-bakin-text-muted"
-      >
+      <LayoutPanel data-drift-checklist="" tone="neutral">
         <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
           <div className="min-w-0">
             <h2 id="diagnostics-drift" className="m-0">Drift</h2>
@@ -484,7 +481,7 @@ function DriftPanel({ agentId }: { agentId: string }) {
             Sync recomposes managed content; edits outside managed blocks are never touched.
           </span>
         </div>
-      </div>
+      </LayoutPanel>
     </Section>
   )
 }
@@ -770,12 +767,12 @@ function eventCategory(event: TimelineAuditEvent): string {
   return 'System'
 }
 
-function runRailClass(outcome: ReturnType<typeof timelineOutcome>): string {
-  if (outcome.tone === 'danger') return 'border-l-bakin-signal-danger'
-  if (outcome.tone === 'attention') return 'border-l-bakin-signal-highlight'
-  if (outcome.tone === 'success') return 'border-l-bakin-action-primary-background'
-  if (outcome.tone === 'accent') return 'border-l-bakin-signal-accent'
-  return 'border-l-bakin-border-strong'
+function runRailTone(outcome: ReturnType<typeof timelineOutcome>): PanelTone {
+  if (outcome.tone === 'danger') return 'danger'
+  if (outcome.tone === 'attention') return 'attention'
+  if (outcome.tone === 'success') return 'success'
+  if (outcome.tone === 'accent') return 'accent'
+  return 'neutral'
 }
 
 /** Sweep a live chip this long after its last chunk (tap is best-effort —
@@ -955,9 +952,11 @@ function TimelinePanel({ agentId }: { agentId: string }) {
                   const showReason = event.settleReason && event.settleReason !== 'turn-ok'
                   const title = event.taskTitle ?? event.taskId
                   return (
-                    <article
+                    <LayoutPanel
+                      as="article"
+                      tone={runRailTone(outcome)}
                       aria-label={`Dispatch attempt ${event.seq}: ${title}`}
-                      className={`grid min-w-0 gap-bakin-3 rounded-bakin-surface border-l-2 bg-bakin-surface-default p-bakin-4 ${runRailClass(outcome)}`}
+                      className="grid gap-bakin-3"
                     >
                       <header className="flex min-w-0 flex-wrap items-start gap-bakin-3">
                         <div className="grid min-w-0 flex-1 gap-bakin-1">
@@ -1072,14 +1071,14 @@ function TimelinePanel({ agentId }: { agentId: string }) {
                           </ul>
                         </details>
                       ) : null}
-                    </article>
+                    </LayoutPanel>
                   )
                 })() : (
-                  <article
+                  <LayoutPanel
+                    as="article"
+                    tone={item.event.severity === 'warn' ? 'attention' : 'neutral'}
                     aria-label={`Standalone ${item.event.severity === 'warn' ? 'warning' : 'event'}: ${item.event.message}`}
-                    className={`grid min-w-0 gap-bakin-2 rounded-bakin-surface border-l-2 bg-bakin-surface-default p-bakin-4 ${
-                      item.event.severity === 'warn' ? 'border-l-bakin-signal-highlight' : 'border-l-bakin-border-strong'
-                    }`}
+                    className="grid gap-bakin-2"
                   >
                     <header className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1">
                       <span
@@ -1102,7 +1101,7 @@ function TimelinePanel({ agentId }: { agentId: string }) {
                         Task {item.event.taskId}
                       </p>
                     ) : null}
-                  </article>
+                  </LayoutPanel>
                 )}
               </li>
             ))}

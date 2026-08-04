@@ -84,11 +84,11 @@ describe('CatalogCard', () => {
     expect(screen.getByText('Built in')).toBeTruthy()
   })
 
-  it('invokes onSelect with the entry on click', () => {
+  it('invokes onSelect through the whole-card overlay control', () => {
     const onSelect = mock()
     const item = entry()
     render(<CatalogCard entry={item} onSelect={onSelect} />)
-    fireEvent.click(screen.getByTestId('catalog-card-agent-pixel'))
+    fireEvent.click(screen.getByRole('button', { name: 'View Pixel details' }))
     expect(onSelect).toHaveBeenCalledWith(item)
   })
 

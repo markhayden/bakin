@@ -2,7 +2,7 @@
 
 import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
 import type { HealthCheckState, HealthReport } from '@makinbakin/sdk/types'
-import { Grid } from '@makinbakin/sdk/layout'
+import { DisclosurePanel, Grid, Panel } from '@makinbakin/sdk/layout'
 import {
   DataTable,
   ListRow,
@@ -12,7 +12,7 @@ import {
   type DataTableColumn,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Banner, Button, Input, type BannerTone } from '@makinbakin/sdk/ui'
-import { ChevronRight, Clock3, Cpu, Hash, MemoryStick, Network, Users } from 'lucide-react'
+import { Clock3, Cpu, Hash, MemoryStick, Network, Users } from 'lucide-react'
 import { formatAge } from '@makinbakin/sdk/utils'
 import type { HealthSummary } from '../types'
 import { formatUptime } from '../lib/format'
@@ -60,12 +60,10 @@ function mutationTone(status: SystemMutationState['status']): BannerTone {
   return 'info'
 }
 
-function revealDisclosure(
-  disclosure: HTMLDetailsElement | null,
-  summary: HTMLElement | null,
-): void {
+function revealDisclosure(disclosure: HTMLDetailsElement | null): void {
   if (!disclosure) return
   disclosure.open = true
+  const summary = disclosure.querySelector<HTMLElement>('summary')
   if (summary) focusSystemElement(summary)
 }
 
@@ -86,11 +84,8 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
   onUpgrade,
 }, ref) {
   const pluginsDisclosureRef = useRef<HTMLDetailsElement>(null)
-  const pluginsSummaryRef = useRef<HTMLElement>(null)
   const hostDisclosureRef = useRef<HTMLDetailsElement>(null)
-  const hostSummaryRef = useRef<HTMLElement>(null)
   const checksDisclosureRef = useRef<HTMLDetailsElement>(null)
-  const checksSummaryRef = useRef<HTMLElement>(null)
   const pluginTableRef = useRef<HTMLDivElement>(null)
   const checkRowRefs = useRef(new Map<string, HTMLElement>())
   const checkGroupRefs = useRef(new Map<string, HTMLDetailsElement>())
@@ -194,20 +189,20 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
   ]
 
   useImperativeHandle(ref, () => ({
-    revealHost: () => revealDisclosure(hostDisclosureRef.current, hostSummaryRef.current),
-    revealPlugins: () => revealDisclosure(pluginsDisclosureRef.current, pluginsSummaryRef.current),
+    revealHost: () => revealDisclosure(hostDisclosureRef.current),
+    revealPlugins: () => revealDisclosure(pluginsDisclosureRef.current),
     revealPlugin: (pluginId) => {
       const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(pluginId) : pluginId
       const target = pluginTableRef.current?.querySelector<HTMLElement>(`[data-plugin-id="${escaped}"]`) ?? null
       if (!target) {
-        revealDisclosure(pluginsDisclosureRef.current, pluginsSummaryRef.current)
+        revealDisclosure(pluginsDisclosureRef.current)
         return false
       }
       if (pluginsDisclosureRef.current) pluginsDisclosureRef.current.open = true
       focusSystemElement(target, { block: 'center' })
       return true
     },
-    revealChecks: () => revealDisclosure(checksDisclosureRef.current, checksSummaryRef.current),
+    revealChecks: () => revealDisclosure(checksDisclosureRef.current),
     revealCheck: (checkId) => {
       if (checksDisclosureRef.current) checksDisclosureRef.current.open = true
       const groupId = checkGroupById.get(checkId)
@@ -215,7 +210,8 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
       if (group) group.open = true
       const target = checkRowRefs.current.get(checkId)
       if (!target) {
-        if (checksSummaryRef.current) focusSystemElement(checksSummaryRef.current)
+        const summary = checksDisclosureRef.current?.querySelector<HTMLElement>('summary')
+        if (summary) focusSystemElement(summary)
         return false
       }
       focusSystemElement(target, { block: 'center' })
@@ -248,18 +244,18 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
         />
       )}
 
-      <details ref={pluginsDisclosureRef} data-testid="installed-features-details" className="group overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default">
-        <summary ref={pluginsSummaryRef} className="flex cursor-pointer list-none items-center justify-between gap-bakin-3 px-bakin-4 py-bakin-3 marker:hidden">
+      <DisclosurePanel
+        ref={pluginsDisclosureRef}
+        data-testid="installed-features-details"
+        summary={(
           <span className="min-w-0">
             <span className="block text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">Installed features</span>
-            <span className="block text-bakin-typography-size-meta text-bakin-text-muted">Browse plugins, versions, activation state, and updates.</span>
+            <span className="block text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">Browse plugins, versions, activation state, and updates.</span>
           </span>
-          <span className="flex shrink-0 items-center gap-bakin-2">
-            <Badge variant="secondary">{plugins.length}</Badge>
-            <ChevronRight aria-hidden="true" className="size-bakin-4 text-bakin-text-muted transition-transform group-open:rotate-90 motion-reduce:transition-none" />
-          </span>
-        </summary>
-        <div className="space-y-bakin-3 border-t border-bakin-border-subtle p-bakin-4">
+        )}
+        summaryMeta={<Badge variant="secondary">{plugins.length}</Badge>}
+      >
+        <div className="space-y-bakin-3">
           <div className="flex justify-end">
             <Button
               size="sm"
@@ -294,7 +290,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
           ) : filteredPlugins.length === 0 ? (
             <p className="text-bakin-typography-size-body text-bakin-text-muted">{pluginSearch ? 'No matching plugins.' : 'No plugins were discovered.'}</p>
           ) : (
-            <div ref={pluginTableRef} data-testid="installed-plugin-table-scroll" className="max-h-80 overflow-auto rounded-bakin-control border border-bakin-border-subtle px-bakin-2">
+            <Panel ref={pluginTableRef} scroll aria-label="Installed plugins" data-testid="installed-plugin-table-scroll" padding="compact" className="max-h-80">
               <DataTable<InventoryPlugin>
                 label="Installed plugins"
                 rows={filteredPlugins}
@@ -309,23 +305,22 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                 })}
                 columns={pluginColumns}
               />
-            </div>
+            </Panel>
           )}
         </div>
-      </details>
+      </DisclosurePanel>
 
-      <details ref={hostDisclosureRef} data-testid="bakin-host-details" className="group overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default">
-        <summary ref={hostSummaryRef} className="flex cursor-pointer list-none items-center justify-between gap-bakin-3 px-bakin-4 py-bakin-3 marker:hidden">
+      <DisclosurePanel
+        ref={hostDisclosureRef}
+        data-testid="bakin-host-details"
+        summary={(
           <span className="min-w-0">
             <span className="block text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">Bakin host details</span>
-            <span className="block text-bakin-typography-size-meta text-bakin-text-muted">Process, uptime, memory, port, and connected sessions.</span>
+            <span className="block text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">Process, uptime, memory, port, and connected sessions.</span>
           </span>
-          <span className="flex shrink-0 items-center gap-bakin-2">
-            <Badge variant="secondary">{sessions === null ? 'Unavailable' : `${sessions} ${sessions === 1 ? 'session' : 'sessions'}`}</Badge>
-            <ChevronRight aria-hidden="true" className="size-bakin-4 text-bakin-text-muted transition-transform group-open:rotate-90 motion-reduce:transition-none" />
-          </span>
-        </summary>
-        <div className="border-t border-bakin-border-subtle p-bakin-4">
+        )}
+        summaryMeta={<Badge variant="secondary">{sessions === null ? 'Unavailable' : `${sessions} ${sessions === 1 ? 'session' : 'sessions'}`}</Badge>}
+      >
           <Grid layout="cards" gap="dense" aria-label="Bakin host metrics">
             <StatTile icon={Users} label="Connected sessions" value={sessions === null ? '—' : sessions} sub="Summed across agents" />
             <StatTile icon={Clock3} label="Uptime" value={live?.upSince ? formatUptime(live.upSince) : '—'} sub="Current host process" />
@@ -347,28 +342,26 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
               </ListRows>
             </details>
           )}
-        </div>
-      </details>
+      </DisclosurePanel>
 
-      <details
+      <DisclosurePanel
         ref={checksDisclosureRef}
         data-testid="all-health-checks-details"
-        className="group overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default"
-      >
-        <summary ref={checksSummaryRef} className="flex cursor-pointer list-none items-center justify-between gap-bakin-3 px-bakin-4 py-bakin-3 marker:hidden">
+        summary={(
           <span className="min-w-0">
             <span className="block text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">All health checks</span>
-            <span className="block text-bakin-typography-size-meta text-bakin-text-muted">Every registered check, including healthy and not-applicable evidence.</span>
+            <span className="block text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">Every registered check, including healthy and not-applicable evidence.</span>
           </span>
-          <span className="flex shrink-0 items-center gap-bakin-2">
+        )}
+        summaryMeta={(
+          <>
             {report && checksToReview > 0 && (
               <StatusBadge tone="attention" variant="outline">{checksToReview} to review</StatusBadge>
             )}
             <Badge variant="secondary">{report ? `${report.checks.length} checks` : 'Unavailable'}</Badge>
-            <ChevronRight aria-hidden="true" className="size-bakin-4 text-bakin-text-muted transition-transform group-open:rotate-90 motion-reduce:transition-none" />
-          </span>
-        </summary>
-        <div className="border-t border-bakin-border-subtle p-bakin-4">
+          </>
+        )}
+      >
           {!report ? (
             <p className="text-bakin-typography-size-body text-bakin-text-muted">Waiting for the canonical health report…</p>
           ) : groupedChecks.length === 0 ? (
@@ -430,8 +423,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
               })}
             </div>
           )}
-        </div>
-      </details>
+      </DisclosurePanel>
     </div>
   )
 })

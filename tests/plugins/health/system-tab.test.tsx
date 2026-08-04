@@ -380,7 +380,7 @@ describe('SystemTabView', () => {
     expect(screen.getByText('Migrating · parked')).toBeDefined()
     expect(screen.getByText('Journal backlog').closest('[data-stat-tile]')?.textContent).toContain('7')
     expect(screen.getByText('120/142')).toBeDefined()
-    expect(screen.getByTestId('search-index-table-scroll').className).toContain('overflow-auto')
+    expect(screen.getByTestId('search-index-table-scroll').className).toContain('overflow-y-auto')
 
     fireEvent.click(screen.getByRole('button', { name: 'Reindex bakin_assets' }))
     expect(data.reindexSearch).toHaveBeenCalledWith('bakin_assets')
@@ -421,7 +421,7 @@ describe('SystemTabView', () => {
     fireEvent.click(installedFeatures.querySelector('summary')!)
     expect(screen.getByText('Missing dependencies: calendar-api')).toBeDefined()
     expect(screen.getByRole('button', { name: 'Update Notes' })).toBeDefined()
-    expect(screen.getByTestId('installed-plugin-table-scroll').className).toContain('overflow-auto')
+    expect(screen.getByTestId('installed-plugin-table-scroll').className).toContain('overflow-y-auto')
 
     fireEvent.click(hostDetails.querySelector('summary')!)
     expect(screen.getByText('Connected sessions').closest('[data-stat-tile]')?.textContent).toContain('5')

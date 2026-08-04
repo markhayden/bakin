@@ -3,7 +3,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Plus, Trash2, Users } from 'lucide-react'
 import { useRouter } from '@makinbakin/sdk/navigation'
-import { AgentSelect, ConfirmDialog } from '@makinbakin/sdk/patterns'
+import { AgentSelect, ConfirmDialog, ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertDescription,
@@ -127,9 +127,9 @@ export function TeamManager() {
             />
           ) : null}
 
-          <div className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default">
-            <div className="flex min-w-0 items-center gap-bakin-3 p-bakin-3">
-              <div className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-surface-default">
+          <ListRows variant="bordered" aria-label="Teams">
+            <ListRow className="flex min-w-0 items-center gap-bakin-3">
+              <div className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-surface-elevated">
                 <Users className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
               </div>
               <div className="min-w-0 flex-1">
@@ -149,12 +149,12 @@ export function TeamManager() {
               <code className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
                 global
               </code>
-            </div>
+            </ListRow>
 
             {teams.map((team) => (
-              <div
+              <ListRow
                 key={team.id}
-                className="flex min-w-0 flex-col gap-bakin-3 border-t border-bakin-border-subtle p-bakin-3 sm:flex-row sm:items-center"
+                className="flex min-w-0 flex-col gap-bakin-3 sm:flex-row sm:items-center"
               >
                 <div className="min-w-0 flex-1">
                   <Button
@@ -189,9 +189,9 @@ export function TeamManager() {
                 >
                   <Trash2 aria-hidden="true" />
                 </Button>
-              </div>
+              </ListRow>
             ))}
-          </div>
+          </ListRows>
         </div>
       </DrawerSection>
 
@@ -253,7 +253,7 @@ export function TeamManager() {
             </FormActions>
           </Form>
         ) : (
-          <Button type="button" variant="outline" size="sm" onClick={() => setShowAdd(true)}>
+          <Button type="button" size="sm" onClick={() => setShowAdd(true)}>
             <Plus aria-hidden="true" />
             Add team
           </Button>

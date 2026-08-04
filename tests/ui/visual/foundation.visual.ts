@@ -663,13 +663,18 @@ test('public exact tool detail visual baseline', async ({ page }) => {
 // Anchors target each story's play end-state; toHaveScreenshot's stability
 // polling absorbs any remaining play settle.
 const PRIMITIVES_BASELINES = [
-  { url: '/iframe.html?id=primitives-input--states-and-mobile-modes&viewMode=story', png: 'primitives-input.png', role: 'textbox' as const, name: 'Invalid URL' },
+  { url: '/iframe.html?id=primitives-input--states-and-mobile-modes&viewMode=story', png: 'primitives-input.png', role: 'textbox' as const, name: 'Invalid URL', unstableContent: true },
   { url: '/iframe.html?id=primitives-textarea--content-and-states&viewMode=story', png: 'primitives-textarea.png', role: 'textbox' as const, name: 'Required rationale' },
   { url: '/iframe.html?id=primitives-label--association&viewMode=story', png: 'primitives-label.png', text: 'Project name' },
   { url: '/iframe.html?id=primitives-inputgroup--adornments&viewMode=story', png: 'primitives-inputgroup.png', text: 'Repository path' },
   { url: '/iframe.html?id=primitives-badge--canonical-usage&viewMode=story', png: 'primitives-badge.png', text: 'Published' },
   { url: '/iframe.html?id=primitives-avatar--canonical-usage&viewMode=story', png: 'primitives-avatar.png', text: 'MB' },
   { url: '/iframe.html?id=primitives-card--canonical-usage&viewMode=story', png: 'primitives-card.png', text: 'Resolve launch blockers' },
+  { url: '/iframe.html?id=primitives-card--interactive-card&viewMode=story', png: 'primitives-card-interactive.png', role: 'button' as const, name: 'Open Spring launch' },
+  { url: '/iframe.html?id=primitives-card--media-cover&viewMode=story', png: 'primitives-card-media-cover.png', text: 'Daybreak Studio' },
+  { url: '/iframe.html?id=primitives-card--row-media&viewMode=story', png: 'primitives-card-row-media.png', text: 'Gourmet seasoned popcorn' },
+  { url: '/iframe.html?id=primitives-card--selected-and-tone&viewMode=story', png: 'primitives-card-selected-tone.png', text: 'Dispatch failed' },
+  { url: '/iframe.html?id=primitives-card--meta-footer&viewMode=story', png: 'primitives-card-meta-footer.png', text: '2 steps · custom' },
   { url: '/iframe.html?id=primitives-separator--orientation&viewMode=story', png: 'primitives-separator.png', text: 'Deployment policy' },
   { url: '/iframe.html?id=primitives-checkbox--states&viewMode=story', png: 'primitives-checkbox.png', text: 'Partially selected' },
   { url: '/iframe.html?id=primitives-switch--states&viewMode=story', png: 'primitives-switch.png', text: 'Compact operational setting' },
@@ -695,7 +700,7 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=charts-areachart--stacked-and-missing-data&viewMode=story', png: 'charts-area-chart.png', text: 'The line carries identity; the fill carries magnitude' },
   { url: '/iframe.html?id=charts-compositionbar--composition-strips&viewMode=story', png: 'charts-composition-bar.png', text: 'One strip for how a whole divides' },
   { url: '/iframe.html?id=pages-page--aside-layout&viewMode=story', png: 'pages-page.png', role: 'complementary' as const, name: 'Workflow context' },
-  { url: '/iframe.html?id=lists-datatable--sorted-paged-dual-render&viewMode=story', png: 'lists-data-table.png', text: 'Showing 4–6 of 8' },
+  { url: '/iframe.html?id=lists-datatable--sorted-paged-dual-render&viewMode=story', png: 'lists-data-table.png', text: 'Showing 4–6 of 8', unstableContent: true },
   { url: '/iframe.html?id=lists-datatable--narrow-roles&viewMode=story', png: 'lists-data-table-narrow.png', text: 'Narrow roles compose the mobile card' },
   { url: '/iframe.html?id=lists-timeline--status-rail-expansion-nesting&viewMode=story', png: 'lists-timeline.png', role: 'list' as const, name: 'Dispatch activity' },
   { url: '/iframe.html?id=lists-calendargrid--week-and-day-structure&viewMode=story', png: 'lists-calendar-grid.png', role: 'grid' as const, name: 'Week of July 12, 2026' },
@@ -708,6 +713,10 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=conversation-single-turn-output--canonical-usage&viewMode=story', png: 'conversation-turn-output.png', role: 'status' as const },
   { url: '/iframe.html?id=layout-stack-and-inline--gap-scale-and-wrapping&viewMode=story', png: 'layout-stack-inline.png', text: 'One finite spacing scale' },
   { url: '/iframe.html?id=layout-section--spacing-and-dividers&viewMode=story', png: 'layout-section.png', text: 'Consistent section separation' },
+  { url: '/iframe.html?id=feedback-systemstate--scope-and-recovery&viewMode=story', png: 'feedback-system-state-scopes.png', text: 'Match the state to its owning region' },
+  { url: '/iframe.html?id=layout-panel--tone-rail&viewMode=story', png: 'layout-panel.png', text: 'Skill drift detected.' },
+  { url: '/iframe.html?id=layout-panel--code-frame&viewMode=story', png: 'layout-panel-code.png', text: 'bakin agents sync --check copywriter' },
+  { url: '/iframe.html?id=layout-disclosurepanel--open-by-default&viewMode=story', png: 'layout-disclosure-panel.png', text: 'Session detail' },
   { url: '/iframe.html?id=layout-boundedoverflow--wide-operations-table&viewMode=story', png: 'layout-bounded-overflow.png', role: 'region' as const, name: 'Active operation details' },
   { url: '/iframe.html?id=foundations-semantic-tokens--catalog&viewMode=story', png: 'foundations-semantic-tokens.png', text: 'Semantic UI tokens' },
   { url: '/iframe.html?id=testing-plugin-ui-fixture-host--canonical-usage&viewMode=story', png: 'testing-plugin-ui-fixture.png', text: 'Canonical fixture page' },
@@ -731,10 +740,15 @@ for (const baseline of PRIMITIVES_BASELINES) {
       : page.getByRole(baseline.role!, baseline.name ? { name: baseline.name } : undefined).first()
     await expect(anchor).toBeVisible()
     await page.evaluate(async () => document.fonts.ready)
+    // Stories whose plays resize or retype content have racy full-page
+    // heights; those entries pin a fixed viewport crop with a bounded pixel
+    // allowance instead of flapping on dimensions.
+    const unstable = 'unstableContent' in baseline && baseline.unstableContent
     await expect(page).toHaveScreenshot(baseline.png, {
       animations: 'disabled',
       caret: 'hide',
-      fullPage: true,
+      fullPage: !unstable,
+      maxDiffPixels: unstable ? 4096 : 0,
     })
   })
 }

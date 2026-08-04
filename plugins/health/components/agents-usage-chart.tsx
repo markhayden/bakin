@@ -5,6 +5,8 @@ import { AreaChart, ChartExplainer, StackedColumnChart } from '@makinbakin/sdk/c
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { SegmentedControl } from '@makinbakin/sdk/patterns'
 import {
+  Alert,
+  AlertDescription,
   Button,
   Card,
   CardAction,
@@ -211,13 +213,15 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
           ) : (
             <>
               {scoped && evidenceLimited && (
-                <div role="status" className="rounded-bakin-control border border-bakin-signal-highlight/25 bg-bakin-signal-highlight/5 px-bakin-3 py-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
+                <Alert tone="neutral" role="status">
+                  <AlertDescription>
                   {scoped.status === 'complete' && scoped.excludedAgentCount > 0
                     ? `The current scan verified ${scoped.includedAgentCount} agent${scoped.includedAgentCount === 1 ? '' : 's'}. ${scoped.excludedAgentCount} retained agent row${scoped.excludedAgentCount === 1 ? ' is' : 's are'} excluded because it was not part of that scan.`
                     : scoped.includedAgentCount > 0
                     ? `Transcript coverage is ${scoped.status}. Totals include only ${scoped.includedAgentCount} fully scanned agent${scoped.includedAgentCount === 1 ? '' : 's'}; ${scoped.excludedAgentCount} unverified agent${scoped.excludedAgentCount === 1 ? ' is' : 's are'} excluded.`
                     : 'Current transcript coverage is unavailable. Retained rows are excluded until a new scan verifies them.'}
-                </div>
+                  </AlertDescription>
+                </Alert>
               )}
               {visibleData && visibleData.byAgent.length > 0 && (
                 <div className="flex flex-wrap items-baseline gap-x-bakin-6 gap-y-bakin-1 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default px-bakin-3 py-bakin-2">
@@ -265,7 +269,7 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
                       </span>
                     </div>
                   ) : trend.data.length > WIDE_WINDOW_DAYS ? (
-                    <div className="w-full max-w-4xl" data-agent-token-trend-plot>
+                    <div className="w-full" data-agent-token-trend-plot>
                       <AreaChart
                         key={metric}
                         stacked
@@ -279,7 +283,7 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
                       />
                     </div>
                   ) : (
-                    <div className="w-full max-w-4xl" data-agent-token-trend-plot>
+                    <div className="w-full" data-agent-token-trend-plot>
                       <StackedColumnChart
                         key={metric}
                         data={trend.data}

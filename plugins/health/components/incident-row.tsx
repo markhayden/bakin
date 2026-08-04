@@ -2,9 +2,10 @@
 
 import { useId, useState } from 'react'
 import type { HealthIncident } from '@makinbakin/sdk/types'
+import { Panel } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
-import { Button, Popover, PopoverContent, PopoverTrigger, buttonVariants } from '@makinbakin/sdk/ui'
+import { Button, Card, Popover, PopoverContent, PopoverTrigger, buttonVariants } from '@makinbakin/sdk/ui'
 import { AlertTriangle, BellOff, ChevronRight, CircleHelp, Wrench } from 'lucide-react'
 import type { OverviewIncident } from '../lib/health-view-model'
 
@@ -53,14 +54,6 @@ const DISPOSITION_LABEL: Record<HealthIncident['disposition'], string> = {
   advisory: 'advisory',
   watch: 'watch',
   action_required: 'action',
-}
-
-const TONE_CLASS: Record<StatusTone, string> = {
-  neutral: 'before:bg-bakin-text-muted',
-  success: 'before:bg-bakin-action-primary-background',
-  attention: 'before:bg-bakin-signal-highlight',
-  danger: 'before:bg-bakin-signal-danger',
-  accent: 'before:bg-bakin-signal-accent',
 }
 
 export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps) {
@@ -115,8 +108,9 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
   }
 
   return (
-    <article
-      className={`relative flex h-full min-w-0 flex-col overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4 before:absolute before:inset-y-0 before:start-0 before:w-bakin-1 ${TONE_CLASS[status.tone]}`}
+    <Card
+      tone={status.tone}
+      className="h-full gap-0 p-bakin-4"
       data-incident-id={incident.id}
     >
       <div className="flex min-w-0 items-start gap-bakin-3">
@@ -171,16 +165,16 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
       </div>
 
       {resolution.type === 'instructions' && showInstructions && (
-        <div id={instructionsId} className="mt-bakin-3 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default p-bakin-3 text-bakin-typography-size-meta">
+        <Panel id={instructionsId} padding="compact" className="mt-bakin-3 text-bakin-typography-size-meta">
           <ol className="list-decimal space-y-bakin-1 pl-bakin-6">
             {resolution.steps.map((step) => <li key={step}>{step}</li>)}
           </ol>
           {resolution.command && (
-            <code className="mt-bakin-3 block overflow-auto rounded-bakin-control border border-bakin-border-subtle bg-bakin-surface-default p-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta">
-              {resolution.command}
-            </code>
+            <Panel as="div" variant="code" padding="compact" className="mt-bakin-3">
+              <code>{resolution.command}</code>
+            </Panel>
           )}
-        </div>
+        </Panel>
       )}
 
       <div className="mt-auto flex items-center justify-end gap-bakin-2 pt-bakin-4">
@@ -217,6 +211,6 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
         ))}
         {action}
       </div>
-    </article>
+    </Card>
   )
 }

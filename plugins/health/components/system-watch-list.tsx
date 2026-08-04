@@ -99,7 +99,7 @@ export function SystemWatchList({
                   </div>
                   <Button
                     size="xs"
-                    variant="outline"
+                    variant="link"
                     className="justify-self-start @[34rem]/health-system:justify-self-end"
                     onClick={() => onRevealFinding(finding)}
                     aria-label={`View evidence for ${finding.title}`}

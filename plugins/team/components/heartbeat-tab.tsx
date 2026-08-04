@@ -2,7 +2,7 @@
 
 import { Heart, Pencil } from 'lucide-react'
 import { MarkdownContent } from '@makinbakin/sdk/content'
-import { Section } from '@makinbakin/sdk/layout'
+import { Panel, Section } from '@makinbakin/sdk/layout'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { Button, SystemState } from '@makinbakin/sdk/ui'
 import { useJsonFetch } from '@makinbakin/sdk/hooks'
@@ -112,9 +112,9 @@ export function HeartbeatTab({ agentId }: HeartbeatTabProps) {
         </div>
       </div>
 
-      <div className="min-h-96 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4">
+      <Panel className="min-h-96">
         <MarkdownContent content={heartbeat.content} />
-      </div>
+      </Panel>
     </Section>
   )
 }

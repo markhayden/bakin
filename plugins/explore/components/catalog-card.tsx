@@ -93,11 +93,8 @@ export function CatalogCard({
     <Card
       size="sm"
       data-testid={`catalog-card-${entry.kind}-${entry.id}`}
-      className="h-full cursor-pointer transition-colors hover:border-bakin-border-strong"
-      onClick={(event) => {
-        if ((event.target as HTMLElement).closest('button, a')) return
-        onSelect(entry)
-      }}
+      className="h-full"
+      interactive={{ label: `View ${entry.name} details`, onActivate: () => onSelect(entry) }}
     >
       <CardHeader>
         <div className="flex min-w-0 items-center gap-bakin-3">
@@ -115,7 +112,7 @@ export function CatalogCard({
       <CardContent className="flex-1">
         <CardDescription className="line-clamp-2 leading-snug">{entry.description}</CardDescription>
       </CardContent>
-      <CardFooter className="mt-auto flex-wrap justify-between gap-bakin-2">
+      <CardFooter variant="meta" className="gap-bakin-2">
         <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
           {status && (
             <StatusBadge tone={status.tone} variant={status.variant} icon={status.icon} size="xs">

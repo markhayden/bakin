@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { SearchReadiness, SearchStageStatus } from '@makinbakin/sdk/types'
-import { Grid } from '@makinbakin/sdk/layout'
+import { DisclosurePanel, Grid, Panel } from '@makinbakin/sdk/layout'
 import {
   DataTable,
   StatTile,
@@ -10,8 +10,8 @@ import {
   type DataTableColumn,
   type StatusTone,
 } from '@makinbakin/sdk/patterns'
-import { Badge, Banner, Button, type BannerTone } from '@makinbakin/sdk/ui'
-import { Activity, ChevronRight, ListRestart, WandSparkles } from 'lucide-react'
+import { Alert, AlertDescription, Badge, Banner, Button, type BannerTone } from '@makinbakin/sdk/ui'
+import { Activity, ListRestart, WandSparkles } from 'lucide-react'
 import type { SearchHealthData, SearchTelemetryData } from '../types'
 import type { SystemMutationState } from '../hooks/use-system-data'
 
@@ -302,24 +302,19 @@ export function SystemSearchSection({
           />
         )}
 
-        <details
+        <DisclosurePanel
           data-testid="search-technical-details"
           open={detailsOpen}
           onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
-          className="group overflow-hidden rounded-bakin-control border border-bakin-border-subtle"
-        >
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-bakin-3 px-bakin-3 py-bakin-2 marker:hidden">
+          summary={(
             <span className="min-w-0">
-              <span className="block text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">Index inventory &amp; repair</span>
-              <span className="block text-bakin-typography-size-meta text-bakin-text-muted">Physical indexes, migrations, backlogs, and reindex controls.</span>
+              <span className="block text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">Index inventory &amp; repair</span>
+              <span className="block text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">Physical indexes, migrations, backlogs, and reindex controls.</span>
             </span>
-            <span className="flex shrink-0 items-center gap-bakin-2">
-              <Badge variant="secondary">{status ? `${status.tables.length} tables` : 'Unavailable'}</Badge>
-              <ChevronRight className="size-bakin-4 text-bakin-text-muted transition-transform group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
-            </span>
-          </summary>
-
-          <div className="space-y-bakin-3 border-t border-bakin-border-subtle p-bakin-3">
+          )}
+          summaryMeta={<Badge variant="secondary">{status ? `${status.tables.length} tables` : 'Unavailable'}</Badge>}
+        >
+          <div className="space-y-bakin-3">
             <div className="flex flex-wrap items-end justify-between gap-bakin-3">
               <div>
                 <h3 id="search-indexes-title" className="font-bakin-typography-weight-medium">Indexes &amp; migrations</h3>
@@ -336,20 +331,26 @@ export function SystemSearchSection({
             </div>
 
             {status?.enabled && status.engineReachable === false ? (
-              <p className="rounded-bakin-control border border-dashed border-bakin-signal-highlight/50 bg-bakin-signal-highlight/5 p-bakin-3 text-bakin-typography-size-body text-bakin-text-muted">
-                Search is enabled but the engine is not answering. Table state below comes from local records;
-                document counts and reindexing are unavailable until the engine is back.
-              </p>
+              <Alert tone="attention">
+                <AlertDescription>
+                  Search is enabled but the engine is not answering. Table state below comes from local records;
+                  document counts and reindexing are unavailable until the engine is back.
+                </AlertDescription>
+              </Alert>
             ) : null}
 
             {!status?.enabled ? (
-              <p className="rounded-bakin-control border border-dashed border-bakin-border-subtle p-bakin-3 text-bakin-typography-size-body text-bakin-text-muted">
-                {status ? 'Search is disabled; no index actions are available.' : 'Index status is unavailable.'}
-              </p>
+              <Alert tone="neutral">
+                <AlertDescription>
+                  {status ? 'Search is disabled; no index actions are available.' : 'Index status is unavailable.'}
+                </AlertDescription>
+              </Alert>
             ) : status.tables.length === 0 ? (
-              <p className="rounded-bakin-control border border-dashed border-bakin-border-subtle p-bakin-3 text-bakin-typography-size-body text-bakin-text-muted">No Search tables are registered.</p>
+              <Alert tone="neutral">
+                <AlertDescription>No Search tables are registered.</AlertDescription>
+              </Alert>
             ) : (
-              <div data-testid="search-index-table-scroll" className="max-h-96 overflow-auto rounded-bakin-control border border-bakin-border-subtle px-bakin-2">
+              <Panel scroll aria-label="Search indexes" data-testid="search-index-table-scroll" padding="compact" className="max-h-96">
                 <DataTable<SearchIndexTable>
                   label="Search indexes"
                   rows={status.tables}
@@ -359,10 +360,10 @@ export function SystemSearchSection({
                   renderRow={() => null}
                   tableProps={{ className: 'min-w-[760px]' }}
                 />
-              </div>
+              </Panel>
             )}
           </div>
-        </details>
+        </DisclosurePanel>
 
         {mutation.status !== 'idle' && mutation.message && (
           <Banner

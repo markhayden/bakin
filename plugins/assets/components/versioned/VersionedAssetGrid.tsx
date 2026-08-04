@@ -28,6 +28,7 @@ import {
   Button,
   Card,
   CardDescription,
+  CardMedia,
   CardHeader,
   CardTitle,
   Checkbox,
@@ -100,23 +101,17 @@ function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo 
   return (
     <Card
       size="sm"
-      className={`relative data-[size=sm]:!gap-0 data-[size=sm]:!py-0 transition-colors duration-[var(--bakin-motion-duration-feedback)] motion-reduce:transition-none ${selected ? 'border-bakin-action-primary-background ring-1 ring-bakin-action-primary-background' : 'hover:border-bakin-border-strong'}`}
+      selected={selected}
+      interactive={{ label: `Open ${label}`, onActivate: onOpen }}
+      className="h-full gap-0 pb-0"
       data-testid={`asset-card-${asset.assetId}`}
     >
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        aria-label={`Open ${label}`}
-        className="absolute inset-0 z-0 h-auto min-h-0 min-w-0 w-auto rounded-bakin-surface p-0 hover:bg-transparent"
-        onClick={onOpen}
-      />
-      <div className="pointer-events-none relative z-10 aspect-square overflow-hidden bg-bakin-canvas-default">
+      <CardMedia className="aspect-square bg-bakin-canvas-default">
         <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
         <Checkbox
           checked={selected}
           onCheckedChange={onToggleSelect}
-          className="pointer-events-auto absolute left-bakin-2 top-bakin-2 z-20 bg-bakin-canvas-default/85"
+          className="absolute left-bakin-2 top-bakin-2 z-20 bg-bakin-canvas-default/85"
           aria-label={`${selected ? 'Deselect' : 'Select'} ${label}`}
           data-testid={`asset-selected-${asset.assetId}`}
         />
@@ -125,7 +120,7 @@ function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo 
           variant="secondary"
           size="icon-xs"
           onClick={onEdit}
-          className="pointer-events-auto absolute right-bakin-2 top-bakin-2 z-20 opacity-100 md:opacity-0 md:group-hover/card:opacity-100 md:focus-visible:opacity-100"
+          className="absolute right-bakin-2 top-bakin-2 z-20 opacity-100 md:opacity-0 md:group-hover/card:opacity-100 md:focus-visible:opacity-100"
           aria-label={`Edit ${label}`}
           data-testid={`asset-edit-${asset.assetId}`}
         >
@@ -141,8 +136,8 @@ function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo 
           <EnrichmentDot status={asset.enrichment} />
           {formatSize(asset.size)}
         </span>
-      </div>
-      <CardHeader className="pointer-events-none relative z-10 gap-bakin-2 py-bakin-3">
+      </CardMedia>
+      <CardHeader className="gap-bakin-2 py-bakin-3">
         <CardTitle>
           <span className="block truncate" title={label}>{label}</span>
         </CardTitle>
@@ -160,28 +155,22 @@ function AssetListRow({ asset, onOpen, onEdit, selected, onToggleSelect, scoreIn
   return (
     <Card
       size="sm"
-      className={`relative flex-row items-center gap-bakin-3 px-bakin-3 transition-colors duration-[var(--bakin-motion-duration-feedback)] motion-reduce:transition-none ${selected ? 'border-bakin-action-primary-background ring-1 ring-bakin-action-primary-background' : 'border-bakin-border-subtle/30 hover:border-bakin-border-subtle'}`}
+      orientation="row"
+      selected={selected}
+      interactive={{ label: `Open ${label}`, onActivate: onOpen }}
+      className="items-center gap-bakin-3 p-bakin-3"
       data-testid={`asset-row-${asset.assetId}`}
     >
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        aria-label={`Open ${label}`}
-        className="absolute inset-0 z-0 h-auto min-h-0 min-w-0 w-auto rounded-bakin-surface p-0 hover:bg-transparent"
-        onClick={onOpen}
-      />
       <Checkbox
         checked={selected}
         onCheckedChange={onToggleSelect}
-        className="relative z-20"
         aria-label={`${selected ? 'Deselect' : 'Select'} ${label}`}
         data-testid={`asset-selected-${asset.assetId}`}
       />
-      <div className="pointer-events-none relative z-10 size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control">
+      <div className="size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control">
         <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
       </div>
-      <div className="pointer-events-none relative z-10 min-w-0 flex-1">
+      <div className="min-w-0 flex-1">
         <p className="m-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{label}</p>
         <div className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
           <span className="capitalize">{asset.type}</span>
@@ -190,21 +179,21 @@ function AssetListRow({ asset, onOpen, onEdit, selected, onToggleSelect, scoreIn
           {asset.versionCount > 1 && <><span>·</span><span className="text-bakin-action-primary-background">{asset.versionCount} versions</span></>}
         </div>
       </div>
-      {scoreInfo && <ScoreOverlay info={scoreInfo} className="pointer-events-none relative z-10 shrink-0" />}
-      <span className="pointer-events-none relative z-10"><EnrichmentDot status={asset.enrichment} /></span>
+      {scoreInfo && <ScoreOverlay info={scoreInfo} className="shrink-0" />}
+      <span><EnrichmentDot status={asset.enrichment} /></span>
       <Button
         type="button"
         variant="ghost"
         size="icon-xs"
         onClick={onEdit}
-        className="relative z-20 shrink-0 opacity-100 md:opacity-0 md:group-hover/card:opacity-100 md:focus-visible:opacity-100"
+        className="shrink-0 opacity-100 md:opacity-0 md:group-hover/card:opacity-100 md:focus-visible:opacity-100"
         aria-label={`Edit ${label}`}
         data-testid={`asset-edit-${asset.assetId}`}
       >
         <Pencil />
       </Button>
-      <span className="pointer-events-none relative z-10 hidden shrink-0 text-bakin-typography-size-meta text-bakin-text-muted sm:inline">{formatSize(asset.size)}</span>
-      <span className="pointer-events-none relative z-10 hidden shrink-0 text-bakin-typography-size-meta text-bakin-text-muted md:inline">{formatAge(asset.created)}</span>
+      <span className="hidden shrink-0 text-bakin-typography-size-meta text-bakin-text-muted sm:inline">{formatSize(asset.size)}</span>
+      <span className="hidden shrink-0 text-bakin-typography-size-meta text-bakin-text-muted md:inline">{formatAge(asset.created)}</span>
     </Card>
   )
 }

@@ -2,7 +2,7 @@
 
 import { MessageCircle } from 'lucide-react'
 import { MarkdownContent } from '@makinbakin/sdk/content'
-import { Section } from '@makinbakin/sdk/layout'
+import { Panel, Section } from '@makinbakin/sdk/layout'
 import { Pagination, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -58,10 +58,7 @@ function MessageRow({ message, index }: { message: SessionMessage; index: number
     && readableText !== null
     && isJsonLike(message.content)
   return (
-    <article
-      aria-label={`Turn ${index + 1}: ${message.role}`}
-      className="rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4"
-    >
+    <Panel as="article" aria-label={`Turn ${index + 1}: ${message.role}`}>
       <header className="mb-bakin-3 flex min-w-0 flex-wrap items-center gap-bakin-2">
         <span className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
           #{index + 1}
@@ -106,7 +103,7 @@ function MessageRow({ message, index }: { message: SessionMessage; index: number
           ) : null}
         </div>
       )}
-    </article>
+    </Panel>
   )
 }
 

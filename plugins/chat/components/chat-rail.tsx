@@ -91,16 +91,12 @@ function ChatRow({
 }) {
   const agent = useAgent(chat.agentId)
   return (
-    <ListRow data-chat-row={chat.id} className="group relative p-0">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={onSelect}
-        className={`!h-auto w-full min-w-0 justify-start gap-bakin-2 whitespace-normal rounded-bakin-control px-bakin-2 py-bakin-2 text-left font-bakin-typography-weight-regular ${
-          selected ? 'bg-bakin-surface-default' : ''
-        }`}
-      >
+    <ListRow
+      data-chat-row={chat.id}
+      selected={selected}
+      interactive={{ label: `Open chat: ${chat.title || 'New chat'}`, onActivate: onSelect }}
+      className="group flex items-center gap-bakin-2 rounded-bakin-control px-bakin-2 py-bakin-2"
+    >
         <AgentAvatar
           agent={{
             id: chat.agentId,
@@ -135,7 +131,9 @@ function ChatRow({
             {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
           </span>
         ) : null}
-      </Button>
+      {/* Static wrapper: the hover cluster anchors to the row without joining
+          the overlay's direct-child positioning discipline. */}
+      <span>
       <span className="absolute right-bakin-1 top-bakin-1 hidden items-center gap-bakin-0 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default/95 p-bakin-0 group-hover:flex group-focus-within:flex">
         <Button
           type="button"
@@ -143,7 +141,7 @@ function ChatRow({
           size="icon-xs"
           aria-label={chat.pinned ? 'Unpin chat' : 'Pin chat'}
           title={chat.pinned ? 'Unpin chat' : 'Pin chat'}
-          onClick={(e) => { e.stopPropagation(); onTogglePin() }}
+          onClick={onTogglePin}
           className={chat.pinned ? 'text-bakin-signal-accent' : 'text-bakin-text-muted'}
         >
           <Pin className={chat.pinned ? 'fill-current' : ''} />
@@ -153,11 +151,12 @@ function ChatRow({
           variant="ghost"
           size="icon-xs"
           aria-label="Delete chat"
-          onClick={(e) => { e.stopPropagation(); onDelete() }}
+          onClick={onDelete}
           className="text-bakin-text-muted hover:bg-bakin-signal-danger/15 hover:text-bakin-signal-danger"
         >
           <Trash2 />
         </Button>
+      </span>
       </span>
     </ListRow>
   )

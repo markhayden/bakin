@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '../../rtl-settle'
 import { createContext, useContext, type ReactNode } from 'react'
 
@@ -109,7 +109,26 @@ mock.module('@makinbakin/sdk/ui', () => ({
     description?: string
     action?: ReactNode
   }) => <div role="alert">{title}{description}{action}</div>,
-  Card: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
+  Card: ({
+    children,
+    interactive,
+    selected: _selected,
+    tone: _tone,
+    orientation: _orientation,
+    ...props
+  }: React.HTMLAttributes<HTMLDivElement> & {
+    interactive?: { label: string; onActivate?: () => void }
+    selected?: boolean
+    tone?: string
+    orientation?: string
+  }) => (
+    <div {...props}>
+      {interactive ? (
+        <button type="button" aria-label={interactive.label} onClick={interactive.onActivate} />
+      ) : null}
+      {children}
+    </div>
+  ),
   CardContent: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
   CardDescription: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => <p {...props}>{children}</p>,
   CardFooter: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
@@ -347,7 +366,7 @@ describe('ExplorePage', () => {
   it('opens the detail drawer with use cases on card click', () => {
     fixtureEntries = [...AGENTS, ...PLUGINS]
     render(<ExplorePage />)
-    fireEvent.click(screen.getByTestId('catalog-card-agent-pixel'))
+    fireEvent.click(within(screen.getByTestId('catalog-card-agent-pixel')).getByRole('button', { name: /View .* details/ }))
     expect(screen.getByTestId('drawer')).toBeTruthy()
     expect(screen.getByText('Make images')).toBeTruthy()
   })
@@ -356,7 +375,7 @@ describe('ExplorePage', () => {
     fixtureEntries = [...AGENTS, ...PLUGINS]
     render(<ExplorePage />)
     // Available agent → Install present
-    fireEvent.click(screen.getByTestId('catalog-card-agent-pixel'))
+    fireEvent.click(within(screen.getByTestId('catalog-card-agent-pixel')).getByRole('button', { name: /View .* details/ }))
     const install = screen.getByTestId('drawer-install')
     const official = screen.getByText('Official')
     expect(install.getAttribute('data-size')).toBe('xs')
@@ -369,7 +388,7 @@ describe('ExplorePage', () => {
     fixtureEntries = [...AGENTS, ...PLUGINS]
     render(<ExplorePage />)
     fireEvent.click(screen.getByTestId('tab-plugins'))
-    fireEvent.click(screen.getByTestId('catalog-card-plugin-team'))
+    fireEvent.click(within(screen.getByTestId('catalog-card-plugin-team')).getByRole('button', { name: /View .* details/ }))
     expect(screen.getByTestId('drawer')).toBeTruthy()
     expect(screen.queryByTestId('drawer-install')).toBeNull()
   })
@@ -377,7 +396,7 @@ describe('ExplorePage', () => {
   it('shows a compact disabled Installed action for already-installed entries', () => {
     fixtureEntries = [{ ...AGENTS[0], installed: true, installedVersion: '1.0.0' }]
     render(<ExplorePage />)
-    fireEvent.click(screen.getByTestId('catalog-card-agent-pixel'))
+    fireEvent.click(within(screen.getByTestId('catalog-card-agent-pixel')).getByRole('button', { name: /View .* details/ }))
     expect(screen.getByTestId('drawer')).toBeTruthy()
     expect(screen.queryByTestId('drawer-install')).toBeNull()
     const installed = screen.getByTestId('drawer-installed') as HTMLButtonElement

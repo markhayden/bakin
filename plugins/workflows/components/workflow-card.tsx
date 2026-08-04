@@ -15,6 +15,12 @@ import {
 } from 'lucide-react'
 import {
   Badge,
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -183,20 +189,10 @@ export function WorkflowCard({
     : undefined
 
   return (
-    <article
-      data-testid={`card-${template.filename}`}
-      className={`group/card relative flex h-full min-w-0 flex-col rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4 text-left transition-colors ${
-        disabled
-          ? 'opacity-55 hover:opacity-75'
-          : 'hover:border-bakin-border-strong hover:bg-bakin-surface-raised'
-      }`}
-    >
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label={`Open ${template.name}`}
-        className="absolute inset-0 z-0 rounded-bakin-surface outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
-      />
+    <div className="relative h-full min-w-0">
+      {/* Debug-only search-score overlay lives beside the Card: interactive
+          Cards position their direct children, so corner-pinned decorations
+          anchor to this wrapper instead. */}
       {scoreInfo && (
         <div className="pointer-events-none absolute right-bakin-3 top-bakin-3 z-10 flex flex-col items-end gap-0.5 rounded-bakin-control bg-bakin-canvas-default/90 px-bakin-2 py-bakin-1 text-right font-bakin-typography-family-mono text-bakin-typography-size-meta">
           <span className="text-bakin-data-series-3">RRF {scoreInfo.score.toFixed(3)}</span>
@@ -208,22 +204,28 @@ export function WorkflowCard({
           </span>
         </div>
       )}
-      <div className={`pointer-events-none relative z-[1] flex min-w-0 items-start gap-bakin-2 ${scoreInfo ? 'pr-24' : ''}`}>
-        <Workflow className="mt-0.5 size-bakin-4 shrink-0 text-bakin-signal-accent" />
-        <h3 className="m-0 min-w-0 line-clamp-1 text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
-          {template.name}
-        </h3>
-      </div>
+    <Card
+      data-testid={`card-${template.filename}`}
+      interactive={{ label: `Open ${template.name}`, onActivate: onClick }}
+      className={`h-full ${disabled ? 'opacity-55 hover:opacity-75' : ''}`}
+    >
+      <CardHeader>
+        <div className={`flex min-w-0 items-start gap-bakin-2 ${scoreInfo ? 'pr-24' : ''}`}>
+          <Workflow className="mt-1 size-bakin-4 shrink-0 text-bakin-signal-accent" />
+          <CardTitle className="line-clamp-1">{template.name}</CardTitle>
+        </div>
+      </CardHeader>
 
-      <p className={`pointer-events-none relative z-[1] mb-bakin-4 mt-bakin-2 line-clamp-2 text-bakin-typography-size-body leading-relaxed text-bakin-text-muted ${scoreInfo ? 'pr-24' : ''}`}>
-        {template.description || 'No description'}
-      </p>
+      <CardContent className={`flex-1 ${scoreInfo ? 'pr-24' : ''}`}>
+        <CardDescription className="line-clamp-2 leading-relaxed">
+          {template.description || 'No description'}
+        </CardDescription>
+        <div className="mt-bakin-3">
+          <WorkflowScanSignals steps={template.definition.steps} />
+        </div>
+      </CardContent>
 
-      <div className="pointer-events-none relative z-[1]">
-        <WorkflowScanSignals steps={template.definition.steps} />
-      </div>
-
-      <div className="pointer-events-none relative z-[1] mt-auto flex min-w-0 items-center justify-between gap-bakin-3 border-t border-bakin-border-subtle pt-bakin-3">
+      <CardFooter variant="meta">
         <div
           data-testid="workflow-card-footer-meta"
           className="flex min-w-0 flex-wrap items-center gap-bakin-1"
@@ -238,7 +240,7 @@ export function WorkflowCard({
               <Lock aria-hidden="true" className="size-bakin-3" />
             </span>
           )}
-          <span className="pointer-events-auto inline-flex items-center gap-bakin-1">
+          <span className="inline-flex items-center gap-bakin-1">
             <WorkflowStepPreview
               stepCount={stepCount}
               steps={template.definition.steps}
@@ -309,7 +311,8 @@ export function WorkflowCard({
             </div>
           </div>
         )}
-      </div>
-    </article>
+      </CardFooter>
+    </Card>
+    </div>
   )
 }

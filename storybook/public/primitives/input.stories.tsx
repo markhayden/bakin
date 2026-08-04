@@ -118,5 +118,7 @@ export const StatesAndMobileModes = {
     await expect(invalid).toHaveAttribute('aria-invalid', 'true')
     await expect(invalid).toHaveAccessibleDescription('Enter a complete HTTPS URL.')
     await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth)
+    // Settle focus so visual capture never races a caret or focus ring.
+    ;(document.activeElement as HTMLElement | null)?.blur?.()
   },
 } satisfies Story

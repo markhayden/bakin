@@ -91,13 +91,11 @@ export function Launcher({
             <h3 id="chat-recents-heading" className="text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-muted">Recent</h3>
             <ListRows aria-label="Recent chats">
               {chats.slice(0, MAX_RECENTS).map((chat) => (
-                <ListRow key={chat.id}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => onOpenChat(chat.id)}
-                    className="h-auto w-full min-w-0 justify-start gap-bakin-3 whitespace-normal p-bakin-0 text-left"
-                  >
+                <ListRow
+                  key={chat.id}
+                  interactive={{ label: `Open chat: ${chat.title || 'New chat'}`, onActivate: () => onOpenChat(chat.id) }}
+                  className="flex items-center gap-bakin-3"
+                >
                     <AgentAvatar
                       agent={{
                         id: chat.agentId,
@@ -118,7 +116,6 @@ export function Launcher({
                     <span className="shrink-0 text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">
                       {formatRelativeTime(chat.updatedAt)}
                     </span>
-                  </Button>
                 </ListRow>
               ))}
             </ListRows>

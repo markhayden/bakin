@@ -116,7 +116,7 @@ export function ActivityRow({ entry }: { entry: UsageEntry }) {
         <summary className="w-fit rounded-bakin-control underline-offset-4 hover:text-bakin-text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring">
           Technical details
         </summary>
-        <dl className="mt-bakin-2 grid gap-x-bakin-4 gap-y-bakin-1 border-l-2 border-bakin-border-strong bg-bakin-canvas-default px-bakin-3 py-bakin-2 sm:grid-cols-[max-content_1fr]">
+        <dl className="mt-bakin-2 grid gap-x-bakin-4 gap-y-bakin-1 border-l-2 border-bakin-border-subtle bg-bakin-canvas-default px-bakin-3 py-bakin-2 sm:grid-cols-[max-content_1fr]">
           <dt>Raw name</dt><dd className="break-all font-bakin-typography-family-mono text-bakin-text-primary">{entry.name}</dd>
           <dt>Kind</dt><dd className="text-bakin-text-primary">{entry.kind}</dd>
           <dt>Class</dt><dd className="text-bakin-text-primary">{entry.activityClass}</dd>

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { AlertTriangle, CheckCircle2, FileText } from 'lucide-react'
-import { expect, within } from 'storybook/test'
+import { expect, fn, userEvent, within } from 'storybook/test'
 
 import { PageShell, Stack } from '@makinbakin/sdk/layout'
 import { ListRow, ListRowGroup, ListRowLabels, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
@@ -352,5 +352,66 @@ export const Columns = {
     await expect(getComputedStyle(narrowRow as Element).gridTemplateColumns.split(' ')).toHaveLength(1)
     await expect(getComputedStyle(narrow.querySelector('[data-slot=list-row-labels]') as Element).display).toBe('none')
     await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth)
+  },
+} satisfies Story
+
+
+const openRow = fn()
+const rowAction = fn()
+
+export const InteractiveRows = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'Whole-row activation and selection are ListRow contracts: `interactive` emits one labeled overlay control (button, or `render` for links) with a real focus ring, and `selected` applies the canonical row tint. Never stretch a ghost Button across a row or hand-paint selection.',
+      },
+    },
+  },
+  render: () => (
+    <PageShell width="content">
+      <ListRows variant="bordered" aria-label="Recent chats">
+        <ListRow
+          interactive={{ label: 'Open Margo standup recap', onActivate: openRow }}
+          className="flex items-center justify-between gap-bakin-3"
+        >
+          <span className="min-w-0">
+            <span className="block font-bakin-typography-weight-semibold">Margo — standup recap</span>
+            <span className="block text-bakin-text-muted">Wrapped 20 minutes ago</span>
+          </span>
+          <Button variant="ghost" size="sm" onClick={rowAction}>Pin</Button>
+        </ListRow>
+        <ListRow
+          selected
+          interactive={{ label: 'Open Pixel asset review', onActivate: openRow }}
+          className="flex items-center justify-between gap-bakin-3"
+        >
+          <span className="min-w-0">
+            <span className="block font-bakin-typography-weight-semibold">Pixel — asset review</span>
+            <span className="block text-bakin-text-muted">Active now</span>
+          </span>
+        </ListRow>
+      </ListRows>
+    </PageShell>
+  ),
+  play: async ({ canvas }) => {
+    openRow.mockClear()
+    rowAction.mockClear()
+    // The whole-row action is one real, focusable control with an accessible name.
+    const overlay = canvas.getByRole('button', { name: 'Open Margo standup recap' })
+    await userEvent.click(overlay)
+    await expect(openRow).toHaveBeenCalledTimes(1)
+    // Nested controls stay independent of the row action.
+    await userEvent.click(canvas.getByRole('button', { name: 'Pin' }))
+    await expect(rowAction).toHaveBeenCalledTimes(1)
+    await expect(openRow).toHaveBeenCalledTimes(1)
+    // Keyboard path: Enter on the overlay activates the row.
+    overlay.focus()
+    await userEvent.keyboard('{Enter}')
+    await expect(openRow).toHaveBeenCalledTimes(2)
+    // Selection is the row's contract, painted by the kit.
+    const selectedRow = canvas.getByText('Pixel — asset review').closest('[data-slot="list-row"]') as HTMLElement
+    await expect(selectedRow).toHaveAttribute('data-selected')
+    await expect(getComputedStyle(selectedRow).backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
   },
 } satisfies Story

@@ -300,7 +300,7 @@ export function AgentForm({
         </CollapsibleContent>
       </Collapsible>
 
-      <FormActions>
+      <FormActions className="border-t-0 pt-0">
         <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={submitting}>
           Cancel
         </Button>

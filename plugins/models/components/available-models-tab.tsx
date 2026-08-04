@@ -8,7 +8,7 @@ import {
   PageControls,
   Pagination,
 } from '@makinbakin/sdk/patterns'
-import { Badge, Button, SystemState } from '@makinbakin/sdk/ui'
+import { Card, Badge, Button, SystemState } from '@makinbakin/sdk/ui'
 
 import type { AvailableModel } from '../types'
 import { BrandIcon } from './brand-icon'
@@ -64,15 +64,12 @@ function ModelRow({
 
   return (
     <li>
-      <div
+      <Card
         data-model-row
         data-default={isDefault || undefined}
+        selected={isDefault}
         aria-current={isDefault ? 'true' : undefined}
-        className={`grid min-w-0 gap-bakin-3 rounded-bakin-surface border px-bakin-4 py-bakin-4 transition-[background-color,border-color,box-shadow] duration-[var(--bakin-motion-duration-feedback)] motion-reduce:transition-none @lg/page-shell:grid-cols-[minmax(0,1fr)_auto] @lg/page-shell:items-center ${
-          isDefault
-            ? 'border-bakin-action-primary-background/60 bg-bakin-action-primary-background/10 ring-1 ring-bakin-action-primary-background/40'
-            : 'border-bakin-border-subtle/30 bg-bakin-surface-default hover:border-bakin-border-subtle'
-        }`}
+        className="grid gap-bakin-3 border-bakin-border-subtle/30 px-bakin-4 py-bakin-4 @lg/page-shell:grid-cols-[minmax(0,1fr)_auto] @lg/page-shell:items-center"
       >
         <div className="flex min-w-0 items-start gap-bakin-3">
           <BrandIcon
@@ -122,7 +119,7 @@ function ModelRow({
             </Button>
           ) : null}
         </div>
-      </div>
+      </Card>
     </li>
   )
 }
