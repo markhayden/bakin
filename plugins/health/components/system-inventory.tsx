@@ -12,7 +12,7 @@ import {
   type DataTableColumn,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Banner, Button, Input, type BannerTone } from '@makinbakin/sdk/ui'
-import { ChevronRight, Clock3, Cpu, Hash, MemoryStick, Network, Users } from 'lucide-react'
+import { Clock3, Cpu, Hash, MemoryStick, Network, Users } from 'lucide-react'
 import { formatAge } from '@makinbakin/sdk/utils'
 import type { HealthSummary } from '../types'
 import { formatUptime } from '../lib/format'

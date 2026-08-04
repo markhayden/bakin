@@ -11,7 +11,7 @@ import {
   type StatusTone,
 } from '@makinbakin/sdk/patterns'
 import { Alert, AlertDescription, Badge, Banner, Button, type BannerTone } from '@makinbakin/sdk/ui'
-import { Activity, ChevronRight, ListRestart, WandSparkles } from 'lucide-react'
+import { Activity, ListRestart, WandSparkles } from 'lucide-react'
 import type { SearchHealthData, SearchTelemetryData } from '../types'
 import type { SystemMutationState } from '../hooks/use-system-data'
 

@@ -2,7 +2,6 @@
 
 import { ShieldAlert } from 'lucide-react'
 import { DataTable, ListRow, type DataTableColumn } from '@makinbakin/sdk/patterns'
-import { Button } from '@makinbakin/sdk/ui'
 import { AgentBadge } from './agent-badge'
 import { JobRow, JobStatusBadge, type JobScoreInfo } from './job-row'
 import type { ScheduleJob } from "@makinbakin/sdk/hooks"

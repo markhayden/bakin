@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useCallback, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { PluginLink, useRouter } from '@makinbakin/sdk/navigation'
 import { Plus, Settings2, ScrollText } from 'lucide-react'
 import {
@@ -8,7 +8,6 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  type Node,
   type NodeTypes,
   Position,
   Handle,
