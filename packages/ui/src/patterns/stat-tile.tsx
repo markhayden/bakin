@@ -70,7 +70,9 @@ export function StatTile({
       data-variant={variant}
       data-value-tone={valueTone}
       className={cn(
-        'min-w-0 font-bakin-typography-family-ui text-left text-bakin-text-primary',
+        // Explicit top-aligned column: button elements center their content by
+        // default, which reads as janky vertical centering in stretched grid cells.
+        'flex min-w-0 flex-col items-stretch justify-start font-bakin-typography-family-ui text-left text-bakin-text-primary',
         variant === 'plain' && 'border-s border-bakin-border-subtle py-bakin-2 ps-bakin-4',
         variant === 'surface' && 'rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4',
         onClick && 'cursor-pointer outline-none transition-[background-color,border-color] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard hover:border-bakin-action-primary-background/60 hover:bg-bakin-canvas-default/50 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
