@@ -5,7 +5,7 @@
  * created on first send.
  */
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
-import { AlertTriangle, Check, Pencil, Pin } from 'lucide-react'
+import { AlertTriangle, Pencil, Pin } from 'lucide-react'
 import { toast } from '@makinbakin/sdk/hooks'
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import {
@@ -24,8 +24,28 @@ import {
   type ConversationToolCall,
 } from '@makinbakin/sdk/conversation'
 import { useAgent, useAgentStore } from '@makinbakin/sdk/hooks'
+import { Panel } from '@makinbakin/sdk/layout'
 import { AgentAvatar, PageComposer } from '@makinbakin/sdk/patterns'
-import { Button, Input } from '@makinbakin/sdk/ui'
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  Badge,
+  Button,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  SystemState,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@makinbakin/sdk/ui'
 import { formatStructured, summarizeStructured, unwrapToolResult } from '@makinbakin/sdk/utils'
 
 import { ContextMeter, contextMeterHasContent, type ContextMeterStats } from './context-meter'
@@ -79,28 +99,27 @@ function JsonReply({ parsed }: { parsed: unknown }) {
 
   if (!prose) return <MarkdownContent content={fenced} />
   return (
-    <div
-      data-conv-json=""
-      className={`rounded-bakin-control border px-bakin-3 py-bakin-2 ${
-        isError
-          ? 'border-bakin-signal-danger/40 bg-bakin-signal-danger/5'
-          : 'border-bakin-border-subtle/60 bg-bakin-surface-default/40'
-      }`}
-    >
+    <Panel data-chat-json="" padding="compact" tone={isError ? 'danger' : undefined}>
       <MarkdownContent content={prose} />
-      <details className="mt-bakin-1">
-        <summary className="cursor-pointer select-none text-bakin-typography-size-meta text-bakin-text-muted hover:text-bakin-text-primary">
+      <Collapsible className="mt-bakin-1 border-y-0">
+        <CollapsibleTrigger className="min-h-0 w-auto py-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">
           Raw JSON
-        </summary>
-        <MarkdownContent content={fenced} />
-      </details>
-    </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pb-0">
+          <MarkdownContent content={fenced} />
+        </CollapsibleContent>
+      </Collapsible>
+    </Panel>
   )
 }
 
 function renderChatText(content: string, format: ConversationTextFormat) {
   if (format !== 'markdown') {
-    return <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">{content}</pre>
+    return (
+      <pre className="whitespace-pre-wrap font-bakin-typography-family-mono text-bakin-typography-size-meta">
+        {content}
+      </pre>
+    )
   }
   const json = parseWholeJson(content)
   return json !== undefined ? <JsonReply parsed={json} /> : <MarkdownContent content={content} />
@@ -216,54 +235,53 @@ function useComposerAttachments(chatId: string, agentId: string) {
 
 const CONTENT_MAX = 64_000
 
-function InlineTitle({ chat, onChanged }: { chat: ChatSummaryDto; onChanged: () => void }) {
-  const [editing, setEditing] = useState(false)
+/** Title + rename-via-Dialog (kit form recipe — replaces the old inline edit). */
+function ChatTitle({ chat, onChanged }: { chat: ChatSummaryDto; onChanged: () => void }) {
+  const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState(chat.title)
 
-  useEffect(() => setDraft(chat.title), [chat.title])
-
   const commit = async () => {
-    setEditing(false)
+    setOpen(false)
     const trimmed = draft.trim()
     if (!trimmed || trimmed === chat.title) return
     await patchChatRequest(chat.id, { title: trimmed })
     onChanged()
   }
 
-  if (editing) {
-    return (
-      <form
-        className="flex min-w-0 flex-1 items-center gap-1"
-        onSubmit={(e) => { e.preventDefault(); void commit() }}
-      >
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => void commit()}
-          onKeyDown={(e) => { if (e.key === 'Escape') { setDraft(chat.title); setEditing(false) } }}
-          className="h-bakin-8 min-w-0 flex-1 px-bakin-2 py-bakin-1 font-bakin-typography-weight-semibold"
-          aria-label="Chat title"
-          autoFocus
-        />
-        <Button type="submit" variant="ghost" size="icon-xs" aria-label="Save title">
-          <Check className="size-3.5" />
-        </Button>
-      </form>
-    )
-  }
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="xs"
-      data-chat-title
-      onClick={() => setEditing(true)}
-      title="Rename chat"
-      className="group/title min-w-0 flex-1 justify-start px-0 hover:bg-transparent"
-    >
-      <span className="truncate text-sm font-medium">{chat.title || 'New chat'}</span>
-      <Pencil className="size-3 shrink-0 text-bakin-text-muted opacity-0 transition-opacity group-hover/title:opacity-100" />
-    </Button>
+    <span className="flex min-w-0 flex-1 items-center gap-bakin-1" data-chat-title>
+      <span className="truncate text-bakin-typography-size-body font-bakin-typography-weight-medium">
+        {chat.title || 'New chat'}
+      </span>
+      <Tooltip>
+        <TooltipTrigger
+          render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Rename chat" className="text-bakin-text-muted" />}
+          onClick={() => { setDraft(chat.title); setOpen(true) }}
+          data-chat-rename
+        >
+          <Pencil />
+        </TooltipTrigger>
+        <TooltipContent>Rename chat</TooltipContent>
+      </Tooltip>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rename chat</DialogTitle>
+          </DialogHeader>
+          <Input
+            autoFocus
+            aria-label="Chat title"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void commit() }}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button onClick={() => void commit()} disabled={!draft.trim()}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </span>
   )
 }
 
@@ -302,42 +320,38 @@ function ViewHeader({
       data-chat-header
       className="flex shrink-0 items-center gap-x-bakin-2 border-b border-bakin-border-subtle px-bakin-4 py-bakin-3"
     >
-      {/* The avatar carries the agent identity (name in its tooltip +
-          aria-label) — same convention as agent turns; no redundant name
-          text. */}
-      <span title={agent?.name ?? agentId} aria-label={`Agent: ${agent?.name ?? agentId}`}>
-        <AgentAvatar agent={agentIdentity} size="sm" decorative />
-      </span>
+      {/* The avatar carries the agent identity — non-decorative, so the kit
+          names it (role=img aria-label) and shows its built-in hover card. */}
+      <AgentAvatar agent={agentIdentity} size="sm" />
       <div className="flex min-w-0 flex-1 flex-col gap-y-bakin-1">
       <div className="flex min-w-0 items-center gap-x-bakin-2">
-      <div data-chat-header-title className="min-w-0 flex-1">
+      <div data-chat-header-title className="flex min-w-0 flex-1">
         {chat ? (
-          <InlineTitle chat={chat} onChanged={onChanged} />
+          <ChatTitle chat={chat} onChanged={onChanged} />
         ) : (
-          <span className="text-sm font-medium">New chat</span>
+          <span className="text-bakin-typography-size-body font-bakin-typography-weight-medium">New chat</span>
         )}
       </div>
       {chat ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={chat.pinned ? 'Unpin chat' : 'Pin chat'}
-          title={chat.pinned ? 'Unpin chat' : 'Pin chat'}
-          onClick={() => {
-            // Refresh the view's own chat state too — patching from stale
-            // state made the second click re-pin forever.
-            void patchChatRequest(chat.id, { pinned: !chat.pinned }).then(async () => {
-              await refreshChat?.()
-              onChanged()
-            })
-          }}
-          className={`rounded-bakin-pill ${
-            chat.pinned ? 'text-bakin-signal-accent' : 'text-bakin-text-muted'
-          }`}
-        >
-          <Pin className={`size-4 ${chat.pinned ? 'fill-current' : ''}`} />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button type="button" variant="ghost" size="icon-sm" />}
+            aria-label={chat.pinned ? 'Unpin chat' : 'Pin chat'}
+            aria-pressed={chat.pinned}
+            onClick={() => {
+              // Refresh the view's own chat state too — patching from stale
+              // state made the second click re-pin forever.
+              void patchChatRequest(chat.id, { pinned: !chat.pinned }).then(async () => {
+                await refreshChat?.()
+                onChanged()
+              })
+            }}
+            className={chat.pinned ? 'text-bakin-signal-accent' : 'text-bakin-text-muted'}
+          >
+            <Pin className={chat.pinned ? 'fill-current' : ''} />
+          </TooltipTrigger>
+          <TooltipContent>{chat.pinned ? 'Unpin chat' : 'Pin chat'}</TooltipContent>
+        </Tooltip>
       ) : null}
       </div>
       {/* The avatar and title occupy the same header row. Usage remains on
@@ -345,22 +359,21 @@ function ViewHeader({
       {hasHeaderMeta ? (
         <div
           data-chat-header-meta
-          className="flex items-center gap-1.5 text-xs text-bakin-text-muted"
+          className="flex items-center gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted"
         >
           {/* The compaction bar (#737) leads — runtime truth only; renders
               nothing when there's nothing honest to show. */}
           <ContextMeter stats={contextStats} />
           {totalParts.length ? (
-            <span
-              data-chat-usage-totals
-              title="Total recorded usage for this chat"
-              className="text-bakin-text-muted/80"
-            >
-              {/* Separator only when the meter actually RENDERED — a
-                  truthy stats object can still draw nothing (predicate
-                  is the kit's single source of truth). */}
-              {contextMeterHasContent(contextStats) ? '· ' : ''}{totalParts.join(' · ')}
-            </span>
+            <Tooltip>
+              <TooltipTrigger
+                render={<Badge size="xs" variant="outline" tabIndex={0} />}
+                data-chat-usage-totals
+              >
+                {totalParts.join(' · ')}
+              </TooltipTrigger>
+              <TooltipContent>Total recorded usage for this chat</TooltipContent>
+            </Tooltip>
           ) : null}
         </div>
       ) : null}
@@ -442,8 +455,11 @@ export function DraftChatView({
         />
       </div>
       {error ? (
-        <div className="flex items-center gap-2 px-4 pb-2 text-sm text-bakin-signal-danger">
-          <AlertTriangle className="size-4" /> {error}
+        <div className="px-bakin-4 pb-bakin-2">
+          <Alert tone="danger">
+            <AlertTriangle />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         </div>
       ) : null}
       <PageComposer padding="flush">
@@ -531,9 +547,16 @@ export function ChatView({ chatId, onChanged, composerHandleRef }: {
     }
   }
 
-  if (!chat) return null
+  // Folding every render was the audit's perf row — memoize on the inputs.
+  const liveAgentId = chat?.agentId
+  const turns = useMemo(
+    () => foldConversation(messages, liveChunks != null && liveAgentId ? { liveChunks, liveAgentId } : undefined),
+    [messages, liveChunks, liveAgentId],
+  )
 
-  const turns = foldConversation(messages, liveChunks != null ? { liveChunks, liveAgentId: chat.agentId } : undefined)
+  if (!chat) {
+    return <SystemState kind="loading" scope="section" title="Loading chat" data-chat-view-loading />
+  }
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" data-chat-view>
@@ -562,11 +585,16 @@ export function ChatView({ chatId, onChanged, composerHandleRef }: {
 
       <PageComposer padding="flush">
         {sendError ? (
-          <div className="flex items-center gap-bakin-2 px-bakin-4 pb-bakin-1 text-sm text-bakin-signal-danger">
-            <AlertTriangle className="size-4" /> {sendError}
-            <Button type="button" variant="link" size="xs" onClick={retry}>
-              Try again
-            </Button>
+          <div className="px-bakin-4 pb-bakin-1">
+            <Alert tone="danger">
+              <AlertTriangle />
+              <AlertDescription>{sendError}</AlertDescription>
+              <AlertAction>
+                <Button type="button" variant="link" size="xs" onClick={retry}>
+                  Try again
+                </Button>
+              </AlertAction>
+            </Alert>
           </div>
         ) : null}
 

@@ -14,9 +14,13 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandShortcut,
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from '@makinbakin/sdk/ui'
 
 export function AgentPicker({
@@ -32,16 +36,25 @@ export function AgentPicker({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={<Button variant="primary" size={iconOnly ? 'icon-md' : 'md'} />}
-        data-chat-start
-        aria-label="Start a chat"
-        title="Start a chat (⌘⇧O)"
-      >
-        <MessageCirclePlus />
-        {iconOnly ? null : 'Start a chat'}
-      </PopoverTrigger>
-      <PopoverContent className="w-64 p-0" align="start">
+      <Tooltip>
+        <TooltipTrigger
+          render={(
+            <PopoverTrigger
+              render={<Button variant="primary" size={iconOnly ? 'icon-md' : 'md'} />}
+              data-chat-start
+              aria-label="Start a chat"
+              aria-keyshortcuts="Meta+Shift+O"
+            />
+          )}
+        >
+          <MessageCirclePlus />
+          {iconOnly ? null : 'Start a chat'}
+        </TooltipTrigger>
+        <TooltipContent>
+          Start a chat <CommandShortcut>⌘⇧O</CommandShortcut>
+        </TooltipContent>
+      </Tooltip>
+      <PopoverContent className="p-0" align="start">
         <Command>
           {agents.length > 6 ? <CommandInput placeholder="Find an agent…" /> : null}
           <CommandList>

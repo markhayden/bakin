@@ -18,7 +18,15 @@ import {
   ListRowGroup,
   ListRows,
 } from '@makinbakin/sdk/patterns'
-import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import {
+  Badge,
+  Button,
+  Skeleton,
+  SystemState,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@makinbakin/sdk/ui'
 
 import { deleteChatRequest, patchChatRequest, type ChatSummaryDto } from './use-chat-data'
 
@@ -96,7 +104,7 @@ function ChatRow({
       data-chat-row={chat.id}
       selected={selected}
       interactive={{ label: `Open chat: ${chat.title || 'New chat'}`, onActivate: onSelect }}
-      className="group flex items-center gap-bakin-2 rounded-bakin-control"
+      className="flex items-center gap-bakin-2"
     >
         <AgentAvatar
           agent={{
@@ -120,40 +128,48 @@ function ChatRow({
           </span>
         </span>
         {streaming ? (
-          <Loader2
-            data-chat-working
-            className="size-bakin-3 shrink-0 animate-spin text-bakin-text-muted motion-reduce:animate-none"
-          />
+          <span role="status" aria-label="Reply in progress" className="shrink-0">
+            <Loader2
+              data-chat-working
+              className="size-bakin-3 animate-spin text-bakin-text-muted motion-reduce:animate-none"
+            />
+          </span>
         ) : chat.unreadCount > 0 ? (
-          <span
+          <Badge
             data-chat-unread
-            className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-action-primary-background px-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-action-primary-foreground"
+            size="xs"
+            tone="primary"
+            variant="solid"
+            aria-label={`${chat.unreadCount} unread ${chat.unreadCount === 1 ? 'message' : 'messages'}`}
+            className="shrink-0"
           >
             {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
-          </span>
+          </Badge>
         ) : null}
       <ListRowActions reveal="hover" aria-label="Chat actions">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          aria-label={chat.pinned ? 'Unpin chat' : 'Pin chat'}
-          title={chat.pinned ? 'Unpin chat' : 'Pin chat'}
-          onClick={onTogglePin}
-          className={chat.pinned ? 'text-bakin-signal-accent' : 'text-bakin-text-muted'}
-        >
-          <Pin className={chat.pinned ? 'fill-current' : ''} />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          aria-label="Delete chat"
-          onClick={onDelete}
-          className="text-bakin-text-muted hover:bg-bakin-signal-danger/15 hover:text-bakin-signal-danger"
-        >
-          <Trash2 />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button type="button" variant="ghost" size="icon-xs" />}
+            aria-label={chat.pinned ? 'Unpin chat' : 'Pin chat'}
+            aria-pressed={chat.pinned}
+            onClick={onTogglePin}
+            className={chat.pinned ? 'text-bakin-signal-accent' : 'text-bakin-text-muted'}
+          >
+            <Pin className={chat.pinned ? 'fill-current' : ''} />
+          </TooltipTrigger>
+          <TooltipContent>{chat.pinned ? 'Unpin chat' : 'Pin chat'}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button type="button" variant="ghost" size="icon-xs" />}
+            aria-label="Delete chat"
+            onClick={onDelete}
+            className="text-bakin-text-muted hover:bg-bakin-signal-danger/15 hover:text-bakin-signal-danger"
+          >
+            <Trash2 />
+          </TooltipTrigger>
+          <TooltipContent>Delete chat</TooltipContent>
+        </Tooltip>
       </ListRowActions>
     </ListRow>
   )
@@ -197,7 +213,10 @@ export function ChatRail(props: {
 
   if (collapsed) {
     return (
-      <div className="flex h-full w-10 shrink-0 flex-col items-center border-r border-bakin-border-subtle py-bakin-2">
+      <aside
+        aria-label="Chat list"
+        className="flex h-full w-10 shrink-0 flex-col items-center border-r border-bakin-border-subtle py-bakin-2"
+      >
         <Button
           type="button"
           variant="ghost"
@@ -208,12 +227,12 @@ export function ChatRail(props: {
         >
           <PanelLeftOpen />
         </Button>
-      </div>
+      </aside>
     )
   }
 
   return (
-    <div className="flex h-full w-72 shrink-0 flex-col border-r border-bakin-border-subtle">
+    <aside aria-label="Chat list" className="flex h-full w-72 shrink-0 flex-col border-r border-bakin-border-subtle">
       <div className="p-bakin-3">
         <div className="flex items-center justify-between gap-bakin-2 pt-bakin-1">
           {agentIds.length > 1 ? (
@@ -305,6 +324,6 @@ export function ChatRail(props: {
           })
         }}
       />
-    </div>
+    </aside>
   )
 }

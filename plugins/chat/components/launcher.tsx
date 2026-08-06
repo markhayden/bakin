@@ -7,7 +7,7 @@ import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { useAgentList } from '@makinbakin/sdk/hooks'
 import { Grid } from '@makinbakin/sdk/layout'
 import { AgentAvatar, ListRow, ListRows } from '@makinbakin/sdk/patterns'
-import { Button, Skeleton } from '@makinbakin/sdk/ui'
+import { Card, CardContent, Skeleton, SystemState } from '@makinbakin/sdk/ui'
 
 import type { ChatSummaryDto } from './use-chat-data'
 
@@ -30,61 +30,82 @@ export function Launcher({
 
   if (loading) {
     return (
-      <div className="w-full space-y-bakin-6 p-bakin-4 md:p-bakin-6" data-chat-launcher-skeleton>
-        <Skeleton className="h-bakin-6 w-40" />
-        <Grid layout="quarters" gap="item">
-          {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-bakin-surface" />
-          ))}
-        </Grid>
-        <Skeleton className="h-bakin-6 w-24" />
-        <div className="space-y-bakin-2">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-12 rounded-bakin-surface" />
-          ))}
-        </div>
-      </div>
+      <SystemState
+        kind="loading"
+        scope="section"
+        title="Loading chats"
+        data-chat-launcher-skeleton
+        preview={(
+          <div className="w-full space-y-bakin-4">
+            <Grid layout="quarters" gap="item">
+              {[0, 1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-24 rounded-bakin-surface" />
+              ))}
+            </Grid>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-bakin-3 px-bakin-2">
+                <Skeleton className="size-bakin-8 rounded-bakin-pill" />
+                <div className="min-w-0 flex-1">
+                  <Skeleton className="h-bakin-3 w-3/4" />
+                  <Skeleton className="mt-bakin-1 h-bakin-2 w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      />
     )
   }
 
   return (
     <div className="flex-1 overflow-y-auto" data-chat-launcher>
       <div className="w-full space-y-bakin-8 p-bakin-4 md:p-bakin-6">
-        <div className="space-y-bakin-3">
-          <h2 className="flex items-center gap-bakin-2 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold">
+        <section className="space-y-bakin-3" aria-labelledby="chat-start-heading">
+          <h2
+            id="chat-start-heading"
+            className="flex items-center gap-bakin-2 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold"
+          >
             <MessageCirclePlus className="size-5 text-bakin-text-muted" /> Start a chat
           </h2>
           {agents.length === 0 ? (
-            <p className="text-bakin-typography-size-body text-bakin-text-muted">
-              No agents in the runtime roster yet — add one from the Team page and it appears here.
-            </p>
+            <SystemState
+              kind="initial-empty"
+              scope="inline"
+              title="No agents yet"
+              description="Add one from the Team page and it appears here."
+            />
           ) : (
             <Grid layout="quarters" gap="item">
               {agents.slice(0, MAX_AGENT_CARDS).map((agent) => (
-                <Button
+                <Card
                   key={agent.id}
-                  type="button"
-                  variant="outline"
+                  size="sm"
                   data-chat-agent-card={agent.id}
-                  onClick={() => onStartChat(agent.id)}
-                  className="h-auto min-w-0 flex-col gap-bakin-2 whitespace-normal p-bakin-4"
+                  interactive={{
+                    label: `Chat with ${agent.name || agent.id}`,
+                    onActivate: () => onStartChat(agent.id),
+                  }}
                 >
-                  <AgentAvatar
-                    agent={{ id: agent.id, name: agent.name || agent.id, imageSrc: agent.headshot || null }}
-                    size="lg"
-                    decorative
-                  />
-                  <span className="w-full truncate text-center">{agent.name || agent.id}</span>
-                  {agent.role ? (
-                    <span className="line-clamp-2 w-full text-center text-bakin-typography-size-meta font-bakin-typography-weight-regular leading-snug text-bakin-text-muted">
-                      {agent.role}
+                  <CardContent className="flex flex-col items-center gap-bakin-2 text-center">
+                    <AgentAvatar
+                      agent={{ id: agent.id, name: agent.name || agent.id, imageSrc: agent.headshot || null }}
+                      size="lg"
+                      decorative
+                    />
+                    <span className="w-full truncate text-bakin-typography-size-body font-bakin-typography-weight-medium">
+                      {agent.name || agent.id}
                     </span>
-                  ) : null}
-                </Button>
+                    {agent.role ? (
+                      <span className="line-clamp-2 w-full text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">
+                        {agent.role}
+                      </span>
+                    ) : null}
+                  </CardContent>
+                </Card>
               ))}
             </Grid>
           )}
-        </div>
+        </section>
 
         {chats.length > 0 ? (
           <section className="space-y-bakin-2" aria-labelledby="chat-recents-heading">
@@ -106,7 +127,11 @@ export function Launcher({
                       decorative
                     />
                     <span className="min-w-0 flex-1">
-                      <span className={`block truncate ${chat.unreadCount > 0 ? 'font-bakin-typography-weight-bold' : ''}`}>
+                      <span
+                        className={`block truncate text-bakin-typography-size-body ${
+                          chat.unreadCount > 0 ? 'font-bakin-typography-weight-semibold' : ''
+                        }`}
+                      >
                         {chat.title || 'New chat'}
                       </span>
                       <span className="mt-bakin-2 block truncate text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">
