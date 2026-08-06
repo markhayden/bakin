@@ -551,7 +551,6 @@ export function KanbanBoard() {
                 placeholder="Search tasks…"
                 busy={searchStatus === 'loading'}
                 mobileFullWidth
-                className="@3xl/page-header:w-[22rem] @3xl/page-header:shrink-0"
               />
               <div className="flex min-w-0 flex-wrap items-center gap-bakin-2 @3xl/page-header:shrink-0 @3xl/page-header:flex-nowrap">
                 <SegmentedControl

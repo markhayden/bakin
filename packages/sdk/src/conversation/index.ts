@@ -32,7 +32,13 @@ export type {
 export { ConversationPanel } from '@bakin/ui/conversation'
 /** Exact, resizable detail for one conversation tool call. */
 export { ToolCallDrawer } from '@bakin/ui/conversation'
+/** The one header treatment for chat-like surfaces (avatar/title/actions/meta). */
+export { ConversationHeader } from '@bakin/ui/conversation'
+/** The compaction bar: runtime-truth context fullness for a session (#737). */
+export { ContextMeter, contextMeterHasContent } from '@bakin/ui/conversation'
 export type {
+  ContextMeterStats,
+  ConversationHeaderProps,
   ConversationPanelProps,
   ToolCallDrawerProps,
 } from '@bakin/ui/conversation'

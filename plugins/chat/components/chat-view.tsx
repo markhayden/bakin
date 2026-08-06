@@ -10,14 +10,18 @@ import { toast } from '@makinbakin/sdk/hooks'
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import {
   Composer,
+  ContextMeter,
   Conversation,
   ConversationEmptyState,
+  ConversationHeader,
   QueuedMessageList,
   ToolCallDrawer,
+  contextMeterHasContent,
   foldConversation,
   formatTokenCount,
   formatUsageCost,
   type ComposerHandle,
+  type ContextMeterStats,
   type ConversationAgent,
   type ConversationQueuedItem,
   type ConversationTextFormat,
@@ -48,7 +52,6 @@ import {
 } from '@makinbakin/sdk/ui'
 import { formatStructured, summarizeStructured, unwrapToolResult } from '@makinbakin/sdk/utils'
 
-import { ContextMeter, contextMeterHasContent, type ContextMeterStats } from './context-meter'
 import {
   patchChatRequest,
   uploadAttachmentRequest,
@@ -250,9 +253,8 @@ function ChatTitle({ chat, onChanged }: { chat: ChatSummaryDto; onChanged: () =>
 
   return (
     <span className="flex min-w-0 flex-1 items-center gap-bakin-1" data-chat-title>
-      <span className="truncate text-bakin-typography-size-body font-bakin-typography-weight-medium">
-        {chat.title || 'New chat'}
-      </span>
+      {/* Title typography comes from the ConversationHeader title slot. */}
+      <span className="truncate">{chat.title || 'New chat'}</span>
       <Tooltip>
         <TooltipTrigger
           render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Rename chat" className="text-bakin-text-muted" />}
@@ -316,23 +318,13 @@ function ViewHeader({
   }
   const hasHeaderMeta = contextMeterHasContent(contextStats) || totalParts.length > 0
   return (
-    <div
+    <ConversationHeader
       data-chat-header
-      className="flex shrink-0 items-center gap-x-bakin-2 border-b border-bakin-border-subtle px-bakin-4 py-bakin-3"
-    >
-      {/* The avatar carries the agent identity — non-decorative, so the kit
-          names it (role=img aria-label) and shows its built-in hover card. */}
-      <AgentAvatar agent={agentIdentity} size="sm" />
-      <div className="flex min-w-0 flex-1 flex-col gap-y-bakin-1">
-      <div className="flex min-w-0 items-center gap-x-bakin-2">
-      <div data-chat-header-title className="flex min-w-0 flex-1">
-        {chat ? (
-          <ChatTitle chat={chat} onChanged={onChanged} />
-        ) : (
-          <span className="text-bakin-typography-size-body font-bakin-typography-weight-medium">New chat</span>
-        )}
-      </div>
-      {chat ? (
+      // The avatar carries the agent identity — non-decorative, so the kit
+      // names it (role=img aria-label) and shows its built-in hover card.
+      avatar={<AgentAvatar agent={agentIdentity} size="sm" />}
+      title={chat ? <ChatTitle chat={chat} onChanged={onChanged} /> : 'New chat'}
+      actions={chat ? (
         <Tooltip>
           <TooltipTrigger
             render={<Button type="button" variant="ghost" size="icon-sm" />}
@@ -352,17 +344,11 @@ function ViewHeader({
           </TooltipTrigger>
           <TooltipContent>{chat.pinned ? 'Unpin chat' : 'Pin chat'}</TooltipContent>
         </Tooltip>
-      ) : null}
-      </div>
-      {/* The avatar and title occupy the same header row. Usage remains on
-          its own stable line without pulling the title off-center. */}
-      {hasHeaderMeta ? (
-        <div
-          data-chat-header-meta
-          className="flex items-center gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted"
-        >
-          {/* The compaction bar (#737) leads — runtime truth only; renders
-              nothing when there's nothing honest to show. */}
+      ) : undefined}
+      // Usage rides the header's stable meta line — the compaction bar
+      // (#737) leads, runtime truth only.
+      meta={hasHeaderMeta ? (
+        <>
           <ContextMeter stats={contextStats} />
           {totalParts.length ? (
             <Tooltip>
@@ -375,10 +361,9 @@ function ViewHeader({
               <TooltipContent>Total recorded usage for this chat</TooltipContent>
             </Tooltip>
           ) : null}
-        </div>
-      ) : null}
-      </div>
-    </div>
+        </>
+      ) : undefined}
+    />
   )
 }
 

@@ -12,6 +12,7 @@ import {
 } from './agent-turn'
 import { Composer, type ComposerAttachments } from './composer'
 import { Conversation, type ConversationProps } from './conversation'
+import { ConversationHeader } from './conversation-header'
 import {
   foldConversation,
   type ConversationChunk,
@@ -180,19 +181,16 @@ export function ConversationPanel({
       ) : null}
 
       {showHeader ? (
-        <header
+        <ConversationHeader
           data-conv-panel-header=""
-          className="flex min-w-0 shrink-0 items-center gap-bakin-2 border-b border-bakin-border-subtle px-bakin-4 py-bakin-3"
-        >
-          {agent ? (
+          titleAs="h2"
+          avatar={agent ? (
             <span aria-hidden="true" className="shrink-0">
               {renderAvatar ? renderAvatar(agent) : <DefaultHeaderAvatar agent={agent} />}
             </span>
-          ) : null}
-          <h2 className="min-w-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">
-            {title ?? 'Conversation'}
-          </h2>
-        </header>
+          ) : undefined}
+          title={title ?? 'Conversation'}
+        />
       ) : null}
 
       <Conversation

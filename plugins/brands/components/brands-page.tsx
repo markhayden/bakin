@@ -152,7 +152,6 @@ export function BrandsPage() {
             onValueChange={setQuery}
             placeholder="Search brands…"
             mobileFullWidth
-            className="@3xl/page-header:w-[22rem] @3xl/page-header:shrink-0"
           />
         )}
         actionsLabel="Brand actions"

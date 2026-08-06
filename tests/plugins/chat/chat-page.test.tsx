@@ -542,10 +542,10 @@ describe('ChatView', () => {
     expect(avatar).not.toBeNull()
     expect(avatar?.getAttribute('aria-label')).toBe('main')
     const header = container.querySelector('[data-chat-header]')
-    // Refit T6.5: the header rides flex rows, not a hand-rolled grid template.
-    expect(header?.className).toContain('flex')
-    expect(container.querySelector('[data-chat-header-title]')?.className).toContain('min-w-0')
-    expect(container.querySelector('[data-chat-header-meta]')).toBeNull()
+    // Phase 3: the header IS the kit ConversationHeader — chat only fills slots.
+    expect(header?.getAttribute('data-slot')).toBe('conversation-header')
+    expect(container.querySelector('[data-slot=conversation-header-title]')?.className).toContain('min-w-0')
+    expect(container.querySelector('[data-slot=conversation-header-meta]')).toBeNull()
     // The name never renders as visible header text …
     expect(header?.textContent ?? '').not.toContain('main')
     // … and the removed working ticker stays removed.

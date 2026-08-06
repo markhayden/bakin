@@ -28,7 +28,7 @@ import {
   ContextMeter,
   contextMeterHasContent,
   type ContextMeterStats,
-} from '../../../plugins/chat/components/context-meter'
+} from '@makinbakin/sdk/conversation'
 
 // Contract-parity pins: the chat DTO (an alias of the SDK mirror) and the
 // core contract must stay mutually assignable — a field added on one side

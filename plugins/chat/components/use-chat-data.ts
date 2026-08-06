@@ -17,7 +17,7 @@ import {
 import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
-import type { ContextMeterStats } from './context-meter'
+import type { ContextMeterStats } from '@makinbakin/sdk/conversation'
 
 export interface ChatSummaryDto {
   id: string
