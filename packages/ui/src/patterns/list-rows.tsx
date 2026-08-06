@@ -17,6 +17,8 @@ export type ListRowsColumnsAt = 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl'
 export type ListRowsColumnsAlign = 'start' | 'center' | 'end'
 
 export interface ListRowsProps extends ComponentPropsWithoutRef<'ul'> {
+  /** Row rhythm: md is the page default; sm is the dense rail/feed scale. */
+  size?: ListRowsSize
   /**
    * `bordered` gives every row a distinct interactive/resource boundary.
    * `separated` groups dense peers with shared dividers.
@@ -52,11 +54,13 @@ interface ListRowsColumnsState {
 }
 
 const ListRowsColumnsContext = createContext<ListRowsColumnsState | null>(null)
+export type ListRowsSize = 'sm' | 'md'
+const ListRowsSizeContext = createContext<ListRowsSize>('md')
 const ListRowGroupLabelContext = createContext<string | undefined>(undefined)
 
 const variantClasses: Record<ListRowsVariant, string> = {
   bordered: [
-    'grid gap-bakin-2',
+    'grid gap-bakin-2 data-[size=sm]:gap-bakin-1',
     '[&>[data-slot=list-row]]:rounded-bakin-surface',
     '[&>[data-slot=list-row]]:border',
     '[&>[data-slot=list-row]]:border-bakin-border-subtle',
@@ -131,6 +135,7 @@ export function ListRows({
   columns,
   columnsAt = '3xl',
   columnsAlign = 'center',
+  size = 'md',
   className,
   style,
   ...props
@@ -143,11 +148,13 @@ export function ListRows({
     : null
   return (
     <ListRowsColumnsContext.Provider value={columnsState}>
+      <ListRowsSizeContext.Provider value={size}>
       <ul
         aria-labelledby={hasOwnLabel ? undefined : groupLabelId}
         {...props}
         data-list-rows=""
         data-variant={variant}
+        data-size={size}
         data-columns={columns ? '' : undefined}
         style={
           columns
@@ -161,6 +168,7 @@ export function ListRows({
           className,
         )}
       />
+      </ListRowsSizeContext.Provider>
     </ListRowsColumnsContext.Provider>
   )
 }
@@ -182,15 +190,18 @@ export const ListRow = forwardRef<HTMLLIElement, ListRowProps>(function ListRow(
   ref,
 ) {
   const columns = useContext(ListRowsColumnsContext)
+  const size = useContext(ListRowsSizeContext)
   return (
     <li
       ref={ref}
       {...props}
       data-slot="list-row"
+      data-size={size}
       data-interactive={interactive ? '' : undefined}
       data-selected={selected ? '' : undefined}
       className={cn(
-        'relative min-w-0 px-bakin-3 py-bakin-3',
+        'group/list-row relative min-w-0',
+        size === 'sm' ? 'px-bakin-2 py-bakin-2' : 'px-bakin-3 py-bakin-3',
         columns && [
           'grid gap-bakin-3',
           columnsTemplateClasses[columns.at],
@@ -206,6 +217,33 @@ export const ListRow = forwardRef<HTMLLIElement, ListRowProps>(function ListRow(
     </li>
   )
 })
+
+export interface ListRowActionsProps extends ComponentPropsWithoutRef<'div'> {
+  /** `hover` floats the cluster in on row hover/focus; `always` renders inline. */
+  reveal?: 'always' | 'hover'
+}
+
+/**
+ * Trailing action cluster for a row (mirrors CardAction). With
+ * `reveal="hover"` it floats over the row's end on hover or keyboard focus;
+ * the interactive-surface discipline exempts it, so no wrapper hacks.
+ */
+export function ListRowActions({ className, reveal = 'always', ...props }: ListRowActionsProps) {
+  return (
+    <div
+      data-slot="list-row-actions"
+      data-reveal={reveal}
+      className={cn(
+        'items-center gap-bakin-0',
+        reveal === 'hover'
+          ? 'absolute right-bakin-1 top-bakin-1 z-[2] hidden rounded-bakin-control border border-bakin-border-subtle bg-bakin-surface-elevated p-bakin-0 group-hover/list-row:flex group-focus-within/list-row:flex'
+          : 'ml-auto flex shrink-0',
+        className,
+      )}
+      {...props}
+    />
+  )
+}
 
 export type ListRowLabelsProps = ComponentPropsWithoutRef<'li'>
 

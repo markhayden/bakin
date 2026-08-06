@@ -169,6 +169,8 @@ export interface ComposerAttachments {
 export interface ComposerHandle {
   isEmpty(): boolean
   setText(text: string): void
+  /** Move keyboard focus into the input (shortcut targets, post-action returns). */
+  focus(): void
 }
 
 /** Props for the persistent, IME-safe conversation input. */
@@ -274,6 +276,7 @@ export function Composer({
         setDraft(text)
         textareaRef.current?.focus()
       },
+      focus: () => textareaRef.current?.focus(),
     }),
     [setDraft],
   )

@@ -14,6 +14,7 @@ import {
   AgentFilter,
   ConfirmDialog,
   ListRow,
+  ListRowActions,
   ListRowGroup,
   ListRows,
 } from '@makinbakin/sdk/patterns'
@@ -95,7 +96,7 @@ function ChatRow({
       data-chat-row={chat.id}
       selected={selected}
       interactive={{ label: `Open chat: ${chat.title || 'New chat'}`, onActivate: onSelect }}
-      className="group flex items-center gap-bakin-2 rounded-bakin-control px-bakin-2 py-bakin-2"
+      className="group flex items-center gap-bakin-2 rounded-bakin-control"
     >
         <AgentAvatar
           agent={{
@@ -131,10 +132,7 @@ function ChatRow({
             {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
           </span>
         ) : null}
-      {/* Static wrapper: the hover cluster anchors to the row without joining
-          the overlay's direct-child positioning discipline. */}
-      <span>
-      <span className="absolute right-bakin-1 top-bakin-1 hidden items-center gap-bakin-0 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default/95 p-bakin-0 group-hover:flex group-focus-within:flex">
+      <ListRowActions reveal="hover" aria-label="Chat actions">
         <Button
           type="button"
           variant="ghost"
@@ -156,8 +154,7 @@ function ChatRow({
         >
           <Trash2 />
         </Button>
-      </span>
-      </span>
+      </ListRowActions>
     </ListRow>
   )
 }
@@ -244,17 +241,25 @@ export function ChatRail(props: {
 
       <div className="flex-1 space-y-bakin-3 overflow-y-auto px-bakin-2 pb-bakin-2">
         {loading ? (
-          <div className="space-y-bakin-2 px-bakin-1 pt-bakin-1" data-chat-rail-skeleton>
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-bakin-2">
-                <Skeleton className="size-bakin-8 rounded-bakin-pill" />
-                <div className="flex-1 space-y-bakin-1">
-                  <Skeleton className="h-bakin-3 w-3/4" />
-                  <Skeleton className="h-bakin-2 w-1/2" />
-                </div>
+          <SystemState
+            kind="loading"
+            scope="section"
+            title="Loading chats"
+            data-chat-rail-skeleton
+            preview={(
+              <div className="w-full">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center gap-bakin-2 px-bakin-2 py-bakin-2">
+                    <Skeleton className="size-bakin-8 rounded-bakin-pill" />
+                    <div className="min-w-0 flex-1">
+                      <Skeleton className="h-bakin-3 w-3/4" />
+                      <Skeleton className="mt-bakin-1 h-bakin-2 w-1/2" />
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+          />
         ) : chats.length === 0 ? (
           <SystemState
             kind="initial-empty"
@@ -265,7 +270,7 @@ export function ChatRail(props: {
         ) : (
           groupChats(chats).map((group) => (
             <ListRowGroup key={group.label} label={group.label}>
-              <ListRows variant="plain" className="gap-bakin-0">
+              <ListRows variant="plain" size="sm">
                 {group.chats.map((chat) => (
                   <ChatRow
                     key={chat.id}

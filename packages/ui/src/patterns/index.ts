@@ -54,14 +54,16 @@ export type {
 export { NavList } from './nav-list'
 export type { NavListItem, NavListProps, NavListSection } from './nav-list'
 
-export { ListRow, ListRowGroup, ListRowLabels, ListRows } from './list-rows'
+export { ListRow, ListRowActions, ListRowGroup, ListRowLabels, ListRows } from './list-rows'
 export type {
+  ListRowActionsProps,
   ListRowGroupProps,
   ListRowLabelsProps,
   ListRowProps,
   ListRowsColumnsAlign,
   ListRowsColumnsAt,
   ListRowsProps,
+  ListRowsSize,
   ListRowsVariant,
 } from './list-rows'
 

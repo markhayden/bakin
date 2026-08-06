@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 286,
-    "typeExports": 378
+    "valueExports": 287,
+    "typeExports": 380
   },
   "entrypoints": [
     {
@@ -417,6 +417,7 @@
         "KanbanColumnBody",
         "KanbanColumnHeader",
         "ListRow",
+        "ListRowActions",
         "ListRowGroup",
         "ListRowLabels",
         "ListRows",
@@ -505,12 +506,14 @@
         "KanbanColumnBodyProps",
         "KanbanColumnHeaderProps",
         "KanbanColumnProps",
+        "ListRowActionsProps",
         "ListRowGroupProps",
         "ListRowLabelsProps",
         "ListRowProps",
         "ListRowsColumnsAlign",
         "ListRowsColumnsAt",
         "ListRowsProps",
+        "ListRowsSize",
         "ListRowsVariant",
         "ListSettingsField",
         "ModelSelectOption",
