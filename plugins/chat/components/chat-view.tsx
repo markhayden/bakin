@@ -4,7 +4,7 @@
  * Draft mode renders the same shell before a chat exists; the chat is
  * created on first send.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { AlertTriangle, Check, Pencil, Pin } from 'lucide-react'
 import { toast } from '@makinbakin/sdk/hooks'
 import { MarkdownContent } from '@makinbakin/sdk/content'
@@ -383,10 +383,13 @@ export function DraftChatView({
   agentId,
   onCreated,
   createAndSend,
+  composerHandleRef,
 }: {
   agentId: string
   onCreated: (chatId: string) => void
   createAndSend: (agentId: string, content: string, files?: File[]) => Promise<{ chatId: string | null; sent: boolean }>
+  /** Optional external handle (page-level shortcuts focus the composer). */
+  composerHandleRef?: MutableRefObject<ComposerHandle | null>
 }) {
   const agent = useAgent(agentId)
   const name = agent?.name ?? agentId
@@ -443,13 +446,16 @@ export function DraftChatView({
           <AlertTriangle className="size-4" /> {error}
         </div>
       ) : null}
-      <PageComposer className="pt-0">
+      <PageComposer padding="flush">
         <Composer
           storageKey={`chat-draft:${agentId}`}
           placeholder={`Message ${name}…`}
           onSend={(content) => { void handleSend(content) }}
           busy={sending}
-          handleRef={draftComposer}
+          handleRef={(handle) => {
+            draftComposer.current = handle
+            if (composerHandleRef) composerHandleRef.current = handle
+          }}
           maxLength={CONTENT_MAX}
           attachments={{
             enabled: true,
@@ -483,7 +489,12 @@ export function DraftChatView({
   )
 }
 
-export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () => void }) {
+export function ChatView({ chatId, onChanged, composerHandleRef }: {
+  chatId: string
+  onChanged: () => void
+  /** Optional external handle (page-level shortcuts focus the composer). */
+  composerHandleRef?: MutableRefObject<ComposerHandle | null>
+}) {
   const { chat, messages, liveChunks, streaming, sendError, queued, removeQueued, turnUsage, usageTotals, contextStats, send, abort, retry, refreshChat } = useChatStream(chatId)
   const resolveAgent = useConversationAgentResolver(chat?.agentId)
   const [openCall, setOpenCall] = useState<ConversationToolCall | null>(null)
@@ -549,7 +560,7 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
         }
       />
 
-      <PageComposer className="pt-0">
+      <PageComposer padding="flush">
         {sendError ? (
           <div className="flex items-center gap-bakin-2 px-bakin-4 pb-bakin-1 text-sm text-bakin-signal-danger">
             <AlertTriangle className="size-4" /> {sendError}
@@ -569,7 +580,10 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
           onAbort={abort}
           queueMode
           queuedCount={queued.length}
-          handleRef={composerHandle}
+          handleRef={(handle) => {
+            composerHandle.current = handle
+            if (composerHandleRef) composerHandleRef.current = handle
+          }}
           maxLength={CONTENT_MAX}
           attachments={attachments.composerProps}
         />

@@ -3,8 +3,8 @@ import { AlertTriangle, CheckCircle2, FileText } from 'lucide-react'
 import { expect, fn, userEvent, within } from 'storybook/test'
 
 import { PageShell, Stack } from '@makinbakin/sdk/layout'
-import { ListRow, ListRowGroup, ListRowLabels, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
-import { Button } from '@makinbakin/sdk/ui'
+import { ListRow, ListRowActions, ListRowGroup, ListRowLabels, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
+import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
 
 import './list-rows.stories.css'
 
@@ -413,5 +413,107 @@ export const InteractiveRows = {
     const selectedRow = canvas.getByText('Pixel — asset review').closest('[data-slot="list-row"]') as HTMLElement
     await expect(selectedRow).toHaveAttribute('data-selected')
     await expect(getComputedStyle(selectedRow).backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
+  },
+} satisfies Story
+
+
+const denseOpen = fn()
+const densePin = fn()
+
+export const DenseRows = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'size="sm" is the dense rail/feed rhythm — set once on ListRows, inherited by every row; never cancel row padding with className. The title/subtitle anatomy shown here is the canonical two-line recipe (semibold body title, muted meta subtitle, Stack-gapped). ListRowActions mirrors CardAction: reveal="hover" floats the cluster in on row hover or keyboard focus with the interactive-surface discipline handled by the kit.',
+      },
+    },
+  },
+  render: () => (
+    <PageShell width="content">
+      <ListRows size="sm" variant="bordered" aria-label="Chats">
+        <ListRow
+          interactive={{ label: 'Open chat: Margo — standup recap', onActivate: denseOpen }}
+          className="flex items-center gap-bakin-2"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-bakin-typography-size-body font-bakin-typography-weight-semibold">Margo — standup recap</span>
+            <span className="block truncate text-bakin-typography-size-meta text-bakin-text-muted">Wrapped 20 minutes ago</span>
+          </span>
+          <ListRowActions reveal="hover" aria-label="Chat actions">
+            <Button variant="ghost" size="icon-xs" aria-label="Pin chat" onClick={densePin} />
+          </ListRowActions>
+        </ListRow>
+        <ListRow
+          interactive={{ label: 'Open chat: Pixel — asset review', onActivate: denseOpen }}
+          className="flex items-center gap-bakin-2"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-bakin-typography-size-body font-bakin-typography-weight-semibold">Pixel — asset review</span>
+            <span className="block truncate text-bakin-typography-size-meta text-bakin-text-muted">Active now</span>
+          </span>
+        </ListRow>
+      </ListRows>
+    </PageShell>
+  ),
+  play: async ({ canvas }) => {
+    denseOpen.mockClear()
+    densePin.mockClear()
+    const list = canvas.getByRole('list', { name: 'Chats' })
+    await expect(list).toHaveAttribute('data-size', 'sm')
+    const row = canvas.getByText('Margo — standup recap').closest('[data-slot="list-row"]') as HTMLElement
+    await expect(row).toHaveAttribute('data-size', 'sm')
+    // Keyboard path: focusing the row (its overlay) reveals the cluster…
+    const overlay = canvas.getByRole('button', { name: 'Open chat: Margo — standup recap' })
+    overlay.focus()
+    const pin = canvas.getByRole('button', { name: 'Pin chat' })
+    const cluster = pin.closest('[data-slot="list-row-actions"]') as HTMLElement
+    await expect(getComputedStyle(cluster).display).not.toBe('none')
+    // …and the revealed action stays independent of the row action.
+    await userEvent.click(pin)
+    await expect(densePin).toHaveBeenCalledTimes(1)
+    await expect(denseOpen).not.toHaveBeenCalled()
+    await userEvent.click(overlay)
+    await expect(denseOpen).toHaveBeenCalledTimes(1)
+  },
+} satisfies Story
+
+export const LoadingPreview = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'The canonical list loading recipe: SystemState kind="loading" with a preview of row-shaped skeletons (circle + two fractional lines). Never hand-compose ad-hoc skeleton stacks with magic pixel sizes.',
+      },
+    },
+  },
+  render: () => (
+    <PageShell width="content">
+      <SystemState
+        kind="loading"
+        scope="section"
+        title="Loading chats"
+        description="Recent conversations will appear here."
+        preview={(
+          <div className="w-full">
+            {[0, 1, 2].map((index) => (
+              <div key={index} className="flex items-center gap-bakin-2 px-bakin-2 py-bakin-2">
+                <Skeleton shape="circle" className="size-bakin-6 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <Skeleton className="h-bakin-3 w-3/4" />
+                  <Skeleton className="mt-bakin-1 h-bakin-3 w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      />
+    </PageShell>
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('Loading chats')).toBeVisible()
+    // Row-shaped preview: three clusters of circle + two lines.
+    const skeletons = document.querySelectorAll('[data-slot="skeleton"]')
+    await expect(skeletons.length).toBe(9)
   },
 } satisfies Story

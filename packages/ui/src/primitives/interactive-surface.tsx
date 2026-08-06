@@ -47,7 +47,7 @@ export const interactiveSurfaceClasses = [
   'data-[interactive]:transition-colors data-[interactive]:hover:bg-bakin-surface-elevated motion-reduce:transition-none',
   // Direct children fall through to the overlay — except controls, which stay
   // independent whether they sit at the surface root or deeper.
-  'data-[interactive]:[&>*:not([data-slot=surface-overlay],a,button,input,select,textarea,[role=button],[tabindex])]:pointer-events-none',
-  'data-[interactive]:[&>*:not([data-slot=surface-overlay])]:relative data-[interactive]:[&>*:not([data-slot=surface-overlay])]:z-[1]',
+  'data-[interactive]:[&>*:not([data-slot=surface-overlay],[data-slot=list-row-actions],a,button,input,select,textarea,[role=button],[tabindex])]:pointer-events-none',
+  'data-[interactive]:[&>*:not([data-slot=surface-overlay],[data-slot=list-row-actions])]:relative data-[interactive]:[&>*:not([data-slot=surface-overlay],[data-slot=list-row-actions])]:z-[1]',
   'data-[interactive]:[&_:is(a,button,input,select,textarea,[role=button],[tabindex])]:pointer-events-auto',
 ].join(' ')

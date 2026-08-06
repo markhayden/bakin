@@ -13,9 +13,9 @@
  * Keyboard shortcuts (page-scoped): ⌘⇧O new chat (launcher), ⌥↑/⌥↓
  * previous/next chat, ⇧Esc focus the composer.
  */
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { useRef, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
-import { writeComposerDraft } from '@makinbakin/sdk/conversation'
+import { writeComposerDraft, type ComposerHandle } from '@makinbakin/sdk/conversation'
 import { toast, usePluginEvent } from '@makinbakin/sdk/hooks'
 import { useQueryState, useRouter } from '@makinbakin/sdk/navigation'
 import {
@@ -96,6 +96,7 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
   const [collapsed, setCollapsed] = useRailCollapsed()
   const { chats, allChats, loading, refresh } = useChats(agentFilter)
   const router = useRouter()
+  const composerRef = useRef<ComposerHandle | null>(null)
 
   /** Carry the active rail filter across page-identity navigations. */
   const withFilter = useCallback(
@@ -169,11 +170,8 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
       }
       // ⇧Esc — focus the composer
       if (e.shiftKey && e.key === 'Escape') {
-        const ta = document.querySelector<HTMLTextAreaElement>('[data-chat-pane] textarea')
-        if (ta) {
-          e.preventDefault()
-          ta.focus()
-        }
+        e.preventDefault()
+        composerRef.current?.focus()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -250,12 +248,13 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
                 </div>
               ) : null}
               {chatId ? (
-                <ChatView key={chatId} chatId={chatId} onChanged={() => { void refresh() }} />
+                <ChatView key={chatId} chatId={chatId} onChanged={() => { void refresh() }} composerHandleRef={composerRef} />
               ) : draftAgent ? (
                 <DraftChatView
                   key={draftAgent}
                   agentId={draftAgent}
                   createAndSend={createAndSend}
+                  composerHandleRef={composerRef}
                   onCreated={(id) => {
                     // replace — the dead draft URL shouldn't survive in history.
                     router.replace(`/chat/${encodeURIComponent(id)}`)
