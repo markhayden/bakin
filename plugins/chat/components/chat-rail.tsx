@@ -6,7 +6,7 @@
  * contract (per-group labelled lists — refit T6.5).
  */
 import { useMemo, useState } from 'react'
-import { Loader2, PanelLeftClose, PanelLeftOpen, Pin, Trash2 } from 'lucide-react'
+import { Loader2, PanelLeftClose, Pin, Trash2 } from 'lucide-react'
 import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { useAgent, useAgentList } from '@makinbakin/sdk/hooks'
 import {
@@ -17,6 +17,8 @@ import {
   ListRowActions,
   ListRowGroup,
   ListRows,
+  PageAside,
+  useCollapsedAside,
 } from '@makinbakin/sdk/patterns'
 import {
   Badge,
@@ -32,25 +34,9 @@ import { deleteChatRequest, patchChatRequest, type ChatSummaryDto } from './use-
 
 const COLLAPSE_KEY = 'bakin-chat-rail-collapsed'
 
+/** Persisted rail collapse — the kit hook under chat's historical storage key. */
 export function useRailCollapsed(): [boolean, (v: boolean) => void] {
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem(COLLAPSE_KEY) === 'true'
-    } catch {
-      return false
-    }
-  })
-  return [
-    collapsed,
-    (v: boolean) => {
-      setCollapsed(v)
-      try {
-        localStorage.setItem(COLLAPSE_KEY, String(v))
-      } catch {
-        // Persistence failures never break the toggle.
-      }
-    },
-  ]
+  return useCollapsedAside(COLLAPSE_KEY)
 }
 
 type Group = { label: string; chats: ChatSummaryDto[] }
@@ -211,28 +197,16 @@ export function ChatRail(props: {
     }
   }), [agentIds, roster])
 
-  if (collapsed) {
-    return (
-      <aside
-        aria-label="Chat list"
-        className="flex h-full w-10 shrink-0 flex-col items-center border-r border-bakin-border-subtle py-bakin-2"
-      >
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Expand chat list"
-          onClick={() => onCollapse(false)}
-          className="text-bakin-text-muted"
-        >
-          <PanelLeftOpen />
-        </Button>
-      </aside>
-    )
-  }
-
   return (
-    <aside aria-label="Chat list" className="flex h-full w-72 shrink-0 flex-col border-r border-bakin-border-subtle">
+    <PageAside
+      label="Chat list"
+      width="session"
+      collapsible={{
+        collapsed,
+        onCollapsedChange: onCollapse,
+        expandLabel: 'Expand chat list',
+      }}
+    >
       <div className="p-bakin-3">
         <div className="flex items-center justify-between gap-bakin-2 pt-bakin-1">
           {agentIds.length > 1 ? (
@@ -250,6 +224,7 @@ export function ChatRail(props: {
             variant="ghost"
             size="icon-sm"
             aria-label="Collapse chat list"
+            aria-expanded
             onClick={() => onCollapse(true)}
             className="text-bakin-text-muted"
           >
@@ -324,6 +299,6 @@ export function ChatRail(props: {
           })
         }}
       />
-    </aside>
+    </PageAside>
   )
 }

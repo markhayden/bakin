@@ -568,6 +568,29 @@ test('public conversation tool activity visual baseline', async ({ page }) => {
   })
 })
 
+test('public collapsible aside visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=pages-collapsible-aside--canonical-usage&viewMode=story')
+  await expect(page.getByRole('complementary', { name: 'Session list' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Open Release readiness' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-collapsible-aside.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public collapsible aside content-mode strip visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=pages-collapsible-aside--content-mode-nav&viewMode=story')
+  await expect(page.getByRole('button', { name: 'Tasks' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-collapsible-aside-content-mode.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
 test('public conversation header visual baseline', async ({ page }) => {
   await page.goto('/iframe.html?id=conversation-header--canonical-usage&viewMode=story')
   await expect(page.getByText('Release review')).toBeVisible()

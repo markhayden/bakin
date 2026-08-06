@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 290,
-    "typeExports": 382
+    "valueExports": 291,
+    "typeExports": 384
   },
   "entrypoints": [
     {
@@ -451,6 +451,7 @@
         "Timeline",
         "TimelineEntry",
         "UnsavedChangesDialog",
+        "useCollapsedAside",
         "WorkspacePage",
         "WorkspacePageBody",
         "WorkspacePageCompactHeader",
@@ -522,7 +523,9 @@
         "NavListProps",
         "NavListSection",
         "NumberSettingsField",
+        "PageAsideCollapsible",
         "PageAsideProps",
+        "PageAsideWidth",
         "PageBodyGap",
         "PageBodyLayout",
         "PageBodyProps",
