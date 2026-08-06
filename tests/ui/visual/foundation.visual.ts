@@ -568,6 +568,30 @@ test('public conversation tool activity visual baseline', async ({ page }) => {
   })
 })
 
+test('public conversation header visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=conversation-header--canonical-usage&viewMode=story')
+  await expect(page.getByText('Release review')).toBeVisible()
+  await expect(page.getByRole('progressbar', { name: /Context 45\.3k of 272k/ })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-conversation-header.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public context meter states visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=conversation-header--meter-states&viewMode=story')
+  await expect(page.getByRole('progressbar', { name: /\(91%\)/ })).toBeVisible()
+  await expect(page.getByText(/compacted/)).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-context-meter-states.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
 test('public conversation turns visual baseline', async ({ page }) => {
   await page.goto('/iframe.html?id=conversation-turns-and-messages--complete-and-lifecycle-states&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Keep the speaker and state unmistakable' })).toBeVisible()

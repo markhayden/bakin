@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 287,
-    "typeExports": 380
+    "valueExports": 290,
+    "typeExports": 382
   },
   "entrypoints": [
     {
@@ -637,8 +637,11 @@
         "attentionForDone",
         "badgeFor",
         "Composer",
+        "ContextMeter",
+        "contextMeterHasContent",
         "Conversation",
         "ConversationEmptyState",
+        "ConversationHeader",
         "ConversationPanel",
         "ConversationReplyToast",
         "CopyButton",
@@ -676,6 +679,7 @@
         "ComposerAttachmentStatus",
         "ComposerHandle",
         "ComposerProps",
+        "ContextMeterStats",
         "ConversationAgent",
         "ConversationAttachmentRenderer",
         "ConversationAttentionConfig",
@@ -685,6 +689,7 @@
         "ConversationChunk",
         "ConversationDonePayload",
         "ConversationEmptyStateProps",
+        "ConversationHeaderProps",
         "ConversationMessage",
         "ConversationMode",
         "ConversationPanelProps",

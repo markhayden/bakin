@@ -86,3 +86,9 @@ export type {
   TurnTextSegment,
   TurnToolChipState,
 } from './turn-output'
+
+export { ConversationHeader } from './conversation-header'
+export type { ConversationHeaderProps } from './conversation-header'
+
+export { ContextMeter, contextMeterHasContent } from './context-meter'
+export type { ContextMeterStats } from './context-meter'

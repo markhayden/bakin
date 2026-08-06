@@ -97,6 +97,10 @@ export function SearchInput({
       className={cn(
         'flex w-full min-w-[min(100%,14rem)] font-bakin-typography-family-ui',
         mobileFullWidth ? 'max-w-none md:max-w-[22rem]' : 'max-w-[22rem]',
+        // Inside a PageHeader controls region the reserve holds a rigid
+        // column instead of flexing (inert anywhere else — the container
+        // query only matches under a named page-header container).
+        '@3xl/page-header:w-[22rem] @3xl/page-header:shrink-0',
         align === 'end' ? 'justify-end' : 'justify-start',
         className,
       )}

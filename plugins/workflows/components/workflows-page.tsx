@@ -333,7 +333,6 @@ export function WorkflowsPage() {
             placeholder="Search workflows…"
             busy={searchHook.status === 'loading'}
             mobileFullWidth
-            className="@3xl/page-header:w-[22rem] @3xl/page-header:shrink-0"
           />
         )}
         actionsLabel="Workflow actions"
