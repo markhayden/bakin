@@ -536,8 +536,11 @@ describe('ChatView', () => {
     })
     const { container } = __view15
     await waitFor(() => expect(container.querySelector('[data-chat-title]')).not.toBeNull())
-    const avatarWrap = container.querySelector('span[title="main"]')
-    expect(avatarWrap).not.toBeNull()
+    // Kit contract: the non-decorative AgentAvatar names itself (role=img
+    // aria-label) — no raw title-attr wrapper.
+    const avatar = container.querySelector('[data-chat-header] [data-agent-avatar]')
+    expect(avatar).not.toBeNull()
+    expect(avatar?.getAttribute('aria-label')).toBe('main')
     const header = container.querySelector('[data-chat-header]')
     // Refit T6.5: the header rides flex rows, not a hand-rolled grid template.
     expect(header?.className).toContain('flex')

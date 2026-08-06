@@ -26,7 +26,7 @@ import {
   WorkspacePageBody,
   WorkspacePageHeader,
 } from '@makinbakin/sdk/patterns'
-import { Badge, Button } from '@makinbakin/sdk/ui'
+import { Badge, Button, SystemState } from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
 import { AgentPicker } from './agent-picker'
@@ -274,7 +274,7 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
 
 export function ChatPage(props: ChatPageProps) {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<SystemState kind="loading" scope="page" title="Loading chat" />}>
       <ChatPageInner {...props} />
     </Suspense>
   )
