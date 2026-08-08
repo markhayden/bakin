@@ -365,3 +365,59 @@ export const DragAndDropFeedback = {
     await expect(canvas.getByText(/Whole-lane highlighting is not sufficient/)).toBeVisible()
   },
 } satisfies Story
+
+/**
+ * Workspace mode: the board fills a height-bound parent, lane headers stay
+ * pinned, each lane scrolls its own tasks, and the horizontal scrollbar is
+ * always at the board's visible bottom edge — never below tall columns.
+ */
+function WorkspaceFillExample() {
+  const laneCards = (n: number, prefix: string) =>
+    Array.from({ length: n }, (_, i) => (
+      <Card key={i} size="sm">
+        <CardHeader>
+          <CardTitle>{prefix} task {i + 1}</CardTitle>
+        </CardHeader>
+      </Card>
+    ))
+  return (
+    <div style={{ blockSize: '22rem' }} className="flex min-h-0 flex-col p-bakin-4">
+      <KanbanBoard label="Workspace board" fill>
+        <KanbanColumn label="Todo" className="min-h-0">
+          <KanbanColumnHeader>
+            <h2 className="m-0 text-bakin-typography-size-body font-bakin-typography-weight-semibold">Todo</h2>
+            <Badge size="xs" variant="outline">12</Badge>
+          </KanbanColumnHeader>
+          <KanbanColumnBody scroll data-testid="fill-scroll-lane">
+            {laneCards(12, 'Todo')}
+          </KanbanColumnBody>
+        </KanbanColumn>
+        <KanbanColumn label="In progress" className="min-h-0">
+          <KanbanColumnHeader>
+            <h2 className="m-0 text-bakin-typography-size-body font-bakin-typography-weight-semibold">In progress</h2>
+            <Badge size="xs" variant="outline">2</Badge>
+          </KanbanColumnHeader>
+          <KanbanColumnBody scroll>
+            {laneCards(2, 'Active')}
+          </KanbanColumnBody>
+        </KanbanColumn>
+      </KanbanBoard>
+    </div>
+  )
+}
+
+export const WorkspaceFill = {
+  render: () => <WorkspaceFillExample />,
+  play: async ({ canvas, canvasElement }) => {
+    const board = canvas.getByRole('region', { name: 'Workspace board' })
+    await expect(board.hasAttribute('data-fill')).toBe(true)
+    const lane = canvasElement.querySelector('[data-testid=fill-scroll-lane]') as HTMLElement
+    await expect(lane.getAttribute('data-scroll')).toBe('')
+    // The tall lane owns its vertical overflow — scrolling it moves ONLY it.
+    await expect(lane.scrollHeight).toBeGreaterThan(lane.clientHeight)
+    lane.scrollTop = 200
+    await expect(lane.scrollTop).toBeGreaterThan(0)
+    // The scrollable lane is keyboard-reachable.
+    await expect(lane.getAttribute('tabindex')).toBe('0')
+  },
+} satisfies Story

@@ -536,9 +536,11 @@ export function KanbanBoard() {
 
   return (
     <>
-      {/* Default page scroll (the document scrolls vertically); the board
-          owns ONLY horizontal overflow via the kit KanbanBoard region. */}
-      <Page>
+      {/* Workspace board (Trello model): the page is viewport-bound, the
+          board fills it below the chrome, each lane scrolls its own tasks,
+          and the board's horizontal scrollbar stays pinned at the visible
+          bottom edge. */}
+      <Page scroll="contained" density="compact">
         <PageHeader
           title="Tasks"
           description="Create, assign, and track work across your agents from the backlog through completion."
@@ -609,7 +611,7 @@ export function KanbanBoard() {
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
             >
-              <KanbanBoardTrack label="Task board" data-task-board-scroll>
+              <KanbanBoardTrack label="Task board" fill data-task-board-scroll>
                 {COLUMN_ORDER.map((colId) => (
                   <KanbanColumn
                     key={colId}
@@ -633,16 +635,18 @@ export function KanbanBoard() {
               </KanbanBoardTrack>
             </DragDropProvider>
           ) : (
-            <TaskLogTable
-              currentTasks={allTasksFlat}
-              statusFilter={statusFilter}
-              isSearching={Boolean(search)}
-              scoreMap={scoreMap}
-              onTaskOpen={(task, columnId) => {
-                setDetailTask({ task, columnId })
-                setEditing(false)
-              }}
-            />
+            <div className="min-h-0 flex-1 overflow-y-auto pb-bakin-2">
+              <TaskLogTable
+                currentTasks={allTasksFlat}
+                statusFilter={statusFilter}
+                isSearching={Boolean(search)}
+                scoreMap={scoreMap}
+                onTaskOpen={(task, columnId) => {
+                  setDetailTask({ task, columnId })
+                  setEditing(false)
+                }}
+              />
+            </div>
           )}
         </PageBody>
       </Page>

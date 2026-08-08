@@ -92,13 +92,13 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex min-h-0 flex-col">
       <div
         ref={ref}
         data-task-drop-surface
-        className="flex flex-col"
+        className="flex min-h-0 flex-1 flex-col"
       >
-        <KanbanLane label={config.label}>
+        <KanbanLane label={config.label} className="min-h-0 flex-1">
           <KanbanLaneHeader>
             <div className="flex min-w-0 items-center gap-bakin-2">
               <h2 className="m-0 truncate text-bakin-typography-size-body font-bakin-typography-weight-semibold">
@@ -114,7 +114,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
             ) : null}
           </KanbanLaneHeader>
 
-          <KanbanLaneBody>
+          <KanbanLaneBody scroll>
             {ready.length === 0 ? (
               <div className="flex min-h-bakin-8 items-center justify-center rounded-bakin-surface border border-dashed border-bakin-border-subtle px-bakin-3 py-bakin-4 text-bakin-typography-size-meta text-bakin-text-muted">
                 No tasks
