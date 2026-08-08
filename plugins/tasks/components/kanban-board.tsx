@@ -20,6 +20,7 @@ import {
   useSearchParams,
 } from '@makinbakin/sdk/navigation'
 import {
+  KanbanBoard as KanbanBoardTrack,
   Page,
   PageBody,
   PageControls,
@@ -535,7 +536,9 @@ export function KanbanBoard() {
 
   return (
     <>
-      <Page scroll="contained">
+      {/* Default page scroll (the document scrolls vertically); the board
+          owns ONLY horizontal overflow via the kit KanbanBoard region. */}
+      <Page>
         <PageHeader
           title="Tasks"
           description="Create, assign, and track work across your agents from the backlog through completion."
@@ -562,7 +565,7 @@ export function KanbanBoard() {
                   onValueChange={setView}
                   ariaLabel="Task view"
                   size="md"
-                  className="shrink-0 [&_[role=tab]]:px-bakin-3"
+                  className="shrink-0"
                 />
                 <Button className="min-w-28 flex-1 @3xl/page-header:flex-none" onClick={openNewTask}>
                   <Plus />
@@ -598,7 +601,6 @@ export function KanbanBoard() {
           busy={boardLoaded && boardRefreshing}
           feedback={searchFeedback}
           state={resultState}
-          className="min-h-0 flex-1"
         >
           {view === 'kanban' ? (
             <DragDropProvider
@@ -607,51 +609,40 @@ export function KanbanBoard() {
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
             >
-              <div
-                role="region"
-                aria-label="Task board"
-                tabIndex={0}
-                data-task-board-scroll
-                className="flex-1 min-h-0 max-w-full min-w-0 overflow-auto overscroll-x-contain focus-visible:rounded-bakin-control focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
-              >
-                <div data-task-board-track className="inline-flex items-start gap-4 pb-bakin-2">
-                  {COLUMN_ORDER.map((colId) => (
-                    <div key={colId} data-task-board-column className="w-72 shrink-0">
-                      <KanbanColumn
-                        id={colId}
-                        tasks={colId === 'archived' ? [] : filteredColumns[colId]}
-                        gateLabels={gateLabels}
-                        childTaskLabels={childTaskLabels}
-                        budgetHolds={budgetHolds}
-                        brandHolds={brandHolds}
-                        liveActivity={liveActivity}
-                        warnUnbranded={warnUnbranded}
-                        scoreMap={scoreMap}
-                        onDelete={setDeleteTarget}
-                        onTaskClick={(task, columnId) => { setDetailTask({ task, columnId }); setEditing(false) }}
-                        compact={colId === 'archived'}
-                        totalCount={colId === 'archived' ? columns.archived.length : undefined}
-                        showScheduled={showScheduled}
-                        onHeaderClick={colId === 'archived' ? openArchivedLog : undefined}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <KanbanBoardTrack label="Task board" data-task-board-scroll>
+                {COLUMN_ORDER.map((colId) => (
+                  <KanbanColumn
+                    key={colId}
+                    id={colId}
+                    tasks={colId === 'archived' ? [] : filteredColumns[colId]}
+                    gateLabels={gateLabels}
+                    childTaskLabels={childTaskLabels}
+                    budgetHolds={budgetHolds}
+                    brandHolds={brandHolds}
+                    liveActivity={liveActivity}
+                    warnUnbranded={warnUnbranded}
+                    scoreMap={scoreMap}
+                    onDelete={setDeleteTarget}
+                    onTaskClick={(task, columnId) => { setDetailTask({ task, columnId }); setEditing(false) }}
+                    compact={colId === 'archived'}
+                    totalCount={colId === 'archived' ? columns.archived.length : undefined}
+                    showScheduled={showScheduled}
+                    onHeaderClick={colId === 'archived' ? openArchivedLog : undefined}
+                  />
+                ))}
+              </KanbanBoardTrack>
             </DragDropProvider>
           ) : (
-            <div className="flex-1 overflow-auto min-h-0 pb-bakin-2">
-              <TaskLogTable
-                currentTasks={allTasksFlat}
-                statusFilter={statusFilter}
-                isSearching={Boolean(search)}
-                scoreMap={scoreMap}
-                onTaskOpen={(task, columnId) => {
-                  setDetailTask({ task, columnId })
-                  setEditing(false)
-                }}
-              />
-            </div>
+            <TaskLogTable
+              currentTasks={allTasksFlat}
+              statusFilter={statusFilter}
+              isSearching={Boolean(search)}
+              scoreMap={scoreMap}
+              onTaskOpen={(task, columnId) => {
+                setDetailTask({ task, columnId })
+                setEditing(false)
+              }}
+            />
           )}
         </PageBody>
       </Page>

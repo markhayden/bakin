@@ -1,6 +1,7 @@
 'use client'
 
 import { TurnOutputView } from '@makinbakin/sdk/conversation'
+import { Panel } from '@makinbakin/sdk/layout'
 import { isRenderableAssetRef } from '../lib/output-assets'
 
 /** Normalize step output — handles string (possibly JSON), object, or unexpected types. */
@@ -78,18 +79,17 @@ function OutputValue({ value }: { value: unknown }) {
 export function StepOutputViewer({ output }: { output: Record<string, unknown> | string | unknown }) {
   const data = normalizeOutput(output)
   return (
-    <dl
-      data-step-output=""
-      className="m-0 grid max-h-80 min-w-0 gap-bakin-3 overflow-y-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default p-bakin-3"
-    >
-      {Object.entries(data).map(([key, value]) => (
-        <div key={key}>
-          <dt className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
-            {humanizeKey(key)}
-          </dt>
-          <dd className="m-0"><OutputValue value={value} /></dd>
-        </div>
-      ))}
-    </dl>
+    <Panel scroll padding="compact" aria-label="Step output" data-step-output="" className="max-h-80">
+      <dl className="m-0 grid min-w-0 gap-bakin-3">
+        {Object.entries(data).map(([key, value]) => (
+          <div key={key}>
+            <dt className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
+              {humanizeKey(key)}
+            </dt>
+            <dd className="m-0"><OutputValue value={value} /></dd>
+          </div>
+        ))}
+      </dl>
+    </Panel>
   )
 }

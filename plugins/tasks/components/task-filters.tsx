@@ -112,22 +112,19 @@ export function TaskFilters({
       )}
 
       {onShowScheduledChange && (
-        <div
+        <label
           data-slot="scheduled-tasks-filter"
-          role="group"
-          aria-label="Scheduled task visibility"
-          className="flex h-bakin-8 select-none items-center gap-bakin-2 rounded-bakin-control px-bakin-2 font-bakin-typography-weight-semibold text-bakin-text-muted"
-          title={showScheduled ? 'Hide scheduled tasks' : 'Show scheduled tasks'}
+          className="flex items-center gap-bakin-2 text-bakin-typography-size-body text-bakin-text-muted"
         >
           {showScheduled ? <Eye className="size-bakin-4" aria-hidden="true" /> : <EyeOff className="size-bakin-4" aria-hidden="true" />}
-          <span className="text-bakin-typography-size-body">Scheduled Tasks</span>
+          Scheduled Tasks
           <Switch
             checked={showScheduled}
             onCheckedChange={(checked: boolean) => onShowScheduledChange(checked)}
             size="sm"
             aria-label={showScheduled ? 'Hide scheduled tasks' : 'Show scheduled tasks'}
           />
-        </div>
+        </label>
       )}
 
     </div>

@@ -33,6 +33,9 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from '@makinbakin/sdk/ui'
 import { COLUMN_CONFIG, STATUS_TONES } from '../constants'
 import { compactDispatchFailureLabel, getLatestDispatchFailure } from '../lib/dispatch-failure'
@@ -191,21 +194,21 @@ export function TaskCardContent({
 
         {onDelete ? (
           <CardAction>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`Delete ${task.title}`}
-              title="Delete task"
-              className="text-bakin-text-muted opacity-100 hover:text-bakin-signal-danger focus-visible:opacity-100 md:opacity-0 md:group-hover/card:opacity-100"
-              onClick={(event) => {
-                event.stopPropagation()
-                onDelete({ id: task.id, title: task.title })
-              }}
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              <X />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={<Button type="button" variant="ghost" size="icon-xs" />}
+                aria-label={`Delete ${task.title}`}
+                className="text-bakin-text-muted opacity-100 hover:text-bakin-signal-danger focus-visible:opacity-100 md:opacity-0 md:group-hover/card:opacity-100"
+                onClick={(event: React.MouseEvent) => {
+                  event.stopPropagation()
+                  onDelete({ id: task.id, title: task.title })
+                }}
+                onPointerDown={(event: React.PointerEvent) => event.stopPropagation()}
+              >
+                <X />
+              </TooltipTrigger>
+              <TooltipContent>Delete task</TooltipContent>
+            </Tooltip>
           </CardAction>
         ) : null}
 
@@ -266,7 +269,7 @@ export function TaskCardContent({
                 </span>
               ) : null}
               {!task.brandId && warnUnbranded && !isComplete ? (
-                <span className="flex min-w-0 items-center gap-bakin-1 text-bakin-signal-highlight" title="warnUnbranded is on — this task has no brand">
+                <span className="flex min-w-0 items-center gap-bakin-1 text-bakin-signal-highlight">
                   <Palette aria-hidden="true" className="size-bakin-3 shrink-0" />
                   <span className="font-bakin-typography-weight-semibold">No brand</span>
                 </span>
@@ -279,8 +282,8 @@ export function TaskCardContent({
               to="/models?tab=spend"
               onClick={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
-              className="block min-w-0 hover:brightness-110"
-              title="Open Models → Spend"
+              className="block min-w-0"
+              aria-label="Open Models spend"
             >
               <KanbanCardSignal tone="danger" label={budgetHold.label} icon={CircleDollarSign}>
                 {budgetHold.detail}
@@ -301,7 +304,6 @@ export function TaskCardContent({
               tone="accent"
               label="Current turn"
               icon={Activity}
-              title={liveActivity.label}
             >
               {liveActivity.label}
             </KanbanCardSignal>
@@ -312,7 +314,6 @@ export function TaskCardContent({
               tone="accent"
               label="Sub-task in progress"
               icon={GitBranch}
-              title={childTaskId}
               onMouseEnter={() => setChildCardHighlight(childTaskId, true)}
               onMouseLeave={() => setChildCardHighlight(childTaskId, false)}
             >
@@ -347,8 +348,8 @@ export function TaskCardContent({
               to="/brands"
               onClick={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
-              className="block min-w-0 hover:brightness-110"
-              title="Open Brands"
+              className="block min-w-0"
+              aria-label="Open Brands"
             >
               <KanbanCardSignal tone="attention" label="Brand unavailable" icon={Palette}>
                 {brandHold.detail}

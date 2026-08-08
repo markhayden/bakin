@@ -14,6 +14,7 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from '@makinbakin/sdk/ui'
+import { Panel } from '@makinbakin/sdk/layout'
 import { formatDateTime } from '@makinbakin/sdk/utils'
 import { AlertTriangle, Send } from 'lucide-react'
 import type { Task, TaskLogEntry } from '../types'
@@ -47,9 +48,9 @@ function DispatchFailureLogPanel({ detail }: { detail: DispatchFailureDetail }) 
           <Collapsible className="mt-bakin-3 border-b-0">
             <CollapsibleTrigger className="text-bakin-typography-size-meta">Technical details</CollapsibleTrigger>
             <CollapsibleContent>
-              <pre className="m-0 max-h-36 overflow-auto whitespace-pre-wrap break-words rounded-bakin-surface bg-bakin-canvas-default p-bakin-3 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
-                {detail.rawError}
-              </pre>
+              <Panel variant="code" scroll padding="compact" aria-label="Raw error" className="max-h-36">
+                <pre>{detail.rawError}</pre>
+              </Panel>
             </CollapsibleContent>
           </Collapsible>
         ) : null}

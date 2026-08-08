@@ -17,7 +17,10 @@ describe('StepOutputViewer', () => {
       />,
     )
 
-    expect(container.querySelector('[data-step-output]')?.tagName).toBe('DL')
+    // The kit Panel owns the scrollable boundary; the semantic dl lives inside.
+    const panel = container.querySelector('[data-step-output]')
+    expect(panel?.getAttribute('data-slot')).toBe('panel')
+    expect(panel?.querySelector('dl')).not.toBeNull()
     expect(screen.getByText('Summary')).toBeTruthy()
     expect(screen.getByText('Approved for launch')).toBeTruthy()
     expect(screen.getByText('Item Count')).toBeTruthy()

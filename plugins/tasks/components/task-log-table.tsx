@@ -227,11 +227,11 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
             </Button>
             {scoreInfo && (
               <span className="flex shrink-0 items-center gap-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta">
-                <span className="text-bakin-signal-highlight">RRF {scoreInfo.score.toFixed(3)}</span>
-                <span className="text-bakin-data-series-1">
+                <span className="text-bakin-data-series-1">RRF {scoreInfo.score.toFixed(3)}</span>
+                <span className="text-bakin-data-series-2">
                   BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
                 </span>
-                <span className="text-bakin-data-series-5">
+                <span className="text-bakin-data-series-3">
                   SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
                 </span>
               </span>

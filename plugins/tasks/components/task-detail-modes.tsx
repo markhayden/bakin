@@ -32,6 +32,7 @@ import {
   type StatusTone,
 } from '@makinbakin/sdk/patterns'
 import { MarkdownContent } from '@makinbakin/sdk/content'
+import { Panel } from '@makinbakin/sdk/layout'
 import { Slot } from '@makinbakin/sdk/slots'
 import { Copy, Loader2, MoreHorizontal, Pencil, Trash2, Workflow } from 'lucide-react'
 import { COLUMN_CONFIG } from '../constants'
@@ -84,9 +85,9 @@ function TaskHero({
       }
 
   return (
-    <div
+    <Panel
       data-task-detail-hero=""
-      className="flex min-w-0 items-center gap-bakin-4 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4"
+      className="flex min-w-0 flex-row items-center gap-bakin-4"
     >
       <AgentAvatar agent={agentIdentity} size="lg" decorative />
       <div className="min-w-0 flex-1">
@@ -105,7 +106,7 @@ function TaskHero({
           ) : null}
         </div>
       </div>
-    </div>
+    </Panel>
   )
 }
 
@@ -389,9 +390,9 @@ export function TaskDetailView({ m, task, columnId, open, onClose, onEdit, onDel
         {/* Description */}
         {task.description && (
           <DrawerSection title="Details">
-            <div className="rounded-bakin-surface border-s-2 border-bakin-border-subtle bg-bakin-surface-default p-bakin-4 text-bakin-typography-size-body leading-relaxed text-bakin-text-primary">
+            <Panel tone="neutral">
               <MarkdownContent content={task.description} />
-            </div>
+            </Panel>
           </DrawerSection>
         )}
 
