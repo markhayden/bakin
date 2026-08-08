@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { usePathname, useSearchParams } from '@makinbakin/sdk/hooks'
+import { PageAside } from '@makinbakin/sdk/patterns'
 import { Button } from '@makinbakin/sdk/ui'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { useActivityContext } from '@/context/activity-context'
@@ -22,7 +23,7 @@ export function LayoutShell({
   sidebar: React.ReactNode
   children: React.ReactNode
 }) {
-  const { collapsed } = useSidebarContext()
+  const { collapsed, toggle } = useSidebarContext()
   const { open: activityOpen, close: closeActivity } = useActivityContext()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -37,21 +38,27 @@ export function LayoutShell({
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside
-        className={`fixed ${SHELL_TOP_CLASS} left-0 bottom-0 border-r border-bakin-border-subtle/30 bg-bakin-canvas-default hidden md:flex flex-col overflow-hidden transition-all duration-150 ease-in-out ${
-          collapsed ? 'w-13' : 'w-52'
-        }`}
-      >
-        {sidebar}
-      </aside>
-
-      {/* Content + drawer row */}
-      <div
-        className={`fixed ${SHELL_TOP_CLASS} bottom-0 right-0 flex transition-all duration-150 ease-in-out left-0 ${
-          collapsed ? 'md:left-13' : 'md:left-52'
-        }`}
-      >
+      {/* One flex row: the kit rail's width drives content reflow — no
+          hand-synced left offsets. */}
+      <div className={`fixed ${SHELL_TOP_CLASS} inset-x-0 bottom-0 flex`}>
+        {/* Desktop sidebar — the kit collapsible rail in content mode: the
+            nav owns its icon-mode rendering, the header owns the toggle. */}
+        <div className="hidden min-h-0 md:flex">
+          <PageAside
+            label="App sidebar"
+            width="nav"
+            collapsible={{
+              collapsed,
+              onCollapsedChange: (next) => {
+                if (next !== collapsed) toggle()
+              },
+              collapsedMode: 'content',
+            }}
+            className="bg-bakin-canvas-default"
+          >
+            {sidebar}
+          </PageAside>
+        </div>
         {/* Main content — fills remaining space. The inner div is the app's
             real scroll container; the id attribute opts it into TanStack's
             element-level scroll restoration (router scrollRestoration: true). */}

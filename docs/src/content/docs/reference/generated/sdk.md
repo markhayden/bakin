@@ -8,7 +8,7 @@ The Bakin SDK is a single package with multiple subpaths. Plugin authors mark `@
 ```ts
 import { registerPlugin } from '@makinbakin/sdk'
 import { useSearch } from '@makinbakin/sdk/hooks'
-import { PluginHeader } from '@makinbakin/sdk/components'
+import { Button } from '@makinbakin/sdk/ui'
 import type { BakinPlugin, PluginContext } from '@makinbakin/sdk/types'
 ```
 
@@ -67,13 +67,13 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 
 | Hook | Description |
 | --- | --- |
-| `useQueryState` | Bind a single component-state value to a URL query param. |
-| `useQueryArrayState` | Bind a multi-value (array) component state to a URL query param. |
+| `useQueryState` | — |
+| `useQueryArrayState` | — |
 | `useSidebar` | Read sidebar open/closed state and toggle helper. |
-| `useRouter` | Access the TanStack Router instance for imperative navigation. |
-| `usePathname` | Current URL pathname (Next.js-shape compatible). |
-| `useSearchParams` | Current URL search params as a URLSearchParams instance. |
-| `useParams` | Current route's typed path parameters. |
+| `useRouter` | — |
+| `usePathname` | — |
+| `useSearchParams` | — |
+| `useParams` | — |
 
 ### Agent Data
 
@@ -134,134 +134,341 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | `useFileDrop` | Headless drag-drop file intake (drag-over state + handlers + accept filter) — style your own zone. |
 | `UseFileDropOptions` | — |
 | `UseFileDropResult` | — |
-| `useHistoryBack` | History-aware back for detail surfaces reachable from many places — real back() with a fallback route for cold deep-links. |
+| `useHistoryBack` | — |
 | `useHorizontalResize` | Resize a side-by-side split pane by dragging the divider between columns. |
 | `useAvailableModels` | The available-models catalog (cached, read-only); empty until loaded. |
-| `toNavigationOptions` | Split a browser-style URL string into TanStack navigate options (non-hook). |
+| `toNavigationOptions` | — |
 
-## `@makinbakin/sdk/components`
+## `@makinbakin/sdk/ui`
 
-Source: `packages/sdk/src/components/index.ts`.
+Source: `packages/sdk/src/ui/index.ts`. Supported Bakin primitives backed by the canonical design-system stylesheet. Use semantic props and the [UI style guide](/docs/extending/ui/) rather than relying on upstream-library APIs or arbitrary utility classes.
 
 ```ts
-import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/components'
+import { Alert, Badge, Button, Progress } from '@makinbakin/sdk/ui'
 ```
 
-| Component | Description |
+Available: `Alert`, `AlertAction`, `AlertDescription`, `AlertTitle`, `alertVariants`, `AlertProps`, `AlertTone`, `AlertVariantOptions`, `LegacyAlertVariant`, `Drawer`, `DrawerProps`, `DrawerSection`, `DrawerSectionHeadingLevel`, `DrawerSectionProps`, `Avatar`, `AvatarBadge`, `AvatarFallback`, `AvatarGroup`, `AvatarGroupCount`, `AvatarImage`, `AvatarProps`, `AvatarSize`, `LegacyAvatarSize`, `Badge`, `badgeVariants`, `BadgeProps`, `BadgeSize`, `BadgeTone`, `BadgeVariant`, `BadgeVariantOptions`, `LegacyBadgeVariant`, `Button`, `buttonVariants`, `ButtonProps`, `ButtonSize`, `ButtonVariant`, `ButtonVariantOptions`, `LegacyButtonSize`, `LegacyButtonVariant`, `Card`, `CardAction`, `CardContent`, `CardDescription`, `CardFooter`, `CardHeader`, `CardMedia`, `CardTitle`, `InteractiveAction`, `CardFooterVariant`, `CardInteractive`, `CardOrientation`, `CardProps`, `CardSize`, `CardTone`, `LegacyCardSize`, `Checkbox`, `CheckboxProps`, `Radio`, `RadioGroup`, `RadioGroupProps`, `RadioProps`, `FileInput`, `FileInputHandle`, `FileInputProps`, `Collapsible`, `CollapsibleContent`, `CollapsibleTrigger`, `CollapsibleContentProps`, `CollapsibleProps`, `CollapsibleTriggerProps`, `Command`, `CommandDialog`, `CommandEmpty`, `CommandGroup`, `CommandInput`, `CommandItem`, `CommandList`, `CommandSeparator`, `CommandShortcut`, `CommandDialogProps`, `CommandEmptyProps`, `CommandGroupProps`, `CommandInputProps`, `CommandItemProps`, `CommandListProps`, `CommandProps`, `CommandSeparatorProps`, `CommandShortcutProps`, `Dialog`, `DialogClose`, `DialogContent`, `DialogDescription`, `DialogFooter`, `DialogHeader`, `DialogOverlay`, `DialogPortal`, `DialogTitle`, `DialogTrigger`, `DialogCloseProps`, `DialogContentProps`, `DialogDescriptionProps`, `DialogFooterProps`, `DialogHeaderProps`, `DialogOverlayProps`, `DialogPortalProps`, `DialogProps`, `DialogTitleProps`, `DialogTriggerProps`, `DropdownMenu`, `DropdownMenuCheckboxItem`, `DropdownMenuContent`, `DropdownMenuGroup`, `DropdownMenuItem`, `DropdownMenuLabel`, `DropdownMenuPortal`, `DropdownMenuRadioGroup`, `DropdownMenuRadioItem`, `DropdownMenuSeparator`, `DropdownMenuShortcut`, `DropdownMenuSub`, `DropdownMenuSubContent`, `DropdownMenuSubTrigger`, `DropdownMenuTrigger`, `DropdownMenuCheckboxItemProps`, `DropdownMenuContentProps`, `DropdownMenuGroupProps`, `DropdownMenuItemProps`, `DropdownMenuItemVariant`, `DropdownMenuLabelProps`, `DropdownMenuPortalProps`, `DropdownMenuProps`, `DropdownMenuRadioGroupProps`, `DropdownMenuRadioItemProps`, `DropdownMenuSeparatorProps`, `DropdownMenuShortcutProps`, `DropdownMenuSubContentProps`, `DropdownMenuSubProps`, `DropdownMenuSubTriggerProps`, `DropdownMenuTriggerProps`, `Field`, `FieldControl`, `FieldDescription`, `FieldError`, `FieldGroup`, `FieldLabel`, `Fieldset`, `FieldsetDescription`, `FieldsetLegend`, `Form`, `FormActions`, `SubmitButton`, `FieldControlProps`, `FieldDescriptionProps`, `FieldErrorProps`, `FieldGroupProps`, `FieldLabelProps`, `FieldOrientation`, `FieldProps`, `FieldRequirement`, `FieldsetDescriptionProps`, `FieldsetLegendProps`, `FieldsetProps`, `FormActionsAlign`, `FormActionsProps`, `FormProps`, `SubmitButtonProps`, `Banner`, `SystemState`, `Toast`, `ToastAction`, `ToastRegion`, `systemStateDefaults`, `BannerProps`, `BannerTone`, `FeedbackAnnouncement`, `SystemStateAlign`, `SystemStateContent`, `SystemStateHeadingLevel`, `SystemStateKind`, `SystemStateProps`, `SystemStateScope`, `ToastActionProps`, `ToastProps`, `ToastRegionProps`, `ToastTone`, `Input`, `InputProps`, `InputGroup`, `InputGroupAddon`, `InputGroupButton`, `InputGroupInput`, `InputGroupText`, `InputGroupTextarea`, `InputGroupAddonAlign`, `InputGroupAddonProps`, `InputGroupButtonProps`, `InputGroupButtonSize`, `InputGroupInputProps`, `InputGroupProps`, `InputGroupTextProps`, `InputGroupTextareaProps`, `Label`, `LabelProps`, `Popover`, `PopoverContent`, `PopoverDescription`, `PopoverHeader`, `PopoverPortal`, `PopoverTitle`, `PopoverTrigger`, `PopoverContentProps`, `PopoverDescriptionProps`, `PopoverHeaderProps`, `PopoverPortalProps`, `PopoverProps`, `PopoverTitleProps`, `PopoverTriggerProps`, `Progress`, `ProgressIndicator`, `ProgressLabel`, `ProgressTrack`, `ProgressValue`, `ProgressIndicatorProps`, `ProgressMarker`, `ProgressProps`, `ProgressSize`, `ProgressTone`, `ProgressTrackMarker`, `ProgressTrackProps`, `Select`, `SelectContent`, `SelectGroup`, `SelectItem`, `SelectLabel`, `SelectScrollDownButton`, `SelectScrollUpButton`, `SelectSeparator`, `SelectTrigger`, `SelectValue`, `SelectContentProps`, `SelectGroupProps`, `SelectItemProps`, `SelectLabelProps`, `SelectProps`, `SelectScrollDownButtonProps`, `SelectScrollUpButtonProps`, `SelectSeparatorProps`, `SelectTriggerProps`, `SelectTriggerSize`, `SelectValueProps`, `Separator`, `SeparatorProps`, `Sheet`, `SheetClose`, `SheetContent`, `SheetDescription`, `SheetFooter`, `SheetHeader`, `SheetOverlay`, `SheetPortal`, `SheetTitle`, `SheetTrigger`, `SheetCloseProps`, `SheetContentProps`, `SheetDescriptionProps`, `SheetFooterProps`, `SheetHeaderProps`, `SheetOverlayProps`, `SheetPortalProps`, `SheetProps`, `SheetSide`, `SheetTitleProps`, `SheetTriggerProps`, `Skeleton`, `SkeletonProps`, `SkeletonShape`, `ShimmerText`, `ShimmerTextBase`, `ShimmerTextHighlight`, `ShimmerTextProps`, `Switch`, `SwitchProps`, `SwitchSize`, `Textarea`, `TextareaProps`, `Tooltip`, `TooltipContent`, `TooltipPortal`, `TooltipProvider`, `TooltipTrigger`, `TooltipContentProps`, `TooltipPortalProps`, `TooltipProps`, `TooltipProviderProps`, `TooltipTriggerProps`.
+
+## `@makinbakin/sdk/layout`
+
+Canonical page and responsive composition. Source: `packages/sdk/src/layout/index.ts`.
+
+| Export | Description |
 | --- | --- |
-| `AgentAvatar` | Round avatar image for an agent, falls back to initials. |
-| `AgentFilter` | Multi-select facet filter scoped to agents. |
-| `AgentSelect` | Single-agent (or team, #189) picker dropdown for form fields. |
-| `TEAM_VALUE_PREFIX` | Single-agent (or team, #189) picker dropdown for form fields. |
-| `isTeamValue` | Single-agent (or team, #189) picker dropdown for form fields. |
-| `teamIdFromValue` | Single-agent (or team, #189) picker dropdown for form fields. |
-| `AgentDot` | Small status dot showing an agent's online/offline state. |
-| `AgentStatus` | Compound agent status (dot + label + last-seen timestamp). |
-| `AssetPicker` | Modal asset chooser (thumbnail grid + search + upload-new) over the assets plugin — never a raw id select. |
-| `AssetPickerProps` | — |
-| `AssetPickerAsset` | — |
-| `BakinDrawer` | Right-side slide-out drawer with backdrop and focus trap. |
-| `ColorPicker` | Color picker swatch grid for tag/agent color assignment. |
-| `ConfirmDialog` | Controlled confirmation dialog for destructive actions (busy/error aware; optional typed confirmation via `confirmValue`). |
-| `ConfirmDialogProps` | — |
-| `DangerZone` | Red-bordered destructive settings section with typed-confirmation delete — bottom of every settings surface. |
-| `DangerZoneProps` | — |
-| `EmptyState` | Centered empty-state component with icon, title, and CTA. |
-| `SaveBar` | Sticky save/discard bar for staged-draft pages (THE dirty-state pattern) + `useUnsavedGuard`. |
-| `useUnsavedGuard` | Sticky save/discard bar for staged-draft pages (THE dirty-state pattern) + `useUnsavedGuard`. |
-| `SaveBarProps` | — |
-| `useUnsavedChangesGuard` | Full navigation guard for dirty surfaces: beforeunload + TanStack history block + anchor interception + exit dialog. |
-| `UnsavedChangesGuardOptions` | — |
-| `SectionCard` | Titled card with icon + a one-line "why this matters" description — the standard section wrapper. |
-| `SectionCardProps` | — |
-| `SegmentedControl` | THE segmented control / mode toggle (Edit\|Preview, Board\|Log, time windows) — tablist semantics, neutral active segment. |
-| `SegmentedControlProps` | — |
-| `SegmentedControlOption` | — |
-| `StatTile` | THE metric tile — icon + uppercase micro-label + tabular big number, optional sub/meter. |
-| `StatTileProps` | — |
-| `StatusBadge` | THE status chip — one tone scale (neutral/success/warning/destructive/accent) for every state badge. |
-| `StatusBadgeProps` | — |
-| `StatusTone` | — |
-| `SearchUnavailable` | — |
-| `ScoreOverlay` | — |
-| `computeMatchedFields` | — |
-| `SearchPartialChip` | — |
-| `SearchPartialMeta` | — |
-| `SearchDegradedChip` | Amber "search down — basic text matching" chip for surfaces with a substring fallback. |
+| `BoundedOverflow` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
+| `DisclosurePanel` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
+| `Grid` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
+| `Inline` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
+| `PageShell` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
+| `Panel` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
+| `Section` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
+| `Stack` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
+| `BoundedOverflowProps` | — |
+| `DisclosurePanelProps` | — |
+| `GridAlign` | — |
+| `GridLayout` | — |
+| `GridProps` | — |
+| `InlineAlign` | — |
+| `InlineJustify` | — |
+| `InlineProps` | — |
+| `LayoutElement` | — |
+| `LayoutGap` | — |
+| `PageShellGap` | — |
+| `PageShellPadding` | — |
+| `PageShellProps` | — |
+| `PageShellWidth` | — |
+| `PanelElement` | — |
+| `PanelPadding` | — |
+| `PanelProps` | — |
+| `PanelTone` | — |
+| `PanelVariant` | — |
+| `SectionDivider` | — |
+| `SectionElement` | — |
+| `SectionProps` | — |
+| `SectionSpacing` | — |
+| `StackAlign` | — |
+| `StackProps` | — |
+
+## `@makinbakin/sdk/patterns`
+
+Reusable application-aware presentation patterns. Source: `packages/sdk/src/patterns/index.ts`.
+
+| Export | Description |
+| --- | --- |
+| `InspectorPanel` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `InspectorPanelContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `InspectorPanelFooter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `InspectorPanelHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `KanbanBoard` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `KanbanCardSignal` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `KanbanColumn` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `KanbanColumnBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `KanbanColumnHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `CalendarGrid` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ListRow` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ListRowActions` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ListRowGroup` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ListRowLabels` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ListRows` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `NavList` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `Page` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageAside` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `useCollapsedAside` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageCanvas` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageComposer` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageControls` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageTimeline` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `Pagination` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageHeaderOverflowMenu` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `WorkspacePage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `WorkspacePageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `WorkspacePageCompactHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `WorkspacePageHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ConfirmDialog` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `DangerZone` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `DataTable` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `FacetFilter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `AgentFilter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `SaveBar` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `SearchInput` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `SegmentedControl` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `SortableHead` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `StatGroup` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `StatTile` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `StatusBadge` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `StatusMarker` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `Timeline` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `TimelineEntry` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `UnsavedChangesDialog` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `SearchUnavailable` | Replace an affected result region when search returns no trustworthy result. |
+| `ScoreOverlay` | Show fused and per-leg search relevance as exact, non-color-dependent evidence. |
+| `computeMatchedFields` | Approximate matched fields when the adapter has no exact metadata. |
+| `SearchPartialChip` | Disclose the exact sources that degraded or exceeded the search budget. |
+| `SearchDegradedChip` | Disclose that usable results came from a named lower-quality fallback. |
 | `ScoreOverlayInfo` | — |
-| `ErrorBanner` | Inline error banner with dismiss + retry actions. |
-| `ErrorState` | Full-page error state with title, description, and retry button. |
-| `FacetFilter` | Popover multi-select facet filter (column, owner, tag, etc.). |
-| `FacetOption` | — |
-| `MarkdownContent` | Render markdown content with syntax highlighting and link handling. |
-| `MarkdownEditor` | Editable markdown text area with preview toggle. |
-| `ModelSelect` | Model picker dropdown listing available models from the catalog. |
-| `PageLayout` | Standard plugin page wrapper with header, content area, and toaster. |
-| `PluginLink` | Client-side link for runtime-registered plugin and cross-plugin routes. |
-| `PluginLinkProps` | — |
-| `PluginHeader` | Plugin page header with title, count badge, search, and action buttons. |
-| `PluginHeaderProps` | — |
-| `PluginSettingsRenderer` | Render a settings form from a PluginSettingsSchema definition. |
+| `ScoreOverlayProps` | — |
+| `SearchDegradedChipProps` | — |
+| `SearchPartialChipProps` | — |
+| `SearchPartialMeta` | — |
+| `SearchUnavailableProps` | — |
+| `AgentAvatar` | Present agent identity without importing a registry or host store. |
+| `AgentDot` | Present agent identity without importing a registry or host store. |
+| `AgentStatus` | Present agent identity without importing a registry or host store. |
+| `AgentSelect` | Present agent identity without importing a registry or host store. |
+| `ASSIGNED_AGENT_VALUE` | Stable assignment-value helpers shared by forms and workflow configuration. |
+| `TEAM_VALUE_PREFIX` | Stable assignment-value helpers shared by forms and workflow configuration. |
+| `isTeamValue` | Stable assignment-value helpers shared by forms and workflow configuration. |
+| `teamIdFromValue` | Stable assignment-value helpers shared by forms and workflow configuration. |
+| `AgentAvatarProps` | — |
+| `AgentDotProps` | — |
+| `AgentIdentity` | — |
+| `AgentPresenceStatus` | — |
+| `AgentSelectOption` | — |
+| `AgentSelectProps` | — |
+| `AgentStatusProps` | — |
+| `AgentTeamOption` | — |
+| `AssetPicker` | Controlled asset, model, and color choices without app data ownership. |
+| `ColorPicker` | Controlled asset, model, and color choices without app data ownership. |
+| `DEFAULT_MODEL_VALUE` | Controlled asset, model, and color choices without app data ownership. |
+| `ModelSelect` | Controlled asset, model, and color choices without app data ownership. |
+| `AssetPickerAsset` | — |
+| `AssetPickerCollection` | — |
+| `AssetPickerProps` | — |
+| `AssetPickerVariant` | — |
+| `AssetPickerView` | — |
+| `ColorPickerOption` | — |
+| `ColorPickerProps` | — |
+| `ModelSelectOption` | — |
+| `ModelSelectProps` | — |
+| `ColorInput` | Freeform hex/color choice: a kit swatch over the platform color dialog. |
+| `ColorInputProps` | — |
+| `AssetLibraryPicker` | The presentation AssetPicker composed with the assets plugin's library + upload wiring. |
+| `AssetLibraryAsset` | — |
+| `AssetLibraryPickerProps` | — |
+| `ChannelIcon` | Icon for a notification channel, resolved from the workflows channel registry. |
+| `__resetChannelIconCache` | Icon for a notification channel, resolved from the workflows channel registry. |
+| `ChannelIconChannel` | — |
+| `ChannelIconProps` | — |
+| `ChannelIconSize` | — |
+| `PluginSettingsRenderer` | Schema-driven settings form with consumer-owned persistence and feedback. |
+| `PluginSettingsFeedback` | — |
+| `PluginSettingsRendererProps` | — |
+| `BooleanSettingsField` | — |
+| `ListSettingsField` | — |
+| `NumberSettingsField` | — |
 | `PluginSettingsSchema` | — |
-| `SortableHead` | Sortable table column header with ascending/descending indicator. |
+| `SelectSettingsField` | — |
+| `SettingsField` | — |
+| `StringSettingsField` | — |
+| `InspectorPanelContentProps` | — |
+| `InspectorPanelFooterProps` | — |
+| `InspectorPanelHeaderProps` | — |
+| `InspectorPanelProps` | — |
+| `KanbanBoardProps` | — |
+| `KanbanCardSignalProps` | — |
+| `KanbanColumnBodyProps` | — |
+| `KanbanColumnHeaderProps` | — |
+| `KanbanColumnProps` | — |
+| `CalendarGridItem` | — |
+| `CalendarGridProps` | — |
+| `CalendarGridView` | — |
+| `ListRowActionsProps` | — |
+| `ListRowGroupProps` | — |
+| `ListRowLabelsProps` | — |
+| `ListRowProps` | — |
+| `ListRowsColumnsAlign` | — |
+| `ListRowsColumnsAt` | — |
+| `ListRowsProps` | — |
+| `ListRowsSize` | — |
+| `ListRowsVariant` | — |
+| `NavListItem` | — |
+| `NavListProps` | — |
+| `NavListSection` | — |
+| `PageAsideCollapsible` | — |
+| `PageAsideProps` | — |
+| `PageAsideWidth` | — |
+| `PageBodyGap` | — |
+| `PageBodyLayout` | — |
+| `PageBodyProps` | — |
+| `PageCanvasOrientation` | — |
+| `PageCanvasProps` | — |
+| `PageComposerProps` | — |
+| `PageControlsAs` | — |
+| `PageControlsProps` | — |
+| `PageDensity` | — |
+| `PageHeaderMeasure` | — |
+| `PageHeaderOverflowMenuProps` | — |
+| `PageHeaderProps` | — |
+| `PageProps` | — |
+| `PageScroll` | — |
+| `PageTimelineProps` | — |
+| `PageWidth` | — |
+| `PaginationProps` | — |
+| `WorkspacePageBodyProps` | — |
+| `WorkspacePageCompactHeaderProps` | — |
+| `WorkspacePageHeaderProps` | — |
+| `WorkspacePageMode` | — |
+| `WorkspacePageProps` | — |
+| `ConfirmDialogCancelVariant` | — |
+| `ConfirmDialogProps` | — |
+| `ConfirmDialogTone` | — |
+| `DangerZoneHeadingLevel` | — |
+| `DangerZoneProps` | — |
+| `DataTableAlign` | — |
+| `DataTableCollapse` | — |
+| `DataTableColumn` | — |
+| `DataTableNarrowRole` | — |
+| `DataTableProps` | — |
+| `DataTableSort` | — |
+| `FacetFilterProps` | — |
+| `FacetOption` | — |
+| `AgentFilterOption` | — |
+| `AgentFilterProps` | — |
+| `SaveBarProps` | — |
+| `SearchInputProps` | — |
+| `SegmentedControlOption` | — |
+| `SegmentedControlProps` | — |
+| `SortableHeadProps` | — |
 | `SortDir` | — |
-| `UnderlineTabs` | Tab list with animated underline indicator. |
-| `UnderlineTab` | — |
-| `TurnOutputView` | THE single renderer for normalized turn chunks (text/tool/status/error) — turn-output surfaces consume this, never hand-rolled format heuristics. |
-| `TurnToolChip` | THE single renderer for normalized turn chunks (text/tool/status/error) — turn-output surfaces consume this, never hand-rolled format heuristics. |
-| `foldTurnChunks` | THE single renderer for normalized turn chunks (text/tool/status/error) — turn-output surfaces consume this, never hand-rolled format heuristics. |
-| `TurnOutputViewProps` | — |
-| `TurnToolChipState` | — |
-| `TurnTextSegment` | — |
-| `FoldedTurnOutput` | — |
-| `foldConversation` | — |
+| `StatGroupProps` | — |
+| `StatTileProgress` | — |
+| `StatTileProgressTone` | — |
+| `StatTileProps` | — |
+| `StatTileVariant` | — |
+| `StatusBadgeProps` | — |
+| `StatusBadgeVariant` | — |
+| `StatusMarkerProps` | — |
+| `StatusTone` | — |
+| `TimelineEntryProps` | — |
+| `TimelineProps` | — |
+| `UnsavedChangesDialogProps` | — |
+
+## `@makinbakin/sdk/charts`
+
+Isolated data-visualization components and contracts. Source: `packages/sdk/src/charts/index.ts`.
+
+| Export | Description |
+| --- | --- |
+| `assignSeriesColors` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `BarChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `PieChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `ChartDataTable` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `ChartExplainer` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `CompositionBar` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `chartSeriesColor` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `chartToneColor` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `CHART_MAX_SERIES` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `CHART_OTHER_COLOR` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `CHART_SERIES_COLORS` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `CHART_TOKEN_COLORS` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `CHART_TONE_COLORS` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `LineChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `AreaChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `RankedBarChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `Sparkline` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `StackedColumnChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `BarChartProps` | — |
+| `PieChartDatum` | — |
+| `PieChartProps` | — |
+| `ChartDataTableProps` | — |
+| `ChartDataTableRenderContext` | — |
+| `ChartDatum` | — |
+| `ChartExplainerProps` | — |
+| `ChartSeries` | — |
+| `ChartTone` | — |
+| `CompositionBarProps` | — |
+| `CompositionBarSegment` | — |
+| `LineChartProps` | — |
+| `AreaChartProps` | — |
+| `RankedBarChartProps` | — |
+| `SparklineProps` | — |
+| `StackedColumnChartProps` | — |
+| `StackedColumnDatum` | — |
+
+## `@makinbakin/sdk/conversation`
+
+Isolated conversation UI and models. Source: `packages/sdk/src/conversation/index.ts`.
+
+| Export | Description |
+| --- | --- |
+| `foldConversation` | Fold persisted rows and live chunks into ordered render-ready turns. |
+| `ConversationChunk` | — |
 | `ConversationMessage` | — |
-| `ConversationTurn` | — |
+| `ConversationTextFormat` | — |
+| `ConversationToolActivity` | — |
 | `ConversationToolCall` | — |
-| `TurnItem` | — |
-| `TurnStatus` | — |
+| `ConversationTurn` | — |
 | `DisplayAttachment` | — |
 | `FoldOptions` | — |
-| `Conversation` | — |
-| `ConversationProps` | — |
-| `AgentTurn` | — |
-| `ThinkingIndicator` | — |
-| `CopyButton` | — |
-| `TurnTimestamp` | — |
-| `AgentTurnProps` | — |
-| `UserMessage` | — |
-| `UserMessageProps` | — |
-| `ActivityGroup` | — |
-| `ToolCallRow` | — |
-| `formatDuration` | — |
-| `humanizeActivity` | — |
-| `ActivityGroupProps` | — |
-| `ToolCallDrawer` | — |
-| `ToolCallDrawerProps` | — |
-| `Composer` | — |
-| `writeComposerDraft` | — |
-| `ComposerProps` | — |
-| `ComposerAttachments` | — |
-| `ComposerAttachmentItem` | — |
-| `ComposerHandle` | — |
-| `QueuedMessageList` | — |
-| `ConversationQueuedItem` | — |
-| `formatTokenCount` | — |
-| `formatUsageCost` | — |
-| `ConversationTurnUsage` | — |
-| `ContextMeter` | — |
-| `contextMeterHasContent` | — |
+| `TurnItem` | — |
+| `TurnStatus` | — |
+| `TurnOutputView` | Compact single-turn output for task and workflow embeds. |
+| `TurnToolChip` | Compact single-turn output for task and workflow embeds. |
+| `foldTurnChunks` | Compact single-turn output for task and workflow embeds. |
+| `FoldedTurnOutput` | — |
+| `TurnOutputViewProps` | — |
+| `TurnTextSegment` | — |
+| `TurnToolChipState` | — |
+| `ConversationPanel` | Bounded, resizable single-session composition for embedded reviews. |
+| `ToolCallDrawer` | Exact, resizable detail for one conversation tool call. |
+| `ConversationHeader` | The one header treatment for chat-like surfaces (avatar/title/actions/meta). |
+| `ContextMeter` | The compaction bar: runtime-truth context fullness for a session (#737). |
+| `contextMeterHasContent` | The compaction bar: runtime-truth context fullness for a session (#737). |
 | `ContextMeterStats` | — |
-| `ConversationPanel` | — |
+| `ConversationHeaderProps` | — |
 | `ConversationPanelProps` | — |
-| `useConversationThread` | — |
+| `ToolCallDrawerProps` | — |
+| `useConversationThread` | Durable bus-driven thread state for server-owned conversational turns. |
+| `ConversationQueuedItem` | — |
 | `ConversationThread` | — |
 | `ConversationThreadLoad` | — |
 | `ConversationThreadOptions` | — |
-| `attentionForDone` | — |
-| `badgeFor` | — |
-| `visibleIdFromLocation` | — |
-| `withUnreadPrefix` | — |
+| `attentionForDone` | Shared attention, badge, notification, and reply-state primitives. |
+| `badgeFor` | Shared attention, badge, notification, and reply-state primitives. |
+| `visibleIdFromLocation` | Shared attention, badge, notification, and reply-state primitives. |
+| `withUnreadPrefix` | Shared attention, badge, notification, and reply-state primitives. |
 | `AttentionActions` | — |
 | `ConversationAttentionContext` | — |
 | `ConversationDonePayload` | — |
@@ -270,37 +477,63 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `useConversationAttention` | — |
 | `ConversationAttentionConfig` | — |
 | `ConversationAttentionTotals` | — |
-| `ConversationEmptyState` | — |
+| `dayKey` | Stable compact, absolute, and calendar-day timestamp helpers. |
+| `formatAbsoluteTime` | Stable compact, absolute, and calendar-day timestamp helpers. |
+| `formatDayLabel` | Stable compact, absolute, and calendar-day timestamp helpers. |
+| `formatRelativeTime` | Stable compact, absolute, and calendar-day timestamp helpers. |
+| `ActivityGroup` | Collapsible exact tool-activity presentation and compact formatters. |
+| `formatDuration` | Collapsible exact tool-activity presentation and compact formatters. |
+| `humanizeActivity` | Collapsible exact tool-activity presentation and compact formatters. |
+| `ToolCallRow` | Collapsible exact tool-activity presentation and compact formatters. |
+| `ActivityGroupProps` | — |
+| `ToolCallRowProps` | — |
+| `AgentTurn` | Agent and user turn presentation with consumer-owned identity and rich text. |
+| `CopyButton` | Agent and user turn presentation with consumer-owned identity and rich text. |
+| `ThinkingIndicator` | Agent and user turn presentation with consumer-owned identity and rich text. |
+| `TurnTimestamp` | Agent and user turn presentation with consumer-owned identity and rich text. |
+| `UserMessage` | Agent and user turn presentation with consumer-owned identity and rich text. |
+| `AgentTurnProps` | — |
+| `ConversationAgent` | — |
+| `ConversationAttachmentRenderer` | — |
+| `ConversationAvatarRenderer` | — |
+| `ConversationTextRenderer` | — |
+| `ConversationTextTransform` | — |
+| `CopyButtonProps` | — |
+| `ThinkingIndicatorProps` | — |
+| `TurnTimestampProps` | — |
+| `UserMessageProps` | — |
+| `formatTokenCount` | — |
+| `formatUsageCost` | — |
+| `ConversationTurnUsage` | — |
+| `Conversation` | Document-first conversation timeline and honest zero-message state. |
+| `ConversationEmptyState` | Document-first conversation timeline and honest zero-message state. |
 | `ConversationEmptyStateProps` | — |
-| `formatRelativeTime` | — |
-| `formatAbsoluteTime` | — |
-| `ChannelIcon` | Icon component for a notification channel (Discord, Slack, email, etc.). |
-| `ChartDataTable` | Exact table/disclosure shared by visual chart summaries. |
-| `ChartDataTableProps` | — |
-| `ChartDatum` | — |
-| `ChartSeries` | — |
-| `LineChart` | Multi-series SVG line chart with keyboard-equivalent marks. |
-| `LineChartProps` | — |
-| `BarChart` | Grouped or stacked SVG bar chart with keyboard-equivalent marks. |
-| `BarChartProps` | — |
-| `StackedColumnChart` | Stacked column chart with legend toggle + per-column pointer/keyboard breakdown. |
-| `StackedColumnChartProps` | — |
-| `StackedColumnDatum` | — |
-| `Sparkline` | Tiny inline SVG trend line for embedding beside a stat. |
-| `SparklineProps` | — |
-| `ChartExplainer` | One-line "what am I looking at / when to worry" chart footer. |
-| `CHART_SERIES_COLORS` | CVD-validated series palette + deterministic entity→color assignment. |
-| `CHART_OTHER_COLOR` | CVD-validated series palette + deterministic entity→color assignment. |
-| `CHART_MAX_SERIES` | CVD-validated series palette + deterministic entity→color assignment. |
-| `assignSeriesColors` | CVD-validated series palette + deterministic entity→color assignment. |
+| `ConversationMode` | — |
+| `ConversationProps` | — |
+| `Composer` | Persistent, IME-safe composer with consumer-owned attachment mutations. |
+| `writeComposerDraft` | Persistent, IME-safe composer with consumer-owned attachment mutations. |
+| `ComposerAttachmentItem` | — |
+| `ComposerAttachments` | — |
+| `ComposerAttachmentStatus` | — |
+| `ComposerHandle` | — |
+| `ComposerProps` | — |
+| `QueuedMessageList` | Accepted follow-ups waiting behind an active turn. |
+| `QueuedMessageListProps` | — |
 
-## `@makinbakin/sdk/ui`
+## `@makinbakin/sdk/content`
 
-Source: `packages/sdk/src/ui/index.ts`. Re-exports of [shadcn/ui](https://ui.shadcn.com) primitives bundled with Bakin's design tokens. For usage, see the upstream component docs.
+Opt-in rich content rendering and editing. Source: `packages/sdk/src/content/index.ts`.
 
-```ts
-import { Button, Card, Dialog, Input } from '@makinbakin/sdk/ui'
-```
+| Export | Description |
+| --- | --- |
+| `MarkdownContent` | Render safe GFM, code, media, and visibly identified Bakin-managed sections. |
+| `MarkdownContentProps` | — |
+| `MarkdownInternalLinkProps` | — |
+| `MarkdownEditor` | Controlled edit or preview surface with semantic format and height options. |
+| `MarkdownEditorFormat` | — |
+| `MarkdownEditorHeight` | — |
+| `MarkdownEditorMode` | — |
+| `MarkdownEditorProps` | — |
 
 ## `@makinbakin/sdk/slots`
 
@@ -487,6 +720,29 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `PluginWithRoutes` | — |
 | `DefinePluginInput` | — |
 
+## `@makinbakin/sdk/navigation`
+
+Source: `packages/sdk/src/navigation/index.ts`.
+
+| Browser navigation | Description |
+| --- | --- |
+| `PluginLink` | Real-anchor SPA navigation for runtime-registered plugin routes. |
+| `PluginLinkProps` | Props for a runtime-route link with native anchor semantics. |
+| `toNavigationOptions` | Browser router hooks and plain-string URL conversion. |
+| `useParams` | Browser router hooks and plain-string URL conversion. |
+| `usePathname` | Browser router hooks and plain-string URL conversion. |
+| `useRouter` | Browser router hooks and plain-string URL conversion. |
+| `useSearchParams` | Browser router hooks and plain-string URL conversion. |
+| `Router` | Public browser-router contracts for string-based plugin paths. |
+| `RouterNavigationOptions` | Public browser-router contracts for string-based plugin paths. |
+| `StringNavigationOptions` | Public browser-router contracts for string-based plugin paths. |
+| `useQueryArrayState` | URL-backed string state with clean defaults and same-tick batching. |
+| `useQueryState` | URL-backed string state with clean defaults and same-tick batching. |
+| `useHistoryBack` | History-aware back navigation with a cold-deep-link fallback. |
+| `useUnsavedChangesGuard` | Complete browser-unload, in-app route, anchor, and explicit-exit protection. |
+| `UnsavedChangesGuardOptions` | Inputs and result contract for complete unsaved-change protection. |
+| `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
+
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 31, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Aug 6, 2026 · Bakin 0.0.0-dev</span>
 </aside>

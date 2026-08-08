@@ -14,8 +14,8 @@ export type { PageBodyGap, PageBodyLayout, PageBodyProps } from './page-body'
 export { PageControls } from './page-controls'
 export type { PageControlsAs, PageControlsProps } from './page-controls'
 
-export { PageAside } from './page-aside'
-export type { PageAsideProps } from './page-aside'
+export { PageAside, useCollapsedAside } from './page-aside'
+export type { PageAsideCollapsible, PageAsideProps, PageAsideWidth } from './page-aside'
 
 export { PageCanvas } from './page-canvas'
 export type { PageCanvasOrientation, PageCanvasProps } from './page-canvas'
