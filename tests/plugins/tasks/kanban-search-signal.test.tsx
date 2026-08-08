@@ -246,13 +246,17 @@ describe('KanbanBoard — search signals', () => {
     })
 
     await waitFor(() => {
-      expect(document.querySelector('[data-archetype="page"]')).toBeTruthy()
+      // The board rides the immersive workspace frame (the workflows frame).
+      expect(document.querySelector('[data-archetype="workspace"]')).toBeTruthy()
     })
+    expect(document.querySelector('[data-archetype="workspace"]')?.getAttribute('data-mode')).toBe('immersive')
     expect(screen.getByRole('heading', { level: 1, name: 'Tasks' })).toBeTruthy()
     expect(screen.getByRole('group', { name: 'Task search, view, and actions' })).toBeTruthy()
     const search = screen.getByRole('searchbox', { name: 'Task search' })
     const board = screen.getByRole('tab', { name: 'Board' })
-    const newTask = screen.getByRole('button', { name: 'New Task' })
+    // Two New Task buttons exist by design: the full header's and the
+    // sticky compact row's (visibility is viewport-driven, not DOM-driven).
+    const newTask = screen.getAllByRole('button', { name: 'New Task' })[0]!
     expect(search.className).toContain('h-[var(--bakin-layout-size-control)]')
     expect(board.className).toContain('h-[var(--bakin-layout-size-control)]')
     expect(newTask.className).toContain('h-[var(--bakin-layout-size-control)]')

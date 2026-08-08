@@ -74,15 +74,19 @@ describe('workspace page recipe', () => {
 
     const page = container.querySelector('[data-archetype="workspace"]')
     expect(page?.getAttribute('data-mode')).toBe('immersive')
+    // Immersive scroll-away applies on EVERY viewport — no desktop opt-out.
     expect(page?.className).toContain('overflow-y-auto')
-    expect(page?.className).toContain('@md/page-shell:overflow-hidden')
+    expect(page?.className).not.toContain('@md/page-shell:overflow-hidden')
 
     const compactHeader = container.querySelector(
       '[data-slot="workspace-page-compact-header"]',
     )
     expect(compactHeader?.className).toContain('sticky')
     expect(compactHeader?.className).toContain('top-0')
-    expect(compactHeader?.className).toContain('@md/page-shell:hidden')
+    // Desktop shows the row only once stuck; pre-stick it stays invisible
+    // (flow box preserved so the shell can scroll far enough to stick it).
+    expect(compactHeader?.className).toContain('@md/page-shell:invisible')
+    expect(compactHeader?.className).not.toContain('@md/page-shell:hidden')
     expect(
       getByText('Image generation', {
         selector: '[data-slot="workspace-page-compact-title"]',
@@ -115,6 +119,8 @@ describe('workspace page recipe', () => {
     expect(body?.className).toContain(
       'h-[calc(100%-var(--bakin-workspace-compact-header-height))]',
     )
-    expect(body?.className).toContain('@md/page-shell:h-auto')
+    // The compact-height body applies on every viewport now — the identity
+    // scrolls away on desktop too.
+    expect(body?.className).not.toContain('@md/page-shell:h-auto')
   })
 })

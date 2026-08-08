@@ -15,9 +15,10 @@ export type WorkspacePageProps = Omit<
 > & {
   children: React.ReactNode
   /**
-   * Immersive workspaces let the full mobile identity scroll away, retain a
-   * compact sticky context row, and give the remaining viewport to the canvas.
-   * Desktop geometry is identical in both modes.
+   * Immersive workspaces let the full identity scroll away on EVERY
+   * viewport, retain a compact sticky context row, and give the remaining
+   * viewport to the canvas. `contained` keeps the identity pinned with the
+   * body owning all scrolling.
    */
   mode?: WorkspacePageMode
 }
@@ -42,7 +43,7 @@ export function WorkspacePage({
         className={cn(
           'h-full [--bakin-workspace-compact-header-height:3.5rem] [&>[data-slot=page-shell-content]]:h-full',
           mode === 'immersive'
-            ? 'overflow-y-auto overscroll-y-contain @md/page-shell:overflow-hidden'
+            ? 'overflow-y-auto overscroll-y-contain'
             : 'overflow-hidden',
           className,
         )}
@@ -101,7 +102,7 @@ export interface WorkspacePageCompactHeaderProps
 }
 
 /**
- * Mobile-only persistent context for immersive canvases.
+ * Persistent sticky context for immersive canvases — every viewport.
  *
  * Keep this row intentionally small: navigation, one-line identity, one
  * primary action, and the shared overflow menu. Place it immediately after
@@ -117,12 +118,38 @@ export function WorkspacePageCompactHeader({
   title,
   ...props
 }: WorkspacePageCompactHeaderProps) {
+  // Desktop shows this row only once it is actually stuck (the full header
+  // has scrolled away) — pre-scroll it would duplicate the identity and
+  // actions. Mobile keeps it always visible: the immersive full header
+  // hides its context/trailing rows there, so this row is their only home.
+  // The sentinel marks the row's natural flow position; when it leaves the
+  // shell's clip box the row is stuck. Appearing/disappearing causes no
+  // layout shift — the row's flow slot is already off-screen when shown.
+  const [stuck, setStuck] = React.useState(false)
+  const sentinelRef = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      ([entry]) => setStuck(!entry.isIntersecting),
+      { threshold: 0 },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [])
   return (
+    <>
+    <div ref={sentinelRef} aria-hidden="true" className="h-px w-full shrink-0" />
     <div
       {...props}
       data-slot="workspace-page-compact-header"
+      data-stuck={stuck ? '' : undefined}
       className={cn(
-        'sticky top-0 z-30 flex h-[var(--bakin-workspace-compact-header-height)] min-w-0 shrink-0 items-center gap-bakin-2 border-b border-bakin-border-subtle bg-bakin-canvas-default px-bakin-4 @md/page-shell:hidden',
+        'sticky top-0 z-30 flex h-[var(--bakin-workspace-compact-header-height)] min-w-0 shrink-0 items-center gap-bakin-2 border-b border-bakin-border-subtle bg-bakin-canvas-default px-bakin-4 @md/page-shell:px-bakin-6',
+        // invisible (not hidden): the row's flow box must keep contributing
+        // its height to the scroll length or the shell can never scroll far
+        // enough to stick it — pre-stick it reads as header breathing room.
+        !stuck && '@md/page-shell:invisible',
         className,
       )}
     >
@@ -154,6 +181,7 @@ export function WorkspacePageCompactHeader({
         </PageHeaderOverflowMenu>
       ) : null}
     </div>
+    </>
   )
 }
 
@@ -176,7 +204,7 @@ export function WorkspacePageBody({
       className={cn(
         'flex min-h-0 min-w-0 flex-1 overflow-hidden pb-[env(safe-area-inset-bottom)] @md/page-shell:pb-0',
         mode === 'immersive' &&
-          'h-[calc(100%-var(--bakin-workspace-compact-header-height))] min-h-[calc(100%-var(--bakin-workspace-compact-header-height))] flex-none @md/page-shell:h-auto @md/page-shell:min-h-0 @md/page-shell:flex-1',
+          'h-[calc(100%-var(--bakin-workspace-compact-header-height))] min-h-[calc(100%-var(--bakin-workspace-compact-header-height))] flex-none',
         className,
       )}
     />

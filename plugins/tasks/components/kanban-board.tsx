@@ -21,7 +21,6 @@ import {
 } from '@makinbakin/sdk/navigation'
 import {
   KanbanBoard as KanbanBoardTrack,
-  Page,
   PageBody,
   PageControls,
   PageHeader,
@@ -29,6 +28,10 @@ import {
   SearchInput,
   SearchPartialChip,
   SegmentedControl,
+  WorkspacePage,
+  WorkspacePageBody,
+  WorkspacePageCompactHeader,
+  WorkspacePageHeader,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Button, SystemState } from '@makinbakin/sdk/ui'
 import { Kanban, Plus, Table2 } from 'lucide-react'
@@ -536,74 +539,87 @@ export function KanbanBoard() {
 
   return (
     <>
-      {/* Workspace board (Trello model): the page is viewport-bound, the
-          board fills it below the chrome, each lane scrolls its own tasks,
-          and the board's horizontal scrollbar stays pinned at the visible
-          bottom edge. */}
-      <Page scroll="contained" density="compact">
-        <PageHeader
-          title="Tasks"
-          description="Create, assign, and track work across your agents from the backlog through completion."
-          meta={boardLoaded ? <Badge size="xs" variant="outline">{resultCount} shown</Badge> : undefined}
-          controlsLabel="Task search, view, and actions"
-          controls={(
-            <div className="grid w-full min-w-0 gap-bakin-2 @3xl/page-header:flex @3xl/page-header:items-start">
-              <SearchInput
-                align="end"
-                label="Task search"
-                value={search}
-                onValueChange={setSearch}
-                placeholder="Search tasks…"
-                busy={searchStatus === 'loading'}
-                mobileFullWidth
-              />
-              <div className="flex min-w-0 flex-wrap items-center gap-bakin-2 @3xl/page-header:shrink-0 @3xl/page-header:flex-nowrap">
-                <SegmentedControl
-                  options={[
-                    { value: 'kanban', label: 'Board', icon: Kanban },
-                    { value: 'table', label: 'Log', icon: Table2 },
-                  ]}
-                  value={view as 'kanban' | 'table'}
-                  onValueChange={setView}
-                  ariaLabel="Task view"
-                  size="md"
-                  className="shrink-0"
+      {/* The workflows frame: full-bleed immersive workspace. Desktop keeps
+          the board viewport-bound edge to edge; on mobile the full identity
+          scrolls away and the sticky compact row stays. */}
+      <WorkspacePage mode="immersive">
+        <WorkspacePageHeader>
+          <PageHeader
+            title="Tasks"
+            description="Create, assign, and track work across your agents from the backlog through completion."
+            meta={boardLoaded ? <Badge size="xs" variant="outline">{resultCount} shown</Badge> : undefined}
+            controlsLabel="Task search, view, and actions"
+            controls={(
+              <div className="grid w-full min-w-0 gap-bakin-2 @3xl/page-header:flex @3xl/page-header:items-start">
+                <SearchInput
+                  align="end"
+                  label="Task search"
+                  value={search}
+                  onValueChange={setSearch}
+                  placeholder="Search tasks…"
+                  busy={searchStatus === 'loading'}
+                  mobileFullWidth
                 />
-                <Button className="min-w-28 flex-1 @3xl/page-header:flex-none" onClick={openNewTask}>
-                  <Plus />
-                  New Task
-                </Button>
+                <div className="flex min-w-0 flex-wrap items-center gap-bakin-2 @3xl/page-header:shrink-0 @3xl/page-header:flex-nowrap">
+                  <SegmentedControl
+                    options={[
+                      { value: 'kanban', label: 'Board', icon: Kanban },
+                      { value: 'table', label: 'Log', icon: Table2 },
+                    ]}
+                    value={view as 'kanban' | 'table'}
+                    onValueChange={setView}
+                    ariaLabel="Task view"
+                    size="md"
+                    className="shrink-0"
+                  />
+                  <Button className="min-w-28 flex-1 @3xl/page-header:flex-none" onClick={openNewTask}>
+                    <Plus />
+                    New Task
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
+          />
+        </WorkspacePageHeader>
+
+        <WorkspacePageCompactHeader
+          title="Tasks"
+          action={(
+            <Button size="sm" onClick={openNewTask}>
+              <Plus />
+              New Task
+            </Button>
           )}
         />
 
-        <div className="hidden md:block">
-          <TaskMetrics columns={columns} timestamp={timestamp} />
-        </div>
+        <WorkspacePageBody>
+          <PageBody
+            label="Task results"
+            busy={boardLoaded && boardRefreshing}
+            feedback={searchFeedback}
+            state={resultState}
+            gap="content"
+            className="pt-bakin-2"
+          >
+          <div className="hidden px-bakin-4 @md/page-shell:block @md/page-shell:px-bakin-6">
+            <TaskMetrics columns={columns} timestamp={timestamp} />
+          </div>
 
-        <PageControls label="Task filters" divider>
-          <TaskFilters
-            agentFilter={agentFilter}
-            onAgentChange={setAgentFilter}
-            statusFilter={statusFilter}
-            onStatusChange={setStatusFilter}
-            showStatusFilter={view === 'table'}
-            showScheduled={showScheduled}
-            onShowScheduledChange={(show) => setScheduledView(show ? 'show' : 'hide')}
-            statusCounts={aggregations?.status ? Object.fromEntries(aggregations.status.map(a => [a.value, a.count])) : undefined}
-            brandFilter={brandFilter}
-            onBrandChange={setBrandFilter}
-            brandOptions={brandOptions}
-          />
-        </PageControls>
-
-        <PageBody
-          label="Task results"
-          busy={boardLoaded && boardRefreshing}
-          feedback={searchFeedback}
-          state={resultState}
-        >
+          <PageControls label="Task filters" divider className="px-bakin-4 @md/page-shell:px-bakin-6">
+            <TaskFilters
+              agentFilter={agentFilter}
+              onAgentChange={setAgentFilter}
+              statusFilter={statusFilter}
+              onStatusChange={setStatusFilter}
+              showStatusFilter={view === 'table'}
+              showScheduled={showScheduled}
+              onShowScheduledChange={(show) => setScheduledView(show ? 'show' : 'hide')}
+              statusCounts={aggregations?.status ? Object.fromEntries(aggregations.status.map(a => [a.value, a.count])) : undefined}
+              brandFilter={brandFilter}
+              onBrandChange={setBrandFilter}
+              brandOptions={brandOptions}
+            />
+          </PageControls>
           {view === 'kanban' ? (
             <DragDropProvider
               sensors={sensors}
@@ -611,7 +627,12 @@ export function KanbanBoard() {
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
             >
-              <KanbanBoardTrack label="Task board" fill data-task-board-scroll>
+              <KanbanBoardTrack
+                label="Task board"
+                fill
+                data-task-board-scroll
+                className="px-bakin-4 @md/page-shell:px-bakin-6"
+              >
                 {COLUMN_ORDER.map((colId) => (
                   <KanbanColumn
                     key={colId}
@@ -635,7 +656,7 @@ export function KanbanBoard() {
               </KanbanBoardTrack>
             </DragDropProvider>
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto pb-bakin-2">
+            <div className="min-h-0 flex-1 overflow-y-auto px-bakin-4 pb-bakin-2 @md/page-shell:px-bakin-6">
               <TaskLogTable
                 currentTasks={allTasksFlat}
                 statusFilter={statusFilter}
@@ -648,8 +669,9 @@ export function KanbanBoard() {
               />
             </div>
           )}
-        </PageBody>
-      </Page>
+          </PageBody>
+        </WorkspacePageBody>
+      </WorkspacePage>
 
       <TaskDetailDrawer
         task={detailTask?.task ?? null}
