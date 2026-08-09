@@ -160,7 +160,11 @@ export function WorkspacePageCompactHeader({
       data-slot="workspace-page-compact-header"
       data-stuck={stuck ? '' : undefined}
       className={cn(
-        'sticky top-0 z-30 flex h-[var(--bakin-workspace-compact-header-height)] min-w-0 shrink-0 items-center gap-bakin-2 border-b border-bakin-border-subtle bg-bakin-canvas-default px-bakin-4 @md/page-shell:px-bakin-6',
+        'sticky top-0 z-30 flex h-[var(--bakin-workspace-compact-header-height)] min-w-0 shrink-0 items-center gap-bakin-2 bg-bakin-canvas-default px-bakin-4 @md/page-shell:px-bakin-6',
+        // The separator earns its keep only when stuck (content sliding
+        // beneath); in flow it would stack a second rule on the section
+        // divider below it.
+        stuck && 'border-b border-bakin-border-subtle',
         // invisible (not hidden): the row's flow box must keep contributing
         // its height to the scroll length or the shell can never scroll far
         // enough to stick it — pre-stick it reads as header breathing room.
