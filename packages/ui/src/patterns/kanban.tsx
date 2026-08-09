@@ -26,18 +26,25 @@ type KanbanBoardBaseProps = Omit<
    * is a natural-height horizontal region inside a page that scrolls.
    */
   fill?: boolean
+  /**
+   * Pin the board's horizontal scrollbar to the visible viewport bottom
+   * (see BoundedOverflow). Defaults on in fill mode; flow-mode boards whose
+   * bottom edge sits below the fold should set it explicitly.
+   */
+  stickyScrollbar?: boolean
 }
 
 export type KanbanBoardProps = KanbanBoardBaseProps & AccessibleName
 
 /** Labelled horizontal boundary for a set of low-chrome Kanban lanes. */
-export function KanbanBoard({ label, labelledBy, className, children, fill = false, ...props }: KanbanBoardProps) {
+export function KanbanBoard({ label, labelledBy, className, children, fill = false, stickyScrollbar = fill, ...props }: KanbanBoardProps) {
   const name = label !== undefined ? { label } : { labelledBy: labelledBy! }
   return (
     <BoundedOverflow
       {...name}
       {...props}
       data-fill={fill ? '' : undefined}
+      stickyScrollbar={stickyScrollbar}
       className={cn('w-full', fill && 'h-full min-h-0', className)}
     >
       <div

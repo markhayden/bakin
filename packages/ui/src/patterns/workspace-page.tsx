@@ -6,8 +6,10 @@ import { PageHeaderOverflowMenu } from './page-header'
 
 export type WorkspacePageMode = 'contained' | 'immersive'
 
-const WorkspacePageContext =
-  React.createContext<WorkspacePageMode>('contained')
+const WorkspacePageContext = React.createContext<{
+  mode: WorkspacePageMode
+  flow: boolean
+}>({ mode: 'contained', flow: false })
 
 export type WorkspacePageProps = Omit<
   PageShellProps,
@@ -21,6 +23,13 @@ export type WorkspacePageProps = Omit<
    * body owning all scrolling.
    */
   mode?: WorkspacePageMode
+  /**
+   * Document-flow workspace: the body grows with its content and the page
+   * owns the ONE vertical scroll (identity + content scroll as a single
+   * document; the compact row still sticks). Default keeps the
+   * viewport-bound canvas whose children own their scrolling.
+   */
+  flow?: boolean
 }
 
 /**
@@ -33,15 +42,21 @@ export type WorkspacePageProps = Omit<
 export function WorkspacePage({
   children,
   className,
+  flow = false,
   mode = 'contained',
   ...props
 }: WorkspacePageProps) {
+  const context = React.useMemo(() => ({ mode, flow }), [mode, flow])
   return (
-    <WorkspacePageContext.Provider value={mode}>
+    <WorkspacePageContext.Provider value={context}>
       <PageShell
         {...props}
         className={cn(
-          'h-full [--bakin-workspace-compact-header-height:3.5rem] [&>[data-slot=page-shell-content]]:h-full',
+          'h-full [--bakin-workspace-compact-header-height:3.5rem]',
+          // Flow lets the content box GROW past the shell so sticky children
+          // hold against the whole document; bounded canvases pin it to the
+          // shell height so percentage-height bodies resolve.
+          flow ? undefined : '[&>[data-slot=page-shell-content]]:h-full',
           mode === 'immersive'
             ? 'overflow-y-auto overscroll-y-contain'
             : 'overflow-hidden',
@@ -66,7 +81,7 @@ export function WorkspacePageHeader({
   className,
   ...props
 }: WorkspacePageHeaderProps) {
-  const mode = React.useContext(WorkspacePageContext)
+  const { mode } = React.useContext(WorkspacePageContext)
 
   return (
     <div
@@ -189,21 +204,26 @@ export type WorkspacePageBodyProps = React.ComponentPropsWithoutRef<'div'>
 
 /**
  * Flush remaining canvas. The mobile activity trigger lives in the host nav,
- * so this body only preserves the device safe area.
+ * so this body only preserves the device safe area. In a `flow` workspace
+ * the body grows with its content instead of bounding it.
  */
 export function WorkspacePageBody({
   className,
   ...props
 }: WorkspacePageBodyProps) {
-  const mode = React.useContext(WorkspacePageContext)
+  const { mode, flow } = React.useContext(WorkspacePageContext)
 
   return (
     <div
       {...props}
       data-slot="workspace-page-body"
+      data-flow={flow ? '' : undefined}
       className={cn(
-        'flex min-h-0 min-w-0 flex-1 overflow-hidden pb-[env(safe-area-inset-bottom)] @md/page-shell:pb-0',
-        mode === 'immersive' &&
+        'flex min-w-0 pb-[env(safe-area-inset-bottom)] @md/page-shell:pb-0',
+        flow
+          ? 'flex-none flex-col'
+          : 'min-h-0 flex-1 overflow-hidden',
+        !flow && mode === 'immersive' &&
           'h-[calc(100%-var(--bakin-workspace-compact-header-height))] min-h-[calc(100%-var(--bakin-workspace-compact-header-height))] flex-none',
         className,
       )}

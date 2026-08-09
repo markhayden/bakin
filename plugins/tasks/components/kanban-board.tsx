@@ -542,7 +542,7 @@ export function KanbanBoard() {
       {/* The workflows frame: full-bleed immersive workspace. Desktop keeps
           the board viewport-bound edge to edge; on mobile the full identity
           scrolls away and the sticky compact row stays. */}
-      <WorkspacePage mode="immersive">
+      <WorkspacePage mode="immersive" flow>
         <WorkspacePageHeader>
           <PageHeader
             title="Tasks"
@@ -629,7 +629,7 @@ export function KanbanBoard() {
             >
               <KanbanBoardTrack
                 label="Task board"
-                fill
+                stickyScrollbar
                 data-task-board-scroll
                 className="px-bakin-4 @md/page-shell:px-bakin-6"
               >
@@ -656,7 +656,7 @@ export function KanbanBoard() {
               </KanbanBoardTrack>
             </DragDropProvider>
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto px-bakin-4 pb-bakin-2 @md/page-shell:px-bakin-6">
+            <div className="min-w-0 px-bakin-4 pb-bakin-2 @md/page-shell:px-bakin-6">
               <TaskLogTable
                 currentTasks={allTasksFlat}
                 statusFilter={statusFilter}
