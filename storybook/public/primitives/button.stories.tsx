@@ -113,6 +113,18 @@ export const Sizes = {
           ))}
         </StoryCluster>
       </StorySection>
+      <StorySection
+        title="Inline text flow"
+        description="size=&quot;inline&quot; sits inside prose and table cells at the surrounding text size with no control box — the sanctioned form of the h-auto/p-0 override fights it replaces."
+      >
+        <p className="m-0 max-w-md text-bakin-typography-size-body text-bakin-text-primary">
+          A record title like{' '}
+          <Button size="inline" variant="link" data-testid="inline-button">
+            Prepare launch brief
+          </Button>{' '}
+          opens its detail without breaking the line's rhythm.
+        </p>
+      </StorySection>
     </StoryStage>
   ),
 } satisfies Story

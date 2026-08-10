@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 291,
-    "typeExports": 384
+    "valueExports": 292,
+    "typeExports": 385
   },
   "entrypoints": [
     {
@@ -415,6 +415,7 @@
         "KanbanCardSignal",
         "KanbanColumn",
         "KanbanColumnBody",
+        "KanbanColumnEmpty",
         "KanbanColumnHeader",
         "ListRow",
         "ListRowActions",
@@ -505,6 +506,7 @@
         "KanbanBoardProps",
         "KanbanCardSignalProps",
         "KanbanColumnBodyProps",
+        "KanbanColumnEmptyProps",
         "KanbanColumnHeaderProps",
         "KanbanColumnProps",
         "ListRowActionsProps",

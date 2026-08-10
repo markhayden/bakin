@@ -109,10 +109,17 @@ export type KanbanColumnBodyProps = ComponentPropsWithRef<'div'> & {
    * (the scroll region takes focus) — pair with `KanbanBoard fill`.
    */
   scroll?: boolean
+  /**
+   * The ONE drop-target treatment: pass the live droppable state and the
+   * lane paints the kit highlight while a drag hovers it. Leaving it
+   * undefined keeps the body chrome-free; `false` reserves the treatment's
+   * box so activation never shifts layout.
+   */
+  dropTarget?: boolean
 }
 
 /** Droppable task stack with enough stable height to remain a useful empty target. */
-export function KanbanColumnBody({ className, ref, scroll = false, ...props }: KanbanColumnBodyProps) {
+export function KanbanColumnBody({ className, dropTarget, ref, scroll = false, ...props }: KanbanColumnBodyProps) {
   return (
     <div
       ref={ref}
@@ -121,9 +128,29 @@ export function KanbanColumnBody({ className, ref, scroll = false, ...props }: K
       tabIndex={scroll ? 0 : undefined}
       data-slot="kanban-column-body"
       data-scroll={scroll ? '' : undefined}
+      data-drop-target={dropTarget || undefined}
       className={cn(
         'flex min-h-[calc(var(--bakin-layout-size-row)*3)] min-w-0 flex-1 flex-col gap-bakin-2',
         scroll && 'min-h-0 overflow-y-auto pb-bakin-2 pr-bakin-1 [scrollbar-gutter:stable]',
+        dropTarget !== undefined &&
+          'rounded-bakin-surface border border-transparent p-bakin-2 transition-[background-color,border-color,box-shadow] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard',
+        dropTarget && 'border-bakin-focus-ring bg-bakin-signal-accent/10 ring-2 ring-bakin-focus-ring',
+        className,
+      )}
+      {...props}
+    />
+  )
+}
+
+export type KanbanColumnEmptyProps = ComponentPropsWithoutRef<'div'>
+
+/** The calm empty-lane placeholder: a dashed slot that stays a legible drop area. */
+export function KanbanColumnEmpty({ className, ...props }: KanbanColumnEmptyProps) {
+  return (
+    <div
+      data-slot="kanban-column-empty"
+      className={cn(
+        'flex min-h-bakin-8 items-center justify-center rounded-bakin-surface border border-dashed border-bakin-border-subtle px-bakin-3 py-bakin-4 text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted',
         className,
       )}
       {...props}

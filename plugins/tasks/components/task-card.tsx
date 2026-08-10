@@ -193,12 +193,12 @@ export function TaskCardContent({
         </div>
 
         {onDelete ? (
-          <CardAction>
+          <CardAction reveal="hover">
             <Tooltip>
               <TooltipTrigger
                 render={<Button type="button" variant="ghost" size="icon-xs" />}
                 aria-label={`Delete ${task.title}`}
-                className="text-bakin-text-muted opacity-100 hover:text-bakin-signal-danger focus-visible:opacity-100 md:opacity-0 md:group-hover/card:opacity-100"
+                className="text-bakin-text-muted hover:text-bakin-signal-danger"
                 onClick={(event: React.MouseEvent) => {
                   event.stopPropagation()
                   onDelete({ id: task.id, title: task.title })
@@ -222,8 +222,8 @@ export function TaskCardContent({
               <Button
                 type="button"
                 variant="link"
-                size="xs"
-                className="!h-auto !justify-start whitespace-normal !p-0 text-left font-bakin-typography-weight-bold text-bakin-text-primary"
+                size="inline"
+                className="font-bakin-typography-weight-bold text-bakin-text-primary"
                 onClick={(event) => {
                   event.stopPropagation()
                   openTask()

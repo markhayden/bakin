@@ -129,7 +129,10 @@ export const InteractiveCard = {
             <CardHeader>
               <CardTitle>Spring launch</CardTitle>
               <CardDescription>Campaign workspace · 4 linked assets</CardDescription>
-              <CardAction>
+              {/* reveal="hover": invisible on pointer devices until the card
+                  is hovered or the action focused — the Card mirror of
+                  ListRowActions reveal. Touch always shows it. */}
+              <CardAction reveal="hover">
                 <Button variant="ghost" size="sm" onClick={openNested}>
                   Pin
                 </Button>
@@ -149,9 +152,14 @@ export const InteractiveCard = {
     await userEvent.click(overlay)
     await expect(openCard).toHaveBeenCalledTimes(1)
     // Nested controls keep their own behavior and never trigger the card action.
-    await userEvent.click(canvas.getByRole('button', { name: 'Pin' }))
+    const pin = canvas.getByRole('button', { name: 'Pin' })
+    await userEvent.click(pin)
     await expect(openNested).toHaveBeenCalledTimes(1)
     await expect(openCard).toHaveBeenCalledTimes(1)
+    // The hover-reveal action stays keyboard-discoverable: focus reveals it.
+    const action = pin.closest('[data-slot=card-action]')
+    await expect(action?.getAttribute('data-reveal')).toBe('hover')
+    await expect(action?.className).toContain('md:focus-within:opacity-100')
     // Keyboard path: the overlay is reachable and activates on Enter.
     overlay.focus()
     await userEvent.keyboard('{Enter}')
