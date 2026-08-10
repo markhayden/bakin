@@ -182,7 +182,13 @@ export function WorkspacePageCompactHeader({
       ) : null}
       <div
         data-slot="workspace-page-compact-title"
-        className="min-w-0 flex-1 truncate text-bakin-typography-size-body font-bakin-typography-weight-bold text-bakin-text-primary"
+        className={cn(
+          'min-w-0 flex-1 truncate text-bakin-typography-size-body font-bakin-typography-weight-bold text-bakin-text-primary',
+          // Pre-stick the full identity is still on screen — repeating the
+          // title here reads as a phantom second header. It appears only
+          // once it is the surviving identity.
+          !stuck && 'invisible',
+        )}
       >
         {title}
       </div>
