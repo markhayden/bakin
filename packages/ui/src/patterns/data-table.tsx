@@ -97,6 +97,15 @@ export interface DataTableProps<Row, F extends string = string> {
   /** Extra props merged onto each default `<tr>` (row click handlers, data attributes). */
   rowProps?: (row: Row) => WithDataAttributes<ComponentPropsWithoutRef<'tr'>>
   /**
+   * Kit-owned whole-row activation: pointer click plus Enter/Space with a
+   * real focus ring on the wide render, and the ListRow interactive overlay
+   * on the narrow render. Pair with `rowActivateLabel` for the accessible
+   * name; never hand-roll activation through `rowProps`.
+   */
+  onRowActivate?: (row: Row) => void
+  /** Accessible name per activatable row (required with `onRowActivate`). */
+  rowActivateLabel?: (row: Row) => string
+  /**
    * Full custom `<ListRow>`/`<li>` per row for the narrow render. Defaults to
    * a stacked primary/label-value mapping derived from `columns`.
    */
@@ -239,10 +248,28 @@ export function DataTable<Row, F extends string = string>({
   renderTableRow,
   rowProps,
   renderRow,
+  onRowActivate,
+  rowActivateLabel,
   tableProps,
   className,
 }: DataTableProps<Row, F>) {
   const { className: tableClassName, ...tableRest } = tableProps ?? {}
+
+  const activationProps = (row: Row): ComponentPropsWithoutRef<'tr'> =>
+    onRowActivate
+      ? {
+          tabIndex: 0,
+          'aria-label': rowActivateLabel?.(row),
+          onClick: () => onRowActivate(row),
+          onKeyDown: (event) => {
+            if (event.currentTarget !== event.target || (event.key !== 'Enter' && event.key !== ' ')) return
+            event.preventDefault()
+            onRowActivate(row)
+          },
+          className:
+            'cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
+        }
+      : {}
 
   return (
     <div data-slot="data-table" className={cn('@container/data-table min-w-0', className)}>
@@ -295,14 +322,18 @@ export function DataTable<Row, F extends string = string>({
             <tbody data-slot="table-body" className="[&_tr:last-child]:border-0">
               {rows.map((row) => {
                 if (renderTableRow) return renderTableRow(row)
+                const activate = activationProps(row)
                 const extra = rowProps?.(row)
                 return (
                   <tr
                     key={rowKey(row)}
                     data-slot="table-row"
+                    data-activatable={onRowActivate ? '' : undefined}
+                    {...activate}
                     {...extra}
                     className={cn(
                       'border-b border-bakin-border-subtle transition-colors hover:bg-bakin-surface-default',
+                      activate.className,
                       extra?.className,
                     )}
                   >
@@ -335,16 +366,19 @@ export function DataTable<Row, F extends string = string>({
       >
         {rows.map((row) => {
           if (renderRow) return renderRow(row)
+          const interactive = onRowActivate
+            ? { interactive: { label: rowActivateLabel?.(row) ?? label, onActivate: () => onRowActivate(row) } }
+            : {}
           if (columns.some((column) => column.narrow)) {
             return (
-              <ListRow key={rowKey(row)}>
+              <ListRow key={rowKey(row)} {...interactive}>
                 <ComposedNarrowRow columns={columns} row={row} />
               </ListRow>
             )
           }
           const [primary, ...rest] = columns
           return (
-            <ListRow key={rowKey(row)}>
+            <ListRow key={rowKey(row)} {...interactive}>
               <div className="grid min-w-0 gap-bakin-1">
                 {primary ? (
                   <span className="min-w-0 break-words font-bakin-typography-weight-semibold text-bakin-text-primary">

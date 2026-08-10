@@ -10,6 +10,7 @@ import {
   KanbanCardSignal,
   KanbanColumn,
   KanbanColumnBody,
+  KanbanColumnEmpty,
   KanbanColumnHeader,
   StatusBadge,
   type StatusTone,
@@ -121,8 +122,8 @@ function ExampleTask({ id, title, description, status, tone, owner, workflow, si
             <h3>
               <Button
                 variant="link"
-                size="xs"
-                className="!h-auto !justify-start whitespace-normal !p-0 text-left font-bakin-typography-weight-bold text-bakin-text-primary"
+                size="inline"
+                className="font-bakin-typography-weight-bold text-bakin-text-primary"
                 onClick={() => onOpen(title)}
               >
                 {title}
@@ -132,7 +133,7 @@ function ExampleTask({ id, title, description, status, tone, owner, workflow, si
           <CardDescription>{description}</CardDescription>
         </div>
         <CardAction>
-          <Button variant="ghost" size="icon-xs" aria-label={`Delete ${title}`} title={`Delete ${title}`}>
+          <Button variant="ghost" size="icon-xs" aria-label={`Delete ${title}`}>
             <CloseIcon />
           </Button>
         </CardAction>
@@ -401,6 +402,18 @@ function WorkspaceFillExample() {
             {laneCards(2, 'Active')}
           </KanbanColumnBody>
         </KanbanColumn>
+        <KanbanColumn label="Review" className="min-h-0">
+          <KanbanColumnHeader>
+            <h2 className="m-0 text-bakin-typography-size-body font-bakin-typography-weight-semibold">Review</h2>
+            <Badge size="xs" variant="outline">0</Badge>
+          </KanbanColumnHeader>
+          {/* dropTarget={false} reserves the kit drop-treatment box so a
+              drag hover never shifts layout; the empty slot stays a
+              legible target. */}
+          <KanbanColumnBody scroll dropTarget={false}>
+            <KanbanColumnEmpty>No tasks</KanbanColumnEmpty>
+          </KanbanColumnBody>
+        </KanbanColumn>
       </KanbanBoard>
     </div>
   )
@@ -426,5 +439,9 @@ export const WorkspaceFill = {
     await expect(lane.scrollTop).toBeGreaterThan(0)
     // The scrollable lane is keyboard-reachable.
     await expect(lane.getAttribute('tabindex')).toBe('0')
+    // The kit empty-lane slot renders inside a reserved drop-treatment box.
+    const empty = canvasElement.querySelector('[data-slot=kanban-column-empty]')
+    await expect(empty).not.toBeNull()
+    await expect(empty!.textContent).toBe('No tasks')
   },
 } satisfies Story

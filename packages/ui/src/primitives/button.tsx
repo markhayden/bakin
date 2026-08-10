@@ -24,6 +24,7 @@ export type ButtonSize =
   | 'sm'
   | 'md'
   | 'lg'
+  | 'inline'
   | 'icon-xs'
   | 'icon-sm'
   | 'icon-md'
@@ -82,6 +83,11 @@ const buttonStyles = cva(
         sm: 'h-bakin-8 gap-bakin-2 px-bakin-3',
         md: 'h-[var(--bakin-layout-size-control)] gap-bakin-2 px-bakin-4',
         lg: 'h-[calc(var(--bakin-layout-size-control)+var(--bakin-layout-space-1))] gap-bakin-2 px-bakin-4',
+        // Text-flow button: sits inside prose/cells at the surrounding text
+        // size with no control box — the sanctioned form of the
+        // `!h-auto !justify-start !p-0` fights it replaces.
+        inline:
+          'h-auto justify-start gap-bakin-1 whitespace-normal p-0 text-left text-[length:inherit] leading-[inherit] [&_svg:not([class*="size-"])]:size-[1em]',
         'icon-xs': 'size-bakin-6 min-h-bakin-6 min-w-bakin-6 [&_svg:not([class*="size-"])]:size-bakin-3',
         'icon-sm': 'size-bakin-8 min-h-bakin-8 min-w-bakin-8',
         'icon-md': 'size-[var(--bakin-layout-size-control)] min-h-[var(--bakin-layout-size-control)] min-w-[var(--bakin-layout-size-control)]',

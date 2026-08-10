@@ -326,6 +326,31 @@
       "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the brands hex-literal user-facing copy and color-input fallback keep as a formal exception.",
       "reviewBy": "2026-10-30",
       "removalCondition": "Remove if the color editor moves example/fallback values into data files or the scanner learns to distinguish content literals from styling literals."
+    },
+    {
+      "id": "tasks-dnd-card-activation-outside-interactive-contract",
+      "status": "approved-temporary",
+      "scope": [
+        "plugins/tasks/components/task-card.tsx"
+      ],
+      "closestPattern": {
+        "storyPath": "storybook/public/primitives/card.stories.tsx",
+        "storyExport": "CanonicalUsage"
+      },
+      "mismatch": "Task cards are dnd-kit drag sources whose whole surface is the drag handle; the Card interactive contract renders an absolutely-positioned overlay control for whole-surface activation, which would capture the pointerdown stream the drag sensor needs and force pointer-events juggling between overlay, handle, and nested controls.",
+      "compositionLimit": "interactive-surface has no drag-aware mode: the overlay and a drag sensor contend for the same pointer gestures, and dnd-kit's click-vs-drag arbitration must own the raw element to work. A drag-aware overlay variant would be real kit engineering with exactly one consumer today.",
+      "alternative": "The card keeps a raw onClick for open plus an inline-size link button on the title (kit Button size=\"inline\"), with stopPropagation guards on nested controls; the delete action rides CardAction reveal=\"hover\". Everything else on the card is kit (Card family, KanbanCardSignal, StatusBadge, Tooltip).",
+      "safeguards": {
+        "accessibility": "The title is a real button (focusable, Enter/Space) with the card title as its accessible name; the delete action keeps its aria-label and reveals on focus; drag has the library keyboard sensor as its non-pointer path.",
+        "responsiveness": "No layout impact; the exception is behavioral (event wiring), not visual.",
+        "routing": "Signal links use PluginLink; no hard navigation.",
+        "isolation": "Confined to task-card.tsx; no other surface copies the pattern without its own adjudication."
+      },
+      "approvedBy": "Mark Hayden",
+      "approvedOn": "2026-08-09",
+      "approvalEvidence": "Tasks audit adjudication item 7: user replied 'agreed' to recording the dnd-card exception rather than extending the interactive-surface contract for a single consumer.",
+      "reviewBy": "2026-11-09",
+      "removalCondition": "Remove if a second dnd-card surface appears and the interactive-surface contract grows a drag-aware mode both consumers adopt."
     }
   ]
 }

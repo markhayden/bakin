@@ -245,6 +245,22 @@ mock.module('../../plugins/tasks/hooks/use-gate-status', () => ({
   useGateStatus: () => ({}),
 }))
 
+// The board's 15s polling hooks must be static in tests: on a slow CI
+// worker the drag tests push this file past an interval tick, whose
+// .then(setState) lands after a test ends and trips the act gate (the
+// recurring KanbanBoard-drag flake signature).
+mock.module('../../plugins/tasks/hooks/use-budget-status', () => ({
+  useBudgetStatus: () => null,
+  budgetHoldReason: () => null,
+}))
+mock.module('../../plugins/tasks/hooks/use-brand-status', () => ({
+  useBrandStatus: () => null,
+  brandHoldReason: () => null,
+}))
+mock.module('../../plugins/tasks/hooks/use-live-activity', () => ({
+  useLiveActivity: () => ({}),
+}))
+
 function makeTask(id: string, title: string, overrides?: Partial<Task>): Task {
   return { id, title, checked: false, ...overrides }
 }

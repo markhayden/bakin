@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useMemo, useState } from 'react'
-import { expect, waitFor, within } from 'storybook/test'
+import { expect, fn, userEvent, waitFor, within } from 'storybook/test'
 
 import {
   DataTable,
@@ -82,6 +82,46 @@ export const CanonicalUsage = {
     await expect(canvas.getAllByRole('row')).toHaveLength(3)
   },
 } satisfies StoryObj<DataTableCanonicalArgs>
+
+const activateRow = fn()
+
+export const ActivatableRows = {
+  parameters: {
+    layout: 'padded',
+    docs: {
+      description: {
+        story: 'The kit-owned whole-row activation contract: `onRowActivate` + `rowActivateLabel` give every default row pointer click, Enter/Space, a focus ring, and an accessible name on the wide render — and the ListRow interactive overlay on the narrow render. Never hand-roll activation through `rowProps`.',
+      },
+    },
+  },
+  render: () => (
+    <DataTable
+      label="Activatable runs"
+      columns={[
+        { key: 'task', header: 'Task' },
+        { key: 'status', header: 'Status' },
+      ]}
+      rows={[
+        { id: 'run-1', task: 'Publish launch announcement', status: 'Done' },
+        { id: 'run-2', task: 'Refresh curated catalog', status: 'Running' },
+      ]}
+      rowKey={(row) => row.id}
+      onRowActivate={(row) => activateRow(row.id)}
+      rowActivateLabel={(row) => `Open ${row.task}`}
+    />
+  ),
+  play: async ({ canvas }) => {
+    activateRow.mockClear()
+    const row = canvas.getAllByRole('row', { name: 'Open Publish launch announcement' })[0]!
+    await expect(row.getAttribute('tabindex')).toBe('0')
+    await userEvent.click(row)
+    await expect(activateRow).toHaveBeenCalledWith('run-1')
+    // Keyboard path: rows activate on Enter from their own focus.
+    row.focus()
+    await userEvent.keyboard('{Enter}')
+    await expect(activateRow).toHaveBeenCalledTimes(2)
+  },
+} satisfies StoryObj
 
 interface RunRow {
   id: string

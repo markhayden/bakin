@@ -157,11 +157,30 @@ export function CardDescription({ className, ...props }: ComponentProps<'div'>) 
   )
 }
 
-export function CardAction({ className, ...props }: ComponentProps<'div'>) {
+export type CardActionReveal = 'always' | 'hover'
+
+export function CardAction({
+  className,
+  reveal = 'always',
+  ...props
+}: ComponentProps<'div'> & {
+  /**
+   * `hover` keeps the action invisible on pointer-hover devices until the
+   * card is hovered or the action is focused — the Card mirror of
+   * ListRowActions reveal. Touch/mobile always shows it.
+   */
+  reveal?: CardActionReveal
+}) {
   return (
     <div
       data-slot="card-action"
-      className={cn('col-start-2 row-span-2 row-start-1 self-start justify-self-end', className)}
+      data-reveal={reveal}
+      className={cn(
+        'col-start-2 row-span-2 row-start-1 self-start justify-self-end',
+        reveal === 'hover' &&
+          'md:opacity-0 md:transition-opacity md:focus-within:opacity-100 md:group-hover/card:opacity-100',
+        className,
+      )}
       {...props}
     />
   )

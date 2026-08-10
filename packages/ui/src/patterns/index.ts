@@ -31,12 +31,14 @@ export {
   KanbanCardSignal,
   KanbanColumn,
   KanbanColumnBody,
+  KanbanColumnEmpty,
   KanbanColumnHeader,
 } from './kanban'
 export type {
   KanbanBoardProps,
   KanbanCardSignalProps,
   KanbanColumnBodyProps,
+  KanbanColumnEmptyProps,
   KanbanColumnHeaderProps,
   KanbanColumnProps,
 } from './kanban'

@@ -5,6 +5,7 @@ import { useDroppable } from '@dnd-kit/react'
 import {
   KanbanColumn as KanbanLane,
   KanbanColumnBody as KanbanLaneBody,
+  KanbanColumnEmpty as KanbanLaneEmpty,
   KanbanColumnHeader as KanbanLaneHeader,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Button } from '@makinbakin/sdk/ui'
@@ -64,12 +65,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
               </h2>
               <Badge size="xs" variant="outline" aria-label={countLabel}>{count}</Badge>
             </KanbanLaneHeader>
-            <KanbanLaneBody
-              data-drop-target={isArchiveTarget || undefined}
-              className={`rounded-bakin-surface border border-transparent p-bakin-2 transition-[background-color,border-color,box-shadow] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard ${
-                isArchiveTarget ? 'border-bakin-focus-ring bg-bakin-signal-accent/10 ring-2 ring-bakin-focus-ring' : ''
-              }`}
-            >
+            <KanbanLaneBody dropTarget={isArchiveTarget}>
               <Button
                 type="button"
                 variant={isArchiveTarget ? 'accent' : 'outline'}
@@ -116,9 +112,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
 
           <KanbanLaneBody>
             {ready.length === 0 ? (
-              <div className="flex min-h-bakin-8 items-center justify-center rounded-bakin-surface border border-dashed border-bakin-border-subtle px-bakin-3 py-bakin-4 text-bakin-typography-size-meta text-bakin-text-muted">
-                No tasks
-              </div>
+              <KanbanLaneEmpty>No tasks</KanbanLaneEmpty>
             ) : ready.map((task) => (
               <div key={task.id}>
                 <TaskCard
