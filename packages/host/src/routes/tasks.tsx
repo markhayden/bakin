@@ -11,6 +11,9 @@ import { Suspense } from 'react'
 import { Route as RootRoute } from './__root'
 
 function TasksPage() {
+  // Height-bound route wrapper: the tasks page is an immersive
+  // WorkspacePage whose shell owns the page scroll — the shell's h-full
+  // needs this definite-height chain from the route.
   return (
     <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
       <Suspense>

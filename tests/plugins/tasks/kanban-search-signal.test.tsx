@@ -246,13 +246,18 @@ describe('KanbanBoard — search signals', () => {
     })
 
     await waitFor(() => {
-      expect(document.querySelector('[data-archetype="page"]')).toBeTruthy()
+      // The board rides the immersive workspace frame (the workflows frame).
+      expect(document.querySelector('[data-archetype="workspace"]')).toBeTruthy()
     })
+    expect(document.querySelector('[data-archetype="workspace"]')?.getAttribute('data-mode')).toBe('immersive')
     expect(screen.getByRole('heading', { level: 1, name: 'Tasks' })).toBeTruthy()
     expect(screen.getByRole('group', { name: 'Task search, view, and actions' })).toBeTruthy()
-    const search = screen.getByRole('searchbox', { name: 'Task search' })
-    const board = screen.getByRole('tab', { name: 'Board' })
-    const newTask = screen.getByRole('button', { name: 'New Task' })
+    // Controls are duplicated by design — the desktop header copy and the
+    // mobile in-body copy (visibility is viewport-driven, not DOM-driven);
+    // same for the full-header/compact-row New Task pair.
+    const search = screen.getAllByRole('searchbox', { name: 'Task search' })[0]!
+    const board = screen.getAllByRole('tab', { name: 'Board' })[0]!
+    const newTask = screen.getAllByRole('button', { name: 'New Task' })[0]!
     expect(search.className).toContain('h-[var(--bakin-layout-size-control)]')
     expect(board.className).toContain('h-[var(--bakin-layout-size-control)]')
     expect(newTask.className).toContain('h-[var(--bakin-layout-size-control)]')
@@ -347,7 +352,7 @@ describe('KanbanBoard — search signals', () => {
     // In-flight search (debounce + request) stays inside the search field so
     // the result region does not jump when a request begins.
     await waitFor(() => {
-      expect(screen.getByRole('searchbox', { name: 'Task search' }).getAttribute('aria-busy')).toBe('true')
+      expect(screen.getAllByRole('searchbox', { name: 'Task search' })[0]!.getAttribute('aria-busy')).toBe('true')
     })
     expect(screen.queryAllByTestId('tasks-search-loading')).toHaveLength(0)
 
@@ -355,7 +360,7 @@ describe('KanbanBoard — search signals', () => {
     await waitFor(() => {
       expect(screen.getByTestId('tasks-search-degraded')).toBeDefined()
     }, { timeout: 3000 })
-    expect(screen.getByRole('searchbox', { name: 'Task search' }).getAttribute('aria-busy')).toBeNull()
+    expect(screen.getAllByRole('searchbox', { name: 'Task search' })[0]!.getAttribute('aria-busy')).toBeNull()
 
     // …while basic text matching keeps the board usable (the fix is the
     // SIGNAL — the fallback stays).

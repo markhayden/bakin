@@ -426,20 +426,21 @@ describe('KanbanBoard drag and drop', () => {
     expect(capturedPointerSensorOptions.activatorElements({ element, handle })).toEqual([element, handle])
   })
 
-  it('preserves the stable accessible scroll, track, and keyed-column shell used by browser DnD', async () => {
+  it('rides the kit KanbanBoard shell: x-only labeled scroll region + kit track', async () => {
     await renderBoard({ todo: [makeTask('task-1', 'Stable task')] })
 
+    // The kit BoundedOverflow region: labeled, keyboard-focusable, and
+    // horizontal-only — the page owns vertical scroll (natural document flow).
     const board = screen.getByRole('region', { name: 'Task board' })
     expect(board.getAttribute('tabindex')).toBe('0')
+    expect(board.getAttribute('data-slot')).toBe('bounded-overflow')
     expect(board.hasAttribute('data-task-board-scroll')).toBe(true)
+    expect(board.className).toContain('overflow-x-auto')
+    expect(board.className).toContain('overflow-y-hidden')
 
-    const track = board.firstElementChild
-    expect(track?.hasAttribute('data-task-board-track')).toBe(true)
-    expect(track?.className).toContain('inline-flex')
+    const track = board.querySelector('[data-slot=kanban-board-track]')
+    expect(track).not.toBeNull()
     expect(Array.from(track?.children ?? [])).toHaveLength(COLUMN_IDS.length)
-    expect(Array.from(track?.children ?? []).every((element) => (
-      element.hasAttribute('data-task-board-column')
-    ))).toBe(true)
   })
 
   it('does not maintain a second drop-target model alongside DnD Kit collision state', async () => {

@@ -144,7 +144,7 @@ describe('TaskCardContent team assignment (#189)', () => {
 })
 
 describe('TaskCardContent sub-task indicator', () => {
-  it('shows the child task short id and step suffix with the full id as tooltip', () => {
+  it('shows the child task short id and step suffix; no raw title attr (kit tooltip discipline)', () => {
     render(
       <TaskCardContent
         task={makeTask()}
@@ -154,7 +154,7 @@ describe('TaskCardContent sub-task indicator', () => {
     )
 
     const signal = screen.getByText('Sub-task in progress').closest('[data-slot="kanban-card-signal"]')!
-    expect(signal.getAttribute('title')).toBe('305a1dd6--generate-image')
+    expect(signal.getAttribute('title')).toBeNull()
     expect(screen.getByText('305A1D · generate-image')).toBeDefined()
   })
 

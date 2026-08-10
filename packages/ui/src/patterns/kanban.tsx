@@ -18,16 +18,42 @@ type KanbanBoardBaseProps = Omit<
   'aria-label' | 'aria-labelledby' | 'children' | 'role' | 'tabIndex'
 > & {
   children: ReactNode
+  /**
+   * Workspace mode: the board fills its height-bound parent and lanes
+   * stretch to it, so each lane owns its own vertical scroll
+   * (`KanbanColumnBody scroll`) while the board scrolls horizontally with
+   * its scrollbar pinned to the visible bottom edge. Without it the board
+   * is a natural-height horizontal region inside a page that scrolls.
+   */
+  fill?: boolean
+  /**
+   * Pin the board's horizontal scrollbar to the visible viewport bottom
+   * (see BoundedOverflow). Defaults on in fill mode; flow-mode boards whose
+   * bottom edge sits below the fold should set it explicitly.
+   */
+  stickyScrollbar?: boolean
 }
 
 export type KanbanBoardProps = KanbanBoardBaseProps & AccessibleName
 
 /** Labelled horizontal boundary for a set of low-chrome Kanban lanes. */
-export function KanbanBoard({ label, labelledBy, className, children, ...props }: KanbanBoardProps) {
+export function KanbanBoard({ label, labelledBy, className, children, fill = false, stickyScrollbar = fill, ...props }: KanbanBoardProps) {
   const name = label !== undefined ? { label } : { labelledBy: labelledBy! }
   return (
-    <BoundedOverflow {...name} {...props} className={cn('w-full', className)}>
-      <div data-slot="kanban-board-track" className="flex min-w-max items-start gap-bakin-4 pb-bakin-2">
+    <BoundedOverflow
+      {...name}
+      {...props}
+      data-fill={fill ? '' : undefined}
+      stickyScrollbar={stickyScrollbar}
+      className={cn('w-full', fill && 'h-full min-h-0', className)}
+    >
+      <div
+        data-slot="kanban-board-track"
+        className={cn(
+          'flex min-w-max items-start gap-bakin-4 pb-bakin-2',
+          fill && 'h-full min-h-0 items-stretch pb-0',
+        )}
+      >
         {children}
       </div>
     </BoundedOverflow>
@@ -76,16 +102,28 @@ export function KanbanColumnHeader({ className, ...props }: KanbanColumnHeaderPr
   )
 }
 
-export type KanbanColumnBodyProps = ComponentPropsWithRef<'div'>
+export type KanbanColumnBodyProps = ComponentPropsWithRef<'div'> & {
+  /**
+   * Lane-owned vertical scrolling for fill-mode boards: the lane header
+   * stays pinned while this body scrolls its tasks. Keyboard-reachable
+   * (the scroll region takes focus) — pair with `KanbanBoard fill`.
+   */
+  scroll?: boolean
+}
 
 /** Droppable task stack with enough stable height to remain a useful empty target. */
-export function KanbanColumnBody({ className, ref, ...props }: KanbanColumnBodyProps) {
+export function KanbanColumnBody({ className, ref, scroll = false, ...props }: KanbanColumnBodyProps) {
   return (
     <div
       ref={ref}
+      // A scrollable lane must be keyboard-reachable; the owning lane
+      // section already names the region.
+      tabIndex={scroll ? 0 : undefined}
       data-slot="kanban-column-body"
+      data-scroll={scroll ? '' : undefined}
       className={cn(
         'flex min-h-[calc(var(--bakin-layout-size-row)*3)] min-w-0 flex-1 flex-col gap-bakin-2',
+        scroll && 'min-h-0 overflow-y-auto pb-bakin-2 pr-bakin-1 [scrollbar-gutter:stable]',
         className,
       )}
       {...props}
