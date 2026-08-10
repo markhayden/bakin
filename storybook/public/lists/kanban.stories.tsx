@@ -411,6 +411,13 @@ export const WorkspaceFill = {
   play: async ({ canvas, canvasElement }) => {
     const board = canvas.getByRole('region', { name: 'Workspace board' })
     await expect(board.hasAttribute('data-fill')).toBe(true)
+    // Fill mode pins the always-reachable horizontal scrollbar: the kit
+    // track + thumb render as the region's synced proxy, and the region's
+    // own native bar is suppressed while the proxy serves.
+    const proxy = document.querySelector('[data-slot=bounded-overflow-scrollbar]')
+    await expect(proxy).not.toBeNull()
+    await expect(proxy!.querySelector('[data-slot=bounded-overflow-scrollbar-thumb]')).not.toBeNull()
+    await expect(board.className).toContain('[scrollbar-width:none]')
     const lane = canvasElement.querySelector('[data-testid=fill-scroll-lane]') as HTMLElement
     await expect(lane.getAttribute('data-scroll')).toBe('')
     // The tall lane owns its vertical overflow — scrolling it moves ONLY it.

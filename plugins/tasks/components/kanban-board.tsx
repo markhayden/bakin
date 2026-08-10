@@ -593,15 +593,37 @@ export function KanbanBoard() {
         />
 
         <WorkspacePageBody>
-          <PageBody
-            label="Task results"
-            busy={boardLoaded && boardRefreshing}
-            feedback={searchFeedback}
-            state={resultState}
-            gap="content"
-            className="pt-bakin-2"
-          >
-          <div className="hidden px-bakin-4 @md/page-shell:block @md/page-shell:px-bakin-6">
+          {/* Mobile controls: the immersive full header hides its controls
+              row below @md, so search and the Board/Log toggle need this
+              in-body home on phones (the desktop header copy is the same
+              state — visibility is viewport-scoped, never both shown). */}
+          <div className="flex min-w-0 flex-col gap-bakin-2 px-bakin-4 pt-bakin-2 @md/page-shell:hidden">
+            <SearchInput
+              align="start"
+              label="Task search"
+              value={search}
+              onValueChange={setSearch}
+              placeholder="Search tasks…"
+              busy={searchStatus === 'loading'}
+              mobileFullWidth
+            />
+            <SegmentedControl
+              options={[
+                { value: 'kanban', label: 'Board', icon: Kanban },
+                { value: 'table', label: 'Log', icon: Table2 },
+              ]}
+              value={view as 'kanban' | 'table'}
+              onValueChange={setView}
+              ariaLabel="Task view"
+              size="md"
+              className="self-start"
+            />
+          </div>
+
+          {/* Metrics + filters live OUTSIDE PageBody: its `state` prop
+              replaces children, and a no-results state must never unmount
+              the filters that caused it. */}
+          <div className="hidden px-bakin-4 pt-bakin-2 @md/page-shell:block @md/page-shell:px-bakin-6">
             <TaskMetrics columns={columns} timestamp={timestamp} />
           </div>
 
@@ -620,6 +642,15 @@ export function KanbanBoard() {
               brandOptions={brandOptions}
             />
           </PageControls>
+
+          <PageBody
+            label="Task results"
+            busy={boardLoaded && boardRefreshing}
+            feedback={searchFeedback}
+            state={resultState}
+            gap="content"
+            className="pt-bakin-2"
+          >
           {view === 'kanban' ? (
             <DragDropProvider
               sensors={sensors}
