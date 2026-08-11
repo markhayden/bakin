@@ -81,6 +81,11 @@ export const CanonicalUsage = {
     const option = await page.findByRole('option', { name: 'Pi' })
     await userEvent.click(option)
     await waitFor(() => expect(trigger).toHaveTextContent('Pi'))
+    // The popup exits with a transition; the post-play axe scan must not
+    // race its focus guards (aria-hidden + tabindex) — wait for unmount.
+    await waitFor(() => {
+      expect(document.querySelector('[data-base-ui-focus-guard]')).toBeNull()
+    })
   },
 } satisfies StoryObj<SelectCanonicalArgs>
 
