@@ -133,6 +133,7 @@ export function WorkspacePageCompactHeader({
   title,
   ...props
 }: WorkspacePageCompactHeaderProps) {
+  const { flow } = React.useContext(WorkspacePageContext)
   // Desktop shows this row only once it is actually stuck (the full header
   // has scrolled away) — pre-scroll it would duplicate the identity and
   // actions. Mobile keeps it always visible: the immersive full header
@@ -165,10 +166,15 @@ export function WorkspacePageCompactHeader({
         // beneath); in flow it would stack a second rule on the section
         // divider below it.
         stuck && 'border-b border-bakin-border-subtle',
-        // invisible (not hidden): the row's flow box must keep contributing
-        // its height to the scroll length or the shell can never scroll far
-        // enough to stick it — pre-stick it reads as header breathing room.
-        !stuck && '@md/page-shell:invisible',
+        // Pre-stick desktop treatment depends on the workspace's scroll
+        // model. Viewport-fit canvases (non-flow): `invisible` — the row's
+        // flow box must keep contributing its height to the scroll length
+        // or the shell can never scroll far enough to stick it. Flow
+        // workspaces: `hidden` — scroll length is content-driven, so the
+        // reserved box is pure dead band between header and body (the
+        // tasks stats gap); the row appears at its sticky position with
+        // no layout shift because its flow slot is already off-screen.
+        !stuck && (flow ? '@md/page-shell:hidden' : '@md/page-shell:invisible'),
         className,
       )}
     >
