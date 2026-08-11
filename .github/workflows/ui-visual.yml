@@ -9,10 +9,14 @@ on:
         type: string
         default: ''
 
+# The suite is fanned out across parallel jobs (verify / stories / visual /
+# one job per browser engine) so wall clock is the SLOWEST lane, not the sum.
+# The `visual` job at the bottom is a gate that aggregates them under the
+# historical required-check name — keep its id/name stable for branch
+# protection.
 jobs:
-  # Keep this job id/name stable for existing required-check configuration.
-  visual:
-    name: Canonical Playwright visuals
+  verify:
+    name: Contract verifies + catalog
     runs-on: ubuntu-24.04
     container:
       image: mcr.microsoft.com/playwright:v1.60.0-noble
@@ -22,20 +26,14 @@ jobs:
     env:
       CI: true
       BAKIN_UI_CANONICAL_IMAGE: mcr.microsoft.com/playwright:v1.60.0-noble
-      # Firefox refuses to launch when $HOME (/github/home) isn't owned by
-      # the current user inside the container.
       HOME: /root
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
-
-      # The playwright container image ships without unzip, which setup-bun
-      # needs to extract the bun archive.
       - name: Install unzip for setup-bun
         run: apt-get update && apt-get install -y unzip
-
       # The storybook build compiles the stylesheet, whose @source globs scan
       # the SIBLING bakin-bits-official checkout — pin it beside the repo so
       # rendered classes match the committed baselines.
@@ -45,53 +43,197 @@ jobs:
           git clone --filter=blob:none --no-checkout https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/bakin-bits-official"
           git -C "${{ runner.workspace }}/bakin-bits-official" fetch --depth 1 origin "$BITS_REF"
           git -C "${{ runner.workspace }}/bakin-bits-official" checkout --detach FETCH_HEAD
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
-
       - name: Verify UI design-system governance
         run: bun run ui:governance:check
-
       - name: Verify canonical image
         run: node scripts/ui/canonical-playwright.mjs --check-render
-
       - name: Verify design tokens
         run: bun run ui:tokens:check
-
       - name: Verify focused SDK public API freeze
         run: bun run ui:public-api:check
-
       - name: Verify deterministic public catalog
         run: bun run ui:build:public:verify
-
-      - name: Run story accessibility and interactions
-        run: bun run ui:test:stories
-
-      - name: Run visual baselines
-        run: bun run ui:test:visual
-
-      - name: Run cross-browser behavior checks
-        run: bun run ui:test:browsers
-
       - name: Verify plugin UI conformance runner
         run: bun run ui:test:conformance
-
-      - name: Upload UI failure artifacts
+      - name: Upload conformance failure artifacts
         if: failure()
         uses: actions/upload-artifact@v5
         with:
-          name: ui-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ui-conformance-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: test-results/plugin-ui-conformance
+
+  stories:
+    name: Story a11y + interactions (shard ${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ['1/2', '2/2']
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      options: --init --ipc=host
+    permissions:
+      contents: read
+    env:
+      CI: true
+      BAKIN_UI_CANONICAL_IMAGE: mcr.microsoft.com/playwright:v1.60.0-noble
+      HOME: /root
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+      - name: Install unzip for setup-bun
+        run: apt-get update && apt-get install -y unzip
+      - name: Clone bakin-bits-official (stylesheet sources)
+        run: |
+          BITS_REF="$(node -p "require('./design-system/compatibility.json').repositories['bakin-bits-official'].ref")"
+          git clone --filter=blob:none --no-checkout https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/bakin-bits-official"
+          git -C "${{ runner.workspace }}/bakin-bits-official" fetch --depth 1 origin "$BITS_REF"
+          git -C "${{ runner.workspace }}/bakin-bits-official" checkout --detach FETCH_HEAD
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Run story accessibility and interactions
+        run: bun run ui:test:stories -- --shard=${{ matrix.shard }}
+      - name: Upload story failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ui-stories-${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index }}
           if-no-files-found: warn
           retention-days: 14
           path: |
             test-results/ui-stories
             playwright-report/ui
-            test-results/ui-visual
-            playwright-report/ui-browser
+
+  visual-baselines:
+    name: Visual baselines
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      options: --init --ipc=host
+    permissions:
+      contents: read
+    env:
+      CI: true
+      BAKIN_UI_CANONICAL_IMAGE: mcr.microsoft.com/playwright:v1.60.0-noble
+      HOME: /root
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+      - name: Install unzip for setup-bun
+        run: apt-get update && apt-get install -y unzip
+      - name: Clone bakin-bits-official (stylesheet sources)
+        run: |
+          BITS_REF="$(node -p "require('./design-system/compatibility.json').repositories['bakin-bits-official'].ref")"
+          git clone --filter=blob:none --no-checkout https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/bakin-bits-official"
+          git -C "${{ runner.workspace }}/bakin-bits-official" fetch --depth 1 origin "$BITS_REF"
+          git -C "${{ runner.workspace }}/bakin-bits-official" checkout --detach FETCH_HEAD
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Run visual baselines
+        run: bun run ui:test:visual
+      - name: Upload visual failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ui-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: test-results/ui-visual
+
+  browsers:
+    name: Behavior (${{ matrix.browser }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - browser: chromium
+            workers: 4
+          - browser: firefox
+            # Firefox and webkit starve at 4 workers on the 4-vCPU runner
+            # (goto/focus timeouts under contention); 2 stays comfortably
+            # stable. Chromium is solid at 4.
+            workers: 2
+          - browser: webkit
+            workers: 2
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      options: --init --ipc=host
+    permissions:
+      contents: read
+    env:
+      CI: true
+      BAKIN_UI_CANONICAL_IMAGE: mcr.microsoft.com/playwright:v1.60.0-noble
+      BAKIN_UI_BROWSER: ${{ matrix.browser }}
+      BAKIN_UI_WORKERS: ${{ matrix.workers }}
+      # Firefox refuses to launch when $HOME (/github/home) isn't owned by
+      # the current user inside the container.
+      HOME: /root
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+      - name: Install unzip for setup-bun
+        run: apt-get update && apt-get install -y unzip
+      - name: Clone bakin-bits-official (stylesheet sources)
+        run: |
+          BITS_REF="$(node -p "require('./design-system/compatibility.json').repositories['bakin-bits-official'].ref")"
+          git clone --filter=blob:none --no-checkout https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/bakin-bits-official"
+          git -C "${{ runner.workspace }}/bakin-bits-official" fetch --depth 1 origin "$BITS_REF"
+          git -C "${{ runner.workspace }}/bakin-bits-official" checkout --detach FETCH_HEAD
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Run cross-browser behavior checks
+        run: bun run ui:test:browsers
+      - name: Upload browser failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ui-browser-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.browser }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
             test-results/ui-browser
-            test-results/plugin-ui-conformance
+            playwright-report/ui-browser
+
+  # Aggregate gate under the historical required-check name. Keep this job
+  # id/name stable for existing required-check configuration.
+  visual:
+    name: Canonical Playwright visuals
+    runs-on: ubuntu-24.04
+    needs: [verify, stories, visual-baselines, browsers]
+    if: always()
+    permissions: {}
+    steps:
+      - name: Aggregate lane results
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "One or more UI lanes failed."
+            exit 1
+          fi
+          echo "All UI lanes green."

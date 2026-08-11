@@ -8,10 +8,14 @@ export default defineConfig({
   testMatch: '**/*.visual.ts',
   outputDir: 'test-results/ui-visual',
   snapshotPathTemplate: 'tests/ui/snapshots/{projectName}/{testFilePath}/{arg}{ext}',
-  fullyParallel: false,
+  // Snapshot captures are per-test-isolated pages; two CI workers halve the
+  // wall clock without changing rendering. Local (including the canonical
+  // update-snapshots run) stays serial so baseline generation keeps its
+  // proven posture.
+  fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  workers: 1,
+  workers: process.env.CI ? 2 : 1,
   reporter: [
     ['line'],
     ['html', { outputFolder: 'playwright-report/ui', open: 'never' }],

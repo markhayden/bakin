@@ -75,7 +75,10 @@ export const CanonicalUsage = {
     await userEvent.click(canvas.getByRole('button', { name: 'Open task panel' }))
     const page = within(document.body)
     const panel = await waitFor(() => page.getByRole('dialog', { name: 'Edit task' }))
-    await expect(panel).toBeVisible()
+    await waitFor(() => {
+      expect(panel).not.toHaveAttribute('data-starting-style')
+      expect(panel).toBeVisible()
+    })
     await expect(panel).toHaveAttribute('data-side', 'right')
   },
 } satisfies Story
@@ -90,7 +93,10 @@ export const RightPanel = {
   play: async () => {
     // findBy: the portaled sheet mounts a tick after render in the iframe.
     const panel = await within(document.body).findByRole('dialog', { name: 'Edit task' })
-    await expect(panel).toBeVisible()
+    await waitFor(() => {
+      expect(panel).not.toHaveAttribute('data-starting-style')
+      expect(panel).toBeVisible()
+    })
     await expect(panel).toHaveAttribute('data-side', 'right')
   },
 } satisfies Story
@@ -109,7 +115,10 @@ export const BottomPanel = {
   ),
   play: async () => {
     const panel = await within(document.body).findByRole('dialog', { name: 'Dispatch summary' })
-    await expect(panel).toBeVisible()
+    await waitFor(() => {
+      expect(panel).not.toHaveAttribute('data-starting-style')
+      expect(panel).toBeVisible()
+    })
     await expect(panel).toHaveAttribute('data-side', 'bottom')
   },
 } satisfies Story

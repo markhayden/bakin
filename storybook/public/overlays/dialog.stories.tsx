@@ -55,7 +55,10 @@ export const CanonicalUsage = {
     await userEvent.click(canvas.getByRole('button', { name: 'Delete connection' }))
     const page = within(document.body)
     const dialog = await waitFor(() => page.getByRole('dialog', { name: 'Delete runtime connection?' }))
-    await expect(dialog).toBeVisible()
+    await waitFor(() => {
+      expect(dialog).not.toHaveAttribute('data-starting-style')
+      expect(dialog).toBeVisible()
+    })
     await expect(within(dialog).getByRole('button', { name: 'Keep connection' })).toBeVisible()
   },
 } satisfies Story
