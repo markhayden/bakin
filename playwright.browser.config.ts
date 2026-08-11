@@ -10,10 +10,13 @@ export default defineConfig({
   // Behavior checks carry no pixel snapshots — tests are independent pages
   // against the static storybook server, so CI parallelism is safe. Local
   // stays serial (matches the historical debugging posture).
+  // BAKIN_UI_WORKERS lets heavier engines run fewer workers: firefox
+  // starves at 4 on a 4-vCPU runner (page.goto timeouts), chromium/webkit
+  // are fine.
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 4 : 1,
+  workers: process.env.CI ? Number(process.env.BAKIN_UI_WORKERS ?? 4) : 1,
   reporter: [
     ['line'],
     ['html', { outputFolder: 'playwright-report/ui-browser', open: 'never' }],

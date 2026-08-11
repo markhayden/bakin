@@ -166,7 +166,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        browser: [chromium, firefox, webkit]
+        include:
+          - browser: chromium
+            workers: 4
+          - browser: firefox
+            # Firefox starves at 4 workers on the 4-vCPU runner (goto
+            # timeouts under contention); 2 stays comfortably stable.
+            workers: 2
+          - browser: webkit
+            workers: 4
     container:
       image: mcr.microsoft.com/playwright:v1.60.0-noble
       options: --init --ipc=host
@@ -176,6 +184,7 @@ jobs:
       CI: true
       BAKIN_UI_CANONICAL_IMAGE: mcr.microsoft.com/playwright:v1.60.0-noble
       BAKIN_UI_BROWSER: ${{ matrix.browser }}
+      BAKIN_UI_WORKERS: ${{ matrix.workers }}
       # Firefox refuses to launch when $HOME (/github/home) isn't owned by
       # the current user inside the container.
       HOME: /root
