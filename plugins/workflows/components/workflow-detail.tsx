@@ -444,7 +444,6 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
             {isManagedSource ? (
               <div
                 className={`flex min-h-bakin-control shrink-0 items-center gap-bakin-2 ${availabilitySaving ? 'cursor-not-allowed' : ''}`}
-                title="Controls whether this managed workflow is available for matching and automatic starts"
               >
                 <Switch
                   size="sm"
@@ -463,7 +462,6 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
               size="sm"
               className="min-w-0 flex-1 @3xl/page-header:flex-none"
               onClick={handlePrimaryEditAction}
-              title={isManagedSource ? 'Create an editable copy of this workflow' : 'Edit workflow'}
               disabled={workflowDisabled}
             >
               <Pencil aria-hidden="true" />
@@ -499,7 +497,6 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
             variant="outline"
             size="sm"
             onClick={handlePrimaryEditAction}
-            title={isManagedSource ? 'Create an editable copy of this workflow' : 'Edit workflow'}
             disabled={workflowDisabled}
           >
             <Pencil aria-hidden="true" />

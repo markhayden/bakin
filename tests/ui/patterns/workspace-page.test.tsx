@@ -81,12 +81,21 @@ describe('workspace page recipe', () => {
     const compactHeader = container.querySelector(
       '[data-slot="workspace-page-compact-header"]',
     )
-    expect(compactHeader?.className).toContain('sticky')
-    expect(compactHeader?.className).toContain('top-0')
-    // Desktop shows the row only once stuck; pre-stick it stays invisible
-    // (flow box preserved so the shell can scroll far enough to stick it).
-    expect(compactHeader?.className).toContain('@md/page-shell:invisible')
-    expect(compactHeader?.className).not.toContain('@md/page-shell:hidden')
+    // The sticky lives on the anchor (the row's flow slot); in non-flow
+    // desktop the row renders as a zero-height-anchored overlay ABOVE it —
+    // no reserved dead band between header and body.
+    const anchor = container.querySelector(
+      '[data-slot="workspace-page-compact-anchor"]',
+    )
+    expect(anchor?.className).toContain('sticky')
+    expect(anchor?.className).toContain('top-0')
+    expect(anchor?.className).toContain('@md/page-shell:relative')
+    expect(compactHeader?.className).toContain('@md/page-shell:absolute')
+    expect(compactHeader?.className).toContain('@md/page-shell:bottom-full')
+    // Desktop hides the row entirely pre-stick — it appears as the overlay
+    // once the header tail is spent; mobile keeps it always visible.
+    expect(compactHeader?.className).toContain('@md/page-shell:hidden')
+    expect(compactHeader?.className).not.toContain('@md/page-shell:invisible')
     expect(
       getByText('Image generation', {
         selector: '[data-slot="workspace-page-compact-title"]',

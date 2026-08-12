@@ -28,13 +28,18 @@ describe('canonical conversation and inspector archetypes', () => {
   })
 
   it('makes exceptional nested scrolling explicit and finite', () => {
-    // The timeline scroller is the one page-owned internal scroller, active
-    // only inside a contained Page (PageScrollContext).
+    // Two page-owned internal scrollers exist, each mode-gated: the timeline
+    // scroller inside a contained Page (PageScrollContext), and the
+    // inspector's content column in `side` (beside-canvas) mode — the panel
+    // owns its scroll + insets so consumers add zero layout classes
+    // (workflows adjudication, 2026-08-12).
     const timeline = read('packages/ui/src/patterns/page-timeline.tsx')
     const inspector = read('packages/ui/src/patterns/inspector-panel.tsx')
     expect(timeline).toContain('overflow-y-auto')
     expect(timeline).toContain("scroll === 'contained'")
-    expect(inspector).not.toMatch(/overflow-y-(?:auto|scroll)|h-screen|max-h-/)
+    expect(inspector).toContain("side && 'min-h-0 overflow-y-auto")
+    expect(inspector.match(/overflow-y-(?:auto|scroll)/g)).toHaveLength(1)
+    expect(inspector).not.toMatch(/h-screen|max-h-/)
     expect(`${timeline}\n${inspector}`).not.toMatch(/(?:messages|thread|streamUrl|selected|node|resource|data)\??:/i)
   })
 

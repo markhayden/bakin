@@ -146,46 +146,74 @@ export function WorkspacePageCompactHeader({
   React.useEffect(() => {
     const sentinel = sentinelRef.current
     if (!sentinel) return
-    // Root on the workspace shell, not the viewport: in a viewport-fit
-    // (non-flow) workspace the scroll bottoms out EXACTLY when the row
-    // reaches its sticky position, so the sentinel stops at the shell's clip
-    // edge instead of travelling past it — a viewport-rooted observer sits on
-    // that zero-area boundary and never flips. The 1px top inset makes the
-    // knife edge unambiguous on fractional-pixel layouts.
+    // Root on the workspace shell, not the viewport: the shell clips the
+    // sentinel as it scrolls out, and a viewport-rooted observer would sit
+    // on the zero-area boundary without flipping.
     const root = sentinel.closest('[data-archetype="workspace"]')
-    const observer = new IntersectionObserver(
-      ([entry]) => setStuck(!entry.isIntersecting),
-      {
-        root: root instanceof HTMLElement ? root : null,
-        rootMargin: '-1px 0px 0px 0px',
-        threshold: 0,
-      },
-    )
-    observer.observe(sentinel)
-    return () => observer.disconnect()
-  }, [])
+    if (!(root instanceof HTMLElement)) return
+    let observer: IntersectionObserver | null = null
+    // @md/page-shell — the container width where the pre-stick row hides.
+    const MD_CONTAINER_PX = 448
+    const arm = () => {
+      observer?.disconnect()
+      // Viewport-fit (non-flow) desktop reserves NO flow box for the row, so
+      // the scroll bottoms out with the sentinel one row-height above the
+      // clip edge — flip once it comes within that height of the top (the
+      // row then overlays the spent header tail). Flow workspaces and
+      // mobile keep a real flow slot, so the sentinel fully exits: a 1px
+      // inset makes the knife edge unambiguous on fractional pixels.
+      const overlay = !flow && root.clientWidth >= MD_CONTAINER_PX
+      observer = new IntersectionObserver(
+        ([entry]) => setStuck(!entry.isIntersecting),
+        {
+          root,
+          rootMargin: overlay ? '-56px 0px 0px 0px' : '-1px 0px 0px 0px',
+          threshold: 0,
+        },
+      )
+      observer.observe(sentinel)
+    }
+    arm()
+    const resize = new ResizeObserver(() => arm())
+    resize.observe(root)
+    return () => {
+      observer?.disconnect()
+      resize.disconnect()
+    }
+  }, [flow])
   return (
     <>
     <div ref={sentinelRef} aria-hidden="true" className="h-px w-full shrink-0" />
+    {/* The anchor is the row's flow slot. Flow and mobile: sticky — the row
+        occupies real space when visible and pins at the top. Non-flow
+        desktop: a zero-height positioned anchor — the row renders
+        absolutely ABOVE it, so it never reserves a dead band between the
+        header and the viewport-fit body; scroll bottoms out with the
+        anchor one row-height below the clip edge, and the row exactly
+        overlays the spent header tail. */}
+    <div
+      data-slot="workspace-page-compact-anchor"
+      className={cn(
+        'sticky top-0 z-30 min-w-0 shrink-0',
+        !flow && '@md/page-shell:relative @md/page-shell:top-auto',
+      )}
+    >
     <div
       {...props}
       data-slot="workspace-page-compact-header"
       data-stuck={stuck ? '' : undefined}
       className={cn(
-        'sticky top-0 z-30 flex h-[var(--bakin-workspace-compact-header-height)] min-w-0 shrink-0 items-center gap-bakin-2 bg-bakin-canvas-default px-bakin-4 @md/page-shell:px-bakin-6',
+        'flex h-[var(--bakin-workspace-compact-header-height)] min-w-0 items-center gap-bakin-2 bg-bakin-canvas-default px-bakin-4 @md/page-shell:px-bakin-6',
+        !flow && '@md/page-shell:absolute @md/page-shell:inset-x-0 @md/page-shell:bottom-full',
         // The separator earns its keep only when stuck (content sliding
-        // beneath); in flow it would stack a second rule on the section
+        // beneath); pre-stick it would stack a second rule on the section
         // divider below it.
         stuck && 'border-b border-bakin-border-subtle',
-        // Pre-stick desktop treatment depends on the workspace's scroll
-        // model. Viewport-fit canvases (non-flow): `invisible` — the row's
-        // flow box must keep contributing its height to the scroll length
-        // or the shell can never scroll far enough to stick it. Flow
-        // workspaces: `hidden` — scroll length is content-driven, so the
-        // reserved box is pure dead band between header and body (the
-        // tasks stats gap); the row appears at its sticky position with
-        // no layout shift because its flow slot is already off-screen.
-        !stuck && (flow ? '@md/page-shell:hidden' : '@md/page-shell:invisible'),
+        // Pre-stick desktop hides the row entirely — no reserved box, no
+        // dead band between header and body. It appears with no layout
+        // shift: in flow its slot is already off-screen; in non-flow it
+        // overlays out-of-flow.
+        !stuck && '@md/page-shell:hidden',
         className,
       )}
     >
@@ -222,6 +250,7 @@ export function WorkspacePageCompactHeader({
           {overflowActions}
         </PageHeaderOverflowMenu>
       ) : null}
+    </div>
     </div>
     </>
   )

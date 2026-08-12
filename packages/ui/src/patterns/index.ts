@@ -65,6 +65,9 @@ export type {
 export { CalendarNav } from './calendar-nav'
 export type { CalendarNavProps } from './calendar-nav'
 
+export { NodeCard } from './node-card'
+export type { NodeCardBorder, NodeCardProps, NodeCardTone } from './node-card'
+
 export { NavList } from './nav-list'
 export type { NavListItem, NavListProps, NavListSection } from './nav-list'
 

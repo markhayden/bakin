@@ -198,7 +198,6 @@ function InsertableEdge({
           <button
             type="button"
             aria-label="Drop node here"
-            title="Drop a node here"
             className={`nodrag nopan pointer-events-auto flex items-center justify-center rounded-bakin-pill border transition ${
               isDragOver
                 ? 'size-8 border-bakin-signal-info/80 bg-bakin-signal-info/20 ring-4 ring-bakin-signal-info/15'
@@ -877,7 +876,6 @@ export function WorkflowCanvasEditor({
               variant="ghost"
               size="icon-sm"
               aria-label="Back to workflows"
-              title="Back to workflows"
               onClick={unsavedChangesGuard.requestExit}
             >
               <ArrowLeft aria-hidden="true" />
@@ -950,7 +948,6 @@ export function WorkflowCanvasEditor({
             variant="ghost"
             size="icon-sm"
             aria-label="Back to workflows"
-            title="Back to workflows"
             onClick={unsavedChangesGuard.requestExit}
           >
             <ArrowLeft aria-hidden="true" />
@@ -1089,7 +1086,6 @@ export function WorkflowCanvasEditor({
               >
                 <Button
                   aria-label="Move selected step up"
-                  title="Move up"
                   variant="ghost"
                   size="sm"
                   onClick={() => moveSelectedStep(-1)}
@@ -1099,7 +1095,6 @@ export function WorkflowCanvasEditor({
                 </Button>
                 <Button
                   aria-label="Move selected step down"
-                  title="Move down"
                   variant="ghost"
                   size="sm"
                   onClick={() => moveSelectedStep(1)}
@@ -1109,7 +1104,6 @@ export function WorkflowCanvasEditor({
                 </Button>
                 <Button
                   aria-label="Duplicate selected step"
-                  title="Duplicate"
                   variant="ghost"
                   size="sm"
                   onClick={duplicateSelectedStep}
@@ -1119,7 +1113,6 @@ export function WorkflowCanvasEditor({
                 </Button>
                 <Button
                   aria-label="Delete selected step"
-                  title="Delete"
                   variant="destructive"
                   size="sm"
                   onClick={deleteSelectedStep}

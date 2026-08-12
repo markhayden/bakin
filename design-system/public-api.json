@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 295,
-    "typeExports": 390
+    "valueExports": 296,
+    "typeExports": 393
   },
   "entrypoints": [
     {
@@ -426,6 +426,7 @@
         "ListRows",
         "ModelSelect",
         "NavList",
+        "NodeCard",
         "Page",
         "PageAside",
         "PageBody",
@@ -531,6 +532,9 @@
         "NavListItem",
         "NavListProps",
         "NavListSection",
+        "NodeCardBorder",
+        "NodeCardProps",
+        "NodeCardTone",
         "NumberSettingsField",
         "PageAsideCollapsible",
         "PageAsideProps",
