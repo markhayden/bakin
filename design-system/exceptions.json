@@ -177,9 +177,6 @@
         },
         "plugins/workflows/components/workflow-canvas-editor.tsx": {
           "raw-control": 1
-        },
-        "plugins/brands/components/brand-builder.tsx": {
-          "raw-control": 2
         }
       },
       "closestPattern": {

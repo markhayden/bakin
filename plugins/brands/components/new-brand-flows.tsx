@@ -389,10 +389,11 @@ export function ImportBrandDialog({
                   {preview.palette.slice(0, 8).map((c) => (
                     <span
                       key={c.name}
-                      title={`${c.name} ${c.hex}`}
                       className="size-bakin-4 rounded-bakin-pill border border-bakin-border-subtle"
                       style={{ backgroundColor: c.hex }}
-                    />
+                    >
+                      <span className="sr-only">{c.name} {c.hex}</span>
+                    </span>
                   ))}
                 </div>
               )}

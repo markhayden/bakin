@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react'
 import { useDebug, useJsonFetch } from '@makinbakin/sdk/hooks'
 import { PluginLink } from '@makinbakin/sdk/navigation'
+import { Panel } from '@makinbakin/sdk/layout'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -274,9 +275,15 @@ export function TaskBrandPanel({ taskId }: { taskId?: string }) {
                 Render current card
               </Button>
             ) : (
-              <pre className="m-0 max-h-64 overflow-auto rounded-bakin-surface bg-bakin-canvas-default p-bakin-3 whitespace-pre-wrap font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
-                {preview}
-              </pre>
+              <Panel
+                variant="code"
+                padding="compact"
+                scroll
+                aria-label="Rendered brand card preview"
+                className="max-h-64 text-bakin-text-muted"
+              >
+                <pre>{preview}</pre>
+              </Panel>
             )}
           </div>
         ) : null}
