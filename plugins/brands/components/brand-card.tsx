@@ -32,10 +32,14 @@ export const COMPLETENESS_LABELS: Record<string, string> = {
 const isHex = (h: string) => /^#[0-9a-fA-F]{6}$/.test(h)
 
 /** Initials-on-tinted-disc fallback when a brand has no logo (AgentAvatar convention). */
-function Monogram({ name, tint }: { name: string; tint?: string }) {
+export function Monogram({ name, tint, size = 'lg' }: { name: string; tint?: string; size?: 'sm' | 'lg' }) {
   return (
     <span
-      className="flex size-16 items-center justify-center rounded-2xl text-2xl font-semibold text-bakin-text-primary/70 ring-1 ring-bakin-text-primary/10"
+      className={
+        size === 'lg'
+          ? 'flex size-16 items-center justify-center rounded-bakin-surface text-2xl font-bakin-typography-weight-semibold text-bakin-text-primary/70 ring-1 ring-bakin-text-primary/10'
+          : 'flex size-10 shrink-0 items-center justify-center rounded-bakin-control text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary/70 ring-1 ring-bakin-text-primary/10'
+      }
       style={tint ? { backgroundColor: `${tint}33` } : undefined}
       data-brand-monogram
     >
@@ -81,10 +85,12 @@ export function BrandCoverCard({ brand }: { brand: ListedBrand }) {
           )}
         </div>
         {/* Palette strip = the cover's base edge. */}
-        <div className="flex h-2">
+        <div className="flex h-bakin-2">
           {swatches.length > 0 ? (
             swatches.map((c, i) => (
-              <div key={`${c.name}-${i}`} title={`${c.name} ${c.hex}`} style={{ backgroundColor: c.hex, flexGrow: swatches.length - i }} />
+              <div key={`${c.name}-${i}`} style={{ backgroundColor: c.hex, flexGrow: swatches.length - i }}>
+                <span className="sr-only">{c.name} {c.hex}</span>
+              </div>
             ))
           ) : (
             <div className="w-full bg-bakin-border-subtle/40" />
@@ -101,11 +107,11 @@ export function BrandCoverCard({ brand }: { brand: ListedBrand }) {
         </CardAction>
       </CardHeader>
 
-      <CardContent className="flex-1 space-y-2" data-brand-card-body>
+      <CardContent className="flex-1 space-y-bakin-2" data-brand-card-body>
         {brand.description ? (
-          <p className="line-clamp-2 text-sm text-bakin-text-muted">{brand.description}</p>
+          <p className="line-clamp-2 text-bakin-typography-size-body text-bakin-text-muted">{brand.description}</p>
         ) : (
-          <p className="text-sm text-bakin-text-muted/60">No description yet.</p>
+          <p className="text-bakin-typography-size-body text-bakin-text-muted/60">No description yet.</p>
         )}
 
         {completeness && (
@@ -113,10 +119,10 @@ export function BrandCoverCard({ brand }: { brand: ListedBrand }) {
           <Tooltip>
             <TooltipTrigger
               render={
-                <div className="flex items-center gap-2" tabIndex={0} data-brand-completeness={completeness.percent}>
+                <div className="flex items-center gap-bakin-2" tabIndex={0} data-brand-completeness={completeness.percent}>
                   <Progress
                     value={completeness.percent}
-                    className="h-1.5 flex-1"
+                    className="flex-1"
                     aria-label={`Brand kit ${completeness.percent}% complete`}
                   />
                   <span className="shrink-0 text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">

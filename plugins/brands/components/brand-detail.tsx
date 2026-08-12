@@ -40,6 +40,7 @@ import { useQueryState, usePluginEvent, toast } from '@makinbakin/sdk/hooks'
 import {
   ArrowLeft, Palette, Rocket, Pencil, Plus, Check, AlertTriangle, ExternalLink,
   FileText, BookOpen, ImageIcon, Trash2, Sparkles, Info,
+  File, Music, Play, Table2, Type,
 } from 'lucide-react'
 import type { BrandManifest, PaletteEntry, BrandDocInfo, BrandDetailResponse } from '../types'
 
@@ -87,14 +88,14 @@ function SectionCard({
   return (
     <Card className={className} data-section-card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          {Icon && <Icon className="size-4 text-bakin-text-muted" />}
+        <CardTitle className="flex items-center gap-bakin-2">
+          {Icon && <Icon className="size-bakin-4 text-bakin-text-muted" />}
           {title}
         </CardTitle>
         {description && <CardDescription>{description}</CardDescription>}
         {action && <CardAction>{action}</CardAction>}
       </CardHeader>
-      <CardContent className={contentClassName ? `space-y-3 ${contentClassName}` : 'space-y-3'}>
+      <CardContent className={contentClassName ? `space-y-bakin-3 ${contentClassName}` : 'space-y-bakin-3'}>
         {children}
       </CardContent>
     </Card>
@@ -133,15 +134,15 @@ function FadeMore({
 
   return (
     <div className="relative">
-      <div ref={ref} className={`max-h-64 overflow-hidden ${showOverlay ? 'pb-8' : ''} ${className ?? ''}`}>
+      <div ref={ref} className={`max-h-64 overflow-hidden ${showOverlay ? 'pb-bakin-8' : ''} ${className ?? ''}`}>
         {children}
       </div>
       {showOverlay && (
         <div
-          className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-bakin-surface-default from-45% to-transparent px-1 pb-1 pt-20"
+          className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-bakin-3 bg-gradient-to-t from-bakin-surface-default from-45% to-transparent px-bakin-1 pb-bakin-1 pt-20"
           data-fade-more
         >
-          <span className="min-w-0 truncate pb-1 text-xs text-bakin-text-muted">{summary}</span>
+          <span className="min-w-0 truncate pb-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">{summary}</span>
           <Button variant="outline" size="sm" className="shrink-0" onClick={onAction} data-fade-more-action>
             {actionLabel}
           </Button>
@@ -473,7 +474,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
           {tab === 'overview' && <OverviewTab brand={b} detail={detail} brandId={brandId} onGoTo={setTab} onEditDoc={editDoc} />}
 
       {tab === 'identity' && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-bakin-4 lg:grid-cols-2">
           <SectionCard
             className="lg:col-span-2"
             title="Name & description"
@@ -501,7 +502,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
             description="Agents pull these exact values into everything they generate — images, docs, UI. First color is the primary."
             action={
               <Button variant="outline" size="sm" onClick={() => stage({ palette: [...b.palette, { name: '', hex: BLANK_HEX }] })} data-add-color>
-                <Plus className="size-3.5" /> Add color
+                <Plus className="size-bakin-3" /> Add color
               </Button>
             }
           >
@@ -513,7 +514,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
               const update = (next: PaletteEntry) => stage({ palette: b.palette.map((row, j) => (j === i ? next : row)) })
               return (
                 <div key={i} data-palette-row={i}>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-bakin-2">
                     {/* Swatch and hex field are two views of ONE value — either edits both. */}
                     <ColorInput
                       ariaLabel={`${c.name || 'color'} swatch`}
@@ -522,7 +523,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
                     />
                     <Input className="w-32" placeholder="Primary" aria-label="Color name" value={c.name} onChange={(e) => update({ ...c, name: e.target.value })} />
                     <Input
-                      className={`w-28 font-mono ${hexInvalid ? 'ring-1 ring-bakin-signal-danger' : ''}`}
+                      className={`w-28 font-bakin-typography-family-mono ${hexInvalid ? 'ring-1 ring-bakin-signal-danger' : ''}`}
                       aria-label="Hex value"
                       aria-invalid={hexInvalid || undefined}
                       value={c.hex}
@@ -531,7 +532,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
                     <Input className="flex-1" placeholder="buttons, links, calls-to-action" aria-label="Where it's used" value={c.usage ?? ''} onChange={(e) => update({ ...c, usage: e.target.value || undefined })} />
                     <RemoveBtn onClick={() => stage({ palette: b.palette.filter((_, j) => j !== i) })} />
                   </div>
-                  {hexInvalid && <p className="mt-1 pl-12 text-xs text-bakin-signal-danger">Hex colors look like #FF5A00</p>}
+                  {hexInvalid && <p className="mt-bakin-1 pl-12 text-bakin-typography-size-meta text-bakin-signal-danger">Hex colors look like #FF5A00</p>}
                 </div>
               )
             })}
@@ -543,13 +544,13 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
             description="Hard do's and don'ts — injected into every branded task, never optional."
             action={
               <Button variant="outline" size="sm" onClick={() => stage({ rules: [...(b.rules ?? []), ''] })} data-add-rule>
-                <Plus className="size-3.5" /> Add rule
+                <Plus className="size-bakin-3" /> Add rule
               </Button>
             }
           >
             {(b.rules ?? []).length === 0 && <SectionEmpty>No rules yet — e.g. "Never use exclamation marks in headlines."</SectionEmpty>}
             {(b.rules ?? []).map((r, i) => (
-              <div key={i} className="flex items-center gap-2">
+              <div key={i} className="flex items-center gap-bakin-2">
                 <Input className="flex-1" placeholder='e.g. "Never use emojis"' value={r} onChange={(e) => stage({ rules: (b.rules ?? []).map((row, j) => (j === i ? e.target.value : row)) })} />
                 <RemoveBtn onClick={() => stage({ rules: (b.rules ?? []).filter((_, j) => j !== i) })} />
               </div>
@@ -562,13 +563,13 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
             description="Say-this-not-that words agents must get right — product names, banned phrases."
             action={
               <Button variant="outline" size="sm" onClick={() => stage({ terminology: [...(b.terminology ?? []), { term: '', rule: '' }] })} data-add-term>
-                <Plus className="size-3.5" /> Add term
+                <Plus className="size-bakin-3" /> Add term
               </Button>
             }
           >
             {(b.terminology ?? []).length === 0 && <SectionEmpty>Nothing yet — e.g. "workspace", never "dashboard".</SectionEmpty>}
             {(b.terminology ?? []).map((t, i) => (
-              <div key={i} className="flex items-center gap-2">
+              <div key={i} className="flex items-center gap-bakin-2">
                 <Input className="w-56" placeholder="workspace" aria-label="Term" value={t.term} onChange={(e) => stage({ terminology: (b.terminology ?? []).map((row, j) => (j === i ? { ...row, term: e.target.value } : row)) })} />
                 <Input className="flex-1" placeholder='never "dashboard"' aria-label="Rule" value={t.rule} onChange={(e) => stage({ terminology: (b.terminology ?? []).map((row, j) => (j === i ? { ...row, rule: e.target.value } : row)) })} />
                 <RemoveBtn onClick={() => stage({ terminology: (b.terminology ?? []).filter((_, j) => j !== i) })} />
@@ -652,7 +653,7 @@ function RemoveBtn({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       aria-label="Remove"
     >
-      <Trash2 className="size-3.5" />
+      <Trash2 className="size-bakin-3" />
     </Button>
   )
 }
@@ -667,7 +668,6 @@ function BrandBackButton({ onBack }: { onBack: () => void }) {
       className="rounded-bakin-pill"
       onClick={onBack}
       aria-label="Back to brands"
-      title="Back to brands"
     >
       <ArrowLeft />
     </Button>
@@ -758,11 +758,13 @@ function BrandPageHeader({
           {colors.map((color) => (
             <span
               key={`${color.name}-${color.hex}`}
-              aria-hidden="true"
-              title={`${color.name} ${color.hex}${color.usage ? ` — ${color.usage}` : ''}`}
               className="h-full min-w-0 flex-1"
               style={{ backgroundColor: color.hex }}
-            />
+            >
+              <span className="sr-only">
+                {color.name} {color.hex}{color.usage ? ` — ${color.usage}` : ''}
+              </span>
+            </span>
           ))}
         </span>
       ) : null}
@@ -900,7 +902,7 @@ function OverviewTab({
               variant="ghost" size="xs" className="text-bakin-text-muted"
               onClick={() => onEditDoc('guidelines', 'voice.md', voice === null)}
             >
-              <Pencil className="size-3" /> Edit voice
+              <Pencil className="size-bakin-3" /> Edit voice
             </Button>
             )}
           />
@@ -912,7 +914,7 @@ function OverviewTab({
                 actionLabel="Read the full voice guide"
                 onAction={() => onEditDoc('guidelines', 'voice.md')}
               >
-                <div className="prose-invert max-w-none text-sm"><MarkdownContent content={stripPreviewTitle(voice)} /></div>
+                <div className="prose-invert max-w-none text-bakin-typography-size-body"><MarkdownContent content={stripPreviewTitle(voice)} /></div>
               </FadeMore>
             )}
         </Section>
@@ -922,7 +924,7 @@ function OverviewTab({
             title="Rules & terminology"
             icon={AlertTriangle}
             description="Non-negotiables that ride every branded task inline."
-            action={<Button variant="ghost" size="xs" className="text-bakin-text-muted" onClick={() => onGoTo('identity')}><Pencil className="size-3" /> Edit</Button>}
+            action={<Button variant="ghost" size="xs" className="text-bakin-text-muted" onClick={() => onGoTo('identity')}><Pencil className="size-bakin-3" /> Edit</Button>}
           />
           <RulesTermsSummary brand={brand} onGoTo={onGoTo} />
         </Section>
@@ -995,13 +997,13 @@ function RulesTermsSummary({ brand, onGoTo }: { brand: BrandManifest; onGoTo: (t
       actionLabel="View all in Identity"
       onAction={() => onGoTo('identity')}
       hasMore={rules.length + terms.length > SUMMARY_ROWS * 2}
-      className="space-y-2.5"
+      className="space-y-bakin-2"
     >
       {rules.map((r) => (
-        <div key={r} className="flex gap-2 text-sm"><span className="text-bakin-text-muted">›</span><span>{r}</span></div>
+        <div key={r} className="flex gap-bakin-2 text-bakin-typography-size-body"><span className="text-bakin-text-muted">›</span><span>{r}</span></div>
       ))}
       {terms.map((t) => (
-        <div key={t.term} className="text-sm"><span className="font-medium">{t.term}</span> <span className="text-bakin-text-muted">— {t.rule}</span></div>
+        <div key={t.term} className="text-bakin-typography-size-body"><span className="font-bakin-typography-weight-medium">{t.term}</span> <span className="text-bakin-text-muted">— {t.rule}</span></div>
       ))}
     </FadeMore>
   )
@@ -1020,7 +1022,7 @@ function CardFootprintTile({ card }: { card: CardPreview | null }) {
       value={
         <>
           {kb.toFixed(1)}
-          <span className="text-sm font-normal text-bakin-text-muted"> / {maxKb.toFixed(0)} KB</span>
+          <span className="text-bakin-typography-size-body font-bakin-typography-weight-regular text-bakin-text-muted"> / {maxKb.toFixed(0)} KB</span>
         </>
       }
       progress={{ percent: pct, tone: pct > 85 ? 'attention' : 'success' }}
@@ -1126,11 +1128,11 @@ function DocsEditor({
       description={copy.description}
       action={
         <Button variant="outline" size="sm" onClick={() => setNewOpen(true)} data-new-doc>
-          <Plus className="size-3.5" /> New {copy.noun}
+          <Plus className="size-bakin-3" /> New {copy.noun}
         </Button>
       }
     >
-      <div className="space-y-2">
+      <div className="space-y-bakin-2">
         {docs.length === 0 && (
           <SectionEmpty>No {copy.title.toLowerCase()} yet — create one and the editor opens on a fresh page.</SectionEmpty>
         )}
@@ -1139,8 +1141,10 @@ function DocsEditor({
           // Benched lessons read as benched.
           <div
             key={d.name}
-            className={`flex items-center gap-3 rounded-lg bg-bakin-text-primary/5 px-3 py-2.5 ring-1 ring-bakin-text-primary/5 transition-colors hover:bg-bakin-text-primary/10 motion-reduce:transition-none ${
-              kind === 'lessons' && (brand.disabledLessons ?? []).includes(d.name) ? 'opacity-60' : ''
+            // Disabled lessons de-emphasize via muted text — never an
+            // opacity fade that drops text below contrast.
+            className={`flex items-center gap-bakin-3 rounded-bakin-control bg-bakin-text-primary/5 px-bakin-3 py-bakin-2 ring-1 ring-bakin-text-primary/5 transition-colors hover:bg-bakin-text-primary/10 motion-reduce:transition-none ${
+              kind === 'lessons' && (brand.disabledLessons ?? []).includes(d.name) ? '[&_span]:text-bakin-text-muted' : ''
             }`}
             data-doc-row={d.name}
           >
@@ -1148,28 +1152,28 @@ function DocsEditor({
             <Button
               type="button"
               variant="ghost"
-              size="sm"
-              className="!h-auto max-w-72 shrink-0 justify-start gap-1.5 p-0 text-left font-bakin-typography-weight-regular hover:bg-transparent"
+              size="inline"
+              className="max-w-72 shrink-0 gap-bakin-1 font-bakin-typography-weight-regular hover:bg-transparent"
               onClick={() => onEditDoc(kind, d.name)}
             >
-              <FileText className="size-3.5 shrink-0 text-bakin-text-muted" />
-              <span className="truncate font-mono text-sm">{d.name}</span>
+              <FileText className="size-bakin-3 shrink-0 text-bakin-text-muted" />
+              <span className="truncate font-bakin-typography-family-mono text-bakin-typography-size-body">{d.name}</span>
             </Button>
-            {d.description && <span className="min-w-0 flex-1 truncate text-xs text-bakin-text-muted">{d.description}</span>}
-            <div className="ml-auto flex shrink-0 items-center gap-3">
+            {d.description && <span className="min-w-0 flex-1 truncate text-bakin-typography-size-meta text-bakin-text-muted">{d.description}</span>}
+            <div className="ml-auto flex shrink-0 items-center gap-bakin-3">
               {kind === 'guidelines' && (
                 <TooltipProvider delay={200}>
                   <Tooltip>
                     <TooltipTrigger
                       render={
-                        <label className="flex items-center gap-1.5 text-bakin-typography-size-meta text-bakin-text-muted">
+                        <label className="flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
                           <Switch
                             checked={cardDocs.includes(d.name)}
                             onCheckedChange={(on: boolean) => onToggleCardDoc(d.name, on)}
                             aria-label={`Always include ${d.name} in agent context`}
                           />
                           Always in context
-                          <Info className="size-3" />
+                          <Info className="size-bakin-3" />
                         </label>
                       }
                     />
@@ -1185,14 +1189,14 @@ function DocsEditor({
                   <Tooltip>
                     <TooltipTrigger
                       render={
-                        <label className="flex items-center gap-1.5 text-bakin-typography-size-meta text-bakin-text-muted">
+                        <label className="flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
                           <Switch
                             checked={!(brand.disabledLessons ?? []).includes(d.name)}
                             onCheckedChange={(active: boolean) => onToggleLesson(d.name, active)}
                             aria-label={`Lesson ${d.name} active`}
                           />
                           Active
-                          <Info className="size-3" />
+                          <Info className="size-bakin-3" />
                         </label>
                       }
                     />
@@ -1204,7 +1208,7 @@ function DocsEditor({
                 </TooltipProvider>
               )}
               <Button variant="ghost" size="xs" className="text-bakin-text-muted" onClick={() => onEditDoc(kind, d.name)}>
-                <Pencil className="size-3" /> Edit
+                <Pencil className="size-bakin-3" /> Edit
               </Button>
               <Button
                 variant="ghost"
@@ -1213,7 +1217,7 @@ function DocsEditor({
                 onClick={() => setDeleting(d.name)}
                 aria-label={`Delete ${d.name}`}
               >
-                <Trash2 className="size-3" />
+                <Trash2 className="size-bakin-3" />
               </Button>
             </div>
           </div>
@@ -1238,7 +1242,7 @@ function DocsEditor({
             <DialogTitle>New {copy.noun}</DialogTitle>
             <DialogDescription>Name the file — the editor opens on a fresh page and the first save creates it.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-1.5">
+          <div className="space-y-bakin-1">
             <Label htmlFor="new-doc-name">File name</Label>
             <Input
               id="new-doc-name"
@@ -1267,7 +1271,10 @@ function DocsEditor({
 // ─── Assets ───────────────────────────────────────────────────────────────────
 
 interface AssetInfo { assetId: string; description: string; type: string; hasThumb: boolean }
-const TYPE_ICON: Record<string, string> = { images: '🖼', pdf: '📄', video: '▷', audio: '♪', text: '¶', data: '⊞' }
+// Lucide, not emoji — emoji glyphs render platform-dependent.
+const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  images: ImageIcon, pdf: FileText, video: Play, audio: Music, text: Type, data: Table2,
+}
 
 const LOGO_VARIANTS = ['primary', 'dark', 'light', 'mono', 'icon', 'wordmark']
 
@@ -1350,7 +1357,7 @@ function BrandAssetsSection({
   )
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-bakin-4">
       <AssetLibraryPicker
         open={pickTarget !== null}
         onOpenChange={(open) => {
@@ -1388,7 +1395,7 @@ function BrandAssetsSection({
             variant="outline" size="sm" data-add-logo
             onClick={openLogoPicker}
           >
-            <Plus className="size-3.5" /> Add logo
+            <Plus className="size-bakin-3" /> Add logo
           </Button>
         }
       >
@@ -1396,7 +1403,7 @@ function BrandAssetsSection({
           <SectionEmpty>No logo yet — cards show a monogram until you add one.</SectionEmpty>
         )}
         {brand.logos.length > 0 && (
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="grid gap-bakin-3 lg:grid-cols-2">
             {brand.logos.map((logo, i) =>
               tile(
                 logo.assetId,
@@ -1418,7 +1425,7 @@ function BrandAssetsSection({
         action={
           !groupDraft ? (
             <Button variant="outline" size="sm" onClick={() => setGroupDraft({ name: '', description: '' })} data-add-group>
-              <Plus className="size-3.5" /> New group
+              <Plus className="size-bakin-3" /> New group
             </Button>
           ) : undefined
         }
@@ -1427,16 +1434,16 @@ function BrandAssetsSection({
           <SectionEmpty>No groups yet — e.g. "product-ui" for real screenshots agents should reference instead of inventing UI.</SectionEmpty>
         )}
         {brand.assetGroups.map((group, gi) => (
-          <div key={group.name} className="space-y-2 rounded-lg bg-bakin-surface-default p-3">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="font-medium">{group.name}</span>
-              {group.description && <span className="text-xs text-bakin-text-muted">— {group.description}</span>}
-              <div className="ml-auto flex shrink-0 items-center gap-1">
+          <div key={group.name} className="space-y-bakin-2 rounded-bakin-control bg-bakin-surface-default p-bakin-3">
+            <div className="flex items-center gap-bakin-2 text-bakin-typography-size-body">
+              <span className="font-bakin-typography-weight-medium">{group.name}</span>
+              {group.description && <span className="text-bakin-typography-size-meta text-bakin-text-muted">— {group.description}</span>}
+              <div className="ml-auto flex shrink-0 items-center gap-bakin-1">
                 <Button
                   variant="ghost" size="xs" className="text-bakin-text-muted"
                   onClick={() => openPicker(`Add to ${group.name}`, group.description || 'Pick or upload reference material for this group.', (assetId) => onSave({ assetGroups: brand.assetGroups.map((g, j) => (j === gi && !g.assetIds.includes(assetId) ? { ...g, assetIds: [...g.assetIds, assetId] } : g)) }))}
                 >
-                  <Plus className="size-3" /> Add
+                  <Plus className="size-bakin-3" /> Add
                 </Button>
                 <Button
                   variant="ghost"
@@ -1450,15 +1457,14 @@ function BrandAssetsSection({
                     })
                   }
                   aria-label={`Remove group ${group.name}`}
-                  title="Remove group"
                 >
-                  <Trash2 className="size-3.5" />
+                  <Trash2 className="size-bakin-3" />
                 </Button>
               </div>
             </div>
-            {group.assetIds.length === 0 && <p className="text-xs text-bakin-text-muted">Empty group — add screenshots or imagery.</p>}
+            {group.assetIds.length === 0 && <p className="text-bakin-typography-size-meta text-bakin-text-muted">Empty group — add screenshots or imagery.</p>}
             {group.assetIds.length > 0 && (
-              <div className="grid gap-3 lg:grid-cols-2">
+              <div className="grid gap-bakin-3 lg:grid-cols-2">
                 {group.assetIds.map((assetId) =>
                   tile(assetId, (m) => ({ assetGroups: m.assetGroups.map((g) => (g.name === group.name ? { ...g, assetIds: g.assetIds.filter((id) => id !== assetId) } : g)) })),
                 )}
@@ -1467,7 +1473,7 @@ function BrandAssetsSection({
           </div>
         ))}
         {groupDraft && (
-          <div className="flex items-center gap-2 rounded-lg bg-bakin-surface-default p-2">
+          <div className="flex items-center gap-bakin-2 rounded-bakin-control bg-bakin-surface-default p-bakin-2">
             <Input className="w-40" placeholder="product-ui" aria-label="Group name" value={groupDraft.name} onChange={(e) => setGroupDraft({ ...groupDraft, name: e.target.value })} />
             <Input className="flex-1" placeholder="real product UI — use for any product visual" aria-label="Group usage note" value={groupDraft.description} onChange={(e) => setGroupDraft({ ...groupDraft, description: e.target.value })} />
             <Button variant="default" size="sm" disabled={!groupDraft.name.trim()} onClick={() => { onSave({ assetGroups: [...brand.assetGroups, { name: groupDraft.name.trim(), description: groupDraft.description.trim() || undefined, assetIds: [] }] }); setGroupDraft(null) }}>Add group</Button>
@@ -1489,7 +1495,7 @@ function BrandAssetsSection({
                 if (!current.includes(assetId)) onSave({ defaultImageReferences: [...current, assetId] })
               })}
             >
-              <Plus className="size-3.5" /> Add reference
+              <Plus className="size-bakin-3" /> Add reference
             </Button>
           ) : (
             <span className="text-bakin-typography-size-meta text-bakin-text-muted">4 of 4 — remove one to swap</span>
@@ -1500,7 +1506,7 @@ function BrandAssetsSection({
           <SectionEmpty>None yet — without references, branded image generations rely on the palette and text alone.</SectionEmpty>
         )}
         {(brand.defaultImageReferences ?? []).length > 0 && (
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="grid gap-bakin-3 lg:grid-cols-2">
             {(brand.defaultImageReferences ?? []).map((assetId) =>
               tile(assetId, (m) => ({ defaultImageReferences: (m.defaultImageReferences ?? []).filter((id) => id !== assetId) })),
             )}
@@ -1515,7 +1521,7 @@ function BrandAssetsSection({
 function VariantSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const options = LOGO_VARIANTS.includes(value) ? LOGO_VARIANTS : [value, ...LOGO_VARIANTS]
   return (
-    <span className="flex items-center gap-1.5 text-bakin-typography-size-meta text-bakin-text-muted">
+    <span className="flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
       variant
       <Select value={value} onValueChange={(next) => { if (next) onChange(next) }}>
         <SelectTrigger size="sm" aria-label="Logo variant" className="w-auto shrink-0">
@@ -1551,39 +1557,47 @@ function AssetTile({
   return (
     // Horizontal card: compact image LEFT, the description gets the width it
     // deserves on the right. Two across, stretch to fit.
-    <div className="group relative flex overflow-hidden rounded-xl bg-bakin-surface-default ring-1 ring-bakin-text-primary/10 transition-shadow hover:ring-bakin-text-primary/25" data-asset-card={assetId}>
+    <div className="group relative flex overflow-hidden rounded-bakin-surface bg-bakin-surface-default ring-1 ring-bakin-text-primary/10 transition-shadow hover:ring-bakin-text-primary/25" data-asset-card={assetId}>
       <Button
         type="button"
         variant="ghost"
-        size="sm"
-        className="block !h-auto min-h-36 w-36 shrink-0 self-stretch overflow-hidden rounded-none bg-bakin-canvas-default/50 p-0 hover:bg-bakin-canvas-default/60"
-        title="Open in the asset viewer"
+        size="inline"
+        className="block min-h-36 w-36 shrink-0 self-stretch overflow-hidden rounded-none bg-bakin-canvas-default/50 text-left hover:bg-bakin-canvas-default/60"
         aria-label="Open in the asset viewer"
         onClick={open}
       >
         {isImage && info?.hasThumb
           ? <img src={`/api/assets/${assetId}/thumb`} alt="" className="size-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-          : <span className="flex size-full items-center justify-center text-3xl text-bakin-text-muted">{TYPE_ICON[info?.type ?? 'other'] ?? '⊟'}</span>}
+          : (() => {
+              const TypeGlyph = TYPE_ICON[info?.type ?? 'other'] ?? File
+              return (
+                <span className="flex size-full items-center justify-center text-bakin-text-muted">
+                  <TypeGlyph aria-hidden="true" className="size-bakin-8" />
+                </span>
+              )
+            })()}
       </Button>
       <Button
         type="button"
         variant="ghost"
         size="icon-xs"
-        className="absolute right-1.5 top-1.5 bg-bakin-canvas-default/70 text-bakin-text-muted opacity-0 backdrop-blur transition-opacity hover:text-bakin-signal-danger focus-visible:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
+        // The reveal convention: hover/focus reveal on pointer-hover
+        // viewports only — touch keeps the control visible.
+        className="absolute right-1.5 top-1.5 bg-bakin-canvas-default/70 text-bakin-text-muted backdrop-blur transition-opacity hover:text-bakin-signal-danger md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100 motion-reduce:transition-none"
         onClick={onRemove}
         aria-label="Remove"
       >
-        <Trash2 className="size-3.5" />
+        <Trash2 className="size-bakin-3" />
       </Button>
 
       {/* pr-9 reserves the hover-trash gutter — the floating icon must never sit on the note text. */}
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5 py-3 pl-3 pr-9">
+      <div className="flex min-w-0 flex-1 flex-col gap-bakin-1 py-bakin-3 pl-bakin-3 pr-9 text-bakin-typography-size-meta">
         {extra}
         {editing ? (
           <Textarea
             autoFocus
             rows={2}
-            className="text-xs"
+            className="text-bakin-typography-size-meta"
             placeholder="What is this, and how should agents use it?"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -1594,17 +1608,18 @@ function AssetTile({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="!h-auto justify-start whitespace-normal p-0 text-left text-xs font-bakin-typography-weight-regular hover:bg-transparent"
+            size="inline"
+            className="font-bakin-typography-weight-regular hover:bg-transparent"
             onClick={() => { setDraft(info?.description ?? ''); setEditing(true) }}
           >
             {info?.description
-              ? <span className="line-clamp-3 text-bakin-text-primary/90">{info.description} <Pencil className="inline size-3 text-bakin-text-muted" /></span>
-              : <span className="flex items-center gap-1 text-bakin-text-muted transition-colors hover:text-bakin-text-primary"><Plus className="size-3" /> Add a note</span>}
+              ? <span className="line-clamp-3 text-bakin-text-primary/90">{info.description} <Pencil className="inline size-bakin-3 text-bakin-text-muted" /></span>
+              : <span className="flex items-center gap-bakin-1 text-bakin-text-muted transition-colors hover:text-bakin-text-primary"><Plus className="size-bakin-3" /> Add a note</span>}
           </Button>
         )}
-        {/* Machine detail — surfaces on hover only; the thumbnail + note identify the card. */}
-        <span className="truncate font-mono text-bakin-typography-size-meta text-bakin-text-muted/60 opacity-0 transition-opacity group-hover:opacity-100">{assetId}</span>
+        {/* Machine detail — surfaces on hover only; when shown it reads at
+            full muted contrast (never double-faded). */}
+        <span className="truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted opacity-0 transition-opacity group-hover:opacity-100 motion-reduce:transition-none">{assetId}</span>
       </div>
     </div>
   )
@@ -1699,7 +1714,7 @@ function DraftBanner({ brand, brandId, onPublish }: { brand: BrandManifest; bran
             <span data-draft-task-status={taskColumn}>
               <StatusBadge
                 tone={status.tone === 'working' ? 'attention' : status.tone === 'done' ? 'success' : status.tone === 'blocked' ? 'danger' : 'neutral'}
-                className="font-normal"
+                className="font-bakin-typography-weight-regular"
               >
                 {status.tone === 'working' && <span className="size-bakin-1 animate-pulse rounded-bakin-pill bg-bakin-signal-highlight" aria-hidden />}
                 {status.tone === 'working' ? 'Agent working' : status.tone === 'done' ? 'Draft ready' : status.tone === 'blocked' ? 'Blocked' : 'Queued'}
@@ -1717,7 +1732,7 @@ function DraftBanner({ brand, brandId, onPublish }: { brand: BrandManifest; bran
             </Button>
           )}
           <Button size="sm" onClick={onPublish}>
-            <Rocket className="size-3.5" /> Publish
+            <Rocket className="size-bakin-3" /> Publish
           </Button>
         </>
       )}
@@ -1803,7 +1818,7 @@ function BrandSettingsTab({
   }, [brandId, brand.name, onDeleted])
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-bakin-4">
       <SectionCard
         title="Status"
         icon={Rocket}
@@ -1811,19 +1826,19 @@ function BrandSettingsTab({
       >
         {brand.draft ? (
           <>
-            <p className="text-sm text-bakin-text-muted">
-              Review the tabs, then publish. Delete <code className="rounded bg-bakin-surface-default px-1 text-xs">_intake.md</code> under
+            <p className="text-bakin-typography-size-body text-bakin-text-muted">
+              Review the tabs, then publish. Delete <code className="rounded bg-bakin-surface-default px-bakin-1 text-bakin-typography-size-meta">_intake.md</code> under
               Guidelines if you don't want the builder intake kept.
               {blocked > 0 && ` ${blocked} task${blocked === 1 ? ' is' : 's are'} waiting on this brand right now.`}
             </p>
             <Button variant="default" size="sm" className="w-fit" onClick={onPublish}>
-              <Rocket className="size-3.5" /> Publish brand
+              <Rocket className="size-bakin-3" /> Publish brand
             </Button>
           </>
         ) : (
           <>
-            <p className="flex items-center gap-1.5 text-sm text-bakin-text-muted">
-              <Check className="size-4 text-bakin-action-primary-background" /> Live since {new Date(brand.updatedAt).toLocaleDateString()}
+            <p className="flex items-center gap-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">
+              <Check className="size-bakin-4 text-bakin-action-primary-background" /> Live since {new Date(brand.updatedAt).toLocaleDateString()}
               {linked !== null && ` — linked to ${linked} open task${linked === 1 ? '' : 's'}.`}
             </p>
             <Button variant="outline" size="sm" className="w-fit" onClick={() => setUnpublishConfirm(true)} data-unpublish>
@@ -1856,10 +1871,10 @@ function BrandSettingsTab({
           icon={ExternalLink}
           description="Where this brand kit came from — local edits win over the upstream copy."
         >
-          <p className="text-sm text-bakin-text-muted">
-            <span className="font-mono text-bakin-text-primary/80">{brand.source.repo}</span>
+          <p className="text-bakin-typography-size-body text-bakin-text-muted">
+            <span className="font-bakin-typography-family-mono text-bakin-text-primary/80">{brand.source.repo}</span>
             {brand.source.commit ? ` @ ${brand.source.commit.slice(0, 8)}` : ''}. Check for upstream changes:
-            <code className="ml-1 rounded bg-bakin-surface-default px-1 text-xs">bakin brands check {brand.id}</code>
+            <code className="ml-bakin-1 rounded bg-bakin-surface-default px-bakin-1 text-bakin-typography-size-meta">bakin brands check {brand.id}</code>
           </p>
         </SectionCard>
       )}
@@ -1870,16 +1885,16 @@ function BrandSettingsTab({
         description="Every branded task carries a compact card of this brand — rules, palette, terminology, and the always-in-context docs."
       >
         {cardInfo ? (
-          <p className="text-sm text-bakin-text-muted">
+          <p className="text-bakin-typography-size-body text-bakin-text-muted">
             The card currently adds ~{(cardInfo.cardBytes / 1024).toFixed(1)} KB of its {(cardInfo.maxBytes / 1024).toFixed(0)} KB allowance to every branded task
             {cardInfo.omitted > 0 ? ` — ${cardInfo.omitted} item${cardInfo.omitted === 1 ? ' is' : 's are'} left out for size (agents fetch them on demand).` : ' — nothing is left out.'}
           </p>
         ) : (
-          <p className="text-sm text-bakin-text-muted">Measuring the card…</p>
+          <p className="text-bakin-typography-size-body text-bakin-text-muted">Measuring the card…</p>
         )}
         {dangling.length > 0 && (
-          <div className="rounded-lg bg-bakin-signal-highlight/10 p-3 ring-1 ring-bakin-signal-highlight/20">
-            {dangling.map((d) => <p key={d.assetId} className="flex items-center gap-1.5 text-xs text-bakin-signal-highlight"><AlertTriangle className="size-3" /> asset {d.assetId} is missing ({d.where}) — remove or replace it under Assets</p>)}
+          <div className="rounded-bakin-control bg-bakin-signal-highlight/10 p-bakin-3 ring-1 ring-bakin-signal-highlight/20">
+            {dangling.map((d) => <p key={d.assetId} className="flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-signal-highlight"><AlertTriangle className="size-bakin-3" /> asset {d.assetId} is missing ({d.where}) — remove or replace it under Assets</p>)}
           </div>
         )}
       </SectionCard>

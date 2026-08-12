@@ -6,7 +6,6 @@
  */
 import { useCallback, useMemo, useState } from 'react'
 import { ImagePlus, Loader2, X } from 'lucide-react'
-import { useFileDrop } from '@makinbakin/sdk/hooks'
 import { AgentSelect, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -24,6 +23,7 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
+  FileInput,
   Form,
   FormActions,
   Input,
@@ -33,6 +33,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@makinbakin/sdk/ui'
+import { Monogram } from './brand-card'
 import { useBrandAgentOptions } from './use-brand-agent-options'
 
 interface Answers {
@@ -331,7 +332,9 @@ export function BrandBuilder({
               <CardContent className="flex items-center gap-bakin-3">
               {logoPreview
                 ? <img src={logoPreview} alt="" className="size-10 rounded-bakin-control border border-bakin-border-subtle object-contain" />
-                : <div className="flex size-10 items-center justify-center rounded-bakin-control border border-bakin-border-subtle text-bakin-typography-size-meta text-bakin-text-muted">No logo</div>}
+                // The brand-identity fallback everywhere a brand has no
+                // logo: the tinted monogram, not a "No logo" text box.
+                : <Monogram name={a.name || '?'} size="sm" />}
                 <p className="min-w-0 text-bakin-text-muted">{a.product || 'No product description'}</p>
               </CardContent>
             </Card>
@@ -374,12 +377,6 @@ function MaterialsDrop({ files, onChange }: { files: File[]; onChange: (files: F
     if (accepted.length === 0) return
     onChange([...files, ...accepted].slice(0, 3))
   }
-  const { dragOver: over, dropProps } = useFileDrop({
-    accept: ['image/', 'application/pdf'],
-    multiple: true,
-    onFiles: add,
-  })
-
   return (
     <div className="grid gap-bakin-2">
       {files.map((f, i) => (
@@ -404,19 +401,20 @@ function MaterialsDrop({ files, onChange }: { files: File[]; onChange: (files: F
         </div>
       ))}
       {!full && (
-        <label
-          className={[
-            'flex cursor-pointer items-center gap-bakin-2 rounded-bakin-control border border-dashed p-bakin-3',
-            'text-bakin-typography-size-meta text-bakin-text-muted transition-colors',
-            over ? 'border-bakin-focus-ring bg-bakin-surface-default' : 'border-bakin-border-subtle hover:bg-bakin-surface-default',
-          ].join(' ')}
-          {...dropProps}
-          data-materials-drop
+        // Kit FileInput: real button semantics (the raw label zone was not
+        // keyboard-activatable) + kit-owned drag-over affordance.
+        <FileInput
+          label={`Add brand materials, ${files.length} of 3 attached`}
+          accept="image/*,application/pdf"
+          multiple
+          variant="outline"
+          size="inline"
+          onFiles={add}
+          className="w-full gap-bakin-2 rounded-bakin-control border-dashed p-bakin-3 text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted hover:bg-bakin-surface-default"
         >
           <ImagePlus className="size-bakin-4 shrink-0" aria-hidden="true" />
           <span>Drop a PDF or image here, or browse ({files.length}/3)</span>
-          <input type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={(e) => { add(e.target.files); e.target.value = '' }} />
-        </label>
+        </FileInput>
       )}
     </div>
   )
@@ -433,26 +431,26 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 }
 
 function LogoDrop({ preview, fileName, onPick }: { preview: string | null; fileName: string | null; onPick: (f: File | null) => void }) {
-  const { dragOver: over, dropProps } = useFileDrop({ accept: ['image/'], onFiles: ([f]) => onPick(f) })
   return (
     <div>
-      <label
-        className={[
-          'flex cursor-pointer items-center gap-bakin-3 rounded-bakin-control border border-dashed p-bakin-3 transition-colors',
-          over ? 'border-bakin-focus-ring bg-bakin-surface-default' : 'border-bakin-border-subtle hover:bg-bakin-surface-default',
-        ].join(' ')}
-        {...dropProps}
+      {/* Kit FileInput: real button semantics + kit drag-over affordance. */}
+      <FileInput
+        label={fileName ? `Replace logo ${fileName}` : 'Add a logo'}
+        accept="image/*"
+        variant="outline"
+        size="inline"
+        onFiles={([f]) => onPick(f ?? null)}
+        className="w-full gap-bakin-3 rounded-bakin-control border-dashed p-bakin-3 font-bakin-typography-weight-regular hover:bg-bakin-surface-default"
       >
         {preview
           ? <img src={preview} alt="Logo preview" className="size-10 rounded-bakin-control border border-bakin-border-subtle object-contain" />
-          : <div className="flex size-10 items-center justify-center rounded-bakin-control border border-bakin-border-subtle text-bakin-text-muted"><ImagePlus aria-hidden="true" className="size-bakin-4" /></div>}
-        <div className="min-w-0">
+          : <span className="flex size-10 shrink-0 items-center justify-center rounded-bakin-control border border-bakin-border-subtle text-bakin-text-muted"><ImagePlus aria-hidden="true" className="size-bakin-4" /></span>}
+        <span className="min-w-0">
           {fileName
-            ? <><p className="truncate font-bakin-typography-weight-semibold">{fileName}</p><p className="text-bakin-typography-size-meta text-bakin-text-muted">Browse or drop to replace</p></>
-            : <><p className="font-bakin-typography-weight-semibold">Add a logo</p><p className="text-bakin-typography-size-meta text-bakin-text-muted">Browse or drop an image here</p></>}
-        </div>
-        <input type="file" accept="image/*" className="hidden" onChange={(e) => onPick(e.target.files?.[0] ?? null)} />
-      </label>
+            ? <><span className="block truncate font-bakin-typography-weight-semibold">{fileName}</span><span className="block text-bakin-typography-size-meta text-bakin-text-muted">Browse or drop to replace</span></>
+            : <><span className="block font-bakin-typography-weight-semibold">Add a logo</span><span className="block text-bakin-typography-size-meta text-bakin-text-muted">Browse or drop an image here</span></>}
+        </span>
+      </FileInput>
       {fileName && (
         <Button type="button" variant="link" size="xs" className="mt-bakin-1 text-bakin-text-muted hover:text-bakin-signal-danger" onClick={() => onPick(null)}>
           Remove logo

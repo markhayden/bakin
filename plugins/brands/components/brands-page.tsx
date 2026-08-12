@@ -113,13 +113,13 @@ export function BrandsPage() {
       preview={(
         <Grid layout="split" gap="item" data-brands-loading>
           {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-56 rounded-xl" />
+            <Skeleton key={index} className="h-56 rounded-bakin-surface" />
           ))}
         </Grid>
       )}
     />
   ) : empty ? (
-    <div className="mx-auto w-full max-w-2xl space-y-6 py-10" data-brands-empty>
+    <div className="mx-auto w-full max-w-2xl space-y-bakin-6 py-bakin-8" data-brands-empty>
       <SystemState
         kind="initial-empty"
         title="Give your agents a brand kit"
