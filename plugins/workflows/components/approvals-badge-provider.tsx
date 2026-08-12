@@ -13,6 +13,7 @@
 import { useCallback, useEffect } from 'react'
 import { useNavBadge, usePluginEvent, useRouter, toast, useToastStore } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
+import { Button } from '@makinbakin/sdk/ui'
 import { useState } from 'react'
 
 import { sendBrowserNotification } from '../lib/browser-notify'
@@ -25,17 +26,20 @@ interface PendingGatesResponse {
 function GateToast({ url, title, body, onNavigate }: { url: string; title: string; body: string; onNavigate?: () => void }) {
   const router = useRouter()
   return (
-    <button
+    <Button
       type="button"
-      className="text-left"
+      variant="ghost"
+      size="inline"
       onClick={() => {
         onNavigate?.()
         router.push(url)
       }}
     >
-      <span className="font-bakin-typography-weight-medium">{title}</span>
-      <span className="block text-bakin-typography-size-meta text-bakin-text-muted">{body}</span>
-    </button>
+      <span className="block min-w-0">
+        <span className="font-bakin-typography-weight-medium">{title}</span>
+        <span className="block text-bakin-typography-size-meta text-bakin-text-muted">{body}</span>
+      </span>
+    </Button>
   )
 }
 

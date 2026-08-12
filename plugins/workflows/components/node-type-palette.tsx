@@ -109,8 +109,8 @@ function setPaletteDragImage(event: DragEvent<HTMLElement>, label: string) {
   ghost.style.borderRadius = 'var(--bakin-radius-control)'
   ghost.style.background = 'var(--bakin-color-surface-default)'
   ghost.style.color = 'var(--bakin-color-text-primary)'
-  ghost.style.font = `12px var(--bakin-typography-family-ui, system-ui, sans-serif)`
-  ghost.style.padding = '4px 8px'
+  ghost.style.font = `var(--bakin-typography-size-meta) var(--bakin-typography-family-ui, system-ui, sans-serif)`
+  ghost.style.padding = 'var(--bakin-layout-space-1) var(--bakin-layout-space-2)'
   ghost.style.boxShadow = 'var(--bakin-elevation-overlay)'
   document.body.appendChild(ghost)
   if (typeof event.dataTransfer.setDragImage === 'function') {

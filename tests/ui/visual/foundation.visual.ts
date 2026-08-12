@@ -753,6 +753,7 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=lists-calendargrid--week-and-day-structure&viewMode=story', png: 'lists-calendar-grid.png', role: 'grid' as const, name: 'Week of July 12, 2026' },
   { url: '/iframe.html?id=lists-calendaritem--tones-and-densities&viewMode=story', png: 'lists-calendar-item.png', text: 'Invoice run due' },
   { url: '/iframe.html?id=lists-calendarnav--range-shapes&viewMode=story', png: 'lists-calendar-nav.png', role: 'group' as const, name: 'Week navigation' },
+  { url: '/iframe.html?id=lists-nodecard--shapes-and-states&viewMode=story', png: 'lists-node-card.png', text: 'Owner sign-off' },
   { url: '/iframe.html?id=navigation-navlist--selection-and-keyboard&viewMode=story', png: 'navigation-nav-list.png', role: 'navigation' as const, name: 'Plugin settings' },
   { url: '/iframe.html?id=agents-agentavatar--sizes-and-presence&viewMode=story', png: 'agents-agent-avatar.png', text: 'Keep identity recognizable at every density' },
   { url: '/iframe.html?id=agents-agentstatus--presence-language&viewMode=story', png: 'agents-agent-status.png', text: 'Say the state in words, not color' },

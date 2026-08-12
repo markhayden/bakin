@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import {
   Badge,
+  Button,
   Card,
   CardContent,
   CardDescription,
@@ -120,9 +121,11 @@ function WorkflowStepPreview({
         <Tooltip>
           <TooltipTrigger
             render={(
-              <button
+              <Button
                 type="button"
-                className="inline-flex size-bakin-4 shrink-0 cursor-help items-center justify-center rounded-bakin-pill text-bakin-text-muted transition-colors hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
+                variant="ghost"
+                size="icon-xs"
+                className="cursor-help rounded-bakin-pill text-bakin-text-muted"
                 aria-label={`Show ${stepCount} workflow ${stepCount === 1 ? 'step' : 'steps'}`}
               />
             )}
@@ -132,7 +135,7 @@ function WorkflowStepPreview({
           <TooltipContent
             side="top"
             align="start"
-            className="w-80 max-w-full items-stretch"
+            className="items-stretch"
           >
             <div className="min-w-0">
               <p className="m-0 font-bakin-typography-weight-bold">Workflow steps</p>
@@ -145,7 +148,7 @@ function WorkflowStepPreview({
                   const Icon = summary.icon
                   return (
                     <li key={step.id} className="flex min-w-0 items-start gap-bakin-2">
-                      <span className="flex size-5 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-canvas-default/10 font-bakin-typography-family-mono text-bakin-typography-size-meta">
+                      <span className="flex size-bakin-6 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-canvas-default/10 font-bakin-typography-family-mono text-bakin-typography-size-meta">
                         {index + 1}
                       </span>
                       <span className="flex min-w-0 items-start gap-bakin-1">
@@ -194,12 +197,12 @@ export function WorkflowCard({
           Cards position their direct children, so corner-pinned decorations
           anchor to this wrapper instead. */}
       {scoreInfo && (
-        <div className="pointer-events-none absolute right-bakin-3 top-bakin-3 z-10 flex flex-col items-end gap-0.5 rounded-bakin-control bg-bakin-canvas-default/90 px-bakin-2 py-bakin-1 text-right font-bakin-typography-family-mono text-bakin-typography-size-meta">
-          <span className="text-bakin-data-series-3">RRF {scoreInfo.score.toFixed(3)}</span>
+        <div className="pointer-events-none absolute right-bakin-3 top-bakin-3 z-10 flex flex-col items-end gap-bakin-1 rounded-bakin-control bg-bakin-canvas-default/90 px-bakin-2 py-bakin-1 text-right font-bakin-typography-family-mono text-bakin-typography-size-meta">
+          <span className="text-bakin-data-series-1">RRF {scoreInfo.score.toFixed(3)}</span>
           <span className="text-bakin-data-series-2">
             BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
           </span>
-          <span className="text-bakin-data-series-5">
+          <span className="text-bakin-data-series-3">
             SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
           </span>
         </div>
@@ -207,12 +210,16 @@ export function WorkflowCard({
     <Card
       data-testid={`card-${template.filename}`}
       interactive={{ label: `Open ${template.name}`, onActivate: onClick }}
-      className={`h-full ${disabled ? 'opacity-55 hover:opacity-75' : ''}`}
+      // Disabled cards de-emphasize via muted identity — never a
+      // contrast-breaking surface fade (the "disabled" badge carries the
+      // state in words).
+      className="h-full"
+      data-disabled={disabled ? '' : undefined}
     >
       <CardHeader>
         <div className={`flex min-w-0 items-start gap-bakin-2 ${scoreInfo ? 'pr-24' : ''}`}>
-          <Workflow className="mt-1 size-bakin-4 shrink-0 text-bakin-signal-accent" />
-          <CardTitle className="line-clamp-1">{template.name}</CardTitle>
+          <Workflow className={`mt-bakin-1 size-bakin-4 shrink-0 ${disabled ? 'text-bakin-text-muted' : 'text-bakin-signal-accent'}`} />
+          <CardTitle className={`line-clamp-1 ${disabled ? 'text-bakin-text-muted' : ''}`}>{template.name}</CardTitle>
         </div>
       </CardHeader>
 
@@ -234,7 +241,6 @@ export function WorkflowCard({
             <span
               role="img"
               aria-label={`Managed by ${template.pluginId ?? 'plugin'} plugin; read-only`}
-              title={`Managed by ${template.pluginId ?? 'plugin'} plugin; read-only`}
               className="inline-flex size-bakin-4 shrink-0 items-center justify-center text-bakin-signal-accent"
             >
               <Lock aria-hidden="true" className="size-bakin-3" />
@@ -251,9 +257,8 @@ export function WorkflowCard({
               tone="accent"
               variant="soft"
               size="xs"
-              title="This custom workflow shadows a managed workflow with the same id"
             >
-              <GitBranch className="size-2.5" />
+              <GitBranch />
               shadows default
             </Badge>
           )}
@@ -262,9 +267,8 @@ export function WorkflowCard({
               tone="attention"
               variant="solid"
               size="xs"
-              title="This workflow references a stale local workflow skill"
             >
-              <AlertTriangle className="size-2.5" />
+              <AlertTriangle />
               {template.skillDrift.count === 1 ? 'stale skill' : `${template.skillDrift.count} stale skills`}
             </Badge>
           )}
@@ -273,9 +277,8 @@ export function WorkflowCard({
               tone="neutral"
               variant="solid"
               size="xs"
-              title="Disabled for automatic workflow selection"
             >
-              <PauseCircle className="size-2.5" />
+              <PauseCircle />
               disabled
             </Badge>
           )}
@@ -285,7 +288,6 @@ export function WorkflowCard({
             {assignments.inheritsTaskAgent ? (
               <span
                 className="flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted"
-                title="Agent is inherited from the task that starts this workflow"
               >
                 <UserRound aria-hidden="true" className="size-bakin-3" />
                 Task agent
@@ -295,7 +297,6 @@ export function WorkflowCard({
               <span
                 key={teamId}
                 className="flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted"
-                title={`Assigned from team ${teamId}`}
               >
                 <UsersRound aria-hidden="true" className="size-bakin-3" />
                 {teamId}

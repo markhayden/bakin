@@ -43,12 +43,8 @@ export function WorkflowDetailsDrawer({
   }, [definition.description, definition.name])
 
   return (
-    <InspectorPanel
-      label="Workflow details"
-      className="w-100 shrink-0 gap-0 border-l border-bakin-border-subtle bg-bakin-surface-default"
-    >
+    <InspectorPanel label="Workflow details" side>
       <InspectorPanelHeader
-        className="px-3 pt-3"
         title="Workflow details"
         description="Edit the workflow name and description."
         actions={(
@@ -63,7 +59,7 @@ export function WorkflowDetailsDrawer({
           </Button>
         )}
       />
-      <InspectorPanelContent className="flex-1 overflow-y-auto p-3">
+      <InspectorPanelContent>
         <div className="mb-3">
           <Label className="text-bakin-typography-size-meta" htmlFor="workflow-details-name">
             Name <span className="text-bakin-signal-danger">*</span>
@@ -92,7 +88,7 @@ export function WorkflowDetailsDrawer({
           />
         </div>
       </InspectorPanelContent>
-      <InspectorPanelFooter className="justify-between p-3">
+      <InspectorPanelFooter className="justify-between">
         <Button size="sm" variant="ghost" onClick={onClose} disabled={applying}>
           Cancel
         </Button>

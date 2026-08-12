@@ -61,7 +61,6 @@ import {
 } from '../lib/node-config-fields'
 import { ParallelChildrenEditor } from './parallel-children-editor'
 
-const PANEL_CLASS = 'w-112 shrink-0 gap-0 border-l border-bakin-border-subtle bg-bakin-surface-default'
 const FIELD_ERROR_CLASS = 'text-bakin-typography-size-meta font-bakin-typography-weight-medium leading-relaxed text-bakin-signal-danger'
 
 export interface NodeConfigDrawerProps {
@@ -86,7 +85,6 @@ export interface NodeConfigDrawerProps {
 function PanelHeader({ title, onClose }: { title: string; onClose: () => void }) {
   return (
     <InspectorPanelHeader
-      className="px-5 pt-4"
       title={title}
       actions={(
         <Button
@@ -169,16 +167,16 @@ export function NodeConfigDrawer({
 
   if (!def) {
     return (
-      <InspectorPanel label="Step configuration" className={PANEL_CLASS}>
+      <InspectorPanel label="Step configuration" side>
         <PanelHeader onClose={onClose} title={stepKindLabel(kind)} />
-        <InspectorPanelContent className="p-5 text-bakin-typography-size-body leading-relaxed text-bakin-signal-highlight">
+        <InspectorPanelContent className="text-bakin-typography-size-body leading-relaxed text-bakin-signal-highlight">
           <p className="m-0">
             No registered node type for <code>{kind || '(missing)'}</code>. Step is preserved
             but cannot be edited here - the plugin may not be active.
           </p>
         </InspectorPanelContent>
         {onDelete && (
-          <InspectorPanelFooter className="justify-start p-5">
+          <InspectorPanelFooter className="justify-start">
             <Button type="button" size="sm" variant="destructive" onClick={onDelete}>
               <Trash2 className="mr-1 size-3.5" />
               Delete step
@@ -300,10 +298,10 @@ export function NodeConfigDrawer({
   const canApply = id.trim().length > 0 && label.trim().length > 0
 
   return (
-    <InspectorPanel label="Step configuration" className={PANEL_CLASS}>
+    <InspectorPanel label="Step configuration" side>
       <PanelHeader onClose={onClose} title={stepKindLabel(kind)} />
 
-      <InspectorPanelContent className="flex-1 overflow-y-auto p-5">
+      <InspectorPanelContent>
         <div className="space-y-6">
           <div className={FIELD_GROUP_CLASS}>
             <Label className={FIELD_LABEL_CLASS} htmlFor="node-config-id">Step ID</Label>
@@ -409,7 +407,7 @@ export function NodeConfigDrawer({
         </div>
       </InspectorPanelContent>
 
-      <InspectorPanelFooter className="justify-between p-5">
+      <InspectorPanelFooter className="justify-between">
         {onDelete && (
           <Button
             type="button"

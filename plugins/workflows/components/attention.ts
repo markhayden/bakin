@@ -8,7 +8,7 @@
  * runtime capabilities. The durable approval record stays the authority —
  * this is attention, not approval state.
  */
-import type { NavBadge } from '@makinbakin/sdk'
+import type { NavBadge } from '@makinbakin/sdk/types'
 
 export interface GateReachedPayload {
   instanceId: string

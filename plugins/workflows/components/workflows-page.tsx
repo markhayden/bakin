@@ -42,6 +42,62 @@ interface ScoreInfo {
 
 const MANAGED_PAGE_SIZE = 9
 
+/**
+ * One titled section of the workflow grid. Module-scope on purpose: defined
+ * inside the page it would get a fresh component identity every render and
+ * remount its children on each keystroke.
+ */
+function WorkflowSection({
+  title,
+  workflows,
+  empty,
+  total = workflows.length,
+  pagination,
+  scoreMap,
+  showDebugScores,
+  onOpen,
+}: {
+  title: string
+  workflows: WorkflowTemplate[]
+  empty: string
+  total?: number
+  pagination?: React.ReactNode
+  scoreMap: Map<string, ScoreInfo>
+  showDebugScores: boolean
+  onOpen: (filename: string) => void
+}) {
+  return (
+    <section className="flex min-w-0 flex-col gap-bakin-3">
+      <div className="flex min-w-0 items-center gap-bakin-2">
+        <h2 className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-widest text-bakin-text-muted">
+          {title}
+        </h2>
+        <Badge size="xs" variant="outline">{total}</Badge>
+      </div>
+      {workflows.length === 0 ? (
+        <SystemState
+          kind="initial-empty"
+          scope="inline"
+          title={empty}
+          description="This section will update when a matching workflow is available."
+        />
+      ) : (
+        <Grid layout="thirds" gap="item">
+          {workflows.map((t) => (
+            <WorkflowCard
+              key={t.filename}
+              template={t}
+              onClick={() => onOpen(t.filename)}
+              scoreInfo={showDebugScores ? scoreMap.get(t.filename) : undefined}
+            />
+          ))}
+        </Grid>
+      )}
+      {pagination}
+    </section>
+  )
+}
+
 function slugify(name: string): string {
   return name
     .toLowerCase()
@@ -221,55 +277,6 @@ export function WorkflowsPage() {
     }
   }
 
-  function WorkflowSection({
-    title,
-    workflows,
-    empty,
-    total = workflows.length,
-    pagination,
-  }: {
-    title: string
-    workflows: WorkflowTemplate[]
-    empty: string
-    total?: number
-    pagination?: React.ReactNode
-  }) {
-    return (
-      <section className="flex min-w-0 flex-col gap-bakin-3">
-        <div className="flex min-w-0 items-center gap-bakin-2">
-          <h2 className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-widest text-bakin-text-muted">
-            {title}
-          </h2>
-          <Badge size="xs" variant="outline">{total}</Badge>
-        </div>
-        {workflows.length === 0 ? (
-          <SystemState
-            kind="initial-empty"
-            scope="inline"
-            title={empty}
-            description="This section will update when a matching workflow is available."
-          />
-        ) : (
-          <Grid layout="thirds" gap="item">
-            {workflows.map((t) => {
-              const scoreInfo = scoreMap.get(t.filename)
-              const showScores = debug && normalizedSearch && scoreInfo ? scoreInfo : undefined
-              return (
-                <WorkflowCard
-                  key={t.filename}
-                  template={t}
-                  onClick={() => router.push(`/workflows/${t.filename}`)}
-                  scoreInfo={showScores}
-                />
-              )
-            })}
-          </Grid>
-        )}
-        {pagination}
-      </section>
-    )
-  }
-
   const searchFeedback = searchSignalActive && searchHook.status !== 'loading' ? (
     <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
       {searchHook.status === 'unavailable' ? <SearchDegradedChip testId="workflows-search-degraded" /> : null}
@@ -363,12 +370,18 @@ export function WorkflowsPage() {
               title="Custom workflows"
               workflows={customWorkflows}
               empty="No custom workflows yet."
+              scoreMap={scoreMap}
+              showDebugScores={Boolean(debug && normalizedSearch)}
+              onOpen={(filename) => router.push(`/workflows/${filename}`)}
             />
             <WorkflowSection
               title="Managed workflows"
               workflows={visibleManagedWorkflows}
               total={managedWorkflows.length}
               empty="No managed workflows match this view."
+              scoreMap={scoreMap}
+              showDebugScores={Boolean(debug && normalizedSearch)}
+              onOpen={(filename) => router.push(`/workflows/${filename}`)}
               pagination={(
                 <Pagination
                   ariaLabel="Managed workflows pagination"

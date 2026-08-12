@@ -77,7 +77,6 @@ export function WorkflowDeleteAction({
         variant="danger"
         size="icon-sm"
         aria-label="Delete workflow"
-        title="Delete workflow"
         onClick={() => {
           onClearError?.()
           setOpen(true)
