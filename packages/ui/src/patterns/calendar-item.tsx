@@ -30,7 +30,11 @@ export interface CalendarItemProps extends NativeCalendarItemProps {
   tone?: CalendarItemTone
   /** `compact` for dense grid cells, `expanded` for agenda timelines. */
   density?: CalendarItemDensity
-  /** Dims an entry whose instant has already passed. */
+  /**
+   * De-emphasizes an entry whose instant has already passed: the title drops
+   * to muted and the identity slot dims. Text never fades below contrast
+   * compliance — no whole-surface opacity.
+   */
   past?: boolean
 }
 
@@ -93,7 +97,7 @@ export const CalendarItem = React.forwardRef<HTMLButtonElement, CalendarItemProp
           'flex w-full min-w-0 items-start gap-x-bakin-2 overflow-hidden rounded-bakin-control border text-left font-bakin-typography-family-ui outline-none transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
           expanded ? 'px-bakin-3 py-bakin-2' : 'px-bakin-2 py-bakin-2',
           TONE_SURFACE[tone],
-          past && 'opacity-50 hover:opacity-70',
+          past && '[&_[data-slot=calendar-item-leading]]:opacity-60',
           className,
         )}
       >
@@ -108,9 +112,11 @@ export const CalendarItem = React.forwardRef<HTMLButtonElement, CalendarItemProp
               data-slot="calendar-item-title"
               className={cn(
                 'min-w-0 flex-1 truncate font-bakin-typography-weight-medium leading-tight',
+                // The [length:] form keeps tailwind-merge from purging the
+                // size against the text-color class (both parse as `text-*`).
                 expanded
-                  ? 'text-bakin-typography-size-body'
-                  : 'text-bakin-typography-size-meta',
+                  ? 'text-[length:var(--bakin-typography-size-body)]'
+                  : 'text-[length:var(--bakin-typography-size-meta)]',
                 past ? 'text-bakin-text-muted' : 'text-bakin-text-primary',
               )}
             >
@@ -123,7 +129,7 @@ export const CalendarItem = React.forwardRef<HTMLButtonElement, CalendarItemProp
                   <span
                     data-slot="calendar-item-time"
                     className={cn(
-                      'text-right font-bakin-typography-family-mono text-bakin-typography-size-meta tabular-nums',
+                      'text-right font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] tabular-nums',
                       TONE_TIME[tone],
                     )}
                   >
@@ -137,7 +143,7 @@ export const CalendarItem = React.forwardRef<HTMLButtonElement, CalendarItemProp
             <span
               data-slot="calendar-item-detail"
               className={cn(
-                'min-w-0 leading-tight text-bakin-text-muted text-bakin-typography-size-meta',
+                'min-w-0 leading-tight text-bakin-text-muted text-[length:var(--bakin-typography-size-meta)]',
                 expanded ? 'line-clamp-3' : 'line-clamp-1',
               )}
             >
@@ -147,7 +153,7 @@ export const CalendarItem = React.forwardRef<HTMLButtonElement, CalendarItemProp
           {expanded && meta ? (
             <span
               data-slot="calendar-item-meta"
-              className="mt-bakin-1 block min-w-0 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted"
+              className="mt-bakin-1 block min-w-0 font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted"
             >
               {meta}
             </span>

@@ -144,7 +144,8 @@ describe('Schedule calendar views (occurrence-fed)', () => {
 
     expect(screen.getByText('11 PM')).toBeDefined()
     expect(screen.getByText('Late night release')).toBeDefined()
-    expect(screen.getByText('11:05pm')).toBeDefined()
+    // Hour-gridded surfaces carry no per-item time label — the row says when.
+    expect(screen.queryByText('11:05pm')).toBeNull()
     expect(fetchCalls.some(u => u.includes('/occurrences'))).toBe(true)
   })
 
@@ -311,10 +312,8 @@ describe('Schedule calendar views (occurrence-fed)', () => {
 
     const occurrenceButton = screen.getByText('Late night release').closest('button')
     const occurrencePrompt = screen.getByText('Build release notes')
-    const occurrenceTime = screen.getByText('9am')
     const eventButton = screen.getByText('No-Knead Artisan Bread Recipe').closest('button')
     const eventMetadata = screen.getByText('messaging · publish · published')
-    const eventTime = screen.getByText('10am')
 
     // Both entries ride the ONE kit CalendarItem — no bespoke button-as-card.
     expect(occurrenceButton?.getAttribute('data-slot')).toBe('calendar-item')
@@ -324,7 +323,6 @@ describe('Schedule calendar views (occurrence-fed)', () => {
     expect(occurrenceButton?.querySelector('[data-slot="avatar"]')?.getAttribute('data-size')).toBe('sm')
     expect(occurrenceButton?.textContent).not.toContain('Margo')
     expect(occurrencePrompt.className).toContain('line-clamp-1')
-    expect(occurrenceTime.className).toContain('text-right')
     expect(eventButton?.getAttribute('data-slot')).toBe('calendar-item')
     expect(eventButton?.getAttribute('data-tone')).toBe('accent')
     expect(eventButton?.getAttribute('data-density')).toBe('compact')
@@ -332,7 +330,9 @@ describe('Schedule calendar views (occurrence-fed)', () => {
     expect(
       eventMetadata.closest('[data-slot="calendar-item-detail"]')?.className,
     ).toContain('line-clamp-1')
-    expect(eventTime.className).toContain('text-right')
+    // Hour-gridded entries carry no time label — the 9 AM / 10 AM rows say when.
+    expect(screen.queryByText('9am')).toBeNull()
+    expect(screen.queryByText('10am')).toBeNull()
   })
 
   it('Week: reserves the second line for authored description copy, not a runtime slug', async () => {

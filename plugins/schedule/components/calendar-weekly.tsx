@@ -22,16 +22,6 @@ function getWeekDates(weekStart: Date): Date[] {
   })
 }
 
-/** Local wall-clock label of an occurrence instant ("11:05pm"). */
-export function formatInstantTime(at: string): string {
-  const d = new Date(at)
-  const h = d.getHours()
-  const m = d.getMinutes()
-  const period = h >= 12 ? 'pm' : 'am'
-  const display = h === 0 ? 12 : h > 12 ? h - 12 : h
-  return m === 0 ? `${display}${period}` : `${display}:${m.toString().padStart(2, '0')}${period}`
-}
-
 /** Index jobs by id for occurrence → job lookup. */
 export function jobsById(jobs: ScheduleJob[]): Map<string, ScheduleJob> {
   return new Map(jobs.map(job => [job.id, job]))
@@ -108,7 +98,11 @@ function DispositionDot({ occurrence }: { occurrence: ScheduleOccurrence }) {
   )
 }
 
-/** A single occurrence entry — used in the weekly grid and today timeline. */
+/**
+ * A single occurrence entry — used in the weekly grid and today timeline.
+ * Both surfaces are hour-gridded, so the entry carries no time label — the
+ * row it sits in already says when.
+ */
 export function OccurrenceCard({
   occurrence,
   job,
@@ -125,7 +119,6 @@ export function OccurrenceCard({
       density={expanded ? 'expanded' : 'compact'}
       past={occurrence.past}
       title={job.displayName || job.id}
-      time={formatInstantTime(occurrence.at)}
       detail={calendarDescription(job)}
       meta={expanded ? job.humanSchedule : undefined}
       leading={<AgentBadge agentId={job.agentId} size="md" showName={false} />}
@@ -254,7 +247,7 @@ export function CalendarWeekly({
   }, [byId, collapsedOccurrenceKeys, visibleEvents, visibleOccurrences])
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-bakin-3">
+    <div className="flex min-w-0 flex-col gap-bakin-3">
       <CalendarNav
         navLabel="Week navigation"
         previousLabel="Previous week"
@@ -276,7 +269,7 @@ export function CalendarWeekly({
         date={weekStart}
         label="Weekly schedule"
         items={items}
-        className="min-h-0 flex-1"
+        scroll="page"
         renderDayHeader={(day) => {
           const summaries = recurringByDay[localDayKey(day)]
           if (!summaries?.length) return null

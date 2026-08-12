@@ -53,6 +53,8 @@ export type {
   CalendarGridView,
 } from './calendar-grid'
 
+export type { CalendarGridScroll } from './calendar-grid'
+
 export { CalendarItem } from './calendar-item'
 export type {
   CalendarItemDensity,
@@ -100,11 +102,13 @@ export {
   WorkspacePageBody,
   WorkspacePageCompactHeader,
   WorkspacePageHeader,
+  WorkspacePageMetrics,
 } from './workspace-page'
 export type {
   WorkspacePageBodyProps,
   WorkspacePageCompactHeaderProps,
   WorkspacePageHeaderProps,
+  WorkspacePageMetricsProps,
   WorkspacePageMode,
   WorkspacePageProps,
 } from './workspace-page'

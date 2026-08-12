@@ -62,7 +62,7 @@ export function CalendarNav({
       </Button>
       <span
         data-slot="calendar-nav-label"
-        className="min-w-48 text-center text-bakin-typography-size-body font-bakin-typography-weight-medium tabular-nums text-bakin-text-primary"
+        className="min-w-48 text-center text-[length:var(--bakin-typography-size-body)] font-bakin-typography-weight-medium tabular-nums text-bakin-text-primary"
       >
         {label}
       </span>

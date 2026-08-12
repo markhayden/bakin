@@ -75,7 +75,7 @@ export function CalendarMonthly({
   const goToday = () => { setYear(now.getFullYear()); setMonth(now.getMonth()) }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-bakin-3">
+    <div className="flex min-w-0 flex-col gap-bakin-3">
       <CalendarNav
         navLabel="Month navigation"
         previousLabel="Previous month"
@@ -92,7 +92,7 @@ export function CalendarMonthly({
         label={`${MONTH_LABELS[month]} ${year} schedule`}
         items={items}
         dimPastDays
-        className="min-h-0 flex-1"
+        scroll="page"
         renderItem={(item) => item.kind === 'occurrence' ? (
           <CalendarItem
             title={item.job.displayName || item.job.id}
@@ -100,7 +100,7 @@ export function CalendarMonthly({
             onClick={() => onSelectJob(item.job)}
           />
         ) : (
-          <EventChip event={item.event} compact onRescheduled={refresh} />
+          <EventChip event={item.event} compact showTime onRescheduled={refresh} />
         )}
       />
     </div>

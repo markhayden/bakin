@@ -227,6 +227,30 @@ export function WorkspacePageCompactHeader({
   )
 }
 
+export type WorkspacePageMetricsProps = React.ComponentPropsWithoutRef<'div'>
+
+/**
+ * Metric tiles between the workspace identity and its controls — the stat
+ * strip zone. Hidden on phones, where the compact header owns the chrome.
+ * Omit the component entirely when a workspace has no metrics: the frame
+ * closes up with no reserved band.
+ */
+export function WorkspacePageMetrics({
+  className,
+  ...props
+}: WorkspacePageMetricsProps) {
+  return (
+    <div
+      {...props}
+      data-slot="workspace-page-metrics"
+      className={cn(
+        'hidden min-w-0 px-bakin-4 pb-bakin-4 pt-bakin-2 @md/page-shell:block @md/page-shell:px-bakin-6',
+        className,
+      )}
+    />
+  )
+}
+
 export type WorkspacePageBodyProps = React.ComponentPropsWithoutRef<'div'>
 
 /**

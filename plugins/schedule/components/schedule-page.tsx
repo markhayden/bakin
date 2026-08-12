@@ -360,11 +360,12 @@ export function SchedulePage() {
 
   return (
     <>
-      {/* The workflows frame: full-bleed immersive workspace (non-flow — the
-          calendars are viewport-fit surfaces that own their scrolling, like
-          the workflows canvas). The full identity scrolls away on every
+      {/* The tasks frame: full-bleed immersive flow workspace. ONE page
+          scroll owns the document — calendars grow to their natural height;
+          the only overflow region is the week grid's horizontal axis with
+          the pinned scrollbar. The full identity scrolls away on every
           viewport; the sticky compact row stays. */}
-      <WorkspacePage mode="immersive">
+      <WorkspacePage mode="immersive" flow>
         <WorkspacePageHeader>
           <PageHeader
             title="Schedule"
@@ -427,7 +428,7 @@ export function SchedulePage() {
           )}
         />
 
-        <WorkspacePageBody className="flex-col">
+        <WorkspacePageBody>
           {/* Mobile search: the immersive full header hides its controls row
               below @md; the view toggle rides the compact row, so only search
               needs this in-body home on phones. */}
@@ -457,13 +458,16 @@ export function SchedulePage() {
             busy={!loading && searchHook.status === 'loading'}
             feedback={pageFeedback}
             state={resultState}
-            className="min-h-0 flex-1 px-bakin-4 pb-bakin-4 pt-bakin-2 @md/page-shell:px-bakin-6"
+            gap="content"
+            className="pt-bakin-2"
           >
             <div
               id={`schedule-view-panel-${view}`}
               role="tabpanel"
               aria-labelledby={`schedule-view-tab-${view}`}
-              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto"
+              // pb clears the week grid's pinned scrollbar so a fully
+              // scrolled calendar never rests on it.
+              className="min-w-0 px-bakin-4 pb-bakin-6 @md/page-shell:px-bakin-6"
             >
               {view === 'list' ? (
                 <div className="flex min-w-0 flex-col gap-bakin-3">

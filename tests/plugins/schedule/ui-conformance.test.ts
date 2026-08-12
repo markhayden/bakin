@@ -15,9 +15,11 @@ describe('Schedule UI conformance', () => {
     expect(contents).not.toContain('@makinbakin/sdk/components')
     expect(contents).toContain("from '@makinbakin/sdk/navigation'")
     expect(contents).toContain("from '@makinbakin/sdk/patterns'")
-    // The workflows frame: immersive workspace with the sticky compact row.
-    expect(contents).toContain('<WorkspacePage mode="immersive"')
+    // The tasks frame: immersive FLOW workspace — one page scroll, no
+    // nested vertical scroll regions — with the sticky compact row.
+    expect(contents).toContain('<WorkspacePage mode="immersive" flow')
     expect(contents).toContain('<WorkspacePageCompactHeader')
+    expect(contents).not.toContain('overflow-auto')
     expect(contents).toContain('<PageHeader')
     expect(contents).toContain('<SearchInput')
     expect(contents).toContain('<PageControls')

@@ -70,7 +70,7 @@ export function CalendarToday({
   }, [byId, events, occurrences])
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-bakin-3">
+    <div className="flex min-w-0 flex-col gap-bakin-3">
       <div className="flex flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1">
         <Clock className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
         <span className="font-bakin-typography-weight-medium text-bakin-text-primary">{todayFormatted}</span>
@@ -84,7 +84,7 @@ export function CalendarToday({
         date={dayStart}
         label="Today's schedule"
         items={items}
-        className="min-h-0 flex-1"
+        scroll="page"
         renderItem={(item) => item.kind === 'occurrence' ? (
           <OccurrenceCard
             occurrence={item.occurrence}

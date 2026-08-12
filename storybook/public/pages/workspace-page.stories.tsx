@@ -7,6 +7,7 @@ import {
   WorkspacePageBody,
   WorkspacePageCompactHeader,
   WorkspacePageHeader,
+  WorkspacePageMetrics,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Button, DropdownMenuItem } from '@makinbakin/sdk/ui'
 
@@ -39,6 +40,12 @@ export const CanonicalUsage = {
       <WorkspacePageHeader>
         <PageHeader title="Conversation workspace" />
       </WorkspacePageHeader>
+      {/* The stat-strip zone between identity and controls. Omit the
+          component entirely when a workspace has no metrics — the frame
+          closes up with no reserved band. */}
+      <WorkspacePageMetrics>
+        <span aria-label="Workspace metrics">3 active · 1 blocked</span>
+      </WorkspacePageMetrics>
       <WorkspacePageBody>
         <section aria-label="Workspace canvas">Workspace canvas</section>
       </WorkspacePageBody>
@@ -48,6 +55,7 @@ export const CanonicalUsage = {
     const page = canvas.getByTestId('canonical-workspace-page')
     await expect(page).toHaveAttribute('data-archetype', 'workspace')
     await expect(page.querySelector('[data-slot="workspace-page-header"]')).toBeTruthy()
+    await expect(page.querySelector('[data-slot="workspace-page-metrics"]')).toBeTruthy()
     await expect(page.querySelector('[data-slot="workspace-page-body"]')).toBeTruthy()
     await expect(canvas.getByRole('heading', { name: 'Conversation workspace' })).toBeVisible()
     await expect(canvas.getByRole('region', { name: 'Workspace canvas' })).toBeVisible()

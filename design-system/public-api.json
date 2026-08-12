@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 294,
-    "typeExports": 389
+    "valueExports": 295,
+    "typeExports": 390
   },
   "entrypoints": [
     {
@@ -458,7 +458,8 @@
         "WorkspacePage",
         "WorkspacePageBody",
         "WorkspacePageCompactHeader",
-        "WorkspacePageHeader"
+        "WorkspacePageHeader",
+        "WorkspacePageMetrics"
       ],
       "types": [
         "AgentAvatarProps",
@@ -584,6 +585,7 @@
         "WorkspacePageBodyProps",
         "WorkspacePageCompactHeaderProps",
         "WorkspacePageHeaderProps",
+        "WorkspacePageMetricsProps",
         "WorkspacePageMode",
         "WorkspacePageProps"
       ]

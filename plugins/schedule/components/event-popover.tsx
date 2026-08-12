@@ -43,11 +43,17 @@ function formatEventTime(at: string): string {
 export function EventChip({
   event,
   compact,
+  showTime,
   onRescheduled,
 }: {
   event: ScheduledDomainEvent
   /** Dense variant for weekly grid cells; expanded for the Today timeline. */
   compact?: boolean
+  /**
+   * Hour-gridded surfaces (week, today) omit the time — the row already says
+   * when. Day-scoped surfaces (month) pass this to keep the instant visible.
+   */
+  showTime?: boolean
   onRescheduled: () => void
 }) {
   const [rescheduling, setRescheduling] = useState(false)
@@ -95,7 +101,7 @@ export function EventChip({
               tone={due ? 'danger' : 'accent'}
               density={compact ? 'compact' : 'expanded'}
               title={event.title}
-              time={time}
+              time={showTime ? time : undefined}
               detail={(
                 <span className="uppercase tracking-wider">
                   {event.pluginId} · {event.kind}{event.status ? ` · ${event.status}` : ''}

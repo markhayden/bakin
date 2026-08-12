@@ -32,6 +32,7 @@ import {
   WorkspacePageBody,
   WorkspacePageCompactHeader,
   WorkspacePageHeader,
+  WorkspacePageMetrics,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Button, SystemState } from '@makinbakin/sdk/ui'
 import { Kanban, Plus, Table2 } from 'lucide-react'
@@ -626,9 +627,9 @@ export function KanbanBoard() {
           {/* Metrics + filters live OUTSIDE PageBody: its `state` prop
               replaces children, and a no-results state must never unmount
               the filters that caused it. */}
-          <div className="hidden px-bakin-4 pb-bakin-4 pt-bakin-2 @md/page-shell:block @md/page-shell:px-bakin-6">
+          <WorkspacePageMetrics>
             <TaskMetrics columns={columns} timestamp={timestamp} />
-          </div>
+          </WorkspacePageMetrics>
 
           <PageControls label="Task filters" divider className="px-bakin-4 @md/page-shell:px-bakin-6">
             <TaskFilters

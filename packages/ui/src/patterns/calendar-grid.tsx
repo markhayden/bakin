@@ -2,9 +2,11 @@
 
 import * as React from 'react'
 
+import { BoundedOverflow } from '../layout/bounded-overflow'
 import { cn } from '../utils'
 
 export type CalendarGridView = 'month' | 'week' | 'day'
+export type CalendarGridScroll = 'contained' | 'page'
 
 export interface CalendarGridItem {
   key: string
@@ -60,6 +62,15 @@ export interface CalendarGridProps<T extends CalendarGridItem> {
   granularity?: 'hour' | 'day'
   /** Month view: dim the item stacks of days before `now`. Off by default. */
   dimPastDays?: boolean
+  /**
+   * `'page'` gives the calendar to the document: it grows to its natural
+   * height and the PAGE owns the one vertical scroll — the week grid keeps
+   * a single horizontal bounded-overflow with the pinned always-visible
+   * scrollbar (the workspace-board treatment). `'contained'` (default)
+   * keeps the grid viewport-fit and scrolling internally for height-bound
+   * layouts.
+   */
+  scroll?: CalendarGridScroll
   className?: string
 }
 
@@ -276,8 +287,10 @@ export function CalendarGrid<T extends CalendarGridItem>({
   outsideDays = 'hidden',
   granularity = 'hour',
   dimPastDays = false,
+  scroll = 'contained',
   className,
 }: CalendarGridProps<T>) {
+  const paged = scroll === 'page'
   const currentInstant = now ?? new Date()
   const todayKey = localDayKey(currentInstant)
   const todayStart = startOfLocalDay(currentInstant).getTime()
@@ -378,7 +391,8 @@ export function CalendarGrid<T extends CalendarGridItem>({
         data-calendar-grid=""
         data-view="month"
         className={cn(
-          'grid content-start gap-px overflow-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-border-subtle font-bakin-typography-family-ui',
+          'grid content-start gap-px rounded-bakin-surface border border-bakin-border-subtle bg-bakin-border-subtle font-bakin-typography-family-ui',
+          !paged && 'overflow-auto',
           className,
         )}
       >
@@ -480,7 +494,7 @@ export function CalendarGrid<T extends CalendarGridItem>({
     const rowOffset = hasAllDayRow ? 1 : 0
     const laneMode = granularity === 'day'
     const rowTemplate = laneMode ? WEEK_LANE_TEMPLATE : WEEK_ROW_TEMPLATE
-    return (
+    const weekGrid = (
       <div
         role="grid"
         aria-label={label}
@@ -488,13 +502,18 @@ export function CalendarGrid<T extends CalendarGridItem>({
         data-view="week"
         data-granularity={laneMode ? 'day' : undefined}
         className={cn(
-          'overflow-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default font-bakin-typography-family-ui',
-          className,
+          'rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default font-bakin-typography-family-ui',
+          // Page mode: the grid sizes to its column template inside the
+          // horizontal bounded-overflow; height belongs to the document.
+          paged ? 'w-max min-w-full' : ['overflow-auto', className],
         )}
       >
         <div
           role="row"
-          className={cn('sticky top-0 z-10 grid bg-bakin-surface-default', rowTemplate)}
+          // Sticky day headers only work against the grid's own scroll;
+          // in page mode the document scrolls and an overflow region
+          // cannot hold a child against it (scrollport capture).
+          className={cn(!paged && 'sticky top-0 z-10', 'grid bg-bakin-surface-default', rowTemplate)}
         >
           {laneMode ? null : (
             <div role="columnheader" className="py-bakin-2">
@@ -619,6 +638,16 @@ export function CalendarGrid<T extends CalendarGridItem>({
         ))}
       </div>
     )
+    if (!paged) return weekGrid
+    return (
+      <BoundedOverflow
+        label={`${label} columns`}
+        stickyScrollbar
+        className={cn('w-full', className)}
+      >
+        {weekGrid}
+      </BoundedOverflow>
+    )
   }
 
   // Day / agenda view: hour rows with the current hour marked.
@@ -637,7 +666,8 @@ export function CalendarGrid<T extends CalendarGridItem>({
         data-view="day"
         data-granularity="day"
         className={cn(
-          'overflow-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default font-bakin-typography-family-ui',
+          'rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default font-bakin-typography-family-ui',
+          !paged && 'overflow-auto',
           className,
         )}
       >
@@ -657,7 +687,8 @@ export function CalendarGrid<T extends CalendarGridItem>({
       data-calendar-grid=""
       data-view="day"
       className={cn(
-        'overflow-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default font-bakin-typography-family-ui',
+        'rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default font-bakin-typography-family-ui',
+        !paged && 'overflow-auto',
         className,
       )}
     >

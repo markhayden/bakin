@@ -12,7 +12,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'CalendarItem is the one interactive calendar entry — job occurrences, plugin domain events, recurring-series rollups — shared by every calendar surface so tone, density, and past-state treatment stay identical across views. The item owns its whole-surface button affordance and text hierarchy: a truncating title, a mono time label, an optional detail line (one line compact, three expanded), and an expanded-only mono meta line. Consumers own the slots — `leading` identity (avatar, kind icon), the `marker` beside the time (disposition dot, attention icon; give markers screen-reader text, never a bare `title` attribute) — and the cell layout it sits in: the item never carries its own margins, so the surrounding calendar cell owns rhythm. `accent`/`danger` tint the surface and time for domain events and deadlines; `attention` is reserved for entries that need a human look; `past` dims an elapsed entry. It forwards its ref and button props, so it composes as a popover or menu trigger via `render`.',
+        component: 'CalendarItem is the one interactive calendar entry — job occurrences, plugin domain events, recurring-series rollups — shared by every calendar surface so tone, density, and past-state treatment stay identical across views. The item owns its whole-surface button affordance and text hierarchy: a truncating title, a mono time label, an optional detail line (one line compact, three expanded), and an expanded-only mono meta line. Consumers own the slots — `leading` identity (avatar, kind icon), the `marker` beside the time (disposition dot, attention icon; give markers screen-reader text, never a bare `title` attribute) — and the cell layout it sits in: the item never carries its own margins, so the surrounding calendar cell owns rhythm. `accent`/`danger` tint the surface and time for domain events and deadlines; `attention` is reserved for entries that need a human look; `past` de-emphasizes an elapsed entry by dropping the title to muted and dimming the identity slot — text never fades below contrast compliance. It forwards its ref and button props, so it composes as a popover or menu trigger via `render`.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'interaction', 'long-labels', 'dense-data'],
@@ -27,7 +27,7 @@ interface CalendarItemCanonicalArgs {
   tone: 'neutral' | 'accent' | 'danger' | 'attention'
   /** `compact` for dense grid cells, `expanded` for agenda timelines. */
   density: 'compact' | 'expanded'
-  /** Dims an entry whose instant has already passed. */
+  /** De-emphasizes an entry whose instant has already passed. */
   past: boolean
   onClick: () => void
 }
@@ -116,7 +116,7 @@ export const TonesAndDensities = {
     <StoryStage
       eyebrow="Lists / calendar entries"
       title="One entry treatment across every calendar surface"
-      description="Neutral entries are job occurrences; accent and danger tint plugin domain events and deadlines; attention is reserved for entries needing a human look. Compact suits dense grid cells, expanded suits agenda timelines; past dims elapsed entries."
+      description="Neutral entries are job occurrences; accent and danger tint plugin domain events and deadlines; attention is reserved for entries needing a human look. Compact suits dense grid cells, expanded suits agenda timelines; past de-emphasizes elapsed entries."
     >
       <StorySection
         title="Tones — compact"
@@ -141,7 +141,7 @@ export const TonesAndDensities = {
       </StorySection>
       <StorySection
         title="Expanded and past"
-        description="Expanded entries show a three-line detail clamp and a mono meta line; past entries dim without losing their hover affordance. Long titles truncate."
+        description="Expanded entries show a three-line detail clamp and a mono meta line; past entries drop to muted text with a dimmed identity slot — never a contrast-breaking surface fade. Long titles truncate."
       >
         <div style={{ display: 'grid', gap: 'var(--bakin-layout-space-2)', maxInlineSize: '24rem' }}>
           <CalendarItem
