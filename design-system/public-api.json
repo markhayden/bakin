@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 292,
-    "typeExports": 385
+    "valueExports": 294,
+    "typeExports": 389
   },
   "entrypoints": [
     {
@@ -397,6 +397,8 @@
         "AssetPicker",
         "ASSIGNED_AGENT_VALUE",
         "CalendarGrid",
+        "CalendarItem",
+        "CalendarNav",
         "ChannelIcon",
         "ColorInput",
         "ColorPicker",
@@ -480,6 +482,10 @@
         "CalendarGridItem",
         "CalendarGridProps",
         "CalendarGridView",
+        "CalendarItemDensity",
+        "CalendarItemProps",
+        "CalendarItemTone",
+        "CalendarNavProps",
         "ChannelIconChannel",
         "ChannelIconProps",
         "ChannelIconSize",

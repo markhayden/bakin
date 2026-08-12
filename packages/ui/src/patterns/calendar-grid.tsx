@@ -519,7 +519,17 @@ export function CalendarGrid<T extends CalendarGridItem>({
                 <span className={isToday ? 'text-bakin-signal-accent' : 'text-bakin-text-primary'}>
                   {day.getDate()}
                 </span>
-                {renderDayHeader?.(day)}
+                {renderDayHeader ? (
+                  <div
+                    data-slot="calendar-day-header"
+                    // The columnheader's label typography (uppercase tracking,
+                    // centering, weight) must not cascade into consumer
+                    // content — this slot resets to body posture.
+                    className="text-left font-bakin-typography-weight-regular normal-case tracking-normal"
+                  >
+                    {renderDayHeader(day)}
+                  </div>
+                ) : null}
               </div>
             )
           })}
@@ -568,7 +578,7 @@ export function CalendarGrid<T extends CalendarGridItem>({
                     isToday && 'bg-bakin-signal-accent/5',
                   )}
                 >
-                  {renderItems(dayItems, renderItem)}
+                  <div className="flex flex-col gap-bakin-1">{renderItems(dayItems, renderItem)}</div>
                 </div>
               )
             })}
@@ -601,7 +611,7 @@ export function CalendarGrid<T extends CalendarGridItem>({
                     cellItems.length === 0 && 'hover:bg-bakin-surface-default',
                   )}
                 >
-                  {renderItems(cellItems, renderItem)}
+                  <div className="flex flex-col gap-bakin-1">{renderItems(cellItems, renderItem)}</div>
                 </div>
               )
             })}
