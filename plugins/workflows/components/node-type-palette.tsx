@@ -145,7 +145,7 @@ export function NodeTypePalette({
 
   if (collapsed) {
     return (
-      <aside className="flex w-10 flex-col items-center border-r border-bakin-border-subtle bg-bakin-surface-default py-2">
+      <aside className="flex w-10 flex-col items-center border-r border-bakin-border-subtle bg-bakin-surface-default py-bakin-2">
         <Button
           type="button"
           variant="ghost"
@@ -153,7 +153,7 @@ export function NodeTypePalette({
           aria-label="Expand palette"
           onClick={() => setCollapsed(false)}
         >
-          <ChevronRight aria-hidden="true" className="size-4" />
+          <ChevronRight aria-hidden="true" className="size-bakin-4" />
         </Button>
       </aside>
     )
@@ -164,7 +164,7 @@ export function NodeTypePalette({
 
   return (
     <aside className="flex w-56 flex-col border-r border-bakin-border-subtle bg-bakin-surface-default">
-      <div className="flex items-center justify-between border-b border-bakin-border-subtle px-3 py-2">
+      <div className="flex items-center justify-between border-b border-bakin-border-subtle px-bakin-3 py-bakin-2">
         <span className="text-bakin-typography-size-meta font-bakin-typography-weight-medium uppercase tracking-wide text-bakin-text-muted">
           Step Types
         </span>
@@ -175,11 +175,11 @@ export function NodeTypePalette({
           aria-label="Collapse palette"
           onClick={() => setCollapsed(true)}
         >
-          <ChevronLeft aria-hidden="true" className="size-4" />
+          <ChevronLeft aria-hidden="true" className="size-bakin-4" />
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="flex-1 overflow-y-auto p-bakin-2">
         {loading && (
           <SystemState
             kind="loading"
@@ -291,22 +291,22 @@ function PaletteItem({
         setPaletteDragImage(e, displayKind)
         onDragKind?.(item.kind)
       }}
-      className={`group flex flex-col gap-1 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default px-2 py-2 text-bakin-typography-size-meta ${
+      className={`group flex flex-col gap-bakin-1 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default px-bakin-2 py-bakin-2 text-bakin-typography-size-meta ${
         disabled
-          ? 'cursor-not-allowed opacity-50'
+          ? 'cursor-not-allowed text-bakin-text-muted [&_[aria-hidden=true]]:opacity-60'
           : 'cursor-grab hover:border-bakin-focus-ring/50 active:cursor-grabbing'
       }`}
     >
-      <span className="flex w-full items-center gap-2">
+      <span className="flex w-full items-center gap-bakin-2">
         <span
           aria-hidden="true"
-          className={`inline-flex size-6 shrink-0 items-center justify-center rounded-bakin-control ${iconTone}`}
+          className={`inline-flex size-bakin-6 shrink-0 items-center justify-center rounded-bakin-control ${iconTone}`}
         >
-          <Icon className="size-3.5" />
+          <Icon className="size-bakin-3" />
         </span>
         <span className="min-w-0 flex-1 truncate font-bakin-typography-weight-medium">{displayKind}</span>
         {item.pluginId && (
-          <span className="rounded-bakin-control bg-bakin-surface-default px-1 py-0.5 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">
+          <span className="rounded-bakin-control bg-bakin-surface-default px-bakin-1 py-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">
             {item.pluginId}
           </span>
         )}
