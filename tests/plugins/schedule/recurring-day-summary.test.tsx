@@ -19,18 +19,17 @@ describe('RecurringDaySummary', () => {
       />,
     )
 
+    // Kit CalendarItem binding: the visible title + detail ARE the
+    // accessible name — no parallel aria-label to drift.
     const summary = screen.getByRole('button', {
-      name: 'Hourly Inbox Sync. 13 done · 11 scheduled',
+      name: /Hourly Inbox Sync/,
     })
+    expect(summary.textContent).toContain('13 done · 11 scheduled')
     fireEvent.click(summary)
 
     expect(onClick).toHaveBeenCalledTimes(1)
+    expect(summary.getAttribute('data-slot')).toBe('calendar-item')
     expect(summary.getAttribute('data-tone')).toBe('neutral')
-    // Kit-Button row (refit T6.5): the icon/content columns ride the Button's
-    // own flex layout instead of a hand-rolled grid template.
-    expect(summary.className).toContain('w-full')
-    expect(summary.className).toContain('gap-x-bakin-2')
-    expect(screen.getByText('R').parentElement?.className).toContain('size-bakin-6')
   })
 
   it('exposes an attention state without relying on color alone', () => {
@@ -42,10 +41,9 @@ describe('RecurringDaySummary', () => {
       />,
     )
 
-    const summary = screen.getByRole('button', {
-      name: 'Hourly Inbox Sync. 23 done · 1 skipped',
-    })
+    const summary = screen.getByRole('button', { name: /Hourly Inbox Sync/ })
     expect(summary.getAttribute('data-tone')).toBe('attention')
-    expect(screen.getByTitle('Needs attention')).toBeDefined()
+    // Marker status is screen-reader text, never a title tooltip.
+    expect(screen.getByText('Needs attention').className).toContain('sr-only')
   })
 })

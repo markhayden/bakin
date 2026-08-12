@@ -207,9 +207,11 @@ describe('SchedulePage — search signals', () => {
 
     render(<SchedulePage />)
 
-    // In-flight search → visible loading indicator.
+    // In-flight search → visible loading indicator. The immersive frame
+    // renders a desktop and a mobile SearchInput (visibility is CSS
+    // viewport-scoped), so more than one indicator exists in jsdom.
     await waitFor(() => {
-      expect(screen.getByText('Searching Schedule search')).toBeDefined()
+      expect(screen.getAllByText('Searching Schedule search').length).toBeGreaterThan(0)
     })
 
     // Engine down → the honest degraded chip…

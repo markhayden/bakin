@@ -15,12 +15,16 @@ describe('Schedule UI conformance', () => {
     expect(contents).not.toContain('@makinbakin/sdk/components')
     expect(contents).toContain("from '@makinbakin/sdk/navigation'")
     expect(contents).toContain("from '@makinbakin/sdk/patterns'")
-    expect(contents).toContain('<Page scroll="contained"')
+    // The workflows frame: immersive workspace with the sticky compact row.
+    expect(contents).toContain('<WorkspacePage mode="immersive"')
+    expect(contents).toContain('<WorkspacePageCompactHeader')
     expect(contents).toContain('<PageHeader')
     expect(contents).toContain('<SearchInput')
     expect(contents).toContain('<PageControls')
     expect(contents).toContain('<PageBody')
     expect(contents).not.toMatch(/<button\b/)
+    // No SegmentedControl internals overrides — the kit owns tab padding.
+    expect(contents).not.toContain('[role=tab]')
   })
 
   it('composes the kit DataTable dual render rather than hand-rolled table/list branches', () => {
@@ -30,7 +34,11 @@ describe('Schedule UI conformance', () => {
     expect(contents).not.toContain('<EmptyState')
     expect(contents).toContain('<DataTable')
     expect(contents).toContain('renderRow=')
-    expect(contents).toContain('renderTableRow=')
+    // Wide-row activation is the kit DataTable contract — never a hand-rolled
+    // interactive TableRow through the renderTableRow escape.
+    expect(contents).not.toContain('renderTableRow=')
+    expect(contents).toContain('onRowActivate=')
+    expect(contents).toContain('rowActivateLabel=')
     expect(contents).toContain('<ListRow')
     // Whole-row activation rides the ListRow interactive contract, never a
     // ghost Button stretched across the row.
@@ -40,13 +48,17 @@ describe('Schedule UI conformance', () => {
     expect(contents).not.toContain('md:hidden')
   })
 
-  it('uses canonical status and action semantics for keyboard-accessible rows', () => {
+  it('uses canonical status and action semantics with kit-owned row activation', () => {
     const contents = source('plugins/schedule/components/job-row.tsx')
 
     expect(contents).not.toContain('@makinbakin/sdk/components')
     expect(contents).toContain('variant="solid"')
     expect(contents).toContain('variant="danger"')
-    expect(contents).toContain('onKeyDown=')
+    // Row keyboard activation is DataTable-owned — no hand-rolled handlers.
+    expect(contents).not.toContain('onKeyDown=')
+    expect(contents).not.toContain('tabIndex')
+    // Debug relevance scores ride the shared data-series palette.
+    expect(contents).toContain('text-bakin-data-series-1')
     expect(contents).not.toMatch(/\b(?:red|amber|cyan|purple|zinc|emerald|blue)-\d+/)
     expect(contents).not.toMatch(/text-\[(?:\d|\.)/)
   })

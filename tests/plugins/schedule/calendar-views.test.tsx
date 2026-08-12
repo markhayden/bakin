@@ -159,7 +159,8 @@ describe('Schedule calendar views (occurrence-fed)', () => {
 
     expect(screen.getByText('11 PM')).toBeDefined()
     expect(screen.getAllByText('Late night release').length).toBeGreaterThan(0)
-    expect(screen.getByTitle('Fired')).toBeDefined()
+    // Disposition markers are screen-reader text, never a title tooltip.
+    expect(screen.getByText('Fired').className).toContain('sr-only')
   })
 
   it('Week: a skipped past beat carries its skip reason', async () => {
@@ -171,7 +172,7 @@ describe('Schedule calendar views (occurrence-fed)', () => {
       render(<CalendarWeekly jobs={[makeJob()]} onSelectJob={() => {}} />)
     })
 
-    expect(screen.getByTitle('Skipped — overlap')).toBeDefined()
+    expect(screen.getByText('Skipped — overlap').className).toContain('sr-only')
   })
 
   it('Week: collapses a multi-occurrence daily series into one day summary', async () => {
@@ -197,9 +198,9 @@ describe('Schedule calendar views (occurrence-fed)', () => {
     )
     await settleReact()
 
-    expect(screen.getByRole('button', {
-      name: 'Hourly Inbox Sync. 0 done · 3 scheduled',
-    })).toBeDefined()
+    // Kit CalendarItem binding: the visible title + detail ARE the name.
+    const summary = screen.getByRole('button', { name: /Hourly Inbox Sync/ })
+    expect(summary.textContent).toContain('0 done · 3 scheduled')
     expect(screen.getAllByText('Hourly Inbox Sync')).toHaveLength(1)
     expect(screen.getByText('Late night release')).toBeDefined()
   })
@@ -241,10 +242,9 @@ describe('Schedule calendar views (occurrence-fed)', () => {
     )
     await settleReact()
 
-    expect(screen.getByRole('button', {
-      name: 'Hourly Inbox Sync. 2 done · 1 skipped',
-    })).toBeDefined()
-    expect(screen.queryByTitle('Skipped — overlap')).toBeNull()
+    const summary = screen.getByRole('button', { name: /Hourly Inbox Sync/ })
+    expect(summary.textContent).toContain('2 done · 1 skipped')
+    expect(screen.queryByText('Skipped — overlap')).toBeNull()
     expect(screen.getAllByText('Hourly Inbox Sync')).toHaveLength(1)
   })
 
@@ -273,9 +273,8 @@ describe('Schedule calendar views (occurrence-fed)', () => {
     )
     await settleReact()
 
-    expect(screen.getByRole('button', {
-      name: 'Hourly Inbox Sync. 0 done · 1 skipped · 2 scheduled',
-    })).toBeDefined()
+    const summary = screen.getByRole('button', { name: /Hourly Inbox Sync/ })
+    expect(summary.textContent).toContain('0 done · 1 skipped · 2 scheduled')
     expect(screen.getAllByText('Hourly Inbox Sync')).toHaveLength(1)
   })
 
@@ -317,26 +316,22 @@ describe('Schedule calendar views (occurrence-fed)', () => {
     const eventMetadata = screen.getByText('messaging · publish · published')
     const eventTime = screen.getByText('10am')
 
-    expect(occurrenceButton?.className).toContain('!h-auto')
+    // Both entries ride the ONE kit CalendarItem — no bespoke button-as-card.
+    expect(occurrenceButton?.getAttribute('data-slot')).toBe('calendar-item')
+    expect(occurrenceButton?.getAttribute('data-tone')).toBe('neutral')
+    expect(occurrenceButton?.getAttribute('data-density')).toBe('compact')
     expect(occurrenceButton?.className).toContain('overflow-hidden')
-    expect(occurrenceButton?.className).toContain('!p-0')
-    // Refit T6.5: icon/content columns ride flex layout, not a grid template.
-    expect(occurrenceButton?.firstElementChild?.className).toContain('flex')
-    expect(occurrenceButton?.firstElementChild?.className).toContain('px-bakin-2')
-    expect(occurrenceButton?.firstElementChild?.className).toContain('py-bakin-2')
-    expect(occurrenceButton?.firstElementChild?.className).not.toContain('gap-y-bakin-1')
     expect(occurrenceButton?.querySelector('[data-slot="avatar"]')?.getAttribute('data-size')).toBe('sm')
     expect(occurrenceButton?.textContent).not.toContain('Margo')
     expect(occurrencePrompt.className).toContain('line-clamp-1')
-    expect(occurrencePrompt.className.split(' ')).not.toContain('block')
     expect(occurrenceTime.className).toContain('text-right')
-    expect(eventButton?.className).toContain('!h-auto')
+    expect(eventButton?.getAttribute('data-slot')).toBe('calendar-item')
+    expect(eventButton?.getAttribute('data-tone')).toBe('accent')
+    expect(eventButton?.getAttribute('data-density')).toBe('compact')
     expect(eventButton?.className).toContain('overflow-hidden')
-    expect(eventButton?.className).toContain('flex')
-    expect(eventButton?.className).toContain('px-bakin-2')
-    expect(eventButton?.className).toContain('py-bakin-2')
-    expect(eventButton?.className).not.toContain('gap-y-bakin-1')
-    expect(eventMetadata.className).toContain('truncate')
+    expect(
+      eventMetadata.closest('[data-slot="calendar-item-detail"]')?.className,
+    ).toContain('line-clamp-1')
     expect(eventTime.className).toContain('text-right')
   })
 

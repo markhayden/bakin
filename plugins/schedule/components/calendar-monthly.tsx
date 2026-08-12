@@ -1,9 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { Button } from '@makinbakin/sdk/ui'
-import { CalendarGrid } from '@makinbakin/sdk/patterns'
+import { CalendarGrid, CalendarItem, CalendarNav } from '@makinbakin/sdk/patterns'
 import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from '@makinbakin/sdk/hooks'
 import { AgentBadge } from './agent-badge'
 import { jobsById } from './calendar-weekly'
@@ -78,18 +76,15 @@ export function CalendarMonthly({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-bakin-3">
-      <div className="flex items-center gap-bakin-2">
-        <Button variant="ghost" size="icon-sm" onClick={prev} aria-label="Previous month">
-          <ChevronLeft aria-hidden="true" />
-        </Button>
-        <span className="w-40 text-center font-bakin-typography-weight-medium text-bakin-text-primary">
-          {MONTH_LABELS[month]} {year}
-        </span>
-        <Button variant="ghost" size="icon-sm" onClick={next} aria-label="Next month">
-          <ChevronRight aria-hidden="true" />
-        </Button>
-        <Button variant="outline" size="xs" className="ml-bakin-2" onClick={goToday}>Today</Button>
-      </div>
+      <CalendarNav
+        navLabel="Month navigation"
+        previousLabel="Previous month"
+        nextLabel="Next month"
+        onPrevious={prev}
+        onNext={next}
+        onToday={goToday}
+        label={<>{MONTH_LABELS[month]} {year}</>}
+      />
 
       <CalendarGrid
         view="month"
@@ -99,20 +94,11 @@ export function CalendarMonthly({
         dimPastDays
         className="min-h-0 flex-1"
         renderItem={(item) => item.kind === 'occurrence' ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
+          <CalendarItem
+            title={item.job.displayName || item.job.id}
+            leading={<AgentBadge agentId={item.job.agentId} size="sm" showName={false} />}
             onClick={() => onSelectJob(item.job)}
-            className="h-auto min-h-bakin-6 w-full min-w-0 justify-start gap-bakin-2 px-bakin-1"
-          >
-            <span className="shrink-0">
-              <AgentBadge agentId={item.job.agentId} size="sm" showName={false} />
-            </span>
-            <span className="min-w-0 truncate text-bakin-typography-size-meta text-bakin-text-muted">
-              {item.job.displayName || item.job.id}
-            </span>
-          </Button>
+          />
         ) : (
           <EventChip event={item.event} compact onRescheduled={refresh} />
         )}

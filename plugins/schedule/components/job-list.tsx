@@ -1,18 +1,11 @@
 'use client'
 
+import { useMemo } from 'react'
 import { ShieldAlert } from 'lucide-react'
 import { DataTable, ListRow, type DataTableColumn } from '@makinbakin/sdk/patterns'
 import { AgentBadge } from './agent-badge'
-import { JobRow, JobStatusBadge, type JobScoreInfo } from './job-row'
+import { JobActionsMenu, JobNameCell, JobScheduleCell, JobStatusBadge, type JobScoreInfo } from './job-row'
 import type { ScheduleJob } from "@makinbakin/sdk/hooks"
-
-const JOB_COLUMNS: ReadonlyArray<DataTableColumn<ScheduleJob>> = [
-  { key: 'name', header: 'Name', headClassName: 'min-w-64' },
-  { key: 'agent', header: 'Agent', headClassName: 'min-w-36' },
-  { key: 'schedule', header: 'Schedule', headClassName: 'min-w-48' },
-  { key: 'status', header: 'Status', headClassName: 'min-w-28' },
-  { key: 'actions', header: 'Actions', hideLabel: true, headClassName: 'w-12' },
-]
 
 function MobileJobRow({
   job,
@@ -80,7 +73,7 @@ function MobileJobRow({
           ) : null}
 
           {scoreInfo ? (
-            <span className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-signal-highlight">
+            <span className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-data-series-1">
               RRF {scoreInfo.score.toFixed(3)}
             </span>
           ) : null}
@@ -118,19 +111,39 @@ export function JobList({
   scoreMap?: Map<string, JobScoreInfo>
   showScores?: boolean
 }) {
-  return (
-    <DataTable
-      label="Scheduled jobs"
-      columns={JOB_COLUMNS}
-      rows={jobs}
-      rowKey={job => job.id}
-      listVariant="bordered"
-      tableProps={{ 'data-testid': 'job-list', className: 'min-w-max' }}
-      renderTableRow={job => (
-        <JobRow
-          key={job.id}
+  const columns = useMemo<ReadonlyArray<DataTableColumn<ScheduleJob>>>(() => [
+    {
+      key: 'name',
+      header: 'Name',
+      headClassName: 'min-w-64',
+      cell: job => <JobNameCell job={job} scoreInfo={showScores ? scoreMap?.get(job.id) : undefined} />,
+    },
+    {
+      key: 'agent',
+      header: 'Agent',
+      headClassName: 'min-w-36',
+      cell: job => <AgentBadge agentId={job.agentId} size="md" />,
+    },
+    {
+      key: 'schedule',
+      header: 'Schedule',
+      headClassName: 'min-w-48',
+      cell: job => <JobScheduleCell job={job} />,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      headClassName: 'min-w-28',
+      cell: job => <JobStatusBadge job={job} />,
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      hideLabel: true,
+      headClassName: 'w-12',
+      cell: job => (
+        <JobActionsMenu
           job={job}
-          onClick={() => onSelect(job)}
           onPause={() => onPause(job.id)}
           onResume={() => onResume(job.id)}
           onRunNow={() => onRunNow(job.id)}
@@ -140,9 +153,23 @@ export function JobList({
           onAdopt={() => onAdopt(job)}
           onRestoreNative={() => onRestoreNative(job.id)}
           onSkipNext={() => onSkipNext(job.id)}
-          scoreInfo={showScores ? scoreMap?.get(job.id) : undefined}
         />
-      )}
+      ),
+    },
+  ], [onAdopt, onDelete, onDuplicate, onEdit, onPause, onRestoreNative, onResume, onRunNow, onSkipNext, scoreMap, showScores])
+
+  return (
+    <DataTable
+      label="Scheduled jobs"
+      columns={columns}
+      rows={jobs}
+      rowKey={job => job.id}
+      listVariant="bordered"
+      tableProps={{ 'data-testid': 'job-list', className: 'min-w-max' }}
+      onRowActivate={onSelect}
+      rowActivateLabel={job => `Open ${job.displayName || job.id}`}
+      // `group` feeds the actions menu's hover reveal on the wide render.
+      rowProps={() => ({ className: 'group' })}
       renderRow={job => (
         <MobileJobRow
           key={job.id}
