@@ -63,7 +63,9 @@ describe('DataTable', () => {
       <DataTable label="Runs" columns={COLUMNS} rows={ROWS} rowKey={(row) => row.id} collapseBelow="none" />,
     )
     expect(container.querySelector('[data-slot="data-table-table"]')?.className).toBe('block')
-    expect(screen.getByRole('list', { name: 'Runs', hidden: true }).className).toContain('hidden')
+    // `none` can never show the narrow render, so it is not rendered at
+    // all — no duplicate interactive controls in the DOM or tab order.
+    expect(container.querySelector('[data-slot="data-table-list"]')).toBeNull()
   })
 
   it('composes SortableHead for sortable columns and hides action headers accessibly', () => {

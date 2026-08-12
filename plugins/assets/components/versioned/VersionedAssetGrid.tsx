@@ -12,6 +12,8 @@ import {
 import { Grid } from '@makinbakin/sdk/layout'
 import {
   FacetFilter,
+  DataTable,
+  type DataTableColumn,
   ListRow,
   ListRows,
   Page,
@@ -607,29 +609,51 @@ export function VersionedAssetGrid() {
                 <Trash2 className="size-bakin-3" /> Empty trash
               </Button>
             </div>
-            <ListRows variant="bordered" aria-label="Trashed assets">
-            {trash.map(item => (
-              <ListRow key={item.trashName} className="flex items-center gap-bakin-3 py-bakin-2" data-testid={`trash-row-${item.assetId}`}>
-                <div className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-canvas-default">
-                  <AssetTypeIcon type={item.type} className="size-bakin-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{item.description || item.assetId}</p>
-                  <div className="flex items-center gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
-                    <span className="capitalize">{item.type}</span><span>·</span>
-                    <span>{item.versionCount} version{item.versionCount === 1 ? '' : 's'}</span><span>·</span>
-                    <span>deleted {formatAge(new Date(item.deletedAt).toISOString())}</span>
-                  </div>
-                </div>
-                <Button size="xs" variant="outline" onClick={() => restore(item.trashName)} data-testid={`restore-${item.assetId}`}>
-                  <RotateCcw className="size-bakin-3" /> Restore
-                </Button>
-                <Button size="xs" variant="ghost" className="text-bakin-signal-danger hover:text-bakin-signal-danger/80" onClick={() => permanentDelete(item.trashName)} data-testid={`permanent-delete-${item.assetId}`}>
-                  <X className="size-bakin-3" />
-                </Button>
-              </ListRow>
-            ))}
-            </ListRows>
+            {/* Tabular facts read as a table (the tasks-Log ruling) — the
+                bordered list variant stays for narrow/panel contexts. */}
+            <DataTable
+              label="Trashed assets"
+              collapseBelow="none"
+              rows={trash}
+              rowKey={item => item.trashName}
+              rowProps={item => ({ 'data-testid': `trash-row-${item.assetId}` })}
+              tableProps={{ className: 'min-w-max' }}
+              columns={[
+                {
+                  key: 'asset',
+                  header: 'Asset',
+                  narrow: 'primary',
+                  headClassName: 'min-w-64',
+                  cell: item => (
+                    <div className="flex min-w-0 items-center gap-bakin-3">
+                      <div className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-canvas-default">
+                        <AssetTypeIcon type={item.type} className="size-bakin-4" />
+                      </div>
+                      <p className="m-0 truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{item.description || item.assetId}</p>
+                    </div>
+                  ),
+                },
+                { key: 'type', header: 'Type', narrow: 'meta', cell: item => <span className="capitalize text-bakin-text-muted">{item.type}</span> },
+                { key: 'versions', header: 'Versions', narrow: 'meta', cell: item => <span className="text-bakin-text-muted">{item.versionCount}</span> },
+                { key: 'deleted', header: 'Deleted', narrow: 'meta', cell: item => <span className="text-bakin-text-muted">{formatAge(new Date(item.deletedAt).toISOString())}</span> },
+                {
+                  key: 'actions',
+                  header: 'Actions',
+                  hideLabel: true,
+                  align: 'end',
+                  cell: item => (
+                    <div className="flex items-center justify-end gap-bakin-1">
+                      <Button size="xs" variant="outline" onClick={() => restore(item.trashName)} data-testid={`restore-${item.assetId}`}>
+                        <RotateCcw className="size-bakin-3" /> Restore
+                      </Button>
+                      <Button size="xs" variant="ghost" className="text-bakin-signal-danger hover:text-bakin-signal-danger/80" onClick={() => permanentDelete(item.trashName)} aria-label={`Permanently delete ${item.description || item.assetId}`} data-testid={`permanent-delete-${item.assetId}`}>
+                        <X className="size-bakin-3" />
+                      </Button>
+                    </div>
+                  ),
+                },
+              ]}
+            />
           </div>
         )
       ) : view === 'tags' ? (
