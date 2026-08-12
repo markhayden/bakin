@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import { Download, Pencil, Save, X } from 'lucide-react'
 import { Button, Textarea } from '@makinbakin/sdk/ui'
 import { MarkdownContent } from '@makinbakin/sdk/content'
+import { Panel } from '@makinbakin/sdk/layout'
 import { isEditableMimeType } from '../../lib/constants'
 import { AssetTypeIcon } from './atoms'
 import { assetVersionUrl, VERSIONED_API } from './asset-urls'
@@ -37,7 +38,7 @@ export function AssetPreview({ assetId, type, mimeType, version, currentFile, on
 
   if (type === 'images') {
     return (
-      <div className="flex max-h-[76vh] items-center justify-center rounded-bakin-surface bg-bakin-surface-default p-2" data-testid="preview-image">
+      <div className="flex max-h-[76vh] items-center justify-center rounded-bakin-surface bg-bakin-surface-default p-bakin-2" data-testid="preview-image">
         <img src={fileUrl} alt={assetId} onClick={onImageClick}
           className={`max-h-[74vh] max-w-full rounded-bakin-control object-contain ${onImageClick ? 'cursor-zoom-in' : ''}`} />
       </div>
@@ -52,8 +53,8 @@ export function AssetPreview({ assetId, type, mimeType, version, currentFile, on
   }
   if (type === 'audio') {
     return (
-      <div className="flex flex-col items-center gap-4 rounded-bakin-surface bg-bakin-surface-default p-6" data-testid="preview-audio">
-        <div className="flex size-20 items-center justify-center rounded-bakin-pill bg-bakin-border-subtle/30 text-3xl">🎵</div>
+      <div className="flex flex-col items-center gap-bakin-4 rounded-bakin-surface bg-bakin-surface-default p-bakin-6" data-testid="preview-audio">
+        <div className="flex size-20 items-center justify-center rounded-bakin-pill bg-bakin-border-subtle/30"><AssetTypeIcon type="audio" className="size-bakin-8" /></div>
         <audio src={fileUrl} controls preload="metadata" className="w-full" />
       </div>
     )
@@ -78,11 +79,11 @@ export function AssetPreview({ assetId, type, mimeType, version, currentFile, on
   }
 
   return (
-    <div className="flex flex-col items-center gap-3 rounded-bakin-surface bg-bakin-surface-default p-8 text-center" data-testid="preview-download">
-      <AssetTypeIcon type={type} className="size-10" />
-      <p className="text-sm text-bakin-text-muted">Preview not available for this type.</p>
-      <a href={fileUrl} download className="flex items-center gap-1 text-sm text-bakin-signal-accent hover:underline">
-        <Download className="size-4" /> Download
+    <div className="flex flex-col items-center gap-bakin-3 rounded-bakin-surface bg-bakin-surface-default p-bakin-8 text-center" data-testid="preview-download">
+      <AssetTypeIcon type={type} className="size-bakin-8" />
+      <p className="text-bakin-typography-size-body text-bakin-text-muted">Preview not available for this type.</p>
+      <a href={fileUrl} download className="flex items-center gap-bakin-1 text-bakin-typography-size-body text-bakin-signal-accent hover:underline">
+        <Download className="size-bakin-4" /> Download
       </a>
     </div>
   )
@@ -137,18 +138,18 @@ function TextPreview({ assetId, fileUrl, mimeType, currentFile, onSaved }: {
 
   if (editing) {
     return (
-      <div className="rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-2" data-testid="preview-editor">
+      <div className="rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-2" data-testid="preview-editor">
         <Textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          className="h-[72vh] w-full resize-none font-mono text-sm"
+          className="h-[72vh] w-full resize-none font-bakin-typography-family-mono text-bakin-typography-size-body"
           spellCheck={false}
         />
-        {error && <p className="px-1 pt-1 text-xs text-bakin-signal-danger">{error}</p>}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={saving}><X className="size-4" /> Cancel</Button>
+        {error && <p className="px-bakin-1 pt-bakin-1 text-bakin-typography-size-meta text-bakin-signal-danger">{error}</p>}
+        <div className="flex justify-end gap-bakin-2 pt-bakin-2">
+          <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={saving}><X className="size-bakin-4" /> Cancel</Button>
           <Button size="sm" onClick={save} disabled={saving} data-testid="save-version">
-            <Save className="size-4" /> {saving ? 'Saving…' : 'Save as new version'}
+            <Save className="size-bakin-4" /> {saving ? 'Saving…' : 'Save as new version'}
           </Button>
         </div>
       </div>
@@ -163,14 +164,14 @@ function TextPreview({ assetId, fileUrl, mimeType, currentFile, onSaved }: {
   return (
     <div className="relative rounded-bakin-surface bg-bakin-surface-default" data-testid="preview-text">
       {editable && (
-        <Button size="sm" variant="outline" className="absolute right-2 top-2 z-10 h-7 text-xs" onClick={startEdit} data-testid="edit-asset">
-          <Pencil className="size-3.5" /> Edit
+        <Button size="xs" variant="outline" className="absolute right-bakin-2 top-bakin-2 z-10" onClick={startEdit} data-testid="edit-asset">
+          <Pencil className="size-bakin-3" /> Edit
         </Button>
       )}
       {mimeType === 'text/markdown' ? (
-        <div className="max-h-[76vh] overflow-y-auto p-4"><MarkdownContent content={content} /></div>
+        <Panel scroll padding="default" aria-label="Asset text preview" className="max-h-[76vh] border-0 bg-transparent"><MarkdownContent content={content} /></Panel>
       ) : (
-        <pre className="max-h-[76vh] overflow-auto whitespace-pre-wrap p-4 font-mono text-sm text-bakin-text-primary">{display}</pre>
+        <Panel scroll variant="code" aria-label="Asset text preview" className="max-h-[76vh] border-0 bg-transparent text-bakin-text-primary"><pre>{display}</pre></Panel>
       )}
     </div>
   )

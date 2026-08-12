@@ -90,7 +90,7 @@ export function ImportView({ onImported }: { onImported?: () => void }) {
       <SystemState
         kind="initial-empty"
         scope="section"
-        icon={<FolderSearch className="size-7 text-bakin-text-muted" />}
+        icon={<FolderSearch className="size-bakin-6 text-bakin-text-muted" />}
         title="No unmanaged files"
         description={(
           <>
@@ -104,26 +104,26 @@ export function ImportView({ onImported }: { onImported?: () => void }) {
   }
 
   return (
-    <div className="flex flex-col gap-2" data-testid="import-list">
-      <div className="mb-1 flex items-center justify-between">
-        <p className="text-xs text-bakin-text-muted">
+    <div className="flex flex-col gap-bakin-2" data-testid="import-list">
+      <div className="mb-bakin-1 flex items-center justify-between">
+        <p className="text-bakin-typography-size-meta text-bakin-text-muted">
           {files.length} unmanaged file{files.length === 1 ? '' : 's'} — imported assets are indexed and searchable like any other.
         </p>
         <Button size="sm" onClick={() => runImport({ all: true }, 'all')} disabled={busy !== null} data-testid="import-all">
-          {busy === 'all' ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+          {busy === 'all' ? <Loader2 className="size-bakin-3 animate-spin" /> : <Download className="size-bakin-3" />}
           Import all ({files.length})
         </Button>
       </div>
-      {error && <p className="text-xs text-bakin-signal-danger" data-testid="import-error">{error}</p>}
+      {error && <p className="text-bakin-typography-size-meta text-bakin-signal-danger" data-testid="import-error">{error}</p>}
       <ListRows variant="bordered" aria-label="Unmanaged files" className="gap-bakin-2">
       {files.map(file => (
-        <ListRow key={file.relPath} className="flex items-center gap-3 py-bakin-2" data-testid={`import-row-${file.name}`}>
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-canvas-default">
-            <AssetTypeIcon type={typeOverrides[file.relPath] ?? file.suggestedType} className="size-4" />
+        <ListRow key={file.relPath} className="flex items-center gap-bakin-3 py-bakin-2" data-testid={`import-row-${file.name}`}>
+          <div className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-canvas-default">
+            <AssetTypeIcon type={typeOverrides[file.relPath] ?? file.suggestedType} className="size-bakin-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-bakin-text-primary">{file.name}</p>
-            <div className="flex items-center gap-2 text-bakin-typography-size-meta text-bakin-text-muted">
+            <p className="truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{file.name}</p>
+            <div className="flex items-center gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
               <span className="truncate">{file.relPath}</span><span>·</span>
               <span>{formatSize(file.size)}</span><span>·</span>
               <span>{formatAge(new Date(file.mtimeMs).toISOString())}</span>
@@ -146,12 +146,12 @@ export function ImportView({ onImported }: { onImported?: () => void }) {
             </SelectContent>
           </Select>
           <Button
-            size="sm" variant="outline" className="h-7 text-xs"
+            size="xs" variant="outline"
             onClick={() => runImport({ paths: [file.relPath] }, file.relPath)}
             disabled={busy !== null}
             data-testid={`import-${file.name}`}
           >
-            {busy === file.relPath ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+            {busy === file.relPath ? <Loader2 className="size-bakin-3 animate-spin" /> : <Download className="size-bakin-3" />}
             Import
           </Button>
         </ListRow>

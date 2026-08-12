@@ -70,18 +70,18 @@ function FolderCard({ folder, onOpen, onRename, onDelete }: {
           <DropdownMenu>
             <DropdownMenuTrigger
               onClick={(e) => e.stopPropagation()}
-              className="absolute right-1.5 top-1.5 z-10 rounded-bakin-control bg-bakin-canvas-default/80 p-1.5 text-bakin-text-muted opacity-0 transition-opacity hover:text-bakin-text-primary group-hover/card:opacity-100 data-[state=open]:opacity-100"
+              className="absolute right-bakin-1 top-bakin-1 z-10 rounded-bakin-control bg-bakin-canvas-default/80 p-bakin-1 text-bakin-text-muted opacity-0 transition-opacity hover:text-bakin-text-primary group-hover/card:opacity-100 data-[state=open]:opacity-100"
               aria-label={`Folder actions for ${folder.label}`}
               data-testid={`folder-menu-${folder.tag}`}
             >
-              <MoreVertical className="size-3.5" />
+              <MoreVertical className="size-bakin-3" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
               <DropdownMenuItem onClick={onRename} data-testid={`folder-rename-${folder.tag}`}>
-                <Pencil className="size-3.5" /> Rename
+                <Pencil className="size-bakin-3" /> Rename
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onDelete} variant="danger" data-testid={`folder-delete-${folder.tag}`}>
-                <Trash2 className="size-3.5" /> Delete
+                <Trash2 className="size-bakin-3" /> Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -89,7 +89,7 @@ function FolderCard({ folder, onOpen, onRename, onDelete }: {
       </CardMedia>
       <div className="flex items-center gap-bakin-2 p-bakin-3">
         <FolderOpen className="size-bakin-4 shrink-0 text-bakin-text-muted" />
-        <span className="truncate font-bakin-typography-weight-medium text-bakin-text-primary" title={folder.label}>{folder.label}</span>
+        <span className="truncate font-bakin-typography-weight-medium text-bakin-text-primary">{folder.label}</span>
         <Badge variant="secondary" size="xs" className="ml-auto shrink-0" data-testid={`folder-count-${folder.tag}`}>
           {folder.assets.length}
         </Badge>
@@ -164,9 +164,9 @@ export function TagFolderGrid({ assets, filter = '', onOpenFolder, onChanged }: 
 
   return (
     <>
-      {/* mt-4: the grid/list views get header spacing from the filters row,
+      {/* mt-bakin-4: the grid/list views get header spacing from the filters row,
           which the folders view doesn't render. */}
-      <Grid layout="auto-fill" gap="item" className="mt-4" data-testid="tag-folders">
+      <Grid layout="auto-fill" gap="item" className="mt-bakin-4" data-testid="tag-folders">
         {folders.map(folder => (
           <FolderCard
             key={folder.tag}
@@ -192,7 +192,7 @@ export function TagFolderGrid({ assets, filter = '', onOpenFolder, onChanged }: 
             autoFocus
             data-testid="folder-rename-input"
           />
-          {error && renaming !== null && <p className="text-xs text-bakin-signal-danger">{error}</p>}
+          {error && renaming !== null && <p className="text-bakin-typography-size-meta text-bakin-signal-danger">{error}</p>}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setRenaming(null)}>Cancel</Button>
             <Button
@@ -200,7 +200,7 @@ export function TagFolderGrid({ assets, filter = '', onOpenFolder, onChanged }: 
               disabled={busy || !renameTo.trim() || renameTo.trim() === renaming}
               data-testid="folder-rename-confirm"
             >
-              {busy ? <Loader2 className="size-4 animate-spin" /> : null} Rename
+              {busy ? <Loader2 className="size-bakin-4 animate-spin" /> : null} Rename
             </Button>
           </DialogFooter>
         </DialogContent>

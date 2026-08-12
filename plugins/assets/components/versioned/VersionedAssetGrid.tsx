@@ -51,7 +51,7 @@ import { TagFolderGrid } from './TagFolderGrid'
 import { TagInput } from './TagInput'
 import { UNTAGGED, matchesTagFilter } from './tag-filter'
 import { AssetThumb, AssetMetaSummary, AssetTypeIcon } from './atoms'
-import { VERSIONED_API, UPLOAD_API, TRASH_API, TAGS_API } from './asset-urls'
+import { VERSIONED_API, UPLOAD_API, TRASH_API, TAGS_API, ENRICH_API } from './asset-urls'
 import { ImportView } from './ImportView'
 import type { VersionedAssetSummary, TrashedAssetSummary } from './types'
 
@@ -70,7 +70,7 @@ const VIEW_OPTIONS: Array<{ key: View; label: string; Icon: typeof LayoutGrid }>
 const TYPE_OPTIONS = ASSET_TYPES.map((value) => ({
   value,
   label: value === 'pdf' ? 'PDF' : value.charAt(0).toUpperCase() + value.slice(1),
-  icon: <AssetTypeIcon type={value} className="size-3.5" />,
+  icon: <AssetTypeIcon type={value} className="size-bakin-3" />,
 }))
 
 
@@ -89,8 +89,9 @@ const ENRICHMENT_BADGE: Record<VersionedAssetSummary['enrichment'], { className:
 function EnrichmentDot({ status }: { status: VersionedAssetSummary['enrichment'] }) {
   const badge = ENRICHMENT_BADGE[status] ?? ENRICHMENT_BADGE.none
   return (
-    <span title={badge.label} data-testid={`enrichment-dot-${status}`} className="flex items-center">
-      <Sparkles className={`size-3 ${badge.className}`} />
+    <span data-testid={`enrichment-dot-${status}`} className="flex items-center">
+      <Sparkles aria-hidden="true" className={`size-bakin-3 ${badge.className}`} />
+      <span className="sr-only">{badge.label}</span>
     </span>
   )
 }
@@ -139,7 +140,7 @@ function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo 
       </CardMedia>
       <CardHeader className="gap-bakin-2 py-bakin-3">
         <CardTitle>
-          <span className="block truncate" title={label}>{label}</span>
+          <span className="block truncate">{label}</span>
         </CardTitle>
         <CardDescription>
           <AssetMetaSummary agent={asset.agent} created={asset.created} taskId={asset.taskId} tags={asset.tags} />
@@ -252,7 +253,7 @@ export function VersionedAssetGrid() {
     setEnriching(true)
     setBulkError(null)
     try {
-      const res = await fetch('/api/plugins/assets/enrich', {
+      const res = await fetch(ENRICH_API, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assetIds: [...selected], force }),
       })
@@ -495,7 +496,7 @@ export function VersionedAssetGrid() {
           : 'Upload images, documents, or other files. Agents also create assets here as they work.'}
         action={(
           <Button onClick={openPicker} disabled={uploading} data-testid="add-first-asset">
-            {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+            {uploading ? <Loader2 className="size-bakin-4 animate-spin" /> : <Upload className="size-bakin-4" />}
             {uploading ? 'Uploading…' : 'Add your first asset'}
           </Button>
         )}
@@ -529,14 +530,12 @@ export function VersionedAssetGrid() {
         actionsLabel="Asset actions"
         actions={(
           <Button className="min-w-28" onClick={openPicker} disabled={uploading} data-testid="add-asset">
-            {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+            {uploading ? <Loader2 className="size-bakin-4 animate-spin" /> : <Upload className="size-bakin-4" />}
             {uploading ? 'Uploading…' : 'Add asset'}
           </Button>
         )}
       />
 
-      {uploadError && <p className="mb-2 text-xs text-bakin-signal-danger">{uploadError}</p>}
-      {linkTo && view !== 'trash' && <p className="mb-2 text-xs text-bakin-text-muted">New uploads will be linked to this task.</p>}
 
       <PageControls label="Asset views and filters" data-testid="asset-filters">
         <SegmentedControl
@@ -549,31 +548,41 @@ export function VersionedAssetGrid() {
         />
         {view !== 'trash' && view !== 'tags' ? (
           <>
-          <ListFilter className="size-3.5 shrink-0 text-bakin-text-muted" />
+          <ListFilter className="size-bakin-3 shrink-0 text-bakin-text-muted" />
           <FacetFilter label="Type" options={TYPE_OPTIONS} selected={typeFilter} onChange={setTypeFilter} counts={typeCounts} />
           <FacetFilter label="Tags" options={tagOptions} selected={tagFilter} onChange={setTagFilter} counts={tagCounts} />
           </>
         ) : null}
       </PageControls>
 
-      <PageBody label="Asset results" busy={!loading && pending} state={collectionState}>
+      <PageBody
+        label="Asset results"
+        busy={!loading && pending}
+        state={collectionState}
+        feedback={uploadError || (linkTo && view !== 'trash') ? (
+          <div className="grid min-w-0 gap-bakin-2">
+            {uploadError ? <p className="m-0 text-bakin-typography-size-meta text-bakin-signal-danger">{uploadError}</p> : null}
+            {linkTo && view !== 'trash' ? <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">New uploads will be linked to this task.</p> : null}
+          </div>
+        ) : undefined}
+      >
       {/* Breadcrumb back to the folders view while a tag filter is active.
           Clearing the filter happens via the Tags facet; the breadcrumb is
           purely a "go back" affordance. */}
       {view !== 'trash' && view !== 'tags' && tagFilter.length > 0 && (
-        <div className="mb-3 flex items-center gap-1.5 text-xs text-bakin-text-muted" data-testid="tag-breadcrumb">
+        <div className="mb-bakin-3 flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted" data-testid="tag-breadcrumb">
           <Button
             type="button"
             variant="ghost"
             size="xs"
             onClick={goToFolders}
-            className="gap-1 px-1 text-bakin-text-muted hover:text-bakin-text-primary"
+            className="gap-bakin-1 px-bakin-1 text-bakin-text-muted hover:text-bakin-text-primary"
             data-testid="breadcrumb-folders"
           >
-            <ArrowLeft className="size-3.5" /> Folders
+            <ArrowLeft className="size-bakin-3" /> Folders
           </Button>
           <span>/</span>
-          <span className="font-medium text-bakin-text-primary">
+          <span className="font-bakin-typography-weight-medium text-bakin-text-primary">
             {tagFilter.map(t => (t === UNTAGGED ? 'Untagged' : t)).join(', ')}
           </span>
         </div>
@@ -592,31 +601,31 @@ export function VersionedAssetGrid() {
             />
           </div>
         ) : (
-          <div className="flex flex-col gap-2" data-testid="trash-list">
-            <div className="mb-1 flex justify-end">
+          <div className="flex flex-col gap-bakin-2" data-testid="trash-list">
+            <div className="mb-bakin-1 flex justify-end">
               <Button size="sm" variant="ghost" className="text-bakin-signal-danger hover:text-bakin-signal-danger/80" onClick={emptyTrash} data-testid="empty-trash">
-                <Trash2 className="size-3.5" /> Empty trash
+                <Trash2 className="size-bakin-3" /> Empty trash
               </Button>
             </div>
             <ListRows variant="bordered" aria-label="Trashed assets">
             {trash.map(item => (
-              <ListRow key={item.trashName} className="flex items-center gap-3 py-bakin-2" data-testid={`trash-row-${item.assetId}`}>
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-canvas-default">
-                  <AssetTypeIcon type={item.type} className="size-4" />
+              <ListRow key={item.trashName} className="flex items-center gap-bakin-3 py-bakin-2" data-testid={`trash-row-${item.assetId}`}>
+                <div className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-canvas-default">
+                  <AssetTypeIcon type={item.type} className="size-bakin-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-bakin-text-primary">{item.description || item.assetId}</p>
-                  <div className="flex items-center gap-2 text-bakin-typography-size-meta text-bakin-text-muted">
+                  <p className="truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{item.description || item.assetId}</p>
+                  <div className="flex items-center gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
                     <span className="capitalize">{item.type}</span><span>·</span>
                     <span>{item.versionCount} version{item.versionCount === 1 ? '' : 's'}</span><span>·</span>
                     <span>deleted {formatAge(new Date(item.deletedAt).toISOString())}</span>
                   </div>
                 </div>
-                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => restore(item.trashName)} data-testid={`restore-${item.assetId}`}>
-                  <RotateCcw className="size-3.5" /> Restore
+                <Button size="xs" variant="outline" onClick={() => restore(item.trashName)} data-testid={`restore-${item.assetId}`}>
+                  <RotateCcw className="size-bakin-3" /> Restore
                 </Button>
-                <Button size="sm" variant="ghost" className="h-7 text-xs text-bakin-signal-danger hover:text-bakin-signal-danger/80" onClick={() => permanentDelete(item.trashName)} data-testid={`permanent-delete-${item.assetId}`}>
-                  <X className="size-3.5" />
+                <Button size="xs" variant="ghost" className="text-bakin-signal-danger hover:text-bakin-signal-danger/80" onClick={() => permanentDelete(item.trashName)} data-testid={`permanent-delete-${item.assetId}`}>
+                  <X className="size-bakin-3" />
                 </Button>
               </ListRow>
             ))}
@@ -666,7 +675,7 @@ export function VersionedAssetGrid() {
           </div>
         )
       ) : view === 'list' ? (
-        <div className="flex flex-col gap-1.5" data-testid="assets-list">
+        <div className="flex flex-col gap-bakin-1" data-testid="assets-list">
           {displayed.map(asset => (
             <AssetListRow
               key={asset.assetId}
@@ -698,20 +707,20 @@ export function VersionedAssetGrid() {
 
       {/* Floating bulk-tag bar while assets are selected. */}
       {selected.size > 0 && (
-        <div className="fixed inset-x-4 bottom-4 z-40 mx-auto flex max-w-xl items-center gap-2 rounded-lg border border-bakin-border-subtle bg-bakin-canvas-default/95 px-3 py-2 shadow-bakin-elevation-overlay backdrop-blur" data-testid="bulk-tag-bar">
-          <Tags className="size-4 shrink-0 text-bakin-text-muted" />
-          <span className="shrink-0 text-xs text-bakin-text-muted" data-testid="bulk-selected-count">{selected.size} selected</span>
+        <div className="fixed inset-x-bakin-4 bottom-bakin-4 z-40 mx-auto flex max-w-xl items-center gap-bakin-2 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default/95 px-bakin-3 py-bakin-2 shadow-bakin-elevation-overlay backdrop-blur" data-testid="bulk-tag-bar">
+          <Tags className="size-bakin-4 shrink-0 text-bakin-text-muted" />
+          <span className="shrink-0 text-bakin-typography-size-meta text-bakin-text-muted" data-testid="bulk-selected-count">{selected.size} selected</span>
           <div className="min-w-0 flex-1">
             <TagInput value={bulkTags} onChange={setBulkTags} suggestions={tagOptions.filter(o => o.value !== UNTAGGED).map(o => o.value)} placeholder="Add tags…" />
           </div>
           <Button size="sm" onClick={applyBulkTags} disabled={bulkBusy || bulkTags.length === 0} data-testid="bulk-apply-tags">
-            {bulkBusy ? <Loader2 className="size-4 animate-spin" /> : null} Save
+            {bulkBusy ? <Loader2 className="size-bakin-4 animate-spin" /> : null} Save
           </Button>
-          <Button size="sm" variant="outline" onClick={startEnrich} disabled={enriching} title="Vision-enrich selected assets" data-testid="bulk-enrich">
-            {enriching ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />} Enrich
+          <Button size="sm" variant="outline" onClick={startEnrich} disabled={enriching} data-testid="bulk-enrich">
+            {enriching ? <Loader2 className="size-bakin-4 animate-spin" /> : <Sparkles className="size-bakin-4" />} Enrich
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} data-testid="bulk-clear-selection">Clear</Button>
-          {bulkError && <p className="text-xs text-bakin-signal-danger">{bulkError}</p>}
+          {bulkError && <p className="text-bakin-typography-size-meta text-bakin-signal-danger">{bulkError}</p>}
         </div>
       )}
 

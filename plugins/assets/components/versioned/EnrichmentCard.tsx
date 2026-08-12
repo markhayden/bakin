@@ -15,9 +15,7 @@ import {
   Input,
 } from '@makinbakin/sdk/ui'
 import { Loader2, Pencil, RefreshCw, Sparkles, Tags } from 'lucide-react'
-import { VERSIONED_API } from './asset-urls'
-
-const PLUGIN_API = '/api/plugins/assets'
+import { VERSIONED_API, TAGS_API, ENRICH_API } from './asset-urls'
 import type { VersionedAssetManifest } from './types'
 
 interface Props {
@@ -45,7 +43,7 @@ export function EnrichmentCard({ manifest, onChanged }: Props) {
   const rerun = async () => {
     setBusy(true)
     try {
-      await fetch(`${PLUGIN_API}/enrich`, {
+      await fetch(ENRICH_API, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ assetId: manifest.assetId, force: true }),
@@ -75,7 +73,7 @@ export function EnrichmentCard({ manifest, onChanged }: Props) {
     if (!enrichment.suggestedTags?.length) return
     setBusy(true)
     try {
-      await fetch(`${PLUGIN_API}/tags/apply`, {
+      await fetch(`${TAGS_API}/apply`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ assetIds: [manifest.assetId], add: enrichment.suggestedTags }),
@@ -112,7 +110,7 @@ export function EnrichmentCard({ manifest, onChanged }: Props) {
             onClick={rerun}
             disabled={busy}
             aria-label="Re-run derived metadata analysis"
-            title="Re-run vision enrichment (billed)"
+           
             data-testid="enrichment-rerun"
           >
             {busy ? <Loader2 className="animate-spin" /> : <RefreshCw />}
@@ -159,7 +157,7 @@ export function EnrichmentCard({ manifest, onChanged }: Props) {
             variant="ghost"
             onClick={() => { setDraftCaption(enrichment.caption ?? ''); setEditing(true) }}
             aria-label="Edit derived caption"
-            title="Edit caption (locks it against machine overwrites)"
+           
             data-testid="enrichment-caption-edit"
           >
             <Pencil />
@@ -195,7 +193,7 @@ export function EnrichmentCard({ manifest, onChanged }: Props) {
           {enrichment.suggestedTags.map((tag) => (
             <Badge key={tag} tone="neutral" variant="soft" size="xs">{tag}</Badge>
           ))}
-          <Button size="xs" variant="ghost" onClick={applyTags} disabled={busy} title="Apply suggested tags to the asset">
+          <Button size="xs" variant="ghost" onClick={applyTags} disabled={busy}>
             <Tags /> Apply
           </Button>
         </div>

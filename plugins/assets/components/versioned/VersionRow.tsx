@@ -52,7 +52,7 @@ export function VersionRow({ assetId, assetType, version, isCurrent, isSelected,
         </Button>
       )}
 
-      <div className="pointer-events-none relative z-10 size-12 shrink-0 overflow-hidden rounded-bakin-control bg-bakin-surface-default">
+      <div className="pointer-events-none relative z-10 size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control bg-bakin-surface-default">
         <AssetThumb assetId={assetId} type={assetType} version={version.version} hasThumb={version.thumb !== null} />
       </div>
 
