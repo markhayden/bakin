@@ -174,7 +174,13 @@ export const ImmersiveCanvas = {
       header!.compareDocumentPosition(compact!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
-    await expect(compact!.className).toContain('sticky')
+    // The sticky lives on the anchor (the row's flow slot); non-flow desktop
+    // renders the row as a zero-height-anchored overlay above it.
+    const anchor = page.querySelector<HTMLElement>(
+      '[data-slot="workspace-page-compact-anchor"]',
+    )
+    await expect(anchor!.className).toContain('sticky')
+    await expect(compact!.className).toContain('@md/page-shell:bottom-full')
     await expect(header!.className).toContain(
       '[&_[data-slot=page-header-trailing]]:hidden',
     )
