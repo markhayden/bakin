@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { CalendarDays, ExternalLink } from 'lucide-react'
 import { PluginLink } from '@makinbakin/sdk/navigation'
-import { ConfirmDialog } from '@makinbakin/sdk/patterns'
+import { CalendarItem, ConfirmDialog } from '@makinbakin/sdk/patterns'
 import {
   Button,
   Field,
@@ -43,11 +43,17 @@ function formatEventTime(at: string): string {
 export function EventChip({
   event,
   compact,
+  showTime,
   onRescheduled,
 }: {
   event: ScheduledDomainEvent
   /** Dense variant for weekly grid cells; expanded for the Today timeline. */
   compact?: boolean
+  /**
+   * Hour-gridded surfaces (week, today) omit the time — the row already says
+   * when. Day-scoped surfaces (month) pass this to keep the instant visible.
+   */
+  showTime?: boolean
   onRescheduled: () => void
 }) {
   const [rescheduling, setRescheduling] = useState(false)
@@ -91,40 +97,25 @@ export function EventChip({
       <Popover>
         <PopoverTrigger
           render={(
-            <Button
-              type="button"
-              variant={due ? 'danger' : 'accent'}
-              size="xs"
+            <CalendarItem
+              tone={due ? 'danger' : 'accent'}
+              density={compact ? 'compact' : 'expanded'}
+              title={event.title}
+              time={showTime ? time : undefined}
+              detail={(
+                <span className="uppercase tracking-wider">
+                  {event.pluginId} · {event.kind}{event.status ? ` · ${event.status}` : ''}
+                </span>
+              )}
+              leading={(
+                <CalendarDays
+                  className={`size-bakin-3 shrink-0 ${due ? 'text-bakin-signal-danger' : 'text-bakin-signal-accent'}`}
+                  aria-hidden="true"
+                />
+              )}
             />
           )}
-          className={`
-            group/event mb-bakin-1 flex !h-auto w-full min-w-0
-            items-start gap-x-bakin-2
-            overflow-hidden whitespace-normal text-left
-            ${compact ? 'px-bakin-2 py-bakin-2' : 'px-bakin-3 py-bakin-2'}
-          `}
-        >
-          <CalendarDays className={`size-bakin-3 shrink-0 ${due ? 'text-bakin-signal-danger' : 'text-bakin-signal-accent'}`} aria-hidden="true" />
-          <span className={`flex min-w-0 flex-1 flex-col ${compact ? '' : 'gap-y-bakin-1'}`}>
-            <span className="flex min-w-0 items-center gap-x-bakin-2">
-              <span className={`min-w-0 flex-1 truncate font-bakin-typography-weight-medium leading-tight text-bakin-text-primary ${
-                compact
-                  ? 'text-bakin-typography-size-meta'
-                  : 'text-bakin-typography-size-body'
-              }`}>
-                {event.title}
-              </span>
-              <span className={`shrink-0 text-right font-bakin-typography-family-mono text-bakin-typography-size-meta tabular-nums ${
-                due ? 'text-bakin-signal-danger' : 'text-bakin-signal-accent'
-              }`}>
-                {time}
-              </span>
-            </span>
-            <span className="block min-w-0 truncate text-bakin-typography-size-meta uppercase tracking-wider text-bakin-text-muted">
-              {event.pluginId} · {event.kind}{event.status ? ` · ${event.status}` : ''}
-            </span>
-          </span>
-        </PopoverTrigger>
+        />
         <PopoverContent align="start">
           <PopoverHeader>
             <PopoverTitle className="text-bakin-typography-size-section-title">{event.title}</PopoverTitle>

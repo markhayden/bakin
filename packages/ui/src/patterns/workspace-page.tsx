@@ -146,9 +146,20 @@ export function WorkspacePageCompactHeader({
   React.useEffect(() => {
     const sentinel = sentinelRef.current
     if (!sentinel) return
+    // Root on the workspace shell, not the viewport: in a viewport-fit
+    // (non-flow) workspace the scroll bottoms out EXACTLY when the row
+    // reaches its sticky position, so the sentinel stops at the shell's clip
+    // edge instead of travelling past it — a viewport-rooted observer sits on
+    // that zero-area boundary and never flips. The 1px top inset makes the
+    // knife edge unambiguous on fractional-pixel layouts.
+    const root = sentinel.closest('[data-archetype="workspace"]')
     const observer = new IntersectionObserver(
       ([entry]) => setStuck(!entry.isIntersecting),
-      { threshold: 0 },
+      {
+        root: root instanceof HTMLElement ? root : null,
+        rootMargin: '-1px 0px 0px 0px',
+        threshold: 0,
+      },
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
@@ -213,6 +224,30 @@ export function WorkspacePageCompactHeader({
       ) : null}
     </div>
     </>
+  )
+}
+
+export type WorkspacePageMetricsProps = React.ComponentPropsWithoutRef<'div'>
+
+/**
+ * Metric tiles between the workspace identity and its controls — the stat
+ * strip zone. Hidden on phones, where the compact header owns the chrome.
+ * Omit the component entirely when a workspace has no metrics: the frame
+ * closes up with no reserved band.
+ */
+export function WorkspacePageMetrics({
+  className,
+  ...props
+}: WorkspacePageMetricsProps) {
+  return (
+    <div
+      {...props}
+      data-slot="workspace-page-metrics"
+      className={cn(
+        'hidden min-w-0 px-bakin-4 pb-bakin-4 pt-bakin-2 @md/page-shell:block @md/page-shell:px-bakin-6',
+        className,
+      )}
+    />
   )
 }
 

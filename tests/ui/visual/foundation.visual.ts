@@ -751,6 +751,8 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=lists-datatable--narrow-roles&viewMode=story', png: 'lists-data-table-narrow.png', text: 'Narrow roles compose the mobile card' },
   { url: '/iframe.html?id=lists-timeline--status-rail-expansion-nesting&viewMode=story', png: 'lists-timeline.png', role: 'list' as const, name: 'Dispatch activity' },
   { url: '/iframe.html?id=lists-calendargrid--week-and-day-structure&viewMode=story', png: 'lists-calendar-grid.png', role: 'grid' as const, name: 'Week of July 12, 2026' },
+  { url: '/iframe.html?id=lists-calendaritem--tones-and-densities&viewMode=story', png: 'lists-calendar-item.png', text: 'Invoice run due' },
+  { url: '/iframe.html?id=lists-calendarnav--range-shapes&viewMode=story', png: 'lists-calendar-nav.png', role: 'group' as const, name: 'Week navigation' },
   { url: '/iframe.html?id=navigation-navlist--selection-and-keyboard&viewMode=story', png: 'navigation-nav-list.png', role: 'navigation' as const, name: 'Plugin settings' },
   { url: '/iframe.html?id=agents-agentavatar--sizes-and-presence&viewMode=story', png: 'agents-agent-avatar.png', text: 'Keep identity recognizable at every density' },
   { url: '/iframe.html?id=agents-agentstatus--presence-language&viewMode=story', png: 'agents-agent-status.png', text: 'Say the state in words, not color' },

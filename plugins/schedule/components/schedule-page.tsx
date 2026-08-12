@@ -5,7 +5,6 @@ import { usePathname, useQueryState, useRouter, useSearchParams } from '@makinba
 import {
   AgentAvatar,
   AgentFilter,
-  Page,
   PageBody,
   PageControls,
   PageHeader,
@@ -14,6 +13,10 @@ import {
   SearchInput,
   SearchPartialChip,
   SegmentedControl,
+  WorkspacePage,
+  WorkspacePageBody,
+  WorkspacePageCompactHeader,
+  WorkspacePageHeader,
   type SegmentedControlOption,
 } from '@makinbakin/sdk/patterns'
 import {
@@ -357,20 +360,81 @@ export function SchedulePage() {
 
   return (
     <>
-      <Page scroll="contained">
-      <PageHeader
-        title="Schedule"
-        description="Plan recurring work and see exactly when each agent, workflow, and system event will run."
-        meta={loading ? undefined : (
-          <Badge data-testid="header-count" size="xs" variant="outline">
-            {filtered.length} shown
-          </Badge>
-        )}
-        controlsLabel="Schedule search, view, and actions"
-        controls={(
-          <div className="grid w-full min-w-0 gap-bakin-2 @3xl/page-header:flex @3xl/page-header:items-start">
+      {/* The tasks frame: full-bleed immersive flow workspace. ONE page
+          scroll owns the document — calendars grow to their natural height;
+          the only overflow region is the week grid's horizontal axis with
+          the pinned scrollbar. The full identity scrolls away on every
+          viewport; the sticky compact row stays. */}
+      <WorkspacePage mode="immersive" flow>
+        <WorkspacePageHeader>
+          <PageHeader
+            title="Schedule"
+            description="Plan recurring work and see exactly when each agent, workflow, and system event will run."
+            meta={loading ? undefined : (
+              <Badge data-testid="header-count" size="xs" variant="outline">
+                {filtered.length} shown
+              </Badge>
+            )}
+            controlsLabel="Schedule search, view, and actions"
+            controls={(
+              <div className="grid w-full min-w-0 gap-bakin-2 @3xl/page-header:flex @3xl/page-header:items-start">
+                <SearchInput
+                  align="end"
+                  label="Schedule search"
+                  value={search}
+                  onValueChange={setSearch}
+                  placeholder="Search jobs…"
+                  busy={searchHook.status === 'loading'}
+                  mobileFullWidth
+                />
+                <div className="flex min-w-0 flex-wrap items-center gap-bakin-2 @3xl/page-header:shrink-0 @3xl/page-header:flex-nowrap">
+                  <SegmentedControl
+                    options={VIEWS}
+                    value={view as ViewMode}
+                    onValueChange={setView}
+                    ariaLabel="Schedule view"
+                    idPrefix="schedule-view"
+                    size="md"
+                    className="shrink-0"
+                  />
+                  <Button className="min-w-28 flex-1 @3xl/page-header:flex-none" onClick={openCreate}>
+                    <Plus />
+                    New Job
+                  </Button>
+                </div>
+              </div>
+            )}
+          />
+        </WorkspacePageHeader>
+
+        <WorkspacePageCompactHeader
+          title="Schedule"
+          action={(
+            <div className="flex min-w-0 items-center gap-bakin-2">
+              <SegmentedControl
+                options={VIEWS}
+                value={view as ViewMode}
+                onValueChange={setView}
+                ariaLabel="Schedule view"
+                idPrefix="schedule-view-compact"
+                size="sm"
+                className="shrink-0"
+              />
+              <Button size="sm" onClick={openCreate}>
+                <Plus />
+                New Job
+              </Button>
+            </div>
+          )}
+        />
+
+        <WorkspacePageBody>
+          {/* Mobile search: the immersive full header hides its controls row
+              below @md; the view toggle rides the compact row, so only search
+              needs this in-body home on phones. */}
+          <div className="flex min-w-0 flex-col px-bakin-4 pb-bakin-3 pt-bakin-2 @md/page-shell:hidden">
             <SearchInput
-              align="end"
+              align="start"
               label="Schedule search"
               value={search}
               onValueChange={setSearch}
@@ -378,89 +442,82 @@ export function SchedulePage() {
               busy={searchHook.status === 'loading'}
               mobileFullWidth
             />
-            <div className="flex min-w-0 flex-wrap items-center gap-bakin-2 @3xl/page-header:shrink-0 @3xl/page-header:flex-nowrap">
-              <SegmentedControl
-                options={VIEWS}
-                value={view as ViewMode}
-                onValueChange={setView}
-                ariaLabel="Schedule view"
-                idPrefix="schedule-view"
-                size="md"
-                className="shrink-0 [&_[role=tab]]:px-bakin-3"
-              />
-              <Button className="min-w-28 flex-1 @3xl/page-header:flex-none" onClick={openCreate}>
-                <Plus />
-                New Job
-              </Button>
-            </div>
           </div>
-        )}
-      />
 
-      <PageControls label="Schedule filters">
-        <AgentFilter
-          options={agentOptions}
-          value={agentFilter}
-          onValueChange={setAgentFilter}
-          compact
-        />
-      </PageControls>
+          <PageControls label="Schedule filters" divider className="px-bakin-4 @md/page-shell:px-bakin-6">
+            <AgentFilter
+              options={agentOptions}
+              value={agentFilter}
+              onValueChange={setAgentFilter}
+              compact
+            />
+          </PageControls>
 
-      <PageBody
-        label="Scheduled jobs"
-        busy={!loading && searchHook.status === 'loading'}
-        feedback={pageFeedback}
-        state={resultState}
-        className="min-h-0 flex-1"
-      >
-        <div
-          id={`schedule-view-panel-${view}`}
-          role="tabpanel"
-          aria-labelledby={`schedule-view-tab-${view}`}
-          className="min-h-0 min-w-0 flex-1 overflow-auto"
-        >
-          {view === 'list' ? (
-            <div className="flex min-w-0 flex-col gap-bakin-3">
-              <JobList
-                jobs={visibleListJobs}
-                onSelect={openJob}
-                onPause={(id) => pauseJob(id)}
-                onResume={(id) => resumeJob(id)}
-                onRunNow={(id) => runNow(id)}
-                onDelete={requestDelete}
-                onEdit={openEditFor}
-                onDuplicate={openDuplicateFor}
-                onAdopt={(job) => {
-                  const params = new URLSearchParams(searchParams.toString())
-                  params.set('jobId', job.id)
-                  params.set('mode', 'adopt')
-                  router.push(`${pathname}?${params.toString()}`, { scroll: false })
-                }}
-                onRestoreNative={restoreNative}
-                onSkipNext={(id) => skipNext(id)}
-                scoreMap={scoreMap}
-                showScores={debug && !!search.trim()}
-              />
-              <Pagination
-                ariaLabel="Scheduled jobs pagination"
-                page={page}
-                pageSize={LIST_PAGE_SIZE}
-                showAll={showAllJobs}
-                total={filtered.length}
-                onPageChange={(nextPage) => setPageParam(String(nextPage))}
-                onShowAllChange={(nextShowAll) => setPageParam(nextShowAll ? 'all' : '1')}
-              />
+          <PageBody
+            label="Scheduled jobs"
+            busy={!loading && searchHook.status === 'loading'}
+            feedback={pageFeedback}
+            state={resultState}
+            gap="content"
+            className="pt-bakin-2"
+          >
+            <div
+              id={`schedule-view-panel-${view}`}
+              role="tabpanel"
+              aria-labelledby={`schedule-view-tab-${view}`}
+              // NO insets here: the edgeless frame stays bare and each inner
+              // panel owns its own — the week grid's x-scroll region must
+              // reach the viewport edge (an outer inset clips it short and
+              // leaves a dead band).
+              className="min-w-0"
+            >
+              {view === 'list' ? (
+                <div className="flex min-w-0 flex-col gap-bakin-3 px-bakin-4 pb-bakin-6 @md/page-shell:px-bakin-6">
+                  <JobList
+                    jobs={visibleListJobs}
+                    onSelect={openJob}
+                    onPause={(id) => pauseJob(id)}
+                    onResume={(id) => resumeJob(id)}
+                    onRunNow={(id) => runNow(id)}
+                    onDelete={requestDelete}
+                    onEdit={openEditFor}
+                    onDuplicate={openDuplicateFor}
+                    onAdopt={(job) => {
+                      const params = new URLSearchParams(searchParams.toString())
+                      params.set('jobId', job.id)
+                      params.set('mode', 'adopt')
+                      router.push(`${pathname}?${params.toString()}`, { scroll: false })
+                    }}
+                    onRestoreNative={restoreNative}
+                    onSkipNext={(id) => skipNext(id)}
+                    scoreMap={scoreMap}
+                    showScores={debug && !!search.trim()}
+                  />
+                  <Pagination
+                    ariaLabel="Scheduled jobs pagination"
+                    page={page}
+                    pageSize={LIST_PAGE_SIZE}
+                    showAll={showAllJobs}
+                    total={filtered.length}
+                    onPageChange={(nextPage) => setPageParam(String(nextPage))}
+                    onShowAllChange={(nextShowAll) => setPageParam(nextShowAll ? 'all' : '1')}
+                  />
+                </div>
+              ) : view === 'today' ? (
+                <div className="px-bakin-4 pb-bakin-6 @md/page-shell:px-bakin-6">
+                  <CalendarToday jobs={filtered} onSelectJob={openJob} />
+                </div>
+              ) : view === 'month' ? (
+                <div className="px-bakin-4 pb-bakin-6 @md/page-shell:px-bakin-6">
+                  <CalendarMonthly jobs={filtered} onSelectJob={openJob} />
+                </div>
+              ) : (
+                <CalendarWeekly jobs={filtered} onSelectJob={openJob} />
+              )}
             </div>
-        ) : view === 'today' ? (
-          <CalendarToday jobs={filtered} onSelectJob={openJob} />
-        ) : view === 'month' ? (
-          <CalendarMonthly jobs={filtered} onSelectJob={openJob} />
-        ) : (
-          <CalendarWeekly jobs={filtered} onSelectJob={openJob} />
-        )}
-        </div>
-      </PageBody>
-      </Page>
+          </PageBody>
+        </WorkspacePageBody>
+      </WorkspacePage>
 
       {/* Detail drawer */}
       <JobDrawer

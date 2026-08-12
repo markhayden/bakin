@@ -141,6 +141,22 @@ mock.module('../../../plugins/tasks/hooks/use-gate-status', () => ({
   useGateStatus: () => ({}),
 }))
 
+// The board's 15s polling hooks must be static in tests: on a slow CI
+// worker a test can straddle an interval tick, whose .then(setState) lands
+// after the test ends and trips the act gate (the recurring KanbanBoard
+// flake signature — same fix as tests/components/kanban-dnd.test.tsx).
+mock.module('../../../plugins/tasks/hooks/use-budget-status', () => ({
+  useBudgetStatus: () => null,
+  budgetHoldReason: () => null,
+}))
+mock.module('../../../plugins/tasks/hooks/use-brand-status', () => ({
+  useBrandStatus: () => null,
+  brandHoldReason: () => null,
+}))
+mock.module('../../../plugins/tasks/hooks/use-live-activity', () => ({
+  useLiveActivity: () => ({}),
+}))
+
 let contentLoading = false
 
 mock.module('@/hooks/use-content-store', () => ({
