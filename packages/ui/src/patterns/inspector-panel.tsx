@@ -10,21 +10,37 @@ type NativePanelProps = Omit<
   'aria-label' | 'aria-labelledby'
 >
 
-export type InspectorPanelProps = NativePanelProps & AccessibleRegionName
+const InspectorPanelContext = React.createContext<{ side: boolean }>({ side: false })
+
+export type InspectorPanelProps = NativePanelProps &
+  AccessibleRegionName & {
+    /**
+     * The beside-canvas posture: one standard panel width, left border,
+     * raised surface, and kit-owned insets on header/content/footer — the
+     * content column owns the panel's internal scroll. Consumers add zero
+     * layout classes.
+     */
+    side?: boolean
+  }
 
 /** Named contextual inspector usable beside a canvas or inside the supported drawer. */
-export function InspectorPanel({ className, label, labelledBy, ...props }: InspectorPanelProps) {
+export function InspectorPanel({ className, label, labelledBy, side = false, ...props }: InspectorPanelProps) {
+  const context = React.useMemo(() => ({ side }), [side])
   return (
-    <section
-      {...props}
-      aria-label={label}
-      aria-labelledby={labelledBy}
-      data-slot="inspector-panel"
-      className={cn(
-        'flex min-h-0 min-w-0 flex-col gap-5 font-bakin-typography-family-ui text-bakin-text-primary',
-        className,
-      )}
-    />
+    <InspectorPanelContext.Provider value={context}>
+      <section
+        {...props}
+        aria-label={label}
+        aria-labelledby={labelledBy}
+        data-slot="inspector-panel"
+        data-side={side ? '' : undefined}
+        className={cn(
+          'flex min-h-0 min-w-0 flex-col gap-5 font-bakin-typography-family-ui text-bakin-text-primary',
+          side && 'w-112 shrink-0 gap-0 border-l border-bakin-border-subtle bg-bakin-surface-default',
+          className,
+        )}
+      />
+    </InspectorPanelContext.Provider>
   )
 }
 
@@ -46,12 +62,14 @@ export function InspectorPanelHeader({
   title,
   ...props
 }: InspectorPanelHeaderProps) {
+  const { side } = React.useContext(InspectorPanelContext)
   return (
     <header
       {...props}
       data-slot="inspector-panel-header"
       className={cn(
         'grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-bakin-3 border-b border-bakin-border-subtle pb-bakin-4',
+        side && 'px-bakin-4 pt-bakin-4',
         className,
       )}
     >
@@ -101,6 +119,7 @@ export function InspectorPanelContent({
   state,
   ...props
 }: InspectorPanelContentProps) {
+  const { side } = React.useContext(InspectorPanelContext)
   const hasState = state !== undefined && state !== null
   return (
     <div
@@ -108,7 +127,13 @@ export function InspectorPanelContent({
       aria-busy={busy || undefined}
       data-content-state={hasState ? 'replaced' : 'ready'}
       data-slot="inspector-panel-content"
-      className={cn('flex min-w-0 flex-1 flex-col gap-5', className)}
+      className={cn(
+        'flex min-w-0 flex-1 flex-col gap-5',
+        // Side panels own their internal scroll here — the ONE scroll
+        // column between the pinned header and footer.
+        side && 'min-h-0 overflow-y-auto p-bakin-4',
+        className,
+      )}
     >
       {feedback ? <div data-slot="inspector-panel-feedback">{feedback}</div> : null}
       {hasState ? <div data-slot="inspector-panel-state">{state}</div> : children}
@@ -118,12 +143,14 @@ export function InspectorPanelContent({
 
 export type InspectorPanelFooterProps = React.ComponentPropsWithoutRef<'footer'>
 export function InspectorPanelFooter({ className, ...props }: InspectorPanelFooterProps) {
+  const { side } = React.useContext(InspectorPanelContext)
   return (
     <footer
       {...props}
       data-slot="inspector-panel-footer"
       className={cn(
         'flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-bakin-2 border-t border-bakin-border-subtle pt-bakin-4',
+        side && 'p-bakin-4',
         className,
       )}
     />
