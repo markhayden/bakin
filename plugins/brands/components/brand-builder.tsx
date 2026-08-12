@@ -33,6 +33,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@makinbakin/sdk/ui'
+import { Monogram } from './brand-card'
 import { useBrandAgentOptions } from './use-brand-agent-options'
 
 interface Answers {
@@ -331,7 +332,9 @@ export function BrandBuilder({
               <CardContent className="flex items-center gap-bakin-3">
               {logoPreview
                 ? <img src={logoPreview} alt="" className="size-10 rounded-bakin-control border border-bakin-border-subtle object-contain" />
-                : <div className="flex size-10 items-center justify-center rounded-bakin-control border border-bakin-border-subtle text-bakin-typography-size-meta text-bakin-text-muted">No logo</div>}
+                // The brand-identity fallback everywhere a brand has no
+                // logo: the tinted monogram, not a "No logo" text box.
+                : <Monogram name={a.name || '?'} className="size-10 rounded-bakin-control text-[length:var(--bakin-typography-size-section-title)]" />}
                 <p className="min-w-0 text-bakin-text-muted">{a.product || 'No product description'}</p>
               </CardContent>
             </Card>
