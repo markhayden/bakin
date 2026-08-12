@@ -248,21 +248,25 @@ export function CalendarWeekly({
 
   return (
     <div className="flex min-w-0 flex-col gap-bakin-3">
-      <CalendarNav
-        navLabel="Week navigation"
-        previousLabel="Previous week"
-        nextLabel="Next week"
-        onPrevious={prev}
-        onNext={next}
-        onToday={goToday}
-        label={(
-          <>
-            {weekDates[0]!.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-            {' — '}
-            {weekDates[6]!.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-          </>
-        )}
-      />
+      {/* The nav insets itself; the grid below is full-bleed — its page-mode
+          scroll region owns the canonical insets internally. */}
+      <div className="px-bakin-4 @md/page-shell:px-bakin-6">
+        <CalendarNav
+          navLabel="Week navigation"
+          previousLabel="Previous week"
+          nextLabel="Next week"
+          onPrevious={prev}
+          onNext={next}
+          onToday={goToday}
+          label={(
+            <>
+              {weekDates[0]!.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              {' — '}
+              {weekDates[6]!.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            </>
+          )}
+        />
+      </div>
 
       <CalendarGrid
         view="week"

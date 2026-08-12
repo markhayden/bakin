@@ -465,12 +465,14 @@ export function SchedulePage() {
               id={`schedule-view-panel-${view}`}
               role="tabpanel"
               aria-labelledby={`schedule-view-tab-${view}`}
-              // pb clears the week grid's pinned scrollbar so a fully
-              // scrolled calendar never rests on it.
-              className="min-w-0 px-bakin-4 pb-bakin-6 @md/page-shell:px-bakin-6"
+              // NO insets here: the edgeless frame stays bare and each inner
+              // panel owns its own — the week grid's x-scroll region must
+              // reach the viewport edge (an outer inset clips it short and
+              // leaves a dead band).
+              className="min-w-0"
             >
               {view === 'list' ? (
-                <div className="flex min-w-0 flex-col gap-bakin-3">
+                <div className="flex min-w-0 flex-col gap-bakin-3 px-bakin-4 pb-bakin-6 @md/page-shell:px-bakin-6">
                   <JobList
                     jobs={visibleListJobs}
                     onSelect={openJob}
@@ -502,9 +504,13 @@ export function SchedulePage() {
                   />
                 </div>
               ) : view === 'today' ? (
-                <CalendarToday jobs={filtered} onSelectJob={openJob} />
+                <div className="px-bakin-4 pb-bakin-6 @md/page-shell:px-bakin-6">
+                  <CalendarToday jobs={filtered} onSelectJob={openJob} />
+                </div>
               ) : view === 'month' ? (
-                <CalendarMonthly jobs={filtered} onSelectJob={openJob} />
+                <div className="px-bakin-4 pb-bakin-6 @md/page-shell:px-bakin-6">
+                  <CalendarMonthly jobs={filtered} onSelectJob={openJob} />
+                </div>
               ) : (
                 <CalendarWeekly jobs={filtered} onSelectJob={openJob} />
               )}

@@ -643,7 +643,14 @@ export function CalendarGrid<T extends CalendarGridItem>({
       <BoundedOverflow
         label={`${label} columns`}
         stickyScrollbar
-        className={cn('w-full', className)}
+        // The region itself is full-bleed and carries the canonical
+        // workspace insets INSIDE it — an inset applied outside an x-scroll
+        // region clips the grid short of the viewport edge and leaves a
+        // dead band beyond it. pb clears the pinned scrollbar.
+        className={cn(
+          'w-full px-bakin-4 pb-bakin-6 @md/page-shell:px-bakin-6',
+          className,
+        )}
       >
         {weekGrid}
       </BoundedOverflow>
