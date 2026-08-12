@@ -334,7 +334,7 @@ export function BrandBuilder({
                 ? <img src={logoPreview} alt="" className="size-10 rounded-bakin-control border border-bakin-border-subtle object-contain" />
                 // The brand-identity fallback everywhere a brand has no
                 // logo: the tinted monogram, not a "No logo" text box.
-                : <Monogram name={a.name || '?'} className="size-10 rounded-bakin-control text-[length:var(--bakin-typography-size-section-title)]" />}
+                : <Monogram name={a.name || '?'} size="sm" />}
                 <p className="min-w-0 text-bakin-text-muted">{a.product || 'No product description'}</p>
               </CardContent>
             </Card>

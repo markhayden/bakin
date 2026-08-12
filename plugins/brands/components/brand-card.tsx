@@ -7,7 +7,6 @@ import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { Card, CardAction, CardContent, CardHeader, CardMedia, CardTitle } from '@makinbakin/sdk/ui'
 import { Progress, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@makinbakin/sdk/ui'
-import { cn } from '@makinbakin/sdk/utils'
 import type { BrandManifest } from '../types'
 
 export type ListedBrand = BrandManifest & {
@@ -33,13 +32,14 @@ export const COMPLETENESS_LABELS: Record<string, string> = {
 const isHex = (h: string) => /^#[0-9a-fA-F]{6}$/.test(h)
 
 /** Initials-on-tinted-disc fallback when a brand has no logo (AgentAvatar convention). */
-export function Monogram({ name, tint, className }: { name: string; tint?: string; className?: string }) {
+export function Monogram({ name, tint, size = 'lg' }: { name: string; tint?: string; size?: 'sm' | 'lg' }) {
   return (
     <span
-      className={cn(
-        'flex size-16 items-center justify-center rounded-bakin-surface text-2xl font-bakin-typography-weight-semibold text-bakin-text-primary/70 ring-1 ring-bakin-text-primary/10',
-        className,
-      )}
+      className={
+        size === 'lg'
+          ? 'flex size-16 items-center justify-center rounded-bakin-surface text-2xl font-bakin-typography-weight-semibold text-bakin-text-primary/70 ring-1 ring-bakin-text-primary/10'
+          : 'flex size-10 shrink-0 items-center justify-center rounded-bakin-control text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary/70 ring-1 ring-bakin-text-primary/10'
+      }
       style={tint ? { backgroundColor: `${tint}33` } : undefined}
       data-brand-monogram
     >
