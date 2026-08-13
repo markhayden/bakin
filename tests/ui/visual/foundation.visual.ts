@@ -758,7 +758,9 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=agents-agentavatar--sizes-and-presence&viewMode=story', png: 'agents-agent-avatar.png', text: 'Keep identity recognizable at every density' },
   { url: '/iframe.html?id=agents-agentstatus--presence-language&viewMode=story', png: 'agents-agent-status.png', text: 'Say the state in words, not color' },
   { url: '/iframe.html?id=content-markdowncontent--reading-and-code&viewMode=story', png: 'content-markdown-content.png', text: 'Release evidence' },
-  { url: '/iframe.html?id=content-markdowneditor--controlled-editor&viewMode=story', png: 'content-markdown-editor.png', role: 'textbox' as const, name: 'Release handoff content' },
+  // Anchor on the post-play state: the story's play switches to Preview and
+  // REMOVES the textbox, so anchoring on the textbox races the play function.
+  { url: '/iframe.html?id=content-markdowneditor--controlled-editor&viewMode=story', png: 'content-markdown-editor.png', role: 'region' as const, name: 'Release handoff content preview' },
   { url: '/iframe.html?id=lists-kanban--task-board-composition&viewMode=story', png: 'lists-kanban.png', text: 'Keep lanes quiet and tasks scannable' },
   { url: '/iframe.html?id=conversation-single-turn-output--canonical-usage&viewMode=story', png: 'conversation-turn-output.png', role: 'status' as const },
   { url: '/iframe.html?id=layout-stack-and-inline--gap-scale-and-wrapping&viewMode=story', png: 'layout-stack-inline.png', text: 'One finite spacing scale' },
