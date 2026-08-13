@@ -412,11 +412,19 @@ describe('KanbanBoard — search signals', () => {
   })
 
   it('renders no signal row for a healthy complete search', async () => {
-    stubFetch(() => json({
-      results: [{ id: 'task-beef', table: 'bakin_tasks', score: 0.9, fields: {} }],
-      aggregations: {},
-      meta: { query: 'beef', total: 1, took_ms: 5, source: 'search' },
-    }))
+    // The board can render task-beef from the substring fallback BEFORE the
+    // 300ms-debounced search fetch fires — a test that ends then leaves the
+    // search setState landing outside act (the recurring CI act-gate flake).
+    // Gate on the search request actually having happened.
+    let searchFetched = false
+    stubFetch(() => {
+      searchFetched = true
+      return json({
+        results: [{ id: 'task-beef', table: 'bakin_tasks', score: 0.9, fields: {} }],
+        aggregations: {},
+        meta: { query: 'beef', total: 1, took_ms: 5, source: 'search' },
+      })
+    })
     queryStateDefaults.q = 'beef'
 
     await act(async () => {
@@ -426,6 +434,8 @@ describe('KanbanBoard — search signals', () => {
     // Drain the scheduler first: on CI's 2-vCPU runners the fetch-response
     // re-render can still be time-sliced when waitFor starts, and the
     // spinner assertion must observe the SETTLED state (see rtl-settle).
+    await settleReact()
+    await waitFor(() => expect(searchFetched).toBe(true), { timeout: 10_000 })
     await settleReact()
     await waitFor(() => {
       expect(screen.queryAllByTestId('task-task-beef').length).toBe(1)
