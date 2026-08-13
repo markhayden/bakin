@@ -12,7 +12,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'Timeline is the sanctioned feed type for chronological activity: an ordered list whose entries share a StatusMarker rail and a timestamp gutter. Each entry carries timestamp + status + title, optional meta chips, optional detail, an optional keyboard-accessible disclosure (Collapsible composition), and optional nested child entries for events subordinate to a parent (audit records inside a dispatch attempt). Status tones are always paired with visible status text — the rail is reinforcement, never the only signal. Entry order is the meaning; newest-first or oldest-first stays a consumer decision.',
+        component: 'Timeline is the sanctioned feed type for chronological activity: an ordered list whose entries share a StatusMarker rail and a timestamp gutter. Each entry carries timestamp + status + title, optional meta chips, optional detail, an optional keyboard-accessible disclosure (Collapsible composition), and optional nested child entries for events subordinate to a parent (audit records inside a dispatch attempt). Status tones are always paired with visible status text — the rail is reinforcement, never the only signal. Entry order is the meaning; newest-first or oldest-first stays a consumer decision. Narrow containers wrap meta onto its own row and compact status chips to xs metrics, keeping every entry two predictable lines; wide containers move the timestamp into the left gutter and keep meta inline.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'keyboard', 'non-color'],

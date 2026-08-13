@@ -130,7 +130,7 @@ export function ActivityEventStream({ data }: { data: UsageFeedData }) {
         />
       ) : (
         <>
-          <Timeline aria-label="Recent events" className="border-y border-bakin-border-subtle py-bakin-3">
+          <Timeline aria-label="Recent events" className="border-t border-bakin-border-subtle py-bakin-3">
             {visibleEntries.map((entry) => <ActivityEventRow key={eventIdentity(entry)} entry={entry} />)}
           </Timeline>
           <Pagination
