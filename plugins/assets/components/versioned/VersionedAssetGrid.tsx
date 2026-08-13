@@ -149,54 +149,6 @@ function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo 
   )
 }
 
-function AssetListRow({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; selected: boolean; onToggleSelect: () => void; scoreInfo?: AssetScoreInfo }) {
-  const label = asset.description || asset.assetId
-
-  return (
-    <Card
-      size="sm"
-      orientation="row"
-      selected={selected}
-      interactive={{ label: `Open ${label}`, onActivate: onOpen }}
-      className="items-center gap-bakin-3 p-bakin-3"
-      data-testid={`asset-row-${asset.assetId}`}
-    >
-      <Checkbox
-        checked={selected}
-        onCheckedChange={onToggleSelect}
-        aria-label={`${selected ? 'Deselect' : 'Select'} ${label}`}
-        data-testid={`asset-selected-${asset.assetId}`}
-      />
-      <div className="size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control">
-        <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="m-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{label}</p>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
-          <span className="capitalize">{asset.type}</span>
-          <span>·</span>
-          <span>{asset.agent}</span>
-          {asset.versionCount > 1 && <><span>·</span><span className="text-bakin-action-primary-background">{asset.versionCount} versions</span></>}
-        </div>
-      </div>
-      {scoreInfo && <ScoreOverlay info={scoreInfo} className="shrink-0" />}
-      <span><EnrichmentDot status={asset.enrichment} /></span>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        onClick={onEdit}
-        className="shrink-0 opacity-100 md:opacity-0 md:group-hover/card:opacity-100 md:focus-visible:opacity-100"
-        aria-label={`Edit ${label}`}
-        data-testid={`asset-edit-${asset.assetId}`}
-      >
-        <Pencil />
-      </Button>
-      <span className="hidden shrink-0 text-bakin-typography-size-meta text-bakin-text-muted sm:inline">{formatSize(asset.size)}</span>
-      <span className="hidden shrink-0 text-bakin-typography-size-meta text-bakin-text-muted md:inline">{formatAge(asset.created)}</span>
-    </Card>
-  )
-}
 
 export function VersionedAssetGrid() {
   const [debug] = useDebug()
@@ -439,6 +391,24 @@ export function VersionedAssetGrid() {
   const displayedRef = useRef<VersionedAssetSummary[]>([])
   if (!pending) displayedRef.current = filtered
   const displayed = pending ? displayedRef.current : filtered
+
+  // List-view sort — the consumer owns ordering (DataTable contract).
+  const [listSort, setListSort] = useState<{ field: 'name' | 'size' | 'created'; dir: 'asc' | 'desc' }>({ field: 'created', dir: 'desc' })
+  const sortedList = useMemo(() => {
+    const rows = [...displayed]
+    const { field, dir } = listSort
+    rows.sort((a, b) => {
+      const key = (asset: VersionedAssetSummary): string | number =>
+        field === 'name' ? (asset.description || asset.assetId).toLowerCase()
+        : field === 'size' ? asset.size
+        : new Date(asset.created).getTime()
+      const av = key(a)
+      const bv = key(b)
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0
+      return dir === 'asc' ? cmp : -cmp
+    })
+    return rows
+  }, [displayed, listSort])
 
   const fileInput = (
     <FileInput
@@ -696,18 +666,91 @@ export function VersionedAssetGrid() {
           </div>
         )
       ) : view === 'list' ? (
-        <div className="flex flex-col gap-bakin-1" data-testid="assets-list">
-          {displayed.map(asset => (
-            <AssetListRow
-              key={asset.assetId}
-              asset={asset}
-              scoreInfo={scoreFor(asset.assetId)}
-              selected={selected.has(asset.assetId)}
-              onToggleSelect={() => toggleSelected(asset.assetId)}
-              onOpen={() => router.push(`/assets/${encodeURIComponent(asset.assetId)}`)}
-              onEdit={() => setEditing(asset)}
-            />
-          ))}
+        <div data-testid="assets-list">
+          {/* Tabular facts read as a table (the tasks-Log ruling): columns,
+              alignment, and sortable Name/Size/Age — the browse case belongs
+              to the Grid view. */}
+          <DataTable
+            label="Assets"
+            collapseBelow="none"
+            rows={sortedList}
+            rowKey={asset => asset.assetId}
+            onRowActivate={asset => router.push(`/assets/${encodeURIComponent(asset.assetId)}`)}
+            rowActivateLabel={asset => `Open ${asset.description || asset.assetId}`}
+            rowProps={asset => ({ 'data-testid': `asset-row-${asset.assetId}` })}
+            tableProps={{ className: 'min-w-max' }}
+            sort={listSort}
+            onSortChange={(field) => {
+              setListSort(prev => prev.field === field
+                ? { field, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+                : { field, dir: field === 'name' ? 'asc' : 'desc' })
+            }}
+            columns={[
+              {
+                key: 'select',
+                header: 'Select',
+                hideLabel: true,
+                headClassName: 'w-12',
+                cell: asset => (
+                  <Checkbox
+                    checked={selected.has(asset.assetId)}
+                    onCheckedChange={() => toggleSelected(asset.assetId)}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`${selected.has(asset.assetId) ? 'Deselect' : 'Select'} ${asset.description || asset.assetId}`}
+                    data-testid={`asset-selected-${asset.assetId}`}
+                  />
+                ),
+              },
+              {
+                key: 'name',
+                header: 'Asset',
+                sortable: true,
+                headClassName: 'min-w-64',
+                cell: asset => (
+                  <div className="flex min-w-0 items-center gap-bakin-3">
+                    <div className="size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control">
+                      <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="m-0 truncate font-bakin-typography-weight-medium text-bakin-text-primary">{asset.description || asset.assetId}</p>
+                      {scoreFor(asset.assetId) ? <ScoreOverlay info={scoreFor(asset.assetId)!} /> : null}
+                    </div>
+                  </div>
+                ),
+              },
+              { key: 'type', header: 'Type', cell: asset => <span className="capitalize text-bakin-text-muted">{asset.type}</span> },
+              { key: 'agent', header: 'Agent', cell: asset => <span className="text-bakin-text-muted">{asset.agent}</span> },
+              {
+                key: 'versions',
+                header: 'Versions',
+                cell: asset => asset.versionCount > 1
+                  ? <span className="text-bakin-action-primary-background">{asset.versionCount}</span>
+                  : <span className="text-bakin-text-muted">1</span>,
+              },
+              { key: 'size', header: 'Size', sortable: true, cell: asset => <span className="text-bakin-text-muted">{formatSize(asset.size)}</span> },
+              { key: 'created', header: 'Age', sortable: true, cell: asset => <span className="text-bakin-text-muted">{formatAge(asset.created)}</span> },
+              { key: 'enrichment', header: 'Enrichment', cell: asset => <EnrichmentDot status={asset.enrichment} /> },
+              {
+                key: 'actions',
+                header: 'Edit',
+                hideLabel: true,
+                align: 'end',
+                headClassName: 'w-12',
+                cell: asset => (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={(e) => { e.stopPropagation(); setEditing(asset) }}
+                    aria-label={`Edit ${asset.description || asset.assetId}`}
+                    data-testid={`asset-edit-${asset.assetId}`}
+                  >
+                    <Pencil />
+                  </Button>
+                ),
+              },
+            ]}
+          />
         </div>
       ) : (
         <Grid layout="auto-fill" gap="item" data-testid="assets-grid">
