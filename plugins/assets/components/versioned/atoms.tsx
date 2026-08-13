@@ -19,7 +19,7 @@ const TYPE_ICONS: Record<string, typeof FileText> = {
  */
 export function AssetTypeIcon({ type, className }: { type: string; className?: string }) {
   const Icon = TYPE_ICONS[type] || Package
-  return <Icon className={`${className ?? 'size-4'} text-bakin-text-muted`} />
+  return <Icon className={`${className ?? 'size-bakin-4'} text-bakin-text-muted`} />
 }
 
 /**
@@ -55,7 +55,7 @@ export function AssetThumb({ assetId, type, version, hasThumb, className }: {
   }
   return (
     <div className={`flex items-center justify-center bg-bakin-surface-default ${className ?? 'w-full h-full'}`}>
-      <AssetTypeIcon type={type} className="size-10 opacity-40" />
+      <AssetTypeIcon type={type} className="size-bakin-8" />
     </div>
   )
 }
@@ -64,7 +64,7 @@ export function AssetThumb({ assetId, type, version, hasThumb, className }: {
 function AssetAgentIdentity({ agentId }: { agentId: string }) {
   const agent = useAgent(agentId)
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-bakin-1">
       <AgentAvatar
         agent={{ id: agentId, name: agent?.name ?? agentId, imageSrc: agent?.headshot ?? null }}
         size="xs"
@@ -89,12 +89,12 @@ export function AssetMetaSummary({ agent, created, taskId, tags, maxTags = 4 }: 
   maxTags?: number
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-bakin-1">
+      <div className="flex items-center gap-bakin-2">
         <AssetAgentIdentity agentId={agent} />
         <span className="text-bakin-typography-size-meta text-bakin-text-muted/50">|</span>
-        <div className="flex items-center gap-1">
-          <Clock className="size-3 text-bakin-text-muted/50" />
+        <div className="flex items-center gap-bakin-1">
+          <Clock className="size-bakin-3 text-bakin-text-muted/50" />
           <span className="text-bakin-typography-size-meta text-bakin-text-muted">{formatAge(created)}</span>
         </div>
         {taskId && (
@@ -105,7 +105,7 @@ export function AssetMetaSummary({ agent, created, taskId, tags, maxTags = 4 }: 
         )}
       </div>
       {tags.length > 0 && (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-bakin-1">
           {/* Most-recent tags win the cap — tags append chronologically, so a
               freshly added tag must be visible, not hidden behind "+N". */}
           {tags.slice(-maxTags).map(tag => (
@@ -124,7 +124,7 @@ export function ProvenanceChips({ generation }: {
 }) {
   if (!generation) return null
   return (
-    <div className="flex flex-wrap items-center gap-1">
+    <div className="flex flex-wrap items-center gap-bakin-1">
       <Badge variant="secondary" size="xs">{generation.provider}</Badge>
       <Badge variant="secondary" size="xs">{generation.model}</Badge>
       {generation.surface && generation.surface !== 'custom' && (

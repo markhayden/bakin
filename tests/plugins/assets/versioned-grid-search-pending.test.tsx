@@ -260,7 +260,9 @@ describe('VersionedAssetGrid — pending search vs no-match', () => {
     render(<VersionedAssetGrid />)
     await waitFor(() => expect(screen.queryByTestId('assets-loading')).toBeNull())
 
-    expect(screen.getByRole('button', { name: 'Open Brisket photo' })).toBeDefined()
+    // List view is a DataTable: whole-row activation rides the kit
+    // onRowActivate contract (focusable row, Enter/Space), not a button.
+    expect(screen.getByRole('row', { name: 'Open Brisket photo' })).toBeDefined()
     expect(screen.getByRole('checkbox', { name: 'Select Brisket photo' })).toBeDefined()
     expect(screen.getByRole('button', { name: 'Edit Brisket photo' })).toBeDefined()
   })

@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Download, FolderSearch, Loader2 } from 'lucide-react'
 import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SystemState } from '@makinbakin/sdk/ui'
-import { ListRow, ListRows } from '@makinbakin/sdk/patterns'
+import { DataTable, type DataTableColumn } from '@makinbakin/sdk/patterns'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
 import { formatAge, formatSize } from '@makinbakin/sdk/utils'
 import { AssetTypeIcon } from './atoms'
@@ -26,7 +26,7 @@ interface UnmanagedFile {
   suggestedType: string
 }
 
-export function ImportView({ onImported }: { onImported?: () => void }) {
+export function ImportView({ onImported, onCountChange }: { onImported?: () => void; onCountChange?: (count: number) => void }) {
   const [files, setFiles] = useState<UnmanagedFile[]>([])
   const [typeOverrides, setTypeOverrides] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
@@ -49,6 +49,8 @@ export function ImportView({ onImported }: { onImported?: () => void }) {
   }, [])
 
   useEffect(() => { void scan() }, [scan])
+  // The page header's "N shown" badge stays consistent across tabs.
+  useEffect(() => { onCountChange?.(files.length) }, [files.length, onCountChange])
   // A new drop while the view is open → rescan (debounced server-side).
   usePluginEvent('asset.unmanaged', () => { if (busy === null) void scan() })
 
@@ -90,7 +92,7 @@ export function ImportView({ onImported }: { onImported?: () => void }) {
       <SystemState
         kind="initial-empty"
         scope="section"
-        icon={<FolderSearch className="size-7 text-bakin-text-muted" />}
+        icon={<FolderSearch className="size-bakin-6 text-bakin-text-muted" />}
         title="No unmanaged files"
         description={(
           <>
@@ -103,32 +105,67 @@ export function ImportView({ onImported }: { onImported?: () => void }) {
     )
   }
 
+  const columns = makeColumns()
+
   return (
-    <div className="flex flex-col gap-2" data-testid="import-list">
-      <div className="mb-1 flex items-center justify-between">
-        <p className="text-xs text-bakin-text-muted">
+    <div className="flex flex-col gap-bakin-2" data-testid="import-list">
+      <div className="mb-bakin-1 flex items-center justify-between">
+        <p className="text-bakin-typography-size-meta text-bakin-text-muted">
           {files.length} unmanaged file{files.length === 1 ? '' : 's'} — imported assets are indexed and searchable like any other.
         </p>
         <Button size="sm" onClick={() => runImport({ all: true }, 'all')} disabled={busy !== null} data-testid="import-all">
-          {busy === 'all' ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+          {busy === 'all' ? <Loader2 className="size-bakin-3 animate-spin" /> : <Download className="size-bakin-3" />}
           Import all ({files.length})
         </Button>
       </div>
-      {error && <p className="text-xs text-bakin-signal-danger" data-testid="import-error">{error}</p>}
-      <ListRows variant="bordered" aria-label="Unmanaged files" className="gap-bakin-2">
-      {files.map(file => (
-        <ListRow key={file.relPath} className="flex items-center gap-3 py-bakin-2" data-testid={`import-row-${file.name}`}>
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-canvas-default">
-            <AssetTypeIcon type={typeOverrides[file.relPath] ?? file.suggestedType} className="size-4" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-bakin-text-primary">{file.name}</p>
-            <div className="flex items-center gap-2 text-bakin-typography-size-meta text-bakin-text-muted">
-              <span className="truncate">{file.relPath}</span><span>·</span>
-              <span>{formatSize(file.size)}</span><span>·</span>
-              <span>{formatAge(new Date(file.mtimeMs).toISOString())}</span>
+      {error && <p className="text-bakin-typography-size-meta text-bakin-signal-danger" data-testid="import-error">{error}</p>}
+      <DataTable
+        label="Unmanaged files"
+        collapseBelow="none"
+        columns={columns}
+        rows={files}
+        rowKey={file => file.relPath}
+        rowProps={file => ({ 'data-testid': `import-row-${file.name}` })}
+        tableProps={{ className: 'min-w-max' }}
+      />
+    </div>
+  )
+
+  function makeColumns(): ReadonlyArray<DataTableColumn<UnmanagedFile>> {
+    return [
+      {
+        key: 'file',
+        header: 'File',
+        narrow: 'primary',
+        headClassName: 'min-w-64',
+        cell: file => (
+          <div className="flex min-w-0 items-center gap-bakin-3">
+            <div className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-canvas-default">
+              <AssetTypeIcon type={typeOverrides[file.relPath] ?? file.suggestedType} className="size-bakin-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="m-0 truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{file.name}</p>
+              <p className="m-0 truncate text-bakin-typography-size-meta text-bakin-text-muted">{file.relPath}</p>
             </div>
           </div>
+        ),
+      },
+      {
+        key: 'size',
+        header: 'Size',
+        narrow: 'meta',
+        cell: file => <span className="text-bakin-text-muted">{formatSize(file.size)}</span>,
+      },
+      {
+        key: 'age',
+        header: 'Age',
+        narrow: 'meta',
+        cell: file => <span className="text-bakin-text-muted">{formatAge(new Date(file.mtimeMs).toISOString())}</span>,
+      },
+      {
+        key: 'type',
+        header: 'Import as',
+        cell: file => (
           <Select
             value={typeOverrides[file.relPath] ?? file.suggestedType}
             onValueChange={(next) => { if (next) setTypeOverrides(prev => ({ ...prev, [file.relPath]: next })) }}
@@ -136,7 +173,7 @@ export function ImportView({ onImported }: { onImported?: () => void }) {
             <SelectTrigger
               size="sm"
               aria-label={`Asset type for ${file.name}`}
-              className="w-auto shrink-0"
+              className="w-auto"
               data-testid={`import-type-${file.name}`}
             >
               <SelectValue />
@@ -145,18 +182,25 @@ export function ImportView({ onImported }: { onImported?: () => void }) {
               {ASSET_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
             </SelectContent>
           </Select>
+        ),
+      },
+      {
+        key: 'action',
+        header: 'Import',
+        hideLabel: true,
+        align: 'end',
+        cell: file => (
           <Button
-            size="sm" variant="outline" className="h-7 text-xs"
+            size="xs" variant="outline"
             onClick={() => runImport({ paths: [file.relPath] }, file.relPath)}
             disabled={busy !== null}
             data-testid={`import-${file.name}`}
           >
-            {busy === file.relPath ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+            {busy === file.relPath ? <Loader2 className="size-bakin-3 animate-spin" /> : <Download className="size-bakin-3" />}
             Import
           </Button>
-        </ListRow>
-      ))}
-      </ListRows>
-    </div>
-  )
+        ),
+      },
+    ]
+  }
 }

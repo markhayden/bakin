@@ -12,8 +12,7 @@ import {
 import { Grid } from '@makinbakin/sdk/layout'
 import {
   FacetFilter,
-  ListRow,
-  ListRows,
+  DataTable,
   Page,
   PageBody,
   PageControls,
@@ -51,7 +50,7 @@ import { TagFolderGrid } from './TagFolderGrid'
 import { TagInput } from './TagInput'
 import { UNTAGGED, matchesTagFilter } from './tag-filter'
 import { AssetThumb, AssetMetaSummary, AssetTypeIcon } from './atoms'
-import { VERSIONED_API, UPLOAD_API, TRASH_API, TAGS_API } from './asset-urls'
+import { VERSIONED_API, UPLOAD_API, TRASH_API, TAGS_API, ENRICH_API } from './asset-urls'
 import { ImportView } from './ImportView'
 import type { VersionedAssetSummary, TrashedAssetSummary } from './types'
 
@@ -70,7 +69,7 @@ const VIEW_OPTIONS: Array<{ key: View; label: string; Icon: typeof LayoutGrid }>
 const TYPE_OPTIONS = ASSET_TYPES.map((value) => ({
   value,
   label: value === 'pdf' ? 'PDF' : value.charAt(0).toUpperCase() + value.slice(1),
-  icon: <AssetTypeIcon type={value} className="size-3.5" />,
+  icon: <AssetTypeIcon type={value} className="size-bakin-3" />,
 }))
 
 
@@ -89,8 +88,9 @@ const ENRICHMENT_BADGE: Record<VersionedAssetSummary['enrichment'], { className:
 function EnrichmentDot({ status }: { status: VersionedAssetSummary['enrichment'] }) {
   const badge = ENRICHMENT_BADGE[status] ?? ENRICHMENT_BADGE.none
   return (
-    <span title={badge.label} data-testid={`enrichment-dot-${status}`} className="flex items-center">
-      <Sparkles className={`size-3 ${badge.className}`} />
+    <span data-testid={`enrichment-dot-${status}`} className="flex items-center">
+      <Sparkles aria-hidden="true" className={`size-bakin-3 ${badge.className}`} />
+      <span className="sr-only">{badge.label}</span>
     </span>
   )
 }
@@ -126,7 +126,7 @@ function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo 
         >
           <Pencil />
         </Button>
-        {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute left-1.5 top-1.5 z-10" />}
+        {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute left-bakin-1 top-bakin-1 z-10" />}
         {asset.versionCount > 1 && (
           <span className="absolute bottom-bakin-2 left-bakin-2 rounded-bakin-control bg-bakin-canvas-default/85 px-bakin-2 py-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-action-primary-background" data-testid="version-badge">
             {asset.versionCount} versions
@@ -139,7 +139,7 @@ function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo 
       </CardMedia>
       <CardHeader className="gap-bakin-2 py-bakin-3">
         <CardTitle>
-          <span className="block truncate" title={label}>{label}</span>
+          <span className="block truncate">{label}</span>
         </CardTitle>
         <CardDescription>
           <AssetMetaSummary agent={asset.agent} created={asset.created} taskId={asset.taskId} tags={asset.tags} />
@@ -149,54 +149,6 @@ function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo 
   )
 }
 
-function AssetListRow({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; selected: boolean; onToggleSelect: () => void; scoreInfo?: AssetScoreInfo }) {
-  const label = asset.description || asset.assetId
-
-  return (
-    <Card
-      size="sm"
-      orientation="row"
-      selected={selected}
-      interactive={{ label: `Open ${label}`, onActivate: onOpen }}
-      className="items-center gap-bakin-3 p-bakin-3"
-      data-testid={`asset-row-${asset.assetId}`}
-    >
-      <Checkbox
-        checked={selected}
-        onCheckedChange={onToggleSelect}
-        aria-label={`${selected ? 'Deselect' : 'Select'} ${label}`}
-        data-testid={`asset-selected-${asset.assetId}`}
-      />
-      <div className="size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control">
-        <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="m-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{label}</p>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
-          <span className="capitalize">{asset.type}</span>
-          <span>·</span>
-          <span>{asset.agent}</span>
-          {asset.versionCount > 1 && <><span>·</span><span className="text-bakin-action-primary-background">{asset.versionCount} versions</span></>}
-        </div>
-      </div>
-      {scoreInfo && <ScoreOverlay info={scoreInfo} className="shrink-0" />}
-      <span><EnrichmentDot status={asset.enrichment} /></span>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        onClick={onEdit}
-        className="shrink-0 opacity-100 md:opacity-0 md:group-hover/card:opacity-100 md:focus-visible:opacity-100"
-        aria-label={`Edit ${label}`}
-        data-testid={`asset-edit-${asset.assetId}`}
-      >
-        <Pencil />
-      </Button>
-      <span className="hidden shrink-0 text-bakin-typography-size-meta text-bakin-text-muted sm:inline">{formatSize(asset.size)}</span>
-      <span className="hidden shrink-0 text-bakin-typography-size-meta text-bakin-text-muted md:inline">{formatAge(asset.created)}</span>
-    </Card>
-  )
-}
 
 export function VersionedAssetGrid() {
   const [debug] = useDebug()
@@ -252,7 +204,7 @@ export function VersionedAssetGrid() {
     setEnriching(true)
     setBulkError(null)
     try {
-      const res = await fetch('/api/plugins/assets/enrich', {
+      const res = await fetch(ENRICH_API, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assetIds: [...selected], force }),
       })
@@ -440,6 +392,27 @@ export function VersionedAssetGrid() {
   if (!pending) displayedRef.current = filtered
   const displayed = pending ? displayedRef.current : filtered
 
+  // Import-tab count for the header badge (ImportView owns the scan).
+  const [importCount, setImportCount] = useState<number | null>(null)
+
+  // List-view sort — the consumer owns ordering (DataTable contract).
+  const [listSort, setListSort] = useState<{ field: 'name' | 'size' | 'created'; dir: 'asc' | 'desc' }>({ field: 'created', dir: 'desc' })
+  const sortedList = useMemo(() => {
+    const rows = [...displayed]
+    const { field, dir } = listSort
+    rows.sort((a, b) => {
+      const key = (asset: VersionedAssetSummary): string | number =>
+        field === 'name' ? (asset.description || asset.assetId).toLowerCase()
+        : field === 'size' ? asset.size
+        : new Date(asset.created).getTime()
+      const av = key(a)
+      const bv = key(b)
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0
+      return dir === 'asc' ? cmp : -cmp
+    })
+    return rows
+  }, [displayed, listSort])
+
   const fileInput = (
     <FileInput
       ref={fileInputRef}
@@ -495,7 +468,7 @@ export function VersionedAssetGrid() {
           : 'Upload images, documents, or other files. Agents also create assets here as they work.'}
         action={(
           <Button onClick={openPicker} disabled={uploading} data-testid="add-first-asset">
-            {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+            {uploading ? <Loader2 className="size-bakin-4 animate-spin" /> : <Upload className="size-bakin-4" />}
             {uploading ? 'Uploading…' : 'Add your first asset'}
           </Button>
         )}
@@ -509,9 +482,10 @@ export function VersionedAssetGrid() {
       <PageHeader
         title="Assets"
         description="Keep images, documents, and other deliverables searchable, versioned, and ready to reuse."
-        meta={loading || view === 'import' ? undefined : (
+        // Every tab carries the count so the header never bounces.
+        meta={loading || (view === 'import' && importCount === null) ? undefined : (
           <Badge size="xs" variant="outline">
-            {view === 'trash' ? trash.length : view === 'tags' ? folderCount : displayed.length} shown
+            {view === 'trash' ? trash.length : view === 'tags' ? folderCount : view === 'import' ? importCount : displayed.length} shown
           </Badge>
         )}
         controlsLabel="Asset search"
@@ -529,14 +503,12 @@ export function VersionedAssetGrid() {
         actionsLabel="Asset actions"
         actions={(
           <Button className="min-w-28" onClick={openPicker} disabled={uploading} data-testid="add-asset">
-            {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+            {uploading ? <Loader2 className="size-bakin-4 animate-spin" /> : <Upload className="size-bakin-4" />}
             {uploading ? 'Uploading…' : 'Add asset'}
           </Button>
         )}
       />
 
-      {uploadError && <p className="mb-2 text-xs text-bakin-signal-danger">{uploadError}</p>}
-      {linkTo && view !== 'trash' && <p className="mb-2 text-xs text-bakin-text-muted">New uploads will be linked to this task.</p>}
 
       <PageControls label="Asset views and filters" data-testid="asset-filters">
         <SegmentedControl
@@ -549,31 +521,41 @@ export function VersionedAssetGrid() {
         />
         {view !== 'trash' && view !== 'tags' ? (
           <>
-          <ListFilter className="size-3.5 shrink-0 text-bakin-text-muted" />
+          <ListFilter className="size-bakin-3 shrink-0 text-bakin-text-muted" />
           <FacetFilter label="Type" options={TYPE_OPTIONS} selected={typeFilter} onChange={setTypeFilter} counts={typeCounts} />
           <FacetFilter label="Tags" options={tagOptions} selected={tagFilter} onChange={setTagFilter} counts={tagCounts} />
           </>
         ) : null}
       </PageControls>
 
-      <PageBody label="Asset results" busy={!loading && pending} state={collectionState}>
+      <PageBody
+        label="Asset results"
+        busy={!loading && pending}
+        state={collectionState}
+        feedback={uploadError || (linkTo && view !== 'trash') ? (
+          <div className="grid min-w-0 gap-bakin-2">
+            {uploadError ? <p className="m-0 text-bakin-typography-size-meta text-bakin-signal-danger">{uploadError}</p> : null}
+            {linkTo && view !== 'trash' ? <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">New uploads will be linked to this task.</p> : null}
+          </div>
+        ) : undefined}
+      >
       {/* Breadcrumb back to the folders view while a tag filter is active.
           Clearing the filter happens via the Tags facet; the breadcrumb is
           purely a "go back" affordance. */}
       {view !== 'trash' && view !== 'tags' && tagFilter.length > 0 && (
-        <div className="mb-3 flex items-center gap-1.5 text-xs text-bakin-text-muted" data-testid="tag-breadcrumb">
+        <div className="mb-bakin-3 flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted" data-testid="tag-breadcrumb">
           <Button
             type="button"
             variant="ghost"
             size="xs"
             onClick={goToFolders}
-            className="gap-1 px-1 text-bakin-text-muted hover:text-bakin-text-primary"
+            className="gap-bakin-1 px-bakin-1 text-bakin-text-muted hover:text-bakin-text-primary"
             data-testid="breadcrumb-folders"
           >
-            <ArrowLeft className="size-3.5" /> Folders
+            <ArrowLeft className="size-bakin-3" /> Folders
           </Button>
           <span>/</span>
-          <span className="font-medium text-bakin-text-primary">
+          <span className="font-bakin-typography-weight-medium text-bakin-text-primary">
             {tagFilter.map(t => (t === UNTAGGED ? 'Untagged' : t)).join(', ')}
           </span>
         </div>
@@ -581,7 +563,7 @@ export function VersionedAssetGrid() {
 
       {/* ─── Import view (D7 explicit import) ─── */}
       {view === 'import' ? (
-        <ImportView onImported={fetchAssets} />
+        <ImportView onImported={fetchAssets} onCountChange={setImportCount} />
       ) : view === 'trash' ? (
         trash.length === 0 ? (
           <div data-testid="trash-empty">
@@ -592,35 +574,57 @@ export function VersionedAssetGrid() {
             />
           </div>
         ) : (
-          <div className="flex flex-col gap-2" data-testid="trash-list">
-            <div className="mb-1 flex justify-end">
+          <div className="flex flex-col gap-bakin-2" data-testid="trash-list">
+            <div className="mb-bakin-1 flex justify-end">
               <Button size="sm" variant="ghost" className="text-bakin-signal-danger hover:text-bakin-signal-danger/80" onClick={emptyTrash} data-testid="empty-trash">
-                <Trash2 className="size-3.5" /> Empty trash
+                <Trash2 className="size-bakin-3" /> Empty trash
               </Button>
             </div>
-            <ListRows variant="bordered" aria-label="Trashed assets">
-            {trash.map(item => (
-              <ListRow key={item.trashName} className="flex items-center gap-3 py-bakin-2" data-testid={`trash-row-${item.assetId}`}>
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-canvas-default">
-                  <AssetTypeIcon type={item.type} className="size-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-bakin-text-primary">{item.description || item.assetId}</p>
-                  <div className="flex items-center gap-2 text-bakin-typography-size-meta text-bakin-text-muted">
-                    <span className="capitalize">{item.type}</span><span>·</span>
-                    <span>{item.versionCount} version{item.versionCount === 1 ? '' : 's'}</span><span>·</span>
-                    <span>deleted {formatAge(new Date(item.deletedAt).toISOString())}</span>
-                  </div>
-                </div>
-                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => restore(item.trashName)} data-testid={`restore-${item.assetId}`}>
-                  <RotateCcw className="size-3.5" /> Restore
-                </Button>
-                <Button size="sm" variant="ghost" className="h-7 text-xs text-bakin-signal-danger hover:text-bakin-signal-danger/80" onClick={() => permanentDelete(item.trashName)} data-testid={`permanent-delete-${item.assetId}`}>
-                  <X className="size-3.5" />
-                </Button>
-              </ListRow>
-            ))}
-            </ListRows>
+            {/* Tabular facts read as a table (the tasks-Log ruling) — the
+                bordered list variant stays for narrow/panel contexts. */}
+            <DataTable
+              label="Trashed assets"
+              collapseBelow="none"
+              rows={trash}
+              rowKey={item => item.trashName}
+              rowProps={item => ({ 'data-testid': `trash-row-${item.assetId}` })}
+              tableProps={{ className: 'min-w-max' }}
+              columns={[
+                {
+                  key: 'asset',
+                  header: 'Asset',
+                  narrow: 'primary',
+                  headClassName: 'min-w-64',
+                  cell: item => (
+                    <div className="flex min-w-0 items-center gap-bakin-3">
+                      <div className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-canvas-default">
+                        <AssetTypeIcon type={item.type} className="size-bakin-4" />
+                      </div>
+                      <p className="m-0 truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{item.description || item.assetId}</p>
+                    </div>
+                  ),
+                },
+                { key: 'type', header: 'Type', narrow: 'meta', cell: item => <span className="capitalize text-bakin-text-muted">{item.type}</span> },
+                { key: 'versions', header: 'Versions', narrow: 'meta', cell: item => <span className="text-bakin-text-muted">{item.versionCount}</span> },
+                { key: 'deleted', header: 'Deleted', narrow: 'meta', cell: item => <span className="text-bakin-text-muted">{formatAge(new Date(item.deletedAt).toISOString())}</span> },
+                {
+                  key: 'actions',
+                  header: 'Actions',
+                  hideLabel: true,
+                  align: 'end',
+                  cell: item => (
+                    <div className="flex items-center justify-end gap-bakin-1">
+                      <Button size="xs" variant="outline" onClick={() => restore(item.trashName)} data-testid={`restore-${item.assetId}`}>
+                        <RotateCcw className="size-bakin-3" /> Restore
+                      </Button>
+                      <Button size="xs" variant="ghost" className="text-bakin-signal-danger hover:text-bakin-signal-danger/80" onClick={() => permanentDelete(item.trashName)} aria-label={`Permanently delete ${item.description || item.assetId}`} data-testid={`permanent-delete-${item.assetId}`}>
+                        <X className="size-bakin-3" />
+                      </Button>
+                    </div>
+                  ),
+                },
+              ]}
+            />
           </div>
         )
       ) : view === 'tags' ? (
@@ -666,18 +670,91 @@ export function VersionedAssetGrid() {
           </div>
         )
       ) : view === 'list' ? (
-        <div className="flex flex-col gap-1.5" data-testid="assets-list">
-          {displayed.map(asset => (
-            <AssetListRow
-              key={asset.assetId}
-              asset={asset}
-              scoreInfo={scoreFor(asset.assetId)}
-              selected={selected.has(asset.assetId)}
-              onToggleSelect={() => toggleSelected(asset.assetId)}
-              onOpen={() => router.push(`/assets/${encodeURIComponent(asset.assetId)}`)}
-              onEdit={() => setEditing(asset)}
-            />
-          ))}
+        <div data-testid="assets-list">
+          {/* Tabular facts read as a table (the tasks-Log ruling): columns,
+              alignment, and sortable Name/Size/Age — the browse case belongs
+              to the Grid view. */}
+          <DataTable
+            label="Assets"
+            collapseBelow="none"
+            rows={sortedList}
+            rowKey={asset => asset.assetId}
+            onRowActivate={asset => router.push(`/assets/${encodeURIComponent(asset.assetId)}`)}
+            rowActivateLabel={asset => `Open ${asset.description || asset.assetId}`}
+            rowProps={asset => ({ 'data-testid': `asset-row-${asset.assetId}` })}
+            tableProps={{ className: 'min-w-max' }}
+            sort={listSort}
+            onSortChange={(field) => {
+              setListSort(prev => prev.field === field
+                ? { field, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+                : { field, dir: field === 'name' ? 'asc' : 'desc' })
+            }}
+            columns={[
+              {
+                key: 'select',
+                header: 'Select',
+                hideLabel: true,
+                headClassName: 'w-12',
+                cell: asset => (
+                  <Checkbox
+                    checked={selected.has(asset.assetId)}
+                    onCheckedChange={() => toggleSelected(asset.assetId)}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`${selected.has(asset.assetId) ? 'Deselect' : 'Select'} ${asset.description || asset.assetId}`}
+                    data-testid={`asset-selected-${asset.assetId}`}
+                  />
+                ),
+              },
+              {
+                key: 'name',
+                header: 'Asset',
+                sortable: true,
+                headClassName: 'min-w-64',
+                cell: asset => (
+                  <div className="flex min-w-0 items-center gap-bakin-3">
+                    <div className="size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control">
+                      <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="m-0 truncate font-bakin-typography-weight-medium text-bakin-text-primary">{asset.description || asset.assetId}</p>
+                      {scoreFor(asset.assetId) ? <ScoreOverlay info={scoreFor(asset.assetId)!} /> : null}
+                    </div>
+                  </div>
+                ),
+              },
+              { key: 'type', header: 'Type', cell: asset => <span className="capitalize text-bakin-text-muted">{asset.type}</span> },
+              { key: 'agent', header: 'Agent', cell: asset => <span className="text-bakin-text-muted">{asset.agent}</span> },
+              {
+                key: 'versions',
+                header: 'Versions',
+                cell: asset => asset.versionCount > 1
+                  ? <span className="text-bakin-action-primary-background">{asset.versionCount}</span>
+                  : <span className="text-bakin-text-muted">1</span>,
+              },
+              { key: 'size', header: 'Size', sortable: true, cell: asset => <span className="text-bakin-text-muted">{formatSize(asset.size)}</span> },
+              { key: 'created', header: 'Age', sortable: true, cell: asset => <span className="text-bakin-text-muted">{formatAge(asset.created)}</span> },
+              { key: 'enrichment', header: 'Enrichment', cell: asset => <EnrichmentDot status={asset.enrichment} /> },
+              {
+                key: 'actions',
+                header: 'Edit',
+                hideLabel: true,
+                align: 'end',
+                headClassName: 'w-12',
+                cell: asset => (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={(e) => { e.stopPropagation(); setEditing(asset) }}
+                    aria-label={`Edit ${asset.description || asset.assetId}`}
+                    data-testid={`asset-edit-${asset.assetId}`}
+                  >
+                    <Pencil />
+                  </Button>
+                ),
+              },
+            ]}
+          />
         </div>
       ) : (
         <Grid layout="auto-fill" gap="item" data-testid="assets-grid">
@@ -698,20 +775,20 @@ export function VersionedAssetGrid() {
 
       {/* Floating bulk-tag bar while assets are selected. */}
       {selected.size > 0 && (
-        <div className="fixed inset-x-4 bottom-4 z-40 mx-auto flex max-w-xl items-center gap-2 rounded-lg border border-bakin-border-subtle bg-bakin-canvas-default/95 px-3 py-2 shadow-bakin-elevation-overlay backdrop-blur" data-testid="bulk-tag-bar">
-          <Tags className="size-4 shrink-0 text-bakin-text-muted" />
-          <span className="shrink-0 text-xs text-bakin-text-muted" data-testid="bulk-selected-count">{selected.size} selected</span>
+        <div className="fixed inset-x-bakin-4 bottom-bakin-4 z-40 mx-auto flex max-w-xl items-center gap-bakin-2 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default/95 px-bakin-3 py-bakin-2 shadow-bakin-elevation-overlay backdrop-blur" data-testid="bulk-tag-bar">
+          <Tags className="size-bakin-4 shrink-0 text-bakin-text-muted" />
+          <span className="shrink-0 text-bakin-typography-size-meta text-bakin-text-muted" data-testid="bulk-selected-count">{selected.size} selected</span>
           <div className="min-w-0 flex-1">
             <TagInput value={bulkTags} onChange={setBulkTags} suggestions={tagOptions.filter(o => o.value !== UNTAGGED).map(o => o.value)} placeholder="Add tags…" />
           </div>
           <Button size="sm" onClick={applyBulkTags} disabled={bulkBusy || bulkTags.length === 0} data-testid="bulk-apply-tags">
-            {bulkBusy ? <Loader2 className="size-4 animate-spin" /> : null} Save
+            {bulkBusy ? <Loader2 className="size-bakin-4 animate-spin" /> : null} Save
           </Button>
-          <Button size="sm" variant="outline" onClick={startEnrich} disabled={enriching} title="Vision-enrich selected assets" data-testid="bulk-enrich">
-            {enriching ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />} Enrich
+          <Button size="sm" variant="outline" onClick={startEnrich} disabled={enriching} data-testid="bulk-enrich">
+            {enriching ? <Loader2 className="size-bakin-4 animate-spin" /> : <Sparkles className="size-bakin-4" />} Enrich
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} data-testid="bulk-clear-selection">Clear</Button>
-          {bulkError && <p className="text-xs text-bakin-signal-danger">{bulkError}</p>}
+          {bulkError && <p className="text-bakin-typography-size-meta text-bakin-signal-danger">{bulkError}</p>}
         </div>
       )}
 

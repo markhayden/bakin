@@ -21,6 +21,7 @@ import {
   Banner,
   Button,
   DropdownMenuItem,
+  Label,
   FileInput,
   Radio,
   RadioGroup,
@@ -148,7 +149,7 @@ export function VersionedAssetDetail() {
               className="rounded-bakin-pill"
               onClick={goBack}
               aria-label="Back to assets"
-              title="Back to assets"
+             
             >
               <ArrowLeft />
             </Button>
@@ -181,7 +182,7 @@ export function VersionedAssetDetail() {
               className="rounded-bakin-pill"
               onClick={goBack}
               aria-label="Back to assets"
-              title="Back to assets"
+             
             >
               <ArrowLeft />
             </Button>
@@ -234,7 +235,7 @@ export function VersionedAssetDetail() {
             className="rounded-bakin-pill"
             onClick={goBack}
             aria-label="Back to assets"
-            title="Back to assets"
+           
           >
             <ArrowLeft />
           </Button>
@@ -447,7 +448,7 @@ export function VersionedAssetDetail() {
       {/* Fullscreen image lightbox */}
       {lightbox && isImage && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-6"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-bakin-6"
           onClick={() => setLightbox(false)}
           data-testid="lightbox"
         >
@@ -455,16 +456,16 @@ export function VersionedAssetDetail() {
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="absolute right-4 top-4 text-white/80 hover:bg-transparent hover:text-white"
+            className="absolute right-bakin-4 top-bakin-4 text-white/80 hover:bg-transparent hover:text-white"
             onClick={() => setLightbox(false)}
             aria-label="Close"
           >
-            <X className="size-6" />
+            <X className="size-bakin-6" />
           </Button>
           <img
             src={assetVersionUrl(manifest.assetId, previewVersion)}
             alt={manifest.assetId}
-            className="max-h-[92vh] max-w-[92vw] rounded object-contain"
+            className="max-h-[92vh] max-w-[92vw] rounded-bakin-control object-contain"
             onClick={(e) => e.stopPropagation()}
           />
         </div>
@@ -485,14 +486,14 @@ export function VersionedAssetDetail() {
             className="text-bakin-typography-size-body text-bakin-text-primary"
             data-testid="delete-dialog"
           >
-            <label className="flex items-center gap-bakin-2">
+            <Label className="flex items-center gap-bakin-2 font-bakin-typography-weight-regular">
               <Radio value="asset" data-testid="scope-asset" />
               Delete whole asset (all {manifest.versions.length} versions)
-            </label>
-            <label className="flex items-center gap-bakin-2">
+            </Label>
+            <Label className="flex items-center gap-bakin-2 font-bakin-typography-weight-regular">
               <Radio value="current" data-testid="scope-current" />
               Just delete the current version (v{manifest.currentVersion})
-            </label>
+            </Label>
           </RadioGroup>
         ) : 'Delete this asset?'}
         busy={deleting}

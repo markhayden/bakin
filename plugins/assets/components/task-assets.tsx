@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
-import { Button, DrawerSection } from '@makinbakin/sdk/ui'
+import { Button, buttonVariants, DrawerSection } from '@makinbakin/sdk/ui'
 import { ListRow, ListRows } from '@makinbakin/sdk/patterns'
-import { Link, useNavigate } from '@tanstack/react-router'
+import { PluginLink, useRouter } from '@makinbakin/sdk/navigation'
 import { FolderOpen, Plus, X } from 'lucide-react'
 import { AssetThumb } from './versioned/atoms'
 import { VERSIONED_API } from './versioned/asset-urls'
@@ -16,7 +16,7 @@ interface TaskAssetsProps {
 }
 
 export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
-  const navigate = useNavigate()
+  const router = useRouter()
   const [assets, setAssets] = useState<VersionedAssetSummary[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -69,34 +69,33 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
         </span>
       )}
       actions={!readOnly ? (
-          <Link
-            to="/assets"
-            search={{ linkTo: taskId }}
-            className="ml-auto flex items-center gap-1 rounded-bakin-control bg-bakin-action-primary-background px-2 py-0.5 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-action-primary-foreground transition-colors hover:brightness-110 motion-reduce:transition-none"
+          <PluginLink
+            to={`/assets?linkTo=${encodeURIComponent(taskId)}`}
+            className={`ml-auto ${buttonVariants({ size: 'xs' })}`}
           >
-            <Plus className="size-3" />
+            <Plus className="size-bakin-3" />
             Add
-          </Link>
+          </PluginLink>
       ) : undefined}
     >
       <ListRows variant="bordered" aria-label="Task assets" className="gap-bakin-1">
         {assets.map(asset => (
           <ListRow
             key={asset.assetId}
-            className="group flex w-full items-center gap-2 px-bakin-3 py-bakin-2 text-left transition-colors hover:border-bakin-border-subtle/80 motion-reduce:transition-none"
+            className="group flex w-full items-center gap-bakin-2 px-bakin-3 py-bakin-2 text-left transition-colors hover:border-bakin-border-subtle/80 motion-reduce:transition-none"
           >
             <Button
               type="button"
               variant="ghost"
-              size="sm"
-              onClick={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })}
-              className="!h-auto min-w-0 flex-1 justify-start gap-2 whitespace-normal p-0 text-left font-bakin-typography-weight-regular hover:bg-transparent"
+              size="inline"
+              onClick={() => router.push(`/assets/${asset.assetId}`)}
+              className="min-w-0 flex-1 gap-bakin-2 font-bakin-typography-weight-regular hover:bg-transparent"
             >
-              <span className="size-8 shrink-0 overflow-hidden rounded">
+              <span className="size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control">
                 <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-medium text-bakin-text-primary">{asset.description || asset.assetId}</span>
+                <span className="block truncate text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-primary">{asset.description || asset.assetId}</span>
                 {asset.versionCount > 1 && (
                   <span className="block text-bakin-typography-size-meta text-bakin-action-primary-background">v{asset.currentVersion} · {asset.versionCount} versions</span>
                 )}
@@ -108,11 +107,10 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
                 variant="ghost"
                 size="icon-xs"
                 onClick={() => handleUnlink(asset.assetId)}
-                className="shrink-0 text-bakin-text-muted opacity-0 transition-opacity hover:text-bakin-text-primary group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
-                title="Remove from task"
+                className="shrink-0 text-bakin-text-muted md:opacity-0 transition-opacity hover:text-bakin-text-primary md:group-hover:opacity-100 md:focus-visible:opacity-100 motion-reduce:transition-none"
                 aria-label={`Remove ${asset.description || asset.assetId} from task`}
               >
-                <X className="size-3.5" />
+                <X className="size-bakin-3" />
               </Button>
             )}
           </ListRow>

@@ -358,6 +358,10 @@ export function DataTable<Row, F extends string = string>({
         </div>
       </div>
 
+      {/* `none` keeps the table at every width — the narrow render can
+          never show, so it is not rendered at all (duplicate interactive
+          controls in the DOM confuse tests and tab order). */}
+      {collapseBelow !== 'none' ? (
       <ListRows
         aria-label={label}
         variant={listVariant}
@@ -403,6 +407,7 @@ export function DataTable<Row, F extends string = string>({
           )
         })}
       </ListRows>
+      ) : null}
 
       {pagination ? <Pagination {...pagination} /> : null}
     </div>

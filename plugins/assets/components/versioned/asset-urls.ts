@@ -36,3 +36,6 @@ export const TAGS_API = '/api/plugins/assets/tags'
 
 /** Explicit-import endpoint — scan unmanaged files / import them (D7). */
 export const IMPORT_API = '/api/plugins/assets/import'
+
+/** Vision-enrichment endpoint (billed). */
+export const ENRICH_API = '/api/plugins/assets/enrich'
