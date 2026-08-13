@@ -141,7 +141,7 @@ export function SystemTabView({
   }
 
   return (
-    <div className="@container/health-system space-y-6" data-testid="health-system-tab">
+    <div className="@container/health-system space-y-bakin-6" data-testid="health-system-tab">
       <HealthTabIntro
         title="System"
         description="See whether Bakin can serve work, Search can be trusted, plugins are active, and health evidence is current."
@@ -160,9 +160,9 @@ export function SystemTabView({
       />
 
       <section aria-labelledby="system-subsystems-title">
-        <div className="mb-2 flex items-end justify-between gap-3">
+        <div className="mb-bakin-2 flex items-end justify-between gap-bakin-3">
           <div>
-            <h2 id="system-subsystems-title" className="text-base font-semibold">Platform pulse</h2>
+            <h2 id="system-subsystems-title" className="text-bakin-typography-size-body font-bakin-typography-weight-semibold">Platform pulse</h2>
             <p className="text-bakin-typography-size-meta text-bakin-text-muted">A stable snapshot of the services that keep Bakin usable.</p>
           </div>
         </div>
@@ -233,7 +233,7 @@ export function SystemTabView({
         ref={searchDetailRef}
         tabIndex={-1}
         aria-label="Search subsystem detail"
-        className="scroll-mt-4 outline-none focus-visible:rounded-bakin-surface focus-visible:ring-2 focus-visible:ring-bakin-focus-ring"
+        className="scroll-mt-bakin-4 outline-none focus-visible:rounded-bakin-surface focus-visible:ring-2 focus-visible:ring-bakin-focus-ring"
       >
         <SystemSearchSection
           readiness={data.report.data?.subsystems.search ?? null}

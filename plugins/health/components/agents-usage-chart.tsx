@@ -190,7 +190,7 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
       </CardHeader>
       <CardContent className="space-y-bakin-3">
       {loading && !data ? (
-        <div role="status" aria-label="Loading usage and cost" className="space-y-2">
+        <div role="status" aria-label="Loading usage and cost" className="space-y-bakin-2">
           <Skeleton className="h-36 w-full" />
           <Skeleton className="h-4 w-2/3" />
         </div>

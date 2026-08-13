@@ -34,7 +34,7 @@ export function AgentsTab() {
   ].filter((message): message is string => Boolean(message))
 
   return (
-    <div className="min-w-0 space-y-5" data-testid="health-agents-tab">
+    <div className="min-w-0 space-y-bakin-6" data-testid="health-agents-tab">
       <HealthTabIntro
         title="Agents"
         description="Compare token use, cost, tracked work, and recorded outcomes across agents. Spot unusual spend or missing results; today’s totals are still in progress."

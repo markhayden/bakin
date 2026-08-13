@@ -1,6 +1,6 @@
 'use client'
 
-import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
+import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { Grid, Panel, Section } from '@makinbakin/sdk/layout'
 import { ListRows, Pagination, StatusBadge } from '@makinbakin/sdk/patterns'
 import { Button } from '@makinbakin/sdk/ui'
@@ -149,8 +149,8 @@ function FailureGroup({
       <div className="grid min-w-0 gap-bakin-3 px-bakin-3 py-bakin-4 @[38rem]/health:grid-cols-[minmax(0,1fr)_auto] @[38rem]/health:items-center">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
-            <Icon className={`size-bakin-4 shrink-0 `} aria-hidden="true" />
-            <h4 className="min-w-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary" title={destination}>
+            <Icon className="size-bakin-4 shrink-0" aria-hidden="true" />
+            <h4 className="min-w-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">
               {displayName}
             </h4>
             <span className="text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">
@@ -158,15 +158,15 @@ function FailureGroup({
             </span>
           </div>
 
-          <p className="mt-bakin-2 truncate text-bakin-typography-size-body text-bakin-text-primary" title={reason}>{reason}</p>
+          <p className="mt-bakin-2 truncate text-bakin-typography-size-body text-bakin-text-primary">{reason}</p>
           <div className="mt-bakin-2 flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
             <StatusBadge tone="danger" variant="solid">{failureCountLabel(group)}</StatusBadge>
-            <span className="min-w-0 truncate" title={agents}>
+            <span className="min-w-0 truncate">
               {agents}
             </span>
             <span>
               Last failed{' '}
-              <time dateTime={group.lastFailureAt} title={formatAbsoluteTime(group.lastFailureAt)}>
+              <time dateTime={group.lastFailureAt}>
                 {relative}
               </time>
             </span>
@@ -243,10 +243,10 @@ function FailurePatternHighlights({
                 <span className="flex min-w-0 items-center gap-bakin-2">
                   <Icon className={`size-bakin-3 shrink-0 `} aria-hidden="true" />
                   <span className="min-w-0">
-                    <strong className="block truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary" title={destination}>
+                    <strong className="block truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">
                       {failureGroupDisplayName(group)}
                     </strong>
-                    <span className="block truncate text-bakin-typography-size-meta text-bakin-text-muted" title={`${meta.label} · ${reason}`}>
+                    <span className="block truncate text-bakin-typography-size-meta text-bakin-text-muted">
                       <span>{meta.label} · </span>
                       <span>{reason}</span>
                     </span>
@@ -391,7 +391,7 @@ export function ActivityFailureGroups({
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-bakin-2">
         <div>
           <div className="flex items-center gap-bakin-2">
-            <AlertCircle className={`size-4 ${totalFailures > 0 ? 'text-bakin-signal-danger' : 'text-bakin-signal-highlight'}`} aria-hidden="true" />
+            <AlertCircle className={`size-bakin-4 ${totalFailures > 0 ? 'text-bakin-signal-danger' : 'text-bakin-signal-highlight'}`} aria-hidden="true" />
             <h3 id="activity-needs-attention-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">Hiccups</h3>
           </div>
           <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">{description}</p>

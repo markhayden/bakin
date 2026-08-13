@@ -138,7 +138,7 @@ export function RepairDialog({
         )}
 
         {!repair.planning && repair.plan && !repair.result && !repair.stale && (
-          <div className="max-h-[min(52vh,28rem)] space-y-3 overflow-y-auto pr-1">
+          <div className="max-h-[min(52vh,28rem)] space-y-bakin-3 overflow-y-auto pr-bakin-1">
             {repair.plan.items.length === 0 && (
               <p className="rounded-bakin-control border border-bakin-border-subtle p-bakin-4 text-bakin-typography-size-body text-bakin-text-muted">
                 No deterministic repair is available for this issue. Follow its resolution steps instead.
@@ -179,7 +179,7 @@ export function RepairDialog({
         )}
 
         {repair.result && (
-          <div className="max-h-[min(52vh,28rem)] space-y-3 overflow-y-auto" data-testid="repair-result">
+          <div className="max-h-[min(52vh,28rem)] space-y-bakin-3 overflow-y-auto" data-testid="repair-result">
             {repair.result.results.map((item) => (
               <div key={item.itemId} className="flex items-start gap-bakin-2 rounded-bakin-control border border-bakin-border-subtle p-bakin-3 text-bakin-typography-size-body">
                 {item.status === 'applied'

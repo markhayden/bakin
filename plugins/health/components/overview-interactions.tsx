@@ -104,7 +104,7 @@ export function OverviewInteractions({
           <Waypoints className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
           <h3 id="overview-interactions-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">Interactions</h3>
           {coverage && (
-            <span className="text-bakin-typography-size-meta text-bakin-text-muted" aria-label={coverage.label} title={coverage.label}>
+            <span className="text-bakin-typography-size-meta text-bakin-text-muted" aria-label={coverage.label}>
               {coverage.text}
             </span>
           )}
@@ -199,11 +199,9 @@ export function OverviewInteractions({
             {' · '}
             <span className="tabular-nums">{data.totals.background.toLocaleString()} background</span>
             {' · '}
-            <span
-              title="Successful routine polling and static delivery are excluded; failures always count."
-              aria-label="Successful routine polling and static delivery are excluded; failures always count."
-            >
+            <span>
               monitoring excluded
+              <span className="sr-only"> — successful routine polling and static delivery are excluded; failures always count.</span>
             </span>
           </p>
 

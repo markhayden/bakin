@@ -49,7 +49,7 @@ export function ActivityVolumeChart({
       data-chart-layout="split"
     >
       <Stack gap="dense">
-        <h3 id="activity-volume-title" className="font-semibold">Activity over time</h3>
+        <h3 id="activity-volume-title" className="font-bakin-typography-weight-semibold">Activity over time</h3>
         <p className="text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
           Calls recorded in each interval of the selected window, split by result.
         </p>

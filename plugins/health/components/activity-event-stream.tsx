@@ -63,9 +63,9 @@ function ActivityEventRow({ entry }: { entry: UsageEntry }) {
   return (
     <TimelineEntry
       tone={state.tone}
-      timestamp={<span title={formatAbsoluteTime(entry.ts)}>{when}</span>}
+      timestamp={<span>{when}<span className="sr-only"> — {formatAbsoluteTime(entry.ts)}</span></span>}
       dateTime={entry.ts}
-      title={<span title={entry.name}>{label}</span>}
+      title={<span>{label}</span>}
       meta={(
         <>
           <StatusBadge tone={state.tone} variant="solid">{state.label}</StatusBadge>
@@ -106,7 +106,7 @@ export function ActivityEventStream({ data }: { data: UsageFeedData }) {
       divider="top"
       spacing="compact"
     >
-      <div className="flex min-w-0 flex-wrap items-end justify-between gap-2">
+      <div className="flex min-w-0 flex-wrap items-end justify-between gap-bakin-2">
         <div>
           <h3 id="activity-recent-events-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">Recent events</h3>
           <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">

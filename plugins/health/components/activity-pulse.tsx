@@ -1,7 +1,6 @@
 'use client'
 
 import { PieChart, RankedBarChart, type ChartDatum } from '@makinbakin/sdk/charts'
-import { formatAbsoluteTime } from '@makinbakin/sdk/conversation'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import type { InteractionCoverage, UsageFeedData } from '../types'
@@ -82,7 +81,7 @@ export function ActivityPulse({
           <span className={compatibilityLimited ? 'text-bakin-signal-highlight' : undefined}>
             {compatibilityLimited ? 'Partial data · restart Bakin for exact metrics' : coverageLabel(data.window, data.coverage)}
           </span>
-          <time dateTime={data.coverage.startsAt} title={formatAbsoluteTime(data.coverage.startsAt)}>
+          <time dateTime={data.coverage.startsAt}>
             since {coverageStartLabel(data.coverage.startsAt)}
           </time>
         </div>

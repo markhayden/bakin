@@ -1,7 +1,7 @@
 'use client'
 
 import { assignSeriesColors, CHART_MAX_SERIES, StackedColumnChart } from '@makinbakin/sdk/charts'
-import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
+import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
 import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
@@ -88,7 +88,7 @@ export function OverviewAgentSpend({
   const running = new Set(model.rightNow.runningAgents)
 
   return (
-    <section className="min-w-0 p-bakin-4 @[52rem]/health:p-5" data-testid="overview-agent-spend" aria-labelledby="overview-agent-spend-title">
+    <section className="min-w-0 p-bakin-4 @[52rem]/health:p-bakin-6" data-testid="overview-agent-spend" aria-labelledby="overview-agent-spend-title">
       <div className="flex flex-wrap items-start justify-between gap-bakin-3">
         <div className="flex items-center gap-bakin-2">
           <Coins className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
@@ -96,7 +96,7 @@ export function OverviewAgentSpend({
         </div>
         <div className="flex flex-wrap items-center justify-end gap-bakin-2 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">
           {history?.scannedAt && (
-            <time dateTime={history.scannedAt} title={formatAbsoluteTime(history.scannedAt)}>
+            <time dateTime={history.scannedAt}>
               {scanLabel(history.scannedAt)}
             </time>
           )}
@@ -111,15 +111,15 @@ export function OverviewAgentSpend({
           )}
           <span
             className="rounded-bakin-pill bg-bakin-canvas-default px-bakin-2 py-bakin-1"
-            title={history ? `${history.since} through ${history.throughDay}` : undefined}
           >
             {history ? usageWindowScopeLabel(history.since, history.throughDay) : '24h'}
+            {history ? <span className="sr-only"> — {history.since} through {history.throughDay}</span> : null}
           </span>
         </div>
       </div>
 
       {resource.loading && !history ? (
-        <div role="status" aria-label="Loading agent spend" className="mt-5 space-y-bakin-3">
+        <div role="status" aria-label="Loading agent spend" className="mt-bakin-4 space-y-bakin-3">
           <Skeleton className="h-8 w-48" />
           <Skeleton className="h-28 w-full" />
           <Skeleton className="h-12 w-full" />

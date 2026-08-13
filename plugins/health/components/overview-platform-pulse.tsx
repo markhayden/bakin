@@ -1,6 +1,6 @@
 'use client'
 
-import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
+import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { Banner, Button, Skeleton } from '@makinbakin/sdk/ui'
@@ -141,7 +141,7 @@ export function OverviewPlatformPulse({
             <span className="font-bakin-typography-weight-medium text-bakin-text-primary">Checked</span>
             {model.evidenceObservedAt
               ? (
-                  <time dateTime={model.evidenceObservedAt} title={formatAbsoluteTime(model.evidenceObservedAt)}>
+                  <time dateTime={model.evidenceObservedAt}>
                     {relativeObservedAt(model.evidenceObservedAt)}
                   </time>
                 )

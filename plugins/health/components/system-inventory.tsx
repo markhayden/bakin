@@ -220,7 +220,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
   }), [checkGroupById])
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-bakin-6">
       {pluginMutation.status !== 'idle' && pluginMutation.message && (
         <Banner
           tone={mutationTone(pluginMutation.status)}
@@ -330,9 +330,8 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
             <StatTile icon={Cpu} label="Node" value={live?.server?.nodeVersion ?? '—'} sub="Runtime version" />
           </Grid>
           {live?.activeSessions && live.activeSessions.length > 0 && (
-            <details className="mt-bakin-3 rounded-bakin-control border border-bakin-border-subtle px-bakin-3 py-bakin-2">
-              <summary className="cursor-pointer text-bakin-typography-size-body font-bakin-typography-weight-medium">Session detail</summary>
-              <ListRows variant="separated" className="mt-bakin-2 text-bakin-typography-size-meta">
+            <DisclosurePanel summary="Session detail" className="mt-bakin-3">
+              <ListRows variant="separated" className="text-bakin-typography-size-meta">
                 {live.activeSessions.map((session) => (
                   <ListRow key={`${session.agent}:${session.connectedAt}`} className="flex items-center justify-between gap-bakin-3">
                     <span className="font-bakin-typography-weight-medium text-bakin-text-primary">{session.agent}</span>
@@ -340,7 +339,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                   </ListRow>
                 ))}
               </ListRows>
-            </details>
+            </DisclosurePanel>
           )}
       </DisclosurePanel>
 
@@ -375,22 +374,21 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                   ? 'danger'
                   : presentations.some((row) => row.presentation.tone === 'attention') ? 'attention' : 'neutral'
                 return (
-                  <details
+                  <DisclosurePanel
                     key={group.key}
                     ref={(element) => {
                       if (element) checkGroupRefs.current.set(group.key, element)
                       else checkGroupRefs.current.delete(group.key)
                     }}
-                    className="rounded-bakin-control border border-bakin-border-subtle"
                     open={concerning > 0}
-                  >
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-bakin-3 px-bakin-3 py-bakin-2 marker:hidden">
-                      <span className="font-bakin-typography-weight-medium">{group.label}</span>
+                    summary={group.label}
+                    summaryMeta={(
                       <span className="flex items-center gap-bakin-2">
                         {concerning > 0 && <StatusBadge tone={concernTone} variant="outline">{concerning} to review</StatusBadge>}
                         <Badge variant="secondary">{group.checks.length}</Badge>
                       </span>
-                    </summary>
+                    )}
+                  >
                     <ListRows variant="separated">
                       {presentations.map(({ check, presentation }) => (
                         <ListRow
@@ -418,7 +416,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                         </ListRow>
                       ))}
                     </ListRows>
-                  </details>
+                  </DisclosurePanel>
                 )
               })}
             </div>

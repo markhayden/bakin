@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HealthIncident, HealthRepairTarget } from '@makinbakin/sdk/types'
 import { usePathname, useQueryState } from '@makinbakin/sdk/hooks'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 import {
   Page,
   PageBody,
@@ -79,7 +80,7 @@ function OverviewPanel({ onRunChecksReady, onRunChecks }: OverviewPanelProps) {
   ) => {
     setAckError(null)
     try {
-      const response = await fetch('/api/plugins/health/doctor/ack', {
+      const response = await pluginFetch('health', '/doctor/ack', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ incidentId: incident.id, action, ...(window ? { for: window } : {}) }),
