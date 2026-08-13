@@ -126,7 +126,7 @@ function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo 
         >
           <Pencil />
         </Button>
-        {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute left-1.5 top-1.5 z-10" />}
+        {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute left-bakin-1 top-bakin-1 z-10" />}
         {asset.versionCount > 1 && (
           <span className="absolute bottom-bakin-2 left-bakin-2 rounded-bakin-control bg-bakin-canvas-default/85 px-bakin-2 py-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-action-primary-background" data-testid="version-badge">
             {asset.versionCount} versions

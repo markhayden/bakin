@@ -55,7 +55,7 @@ export function AssetThumb({ assetId, type, version, hasThumb, className }: {
   }
   return (
     <div className={`flex items-center justify-center bg-bakin-surface-default ${className ?? 'w-full h-full'}`}>
-      <AssetTypeIcon type={type} className="size-bakin-8 opacity-40" />
+      <AssetTypeIcon type={type} className="size-bakin-8" />
     </div>
   )
 }
