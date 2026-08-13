@@ -26,7 +26,7 @@ interface UnmanagedFile {
   suggestedType: string
 }
 
-export function ImportView({ onImported }: { onImported?: () => void }) {
+export function ImportView({ onImported, onCountChange }: { onImported?: () => void; onCountChange?: (count: number) => void }) {
   const [files, setFiles] = useState<UnmanagedFile[]>([])
   const [typeOverrides, setTypeOverrides] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
@@ -49,6 +49,8 @@ export function ImportView({ onImported }: { onImported?: () => void }) {
   }, [])
 
   useEffect(() => { void scan() }, [scan])
+  // The page header's "N shown" badge stays consistent across tabs.
+  useEffect(() => { onCountChange?.(files.length) }, [files.length, onCountChange])
   // A new drop while the view is open → rescan (debounced server-side).
   usePluginEvent('asset.unmanaged', () => { if (busy === null) void scan() })
 

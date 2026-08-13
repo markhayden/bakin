@@ -392,6 +392,9 @@ export function VersionedAssetGrid() {
   if (!pending) displayedRef.current = filtered
   const displayed = pending ? displayedRef.current : filtered
 
+  // Import-tab count for the header badge (ImportView owns the scan).
+  const [importCount, setImportCount] = useState<number | null>(null)
+
   // List-view sort — the consumer owns ordering (DataTable contract).
   const [listSort, setListSort] = useState<{ field: 'name' | 'size' | 'created'; dir: 'asc' | 'desc' }>({ field: 'created', dir: 'desc' })
   const sortedList = useMemo(() => {
@@ -479,9 +482,10 @@ export function VersionedAssetGrid() {
       <PageHeader
         title="Assets"
         description="Keep images, documents, and other deliverables searchable, versioned, and ready to reuse."
-        meta={loading || view === 'import' ? undefined : (
+        // Every tab carries the count so the header never bounces.
+        meta={loading || (view === 'import' && importCount === null) ? undefined : (
           <Badge size="xs" variant="outline">
-            {view === 'trash' ? trash.length : view === 'tags' ? folderCount : displayed.length} shown
+            {view === 'trash' ? trash.length : view === 'tags' ? folderCount : view === 'import' ? importCount : displayed.length} shown
           </Badge>
         )}
         controlsLabel="Asset search"
@@ -559,7 +563,7 @@ export function VersionedAssetGrid() {
 
       {/* ─── Import view (D7 explicit import) ─── */}
       {view === 'import' ? (
-        <ImportView onImported={fetchAssets} />
+        <ImportView onImported={fetchAssets} onCountChange={setImportCount} />
       ) : view === 'trash' ? (
         trash.length === 0 ? (
           <div data-testid="trash-empty">
