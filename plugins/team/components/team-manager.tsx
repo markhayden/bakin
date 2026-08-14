@@ -21,6 +21,7 @@ import {
   SystemState,
 } from '@makinbakin/sdk/ui'
 import { useAgentStore } from '@makinbakin/sdk/hooks'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 import type { OrgTeam } from '../types'
 
 export function TeamManager() {
@@ -50,7 +51,7 @@ export function TeamManager() {
     setSubmitting(true)
     setError(null)
     try {
-      const response = await fetch('/api/plugins/team/teams', {
+      const response = await pluginFetch('team', 'teams', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, label: newLabel, reportsTo: newReportsTo }),
@@ -77,7 +78,7 @@ export function TeamManager() {
 
   const handleDelete = async (teamId: string) => {
     setError(null)
-    const response = await fetch(`/api/plugins/team/teams/${teamId}`, { method: 'DELETE' })
+    const response = await pluginFetch('team', `teams/${teamId}`, { method: 'DELETE' })
     if (!response.ok) {
       const body = await response.json().catch(() => ({ error: 'Failed to delete team' }))
       setError(body.error || 'Failed to delete team')
@@ -89,7 +90,7 @@ export function TeamManager() {
 
   const handleUpdate = async (teamId: string, patch: Partial<OrgTeam>) => {
     setError(null)
-    const response = await fetch(`/api/plugins/team/teams/${teamId}`, {
+    const response = await pluginFetch('team', `teams/${teamId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),

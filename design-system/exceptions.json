@@ -344,19 +344,21 @@
       "removalCondition": "Remove if a second dnd-card surface appears and the interactive-surface contract grows a drag-aware mode both consumers adopt."
     },
     {
-      "id": "workflows-reactflow-integration-layer",
+      "id": "reactflow-integration-layer",
       "status": "approved-temporary",
       "scope": [
         "plugins/workflows/components/workflow-canvas.tsx",
         "plugins/workflows/components/workflow-canvas-editor.tsx",
         "plugins/workflows/components/nodes/",
-        "plugins/workflows/components/node-type-palette.tsx"
+        "plugins/workflows/components/node-type-palette.tsx",
+        "plugins/team/components/team-grid.tsx",
+        "plugins/team/components/team-graph.css"
       ],
       "closestPattern": {
         "storyPath": "storybook/public/pages/workspace-page.stories.tsx",
         "storyExport": "CanonicalUsage"
       },
-      "mismatch": "The workflow graph is rendered by @xyflow/react (ReactFlow): the library owns node positioning (inline transform styles), connection handles (its own DOM with library default chrome), edge paint (CSS variables), and drag ghosts. The kit has no graph-canvas contract, and library chrome must be neutralized with an !important CSS reset because ReactFlow injects its own stylesheet.",
+      "mismatch": "The workflow graph is rendered by @xyflow/react (ReactFlow): the library owns node positioning (inline transform styles), connection handles (its own DOM with library default chrome), edge paint (CSS variables), and drag ghosts. The kit has no graph-canvas contract, and library chrome must be neutralized with an !important CSS reset because ReactFlow injects its own stylesheet. The team org graph is the same library integration: it neutralizes ReactFlow's injected node chrome so kit Cards own the paint, overrides handle colors with !important, and derives its canvas height from viewport units the kit has no token for.",
       "compositionLimit": "No kit composition can style third-party-injected node chrome or provide graph layout; the reset, the !bg handle overrides, the [--xy-edge-*] variables, the palette drag-ghost DOM node, and the px layout constants are all library-mandated integration points.",
       "alternative": "All node CONTENT paint rides the kit NodeCard pattern (tones, borders, attention ring, type row, title); only the ReactFlow plumbing (Handles with !bg token overrides, the style reset, edge CSS vars, transform positioning, drag-ghost with token-based CSS vars) stays library-specific.",
       "safeguards": {
@@ -367,7 +369,7 @@
       },
       "approvedBy": "Mark Hayden",
       "approvedOn": "2026-08-12",
-      "approvalEvidence": "Workflows audit adjudication: user approved Decision 2 (NodeCard component + recorded exception for the ReactFlow integration layer) with 'node card is a good component to add' / 'do it'.",
+      "approvalEvidence": "Workflows audit adjudication: user approved Decision 2 (NodeCard component + recorded exception for the ReactFlow integration layer) with 'node card is a good component to add' / 'do it'. Extended to the team org graph on 2026-08-14 with 'the rest are fine' covering the team audit's react-flow decision.",
       "reviewBy": "2026-11-12",
       "removalCondition": "Remove if the kit grows a first-party graph-canvas contract or ReactFlow is replaced; shrink the scope if ReactFlow ships un-styled headless nodes that need no reset."
     }

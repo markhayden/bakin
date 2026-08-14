@@ -174,8 +174,12 @@ describe('AgentDetail — tab URL contract', () => {
     expect(tablist.getAttribute('data-variant')).toBe('underline')
     expect(tablist.className).toContain('overflow-x-auto')
 
+    // TabsContent owns the panel wiring now, so assert the relationship
+    // resolves rather than pinning ids the component used to hand-author.
     const overview = screen.getByRole('tab', { name: 'Overview' })
-    expect(overview.getAttribute('aria-controls')).toBe('agent-detail-panel-overview')
+    const panelId = overview.getAttribute('aria-controls')
+    expect(panelId).toBeTruthy()
+    expect(document.getElementById(panelId!)?.getAttribute('role')).toBe('tabpanel')
     act(() => { overview.focus() })
     fireEvent.keyDown(overview, { key: 'ArrowRight' })
 

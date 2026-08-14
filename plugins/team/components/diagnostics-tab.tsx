@@ -21,8 +21,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
 import { ChartExplainer, Sparkline } from '@makinbakin/sdk/charts'
 import { usePluginEvent, useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
-import { Panel as LayoutPanel, Grid, Section, Stack, type PanelTone } from '@makinbakin/sdk/layout'
-import { Pagination, SegmentedControl, StatusBadge } from '@makinbakin/sdk/patterns'
+import { DisclosurePanel, Grid, Panel, Section, Stack } from '@makinbakin/sdk/layout'
+import {
+  KeyValue,
+  Pagination,
+  SegmentedControl,
+  StatusBadge,
+  StatusMarker,
+  Timeline,
+  TimelineEntry,
+  type KeyValueItem,
+} from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertDescription,
@@ -40,7 +49,7 @@ import type { ScanFinding, TimelineEventView } from '../types'
 
 // ── Small shared bits ────────────────────────────────────────────────────────
 
-function Panel({ title, actions, children, divider = 'top' }: {
+function DiagnosticsSection({ title, actions, children, divider = 'top' }: {
   title: string
   actions?: React.ReactNode
   children: React.ReactNode
@@ -110,53 +119,6 @@ async function fetchWithDeadline(
   }
 }
 
-function useTimedJsonFetch<T>(url: string) {
-  const [data, setData] = useState<T | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [retryNonce, setRetryNonce] = useState(0)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    let active = true
-    setData(null)
-    setLoading(true)
-    setError(null)
-
-    void fetchWithDeadline(url, {}, controller)
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`Request failed (${response.status})`)
-        return (await response.json()) as T
-      })
-      .then((body) => {
-        if (!active) return
-        setData(body)
-        setLoading(false)
-      })
-      .catch((cause: unknown) => {
-        if (!active) return
-        setError(cause instanceof DiagnosticsRequestTimeoutError
-          ? 'Request timed out.'
-          : 'Request failed.')
-        setLoading(false)
-      })
-
-    return () => {
-      active = false
-      controller.abort()
-    }
-  }, [retryNonce, url])
-
-  return {
-    data,
-    loading,
-    error,
-    refresh: () => setRetryNonce((nonce) => nonce + 1),
-  }
-}
-
-// ── Attention hook + Overview chips ─────────────────────────────────────────
-
 export interface AgentAttention {
   loaded: boolean
   drift: boolean
@@ -215,20 +177,25 @@ export function DiagnosticsChipsView({ attention, onOpen }: { attention: AgentAt
   ]
   return (
     <div className="flex flex-wrap gap-bakin-2">
-      {chips.map((chip) => (
-        <Button
-          key={chip.key}
-          type="button"
-          size="xs"
-          variant={chip.flagged ? 'warning' : 'outline'}
-          onClick={onOpen}
-          title={`Open the Diagnostics tab (${chip.label.toLowerCase()} details)`}
-        >
-          {chip.flagged ? <AlertTriangle aria-hidden="true" /> : null}
-          {chip.label}
-          {!attention.loaded && chip.key === 'drift' ? '…' : chip.flagged ? ' needs attention' : ' ok'}
-        </Button>
-      ))}
+      {chips.map((chip) => {
+        const state = !attention.loaded && chip.key === 'drift'
+          ? 'Checking'
+          : chip.flagged ? 'Needs attention' : 'OK'
+        return (
+          // A chip reports state, so a StatusBadge carries it; the surrounding
+          // inline Button carries the one action (open the details tab).
+          <Button key={chip.key} type="button" size="inline" variant="ghost" onClick={onOpen}>
+            <StatusBadge
+              tone={chip.flagged ? 'attention' : 'neutral'}
+              variant={chip.flagged ? 'solid' : 'soft'}
+              size="xs"
+              icon={chip.flagged ? AlertTriangle : undefined}
+            >
+              {chip.label} · {state}
+            </StatusBadge>
+          </Button>
+        )
+      })}
     </div>
   )
 }
@@ -367,7 +334,7 @@ function DriftPanel({ agentId }: { agentId: string }) {
 
   return (
     <Section spacing="compact" divider="none" aria-labelledby="diagnostics-drift">
-      <LayoutPanel data-drift-checklist="" tone="neutral">
+      <Panel data-drift-checklist="" tone="neutral">
         <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
           <div className="min-w-0">
             <h2 id="diagnostics-drift">Drift</h2>
@@ -426,11 +393,11 @@ function DriftPanel({ agentId }: { agentId: string }) {
                   data-drift-finding={finding.type}
                   className="flex min-w-0 gap-bakin-3 rounded-bakin-control px-bakin-2 py-bakin-2"
                 >
-                  <span
-                    aria-hidden="true"
-                    data-drift-checkbox="incomplete"
-                    className="mt-0.5 size-bakin-4 shrink-0 rounded-bakin-control border border-bakin-text-muted/80 bg-bakin-canvas-default"
-                  />
+                  {/* Was a decorative span painted to look like an unchecked
+                      checkbox — a control the reader could never operate. */}
+                  <span className="mt-bakin-1 shrink-0">
+                    <StatusMarker tone="attention" size="sm" label={`${findingLabel(finding)} needs review`} />
+                  </span>
                   <div className="min-w-0">
                     <div className="flex min-w-0 flex-wrap items-baseline gap-x-bakin-2 gap-y-bakin-1">
                       <strong className="capitalize">{findingLabel(finding)}</strong>
@@ -481,7 +448,7 @@ function DriftPanel({ agentId }: { agentId: string }) {
             Sync recomposes managed content; edits outside managed blocks are never touched.
           </span>
         </div>
-      </LayoutPanel>
+      </Panel>
     </Section>
   )
 }
@@ -511,10 +478,14 @@ function ContextPanel({ agentId }: { agentId: string }) {
   // Both reads degrade independently. A failed settings request must not be
   // confused with the configured budget: the estimate remains useful, but
   // its threshold is unknown until settings recover.
-  const reportRes = useTimedJsonFetch<ContextReportPayload>(
+  const reportRes = useJsonFetch<ContextReportPayload>(
     `/api/context-report/${encodeURIComponent(agentId)}`,
+    { timeoutMs: DIAGNOSTICS_REQUEST_TIMEOUT_MS },
   )
-  const settingsRes = useTimedJsonFetch<{ dispatch?: { contextBudgetBytes?: number } }>('/api/settings')
+  const settingsRes = useJsonFetch<{ dispatch?: { contextBudgetBytes?: number } }>(
+    '/api/settings',
+    { timeoutMs: DIAGNOSTICS_REQUEST_TIMEOUT_MS },
+  )
   const loading = reportRes.loading || settingsRes.loading
   const payload = reportRes.data
   const configured = settingsRes.data?.dispatch?.contextBudgetBytes
@@ -523,7 +494,7 @@ function ContextPanel({ agentId }: { agentId: string }) {
 
   if (loading) {
     return (
-      <Panel title="Context budget">
+      <DiagnosticsSection title="Context budget">
         <SystemState
           kind="loading"
           scope="inline"
@@ -532,13 +503,13 @@ function ContextPanel({ agentId }: { agentId: string }) {
           description="Calculating prompt sections, workspace files, and observed input."
           preview={<Skeleton className="h-10 w-full" />}
         />
-      </Panel>
+      </DiagnosticsSection>
     )
   }
   const report = payload?.report
   if (!report) {
     return (
-      <Panel
+      <DiagnosticsSection
         title="Context budget"
         actions={(
           <Button
@@ -554,11 +525,11 @@ function ContextPanel({ agentId }: { agentId: string }) {
       >
         <Alert tone="danger">
           <AlertTitle>
-            Context report unavailable{reportRes.error === 'Request timed out.' ? ' because the request timed out.' : '.'}
+            Context report unavailable{reportRes.error === 'Request timed out' ? ' because the request timed out.' : '.'}
           </AlertTitle>
           <AlertDescription>Retry to calculate this agent&apos;s current context footprint.</AlertDescription>
         </Alert>
-      </Panel>
+      </DiagnosticsSection>
     )
   }
 
@@ -571,7 +542,7 @@ function ContextPanel({ agentId }: { agentId: string }) {
     .reverse()
 
   return (
-    <Panel title="Context budget">
+    <DiagnosticsSection title="Context budget">
       <Stack gap="item">
         <div className="grid gap-bakin-2">
           {budget === null ? (
@@ -621,16 +592,13 @@ function ContextPanel({ agentId }: { agentId: string }) {
         <Grid layout="split" gap="section" align="start">
           <div className="grid gap-bakin-2">
             <h3 className="text-bakin-typography-size-body">Largest prompt sections</h3>
-            <dl className="m-0 divide-y divide-bakin-border-subtle">
-              {topSections.map((section) => (
-                <div key={section.source} className="flex min-w-0 items-center justify-between gap-bakin-3 py-bakin-2">
-                  <dt className="truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
-                    {section.source}
-                  </dt>
-                  <dd className="m-0 shrink-0 tabular-nums">{formatBytes(section.bytes)}</dd>
-                </div>
-              ))}
-            </dl>
+            <KeyValue
+              items={topSections.map((section) => ({
+                label: <span className="font-bakin-typography-family-mono">{section.source}</span>,
+                value: formatBytes(section.bytes),
+                numeric: true,
+              }))}
+            />
           </div>
 
           {report.workspace.available && report.workspace.files.length > 0 ? (
@@ -638,21 +606,20 @@ function ContextPanel({ agentId }: { agentId: string }) {
               <h3 className="text-bakin-typography-size-body">
                 Workspace files ({formatBytes(report.workspace.totalBytes)} total)
               </h3>
-              <dl className="m-0 divide-y divide-bakin-border-subtle">
-                {report.workspace.files.slice(0, 8).map((file) => (
-                  <div key={file.name} className="flex min-w-0 items-center justify-between gap-bakin-3 py-bakin-2">
-                    <dt className="truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
-                      {file.name}
-                    </dt>
-                    <dd className="m-0 shrink-0 tabular-nums">
+              <KeyValue
+                items={report.workspace.files.slice(0, 8).map((file) => ({
+                  label: <span className="font-bakin-typography-family-mono">{file.name}</span>,
+                  numeric: true,
+                  value: (
+                    <>
                       {formatBytes(file.bytes)}
                       {typeof file.managedBlockBytes === 'number' ? (
                         <span className="text-bakin-text-muted"> ({formatBytes(file.managedBlockBytes)} managed)</span>
                       ) : null}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
+                    </>
+                  ),
+                }))}
+              />
             </div>
           ) : <div />}
         </Grid>
@@ -672,7 +639,7 @@ function ContextPanel({ agentId }: { agentId: string }) {
         means bloated workspace files or lessons — compare the sections above with
         `bakin agents context {agentId}`.
       </ChartExplainer>
-    </Panel>
+    </DiagnosticsSection>
   )
 }
 
@@ -765,14 +732,6 @@ function eventCategory(event: TimelineAuditEvent): string {
   if (event.event === 'task.routed') return 'Routing'
   if (event.event.includes('worktree')) return 'Workspace'
   return 'System'
-}
-
-function runRailTone(outcome: ReturnType<typeof timelineOutcome>): PanelTone {
-  if (outcome.tone === 'danger') return 'danger'
-  if (outcome.tone === 'attention') return 'attention'
-  if (outcome.tone === 'success') return 'success'
-  if (outcome.tone === 'accent') return 'accent'
-  return 'neutral'
 }
 
 /** Sweep a live chip this long after its last chunk (tap is best-effort —
@@ -874,7 +833,7 @@ function TimelinePanel({ agentId }: { agentId: string }) {
   }, [agentId, window, retryNonce])
 
   return (
-    <Panel
+    <DiagnosticsSection
       title="Activity timeline"
       actions={
         <SegmentedControl
@@ -895,7 +854,7 @@ function TimelinePanel({ agentId }: { agentId: string }) {
         <Alert tone="accent">
           <AlertTitle>Live activity</AlertTitle>
           <AlertDescription>
-            <span className="block truncate" title={live.label}>{live.label}</span>
+            <span className="block truncate">{live.label}</span>
           </AlertDescription>
         </Alert>
       )}
@@ -940,172 +899,111 @@ function TimelinePanel({ agentId }: { agentId: string }) {
             Each entry is one dispatch attempt. Context, routing, warnings, and logs recorded
             during that attempt stay inside it; only unrelated system events appear on their own.
           </ChartExplainer>
-          <ol className="m-0 grid gap-bakin-2 p-0">
-            {visibleItems.map((item) => (
-              <li
-                key={item.type === 'run' ? item.run.runId : `${item.event.ts}:${item.event.event}`}
-                className="min-w-0"
-              >
-                {item.type === 'run' ? (() => {
-                  const event = item.run
-                  const outcome = timelineOutcome(event)
-                  const showReason = event.settleReason && event.settleReason !== 'turn-ok'
-                  const title = event.taskTitle ?? event.taskId
-                  return (
-                    <LayoutPanel
-                      as="article"
-                      tone={runRailTone(outcome)}
-                      aria-label={`Dispatch attempt ${event.seq}: ${title}`}
-                      className="grid gap-bakin-3"
-                    >
-                      <header className="flex min-w-0 flex-wrap items-start gap-bakin-3">
-                        <div className="grid min-w-0 flex-1 gap-bakin-1">
-                          <strong className="min-w-0 break-words">{title}</strong>
-                          <div className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
-                            <span>Attempt {event.seq}</span>
-                            <time
-                              dateTime={new Date(event.startedAt).toISOString()}
-                              className="tabular-nums"
-                            >
-                              {new Date(event.startedAt).toLocaleTimeString()}
-                            </time>
-                            <span>
-                              Duration{' '}
-                              <span className="tabular-nums text-bakin-text-primary">
-                                {event.durationMs !== null ? (formatDuration(event.durationMs) ?? `${event.durationMs} ms`) : 'In flight'}
-                              </span>
-                            </span>
-                          </div>
-                        </div>
-                        <StatusBadge tone={outcome.tone} variant="solid" size="xs">
-                          {outcome.label}
-                        </StatusBadge>
-                      </header>
+          <Timeline aria-label="Dispatch activity">
+            {visibleItems.map((item) => {
+              if (item.type === 'run') {
+                const event = item.run
+                const outcome = timelineOutcome(event)
+                const showReason = event.settleReason && event.settleReason !== 'turn-ok'
+                const title = event.taskTitle ?? event.taskId
+                const stats: KeyValueItem[] = [{
+                  label: 'Duration',
+                  numeric: true,
+                  value: event.durationMs !== null
+                    ? (formatDuration(event.durationMs) ?? `${event.durationMs} ms`)
+                    : 'In flight',
+                }]
+                if (event.model) stats.push({ label: 'Model', value: event.model })
+                if (event.inputTokens !== null || event.outputTokens !== null) {
+                  stats.push({
+                    label: 'Tokens',
+                    numeric: true,
+                    value: `${event.inputTokens !== null ? `${formatTokens(event.inputTokens)} in` : '—'}${
+                      event.outputTokens !== null ? ` / ${formatTokens(event.outputTokens)} out` : ''
+                    }`,
+                  })
+                }
+                if (event.costUsdMicros !== null) {
+                  stats.push({ label: 'Cost', numeric: true, value: `$${(event.costUsdMicros / 1_000_000).toFixed(2)}` })
+                }
+                if (event.routeSource) {
+                  stats.push({ label: 'Route', value: event.routeSource === 'class' ? 'Class route' : event.routeSource })
+                }
 
-                      {event.model || event.inputTokens !== null || event.outputTokens !== null || event.costUsdMicros !== null || event.routeSource ? (
-                        <dl className="m-0 flex min-w-0 flex-wrap gap-x-bakin-4 gap-y-bakin-1 text-bakin-typography-size-meta">
-                          {event.model ? (
-                            <div className="flex gap-bakin-1">
-                              <dt className="text-bakin-text-muted">Model</dt>
-                              <dd className="m-0 text-bakin-text-primary">{event.model}</dd>
-                            </div>
-                          ) : null}
-                          {event.inputTokens !== null || event.outputTokens !== null ? (
-                            <div className="flex gap-bakin-1">
-                              <dt className="text-bakin-text-muted">Tokens</dt>
-                              <dd className="m-0 tabular-nums text-bakin-text-primary">
-                                {event.inputTokens !== null ? `${formatTokens(event.inputTokens)} in` : '—'}
-                                {event.outputTokens !== null ? ` / ${formatTokens(event.outputTokens)} out` : ''}
-                              </dd>
-                            </div>
-                          ) : null}
-                          {event.costUsdMicros !== null ? (
-                            <div className="flex gap-bakin-1">
-                              <dt className="text-bakin-text-muted">Cost</dt>
-                              <dd className="m-0 tabular-nums text-bakin-text-primary">
-                                ${(event.costUsdMicros / 1_000_000).toFixed(2)}
-                              </dd>
-                            </div>
-                          ) : null}
-                          {event.routeSource ? (
-                            <div className="flex gap-bakin-1">
-                              <dt className="text-bakin-text-muted">Route</dt>
-                              <dd className="m-0 text-bakin-text-primary">
-                                {event.routeSource === 'class' ? 'Class route' : event.routeSource}
-                              </dd>
-                            </div>
-                          ) : null}
-                        </dl>
-                      ) : null}
+                return (
+                  <TimelineEntry
+                    key={event.runId}
+                    tone={outcome.tone}
+                    timestamp={new Date(event.startedAt).toLocaleTimeString()}
+                    dateTime={new Date(event.startedAt).toISOString()}
+                    title={title}
+                    meta={(
+                      <>
+                        <StatusBadge tone={outcome.tone} variant="solid" size="xs">{outcome.label}</StatusBadge>
+                        <span className="text-bakin-text-muted">Attempt {event.seq}</span>
+                      </>
+                    )}
+                  >
+                    <KeyValue layout="inline" items={stats} />
 
-                      {item.relatedEvents.length > 0 ? (
-                        <ul aria-label="Related events" className="m-0 grid gap-bakin-2 p-0">
-                          {item.relatedEvents.map((related) => (
-                            <li
-                              key={`${related.ts}:${related.event}`}
-                              data-related-event={related.event}
-                              className="flex min-w-0 items-start gap-bakin-2 text-bakin-typography-size-meta"
-                            >
-                              {related.severity === 'warn' ? (
-                                <AlertTriangle aria-hidden="true" className="mt-px size-bakin-3 shrink-0 text-bakin-signal-highlight" />
-                              ) : (
-                                <span aria-hidden="true" className="mt-bakin-1 size-bakin-1 shrink-0 rounded-bakin-pill bg-bakin-text-muted" />
-                              )}
-                              <span className={`shrink-0 font-bakin-typography-weight-semibold ${
-                                related.severity === 'warn' ? 'text-bakin-signal-highlight' : 'text-bakin-text-muted'
-                              }`}>
-                                {eventCategory(related)}
-                              </span>
-                              <span className="min-w-0 text-bakin-text-muted">{related.message}</span>
+                    {showReason ? (
+                      <Alert tone={outcome.failed ? 'danger' : 'neutral'}>
+                        <AlertTitle>{outcome.failed ? 'Failure reason' : 'Completion detail'}</AlertTitle>
+                        <AlertDescription>{event.settleReason}</AlertDescription>
+                      </Alert>
+                    ) : null}
+
+                    {item.relatedEvents.length > 0 ? (
+                      <Timeline nested aria-label={`Events during attempt ${event.seq}`}>
+                        {item.relatedEvents.map((related) => (
+                          <TimelineEntry
+                            key={`${related.ts}:${related.event}`}
+                            tone={related.severity === 'warn' ? 'attention' : 'neutral'}
+                            markerLabel={related.severity === 'warn' ? 'Warning' : 'Event'}
+                            title={eventCategory(related)}
+                            meta={<span className="text-bakin-text-muted">{related.message}</span>}
+                          />
+                        ))}
+                      </Timeline>
+                    ) : null}
+
+                    {event.logs.length > 0 ? (
+                      <DisclosurePanel
+                        summary={`${event.logs.length} progress log line(s)${event.logsTruncated ? ' (truncated)' : ''}`}
+                      >
+                        <ul className="m-0 grid gap-bakin-1 p-0">
+                          {event.logs.map((line, i) => (
+                            <li key={i} className="text-bakin-text-muted">
+                              <span className="tabular-nums">{new Date(line.ts).toLocaleTimeString()}</span> {line.message}
                             </li>
                           ))}
                         </ul>
-                      ) : null}
-
-                      {showReason ? (
-                        <p
-                          className={`m-0 border-l-2 pl-bakin-3 text-bakin-typography-size-meta leading-relaxed ${
-                            outcome.failed
-                              ? 'border-bakin-signal-danger text-bakin-signal-danger'
-                              : 'border-bakin-border-subtle text-bakin-text-muted'
-                          }`}
-                        >
-                          <span className="font-bakin-typography-weight-semibold">
-                            {outcome.failed ? 'Failure reason: ' : 'Completion detail: '}
-                          </span>
-                          {event.settleReason}
-                        </p>
-                      ) : null}
-
-                      {event.logs.length > 0 ? (
-                        <details>
-                          <summary className="cursor-pointer text-bakin-typography-size-meta text-bakin-text-muted">
-                            {event.logs.length} progress log line(s){event.logsTruncated ? ' (truncated)' : ''}
-                          </summary>
-                          <ul className="mt-bakin-2 grid gap-bakin-1 border-l border-bakin-border-subtle pl-bakin-3">
-                            {event.logs.map((line, i) => (
-                              <li key={i} className="text-bakin-typography-size-meta text-bakin-text-muted">
-                                <span className="tabular-nums">{new Date(line.ts).toLocaleTimeString()}</span> {line.message}
-                              </li>
-                            ))}
-                          </ul>
-                        </details>
-                      ) : null}
-                    </LayoutPanel>
-                  )
-                })() : (
-                  <LayoutPanel
-                    as="article"
-                    tone={item.event.severity === 'warn' ? 'attention' : 'neutral'}
-                    aria-label={`Standalone ${item.event.severity === 'warn' ? 'warning' : 'event'}: ${item.event.message}`}
-                    className="grid gap-bakin-2"
-                  >
-                    <header className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1">
-                      <span
-                        className={`text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider ${
-                          item.event.severity === 'warn' ? 'text-bakin-signal-highlight' : 'text-bakin-text-muted'
-                        }`}
-                      >
-                        {item.event.severity === 'warn' ? 'Standalone warning' : 'System event'}
-                      </span>
-                      <time
-                        dateTime={new Date(item.event.ts).toISOString()}
-                        className="text-bakin-typography-size-meta tabular-nums text-bakin-text-muted"
-                      >
-                        {new Date(item.event.ts).toLocaleTimeString()}
-                      </time>
-                    </header>
-                    <p className="m-0 text-bakin-text-primary">{item.event.message}</p>
-                    {item.event.taskId ? (
-                      <p className="m-0 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
-                        Task {item.event.taskId}
-                      </p>
+                      </DisclosurePanel>
                     ) : null}
-                  </LayoutPanel>
-                )}
-              </li>
-            ))}
-          </ol>
+                  </TimelineEntry>
+                )
+              }
+
+              return (
+                <TimelineEntry
+                  key={`${item.event.ts}:${item.event.event}`}
+                  tone={item.event.severity === 'warn' ? 'attention' : 'neutral'}
+                  timestamp={new Date(item.event.ts).toLocaleTimeString()}
+                  dateTime={new Date(item.event.ts).toISOString()}
+                  title={item.event.message}
+                  meta={(
+                    <StatusBadge tone={item.event.severity === 'warn' ? 'attention' : 'neutral'} variant="soft" size="xs">
+                      {item.event.severity === 'warn' ? 'Standalone warning' : 'System event'}
+                    </StatusBadge>
+                  )}
+                >
+                  {item.event.taskId ? (
+                    <span className="font-bakin-typography-family-mono">Task {item.event.taskId}</span>
+                  ) : null}
+                </TimelineEntry>
+              )
+            })}
+          </Timeline>
           <Pagination
             page={page}
             pageSize={pageSize}
@@ -1116,7 +1014,7 @@ function TimelinePanel({ agentId }: { agentId: string }) {
           />
         </>
       )}
-    </Panel>
+    </DiagnosticsSection>
   )
 }
 

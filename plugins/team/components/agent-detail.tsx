@@ -1,28 +1,32 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowLeft, BookOpen, Calendar, Camera, Pencil, Sparkles, Trash2 } from 'lucide-react'
-import { Section } from '@makinbakin/sdk/layout'
+import { Grid, Panel, Section } from '@makinbakin/sdk/layout'
 import { useHistoryBack, useRouter } from '@makinbakin/sdk/navigation'
 import {
   AgentAvatar,
   ConfirmDialog,
+  NavList,
   Page,
+  PageAside,
   PageBody,
   PageHeader,
-  StatusBadge,
+  type NavListItem,
 } from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertAction,
   AlertDescription,
   AlertTitle,
+  Badge,
   Button,
   DropdownMenuItem,
   FileInput,
   Skeleton,
   SystemState,
   Tabs,
+  TabsContent,
   TabsList,
   TabsTrigger,
   type FileInputHandle,
@@ -293,25 +297,16 @@ export function AgentDetail({ agentId }: { agentId: string }) {
       <Tabs value={activeTab} onValueChange={(tabId) => setTabParam(tabId as Tab)}>
         <TabsList variant="underline" activateOnFocus aria-label="Agent sections">
           {TABS.map((item) => (
-            <TabsTrigger
-              key={item.id}
-              value={item.id}
-              id={`agent-detail-tab-${item.id}`}
-              aria-controls={`agent-detail-panel-${item.id}`}
-            >
+            <TabsTrigger key={item.id} value={item.id}>
               {item.label}
             </TabsTrigger>
           ))}
         </TabsList>
-      </Tabs>
 
-      <PageBody>
-          <div
-            id={`agent-detail-panel-${activeTab}`}
-            role="tabpanel"
-            aria-labelledby={`agent-detail-tab-${activeTab}`}
-            className="flex min-h-96 min-w-0 flex-1 flex-col"
-          >
+        {/* TabsContent owns the panel's ARIA wiring; hand-rolling
+            role/aria-labelledby duplicated what the kit already guarantees. */}
+        <TabsContent value={activeTab}>
+          <PageBody>
             {activeTab === 'overview' ? (
               <OverviewTab
                 agentId={agentId}
@@ -340,8 +335,9 @@ export function AgentDetail({ agentId }: { agentId: string }) {
             {activeTab === 'skills' ? <SkillsTab agentId={agentId} /> : null}
             {activeTab === 'lessons' ? <LessonsTab agentId={agentId} packageState={packageState} /> : null}
             {activeTab === 'active-context' ? <ActiveContextTab agentId={agentId} /> : null}
-          </div>
-      </PageBody>
+          </PageBody>
+        </TabsContent>
+      </Tabs>
 
       <ConfirmDialog
         open={deleteOpen}
@@ -391,6 +387,40 @@ function LessonsTab({
         </Button>
       )}
     />
+  )
+}
+
+/**
+ * Shared master-detail body for the Skills and Memory tabs, which were
+ * copy-pasted twins: each hand-rolled a selection column plus a `max-h-screen
+ * overflow-auto` pane, so the page scrolled inside a pane inside the page.
+ * Selection is NavList's contract and the page owns the only scroll.
+ */
+function WorkspaceFileBrowser({
+  navLabel,
+  heading,
+  items,
+  selectedId,
+  onSelect,
+  content,
+}: {
+  navLabel: string
+  heading: string
+  items: ReadonlyArray<NavListItem>
+  selectedId: string | null
+  onSelect: (id: string) => void
+  content: ReactNode
+}) {
+  return (
+    <Grid layout="main-aside" gap="section" align="start" className="min-w-0 flex-1">
+      <Section spacing="compact" className="min-w-0">
+        {content}
+      </Section>
+      <PageAside label={navLabel}>
+        <h2>{heading}</h2>
+        <NavList label={navLabel} items={items} selectedId={selectedId} onSelect={onSelect} />
+      </PageAside>
+    </Grid>
   )
 }
 
@@ -451,46 +481,33 @@ function SkillsTab({ agentId }: { agentId: string }) {
   }
 
   return (
-    <div className="grid min-w-0 gap-bakin-4 lg:grid-cols-4">
-      <aside className="lg:col-span-1">
-        <Section as="div" spacing="compact" className="max-h-screen overflow-auto">
-          <h2>
-            Installed skills
-          </h2>
-          <div className="grid gap-bakin-1">
-            {skills.map((skill) => (
-              <Button
-                key={skill.id}
-                type="button"
-                variant={selectedSkill === skill.id ? 'secondary' : 'ghost'}
-                className="w-full justify-between"
-                onClick={() => setSelectedSkill(skill.id)}
-              >
-                <span className="truncate">{skill.name}</span>
-                {skill.hasSkillMd ? <StatusBadge tone="neutral" variant="solid">Guide</StatusBadge> : null}
-              </Button>
-            ))}
-          </div>
-        </Section>
-      </aside>
-
-      <Section spacing="compact" className="min-h-96 lg:col-span-3">
-        {skillContent ? (
-          <pre className="m-0 max-h-screen overflow-auto whitespace-pre-wrap font-bakin-typography-family-mono text-bakin-typography-size-body leading-relaxed text-bakin-text-primary">
+    <WorkspaceFileBrowser
+      navLabel="Installed skills"
+      heading="Installed skills"
+      items={skills.map((skill) => ({
+        id: skill.id,
+        label: skill.name,
+        meta: skill.hasSkillMd ? <Badge variant="secondary" size="xs">Guide</Badge> : undefined,
+      }))}
+      selectedId={selectedSkill}
+      onSelect={setSelectedSkill}
+      content={skillContent ? (
+        <Panel variant="code" scroll={false}>
+          <pre className="m-0 whitespace-pre-wrap font-bakin-typography-family-mono leading-relaxed text-bakin-text-primary">
             {skillContent}
           </pre>
-        ) : selectedSkill ? (
-          <SystemState
-            kind="initial-empty"
-            scope="inline"
-            title="No SKILL.md found"
-            description="This capability does not include a readable skill guide."
-          />
-        ) : (
-          <Skeleton className="h-40 w-full" />
-        )}
-      </Section>
-    </div>
+        </Panel>
+      ) : selectedSkill ? (
+        <SystemState
+          kind="initial-empty"
+          scope="inline"
+          title="No SKILL.md found"
+          description="This capability does not include a readable skill guide."
+        />
+      ) : (
+        <Skeleton className="h-40 w-full" />
+      )}
+    />
   )
 }
 
@@ -551,37 +568,24 @@ function MemoryTab({ agentId }: { agentId: string }) {
   }
 
   return (
-    <div className="grid min-w-0 gap-bakin-4 lg:grid-cols-4">
-      <aside className="lg:col-span-1">
-        <Section as="div" spacing="compact" className="max-h-screen overflow-auto">
-          <h2>
-            Daily memory
-          </h2>
-          <div className="grid gap-bakin-1">
-            {files.map((file) => (
-              <Button
-                key={file}
-                type="button"
-                variant={selectedFile === file ? 'secondary' : 'ghost'}
-                className="w-full justify-start font-bakin-typography-family-mono"
-                onClick={() => setSelectedFile(file)}
-              >
-                {file.replace('.md', '')}
-              </Button>
-            ))}
-          </div>
-        </Section>
-      </aside>
-
-      <Section spacing="compact" className="min-h-96 lg:col-span-3">
-        {content ? (
-          <pre className="m-0 max-h-screen overflow-auto whitespace-pre-wrap font-bakin-typography-family-mono text-bakin-typography-size-body leading-relaxed text-bakin-text-primary">
+    <WorkspaceFileBrowser
+      navLabel="Daily memory"
+      heading="Daily memory"
+      items={files.map((file) => ({
+        id: file,
+        label: <span className="font-bakin-typography-family-mono">{file.replace('.md', '')}</span>,
+      }))}
+      selectedId={selectedFile}
+      onSelect={setSelectedFile}
+      content={content ? (
+        <Panel variant="code" scroll={false}>
+          <pre className="m-0 whitespace-pre-wrap font-bakin-typography-family-mono leading-relaxed text-bakin-text-primary">
             {content}
           </pre>
-        ) : (
-          <Skeleton className="h-40 w-full" />
-        )}
-      </Section>
-    </div>
+        </Panel>
+      ) : (
+        <Skeleton className="h-40 w-full" />
+      )}
+    />
   )
 }

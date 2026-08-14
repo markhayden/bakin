@@ -1,10 +1,10 @@
 'use client'
 
-import { Heart, Pencil } from 'lucide-react'
+import { Heart } from 'lucide-react'
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import { Panel, Section } from '@makinbakin/sdk/layout'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
-import { Button, SystemState } from '@makinbakin/sdk/ui'
+import { SystemState } from '@makinbakin/sdk/ui'
 import { useJsonFetch } from '@makinbakin/sdk/hooks'
 import type { HeartbeatRaw } from '../types'
 
@@ -92,23 +92,15 @@ export function HeartbeatTab({ agentId }: HeartbeatTabProps) {
             Read-only narrative maintained by the agent while it works.
           </p>
         </div>
-        <div className="flex items-center gap-bakin-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
           {lastUpdated ? (
             <StatusBadge tone="neutral" variant="solid" size="xs">
               Last updated {lastUpdated}
             </StatusBadge>
           ) : null}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            disabled
-            aria-disabled="true"
-            title={HEARTBEAT_DISABLED_REASON}
-            aria-label={`Edit disabled — ${HEARTBEAT_DISABLED_REASON}`}
-          >
-            <Pencil aria-hidden="true" />
-          </Button>
+          <p className="m-0 max-w-prose text-bakin-typography-size-meta text-bakin-text-muted">
+            {HEARTBEAT_DISABLED_REASON}
+          </p>
         </div>
       </div>
 

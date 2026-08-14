@@ -26,6 +26,7 @@ import {
   SubmitButton,
   Textarea,
 } from '@makinbakin/sdk/ui'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 
 export interface AgentFormData {
   id: string
@@ -74,7 +75,7 @@ export function AgentForm({
   }, [availableModels])
 
   useEffect(() => {
-    fetch('/api/plugins/team/teams')
+    pluginFetch('team', 'teams')
       .then((response) => response.json())
       .then((data) => { if (Array.isArray(data)) setTeams(data) })
       .catch(() => {})

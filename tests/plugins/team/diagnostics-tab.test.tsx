@@ -5,7 +5,7 @@
  * the attention chips derivation.
  */
 import { describe, expect, it, mock } from 'bun:test'
-import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import '../../rtl-settle'
 import { actRender } from '../../rtl-settle'
 import type { ReactNode } from 'react'
@@ -136,13 +136,23 @@ describe('DiagnosticsTab', () => {
     stubFetch()
     render(<DiagnosticsTab agentId="pixel" />)
 
-    const run = await screen.findByRole('article', {
-      name: 'Dispatch attempt 1: resize hero images',
-    })
-    expect(run.textContent).toContain('Retrieved 1 lesson(s) for this dispatch')
+    // Runs are entries in the kit Timeline feed now, not standalone articles:
+    // the nesting contract is a run entry that CONTAINS its related events,
+    // beside a sibling entry for the unrelated one.
+    const feed = await screen.findByRole('list', { name: 'Dispatch activity' })
+    const entries = within(feed).getAllByRole('listitem')
+      .filter((entry) => entry.parentElement === feed)
+    expect(entries).toHaveLength(2)
+
+    const [run, standalone] = entries as [HTMLElement, HTMLElement]
+    expect(run.textContent).toContain('resize hero images')
     expect(run.textContent).toContain('Attempt 1')
-    expect(screen.getByRole('article', { name: 'Standalone warning: Bypass detected on t9' })).toBeDefined()
-    expect(screen.getAllByRole('article')).toHaveLength(2)
+    // Related evidence lives inside the attempt that produced it...
+    const nested = within(run).getByRole('list', { name: 'Events during attempt 1' })
+    expect(nested.textContent).toContain('Retrieved 1 lesson(s) for this dispatch')
+    // ...and an unrelated event stays its own top-level entry.
+    expect(standalone.textContent).toContain('Bypass detected on t9')
+    expect(within(standalone).queryByRole('list')).toBeNull()
   })
 
   it('Sync now posts to the sync endpoint and rescans', async () => {
@@ -436,8 +446,10 @@ describe('DiagnosticsChipsView', () => {
     })
     const buttons = screen.getAllByRole('button')
     expect(buttons).toHaveLength(3)
+    // State now reads as a StatusBadge rather than concatenated onto a button
+    // label, so it is sentence-cased like every other status chip.
     expect(buttons[0]!.textContent).toContain('Drift')
-    expect(buttons[0]!.textContent).toContain('needs attention')
-    expect(buttons[1]!.textContent).toContain('ok')
+    expect(buttons[0]!.textContent).toContain('Needs attention')
+    expect(buttons[1]!.textContent).toContain('OK')
   })
 })

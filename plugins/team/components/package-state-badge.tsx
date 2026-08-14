@@ -1,6 +1,6 @@
 'use client'
 
-import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { StatusBadge, StatusMarker, type StatusTone } from '@makinbakin/sdk/patterns'
 
 export type PackageState =
   | 'absent'
@@ -19,37 +19,31 @@ export interface PackageStateBadgeProps {
 const STATE_PRESENTATION: Record<PackageState, {
   label: string
   tone: StatusTone
-  dot: string
   tip: string
 }> = {
   absent: {
     label: 'absent',
     tone: 'neutral',
-    dot: 'bg-bakin-text-muted',
     tip: 'No runtime entry and no package tracking.',
   },
   unmanaged: {
     label: 'unmanaged',
     tone: 'neutral',
-    dot: 'bg-bakin-text-muted',
     tip: 'This runtime agent is not tracked by a Bakin package.',
   },
   managed: {
     label: 'managed',
     tone: 'success',
-    dot: 'bg-bakin-action-primary-background',
     tip: 'Bakin manages this agent package and its projected workspace files.',
   },
   drifted: {
     label: 'drifted',
     tone: 'attention',
-    dot: 'bg-bakin-signal-highlight',
     tip: 'Projected files no longer match the recorded package state.',
   },
   'update-available': {
     label: 'update available',
     tone: 'accent',
-    dot: 'bg-bakin-signal-accent',
     tip: 'A newer version of the source package is available.',
   },
 }
@@ -60,20 +54,23 @@ export function PackageStateBadge({ state, packageId, title, compact }: PackageS
 
   if (compact) {
     return (
-      <span
-        title={`${presentation.label} — ${tooltip}`}
-        aria-label={`Package state: ${presentation.label}`}
-        data-state={state}
-        className={`inline-block size-bakin-2 shrink-0 rounded-bakin-pill ${presentation.dot}`}
-      />
+      <span className="inline-flex shrink-0 items-center">
+        <StatusMarker
+          tone={presentation.tone}
+          label={`Package state: ${presentation.label}`}
+          data-state={state}
+        />
+        <span className="sr-only">{tooltip}</span>
+      </span>
     )
   }
 
   return (
-    <span title={tooltip} className="inline-flex min-w-0 flex-wrap items-center gap-bakin-2">
+    <span className="inline-flex min-w-0 flex-wrap items-center gap-bakin-2">
       <StatusBadge tone={presentation.tone} variant="solid" size="xs">
         {presentation.label}
       </StatusBadge>
+      <span className="sr-only">{tooltip}</span>
       {packageId && state !== 'unmanaged' && state !== 'absent' ? (
         <code className="break-all font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
           {packageId}

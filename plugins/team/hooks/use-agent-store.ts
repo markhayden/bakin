@@ -7,6 +7,7 @@
  * All components that need agent info import from here instead of static constants.
  */
 import { create } from 'zustand'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 import type { AgentMeta, AgentDisplaySettings, AgentDisplaySettingsMap, AgentWithStatus, OrgTeam, PackageStateRow } from '../types'
 
 interface AgentStore {
@@ -125,7 +126,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   load: async () => {
     try {
       const [rosterRes, pkgRes] = await Promise.all([
-        fetch('/api/plugins/team/'),
+        pluginFetch('team', ''),
         fetch('/api/agent-packages?check=1').catch(() => null),
       ])
       if (!rosterRes.ok) {
@@ -185,7 +186,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     }
     set({ displaySettings: updated })
 
-    await fetch('/api/plugins/team/settings', {
+    await pluginFetch('team', 'settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updated),

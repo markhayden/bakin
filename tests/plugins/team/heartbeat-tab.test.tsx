@@ -120,7 +120,7 @@ describe('HeartbeatTab', () => {
     await waitFor(() => expect(screen.getByText('boom')).toBeDefined())
   })
 
-  it('shows a disabled edit button (visual parity with markdown tabs) but no editable surface', async () => {
+  it('states the read-only reason as visible text instead of a permanently-disabled control', async () => {
     setupFetch({
       ok: true,
       heartbeat: { content: 'alive', lastUpdated: new Date().toISOString() },
@@ -130,14 +130,13 @@ describe('HeartbeatTab', () => {
     })
     await waitFor(() => expect(screen.getByTestId('markdown')).toBeDefined())
 
-    // Button is present so the corner real-estate matches Soul/Rules/Tools
-    // tabs, but it's explicitly disabled with an explanatory tooltip.
-    const btn = screen.getByLabelText(/Edit disabled/) as HTMLButtonElement
-    expect(btn).toBeDefined()
-    expect(btn.disabled).toBe(true)
+    // A control that can never be enabled is not rendered as a control: the
+    // reason is visible copy, readable by everyone, not a native tooltip on a
+    // disabled button.
+    expect(screen.getByText(/Editing it here would conflict/i)).toBeDefined()
+    expect(screen.queryByRole('button')).toBeNull()
 
-    // No save button, no editable textbox — the disabled affordance is
-    // visual parity only, never lets the user edit.
+    // No save button, no editable textbox — the tab never lets the user edit.
     expect(screen.queryByLabelText(/Save/i)).toBeNull()
     expect(screen.queryByRole('textbox')).toBeNull()
   })

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, RefreshCw } from 'lucide-react'
 import { Section } from '@makinbakin/sdk/layout'
-import { useHistoryBack, useRouter } from '@makinbakin/sdk/navigation'
+import { PluginLink, useHistoryBack } from '@makinbakin/sdk/navigation'
 import {
   AgentAvatar,
   Page,
@@ -11,9 +11,11 @@ import {
   PageBody,
   PageHeader,
   SaveBar,
+  SegmentedControl,
   StatusBadge,
   ListRow,
-  ListRows,} from '@makinbakin/sdk/patterns'
+  ListRows,
+} from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertDescription,
@@ -21,8 +23,8 @@ import {
   Badge,
   Button,
   SystemState,
-  Textarea,
 } from '@makinbakin/sdk/ui'
+import { MarkdownEditor, type MarkdownEditorMode } from '@makinbakin/sdk/content'
 
 interface TeamInfo {
   id: string
@@ -49,7 +51,6 @@ interface SyncResultRow {
 const GLOBAL_TEAM: TeamInfo = { id: 'global', label: 'Global' }
 
 export function TeamDetail({ teamId }: { teamId: string }) {
-  const router = useRouter()
   const goBack = useHistoryBack('/team')
   const isGlobal = teamId === 'global'
 
@@ -64,6 +65,7 @@ export function TeamDetail({ teamId }: { teamId: string }) {
   const [syncing, setSyncing] = useState(false)
   const [syncResults, setSyncResults] = useState<SyncResultRow[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [mode, setMode] = useState<MarkdownEditorMode>('edit')
 
   const contextUrl = isGlobal
     ? '/api/plugins/team/context/global'
@@ -264,17 +266,27 @@ export function TeamDetail({ teamId }: { teamId: string }) {
               </Alert>
             ) : null}
 
-            <Textarea
-              value={content ?? ''}
-              onChange={(event) => {
-                setContent(event.target.value)
-                setDirty(event.target.value !== savedContent)
+            <SegmentedControl
+              ariaLabel="Shared context mode"
+              options={[{ value: 'edit', label: 'Edit' }, { value: 'preview', label: 'Preview' }]}
+              value={mode}
+              onValueChange={(value) => setMode(value as MarkdownEditorMode)}
+            />
+            {/* These rules are markdown that agents read as markdown, so the
+                author sees them rendered — same contract as the workspace
+                file tabs in this plugin. */}
+            <MarkdownEditor
+              label="Shared context content"
+              content={content ?? ''}
+              mode={mode}
+              height="document"
+              onChange={(next) => {
+                setContent(next)
+                setDirty(next !== savedContent)
               }}
-              className="min-h-96 resize-y font-bakin-typography-family-mono"
               placeholder={isGlobal
                 ? `# House rules\n\n- Keep replies short and direct.\n- {{agentName}} reports blockers to {{mainAgentName}} immediately.`
                 : `# ${pageTitle} team rules\n\n- Follow the team style guide.\n- Hand finished work back by assetId, never file paths.`}
-              aria-label="Shared context content"
             />
           </Section>
 
@@ -334,18 +346,13 @@ export function TeamDetail({ teamId }: { teamId: string }) {
                       size="sm"
                       decorative
                     />
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="xs"
-                      className="min-w-0 flex-1 justify-start"
-                      onClick={() => router.push(`/team/${member.id}`)}
-                    >
-                      <span className="truncate">{member.name}</span>
-                    </Button>
+                    <PluginLink to={`/team/${encodeURIComponent(member.id)}`} className="min-w-0 flex-1 truncate">
+                      {member.name}
+                    </PluginLink>
                     {status ? (
-                      <StatusBadge tone={status.tone} variant="solid" size="xs" title={result?.error}>
+                      <StatusBadge tone={status.tone} variant="solid" size="xs">
                         {status.label}
+                        {result?.error ? <span className="sr-only"> — {result.error}</span> : null}
                       </StatusBadge>
                     ) : null}
                   </ListRow>

@@ -58,18 +58,32 @@ export function useJsonFetch<T>(url: string | null, opts?: UseJsonFetchOptions):
     // A deadline abort must survive the AbortError guard below, otherwise the
     // timeout would look identical to an unmount and never surface.
     let timedOut = false
+    let rejectDeadline: ((reason: Error) => void) | null = null
     const deadline = timeoutMs !== undefined && timeoutMs > 0
       ? setTimeout(() => {
           timedOut = true
+          // Abort to free the socket, but RACE the rejection rather than
+          // relying on it: a fetch implementation that ignores the signal
+          // would otherwise leave the caller hanging forever, which is the
+          // exact failure the deadline exists to prevent.
           controller.abort()
+          rejectDeadline?.(new Error('Request timed out'))
         }, timeoutMs)
       : null
     const clearDeadline = () => {
       if (deadline !== null) clearTimeout(deadline)
+      rejectDeadline = null
     }
     setLoading(true)
     setError(null)
-    fetch(url, { ...init, signal: controller.signal })
+    const request = fetch(url, { ...init, signal: controller.signal })
+    const raced = deadline === null
+      ? request
+      : Promise.race([
+          request,
+          new Promise<never>((_resolve, reject) => { rejectDeadline = reject }),
+        ])
+    raced
       .then(async (res) => {
         if (!res.ok) throw new Error(`Request failed (${res.status})`)
         return (await res.json()) as T

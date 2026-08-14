@@ -47,6 +47,7 @@ import {
 } from '@makinbakin/sdk/ui'
 import { useRuntimeStatus } from '@makinbakin/sdk/hooks'
 import { useAgentStore, useMainAgentId, usePackageState, usePluginJsonFetch } from '@makinbakin/sdk/hooks'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 import { buildGraph } from '../lib/build-graph'
 import { AgentForm, type AgentFormData } from './agent-form'
 import { TeamManager } from './team-manager'
@@ -101,7 +102,7 @@ export function AgentCardNode({ data }: NodeProps) {
   return (
     <Card
       data-team-agent-card=""
-      className="w-52 gap-0"
+      className="w-52 gap-bakin-0"
       interactive={{
         label: `Open ${agent.name}`,
         render: <PluginLink to={`/team/${encodeURIComponent(agent.id)}`} />,
@@ -139,17 +140,13 @@ export function AgentCardNode({ data }: NodeProps) {
             <PackageStateBadge state={pkgState.state} compact />
           )}
         </div>
-        <div
-          className="line-clamp-3 w-full text-bakin-typography-size-meta leading-snug text-bakin-text-muted"
-          title={agent.role || undefined}
-        >
+        <div className="line-clamp-3 w-full text-bakin-typography-size-meta leading-snug text-bakin-text-muted">
           {agent.role || 'No role assigned'}
         </div>
       </div>
       <CardFooter
         variant="meta"
         className="relative justify-center px-bakin-3 pb-bakin-2 pt-bakin-2 font-bakin-typography-family-mono"
-        title={agent.model}
       >
         <span className="min-w-0 truncate">{agent.model}</span>
         <Handle type="source" position={Position.Bottom} className="!bg-bakin-border-subtle" />
@@ -179,12 +176,14 @@ function SectionNode({ data }: NodeProps) {
           if (teamId) router.push(`/team/teams/${encodeURIComponent(teamId)}`)
         }}
         className="whitespace-nowrap uppercase tracking-widest text-bakin-text-muted"
-        title={hasContext ? 'Team carries shared context — click to view' : 'Open team page'}
       >
         {label}
       </Button>
       {hasContext && (
-        <ScrollText className="size-bakin-3 text-bakin-signal-info" aria-label={`${label} has shared context rules`} />
+        <>
+          <ScrollText aria-hidden="true" className="size-bakin-3 text-bakin-signal-info" />
+          <span className="sr-only">{label} carries shared context rules</span>
+        </>
       )}
       <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0" />
     </div>
@@ -250,7 +249,7 @@ export function TeamGrid() {
     setSubmitting(true)
     setCreateError(null)
     try {
-      const res = await fetch('/api/plugins/team/', {
+      const res = await pluginFetch('team', '', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -265,7 +264,7 @@ export function TeamGrid() {
       if (avatarFile) {
         const formData = new FormData()
         formData.append('avatar', avatarFile)
-        await fetch(`/api/plugins/team/${data.id}/avatar`, {
+        await pluginFetch('team', `${data.id}/avatar`, {
           method: 'POST',
           body: formData,
         })
@@ -330,11 +329,11 @@ export function TeamGrid() {
             actions={(
               <>
                 <Button variant="outline" onClick={() => setShowTeams(true)}>
-                  <Settings2 />
+                  <Settings2 aria-hidden="true" />
                   Teams
                 </Button>
                 <Button onClick={() => setShowCreate(true)}>
-                  <Plus />
+                  <Plus aria-hidden="true" />
                   New Agent
                 </Button>
               </>
@@ -446,7 +445,7 @@ export function TeamGrid() {
                 setSubmitting(true)
                 setCreateError(null)
                 try {
-                  const res = await fetch('/api/plugins/team/?skipRestart=true', {
+                  const res = await pluginFetch('team', '?skipRestart=true', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data),
@@ -459,7 +458,7 @@ export function TeamGrid() {
                   if (avatarFile) {
                     const formData = new FormData()
                     formData.append('avatar', avatarFile)
-                    await fetch(`/api/plugins/team/${data.id}/avatar`, { method: 'POST', body: formData })
+                    await pluginFetch('team', `${data.id}/avatar`, { method: 'POST', body: formData })
                   }
                   setPendingCreate(null)
                   setShowCreate(false)
