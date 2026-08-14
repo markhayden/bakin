@@ -6,7 +6,7 @@ import { DisclosurePanel, Grid, Panel } from '@makinbakin/sdk/layout'
 import {
   DataTable,
   StatTile,
-  StatusBadge as StatusBadgePrimitive,
+  StatusBadge,
   type DataTableColumn,
   type StatusTone,
 } from '@makinbakin/sdk/patterns'
@@ -56,11 +56,11 @@ const STATUS_SEGMENT: Record<SearchStageStatus, string> = {
   not_applicable: 'bg-bakin-border-subtle',
 }
 
-function StatusBadge({ status }: { status: SearchStageStatus }) {
+function SearchStageBadge({ status }: { status: SearchStageStatus }) {
   return (
-    <StatusBadgePrimitive variant="outline" tone={STATUS_TONE[status]}>
+    <StatusBadge variant="outline" tone={STATUS_TONE[status]}>
       {STATUS_LABEL[status]}
-    </StatusBadgePrimitive>
+    </StatusBadge>
   )
 }
 
@@ -139,7 +139,7 @@ export function SystemSearchSection({
           : table.healthy && erroredLegs.length === 0 ? 'success' : 'danger'
         return (
           <>
-            <StatusBadgePrimitive variant="outline" tone={stateTone}>{stateLabel}</StatusBadgePrimitive>
+            <StatusBadge variant="outline" tone={stateTone}>{stateLabel}</StatusBadge>
             {erroredLegs.map((leg) => (
               <p key={leg.name} className="mt-bakin-1 max-w-48 text-bakin-typography-size-meta text-bakin-signal-danger">{leg.name}: {leg.error}</p>
             ))}
@@ -201,7 +201,7 @@ export function SystemSearchSection({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-bakin-2">
             <h2 id="search-system-title" className="text-bakin-typography-size-section-title font-bakin-typography-weight-semibold">Search readiness</h2>
-            <StatusBadge status={readinessStatus} />
+            <SearchStageBadge status={readinessStatus} />
           </div>
           <p className="mt-bakin-1 max-w-3xl text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
             {readinessStale

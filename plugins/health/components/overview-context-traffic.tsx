@@ -1,7 +1,7 @@
 'use client'
 
 import { PieChart } from '@makinbakin/sdk/charts'
-import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
+import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { Button, Progress, Skeleton } from '@makinbakin/sdk/ui'
@@ -92,7 +92,7 @@ export function OverviewContextTraffic({
         </div>
 
         {context.loading ? (
-          <Skeleton className="mt-2 h-10 w-full" />
+          <Skeleton className="mt-bakin-2 h-10 w-full" />
         ) : context.error ? (
           <div className="mt-bakin-2 flex items-center justify-between gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
             <span>Startup context could not be checked.</span>
@@ -129,7 +129,7 @@ export function OverviewContextTraffic({
         </div>
 
         {sessions.loading && !sessions.data ? (
-          <Skeleton className="mt-2 h-12 w-full" />
+          <Skeleton className="mt-bakin-2 h-12 w-full" />
         ) : sessions.error && !sessions.data ? (
           <div className="mt-bakin-2 flex items-center justify-between gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
             <span>Session traffic unavailable.</span>
@@ -156,7 +156,7 @@ export function OverviewContextTraffic({
                   <div key={`${session.agent}:${session.sessionId}`} className="flex items-center justify-between gap-bakin-3 text-bakin-typography-size-meta">
                     <span className="min-w-0 text-bakin-text-muted">
                       <span className="block truncate">{session.agent} · {session.model}</span>
-                      <time className="block" dateTime={evidenceAt} title={formatAbsoluteTime(evidenceAt)}>
+                      <time className="block" dateTime={evidenceAt}>
                         {sessionTimeLabel(evidenceAt, verb)}
                       </time>
                     </span>

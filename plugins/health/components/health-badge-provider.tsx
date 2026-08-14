@@ -1,6 +1,6 @@
 'use client'
 
-import type { NavBadge } from '@makinbakin/sdk'
+import type { NavBadge } from '@makinbakin/sdk/types'
 import { useNavBadge } from '@makinbakin/sdk/hooks'
 import { useHealthSummary } from '../hooks/use-health-summary'
 

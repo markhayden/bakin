@@ -22,7 +22,8 @@ export interface TimelineProps extends ComponentPropsWithoutRef<'ol'> {
  *
  * Wide containers (container-query driven, never the viewport) move each
  * entry's timestamp into an aligned left gutter; narrow containers keep it
- * inline with the entry title.
+ * inline with the entry title, wrap `meta` onto its own row, and compact
+ * status chips to Badge's xs metrics so entries stay two predictable lines.
  */
 export function Timeline({ nested = false, className, ...props }: TimelineProps) {
   return (
@@ -119,7 +120,22 @@ export function TimelineEntry({
         {title}
       </span>
       {meta != null ? (
-        <span data-slot="timeline-meta" className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+        <span
+          data-slot="timeline-meta"
+          className={cn(
+            // Narrow containers give meta its own full row so chips never
+            // straddle the title line, and status chips compact to Badge's
+            // xs metrics (mirror badge.tsx size.xs — keep in sync). order-1
+            // keeps the disclosure chevron on the title row when meta wraps.
+            'order-1 flex min-w-0 basis-full flex-wrap items-center gap-bakin-2 @2xl/timeline:order-none @2xl/timeline:basis-auto',
+            '@max-2xl/timeline:[&_[data-status-badge]]:h-bakin-4',
+            '@max-2xl/timeline:[&_[data-status-badge]]:min-w-bakin-4',
+            '@max-2xl/timeline:[&_[data-status-badge]]:gap-0',
+            '@max-2xl/timeline:[&_[data-status-badge]]:px-bakin-1',
+            '@max-2xl/timeline:[&_[data-status-badge]]:text-[.625rem]',
+            '@max-2xl/timeline:[&_[data-status-badge]]:leading-none',
+          )}
+        >
           {meta}
         </span>
       ) : null}

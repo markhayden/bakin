@@ -197,7 +197,7 @@ function LatestSessionDetails({ row, id, checking, unavailable }: {
         <div>
           <div className="grid gap-bakin-3 @[36rem]/agent-pulse:grid-cols-[minmax(11rem,1.5fr)_repeat(4,minmax(5rem,1fr))]">
             <div className="min-w-0">
-              <p className="truncate font-bakin-typography-weight-medium text-bakin-text-primary" title={session.model}>{session.model}</p>
+              <p className="truncate font-bakin-typography-weight-medium text-bakin-text-primary">{session.model}</p>
               <p className="text-bakin-typography-size-meta text-bakin-text-muted">
                 {plural(session.messages, 'message')} · {formatTokenCount(session.tokens.total)} tokens
               </p>
@@ -296,7 +296,6 @@ function AgentPulseRowView({ row, expanded, pending, unavailable, liveNowStale, 
           className={flag && !row.liveRun
             ? 'mt-bakin-1 line-clamp-2 text-bakin-typography-size-meta text-bakin-text-muted'
             : 'mt-bakin-1 truncate text-bakin-typography-size-meta text-bakin-text-muted'}
-          title={activitySummary}
         >
           {activitySummary}
         </p>

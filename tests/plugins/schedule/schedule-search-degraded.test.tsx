@@ -252,17 +252,24 @@ describe('SchedulePage — search signals', () => {
   })
 
   it('renders no signal row for a healthy complete search', async () => {
-    stubSearchFetch(() => json({
-      results: [{ id: 'a', table: 'bakin_schedule', score: 0.8, fields: {} }],
-      aggregations: {},
-      meta: { query: 'beef', total: 1, took_ms: 4, source: 'search' },
-    }))
+    // Gate on the debounced search request actually having fired — ending
+    // earlier leaves its setState outside act (the CI act-gate flake).
+    let searchFetched = false
+    stubSearchFetch(() => {
+      searchFetched = true
+      return json({
+        results: [{ id: 'a', table: 'bakin_schedule', score: 0.8, fields: {} }],
+        aggregations: {},
+        meta: { query: 'beef', total: 1, took_ms: 4, source: 'search' },
+      })
+    })
     scheduleState.jobs = [makeJob({ id: 'a', displayName: 'Beef digest' })]
     queryStateRefs.view = 'list'
     queryStateRefs.q = 'beef'
 
     render(<SchedulePage />)
 
+    await waitFor(() => expect(searchFetched).toBe(true), { timeout: 3000 })
     await waitFor(() => {
       expect(screen.getByTestId('job-a')).toBeDefined()
       expect(screen.queryAllByTestId('schedule-search-loading').length).toBe(0)

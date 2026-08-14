@@ -199,7 +199,7 @@ export function ActivityTab() {
   }, [data])
 
   return (
-    <div className="space-y-5" data-testid="health-activity-tab">
+    <div className="space-y-bakin-6" data-testid="health-activity-tab">
       <HealthTabIntro
         title="Activity"
         description="Review recorded tool calls, API requests, and agent runs across Bakin. Routine successes stay visible, with failures called out for inspection."

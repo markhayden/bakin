@@ -202,7 +202,7 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
               >
                 Snooze
               </PopoverTrigger>
-              <PopoverContent align="end" className="flex w-32 flex-col p-1">
+              <PopoverContent align="end" className="flex w-32 flex-col p-bakin-1">
                 <Button size="sm" variant="ghost" onClick={() => onAck(incident, 'snooze', '24h')}>24 hours</Button>
                 <Button size="sm" variant="ghost" onClick={() => onAck(incident, 'snooze', '7d')}>7 days</Button>
               </PopoverContent>

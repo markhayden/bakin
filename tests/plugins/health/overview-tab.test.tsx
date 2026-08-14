@@ -287,8 +287,10 @@ describe('OverviewTabView', () => {
     expect(within(interactions).getByText('10')).toBeDefined()
     expect(within(interactions).getAllByText('web search').length).toBeGreaterThan(0)
     expect(within(interactions).getAllByText('images generate').length).toBeGreaterThan(0)
-    expect(within(interactions).getByText('monitoring excluded').getAttribute('title'))
-      .toBe('Successful routine polling and static delivery are excluded; failures always count.')
+    // The exclusion note rides screen-reader text, never a title tooltip.
+    expect(
+      within(interactions).getByText('monitoring excluded').parentElement?.textContent,
+    ).toContain('successful routine polling and static delivery are excluded')
     expect(within(interactions).getByRole('group', { name: /Recorded meaningful Bakin interactions/i })).toBeDefined()
     expect(within(interactions).getByRole('link', { name: 'View recorded interaction activity' }).getAttribute('href'))
       .toBe('/health?tab=activity&activity_window=1h')
