@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 206534,
+    "canonicalBytes": 205892,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -38,7 +38,7 @@
       "name": "sdk-conversation",
       "path": "packages/host/public/vendor/sdk-conversation.js",
       "bytes": 60324,
-      "reachableBytes": 642278
+      "reachableBytes": 642386
     },
     {
       "name": "sdk-layout",
@@ -135,8 +135,8 @@
       "bytes": 83071
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-0q9t2xwm.js",
-      "bytes": 28835
+      "path": "packages/host/public/vendor/sdk-shared-18qcfc0v.js",
+      "bytes": 28943
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-48z85nz6.js",
@@ -284,7 +284,7 @@
       "repository": "bakin",
       "pluginId": "team",
       "path": "plugins/team/dist/client.js",
-      "bytes": 284281
+      "bytes": 278496
     },
     {
       "repository": "bakin",

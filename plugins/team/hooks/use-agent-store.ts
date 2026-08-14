@@ -7,7 +7,6 @@
  * All components that need agent info import from here instead of static constants.
  */
 import { create } from 'zustand'
-import { pluginFetch } from '@makinbakin/sdk/utils'
 import type { AgentMeta, AgentDisplaySettings, AgentDisplaySettingsMap, AgentWithStatus, OrgTeam, PackageStateRow } from '../types'
 
 interface AgentStore {
@@ -112,6 +111,9 @@ const hydrated = readRosterCache()
 const hydratedMap: Record<string, AgentMeta> = {}
 for (const a of hydrated?.agents ?? []) hydratedMap[a.id] = a
 
+// NOTE: raw fetch on purpose. The SDK re-exports this hook through
+// @makinbakin/sdk/hooks, so importing an SDK barrel here (pluginFetch lives in
+// @makinbakin/sdk/utils) closes an import cycle the ratchet rejects.
 export const useAgentStore = create<AgentStore>((set, get) => ({
   agents: hydrated?.agents ?? [],
   agentIds: (hydrated?.agents ?? []).map((a) => a.id),
@@ -126,7 +128,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   load: async () => {
     try {
       const [rosterRes, pkgRes] = await Promise.all([
-        pluginFetch('team', ''),
+        fetch('/api/plugins/team/'),
         fetch('/api/agent-packages?check=1').catch(() => null),
       ])
       if (!rosterRes.ok) {
@@ -186,7 +188,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     }
     set({ displaySettings: updated })
 
-    await pluginFetch('team', 'settings', {
+    await fetch('/api/plugins/team/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updated),
