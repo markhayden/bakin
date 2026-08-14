@@ -194,7 +194,6 @@ function SettingsRoute() {
             <>
               <h2
                 id="active-settings-heading"
-                className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
               >
                 {plugin.name}
               </h2>

@@ -63,7 +63,7 @@ export function Launcher({
         <section className="space-y-bakin-3" aria-labelledby="chat-start-heading">
           <h2
             id="chat-start-heading"
-            className="flex items-center gap-bakin-2 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold"
+            className="flex items-center gap-bakin-2"
           >
             <MessageCirclePlus className="size-5 text-bakin-text-muted" /> Start a chat
           </h2>

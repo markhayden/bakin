@@ -108,7 +108,7 @@ export function ActivityEventStream({ data }: { data: UsageFeedData }) {
     >
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-bakin-2">
         <div>
-          <h3 id="activity-recent-events-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">Recent events</h3>
+          <h3 id="activity-recent-events-title">Recent events</h3>
           <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">
             {data.capabilities?.sourceBalancedActivity === true
               ? 'Newest visible calls from each source. Open one for details.'

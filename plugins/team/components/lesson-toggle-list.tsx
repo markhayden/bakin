@@ -166,7 +166,7 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
       <Stack gap="dense">
         <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
           <div className="min-w-0">
-            <h2 id="package-lessons-heading" className="m-0">Lessons</h2>
+            <h2 id="package-lessons-heading">Lessons</h2>
             <p className="m-0 mt-bakin-1 max-w-prose text-bakin-text-muted">
               Learned from real tasks — the most relevant lessons are recalled automatically per task.
               Hard rules belong in Identity and AGENTS.md instead.

@@ -64,7 +64,7 @@ export function OverviewContextTraffic({
       <div className="flex items-center justify-between gap-bakin-3">
         <div className="flex items-center gap-bakin-2">
           <Layers3 className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
-          <h3 id="overview-context-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">Context &amp; cache</h3>
+          <h3 id="overview-context-title">Context &amp; cache</h3>
         </div>
         <PluginLink
           to="/health?tab=agents"

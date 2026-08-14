@@ -150,7 +150,7 @@ function FailureGroup({
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
             <Icon className="size-bakin-4 shrink-0" aria-hidden="true" />
-            <h4 className="min-w-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">
+            <h4 className="min-w-0 truncate">
               {displayName}
             </h4>
             <span className="text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">
@@ -279,7 +279,7 @@ function ResultsToVerify({
     <div className="space-y-bakin-2">
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-bakin-2">
         <div>
-          <h4 className="font-bakin-typography-weight-semibold text-bakin-text-primary">Results to verify</h4>
+          <h4>Results to verify</h4>
           <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">
             Confirm whether these calls completed before retrying them.
           </p>
@@ -392,7 +392,7 @@ export function ActivityFailureGroups({
         <div>
           <div className="flex items-center gap-bakin-2">
             <AlertCircle className={`size-bakin-4 ${totalFailures > 0 ? 'text-bakin-signal-danger' : 'text-bakin-signal-highlight'}`} aria-hidden="true" />
-            <h3 id="activity-needs-attention-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">Hiccups</h3>
+            <h3 id="activity-needs-attention-title">Hiccups</h3>
           </div>
           <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">{description}</p>
         </div>

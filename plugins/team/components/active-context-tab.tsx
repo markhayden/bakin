@@ -184,7 +184,7 @@ export function ActiveContextTab({ agentId }: ActiveContextTabProps) {
 
       <header className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
         <div className="min-w-0">
-          <h2 className="m-0">Current session</h2>
+          <h2>Current session</h2>
           <div className="mt-bakin-1 flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
             <code className="font-bakin-typography-family-mono text-bakin-text-primary">
               {transcript.sessionId || 'Unknown session'}

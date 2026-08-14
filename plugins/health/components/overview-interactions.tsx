@@ -102,7 +102,7 @@ export function OverviewInteractions({
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-bakin-3 gap-y-bakin-1">
         <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
           <Waypoints className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
-          <h3 id="overview-interactions-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">Interactions</h3>
+          <h3 id="overview-interactions-title">Interactions</h3>
           {coverage && (
             <span className="text-bakin-typography-size-meta text-bakin-text-muted" aria-label={coverage.label}>
               {coverage.text}

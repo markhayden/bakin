@@ -50,7 +50,7 @@ function Panel({ title, actions, children, divider = 'top' }: {
   return (
     <Section spacing="compact" divider={divider} aria-labelledby={headingId}>
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
-        <h2 id={headingId} className="m-0">{title}</h2>
+        <h2 id={headingId}>{title}</h2>
         {actions}
       </div>
       {children}
@@ -370,7 +370,7 @@ function DriftPanel({ agentId }: { agentId: string }) {
       <LayoutPanel data-drift-checklist="" tone="neutral">
         <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
           <div className="min-w-0">
-            <h2 id="diagnostics-drift" className="m-0">Drift</h2>
+            <h2 id="diagnostics-drift">Drift</h2>
             <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
               {loading
                 ? 'Comparing managed files with the installed package.'
@@ -620,7 +620,7 @@ function ContextPanel({ agentId }: { agentId: string }) {
 
         <Grid layout="split" gap="section" align="start">
           <div className="grid gap-bakin-2">
-            <h3 className="m-0 text-bakin-typography-size-body">Largest prompt sections</h3>
+            <h3 className="text-bakin-typography-size-body">Largest prompt sections</h3>
             <dl className="m-0 divide-y divide-bakin-border-subtle">
               {topSections.map((section) => (
                 <div key={section.source} className="flex min-w-0 items-center justify-between gap-bakin-3 py-bakin-2">
@@ -635,7 +635,7 @@ function ContextPanel({ agentId }: { agentId: string }) {
 
           {report.workspace.available && report.workspace.files.length > 0 ? (
             <div className="grid gap-bakin-2">
-              <h3 className="m-0 text-bakin-typography-size-body">
+              <h3 className="text-bakin-typography-size-body">
                 Workspace files ({formatBytes(report.workspace.totalBytes)} total)
               </h3>
               <dl className="m-0 divide-y divide-bakin-border-subtle">

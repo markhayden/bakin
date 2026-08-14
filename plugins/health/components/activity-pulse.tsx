@@ -75,7 +75,7 @@ export function ActivityPulse({
           {needsAttention
             ? <AlertCircle className={`size-bakin-4 shrink-0 ${hasFailures ? 'text-bakin-signal-danger' : 'text-bakin-signal-highlight'}`} aria-hidden="true" />
             : <CheckCircle2 className="size-bakin-4 shrink-0 text-bakin-action-primary-background" aria-hidden="true" />}
-          <h3 id="activity-pulse-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">Activity pulse</h3>
+          <h3 id="activity-pulse-title">Activity pulse</h3>
         </div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-bakin-2 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
           <span className={compatibilityLimited ? 'text-bakin-signal-highlight' : undefined}>

@@ -200,7 +200,7 @@ export function SystemSearchSection({
       <header className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3 border-b border-bakin-border-subtle px-bakin-4 py-bakin-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-bakin-2">
-            <h2 id="search-system-title" className="text-bakin-typography-size-section-title font-bakin-typography-weight-semibold">Search readiness</h2>
+            <h2 id="search-system-title">Search readiness</h2>
             <SearchStageBadge status={readinessStatus} />
           </div>
           <p className="mt-bakin-1 max-w-3xl text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">

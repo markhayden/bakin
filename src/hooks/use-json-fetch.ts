@@ -13,6 +13,16 @@ export interface UseJsonFetchResult<T> {
   refresh: () => void
 }
 
+export interface UseJsonFetchOptions extends RequestInit {
+  /**
+   * Abort the request after this many milliseconds and report it as a timeout
+   * rather than a silent hang. Endpoints that scan the filesystem or call the
+   * runtime can stall indefinitely; without a deadline the caller shows a
+   * spinner forever.
+   */
+  timeoutMs?: number
+}
+
 /**
  * Cancellable JSON GET with the standard `{ data, loading, error, refresh }` lifecycle —
  * the consolidation of the `let cancelled = false` fetch-in-useEffect boilerplate scattered
@@ -21,9 +31,10 @@ export interface UseJsonFetchResult<T> {
  *
  * Pass `url = null` to skip fetching (e.g. until an id is known); `data` resets to null and
  * `loading` is false while skipped. `opts` is read per-request but does NOT re-trigger on its
- * own identity — change `url` or call `refresh()` to re-fetch.
+ * own identity — change `url` or call `refresh()` to re-fetch. Set `opts.timeoutMs` to bound
+ * a request that can hang.
  */
-export function useJsonFetch<T>(url: string | null, opts?: RequestInit): UseJsonFetchResult<T> {
+export function useJsonFetch<T>(url: string | null, opts?: UseJsonFetchOptions): UseJsonFetchResult<T> {
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState<boolean>(url !== null)
   const [error, setError] = useState<string | null>(null)
@@ -43,24 +54,47 @@ export function useJsonFetch<T>(url: string | null, opts?: RequestInit): UseJson
       return
     }
     const controller = new AbortController()
+    const { timeoutMs, ...init } = optsRef.current ?? {}
+    // A deadline abort must survive the AbortError guard below, otherwise the
+    // timeout would look identical to an unmount and never surface.
+    let timedOut = false
+    const deadline = timeoutMs !== undefined && timeoutMs > 0
+      ? setTimeout(() => {
+          timedOut = true
+          controller.abort()
+        }, timeoutMs)
+      : null
+    const clearDeadline = () => {
+      if (deadline !== null) clearTimeout(deadline)
+    }
     setLoading(true)
     setError(null)
-    fetch(url, { ...optsRef.current, signal: controller.signal })
+    fetch(url, { ...init, signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error(`Request failed (${res.status})`)
         return (await res.json()) as T
       })
       .then((json) => {
+        clearDeadline()
         if (controller.signal.aborted) return
         setData(json)
         setLoading(false)
       })
       .catch((err: unknown) => {
+        clearDeadline()
+        if (timedOut) {
+          setError('Request timed out')
+          setLoading(false)
+          return
+        }
         if (controller.signal.aborted || (err as { name?: string })?.name === 'AbortError') return
         setError(err instanceof Error ? err.message : 'Request failed')
         setLoading(false)
       })
-    return () => controller.abort()
+    return () => {
+      clearDeadline()
+      controller.abort()
+    }
   }, [url, nonce])
 
   return { data, loading, error, refresh }
@@ -73,7 +107,7 @@ export function useJsonFetch<T>(url: string | null, opts?: RequestInit): UseJson
 export function usePluginJsonFetch<T>(
   pluginId: string,
   path: string | null,
-  opts?: RequestInit,
+  opts?: UseJsonFetchOptions,
 ): UseJsonFetchResult<T> {
   const clean = path === null ? null : path.startsWith('/') ? path.slice(1) : path
   return useJsonFetch<T>(clean === null ? null : `/api/plugins/${pluginId}/${clean}`, opts)

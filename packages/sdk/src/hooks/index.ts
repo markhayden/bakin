@@ -30,7 +30,7 @@ export { useDebug } from '@/hooks/use-debug'
 export { useFormGuard } from '@/hooks/use-form-guard'
 /** Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. */
 export { useJsonFetch, usePluginJsonFetch } from '@/hooks/use-json-fetch'
-export type { UseJsonFetchResult } from '@/hooks/use-json-fetch'
+export type { UseJsonFetchOptions, UseJsonFetchResult } from '@/hooks/use-json-fetch'
 /** Subscribe to runtime connection status (online/offline, last heartbeat). */
 export { useRuntimeStatus } from '@/hooks/use-runtime-status'
 /** @deprecated Import URL-backed state from `@makinbakin/sdk/navigation`. */

@@ -111,7 +111,7 @@ export function ActivityBreakdown({
       data-testid="activity-breakdown"
     >
       <div>
-        <h3 id="activity-breakdown-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">
+        <h3 id="activity-breakdown-title">
           Call breakdown
         </h3>
         <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">

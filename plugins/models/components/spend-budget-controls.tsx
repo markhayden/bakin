@@ -212,7 +212,7 @@ export function BudgetRulesSection({ m }: { m: ModelsData }) {
     <Section className="@container/budget-rules" spacing="compact" divider="top" aria-label="Budget rules">
       <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 @2xl/budget-rules:flex-row @2xl/budget-rules:items-start @2xl/budget-rules:justify-between">
         <Stack gap="dense">
-          <h2 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+          <h2>
             Budget rules
           </h2>
           <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
@@ -292,7 +292,7 @@ export function BillingLanesSection({ m }: { m: ModelsData }) {
   return (
     <Section className="@container/billing-lanes" spacing="compact" divider="top" aria-label="Billing lanes">
       <Stack gap="dense">
-        <h2 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+        <h2>
           Billing lanes
         </h2>
         <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">

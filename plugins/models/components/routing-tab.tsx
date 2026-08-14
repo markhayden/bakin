@@ -136,7 +136,7 @@ export function RoutingTab({ m }: { m: ModelsData }) {
             className="px-bakin-4 py-bakin-4"
           >
             <div className="min-w-0 @3xl/list-rows:self-center">
-              <h3 className="m-0 text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
+              <h3 className="text-bakin-typography-size-body">
                 {workClass.label}
               </h3>
               <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
@@ -240,7 +240,6 @@ export function RoutingTab({ m }: { m: ModelsData }) {
         <Stack gap="dense">
           <h2
             id="task-dispatch-routes-heading"
-            className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
           >
             Task dispatch
           </h2>
@@ -255,7 +254,6 @@ export function RoutingTab({ m }: { m: ModelsData }) {
         <Stack gap="dense">
           <h2
             id="system-work-routes-heading"
-            className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
           >
             System work
           </h2>
@@ -271,7 +269,6 @@ export function RoutingTab({ m }: { m: ModelsData }) {
           <Stack gap="dense">
             <h2
               id="tag-overrides-heading"
-              className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
             >
               Tag overrides
             </h2>

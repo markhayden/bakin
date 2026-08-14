@@ -239,7 +239,7 @@ export function TeamDetail({ teamId }: { teamId: string }) {
           <Section spacing="compact">
             <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
               <div className="min-w-0">
-                <h2 className="m-0 text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+                <h2>
                   Shared context
                 </h2>
                 <p className="m-0 mt-bakin-1 max-w-prose text-bakin-text-muted">
@@ -296,7 +296,7 @@ export function TeamDetail({ teamId }: { teamId: string }) {
 
         <PageAside label="Team members">
           <div>
-            <h2 className="m-0 text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+            <h2>
               Members
             </h2>
             <p className="m-0 mt-bakin-1 text-bakin-text-muted">

@@ -91,7 +91,6 @@ export type { ActivityGroupProps, ToolCallRowProps } from '@bakin/ui/conversatio
 /** Agent and user turn presentation with consumer-owned identity and rich text. */
 export {
   AgentTurn,
-  CopyButton,
   ThinkingIndicator,
   TurnTimestamp,
   UserMessage,
@@ -103,7 +102,6 @@ export type {
   ConversationAvatarRenderer,
   ConversationTextRenderer,
   ConversationTextTransform,
-  CopyButtonProps,
   ThinkingIndicatorProps,
   TurnTimestampProps,
   UserMessageProps,

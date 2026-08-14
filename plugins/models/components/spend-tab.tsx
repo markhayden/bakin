@@ -226,7 +226,7 @@ function SpendTrend({
     <div className="@container/spend-trend min-w-0 border-t border-bakin-border-subtle pt-bakin-6">
       <div className="mb-bakin-4 flex min-w-0 flex-col items-start gap-bakin-3 @2xl/spend-trend:flex-row @2xl/spend-trend:items-center @2xl/spend-trend:justify-between">
         <div className="min-w-0">
-          <h3 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+          <h3>
             Spend over time
           </h3>
           <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
@@ -280,7 +280,7 @@ function SpendOverview({
   return (
     <Section spacing="compact" aria-label="Spending overview">
       <Stack gap="dense">
-        <h2 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+        <h2>
           Spending overview
         </h2>
         <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">

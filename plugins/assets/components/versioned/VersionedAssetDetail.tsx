@@ -299,7 +299,6 @@ export function VersionedAssetDetail() {
               <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-2">
                 <h2
                   id="asset-preview-heading"
-                  className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
                 >
                   Preview
                 </h2>
@@ -327,7 +326,6 @@ export function VersionedAssetDetail() {
           <section className="flex min-w-0 flex-col gap-bakin-3" aria-labelledby="asset-context-heading">
             <h2
               id="asset-context-heading"
-              className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
             >
               Asset context
             </h2>
@@ -356,7 +354,6 @@ export function VersionedAssetDetail() {
             <section className="flex min-w-0 flex-col gap-bakin-3 border-t border-bakin-border-subtle pt-bakin-4" aria-labelledby="asset-references-heading">
               <h2
                 id="asset-references-heading"
-                className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
               >
                 References
               </h2>
@@ -383,7 +380,6 @@ export function VersionedAssetDetail() {
             <section className="flex min-w-0 flex-col gap-bakin-3 border-t border-bakin-border-subtle pt-bakin-4" aria-labelledby="asset-downloads-heading">
               <h2
                 id="asset-downloads-heading"
-                className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
               >
                 Downloads
               </h2>
@@ -408,7 +404,6 @@ export function VersionedAssetDetail() {
             <Stack gap="dense">
               <h2
                 id="asset-history-heading"
-                className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
               >
                 Version history
               </h2>
