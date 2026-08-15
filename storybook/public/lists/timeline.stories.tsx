@@ -12,7 +12,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'Timeline is the sanctioned feed type for chronological activity: an ordered list whose entries share a StatusMarker rail and a timestamp gutter. Each entry carries timestamp + status + title, optional meta chips, optional detail, an optional keyboard-accessible disclosure (Collapsible composition), and optional nested child entries for events subordinate to a parent (audit records inside a dispatch attempt). Status tones are always paired with visible status text — the rail is reinforcement, never the only signal. Entry order is the meaning; newest-first or oldest-first stays a consumer decision. Narrow containers wrap meta onto its own row and compact status chips to xs metrics, keeping every entry two predictable lines; wide containers move the timestamp into the left gutter and keep meta inline.',
+        component: 'Timeline is the sanctioned feed type for chronological activity: an ordered list whose entries share a StatusMarker rail and a timestamp gutter. Each entry carries timestamp + status + title, optional meta chips, optional detail, an optional keyboard-accessible disclosure (Collapsible composition), and optional nested child entries for events subordinate to a parent (audit records inside a dispatch attempt). Status tones are always paired with visible status text — the rail is reinforcement, never the only signal. Entry order is the meaning; newest-first or oldest-first stays a consumer decision. Narrow containers wrap meta onto its own row and compact status chips to xs metrics, keeping every entry two predictable lines; wide containers move the timestamp into the left gutter and keep meta inline. note carries a short qualifying reason — a settle reason, a failure cause — rail-attached with a tone-colored start rule and no box, because the spine is already the boundary and a second outline reads as a detached widget; reserve a boxed Alert for a note that should interrupt the feed on purpose. An entry without a timestamp does not reserve the gutter, and a nested timeline keeps its times inline so it never re-creates the parent column at a different offset.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'keyboard', 'non-color'],
@@ -82,7 +82,7 @@ export const StatusRailExpansionNesting = {
     <StoryStage
       eyebrow="Lists / feeds"
       title="Chronological activity with an honest status rail"
-      description="Every entry pairs the rail tone with visible status text. Detail collapses behind a keyboard-operable disclosure, and related events nest inside the attempt that produced them."
+      description="Every entry pairs the rail tone with visible status text. A qualifying note hangs off the rail in the entry own tone rather than sitting in a box, detail collapses behind a keyboard-operable disclosure, and related events nest inside the attempt that produced them."
     >
       <StorySection title="Dispatch activity">
         <Timeline aria-label="Dispatch activity">
@@ -94,6 +94,17 @@ export const StatusRailExpansionNesting = {
             meta={<StatusBadge tone="success" size="xs">Completed</StatusBadge>}
           >
             Attempt 3 · Margo · 4m 12s
+          </TimelineEntry>
+          <TimelineEntry
+            timestamp="09:33"
+            dateTime="2026-07-29T09:33:00Z"
+            tone="danger"
+            title="Compile weekly engagement metrics"
+            meta={<StatusBadge tone="danger" size="xs">Failed</StatusBadge>}
+            noteLabel="Failure reason"
+            note="session-death"
+          >
+            Attempt 1 · Rolo · 5m 0s
           </TimelineEntry>
           <TimelineEntry
             timestamp="09:12"
@@ -137,7 +148,7 @@ export const StatusRailExpansionNesting = {
       </StorySection>
     </StoryStage>
   ),
-  play: async ({ canvas, userEvent }) => {
+  play: async ({ canvas, canvasElement, userEvent }) => {
     // Ordered-list semantics survive at both levels.
     const feed = canvas.getByRole('list', { name: 'Dispatch activity' })
     await expect(feed.tagName).toBe('OL')
@@ -153,8 +164,19 @@ export const StatusRailExpansionNesting = {
     await expect(trigger).toHaveAttribute('aria-expanded', 'true')
     await expect(canvas.getByText(/salvaged output was saved/)).toBeVisible()
 
-    // Non-color: the rail tone is always paired with visible status text.
-    await expect(canvas.getByText('Failed')).toBeVisible()
+    // Non-color: every rail tone is paired with visible status text. Two
+    // entries carry the danger tone (one expandable, one with a note), so
+    // assert on the set rather than a single match.
+    const failed = canvas.getAllByText('Failed')
+    await expect(failed).toHaveLength(2)
+    for (const badge of failed) await expect(badge).toBeVisible()
     await expect(canvas.getByText('Completed')).toBeVisible()
+    // The note states the reason in text, not by rule color alone. Assert on
+    // the note element: the label and value are separate children, so a text
+    // query only ever sees one half of the sentence.
+    const note = canvasElement.querySelector('[data-slot="timeline-entry-note"]')
+    await expect(note).not.toBeNull()
+    await expect(note!.textContent).toContain('Failure reason')
+    await expect(note!.textContent).toContain('session-death')
   },
 } satisfies Story

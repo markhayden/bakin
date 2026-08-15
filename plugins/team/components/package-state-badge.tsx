@@ -1,6 +1,7 @@
 'use client'
 
-import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { StatusBadge, StatusMarker, type StatusTone } from '@makinbakin/sdk/patterns'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@makinbakin/sdk/ui'
 
 export type PackageState =
   | 'absent'
@@ -19,37 +20,31 @@ export interface PackageStateBadgeProps {
 const STATE_PRESENTATION: Record<PackageState, {
   label: string
   tone: StatusTone
-  dot: string
   tip: string
 }> = {
   absent: {
     label: 'absent',
     tone: 'neutral',
-    dot: 'bg-bakin-text-muted',
     tip: 'No runtime entry and no package tracking.',
   },
   unmanaged: {
     label: 'unmanaged',
     tone: 'neutral',
-    dot: 'bg-bakin-text-muted',
     tip: 'This runtime agent is not tracked by a Bakin package.',
   },
   managed: {
     label: 'managed',
     tone: 'success',
-    dot: 'bg-bakin-action-primary-background',
     tip: 'Bakin manages this agent package and its projected workspace files.',
   },
   drifted: {
     label: 'drifted',
     tone: 'attention',
-    dot: 'bg-bakin-signal-highlight',
     tip: 'Projected files no longer match the recorded package state.',
   },
   'update-available': {
     label: 'update available',
     tone: 'accent',
-    dot: 'bg-bakin-signal-accent',
     tip: 'A newer version of the source package is available.',
   },
 }
@@ -59,21 +54,32 @@ export function PackageStateBadge({ state, packageId, title, compact }: PackageS
   const tooltip = title ?? presentation.tip
 
   if (compact) {
+    // What a package state MEANS is explanatory copy, not screen-reader-only
+    // text: hiding it from sighted users inverts the accessibility direction.
     return (
-      <span
-        title={`${presentation.label} — ${tooltip}`}
-        aria-label={`Package state: ${presentation.label}`}
-        data-state={state}
-        className={`inline-block size-bakin-2 shrink-0 rounded-bakin-pill ${presentation.dot}`}
-      />
+      <Tooltip>
+        <TooltipTrigger render={<span />} className="inline-flex shrink-0 items-center">
+          <StatusMarker
+            tone={presentation.tone}
+            label={`Package state: ${presentation.label}`}
+            data-state={state}
+          />
+        </TooltipTrigger>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
     )
   }
 
   return (
-    <span title={tooltip} className="inline-flex min-w-0 flex-wrap items-center gap-bakin-2">
-      <StatusBadge tone={presentation.tone} variant="solid" size="xs">
-        {presentation.label}
-      </StatusBadge>
+    <span className="inline-flex min-w-0 flex-wrap items-center gap-bakin-2">
+      <Tooltip>
+        <TooltipTrigger render={<span className="inline-flex" />}>
+          <StatusBadge tone={presentation.tone} variant="solid" size="xs">
+            {presentation.label}
+          </StatusBadge>
+        </TooltipTrigger>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
       {packageId && state !== 'unmanaged' && state !== 'absent' ? (
         <code className="break-all font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
           {packageId}

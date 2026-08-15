@@ -13,6 +13,7 @@ import { MarkdownEditor } from '@makinbakin/sdk/content'
 import { Section, Stack } from '@makinbakin/sdk/layout'
 import { SaveBar } from '@makinbakin/sdk/patterns'
 import { Button, SystemState } from '@makinbakin/sdk/ui'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 
 export interface MarkdownEditTabProps {
   agentId: string
@@ -52,7 +53,7 @@ export function MarkdownEditTab({ agentId, filename, initialContent }: MarkdownE
     setSaving(true)
     setSaveError(undefined)
     try {
-      const response = await fetch(`/api/plugins/team/${agentId}/files/${filename}`, {
+      const response = await pluginFetch('team', `${agentId}/files/${filename}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: draft }),

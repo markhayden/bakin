@@ -7,7 +7,7 @@
  * agent-detail.tsx already needs OverviewTab.
  */
 import { useState } from 'react'
-import { Copy, Info, RefreshCw, Trash2 } from 'lucide-react'
+import { Info, RefreshCw, Trash2 } from 'lucide-react'
 import {
   Alert,
   AlertDescription,
@@ -23,9 +23,8 @@ import {
 } from '@makinbakin/sdk/ui'
 import { useRouter } from '@makinbakin/sdk/navigation'
 import { Panel } from '@makinbakin/sdk/layout'
-import { StatusBadge } from '@makinbakin/sdk/patterns'
+import { CopyButton, KeyValue, StatusBadge, type KeyValueItem } from '@makinbakin/sdk/patterns'
 import { toast, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
-import { copyToClipboard } from '@makinbakin/sdk/utils'
 import { PackageStateBadge } from './package-state-badge'
 import { AdoptDialog } from './adopt-dialog'
 import type { PackageStateRow } from '../types'
@@ -33,30 +32,12 @@ import type { PackageStateRow } from '../types'
 export const ADOPT_INFO = `Adopting attaches an agent-package to this agent. Bakin then tracks the source repo + commit, projects the package's lessons + skills into the workspace, and lets you toggle which lessons are active. Your existing SOUL/IDENTITY/AGENTS/TOOLS files stay on disk untouched.`
 
 function CliHint({ command }: { command: string }) {
-  const [copied, setCopied] = useState(false)
-  const handleCopy = async () => {
-    // copyToClipboard falls back to execCommand on the plain-HTTP tailnet
-    // origin (navigator.clipboard is undefined there — the old direct call
-    // threw and never copied).
-    if (await copyToClipboard(command)) {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    }
-  }
   return (
     <Panel variant="code" padding="compact" className="flex min-w-0 items-center gap-bakin-2">
       <code className="min-w-0 flex-1 break-all text-bakin-text-primary">
         {command}
       </code>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={handleCopy}
-        title={copied ? 'Copied' : 'Copy'}
-        aria-label="Copy command"
-      >
-        <Copy aria-hidden="true" />
-      </Button>
+      <CopyButton text={command} label="Copy command" />
     </Panel>
   )
 }
@@ -71,50 +52,29 @@ function PackageEntryFields({
   version?: string
 }) {
   const installedVersion = version ?? entry.version
-  return (
-    <dl className="grid min-w-0 grid-cols-3 gap-x-bakin-4 gap-y-bakin-2 text-bakin-typography-size-meta">
-      {packageId && (
-        <>
-          <dt className="text-bakin-text-muted">Package</dt>
-          <dd className="col-span-2 break-all font-bakin-typography-family-mono text-bakin-text-primary">{packageId}</dd>
-        </>
-      )}
-      {installedVersion && (
-        <>
-          <dt className="text-bakin-text-muted">Version</dt>
-          <dd className="col-span-2 font-bakin-typography-family-mono text-bakin-text-primary">{installedVersion}</dd>
-        </>
-      )}
-      <dt className="text-bakin-text-muted">Source</dt>
-      <dd className="col-span-2 break-all font-bakin-typography-family-mono text-bakin-text-primary">{entry.source}</dd>
-      {entry.ref && (
-        <>
-          <dt className="text-bakin-text-muted">Ref</dt>
-          <dd className="col-span-2 font-bakin-typography-family-mono text-bakin-text-primary">{entry.ref}</dd>
-        </>
-      )}
-      {entry.commitSha && (
-        <>
-          <dt className="text-bakin-text-muted">Commit</dt>
-          <dd className="col-span-2 font-bakin-typography-family-mono text-bakin-text-primary">{entry.commitSha.slice(0, 7)}</dd>
-        </>
-      )}
-      <dt className="text-bakin-text-muted">Installed</dt>
-      <dd className="col-span-2 text-bakin-text-primary">{entry.installedAt}</dd>
-      {entry.dependencies && entry.dependencies.length > 0 && (
-        <>
-          <dt className="text-bakin-text-muted">Depends on</dt>
-          <dd className="col-span-2 flex min-w-0 flex-wrap gap-bakin-1">
-            {entry.dependencies.map((d) => (
-              <Badge key={d} tone="neutral" variant="soft" size="xs" className="font-bakin-typography-family-mono">
-                {d}
-              </Badge>
-            ))}
-          </dd>
-        </>
-      )}
-    </dl>
-  )
+  const items: KeyValueItem[] = []
+  if (packageId) items.push({ label: 'Package', value: packageId, mono: true, breakValue: true })
+  if (installedVersion) items.push({ label: 'Version', value: installedVersion, mono: true })
+  items.push({ label: 'Source', value: entry.source, mono: true, breakValue: true })
+  if (entry.ref) items.push({ label: 'Ref', value: entry.ref, mono: true })
+  if (entry.commitSha) items.push({ label: 'Commit', value: entry.commitSha.slice(0, 7), mono: true })
+  items.push({ label: 'Installed', value: entry.installedAt })
+  if (entry.dependencies && entry.dependencies.length > 0) {
+    items.push({
+      label: 'Depends on',
+      value: (
+        <span className="flex min-w-0 flex-wrap gap-bakin-1">
+          {entry.dependencies.map((d) => (
+            <Badge key={d} tone="neutral" variant="soft" size="xs" className="font-bakin-typography-family-mono">
+              {d}
+            </Badge>
+          ))}
+        </span>
+      ),
+    })
+  }
+
+  return <KeyValue layout="columns" items={items} />
 }
 
 /**
@@ -273,14 +233,13 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
             </Button>
           )}
           {state === 'unmanaged' && (
-            <Button
-              size="sm"
-              onClick={() => setAdoptOpen(true)}
-              title={ADOPT_INFO}
-              aria-label={`Adopt this agent into a package — ${ADOPT_INFO}`}
-            >
+            <Button size="sm" onClick={() => setAdoptOpen(true)}>
               <Info aria-hidden="true" />
               Adopt
+              {/* Was a 300-character native tooltip duplicated into aria-label.
+                  A control name states the action; the dialog this opens
+                  carries the explanation of what adopting does. */}
+              <span className="sr-only"> this agent into a package</span>
             </Button>
           )}
         </div>

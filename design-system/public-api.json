@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 297,
-    "typeExports": 396
+    "valueExports": 298,
+    "typeExports": 399
   },
   "entrypoints": [
     {
@@ -354,6 +354,7 @@
       "types": [
         "BoundedOverflowProps",
         "DisclosurePanelProps",
+        "DisclosurePanelVariant",
         "GridAlign",
         "GridLayout",
         "GridProps",
@@ -751,10 +752,13 @@
       "status": "supported-prerelease",
       "newConsumerPolicy": "supported",
       "values": [
+        "CodeBlock",
         "MarkdownContent",
         "MarkdownEditor"
       ],
       "types": [
+        "CodeBlockLanguage",
+        "CodeBlockProps",
         "MarkdownContentProps",
         "MarkdownEditorFormat",
         "MarkdownEditorHeight",

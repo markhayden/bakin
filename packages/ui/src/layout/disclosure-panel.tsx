@@ -2,12 +2,24 @@ import * as React from 'react'
 
 import { layoutClassName } from './utils'
 
+export type DisclosurePanelVariant = 'default' | 'soft' | 'ghost'
+
 export interface DisclosurePanelProps
   extends Omit<React.ComponentPropsWithRef<'details'>, 'title'> {
   /** The always-visible summary row content. */
   summary: React.ReactNode
   /** Compact trailing content on the summary row (counts, badges). */
   summaryMeta?: React.ReactNode
+  /**
+   * `default` paints the full bounded panel. `soft` keeps the surface fill but
+   * drops the hard outline — the Button `secondary` treatment — for a
+   * disclosure that should read as a region without asserting a border.
+   * `ghost` drops surface, border, radius, and inset entirely so the
+   * disclosure sits directly in its parent's content column, for a surface
+   * that already owns a boundary (a timeline entry's rail, a row, a card
+   * body) where a second painted box reads as a detached widget.
+   */
+  variant?: DisclosurePanelVariant
 }
 
 /**
@@ -20,20 +32,35 @@ export function DisclosurePanel({
   className,
   summary,
   summaryMeta,
+  variant = 'default',
   ...props
 }: DisclosurePanelProps) {
+  const ghost = variant === 'ghost'
+  const soft = variant === 'soft'
   return (
     <details
       {...props}
       data-slot="disclosure-panel"
+      data-variant={variant}
       className={layoutClassName(
-        'group/disclosure-panel min-w-0 overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default',
+        'group/disclosure-panel min-w-0',
+        !ghost && 'overflow-hidden rounded-bakin-surface bg-bakin-surface-default',
+        variant === 'default' && 'border border-bakin-border-subtle',
+        // Soft keeps the fill and softens the edge instead of asserting it.
+        soft && 'border border-bakin-border-subtle/40',
         className,
       )}
     >
       <summary
         data-slot="disclosure-panel-summary"
-        className="flex min-w-0 cursor-pointer list-none items-center justify-between gap-bakin-3 px-bakin-4 py-bakin-3 font-bakin-typography-weight-semibold text-bakin-text-primary outline-none [&::-webkit-details-marker]:hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring"
+        className={layoutClassName(
+          'flex min-w-0 cursor-pointer list-none items-center gap-bakin-3 font-bakin-typography-weight-semibold text-bakin-text-primary outline-none [&::-webkit-details-marker]:hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring',
+          ghost
+            // Ghost hugs its label so the chevron reads as part of the control
+            // rather than drifting to a boundary the variant no longer paints.
+            ? 'w-fit gap-bakin-2 py-bakin-1 font-bakin-typography-weight-regular text-bakin-text-muted hover:text-bakin-text-primary'
+            : 'justify-between px-bakin-4 py-bakin-3',
+        )}
       >
         <span className="min-w-0 [overflow-wrap:anywhere]">{summary}</span>
         <span className="flex shrink-0 items-center gap-bakin-2 text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-regular text-bakin-text-muted">
@@ -49,7 +76,12 @@ export function DisclosurePanel({
       </summary>
       <div
         data-slot="disclosure-panel-content"
-        className="min-w-0 border-t border-bakin-border-subtle px-bakin-4 py-bakin-3"
+        className={layoutClassName(
+          'min-w-0',
+          ghost && 'pt-bakin-2',
+          variant === 'default' && 'border-t border-bakin-border-subtle px-bakin-4 py-bakin-3',
+          soft && 'border-t border-bakin-border-subtle/40 px-bakin-4 py-bakin-3',
+        )}
       >
         {children}
       </div>

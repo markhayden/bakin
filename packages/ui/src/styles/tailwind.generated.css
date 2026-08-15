@@ -24,6 +24,10 @@
   --color-bakin-signal-info: var(--bakin-color-signal-info);
   --color-bakin-surface-default: var(--bakin-color-surface-default);
   --color-bakin-surface-elevated: var(--bakin-color-surface-elevated);
+  --color-bakin-syntax-key: var(--bakin-color-syntax-key);
+  --color-bakin-syntax-literal: var(--bakin-color-syntax-literal);
+  --color-bakin-syntax-number: var(--bakin-color-syntax-number);
+  --color-bakin-syntax-string: var(--bakin-color-syntax-string);
   --color-bakin-text-muted: var(--bakin-color-text-muted);
   --color-bakin-text-primary: var(--bakin-color-text-primary);
   --shadow-bakin-elevation-overlay: var(--bakin-elevation-overlay);

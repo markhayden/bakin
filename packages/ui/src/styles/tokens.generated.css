@@ -24,6 +24,10 @@
   --bakin-color-signal-info: #3987e5;
   --bakin-color-surface-default: #151313;
   --bakin-color-surface-elevated: #1b1919;
+  --bakin-color-syntax-key: #9085e9;
+  --bakin-color-syntax-literal: #e66767;
+  --bakin-color-syntax-number: #c98500;
+  --bakin-color-syntax-string: #199e70;
   --bakin-color-text-muted: #aeaaaa;
   --bakin-color-text-primary: #ffffff;
   --bakin-elevation-overlay: 0px 1.5rem 3.5rem 0px color(srgb 0.058824 0.054902 0.054902 / 0.78);

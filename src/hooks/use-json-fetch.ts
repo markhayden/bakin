@@ -58,40 +58,71 @@ export function useJsonFetch<T>(url: string | null, opts?: UseJsonFetchOptions):
     // A deadline abort must survive the AbortError guard below, otherwise the
     // timeout would look identical to an unmount and never surface.
     let timedOut = false
+    let rejectDeadline: ((reason: Error) => void) | null = null
     const deadline = timeoutMs !== undefined && timeoutMs > 0
       ? setTimeout(() => {
           timedOut = true
+          // Abort to free the socket, but RACE the rejection rather than
+          // relying on it: a fetch implementation that ignores the signal
+          // would otherwise leave the caller hanging forever, which is the
+          // exact failure the deadline exists to prevent.
           controller.abort()
+          rejectDeadline?.(new Error('Request timed out'))
         }, timeoutMs)
       : null
     const clearDeadline = () => {
       if (deadline !== null) clearTimeout(deadline)
+      rejectDeadline = null
     }
+    // `aborted` cannot stand in for "this effect is stale" once a deadline can
+    // abort a still-current effect: `fetch` resolves at HEADERS, so a slow body
+    // could settle after the deadline fired, leaving the success path to see an
+    // aborted signal and return without ever clearing `loading`. Track staleness
+    // separately from abort.
+    let cancelled = false
     setLoading(true)
     setError(null)
-    fetch(url, { ...init, signal: controller.signal })
+    // The deadline must race the WHOLE chain, body parsing included. Racing the
+    // bare `fetch` promise only covers headers, so a response whose headers beat
+    // the deadline settled the race and left the rejection with nothing to
+    // reject — the request then hung in `res.json()` forever.
+    const request = fetch(url, { ...init, signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error(`Request failed (${res.status})`)
         return (await res.json()) as T
       })
+    const raced = deadline === null
+      ? request
+      : Promise.race([
+          request,
+          new Promise<never>((_resolve, reject) => { rejectDeadline = reject }),
+        ])
+    raced
       .then((json) => {
         clearDeadline()
-        if (controller.signal.aborted) return
-        setData(json)
-        setLoading(false)
-      })
-      .catch((err: unknown) => {
-        clearDeadline()
+        if (cancelled) return
         if (timedOut) {
           setError('Request timed out')
           setLoading(false)
           return
         }
-        if (controller.signal.aborted || (err as { name?: string })?.name === 'AbortError') return
+        setData(json)
+        setLoading(false)
+      })
+      .catch((err: unknown) => {
+        clearDeadline()
+        if (cancelled) return
+        if (timedOut) {
+          setError('Request timed out')
+          setLoading(false)
+          return
+        }
+        if ((err as { name?: string })?.name === 'AbortError') return
         setError(err instanceof Error ? err.message : 'Request failed')
         setLoading(false)
       })
     return () => {
+      cancelled = true
       clearDeadline()
       controller.abort()
     }

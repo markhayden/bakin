@@ -9,6 +9,7 @@ export { BoundedOverflow, DisclosurePanel, Grid, Inline, PageShell, Panel, Secti
 export type {
   BoundedOverflowProps,
   DisclosurePanelProps,
+  DisclosurePanelVariant,
   GridAlign,
   GridLayout,
   GridProps,

@@ -529,6 +529,94 @@ export const BAKIN_SEMANTIC_TOKENS = [
     "sourcePointer": "#/semantic/color/surface/elevated"
   },
   {
+    "name": "semantic.color.syntax.key",
+    "family": "Color",
+    "type": "color",
+    "visibility": "public",
+    "cssVariable": "--bakin-color-syntax-key",
+    "cssValue": "#9085e9",
+    "tailwindVariable": "--color-bakin-syntax-key",
+    "description": "Object keys and property names in rendered code and data.",
+    "contrast": {
+      "against": "semantic.color.canvas.default",
+      "role": "normal-text",
+      "ratio": 6.17,
+      "minimum": 4.5,
+      "standard": "WCAG AA normal text",
+      "status": "pass",
+      "againstCssVariable": "--bakin-color-canvas-default"
+    },
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/syntax/key",
+    "sourceUrl": "https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json",
+    "sourcePointer": "#/semantic/color/syntax/key"
+  },
+  {
+    "name": "semantic.color.syntax.literal",
+    "family": "Color",
+    "type": "color",
+    "visibility": "public",
+    "cssVariable": "--bakin-color-syntax-literal",
+    "cssValue": "#e66767",
+    "tailwindVariable": "--color-bakin-syntax-literal",
+    "description": "Keyword literals (true, false, null) in rendered code and data.",
+    "contrast": {
+      "against": "semantic.color.canvas.default",
+      "role": "normal-text",
+      "ratio": 5.97,
+      "minimum": 4.5,
+      "standard": "WCAG AA normal text",
+      "status": "pass",
+      "againstCssVariable": "--bakin-color-canvas-default"
+    },
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/syntax/literal",
+    "sourceUrl": "https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json",
+    "sourcePointer": "#/semantic/color/syntax/literal"
+  },
+  {
+    "name": "semantic.color.syntax.number",
+    "family": "Color",
+    "type": "color",
+    "visibility": "public",
+    "cssVariable": "--bakin-color-syntax-number",
+    "cssValue": "#c98500",
+    "tailwindVariable": "--color-bakin-syntax-number",
+    "description": "Numeric literals in rendered code and data.",
+    "contrast": {
+      "against": "semantic.color.canvas.default",
+      "role": "normal-text",
+      "ratio": 6.28,
+      "minimum": 4.5,
+      "standard": "WCAG AA normal text",
+      "status": "pass",
+      "againstCssVariable": "--bakin-color-canvas-default"
+    },
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/syntax/number",
+    "sourceUrl": "https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json",
+    "sourcePointer": "#/semantic/color/syntax/number"
+  },
+  {
+    "name": "semantic.color.syntax.string",
+    "family": "Color",
+    "type": "color",
+    "visibility": "public",
+    "cssVariable": "--bakin-color-syntax-string",
+    "cssValue": "#199e70",
+    "tailwindVariable": "--color-bakin-syntax-string",
+    "description": "String literals in rendered code and data.",
+    "contrast": {
+      "against": "semantic.color.canvas.default",
+      "role": "normal-text",
+      "ratio": 5.66,
+      "minimum": 4.5,
+      "standard": "WCAG AA normal text",
+      "status": "pass",
+      "againstCssVariable": "--bakin-color-canvas-default"
+    },
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/syntax/string",
+    "sourceUrl": "https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json",
+    "sourcePointer": "#/semantic/color/syntax/string"
+  },
+  {
     "name": "semantic.color.text.muted",
     "family": "Color",
     "type": "color",

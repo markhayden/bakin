@@ -41,13 +41,17 @@ export interface CopyButtonProps {
 export function CopyButton({ text, label = 'Copy', className }: CopyButtonProps) {
   const [copied, setCopied] = useState(false)
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // The clipboard write is awaited, so the component can unmount mid-copy.
+  const mounted = useRef(true)
 
   useEffect(() => () => {
+    mounted.current = false
     if (resetTimer.current) clearTimeout(resetTimer.current)
   }, [])
 
   const copy = useCallback(async () => {
     if (!await copyToClipboard(text)) return
+    if (!mounted.current) return
     setCopied(true)
     if (resetTimer.current) clearTimeout(resetTimer.current)
     resetTimer.current = setTimeout(() => setCopied(false), 1500)

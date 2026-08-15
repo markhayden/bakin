@@ -111,6 +111,9 @@ const hydrated = readRosterCache()
 const hydratedMap: Record<string, AgentMeta> = {}
 for (const a of hydrated?.agents ?? []) hydratedMap[a.id] = a
 
+// NOTE: raw fetch on purpose. The SDK re-exports this hook through
+// @makinbakin/sdk/hooks, so importing an SDK barrel here (pluginFetch lives in
+// @makinbakin/sdk/utils) closes an import cycle the ratchet rejects.
 export const useAgentStore = create<AgentStore>((set, get) => ({
   agents: hydrated?.agents ?? [],
   agentIds: (hydrated?.agents ?? []).map((a) => a.id),

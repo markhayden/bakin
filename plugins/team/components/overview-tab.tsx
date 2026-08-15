@@ -54,23 +54,6 @@ function formatCost(value: number | null): string {
   return `$${value.toFixed(2)}`
 }
 
-function SectionHeading({
-  title,
-  description,
-}: {
-  title: string
-  description?: string
-}) {
-  return (
-    <div>
-      <h2>
-        {title}
-      </h2>
-      {description ? <p className="m-0 mt-bakin-1 text-bakin-text-muted">{description}</p> : null}
-    </div>
-  )
-}
-
 export function OverviewTab({
   agentId,
   profile,
@@ -163,10 +146,10 @@ export function OverviewTab({
   return (
     <div className="grid min-w-0 gap-bakin-8">
       <Section spacing="compact">
-        <SectionHeading
-          title="Configuration"
-          description="Runtime defaults and package ownership for this agent."
-        />
+        <div>
+          <h2>Configuration</h2>
+          <p className="mt-bakin-1 text-bakin-text-muted">Runtime defaults and package ownership for this agent.</p>
+        </div>
         <Panel className="grid gap-bakin-6 lg:grid-cols-2">
           <div className="grid min-w-0 content-start gap-bakin-4">
             <div className="flex items-center gap-bakin-2 text-bakin-text-primary">
@@ -227,15 +210,18 @@ export function OverviewTab({
       </Section>
 
       <Section spacing="compact">
-        <SectionHeading
-          title="Diagnostics"
-          description="Actionable health signals from the current runtime and package state."
-        />
+        <div>
+          <h2>Diagnostics</h2>
+          <p className="mt-bakin-1 text-bakin-text-muted">Actionable health signals from the current runtime and package state.</p>
+        </div>
         <DiagnosticsChipsView attention={attention} onOpen={() => setTabParam('diagnostics')} />
       </Section>
 
       <Section spacing="compact">
-        <SectionHeading title="Usage" description="Latest-session capability and cost signals." />
+        <div>
+          <h2>Usage</h2>
+          <p className="mt-bakin-1 text-bakin-text-muted">Latest-session capability and cost signals.</p>
+        </div>
         <StatGroup label="Agent usage">
           <StatTile
             label="Skills"
@@ -311,10 +297,10 @@ export function OverviewTab({
       </Section>
 
       <Section spacing="compact">
-        <SectionHeading
-          title="Recent activity"
-          description="Dispatches observed since the current server process started."
-        />
+        <div>
+          <h2>Recent activity</h2>
+          <p className="mt-bakin-1 text-bakin-text-muted">Dispatches observed since the current server process started.</p>
+        </div>
         {loading ? (
           <SystemState
             kind="loading"

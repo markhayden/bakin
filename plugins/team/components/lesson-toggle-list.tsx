@@ -173,19 +173,13 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
             </p>
           </div>
           {packageId ? (
-            <code
-              className="max-w-full truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted"
-              title={packageId}
-            >
+            <code className="max-w-full truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
               {packageId}
             </code>
           ) : null}
         </div>
 
-        <ListRows
-          aria-label="Agent lessons"
-          className="[&>[data-highlighted=true]]:border-bakin-signal-accent [&>[data-highlighted=true]]:bg-bakin-signal-accent/10"
-        >
+        <ListRows aria-label="Agent lessons">
           {lessons.map((lesson) => {
             const highlighted = highlightId !== '' && lesson.lessonId === highlightId
             const switchId = `lesson-${agentId}-${lesson.lessonId}`
@@ -194,7 +188,8 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
                 key={lesson.lessonId}
                 ref={highlighted ? highlightRef : undefined}
                 data-highlighted={highlighted ? 'true' : undefined}
-                className={`flex flex-col gap-bakin-3 sm:flex-row sm:items-center ${lesson.enabled ? '' : 'opacity-60'}`}
+                selected={highlighted}
+                className="flex flex-col gap-bakin-3 sm:flex-row sm:items-center"
               >
                 <Label
                   htmlFor={switchId}
@@ -202,7 +197,11 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
                 >
                   <FileText aria-hidden="true" className="mt-bakin-1 size-bakin-4 shrink-0 text-bakin-text-muted" />
                   <span className="min-w-0">
-                    <span className="block truncate font-bakin-typography-family-mono text-bakin-typography-size-body text-bakin-text-primary">
+                    <span
+                      className={`block truncate font-bakin-typography-family-mono text-bakin-typography-size-body ${
+                        lesson.enabled ? 'text-bakin-text-primary' : 'text-bakin-text-muted'
+                      }`}
+                    >
                       {lesson.lessonId}
                     </span>
                     <span className="mt-bakin-1 block truncate text-bakin-typography-size-meta font-normal text-bakin-text-muted">
@@ -219,8 +218,10 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
                       className="size-bakin-4 animate-spin text-bakin-text-muted motion-reduce:animate-none"
                     />
                   ) : null}
-                  <Label htmlFor={switchId} className="text-bakin-typography-size-meta text-bakin-text-muted">
-                    {lesson.enabled ? 'Active' : 'Inactive'}
+                  <Label htmlFor={switchId} className="text-bakin-text-muted">
+                    <span className="text-bakin-typography-size-meta">
+                      {lesson.enabled ? 'Active' : 'Inactive'}
+                    </span>
                   </Label>
                   <Switch
                     id={switchId}
