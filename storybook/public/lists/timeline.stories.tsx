@@ -148,7 +148,7 @@ export const StatusRailExpansionNesting = {
       </StorySection>
     </StoryStage>
   ),
-  play: async ({ canvas, userEvent }) => {
+  play: async ({ canvas, canvasElement, userEvent }) => {
     // Ordered-list semantics survive at both levels.
     const feed = canvas.getByRole('list', { name: 'Dispatch activity' })
     await expect(feed.tagName).toBe('OL')
@@ -171,7 +171,12 @@ export const StatusRailExpansionNesting = {
     await expect(failed).toHaveLength(2)
     for (const badge of failed) await expect(badge).toBeVisible()
     await expect(canvas.getByText('Completed')).toBeVisible()
-    // The note states the reason in text, not by rule color alone.
-    await expect(canvas.getByText(/Failure reason:\s*session-death/)).toBeVisible()
+    // The note states the reason in text, not by rule color alone. Assert on
+    // the note element: the label and value are separate children, so a text
+    // query only ever sees one half of the sentence.
+    const note = canvasElement.querySelector('[data-slot="timeline-entry-note"]')
+    await expect(note).not.toBeNull()
+    await expect(note!.textContent).toContain('Failure reason')
+    await expect(note!.textContent).toContain('session-death')
   },
 } satisfies Story
