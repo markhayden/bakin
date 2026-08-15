@@ -360,6 +360,10 @@ describe('KanbanBoard drag and drop', () => {
     } = {},
   ) {
     const boardResponse = makeBoardResponse(columns)
+    // Which tasks a filtered board shows depends on the DEBOUNCED search
+    // landing. Nothing below waits for it, so an assertion could run against
+    // the pre-search list and the late setState would fall outside act.
+    let searchFetched = false
 
     /** Wrap a response so it counts as in-flight until its body is consumed. */
     const tracked = (body: () => unknown): Response => {
@@ -377,6 +381,7 @@ describe('KanbanBoard drag and drop', () => {
     vi.stubGlobal('fetch', mock(async (url: string, init?: RequestInit) => {
       fetchCount++ // every call, incl. the post-persist GET refetch
       if (url.startsWith('/api/plugins/tasks/search?')) {
+        searchFetched = true
         return {
           ok: true,
           status: 200,
@@ -426,6 +431,13 @@ describe('KanbanBoard drag and drop', () => {
     await waitFor(() => {
       expect(screen.getByTestId('dnd-provider')).toBeTruthy()
     })
+
+    // Only when the board is actually filtered: gate on the debounced search
+    // having fired, so every later assertion sees the settled list.
+    if ((queryStateDefaults.q ?? '') !== '') {
+      await waitFor(() => expect(searchFetched).toBe(true), { timeout: 10_000 })
+      await settleReact()
+    }
   }
 
   function getColumnTaskTitles(columnId: string) {
