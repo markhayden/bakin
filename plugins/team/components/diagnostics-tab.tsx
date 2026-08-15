@@ -904,7 +904,12 @@ function TimelinePanel({ agentId }: { agentId: string }) {
               if (item.type === 'run') {
                 const event = item.run
                 const outcome = timelineOutcome(event)
-                const showReason = event.settleReason && event.settleReason !== 'turn-ok'
+                // A settle reason that just restates success is noise beside
+                // the outcome badge; only a real explanation earns a note.
+                const reason = event.settleReason?.trim()
+                const showReason = Boolean(
+                  reason && !/^(turn-)?(ok|done|complete[d]?|success)$/i.test(reason),
+                )
                 const title = event.taskTitle ?? event.taskId
                 const stats: KeyValueItem[] = [{
                   label: 'Duration',
@@ -943,15 +948,10 @@ function TimelinePanel({ agentId }: { agentId: string }) {
                         <span className="text-bakin-text-muted">Attempt {event.seq}</span>
                       </>
                     )}
+                    note={showReason ? reason : undefined}
+                    noteLabel={showReason ? (outcome.failed ? 'Failure reason' : 'Detail') : undefined}
                   >
                     <KeyValue layout="inline" items={stats} />
-
-                    {showReason ? (
-                      <Alert tone={outcome.failed ? 'danger' : 'neutral'}>
-                        <AlertTitle>{outcome.failed ? 'Failure reason' : 'Completion detail'}</AlertTitle>
-                        <AlertDescription>{event.settleReason}</AlertDescription>
-                      </Alert>
-                    ) : null}
 
                     {item.relatedEvents.length > 0 ? (
                       <Timeline nested aria-label={`Events during attempt ${event.seq}`}>
@@ -960,6 +960,8 @@ function TimelinePanel({ agentId }: { agentId: string }) {
                             key={`${related.ts}:${related.event}`}
                             tone={related.severity === 'warn' ? 'attention' : 'neutral'}
                             markerLabel={related.severity === 'warn' ? 'Warning' : 'Event'}
+                            timestamp={new Date(related.ts).toLocaleTimeString()}
+                            dateTime={new Date(related.ts).toISOString()}
                             title={eventCategory(related)}
                             meta={<span className="text-bakin-text-muted">{related.message}</span>}
                           />
@@ -969,6 +971,7 @@ function TimelinePanel({ agentId }: { agentId: string }) {
 
                     {event.logs.length > 0 ? (
                       <DisclosurePanel
+                        variant="soft"
                         summary={`${event.logs.length} progress log line(s)${event.logsTruncated ? ' (truncated)' : ''}`}
                       >
                         <ul className="m-0 grid gap-bakin-1 p-0">

@@ -34,6 +34,13 @@ export function Timeline({ nested = false, className, ...props }: TimelineProps)
       className={cn(
         'm-0 grid min-w-0 list-none p-0',
         nested ? 'mt-bakin-2' : '@container/timeline',
+        // A nested timeline sits inside its parent's content column, so it
+        // must not re-create the aligned timestamp gutter: a second gutter at
+        // a different x reads as a misaligned fragment rather than a child.
+        // Subordinate entries keep their time inline instead.
+        nested && '@2xl/timeline:[&>li]:grid-cols-[auto_minmax(0,1fr)]',
+        nested && '@2xl/timeline:[&_[data-slot=timeline-gutter]]:hidden',
+        nested && '@2xl/timeline:[&_[data-slot=timeline-timestamp]]:inline',
         className,
       )}
     />
@@ -72,8 +79,26 @@ export interface TimelineEntryProps extends Omit<ComponentPropsWithoutRef<'li'>,
   defaultExpanded?: boolean
   expanded?: boolean
   onExpandedChange?: (expanded: boolean) => void
+  /**
+   * A short qualifying note about this entry — a settle reason, a failure
+   * cause, a decision. Renders rail-attached: a tone-colored start rule with
+   * no box of its own, so it hangs off the timeline spine instead of
+   * competing with it. Reach for a boxed Alert only when the note interrupts
+   * the feed's rhythm on purpose.
+   */
+  note?: ReactNode
+  /** Names what `note` is, for readers who need the category stated. */
+  noteLabel?: ReactNode
   /** Entry detail: free content, and/or a nested `<Timeline nested>`. */
   children?: ReactNode
+}
+
+const NOTE_RULE_CLASSES: Record<StatusTone, string> = {
+  neutral: 'border-bakin-border-subtle',
+  success: 'border-bakin-action-primary-background',
+  attention: 'border-bakin-signal-highlight',
+  danger: 'border-bakin-signal-danger',
+  accent: 'border-bakin-signal-accent',
 }
 
 const HEADER_LAYOUT = 'flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1'
@@ -92,6 +117,8 @@ export function TimelineEntry({
   marker,
   title,
   meta,
+  note,
+  noteLabel,
   expandable = false,
   defaultExpanded,
   expanded,
@@ -142,11 +169,33 @@ export function TimelineEntry({
     </>
   )
 
-  const body = children != null ? (
+  const noteBlock = note != null ? (
+    <div
+      data-slot="timeline-entry-note"
+      data-tone={tone}
+      className={cn(
+        // Rail-attached, not boxed: a start rule in the entry's tone, square
+        // corners, no surface. The timeline spine is already the boundary —
+        // a second rounded outline reads as a detached widget.
+        'min-w-0 border-s-2 ps-bakin-3 text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-muted',
+        NOTE_RULE_CLASSES[tone],
+      )}
+    >
+      {noteLabel != null ? (
+        <span className="font-bakin-typography-weight-semibold text-bakin-text-primary">{noteLabel}: </span>
+      ) : null}
+      {note}
+    </div>
+  ) : null
+
+  const body = children != null || noteBlock != null ? (
     <div
       data-slot="timeline-entry-body"
-      className="mt-bakin-1 min-w-0 text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-muted"
+      // The body stacks a note, stats, and disclosures; a shared gap keeps them
+      // from crowding each other regardless of which parts an entry has.
+      className="mt-bakin-1 flex min-w-0 flex-col gap-bakin-2 text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-muted"
     >
+      {noteBlock}
       {children}
     </div>
   ) : null
@@ -158,16 +207,23 @@ export function TimelineEntry({
       data-tone={tone}
       className={cn(
         'group/timeline-entry grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-bakin-3',
-        '@2xl/timeline:grid-cols-[minmax(7rem,auto)_auto_minmax(0,1fr)]',
+        // An entry with no timestamp must not reserve the gutter — the empty
+        // column pushed its marker and title into the middle of the row,
+        // reading as a floating fragment rather than a rail entry.
+        timestamp != null
+          ? '@2xl/timeline:grid-cols-[minmax(7rem,auto)_auto_minmax(0,1fr)]'
+          : '@2xl/timeline:grid-cols-[auto_minmax(0,1fr)]',
         className,
       )}
     >
-      <span
-        data-slot="timeline-gutter"
-        className="hidden pt-bakin-1 text-right font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] tabular-nums text-bakin-text-muted @2xl/timeline:block"
-      >
-        {timestamp != null ? <time dateTime={dateTime}>{timestamp}</time> : null}
-      </span>
+      {timestamp != null ? (
+        <span
+          data-slot="timeline-gutter"
+          className="hidden pt-bakin-1 text-right font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] tabular-nums text-bakin-text-muted @2xl/timeline:block"
+        >
+          <time dateTime={dateTime}>{timestamp}</time>
+        </span>
+      ) : null}
 
       <span data-slot="timeline-rail" className="relative flex flex-col items-center pt-bakin-1">
         {marker ?? <StatusMarker tone={tone} size="md" label={markerLabel} />}

@@ -208,14 +208,46 @@ function seedOpenClawConfig(mockHome: string): void {
   writeFileSync(join(mockHome, 'openclaw.json'), JSON.stringify(config, null, 2) + '\n', 'utf-8')
 }
 
+/**
+ * The one task whose dispatch attempts are seeded with FULL detail — progress
+ * logs, matching spend, and a warning — so every branch of the diagnostics
+ * timeline entry has something to render during UI review.
+ */
+const DETAILED_RUN_TASK = 'task-ip-003'
+
+/**
+ * The fixture's task log carries frozen absolute dates, while ledger runs are
+ * seeded relative to `now` — so no fixture log line can ever land inside a run
+ * window, and the run's progress-log disclosure never appeared. Append a few
+ * now-relative lines that DO fall inside the attempts seeded by seedTaskRuns.
+ * Keep these offsets in sync with the claim/settle times over there.
+ */
+function addRunScopedProgressLog(task: { id: string; log?: Array<Record<string, unknown>> }): void {
+  const MIN = 60_000
+  const now = Date.now()
+  const at = (minsAgo: number) => new Date(now - minsAgo * MIN).toISOString()
+  const lines = [
+    // Inside attempt #1 (claimed 210m ago, lost at 205m).
+    { timestamp: at(209), author: 'rolo', message: 'Pulling engagement data — 7 day window' },
+    { timestamp: at(207), author: 'rolo', message: 'Fetched 3 of 5 sources; retrying analytics API' },
+    { timestamp: at(206), author: 'rolo', message: 'Analytics API returned 503 — backing off' },
+    // Inside attempt #3 (claimed 50m ago, settled at 47m).
+    { timestamp: at(49), author: 'rolo', message: 'Resuming from salvaged partial results' },
+    { timestamp: at(48), author: 'rolo', message: 'All 5 sources reconciled; composing report' },
+  ]
+  task.log = [...(task.log ?? []), ...lines]
+}
+
 function seedTasks(mockHome: string): void {
   const tasks = JSON.parse(readFileSync(join(FIXTURES_DIR, 'tasks.json'), 'utf-8')) as Array<{
     id: string
     createdAt?: string
+    log?: Array<Record<string, unknown>>
   }>
   const tasksRoot = join(mockHome, 'tasks')
 
   for (const task of tasks) {
+    if (task.id === DETAILED_RUN_TASK) addRunScopedProgressLog(task)
     const shard = (task.createdAt || new Date().toISOString()).slice(0, 7)
     const dir = join(tasksRoot, shard)
     mkdirSync(dir, { recursive: true })
@@ -357,6 +389,11 @@ function seedTaskRuns(): void {
   settleRun(rid(T, 3), 'turn-ok', now - 47 * MIN)
 
   const spendRows = [
+    // Keyed to the REAL ledger run ids above so the diagnostics timeline can
+    // join them — the synthetic `seed:spend:*` ids below never matched a run,
+    // which is why timeline entries showed no tokens or cost.
+    { runId: rid(T, 1), taskId: T, agent: 'rolo', model: 'anthropic/claude-sonnet-4-6', provider: 'anthropic', lane: 'metered' as const, workClass: 'scheduled', inputTokens: 24_000, outputTokens: 1_200, costUsdMicros: 180_000, ago: 208 },
+    { runId: rid(T, 3), taskId: T, agent: 'rolo', model: 'anthropic/claude-sonnet-4-6', provider: 'anthropic', lane: 'metered' as const, workClass: 'recovery', inputTokens: 31_500, outputTokens: 6_400, costUsdMicros: 470_000, ago: 48 },
     { runId: 'seed:spend:workflow-sonnet', taskId: 'task-dn-001', agent: 'pixel', model: 'anthropic/claude-sonnet-4-6', provider: 'anthropic', lane: 'metered' as const, workClass: 'workflow', inputTokens: 18_000, outputTokens: 4_000, costUsdMicros: 410_000, ago: 35 },
     { runId: 'seed:spend:scheduled-haiku', taskId: 'task-ip-001', agent: 'jessica', model: 'anthropic/claude-haiku-4-5', provider: 'anthropic', lane: 'metered' as const, workClass: 'scheduled', inputTokens: 9_000, outputTokens: 1_500, costUsdMicros: 44_000, ago: 70 },
     { runId: 'seed:spend:manual-gpt', taskId: 'task-ip-003', agent: 'patch', model: 'openai/gpt-5.4', provider: 'openai', lane: 'metered' as const, workClass: 'manual', inputTokens: 22_000, outputTokens: 5_000, costUsdMicros: 520_000, ago: 110 },
@@ -390,7 +427,7 @@ function seedTaskRuns(): void {
   }
 
   closeDb()
-  console.log(`[seed] Task run history seeded (3 tasks, 5 runs, ${spendRows.length} spend rows)`)
+  console.log(`[seed] Task run history seeded (3 tasks, 5 runs, ${spendRows.length} spend rows; ${DETAILED_RUN_TASK} carries full per-run detail)`)
 }
 
 function seedModelsSettings(mockHome: string): void {

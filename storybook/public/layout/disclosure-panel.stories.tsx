@@ -56,7 +56,7 @@ export const OpenByDefault = {
     docs: {
       description: {
         story:
-          'The native `open` attribute carries initial state; long summaries wrap while the meta and indicator hold the end of the row.',
+          'The native `open` attribute carries initial state; long summaries wrap while the meta and indicator hold the end of the row. `soft` keeps the surface fill but softens the outline (the Button secondary treatment); `ghost` drops surface, border, radius, and inset entirely so the disclosure sits in its parent content column and hugs its own label, keeping the indicator part of the control.',
       },
     },
   },
@@ -70,6 +70,22 @@ export const OpenByDefault = {
       <StorySection title="Open by default">
         <DisclosurePanel open summary="Session detail" summaryMeta="3 active">
           <p style={{ margin: 0 }}>main · copywriter · researcher</p>
+        </DisclosurePanel>
+      </StorySection>
+      <StorySection
+        title="Soft"
+        description="Keeps the surface fill and softens the edge instead of asserting it — the Button secondary treatment."
+      >
+        <DisclosurePanel variant="soft" summary="3 progress log line(s)">
+          <p style={{ margin: 0 }}>Analytics API returned 503 — backing off</p>
+        </DisclosurePanel>
+      </StorySection>
+      <StorySection
+        title="Ghost"
+        description="For a surface that already owns a boundary — a timeline entry's rail, a row, a card body — where a second painted box reads as a detached widget."
+      >
+        <DisclosurePanel variant="ghost" summary="3 progress log line(s)">
+          <p style={{ margin: 0 }}>Analytics API returned 503 — backing off</p>
         </DisclosurePanel>
       </StorySection>
       <StorySection title="Long summary">

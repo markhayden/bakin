@@ -11,7 +11,7 @@
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
     "valueExports": 297,
-    "typeExports": 396
+    "typeExports": 397
   },
   "entrypoints": [
     {
@@ -354,6 +354,7 @@
       "types": [
         "BoundedOverflowProps",
         "DisclosurePanelProps",
+        "DisclosurePanelVariant",
         "GridAlign",
         "GridLayout",
         "GridProps",
