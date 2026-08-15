@@ -383,7 +383,7 @@ function ExplorePageInner() {
       >
         {TAB_INTROS[tab] ? (
           <section data-testid="tab-intro" className="grid max-w-3xl gap-bakin-1">
-            <h2 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+            <h2>
               {TAB_INTROS[tab].title}
             </h2>
             <p className="m-0 text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">

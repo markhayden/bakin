@@ -21,8 +21,8 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 import { act, fireEvent, render } from '@testing-library/react'
 import '../rtl-settle'
 
-import { copyToClipboard } from '../../src/lib/copy-to-clipboard'
-import { CopyButton } from '@makinbakin/sdk/conversation'
+import { copyToClipboard } from '../../packages/ui/src/clipboard'
+import { CopyButton } from '@makinbakin/sdk/patterns'
 import { waitUntil } from '../helpers/wait'
 
 type NavigatorWithClipboard = Navigator & { clipboard?: unknown }

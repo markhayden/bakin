@@ -353,7 +353,9 @@ describe('AgentTurn', () => {
         })}
       />,
     )
-    const btn = container.querySelector('button[data-conv-copy]')
+    // CopyButton is a shared pattern now, so it carries the kit's data-slot
+    // rather than the old conversation-scoped data-conv-copy attribute.
+    const btn = container.querySelector('button[data-slot="copy-button"]')
     expect(btn).not.toBeNull()
     await act(async () => { fireEvent.click(btn!) })
     expect(writes).toEqual(['part one\n\npart two'])

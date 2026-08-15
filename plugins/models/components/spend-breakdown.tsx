@@ -151,7 +151,7 @@ export function SpendBreakdown({
     <Section className="@container/spend-breakdown" spacing="compact" divider="top" aria-label="Spend breakdown">
       <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 @2xl/spend-breakdown:flex-row @2xl/spend-breakdown:items-start @2xl/spend-breakdown:justify-between">
         <Stack gap="dense">
-          <h2 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+          <h2>
             Spend breakdown
           </h2>
           <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">

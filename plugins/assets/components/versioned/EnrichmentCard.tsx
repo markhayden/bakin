@@ -94,7 +94,7 @@ export function EnrichmentCard({ manifest, onChanged }: Props) {
     >
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-2">
         <h3
-          className="m-0 flex min-w-0 items-center gap-bakin-2 text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary"
+          className="flex min-w-0 items-center gap-bakin-2 text-bakin-typography-size-body"
         >
           <Sparkles className="size-bakin-3 shrink-0 text-bakin-signal-accent" /> Enrichment
         </h3>

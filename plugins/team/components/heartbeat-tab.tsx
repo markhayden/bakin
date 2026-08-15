@@ -85,7 +85,7 @@ export function HeartbeatTab({ agentId }: HeartbeatTabProps) {
     <Section spacing="compact">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-3">
         <div>
-          <h2 className="m-0 text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+          <h2>
             Agent heartbeat
           </h2>
           <p className="m-0 mt-bakin-1 text-bakin-text-muted">

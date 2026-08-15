@@ -7,6 +7,8 @@
 export { PrivateUiBoundaryProbe } from './private-ui-boundary-probe'
 export type { PrivateUiBoundaryProbeProps } from './private-ui-boundary-probe'
 
+export { copyToClipboard } from './clipboard'
+
 export { PageShell } from './layout/page-shell'
 export type { PageShellGap, PageShellPadding, PageShellProps, PageShellWidth } from './layout/page-shell'
 

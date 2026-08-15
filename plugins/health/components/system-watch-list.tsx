@@ -39,7 +39,7 @@ export function SystemWatchList({
     <section aria-labelledby="system-watch-list-title" data-testid="system-watch-list">
       <div className="mb-bakin-2 flex min-w-0 items-end justify-between gap-bakin-3">
         <div className="min-w-0">
-          <h2 id="system-watch-list-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">Worth a look</h2>
+          <h2 id="system-watch-list-title">Worth a look</h2>
           <p className="text-bakin-typography-size-meta text-bakin-text-muted">
             Advisory and unavailable evidence is summarized here; open a row only when you need the details.
           </p>

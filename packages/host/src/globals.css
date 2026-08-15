@@ -159,7 +159,56 @@
   [role="button"]:not([aria-disabled="true"]) {
     cursor: pointer;
   }
+
+  /*
+   * Heading typography. Preflight resets headings to `font-size: inherit;
+   * font-weight: inherit`, which left every bare heading rendering at body
+   * size — so each call site re-applied typography by hand and they drifted
+   * (three different sizes across the fleet). These rules restore the scale
+   * so the documented `Section` + heading composition works with no classes.
+   *
+   * Element specificity on purpose: utilities live in a later layer, so any
+   * explicit class at a call site still wins. `[data-markdown-content]`
+   * carries its own higher-specificity prose rules and is unaffected.
+   *
+   * Layout owns spacing (flex/grid `gap`), so headings carry no margin.
+   */
+  h1, h2, h3, h4, h5, h6 {
+    margin: 0;
+    color: var(--bakin-color-text-primary);
+    font-weight: var(--bakin-typography-weight-semibold);
+  }
+  h1 { font-size: var(--bakin-typography-size-page-title); font-weight: var(--bakin-typography-weight-bold); line-height: 1.1; }
+  h2 { font-size: var(--bakin-typography-size-section-title); }
+  h3, h4, h5, h6 { font-size: var(--bakin-typography-size-body); }
 }
+
+/*
+ * Horizontal-overflow affordance for a strip that scrolls but has no room for
+ * a scrollbar (the underline TabsList). Without it an overflowing strip cuts
+ * labels mid-glyph — "Overview" reads as "rview" — which looks like a
+ * rendering fault rather than "there is more this way".
+ *
+ * Pure CSS, no JS and no scroll listener: the `local` cover gradients travel
+ * with the content while the `scroll` shadows stay pinned, so each edge shadow
+ * is masked at that end of the range and revealed once there is content past
+ * it. Both edges resolve themselves.
+ */
+.bakin-scroll-edges-x {
+  /* Opaque = that edge is fully shown. The JS sets the data attributes only
+     for a side that has content past it, so a strip that fits never fades. */
+  --bakin-scroll-edge-start: #000;
+  --bakin-scroll-edge-end: #000;
+  mask-image: linear-gradient(
+    to right,
+    var(--bakin-scroll-edge-start) 0,
+    #000 var(--bakin-layout-space-8),
+    #000 calc(100% - var(--bakin-layout-space-8)),
+    var(--bakin-scroll-edge-end) 100%
+  );
+}
+.bakin-scroll-edges-x[data-overflow-start] { --bakin-scroll-edge-start: #0000; }
+.bakin-scroll-edges-x[data-overflow-end] { --bakin-scroll-edge-end: #0000; }
 
 /* Scrollbar */
 ::-webkit-scrollbar {

@@ -60,7 +60,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
         <div ref={ref} data-task-drop-surface className="flex flex-col">
           <KanbanLane label={config.label}>
             <KanbanLaneHeader>
-              <h2 className="m-0 text-bakin-typography-size-body font-bakin-typography-weight-semibold">
+              <h2 className="text-bakin-typography-size-body">
                 {config.label}
               </h2>
               <Badge size="xs" variant="outline" aria-label={countLabel}>{count}</Badge>
@@ -97,7 +97,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
         <KanbanLane label={config.label}>
           <KanbanLaneHeader>
             <div className="flex min-w-0 items-center gap-bakin-2">
-              <h2 className="m-0 truncate text-bakin-typography-size-body font-bakin-typography-weight-semibold">
+              <h2 className="truncate text-bakin-typography-size-body">
                 {config.label}
               </h2>
               <Badge size="xs" variant="outline" aria-label={countLabel}>{count}</Badge>

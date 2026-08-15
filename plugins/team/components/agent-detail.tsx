@@ -454,7 +454,7 @@ function SkillsTab({ agentId }: { agentId: string }) {
     <div className="grid min-w-0 gap-bakin-4 lg:grid-cols-4">
       <aside className="lg:col-span-1">
         <Section as="div" spacing="compact" className="max-h-screen overflow-auto">
-          <h2 className="m-0 text-bakin-typography-size-title font-bakin-typography-weight-semibold">
+          <h2>
             Installed skills
           </h2>
           <div className="grid gap-bakin-1">
@@ -554,7 +554,7 @@ function MemoryTab({ agentId }: { agentId: string }) {
     <div className="grid min-w-0 gap-bakin-4 lg:grid-cols-4">
       <aside className="lg:col-span-1">
         <Section as="div" spacing="compact" className="max-h-screen overflow-auto">
-          <h2 className="m-0 text-bakin-typography-size-title font-bakin-typography-weight-semibold">
+          <h2>
             Daily memory
           </h2>
           <div className="grid gap-bakin-1">

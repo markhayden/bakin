@@ -967,7 +967,7 @@ function OverviewSectionHeader({
       <Stack gap="dense">
         <Inline gap="dense" wrap={false}>
           <Icon className={`size-bakin-4 shrink-0 ${iconClassName}`} aria-hidden="true" />
-          <h2 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+          <h2>
             {title}
           </h2>
         </Inline>

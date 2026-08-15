@@ -142,7 +142,7 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
               </StatusBadge>
             )}
           </div>
-          <h3 className="m-0 mt-bakin-2 font-bakin-typography-weight-semibold leading-snug text-bakin-text-primary">{incident.title}</h3>
+          <h3 className="mt-bakin-2 leading-snug">{incident.title}</h3>
           <p
             id={impactId}
             className={`m-0 mt-bakin-1 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted ${showImpact ? '' : 'line-clamp-2'}`}

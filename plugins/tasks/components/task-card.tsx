@@ -217,7 +217,7 @@ export function TaskCardContent({
             isComplete ? 'line-through text-bakin-text-muted' : ''
           }`}
         >
-          <h3 className="m-0">
+          <h3>
             {onOpen ? (
               <Button
                 type="button"

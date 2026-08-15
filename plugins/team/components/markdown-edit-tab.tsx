@@ -107,7 +107,7 @@ export function MarkdownEditTab({ agentId, filename, initialContent }: MarkdownE
             data-slot="markdown-file-title-row"
             className="flex min-w-0 items-center justify-between gap-bakin-3"
           >
-            <h2 id="agent-markdown-heading" className="m-0 min-w-0 flex-1 truncate">{filename}</h2>
+            <h2 id="agent-markdown-heading" className="min-w-0 flex-1 truncate">{filename}</h2>
             {!editing ? (
               <Button
                 variant="outline"

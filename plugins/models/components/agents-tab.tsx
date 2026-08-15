@@ -45,7 +45,6 @@ export function AgentsTab({ m }: { m: ModelsData }) {
           <div className="min-w-0">
             <h2
               id="global-model-defaults-heading"
-              className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
             >
               Global Defaults
             </h2>
@@ -101,7 +100,7 @@ export function AgentsTab({ m }: { m: ModelsData }) {
 
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-3">
-            <h3 className="m-0 text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
+            <h3 className="text-bakin-typography-size-body">
               Fallback Models
             </h3>
             <Button
@@ -200,7 +199,6 @@ export function AgentsTab({ m }: { m: ModelsData }) {
         <div className="mb-bakin-3">
           <h2
             id="agent-model-overrides-heading"
-            className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
           >
             Agent Overrides
           </h2>

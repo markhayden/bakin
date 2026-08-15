@@ -33,7 +33,7 @@ const tabsListVariants = cva(
         default: "bg-bakin-surface-elevated",
         line: "gap-1 bg-transparent",
         underline:
-          "flex w-full min-w-0 max-w-full items-end justify-start gap-bakin-1 overflow-x-auto overscroll-x-contain rounded-none border-b border-bakin-border-subtle bg-transparent p-0 font-bakin-typography-family-ui group-data-horizontal/tabs:h-auto",
+          "bakin-scroll-edges-x flex w-full min-w-0 max-w-full items-end justify-start gap-bakin-1 overflow-x-auto overscroll-x-contain scroll-px-bakin-4 rounded-none border-b border-bakin-border-subtle bg-transparent p-0 font-bakin-typography-family-ui group-data-horizontal/tabs:h-auto",
       },
     },
     defaultVariants: {
@@ -46,14 +46,56 @@ type TabsListVariant = NonNullable<VariantProps<typeof tabsListVariants>["varian
 
 const TabsListVariantContext = React.createContext<TabsListVariant>("default")
 
+/**
+ * Marks which sides of a horizontally scrolling strip have content past the
+ * edge, so the fade only appears where there is actually more to reach.
+ *
+ * Background gradients paint behind text and cannot fade a clipped label, so
+ * the affordance has to be a mask — and a mask needs to know the scroll
+ * position. Browsers scroll the active tab into view on mount, which is
+ * exactly when a long strip silently cuts its first label in half.
+ */
+function useScrollEdges(enabled: boolean) {
+  const ref = React.useRef<HTMLDivElement | null>(null)
+
+  React.useEffect(() => {
+    const node = ref.current
+    if (!enabled || !node) return
+
+    const sync = () => {
+      const overflowing = node.scrollWidth - node.clientWidth > 1
+      const atStart = node.scrollLeft <= 1
+      const atEnd = node.scrollLeft >= node.scrollWidth - node.clientWidth - 1
+      node.toggleAttribute("data-overflow-start", overflowing && !atStart)
+      node.toggleAttribute("data-overflow-end", overflowing && !atEnd)
+    }
+
+    sync()
+    node.addEventListener("scroll", sync, { passive: true })
+    // Tab sets are dynamic and containers resize; re-measure rather than
+    // trusting a single mount-time reading.
+    const observer = new ResizeObserver(sync)
+    observer.observe(node)
+    for (const child of Array.from(node.children)) observer.observe(child)
+    return () => {
+      node.removeEventListener("scroll", sync)
+      observer.disconnect()
+    }
+  }, [enabled])
+
+  return ref
+}
+
 function TabsList({
   className,
   variant = "default",
   ...props
 }: TabsPrimitive.List.Props & VariantProps<typeof tabsListVariants>) {
+  const scrollRef = useScrollEdges(variant === "underline")
   return (
     <TabsListVariantContext.Provider value={variant ?? "default"}>
       <TabsPrimitive.List
+        ref={scrollRef}
         data-slot="tabs-list"
         data-variant={variant}
         className={cn(tabsListVariants({ variant }), className)}

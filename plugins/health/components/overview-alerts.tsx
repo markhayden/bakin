@@ -149,7 +149,7 @@ export function OverviewAlerts({ model, onRepair, onRerun, onAck }: OverviewAler
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-3">
         <Stack gap="dense">
           <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
-            <h2 id="overview-fix-first-title" className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">Fix first</h2>
+            <h2 id="overview-fix-first-title">Fix first</h2>
             <StatusBadge tone={model.needsAction.length > 0 ? 'danger' : 'neutral'} variant="solid">
               {actionLabel}
             </StatusBadge>

@@ -63,7 +63,7 @@ function SectionHeading({
 }) {
   return (
     <div>
-      <h2 className="m-0 text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+      <h2>
         {title}
       </h2>
       {description ? <p className="m-0 mt-bakin-1 text-bakin-text-muted">{description}</p> : null}
@@ -171,7 +171,7 @@ export function OverviewTab({
           <div className="grid min-w-0 content-start gap-bakin-4">
             <div className="flex items-center gap-bakin-2 text-bakin-text-primary">
               <Settings2 aria-hidden="true" className="size-bakin-4 text-bakin-text-muted" />
-              <h3 className="m-0 text-bakin-typography-size-body font-bakin-typography-weight-semibold">
+              <h3 className="text-bakin-typography-size-body">
                 Runtime
               </h3>
             </div>
@@ -217,7 +217,7 @@ export function OverviewTab({
           <div className="grid min-w-0 content-start gap-bakin-4 border-t border-bakin-border-subtle pt-bakin-4 lg:border-l lg:border-t-0 lg:pl-bakin-6 lg:pt-0">
             <div className="flex items-center gap-bakin-2 text-bakin-text-primary">
               <Box aria-hidden="true" className="size-bakin-4 text-bakin-text-muted" />
-              <h3 className="m-0 text-bakin-typography-size-body font-bakin-typography-weight-semibold">
+              <h3 className="text-bakin-typography-size-body">
                 Agent package
               </h3>
             </div>

@@ -278,7 +278,7 @@ function AgentPulseRowView({ row, expanded, pending, unavailable, liveNowStale, 
     >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-bakin-2">
-          <h4 id={headingId} className="font-bakin-typography-weight-semibold text-bakin-text-primary">{row.agent}</h4>
+          <h4 id={headingId}>{row.agent}</h4>
           <ReviewStatus row={row} checking={pending.effort} />
           {row.liveRun
             ? liveNowStale

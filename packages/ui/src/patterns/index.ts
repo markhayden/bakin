@@ -116,6 +116,10 @@ export type {
   WorkspacePageProps,
 } from './workspace-page'
 
+export { KeyValue } from './key-value'
+export type { KeyValueItem, KeyValueLayout, KeyValueProps } from './key-value'
+export { CopyButton } from './copy-button'
+export type { CopyButtonProps } from './copy-button'
 export { ConfirmDialog } from './confirm-dialog'
 export type {
   ConfirmDialogCancelVariant,

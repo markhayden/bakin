@@ -162,7 +162,7 @@ export function SystemTabView({
       <section aria-labelledby="system-subsystems-title">
         <div className="mb-bakin-2 flex items-end justify-between gap-bakin-3">
           <div>
-            <h2 id="system-subsystems-title" className="text-bakin-typography-size-body font-bakin-typography-weight-semibold">Platform pulse</h2>
+            <h2 id="system-subsystems-title" className="text-bakin-typography-size-body">Platform pulse</h2>
             <p className="text-bakin-typography-size-meta text-bakin-text-muted">A stable snapshot of the services that keep Bakin usable.</p>
           </div>
         </div>

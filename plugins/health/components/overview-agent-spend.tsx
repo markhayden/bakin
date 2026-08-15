@@ -92,7 +92,7 @@ export function OverviewAgentSpend({
       <div className="flex flex-wrap items-start justify-between gap-bakin-3">
         <div className="flex items-center gap-bakin-2">
           <Coins className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
-          <h3 id="overview-agent-spend-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">Agent spend</h3>
+          <h3 id="overview-agent-spend-title">Agent spend</h3>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-bakin-2 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">
           {history?.scannedAt && (
