@@ -2,8 +2,9 @@
 
 import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react'
 import { useAgent, useAgentColor } from '@makinbakin/sdk/hooks'
+import { Panel } from '@makinbakin/sdk/layout'
 import { AgentAvatar, ListRow, ListRows, ModelSelect } from '@makinbakin/sdk/patterns'
-import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import { Button, Field, FieldLabel, SystemState } from '@makinbakin/sdk/ui'
 
 import type { ModelsData } from './use-models-data'
 
@@ -37,18 +38,15 @@ export function AgentsTab({ m }: { m: ModelsData }) {
 
   return (
     <div className="@container/model-config flex min-w-0 flex-col gap-bakin-6">
-      <section
+      <Panel
+        as="section"
         aria-labelledby="global-model-defaults-heading"
-        className="flex min-w-0 flex-col gap-bakin-4 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4 @xl/model-config:p-bakin-6"
+        className="flex flex-col gap-bakin-4 @xl/model-config:p-bakin-6"
       >
         <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 @lg/model-config:flex-row @lg/model-config:items-start @lg/model-config:justify-between">
           <div className="min-w-0">
-            <h2
-              id="global-model-defaults-heading"
-            >
-              Global Defaults
-            </h2>
-            <p className="m-0 mt-bakin-1 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+            <h2 id="global-model-defaults-heading">Global Defaults</h2>
+            <p className="mt-bakin-1 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
               Choose the primary model, the default for delegated work, and ordered fallbacks used across agents.
             </p>
           </div>
@@ -65,13 +63,8 @@ export function AgentsTab({ m }: { m: ModelsData }) {
         </div>
 
         <div className="grid min-w-0 gap-bakin-4 @2xl/model-config:grid-cols-2">
-          <div className="min-w-0">
-            <label
-              htmlFor="models-default-primary"
-              className="mb-bakin-2 block text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-muted"
-            >
-              Default Model
-            </label>
+          <Field name="models-default-primary">
+            <FieldLabel htmlFor="models-default-primary">Default Model</FieldLabel>
             <ModelSelect
               id="models-default-primary"
               value={effectiveDefaultModel}
@@ -79,14 +72,9 @@ export function AgentsTab({ m }: { m: ModelsData }) {
               models={modelOptions}
               className="w-full min-w-0"
             />
-          </div>
-          <div className="min-w-0">
-            <label
-              htmlFor="models-default-subagent"
-              className="mb-bakin-2 block text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-muted"
-            >
-              Default Subagent Model
-            </label>
+          </Field>
+          <Field name="models-default-subagent">
+            <FieldLabel htmlFor="models-default-subagent">Default Subagent Model</FieldLabel>
             <ModelSelect
               id="models-default-subagent"
               value={effectiveDefaultSubagentModel}
@@ -95,26 +83,24 @@ export function AgentsTab({ m }: { m: ModelsData }) {
               defaultLabel={`Use primary default (${effectiveDefaultModel})`}
               className="w-full min-w-0"
             />
-          </div>
+          </Field>
         </div>
 
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-3">
-            <h3 className="text-bakin-typography-size-body">
-              Fallback Models
-            </h3>
+            <h3>Fallback Models</h3>
             <Button
               variant="outline"
               size="xs"
               onClick={() => setPendingFallbackModels([...(pendingFallbackModels ?? fallbackModels), fallbackCandidates[0]?.id ?? ''])}
               disabled={fallbackCandidates.length === 0}
             >
-              <Plus className="size-3" />
+              <Plus className="size-bakin-3" />
               Add Fallback
             </Button>
           </div>
 
-          <div className="mt-bakin-3 flex min-w-0 flex-col gap-bakin-2">
+          <div className="mt-bakin-3 min-w-0">
             {effectiveFallbackModels.length === 0 ? (
               <SystemState
                 kind="initial-empty"
@@ -122,70 +108,76 @@ export function AgentsTab({ m }: { m: ModelsData }) {
                 title="No fallback models configured."
               />
             ) : (
-              effectiveFallbackModels.map((modelId, index) => (
-                <div
-                  key={`${modelId}-${index}`}
-                  className="flex min-w-0 flex-wrap items-center gap-bakin-2"
-                >
-                  <span className="text-bakin-typography-size-meta text-bakin-text-muted">
-                    {index + 1}
-                    <span className="sr-only"> in fallback order</span>
-                  </span>
-                  <ModelSelect
-                    value={modelId}
-                    ariaLabel={`Fallback model ${index + 1}`}
-                    onValueChange={(value) => {
-                      const next = [...effectiveFallbackModels]
-                      next[index] = value
-                      setPendingFallbackModels([...new Set(next.filter(Boolean).filter((id) => id !== effectiveDefaultModel))])
-                    }}
-                    models={fallbackCandidates}
-                    className="min-w-48 flex-1"
-                  />
-                  <div className="flex items-center gap-bakin-2">
-                    <Button
-                      variant="outline"
-                      size="icon-sm"
-                      aria-label={`Move fallback ${index + 1} up`}
-                      onClick={() => {
-                        if (index === 0) return
+              <ListRows
+                aria-label="Fallback models in priority order"
+                variant="plain"
+                size="sm"
+              >
+                {effectiveFallbackModels.map((modelId, index) => (
+                  <ListRow
+                    key={`${modelId}-${index}`}
+                    className="flex flex-wrap items-center gap-bakin-2 px-bakin-0"
+                  >
+                    <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+                      {index + 1}
+                      <span className="sr-only"> in fallback order</span>
+                    </span>
+                    <ModelSelect
+                      value={modelId}
+                      ariaLabel={`Fallback model ${index + 1}`}
+                      onValueChange={(value) => {
                         const next = [...effectiveFallbackModels]
-                        ;[next[index - 1], next[index]] = [next[index], next[index - 1]]
-                        setPendingFallbackModels(next)
+                        next[index] = value
+                        setPendingFallbackModels([...new Set(next.filter(Boolean).filter((id) => id !== effectiveDefaultModel))])
                       }}
-                      disabled={index === 0}
-                    >
-                      <ArrowUp className="size-3" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon-sm"
-                      aria-label={`Move fallback ${index + 1} down`}
-                      onClick={() => {
-                        if (index === effectiveFallbackModels.length - 1) return
-                        const next = [...effectiveFallbackModels]
-                        ;[next[index], next[index + 1]] = [next[index + 1], next[index]]
-                        setPendingFallbackModels(next)
-                      }}
-                      disabled={index === effectiveFallbackModels.length - 1}
-                    >
-                      <ArrowDown className="size-3" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon-sm"
-                      aria-label={`Remove fallback ${index + 1}`}
-                      onClick={() => setPendingFallbackModels(effectiveFallbackModels.filter((_, i) => i !== index))}
-                    >
-                      <X className="size-3" />
-                    </Button>
-                  </div>
-                </div>
-              ))
+                      models={fallbackCandidates}
+                      className="min-w-48 flex-1"
+                    />
+                    <div className="flex items-center gap-bakin-2">
+                      <Button
+                        variant="outline"
+                        size="icon-sm"
+                        aria-label={`Move fallback ${index + 1} up`}
+                        onClick={() => {
+                          if (index === 0) return
+                          const next = [...effectiveFallbackModels]
+                          ;[next[index - 1], next[index]] = [next[index], next[index - 1]]
+                          setPendingFallbackModels(next)
+                        }}
+                        disabled={index === 0}
+                      >
+                        <ArrowUp className="size-bakin-3" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon-sm"
+                        aria-label={`Move fallback ${index + 1} down`}
+                        onClick={() => {
+                          if (index === effectiveFallbackModels.length - 1) return
+                          const next = [...effectiveFallbackModels]
+                          ;[next[index], next[index + 1]] = [next[index + 1], next[index]]
+                          setPendingFallbackModels(next)
+                        }}
+                        disabled={index === effectiveFallbackModels.length - 1}
+                      >
+                        <ArrowDown className="size-bakin-3" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon-sm"
+                        aria-label={`Remove fallback ${index + 1}`}
+                        onClick={() => setPendingFallbackModels(effectiveFallbackModels.filter((_, i) => i !== index))}
+                      >
+                        <X className="size-bakin-3" />
+                      </Button>
+                    </div>
+                  </ListRow>
+                ))}
+              </ListRows>
             )}
           </div>
         </div>
-      </section>
+      </Panel>
 
       {hasPending && (
         <div className="flex justify-end">
@@ -197,26 +189,19 @@ export function AgentsTab({ m }: { m: ModelsData }) {
 
       <section aria-labelledby="agent-model-overrides-heading" className="min-w-0">
         <div className="mb-bakin-3">
-          <h2
-            id="agent-model-overrides-heading"
-          >
-            Agent Overrides
-          </h2>
-          <p className="m-0 mt-bakin-1 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+          <h2 id="agent-model-overrides-heading">Agent Overrides</h2>
+          <p className="mt-bakin-1 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
             Override the defaults only where an agent needs a different model.
           </p>
         </div>
 
         {loading ? (
-          <div
-            role="status"
-            aria-label="Loading agent model configuration"
-            className="space-y-bakin-2"
-          >
-            {Array.from({ length: 5 }).map((_, index) => (
-              <Skeleton key={index} className="h-16 w-full" />
-            ))}
-          </div>
+          <SystemState
+            kind="loading"
+            scope="section"
+            title="Loading agent model configuration"
+            description="Each agent's own and subagent model appear once the runtime reports its roster."
+          />
         ) : agents.length === 0 ? (
           <SystemState
             kind="initial-empty"
@@ -252,13 +237,8 @@ export function AgentsTab({ m }: { m: ModelsData }) {
                       {agent.name}
                     </span>
                   </div>
-                  <div className="min-w-0">
-                    <label
-                      htmlFor={ownModelId}
-                      className="mb-bakin-2 block text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-muted"
-                    >
-                      Own Model
-                    </label>
+                  <Field name={ownModelId}>
+                    <FieldLabel htmlFor={ownModelId}>Own Model</FieldLabel>
                     <ModelSelect
                       id={ownModelId}
                       value={ownVal}
@@ -267,14 +247,9 @@ export function AgentsTab({ m }: { m: ModelsData }) {
                       defaultLabel={`Default (${agent.defaultModel})`}
                       className="w-full min-w-0"
                     />
-                  </div>
-                  <div className="min-w-0">
-                    <label
-                      htmlFor={subagentModelId}
-                      className="mb-bakin-2 block text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-muted"
-                    >
-                      Subagent Model
-                    </label>
+                  </Field>
+                  <Field name={subagentModelId}>
+                    <FieldLabel htmlFor={subagentModelId}>Subagent Model</FieldLabel>
                     <ModelSelect
                       id={subagentModelId}
                       value={subVal}
@@ -283,7 +258,7 @@ export function AgentsTab({ m }: { m: ModelsData }) {
                       defaultLabel={`Default (${agent.defaultSubagentModel || agent.defaultModel})`}
                       className="w-full min-w-0"
                     />
-                  </div>
+                  </Field>
                   <div className="flex min-w-0 justify-end">
                     {hasDirty ? (
                       <Button

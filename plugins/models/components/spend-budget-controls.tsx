@@ -2,7 +2,7 @@
 
 import { Plus, Trash2 } from 'lucide-react'
 import { Section, Stack } from '@makinbakin/sdk/layout'
-import { ListRow, ListRows } from '@makinbakin/sdk/patterns'
+import { AgentAvatar, ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import {
   Button,
   Field,
@@ -212,10 +212,8 @@ export function BudgetRulesSection({ m }: { m: ModelsData }) {
     <Section className="@container/budget-rules" spacing="compact" divider="top" aria-label="Budget rules">
       <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 @2xl/budget-rules:flex-row @2xl/budget-rules:items-start @2xl/budget-rules:justify-between">
         <Stack gap="dense">
-          <h2>
-            Budget rules
-          </h2>
-          <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+          <h2>Budget rules</h2>
+          <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
             Cap estimated metered cost or subscription-token usage by day or month. At the cap, work can defer until reset or pause until an operator resumes it.
           </p>
         </Stack>
@@ -292,10 +290,8 @@ export function BillingLanesSection({ m }: { m: ModelsData }) {
   return (
     <Section className="@container/billing-lanes" spacing="compact" divider="top" aria-label="Billing lanes">
       <Stack gap="dense">
-        <h2>
-          Billing lanes
-        </h2>
-        <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+        <h2>Billing lanes</h2>
+        <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
           Bakin detects whether each agent uses metered API billing or subscription tokens. Override a lane only when authentication lives outside the agent profile.
         </p>
       </Stack>
@@ -320,17 +316,16 @@ export function BillingLanesSection({ m }: { m: ModelsData }) {
             return (
               <ListRow key={agentId} className="px-bakin-4 py-bakin-4">
                 <div className="flex min-w-0 items-center gap-bakin-3">
-                  <span
-                    aria-hidden="true"
-                    className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-border-subtle/20"
-                  >
-                    {agent?.emoji ?? agentId.slice(0, 1).toUpperCase()}
-                  </span>
+                  <AgentAvatar
+                    agent={{ id: agentId, name: agent?.name ?? agentId }}
+                    size="md"
+                    decorative
+                  />
                   <div className="min-w-0">
-                    <p className="m-0 font-bakin-typography-weight-semibold text-bakin-text-primary">
+                    <p className="font-bakin-typography-weight-semibold text-bakin-text-primary">
                       {agent?.name ?? agentId}
                     </p>
-                    <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+                    <p className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
                       {lane.provider} · detected {lane.lane}
                     </p>
                   </div>

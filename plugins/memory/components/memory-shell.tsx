@@ -17,7 +17,7 @@
  * All state (query, tiers, agents, debug) is URL-backed so the page is
  * bookmarkable and browser back/forward round-trip the view.
  */
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ClipboardList,
   MessagesSquare,
@@ -53,12 +53,22 @@ import {
   type AgentIdentity,
   type AgentFilterOption,
   type FacetOption,
+  type DataTableSort,
 } from '@makinbakin/sdk/patterns'
 import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
 import { Badge, Banner, Button, Switch } from '@makinbakin/sdk/ui'
-import { useAgentList, useSearch, type SearchResult } from '@makinbakin/sdk/hooks'
+import {
+  useAgentList,
+  usePluginJsonFetch,
+  useSearch,
+  type SearchResult,
+} from '@makinbakin/sdk/hooks'
 import { TierOverviewCards } from './tier-overview-cards'
-import { MemorySearchResults } from './memory-search-results'
+import {
+  MemorySearchResults,
+  memorySortValue,
+  type MemorySortField,
+} from './memory-search-results'
 import { MemoryDetailDrawer } from './memory-detail-drawer'
 import { useRecordDeepLink } from './use-record-deep-link'
 import { MemoryCleanup } from './memory-cleanup'
@@ -69,14 +79,14 @@ import { MemoryCleanup } from './memory-cleanup'
 const DEBUG_ONLY_TIERS = new Set(['turn', 'audit'])
 
 const ALL_TIER_OPTIONS: FacetOption[] = [
-  { value: 'session', label: 'Sessions', icon: <MessagesSquare className="size-3.5" /> },
-  { value: 'checkpoint', label: 'Checkpoints', icon: <Bookmark className="size-3.5" /> },
-  { value: 'daily_note', label: 'Daily Notes', icon: <Calendar className="size-3.5" /> },
-  { value: 'durable', label: 'Durable', icon: <Database className="size-3.5" /> },
-  { value: 'dream', label: 'Dreams', icon: <Moon className="size-3.5" /> },
+  { value: 'session', label: 'Sessions', icon: <MessagesSquare className="size-bakin-4" /> },
+  { value: 'checkpoint', label: 'Checkpoints', icon: <Bookmark className="size-bakin-4" /> },
+  { value: 'daily_note', label: 'Daily Notes', icon: <Calendar className="size-bakin-4" /> },
+  { value: 'durable', label: 'Durable', icon: <Database className="size-bakin-4" /> },
+  { value: 'dream', label: 'Dreams', icon: <Moon className="size-bakin-4" /> },
   // Debug-only below.
-  { value: 'turn', label: 'Turns', icon: <CornerDownRight className="size-3.5" /> },
-  { value: 'audit', label: 'Audit', icon: <ClipboardList className="size-3.5" /> },
+  { value: 'turn', label: 'Turns', icon: <CornerDownRight className="size-bakin-4" /> },
+  { value: 'audit', label: 'Audit', icon: <ClipboardList className="size-bakin-4" /> },
 ]
 
 // Durable sub-tier "kind" buckets. Values match the normalized mapping in
@@ -84,17 +94,17 @@ const ALL_TIER_OPTIONS: FacetOption[] = [
 // `skill` from the skill indexer. Labels mirror the team-detail tab names
 // so `kind=soul` on /memory lines up with the SOUL tab on /team/<id>.
 const KIND_OPTIONS: FacetOption[] = [
-  { value: 'soul', label: 'Soul', icon: <UserCircle className="size-3.5" /> },
-  { value: 'rules', label: 'Rules', icon: <Scroll className="size-3.5" /> },
-  { value: 'tools', label: 'Tools', icon: <Wrench className="size-3.5" /> },
-  { value: 'skill', label: 'Skills', icon: <Sparkles className="size-3.5" /> },
-  { value: 'identity', label: 'Identity', icon: <Fingerprint className="size-3.5" /> },
-  { value: 'heartbeat', label: 'Heartbeat', icon: <HeartPulse className="size-3.5" /> },
-  { value: 'memory', label: 'Memory', icon: <Brain className="size-3.5" /> },
-  { value: 'memory-log', label: 'Memory Log', icon: <NotebookText className="size-3.5" /> },
-  { value: 'dreams', label: 'Dreams (file)', icon: <Moon className="size-3.5" /> },
-  { value: 'user', label: 'User', icon: <User className="size-3.5" /> },
-  { value: 'bootstrap', label: 'Bootstrap', icon: <Play className="size-3.5" /> },
+  { value: 'soul', label: 'Soul', icon: <UserCircle className="size-bakin-4" /> },
+  { value: 'rules', label: 'Rules', icon: <Scroll className="size-bakin-4" /> },
+  { value: 'tools', label: 'Tools', icon: <Wrench className="size-bakin-4" /> },
+  { value: 'skill', label: 'Skills', icon: <Sparkles className="size-bakin-4" /> },
+  { value: 'identity', label: 'Identity', icon: <Fingerprint className="size-bakin-4" /> },
+  { value: 'heartbeat', label: 'Heartbeat', icon: <HeartPulse className="size-bakin-4" /> },
+  { value: 'memory', label: 'Memory', icon: <Brain className="size-bakin-4" /> },
+  { value: 'memory-log', label: 'Memory Log', icon: <NotebookText className="size-bakin-4" /> },
+  { value: 'dreams', label: 'Dreams (file)', icon: <Moon className="size-bakin-4" /> },
+  { value: 'user', label: 'User', icon: <User className="size-bakin-4" /> },
+  { value: 'bootstrap', label: 'Bootstrap', icon: <Play className="size-bakin-4" /> },
 ]
 
 function useRecentFeed(
@@ -104,52 +114,33 @@ function useRecentFeed(
   kinds: string[],
   debug: boolean,
 ): { results: SearchResult[]; loading: boolean; error: string | null } {
-  const [results, setResults] = useState<SearchResult[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  // Serialize deps as a primitive so the effect doesn't fire on every
-  // parent render when the array refs change.
+  // Serialize the array deps as primitives so the request path is stable
+  // across parent renders that only change the array refs.
   const tierKey = tiers.slice().sort().join(',')
-  const agentKey = agent
   const kindKey = kinds.slice().sort().join(',')
 
-  useEffect(() => {
-    if (!enabled) {
-      setResults([])
-      setError(null)
-      setLoading(false)
-      return
-    }
-    const controller = new AbortController()
-    setLoading(true)
-    setError(null)
-
+  // A null path parks the request: with a query active the recent feed is not
+  // the source, and the hook reports no data rather than a stale one.
+  const path = useMemo(() => {
+    if (!enabled) return null
     const params = new URLSearchParams()
     params.set('limit', '30')
     if (tierKey) params.set('tier', tierKey)
-    if (agentKey) params.set('agent', agentKey)
+    if (agent) params.set('agent', agent)
     if (kindKey) params.set('kind', kindKey)
     if (debug) params.set('debug', '1')
+    return `recent?${params}`
+  }, [enabled, tierKey, agent, kindKey, debug])
 
-    fetch(`/api/plugins/memory/recent?${params}`, { signal: controller.signal })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`recent: ${res.status}`)
-        return res.json() as Promise<{ results: SearchResult[] }>
-      })
-      .then((data) => {
-        setResults(data.results ?? [])
-        setLoading(false)
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        setError(err instanceof Error ? err.message : String(err))
-        setLoading(false)
-      })
+  // The feed scans the index, so it gets an explicit deadline instead of
+  // spinning forever behind a stalled engine.
+  const { data, loading, error } = usePluginJsonFetch<{ results: SearchResult[] }>(
+    'memory',
+    path,
+    { timeoutMs: 15_000 },
+  )
 
-    return () => controller.abort()
-  }, [enabled, tierKey, agentKey, kindKey, debug])
-
+  const results = useMemo(() => data?.results ?? [], [data])
   return { results, loading, error }
 }
 
@@ -250,16 +241,39 @@ function MemoryShellInner() {
   // making them guess why "workflow" returned nothing.
   const hiddenByDebug = searchActive && !debug && sourceResults.length > 0 && filtered.length === 0
 
+  // Sort lives here, above the page slice: sorting inside the results table
+  // would reorder only the visible page while announcing a global sort.
+  const [sort, setSort] = useState<DataTableSort<MemorySortField> | null>(null)
+  const sorted = useMemo(() => {
+    if (!sort) return filtered
+    const { field, dir } = sort
+    return [...filtered].sort((a, b) => {
+      const av = memorySortValue(a, field)
+      const bv = memorySortValue(b, field)
+      if (av === null && bv === null) return 0
+      if (av === null) return 1
+      if (bv === null) return -1
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0
+      return dir === 'asc' ? cmp : -cmp
+    })
+  }, [filtered, sort])
+
+  const handleSortChange = useCallback((field: MemorySortField) => {
+    setSort((prev) => prev?.field === field
+      ? { field, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+      : { field, dir: field === 'updated' ? 'desc' : 'asc' })
+  }, [])
+
   const pageSize = 8
   const showAll = pageParam === 'all'
   const requestedPage = Number.parseInt(pageParam, 10)
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize))
   const page = Number.isFinite(requestedPage)
     ? Math.min(Math.max(requestedPage, 1), pageCount)
     : 1
   const visibleResults = showAll
-    ? filtered
-    : filtered.slice((page - 1) * pageSize, page * pageSize)
+    ? sorted
+    : sorted.slice((page - 1) * pageSize, page * pageSize)
 
   const resultViewKey = [
     query,
@@ -358,7 +372,7 @@ function MemoryShellInner() {
     const extras: FacetOption[] = []
     for (const a of aggregations?.kind ?? []) {
       if (seen.has(a.value)) continue
-      extras.push({ value: a.value, label: a.value, icon: <Database className="size-3.5" /> })
+      extras.push({ value: a.value, label: a.value, icon: <Database className="size-bakin-4" /> })
     }
     return [...KIND_OPTIONS, ...extras]
   }, [aggregations])
@@ -418,7 +432,6 @@ function MemoryShellInner() {
                 role="group"
                 aria-label="System log visibility"
                 className="flex h-bakin-8 select-none items-center gap-bakin-2 rounded-bakin-control px-bakin-2 font-bakin-typography-weight-semibold text-bakin-text-muted"
-                title={debug ? 'Hide turns and audit records' : 'Include turns and audit records'}
               >
                 <Microscope className="size-bakin-4" aria-hidden="true" />
                 <span className="text-bakin-typography-size-body">System Logs</span>
@@ -471,6 +484,8 @@ function MemoryShellInner() {
               onEnableDebug={() => setDebugParam('1')}
               onClear={() => setQuery('')}
               onSelect={record.open}
+              sort={sort}
+              onSortChange={handleSortChange}
             />
             <Pagination
               ariaLabel="Memory results pagination"

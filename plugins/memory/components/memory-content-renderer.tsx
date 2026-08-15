@@ -3,9 +3,10 @@
 /**
  * MemoryContentRenderer — auto-detects the format of a memory row's body.
  *
- *   JSON      → pretty-printed, syntax-highlighted canonical code presentation
+ *   JSON      → pretty-printed in the kit CodeBlock, tokenized as JSON
  *   Markdown  → rendered via the shared MarkdownContent (ReactMarkdown)
- *   Text      → <pre> with preserved whitespace
+ *   Text      → the same CodeBlock with no language claimed, so the body is
+ *               shown verbatim rather than mis-highlighted
  *
  * Detection is cheap and intentionally conservative: we only hit the JSON
  * branch on a full parse, and we only hit the markdown branch when there's
@@ -16,7 +17,7 @@
  * Callers can override detection via `format` when they already know — turn
  * `tool_call` rows, for example, are always JSON-stringified toolCall blocks.
  */
-import { MarkdownContent } from '@makinbakin/sdk/content'
+import { CodeBlock, MarkdownContent } from '@makinbakin/sdk/content'
 
 export type ContentFormat = 'json' | 'markdown' | 'text'
 
@@ -33,13 +34,16 @@ export function MemoryContentRenderer({ content, format }: Props) {
     return <JsonBlock raw={content} />
   }
   if (resolved === 'markdown') {
+    // MarkdownContent owns its own fenced-code frame (surface, padding, copy
+    // action), so this wrapper sets prose size only — overriding the kit's
+    // internal `pre`/`code` DOM from here would fight that contract.
     return (
-      <div className="text-bakin-typography-size-body [&_pre]:rounded-bakin-surface [&_pre]:bg-bakin-canvas-subtle [&_pre]:p-bakin-3 [&_code]:text-bakin-typography-size-meta">
+      <div className="text-bakin-typography-size-body">
         <MarkdownContent content={content} />
       </div>
     )
   }
-  return <TextBlock content={content} />
+  return <CodeBlock code={content} language="text" wrap />
 }
 
 function JsonBlock({ raw }: { raw: string }) {
@@ -49,29 +53,7 @@ function JsonBlock({ raw }: { raw: string }) {
   } catch {
     pretty = raw
   }
-  return (
-    <MarkdownContent
-      content={fencedCode('json', pretty)}
-      className="[&_[data-md-code]]:my-0"
-    />
-  )
-}
-
-function fencedCode(language: string, code: string): string {
-  const longestBacktickRun = Math.max(
-    0,
-    ...(code.match(/`+/g) ?? []).map((run) => run.length),
-  )
-  const fence = '`'.repeat(Math.max(3, longestBacktickRun + 1))
-  return `${fence}${language}\n${code}\n${fence}`
-}
-
-function TextBlock({ content }: { content: string }) {
-  return (
-    <pre className="m-0 whitespace-pre-wrap break-words font-bakin-typography-family-ui text-bakin-typography-size-body leading-relaxed text-bakin-text-primary">
-      {content}
-    </pre>
-  )
+  return <CodeBlock code={pretty} language="json" wrap copyable />
 }
 
 /** Heuristic format detection. Conservative — falls through to text. */

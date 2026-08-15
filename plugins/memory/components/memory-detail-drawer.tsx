@@ -17,12 +17,21 @@ import { useMemo } from 'react'
 import {
   Drawer,
   DrawerSection,
+  SystemState,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from '@makinbakin/sdk/ui'
 import {
   AgentAvatar,
+  CopyButton,
+  KeyValue,
   StatusBadge,
   type AgentIdentity,
+  type KeyValueItem,
 } from '@makinbakin/sdk/patterns'
+import { CodeBlock } from '@makinbakin/sdk/content'
+import { Inline, Stack } from '@makinbakin/sdk/layout'
 import type { SearchResult } from '@makinbakin/sdk/hooks'
 import { MemoryContentRenderer, type ContentFormat } from './memory-content-renderer'
 import { tierDisplayName } from './tier-labels'
@@ -65,6 +74,37 @@ export function MemoryDetailDrawer({ result, agents = [], open, onOpenChange }: 
 
   const forcedFormat = resolveFormat(tier, parsedMeta)
 
+  const sourceItems: KeyValueItem[] = [
+    { label: 'Updated', value: formatTs(updatedAt) },
+  ]
+  if (createdAt > 0 && createdAt !== updatedAt) {
+    sourceItems.push({ label: 'Created', value: formatTs(createdAt) })
+  }
+  if (sourcePath) {
+    sourceItems.push({
+      label: 'Source',
+      // A source path is the identifier you paste into an editor or a shell,
+      // so it carries its own copy action rather than forcing a hand-selection
+      // of a mid-word-broken string.
+      value: <CopyableIdentifier text={sourcePath} label="Copy source path" />,
+      mono: true,
+      breakValue: true,
+    })
+  }
+
+  const metadataItems: KeyValueItem[] = [
+    {
+      label: 'Row ID',
+      value: <CopyableIdentifier text={result.id} label="Copy row ID" />,
+      mono: true,
+      breakValue: true,
+    },
+  ]
+  if (sourceBackend) metadataItems.push({ label: 'Backend', value: sourceBackend })
+  if (Number.isFinite(result.score)) {
+    metadataItems.push({ label: 'Score', value: result.score.toFixed(3), mono: true, numeric: true })
+  }
+
   return (
     <Drawer
       open={open}
@@ -79,18 +119,25 @@ export function MemoryDetailDrawer({ result, agents = [], open, onOpenChange }: 
           {agentIdentity ? (
             <span className="flex min-w-0 items-center gap-bakin-1">
               <AgentAvatar agent={agentIdentity} size="xs" decorative />
-              <span className="truncate">{agentIdentity.name}</span>
+              {/* The name truncates in a narrow drawer header; the tooltip is
+                  the only place the full name stays reachable. */}
+              <Tooltip>
+                <TooltipTrigger render={<span />} className="min-w-0 truncate">
+                  {agentIdentity.name}
+                </TooltipTrigger>
+                <TooltipContent>{agentIdentity.name}</TooltipContent>
+              </Tooltip>
             </span>
           ) : null}
         </span>
       }
     >
-      <div className="flex min-w-0 flex-col gap-bakin-6">
+      <Stack gap="section">
         <DrawerSection title="Source">
-          <SourceDetails
-            createdAt={createdAt}
-            updatedAt={updatedAt}
-            sourcePath={sourcePath}
+          <KeyValue
+            data-memory-record-details=""
+            layout="columns"
+            items={sourceItems}
           />
         </DrawerSection>
 
@@ -98,100 +145,41 @@ export function MemoryDetailDrawer({ result, agents = [], open, onOpenChange }: 
           {content ? (
             <MemoryContentRenderer content={content} format={forcedFormat} />
           ) : (
-            <p className="m-0 text-bakin-typography-size-body text-bakin-text-muted">
-              No content body.
-            </p>
+            <SystemState
+              kind="initial-empty"
+              scope="inline"
+              title="No content body"
+              description="This row was indexed without a body — only its metadata is available."
+            />
           )}
         </DrawerSection>
 
         <DrawerSection title="Index metadata">
-          <div className="grid min-w-0 gap-bakin-4">
-            <IndexMetadata
-              sourceBackend={sourceBackend}
-              score={result.score}
-              rowId={result.id}
-            />
+          <Stack gap="item">
+            <KeyValue layout="columns" items={metadataItems} />
             {parsedMeta ? (
-              <MemoryContentRenderer
-                content={JSON.stringify(parsedMeta, null, 2)}
-                format="json"
+              <CodeBlock
+                code={JSON.stringify(parsedMeta, null, 2)}
+                language="json"
+                label="Raw metadata"
+                wrap
+                copyable
               />
             ) : null}
-          </div>
+          </Stack>
         </DrawerSection>
-      </div>
+      </Stack>
     </Drawer>
   )
 }
 
-function SourceDetails({
-  createdAt,
-  updatedAt,
-  sourcePath,
-}: {
-  createdAt: number
-  updatedAt: number
-  sourcePath: string
-}) {
+/** An identifier value plus the copy action that makes it usable elsewhere. */
+function CopyableIdentifier({ text, label }: { text: string; label: string }) {
   return (
-    <dl
-      data-memory-record-details=""
-      className="m-0 grid min-w-0 text-bakin-typography-size-body"
-    >
-      <DetailRow label="Updated" value={formatTs(updatedAt)} />
-      {createdAt > 0 && createdAt !== updatedAt ? (
-        <DetailRow label="Created" value={formatTs(createdAt)} />
-      ) : null}
-      {sourcePath ? (
-        <DetailRow label="Source" value={sourcePath} mono />
-      ) : null}
-    </dl>
-  )
-}
-
-function IndexMetadata({
-  sourceBackend,
-  score,
-  rowId,
-}: {
-  sourceBackend: string
-  score: number
-  rowId: string
-}) {
-  return (
-    <dl className="m-0 grid min-w-0 text-bakin-typography-size-meta">
-      <DetailRow label="Row ID" value={rowId} mono />
-      {sourceBackend ? <DetailRow label="Backend" value={sourceBackend} /> : null}
-      {Number.isFinite(score) ? (
-        <DetailRow label="Score" value={score.toFixed(3)} mono />
-      ) : null}
-    </dl>
-  )
-}
-
-function DetailRow({
-  label,
-  mono = false,
-  value,
-}: {
-  label: string
-  mono?: boolean
-  value: string
-}) {
-  return (
-    <div
-      data-memory-record-detail=""
-      className="grid min-w-0 gap-bakin-1 border-t border-bakin-border-subtle py-bakin-3 sm:grid-cols-3 sm:gap-bakin-4"
-    >
-      <dt className="text-bakin-typography-size-meta text-bakin-text-muted">{label}</dt>
-      <dd
-        className={`m-0 min-w-0 [overflow-wrap:anywhere] text-bakin-text-primary sm:col-span-2 ${
-          mono ? 'font-bakin-typography-family-mono' : ''
-        }`}
-      >
-        {value}
-      </dd>
-    </div>
+    <Inline gap="dense" align="baseline" wrap={false}>
+      <span className="min-w-0">{text}</span>
+      <CopyButton text={text} label={label} />
+    </Inline>
   )
 }
 

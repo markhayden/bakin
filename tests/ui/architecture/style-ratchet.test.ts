@@ -75,18 +75,22 @@ describe('scanLegacyStyles', () => {
       source('plugins/example/components/offender.tsx', [
         "import { Button } from '@/components/ui/button'",
         'export function Offender() {',
-        '  return <button className="w-[37px] bg-red-500 text-foreground" style={{ color: \'#fff\' }}>Bad</button>',
+        // Arbitrary-variant (`group-data-[open]:`) and container-variant
+        // (`@lg/page-shell:`) forms must be caught for EVERY rule — a prefix
+        // regression used to slip past raw-palette/arbitrary-size/generic-token.
+        '  return <button className="w-[37px] bg-red-500 text-foreground text-sm rounded-lg gap-2 @lg/page-shell:p-3 group-data-[open]:bg-red-500 group-data-[open]:w-[37px] group-data-[open]:text-foreground" style={{ color: \'#fff\' }}>Bad</button>',
         '}',
       ].join('\n')),
       source('plugins/example/client.css', '.card { color: var(--foreground); }'),
     ])
 
     expect(report.totals).toEqual({
-      'raw-palette': 2,
-      'arbitrary-size': 1,
+      'raw-palette': 3,
+      'arbitrary-size': 2,
+      'raw-scale': 4,
       'raw-control': 1,
       'inline-style': 1,
-      'generic-token': 2,
+      'generic-token': 3,
       'unscoped-css': 1,
       'private-import': 1,
     })
@@ -114,6 +118,7 @@ describe('scanLegacyStyles', () => {
     expect(report.totals).toEqual({
       'raw-palette': 0,
       'arbitrary-size': 0,
+      'raw-scale': 0,
       'raw-control': 0,
       'inline-style': 0,
       'generic-token': 0,

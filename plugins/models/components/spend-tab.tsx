@@ -4,7 +4,15 @@ import { useState } from 'react'
 import { AreaChart, type ChartDatum } from '@makinbakin/sdk/charts'
 import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
 import { SegmentedControl, StatTile } from '@makinbakin/sdk/patterns'
-import { Banner, Button, Input, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import {
+  Banner,
+  Button,
+  Field,
+  FieldError,
+  Input,
+  Skeleton,
+  SystemState,
+} from '@makinbakin/sdk/ui'
 
 import { BillingLanesSection, BudgetRulesSection } from './spend-budget-controls'
 import {
@@ -83,7 +91,13 @@ function UtilizationTiles({
   )
 }
 
-function IncidentActions({
+/**
+ * One incident: the Banner's action slot stays a button row (its contract),
+ * while the cap input and its rejection message live below the banner inside a
+ * Field. A rejected raise is announced — FieldError carries `role="alert"`, so
+ * the message reaches assistive tech instead of only being painted red.
+ */
+function IncidentBanner({
   incident,
   resolveIncident,
 }: {
@@ -92,13 +106,63 @@ function IncidentActions({
 }) {
   const [raiseValue, setRaiseValue] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const isCap = incident.kind === 'cap'
 
   return (
     <div className="flex min-w-0 flex-col gap-bakin-2">
-      {error ? <span className="text-bakin-signal-danger">{error}</span> : null}
-      <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
-        {incident.kind === 'cap' ? (
+      <Banner
+        tone={isCap ? 'danger' : 'attention'}
+        announce={incident.status === 'open' ? 'assertive' : 'off'}
+        title={isCap ? 'Budget cap reached' : 'Budget warning'}
+        description={(
+          <span>
+            {incident.scopeId ? `${incident.scope} “${incident.scopeId}”` : 'Global'} · {incident.window} · {incident.lane} at{' '}
+            {formatRuleUnit(incident.lane, incident.spentValue, incident.unit === 'usd_micros')} of{' '}
+            {formatRuleUnit(incident.lane, incident.capValue, incident.unit === 'usd_micros')}.
+          </span>
+        )}
+        action={(
           <>
+            {isCap ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={async () => {
+                  const cap = parseCapInput(raiseValue)
+                  if (cap === undefined) {
+                    setError('Enter a valid cap first. Token caps accept k or M suffixes.')
+                    return
+                  }
+                  setError(await resolveIncident(incident.id, 'raise', cap))
+                }}
+              >
+                Raise and resume
+              </Button>
+            ) : null}
+            {incident.status === 'open' ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={async () => setError(await resolveIncident(incident.id, 'ack'))}
+              >
+                Acknowledge
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={async () => setError(await resolveIncident(incident.id, 'resume'))}
+            >
+              {incident.atCap === 'pause' && isCap ? 'Resume as-is' : 'Dismiss'}
+            </Button>
+          </>
+        )}
+      />
+      {isCap || error ? (
+        <Field name={`budget-incident-${incident.id}-cap`} invalid={Boolean(error)}>
+          {isCap ? (
             <Input
               aria-label={`New cap for incident ${incident.id}`}
               className="w-36"
@@ -106,41 +170,10 @@ function IncidentActions({
               value={raiseValue}
               onChange={(event) => setRaiseValue(event.currentTarget.value)}
             />
-            <Button
-              type="button"
-              size="sm"
-              onClick={async () => {
-                const cap = parseCapInput(raiseValue)
-                if (cap === undefined) {
-                  setError('Enter a valid cap first. Token caps accept k or M suffixes.')
-                  return
-                }
-                setError(await resolveIncident(incident.id, 'raise', cap))
-              }}
-            >
-              Raise and resume
-            </Button>
-          </>
-        ) : null}
-        {incident.status === 'open' ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={async () => setError(await resolveIncident(incident.id, 'ack'))}
-          >
-            Acknowledge
-          </Button>
-        ) : null}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={async () => setError(await resolveIncident(incident.id, 'resume'))}
-        >
-          {incident.atCap === 'pause' && incident.kind === 'cap' ? 'Resume as-is' : 'Dismiss'}
-        </Button>
-      </div>
+          ) : null}
+          {error ? <FieldError match>{error}</FieldError> : null}
+        </Field>
+      ) : null}
     </div>
   )
 }
@@ -158,19 +191,10 @@ function IncidentBanners({
   return (
     <div className="flex min-w-0 flex-col gap-bakin-3">
       {live.map((incident) => (
-        <Banner
+        <IncidentBanner
           key={incident.id}
-          tone={incident.kind === 'cap' ? 'danger' : 'attention'}
-          announce={incident.status === 'open' ? 'assertive' : 'off'}
-          title={incident.kind === 'cap' ? 'Budget cap reached' : 'Budget warning'}
-          description={(
-            <span>
-              {incident.scopeId ? `${incident.scope} “${incident.scopeId}”` : 'Global'} · {incident.window} · {incident.lane} at{' '}
-              {formatRuleUnit(incident.lane, incident.spentValue, incident.unit === 'usd_micros')} of{' '}
-              {formatRuleUnit(incident.lane, incident.capValue, incident.unit === 'usd_micros')}.
-            </span>
-          )}
-          action={<IncidentActions incident={incident} resolveIncident={resolveIncident} />}
+          incident={incident}
+          resolveIncident={resolveIncident}
         />
       ))}
     </div>
@@ -226,10 +250,8 @@ function SpendTrend({
     <div className="@container/spend-trend min-w-0 border-t border-bakin-border-subtle pt-bakin-6">
       <div className="mb-bakin-4 flex min-w-0 flex-col items-start gap-bakin-3 @2xl/spend-trend:flex-row @2xl/spend-trend:items-center @2xl/spend-trend:justify-between">
         <div className="min-w-0">
-          <h3>
-            Spend over time
-          </h3>
-          <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+          <h3>Spend over time</h3>
+          <p className="mt-bakin-1 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
             One unit per view keeps estimated dollars distinct from subscription-plan usage.
           </p>
         </div>
@@ -241,18 +263,25 @@ function SpendTrend({
           idPrefix="spend-trend"
         />
       </div>
-      <AreaChart
-        data={chartData}
-        series={[{
-          key: seriesKey,
-          label: metric === 'cost' ? 'Estimated cost' : 'Subscription tokens',
-        }]}
-        label={chartLabel}
-        description={`${chartLabel} across the selected ${spend.window} window.`}
-        height={160}
-        formatValue={metric === 'cost' ? formatUsd : formatTokens}
-        emptyLabel="No spend history is available in this window."
-      />
+      <div
+        id={`spend-trend-panel-${metric}`}
+        role="tabpanel"
+        aria-labelledby={`spend-trend-tab-${metric}`}
+        className="min-w-0"
+      >
+        <AreaChart
+          data={chartData}
+          series={[{
+            key: seriesKey,
+            label: metric === 'cost' ? 'Estimated cost' : 'Subscription tokens',
+          }]}
+          label={chartLabel}
+          description={`${chartLabel} across the selected ${spend.window} window.`}
+          height={160}
+          formatValue={metric === 'cost' ? formatUsd : formatTokens}
+          emptyLabel="No spend history is available in this window."
+        />
+      </div>
     </div>
   )
 }
@@ -280,10 +309,8 @@ function SpendOverview({
   return (
     <Section spacing="compact" aria-label="Spending overview">
       <Stack gap="dense">
-        <h2>
-          Spending overview
-        </h2>
-        <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+        <h2>Spending overview</h2>
+        <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
           Costs are estimates from recorded token usage. Cached-token discounts may make provider invoices slightly lower.
         </p>
       </Stack>
@@ -353,7 +380,7 @@ export function SpendTab({
         <Banner
           tone="danger"
           announce="assertive"
-          title="Budget settings could not be updated"
+          title="Budget information could not be loaded or updated"
           description={m.budgetError}
         />
       ) : null}

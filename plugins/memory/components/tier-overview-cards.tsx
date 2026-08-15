@@ -17,8 +17,8 @@ import {
   Moon,
 } from 'lucide-react'
 import { StatGroup, StatTile } from '@makinbakin/sdk/patterns'
-import { Skeleton, SystemState } from '@makinbakin/sdk/ui'
-import { useJsonFetch } from '@makinbakin/sdk/hooks'
+import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import { usePluginJsonFetch } from '@makinbakin/sdk/hooks'
 
 const TIERS = [
   { key: 'session', label: 'Sessions', icon: MessagesSquare },
@@ -41,22 +41,29 @@ interface StatusResponse {
 }
 
 export function TierOverviewCards({ includeSystemLogs = false }: { includeSystemLogs?: boolean }) {
-  const { data, error } = useJsonFetch<StatusResponse>('/api/plugins/memory/status')
+  // The status route counts rows per tier, so it gets an explicit deadline
+  // instead of leaving the skeletons up forever behind a stalled engine.
+  const { data, error, loading, refresh } = usePluginJsonFetch<StatusResponse>(
+    'memory',
+    'status',
+    { timeoutMs: 15_000 },
+  )
   const visibleTiers = includeSystemLogs ? [...TIERS, ...SYSTEM_LOG_TIERS] : TIERS
 
   if (error) {
     return (
       <SystemState
         kind="error"
-        recovery="unavailable"
+        recovery="available"
         scope="inline"
         title="Memory totals could not be loaded"
         description={error}
+        action={<Button variant="outline" size="sm" onClick={refresh}>Try again</Button>}
       />
     )
   }
 
-  if (!data) {
+  if (loading || !data) {
     return (
       <StatGroup label="Memory totals" aria-busy="true">
         {visibleTiers.map((tier) => (

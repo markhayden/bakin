@@ -4,24 +4,49 @@
   "title": "Bakin legacy UI migration ratchet",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "generatedBy", "scope", "rules", "summary", "entries"],
+  "required": [
+    "schemaVersion",
+    "generatedBy",
+    "scope",
+    "rules",
+    "summary",
+    "entries"
+  ],
   "properties": {
-    "schemaVersion": { "const": 1 },
-    "generatedBy": { "const": "bun run ui:legacy-styles:generate" },
+    "schemaVersion": {
+      "const": 1
+    },
+    "generatedBy": {
+      "const": "bun run ui:legacy-styles:generate"
+    },
     "scope": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode", "repositories", "compatibilityMatrix"],
+      "required": [
+        "mode",
+        "repositories",
+        "compatibilityMatrix"
+      ],
       "properties": {
-        "mode": { "const": "official" },
-        "repositories": { "const": ["bakin", "bakin-bits-official"] },
-        "compatibilityMatrix": { "const": "design-system/compatibility.json" }
+        "mode": {
+          "const": "official"
+        },
+        "repositories": {
+          "const": [
+            "bakin",
+            "bakin-bits-official"
+          ]
+        },
+        "compatibilityMatrix": {
+          "const": "design-system/compatibility.json"
+        }
       }
     },
     "rules": {
       "const": [
         "raw-palette",
         "arbitrary-size",
+        "raw-scale",
         "raw-control",
         "inline-style",
         "generic-token",
@@ -32,15 +57,25 @@
     "summary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["paths", "totals"],
+      "required": [
+        "paths",
+        "totals"
+      ],
       "properties": {
-        "paths": { "type": "integer", "minimum": 0 },
-        "totals": { "$ref": "#/definitions/counts" }
+        "paths": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totals": {
+          "$ref": "#/definitions/counts"
+        }
       }
     },
     "entries": {
       "type": "array",
-      "items": { "$ref": "#/definitions/entry" }
+      "items": {
+        "$ref": "#/definitions/entry"
+      }
     }
   },
   "definitions": {
@@ -48,23 +83,65 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "raw-palette": { "type": "integer", "minimum": 0 },
-        "arbitrary-size": { "type": "integer", "minimum": 0 },
-        "raw-control": { "type": "integer", "minimum": 0 },
-        "inline-style": { "type": "integer", "minimum": 0 },
-        "generic-token": { "type": "integer", "minimum": 0 },
-        "unscoped-css": { "type": "integer", "minimum": 0 },
-        "private-import": { "type": "integer", "minimum": 0 }
+        "raw-palette": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "arbitrary-size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "raw-scale": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "raw-control": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inline-style": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "generic-token": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unscoped-css": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "private-import": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "owner": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repository", "area"],
+      "required": [
+        "repository",
+        "area"
+      ],
       "properties": {
-        "repository": { "enum": ["bakin", "bakin-bits-official"] },
-        "area": { "enum": ["host", "sdk", "plugin"] },
-        "pluginId": { "type": "string", "minLength": 1 }
+        "repository": {
+          "enum": [
+            "bakin",
+            "bakin-bits-official"
+          ]
+        },
+        "area": {
+          "enum": [
+            "host",
+            "sdk",
+            "plugin"
+          ]
+        },
+        "pluginId": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "entry": {
@@ -81,10 +158,24 @@
         "allowances"
       ],
       "properties": {
-        "path": { "type": "string", "minLength": 1, "not": { "pattern": "^(?:/|[A-Za-z]:\\\\|\\.\\./)" } },
-        "owner": { "$ref": "#/definitions/owner" },
-        "censusEntryId": { "type": "string", "minLength": 1 },
-        "migrationTask": { "type": "string", "pattern": "^T[0-9]+[a-z]?(?:-T?[0-9]+[a-z]?)?$" },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "not": {
+            "pattern": "^(?:/|[A-Za-z]:\\\\|\\.\\./)"
+          }
+        },
+        "owner": {
+          "$ref": "#/definitions/owner"
+        },
+        "censusEntryId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "migrationTask": {
+          "type": "string",
+          "pattern": "^T[0-9]+[a-z]?(?:-T?[0-9]+[a-z]?)?$"
+        },
         "archetype": {
           "enum": [
             "shell",
@@ -99,9 +190,18 @@
             "plugin-contract"
           ]
         },
-        "target": { "type": "string", "minLength": 1 },
-        "status": { "const": "legacy-allowed" },
-        "allowances": { "type": "object", "$ref": "#/definitions/counts", "minProperties": 1 }
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "const": "legacy-allowed"
+        },
+        "allowances": {
+          "type": "object",
+          "$ref": "#/definitions/counts",
+          "minProperties": 1
+        }
       }
     }
   }

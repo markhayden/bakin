@@ -55,7 +55,9 @@ function row(overrides: Partial<SearchResult> & { tier?: string; agent?: string;
       agent,
       title,
       snippet: rest.fields?.snippet ?? 'Short snippet of content.',
-      updated_at: rest.fields?.updated_at ?? '2026-04-17T10:00:00.000Z',
+      // Epoch ms — matches lib/types.ts `updatedAt: z.number()`. A string here
+      // masked a dead column and a no-op sort.
+      updated_at: rest.fields?.updated_at ?? Date.parse('2026-04-17T10:00:00.000Z'),
       ...(rest.fields ?? {}),
     },
   }
@@ -145,10 +147,10 @@ describe('MemorySearchResults', () => {
 
     const rows = document.querySelectorAll('[data-memory-result]')
     expect(rows).toHaveLength(2)
+    // Results are comparable records, so they ride the kit DataTable now —
+    // the small-Card chrome they used to sit in is intentionally gone.
     for (const result of rows) {
-      const card = result.closest('[data-slot="card"]')
-      expect(card).not.toBeNull()
-      expect(card?.getAttribute('data-size')).toBe('sm')
+      expect(result.closest('[data-slot="table-row"]')).not.toBeNull()
     }
   })
 
@@ -205,8 +207,9 @@ describe('MemorySearchResults', () => {
         onSelect={onSelect}
       />,
     )
-    const resultButton = screen.getByRole('button', { name: /open clickable/i })
-    fireEvent.click(resultButton)
+    // DataTable puts the activation affordance on the row itself.
+    const resultRow = screen.getByLabelText(/open clickable/i)
+    fireEvent.click(resultRow)
     expect(onSelect).toHaveBeenCalledTimes(1)
     expect(onSelect).toHaveBeenCalledWith(target)
   })
@@ -221,7 +224,7 @@ describe('MemorySearchResults', () => {
       />,
     )
     expect(screen.queryByRole('button', { name: /open read only/i })).toBeNull()
-    expect(document.querySelector('[data-memory-result]')?.tagName).toBe('DIV')
+    expect(document.querySelector('[data-memory-result]')?.tagName).toBe('TR')
   })
 
   it('falls back gracefully when fields are missing', () => {

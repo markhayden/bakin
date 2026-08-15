@@ -118,14 +118,12 @@ export function AliasesTab({
     <>
       <div className="grid min-w-0 gap-bakin-2">
         <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-bakin-2">
-          <h2>
-            Configured aliases
-          </h2>
+          <h2>Configured aliases</h2>
           <span className="text-bakin-typography-size-meta text-bakin-text-muted">
             {entries.length} {entries.length === 1 ? 'alias' : 'aliases'}
           </span>
         </div>
-        <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+        <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
           Aliases give agents and routing rules a stable short name even when the underlying model changes.
         </p>
       </div>
@@ -156,10 +154,10 @@ export function AliasesTab({
                     size="md"
                   />
                   <div className="min-w-0">
-                    <p className="m-0 truncate text-bakin-typography-size-body text-bakin-text-primary">
+                    <p className="truncate text-bakin-typography-size-body text-bakin-text-primary">
                       {model?.name ?? 'Model not in the current catalog'}
                     </p>
-                    <p className="m-0 mt-bakin-1 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                    <p className="mt-bakin-1 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
                       {target}
                     </p>
                   </div>
