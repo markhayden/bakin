@@ -164,8 +164,14 @@ export const StatusRailExpansionNesting = {
     await expect(trigger).toHaveAttribute('aria-expanded', 'true')
     await expect(canvas.getByText(/salvaged output was saved/)).toBeVisible()
 
-    // Non-color: the rail tone is always paired with visible status text.
-    await expect(canvas.getByText('Failed')).toBeVisible()
+    // Non-color: every rail tone is paired with visible status text. Two
+    // entries carry the danger tone (one expandable, one with a note), so
+    // assert on the set rather than a single match.
+    const failed = canvas.getAllByText('Failed')
+    await expect(failed).toHaveLength(2)
+    for (const badge of failed) await expect(badge).toBeVisible()
     await expect(canvas.getByText('Completed')).toBeVisible()
+    // The note states the reason in text, not by rule color alone.
+    await expect(canvas.getByText(/Failure reason:\s*session-death/)).toBeVisible()
   },
 } satisfies Story
