@@ -10,7 +10,7 @@
     },
     "semantic": {
       "visibility": "public",
-      "tokens": 61
+      "tokens": 65
     },
     "component": {
       "visibility": "internal",
@@ -1762,6 +1762,118 @@
         "against": "semantic.color.text.primary",
         "role": "normal-text",
         "ratio": 17.5,
+        "minimum": 4.5,
+        "standard": "WCAG AA normal text",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.syntax.key",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Object keys and property names in rendered code and data.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/syntax/key",
+      "references": [
+        "reference.color.data.violet"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.564706,
+          0.521569,
+          0.913725
+        ],
+        "hex": "#9085e9"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "normal-text",
+        "ratio": 6.17,
+        "minimum": 4.5,
+        "standard": "WCAG AA normal text",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.syntax.literal",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Keyword literals (true, false, null) in rendered code and data.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/syntax/literal",
+      "references": [
+        "reference.color.data.red"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.901961,
+          0.403922,
+          0.403922
+        ],
+        "hex": "#e66767"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "normal-text",
+        "ratio": 5.97,
+        "minimum": 4.5,
+        "standard": "WCAG AA normal text",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.syntax.number",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Numeric literals in rendered code and data.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/syntax/number",
+      "references": [
+        "reference.color.data.yellow"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.788235,
+          0.521569,
+          0
+        ],
+        "hex": "#c98500"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "normal-text",
+        "ratio": 6.28,
+        "minimum": 4.5,
+        "standard": "WCAG AA normal text",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.syntax.string",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "String literals in rendered code and data.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/syntax/string",
+      "references": [
+        "reference.color.data.aqua"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.098039,
+          0.619608,
+          0.439216
+        ],
+        "hex": "#199e70"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "normal-text",
+        "ratio": 5.66,
         "minimum": 4.5,
         "standard": "WCAG AA normal text",
         "status": "pass"

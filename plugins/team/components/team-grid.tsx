@@ -44,6 +44,9 @@ import {
   DialogTitle,
   DropdownMenuItem,
   SystemState,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from '@makinbakin/sdk/ui'
 import { useRuntimeStatus } from '@makinbakin/sdk/hooks'
 import { useAgentStore, useMainAgentId, usePackageState, usePluginJsonFetch } from '@makinbakin/sdk/hooks'
@@ -140,15 +143,26 @@ export function AgentCardNode({ data }: NodeProps) {
             <PackageStateBadge state={pkgState.state} compact />
           )}
         </div>
-        <div className="line-clamp-3 w-full text-bakin-typography-size-meta leading-snug text-bakin-text-muted">
-          {agent.role || 'No role assigned'}
-        </div>
+        {/* Clipped text: a tooltip is the affordance, not a native title —
+            dropping it entirely made the full role unreadable for everyone. */}
+        <Tooltip>
+          <TooltipTrigger
+            render={<div />}
+            className="line-clamp-3 w-full text-bakin-typography-size-meta leading-snug text-bakin-text-muted"
+          >
+            {agent.role || 'No role assigned'}
+          </TooltipTrigger>
+          <TooltipContent>{agent.role || 'No role assigned'}</TooltipContent>
+        </Tooltip>
       </div>
       <CardFooter
         variant="meta"
         className="relative justify-center px-bakin-3 pb-bakin-2 pt-bakin-2 font-bakin-typography-family-mono"
       >
-        <span className="min-w-0 truncate">{agent.model}</span>
+        <Tooltip>
+          <TooltipTrigger render={<span />} className="min-w-0 truncate">{agent.model}</TooltipTrigger>
+          <TooltipContent>{agent.model}</TooltipContent>
+        </Tooltip>
         <Handle type="source" position={Position.Bottom} className="!bg-bakin-border-subtle" />
       </CardFooter>
     </Card>

@@ -28,8 +28,6 @@ export interface KeyValueProps extends Omit<React.ComponentPropsWithoutRef<'dl'>
    * collapses to stacked pairs on narrow containers.
    */
   layout?: KeyValueLayout
-  /** Separating rules between rows. `rows` only; ignored by other layouts. */
-  divider?: boolean
 }
 
 const VALUE_BASE = 'm-0 min-w-0 text-bakin-text-primary'
@@ -45,11 +43,10 @@ const VALUE_BASE = 'm-0 min-w-0 text-bakin-text-primary'
 export function KeyValue({
   items,
   layout = 'rows',
-  divider = true,
   className,
   ...props
 }: KeyValueProps) {
-  return (
+  const list = (
     <dl
       {...props}
       data-slot="key-value"
@@ -58,9 +55,12 @@ export function KeyValue({
         'm-0 min-w-0 text-[length:var(--bakin-typography-size-meta)]',
         layout === 'inline' && 'flex flex-wrap items-baseline gap-x-bakin-4 gap-y-bakin-1',
         layout === 'rows' && 'grid gap-y-bakin-1',
-        layout === 'rows' && divider && 'divide-y divide-bakin-border-subtle',
+        layout === 'rows' && 'divide-y divide-bakin-border-subtle',
+        // The container query must resolve against an ANCESTOR: an element can
+        // never match a container it declares itself, so naming the container
+        // here and querying it here left `columns` permanently single-column.
+        // The wrapper below owns the container; this only reads it.
         layout === 'columns' && 'grid gap-x-bakin-4 gap-y-bakin-1 @sm/key-value:grid-cols-[max-content_minmax(0,1fr)]',
-        layout === 'columns' && '@container/key-value',
         className,
       )}
     >
@@ -90,7 +90,7 @@ export function KeyValue({
               'flex min-w-0 gap-bakin-2',
               layout === 'inline' && 'items-baseline',
               layout === 'rows' && 'items-baseline justify-between',
-              layout === 'rows' && divider && 'pt-bakin-1 first:pt-0',
+              layout === 'rows' && 'pt-bakin-1 first:pt-0',
             )}
           >
             <dt className="shrink-0 text-bakin-text-muted">{item.label}</dt>
@@ -100,4 +100,10 @@ export function KeyValue({
       })}
     </dl>
   )
+
+  // `columns` needs an ancestor container to size against; the other layouts
+  // are flow-based and must not introduce a containment boundary.
+  return layout === 'columns'
+    ? <div data-slot="key-value-container" className="@container/key-value min-w-0">{list}</div>
+    : list
 }

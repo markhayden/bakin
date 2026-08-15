@@ -340,7 +340,8 @@ export function TeamDetail({ teamId }: { teamId: string }) {
                     : null
 
                 return (
-                  <ListRow key={member.id} className="flex min-w-0 items-center gap-bakin-3">
+                  <ListRow key={member.id} className="grid min-w-0 gap-bakin-1">
+                    <div className="flex min-w-0 items-center gap-bakin-3">
                     <AgentAvatar
                       agent={{ id: member.id, name: member.name, initials: member.emoji }}
                       size="sm"
@@ -352,8 +353,14 @@ export function TeamDetail({ teamId }: { teamId: string }) {
                     {status ? (
                       <StatusBadge tone={status.tone} variant="solid" size="xs">
                         {status.label}
-                        {result?.error ? <span className="sr-only"> — {result.error}</span> : null}
                       </StatusBadge>
+                    ) : null}
+                    </div>
+                    {/* A failure reason no user can see is not reported. */}
+                    {result?.error ? (
+                      <p className="m-0 text-bakin-typography-size-meta text-bakin-signal-danger">
+                        {result.error}
+                      </p>
                     ) : null}
                   </ListRow>
                 )

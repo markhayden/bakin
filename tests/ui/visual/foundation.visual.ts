@@ -755,6 +755,8 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=lists-calendarnav--range-shapes&viewMode=story', png: 'lists-calendar-nav.png', role: 'group' as const, name: 'Week navigation' },
   { url: '/iframe.html?id=lists-nodecard--shapes-and-states&viewMode=story', png: 'lists-node-card.png', text: 'Owner sign-off' },
   { url: '/iframe.html?id=lists-keyvalue--canonical-usage&viewMode=story', png: 'lists-key-value.png', text: 'claude-sonnet-4' },
+  { url: '/iframe.html?id=lists-keyvalue--layouts-and-value-kinds&viewMode=story', png: 'lists-key-value-layouts.png', text: 'One pair contract, three densities' },
+  { url: '/iframe.html?id=content-codeblock--canonical-usage&viewMode=story', png: 'content-code-block.png', text: '"type"' },
   { url: '/iframe.html?id=primitives-copybutton--canonical-usage&viewMode=story', png: 'primitives-copy-button.png', role: 'button' as const, name: 'Copy command' },
   { url: '/iframe.html?id=navigation-navlist--selection-and-keyboard&viewMode=story', png: 'navigation-nav-list.png', role: 'navigation' as const, name: 'Plugin settings' },
   { url: '/iframe.html?id=agents-agentavatar--sizes-and-presence&viewMode=story', png: 'agents-agent-avatar.png', text: 'Keep identity recognizable at every density' },

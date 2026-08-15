@@ -6,6 +6,8 @@
  */
 
 /** Render safe GFM, code, media, and visibly identified Bakin-managed sections. */
+export { CodeBlock } from '@bakin/ui/content'
+export type { CodeBlockLanguage, CodeBlockProps } from '@bakin/ui/content'
 export { MarkdownContent } from './markdown-content'
 export type { MarkdownContentProps, MarkdownInternalLinkProps } from './markdown-content'
 

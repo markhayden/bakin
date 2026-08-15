@@ -1,7 +1,7 @@
 'use client'
 
 import { MessageCircle } from 'lucide-react'
-import { MarkdownContent } from '@makinbakin/sdk/content'
+import { CodeBlock, MarkdownContent } from '@makinbakin/sdk/content'
 import { Panel, Section } from '@makinbakin/sdk/layout'
 import { Pagination, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
@@ -85,9 +85,7 @@ function MessageRow({ message, index }: { message: SessionMessage; index: number
       </header>
 
       {readableText === null ? (
-        <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded-bakin-control bg-bakin-canvas-default p-bakin-3 font-bakin-typography-family-mono text-bakin-typography-size-meta leading-relaxed text-bakin-text-primary">
-          {message.content}
-        </pre>
+        <CodeBlock code={message.content} language="json" label="Message payload" wrap copyable />
       ) : (
         <div className="grid min-w-0 gap-bakin-3">
           <MarkdownContent content={readableText} />
@@ -96,9 +94,14 @@ function MessageRow({ message, index }: { message: SessionMessage; index: number
               <summary className="cursor-pointer text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-muted">
                 Structured message
               </summary>
-              <pre className="m-0 mt-bakin-2 overflow-x-auto whitespace-pre-wrap break-words rounded-bakin-control bg-bakin-canvas-default p-bakin-3 font-bakin-typography-family-mono text-bakin-typography-size-meta leading-relaxed text-bakin-text-primary">
-                {message.content}
-              </pre>
+              <CodeBlock
+                className="mt-bakin-2"
+                code={message.content}
+                language="json"
+                label="Structured message"
+                wrap
+                copyable
+              />
             </details>
           ) : null}
         </div>

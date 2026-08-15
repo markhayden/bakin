@@ -114,6 +114,7 @@ export function ActivityRow({ entry }: { entry: UsageEntry }) {
       </div>
 
       <DisclosurePanel
+        variant="ghost"
         summary="Technical details"
         className="mt-bakin-3 text-bakin-typography-size-meta text-bakin-text-muted"
       >

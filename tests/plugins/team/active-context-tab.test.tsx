@@ -5,7 +5,7 @@
  * session JSONL parsed into a message stream.
  *
  * Covers: loading, error, empty, populated, role badges per message,
- * truncation banner, bounded turn records, JSON content rendered as <pre>,
+ * truncation banner, bounded turn records, JSON content in the kit CodeBlock,
  * and plain or text-block content rendered via MarkdownContent.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -182,10 +182,14 @@ describe('ActiveContextTab', () => {
     await waitFor(() => expect(screen.getByTestId('markdown')).toBeDefined())
     expect(screen.getByTestId('markdown').textContent).toBe('Drafted the outline.')
     expect(screen.getByText('Structured message')).toBeDefined()
-    expect(screen.getByText(/"type": "text"/)).toBeDefined()
+    // Syntax highlighting splits JSON into per-token spans, so no single
+    // element holds a key/value pair — assert on the code block's own text.
+    const structured = document.querySelector('[data-slot="code-block"]')
+    expect(structured).not.toBeNull()
+    expect(structured!.textContent).toContain('"type": "text"')
   })
 
-  it('renders tool/JSON content as a <pre> code block, not markdown', async () => {
+  it('renders tool/JSON content in the kit code block, not markdown', async () => {
     setupFetch({
       ok: true,
       transcript: {
@@ -199,7 +203,11 @@ describe('ActiveContextTab', () => {
     await act(async () => {
       render(<ActiveContextTab agentId="pixel" />)
     })
-    await waitFor(() => expect(screen.getByText(/"ok": true/)).toBeDefined())
+    await waitFor(() => {
+      const block = document.querySelector('[data-slot="code-block"]')
+      expect(block).not.toBeNull()
+      expect(block!.textContent).toContain('"ok": true')
+    })
     // Markdown stub should not have been used for tool content
     expect(screen.queryByTestId('markdown')).toBeNull()
   })

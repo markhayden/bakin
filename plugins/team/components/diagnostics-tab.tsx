@@ -42,6 +42,9 @@ import {
   ProgressValue,
   Skeleton,
   SystemState,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from '@makinbakin/sdk/ui'
 import { formatDuration } from '@makinbakin/sdk/utils'
 import type { HealthReport } from '@makinbakin/sdk/types'
@@ -854,7 +857,10 @@ function TimelinePanel({ agentId }: { agentId: string }) {
         <Alert tone="accent">
           <AlertTitle>Live activity</AlertTitle>
           <AlertDescription>
-            <span className="block truncate">{live.label}</span>
+            <Tooltip>
+              <TooltipTrigger render={<span />} className="block truncate">{live.label}</TooltipTrigger>
+              <TooltipContent>{live.label}</TooltipContent>
+            </Tooltip>
           </AlertDescription>
         </Alert>
       )}
