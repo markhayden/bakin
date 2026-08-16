@@ -114,6 +114,61 @@ export function AliasesTab({
     />
   ) : undefined
 
+  const createAliasCard = (
+        <Card>
+          <CardHeader>
+            <CardTitle>Create alias</CardTitle>
+            <CardDescription>
+              Choose a short, memorable name and the model it should resolve to.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Form<Record<string, string>>
+              aria-label="Create model alias"
+              busy={aliasBusy}
+              onFormSubmit={addAlias}
+            >
+              <div className="grid min-w-0 gap-bakin-4 @lg/form:grid-cols-2">
+                <Field name="aliasName">
+                  <FieldLabel>Alias name</FieldLabel>
+                  <FieldDescription>Use a short name such as fast, sonnet, or deep.</FieldDescription>
+                  <FieldControl
+                    required
+                    value={newAliasName}
+                    onChange={(event) => setNewAliasName(event.target.value)}
+                    placeholder="e.g. opus"
+                  />
+                </Field>
+
+                <Field name="targetModel">
+                  <FieldLabel htmlFor="alias-target-model">Target model</FieldLabel>
+                  <FieldDescription>The model this alias selects wherever the name is used.</FieldDescription>
+                  <ModelSelect
+                    id="alias-target-model"
+                    name="targetModel"
+                    ariaLabel="Target model"
+                    required
+                    value={newAliasTarget}
+                    onValueChange={setNewAliasTarget}
+                    models={modelOptions}
+                    disabled={!modelsReady || aliasBusy}
+                  />
+                </Field>
+              </div>
+
+              <FormActions>
+                <SubmitButton
+                  busyLabel="Adding alias…"
+                  disabled={!newAliasName.trim() || !newAliasTarget.trim() || !modelsReady}
+                >
+                  Add alias
+                </SubmitButton>
+              </FormActions>
+            </Form>
+          </CardContent>
+        </Card>
+  )
+
   return (
     <>
       <div className="grid min-w-0 gap-bakin-2">
@@ -128,7 +183,9 @@ export function AliasesTab({
         </p>
       </div>
 
-      <PageBody label="Configured model aliases" busy={aliasBusy} state={state}>
+      <PageBody label="Configured model aliases" busy={aliasBusy}>
+        {state ?? (
+        <>
         <ListRows
           aria-label="Configured model aliases"
           variant="bordered"
@@ -194,6 +251,10 @@ export function AliasesTab({
             onPageChange('1')
           }}
         />
+        </>
+        )}
+
+        {createAliasCard}
       </PageBody>
 
       <ConfirmDialog
@@ -214,58 +275,6 @@ export function AliasesTab({
         onCancel={() => setPendingDelete(null)}
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Create alias</CardTitle>
-          <CardDescription>
-            Choose a short, memorable name and the model it should resolve to.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form<Record<string, string>>
-            aria-label="Create model alias"
-            busy={aliasBusy}
-            onFormSubmit={addAlias}
-          >
-            <div className="grid min-w-0 gap-bakin-4 @lg/form:grid-cols-2">
-              <Field name="aliasName">
-                <FieldLabel>Alias name</FieldLabel>
-                <FieldDescription>Use a short name such as fast, sonnet, or deep.</FieldDescription>
-                <FieldControl
-                  required
-                  value={newAliasName}
-                  onChange={(event) => setNewAliasName(event.target.value)}
-                  placeholder="e.g. opus"
-                />
-              </Field>
-
-              <Field name="targetModel">
-                <FieldLabel htmlFor="alias-target-model">Target model</FieldLabel>
-                <FieldDescription>The model this alias selects wherever the name is used.</FieldDescription>
-                <ModelSelect
-                  id="alias-target-model"
-                  name="targetModel"
-                  ariaLabel="Target model"
-                  required
-                  value={newAliasTarget}
-                  onValueChange={setNewAliasTarget}
-                  models={modelOptions}
-                  disabled={!modelsReady || aliasBusy}
-                />
-              </Field>
-            </div>
-
-            <FormActions>
-              <SubmitButton
-                busyLabel="Adding alias…"
-                disabled={!newAliasName.trim() || !newAliasTarget.trim() || !modelsReady}
-              >
-                Add alias
-              </SubmitButton>
-            </FormActions>
-          </Form>
-        </CardContent>
-      </Card>
     </>
   )
 }

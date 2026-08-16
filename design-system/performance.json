@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 206508,
+    "canonicalBytes": 207480,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -264,13 +264,13 @@
       "repository": "bakin",
       "pluginId": "memory",
       "path": "plugins/memory/dist/client.js",
-      "bytes": 32380
+      "bytes": 32271
     },
     {
       "repository": "bakin",
       "pluginId": "models",
       "path": "plugins/models/dist/client.js",
-      "bytes": 77344
+      "bytes": 77365
     },
     {
       "repository": "bakin",

@@ -180,7 +180,7 @@ export function MemoryCleanup() {
           recovery="unavailable"
           scope="inline"
           align="left"
-          title="Cleanup request failed"
+          title="Scrub request failed"
           description={error}
         />
       )}
@@ -289,7 +289,7 @@ export function MemoryCleanup() {
         <Panel padding="compact">
           <Stack gap="item">
             <SegmentedControl
-              ariaLabel="Cleanup action"
+              ariaLabel="Scrub action"
               size="sm"
               options={[
                 { value: 'replace', label: 'Rename' },
@@ -336,7 +336,7 @@ export function MemoryCleanup() {
       {dispatch && (
         <Panel padding="compact">
           <Stack gap="dense">
-            <h3>Dispatched {dispatch.dispatched.length} cleanup task(s)</h3>
+            <h3>Dispatched {dispatch.dispatched.length} scrub task(s)</h3>
             {dispatch.dispatched.map((d) => (
               <p key={d.agent} className="text-bakin-typography-size-meta text-bakin-text-muted">
                 {d.agent} → <PluginLink to="/tasks">task {d.taskId}</PluginLink> ({d.hitCount} file(s){d.managedCount ? `, ${d.managedCount} pinned` : ''})

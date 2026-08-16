@@ -37,7 +37,6 @@ import {
   Play,
   Sparkles,
   Microscope,
-  Eraser,
 } from 'lucide-react'
 import {
   AgentAvatar,
@@ -54,6 +53,8 @@ import {
   type AgentFilterOption,
   type FacetOption,
   type DataTableSort,
+  SegmentedControl,
+  type SegmentedControlOption,
 } from '@makinbakin/sdk/patterns'
 import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
 import { Badge, Banner, Button, Switch } from '@makinbakin/sdk/ui'
@@ -144,6 +145,11 @@ function useRecentFeed(
   return { results, loading, error }
 }
 
+const MEMORY_VIEWS: ReadonlyArray<SegmentedControlOption<'browse' | 'scrub'>> = [
+  { value: 'browse', label: 'Browse' },
+  { value: 'scrub', label: 'Scrub' },
+]
+
 function MemoryShellInner() {
   const [query, setQuery] = useQueryState('q', '')
   const [tiers, setTiers] = useQueryArrayState('tier')
@@ -152,7 +158,9 @@ function MemoryShellInner() {
   const [debugParam, setDebugParam] = useQueryState('debug', '')
   const [mode, setMode] = useQueryState('mode', '')
   const [pageParam, setPageParam] = useQueryState('memoryPage', '1')
-  const cleanupMode = mode === 'cleanup'
+  // 'browse' is the default view; 'scrub' is the find-and-remove workflow.
+  // (The backing API routes are still named `cleanup` — this is UI language.)
+  const scrubMode = mode === 'scrub'
   const debug = debugParam === '1'
 
   const searchActive = query.trim().length > 0
@@ -264,7 +272,8 @@ function MemoryShellInner() {
       : { field, dir: field === 'updated' ? 'desc' : 'asc' })
   }, [])
 
-  const pageSize = 8
+  // Memory rows are dense one-liners; 8 forced paging almost immediately.
+  const pageSize = 25
   const showAll = pageParam === 'all'
   const requestedPage = Number.parseInt(pageParam, 10)
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize))
@@ -392,9 +401,11 @@ function MemoryShellInner() {
       <PageHeader
         title="Memory"
         description="Search what your agents remember, inspect saved context, and clean up stale or unnecessary records."
-        meta={<Badge size="xs" variant="outline">{visibleResults.length} shown</Badge>}
+        // Both belong to Browse: Scrub has its own find field, and a row count
+        // for a list it isn't showing is just noise.
+        meta={scrubMode ? undefined : <Badge size="xs" variant="outline">{visibleResults.length} shown</Badge>}
         controlsLabel="Memory search"
-        controls={(
+        controls={scrubMode ? undefined : (
           <SearchInput
             align="end"
             label="Memory search"
@@ -405,20 +416,20 @@ function MemoryShellInner() {
             mobileFullWidth
           />
         )}
-        actionsLabel="Memory actions"
+        actionsLabel="Memory views"
         actions={(
-          <Button
-            variant={cleanupMode ? 'secondary' : 'outline'}
-            onClick={() => setMode(cleanupMode ? '' : 'cleanup')}
-          >
-            <Eraser />
-            {cleanupMode ? 'Close cleanup' : 'Cleanup'}
-          </Button>
+          <SegmentedControl
+            options={MEMORY_VIEWS}
+            value={scrubMode ? 'scrub' : 'browse'}
+            onValueChange={(next) => setMode(next === 'scrub' ? 'scrub' : '')}
+            ariaLabel="Memory view"
+            idPrefix="memory-view"
+          />
         )}
       />
 
-      {cleanupMode ? (
-        <PageBody label="Memory cleanup">
+      {scrubMode ? (
+        <PageBody label="Memory scrub">
           <MemoryCleanup />
         </PageBody>
       ) : (
