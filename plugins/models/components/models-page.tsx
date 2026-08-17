@@ -67,7 +67,7 @@ export function ModelsPage() {
 
   const headerControls = tab === 'available' ? (
     <SearchInput
-              align="end"
+      align="end"
       label="Search available models"
       value={modelQuery}
       onValueChange={updateModelQuery}
@@ -76,7 +76,7 @@ export function ModelsPage() {
     />
   ) : tab === 'aliases' ? (
     <SearchInput
-              align="end"
+      align="end"
       label="Search aliases"
       value={aliasQuery}
       onValueChange={updateAliasQuery}

@@ -590,9 +590,9 @@ describe('ModelsPage component', () => {
 
     const defaultRow = screen.getByText('Claude Sonnet 4.6').closest('[data-model-row]')
     expect(defaultRow?.getAttribute('data-default')).toBe('true')
-    // Selection is the kit Card contract, not a hand-rolled ring.
-    expect(defaultRow?.getAttribute('data-selected')).not.toBeNull()
-    expect(defaultRow?.className).toContain('data-[selected]:ring-1')
+    // The catalog is a DataTable now, so the default model is identified by its
+    // visible Status badge rather than the Card selection ring it used to carry.
+    expect(defaultRow?.textContent).toContain('Default')
   })
 
   it('uses the settings form composition for routing while preserving staged saves', async () => {

@@ -52,14 +52,13 @@ describe('MemoryDetailDrawer', () => {
     expect(screen.getByText(/approved prompt/)).toBeDefined()
     expect(document.querySelectorAll('[data-slot="drawer-section"]')).toHaveLength(3)
 
-    const factRows = document.querySelectorAll(
-      '[data-memory-record-details] [data-memory-record-detail]',
-    )
-    expect(factRows).toHaveLength(3)
-    for (const row of factRows) {
-      expect(row.className).toContain('border-t')
-      expect(row.className).toContain('py-bakin-3')
-    }
+    // Record facts are the kit KeyValue contract (columns layout), not a
+    // per-surface <dl> grid: label column beside its value, stacking narrow.
+    const facts = document.querySelector('[data-memory-record-details]')
+    expect(facts?.getAttribute('data-slot')).toBe('key-value')
+    expect(facts?.getAttribute('data-layout')).toBe('columns')
+    expect(facts?.querySelectorAll('dt')).toHaveLength(3)
+    expect(facts?.querySelectorAll('dd')).toHaveLength(3)
   })
 
   it('always exposes technical identifiers in the Index metadata section', () => {
@@ -77,8 +76,14 @@ describe('MemoryDetailDrawer', () => {
     expect(drawer.getByText('durable:321bfb6ddc36f4a6')).toBeDefined()
     expect(drawer.getByText(/chunkIndex/)).toBeDefined()
     expect(drawer.getByText('2.000')).toBeDefined()
-    expect(dialog.querySelector('[data-md-code] code.language-json')).not.toBeNull()
-    expect(dialog.querySelector('[data-md-code] .hljs-attr')).not.toBeNull()
-    expect(dialog.querySelector('[data-md-code] .hljs-number')).not.toBeNull()
+    // Raw metadata rides the kit CodeBlock — one code surface, tokenized by
+    // the component rather than a fabricated markdown fence.
+    const code = dialog.querySelector('[data-slot="code-block"][data-language="json"]')
+    expect(code).not.toBeNull()
+    expect(code?.querySelector('.text-bakin-syntax-key')).not.toBeNull()
+    expect(code?.querySelector('.text-bakin-syntax-number')).not.toBeNull()
+    // The identifiers a reader actually copies carry a copy action.
+    expect(drawer.getByRole('button', { name: 'Copy row ID' })).toBeDefined()
+    expect(drawer.getByRole('button', { name: 'Copy Raw metadata' })).toBeDefined()
   })
 })

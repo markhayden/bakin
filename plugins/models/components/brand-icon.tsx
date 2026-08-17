@@ -1,5 +1,7 @@
 'use client'
 
+import { cn } from '@makinbakin/sdk/utils'
+
 /**
  * Renders a brand logo for a known provider/model, with a first-letter
  * chip fallback for slugs we don't have icons for.
@@ -67,7 +69,7 @@ export function BrandIcon({ slug, fallbackText, fallbackColor, size = 'sm', clas
     return (
       <svg
         viewBox="0 0 24 24"
-        className={`${sizeClass[size]} shrink-0 ${className ?? ''}`}
+        className={cn(sizeClass[size], 'shrink-0', className)}
         fill="currentColor"
         role="img"
         aria-label={slug}
@@ -84,7 +86,7 @@ export function BrandIcon({ slug, fallbackText, fallbackColor, size = 'sm', clas
   return (
     <svg
       viewBox="0 0 24 24"
-      className={`${sizeClass[size]} shrink-0 ${className ?? ''}`}
+      className={cn(sizeClass[size], 'shrink-0', className)}
       role="img"
       aria-label={fallbackText ?? slug ?? 'Unknown provider'}
       data-brand-chip

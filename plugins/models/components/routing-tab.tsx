@@ -3,7 +3,14 @@
 import { useState } from 'react'
 import { Plus, Wand2, X } from 'lucide-react'
 import { Section, Stack } from '@makinbakin/sdk/layout'
-import { ConfirmDialog, ListRow, ListRows, ModelSelect } from '@makinbakin/sdk/patterns'
+import {
+  ConfirmDialog,
+  KeyValue,
+  type KeyValueItem,
+  ListRow,
+  ListRows,
+  ModelSelect,
+} from '@makinbakin/sdk/patterns'
 import {
   Button,
   Field,
@@ -16,6 +23,7 @@ import {
   SelectValue,
   SystemState,
 } from '@makinbakin/sdk/ui'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 
 import { WORK_CLASSES } from '../../../src/core/model-routing'
 import type { ModelsData } from './use-models-data'
@@ -27,6 +35,9 @@ interface RecommendPayload {
 
 // The full ordered ladder; the active runtime's declared support filters it.
 const ALL_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'] as const
+
+/** Deadline for the proposal pass — the dialog must never wait forever. */
+const RECOMMEND_TIMEOUT_MS = 15_000
 
 const DISPATCH_ROWS = WORK_CLASSES.filter((c) => c.kind === 'dispatch' && c.routable)
 const SYSTEM_ROWS = WORK_CLASSES.filter((c) => c.kind === 'system' && c.routable)
@@ -58,13 +69,22 @@ export function RoutingTab({ m }: { m: ModelsData }) {
   const openRecommend = async () => {
     setRecommendError(null)
     try {
-      const res = await fetch('/api/plugins/models/routing/recommend', { method: 'POST' })
+      // A proposal pass prices every routable class; without a deadline a wedged
+      // server leaves the dialog empty and the operator with no explanation.
+      const res = await pluginFetch('models', 'routing/recommend', {
+        method: 'POST',
+        signal: AbortSignal.timeout(RECOMMEND_TIMEOUT_MS),
+      })
       const data = await res.json() as RecommendPayload & { error?: string }
       if (!res.ok) throw new Error(data.error ?? `Recommend failed (${res.status})`)
       setRecommend(data)
     } catch (err) {
       setRecommend({ proposals: [], skipped: [] })
-      setRecommendError(err instanceof Error ? err.message : String(err))
+      setRecommendError(
+        err instanceof DOMException && err.name === 'TimeoutError'
+          ? `Recommending routes took longer than ${RECOMMEND_TIMEOUT_MS / 1000}s. Try again.`
+          : err instanceof Error ? err.message : String(err),
+      )
     }
   }
 
@@ -81,6 +101,25 @@ export function RoutingTab({ m }: { m: ModelsData }) {
       setRecommendBusy(false)
     }
   }
+
+  // One pair per proposed change, plus the classes the pass declined to touch —
+  // a skipped class stays visible so the operator sees why it kept its route.
+  const recommendItems: KeyValueItem[] = [
+    ...(recommend?.proposals ?? []).map((proposal) => ({
+      label: proposal.workClass,
+      mono: true,
+      value: (
+        <>
+          {proposal.model}
+          <span className="text-bakin-text-muted"> ({proposal.reason})</span>
+        </>
+      ),
+    })),
+    ...(recommend?.skipped ?? []).map((item) => ({
+      label: `Skipped ${item.workClass}`,
+      value: item.reason,
+    })),
+  ]
 
   // Only offer levels the active runtime honors (capability honesty). A
   // persisted-but-unsupported level still clamps at send time with audit
@@ -136,10 +175,8 @@ export function RoutingTab({ m }: { m: ModelsData }) {
             className="px-bakin-4 py-bakin-4"
           >
             <div className="min-w-0 @3xl/list-rows:self-center">
-              <h3 className="text-bakin-typography-size-body">
-                {workClass.label}
-              </h3>
-              <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+              <h3>{workClass.label}</h3>
+              <p className="mt-bakin-1 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
                 {workClass.description}
               </p>
             </div>
@@ -182,7 +219,7 @@ export function RoutingTab({ m }: { m: ModelsData }) {
   return (
     <div className="@container/routing flex min-w-0 flex-col gap-bakin-8">
       <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 @2xl/routing:flex-row @2xl/routing:items-start @2xl/routing:justify-between">
-        <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+        <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
           Choose a model and thinking level for each kind of work. Blank routes inherit the agent&apos;s model, while tag overrides take priority over the routes below. Interactive chat always keeps the operator&apos;s selected model.
         </p>
         <Button
@@ -192,7 +229,7 @@ export function RoutingTab({ m }: { m: ModelsData }) {
           className="w-full shrink-0 @2xl/routing:w-auto"
           onClick={() => void openRecommend()}
         >
-          <Wand2 className="size-4" />
+          <Wand2 className="size-bakin-4" />
           Apply recommended routes
         </Button>
       </div>
@@ -200,31 +237,9 @@ export function RoutingTab({ m }: { m: ModelsData }) {
       <ConfirmDialog
         open={recommend !== null}
         title="Apply recommended routes"
-        description={recommend && recommend.proposals.length > 0 ? (
-          <span className="block space-y-1">
-            <span className="block">These work classes will use lower-cost models. Existing routes stay unchanged.</span>
-            {recommend.proposals.map((proposal) => (
-              <span key={proposal.workClass} className="block font-bakin-typography-family-mono text-bakin-typography-size-meta">
-                {proposal.workClass} → {proposal.model}
-                <span className="text-bakin-text-muted"> ({proposal.reason})</span>
-              </span>
-            ))}
-            {recommend.skipped.map((item) => (
-              <span key={item.workClass} className="block text-bakin-typography-size-meta text-bakin-text-muted">
-                Skipped {item.workClass}: {item.reason}
-              </span>
-            ))}
-          </span>
-        ) : (
-          <span className="block">
-            Nothing to apply. Every recommended work class already has a route.
-            {recommend?.skipped.map((item) => (
-              <span key={item.workClass} className="block text-bakin-typography-size-meta text-bakin-text-muted">
-                Skipped {item.workClass}: {item.reason}
-              </span>
-            ))}
-          </span>
-        )}
+        description={recommend && recommend.proposals.length > 0
+          ? 'These work classes will use lower-cost models. Existing routes stay unchanged.'
+          : 'Nothing to apply. Every recommended work class already has a route.'}
         confirmLabel={recommend && recommend.proposals.length > 0 ? `Apply ${recommend.proposals.length} route(s)` : 'Close'}
         confirmTone="primary"
         busy={recommendBusy}
@@ -234,16 +249,16 @@ export function RoutingTab({ m }: { m: ModelsData }) {
           setRecommend(null)
           setRecommendError(null)
         }}
-      />
+      >
+        {recommendItems.length > 0 ? (
+          <KeyValue aria-label="Proposed route changes" layout="rows" items={recommendItems} />
+        ) : null}
+      </ConfirmDialog>
 
       <Section spacing="compact" aria-label="Task dispatch routes">
         <Stack gap="dense">
-          <h2
-            id="task-dispatch-routes-heading"
-          >
-            Task dispatch
-          </h2>
-          <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+          <h2 id="task-dispatch-routes-heading">Task dispatch</h2>
+          <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
             Routes for scheduled, workflow, manually started, recovery, and decomposition work.
           </p>
         </Stack>
@@ -252,12 +267,8 @@ export function RoutingTab({ m }: { m: ModelsData }) {
 
       <Section spacing="compact" divider="top" aria-label="System work routes">
         <Stack gap="dense">
-          <h2
-            id="system-work-routes-heading"
-          >
-            System work
-          </h2>
-          <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+          <h2 id="system-work-routes-heading">System work</h2>
+          <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
             Background work Bakin performs for titles, enrichment, relays, team routing, and direct sends.
           </p>
         </Stack>
@@ -267,12 +278,8 @@ export function RoutingTab({ m }: { m: ModelsData }) {
       <Section spacing="compact" divider="top" aria-labelledby="tag-overrides-heading">
         <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 @2xl/routing:flex-row @2xl/routing:items-start @2xl/routing:justify-between">
           <Stack gap="dense">
-            <h2
-              id="tag-overrides-heading"
-            >
-              Tag overrides
-            </h2>
-            <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+            <h2 id="tag-overrides-heading">Tag overrides</h2>
+            <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
               Match a task tag before its work-class route. The first matching override wins.
             </p>
           </Stack>
@@ -283,7 +290,7 @@ export function RoutingTab({ m }: { m: ModelsData }) {
             className="w-full shrink-0 @2xl/routing:w-auto"
             onClick={addTagOverride}
           >
-            <Plus className="size-4" />
+            <Plus className="size-bakin-4" />
             Add override
           </Button>
         </div>
@@ -358,13 +365,13 @@ export function RoutingTab({ m }: { m: ModelsData }) {
 
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="danger"
                     size="icon-sm"
                     aria-label={`Remove tag override ${index + 1}`}
-                    className="justify-self-end text-bakin-text-muted hover:text-bakin-signal-danger @3xl/list-rows:mb-px"
+                    className="justify-self-end @3xl/list-rows:mb-px"
                     onClick={() => removeTagOverride(index)}
                   >
-                    <X className="size-4" />
+                    <X className="size-bakin-4" />
                   </Button>
                 </ListRow>
               )

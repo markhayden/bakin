@@ -9,8 +9,9 @@
  * open() (an explicit list click on a rendered row) skips the fetch.
  * A miss surfaces an honest error — never a silent fuzzy-search fallback.
  */
-import { useEffect, useState } from 'react'
-import { useQueryState, type SearchResult } from '@makinbakin/sdk/hooks'
+import { useMemo, useState } from 'react'
+import { usePluginJsonFetch, type SearchResult } from '@makinbakin/sdk/hooks'
+import { useQueryState } from '@makinbakin/sdk/navigation'
 
 export interface RecordDeepLink {
   recordId: string
@@ -28,47 +29,38 @@ export function useRecordDeepLink(): RecordDeepLink {
   // Push-mode setter for open() — opening a drawer must create a history
   // entry so the back button closes it (same pattern as schedule's jobId).
   const [recordId, setRecordId, pushRecordId] = useQueryState('recordId', '')
-  const [row, setRow] = useState<SearchResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // The row handed to open(). It is the ONLY thing that may stand in for a
+  // /record fetch, and only for the exact id it was clicked with.
+  const [clicked, setClicked] = useState<SearchResult | null>(null)
+  const servedByClick = clicked !== null && clicked.id === recordId
 
-  useEffect(() => {
-    if (!recordId) {
-      setRow(null)
-      setError(null)
-      return
-    }
-    if (row?.id === recordId) return
-    // Never show record A's content under ?recordId=B while B resolves.
-    setRow(null)
-    const controller = new AbortController()
-    fetch(`/api/plugins/memory/record?id=${encodeURIComponent(recordId)}`, { signal: controller.signal })
-      .then(async (res) => {
-        if (res.status === 404) {
-          setRow(null)
-          setError('Memory record not found — it may have been pruned.')
-          return
-        }
-        if (!res.ok) throw new Error(`record: ${res.status}`)
-        const data = (await res.json()) as { result: SearchResult }
-        setRow(data.result)
-        setError(null)
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        setRow(null)
-        setError(`Could not load memory record: ${err instanceof Error ? err.message : String(err)}`)
-      })
-    return () => controller.abort()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordId])
+  const { data, error: fetchError } = usePluginJsonFetch<{ result: SearchResult }>(
+    'memory',
+    recordId && !servedByClick ? `record?id=${encodeURIComponent(recordId)}` : null,
+    { timeoutMs: 15_000 },
+  )
+
+  // The fetch keeps its last payload while the next one is in flight, so the
+  // resolved row is gated on the id matching: record A must never show under
+  // ?recordId=B while B resolves.
+  const row = servedByClick
+    ? clicked
+    : data?.result?.id === recordId
+      ? data.result
+      : null
+
+  const error = useMemo(() => {
+    if (!fetchError) return null
+    if (/\(404\)/.test(fetchError)) return 'Memory record not found — it may have been pruned.'
+    return `Could not load memory record: ${fetchError}`
+  }, [fetchError])
 
   return {
     recordId,
     row,
     error,
     open: (r: SearchResult) => {
-      setRow(r)
-      setError(null)
+      setClicked(r)
       pushRecordId(r.id)
     },
     close: () => setRecordId(''),

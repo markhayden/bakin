@@ -18,6 +18,7 @@ const EXCEPTIONS_PATH = join(REPO_ROOT, 'design-system/exceptions.json')
 export const LEGACY_STYLE_RULES = [
   'raw-palette',
   'arbitrary-size',
+  'raw-scale',
   'raw-control',
   'inline-style',
   'generic-token',
@@ -81,6 +82,32 @@ const RAW_PALETTE_NAMES = [
   'purple', 'fuchsia', 'pink', 'rose',
 ].join('|')
 const COLOR_UTILITY_PREFIXES = 'bg|text|border|ring|outline|divide|placeholder|caret|accent|fill|stroke|from|via|to'
+/**
+ * Tailwind variant chain. The plain `[a-z-]+:` form silently missed container
+ * variants (`@lg/page-shell:`) and arbitrary variants (`group-data-[open]:`),
+ * so utilities behind them escaped every scanner rule below.
+ */
+// The two character runs must not straddle the optional bracket: `x*(?:…)?x*`
+// is the classic ambiguous `a*a*` shape, and nesting it under an outer `*`
+// backtracks exponentially on a chained-variant string that does NOT match
+// (measured: 11s at 8 chained variants). Folding the second run inside the
+// optional group keeps the accepted language identical and the match linear.
+const VARIANT_PREFIX = String.raw`(?:[@a-z0-9][a-z0-9@/_.-]*(?:\[[^\]]*\][a-z0-9@/_.-]*)?:)*`
+/**
+ * Raw Tailwind scale utilities. The kit ships `-bakin-` scale tokens for all
+ * of these; a bare numeric or t-shirt value bypasses the token system, which
+ * is how typography and radius drift accumulated unseen. Fractional widths
+ * (`w-3/4`) stay out — the skeleton recipe blesses them.
+ */
+const RAW_SCALE_PATTERN = [
+  String.raw`text-(?:xs|sm|base|lg|xl|[2-9]xl)`,
+  String.raw`font-(?:thin|extralight|light|normal|medium|semibold|bold|extrabold|black)`,
+  // Suffix required: a bare `rounded` also matches prose like "values are rounded".
+  String.raw`rounded-(?:none|sm|md|lg|xl|[23]xl|full)`,
+  // Nonzero values only: `min-w-0`/`p-0`/`gap-0` are structural resets and the
+  // flex-shrink idiom the kit itself relies on, not a scale choice.
+  String.raw`(?:gap(?:-[xy])?|space-[xy]|p[trblxy]?|m[trblxy]?|size|w|h|min-w|min-h|max-w|max-h)-(?:[1-9]\d*(?:\.\d+)?|0\.\d+)`,
+].join('|')
 const GENERIC_TOKEN_NAMES = [
   'background', 'foreground', 'card', 'card-foreground', 'popover', 'popover-foreground',
   'primary', 'primary-foreground', 'secondary', 'secondary-foreground', 'accent',
@@ -204,11 +231,11 @@ function scanSource(file: LegacyStyleSource): Record<LegacyStyleRule, number> {
   const counts = zeroCounts()
   counts['raw-palette'] += matchCount(
     file.source,
-    new RegExp(`(?:^|[\\s"'\\x60])(?:[a-z-]+:)*(?:${COLOR_UTILITY_PREFIXES})-(?:${RAW_PALETTE_NAMES})-(?:[1-9]\\d{1,2})(?:\\/\\d+)?(?=$|[\\s"'\\x60}])`, 'gm'),
+    new RegExp(`(?:^|[\\s"'\\x60])${VARIANT_PREFIX}(?:${COLOR_UTILITY_PREFIXES})-(?:${RAW_PALETTE_NAMES})-(?:[1-9]\\d{1,2})(?:\\/\\d+)?(?=$|[\\s"'\\x60}])`, 'gm'),
   )
   counts['raw-palette'] += matchCount(
     file.source,
-    new RegExp(`(?:^|[\\s"'\\x60])(?:[a-z-]+:)*(?:${COLOR_UTILITY_PREFIXES})-(?:black|white)(?:\\/\\d+)?(?=$|[\\s"'\\x60}])`, 'gm'),
+    new RegExp(`(?:^|[\\s"'\\x60])${VARIANT_PREFIX}(?:${COLOR_UTILITY_PREFIXES})-(?:black|white)(?:\\/\\d+)?(?=$|[\\s"'\\x60}])`, 'gm'),
   )
   counts['raw-palette'] += matchCount(
     file.source,
@@ -216,11 +243,15 @@ function scanSource(file: LegacyStyleSource): Record<LegacyStyleRule, number> {
   )
   counts['arbitrary-size'] = matchCount(
     file.source,
-    /(?:^|[\s"'`])(?:[a-z-]+:)*(?:-?(?:w|h|min-w|max-w|min-h|max-h|size|p[trblxy]?|m[trblxy]?|gap(?:-[xy])?|space-[xy]|top|right|bottom|left|inset(?:-[xy])?|translate-[xy]|basis|grid-cols|grid-rows|text|leading|tracking|rounded|border))-\[[^\]]+\](?=$|[\s"'`}])/gm,
+    new RegExp(`(?:^|[\\s"'\\x60])${VARIANT_PREFIX}(?:-?(?:w|h|min-w|max-w|min-h|max-h|size|p[trblxy]?|m[trblxy]?|gap(?:-[xy])?|space-[xy]|top|right|bottom|left|inset(?:-[xy])?|translate-[xy]|basis|grid-cols|grid-rows|text|leading|tracking|rounded|border))-\\[[^\\]]+\\](?=$|[\\s"'\\x60}])`, 'gm'),
+  )
+  counts['raw-scale'] = matchCount(
+    file.source,
+    new RegExp(`(?:^|[\\s"'\\x60])${VARIANT_PREFIX}(?:${RAW_SCALE_PATTERN})(?=$|[\\s"'\\x60}])`, 'gm'),
   )
   counts['generic-token'] += matchCount(
     file.source,
-    new RegExp(`(?:^|[\\s"'\\x60])(?:[a-z-]+:)*(?:${COLOR_UTILITY_PREFIXES})-(?:${GENERIC_TOKEN_PATTERN})(?:\\/\\d+)?(?=$|[\\s"'\\x60}])`, 'gm'),
+    new RegExp(`(?:^|[\\s"'\\x60])${VARIANT_PREFIX}(?:${COLOR_UTILITY_PREFIXES})-(?:${GENERIC_TOKEN_PATTERN})(?:\\/\\d+)?(?=$|[\\s"'\\x60}])`, 'gm'),
   )
   counts['generic-token'] += matchCount(
     file.source,
