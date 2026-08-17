@@ -35,7 +35,7 @@ function DetailSection({ label, value }: { label: string; value: string }) {
   return (
     <section className="grid min-w-0 gap-bakin-2" aria-label={label}>
       <div className="flex min-w-0 items-center gap-bakin-1">
-        <h3 className="text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
+        <h3>
           {label}
         </h3>
         <CopyButton text={value} label={`Copy ${label.toLowerCase()}`} />

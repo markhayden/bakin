@@ -268,7 +268,7 @@ export function GateApprovalPanel({ m }: { m: TaskDetail }) {
 
         {priorStepOutput ? (
           <section aria-label="Prior step output" className="mt-bakin-3 grid min-w-0 gap-bakin-2">
-            <h4 className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
+            <h4>
               Prior step output
             </h4>
             <StepOutputViewer output={priorStepOutput} />

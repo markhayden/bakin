@@ -70,7 +70,7 @@ function WorkflowSection({
   return (
     <section className="flex min-w-0 flex-col gap-bakin-3">
       <Inline gap="dense" wrap={false}>
-        <h2 className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-widest text-bakin-text-muted">
+        <h2>
           {title}
         </h2>
         <Badge size="xs" variant="outline">{total}</Badge>

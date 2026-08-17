@@ -92,7 +92,7 @@ export function ActivityPulse({
         <div className="@container/activity-outcomes min-w-0 bg-bakin-surface-default p-bakin-4">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-3">
             <div>
-              <h4 className="text-bakin-typography-size-meta font-bakin-typography-weight-medium uppercase tracking-wide text-bakin-text-muted">
+              <h4>
                 {compatibilityLimited ? 'Reported outcomes' : 'How calls ended'}
               </h4>
               <span className="sr-only">
@@ -163,7 +163,7 @@ export function ActivityPulse({
         </div>
 
         <div className="min-w-0 bg-bakin-surface-default p-bakin-4">
-          <h4 className="text-bakin-typography-size-meta font-bakin-typography-weight-medium uppercase tracking-wide text-bakin-text-muted">
+          <h4>
             {compatibilityLimited ? 'Where recent calls went' : 'Where calls went'}
           </h4>
           {compatibilityLimited && (

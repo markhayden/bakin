@@ -6,6 +6,7 @@ import {
   subscribeNavBadges,
   subscribeRegistry,
 } from '@makinbakin/sdk/internal'
+import { Overline } from '@makinbakin/sdk/ui'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { usePathname } from '../../hooks/use-pathname'
 import { buildSidebarNavModel } from './nav-placement'
@@ -96,15 +97,13 @@ export function AppSidebar({
                 : `${index > 0 ? 'mt-bakin-3' : ''} flex flex-col gap-0.5`
               }
             >
-              <h2
+              <Overline
+                as="h2"
                 id={headingId}
-                className={collapsed
-                  ? 'sr-only'
-                  : 'px-bakin-3 pb-1.5 pt-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-widest text-bakin-text-muted'
-                }
+                className={collapsed ? 'sr-only' : 'px-bakin-3 pb-1.5 pt-bakin-1'}
               >
                 {section.label}
-              </h2>
+              </Overline>
               {section.items.map(renderNavItem)}
             </section>
           )

@@ -138,7 +138,6 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
                 <div className="flex min-w-0 items-center justify-between gap-bakin-2">
                   <h3
                     id={`${id}-scheduled-heading`}
-                    className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted"
                   >
                     Scheduled
                   </h3>

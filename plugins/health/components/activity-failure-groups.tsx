@@ -224,7 +224,7 @@ function FailurePatternHighlights({
 
   return (
     <div className="min-w-0">
-      <h4 className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
+      <h4>
         {label}
       </h4>
       {highlights.length > 0 ? (
@@ -430,7 +430,7 @@ export function ActivityFailureGroups({
           <Panel tone="danger">
             <Grid layout="main-aside" gap="section" align="start">
             <div className="min-w-0">
-              <h4 className="mb-bakin-2 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
+              <h4 className="mb-bakin-2">
                 Failures over time
               </h4>
               <ActivityFailureTrend buckets={buckets} coverage={coverage} />

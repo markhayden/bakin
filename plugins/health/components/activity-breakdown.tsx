@@ -55,7 +55,7 @@ function BreakdownPanel({
 }) {
   return (
     <div className="min-w-0">
-      <h4 className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
+      <h4>
         {title}
       </h4>
       <Text size="meta" tone="muted" as="p" className="mt-bakin-1">{sub}</Text>
