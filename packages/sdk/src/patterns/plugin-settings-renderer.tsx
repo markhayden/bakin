@@ -265,9 +265,9 @@ function ListField({ disabled, error, field, onChange, value }: ListFieldProps) 
         <FieldsetLegend>{field.label}</FieldsetLegend>
         {field.description ? <FieldsetDescription>{field.description}</FieldsetDescription> : null}
         {error ? (
-          <div role="alert" className="border-l-2 border-bakin-signal-danger pl-bakin-2 [font-size:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-signal-danger">
-            {error}
-          </div>
+          <Alert tone="danger">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         ) : null}
       </div>
 

@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 
+import { Alert, AlertDescription } from '../primitives/alert'
 import { Button } from '../primitives/button'
 import { cn } from '../utils'
 
@@ -105,13 +106,9 @@ export function SaveBar({
             </div>
           ) : null}
           {error ? (
-            <p
-              role="alert"
-              data-savebar-error=""
-              className="m-0 ml-1.5 basis-full border-l-2 border-bakin-signal-danger pl-bakin-2 [overflow-wrap:anywhere] text-bakin-typography-size-meta text-bakin-signal-danger"
-            >
-              {error}
-            </p>
+            <Alert tone="danger" data-savebar-error="" className="basis-full">
+              <AlertDescription className="[overflow-wrap:anywhere]">{error}</AlertDescription>
+            </Alert>
           ) : null}
         </div>
       </div>

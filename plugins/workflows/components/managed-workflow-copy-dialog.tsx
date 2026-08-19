@@ -1,6 +1,7 @@
 'use client'
 
 import { Copy, Workflow } from 'lucide-react'
+import { Alert, AlertDescription } from "@makinbakin/sdk/ui"
 import { Button } from "@makinbakin/sdk/ui"
 import { Checkbox } from "@makinbakin/sdk/ui"
 import {
@@ -172,9 +173,9 @@ export function ManagedWorkflowCopyDialog({
           )}
         </div>
         {error && (
-          <div className="rounded-bakin-control border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 p-2 text-bakin-typography-size-meta text-bakin-signal-danger">
-            {error}
-          </div>
+          <Alert tone="danger">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
         <DialogFooter>
           <Button

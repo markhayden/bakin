@@ -13,6 +13,8 @@
 import { useState } from 'react'
 import { Search, Send, CheckCircle2, AlertTriangle, Lock } from 'lucide-react'
 import {
+  Alert,
+  AlertDescription,
   Button,
   Checkbox,
   Input,
@@ -350,9 +352,9 @@ export function MemoryCleanup() {
               </p>
             ))}
             {dispatch.failed?.map((f) => (
-              <p key={f.agent} className="text-bakin-typography-size-meta text-bakin-signal-danger">
-                {f.agent} — failed ({f.reason})
-              </p>
+              <Alert key={f.agent} tone="danger">
+                <AlertDescription>{f.agent} — failed ({f.reason})</AlertDescription>
+              </Alert>
             ))}
             <div>
               <Button variant="outline" size="sm" onClick={runVerify} disabled={busy === 'verify'}>

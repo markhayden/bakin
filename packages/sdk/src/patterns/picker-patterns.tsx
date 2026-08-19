@@ -2,6 +2,8 @@
 
 import type { AriaAttributes, ComponentPropsWithoutRef, KeyboardEvent, ReactNode } from 'react'
 import {
+  Alert,
+  AlertDescription,
   Button,
   Dialog,
   DialogContent,
@@ -219,7 +221,11 @@ function AssetPickerPanel({
         />
       </div>
 
-      {notice ? <div role="alert" className="[font-size:var(--bakin-typography-size-body)] text-bakin-signal-danger">{notice}</div> : null}
+      {notice ? (
+        <Alert tone="danger">
+          <AlertDescription>{notice}</AlertDescription>
+        </Alert>
+      ) : null}
 
       <div className="max-h-96 min-w-0 overflow-y-auto overscroll-contain" data-asset-picker-results="">
         {collection.status === 'loading' ? (

@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Download, FolderSearch, } from 'lucide-react'
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner, SystemState, Text } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner, SystemState, Text } from '@makinbakin/sdk/ui'
 import { DataTable, type DataTableColumn } from '@makinbakin/sdk/patterns'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
 import { formatAge, formatSize } from '@makinbakin/sdk/utils'
@@ -119,7 +119,7 @@ export function ImportView({ onImported, onCountChange }: { onImported?: () => v
           Import all ({files.length})
         </Button>
       </div>
-      {error && <p className="text-bakin-typography-size-meta text-bakin-signal-danger" data-testid="import-error">{error}</p>}
+      {error && <Alert tone="danger" data-testid="import-error"><AlertDescription>{error}</AlertDescription></Alert>}
       <DataTable
         label="Unmanaged files"
         columns={columns}

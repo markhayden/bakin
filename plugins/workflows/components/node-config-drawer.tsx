@@ -21,6 +21,7 @@ import { Input } from "@makinbakin/sdk/ui"
 import { Textarea } from "@makinbakin/sdk/ui"
 import { Label } from "@makinbakin/sdk/ui"
 import { Checkbox } from "@makinbakin/sdk/ui"
+import { Alert, AlertDescription, AlertTitle } from "@makinbakin/sdk/ui"
 import {
   Select,
   SelectContent,
@@ -169,11 +170,13 @@ export function NodeConfigDrawer({
     return (
       <InspectorPanel label="Step configuration" side>
         <PanelHeader onClose={onClose} title={stepKindLabel(kind)} />
-        <InspectorPanelContent className="text-bakin-typography-size-body leading-relaxed text-bakin-signal-highlight">
-          <p className="m-0">
-            No registered node type for <code>{kind || '(missing)'}</code>. Step is preserved
-            but cannot be edited here - the plugin may not be active.
-          </p>
+        <InspectorPanelContent>
+          <Alert tone="attention">
+            <AlertDescription>
+              No registered node type for <code>{kind || '(missing)'}</code>. Step is preserved
+              but cannot be edited here - the plugin may not be active.
+            </AlertDescription>
+          </Alert>
         </InspectorPanelContent>
         {onDelete && (
           <InspectorPanelFooter className="justify-start">
@@ -396,13 +399,16 @@ export function NodeConfigDrawer({
           )}
 
           {errors.length > 0 && (
-            <div className="rounded-bakin-control border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 p-3 text-bakin-typography-size-meta leading-relaxed text-bakin-signal-danger">
-              <ul className="list-disc pl-4">
-                {errors.map((err, i) => (
-                  <li key={i}>{err}</li>
-                ))}
-              </ul>
-            </div>
+            <Alert tone="danger">
+              <AlertTitle>Fix these before applying</AlertTitle>
+              <AlertDescription>
+                <ul className="m-0 grid gap-bakin-1 pl-bakin-4">
+                  {errors.map((err, i) => (
+                    <li key={i}>{err}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
           )}
         </div>
       </InspectorPanelContent>

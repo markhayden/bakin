@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from 'react'
 import { Download, Pencil, Save, X } from 'lucide-react'
-import { Button, Text, Textarea } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, Button, Text, Textarea } from '@makinbakin/sdk/ui'
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import { Panel } from '@makinbakin/sdk/layout'
 import { isEditableMimeType } from '../../lib/constants'
@@ -145,7 +145,7 @@ function TextPreview({ assetId, fileUrl, mimeType, currentFile, onSaved }: {
           className="h-[72vh] w-full resize-none font-bakin-typography-family-mono text-bakin-typography-size-body"
           spellCheck={false}
         />
-        {error && <p className="px-bakin-1 pt-bakin-1 text-bakin-typography-size-meta text-bakin-signal-danger">{error}</p>}
+        {error && <Alert tone="danger" className="mt-bakin-2"><AlertDescription>{error}</AlertDescription></Alert>}
         <div className="flex justify-end gap-bakin-2 pt-bakin-2">
           <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={saving}><X className="size-bakin-4" /> Cancel</Button>
           <Button size="sm" onClick={save} disabled={saving} data-testid="save-version">

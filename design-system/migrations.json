@@ -20,11 +20,11 @@
     "private-import"
   ],
   "summary": {
-    "paths": 174,
+    "paths": 173,
     "totals": {
       "raw-palette": 4,
       "arbitrary-size": 84,
-      "raw-scale": 663,
+      "raw-scale": 652,
       "raw-control": 20,
       "inline-style": 34,
       "generic-token": 72,
@@ -291,7 +291,7 @@
       "target": "canonical shell layout and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 25
+        "raw-scale": 21
       }
     },
     {
@@ -1132,21 +1132,6 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 6
-      }
-    },
-    {
-      "path": "packages/ui/src/patterns/save-bar.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "host-route:__root",
-      "migrationTask": "T47",
-      "archetype": "shell",
-      "target": "supported host UI and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 1
       }
     },
     {
@@ -2523,7 +2508,7 @@
       "target": "workflow pages/canvas archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 11
+        "raw-scale": 10
       }
     },
     {
@@ -2539,7 +2524,7 @@
       "target": "workflow pages/canvas archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 11
+        "raw-scale": 9
       }
     },
     {
@@ -2603,7 +2588,7 @@
       "target": "workflow pages/canvas archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 16
+        "raw-scale": 15
       }
     },
     {
@@ -2744,7 +2729,7 @@
       "target": "focused SDK primitive/pattern and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 16
+        "raw-scale": 14
       }
     },
     {

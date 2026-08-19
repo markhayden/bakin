@@ -1,6 +1,7 @@
 'use client'
 
 import { ChartExplainer, LineChart } from '@makinbakin/sdk/charts'
+import { Alert, AlertDescription } from '@makinbakin/sdk/ui'
 import type { InteractionCoverage, UsageFeedData } from '../types'
 import { coveredActivityBuckets } from './activity-time-buckets'
 
@@ -37,9 +38,11 @@ export function ActivityFailureTrend({
         formatValue={(value) => Math.round(value).toLocaleString()}
       />
       {!coverage.hasFullWindow && (
-        <p className="mt-bakin-2 text-bakin-typography-size-meta text-bakin-signal-highlight">
-          Partial history since {bucketLabel(coverage.startsAt)}; intervals entirely before that are omitted.
-        </p>
+        <Alert tone="attention" className="mt-bakin-2">
+          <AlertDescription>
+            Partial history since {bucketLabel(coverage.startsAt)}; intervals entirely before that are omitted.
+          </AlertDescription>
+        </Alert>
       )}
       <ChartExplainer>
         The latest interval had {latestFailures.toLocaleString()} {latestFailures === 1 ? 'failure' : 'failures'}.

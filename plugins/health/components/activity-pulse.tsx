@@ -2,6 +2,7 @@
 
 import { PieChart, RankedBarChart, type ChartDatum } from '@makinbakin/sdk/charts'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
+import { Alert, AlertDescription } from '@makinbakin/sdk/ui'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import type { InteractionCoverage, UsageFeedData } from '../types'
 import { focusActivityElement } from './activity-navigation'
@@ -167,9 +168,11 @@ export function ActivityPulse({
             {compatibilityLimited ? 'Where recent calls went' : 'Where calls went'}
           </h4>
           {compatibilityLimited && (
-            <p className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-signal-highlight">
-              Recent breakdown covers {representedKindTotal.toLocaleString()} events.
-            </p>
+            <Alert tone="attention" className="mt-bakin-1">
+              <AlertDescription>
+                Recent breakdown covers {representedKindTotal.toLocaleString()} events.
+              </AlertDescription>
+            </Alert>
           )}
           <div className="mt-bakin-3" role="group" aria-label={mixAriaLabel(data)}>
             <RankedBarChart

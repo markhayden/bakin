@@ -23,6 +23,8 @@ import {
   SegmentedControl,
 } from '@makinbakin/sdk/patterns'
 import {
+  Alert,
+  AlertDescription,
   Badge,
   Button,
   Card,
@@ -536,7 +538,7 @@ export function VersionedAssetGrid() {
         state={collectionState}
         feedback={uploadError || (linkTo && view !== 'trash') ? (
           <div className="grid min-w-0 gap-bakin-2">
-            {uploadError ? <p className="m-0 text-bakin-typography-size-meta text-bakin-signal-danger">{uploadError}</p> : null}
+            {uploadError ? <Alert tone="danger"><AlertDescription>{uploadError}</AlertDescription></Alert> : null}
             {linkTo && view !== 'trash' ? <Text size="meta" tone="muted" as="p">New uploads will be linked to this task.</Text> : null}
           </div>
         ) : undefined}
@@ -775,7 +777,7 @@ export function VersionedAssetGrid() {
 
       {/* Floating bulk-tag bar while assets are selected. */}
       {selected.size > 0 && (
-        <div className="fixed inset-x-bakin-4 bottom-bakin-4 z-40 mx-auto flex max-w-xl items-center gap-bakin-2 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default/95 px-bakin-3 py-bakin-2 shadow-bakin-elevation-overlay backdrop-blur" data-testid="bulk-tag-bar">
+        <div className="fixed inset-x-bakin-4 bottom-bakin-4 z-40 mx-auto flex max-w-xl flex-wrap items-center gap-bakin-2 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default/95 px-bakin-3 py-bakin-2 shadow-bakin-elevation-overlay backdrop-blur" data-testid="bulk-tag-bar">
           <Tags className="size-bakin-4 shrink-0 text-bakin-text-muted" />
           <span className="shrink-0 text-bakin-typography-size-meta text-bakin-text-muted" data-testid="bulk-selected-count">{selected.size} selected</span>
           <div className="min-w-0 flex-1">
@@ -788,7 +790,7 @@ export function VersionedAssetGrid() {
             {enriching ? <Spinner /> : <Sparkles className="size-bakin-4" />} Enrich
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} data-testid="bulk-clear-selection">Clear</Button>
-          {bulkError && <p className="text-bakin-typography-size-meta text-bakin-signal-danger">{bulkError}</p>}
+          {bulkError && <Alert tone="danger" className="basis-full"><AlertDescription>{bulkError}</AlertDescription></Alert>}
         </div>
       )}
 

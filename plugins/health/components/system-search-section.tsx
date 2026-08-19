@@ -141,7 +141,9 @@ export function SystemSearchSection({
           <>
             <StatusBadge variant="outline" tone={stateTone}>{stateLabel}</StatusBadge>
             {erroredLegs.map((leg) => (
-              <p key={leg.name} className="mt-bakin-1 max-w-48 text-bakin-typography-size-meta text-bakin-signal-danger">{leg.name}: {leg.error}</p>
+              <Alert key={leg.name} tone="danger" className="mt-bakin-1 max-w-48">
+                <AlertDescription>{leg.name}: {leg.error}</AlertDescription>
+              </Alert>
             ))}
           </>
         )

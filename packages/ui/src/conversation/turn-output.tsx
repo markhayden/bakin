@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 
+import { Alert, AlertDescription } from '../primitives/alert'
 import { cn } from '../utils'
 import { ToolCallRow } from './activity-group'
 import {
@@ -189,21 +190,17 @@ export function TurnOutputView({
       ) : null}
 
       {error ? (
-        <div
-          role="alert"
-          className={cn(
-            'flex min-w-0 flex-wrap items-center gap-bakin-2 rounded-bakin-surface border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 px-bakin-3 py-bakin-2 text-bakin-signal-danger',
-            rowClassName,
-          )}
-        >
+        <Alert tone="danger" className={rowClassName}>
           <AlertIcon />
-          <span className="min-w-0 break-words">{error.message}</span>
-          {error.kind ? (
-            <span className="min-w-0 max-w-full break-all rounded-bakin-control bg-bakin-signal-danger/10 px-bakin-1 font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)]">
-              {error.kind}
-            </span>
-          ) : null}
-        </div>
+          <AlertDescription className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+            <span className="min-w-0 break-words">{error.message}</span>
+            {error.kind ? (
+              <span className="min-w-0 max-w-full break-all rounded-bakin-control bg-bakin-signal-danger/10 px-bakin-1 font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)]">
+                {error.kind}
+              </span>
+            ) : null}
+          </AlertDescription>
+        </Alert>
       ) : null}
     </div>
   )

@@ -11,6 +11,7 @@ import { Button } from "@makinbakin/sdk/ui"
 import { Input } from "@makinbakin/sdk/ui"
 import { Textarea } from "@makinbakin/sdk/ui"
 import { Label } from "@makinbakin/sdk/ui"
+import { Alert, AlertDescription } from "@makinbakin/sdk/ui"
 import { WorkflowAgentSelect } from './workflow-agent-identity'
 
 import {
@@ -76,9 +77,11 @@ export function ParallelChildrenEditor({
           const childId = child.id || `child-${index + 1}`
           if (child.type !== 'agent') {
             return (
-              <div key={`${childId}-${index}`} className="rounded-bakin-control border border-bakin-signal-highlight/40 bg-bakin-signal-highlight/10 p-3 text-bakin-typography-size-meta leading-relaxed text-bakin-signal-highlight">
-                Child {childId} has unsupported type {child.type}; it is preserved read-only.
-              </div>
+              <Alert key={`${childId}-${index}`} tone="attention">
+                <AlertDescription>
+                  Child {childId} has unsupported type {child.type}; it is preserved read-only.
+                </AlertDescription>
+              </Alert>
             )
           }
           return (

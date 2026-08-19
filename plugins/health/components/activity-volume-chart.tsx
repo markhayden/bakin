@@ -2,6 +2,7 @@
 
 import { AreaChart, BarChart, ChartDataTable, ChartExplainer, type ChartSeries } from '@makinbakin/sdk/charts'
 import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
+import { Alert, AlertDescription } from '@makinbakin/sdk/ui'
 import type { InteractionCoverage, UsageFeedData } from '../types'
 import { coveredActivityBuckets } from './activity-time-buckets'
 
@@ -54,9 +55,11 @@ export function ActivityVolumeChart({
           Calls recorded in each interval of the selected window, split by result.
         </p>
         {!coverage.hasFullWindow && (
-          <p className="text-bakin-typography-size-meta text-bakin-signal-highlight">
-            Partial history since {bucketLabel(coverage.startsAt)}; intervals entirely before that are omitted.
-          </p>
+          <Alert tone="attention">
+            <AlertDescription>
+              Partial history since {bucketLabel(coverage.startsAt)}; intervals entirely before that are omitted.
+            </AlertDescription>
+          </Alert>
         )}
       </Stack>
       <Grid layout="main-aside" gap="section" align="start">

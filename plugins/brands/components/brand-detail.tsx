@@ -29,6 +29,8 @@ import {
   ColorInput,
 } from '@makinbakin/sdk/patterns'
 import {
+  Alert,
+  AlertDescription,
   Banner,
   Button,
   Card,
@@ -1921,9 +1923,14 @@ function BrandSettingsTab({
           <Text size="body" tone="muted" as="p">Measuring the card…</Text>
         )}
         {dangling.length > 0 && (
-          <div className="rounded-bakin-control bg-bakin-signal-highlight/10 p-bakin-3 ring-1 ring-bakin-signal-highlight/20">
-            {dangling.map((d) => <p key={d.assetId} className="flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-signal-highlight"><AlertTriangle className="size-bakin-3" /> asset {d.assetId} is missing ({d.where}) — remove or replace it under Assets</p>)}
-          </div>
+          <Alert tone="attention">
+            <AlertTriangle />
+            <AlertDescription>
+              <ul className="m-0 grid list-none gap-bakin-1 p-0">
+                {dangling.map((d) => <li key={d.assetId}>asset {d.assetId} is missing ({d.where}) — remove or replace it under Assets</li>)}
+              </ul>
+            </AlertDescription>
+          </Alert>
         )}
       </SectionCard>
 

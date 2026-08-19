@@ -9,6 +9,8 @@ import { useSidebarContext } from '@/context/sidebar-context'
 import { useActivityContext } from '@/context/activity-context'
 import { useDebug } from '@makinbakin/sdk/hooks'
 import {
+  Alert,
+  AlertDescription,
   Button,
   Dialog,
   DialogContent,
@@ -321,14 +323,14 @@ export function Header() {
             </DialogDescription>
           </DialogHeader>
           {updateError && (
-            <div className="rounded-md border border-bakin-signal-danger/20 bg-bakin-signal-danger/10 px-bakin-3 py-bakin-2 text-sm text-bakin-signal-danger">
-              {updateError}
-            </div>
+            <Alert tone="danger">
+              <AlertDescription>{updateError}</AlertDescription>
+            </Alert>
           )}
           {updateMessage && (
-            <div className="rounded-md border border-bakin-action-primary-background/20 bg-bakin-action-primary-background/10 px-bakin-3 py-bakin-2 text-sm text-bakin-action-primary-background">
-              {updateMessage}
-            </div>
+            <Alert tone="success">
+              <AlertDescription>{updateMessage}</AlertDescription>
+            </Alert>
           )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setUpdateDialogOpen(false)}>

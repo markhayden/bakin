@@ -12,10 +12,7 @@
  * rendered back.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Alert, AlertDescription, Badge, Button, Input, Skeleton } from '@makinbakin/sdk/ui'
 
 export const PROVIDER_KEYS_TAB_ID = '__provider_keys__'
 
@@ -127,9 +124,9 @@ export function ProviderKeysTab() {
   return (
     <div className="space-y-bakin-3 max-w-2xl">
       {error && (
-        <p role="alert" className="rounded-md border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 px-bakin-3 py-bakin-2 text-sm text-bakin-signal-danger">
-          {error}
-        </p>
+        <Alert tone="danger">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
       <p className="text-sm text-bakin-text-muted">
         Runtime-managed providers are configured in {runtimeLabel} and shown here read-only. Bakin keys are
