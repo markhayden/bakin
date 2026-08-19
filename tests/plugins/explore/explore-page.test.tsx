@@ -306,6 +306,9 @@ describe('ExplorePage', () => {
     fixtureEntries = [...AGENTS, ...PLUGINS]
     render(<ExplorePage />)
     fireEvent.click(screen.getByTestId('tab-lessons'))
+    // Exactly one empty state on the page: the filter bar's "no categories"
+    // case is a plain note, so the results empty state is unambiguous.
+    expect(screen.getAllByTestId('empty-state')).toHaveLength(1)
     expect(screen.getByTestId('empty-state').textContent).toContain('Lesson packs are coming')
   })
 

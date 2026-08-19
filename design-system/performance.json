@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 206508,
+    "canonicalBytes": 207480,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -19,7 +19,7 @@
   },
   "hostInitialJs": {
     "path": "packages/host/dist/main.js",
-    "bytes": 284607
+    "bytes": 285796
   },
   "sdkUiBundles": [
     {
@@ -252,7 +252,7 @@
       "repository": "bakin",
       "pluginId": "explore",
       "path": "plugins/explore/dist/client.js",
-      "bytes": 39537
+      "bytes": 38628
     },
     {
       "repository": "bakin",

@@ -1,7 +1,9 @@
 import { ArrowUpRight, Check, Image as ImageIcon } from 'lucide-react'
+import { CodeBlock } from '@makinbakin/sdk/content'
+import { Grid } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { Drawer, DrawerSection } from '@makinbakin/sdk/ui'
-import { StatusBadge } from '@makinbakin/sdk/patterns'
+import { KeyValue, ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
 import { EntryVisual } from './catalog-card'
 import type { ExploreCatalogEntry } from '../types'
 
@@ -41,18 +43,29 @@ export function DetailDrawer({
           )}
         </span>
       }
-      description={`${entry.category} · ${KIND_LABELS[entry.kind]}${entry.installedVersion ? ` · v${entry.installedVersion}` : ''}`}
+      description={KIND_LABELS[entry.kind]}
       actions={actions}
     >
       <div className="flex min-w-0 flex-col gap-bakin-6 pb-bakin-6" data-testid="detail-drawer-body">
         <DrawerSection title="Overview">
-          <p className="m-0 leading-relaxed text-bakin-text-primary">{entry.description}</p>
+          <p className="leading-relaxed text-bakin-text-primary">{entry.description}</p>
+          <KeyValue
+            layout="columns"
+            data-testid="drawer-facts"
+            items={[
+              { label: 'Kind', value: KIND_LABELS[entry.kind] },
+              { label: 'Category', value: entry.category },
+              { label: 'Installed version', value: entry.installedVersion ? `v${entry.installedVersion}` : null },
+            ]}
+          />
         </DrawerSection>
 
         {/* Gallery — real screenshots once the bits-repo catalog ships them;
-            placeholder frames until then so the layout is ready. */}
+            placeholder frames until then so the layout is ready. The kit Grid
+            sizes against its OWN width, so a narrow user-resized drawer really
+            does collapse to one column (a `sm:` viewport breakpoint did not). */}
         <DrawerSection title="Preview">
-          <div data-testid="drawer-gallery" className="grid grid-cols-1 gap-bakin-2 sm:grid-cols-2">
+          <Grid layout="split" gap="dense" data-testid="drawer-gallery">
             {entry.screenshots.length > 0
               ? entry.screenshots.slice(0, 6).map((src) => (
                   <img
@@ -69,12 +82,12 @@ export function DetailDrawer({
                     data-testid="gallery-placeholder"
                     className="flex aspect-video w-full items-center justify-center rounded-bakin-surface border border-dashed border-bakin-border-subtle bg-bakin-canvas-default"
                   >
-                    <ImageIcon className="size-5 text-bakin-text-muted opacity-50" />
+                    <ImageIcon className="size-bakin-6 text-bakin-text-muted" />
                   </div>
                 ))}
-          </div>
+          </Grid>
           {entry.screenshots.length === 0 ? (
-            <p className="mb-0 mt-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
+            <p className="mt-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
               Screenshots coming soon
             </p>
           ) : null}
@@ -82,14 +95,13 @@ export function DetailDrawer({
 
         {entry.useCases.length > 0 ? (
           <DrawerSection title="Use cases">
-            <ul className="m-0 grid list-none gap-bakin-2 p-0">
+            <ListRows variant="plain" size="sm">
               {entry.useCases.map((useCase) => (
-                <li key={useCase} className="flex items-start gap-bakin-2 leading-relaxed text-bakin-text-muted">
-                  <span aria-hidden="true" className="mt-bakin-2 size-bakin-1 shrink-0 rounded-bakin-pill bg-bakin-text-muted" />
-                  <span>{useCase}</span>
-                </li>
+                <ListRow key={useCase} className="leading-relaxed text-bakin-text-muted">
+                  {useCase}
+                </ListRow>
               ))}
-            </ul>
+            </ListRows>
           </DrawerSection>
         ) : null}
 
@@ -113,9 +125,7 @@ export function DetailDrawer({
 
         {entry.source ? (
           <DrawerSection title="Source">
-            <code className="block break-all rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default px-bakin-3 py-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
-              {entry.source}
-            </code>
+            <CodeBlock code={entry.source} label="Source" copyable wrap />
           </DrawerSection>
         ) : null}
 

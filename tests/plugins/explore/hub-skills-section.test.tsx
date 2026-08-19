@@ -118,7 +118,10 @@ describe('ecosystem lane — install flow (drawer)', () => {
     // Name AND its core-minted slot both render (slot disclosure).
     expect(screen.getAllByText(/WEATHER_KEY/).length).toBeGreaterThan(0)
     expect(screen.getByText(/skills\.hub-weather\.WEATHER_KEY/)).toBeTruthy()
-    expect(screen.getByText(/12,345 downloads/)).toBeTruthy()
+    // Hub stats are a labelled KeyValue strip, so the count and its label are
+    // separate elements rather than one pre-joined "12,345 downloads" string.
+    expect(screen.getByText('Downloads')).toBeTruthy()
+    expect(screen.getByText('12,345')).toBeTruthy()
 
     await act(async () => { fireEvent.click(screen.getByTestId('confirm-install')) })
 

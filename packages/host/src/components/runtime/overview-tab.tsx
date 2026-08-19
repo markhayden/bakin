@@ -6,10 +6,11 @@
 import { useRef, useState } from 'react'
 import { Wrench } from 'lucide-react'
 import { toast } from '@makinbakin/sdk/hooks'
-import { ConfirmDialog } from '@makinbakin/sdk/patterns'
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Skeleton } from '@makinbakin/sdk/ui'
+import { Section, Stack } from '@makinbakin/sdk/layout'
+import { ConfirmDialog, DataTable, StatGroup, StatTile, type DataTableColumn } from '@makinbakin/sdk/patterns'
+import { Badge, Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
 import { capabilityRows } from '../../lib/runtime-report'
-import { ModeBadge, MODE_LEGEND, StatusBadge, capabilityStateCopy } from './shared'
+import { ModeBadge, MODE_LEGEND, StatusBadge, capabilityStateCopy, type CapabilityMode } from './shared'
 import type { CapabilityReport, OnboardingComponentStatus } from './types'
 
 function CredentialTiles({ report }: { report: CapabilityReport }) {
@@ -17,86 +18,111 @@ function CredentialTiles({ report }: { report: CapabilityReport }) {
   const providers = creds?.llmProviders ?? []
   const kinds = new Map((creds?.llmCredentials ?? []).map((c) => [c.provider, c.kind]))
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <Card>
-        <CardHeader className="pb-2">
-          <CardDescription>Active runtime</CardDescription>
-          <CardTitle className="text-xl">{report.adapter}</CardTitle>
-        </CardHeader>
-        <CardContent className="text-xs text-bakin-text-muted">
-          {report.runtime.name}@{report.runtime.version}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader className="pb-2">
-          <CardDescription>Model providers</CardDescription>
-          <CardTitle className="text-xl">{providers.length}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-1.5 text-xs">
-          {providers.length === 0 && <span className="text-bakin-text-muted">None configured — agents cannot run turns.</span>}
-          {providers.map((p) => (
-            <Badge key={p} tone="neutral" variant="outline">
-              {p}{kinds.get(p) === 'oauth' ? ' · subscription' : kinds.has(p) ? ' · API key' : ''}
-            </Badge>
-          ))}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader className="pb-2">
-          <CardDescription>Tool access</CardDescription>
-          <CardTitle className="text-xl">{report.toolAccess.ok ? 'Healthy' : 'Needs attention'}</CardTitle>
-        </CardHeader>
-        <CardContent className="text-xs text-bakin-text-muted">
-          {report.toolAccess.ok
-            ? capabilityStateCopy('toolCalling', 'native', report.adapter, report.toolAccess.style)
-            : report.toolAccess.issues.join('; ')}
-        </CardContent>
-      </Card>
-    </div>
+    <StatGroup label="Runtime and credentials">
+      <StatTile
+        variant="surface"
+        label="Active runtime"
+        value={report.adapter}
+        sub={`${report.runtime.name}@${report.runtime.version}`}
+      />
+      <StatTile
+        variant="surface"
+        label="Model providers"
+        value={providers.length}
+        valueTone={providers.length === 0 ? 'attention' : 'neutral'}
+        sub={providers.length === 0
+          ? 'None configured — agents cannot run turns.'
+          : (
+            <span className="flex flex-wrap gap-bakin-1">
+              {providers.map((p) => (
+                <Badge key={p} tone="neutral" variant="outline">
+                  {p}{kinds.get(p) === 'oauth' ? ' · subscription' : kinds.has(p) ? ' · API key' : ''}
+                </Badge>
+              ))}
+            </span>
+          )}
+      />
+      <StatTile
+        variant="surface"
+        label="Tool access"
+        value={report.toolAccess.ok ? 'Healthy' : 'Needs attention'}
+        valueTone={report.toolAccess.ok ? 'neutral' : 'attention'}
+        sub={report.toolAccess.ok
+          ? capabilityStateCopy('toolCalling', 'native', report.adapter, report.toolAccess.style)
+          : report.toolAccess.issues.join('; ')}
+      />
+    </StatGroup>
   )
 }
 
+interface CapabilityGridRow {
+  key: string
+  label: string
+  mode?: CapabilityMode
+  meaning: string
+}
+
 function CapabilityGrid({ report }: { report: CapabilityReport }) {
-  const rows = capabilityRows(report.capabilities).filter((row) => row.key !== 'toolCalling' && row.key !== 'input')
+  const rows: CapabilityGridRow[] = capabilityRows(report.capabilities)
+    .filter((row) => row.key !== 'toolCalling' && row.key !== 'input')
+    .map((row) => ({
+      key: row.key,
+      label: row.label,
+      mode: row.mode,
+      meaning: capabilityStateCopy(row.key, row.mode, report.adapter, row.detail),
+    }))
+
   const input = report.capabilities.input
+  if (input) {
+    // Built as a list, not concatenated strings: the old `{a}{' '}{b}` form
+    // rendered a stray trailing space whenever audio was unsupported.
+    const meaning = [
+      input.imageInput ? 'Agents can see images you attach.' : 'The active model cannot take image attachments.',
+      ...(input.audioInput ? ['Audio attachments work too.'] : []),
+    ].join(' ')
+    rows.push({ key: 'input', label: 'Attachments', meaning })
+  }
+
+  const columns: ReadonlyArray<DataTableColumn<CapabilityGridRow>> = [
+    {
+      key: 'label',
+      header: 'Capability',
+      cell: (row) => <span className="font-bakin-typography-weight-medium">{row.label}</span>,
+    },
+    {
+      key: 'mode',
+      header: 'Mode',
+      cell: (row) => (row.mode ? <ModeBadge mode={row.mode} /> : null),
+    },
+    {
+      key: 'meaning',
+      header: 'What it means',
+      cellClassName: 'whitespace-normal',
+      cell: (row) => <span className="text-bakin-text-muted">{row.meaning}</span>,
+    },
+  ]
+
   return (
-    <section className="space-y-3">
-      <div>
-        <h2 className="text-sm font-semibold">What this runtime can do</h2>
-        <p className="text-xs text-bakin-text-muted">{MODE_LEGEND}</p>
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {rows.map((row) => (
-          <Card key={row.key}>
-            <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm">{row.label}</CardTitle>
-              <ModeBadge mode={row.mode} />
-            </CardHeader>
-            <CardContent className="text-xs text-bakin-text-muted">
-              {capabilityStateCopy(row.key, row.mode, report.adapter, row.detail)}
-            </CardContent>
-          </Card>
-        ))}
-        {input && (
-          <Card>
-            <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm">Attachments</CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs text-bakin-text-muted">
-              {input.imageInput ? 'Agents can see images you attach.' : 'The active model cannot take image attachments.'}{' '}
-              {input.audioInput ? 'Audio attachments work too.' : ''}
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    </section>
+    <Section spacing="compact">
+      <Stack gap="dense">
+        <h2>What this runtime can do</h2>
+        <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">{MODE_LEGEND}</p>
+      </Stack>
+      <DataTable
+        label="Runtime capabilities"
+        collapseBelow="none"
+        columns={columns}
+        rows={rows}
+        rowKey={(row) => row.key}
+      />
+    </Section>
   )
 }
 
 /** Setup checks whose install() is safe to run headlessly from the UI. */
 const FIXABLE_COMPONENTS = new Set(['mkdir', 'settings', 'search', 'search-models', 'plugin-assets', 'agent-sync'])
 
-function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponentStatus[] | null | undefined; onFixed: () => void }) {
+function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponentStatus[] | null | undefined; onRescan: () => void }) {
   const [confirmTarget, setConfirmTarget] = useState<OnboardingComponentStatus | null>(null)
   const [repairing, setRepairing] = useState(false)
   const [repairError, setRepairError] = useState<string | null>(null)
@@ -125,7 +151,7 @@ function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponent
       }
       toast(`Repaired ${name}${body?.result?.message ? ` — ${body.result.message}` : ''}`, 'success')
       setConfirmTarget(null)
-      onFixed()
+      onRescan()
     } catch (err) {
       setRepairError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -133,54 +159,84 @@ function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponent
     }
   }
 
+  const columns: ReadonlyArray<DataTableColumn<OnboardingComponentStatus>> = [
+    {
+      key: 'name',
+      header: 'Check',
+      cell: (component) => <span className="font-bakin-typography-weight-medium">{component.name}</span>,
+    },
+    {
+      // A wrapping cell, not a truncated line with a native title tooltip:
+      // the message IS the finding, so it has to stay readable for everyone.
+      key: 'message',
+      header: 'Detail',
+      cellClassName: 'whitespace-normal',
+      cell: (component) => <span className="text-bakin-text-muted">{component.message}</span>,
+    },
+    {
+      key: 'remediation',
+      header: 'Remediation',
+      cellClassName: 'whitespace-normal',
+      cell: (component) => (component.remediation && component.status !== 'ok'
+        ? <span className="text-bakin-text-muted">{component.remediation}</span>
+        : null),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      cell: (component) => <StatusBadge status={component.status} />,
+    },
+    {
+      key: 'action',
+      header: 'Action',
+      align: 'end',
+      cell: (component) => (component.status !== 'ok' && FIXABLE_COMPONENTS.has(component.name)
+        ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={repairing}
+            onClick={() => { setRepairError(null); setConfirmTarget(component) }}
+            data-testid={`setup-fix-${component.name}`}
+          >
+            <Wrench /> Repair
+          </Button>
+        )
+        : null),
+    },
+  ]
+
   return (
-    <section className="space-y-3" data-testid="onboarding-status">
-      <div>
-        <h2 className="text-sm font-semibold">Setup checks</h2>
-        <p className="text-xs text-bakin-text-muted">Live checks against the active runtime — the same ones `bakin check all` runs.</p>
-      </div>
+    <Section spacing="compact" data-testid="onboarding-status">
+      <Stack gap="dense">
+        <h2>Setup checks</h2>
+        <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">Live checks against the active runtime — the same ones `bakin check all` runs.</p>
+      </Stack>
       {onboarding === undefined && (
-        <div className="space-y-2">
+        <Stack gap="dense">
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-8 w-full" />
-        </div>
+        </Stack>
       )}
       {onboarding === null && (
-        <p className="text-sm text-bakin-text-muted">Setup checks are unavailable right now — retry with Refresh.</p>
+        <SystemState
+          kind="error"
+          recovery="available"
+          scope="section"
+          headingLevel={3}
+          title="Setup checks are unavailable"
+          description="The live scan did not come back."
+          action={<Button size="sm" variant="outline" onClick={onRescan}>Try again</Button>}
+        />
       )}
       {onboarding && (
-        <Card>
-          <CardContent className="divide-y divide-bakin-border-subtle p-0">
-            {onboarding.map((component) => {
-              const repairable = component.status !== 'ok' && FIXABLE_COMPONENTS.has(component.name)
-              return (
-                <div key={component.name} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">{component.name}</p>
-                    <p className="truncate text-xs text-bakin-text-muted" title={component.message}>{component.message}</p>
-                    {component.remediation && component.status !== 'ok' && (
-                      <p className="mt-0.5 text-xs text-bakin-text-muted/80">→ {component.remediation}</p>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {repairable && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={repairing}
-                        onClick={() => { setRepairError(null); setConfirmTarget(component) }}
-                        data-testid={`setup-fix-${component.name}`}
-                      >
-                        <Wrench className="mr-1.5 size-3" /> Repair
-                      </Button>
-                    )}
-                    <StatusBadge status={component.status} />
-                  </div>
-                </div>
-              )
-            })}
-          </CardContent>
-        </Card>
+        <DataTable
+          label="Setup checks"
+          collapseBelow="none"
+          columns={columns}
+          rows={onboarding}
+          rowKey={(component) => component.name}
+        />
       )}
 
       <ConfirmDialog
@@ -198,7 +254,7 @@ function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponent
         confirmTestId="setup-repair-confirm"
         onConfirm={() => { if (confirmTarget) void runRepair(confirmTarget.name) }}
       />
-    </section>
+    </Section>
   )
 }
 
@@ -212,10 +268,10 @@ export function OverviewTab({
   onRefreshOnboarding: () => void
 }) {
   return (
-    <div className="space-y-6" data-testid="runtime-summary">
+    <Stack gap="section" data-testid="runtime-summary">
       <CredentialTiles report={report} />
       <CapabilityGrid report={report} />
-      <SetupSection onboarding={onboarding} onFixed={onRefreshOnboarding} />
-    </div>
+      <SetupSection onboarding={onboarding} onRescan={onRefreshOnboarding} />
+    </Stack>
   )
 }
