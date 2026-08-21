@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { CodeBlock } from '@makinbakin/sdk/content'
 import {
   Alert,
   AlertDescription,
@@ -27,6 +28,7 @@ import {
 import { ConsentDialog, type ConsentRequest } from './consent-dialog'
 import { sourceWithRef } from '../lib/package-source'
 import type { ExploreCatalogEntry } from '../types'
+import { describeRequestError } from '../lib/request-error'
 
 /**
  * Kind-routed install dialog. Curated installs come in with a preset
@@ -37,6 +39,17 @@ import type { ExploreCatalogEntry } from '../types'
  */
 
 type InstallKind = 'agent' | 'plugin' | 'skill-pack' | 'workflow-pack' | 'lesson-pack'
+
+/**
+ * Installs clone repos and can pull binaries, so the ceiling is generous —
+ * but it is a ceiling: without one a wedged host route leaves the dialog
+ * spinning forever with no way back. `AbortSignal.timeout` tears down the
+ * whole exchange, body read included, not just the headers.
+ */
+const INSTALL_TIMEOUT_MS = 120_000
+const SECRET_TIMEOUT_MS = 15_000
+
+/** Deadline rejections arrive as DOMExceptions — surface them as a real error. */
 
 /** Missing, store-backable secrets from a capability-pack install response. */
 interface CapabilityKeyStep {
@@ -163,6 +176,7 @@ export function InstallDialog({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(INSTALL_TIMEOUT_MS),
       })
       const responseBody = (await res.json()) as {
         ok?: boolean
@@ -199,7 +213,7 @@ export function InstallDialog({
       }
       finishSuccess()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(describeRequestError(err))
     } finally {
       setSubmitting(false)
     }
@@ -245,6 +259,7 @@ export function InstallDialog({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ provider, name, value }),
+          signal: AbortSignal.timeout(SECRET_TIMEOUT_MS),
         })
         if (!res.ok) {
           const body = await res.json().catch(() => null) as { error?: string } | null
@@ -253,6 +268,11 @@ export function InstallDialog({
         }
       }
       finishSuccess()
+    } catch (err) {
+      // Without this the caller's `void saveKeys()` turned a network throw
+      // into an unhandled rejection: the dialog cleared its busy state and
+      // then sat there having silently saved nothing.
+      setError(describeRequestError(err))
     } finally {
       setSubmitting(false)
     }
@@ -340,9 +360,7 @@ export function InstallDialog({
               {preset ? (
                 <Field name="source">
                   <FieldLabel>Source</FieldLabel>
-                  <code className="block break-all rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default px-bakin-3 py-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
-                    {source}
-                  </code>
+                  <CodeBlock code={source} label="Source" copyable wrap />
                 </Field>
               ) : (
                 <>

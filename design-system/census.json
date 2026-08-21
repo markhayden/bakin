@@ -2329,6 +2329,7 @@
       },
       "sourcePath": "packages/host/src/components/runtime/shared.tsx",
       "symbols": [
+        "EntityCardBody",
         "MODE_LEGEND",
         "ModeBadge",
         "StatusBadge",

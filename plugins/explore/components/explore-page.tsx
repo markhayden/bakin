@@ -22,13 +22,18 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from '@makinbakin/sdk/ui'
-import { toast, useJsonFetch } from '@makinbakin/sdk/hooks'
+import { toast, usePluginJsonFetch } from '@makinbakin/sdk/hooks'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 import { CatalogCard } from './catalog-card'
 import { DetailDrawer } from './detail-drawer'
 import { HubSkillsSection } from './hub-skills-section'
 import { InstallDialog } from './install-dialog'
 import type { ExploreCatalogEntry, ExploreCatalogResponse } from '../types'
+import { describeRequestError } from '../lib/request-error'
 
 function tabOf(entry: ExploreCatalogEntry): 'agents' | 'plugins' | 'lessons' | 'capabilities' | 'packs' {
   if (entry.kind === 'agent') return 'agents'
@@ -77,10 +82,22 @@ const TAB_INTROS: Record<string, { title: string; blurb: string }> = {
   },
 }
 
-const CATALOG_GRID_CLASSES = '@xl/page-shell:grid-cols-2 @3xl/page-shell:grid-cols-3 @5xl/page-shell:grid-cols-4'
+/**
+ * The catalog read is local (cached on disk); the maintenance actions reach
+ * GitHub, so they get the longer ceiling. Both are ceilings rather than hopes:
+ * an unreachable remote otherwise leaves the page spinning with no honest end.
+ */
+const CATALOG_TIMEOUT_MS = 15_000
+const REMOTE_ACTION_TIMEOUT_MS = 60_000
+
+/** Deadline rejections arrive as DOMExceptions — surface them as a real error. */
 
 function ExplorePageInner() {
-  const { data, loading, error, refresh } = useJsonFetch<ExploreCatalogResponse>('/api/plugins/explore/catalog')
+  const { data, loading, error, refresh } = usePluginJsonFetch<ExploreCatalogResponse>(
+    'explore',
+    'catalog',
+    { timeoutMs: CATALOG_TIMEOUT_MS },
+  )
   const [tab, setTab] = useQueryState('tab', 'agents')
   const [categories, setCategories] = useQueryArrayState('category')
   const [selectedKey, setSelectedKey] = useQueryState('item')
@@ -120,9 +137,10 @@ function ExplorePageInner() {
     setBusyAction(action)
     setActionError(null)
     try {
+      const signal = AbortSignal.timeout(REMOTE_ACTION_TIMEOUT_MS)
       const res = action === 'check'
-        ? await fetch('/api/plugins/explore/catalog?check=1')
-        : await fetch('/api/plugins/explore/catalog/refresh', { method: 'POST' })
+        ? await pluginFetch('explore', 'catalog?check=1', { signal })
+        : await pluginFetch('explore', 'catalog/refresh', { method: 'POST', signal })
       const body = (await res.json()) as ExploreCatalogResponse & { ok: boolean; error?: string; reason?: string }
       if (!res.ok || !body.ok) {
         setActionError(body.error ?? `HTTP ${res.status}`)
@@ -149,7 +167,7 @@ function ExplorePageInner() {
         )
       }
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err))
+      setActionError(describeRequestError(err))
     } finally {
       setBusyAction(null)
     }
@@ -226,28 +244,40 @@ function ExplorePageInner() {
   }
   const maintenanceActions = (
     <>
-      <Button
-        variant="outline"
-        size="sm"
-        data-testid="refresh-catalog"
-        disabled={busyAction !== null}
-        onClick={() => void runAction('refresh')}
-        title="Fetch the latest official catalog from GitHub"
-      >
-        <RefreshCw className={busyAction === 'refresh' ? 'animate-spin' : undefined} />
-        Refresh catalog
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        data-testid="check-updates"
-        disabled={busyAction !== null}
-        onClick={() => void runAction('check')}
-        title="Probe installed plugins and agents for available updates"
-      >
-        <Sparkles />
-        {busyAction === 'check' ? 'Checking…' : 'Check for updates'}
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={(
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="refresh-catalog"
+              disabled={busyAction !== null}
+              onClick={() => void runAction('refresh')}
+            />
+          )}
+        >
+          <RefreshCw className={busyAction === 'refresh' ? 'animate-spin' : undefined} />
+          Refresh catalog
+        </TooltipTrigger>
+        <TooltipContent>Fetch the latest official catalog from GitHub</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger
+          render={(
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="check-updates"
+              disabled={busyAction !== null}
+              onClick={() => void runAction('check')}
+            />
+          )}
+        >
+          <Sparkles />
+          {busyAction === 'check' ? 'Checking…' : 'Check for updates'}
+        </TooltipTrigger>
+        <TooltipContent>Probe installed plugins and agents for available updates</TooltipContent>
+      </Tooltip>
     </>
   )
   const resultState = error ? (
@@ -265,7 +295,7 @@ function ExplorePageInner() {
       title="Loading the catalog"
       description="Official agents, plugins, lessons, and capabilities will appear here."
       preview={(
-        <Grid layout="single" gap="item" className={CATALOG_GRID_CLASSES}>
+        <Grid layout="cards" gap="item">
           {Array.from({ length: 6 }, (_, index) => (
             <Card key={index} size="sm">
               <CardHeader>
@@ -338,15 +368,20 @@ function ExplorePageInner() {
         )}
       />
 
+      {/* The hand-rolled `id`/`aria-controls` pointed at `explore-panel-*`
+          elements that exist nowhere in the document — a broken IDREF on every
+          trigger. Base UI owns this wiring; letting it do so is honest about
+          the fact that the panel lives outside the root here (unlike
+          runtime/team, where it is a real TabsContent). Moving the results
+          panel inside the root is the proper fix and is deliberately NOT done
+          in this pass: the kit's panel sets both a flex-fill and a smaller
+          font size, so nesting PageControls + PageBody would restyle the
+          page's gap and body type — that needs visual review, not a blind
+          late-sweep edit. */}
       <Tabs value={tab} onValueChange={(value) => setTab(value as string)}>
         <TabsList variant="underline" activateOnFocus aria-label="Catalog sections">
           {tabs.map((item) => (
-            <TabsTrigger
-              key={item.id}
-              value={item.id}
-              id={`explore-tab-${item.id}`}
-              aria-controls={`explore-panel-${item.id}`}
-            >
+            <TabsTrigger key={item.id} value={item.id}>
               {item.label}
             </TabsTrigger>
           ))}
@@ -355,7 +390,6 @@ function ExplorePageInner() {
 
       <PageControls
         label="Catalog filters and maintenance"
-        className="border-t-0 pt-0"
         actions={maintenanceActions}
       >
         {categoryOptions.length > 0 ? (
@@ -365,7 +399,14 @@ function ExplorePageInner() {
             selected={categories}
             onChange={setCategories}
           />
-        ) : <span className="text-bakin-typography-size-meta text-bakin-text-muted">No categories in this section</span>}
+        ) : (
+          // A one-line note, not a SystemState: a second heading-bearing empty
+          // panel inside the filter toolbar competes with the real results
+          // empty state below it (and made `empty-state` ambiguous in tests).
+          <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">
+            No categories in this section
+          </p>
+        )}
       </PageControls>
 
       <PageBody
@@ -386,7 +427,7 @@ function ExplorePageInner() {
             <h2>
               {TAB_INTROS[tab].title}
             </h2>
-            <p className="m-0 text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+            <p className="text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
               {TAB_INTROS[tab].blurb}
             </p>
           </section>
@@ -397,7 +438,7 @@ function ExplorePageInner() {
             skills above the curated grid, never a separate tab. */}
         {tab === 'capabilities' && <HubSkillsSection />}
 
-        <Grid layout="single" gap="item" className={CATALOG_GRID_CLASSES}>
+        <Grid layout="cards" gap="item">
           {visible.map((entry) => (
             <CatalogCard
               key={`${entry.kind}:${entry.id}`}

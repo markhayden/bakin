@@ -1,4 +1,5 @@
 import { Loader2, ShieldAlert } from 'lucide-react'
+import { KeyValue } from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertDescription,
@@ -81,20 +82,16 @@ export function ConsentDialog({
           </Alert>
         ) : null}
 
-        <ul className="m-0 divide-y divide-bakin-border-subtle p-0" data-testid="consent-permission-list">
-          {consent.permissions.map((permission) => (
-            <li key={permission} className="flex list-none flex-col gap-bakin-1 px-bakin-2 py-bakin-3 first:pt-0 last:pb-0">
-              <code className="font-bakin-typography-family-mono text-bakin-typography-size-body text-bakin-text-primary">
-                {permission}
-              </code>
-              {PERMISSION_HINTS[permission] && (
-                <span className="text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
-                  {PERMISSION_HINTS[permission]}
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
+        {/* Permission id → what it grants. Unknown ids keep their raw id and
+            render an em dash for the description — honest, never hidden. */}
+        <KeyValue
+          layout="columns"
+          data-testid="consent-permission-list"
+          items={consent.permissions.map((permission) => ({
+            label: <code className="font-bakin-typography-family-mono">{permission}</code>,
+            value: PERMISSION_HINTS[permission] ?? null,
+          }))}
+        />
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onDecline} disabled={busy}>

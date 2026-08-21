@@ -350,6 +350,42 @@ describe('InstallDialog', () => {
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
   })
 
+  it('a network throw while storing the key surfaces an error instead of failing silently', async () => {
+    // Regression: `saveKeys` was try/finally with no catch and was called as
+    // `void saveKeys()`, so a throwing POST escaped as an unhandled rejection —
+    // the busy state cleared, the dialog stayed open, and nothing told the user
+    // the key had not been stored.
+    const capEntry: ExploreCatalogEntry = {
+      ...agentEntry, id: 'web-search-brave', kind: 'skill-pack', name: 'Web Search (Brave)',
+      capability: 'web-search', source: 'github:x/y#packs/web-search-brave',
+    }
+    fetchMock = mock((url: string) => {
+      if (url === '/api/secrets') return Promise.reject(new Error('Failed to fetch'))
+      return Promise.resolve(jsonResponse({
+        ok: true,
+        result: { packageId: 'web-search-brave' },
+        capability: {
+          capability: 'web-search', name: 'Web Search (Brave)', ready: false, missing: ['key'],
+          secrets: [{ name: 'BRAVE_SEARCH_API_KEY', secretSlot: 'brave.apiKey', status: 'missing', required: true }],
+        },
+      }))
+    })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const onOpenChange = mock()
+    render(<InstallDialog open onOpenChange={onOpenChange} entry={capEntry} onInstalled={mock()} />)
+    fireEvent.click(screen.getByTestId('install-submit'))
+    await waitFor(() => screen.getByTestId('capability-key-step'))
+
+    fireEvent.change(screen.getByLabelText('BRAVE_SEARCH_API_KEY'), { target: { value: 'bsk-1' } })
+    fireEvent.click(screen.getByTestId('capability-key-save'))
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Failed to fetch'))
+    // The step stays open so the key can be retried; it never reports success.
+    expect(screen.getByTestId('capability-key-step')).toBeTruthy()
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+  })
+
   it('the key step can be skipped — dialog closes, install stands', async () => {
     const capEntry: ExploreCatalogEntry = {
       ...agentEntry, id: 'web-search-brave', kind: 'skill-pack', name: 'Web Search (Brave)',

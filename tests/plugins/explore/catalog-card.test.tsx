@@ -127,10 +127,21 @@ describe('CatalogCard', () => {
     expect(screen.getByText('🎨')).toBeTruthy()
   })
 
-  it('uninstalled entries with a catalog iconUrl render the image instead of the emoji', () => {
+  it('uninstalled entries with a catalog iconUrl compose the icon avatar, emoji as its fallback', () => {
     render(<CatalogCard entry={entry({ iconUrl: 'https://example.com/pixel.png' })} onSelect={mock()} />)
-    expect(screen.getByTestId('icon-agent-pixel').getAttribute('src')).toBe('https://example.com/pixel.png')
-    expect(screen.queryByText('🎨')).toBeNull()
+    // The kit Avatar owns the image/fallback swap and only commits the <img>
+    // once the browser reports it loaded — a load event jsdom never fires — so
+    // the assertable contract here is that the iconUrl branch is taken and the
+    // emoji is demoted to the fallback rather than being the whole visual.
+    const avatar = screen.getByTestId('icon-agent-pixel')
+    expect(avatar.getAttribute('data-slot')).toBe('avatar')
+    expect(avatar.textContent).toContain('🎨')
+  })
+
+  it('entries with no iconUrl render an emoji avatar with no icon identity', () => {
+    render(<CatalogCard entry={entry()} onSelect={mock()} />)
+    expect(screen.queryByTestId('icon-agent-pixel')).toBeNull()
+    expect(screen.getByText('🎨')).toBeTruthy()
   })
 
   it('the local headshot wins over a catalog iconUrl once installed', () => {

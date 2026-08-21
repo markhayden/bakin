@@ -13,9 +13,10 @@
  * touches only the active category (Recipes/Settings and dashboard pages).
  */
 import { createRoute } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { NavList, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
-import { Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import { useJsonFetch } from '@makinbakin/sdk/hooks'
+import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
 import { PluginSettingsRenderer, type PluginSettingsSchema } from '@/components/plugin-settings-renderer'
 import {
   SYSTEM_SETTINGS_TAB_ID,
@@ -24,6 +25,7 @@ import {
   unflattenSystemSettings,
 } from '@/components/system-settings'
 import { ProviderKeysTab, PROVIDER_KEYS_TAB_ID } from '@/components/provider-keys-tab'
+import { responseError } from '../lib/request-error'
 import { Route as RootRoute } from './__root'
 
 export interface PluginSchemaEntry {
@@ -72,55 +74,69 @@ function SettingsFrame({ children }: { children: React.ReactNode }) {
   )
 }
 
+
+const ACTIVE_HEADING_ID = 'active-settings-heading'
+const REQUEST_TIMEOUT_MS = 15_000
+
 function SettingsRoute() {
-  const [plugins, setPlugins] = useState<PluginSchemaEntry[]>([])
-  const [activePlugin, setActivePlugin] = useState<string>('')
-  const [values, setValues] = useState<Record<string, unknown>>({})
-  const [loading, setLoading] = useState(true)
-  const [schemasLoading, setSchemasLoading] = useState(true)
+  const [selectedId, setSelectedId] = useState<string>('')
+  // Values the user just persisted, so the form keeps showing what was written
+  // without a second round trip. Cleared when the category changes.
+  const [savedValues, setSavedValues] = useState<Record<string, unknown> | null>(null)
 
-  // Fetch available schemas on mount. The "System & Alerts" tab is injected
-  // first so it's the default landing tab.
-  useEffect(() => {
-    fetch('/api/plugin-settings/schemas')
-      .then(r => r.json())
-      .then((data: PluginSchemaEntry[]) => {
-        const withSystem: PluginSchemaEntry[] = [
-          { id: SYSTEM_SETTINGS_TAB_ID, name: 'System & Alerts', schema: SYSTEM_SETTINGS_SCHEMA, source: 'built-in' },
-          { id: PROVIDER_KEYS_TAB_ID, name: 'Integrations & Keys', schema: { fields: [] }, source: 'built-in' },
-          ...data,
-        ]
-        setPlugins(withSystem)
-        setActivePlugin(SYSTEM_SETTINGS_TAB_ID)
-        setSchemasLoading(false)
-      })
-      .catch(() => setSchemasLoading(false))
-  }, [])
+  // Schema discovery. The "System & Alerts" and "Integrations & Keys" tabs are
+  // injected first so System & Alerts is the default landing tab.
+  const {
+    data: schemaData,
+    loading: schemasLoading,
+    error: schemasError,
+    refresh: refreshSchemas,
+  } = useJsonFetch<PluginSchemaEntry[]>('/api/plugin-settings/schemas', { timeoutMs: REQUEST_TIMEOUT_MS })
 
-  // Fetch values when active plugin changes. The system tab reads from
-  // /api/settings (core settings.json) instead of /api/plugin-settings/*.
-  useEffect(() => {
-    if (!activePlugin) return
-    // Integrations & Keys manages its own data via /api/secrets + the images
-    // readiness route, so the generic values fetch is skipped.
-    if (activePlugin === PROVIDER_KEYS_TAB_ID) {
-      setValues({})
-      setLoading(false)
-      return
-    }
-    setLoading(true)
-    if (activePlugin === SYSTEM_SETTINGS_TAB_ID) {
-      fetch('/api/settings')
-        .then(r => r.json())
-        .then(data => { setValues(flattenSystemSettings(data)); setLoading(false) })
-        .catch(() => setLoading(false))
-      return
-    }
-    fetch(`/api/plugin-settings/${activePlugin}`)
-      .then(r => r.json())
-      .then(data => { setValues(data); setLoading(false) })
-      .catch(() => setLoading(false))
-  }, [activePlugin])
+  const plugins = useMemo<PluginSchemaEntry[]>(() => {
+    if (!schemaData) return []
+    return [
+      { id: SYSTEM_SETTINGS_TAB_ID, name: 'System & Alerts', schema: SYSTEM_SETTINGS_SCHEMA, source: 'built-in' },
+      { id: PROVIDER_KEYS_TAB_ID, name: 'Integrations & Keys', schema: { fields: [] }, source: 'built-in' },
+      ...schemaData,
+    ]
+  }, [schemaData])
+
+  const activePlugin = selectedId || (plugins.length > 0 ? SYSTEM_SETTINGS_TAB_ID : '')
+
+  // Values for the active category. The system tab reads from /api/settings
+  // (core settings.json) instead of /api/plugin-settings/*; Integrations & Keys
+  // manages its own data via /api/secrets + the images readiness route, so the
+  // generic values fetch is skipped for it.
+  const valuesUrl = activePlugin === '' || activePlugin === PROVIDER_KEYS_TAB_ID
+    ? null
+    : activePlugin === SYSTEM_SETTINGS_TAB_ID
+      ? '/api/settings'
+      : `/api/plugin-settings/${activePlugin}`
+  const {
+    data: valuesData,
+    loading: valuesLoading,
+    error: valuesError,
+    refresh: refreshValues,
+  } = useJsonFetch<Record<string, unknown>>(valuesUrl, { timeoutMs: REQUEST_TIMEOUT_MS })
+
+  const loadedValues = useMemo<Record<string, unknown>>(() => {
+    if (!valuesData) return {}
+    return activePlugin === SYSTEM_SETTINGS_TAB_ID ? flattenSystemSettings(valuesData) : valuesData
+  }, [valuesData, activePlugin])
+  const values = savedValues ?? loadedValues
+
+  const selectPlugin = (id: string) => {
+    // Re-selecting the active category must NOT drop what was just saved. The
+    // id is unchanged, so `valuesUrl` is unchanged, so `useJsonFetch` never
+    // refetches — clearing here would fall back to the pre-save GET and render
+    // stale values (the dispatch kill switch reverting to OFF while the server
+    // has it ON). Saving from that stale form then writes the stale value back.
+    // The invariant: clear `savedValues` exactly when `valuesUrl` changes.
+    if (id === activePlugin) return
+    setSavedValues(null)
+    setSelectedId(id)
+  }
 
   const handleSave = async (newValues: Record<string, unknown>) => {
     if (activePlugin === SYSTEM_SETTINGS_TAB_ID) {
@@ -130,7 +146,10 @@ function SettingsRoute() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(nested),
       })
-      if (res.ok) setValues(newValues)
+      // A non-ok write MUST reject: reporting "saved" over a rejected write
+      // hides changes as consequential as the dispatch kill switch.
+      if (!res.ok) throw await responseError(res, 'System settings were not saved')
+      setSavedValues(newValues)
       return
     }
     const res = await fetch(`/api/plugin-settings/${activePlugin}`, {
@@ -138,7 +157,8 @@ function SettingsRoute() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newValues),
     })
-    if (res.ok) setValues(newValues)
+    if (!res.ok) throw await responseError(res, 'Settings were not saved')
+    setSavedValues(newValues)
   }
 
   const plugin = plugins.find(p => p.id === activePlugin)
@@ -147,6 +167,27 @@ function SettingsRoute() {
     return (
       <SettingsFrame>
         <PageBody label="Settings categories" state={<SystemState kind="loading" />} />
+      </SettingsFrame>
+    )
+  }
+
+  // A failed discovery is NOT an empty settings surface — say so, and offer the
+  // retry instead of implying nothing is configurable.
+  if (schemasError) {
+    return (
+      <SettingsFrame>
+        <PageBody
+          label="Settings categories"
+          state={
+            <SystemState
+              kind="error"
+              recovery="available"
+              title="Settings could not be loaded"
+              description={schemasError}
+              action={<Button variant="outline" onClick={refreshSchemas}>Try again</Button>}
+            />
+          }
+        />
       </SettingsFrame>
     )
   }
@@ -184,44 +225,65 @@ function SettingsRoute() {
           label="Settings categories"
           sections={navSections}
           selectedId={activePlugin || null}
-          onSelect={setActivePlugin}
+          onSelect={selectPlugin}
           className="w-full min-w-0 @3xl/page-shell:w-56 @3xl/page-shell:shrink-0"
         />
 
-        {/* Active category — the ONE PageBody region for this page. */}
-        <PageBody labelledBy="active-settings-heading" gap="content" className="min-w-0">
-          {plugin && (
-            <>
-              <h2
-                id="active-settings-heading"
-              >
-                {plugin.name}
-              </h2>
-              {activePlugin === PROVIDER_KEYS_TAB_ID ? (
-                <ProviderKeysTab />
-              ) : loading ? (
-                <div className="flex flex-col gap-bakin-4">
-                  <Skeleton className="h-8 w-60" />
-                  <Skeleton className="h-8 w-40" />
-                  <Skeleton className="h-8 w-60" />
-                </div>
-              ) : plugin.schema.fields.length === 0 ? (
-                <SystemState
-                  kind="initial-empty"
-                  title="No settings"
-                  description="This plugin has no configurable settings."
-                />
-              ) : (
-                <PluginSettingsRenderer
-                  pluginId={activePlugin}
-                  schema={plugin.schema}
-                  values={values}
-                  onSave={handleSave}
-                />
-              )}
-            </>
-          )}
-        </PageBody>
+        {/* Active category — the ONE PageBody region for this page. The region
+            is named by its heading, so the heading and the region are rendered
+            together; with no active category the region carries its own label
+            instead of pointing at an id that isn't in the document. */}
+        {plugin ? (
+          <PageBody labelledBy={ACTIVE_HEADING_ID} gap="content" className="min-w-0">
+            <h2 id={ACTIVE_HEADING_ID}>{plugin.name}</h2>
+            {activePlugin === PROVIDER_KEYS_TAB_ID ? (
+              <ProviderKeysTab />
+            ) : valuesLoading ? (
+              <div className="flex flex-col gap-bakin-4">
+                <Skeleton className="h-8 w-60" />
+                <Skeleton className="h-8 w-40" />
+                <Skeleton className="h-8 w-60" />
+              </div>
+            ) : valuesError ? (
+              // Never render an empty form over values we failed to read — the
+              // user could save it and destroy the stored config.
+              <SystemState
+                kind="error"
+                recovery="available"
+                scope="section"
+                title="Settings could not be loaded"
+                description={valuesError}
+                action={<Button variant="outline" onClick={refreshValues}>Try again</Button>}
+              />
+            ) : plugin.schema.fields.length === 0 ? (
+              <SystemState
+                kind="initial-empty"
+                title="No settings"
+                description="This plugin has no configurable settings."
+              />
+            ) : (
+              <PluginSettingsRenderer
+                pluginId={activePlugin}
+                schema={plugin.schema}
+                values={values}
+                onSave={handleSave}
+              />
+            )}
+          </PageBody>
+        ) : (
+          <PageBody
+            label="Active settings category"
+            gap="content"
+            className="min-w-0"
+            state={
+              <SystemState
+                kind="initial-empty"
+                title="No category selected"
+                description="Choose a settings category from the list."
+              />
+            }
+          />
+        )}
       </div>
     </SettingsFrame>
   )

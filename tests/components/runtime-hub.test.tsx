@@ -83,8 +83,10 @@ describe('OverviewTab', () => {
     expect(screen.getByText('Not available')).toBeTruthy()
     // Legend present
     expect(screen.getByText(/Via Bakin — Bakin fills the gap itself/)).toBeTruthy()
-    // Setup rows carry remediation for non-ok
-    expect(screen.getByText('→ Set one in Settings')).toBeTruthy()
+    // Setup rows carry remediation for non-ok. It is a labelled table column
+    // now, so the hand-rolled "→ " marker is gone with the divide-y card.
+    expect(screen.getByRole('columnheader', { name: 'Remediation' })).toBeTruthy()
+    expect(screen.getByText('Set one in Settings')).toBeTruthy()
     // budget is not headless-fixable — no Fix button; fixable components get one
     expect(screen.queryByTestId('setup-fix-budget')).toBeNull()
   })

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import {
   PluginSettingsRenderer as SettingsForm,
+  type PluginSettingsFeedback,
 } from '@makinbakin/sdk/patterns'
 import { useToastStore } from '@makinbakin/sdk/hooks'
 import type { PluginSettingsSchema } from '@makinbakin/sdk/types'
@@ -27,13 +28,21 @@ export function PluginSettingsRenderer({
   values,
 }: PluginSettingsRendererProps) {
   const [saving, setSaving] = useState(false)
+  // A toast disappears; a rejected write must not. The failure stays parked
+  // next to the form until the next save attempt.
+  const [feedback, setFeedback] = useState<PluginSettingsFeedback | null>(null)
   const add = useToastStore((state) => state.add)
 
   function submit(nextValues: Record<string, unknown>) {
     setSaving(true)
+    setFeedback(null)
     void onSave(nextValues)
       .then(() => add({ type: 'success', message: `${pluginId} settings saved` }))
-      .catch(() => add({ type: 'error', message: 'Failed to save settings' }))
+      .catch((err: unknown) => {
+        const message = err instanceof Error && err.message ? err.message : 'Failed to save settings'
+        setFeedback({ tone: 'error', title: 'Settings were not saved', description: message })
+        add({ type: 'error', message })
+      })
       .finally(() => setSaving(false))
   }
 
@@ -43,6 +52,7 @@ export function PluginSettingsRenderer({
       values={values}
       onSubmit={submit}
       onValidationError={(message) => add({ type: 'error', message })}
+      feedback={feedback}
       busy={saving}
       saveLabel="Save"
       busyLabel="Saving..."

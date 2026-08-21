@@ -1,8 +1,29 @@
 import { useState } from 'react'
 import { Download, Loader2, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react'
+import { CodeBlock } from '@makinbakin/sdk/content'
 import { toast, useJsonFetch } from '@makinbakin/sdk/hooks'
-import { ConfirmDialog } from '@makinbakin/sdk/patterns'
-import { Alert, AlertDescription, AlertTitle, Badge, Button, Drawer, Input } from '@makinbakin/sdk/ui'
+import {
+  ConfirmDialog,
+  KeyValue,
+  ListRow,
+  ListRowActions,
+  ListRows,
+  StatusBadge,
+  type KeyValueItem,
+} from '@makinbakin/sdk/patterns'
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
+  Drawer,
+  Input,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@makinbakin/sdk/ui'
+import { describeRequestError } from '../lib/request-error'
 
 /**
  * The ecosystem lane inside the Capabilities tab (#687) — NOT a separate
@@ -48,6 +69,18 @@ function fmtBytes(bytes: number): string {
 }
 
 /**
+ * Preview and install reach ClawHub/GitHub, so they get a ceiling rather than
+ * an open-ended wait; `AbortSignal.timeout` tears down the whole exchange,
+ * body read included, not just the headers.
+ */
+const LIST_TIMEOUT_MS = 15_000
+const PREVIEW_TIMEOUT_MS = 60_000
+const INSTALL_TIMEOUT_MS = 120_000
+const REMOVE_TIMEOUT_MS = 60_000
+
+/** Deadline rejections arrive as DOMExceptions — surface them as a real error. */
+
+/**
  * Source is a chip on the installed row, never a grouping. Only the curated
  * bits repo earns "official" — a third-party pack shipping its own manifest
  * is just a "pack" (labeling it official would overclaim).
@@ -62,12 +95,20 @@ function sourceChip(source: string, hub: boolean): string {
   return 'local'
 }
 
+/**
+ * The verdict is the headline trust signal on an install-consent surface, so
+ * it must never depend on colour alone — and never on a colour class that does
+ * not exist. `text-bakin-signal-success`/`-attention` are NOT in the kit
+ * stylesheet (only accent/danger/highlight/info are), so the old hand-rolled
+ * lines rendered in inherited body colour with a bare glyph as the only cue.
+ * StatusBadge and Alert carry real tones plus their own non-colour framing.
+ */
 function VerdictLine({ state }: { state: SkillPreviewWire['verdictState'] }) {
   if (state === 'clean') {
     return (
-      <div className="flex items-center gap-bakin-2 text-bakin-typography-size-body text-bakin-signal-success">
-        <ShieldCheck aria-hidden="true" className="size-bakin-4 shrink-0" /> ClawHub security verdict: clean
-      </div>
+      <StatusBadge tone="success" variant="soft" icon={ShieldCheck} data-testid="hub-verdict">
+        ClawHub security verdict: clean
+      </StatusBadge>
     )
   }
   const copy = state === 'unscanned'
@@ -76,15 +117,12 @@ function VerdictLine({ state }: { state: SkillPreviewWire['verdictState'] }) {
       ? 'ClawHub security verdict unavailable — content is unverified.'
       : 'No hub verdict exists for this source — review the files below.'
   return (
-    <div className="flex items-center gap-bakin-2 text-bakin-typography-size-body text-bakin-signal-attention">
-      <ShieldAlert aria-hidden="true" className="size-bakin-4 shrink-0" /> {copy}
-    </div>
+    <Alert tone="attention" data-testid="hub-verdict">
+      <ShieldAlert aria-hidden="true" />
+      <AlertTitle>Unverified content</AlertTitle>
+      <AlertDescription>{copy}</AlertDescription>
+    </Alert>
   )
-}
-
-/** Mono detail line inside a trust alert (file paths, package names, probes). */
-function TrustDetailLine({ children }: { children: React.ReactNode }) {
-  return <div className="font-bakin-typography-family-mono text-bakin-typography-size-meta">{children}</div>
 }
 
 function PreviewDrawerBody({
@@ -103,6 +141,27 @@ function PreviewDrawerBody({
   onCancel: () => void
 }) {
   const { requirements } = preview
+  const downloadLines = [
+    ...requirements.bins.map((b) =>
+      `binary ${b.name}${b.url ? ` from ${b.url}` : ''}${b.willExecute ? ' — WILL BE EXECUTED during install' : ''}`),
+    ...requirements.npm.map((n) => `npm ${n} — dependencies installed into Bakin`),
+    ...requirements.models.map((m) => `model ${m.name} (${Math.round(m.bytes / 1_000_000)} MB download)`),
+  ]
+  // Requirements used to align their columns with &nbsp; padding, which drifts
+  // apart at any font or zoom change. KeyValue owns the alignment instead.
+  const requirementItems: KeyValueItem[] = [
+    ...requirements.secrets.map((s) => ({
+      label: `key ${s.name}${s.required ? '' : ' (optional)'}`,
+      value: [s.secretSlot, s.help].filter(Boolean).join(' — ') || null,
+      mono: true,
+      breakValue: true,
+    })),
+    ...requirements.prereqs.map((p) => ({
+      label: `bin ${p.probe}${p.optional ? ' (optional)' : ''}`,
+      value: 'checked, never auto-installed',
+    })),
+    ...(requirements.platforms ? [{ label: 'os', value: requirements.platforms.join(', ') }] : []),
+  ]
   return (
     <div className="flex flex-col gap-bakin-4 p-bakin-4" data-testid="hub-preview-body">
       {drift && (
@@ -114,28 +173,33 @@ function PreviewDrawerBody({
       )}
 
       {preview.description && (
-        <p className="m-0 text-bakin-typography-size-body text-bakin-text-primary">{preview.description}</p>
+        <p className="text-bakin-typography-size-body text-bakin-text-primary">{preview.description}</p>
       )}
 
       <VerdictLine state={preview.verdictState} />
       {preview.hub && (preview.hub.downloads !== undefined || preview.hub.stars !== undefined) && (
-        <div className="text-bakin-typography-size-meta text-bakin-text-muted">
-          {[
-            preview.hub.downloads !== undefined ? `${preview.hub.downloads.toLocaleString()} downloads` : null,
-            preview.hub.stars !== undefined ? `${preview.hub.stars.toLocaleString()} stars` : null,
-          ].filter(Boolean).join(' · ')}
-        </div>
+        <KeyValue
+          layout="inline"
+          items={[
+            ...(preview.hub.downloads !== undefined
+              ? [{ label: 'Downloads', value: preview.hub.downloads.toLocaleString(), numeric: true }]
+              : []),
+            ...(preview.hub.stars !== undefined
+              ? [{ label: 'Stars', value: preview.hub.stars.toLocaleString(), numeric: true }]
+              : []),
+          ]}
+        />
       )}
 
       {preview.risk.length > 0 && (
         <Alert tone="danger" data-testid="risk-warnings">
           <AlertTitle>This content instructs agents to run:</AlertTitle>
           <AlertDescription>
-            {preview.risk.map((r, i) => (
-              <TrustDetailLine key={i}>
-                {r.file}:{r.line} [{r.pattern}] {r.snippet}
-              </TrustDetailLine>
-            ))}
+            <CodeBlock
+              label="Risky instructions"
+              wrap
+              code={preview.risk.map((r) => `${r.file}:${r.line} [${r.pattern}] ${r.snippet}`).join('\n')}
+            />
             <div className="mt-bakin-1">Agents WILL execute skill instructions. Only proceed if you trust this source.</div>
           </AlertDescription>
         </Alert>
@@ -145,50 +209,26 @@ function PreviewDrawerBody({
         <Alert tone="danger" data-testid="dependency-warnings">
           <AlertTitle>This source also installs other packages (not previewed):</AlertTitle>
           <AlertDescription>
-            {requirements.dependencies.map((d) => (
-              <TrustDetailLine key={d}>{d}</TrustDetailLine>
-            ))}
+            <CodeBlock label="Additional packages" wrap code={requirements.dependencies.join('\n')} />
             <div className="mt-bakin-1">Their binaries, npm payloads, and models install with the same trust as this one.</div>
           </AlertDescription>
         </Alert>
       )}
 
-      {(requirements.bins.length > 0 || requirements.npm.length > 0 || requirements.models.length > 0) && (
+      {downloadLines.length > 0 && (
         <Alert tone="danger" data-testid="download-warnings">
           <AlertTitle>This source downloads and installs software:</AlertTitle>
           <AlertDescription>
-            {requirements.bins.map((b) => (
-              <TrustDetailLine key={b.name}>
-                binary {b.name}{b.url ? ` from ${b.url}` : ''}{b.willExecute ? ' — WILL BE EXECUTED during install' : ''}
-              </TrustDetailLine>
-            ))}
-            {requirements.npm.map((n) => (
-              <TrustDetailLine key={n}>npm {n} — dependencies installed into Bakin</TrustDetailLine>
-            ))}
-            {requirements.models.map((m) => (
-              <TrustDetailLine key={m.name}>model {m.name} ({Math.round(m.bytes / 1_000_000)} MB download)</TrustDetailLine>
-            ))}
+            <CodeBlock label="Downloaded software" wrap code={downloadLines.join('\n')} />
             <div className="mt-bakin-1">Installed binaries land on your agents&apos; PATH. Only proceed if you trust this publisher.</div>
           </AlertDescription>
         </Alert>
       )}
 
-      {(requirements.secrets.length > 0 || requirements.prereqs.length > 0 || requirements.platforms) && (
-        <div className="grid gap-bakin-1 text-bakin-typography-size-body">
-          <div className="font-bakin-typography-weight-medium text-bakin-text-primary">Requirements (translated from upstream metadata)</div>
-          {requirements.secrets.map((s) => (
-            <TrustDetailLine key={s.name}>
-              key&nbsp;&nbsp;{s.name}{s.required ? '' : ' (optional)'}
-              {s.secretSlot && <span className="text-bakin-text-muted"> → {s.secretSlot}</span>}
-              {s.help && <span className="text-bakin-text-muted"> — {s.help}</span>}
-            </TrustDetailLine>
-          ))}
-          {requirements.prereqs.map((p) => (
-            <TrustDetailLine key={p.probe}>
-              bin&nbsp;&nbsp;{p.probe}{p.optional ? ' (optional)' : ''} <span className="text-bakin-text-muted">— checked, never auto-installed</span>
-            </TrustDetailLine>
-          ))}
-          {requirements.platforms && <TrustDetailLine>os&nbsp;&nbsp;&nbsp;{requirements.platforms.join(', ')}</TrustDetailLine>}
+      {requirementItems.length > 0 && (
+        <div className="grid gap-bakin-1">
+          <h3>Requirements (translated from upstream metadata)</h3>
+          <KeyValue layout="columns" items={requirementItems} />
         </div>
       )}
 
@@ -199,20 +239,36 @@ function PreviewDrawerBody({
         </div>
       )}
 
-      {preview.warnings.map((w, i) => (
-        <div key={i} className="text-bakin-typography-size-meta text-bakin-signal-attention">⚠ {w}</div>
-      ))}
+      {preview.warnings.length > 0 && (
+        <Alert tone="attention" data-testid="hub-preview-warnings">
+          <AlertTitle>Warnings</AlertTitle>
+          <AlertDescription>
+            <ListRows variant="plain" size="sm">
+              {preview.warnings.map((w, i) => <ListRow key={i}>{w}</ListRow>)}
+            </ListRows>
+          </AlertDescription>
+        </Alert>
+      )}
 
-      <div className="text-bakin-typography-size-body">
-        <div className="mb-bakin-1 font-bakin-typography-weight-medium text-bakin-text-muted">Files ({preview.files.length})</div>
-        <div className="max-h-48 overflow-y-auto">
-          {preview.files.map((f) => (
-            <TrustDetailLine key={f.path}>{f.path} <span className="text-bakin-text-muted">{fmtBytes(f.bytes)}</span></TrustDetailLine>
-          ))}
-        </div>
+      {/* Every file, never a clipped window: the drawer already scrolls, and
+          a nested `max-h` scroller here used to hide the remaining count
+          outright on the one surface where "what am I installing" is the
+          whole question. */}
+      <div className="grid gap-bakin-1">
+        <h3>Files ({preview.files.length})</h3>
+        <CodeBlock
+          label={`Files in ${preview.skillName}`}
+          wrap
+          code={preview.files.map((f) => `${f.path}  ${fmtBytes(f.bytes)}`).join('\n')}
+        />
       </div>
 
-      {error && <div className="text-bakin-typography-size-body text-bakin-signal-danger">{error}</div>}
+      {error && (
+        <Alert tone="danger" data-testid="hub-drawer-error">
+          <AlertTitle>The skill was not installed</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       <div className="mt-bakin-2 flex justify-end gap-bakin-2">
         <Button variant="outline" onClick={onCancel} disabled={busy}>Cancel</Button>
@@ -226,7 +282,7 @@ function PreviewDrawerBody({
 }
 
 export function HubSkillsSection() {
-  const { data, error, refresh } = useJsonFetch<SkillsListResponse>('/api/skills')
+  const { data, error, refresh } = useJsonFetch<SkillsListResponse>('/api/skills', { timeoutMs: LIST_TIMEOUT_MS })
   const [ref, setRef] = useState('')
   const [previewBusy, setPreviewBusy] = useState(false)
   const [preview, setPreview] = useState<SkillPreviewWire | null>(null)
@@ -254,6 +310,7 @@ export function HubSkillsSection() {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ref: trimmed }),
+        signal: AbortSignal.timeout(PREVIEW_TIMEOUT_MS),
       })
       const body = await res.json() as { ok: boolean; refused?: boolean; error?: string; preview?: SkillPreviewWire }
       if (!body.ok || !body.preview) {
@@ -263,7 +320,7 @@ export function HubSkillsSection() {
       setDrift(false)
       setPreview(body.preview)
     } catch (err) {
-      setBoxError(err instanceof Error ? err.message : String(err))
+      setBoxError(describeRequestError(err))
     } finally {
       setPreviewBusy(false)
     }
@@ -277,6 +334,7 @@ export function HubSkillsSection() {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ref: ref.trim(), consentToken: p.consentToken }),
+        signal: AbortSignal.timeout(INSTALL_TIMEOUT_MS),
       })
       const body = await res.json() as {
         ok: boolean
@@ -306,7 +364,7 @@ export function HubSkillsSection() {
       }
       setDrawerError(body.refused ? `Refused: ${body.error}` : body.error ?? `HTTP ${res.status}`)
     } catch (err) {
-      setDrawerError(err instanceof Error ? err.message : String(err))
+      setDrawerError(describeRequestError(err))
     } finally {
       setInstallBusy(false)
     }
@@ -316,7 +374,10 @@ export function HubSkillsSection() {
     if (!removing) return
     setRemoveBusy(true)
     try {
-      const res = await fetch(`/api/packages/${encodeURIComponent(removing.packageId)}`, { method: 'DELETE' })
+      const res = await fetch(`/api/packages/${encodeURIComponent(removing.packageId)}`, {
+        method: 'DELETE',
+        signal: AbortSignal.timeout(REMOVE_TIMEOUT_MS),
+      })
       const body = await res.json() as { ok?: boolean; error?: string }
       if (body.ok === false) {
         toast(`Remove failed: ${body.error}`, 'error')
@@ -326,7 +387,7 @@ export function HubSkillsSection() {
       setRemoving(null)
       refresh()
     } catch (err) {
-      toast(err instanceof Error ? err.message : String(err), 'error')
+      toast(describeRequestError(err), 'error')
     } finally {
       setRemoveBusy(false)
     }
@@ -340,38 +401,50 @@ export function HubSkillsSection() {
           by source. One "Installed" list holds curated packs AND hub
           installs (same engine underneath); source is just a chip. */}
       {installed.length > 0 && (
-        <div>
-          <div className="mb-bakin-2 text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">Installed</div>
-          <div className="divide-y divide-bakin-border-subtle rounded-bakin-surface border border-bakin-border-subtle">
+        <div className="grid gap-bakin-2">
+          <h3>Installed</h3>
+          <ListRows variant="bordered" size="sm">
             {installed.map((row) => (
-              <div key={row.packageId + row.skillName} className="flex items-center justify-between gap-bakin-2 p-bakin-3">
+              <ListRow key={row.packageId + row.skillName}>
                 <div className="min-w-0">
                   <div className="flex items-center gap-bakin-2 text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">
                     {row.skillName} <span className="text-bakin-typography-size-meta text-bakin-text-muted">v{row.version}</span>
                     <Badge tone="neutral" variant="soft" size="xs">{sourceChip(row.source, row.hub)}</Badge>
                   </div>
-                  <div className="truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">{row.source}</div>
+                  {/* The ref truncates in this narrow panel; the tooltip is the
+                      only place the full source stays readable. */}
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={<span />}
+                      className="block min-w-0 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted"
+                    >
+                      {row.source}
+                    </TooltipTrigger>
+                    <TooltipContent>{row.source}</TooltipContent>
+                  </Tooltip>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setRemoving({ skillName: row.skillName, packageId: row.packageId })}
-                  aria-label={`Remove ${row.skillName}`}
-                >
-                  <Trash2 className="size-bakin-4" />
-                </Button>
-              </div>
+                <ListRowActions>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setRemoving({ skillName: row.skillName, packageId: row.packageId })}
+                    aria-label={`Remove ${row.skillName}`}
+                  >
+                    <Trash2 className="size-bakin-4" />
+                  </Button>
+                </ListRowActions>
+              </ListRow>
             ))}
-          </div>
+          </ListRows>
         </div>
       )}
 
       {/* Everything below this header is "get more" — the official catalog
           grid follows on the page, and the paste box covers the rest of
           the ecosystem. */}
-      <div>
-        <div className="mb-bakin-1 text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">Get more capabilities</div>
-        <div className="mb-bakin-3 text-bakin-typography-size-meta text-bakin-text-muted">
+      <div className="grid gap-bakin-2">
+        <h3>Get more capabilities</h3>
+        <div className="text-bakin-typography-size-meta text-bakin-text-muted">
           Official ones below install with one click and guided setup. Or bring any skill from the wider
           ecosystem — browse clawhub.ai (or a GitHub skills repo), copy the page link, paste it here.
           You&apos;ll review a full trust preview before anything installs.
@@ -390,8 +463,23 @@ export function HubSkillsSection() {
             Preview & install
           </Button>
         </div>
-        {boxError && <div className="mt-bakin-2 text-bakin-typography-size-body text-bakin-signal-danger" data-testid="hub-box-error">{boxError}</div>}
-        {error != null && <div className="mt-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">Installed-skills list unavailable: {String(error)}</div>}
+        {boxError && (
+          <Alert tone="danger" data-testid="hub-box-error">
+            <AlertTitle>That link could not be previewed</AlertTitle>
+            <AlertDescription>{boxError}</AlertDescription>
+          </Alert>
+        )}
+        {/* A failed list read is a failure, not a hint: as muted meta text it
+            was indistinguishable from the blurb above it, so an outage read as
+            "you have nothing installed". */}
+        {error != null && (
+          <Alert tone="attention" data-testid="hub-list-error">
+            <AlertTitle>Installed skills could not be listed</AlertTitle>
+            <AlertDescription>
+              {String(error)} — anything already installed is still installed; this list is just unavailable.
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
 
       <Drawer

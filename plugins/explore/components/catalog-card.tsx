@@ -2,6 +2,9 @@ import { Check, Plus } from 'lucide-react'
 import { useAgent, useAgentColor, useAgentDisplayName } from '@makinbakin/sdk/hooks'
 import { AgentAvatar, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
   Button,
   Card,
   CardContent,
@@ -9,6 +12,9 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from '@makinbakin/sdk/ui'
 import { runtimeCompatible, type ExploreCatalogEntry } from '../types'
 
@@ -35,6 +41,8 @@ export function EntryVisual({ entry, size = 'md' }: { entry: ExploreCatalogEntry
   const registeredAgentName = useAgentDisplayName(registeredAgentId)
   const registeredAgentColor = useAgentColor(registeredAgentId)
 
+  const avatarSize = size === 'lg' ? 'xl' : 'lg'
+
   if (entry.kind === 'agent' && entry.installed) {
     return (
       <AgentAvatar
@@ -44,32 +52,23 @@ export function EntryVisual({ entry, size = 'md' }: { entry: ExploreCatalogEntry
           imageSrc: registeredAgent?.headshot || entry.iconUrl,
           color: registeredAgent ? registeredAgentColor : undefined,
         }}
-        size={size === 'lg' ? 'xl' : 'lg'}
+        size={avatarSize}
       />
     )
   }
-  if (entry.iconUrl) {
-    return (
-      <img
-        src={entry.iconUrl}
-        alt={entry.name}
-        loading="lazy"
-        data-testid={`icon-${entry.kind}-${entry.id}`}
-        className={`${size === 'lg' ? 'size-12' : 'size-bakin-8'} shrink-0 rounded-bakin-pill border border-bakin-border-subtle object-cover object-top`}
-      />
-    )
-  }
+  // Catalog icon when the bits repo ships one, emoji otherwise — the kit
+  // Avatar owns the frame and the image/fallback swap, so the two branches
+  // stay pixel-identical and the sizes match the AgentAvatar above.
+  // Decorative: the card title / drawer title already names the entry.
   return (
-    <span
+    <Avatar
+      size={avatarSize}
       aria-hidden="true"
-      className={`inline-grid shrink-0 place-items-center rounded-bakin-control bg-bakin-surface-default leading-none ${
-        size === 'lg'
-          ? 'size-12 text-bakin-typography-size-title'
-          : 'size-bakin-8 text-bakin-typography-size-section-title'
-      }`}
+      data-testid={entry.iconUrl ? `icon-${entry.kind}-${entry.id}` : undefined}
     >
-      {entry.emoji ?? '📦'}
-    </span>
+      {entry.iconUrl ? <AvatarImage src={entry.iconUrl} alt="" loading="lazy" className="object-top" /> : null}
+      <AvatarFallback>{entry.emoji ?? '📦'}</AvatarFallback>
+    </Avatar>
   )
 }
 
@@ -87,6 +86,7 @@ export function CatalogCard({
   activeAdapter?: string
 }) {
   const compatible = runtimeCompatible(entry, activeAdapter)
+  const requiredRuntimes = (entry.runtimes ?? []).join(', ')
   const status = entryStatusBadge(entry)
   const installable = !entry.builtin && !entry.installed && onInstall !== undefined && compatible
   return (
@@ -120,14 +120,27 @@ export function CatalogCard({
             </StatusBadge>
           )}
           {!compatible && (
-            <StatusBadge
-              data-testid={`card-incompatible-${entry.id}`}
-              title={`Requires runtime: ${(entry.runtimes ?? []).join(', ')}`}
-              tone="neutral"
-              size="xs"
-            >
-              Not for {activeAdapter ?? 'this runtime'}
-            </StatusBadge>
+            <Tooltip>
+              {/* The chip stays short so the footer never wraps; the full
+                  requirement rides the tooltip for pointers and the appended
+                  text for assistive tech, so neither audience is left with
+                  only "Not for <adapter>". The requirement is TEXT, not an
+                  aria-label: StatusBadge renders a role-less span, and ARIA
+                  prohibits naming a generic — the label was being dropped. */}
+              <TooltipTrigger
+                render={(
+                  <StatusBadge
+                    data-testid={`card-incompatible-${entry.id}`}
+                    tone="neutral"
+                    size="xs"
+                  >
+                    Not for {activeAdapter ?? 'this runtime'}
+                    <span className="sr-only"> — requires runtime: {requiredRuntimes}</span>
+                  </StatusBadge>
+                )}
+              />
+              <TooltipContent>Requires runtime: {requiredRuntimes}</TooltipContent>
+            </Tooltip>
           )}
           {entry.installedVersion ? (
             <span className="text-bakin-typography-size-meta text-bakin-text-muted" data-testid="card-version">
