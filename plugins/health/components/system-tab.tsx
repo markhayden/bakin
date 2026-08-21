@@ -149,11 +149,11 @@ export function SystemTabView({
           <Button
             size="sm"
             variant="outline"
-            disabled={refreshing}
+            busy={refreshing}
             onClick={() => void data.refreshSystemDetails()}
             title="Reload live system data without running a new health sweep"
           >
-            <RefreshCw className={refreshing ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" />
+            <RefreshCw aria-hidden="true" />
             {refreshing ? 'Refreshing…' : 'Refresh live data'}
           </Button>
         )}

@@ -18,7 +18,10 @@ describe('focused conversation renderers', () => {
     const implementation = read('packages/ui/src/conversation/activity-group.tsx')
     expect(implementation).not.toMatch(/@\/|@makinbakin\/sdk|@bakin\/core|lucide-react/)
     expect(implementation).toContain('text-bakin-text-primary')
-    expect(implementation).toContain('motion-reduce:animate-none')
+    // Reduced motion is honoured by the Spinner primitive the group composes,
+    // not by a hand-rolled ring — the guarantee moved, it did not disappear.
+    expect(implementation).toContain("from '../primitives/spinner'")
+    expect(implementation).not.toContain('border-r-transparent')
     expect(existsSync(resolve(ROOT, 'src/components/conversation/activity-group.tsx'))).toBe(false)
   })
 
@@ -34,7 +37,9 @@ describe('focused conversation renderers', () => {
     expect(agentTurn).not.toMatch(/@\/|@makinbakin\/sdk|@bakin\/core|lucide-react|markdown-content/)
     expect(userMessage).not.toMatch(/@\/|@makinbakin\/sdk|@bakin\/core|lucide-react|markdown-content/)
     expect(agentTurn).toContain('text-bakin-text-primary')
-    expect(agentTurn).toContain('motion-reduce:animate-none')
+    // Reduced motion rides the Spinner primitive; see the activity-group pin above.
+    expect(agentTurn).toContain("from '../primitives/spinner'")
+    expect(agentTurn).not.toContain('border-r-transparent')
   })
 
   it('the legacy turn compatibility adapters stay deleted (P-final)', () => {

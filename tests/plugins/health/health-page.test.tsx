@@ -217,7 +217,8 @@ describe('HealthPage tab shell', () => {
 
     expect(status.textContent).toBe('Running health checks.')
     expect(screen.getByTestId('health-action-visible-status').textContent).toBe('Running health checks.')
-    expect(screen.getByRole('button', { name: 'Running checks…' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Running checks…' }).getAttribute('aria-busy')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Running checks…' }).getAttribute('aria-disabled')).toBe('true')
     expect(overviewRunChecks).toHaveBeenCalledTimes(1)
 
     finishChecks?.({ id: 'report-2' })
@@ -271,7 +272,8 @@ describe('HealthPage tab shell', () => {
     render(<HealthPage />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Run checks' }))
-    expect(screen.getByRole('button', { name: 'Running checks…' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Running checks…' }).getAttribute('aria-busy')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Running checks…' }).getAttribute('aria-disabled')).toBe('true')
 
     await act(async () => { await vi.advanceTimersByTimeAsync(HEALTH_REPORT_SWEEP_TIMEOUT_MS) })
 
@@ -297,7 +299,8 @@ describe('HealthPage tab shell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Run checks' }))
     await act(async () => { await vi.advanceTimersByTimeAsync(0) })
-    expect(screen.getByRole('button', { name: 'Running checks…' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Running checks…' }).getAttribute('aria-busy')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Running checks…' }).getAttribute('aria-disabled')).toBe('true')
     await act(async () => { await vi.advanceTimersByTimeAsync(HEALTH_REPORT_SWEEP_TIMEOUT_MS) })
 
     expect(requestSignal?.aborted).toBe(true)

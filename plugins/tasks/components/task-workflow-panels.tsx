@@ -9,6 +9,7 @@ import {
   Field,
   FieldControl,
   FieldLabel,
+  Spinner,
   Text,
   Textarea,
 } from '@makinbakin/sdk/ui'
@@ -252,7 +253,7 @@ export function GateApprovalPanel({ m }: { m: TaskDetail }) {
       <AlertDescription>
         {outputLoading ? (
           <p role="status" className="inline-flex items-center gap-bakin-2">
-            <RefreshCw aria-hidden="true" className="size-bakin-3 animate-spin motion-reduce:animate-none" />
+            <Spinner size="sm" />
             Loading step output…
           </p>
         ) : null}

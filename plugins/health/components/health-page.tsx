@@ -207,11 +207,8 @@ export function HealthPage() {
           </span>
         ) : undefined}
         actions={(
-          <Button type="button" onClick={() => { void runChecks() }} disabled={runningChecks}>
-            <RefreshCw
-              className={runningChecks ? 'animate-spin motion-reduce:animate-none' : undefined}
-              aria-hidden="true"
-            />
+          <Button type="button" onClick={() => { void runChecks() }} busy={runningChecks}>
+            <RefreshCw aria-hidden="true" />
             {runningChecks ? 'Running checks…' : 'Run checks'}
           </Button>
         )}

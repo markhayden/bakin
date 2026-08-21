@@ -82,8 +82,12 @@ export function SubmitButton({
     <Button
       {...props}
       type="submit"
-      aria-busy={busy || undefined}
-      disabled={disabled || busy}
+      busy={busy}
+      // A submit control keeps the real `disabled` attribute while busy so an
+      // implicit form submission (Enter in a field) cannot fire twice — the
+      // one place the focusable-but-inert busy default is the wrong call.
+      focusableWhenDisabled={false}
+      disabled={disabled}
     >
       {busy ? busyLabel : children}
     </Button>

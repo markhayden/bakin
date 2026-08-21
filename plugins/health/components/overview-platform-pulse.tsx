@@ -3,7 +3,7 @@
 import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
-import { Banner, Button, Skeleton, Text } from '@makinbakin/sdk/ui'
+import { Banner, Button, Skeleton, Spinner, Text } from '@makinbakin/sdk/ui'
 import {
   Activity,
   AlertTriangle,
@@ -137,7 +137,7 @@ export function OverviewPlatformPulse({
           ) : null}
           <span className="flex items-center gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
             {checking
-              ? <Clock3 className="size-bakin-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              ? <Spinner size="sm" />
               : <Clock3 className="size-bakin-3" aria-hidden="true" />}
             <span className="font-bakin-typography-weight-medium text-bakin-text-primary">Checked</span>
             {model.evidenceObservedAt

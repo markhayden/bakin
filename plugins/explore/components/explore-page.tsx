@@ -252,12 +252,13 @@ function ExplorePageInner() {
               variant="outline"
               size="sm"
               data-testid="refresh-catalog"
-              disabled={busyAction !== null}
+              disabled={busyAction !== null && busyAction !== 'refresh'}
+              busy={busyAction === 'refresh'}
               onClick={() => void runAction('refresh')}
             />
           )}
         >
-          <RefreshCw className={busyAction === 'refresh' ? 'animate-spin' : undefined} />
+          <RefreshCw />
           Refresh catalog
         </TooltipTrigger>
         <TooltipContent>Fetch the latest official catalog from GitHub</TooltipContent>

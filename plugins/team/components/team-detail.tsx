@@ -229,8 +229,8 @@ export function TeamDetail({ teamId }: { teamId: string }) {
           </>
         ) : undefined}
         actions={members ? (
-          <Button type="button" onClick={() => void syncTeam()} disabled={syncing}>
-            <RefreshCw className={syncing ? 'animate-spin motion-reduce:animate-none' : undefined} aria-hidden="true" />
+          <Button type="button" onClick={() => void syncTeam()} busy={syncing}>
+            <RefreshCw aria-hidden="true" />
             {syncing ? 'Syncing…' : isGlobal ? 'Sync all agents' : 'Sync team'}
           </Button>
         ) : undefined}

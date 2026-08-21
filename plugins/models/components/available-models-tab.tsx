@@ -297,8 +297,8 @@ export function AvailableModelsTab({
       title="Models could not be loaded"
       description={modelsError}
       action={(
-        <Button type="button" variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-          <RefreshCw className={refreshing ? 'animate-spin motion-reduce:animate-none' : undefined} />
+        <Button type="button" variant="outline" size="sm" onClick={handleRefresh} busy={refreshing}>
+          <RefreshCw />
           Retry
         </Button>
       )}
@@ -309,8 +309,8 @@ export function AvailableModelsTab({
       title="No models are available"
       description="The connected runtime did not report any usable models."
       action={(
-        <Button type="button" variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-          <RefreshCw className={refreshing ? 'animate-spin motion-reduce:animate-none' : undefined} />
+        <Button type="button" variant="outline" size="sm" onClick={handleRefresh} busy={refreshing}>
+          <RefreshCw />
           Refresh catalog
         </Button>
       )}
@@ -342,9 +342,9 @@ export function AvailableModelsTab({
               size="sm"
               variant="outline"
               onClick={handleRefresh}
-              disabled={refreshing}
+              busy={refreshing}
             >
-              <RefreshCw className={refreshing ? 'animate-spin motion-reduce:animate-none' : undefined} />
+              <RefreshCw />
               {refreshing ? 'Refreshing…' : 'Refresh'}
             </Button>
           </>

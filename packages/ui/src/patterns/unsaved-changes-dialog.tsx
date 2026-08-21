@@ -3,6 +3,7 @@
 import * as React from 'react'
 
 import { Button } from '../primitives/button'
+import { Spinner } from '../primitives/spinner'
 import {
   Dialog,
   DialogContent,
@@ -84,12 +85,7 @@ export function UnsavedChangesDialog({
             </Button>
             {canSaveInPlace ? (
               <Button onClick={onSave} disabled={busy || saveDisabled}>
-                {busy ? (
-                  <span
-                    aria-hidden="true"
-                    className="size-bakin-3 animate-spin rounded-bakin-pill border-2 border-current border-r-transparent motion-reduce:animate-none"
-                  />
-                ) : null}
+                {busy ? <Spinner size="sm" /> : null}
                 {busy ? busyLabel : saveLabel}
               </Button>
             ) : null}

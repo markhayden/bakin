@@ -4,6 +4,7 @@ import * as React from 'react'
 
 import { Alert, AlertDescription } from '../primitives/alert'
 import { Button } from '../primitives/button'
+import { Spinner } from '../primitives/spinner'
 import { cn } from '../utils'
 
 export interface SaveBarProps {
@@ -123,12 +124,7 @@ export function SaveBar({
           {discardLabel}
         </Button>
         <Button className="flex-1 sm:flex-none" size="sm" onClick={onSave} disabled={saving} data-savebar-save="">
-          {saving ? (
-            <span
-              aria-hidden="true"
-              className="size-bakin-3 animate-spin rounded-bakin-pill border-2 border-current border-r-transparent motion-reduce:animate-none"
-            />
-          ) : null}
+          {saving ? <Spinner size="sm" /> : null}
           {saving ? savingLabel : error ? retryLabel : saveLabel}
         </Button>
       </div>

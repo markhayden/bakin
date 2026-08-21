@@ -43,6 +43,15 @@ export type ButtonProps = Omit<ButtonPrimitive.Props, 'className'> & {
   className?: ButtonPrimitive.Props['className']
   variant?: ButtonVariant | LegacyButtonVariant
   size?: ButtonSize | LegacyButtonSize
+  /**
+   * The action this button started is still running. The control announces
+   * `aria-busy`, stops accepting activation, and keeps keyboard focus (it is
+   * inert, not removed), and its leading icon rotates — a refresh arrow keeps
+   * meaning "refreshing" instead of turning into a generic ring. Reduced
+   * motion stops the rotation. `Spinner` is for content that is loading;
+   * `busy` is for the control the user just pressed.
+   */
+  busy?: boolean
 }
 
 const buttonStyles = cva(
@@ -55,6 +64,10 @@ const buttonStyles = cva(
     'active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-[var(--bakin-state-opacity-disabled)]',
     'aria-invalid:border-bakin-signal-danger',
     '[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*="size-"])]:size-bakin-4',
+    // Busy: the leading icon is the progress indicator. Focusable-when-disabled
+    // renders aria-disabled rather than the disabled attribute, so the
+    // `disabled:` dim above does not apply and the label stays legible.
+    'data-[busy]:cursor-progress data-[busy]:[&>svg:first-child]:animate-spin motion-reduce:data-[busy]:[&>svg:first-child]:animate-none',
   ],
   {
     variants: {
@@ -128,6 +141,9 @@ export function Button({
   className,
   variant = 'primary',
   size = 'md',
+  busy = false,
+  disabled,
+  focusableWhenDisabled,
   ...props
 }: ButtonProps) {
   const resolvedVariant = canonicalVariant(variant)
@@ -141,6 +157,10 @@ export function Button({
       data-slot="button"
       data-variant={resolvedVariant}
       data-size={resolvedSize}
+      data-busy={busy ? '' : undefined}
+      aria-busy={busy || undefined}
+      disabled={disabled || busy}
+      focusableWhenDisabled={focusableWhenDisabled ?? (busy || undefined)}
       className={resolvedClassName}
       {...props}
     />

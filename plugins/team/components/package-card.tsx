@@ -343,8 +343,8 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
             <Button variant="outline" onClick={() => setUpdateOpen(false)}>
               Close
             </Button>
-            <Button disabled={actionBusy || Boolean(actionMessage)} onClick={() => syncPackage()}>
-              {actionBusy ? <RefreshCw className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
+            <Button busy={actionBusy} disabled={Boolean(actionMessage)} onClick={() => syncPackage()}>
+              <RefreshCw aria-hidden="true" />
               {actionBusy ? 'Syncing…' : 'Sync agent'}
             </Button>
           </DialogFooter>

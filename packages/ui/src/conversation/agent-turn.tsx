@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 
 import { Alert, AlertDescription } from '../primitives/alert'
+import { Spinner } from '../primitives/spinner'
 import { Avatar, AvatarFallback, AvatarImage } from '../primitives/avatar'
 import { Button } from '../primitives/button'
 import { cn } from '../utils'
@@ -47,12 +48,7 @@ function DefaultAvatar({ agent }: { agent: ConversationAgent }) {
 }
 
 function SpinnerIcon() {
-  return (
-    <span
-      aria-hidden="true"
-      className="size-bakin-3 shrink-0 animate-spin rounded-bakin-pill border-2 border-current border-r-transparent motion-reduce:animate-none"
-    />
-  )
+  return <Spinner size="sm" className="shrink-0" />
 }
 
 function AlertIcon() {
