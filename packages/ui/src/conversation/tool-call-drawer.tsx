@@ -1,7 +1,8 @@
 'use client'
 
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties } from 'react'
 
+import { KeyValue } from '../patterns/key-value'
 import { Badge, type BadgeTone } from '../primitives/badge'
 import {
   Sheet,
@@ -44,19 +45,6 @@ function DetailSection({ label, value }: { label: string; value: string }) {
         {displayValue}
       </pre>
     </section>
-  )
-}
-
-function MetaCell({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="grid min-w-0 gap-bakin-1">
-      <dt className="text-[length:var(--bakin-typography-size-meta)] uppercase tracking-wider text-bakin-text-muted">
-        {label}
-      </dt>
-      <dd className="min-w-0 break-all font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] text-bakin-text-primary">
-        {value}
-      </dd>
-    </div>
   )
 }
 
@@ -133,16 +121,19 @@ export function ToolCallDrawer({
 
         <div className="min-h-0 flex-1 overflow-y-auto p-bakin-6">
           <div className="grid min-w-0 gap-bakin-6">
-            <dl className="grid min-w-0 grid-cols-2 gap-bakin-4 sm:grid-cols-3">
-              <MetaCell
-                label="Status"
-                value={<Badge tone={statusTone(call.status)} variant="soft">{call.status}</Badge>}
-              />
-              {call.durationMs !== undefined ? (
-                <MetaCell label="Duration" value={formatDuration(call.durationMs)} />
-              ) : null}
-              {call.callId ? <MetaCell label="Call ID" value={call.callId} /> : null}
-            </dl>
+            <KeyValue
+              layout="columns"
+              items={[
+                {
+                  label: 'Status',
+                  value: <Badge tone={statusTone(call.status)} variant="soft">{call.status}</Badge>,
+                },
+                ...(call.durationMs !== undefined
+                  ? [{ label: 'Duration', value: formatDuration(call.durationMs), mono: true }]
+                  : []),
+                ...(call.callId ? [{ label: 'Call ID', value: call.callId, mono: true, breakValue: true }] : []),
+              ]}
+            />
 
             {truncated ? (
               <div

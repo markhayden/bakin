@@ -4,7 +4,7 @@ import { useId, useMemo, useState, type ReactNode } from 'react'
 import type { AgentUsage } from '@makinbakin/sdk/types'
 import { CompositionBar } from '@makinbakin/sdk/charts'
 import { PluginLink } from '@makinbakin/sdk/navigation'
-import { ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
+import { KeyValue, ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Button,
   Card,
@@ -13,6 +13,9 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
   Overline,
   Progress,
   Skeleton,
@@ -189,32 +192,31 @@ function LatestSessionDetails({ row, id, checking, unavailable }: {
   const session = row.latestSession
   const costLabel = session ? latestSessionCostLabel(session) : null
   return (
-    <div
+    <CollapsibleContent
       id={id}
       role="region"
       aria-label={`${row.agent} details`}
-      className="border-t border-bakin-border-subtle pt-bakin-3"
+      className="col-span-full border-t border-bakin-border-subtle pb-0 pt-bakin-3 text-bakin-text-primary"
     >
       {session ? (
         <div>
-          <div className="grid gap-bakin-3 @[36rem]/agent-pulse:grid-cols-[minmax(11rem,1.5fr)_repeat(4,minmax(5rem,1fr))]">
+          <div className="grid gap-bakin-3 @[36rem]/agent-pulse:grid-cols-[minmax(11rem,1.5fr)_minmax(0,2fr)] @[36rem]/agent-pulse:items-start">
             <div className="min-w-0">
               <p className="truncate font-bakin-typography-weight-medium text-bakin-text-primary">{session.model}</p>
               <Text size="meta" tone="muted" as="p">
                 {plural(session.messages, 'message')} · {formatTokenCount(session.tokens.total)} tokens
               </Text>
             </div>
-            {([
-              ['Input', session.tokens.input],
-              ['Output', session.tokens.output],
-              ['Cache read', session.tokens.cacheRead],
-              ['Cache write', session.tokens.cacheWrite],
-            ] as const).map(([label, value]) => (
-              <dl key={label}>
-                <Overline as="dt">{label}</Overline>
-                <dd className="mt-bakin-0 font-bakin-typography-weight-medium tabular-nums text-bakin-text-primary">{formatTokenCount(value)}</dd>
-              </dl>
-            ))}
+            <KeyValue
+              layout="inline"
+              aria-label={`${row.agent} latest-session tokens`}
+              items={[
+                { label: 'Input', value: formatTokenCount(session.tokens.input), numeric: true },
+                { label: 'Output', value: formatTokenCount(session.tokens.output), numeric: true },
+                { label: 'Cache read', value: formatTokenCount(session.tokens.cacheRead), numeric: true },
+                { label: 'Cache write', value: formatTokenCount(session.tokens.cacheWrite), numeric: true },
+              ]}
+            />
           </div>
           {costLabel && (
             <Text size="meta" tone="muted" as="p" className="mt-bakin-2">{costLabel}</Text>
@@ -233,7 +235,7 @@ function LatestSessionDetails({ row, id, checking, unavailable }: {
       >
         Open {row.agent} diagnostics <ArrowUpRight className="size-bakin-3" aria-hidden="true" />
       </PluginLink>
-    </div>
+    </CollapsibleContent>
   )
 }
 
@@ -273,10 +275,11 @@ function AgentPulseRowView({ row, expanded, pending, unavailable, liveNowStale, 
           ? 'Live state is stale'
           : 'No active task reported')
   return (
-    <ListRow
-      aria-labelledby={headingId}
-      data-agent-pulse-row
-      className="p-bakin-4"
+    <Collapsible
+      open={expanded}
+      onOpenChange={onToggle}
+      className="border-y-0 p-bakin-4"
+      render={<ListRow aria-labelledby={headingId} data-agent-pulse-row />}
     >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-bakin-2">
@@ -327,30 +330,21 @@ function AgentPulseRowView({ row, expanded, pending, unavailable, liveNowStale, 
         )}
       </Metric>
       <ContextMetric row={row} checking={pending.context || pending.settings} />
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="justify-self-start @3xl/list-rows:justify-self-end"
+      <CollapsibleTrigger
+        className="min-h-0 w-auto justify-self-start py-0 text-bakin-typography-size-meta @3xl/list-rows:justify-self-end"
         aria-label={`View ${row.agent} details`}
-        aria-expanded={expanded}
         aria-controls={detailsId}
-        onClick={onToggle}
       >
         Details
-        <ChevronDown className={expanded ? 'rotate-180 transition-transform motion-reduce:transition-none' : 'transition-transform motion-reduce:transition-none'} aria-hidden="true" />
-      </Button>
-      {expanded && (
-        <div className="col-span-full min-w-0">
-          <LatestSessionDetails
-            row={row}
-            id={detailsId}
-            checking={pending.latestSessions}
-            unavailable={unavailable.latestSessions}
-          />
-        </div>
-      )}
-    </ListRow>
+        <ChevronDown className="transition-transform group-data-[panel-open]/collapsible:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
+      </CollapsibleTrigger>
+      <LatestSessionDetails
+        row={row}
+        id={detailsId}
+        checking={pending.latestSessions}
+        unavailable={unavailable.latestSessions}
+      />
+    </Collapsible>
   )
 }
 

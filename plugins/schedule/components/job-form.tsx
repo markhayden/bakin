@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import {
   AgentSelect,
   TEAM_VALUE_PREFIX,
@@ -15,6 +15,9 @@ import {
   AlertDescription,
   Button,
   Checkbox,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
   Field,
   FieldControl,
   FieldDescription,
@@ -80,7 +83,6 @@ export function JobForm({
     initial?.agentId ?? (initial?.teamId ? `${TEAM_VALUE_PREFIX}${initial.teamId}` : ''),
   )
   const [prompt, setPrompt] = useState(initial?.taskPrompt ?? '')
-  const [advanced, setAdvanced] = useState(false)
   const [workflowId, setWorkflowId] = useState(initial?.workflowId ?? '')
   const [taskTitle, setTaskTitle] = useState(initial?.taskTitle ?? '')
   const [owner, setOwner] = useState(initial?.owner ?? mainAgentId ?? '')
@@ -204,20 +206,15 @@ export function JobForm({
         </Field>
       </FieldGroup>
 
-      <Button
-        type="button"
-        variant="ghost"
-        size="xs"
-        className="justify-self-start text-bakin-text-muted"
-        aria-expanded={advanced}
-        onClick={() => setAdvanced((current) => !current)}
-      >
-        {advanced ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
-        Advanced options
-      </Button>
-
-      {advanced ? (
-        <div className="border-l-2 border-bakin-border-subtle pl-bakin-4">
+      <Collapsible>
+        <CollapsibleTrigger>
+          <span>Advanced options</span>
+          <ChevronRight
+            aria-hidden="true"
+            className="transition-transform duration-[var(--bakin-motion-duration-feedback)] group-data-[panel-open]/collapsible:rotate-90 motion-reduce:transition-none"
+          />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-bakin-2">
           <FieldGroup>
             <Field name="workflowId">
               <FieldLabel htmlFor="schedule-job-workflow">Workflow ID</FieldLabel>
@@ -289,8 +286,8 @@ export function JobForm({
               </Field>
             </div>
           </FieldGroup>
-        </div>
-      ) : null}
+        </CollapsibleContent>
+      </Collapsible>
 
       <FormActions>
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>

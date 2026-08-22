@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Drawer, DrawerSection, Overline, Separator, Text } from '@makinbakin/sdk/ui'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import { Stack } from '@makinbakin/sdk/layout'
+import { KeyValue, type KeyValueItem } from '@makinbakin/sdk/patterns'
 import { useAgent } from '@makinbakin/sdk/hooks'
 import { WorkflowAgentAvatar } from './workflow-agent-identity'
 import {
@@ -53,15 +54,13 @@ function StepTypeBadge({ type }: { type: string }) {
   )
 }
 
-function MetadataCard({ icon: Icon, label, children }: { icon?: React.ElementType; label: string; children: React.ReactNode }) {
+function IconLabel({ icon: Icon, children }: { icon?: React.ElementType; children: React.ReactNode }) {
+  if (!Icon) return <>{children}</>
   return (
-    <div className="rounded-bakin-surface bg-bakin-surface-default p-3 space-y-1">
-      <Overline as="div" className="flex items-center gap-1.5">
-        {Icon && <Icon className="size-3" />}
-        {label}
-      </Overline>
-      <div className="text-bakin-typography-size-body font-bakin-typography-weight-medium">{children}</div>
-    </div>
+    <span className="inline-flex items-center gap-bakin-1">
+      <Icon aria-hidden="true" className="size-bakin-3" />
+      {children}
+    </span>
   )
 }
 
@@ -182,23 +181,28 @@ function GateStepDetail({ step }: { step: GateStep }) {
         </DrawerSection>
       )}
 
-      {/* Metadata grid */}
-      <div className="grid grid-cols-2 gap-3">
-        <MetadataCard icon={ShieldCheck} label="Approval">
-          {step.approval_required !== false ? 'Required' : 'Optional'}
-        </MetadataCard>
-
-        {step.preview && step.preview.length > 0 && (
-          <MetadataCard label="Preview Steps">
-            <div className="flex flex-wrap gap-1">
-              {step.preview.map((id) => (
-                <Badge key={id} tone="neutral" variant="soft" size="xs" className="font-bakin-typography-family-mono">{id}</Badge>
-              ))}
-            </div>
-          </MetadataCard>
-        )}
-
-      </div>
+      {/* Metadata */}
+      <KeyValue
+        layout="columns"
+        items={[
+          {
+            label: <IconLabel icon={ShieldCheck}>Approval</IconLabel>,
+            value: step.approval_required !== false ? 'Required' : 'Optional',
+          },
+          ...(step.preview && step.preview.length > 0
+            ? [{
+              label: 'Preview Steps',
+              value: (
+                <span className="flex flex-wrap gap-bakin-1">
+                  {step.preview.map((id) => (
+                    <Badge key={id} tone="neutral" variant="soft" size="xs" className="font-bakin-typography-family-mono">{id}</Badge>
+                  ))}
+                </span>
+              ),
+            }]
+            : []),
+        ]}
+      />
 
       {/* Notification channels */}
       {step.notify && step.notify.length > 0 && (
@@ -248,6 +252,22 @@ function GateStepDetail({ step }: { step: GateStep }) {
 }
 
 function OutputStepDetail({ step }: { step: OutputStep }) {
+  const outputItems: KeyValueItem[] = []
+  if (step.channels && step.channels.length > 0) {
+    outputItems.push({
+      label: <IconLabel icon={Zap}>Channels</IconLabel>,
+      value: (
+        <span className="flex flex-wrap gap-bakin-1">
+          {step.channels.map((ch) => (
+            <Badge key={ch} tone="neutral" variant="soft" size="xs">{ch}</Badge>
+          ))}
+        </span>
+      ),
+    })
+  }
+  if (step.schedule) {
+    outputItems.push({ label: <IconLabel icon={Clock}>Schedule</IconLabel>, value: step.schedule, mono: true })
+  }
   return (
     <div className="space-y-6">
       {/* Agent hero (if present) */}
@@ -283,25 +303,8 @@ function OutputStepDetail({ step }: { step: OutputStep }) {
         </DrawerSection>
       )}
 
-      {/* Metadata grid */}
-      <div className="grid grid-cols-2 gap-3">
-        {step.channels && step.channels.length > 0 && (
-          <MetadataCard icon={Zap} label="Channels">
-            <div className="flex flex-wrap gap-1">
-              {step.channels.map((ch) => (
-                <Badge key={ch} tone="neutral" variant="soft" size="xs">{ch}</Badge>
-              ))}
-            </div>
-          </MetadataCard>
-        )}
-
-        {step.schedule && (
-          <MetadataCard icon={Clock} label="Schedule">
-            <span className="font-bakin-typography-family-mono">{step.schedule}</span>
-          </MetadataCard>
-        )}
-
-      </div>
+      {/* Metadata */}
+      {outputItems.length > 0 && <KeyValue layout="columns" items={outputItems} />}
 
       {/* Content templates */}
       {step.content && Object.keys(step.content).length > 0 && (
@@ -364,12 +367,13 @@ function ParallelStepDetail({ step }: { step: ParallelStep }) {
 function WorkflowStepDetail({ step }: { step: NestedWorkflowStep }) {
   return (
     <div className="space-y-6">
-      {/* Metadata grid */}
-      <div className="grid grid-cols-2 gap-3">
-        <MetadataCard icon={RefreshCw} label="Workflow ID">
-          <span className="font-bakin-typography-family-mono">{step.workflow_id}</span>
-        </MetadataCard>
-      </div>
+      {/* Metadata */}
+      <KeyValue
+        layout="columns"
+        items={[
+          { label: <IconLabel icon={RefreshCw}>Workflow ID</IconLabel>, value: step.workflow_id, mono: true },
+        ]}
+      />
 
       {/* Description */}
       {step.description && (
@@ -386,20 +390,15 @@ function WorkflowStepDetail({ step }: { step: NestedWorkflowStep }) {
 function MapWorkflowStepDetail({ step }: { step: MapWorkflowStep }) {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-3">
-        <MetadataCard icon={RefreshCw} label="Child Workflow">
-          <span className="font-bakin-typography-family-mono">{step.workflow_id}</span>
-        </MetadataCard>
-        <MetadataCard icon={Zap} label="Source Array">
-          <span className="font-bakin-typography-family-mono">{step.source}</span>
-        </MetadataCard>
-        <MetadataCard icon={Package} label="Item Key">
-          <span className="font-bakin-typography-family-mono">{step.item_key || 'item'}</span>
-        </MetadataCard>
-        <MetadataCard icon={AlertTriangle} label="Max Children">
-          <span className="font-bakin-typography-family-mono">{step.max_children ?? 32}</span>
-        </MetadataCard>
-      </div>
+      <KeyValue
+        layout="columns"
+        items={[
+          { label: <IconLabel icon={RefreshCw}>Child Workflow</IconLabel>, value: step.workflow_id, mono: true },
+          { label: <IconLabel icon={Zap}>Source Array</IconLabel>, value: step.source, mono: true },
+          { label: <IconLabel icon={Package}>Item Key</IconLabel>, value: step.item_key || 'item', mono: true },
+          { label: <IconLabel icon={AlertTriangle}>Max Children</IconLabel>, value: step.max_children ?? 32, mono: true, numeric: true },
+        ]}
+      />
 
       <p className="text-bakin-typography-size-meta text-bakin-text-muted leading-relaxed">
         Fans out one child workflow per element of the source array at runtime.

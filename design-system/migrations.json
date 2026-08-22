@@ -20,11 +20,11 @@
     "private-import"
   ],
   "summary": {
-    "paths": 173,
+    "paths": 171,
     "totals": {
       "raw-palette": 4,
-      "arbitrary-size": 84,
-      "raw-scale": 652,
+      "arbitrary-size": 82,
+      "raw-scale": 642,
       "raw-control": 20,
       "inline-style": 34,
       "generic-token": 72,
@@ -1816,22 +1816,6 @@
       }
     },
     {
-      "path": "plugins/health/components/activity-event-stream.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1
-      }
-    },
-    {
       "path": "plugins/health/components/activity-failure-groups.tsx",
       "owner": {
         "repository": "bakin",
@@ -1849,22 +1833,6 @@
     },
     {
       "path": "plugins/health/components/activity-pulse.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1
-      }
-    },
-    {
-      "path": "plugins/health/components/activity-row.tsx",
       "owner": {
         "repository": "bakin",
         "area": "plugin",
@@ -2604,7 +2572,7 @@
       "target": "workflow pages/canvas archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 77
+        "raw-scale": 67
       }
     },
     {

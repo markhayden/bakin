@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { ChevronRight, Workflow, Zap, Radio, MonitorDot, Plug } from 'lucide-react'
 import { useAgent, useContentStore } from '@makinbakin/sdk/hooks'
+import { DisclosurePanel } from '@makinbakin/sdk/layout'
+import { KeyValue } from '@makinbakin/sdk/patterns'
 import { Button } from '@makinbakin/sdk/ui'
 import { useActivityContext } from '@/context/activity-context'
 import { AgentAvatar } from '@/components/agent-avatar'
@@ -70,20 +72,12 @@ function DispatchFailureDebug({ data }: { data?: Record<string, unknown> }) {
   return (
     <div className="mt-bakin-2 rounded-md bg-bakin-surface-elevated/40 px-bakin-2 py-1.5 text-bakin-typography-size-meta text-bakin-text-muted">
       {rows.length > 0 && (
-        <div className="grid grid-cols-2 gap-x-bakin-2 gap-y-bakin-1">
-          {rows.map(([label, value]) => (
-            <div key={label} className="min-w-0">
-              <span className="text-bakin-text-muted">{label}: </span>
-              <span className="text-bakin-text-primary">{value}</span>
-            </div>
-          ))}
-        </div>
+        <KeyValue layout="inline" items={rows.map(([label, value]) => ({ label, value }))} />
       )}
       {rawError && (
-        <details className="mt-bakin-1">
-          <summary className="cursor-pointer text-bakin-text-muted">Raw error</summary>
-          <p className="mt-bakin-1 break-words font-mono text-bakin-typography-size-meta leading-snug">{rawError}</p>
-        </details>
+        <DisclosurePanel variant="ghost" summary="Raw error" className="mt-bakin-1">
+          <p className="m-0 break-words font-mono text-bakin-typography-size-meta leading-snug">{rawError}</p>
+        </DisclosurePanel>
       )}
     </div>
   )

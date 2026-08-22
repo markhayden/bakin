@@ -13,9 +13,9 @@ import {
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
-  Overline,
 } from '@makinbakin/sdk/ui'
 import { Panel } from '@makinbakin/sdk/layout'
+import { KeyValue } from '@makinbakin/sdk/patterns'
 import { formatDateTime } from '@makinbakin/sdk/utils'
 import { AlertTriangle, Send } from 'lucide-react'
 import type { Task, TaskLogEntry } from '../types'
@@ -30,21 +30,12 @@ function DispatchFailureLogPanel({ detail }: { detail: DispatchFailureDetail }) 
   ] as Array<[string, string]>
 
   return (
-    <Alert tone="danger" className="@container/dispatch mt-bakin-2">
+    <Alert tone="danger" className="mt-bakin-2">
       <AlertTriangle aria-hidden="true" />
       <AlertTitle>{compactDispatchFailureLabel(detail)}</AlertTitle>
       <AlertDescription>
         <p>{specificDispatchFailureLabel(detail)}</p>
-        <dl className="mt-bakin-3 grid min-w-0 grid-cols-1 gap-bakin-2 @sm/dispatch:grid-cols-2">
-          {rows.map(([label, value]) => (
-            <div key={label} className="min-w-0">
-              <Overline as="dt">
-                {label}
-              </Overline>
-              <dd className="m-0 break-words text-bakin-typography-size-meta text-bakin-text-primary">{value}</dd>
-            </div>
-          ))}
-        </dl>
+        <KeyValue layout="columns" className="mt-bakin-3" items={rows.map(([label, value]) => ({ label, value }))} />
         {detail.rawError ? (
           <Collapsible className="mt-bakin-3 border-b-0">
             <CollapsibleTrigger className="text-bakin-typography-size-meta">Technical details</CollapsibleTrigger>

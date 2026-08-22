@@ -118,10 +118,11 @@ export function SystemSearchSection({
       cell: (table) => (
         <>
           <div className="font-bakin-typography-family-mono font-bakin-typography-weight-medium text-bakin-text-primary">{table.logical}</div>
-          <details className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
-            <summary className="cursor-pointer">Technical identity</summary>
-            <p className="mt-bakin-1 break-all font-bakin-typography-family-mono">{table.physical} · schema v{table.schemaVersion} · {table.pluginId}</p>
-          </details>
+          <DisclosurePanel variant="ghost" summary="Technical identity" className="mt-bakin-1">
+            <Text as="p" size="meta" tone="muted" mono className="break-all">
+              {table.physical} · schema v{table.schemaVersion} · {table.pluginId}
+            </Text>
+          </DisclosurePanel>
         </>
       ),
     },

@@ -3,7 +3,8 @@
 import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { Grid, Inline, Panel, Section } from '@makinbakin/sdk/layout'
 import { ListRows, Pagination, StatusBadge } from '@makinbakin/sdk/patterns'
-import { Button } from '@makinbakin/sdk/ui'
+import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger } from '@makinbakin/sdk/ui'
+import { cn } from '@makinbakin/sdk/utils'
 import { AlertCircle, ChevronDown } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { InteractionCoverage, UsageEntry, UsageFailureGroup, UsageFailureGroupPage, UsageFeedData } from '../types'
@@ -142,56 +143,56 @@ function FailureGroup({
       id={failureGroupElementId(group)}
       role="group"
       aria-label={label}
-      className={`min-w-0 border-b border-bakin-border-subtle outline-none last:border-b-0 ${selected ? 'border-l-2 border-l-bakin-signal-danger bg-bakin-surface-default' : ''} focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-bakin-focus-ring`}
+      className={cn(
+        'min-w-0 border-b border-bakin-border-subtle outline-none last:border-b-0 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-bakin-focus-ring',
+        selected && 'border-l-2 border-l-bakin-signal-danger bg-bakin-surface-default',
+      )}
       data-selected={selected ? 'true' : undefined}
       tabIndex={-1}
     >
-      <div className="grid min-w-0 gap-bakin-3 px-bakin-3 py-bakin-4 @[38rem]/health:grid-cols-[minmax(0,1fr)_auto] @[38rem]/health:items-center">
-        <div className="min-w-0">
-          <Inline gap="dense">
-            <Icon className="size-bakin-4 shrink-0" aria-hidden="true" />
-            <h4 className="min-w-0 truncate">
-              {displayName}
-            </h4>
-            <span className="text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">
-              {meta.label}
-            </span>
-          </Inline>
+      <Collapsible open={expanded} onOpenChange={setExpanded} className="border-y-0">
+        <div className="grid min-w-0 gap-bakin-3 px-bakin-3 py-bakin-4 @[38rem]/health:grid-cols-[minmax(0,1fr)_auto] @[38rem]/health:items-center">
+          <div className="min-w-0">
+            <Inline gap="dense">
+              <Icon className="size-bakin-4 shrink-0" aria-hidden="true" />
+              <h4 className="min-w-0 truncate">
+                {displayName}
+              </h4>
+              <span className="text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">
+                {meta.label}
+              </span>
+            </Inline>
 
-          <p className="mt-bakin-2 truncate text-bakin-typography-size-body text-bakin-text-primary">{reason}</p>
-          <div className="mt-bakin-2 flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
-            <StatusBadge tone="danger" variant="solid">{failureCountLabel(group)}</StatusBadge>
-            <span className="min-w-0 truncate">
-              {agents}
-            </span>
-            <span>
-              Last failed{' '}
-              <time dateTime={group.lastFailureAt}>
-                {relative}
-              </time>
-            </span>
+            <p className="mt-bakin-2 truncate text-bakin-typography-size-body text-bakin-text-primary">{reason}</p>
+            <div className="mt-bakin-2 flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+              <StatusBadge tone="danger" variant="solid">{failureCountLabel(group)}</StatusBadge>
+              <span className="min-w-0 truncate">
+                {agents}
+              </span>
+              <span>
+                Last failed{' '}
+                <time dateTime={group.lastFailureAt}>
+                  {relative}
+                </time>
+              </span>
+            </div>
           </div>
+
+          <CollapsibleTrigger
+            className="min-h-0 w-auto py-0 text-bakin-typography-size-meta"
+            aria-label={`${disclosureLabel} for ${label}`}
+            aria-controls={disclosureId}
+            disabled={events.length === 0}
+          >
+            {disclosureLabel}
+            <ChevronDown
+              className="transition-transform group-data-[panel-open]/collapsible:rotate-180 motion-reduce:transition-none"
+              aria-hidden="true"
+            />
+          </CollapsibleTrigger>
         </div>
 
-        <Button
-          size="xs"
-          variant="outline"
-          aria-label={`${disclosureLabel} for ${label}`}
-          aria-expanded={expanded}
-          aria-controls={disclosureId}
-          onClick={() => setExpanded((value) => !value)}
-          disabled={events.length === 0}
-        >
-          {disclosureLabel}
-          <ChevronDown
-            className={expanded ? 'rotate-180 transition-transform motion-reduce:transition-none' : 'transition-transform motion-reduce:transition-none'}
-            aria-hidden="true"
-          />
-        </Button>
-      </div>
-
-      {expanded && (
-        <div
+        <CollapsibleContent
           id={disclosureId}
           className="border-t border-bakin-border-subtle bg-bakin-surface-default px-bakin-3 py-bakin-3"
         >
@@ -205,8 +206,8 @@ function FailureGroup({
               <ActivityRow key={entry.id || `${entry.ts}:${entry.kind}:${entry.name}:${index}`} entry={entry} />
             ))}
           </ListRows>
-        </div>
-      )}
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   )
 }

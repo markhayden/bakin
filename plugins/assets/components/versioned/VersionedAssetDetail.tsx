@@ -10,6 +10,7 @@ import {
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
 import {
   ConfirmDialog,
+  KeyValue,
   Page,
   PageAside,
   PageBody,
@@ -337,16 +338,13 @@ export function VersionedAssetDetail() {
               tags={manifest.tags}
               maxTags={Infinity}
             />
-            <dl className="grid min-w-0 gap-bakin-2 text-bakin-typography-size-meta">
-              <div className="flex min-w-0 items-baseline justify-between gap-bakin-3 border-t border-bakin-border-subtle pt-bakin-2">
-                <dt className="text-bakin-text-muted">Source</dt>
-                <dd className="m-0 min-w-0 break-words text-right text-bakin-text-primary">{manifest.source.kind}</dd>
-              </div>
-              <div className="flex min-w-0 items-baseline justify-between gap-bakin-3 border-t border-bakin-border-subtle pt-bakin-2">
-                <dt className="text-bakin-text-muted">Current version</dt>
-                <dd className="m-0 font-bakin-typography-family-mono text-bakin-text-primary">v{manifest.currentVersion}</dd>
-              </div>
-            </dl>
+            <KeyValue
+              layout="rows"
+              items={[
+                { label: 'Source', value: manifest.source.kind },
+                { label: 'Current version', value: `v${manifest.currentVersion}`, mono: true },
+              ]}
+            />
 
             <EnrichmentCard manifest={manifest} onChanged={fetchManifest} />
           </section>

@@ -2,7 +2,7 @@
 
 import { MessageCircle } from 'lucide-react'
 import { CodeBlock, MarkdownContent } from '@makinbakin/sdk/content'
-import { Panel, Section } from '@makinbakin/sdk/layout'
+import { DisclosurePanel, Panel, Section } from '@makinbakin/sdk/layout'
 import { Pagination, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -91,19 +91,15 @@ function MessageRow({ message, index }: { message: SessionMessage; index: number
         <div className="grid min-w-0 gap-bakin-3">
           <MarkdownContent content={readableText} />
           {hasStructuredMessage ? (
-            <details className="min-w-0 border-t border-bakin-border-subtle pt-bakin-3">
-              <summary className="cursor-pointer text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-muted">
-                Structured message
-              </summary>
+            <DisclosurePanel variant="ghost" summary="Structured message">
               <CodeBlock
-                className="mt-bakin-2"
                 code={message.content}
                 language="json"
                 label="Structured message"
                 wrap
                 copyable
               />
-            </details>
+            </DisclosurePanel>
           ) : null}
         </div>
       )}

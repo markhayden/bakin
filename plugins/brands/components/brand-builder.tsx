@@ -6,7 +6,7 @@
  */
 import { useCallback, useMemo, useState } from 'react'
 import { ImagePlus, X } from 'lucide-react'
-import { AgentSelect, StatusBadge } from '@makinbakin/sdk/patterns'
+import { AgentSelect, KeyValue, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertDescription,
@@ -35,6 +35,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@makinbakin/sdk/ui'
+import { formatSize } from '@makinbakin/sdk/utils'
 import { Monogram } from './brand-card'
 import { useBrandAgentOptions } from './use-brand-agent-options'
 
@@ -340,13 +341,16 @@ export function BrandBuilder({
                 <p className="min-w-0 text-bakin-text-muted">{a.product || 'No product description'}</p>
               </CardContent>
             </Card>
-            <dl className="grid gap-bakin-2">
-              <ReviewRow label="Audience" value={a.audience} />
-              <ReviewRow label="Tone" value={a.tone} />
-              <ReviewRow label="Competitors" value={a.competitors} />
-              <ReviewRow label="URLs" value={a.urls} />
-              <ReviewRow label="Materials" value={materials.map((f) => f.name).join(', ')} />
-            </dl>
+            <KeyValue
+              layout="columns"
+              items={reviewItems([
+                ['Audience', a.audience],
+                ['Tone', a.tone],
+                ['Competitors', a.competitors],
+                ['URLs', a.urls],
+                ['Materials', materials.map((f) => f.name).join(', ')],
+              ])}
+            />
             <Field name="agent">
               <FieldLabel requirement="required">Which agent drafts it?</FieldLabel>
               <FieldDescription>Who authors the first brand draft from these answers.</FieldDescription>
@@ -388,7 +392,7 @@ function MaterialsDrop({ files, onChange }: { files: File[]; onChange: (files: F
         >
           <span className="min-w-0 truncate">{f.name}</span>
           <span className="shrink-0 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
-            {(f.size / 1024).toFixed(0)} KB
+            {formatSize(f.size)}
           </span>
           <Button
             type="button"
@@ -422,14 +426,11 @@ function MaterialsDrop({ files, onChange }: { files: File[]; onChange: (files: F
   )
 }
 
-function ReviewRow({ label, value }: { label: string; value: string }) {
-  if (!value.trim()) return null
-  return (
-    <div className="grid min-w-0 grid-cols-3 gap-bakin-3 text-bakin-typography-size-meta">
-      <dt className="text-bakin-text-muted">{label}</dt>
-      <dd className="col-span-2 min-w-0 break-words text-bakin-text-primary">{value}</dd>
-    </div>
-  )
+/** Review-step rows: blank answers are omitted rather than shown as a dash. */
+function reviewItems(rows: Array<[label: string, value: string]>) {
+  return rows
+    .filter(([, value]) => value.trim())
+    .map(([label, value]) => ({ label, value, breakValue: true }))
 }
 
 function LogoDrop({ preview, fileName, onPick }: { preview: string | null; fileName: string | null; onPick: (f: File | null) => void }) {

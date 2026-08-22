@@ -5,7 +5,7 @@
  * overwrites via userEdited) and a billed re-run.
  */
 import { useState } from 'react'
-import { Panel, Section } from '@makinbakin/sdk/layout'
+import { DisclosurePanel, Panel, Section } from '@makinbakin/sdk/layout'
 import {
   Alert,
   AlertDescription,
@@ -173,21 +173,24 @@ export function EnrichmentCard({ manifest, onChanged }: Props) {
         </p>
       ) : null}
       {enrichment.transcript && (
-        <details className="text-bakin-typography-size-meta">
-          <summary className="cursor-pointer text-bakin-text-muted">Transcript</summary>
-          <Panel variant="code" scroll padding="compact" aria-label="Transcript" className="mt-bakin-2 max-h-48 text-bakin-text-muted">
+        <DisclosurePanel variant="ghost" summary="Transcript">
+          <Panel variant="code" scroll padding="compact" aria-label="Transcript" className="max-h-48 text-bakin-text-muted">
             <pre>{enrichment.transcript}</pre>
           </Panel>
-        </details>
+        </DisclosurePanel>
       )}
 
       {enrichment.ocrText && (
-        <details className="text-bakin-typography-size-meta" open={ocrOpen} onToggle={(e) => setOcrOpen((e.target as HTMLDetailsElement).open)}>
-          <summary className="cursor-pointer text-bakin-text-muted">Text found in media (OCR)</summary>
-          <Panel variant="code" scroll padding="compact" aria-label="Text found in media" data-testid="enrichment-ocr" className="mt-bakin-2 max-h-48 text-bakin-text-muted">
+        <DisclosurePanel
+          variant="ghost"
+          summary="Text found in media (OCR)"
+          open={ocrOpen}
+          onToggle={(event) => setOcrOpen(event.currentTarget.open)}
+        >
+          <Panel variant="code" scroll padding="compact" aria-label="Text found in media" data-testid="enrichment-ocr" className="max-h-48 text-bakin-text-muted">
             <pre>{enrichment.ocrText}</pre>
           </Panel>
-        </details>
+        </DisclosurePanel>
       )}
 
       {enrichment.suggestedTags && enrichment.suggestedTags.length > 0 && (
