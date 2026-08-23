@@ -32,6 +32,7 @@ import {
   subscribeSearchHitRenderers,
 } from '@makinbakin/sdk/internal'
 import {
+  Badge,
   Button,
   Command,
   CommandDialog,
@@ -41,6 +42,7 @@ import {
   CommandItem,
   CommandList,
   Overline,
+  Separator,
   SystemState,
 } from '@makinbakin/sdk/ui'
 import { useSearchHotkey } from './use-search-hotkey'
@@ -235,8 +237,13 @@ export function GlobalSearchOverlay() {
           </div>
         )}
         {search.status === 'idle' && (
-          <div className="p-bakin-6 text-center text-sm text-bakin-text-muted">
-            Type to search everything — assets, tasks, memory, workflows.
+          <div className="p-bakin-6">
+            <SystemState
+              kind="initial-empty"
+              scope="section"
+              title="Type to search everything"
+              description="Assets, tasks, memory, workflows."
+            />
           </div>
         )}
         {search.status === 'ok' && search.results.length === 0 && (
@@ -246,11 +253,11 @@ export function GlobalSearchOverlay() {
           <CommandGroup
             key={type}
             heading={(
-              <span className="flex items-center gap-bakin-2">
+              <div className="flex items-center gap-bakin-2">
                 <Overline>{type.replace(/[_-]/g, ' ')}</Overline>
-                <span className="rounded-bakin-pill bg-bakin-surface-default px-1.5 py-px text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">{results.length}</span>
-                <span className="h-px flex-1 bg-bakin-border-subtle" />
-              </span>
+                <Badge size="xs" tone="neutral" variant="soft" className="tabular-nums">{results.length}</Badge>
+                <Separator className="flex-1" />
+              </div>
             )}
             data-testid={`global-search-group-${type}`}
           >

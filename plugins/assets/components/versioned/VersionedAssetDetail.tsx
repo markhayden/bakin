@@ -325,7 +325,7 @@ export function VersionedAssetDetail() {
         </div>
 
         <PageAside label="Asset context">
-          <section className="flex min-w-0 flex-col gap-bakin-3" aria-labelledby="asset-context-heading">
+          <Section spacing="compact" aria-labelledby="asset-context-heading">
             <h2
               id="asset-context-heading"
             >
@@ -347,10 +347,10 @@ export function VersionedAssetDetail() {
             />
 
             <EnrichmentCard manifest={manifest} onChanged={fetchManifest} />
-          </section>
+          </Section>
 
           {previewVer.generation?.references && previewVer.generation.references.length > 0 ? (
-            <section className="flex min-w-0 flex-col gap-bakin-3 border-t border-bakin-border-subtle pt-bakin-4" aria-labelledby="asset-references-heading">
+            <Section spacing="compact" divider="top" aria-labelledby="asset-references-heading">
               <h2
                 id="asset-references-heading"
               >
@@ -372,11 +372,11 @@ export function VersionedAssetDetail() {
                   </PluginLink>
                 ))}
               </div>
-            </section>
+            </Section>
           ) : null}
 
           {manifest.exports.length > 0 ? (
-            <section className="flex min-w-0 flex-col gap-bakin-3 border-t border-bakin-border-subtle pt-bakin-4" aria-labelledby="asset-downloads-heading">
+            <Section spacing="compact" divider="top" aria-labelledby="asset-downloads-heading">
               <h2
                 id="asset-downloads-heading"
               >
@@ -396,7 +396,7 @@ export function VersionedAssetDetail() {
                   </a>
                 ))}
               </div>
-            </section>
+            </Section>
           ) : null}
 
           <Section spacing="compact" divider="top" aria-labelledby="asset-history-heading">

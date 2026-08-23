@@ -3,8 +3,8 @@
 import { assignSeriesColors, CHART_MAX_SERIES, StackedColumnChart } from '@makinbakin/sdk/charts'
 import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { PluginLink } from '@makinbakin/sdk/navigation'
-import { ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
-import { Button, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
+import { ListRow, ListRows, StatGroup, StatTile, StatusBadge } from '@makinbakin/sdk/patterns'
+import { Badge, Button, Separator, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, Coins } from 'lucide-react'
 import type { HealthOverviewViewModel } from '../lib/health-view-model'
 import { formatRuntimeCost, formatTokenCount } from '../lib/format'
@@ -109,12 +109,10 @@ export function OverviewAgentSpend({
                   : 'Scan unavailable'}
             </StatusBadge>
           )}
-          <span
-            className="rounded-bakin-pill bg-bakin-canvas-default px-bakin-2 py-bakin-1"
-          >
+          <Badge tone="neutral" variant="soft">
             {history ? usageWindowScopeLabel(history.since, history.throughDay) : '24h'}
             {history ? <span className="sr-only"> — {history.since} through {history.throughDay}</span> : null}
-          </span>
+          </Badge>
         </div>
       </div>
 
@@ -154,22 +152,20 @@ export function OverviewAgentSpend({
         />
       ) : (
         <>
-          <div className="mt-bakin-4 flex flex-wrap items-end gap-x-bakin-6 gap-y-bakin-2">
-            <div>
-              <strong className="block text-bakin-typography-size-title font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">{formatTokenCount(total)} tokens</strong>
-              <Text size="meta" tone="muted">
-                {evidenceLimited ? 'Fully scanned agents only' : 'Observed transcript traffic'}
-              </Text>
-            </div>
-            <div>
-              <strong className="block text-bakin-typography-size-heading font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">
-                {cost === null ? 'Cost unavailable' : `${formatRuntimeCost(cost.usd)}${cost.complete && !evidenceLimited ? '' : '+'}`}
-              </strong>
-              <Text size="meta" tone="muted">
-                {cost?.complete === false || evidenceLimited ? 'Partial runtime-reported cost' : 'Runtime-reported cost'}
-              </Text>
-            </div>
-          </div>
+          <StatGroup label="Agent spend summary" className="mt-bakin-4 gap-x-bakin-6">
+            <StatTile
+              label="Tokens"
+              value={formatTokenCount(total)}
+              sub={evidenceLimited ? 'Fully scanned agents only' : 'Observed transcript traffic'}
+            />
+            <StatTile
+              label="Cost"
+              value={cost === null ? '—' : `${formatRuntimeCost(cost.usd)}${cost.complete && !evidenceLimited ? '' : '+'}`}
+              sub={cost === null
+                ? 'Cost unavailable'
+                : cost.complete === false || evidenceLimited ? 'Partial runtime-reported cost' : 'Runtime-reported cost'}
+            />
+          </StatGroup>
 
           <div className="mt-bakin-4" role="group" aria-label="Agent token use by day">
             <StackedColumnChart
@@ -180,7 +176,8 @@ export function OverviewAgentSpend({
             />
           </div>
 
-          <div className="mt-bakin-4 border-t border-bakin-border-subtle pt-bakin-3">
+          <Separator className="mt-bakin-4" />
+          <div className="mt-bakin-3">
             <ListRows variant="plain" aria-label="Top agents by token use">
               {rows.map((row) => {
                 const isRunning = running.has(row.agent)

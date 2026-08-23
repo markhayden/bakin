@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { AreaChart, ChartExplainer, StackedColumnChart } from '@makinbakin/sdk/charts'
+import { Panel } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { SegmentedControl } from '@makinbakin/sdk/patterns'
 import {
@@ -225,12 +226,12 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
                 </Alert>
               )}
               {visibleData && visibleData.byAgent.length > 0 && (
-                <div className="flex flex-wrap items-baseline gap-x-bakin-6 gap-y-bakin-1 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default px-bakin-3 py-bakin-2">
+                <Panel padding="compact" className="flex flex-wrap items-baseline gap-x-bakin-6 gap-y-bakin-1">
                   <Text size="meta" tone="muted" as="p">
                     Reported cost <span className="ml-bakin-1 font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">{reportedCost === null ? 'Unavailable' : `${formatRuntimeCost(reportedCost / 1_000_000)}${partialCostCoverage ? '+' : ''}`}</span>
                   </Text>
                   {costCoverage && <Text size="meta" tone="muted" as="p">{costCoverage}</Text>}
-                </div>
+                </Panel>
               )}
               {!trend ? (
                 <SystemState

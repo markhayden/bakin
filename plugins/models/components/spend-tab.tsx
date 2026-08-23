@@ -247,8 +247,8 @@ function SpendTrend({
     : 'Subscription token use over time'
 
   return (
-    <div className="@container/spend-trend min-w-0 border-t border-bakin-border-subtle pt-bakin-6">
-      <div className="mb-bakin-4 flex min-w-0 flex-col items-start gap-bakin-3 @2xl/spend-trend:flex-row @2xl/spend-trend:items-center @2xl/spend-trend:justify-between">
+    <Section className="@container/spend-trend" spacing="compact" divider="top" aria-label="Spend over time">
+      <div className="flex min-w-0 flex-col items-start gap-bakin-3 @2xl/spend-trend:flex-row @2xl/spend-trend:items-center @2xl/spend-trend:justify-between">
         <div className="min-w-0">
           <h3>Spend over time</h3>
           <p className="mt-bakin-1 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
@@ -282,7 +282,7 @@ function SpendTrend({
           emptyLabel="No spend history is available in this window."
         />
       </div>
-    </div>
+    </Section>
   )
 }
 

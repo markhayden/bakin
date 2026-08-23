@@ -9,7 +9,7 @@ import { Link } from '@tanstack/react-router'
 import { useJsonFetch } from '@makinbakin/sdk/hooks'
 import { Grid, Inline, Stack } from '@makinbakin/sdk/layout'
 import { StatusBadge, StatusMarker } from '@makinbakin/sdk/patterns'
-import { buttonVariants, Card, CardContent, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
+import { buttonVariants, Card, CardContent, Separator, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { EntityCardBody } from './shared'
 import type { CapabilityReadiness } from './types'
 
@@ -98,15 +98,18 @@ export function CapabilitiesTab() {
                 blurb={cap.description}
               >
                 {!cap.ready && (
-                  <Inline gap="item" align="center" className="border-t border-bakin-border-subtle pt-bakin-3">
-                    {!cap.platformSupported && <Leg key="platform" label="not available on this platform" />}
-                    {cap.skills.filter((s) => s.status !== 'ok').map((s) => <Leg key={`s-${s.name}`} label={`skill ${s.name} missing`} />)}
-                    {cap.bins.filter((b) => b.status !== 'ok').map((b) => <Leg key={`b-${b.name}`} label={b.status === 'unsupported-platform' ? `binary ${b.name} not available for this platform` : `binary ${b.name} missing`} />)}
-                    {(cap.npm ?? []).filter((n) => n.status !== 'ok').map((n) => <Leg key={`n-${n.name}`} label={`dependencies ${n.name} missing`} />)}
-                    {(cap.models ?? []).filter((m) => m.status !== 'ok').map((m) => <Leg key={`m-${m.name}`} label={`model ${m.name} missing (${Math.round(m.bytes / 1e6)} MB)`} />)}
-                    {(cap.prereqs ?? []).filter((p) => p.status !== 'ok' && !p.optional).map((p) => <Leg key={`p-${p.name}`} label={`${p.name} not installed`} />)}
-                    {cap.secrets.filter((s) => s.status === 'missing').map((s) => <Leg key={`k-${s.name}`} label={`${s.name} not set`} />)}
-                  </Inline>
+                  <>
+                    <Separator />
+                    <Inline gap="item" align="center">
+                      {!cap.platformSupported && <Leg key="platform" label="not available on this platform" />}
+                      {cap.skills.filter((s) => s.status !== 'ok').map((s) => <Leg key={`s-${s.name}`} label={`skill ${s.name} missing`} />)}
+                      {cap.bins.filter((b) => b.status !== 'ok').map((b) => <Leg key={`b-${b.name}`} label={b.status === 'unsupported-platform' ? `binary ${b.name} not available for this platform` : `binary ${b.name} missing`} />)}
+                      {(cap.npm ?? []).filter((n) => n.status !== 'ok').map((n) => <Leg key={`n-${n.name}`} label={`dependencies ${n.name} missing`} />)}
+                      {(cap.models ?? []).filter((m) => m.status !== 'ok').map((m) => <Leg key={`m-${m.name}`} label={`model ${m.name} missing (${Math.round(m.bytes / 1e6)} MB)`} />)}
+                      {(cap.prereqs ?? []).filter((p) => p.status !== 'ok' && !p.optional).map((p) => <Leg key={`p-${p.name}`} label={`${p.name} not installed`} />)}
+                      {cap.secrets.filter((s) => s.status === 'missing').map((s) => <Leg key={`k-${s.name}`} label={`${s.name} not set`} />)}
+                    </Inline>
+                  </>
                 )}
 
                 {!cap.ready && (

@@ -11,6 +11,8 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
+  Avatar,
+  AvatarFallback,
   Button,
   Card,
   CardContent,
@@ -36,7 +38,7 @@ import {
 } from '@makinbakin/sdk/ui'
 import { useBrandAgentOptions } from './use-brand-agent-options'
 import { toast } from '@makinbakin/sdk/hooks'
-import { pluginFetch } from '@makinbakin/sdk/utils'
+import { cn, pluginFetch } from '@makinbakin/sdk/utils'
 
 export type CreatePath = 'build' | 'website' | 'import'
 
@@ -73,28 +75,26 @@ export function CreatePathCards({ onPick, size = 'row' }: { onPick: (path: Creat
       data-layout={size}
     >
       {CREATE_PATHS.map((p) => (
-        <Button
+        <Card
           key={p.id}
-          type="button"
-          variant="outline"
-          className={[
-            'h-auto w-full items-start justify-start whitespace-normal',
-            'gap-bakin-3 p-bakin-4 text-left leading-relaxed',
-            size === 'tile' ? 'flex-col' : '',
-          ].join(' ')}
-          onClick={() => onPick(p.id)}
+          size="sm"
+          interactive={{ label: p.title, onActivate: () => onPick(p.id) }}
           data-create-path={p.id}
         >
-          <span className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-surface-default text-bakin-text-muted">
-            <p.icon className="size-bakin-4" />
-          </span>
-          <span className="min-w-0">
-            <span className="block font-bakin-typography-weight-semibold text-bakin-text-primary">{p.title}</span>
-            <span className="mt-bakin-1 block text-bakin-typography-size-meta font-bakin-typography-weight-regular leading-relaxed text-bakin-text-muted">
-              {p.description}
-            </span>
-          </span>
-        </Button>
+          <CardHeader>
+            <div className={cn('flex gap-bakin-3', size === 'tile' ? 'flex-col' : 'items-start')}>
+              <Avatar size="md" aria-hidden="true">
+                <AvatarFallback>
+                  <p.icon className="size-bakin-4" />
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <CardTitle>{p.title}</CardTitle>
+                <CardDescription className="mt-bakin-1 text-bakin-typography-size-meta">{p.description}</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
       ))}
     </div>
   )

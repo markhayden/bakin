@@ -7,7 +7,7 @@ import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import type { InteractionCoverage, UsageFeedData } from '../types'
 import { focusActivityElement } from './activity-navigation'
 import { INTERACTION_SOURCE_META } from './interaction-source-meta'
-import { Inline } from '@makinbakin/sdk/layout'
+import { Inline, Panel, Section } from '@makinbakin/sdk/layout'
 
 const OUTCOMES = [
   { key: 'failed', label: 'failed' },
@@ -67,12 +67,12 @@ export function ActivityPulse({
   }))
 
   return (
-    <section
+    <Panel
+      as="section"
       aria-labelledby="activity-pulse-title"
-      className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-border-subtle"
       data-testid="activity-pulse"
     >
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-2 bg-bakin-surface-default px-bakin-4 py-bakin-3">
+      <div className="mb-bakin-3 flex min-w-0 flex-wrap items-center justify-between gap-bakin-2">
         <Inline gap="dense" wrap={false}>
           {needsAttention
             ? <AlertCircle className={`size-bakin-4 shrink-0 ${hasFailures ? 'text-bakin-signal-danger' : 'text-bakin-signal-highlight'}`} aria-hidden="true" />
@@ -89,8 +89,9 @@ export function ActivityPulse({
         </div>
       </div>
 
-      <div className="grid gap-px @[58rem]/health:grid-cols-[minmax(0,1.3fr)_minmax(18rem,.8fr)]">
-        <div className="@container/activity-outcomes min-w-0 bg-bakin-surface-default p-bakin-4">
+      <Section as="div" divider="top" spacing="compact">
+      <div className="grid gap-bakin-4 @[58rem]/health:grid-cols-[minmax(0,1.3fr)_minmax(18rem,.8fr)]">
+        <div className="@container/activity-outcomes min-w-0">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-3">
             <div>
               <h4>
@@ -163,7 +164,7 @@ export function ActivityPulse({
           )}
         </div>
 
-        <div className="min-w-0 bg-bakin-surface-default p-bakin-4">
+        <div className="min-w-0">
           <h4>
             {compatibilityLimited ? 'Where recent calls went' : 'Where calls went'}
           </h4>
@@ -187,6 +188,7 @@ export function ActivityPulse({
           </div>
         </div>
       </div>
-    </section>
+      </Section>
+    </Panel>
   )
 }

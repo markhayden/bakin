@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { SearchReadiness, SearchStageStatus } from '@makinbakin/sdk/types'
-import { DisclosurePanel, Grid, Panel } from '@makinbakin/sdk/layout'
+import { DisclosurePanel, Grid, Panel, Section } from '@makinbakin/sdk/layout'
 import {
   DataTable,
   StatTile,
@@ -199,8 +199,8 @@ export function SystemSearchSection({
   ]
 
   return (
-    <section aria-labelledby="search-system-title" className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default">
-      <header className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3 border-b border-bakin-border-subtle px-bakin-4 py-bakin-3">
+    <Panel as="section" aria-labelledby="search-system-title">
+      <header className="mb-bakin-3 flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-bakin-2">
             <h2 id="search-system-title">Search readiness</h2>
@@ -217,7 +217,7 @@ export function SystemSearchSection({
         )}
       </header>
 
-      <div className="space-y-bakin-4 p-bakin-4">
+      <Section as="div" divider="top" spacing="compact">
         <div
           data-testid="search-readiness-pipeline"
           role="group"
@@ -376,7 +376,7 @@ export function SystemSearchSection({
             description={mutation.message}
           />
         )}
-      </div>
-    </section>
+      </Section>
+    </Panel>
   )
 }

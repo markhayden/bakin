@@ -150,7 +150,9 @@ describe('BrandsPage', () => {
     await waitFor(() => expect(screen.getByText('Acme')).toBeDefined())
     fireEvent.click(document.querySelector('[data-new-brand]')!)
     await waitFor(() => expect(document.querySelectorAll('[data-create-path]').length).toBe(3))
-    fireEvent.click(document.querySelector('[data-create-path="build"]')!)
+    // The path is an interactive Card: its whole-surface action is the
+    // overlay button named after the path, not the card element itself.
+    fireEvent.click(screen.getByRole('button', { name: 'Build my brand' }))
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Build my brand' })).toBeDefined())
     expect(screen.getByRole('list', { name: 'Brand creation progress' })).toBeDefined()
     await settleReact()

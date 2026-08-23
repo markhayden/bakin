@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from '@makinbakin/sdk/ui'
 import { useAgent, type ScheduleJob } from '@makinbakin/sdk/hooks'
+import { Panel } from '@makinbakin/sdk/layout'
 import { AgentBadge } from './agent-badge'
 import { RunHistory } from './run-history'
 import { PauseControls } from './pause-controls'
@@ -172,7 +173,7 @@ export function JobDrawer({
       )}
     >
       <div className="flex min-w-0 flex-col gap-bakin-6 pb-bakin-6">
-        <div className="flex min-w-0 items-center gap-bakin-4 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4">
+        <Panel className="flex min-w-0 items-center gap-bakin-4">
           {jobAgent ? (
             <AgentAvatar
               agent={{
@@ -199,7 +200,7 @@ export function JobDrawer({
               ) : null}
             </div>
           </div>
-        </div>
+        </Panel>
 
         <DrawerSection title="Actions" contentClassName="flex flex-wrap gap-bakin-2">
           <Button variant="outline" size="sm" onClick={() => onRunNow(job.id)}>
@@ -246,9 +247,9 @@ export function JobDrawer({
             title="Task prompt"
             actions={<Terminal aria-hidden="true" className="size-bakin-4 text-bakin-text-muted" />}
           >
-            <div className="whitespace-pre-wrap rounded-bakin-surface border-l-2 border-bakin-signal-accent bg-bakin-surface-default p-bakin-4 leading-relaxed text-bakin-text-primary">
+            <Panel tone="accent" className="whitespace-pre-wrap leading-relaxed text-bakin-text-primary">
               {job.taskPrompt}
-            </div>
+            </Panel>
           </DrawerSection>
         ) : null}
 

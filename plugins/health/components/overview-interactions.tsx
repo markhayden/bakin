@@ -2,8 +2,8 @@
 
 import { CompositionBar, RankedBarChart, Sparkline, type ChartDatum } from '@makinbakin/sdk/charts'
 import { PluginLink } from '@makinbakin/sdk/navigation'
-import { StatusBadge } from '@makinbakin/sdk/patterns'
-import { Button, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
+import { StatTile, StatusBadge } from '@makinbakin/sdk/patterns'
+import { Button, Separator, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, Waypoints } from 'lucide-react'
 import type {
   InteractionCategory,
@@ -149,9 +149,7 @@ export function OverviewInteractions({
         <>
           <div className="mt-bakin-3 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-bakin-3 @[24rem]/health:grid-cols-[minmax(0,1fr)_auto] @[24rem]/health:items-center">
             <div className="min-w-0">
-              <strong className="block text-bakin-typography-size-title font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">
-                {data.totals.count.toLocaleString()} interactions
-              </strong>
+              <StatTile label="Interactions" value={data.totals.count.toLocaleString()} />
               {data.totals.errors > 0 ? (
                 <PluginLink
                   to="/health?tab=activity&activity_window=1h#activity-needs-attention"
@@ -207,17 +205,20 @@ export function OverviewInteractions({
           </Text>
 
           {destinations.length > 0 && (
-            <div className="mt-bakin-3 border-t border-bakin-border-subtle pt-bakin-3">
-              <RankedBarChart
-                data={destinationData}
-                series={{ key: 'count', label: 'calls' }}
-                secondary={{ key: 'errors', label: 'failed' }}
-                tones={{ errors: 'danger' }}
-                label="Busiest interaction destinations"
-                formatValue={(value) => value.toLocaleString()}
-                compactData
-              />
-            </div>
+            <>
+              <Separator className="mt-bakin-3" />
+              <div className="mt-bakin-3">
+                <RankedBarChart
+                  data={destinationData}
+                  series={{ key: 'count', label: 'calls' }}
+                  secondary={{ key: 'errors', label: 'failed' }}
+                  tones={{ errors: 'danger' }}
+                  label="Busiest interaction destinations"
+                  formatValue={(value) => value.toLocaleString()}
+                  compactData
+                />
+              </div>
+            </>
           )}
         </>
       )}

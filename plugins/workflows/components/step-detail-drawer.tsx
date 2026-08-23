@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, AlertDescription, AlertTitle, Badge, Button, Drawer, DrawerSection, Overline, Separator, Text } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, AlertTitle, Avatar, AvatarFallback, Badge, Button, Drawer, DrawerSection, Overline, Separator, Text } from '@makinbakin/sdk/ui'
 import { CodeBlock } from '@makinbakin/sdk/content'
-import { Stack } from '@makinbakin/sdk/layout'
-import { KeyValue, type KeyValueItem } from '@makinbakin/sdk/patterns'
+import { Panel, Section, Stack } from '@makinbakin/sdk/layout'
+import { KeyValue, ListRow, ListRows, type KeyValueItem } from '@makinbakin/sdk/patterns'
 import { useAgent } from '@makinbakin/sdk/hooks'
 import { WorkflowAgentAvatar } from './workflow-agent-identity'
 import {
@@ -89,15 +89,19 @@ function AgentStepDetail({ step }: { step: AgentStep }) {
   return (
     <div className="space-y-6">
       {/* Agent hero */}
-      <div className="flex items-center gap-4 rounded-bakin-surface p-4 border border-bakin-border-subtle bg-bakin-surface-default">
+      <Panel className="flex items-center gap-4">
         {step.agent === '$assigned' ? (
-          <span className="inline-flex size-10 items-center justify-center rounded-bakin-pill bg-bakin-signal-info/15 ring-1 ring-bakin-signal-info/40">
-            <User className="size-5 text-bakin-signal-info" />
-          </span>
+          <Avatar size="lg" aria-hidden="true">
+            <AvatarFallback>
+              <User className="size-bakin-4 text-bakin-signal-info" />
+            </AvatarFallback>
+          </Avatar>
         ) : isTeamStepToken(step.agent) ? (
-          <span className="inline-flex size-10 items-center justify-center rounded-bakin-pill bg-bakin-signal-accent/15 ring-1 ring-bakin-signal-accent/40">
-            <Users className="size-5 text-bakin-signal-accent" />
-          </span>
+          <Avatar size="lg" aria-hidden="true">
+            <AvatarFallback>
+              <Users className="size-bakin-4 text-bakin-signal-accent" />
+            </AvatarFallback>
+          </Avatar>
         ) : (
           <WorkflowAgentAvatar agentId={step.agent} size="lg" />
         )}
@@ -116,23 +120,23 @@ function AgentStepDetail({ step }: { step: AgentStep }) {
             )}
           </div>
         </div>
-      </div>
+      </Panel>
 
       {/* Task description */}
       {step.task && (
         <DrawerSection title="Task">
-          <div className="text-bakin-typography-size-body text-bakin-text-primary rounded-bakin-surface p-4 border-l-2 border-bakin-action-primary-background/40 bg-bakin-surface-default whitespace-pre-wrap leading-relaxed">
+          <Panel tone="success" className="whitespace-pre-wrap leading-relaxed text-bakin-text-primary">
             {step.task}
-          </div>
+          </Panel>
         </DrawerSection>
       )}
 
       {/* Description */}
       {step.description && (
         <DrawerSection title="Description">
-          <div className="text-bakin-typography-size-body text-bakin-text-primary rounded-bakin-surface p-4 bg-bakin-surface-default whitespace-pre-wrap leading-relaxed">
+          <Panel className="whitespace-pre-wrap leading-relaxed text-bakin-text-primary">
             {step.description}
-          </div>
+          </Panel>
         </DrawerSection>
       )}
 
@@ -142,7 +146,7 @@ function AgentStepDetail({ step }: { step: AgentStep }) {
           <Separator />
           <div className="grid grid-cols-2 gap-3">
             {step.outputs && step.outputs.length > 0 && (
-              <div className="col-span-2 rounded-bakin-surface bg-bakin-surface-default p-3 space-y-1">
+              <Panel padding="compact" className="col-span-2 space-y-1">
                 <Overline as="div" className="flex items-center gap-1.5">
                   <Package className="size-3" />
                   Expected Outputs
@@ -156,7 +160,7 @@ function AgentStepDetail({ step }: { step: AgentStep }) {
                     </div>
                   ))}
                 </div>
-              </div>
+              </Panel>
             )}
           </div>
         </>
@@ -175,9 +179,9 @@ function GateStepDetail({ step }: { step: GateStep }) {
       {/* Description */}
       {step.description && (
         <DrawerSection title="Description">
-          <div className="text-bakin-typography-size-body text-bakin-text-primary rounded-bakin-surface p-4 border-l-2 border-bakin-signal-highlight/40 bg-bakin-surface-default whitespace-pre-wrap leading-relaxed">
+          <Panel tone="attention" className="whitespace-pre-wrap leading-relaxed text-bakin-text-primary">
             {step.description}
-          </div>
+          </Panel>
         </DrawerSection>
       )}
 
@@ -207,17 +211,17 @@ function GateStepDetail({ step }: { step: GateStep }) {
       {/* Notification channels */}
       {step.notify && step.notify.length > 0 && (
         <DrawerSection title="Notifications">
-          <div className="space-y-2">
+          <ListRows variant="separated" aria-label="Notification channels">
             {step.notify.map((ch, i) => (
-              <div key={i} className="flex items-center gap-2 rounded-bakin-surface bg-bakin-surface-default p-3">
+              <ListRow key={i} className="flex items-center gap-2">
                 <Badge variant="outline" size="xs" className="inline-flex items-center gap-1">
                   <ChannelIcon channelId={ch.channel} className="size-3" />
                   {getChannelLabel(ch.channel, channels)}
                 </Badge>
                 <span className="text-bakin-typography-size-body font-bakin-typography-family-mono text-bakin-text-muted">{ch.target}</span>
-              </div>
+              </ListRow>
             ))}
-          </div>
+          </ListRows>
         </DrawerSection>
       )}
 
@@ -226,15 +230,15 @@ function GateStepDetail({ step }: { step: GateStep }) {
       {/* Paths */}
       <div className="space-y-4">
         <DrawerSection title="On Approve">
-          <div className="flex items-center gap-2 rounded-bakin-surface bg-bakin-surface-default p-3">
+          <Panel padding="compact" className="flex items-center gap-2">
             <ArrowRight className="size-4 text-bakin-action-primary-background shrink-0" />
             <span className="text-bakin-typography-size-body font-bakin-typography-weight-medium">Continue to the next step</span>
-          </div>
+          </Panel>
         </DrawerSection>
 
         {step.on_reject && (
           <DrawerSection title="On Reject">
-            <div className="rounded-bakin-surface bg-bakin-signal-danger/10 border border-bakin-signal-danger/20 p-3 space-y-1.5">
+            <Panel tone="danger" padding="compact" className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <ArrowRight className="size-4 text-bakin-signal-danger shrink-0" />
                 <span className="text-bakin-typography-size-body font-bakin-typography-weight-medium">Rewind to</span>
@@ -243,7 +247,7 @@ function GateStepDetail({ step }: { step: GateStep }) {
               {step.on_reject.note_to_agent && (
                 <p className="text-bakin-typography-size-meta text-bakin-text-muted ml-6">Rejection reason forwarded to agent</p>
               )}
-            </div>
+            </Panel>
           </DrawerSection>
         )}
       </div>
@@ -272,11 +276,13 @@ function OutputStepDetail({ step }: { step: OutputStep }) {
     <div className="space-y-6">
       {/* Agent hero (if present) */}
       {step.agent && (
-        <div className="flex items-center gap-4 rounded-bakin-surface p-4 border border-bakin-border-subtle bg-bakin-surface-default">
+        <Panel className="flex items-center gap-4">
           {isTeamStepToken(step.agent) ? (
-            <span className="inline-flex size-10 items-center justify-center rounded-bakin-pill bg-bakin-signal-accent/15 ring-1 ring-bakin-signal-accent/40">
-              <Users className="size-5 text-bakin-signal-accent" />
-            </span>
+            <Avatar size="lg" aria-hidden="true">
+              <AvatarFallback>
+                <Users className="size-bakin-4 text-bakin-signal-accent" />
+              </AvatarFallback>
+            </Avatar>
           ) : (
             <WorkflowAgentAvatar agentId={step.agent} size="lg" />
           )}
@@ -291,15 +297,15 @@ function OutputStepDetail({ step }: { step: OutputStep }) {
               )}
             </div>
           </div>
-        </div>
+        </Panel>
       )}
 
       {/* Description */}
       {step.description && (
         <DrawerSection title="Description">
-          <div className="text-bakin-typography-size-body text-bakin-text-primary rounded-bakin-surface p-4 border-l-2 border-bakin-signal-accent/40 bg-bakin-surface-default whitespace-pre-wrap leading-relaxed">
+          <Panel tone="accent" className="whitespace-pre-wrap leading-relaxed text-bakin-text-primary">
             {step.description}
-          </div>
+          </Panel>
         </DrawerSection>
       )}
 
@@ -338,7 +344,7 @@ function ParallelStepDetail({ step }: { step: ParallelStep }) {
       <DrawerSection title={`Parallel Steps (${step.steps.length})`}>
         <div className="space-y-3">
           {step.steps.map((child) => (
-            <div key={child.id} className="rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-4">
+            <Panel key={child.id}>
               <div className="flex items-center gap-3 mb-2">
                 <StepTypeBadge type={child.type} />
                 <span className="text-bakin-typography-size-body font-bakin-typography-weight-medium">{child.label}</span>
@@ -356,7 +362,7 @@ function ParallelStepDetail({ step }: { step: ParallelStep }) {
                   {(child as AgentStep).task}
                 </p>
               )}
-            </div>
+            </Panel>
           ))}
         </div>
       </DrawerSection>
@@ -378,9 +384,9 @@ function WorkflowStepDetail({ step }: { step: NestedWorkflowStep }) {
       {/* Description */}
       {step.description && (
         <DrawerSection title="Description">
-          <div className="text-bakin-typography-size-body text-bakin-text-primary rounded-bakin-surface p-4 border-l-2 border-bakin-signal-info/40 bg-bakin-surface-default whitespace-pre-wrap leading-relaxed">
+          <Panel tone="attention" className="whitespace-pre-wrap leading-relaxed text-bakin-text-primary">
             {step.description}
-          </div>
+          </Panel>
         </DrawerSection>
       )}
     </div>
@@ -408,9 +414,9 @@ function MapWorkflowStepDetail({ step }: { step: MapWorkflowStep }) {
 
       {step.description && (
         <DrawerSection title="Description">
-          <div className="text-bakin-typography-size-body text-bakin-text-primary rounded-bakin-surface p-4 border-l-2 border-bakin-signal-accent/40 bg-bakin-surface-default whitespace-pre-wrap leading-relaxed">
+          <Panel tone="accent" className="whitespace-pre-wrap leading-relaxed text-bakin-text-primary">
             {step.description}
-          </div>
+          </Panel>
         </DrawerSection>
       )}
     </div>
@@ -537,7 +543,7 @@ function SkillDriftSection({
                 A local copy is overriding the current {sourceLabel(report)} version.
               </p>
 
-              <div className="space-y-3 border-t border-bakin-border-subtle pt-3">
+              <Section as="div" divider="top" spacing="compact">
                 <div>
                   <Overline as="div">What can break</Overline>
                   <p className="m-0 mt-1 leading-relaxed">{driftImpactText(report)}</p>
@@ -553,7 +559,7 @@ function SkillDriftSection({
                     </Badge>
                   ))}
                 </div>
-              </div>
+              </Section>
 
               <p className="m-0 leading-relaxed">{repairabilityText(report)}</p>
               {repairError && (
