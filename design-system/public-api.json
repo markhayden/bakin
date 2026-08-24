@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 298,
-    "typeExports": 399
+    "valueExports": 300,
+    "typeExports": 404
   },
   "entrypoints": [
     {
@@ -106,6 +106,7 @@
         "InputGroupText",
         "InputGroupTextarea",
         "Label",
+        "Overline",
         "Popover",
         "PopoverContent",
         "PopoverDescription",
@@ -160,6 +161,7 @@
         "TabsList",
         "tabsListVariants",
         "TabsTrigger",
+        "Text",
         "Textarea",
         "Toast",
         "ToastAction",
@@ -269,6 +271,7 @@
         "LegacyButtonSize",
         "LegacyButtonVariant",
         "LegacyCardSize",
+        "OverlineProps",
         "PopoverContentProps",
         "PopoverDescriptionProps",
         "PopoverHeaderProps",
@@ -323,6 +326,10 @@
         "SystemStateProps",
         "SystemStateScope",
         "TextareaProps",
+        "TextProps",
+        "TextSize",
+        "TextTone",
+        "TextWeight",
         "ToastActionProps",
         "ToastProps",
         "ToastRegionProps",

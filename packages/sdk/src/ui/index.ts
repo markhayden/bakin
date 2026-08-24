@@ -35,6 +35,14 @@ export type {
   BadgeVariantOptions,
   LegacyBadgeVariant,
 } from '@bakin/ui'
+export { Overline, Text } from '@bakin/ui'
+export type {
+  OverlineProps,
+  TextProps,
+  TextSize,
+  TextTone,
+  TextWeight,
+} from '@bakin/ui'
 export { Button, buttonVariants } from '@bakin/ui'
 export type {
   ButtonProps,

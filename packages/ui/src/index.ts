@@ -103,6 +103,15 @@ export type {
   LegacyBadgeVariant,
 } from './primitives/badge'
 
+export { Overline, Text } from './primitives/text'
+export type {
+  OverlineProps,
+  TextProps,
+  TextSize,
+  TextTone,
+  TextWeight,
+} from './primitives/text'
+
 export { Alert, AlertAction, AlertDescription, AlertTitle, alertVariants } from './primitives/alert'
 export type {
   AlertProps,

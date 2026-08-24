@@ -228,7 +228,11 @@ export function WorkspacePageCompactHeader({
       <div
         data-slot="workspace-page-compact-title"
         className={cn(
-          'min-w-0 flex-1 truncate text-bakin-typography-size-body font-bakin-typography-weight-bold text-bakin-text-primary',
+          // Arbitrary-length, not the `text-bakin-typography-size-*` shorthand:
+          // the size and the colour are both `text-*`, so tailwind-merge kept
+          // only the colour and this title silently rendered at the inherited
+          // size. Same hazard the Text primitive documents.
+          'min-w-0 flex-1 truncate text-[length:var(--bakin-typography-size-body)] font-bakin-typography-weight-bold text-bakin-text-primary',
           // Pre-stick the full identity is still on screen — repeating the
           // title here reads as a phantom second header. It appears only
           // once it is the surviving identity.
