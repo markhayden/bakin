@@ -3,7 +3,6 @@
   "generatedBy": "bun run ui:kit-coverage:generate",
   "undemonstrated": [
     "@makinbakin/sdk/conversation :: ConversationReplyToast",
-    "@makinbakin/sdk/conversation :: CopyButton",
     "@makinbakin/sdk/conversation :: QueuedMessageList",
     "@makinbakin/sdk/conversation :: ToolCallRow",
     "@makinbakin/sdk/conversation :: TurnTimestamp",

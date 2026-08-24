@@ -20,11 +20,11 @@
     "private-import"
   ],
   "summary": {
-    "paths": 111,
+    "paths": 106,
     "totals": {
       "raw-palette": 2,
       "arbitrary-size": 29,
-      "raw-scale": 1019,
+      "raw-scale": 876,
       "raw-control": 3,
       "inline-style": 3,
       "generic-token": 72,
@@ -198,7 +198,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 1,
-        "raw-scale": 81,
+        "raw-scale": 75,
         "inline-style": 1
       }
     },
@@ -216,7 +216,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 1,
-        "raw-scale": 7
+        "raw-scale": 6
       }
     },
     {
@@ -292,7 +292,7 @@
       "target": "canonical shell layout and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 47
+        "raw-scale": 46
       }
     },
     {
@@ -397,22 +397,7 @@
       "target": "runtime settings archetype and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 28
-      }
-    },
-    {
-      "path": "packages/host/src/components/runtime/extensions-section.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "host"
-      },
-      "censusEntryId": "shared-component:packages/host/src/components/runtime/extensions-section",
-      "migrationTask": "T46b",
-      "archetype": "settings-form",
-      "target": "runtime settings archetype and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 17
+        "raw-scale": 2
       }
     },
     {
@@ -427,22 +412,7 @@
       "target": "runtime settings archetype and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 42
-      }
-    },
-    {
-      "path": "packages/host/src/components/runtime/runtimes-tab.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "host"
-      },
-      "censusEntryId": "shared-component:packages/host/src/components/runtime/runtimes-tab",
-      "migrationTask": "T46b",
-      "archetype": "settings-form",
-      "target": "runtime settings archetype and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 42
+        "raw-scale": 2
       }
     },
     {
@@ -518,7 +488,7 @@
       "target": "supported host UI and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 5
+        "raw-scale": 2
       }
     },
     {
@@ -608,7 +578,7 @@
       "target": "focused SDK primitive/pattern and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 13
+        "raw-scale": 12
       }
     },
     {
@@ -736,7 +706,7 @@
       "target": "brand list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 22
+        "raw-scale": 20
       }
     },
     {
@@ -785,54 +755,6 @@
       "status": "legacy-allowed",
       "allowances": {
         "raw-scale": 2
-      }
-    },
-    {
-      "path": "plugins/explore/components/catalog-card.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "explore"
-      },
-      "censusEntryId": "plugin-slot:explore:page:/explore",
-      "migrationTask": "T54",
-      "archetype": "list-index",
-      "target": "catalog archetype and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 2
-      }
-    },
-    {
-      "path": "plugins/explore/components/detail-drawer.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "explore"
-      },
-      "censusEntryId": "plugin-slot:explore:page:/explore",
-      "migrationTask": "T54",
-      "archetype": "list-index",
-      "target": "catalog archetype and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 1
-      }
-    },
-    {
-      "path": "plugins/explore/components/hub-skills-section.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "explore"
-      },
-      "censusEntryId": "plugin-slot:explore:page:/explore",
-      "migrationTask": "T54",
-      "archetype": "list-index",
-      "target": "catalog archetype and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 1
       }
     },
     {

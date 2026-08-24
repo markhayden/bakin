@@ -154,10 +154,7 @@
         "src/components/provider-keys-tab.tsx",
         "packages/host/src/components/layout/sidebar-nav-item.tsx",
         "packages/host/src/components/runtime/runtimes-tab.tsx",
-        "plugins/workflows/components/workflow-card.tsx",
-        "plugins/workflows/components/workflow-canvas-editor.tsx",
-        "plugins/workflows/components/approvals-badge-provider.tsx",
-        "plugins/brands/components/brand-builder.tsx"
+        "plugins/workflows/components/workflow-canvas-editor.tsx"
       ],
       "allowances": {
         "src/components/conversation/reply-toast.tsx": {
