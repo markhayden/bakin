@@ -786,6 +786,8 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=feedback-progress--markers&viewMode=story', png: 'feedback-progress-markers.png', role: 'progressbar' as const },
   { url: '/iframe.html?id=foundations-elevation--ladder&viewMode=story', png: 'foundations-elevation.png', role: 'heading' as const, name: 'Elevation' },
   { url: '/iframe.html?id=primitives-shimmertext--states-and-highlights&viewMode=story', png: 'primitives-shimmer-text.png', text: 'Sweep only what is actually in motion' },
+  { url: '/iframe.html?id=primitives-text--sizes-and-tones&viewMode=story', png: 'primitives-text.png', role: 'heading' as const, name: 'Text sizes and tones' },
+  { url: '/iframe.html?id=primitives-text--overline-labels&viewMode=story', png: 'primitives-overline.png', role: 'heading' as const, name: 'Overline' },
 ]
 
 for (const baseline of PRIMITIVES_BASELINES) {
