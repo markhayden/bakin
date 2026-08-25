@@ -471,6 +471,26 @@ export function diffLegacyStyleReport(
       }
     }
   }
+
+  // The ratchet has to tighten, not just hold. Without this, an allowance that
+  // has been paid down stays at its old ceiling forever and the debt can creep
+  // straight back in unnoticed — which is exactly what happened across the
+  // 13-surface conformance sweep. Exceptions already fail this way (see
+  // `applyLegacyStyleExceptions`); migrations now match them.
+  for (const entry of migrations.entries) {
+    const counts = actual.byPath[entry.path]
+    for (const rule of LEGACY_STYLE_RULES) {
+      const allowedCount = entry.allowances[rule]
+      if (allowedCount === undefined) continue
+      const actualCount = counts?.[rule] ?? 0
+      if (allowedCount > actualCount) {
+        errors.push(
+          `stale migration allowance: ${entry.path} ${rule} records ${allowedCount} `
+          + `but only ${actualCount} remain; run bun run ui:legacy-styles:generate`,
+        )
+      }
+    }
+  }
   return errors
 }
 

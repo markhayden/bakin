@@ -130,16 +130,16 @@ describe('scanLegacyStyles', () => {
 })
 
 describe('diffLegacyStyleReport', () => {
-  it('allows unchanged or reduced debt but rejects a path increase and a new rule', () => {
+  it('allows unchanged debt but rejects a path increase and a new rule', () => {
     const expected = migrations('plugins/example/components/card.tsx', {
       'raw-palette': 2,
       'raw-control': 1,
     })
 
     expect(diffLegacyStyleReport(expected, {
-      totals: { 'raw-palette': 1, 'raw-control': 1 },
+      totals: { 'raw-palette': 2, 'raw-control': 1 },
       byPath: {
-        'plugins/example/components/card.tsx': { 'raw-palette': 1, 'raw-control': 1 },
+        'plugins/example/components/card.tsx': { 'raw-palette': 2, 'raw-control': 1 },
       },
     })).toEqual([])
 
@@ -157,6 +157,36 @@ describe('diffLegacyStyleReport', () => {
       'legacy style debt increased: plugins/example/components/card.tsx raw-palette 2 -> 3',
       'new legacy style debt: plugins/example/components/card.tsx inline-style (1)',
       'new legacy style debt: plugins/example/components/new-card.tsx raw-control (1)',
+    ])
+  })
+
+  it('rejects a PAID-DOWN allowance so the ratchet tightens instead of holding', () => {
+    // The ratchet used to accept reduced debt silently, which left every
+    // completed migration sitting at its old ceiling — debt could creep all the
+    // way back without CI noticing. Paying debt down now REQUIRES regenerating
+    // the baseline, the same way a stale exception allowance already does.
+    const expected = migrations('plugins/example/components/card.tsx', {
+      'raw-palette': 2,
+      'raw-control': 1,
+    })
+
+    expect(diffLegacyStyleReport(expected, {
+      totals: { 'raw-palette': 1, 'raw-control': 1 },
+      byPath: {
+        'plugins/example/components/card.tsx': { 'raw-palette': 1, 'raw-control': 1 },
+      },
+    })).toEqual([
+      'stale migration allowance: plugins/example/components/card.tsx raw-palette records 2 but only 1 remain; run bun run ui:legacy-styles:generate',
+    ])
+  })
+
+  it('rejects an allowance whose file is now completely clean', () => {
+    // The scanner reports nothing for a fully-migrated file, so the entry has
+    // to disappear from the ledger rather than linger as free headroom.
+    const expected = migrations('plugins/example/components/card.tsx', { 'raw-palette': 2 })
+
+    expect(diffLegacyStyleReport(expected, { totals: {}, byPath: {} })).toEqual([
+      'stale migration allowance: plugins/example/components/card.tsx raw-palette records 2 but only 0 remain; run bun run ui:legacy-styles:generate',
     ])
   })
 })
