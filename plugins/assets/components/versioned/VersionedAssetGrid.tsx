@@ -584,7 +584,6 @@ export function VersionedAssetGrid() {
                 bordered list variant stays for narrow/panel contexts. */}
             <DataTable
               label="Trashed assets"
-              collapseBelow="none"
               rows={trash}
               rowKey={item => item.trashName}
               rowProps={item => ({ 'data-testid': `trash-row-${item.assetId}` })}
@@ -676,7 +675,6 @@ export function VersionedAssetGrid() {
               to the Grid view. */}
           <DataTable
             label="Assets"
-            collapseBelow="none"
             rows={sortedList}
             rowKey={asset => asset.assetId}
             onRowActivate={asset => router.push(`/assets/${encodeURIComponent(asset.assetId)}`)}

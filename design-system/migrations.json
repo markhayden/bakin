@@ -24,7 +24,7 @@
     "totals": {
       "raw-palette": 2,
       "arbitrary-size": 29,
-      "raw-scale": 876,
+      "raw-scale": 873,
       "raw-control": 3,
       "inline-style": 3,
       "generic-token": 72,
@@ -1546,7 +1546,7 @@
       "target": "workflow pages/canvas archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 80
+        "raw-scale": 77
       }
     },
     {

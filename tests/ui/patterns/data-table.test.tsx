@@ -27,6 +27,7 @@ describe('DataTable', () => {
     const { container } = render(
       <DataTable
         label="Dispatch runs"
+        collapseBelow="2xl"
         columns={COLUMNS}
         rows={ROWS}
         rowKey={(row) => row.id}
@@ -49,6 +50,17 @@ describe('DataTable', () => {
     expect(list.getAttribute('data-variant')).toBe('separated')
     expect(list.className).toContain('@2xl/data-table:hidden')
     expect(within(list).getAllByRole('listitem')).toHaveLength(2)
+  })
+
+  it('defaults to table-only, so comparable records stay aligned columns', () => {
+    // The default is `none`: a table scrolls horizontally inside its own
+    // container rather than restacking into label/value pairs. Collapsing is
+    // opt-in for the tables whose rows genuinely read better stacked.
+    const { container } = render(
+      <DataTable label="Runs" columns={COLUMNS} rows={ROWS} rowKey={(row) => row.id} />,
+    )
+    expect(container.querySelector('[data-slot="data-table-table"]')?.className).toBe('block')
+    expect(container.querySelector('[data-slot="data-table-list"]')).toBeNull()
   })
 
   it('collapses at the configured container breakpoint and supports table-only mode', () => {
@@ -126,6 +138,7 @@ describe('DataTable', () => {
     render(
       <DataTable
         label="Dispatch runs"
+        collapseBelow="2xl"
         columns={COLUMNS}
         rows={ROWS}
         rowKey={(row) => row.id}
@@ -174,7 +187,7 @@ describe('DataTable', () => {
 
   it('stacks a primary/label-value mapping as the default narrow row', () => {
     render(
-      <DataTable label="Dispatch runs" columns={COLUMNS} rows={ROWS} rowKey={(row) => row.id} />,
+      <DataTable label="Dispatch runs" columns={COLUMNS} rows={ROWS} rowKey={(row) => row.id} collapseBelow="2xl" />,
     )
 
     const list = screen.getByRole('list', { name: 'Dispatch runs' })
@@ -214,7 +227,7 @@ describe('DataTable', () => {
       { id: 't2', title: 'Reconcile provider usage', agent: 'Pixel', status: 'Running' },
     ]
     render(
-      <DataTable label="Task log" columns={columns} rows={rows} rowKey={(row) => row.id} />,
+      <DataTable label="Task log" columns={columns} rows={rows} rowKey={(row) => row.id} collapseBelow="2xl" />,
     )
 
     const list = screen.getByRole('list', { name: 'Task log' })

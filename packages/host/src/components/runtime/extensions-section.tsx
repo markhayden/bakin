@@ -167,7 +167,6 @@ export function ExtensionsSection() {
       </Stack>
       <DataTable
         label="Runtime extensions"
-        collapseBelow="none"
         columns={columns}
         rows={report.extensions}
         rowKey={(ext) => ext.path}

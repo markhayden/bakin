@@ -9,6 +9,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  Text,
 } from '@makinbakin/sdk/ui'
 import type { ScheduleJob } from "@makinbakin/sdk/hooks"
 
@@ -82,7 +83,7 @@ export function JobScheduleCell({ job }: { job: ScheduleJob }) {
     <>
       <span className="text-bakin-typography-size-body text-bakin-text-muted">
         {job.humanSchedule}
-        {job.tz && <span className="ml-bakin-1 text-bakin-typography-size-meta opacity-60">{job.tz.replace(/^.*\//, '')}</span>}
+        {job.tz && <Text as="span" size="meta" tone="muted" className="ml-bakin-1">{job.tz.replace(/^.*\//, '')}</Text>}
       </span>
       {job.nextRun && !job.paused && (
         <div className="text-bakin-typography-size-meta text-bakin-text-muted/70">

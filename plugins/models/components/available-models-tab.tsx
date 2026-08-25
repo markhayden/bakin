@@ -365,7 +365,6 @@ export function AvailableModelsTab({
       {state ?? (
         <DataTable
           label="Available models"
-          collapseBelow="none"
           columns={columns}
           rows={visibleModels}
           rowKey={(model) => model.id}

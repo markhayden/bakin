@@ -282,7 +282,6 @@ export function MemorySearchResults({
   return (
     <DataTable
       label="Memory results"
-      collapseBelow="none"
       columns={columns}
       rows={results}
       rowKey={(result) => result.id}

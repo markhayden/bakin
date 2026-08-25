@@ -295,7 +295,6 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                 label="Installed plugins"
                 rows={filteredPlugins}
                 rowKey={(plugin) => plugin.id}
-                collapseBelow="none"
                 renderRow={() => null}
                 tableProps={{ className: 'min-w-[760px]' }}
                 rowProps={(plugin) => ({

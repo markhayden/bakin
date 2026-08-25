@@ -356,7 +356,6 @@ export function SystemSearchSection({
                   rows={status.tables}
                   rowKey={(table) => table.logical}
                   columns={indexColumns}
-                  collapseBelow="none"
                   renderRow={() => null}
                   tableProps={{ className: 'min-w-[760px]' }}
                 />

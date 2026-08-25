@@ -64,7 +64,11 @@ export function DispatchTimer() {
   return (
     <div className="flex items-center gap-1.5 text-xs font-mono text-bakin-text-muted">
       <Clock className={`size-3 ${isDispatching ? 'animate-pulse' : ''}`} />
-      <span title="Next dispatch">{display}</span>
+      {/* Was a native `title`, which ARIA drops on a role-less span — so AT
+          users got nothing while sighted users got a hover-only hint. The
+          clock icon and countdown carry the meaning visually; this names it
+          for everyone else. */}
+      <span><span className="sr-only">Next dispatch in </span>{display}</span>
       <Button
         type="button"
         variant="ghost"

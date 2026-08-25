@@ -319,7 +319,6 @@ export function SpendBreakdown({
                 beside the ranked chart. */}
             <DataTable
               label={`${DIMENSIONS.find((item) => item.value === dimension)?.label} spend`}
-              collapseBelow="none"
               columns={columns}
               rows={visibleRows}
               rowKey={(row) => row.id}

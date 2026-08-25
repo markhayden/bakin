@@ -83,7 +83,13 @@ export interface DataTableProps<Row, F extends string = string> {
   /**
    * Container-query breakpoint (measured on the DataTable itself, never the
    * viewport) below which the list render replaces the table.
-   * Defaults to `'2xl'` (42rem). `'none'` keeps the table at every width.
+   *
+   * Defaults to `'none'` — the table stays a table at every width and scrolls
+   * horizontally inside its own container. Every consumer in the fleet chose
+   * this explicitly, so it is the default rather than a prop each caller has
+   * to remember; comparable records read better as aligned columns than as
+   * stacked label/value pairs. Opt into `'xl' | '2xl' | '3xl'` when a table's
+   * rows genuinely read better stacked on narrow widths.
    */
   collapseBelow?: DataTableCollapse
   /** Row relationship of the narrow list render. */
@@ -243,7 +249,7 @@ export function DataTable<Row, F extends string = string>({
   sort,
   onSortChange,
   pagination,
-  collapseBelow = '2xl',
+  collapseBelow = 'none',
   listVariant = 'separated',
   renderTableRow,
   rowProps,

@@ -121,7 +121,6 @@ export function ImportView({ onImported, onCountChange }: { onImported?: () => v
       {error && <p className="text-bakin-typography-size-meta text-bakin-signal-danger" data-testid="import-error">{error}</p>}
       <DataTable
         label="Unmanaged files"
-        collapseBelow="none"
         columns={columns}
         rows={files}
         rowKey={file => file.relPath}

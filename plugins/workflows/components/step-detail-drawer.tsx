@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, AlertDescription, AlertTitle, Badge, Button, Drawer, DrawerSection, Separator } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Drawer, DrawerSection, Overline, Separator } from '@makinbakin/sdk/ui'
+import { CodeBlock } from '@makinbakin/sdk/content'
+import { Stack } from '@makinbakin/sdk/layout'
 import { useAgent } from '@makinbakin/sdk/hooks'
 import { WorkflowAgentAvatar } from './workflow-agent-identity'
 import {
@@ -306,14 +308,17 @@ function OutputStepDetail({ step }: { step: OutputStep }) {
         <>
           <Separator />
           <DrawerSection title="Content Templates">
-            <div className="space-y-3">
+            <Stack gap="item">
               {Object.entries(step.content).map(([key, value]) => (
-                <div key={key} className="rounded-bakin-surface bg-bakin-surface-default p-3">
-                  <div className="text-bakin-typography-size-meta font-bakin-typography-family-mono text-bakin-text-muted uppercase tracking-wider mb-1.5">{key}</div>
-                  <pre className="text-bakin-typography-size-body text-bakin-text-primary whitespace-pre-wrap leading-relaxed">{value}</pre>
-                </div>
+                <Stack key={key} gap="dense">
+                  <Overline>{key}</Overline>
+                  {/* A template IS its exact source — CodeBlock owns the mono
+                      frame and makes the block keyboard-reachable, which a
+                      bare scrollable <pre> never is. */}
+                  <CodeBlock code={value} label={`${key} template`} copyable wrap />
+                </Stack>
               ))}
-            </div>
+            </Stack>
           </DrawerSection>
         </>
       )}
