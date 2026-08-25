@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { ShieldAlert } from 'lucide-react'
 import { DataTable, ListRow, type DataTableColumn } from '@makinbakin/sdk/patterns'
+import { Text } from '@makinbakin/sdk/ui'
 import { AgentBadge } from './agent-badge'
 import { JobActionsMenu, JobNameCell, JobScheduleCell, JobStatusBadge, type JobScoreInfo } from './job-row'
 import type { ScheduleJob } from "@makinbakin/sdk/hooks"
@@ -47,9 +48,9 @@ function MobileJobRow({
               <span className="block truncate text-bakin-typography-size-body text-bakin-text-muted">
                 {job.humanSchedule}
                 {job.tz ? (
-                  <span className="ml-bakin-1 text-bakin-typography-size-meta opacity-60">
+                  <Text as="span" size="meta" tone="muted" className="ml-bakin-1">
                     {job.tz.replace(/^.*\//, '')}
-                  </span>
+                  </Text>
                 ) : null}
               </span>
               {job.nextRun && !job.paused ? (
@@ -161,6 +162,9 @@ export function JobList({
   return (
     <DataTable
       label="Scheduled jobs"
+      // Kept collapsing: these rows carry narrow-render configuration and
+      // read better stacked than as a horizontally scrolling table.
+      collapseBelow="2xl"
       columns={columns}
       rows={jobs}
       rowKey={job => job.id}

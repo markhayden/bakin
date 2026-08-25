@@ -39,7 +39,9 @@ interface DataTableCanonicalArgs {
 export const CanonicalUsage = {
   parameters: { layout: 'padded' },
   args: {
-    collapseBelow: '2xl',
+    // Matches the component default: a table stays a table and scrolls
+    // horizontally. The control below explores opting into collapsing.
+    collapseBelow: 'none',
     listVariant: 'separated',
   },
   argTypes: {
@@ -48,7 +50,7 @@ export const CanonicalUsage = {
     collapseBelow: {
       control: 'select',
       options: ['xl', '2xl', '3xl', 'none'],
-      description: 'Container width below which the dual render switches from table to ListRows.',
+      description: 'Container width below which the dual render switches from table to ListRows. Defaults to `none` — the table stays a table at every width.',
     },
     listVariant: {
       control: 'select',
@@ -181,6 +183,9 @@ function DualRenderExample() {
       columns={RUN_COLUMNS}
       rows={visible}
       rowKey={(row) => row.id}
+      // Collapsing is opt-in (the default is table-only); these stories exist
+      // to demonstrate the narrow render, so they ask for it.
+      collapseBelow="2xl"
       sort={sort}
       onSortChange={(field) => {
         setSort((previous) => previous.field === field
@@ -279,6 +284,7 @@ export const NarrowRoles = {
             columns={NARROW_COLUMNS}
             rows={NARROW_RUNS}
             rowKey={(row) => row.id}
+            collapseBelow="2xl"
           />
         </div>
       </StorySection>

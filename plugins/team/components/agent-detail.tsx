@@ -493,7 +493,7 @@ function SkillsTab({ agentId }: { agentId: string }) {
       onSelect={setSelectedSkill}
       content={skillContent ? (
         <Panel variant="code" scroll={false}>
-          <pre className="m-0 whitespace-pre-wrap font-bakin-typography-family-mono leading-relaxed text-bakin-text-primary">
+          <pre className="leading-relaxed">
             {skillContent}
           </pre>
         </Panel>
@@ -579,7 +579,7 @@ function MemoryTab({ agentId }: { agentId: string }) {
       onSelect={setSelectedFile}
       content={content ? (
         <Panel variant="code" scroll={false}>
-          <pre className="m-0 whitespace-pre-wrap font-bakin-typography-family-mono leading-relaxed text-bakin-text-primary">
+          <pre className="leading-relaxed">
             {content}
           </pre>
         </Panel>

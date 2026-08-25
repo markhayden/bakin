@@ -13,7 +13,7 @@
  */
 import type { ComponentType, ReactNode } from 'react'
 import { Inline, Stack } from '@makinbakin/sdk/layout'
-import { StatusBadge as StatusBadgePattern, type StatusTone } from '@makinbakin/sdk/patterns'
+import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 
 export type CapabilityMode = 'native' | 'shimmed' | 'unavailable' | string
 
@@ -31,9 +31,9 @@ const MODE_TONE: Record<string, StatusTone> = {
 
 export function ModeBadge({ mode }: { mode: CapabilityMode }) {
   return (
-    <StatusBadgePattern tone={MODE_TONE[mode] ?? 'neutral'} variant="soft" className="shrink-0">
+    <StatusBadge tone={MODE_TONE[mode] ?? 'neutral'} variant="soft" className="shrink-0">
       {MODE_LABEL[mode] ?? mode}
-    </StatusBadgePattern>
+    </StatusBadge>
   )
 }
 
@@ -67,13 +67,20 @@ export function capabilityStateCopy(key: string, mode: CapabilityMode, adapter: 
 
 export const MODE_LEGEND = 'Native — the runtime provides it. Via Bakin — Bakin fills the gap itself. Not available — degrades honestly, never silently.'
 
-export function StatusBadge({ status }: { status: string }) {
+/**
+ * Check-status chip (`ok`/`warn`/`skipped`/…). Named distinctly from the kit's
+ * `StatusBadge`, which it wraps: this used to shadow that name in this very
+ * directory, so sibling files imported different components under one name
+ * depending on which import they reached for. The alias that made that
+ * possible is gone with it.
+ */
+export function CheckStatusBadge({ status }: { status: string }) {
   const tone: StatusTone = status === 'ok'
     ? 'success'
     : status === 'warn' || status === 'skipped'
       ? 'attention'
       : 'danger'
-  return <StatusBadgePattern tone={tone} variant="soft" className="shrink-0">{status}</StatusBadgePattern>
+  return <StatusBadge tone={tone} variant="soft" className="shrink-0">{status}</StatusBadge>
 }
 
 export type EntityCardTone = 'neutral' | 'active'

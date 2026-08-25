@@ -310,6 +310,9 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
         ) : (
           <DataTable
             label="Task log"
+            // Kept collapsing: these rows carry narrow-render configuration and
+            // read better stacked than as a horizontally scrolling table.
+            collapseBelow="2xl"
             columns={columns}
             rows={sorted}
             rowKey={(task) => task.id}

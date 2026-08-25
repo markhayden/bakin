@@ -10,7 +10,7 @@ import { Section, Stack } from '@makinbakin/sdk/layout'
 import { ConfirmDialog, DataTable, StatGroup, StatTile, type DataTableColumn } from '@makinbakin/sdk/patterns'
 import { Badge, Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
 import { capabilityRows } from '../../lib/runtime-report'
-import { ModeBadge, MODE_LEGEND, StatusBadge, capabilityStateCopy, type CapabilityMode } from './shared'
+import { ModeBadge, MODE_LEGEND, CheckStatusBadge, capabilityStateCopy, type CapabilityMode } from './shared'
 import type { CapabilityReport, OnboardingComponentStatus } from './types'
 
 function CredentialTiles({ report }: { report: CapabilityReport }) {
@@ -110,7 +110,6 @@ function CapabilityGrid({ report }: { report: CapabilityReport }) {
       </Stack>
       <DataTable
         label="Runtime capabilities"
-        collapseBelow="none"
         columns={columns}
         rows={rows}
         rowKey={(row) => row.key}
@@ -184,7 +183,7 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
     {
       key: 'status',
       header: 'Status',
-      cell: (component) => <StatusBadge status={component.status} />,
+      cell: (component) => <CheckStatusBadge status={component.status} />,
     },
     {
       key: 'action',
@@ -232,7 +231,6 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
       {onboarding && (
         <DataTable
           label="Setup checks"
-          collapseBelow="none"
           columns={columns}
           rows={onboarding}
           rowKey={(component) => component.name}

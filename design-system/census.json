@@ -2329,10 +2329,10 @@
       },
       "sourcePath": "packages/host/src/components/runtime/shared.tsx",
       "symbols": [
+        "CheckStatusBadge",
         "EntityCardBody",
         "MODE_LEGEND",
         "ModeBadge",
-        "StatusBadge",
         "capabilityStateCopy"
       ],
       "exportStatus": "private",
