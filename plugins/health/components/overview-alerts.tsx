@@ -2,7 +2,7 @@
 
 import type { HealthIncident } from '@makinbakin/sdk/types'
 import { PluginLink } from '@makinbakin/sdk/navigation'
-import { DisclosurePanel, Section, Stack } from '@makinbakin/sdk/layout'
+import { DisclosurePanel, Inline, Section, Stack } from '@makinbakin/sdk/layout'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { Banner, Popover, PopoverContent, PopoverTrigger } from '@makinbakin/sdk/ui'
 import { ChevronDown, ChevronRight } from 'lucide-react'
@@ -148,12 +148,12 @@ export function OverviewAlerts({ model, onRepair, onRerun, onAck }: OverviewAler
     <Section spacing="compact" aria-labelledby="overview-fix-first-title">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-3">
         <Stack gap="dense">
-          <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+          <Inline gap="dense">
             <h2 id="overview-fix-first-title">Fix first</h2>
             <StatusBadge tone={model.needsAction.length > 0 ? 'danger' : 'neutral'} variant="solid">
               {actionLabel}
             </StatusBadge>
-          </div>
+          </Inline>
           <p className="m-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
             Actionable conditions come before supporting telemetry.
           </p>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, RefreshCw } from 'lucide-react'
-import { Section } from '@makinbakin/sdk/layout'
+import { Inline, Section } from '@makinbakin/sdk/layout'
 import { PluginLink, useHistoryBack } from '@makinbakin/sdk/navigation'
 import {
   AgentAvatar,
@@ -341,7 +341,7 @@ export function TeamDetail({ teamId }: { teamId: string }) {
 
                 return (
                   <ListRow key={member.id} className="grid min-w-0 gap-bakin-1">
-                    <div className="flex min-w-0 items-center gap-bakin-3">
+                    <Inline wrap={false}>
                     <AgentAvatar
                       agent={{ id: member.id, name: member.name, initials: member.emoji }}
                       size="sm"
@@ -355,7 +355,7 @@ export function TeamDetail({ teamId }: { teamId: string }) {
                         {status.label}
                       </StatusBadge>
                     ) : null}
-                    </div>
+                    </Inline>
                     {/* A failure reason no user can see is not reported. */}
                     {result?.error ? (
                       <p className="m-0 text-bakin-typography-size-meta text-bakin-signal-danger">

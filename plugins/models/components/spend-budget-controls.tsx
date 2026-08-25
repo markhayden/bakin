@@ -1,7 +1,7 @@
 'use client'
 
 import { Plus, Trash2 } from 'lucide-react'
-import { Section, Stack } from '@makinbakin/sdk/layout'
+import { Inline, Section, Stack } from '@makinbakin/sdk/layout'
 import { AgentAvatar, ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import {
   Button,
@@ -315,7 +315,7 @@ export function BillingLanesSection({ m }: { m: ModelsData }) {
             const value = agentOverrides.get(agentId) ?? 'auto'
             return (
               <ListRow key={agentId} className="px-bakin-4 py-bakin-4">
-                <div className="flex min-w-0 items-center gap-bakin-3">
+                <Inline wrap={false}>
                   <AgentAvatar
                     agent={{ id: agentId, name: agent?.name ?? agentId }}
                     size="md"
@@ -329,7 +329,7 @@ export function BillingLanesSection({ m }: { m: ModelsData }) {
                       {lane.provider} · detected {lane.lane}
                     </p>
                   </div>
-                </div>
+                </Inline>
 
                 <Field name={`billing-lane-${agentId}`}>
                   <FieldLabel>Billing override</FieldLabel>

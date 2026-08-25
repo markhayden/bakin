@@ -12,11 +12,14 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
+  Overline,
+  Text,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@makinbakin/sdk/ui'
 import { runtimeCompatible, type ExploreCatalogEntry } from '../types'
+import { Inline } from '@makinbakin/sdk/layout'
 
 export function entryStatusBadge(entry: ExploreCatalogEntry): {
   label: string
@@ -97,23 +100,23 @@ export function CatalogCard({
       interactive={{ label: `View ${entry.name} details`, onActivate: () => onSelect(entry) }}
     >
       <CardHeader>
-        <div className="flex min-w-0 items-center gap-bakin-3">
+        <Inline wrap={false}>
           <EntryVisual entry={entry} />
           <div className="flex min-w-0 flex-1 items-center gap-bakin-2">
             <CardTitle className="min-w-0 flex-1 group-data-[size=sm]/card:text-bakin-typography-size-section-title">
               {entry.name}
             </CardTitle>
-            <span className="shrink-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
+            <Overline className="shrink-0">
               {entry.category}
-            </span>
+            </Overline>
           </div>
-        </div>
+        </Inline>
       </CardHeader>
       <CardContent className="flex-1">
         <CardDescription className="line-clamp-2 leading-snug">{entry.description}</CardDescription>
       </CardContent>
       <CardFooter variant="meta" className="gap-bakin-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+        <Inline gap="dense">
           {status && (
             <StatusBadge tone={status.tone} variant={status.variant} icon={status.icon} size="xs">
               {status.label}
@@ -143,11 +146,11 @@ export function CatalogCard({
             </Tooltip>
           )}
           {entry.installedVersion ? (
-            <span className="text-bakin-typography-size-meta text-bakin-text-muted" data-testid="card-version">
+            <Text size="meta" tone="muted" data-testid="card-version">
               v{entry.installedVersion}
-            </span>
+            </Text>
           ) : null}
-        </div>
+        </Inline>
         <div className="ml-auto flex items-center gap-bakin-1">
           <Button type="button" variant="ghost" size="xs" onClick={() => onSelect(entry)}>
             Details

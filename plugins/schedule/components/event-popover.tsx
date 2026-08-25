@@ -6,6 +6,7 @@ import { PluginLink } from '@makinbakin/sdk/navigation'
 import { CalendarItem, ConfirmDialog } from '@makinbakin/sdk/patterns'
 import {
   Button,
+  buttonVariants,
   Field,
   FieldControl,
   FieldError,
@@ -16,7 +17,7 @@ import {
   PopoverHeader,
   PopoverTitle,
   PopoverTrigger,
-  buttonVariants,
+  Text,
 } from '@makinbakin/sdk/ui'
 import type { ScheduledDomainEvent } from '@makinbakin/sdk/hooks'
 
@@ -123,10 +124,10 @@ export function EventChip({
               {event.pluginId} · {event.kind}{event.status ? ` · ${event.status}` : ''}
             </PopoverDescription>
           </PopoverHeader>
-          <p className="text-bakin-typography-size-meta text-bakin-text-muted">
+          <Text size="meta" tone="muted" as="p">
             {due ? 'Due' : 'Starts'}{' '}
             {new Date(eventInstant(event)).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-          </p>
+          </Text>
           <div className="flex items-center gap-bakin-2">
             {event.url && (
               <PluginLink

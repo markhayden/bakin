@@ -6,6 +6,7 @@ import { CalendarGrid } from '@makinbakin/sdk/patterns'
 import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from '@makinbakin/sdk/hooks'
 import { OccurrenceCard, jobsById } from './calendar-weekly'
 import { EventChip, eventInstant } from './event-popover'
+import { Text } from '@makinbakin/sdk/ui'
 
 /** Occurrence or domain event flattened into the shared CalendarGrid item shape. */
 type TodayCalendarItem =
@@ -74,9 +75,9 @@ export function CalendarToday({
       <div className="flex flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1">
         <Clock className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
         <span className="font-bakin-typography-weight-medium text-bakin-text-primary">{todayFormatted}</span>
-        <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text size="meta" tone="muted">
           {total} run{total !== 1 ? 's' : ''} scheduled
-        </span>
+        </Text>
       </div>
 
       <CalendarGrid

@@ -19,14 +19,15 @@ import {
 } from 'lucide-react'
 import { AgentAvatar, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import {
+  Button,
   Drawer,
   DrawerSection,
-  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Overline,
 } from '@makinbakin/sdk/ui'
 import { useAgent, type ScheduleJob } from '@makinbakin/sdk/hooks'
 import { AgentBadge } from './agent-badge'
@@ -60,10 +61,10 @@ function MetadataItem({
 }) {
   return (
     <div className={`min-w-0 rounded-bakin-surface bg-bakin-surface-default p-bakin-3 ${className ?? ''}`}>
-      <dt className="flex items-center gap-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
+      <Overline as="dt" className="flex items-center gap-bakin-1">
         {Icon ? <Icon aria-hidden="true" className="size-bakin-3" /> : null}
         {label}
-      </dt>
+      </Overline>
       <dd className={`m-0 mt-bakin-1 break-words text-bakin-text-primary ${
         mono ? 'font-bakin-typography-family-mono text-bakin-typography-size-meta' : 'font-bakin-typography-weight-medium'
       }`}>

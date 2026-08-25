@@ -18,6 +18,7 @@ import {
   Input,
   Label,
   SystemState,
+  Text,
   Textarea,
   Tooltip,
   TooltipContent,
@@ -377,10 +378,10 @@ export function MemoryCleanup() {
                   {r.clean ? 'Clean' : 'Remaining'}
                 </StatusBadge>
                 <span className="text-bakin-typography-size-meta">{r.agent}</span>
-                <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+                <Text size="meta" tone="muted">
                   {r.clean ? 'clean' : `${r.actionableRemaining} editable occurrence(s) remain`}
                   {r.informationalRemaining > 0 ? ` · ${r.informationalRemaining} informational left (self-healing)` : ''}
-                </span>
+                </Text>
               </Inline>
             ))}
           </Stack>

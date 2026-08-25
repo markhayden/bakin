@@ -7,6 +7,7 @@ import { Switch } from "@makinbakin/sdk/ui"
 import { Eye, EyeOff } from 'lucide-react'
 import { COLUMN_CONFIG, STATUS_TONES } from '../constants'
 import type { ColumnId } from '../types'
+import { Inline } from '@makinbakin/sdk/layout'
 
 const STATUS_OPTIONS: { value: string; label: string; icon: React.ReactNode }[] =
   (['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived'] as ColumnId[]).map(id => ({
@@ -82,7 +83,7 @@ export function TaskFilters({
   }
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-bakin-3">
+    <Inline>
       <AgentFilter
         options={agentOptions}
         value={agentFilter}
@@ -127,6 +128,6 @@ export function TaskFilters({
         </label>
       )}
 
-    </div>
+    </Inline>
   )
 }

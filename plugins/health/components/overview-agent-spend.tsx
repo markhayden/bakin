@@ -4,7 +4,7 @@ import { assignSeriesColors, CHART_MAX_SERIES, StackedColumnChart } from '@makin
 import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
-import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import { Button, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, Coins } from 'lucide-react'
 import type { HealthOverviewViewModel } from '../lib/health-view-model'
 import { formatRuntimeCost, formatTokenCount } from '../lib/format'
@@ -157,17 +157,17 @@ export function OverviewAgentSpend({
           <div className="mt-bakin-4 flex flex-wrap items-end gap-x-bakin-6 gap-y-bakin-2">
             <div>
               <strong className="block text-bakin-typography-size-title font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">{formatTokenCount(total)} tokens</strong>
-              <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text size="meta" tone="muted">
                 {evidenceLimited ? 'Fully scanned agents only' : 'Observed transcript traffic'}
-              </span>
+              </Text>
             </div>
             <div>
               <strong className="block text-bakin-typography-size-heading font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">
                 {cost === null ? 'Cost unavailable' : `${formatRuntimeCost(cost.usd)}${cost.complete && !evidenceLimited ? '' : '+'}`}
               </strong>
-              <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text size="meta" tone="muted">
                 {cost?.complete === false || evidenceLimited ? 'Partial runtime-reported cost' : 'Runtime-reported cost'}
-              </span>
+              </Text>
             </div>
           </div>
 

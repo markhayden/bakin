@@ -11,7 +11,7 @@ import {
   StatusBadge,
   type DataTableColumn,
 } from '@makinbakin/sdk/patterns'
-import { Badge, Banner, Button, Input, type BannerTone } from '@makinbakin/sdk/ui'
+import { Badge, Banner, Button, Input, Text, type BannerTone } from '@makinbakin/sdk/ui'
 import { Clock3, Cpu, Hash, MemoryStick, Network, Users } from 'lucide-react'
 import { formatAge } from '@makinbakin/sdk/utils'
 import type { HealthSummary } from '../types'
@@ -286,9 +286,9 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
             />
           </label>
           {loading && plugins.length === 0 ? (
-            <p className="text-bakin-typography-size-body text-bakin-text-muted">Loading installed plugins…</p>
+            <Text size="body" tone="muted" as="p">Loading installed plugins…</Text>
           ) : filteredPlugins.length === 0 ? (
-            <p className="text-bakin-typography-size-body text-bakin-text-muted">{pluginSearch ? 'No matching plugins.' : 'No plugins were discovered.'}</p>
+            <Text size="body" tone="muted" as="p">{pluginSearch ? 'No matching plugins.' : 'No plugins were discovered.'}</Text>
           ) : (
             <Panel ref={pluginTableRef} scroll aria-label="Installed plugins" data-testid="installed-plugin-table-scroll" padding="compact" className="max-h-80">
               <DataTable<InventoryPlugin>
@@ -361,9 +361,9 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
         )}
       >
           {!report ? (
-            <p className="text-bakin-typography-size-body text-bakin-text-muted">Waiting for the canonical health report…</p>
+            <Text size="body" tone="muted" as="p">Waiting for the canonical health report…</Text>
           ) : groupedChecks.length === 0 ? (
-            <p className="text-bakin-typography-size-body text-bakin-text-muted">No health checks are registered.</p>
+            <Text size="body" tone="muted" as="p">No health checks are registered.</Text>
           ) : (
             <div className="space-y-bakin-2">
               {groupedChecks.map((group) => {

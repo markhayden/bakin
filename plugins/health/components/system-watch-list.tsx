@@ -3,10 +3,11 @@
 import { useMemo, useState } from 'react'
 import type { HealthReport } from '@makinbakin/sdk/types'
 import { ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
-import { Banner, Button } from '@makinbakin/sdk/ui'
+import { Banner, Button, Overline, Text } from '@makinbakin/sdk/ui'
 import { ChevronDown, Puzzle, ShieldCheck } from 'lucide-react'
 import type { SystemPluginManifestData, SystemRegistryData } from '../hooks/use-system-data'
 import { buildSystemFindings, type SystemFinding } from '../lib/system-view-model'
+import { Inline } from '@makinbakin/sdk/layout'
 
 const DEFAULT_VISIBLE_FINDINGS = 3
 
@@ -40,9 +41,9 @@ export function SystemWatchList({
       <div className="mb-bakin-2 flex min-w-0 items-end justify-between gap-bakin-3">
         <div className="min-w-0">
           <h2 id="system-watch-list-title">Worth a look</h2>
-          <p className="text-bakin-typography-size-meta text-bakin-text-muted">
+          <Text size="meta" tone="muted" as="p">
             Advisory and unavailable evidence is summarized here; open a row only when you need the details.
-          </p>
+          </Text>
         </div>
         {findings.length > 0 && (
           <span className="shrink-0 text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
@@ -89,11 +90,11 @@ export function SystemWatchList({
                       aria-hidden="true"
                     />
                     <div className="min-w-0">
-                      <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+                      <Inline gap="dense">
                         <h3 className="text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{finding.title}</h3>
                         <StatusBadge tone={tone} variant="outline">{finding.label}</StatusBadge>
-                        <span className="text-bakin-typography-size-meta uppercase tracking-wide text-bakin-text-muted">{finding.category}</span>
-                      </div>
+                        <Overline>{finding.category}</Overline>
+                      </Inline>
                       <p className="mt-bakin-1 line-clamp-2 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">{finding.detail}</p>
                     </div>
                   </div>

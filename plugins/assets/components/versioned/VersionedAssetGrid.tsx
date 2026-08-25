@@ -9,7 +9,7 @@ import {
   useRouter,
   useSearchParams,
 } from '@makinbakin/sdk/navigation'
-import { Grid } from '@makinbakin/sdk/layout'
+import { Grid, Inline } from '@makinbakin/sdk/layout'
 import {
   FacetFilter,
   DataTable,
@@ -27,18 +27,19 @@ import {
   Button,
   Card,
   CardDescription,
-  CardMedia,
   CardHeader,
+  CardMedia,
   CardTitle,
   Checkbox,
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
   FileInput,
   SystemState,
+  Text,
   type FileInputHandle,
 } from '@makinbakin/sdk/ui'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
@@ -535,7 +536,7 @@ export function VersionedAssetGrid() {
         feedback={uploadError || (linkTo && view !== 'trash') ? (
           <div className="grid min-w-0 gap-bakin-2">
             {uploadError ? <p className="m-0 text-bakin-typography-size-meta text-bakin-signal-danger">{uploadError}</p> : null}
-            {linkTo && view !== 'trash' ? <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">New uploads will be linked to this task.</p> : null}
+            {linkTo && view !== 'trash' ? <Text size="meta" tone="muted" as="p">New uploads will be linked to this task.</Text> : null}
           </div>
         ) : undefined}
       >
@@ -595,12 +596,12 @@ export function VersionedAssetGrid() {
                   narrow: 'primary',
                   headClassName: 'min-w-64',
                   cell: item => (
-                    <div className="flex min-w-0 items-center gap-bakin-3">
+                    <Inline wrap={false}>
                       <div className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-canvas-default">
                         <AssetTypeIcon type={item.type} className="size-bakin-4" />
                       </div>
                       <p className="m-0 truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{item.description || item.assetId}</p>
-                    </div>
+                    </Inline>
                   ),
                 },
                 { key: 'type', header: 'Type', narrow: 'meta', cell: item => <span className="capitalize text-bakin-text-muted">{item.type}</span> },
@@ -709,7 +710,7 @@ export function VersionedAssetGrid() {
                 sortable: true,
                 headClassName: 'min-w-64',
                 cell: asset => (
-                  <div className="flex min-w-0 items-center gap-bakin-3">
+                  <Inline wrap={false}>
                     <div className="size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control">
                       <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
                     </div>
@@ -717,7 +718,7 @@ export function VersionedAssetGrid() {
                       <p className="m-0 truncate font-bakin-typography-weight-medium text-bakin-text-primary">{asset.description || asset.assetId}</p>
                       {scoreFor(asset.assetId) ? <ScoreOverlay info={scoreFor(asset.assetId)!} /> : null}
                     </div>
-                  </div>
+                  </Inline>
                 ),
               },
               { key: 'type', header: 'Type', cell: asset => <span className="capitalize text-bakin-text-muted">{asset.type}</span> },

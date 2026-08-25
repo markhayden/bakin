@@ -5,10 +5,11 @@ import { StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Button,
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Overline,
   Text,
 } from '@makinbakin/sdk/ui'
 import type { ScheduleJob } from "@makinbakin/sdk/hooks"
@@ -53,9 +54,9 @@ export function JobNameCell({ job, scoreInfo }: { job: ScheduleJob; scoreInfo?: 
       <span className="text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
         {job.displayName || job.id}
       </span>
-      <span className="text-bakin-typography-size-meta uppercase tracking-wider text-bakin-text-muted">
+      <Overline>
         {job.source === 'adopted' ? 'Adopted' : job.isBakinJob ? 'Bakin schedule' : 'Runtime cron'}
-      </span>
+      </Overline>
       {job.toolsAllowMissing && (
         <span className="inline-flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-signal-highlight">
           <ShieldAlert className="size-bakin-3" />
@@ -81,10 +82,10 @@ export function JobNameCell({ job, scoreInfo }: { job: ScheduleJob; scoreInfo?: 
 export function JobScheduleCell({ job }: { job: ScheduleJob }) {
   return (
     <>
-      <span className="text-bakin-typography-size-body text-bakin-text-muted">
+      <Text size="body" tone="muted">
         {job.humanSchedule}
         {job.tz && <Text as="span" size="meta" tone="muted" className="ml-bakin-1">{job.tz.replace(/^.*\//, '')}</Text>}
-      </span>
+      </Text>
       {job.nextRun && !job.paused && (
         <div className="text-bakin-typography-size-meta text-bakin-text-muted/70">
           next {new Date(job.nextRun).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}

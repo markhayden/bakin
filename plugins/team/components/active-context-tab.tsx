@@ -9,6 +9,7 @@ import {
   AlertDescription,
   AlertTitle,
   SystemState,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
 import type { SessionMessage, SessionTranscript } from '../types'
@@ -72,7 +73,7 @@ function MessageRow({ message, index }: { message: SessionMessage; index: number
           </code>
         ) : null}
         {message.model ? (
-          <span className="text-bakin-typography-size-meta text-bakin-text-muted">{message.model}</span>
+          <Text size="meta" tone="muted">{message.model}</Text>
         ) : null}
         {message.ts ? (
           <time

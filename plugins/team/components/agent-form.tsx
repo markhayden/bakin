@@ -27,6 +27,7 @@ import {
   Textarea,
 } from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
+import { Inline } from '@makinbakin/sdk/layout'
 
 export interface AgentFormData {
   id: string
@@ -121,7 +122,7 @@ export function AgentForm({
       <Field name="avatar">
         <FieldLabel>Profile image</FieldLabel>
         <FieldDescription>JPG, PNG, or WebP. This portrait appears throughout Bakin.</FieldDescription>
-        <div className="flex min-w-0 items-center gap-bakin-3">
+        <Inline wrap={false}>
           <AgentAvatar
             agent={{
               id: id || 'new-agent',
@@ -132,7 +133,7 @@ export function AgentForm({
             size="lg"
             decorative
           />
-          <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+          <Inline gap="dense">
             <FileInput
               label="Profile image"
               accept="image/jpeg,image/png,image/webp"
@@ -147,8 +148,8 @@ export function AgentForm({
                 Remove
               </Button>
             ) : null}
-          </div>
-        </div>
+          </Inline>
+        </Inline>
       </Field>
 
       <FieldGroup>

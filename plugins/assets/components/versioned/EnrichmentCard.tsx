@@ -13,6 +13,7 @@ import {
   Badge,
   Button,
   Input,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { Loader2, Pencil, RefreshCw, Sparkles, Tags } from 'lucide-react'
 import { VERSIONED_API, TAGS_API, ENRICH_API } from './asset-urls'
@@ -200,9 +201,9 @@ export function EnrichmentCard({ manifest, onChanged }: Props) {
       )}
 
       {(enrichment.model || enrichment.at) && (
-        <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="p">
           {enrichment.model}{enrichment.at ? ` · ${new Date(enrichment.at).toLocaleString()}` : ''}
-        </p>
+        </Text>
       )}
     </Section>
   )

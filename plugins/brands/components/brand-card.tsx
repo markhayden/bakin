@@ -5,7 +5,7 @@
  */
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
-import { Card, CardAction, CardContent, CardHeader, CardMedia, CardTitle } from '@makinbakin/sdk/ui'
+import { Card, CardAction, CardContent, CardHeader, CardMedia, CardTitle, Text } from '@makinbakin/sdk/ui'
 import { Progress, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@makinbakin/sdk/ui'
 import type { BrandManifest } from '../types'
 
@@ -141,10 +141,10 @@ export function BrandCoverCard({ brand }: { brand: ListedBrand }) {
         )}
 
         {brand.counts && (
-          <p className="text-bakin-typography-size-meta text-bakin-text-muted">
+          <Text size="meta" tone="muted" as="p">
             {brand.counts.guidelines} docs · {brand.counts.lessons} lessons · {brand.counts.assets} assets
             {brand.source ? ' · imported' : ''}
-          </p>
+          </Text>
         )}
       </CardContent>
     </Card>

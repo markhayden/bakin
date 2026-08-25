@@ -10,7 +10,7 @@ import { useJsonFetch } from '@makinbakin/sdk/hooks'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import { Section, Stack } from '@makinbakin/sdk/layout'
 import { ConfirmDialog, CopyButton, DataTable, StatusBadge, type DataTableColumn } from '@makinbakin/sdk/patterns'
-import { Banner, Button } from '@makinbakin/sdk/ui'
+import { Banner, Button, Text } from '@makinbakin/sdk/ui'
 import { describeRequestError, responseError } from '../../lib/request-error'
 
 interface ExtensionRow {
@@ -159,10 +159,10 @@ export function ExtensionsSection() {
     <Section spacing="compact" data-testid="runtime-extensions">
       <Stack gap="dense">
         <h2>Extensions</h2>
-        <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="p">
           Add-ons installed for the runtime from the command line. They stay inert until you
           approve them here — an approved extension runs inside the Bakin server with full permissions.
-        </p>
+        </Text>
         <CodeBlock code="pi install" label="extension install command" />
       </Stack>
       <DataTable

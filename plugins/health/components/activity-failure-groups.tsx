@@ -1,7 +1,7 @@
 'use client'
 
 import { formatRelativeTime } from '@makinbakin/sdk/conversation'
-import { Grid, Panel, Section } from '@makinbakin/sdk/layout'
+import { Grid, Inline, Panel, Section } from '@makinbakin/sdk/layout'
 import { ListRows, Pagination, StatusBadge } from '@makinbakin/sdk/patterns'
 import { Button } from '@makinbakin/sdk/ui'
 import { AlertCircle, ChevronDown } from 'lucide-react'
@@ -148,7 +148,7 @@ function FailureGroup({
     >
       <div className="grid min-w-0 gap-bakin-3 px-bakin-3 py-bakin-4 @[38rem]/health:grid-cols-[minmax(0,1fr)_auto] @[38rem]/health:items-center">
         <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+          <Inline gap="dense">
             <Icon className="size-bakin-4 shrink-0" aria-hidden="true" />
             <h4 className="min-w-0 truncate">
               {displayName}
@@ -156,7 +156,7 @@ function FailureGroup({
             <span className="text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">
               {meta.label}
             </span>
-          </div>
+          </Inline>
 
           <p className="mt-bakin-2 truncate text-bakin-typography-size-body text-bakin-text-primary">{reason}</p>
           <div className="mt-bakin-2 flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">

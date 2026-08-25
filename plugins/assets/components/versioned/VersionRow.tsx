@@ -5,6 +5,7 @@ import { formatAge } from '@makinbakin/sdk/utils'
 import { Star, Trash2 } from 'lucide-react'
 import { AssetThumb, ProvenanceChips } from './atoms'
 import type { AssetVersion } from './types'
+import { Inline } from '@makinbakin/sdk/layout'
 
 /** One entry in the version timeline. Clicking the row previews that version. */
 export function VersionRow({ assetId, assetType, version, isCurrent, isSelected, canDelete, onSelect, onPromote, onDelete }: {
@@ -57,7 +58,7 @@ export function VersionRow({ assetId, assetType, version, isCurrent, isSelected,
       </div>
 
       <div className="pointer-events-none relative z-10 flex min-w-0 flex-col gap-bakin-2 pr-bakin-8">
-        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+        <Inline gap="dense">
           <span className="font-bakin-typography-family-mono text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
             v{version.version}
           </span>
@@ -68,7 +69,7 @@ export function VersionRow({ assetId, assetType, version, isCurrent, isSelected,
           <span className="ml-auto text-bakin-typography-size-meta text-bakin-text-muted">
             {formatAge(version.created)}
           </span>
-        </div>
+        </Inline>
         {version.prompt ? (
           <p className="m-0 line-clamp-2 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
             {version.prompt}

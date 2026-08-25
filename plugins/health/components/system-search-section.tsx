@@ -10,7 +10,7 @@ import {
   type DataTableColumn,
   type StatusTone,
 } from '@makinbakin/sdk/patterns'
-import { Alert, AlertDescription, Badge, Banner, Button, type BannerTone } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, Badge, Banner, Button, Text, type BannerTone } from '@makinbakin/sdk/ui'
 import { Activity, ListRestart, WandSparkles } from 'lucide-react'
 import type { SearchHealthData, SearchTelemetryData } from '../types'
 import type { SystemMutationState } from '../hooks/use-system-data'
@@ -210,7 +210,7 @@ export function SystemSearchSection({
           </p>
         </div>
         {loading && !status && !telemetry && (
-          <span className="text-bakin-typography-size-meta text-bakin-text-muted">Loading live Search data…</span>
+          <Text size="meta" tone="muted">Loading live Search data…</Text>
         )}
       </header>
 
@@ -318,7 +318,7 @@ export function SystemSearchSection({
             <div className="flex flex-wrap items-end justify-between gap-bakin-3">
               <div>
                 <h3 id="search-indexes-title" className="font-bakin-typography-weight-medium">Indexes &amp; migrations</h3>
-                <p className="text-bakin-typography-size-meta text-bakin-text-muted">Rebuilds keep the active index serving while its replacement catches up.</p>
+                <Text size="meta" tone="muted" as="p">Rebuilds keep the active index serving while its replacement catches up.</Text>
               </div>
               <Button
                 size="sm"

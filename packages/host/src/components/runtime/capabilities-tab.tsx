@@ -9,7 +9,7 @@ import { Link } from '@tanstack/react-router'
 import { useJsonFetch } from '@makinbakin/sdk/hooks'
 import { Grid, Inline, Stack } from '@makinbakin/sdk/layout'
 import { StatusBadge, StatusMarker } from '@makinbakin/sdk/patterns'
-import { buttonVariants, Card, CardContent, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import { buttonVariants, Card, CardContent, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { EntityCardBody } from './shared'
 import type { CapabilityReadiness } from './types'
 
@@ -129,7 +129,7 @@ export function CapabilitiesTab() {
           </Card>
         ))}
       </Grid>
-      <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">
+      <Text size="meta" tone="muted" as="p">
         Add more from{' '}
         <Link
           to="/explore"
@@ -138,7 +138,7 @@ export function CapabilitiesTab() {
         >
           Explore → Capabilities
         </Link>.
-      </p>
+      </Text>
     </Stack>
   )
 }

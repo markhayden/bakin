@@ -20,9 +20,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Overline,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { useRouter } from '@makinbakin/sdk/navigation'
-import { Panel } from '@makinbakin/sdk/layout'
+import { Inline, Panel } from '@makinbakin/sdk/layout'
 import { CopyButton, KeyValue, StatusBadge, type KeyValueItem } from '@makinbakin/sdk/patterns'
 import { toast, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
 import { PackageStateBadge } from './package-state-badge'
@@ -186,10 +188,10 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   if (isMain && (state === 'unmanaged' || state === 'absent')) {
     return (
       <div className="grid gap-bakin-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+        <Inline gap="dense">
           <StatusBadge tone="neutral" variant="solid" size="xs">Self-managed</StatusBadge>
-          <span className="text-bakin-typography-size-meta text-bakin-text-muted">main agent</span>
-        </div>
+          <Text size="meta" tone="muted">main agent</Text>
+        </Inline>
         <p className="m-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
           Your main agent is your own persona — its workspace files live with you, not a package template. Adoption is intentionally not offered here.
         </p>
@@ -201,7 +203,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
     <div className="grid gap-bakin-3">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-2">
         <PackageStateBadge state={displayState} packageId={packageState?.packageId} />
-        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+        <Inline gap="dense">
           {hasPackage && (
             <Button
               size="sm"
@@ -242,7 +244,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
               <span className="sr-only"> this agent into a package</span>
             </Button>
           )}
-        </div>
+        </Inline>
       </div>
       {state === 'unmanaged' && (
         <p className="m-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
@@ -270,17 +272,17 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
       )}
       {state === 'drifted' && (
         <div className="grid gap-bakin-2">
-          <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">
+          <Text size="meta" tone="muted" as="p">
             Projection sha mismatch detected. Repair from the CLI:
-          </p>
+          </Text>
           <CliHint command="bakin install agent-sync" />
         </div>
       )}
       {state === 'update-available' && !hasPackage && (
         <div className="grid gap-bakin-2">
-          <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">
+          <Text size="meta" tone="muted" as="p">
             A newer version of the source package is available. Update from the CLI:
-          </p>
+          </Text>
           <CliHint command={`bakin agents sync ${agentId}`} />
         </div>
       )}
@@ -302,9 +304,9 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
             <div className="border-y border-bakin-border-subtle py-bakin-4">
               <div className="grid min-w-0 gap-bakin-4 sm:grid-cols-2">
                 <div>
-                  <p className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-widest text-bakin-text-muted">
+                  <Overline as="p">
                     Current version
-                  </p>
+                  </Overline>
                   <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-text-primary">
                     {packageState.updateStatus.currentVersion || packageState.version || packageState.entry?.version || 'unknown'}
                   </p>
@@ -313,9 +315,9 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
                   </p>
                 </div>
                 <div>
-                  <p className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-widest text-bakin-text-muted">
+                  <Overline as="p">
                     Available version
-                  </p>
+                  </Overline>
                   <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-signal-accent">
                     {packageState.updateStatus.latestVersion ?? 'latest'}
                   </p>

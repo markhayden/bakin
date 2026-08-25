@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { CalendarClock, Clock, Repeat } from 'lucide-react'
 import { SegmentedControl, StatusBadge, type SegmentedControlOption } from '@makinbakin/sdk/patterns'
-import { Alert, AlertDescription, FieldError, Input } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, FieldError, Input, Overline } from '@makinbakin/sdk/ui'
 import type { ParseResult } from '../types'
+import { Inline } from '@makinbakin/sdk/layout'
 
 type ScheduleMode = 'recurring' | 'once'
 
@@ -96,10 +97,10 @@ export function ScheduleInput({
         onChange={(event) => onChange(event.target.value)}
       />
       {mode === 'once' ? (
-        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
-          <span className="text-bakin-typography-size-meta uppercase tracking-wider text-bakin-text-muted">
+        <Inline gap="dense">
+          <Overline>
             Or pick
-          </span>
+          </Overline>
           <Input
             type="datetime-local"
             aria-label="Pick a date and time"
@@ -109,7 +110,7 @@ export function ScheduleInput({
               if (iso) onChange(iso)
             }}
           />
-        </div>
+        </Inline>
       ) : null}
       {loading ? (
         <span role="status" className="text-bakin-typography-size-meta text-bakin-text-muted">
@@ -132,9 +133,9 @@ export function ScheduleInput({
             </span>
             {parsed.nextRuns?.length ? (
               <span className="mt-bakin-2 grid gap-bakin-1">
-                <span className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
+                <Overline>
                   {parsed.kind === 'at' ? 'Fires' : 'Next runs'}
-                </span>
+                </Overline>
                 {parsed.nextRuns.slice(0, 5).map((run) => (
                   <time key={run} className="text-bakin-typography-size-meta text-bakin-text-muted">
                     {new Date(run).toLocaleString('en-US', {

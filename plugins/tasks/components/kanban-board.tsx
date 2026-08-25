@@ -51,6 +51,7 @@ import { useBrandStatus, brandHoldReason, type BrandHold } from '../hooks/use-br
 import { useLiveActivity } from '../hooks/use-live-activity'
 import type { TaskScoreInfo } from './task-card'
 import type { Task, TaskColumns, ColumnId } from '../types'
+import { Inline } from '@makinbakin/sdk/layout'
 
 const COLUMN_ORDER: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived']
 
@@ -495,10 +496,10 @@ export function KanbanBoard() {
   const searchSettled = !search.trim() || searchStatus !== 'loading'
 
   const searchFeedback = search.trim() && (searchStatus === 'unavailable' || searchMeta?.partial) ? (
-    <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+    <Inline gap="dense">
       {searchStatus === 'unavailable' && <SearchDegradedChip testId="tasks-search-degraded" />}
       {searchMeta?.partial && <SearchPartialChip meta={searchMeta} />}
-    </div>
+    </Inline>
   ) : undefined
 
   let resultState: React.ReactNode
@@ -586,7 +587,7 @@ export function KanbanBoard() {
         <WorkspacePageCompactHeader
           title="Tasks"
           action={(
-            <div className="flex min-w-0 items-center gap-bakin-2">
+            <Inline gap="dense" wrap={false}>
               <SegmentedControl
                 options={[
                   { value: 'kanban', label: 'Board', icon: Kanban },
@@ -602,7 +603,7 @@ export function KanbanBoard() {
                 <Plus />
                 New Task
               </Button>
-            </div>
+            </Inline>
           )}
         />
 

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryState } from '@makinbakin/sdk/hooks'
 import { Grid } from '@makinbakin/sdk/layout'
 import { StatTile, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
-import { Alert, AlertDescription, Button } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, Button, Text } from '@makinbakin/sdk/ui'
 import { Puzzle, RefreshCw, Search, Server, ShieldCheck } from 'lucide-react'
 import { SystemSearchSection } from './system-search-section'
 import { SystemInventory, type SystemInventoryHandle } from './system-inventory'
@@ -163,7 +163,7 @@ export function SystemTabView({
         <div className="mb-bakin-2 flex items-end justify-between gap-bakin-3">
           <div>
             <h2 id="system-subsystems-title" className="text-bakin-typography-size-body">Platform pulse</h2>
-            <p className="text-bakin-typography-size-meta text-bakin-text-muted">A stable snapshot of the services that keep Bakin usable.</p>
+            <Text size="meta" tone="muted" as="p">A stable snapshot of the services that keep Bakin usable.</Text>
           </div>
         </div>
         <Grid

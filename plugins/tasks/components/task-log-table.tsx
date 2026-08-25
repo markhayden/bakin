@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, SystemState } from '@makinbakin/sdk/ui'
+import { Button, SystemState, Text } from '@makinbakin/sdk/ui'
 import {
   AgentAvatar,
   DataTable,
@@ -16,6 +16,7 @@ import { useAgent } from "@makinbakin/sdk/hooks"
 import type { FlatTask } from '../hooks/use-task-filters'
 import type { TaskScoreInfo } from './task-card'
 import type { ColumnId, Task } from '../types'
+import { Inline } from '@makinbakin/sdk/layout'
 
 interface AuditEntry {
   type: string
@@ -211,7 +212,7 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
           ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
           : undefined
         return (
-          <div className="flex min-w-0 items-center gap-bakin-2">
+          <Inline gap="dense" wrap={false}>
             <Button
               type="button"
               variant="link"
@@ -236,7 +237,7 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
                 </span>
               </span>
             )}
-          </div>
+          </Inline>
         )
       },
     },
@@ -247,7 +248,7 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
       narrow: 'leading',
       cell: (task) => task.agent
         ? <AgentCell agentId={task.agent} />
-        : <span className="text-bakin-typography-size-meta text-bakin-text-muted">—</span>,
+        : <Text size="meta" tone="muted">—</Text>,
       narrowCell: (task) => task.agent ? <AgentCell agentId={task.agent} avatarOnly /> : null,
     },
     {

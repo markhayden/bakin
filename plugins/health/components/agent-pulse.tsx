@@ -13,9 +13,11 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Overline,
   Progress,
   Skeleton,
   SystemState,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { Activity, ArrowUpRight, Bot, ChevronDown } from 'lucide-react'
 import type {
@@ -74,7 +76,7 @@ function latestSessionCostLabel(session: AgentUsage): string | null {
 function Metric({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <p className="text-bakin-typography-size-meta font-bakin-typography-weight-medium uppercase tracking-wide text-bakin-text-muted">{label}</p>
+      <Overline as="p">{label}</Overline>
       <div className="mt-bakin-1">{children}</div>
     </div>
   )
@@ -138,7 +140,7 @@ function UsageMetric({ row, pending }: { row: AgentPulseRow; pending: AgentPulse
           />
         </div>
       )}
-      <p className="text-bakin-typography-size-meta text-bakin-text-muted">
+      <Text size="meta" tone="muted" as="p">
         {reportedCost !== null
           ? `${formatRuntimeCost(reportedCost / 1_000_000)}${row.costedMessages < row.messageCount ? '+' : ''} reported cost${row.costedMessages < row.messageCount ? ` · partial (${row.costedMessages}/${row.messageCount} messages)` : ''}`
           : trackedCost !== null
@@ -146,7 +148,7 @@ function UsageMetric({ row, pending }: { row: AgentPulseRow; pending: AgentPulse
             : checkingCost
               ? 'Checking cost…'
               : 'Cost unavailable'}
-      </p>
+      </Text>
     </Metric>
   )
 }
@@ -156,14 +158,14 @@ function ContextMetric({ row, checking }: { row: AgentPulseRow; checking: boolea
   return (
     <Metric label="Startup context">
       {checking ? (
-        <p className="text-bakin-typography-size-body text-bakin-text-muted">Checking…</p>
+        <Text size="body" tone="muted" as="p">Checking…</Text>
       ) : percent === null ? (
-        <p className="text-bakin-typography-size-body text-bakin-text-muted">Unavailable</p>
+        <Text size="body" tone="muted" as="p">Unavailable</Text>
       ) : (
         <>
           <div className="flex items-baseline justify-between gap-bakin-3">
             <p className="font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">{percent}%</p>
-            <p className="text-bakin-typography-size-meta text-bakin-text-muted">of budget</p>
+            <Text size="meta" tone="muted" as="p">of budget</Text>
           </div>
           <Progress
             className="mt-bakin-1"
@@ -198,9 +200,9 @@ function LatestSessionDetails({ row, id, checking, unavailable }: {
           <div className="grid gap-bakin-3 @[36rem]/agent-pulse:grid-cols-[minmax(11rem,1.5fr)_repeat(4,minmax(5rem,1fr))]">
             <div className="min-w-0">
               <p className="truncate font-bakin-typography-weight-medium text-bakin-text-primary">{session.model}</p>
-              <p className="text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text size="meta" tone="muted" as="p">
                 {plural(session.messages, 'message')} · {formatTokenCount(session.tokens.total)} tokens
-              </p>
+              </Text>
             </div>
             {([
               ['Input', session.tokens.input],
@@ -209,7 +211,7 @@ function LatestSessionDetails({ row, id, checking, unavailable }: {
               ['Cache write', session.tokens.cacheWrite],
             ] as const).map(([label, value]) => (
               <dl key={label}>
-                <dt className="text-bakin-typography-size-meta uppercase tracking-wide text-bakin-text-muted">{label}</dt>
+                <Overline as="dt">{label}</Overline>
                 <dd className="mt-bakin-0 font-bakin-typography-weight-medium tabular-nums text-bakin-text-primary">{formatTokenCount(value)}</dd>
               </dl>
             ))}
@@ -219,11 +221,11 @@ function LatestSessionDetails({ row, id, checking, unavailable }: {
           )}
         </div>
       ) : checking ? (
-        <p className="text-bakin-typography-size-body text-bakin-text-muted">Checking latest session…</p>
+        <Text size="body" tone="muted" as="p">Checking latest session…</Text>
       ) : unavailable ? (
-        <p className="text-bakin-typography-size-body text-bakin-text-muted">Latest-session detail is unavailable.</p>
+        <Text size="body" tone="muted" as="p">Latest-session detail is unavailable.</Text>
       ) : (
-        <p className="text-bakin-typography-size-body text-bakin-text-muted">No latest-session token breakdown is available.</p>
+        <Text size="body" tone="muted" as="p">No latest-session token breakdown is available.</Text>
       )}
       <PluginLink
         to={`/team/${encodeURIComponent(row.agent)}?tab=diagnostics`}
@@ -306,22 +308,22 @@ function AgentPulseRowView({ row, expanded, pending, unavailable, liveNowStale, 
       <UsageMetric row={row} pending={pending} />
       <Metric label="Tracked work">
         {pending.effort ? (
-          <p className="text-bakin-typography-size-body text-bakin-text-muted">Checking…</p>
+          <Text size="body" tone="muted" as="p">Checking…</Text>
         ) : row.effort ? (
           <>
             <p className="font-bakin-typography-weight-medium text-bakin-text-primary">{plural(row.effort.runs, 'tracked run')}</p>
-            <p className="text-bakin-typography-size-meta text-bakin-text-muted">
+            <Text size="meta" tone="muted" as="p">
               {row.effort.windowTokens === null
                 ? `Token totals unavailable${tokenCoverage ? ` · ${tokenCoverage}` : ''}`
                 : `${formatTokenCount(row.effort.windowTokens)} tracked tokens`}
-            </p>
-            <p className="text-bakin-typography-size-meta text-bakin-text-muted">
+            </Text>
+            <Text size="meta" tone="muted" as="p">
               {plural(row.effort.completions, 'task completion')}
               {costCoverage ? ` · cost ${costCoverage}` : ''}
-            </p>
+            </Text>
           </>
         ) : (
-          <p className="text-bakin-typography-size-body text-bakin-text-muted">Work evidence unavailable</p>
+          <Text size="body" tone="muted" as="p">Work evidence unavailable</Text>
         )}
       </Metric>
       <ContextMetric row={row} checking={pending.context || pending.settings} />
@@ -459,9 +461,9 @@ export function AgentPulse({
           </ListRows>
         )}
         {mixedEvidence && (
-          <p className="text-bakin-typography-size-meta text-bakin-text-muted">
+          <Text size="meta" tone="muted" as="p">
             Usage and tracked-work evidence came from separate refreshes.
-          </p>
+          </Text>
         )}
         {rows.length > 0 && error && (
           <p role="status" className="flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">

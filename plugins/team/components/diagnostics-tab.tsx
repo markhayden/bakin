@@ -21,7 +21,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
 import { ChartExplainer, Sparkline } from '@makinbakin/sdk/charts'
 import { usePluginEvent, useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
-import { DisclosurePanel, Grid, Panel, Section, Stack } from '@makinbakin/sdk/layout'
+import { DisclosurePanel, Grid, Inline, Panel, Section, Stack } from '@makinbakin/sdk/layout'
 import {
   KeyValue,
   Pagination,
@@ -42,6 +42,7 @@ import {
   ProgressValue,
   Skeleton,
   SystemState,
+  Text,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -628,13 +629,13 @@ function ContextPanel({ agentId }: { agentId: string }) {
         </Grid>
 
         {observedInputs.length >= 2 && (
-          <div className="flex min-w-0 flex-wrap items-center gap-bakin-3">
+          <Inline>
             <Sparkline values={observedInputs} label="Observed turn input tokens, oldest to newest" />
-            <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+            <Text size="meta" tone="muted">
               Observed turn input over the last {observedInputs.length} dispatches
               (latest {formatTokens(observedInputs[observedInputs.length - 1]!)})
-            </span>
-          </div>
+            </Text>
+          </Inline>
         )}
       </Stack>
       <ChartExplainer>

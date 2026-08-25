@@ -9,7 +9,7 @@ import {
   type DataTableColumn,
   type DataTableSort,
 } from '@makinbakin/sdk/patterns'
-import { Badge, Button, SystemState } from '@makinbakin/sdk/ui'
+import { Badge, Button, SystemState, Text } from '@makinbakin/sdk/ui'
 
 import type { AvailableModel } from '../types'
 import { BrandIcon } from './brand-icon'
@@ -331,11 +331,11 @@ export function AvailableModelsTab({
         actions={(
           <>
             {modelsLoaded && modelsCachedAt ? (
-              <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text size="meta" tone="muted">
                 Refreshed {formatRelativeTime(modelsCachedAt)}
                 {modelsCached ? ' · cached' : ''}
                 {modelsStale ? ' · stale' : ''}
-              </span>
+              </Text>
             ) : null}
             <Button
               type="button"

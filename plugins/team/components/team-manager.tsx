@@ -8,8 +8,8 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  DrawerSection,
   Button,
+  DrawerSection,
   Field,
   FieldDescription,
   FieldGroup,
@@ -19,6 +19,7 @@ import {
   Input,
   SubmitButton,
   SystemState,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { useAgentStore } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
@@ -143,9 +144,9 @@ export function TeamManager() {
                 >
                   Global
                 </Button>
-                <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">
+                <Text size="meta" tone="muted" as="p">
                   Shared context for every agent
-                </p>
+                </Text>
               </div>
               <code className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
                 global

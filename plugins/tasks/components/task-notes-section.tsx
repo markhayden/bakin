@@ -4,15 +4,16 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  DrawerSection,
   Button,
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
+  DrawerSection,
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
+  Overline,
 } from '@makinbakin/sdk/ui'
 import { Panel } from '@makinbakin/sdk/layout'
 import { formatDateTime } from '@makinbakin/sdk/utils'
@@ -37,9 +38,9 @@ function DispatchFailureLogPanel({ detail }: { detail: DispatchFailureDetail }) 
         <dl className="mt-bakin-3 grid min-w-0 grid-cols-1 gap-bakin-2 @sm/dispatch:grid-cols-2">
           {rows.map(([label, value]) => (
             <div key={label} className="min-w-0">
-              <dt className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
+              <Overline as="dt">
                 {label}
-              </dt>
+              </Overline>
               <dd className="m-0 break-words text-bakin-typography-size-meta text-bakin-text-primary">{value}</dd>
             </div>
           ))}

@@ -45,6 +45,7 @@ import { DeleteScheduleDialog } from './delete-schedule-dialog'
 import { CalendarMonthly } from './calendar-monthly'
 import { CalendarWeekly } from './calendar-weekly'
 import { CalendarToday } from './calendar-today'
+import { Inline } from '@makinbakin/sdk/layout'
 
 type ViewMode = 'list' | 'today' | 'week' | 'month'
 const LIST_PAGE_SIZE = 10
@@ -335,10 +336,10 @@ export function SchedulePage() {
   }
 
   const searchFeedback = searchHook.status === 'unavailable' || searchHook.meta?.partial ? (
-    <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+    <Inline gap="dense">
       {searchHook.status === 'unavailable' ? <SearchDegradedChip testId="schedule-search-degraded" /> : null}
       {searchHook.meta?.partial ? <SearchPartialChip meta={searchHook.meta} /> : null}
-    </div>
+    </Inline>
   ) : null
 
   const pageFeedback = jobNotFound || searchFeedback ? (
@@ -410,7 +411,7 @@ export function SchedulePage() {
         <WorkspacePageCompactHeader
           title="Schedule"
           action={(
-            <div className="flex min-w-0 items-center gap-bakin-2">
+            <Inline gap="dense" wrap={false}>
               <SegmentedControl
                 options={VIEWS}
                 value={view as ViewMode}
@@ -424,7 +425,7 @@ export function SchedulePage() {
                 <Plus />
                 New Job
               </Button>
-            </div>
+            </Inline>
           )}
         />
 

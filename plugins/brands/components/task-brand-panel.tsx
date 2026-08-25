@@ -11,7 +11,7 @@
 import { useEffect, useState } from 'react'
 import { useDebug, useJsonFetch } from '@makinbakin/sdk/hooks'
 import { PluginLink } from '@makinbakin/sdk/navigation'
-import { Panel } from '@makinbakin/sdk/layout'
+import { Inline, Panel } from '@makinbakin/sdk/layout'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -104,12 +104,12 @@ export function TaskBrandPanel({ taskId }: { taskId?: string }) {
       )}
     >
       <div className="grid gap-bakin-4">
-        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+        <Inline gap="dense">
           <p className="m-0 min-w-0 font-bakin-typography-weight-semibold text-bakin-text-primary">
             {brand.name || brand.brandId}
           </p>
           <StatusBadge size="xs" tone="accent">{SOURCE_LABEL[brand.source]}</StatusBadge>
-        </div>
+        </Inline>
 
         {brand.blocked ? (
           <Banner

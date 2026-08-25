@@ -25,10 +25,12 @@ import {
   FormActions,
   SubmitButton,
   SystemState,
+  Text,
 } from '@makinbakin/sdk/ui'
 
 import { BrandIcon } from './brand-icon'
 import type { ModelsData } from './use-models-data'
+import { Inline } from '@makinbakin/sdk/layout'
 
 const PAGE_SIZE = 8
 
@@ -174,9 +176,9 @@ export function AliasesTab({
       <div className="grid min-w-0 gap-bakin-2">
         <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-bakin-2">
           <h2>Configured aliases</h2>
-          <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+          <Text size="meta" tone="muted">
             {entries.length} {entries.length === 1 ? 'alias' : 'aliases'}
-          </span>
+          </Text>
         </div>
         <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
           Aliases give agents and routing rules a stable short name even when the underlying model changes.
@@ -203,7 +205,7 @@ export function AliasesTab({
                   {name}
                 </code>
 
-                <div className="flex min-w-0 items-center gap-bakin-3">
+                <Inline wrap={false}>
                   <BrandIcon
                     slug={model?.brandIconSlug ?? model?.providerBrandIconSlug}
                     fallbackText={providerName}
@@ -218,7 +220,7 @@ export function AliasesTab({
                       {target}
                     </p>
                   </div>
-                </div>
+                </Inline>
 
                 <Button
                   type="button"
