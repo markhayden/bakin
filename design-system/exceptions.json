@@ -199,10 +199,10 @@
       "id": "tabs-legacy-pill-geometry",
       "status": "approved-temporary",
       "scope": [
-        "src/components/ui/tabs.tsx"
+        "packages/ui/src/primitives/tabs.tsx"
       ],
       "allowances": {
-        "src/components/ui/tabs.tsx": {
+        "packages/ui/src/primitives/tabs.tsx": {
           "arbitrary-size": 2
         }
       },

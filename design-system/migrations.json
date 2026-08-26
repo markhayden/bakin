@@ -20,13 +20,13 @@
     "private-import"
   ],
   "summary": {
-    "paths": 106,
+    "paths": 174,
     "totals": {
-      "raw-palette": 2,
-      "arbitrary-size": 29,
-      "raw-scale": 873,
-      "raw-control": 3,
-      "inline-style": 3,
+      "raw-palette": 4,
+      "arbitrary-size": 84,
+      "raw-scale": 921,
+      "raw-control": 20,
+      "inline-style": 34,
       "generic-token": 72,
       "unscoped-css": 0,
       "private-import": 0
@@ -579,6 +579,1080 @@
       "status": "legacy-allowed",
       "allowances": {
         "raw-scale": 12
+      }
+    },
+    {
+      "path": "packages/ui/src/charts/area-chart.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "inline-style": 3
+      }
+    },
+    {
+      "path": "packages/ui/src/charts/bar-chart.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "inline-style": 2
+      }
+    },
+    {
+      "path": "packages/ui/src/charts/chart-data-table.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 2
+      }
+    },
+    {
+      "path": "packages/ui/src/charts/chart-tooltip.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1,
+        "inline-style": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/charts/composition-bar.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "inline-style": 3
+      }
+    },
+    {
+      "path": "packages/ui/src/charts/line-chart.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "inline-style": 2
+      }
+    },
+    {
+      "path": "packages/ui/src/charts/pie-chart.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "inline-style": 2
+      }
+    },
+    {
+      "path": "packages/ui/src/charts/ranked-bar-chart.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1,
+        "inline-style": 6
+      }
+    },
+    {
+      "path": "packages/ui/src/charts/stacked-column-chart.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-control": 1,
+        "inline-style": 6
+      }
+    },
+    {
+      "path": "packages/ui/src/conversation/activity-group.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T34",
+      "archetype": "conversation",
+      "target": "canonical conversation patterns and focused SDK entrypoint",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1,
+        "raw-control": 2
+      }
+    },
+    {
+      "path": "packages/ui/src/conversation/agent-turn.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T34",
+      "archetype": "conversation",
+      "target": "canonical conversation patterns and focused SDK entrypoint",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/conversation/composer.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T34",
+      "archetype": "conversation",
+      "target": "canonical conversation patterns and focused SDK entrypoint",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 5,
+        "raw-control": 2
+      }
+    },
+    {
+      "path": "packages/ui/src/conversation/context-meter.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T34",
+      "archetype": "conversation",
+      "target": "canonical conversation patterns and focused SDK entrypoint",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/conversation/conversation-empty-state.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T34",
+      "archetype": "conversation",
+      "target": "canonical conversation patterns and focused SDK entrypoint",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1,
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/conversation/conversation-panel.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T34",
+      "archetype": "conversation",
+      "target": "canonical conversation patterns and focused SDK entrypoint",
+      "status": "legacy-allowed",
+      "allowances": {
+        "inline-style": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/conversation/conversation.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T34",
+      "archetype": "conversation",
+      "target": "canonical conversation patterns and focused SDK entrypoint",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 2
+      }
+    },
+    {
+      "path": "packages/ui/src/conversation/queued-message-list.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T34",
+      "archetype": "conversation",
+      "target": "canonical conversation patterns and focused SDK entrypoint",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1,
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/conversation/tool-call-drawer.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T34",
+      "archetype": "conversation",
+      "target": "canonical conversation patterns and focused SDK entrypoint",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1,
+        "inline-style": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/conversation/user-message.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T34",
+      "archetype": "conversation",
+      "target": "canonical conversation patterns and focused SDK entrypoint",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1,
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/forms/field.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/layout/grid.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T44",
+      "archetype": "shell",
+      "target": "canonical shell layout and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/layout/sticky-overflow-scrollbar.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T44",
+      "archetype": "shell",
+      "target": "canonical shell layout and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 3
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/agent-filter.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-control": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/calendar-grid.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 8,
+        "raw-scale": 2,
+        "raw-control": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/calendar-item.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-control": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/calendar-nav.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/danger-zone.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 2
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/data-table.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/drawer-section.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/inspector-panel.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 2,
+        "raw-scale": 3
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/kanban.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/key-value.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/list-rows.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 2,
+        "inline-style": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/nav-list.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1,
+        "raw-control": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/page-aside.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 3
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/page-header.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 6
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/save-bar.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/search-input.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 4,
+        "inline-style": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/segmented-control.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-control": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/sortable-head.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1,
+        "raw-control": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/stat-tile.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1,
+        "inline-style": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/timeline.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 3
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/workspace-page.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/alert.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/avatar.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/badge.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/button.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 2
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/card.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 2
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/color-input.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-palette": 1,
+        "raw-control": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/command.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 2,
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/dialog.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/dropdown-menu.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 6
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/file-input.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-control": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/input-group.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 2
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/input.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/interactive-surface.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-control": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/modal-context.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-palette": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/option-list.ts",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 2,
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/popover.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/progress.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "inline-style": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/sheet.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/switch.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/table.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 8
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/tabs.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1,
+        "raw-scale": 16
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/text.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/textarea.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1,
+        "raw-control": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/primitives/tooltip.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/states/banner.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 2
+      }
+    },
+    {
+      "path": "packages/ui/src/states/system-state.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/states/toast.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1,
+        "raw-scale": 1,
+        "raw-control": 2
       }
     },
     {
@@ -1656,7 +2730,6 @@
       "target": "focused SDK primitive/pattern and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 2,
         "raw-scale": 2
       }
     },
@@ -1688,37 +2761,6 @@
       "status": "legacy-allowed",
       "allowances": {
         "raw-scale": 28
-      }
-    },
-    {
-      "path": "src/components/ui/table.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/ui/table",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 8
-      }
-    },
-    {
-      "path": "src/components/ui/tabs.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/ui/tabs",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1,
-        "raw-scale": 16
       }
     }
   ]

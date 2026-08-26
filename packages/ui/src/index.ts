@@ -103,6 +103,19 @@ export type {
   LegacyBadgeVariant,
 } from './primitives/badge'
 
+export {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './primitives/table'
+
+export { Tabs, TabsContent, TabsList, TabsTrigger, tabsListVariants } from './primitives/tabs'
+
 export { Overline, Text } from './primitives/text'
 export type {
   OverlineProps,

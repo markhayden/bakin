@@ -323,8 +323,20 @@ export type { ShimmerTextBase,
   ShimmerTextHighlight, ShimmerTextProps } from '@bakin/ui'
 export { Switch } from '@bakin/ui'
 export type { SwitchProps, SwitchSize } from '@bakin/ui'
-export * from '@/components/ui/table'
-export * from '@/components/ui/tabs'
+// Explicit, not `export *`: the barrel used to publish whatever these files
+// happened to define, which is how their structural sub-parts ended up in the
+// public surface undocumented. Additions here are now a deliberate act.
+export {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@bakin/ui'
+export { Tabs, TabsContent, TabsList, TabsTrigger, tabsListVariants } from '@bakin/ui'
 export { Textarea } from '@bakin/ui'
 export type { TextareaProps } from '@bakin/ui'
 export { Tooltip, TooltipContent, TooltipPortal, TooltipProvider, TooltipTrigger } from '@bakin/ui'

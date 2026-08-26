@@ -6,7 +6,7 @@ import { useState } from 'react'
 import '../rtl-settle'
 import { act } from 'react'
 import { settleReact } from '../rtl-settle'
-import { Tabs, TabsList, TabsTrigger } from '../../src/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
 
 const tabs = [
   { id: 'overview', label: 'Overview' },
