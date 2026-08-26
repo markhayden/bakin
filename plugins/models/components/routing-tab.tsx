@@ -5,11 +5,13 @@ import { Plus, Wand2, X } from 'lucide-react'
 import { Section, Stack } from '@makinbakin/sdk/layout'
 import {
   ConfirmDialog,
+  DataTable,
   KeyValue,
-  type KeyValueItem,
   ListRow,
   ListRows,
   ModelSelect,
+  type DataTableColumn,
+  type KeyValueItem,
 } from '@makinbakin/sdk/patterns'
 import {
   Button,
@@ -22,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
   SystemState,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
@@ -53,6 +56,8 @@ const THINKING_LABELS: Record<string, string> = {
   adaptive: 'Adaptive',
   max: 'Maximum',
 }
+
+type RouteRow = (typeof DISPATCH_ROWS)[number]
 
 export function RoutingTab({ m }: { m: ModelsData }) {
   const {
@@ -155,65 +160,67 @@ export function RoutingTab({ m }: { m: ModelsData }) {
     </Select>
   )
 
+  const ROUTE_COLUMNS: ReadonlyArray<DataTableColumn<RouteRow>> = [
+    {
+      key: 'workClass',
+      header: 'Work class',
+      cellClassName: 'whitespace-normal align-top',
+      cell: (workClass) => (
+        <div className="min-w-0">
+          <h3>{workClass.label}</h3>
+          <Text as="p" size="meta" tone="muted" className="mt-bakin-1 leading-relaxed">
+            {workClass.description}
+          </Text>
+        </div>
+      ),
+    },
+    {
+      key: 'model',
+      header: 'Model',
+      cellClassName: 'align-top',
+      cell: (workClass) => (
+        <ModelSelect
+          id={`routing-${workClass.id}-model`}
+          value={displayRouting.routes.find((r) => r.workClass === workClass.id)?.model ?? ''}
+          onValueChange={(value) => setRouteField(workClass.id, 'model', value)}
+          models={modelOptions}
+          defaultLabel="Use agent model"
+          defaultValue=""
+          ariaLabel={`${workClass.label} model`}
+          className="w-full min-w-0"
+        />
+      ),
+    },
+    {
+      key: 'thinking',
+      header: 'Thinking',
+      cellClassName: 'align-top',
+      cell: (workClass) => thinkingSelect(
+        `routing-${workClass.id}-thinking`,
+        `${workClass.label} thinking`,
+        displayRouting.routes.find((r) => r.workClass === workClass.id)?.thinking,
+        (value) => setRouteField(workClass.id, 'thinking', value),
+      ),
+    },
+  ]
+
   const routeList = (rows: typeof DISPATCH_ROWS, label: string) => (
-    <ListRows
-      aria-label={label}
-      variant="separated"
-      columns="minmax(12rem,.7fr) minmax(0,1fr) minmax(10rem,.42fr)"
-      columnsAt="3xl"
-      columnsAlign="end"
-    >
-      {rows.map((workClass) => {
-        const route = displayRouting.routes.find((item) => item.workClass === workClass.id)
-        const modelId = `routing-${workClass.id}-model`
-        const thinkingId = `routing-${workClass.id}-thinking`
-
-        return (
-          <ListRow
-            key={workClass.id}
-            data-routing-row={workClass.id}
-            className="px-bakin-4 py-bakin-4"
-          >
-            <div className="min-w-0 @3xl/list-rows:self-center">
-              <h3>{workClass.label}</h3>
-              <p className="mt-bakin-1 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
-                {workClass.description}
-              </p>
-            </div>
-
-            <Field name={modelId}>
-              <FieldLabel htmlFor={modelId}>
-                <span className="sr-only">{workClass.label} </span>
-                Model
-              </FieldLabel>
-              <ModelSelect
-                id={modelId}
-                value={route?.model ?? ''}
-                onValueChange={(value) => setRouteField(workClass.id, 'model', value)}
-                models={modelOptions}
-                defaultLabel="Use agent model"
-                defaultValue=""
-                ariaLabel={`${workClass.label} model`}
-                className="w-full min-w-0"
-              />
-            </Field>
-
-            <Field name={thinkingId}>
-              <FieldLabel htmlFor={thinkingId}>
-                <span className="sr-only">{workClass.label} </span>
-                Thinking
-              </FieldLabel>
-              {thinkingSelect(
-                thinkingId,
-                `${workClass.label} thinking`,
-                route?.thinking,
-                (value) => setRouteField(workClass.id, 'thinking', value),
-              )}
-            </Field>
-          </ListRow>
-        )
-      })}
-    </ListRows>
+    // A table, not stacked rows: "Model" and "Thinking" belong in the header
+    // once instead of on every row. With eleven work classes that was twenty-two
+    // repeated field labels for two concepts, which is what made this tab read
+    // as busy.
+    //
+    // Collapsing stays OFF (the default). A collapsing DataTable renders both
+    // the table and the list and hides one with CSS — fine for read-only rows,
+    // but here it would put every one of these selects in the DOM and the tab
+    // order twice. A narrow viewport scrolls the table sideways instead.
+    <DataTable
+      label={label}
+      columns={ROUTE_COLUMNS}
+      rows={rows}
+      rowKey={(workClass) => workClass.id}
+      rowProps={(workClass) => ({ 'data-routing-row': workClass.id })}
+    />
   )
 
   return (
