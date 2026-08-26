@@ -16,6 +16,7 @@ import {
   CardTitle,
   Skeleton,
   SystemState,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, TrendingUp } from 'lucide-react'
 import type { UsageHistoryData } from '../types'
@@ -225,10 +226,10 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
               )}
               {visibleData && visibleData.byAgent.length > 0 && (
                 <div className="flex flex-wrap items-baseline gap-x-bakin-6 gap-y-bakin-1 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default px-bakin-3 py-bakin-2">
-                  <p className="text-bakin-typography-size-meta text-bakin-text-muted">
+                  <Text size="meta" tone="muted" as="p">
                     Reported cost <span className="ml-bakin-1 font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">{reportedCost === null ? 'Unavailable' : `${formatRuntimeCost(reportedCost / 1_000_000)}${partialCostCoverage ? '+' : ''}`}</span>
-                  </p>
-                  {costCoverage && <p className="text-bakin-typography-size-meta text-bakin-text-muted">{costCoverage}</p>}
+                  </Text>
+                  {costCoverage && <Text size="meta" tone="muted" as="p">{costCoverage}</Text>}
                 </div>
               )}
               {!trend ? (

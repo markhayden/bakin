@@ -9,12 +9,13 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Download, FolderSearch, Loader2 } from 'lucide-react'
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SystemState } from '@makinbakin/sdk/ui'
+import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SystemState, Text } from '@makinbakin/sdk/ui'
 import { DataTable, type DataTableColumn } from '@makinbakin/sdk/patterns'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
 import { formatAge, formatSize } from '@makinbakin/sdk/utils'
 import { AssetTypeIcon } from './atoms'
 import { IMPORT_API } from './asset-urls'
+import { Inline } from '@makinbakin/sdk/layout'
 
 const ASSET_TYPES = ['text', 'images', 'video', 'audio', 'plans', 'research', 'pdf', 'data', 'other'] as const
 
@@ -110,9 +111,9 @@ export function ImportView({ onImported, onCountChange }: { onImported?: () => v
   return (
     <div className="flex flex-col gap-bakin-2" data-testid="import-list">
       <div className="mb-bakin-1 flex items-center justify-between">
-        <p className="text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="p">
           {files.length} unmanaged file{files.length === 1 ? '' : 's'} — imported assets are indexed and searchable like any other.
-        </p>
+        </Text>
         <Button size="sm" onClick={() => runImport({ all: true }, 'all')} disabled={busy !== null} data-testid="import-all">
           {busy === 'all' ? <Loader2 className="size-bakin-3 animate-spin" /> : <Download className="size-bakin-3" />}
           Import all ({files.length})
@@ -138,7 +139,7 @@ export function ImportView({ onImported, onCountChange }: { onImported?: () => v
         narrow: 'primary',
         headClassName: 'min-w-64',
         cell: file => (
-          <div className="flex min-w-0 items-center gap-bakin-3">
+          <Inline wrap={false}>
             <div className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-canvas-default">
               <AssetTypeIcon type={typeOverrides[file.relPath] ?? file.suggestedType} className="size-bakin-4" />
             </div>
@@ -146,7 +147,7 @@ export function ImportView({ onImported, onCountChange }: { onImported?: () => v
               <p className="m-0 truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{file.name}</p>
               <p className="m-0 truncate text-bakin-typography-size-meta text-bakin-text-muted">{file.relPath}</p>
             </div>
-          </div>
+          </Inline>
         ),
       },
       {

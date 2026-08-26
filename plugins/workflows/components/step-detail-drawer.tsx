@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, AlertDescription, AlertTitle, Badge, Button, Drawer, DrawerSection, Overline, Separator } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Drawer, DrawerSection, Overline, Separator, Text } from '@makinbakin/sdk/ui'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import { Stack } from '@makinbakin/sdk/layout'
 import { useAgent } from '@makinbakin/sdk/hooks'
@@ -56,10 +56,10 @@ function StepTypeBadge({ type }: { type: string }) {
 function MetadataCard({ icon: Icon, label, children }: { icon?: React.ElementType; label: string; children: React.ReactNode }) {
   return (
     <div className="rounded-bakin-surface bg-bakin-surface-default p-3 space-y-1">
-      <div className="flex items-center gap-1.5 text-bakin-typography-size-meta text-bakin-text-muted uppercase tracking-wider">
+      <Overline as="div" className="flex items-center gap-1.5">
         {Icon && <Icon className="size-3" />}
         {label}
-      </div>
+      </Overline>
       <div className="text-bakin-typography-size-body font-bakin-typography-weight-medium">{children}</div>
     </div>
   )
@@ -144,10 +144,10 @@ function AgentStepDetail({ step }: { step: AgentStep }) {
           <div className="grid grid-cols-2 gap-3">
             {step.outputs && step.outputs.length > 0 && (
               <div className="col-span-2 rounded-bakin-surface bg-bakin-surface-default p-3 space-y-1">
-                <div className="flex items-center gap-1.5 text-bakin-typography-size-meta text-bakin-text-muted uppercase tracking-wider">
+                <Overline as="div" className="flex items-center gap-1.5">
                   <Package className="size-3" />
                   Expected Outputs
-                </div>
+                </Overline>
                 <div className="space-y-1.5 mt-2">
                   {step.outputs.map((out) => (
                     <div key={out.id} className="flex items-center gap-2">
@@ -343,9 +343,9 @@ function ParallelStepDetail({ step }: { step: ParallelStep }) {
               {child.type === 'agent' && (
                 <div className="flex items-center gap-2">
                   <WorkflowAgentAvatar agentId={(child as AgentStep).agent} size="sm" />
-                  <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+                  <Text size="meta" tone="muted">
                     {(child as AgentStep).agent}
-                  </span>
+                  </Text>
                 </div>
               )}
               {(child as AgentStep).task && (
@@ -540,11 +540,11 @@ function SkillDriftSection({
 
               <div className="space-y-3 border-t border-bakin-border-subtle pt-3">
                 <div>
-                  <div className="text-bakin-typography-size-meta font-bakin-typography-weight-medium uppercase tracking-wider text-bakin-text-muted">What can break</div>
+                  <Overline as="div">What can break</Overline>
                   <p className="m-0 mt-1 leading-relaxed">{driftImpactText(report)}</p>
                 </div>
                 <div>
-                  <div className="text-bakin-typography-size-meta font-bakin-typography-weight-medium uppercase tracking-wider text-bakin-text-muted">What the fix does</div>
+                  <Overline as="div">What the fix does</Overline>
                   <p className="m-0 mt-1 leading-relaxed">{repairActionText(report)}</p>
                 </div>
                 <div className="flex flex-wrap gap-1.5">

@@ -3,7 +3,7 @@
 import { CompositionBar, RankedBarChart, Sparkline, type ChartDatum } from '@makinbakin/sdk/charts'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
-import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import { Button, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, Waypoints } from 'lucide-react'
 import type {
   InteractionCategory,
@@ -11,6 +11,7 @@ import type {
 } from '../types'
 import { interactionCategoryMeta } from './interaction-source-meta'
 import type { OverviewTelemetry } from './overview-telemetry'
+import { Inline } from '@makinbakin/sdk/layout'
 
 function destinationName(category: InteractionCategory, value: string): string {
   if (category === 'api') return value.replace(/^\/api\//, '')
@@ -100,15 +101,15 @@ export function OverviewInteractions({
       aria-labelledby="overview-interactions-title"
     >
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-bakin-3 gap-y-bakin-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+        <Inline gap="dense">
           <Waypoints className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
           <h3 id="overview-interactions-title">Interactions</h3>
           {coverage && (
-            <span className="text-bakin-typography-size-meta text-bakin-text-muted" aria-label={coverage.label}>
+            <Text size="meta" tone="muted" aria-label={coverage.label}>
               {coverage.text}
-            </span>
+            </Text>
           )}
-        </div>
+        </Inline>
         <PluginLink
           to="/health?tab=activity&activity_window=1h"
           aria-label="View recorded interaction activity"

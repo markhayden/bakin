@@ -3,6 +3,7 @@
 import { TurnOutputView } from '@makinbakin/sdk/conversation'
 import { Panel } from '@makinbakin/sdk/layout'
 import { isRenderableAssetRef } from '../lib/output-assets'
+import { Overline } from '@makinbakin/sdk/ui'
 
 /** Normalize step output — handles string (possibly JSON), object, or unexpected types. */
 function normalizeOutput(raw: unknown): Record<string, unknown> {
@@ -63,9 +64,9 @@ function OutputValue({ value }: { value: unknown }) {
       <dl className="m-0 mt-bakin-2 grid min-w-0 gap-bakin-3 border-s border-bakin-border-subtle ps-bakin-3">
         {entries.map(([k, v]) => (
           <div key={k}>
-            <dt className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
+            <Overline as="dt">
               {humanizeKey(k)}
-            </dt>
+            </Overline>
             <dd className="m-0"><OutputValue value={v} /></dd>
           </div>
         ))}
@@ -83,9 +84,9 @@ export function StepOutputViewer({ output }: { output: Record<string, unknown> |
       <dl className="m-0 grid min-w-0 gap-bakin-3">
         {Object.entries(data).map(([key, value]) => (
           <div key={key}>
-            <dt className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
+            <Overline as="dt">
               {humanizeKey(key)}
-            </dt>
+            </Overline>
             <dd className="m-0"><OutputValue value={value} /></dd>
           </div>
         ))}

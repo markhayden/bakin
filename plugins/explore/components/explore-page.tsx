@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Plus, RefreshCw, Sparkles } from 'lucide-react'
-import { Grid } from '@makinbakin/sdk/layout'
+import { Grid, Inline } from '@makinbakin/sdk/layout'
 import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
 import {
   FacetFilter,
@@ -22,6 +22,7 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
+  Text,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -299,10 +300,10 @@ function ExplorePageInner() {
           {Array.from({ length: 6 }, (_, index) => (
             <Card key={index} size="sm">
               <CardHeader>
-                <div className="flex min-w-0 items-center gap-bakin-3">
+                <Inline wrap={false}>
                   <Skeleton shape="circle" className="size-bakin-8" />
                   <Skeleton shape="text" className="min-w-0 flex-1" />
-                </div>
+                </Inline>
               </CardHeader>
               <CardContent className="grid gap-bakin-2">
                 <Skeleton shape="text" />
@@ -403,9 +404,9 @@ function ExplorePageInner() {
           // A one-line note, not a SystemState: a second heading-bearing empty
           // panel inside the filter toolbar competes with the real results
           // empty state below it (and made `empty-state` ambiguous in tests).
-          <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">
+          <Text size="meta" tone="muted" as="p">
             No categories in this section
-          </p>
+          </Text>
         )}
       </PageControls>
 

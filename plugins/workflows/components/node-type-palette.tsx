@@ -11,7 +11,7 @@
 
 import { useState, type DragEvent } from 'react'
 import { usePluginJsonFetch } from '@makinbakin/sdk/hooks'
-import { Button, SystemState } from '@makinbakin/sdk/ui'
+import { Button, Overline, SystemState } from '@makinbakin/sdk/ui'
 import {
   CheckCircle2,
   ChevronLeft,
@@ -165,9 +165,9 @@ export function NodeTypePalette({
   return (
     <aside className="flex w-56 flex-col border-r border-bakin-border-subtle bg-bakin-surface-default">
       <div className="flex items-center justify-between border-b border-bakin-border-subtle px-bakin-3 py-bakin-2">
-        <span className="text-bakin-typography-size-meta font-bakin-typography-weight-medium uppercase tracking-wide text-bakin-text-muted">
+        <Overline>
           Step Types
-        </span>
+        </Overline>
         <Button
           type="button"
           variant="ghost"
@@ -240,9 +240,9 @@ function PaletteGroup({
 }) {
   return (
     <div className="mb-3">
-      <div className="mb-1 px-1 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
+      <Overline as="div" className="mb-1 px-1">
         {title}
-      </div>
+      </Overline>
       <ul className="flex flex-col gap-1">
         {items.map((item) => (
           <PaletteItem

@@ -33,6 +33,7 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
+  Overline,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -44,6 +45,7 @@ import type { BudgetHold } from '../hooks/use-budget-status'
 import type { BrandHold } from '../hooks/use-brand-status'
 import type { LiveActivity } from '../hooks/use-live-activity'
 import type { Task, ColumnId } from '../types'
+import { Inline } from '@makinbakin/sdk/layout'
 
 export interface TaskScoreInfo {
   score: number
@@ -172,13 +174,13 @@ export function TaskCardContent({
       onClick={openTask}
     >
       <CardHeader>
-        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+        <Inline gap="dense">
           <StatusBadge tone={STATUS_TONES[resolvedColumnId]} variant="solid" size="xs">
             {COLUMN_CONFIG[resolvedColumnId].label}
           </StatusBadge>
-          <span className="font-bakin-typography-family-mono text-bakin-typography-size-meta uppercase tracking-widest text-bakin-text-muted">
+          <Overline className="font-bakin-typography-family-mono">
             {shortId(task.id)}
-          </span>
+          </Overline>
           {scoreInfo ? (
             <span className="flex min-w-0 flex-wrap items-center gap-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta">
               <span className="text-bakin-data-series-1">RRF {scoreInfo.score.toFixed(3)}</span>
@@ -190,7 +192,7 @@ export function TaskCardContent({
               </span>
             </span>
           ) : null}
-        </div>
+        </Inline>
 
         {onDelete ? (
           <CardAction reveal="hover">

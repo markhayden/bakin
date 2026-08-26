@@ -8,7 +8,7 @@ import { Wrench } from 'lucide-react'
 import { toast } from '@makinbakin/sdk/hooks'
 import { Section, Stack } from '@makinbakin/sdk/layout'
 import { ConfirmDialog, DataTable, StatGroup, StatTile, type DataTableColumn } from '@makinbakin/sdk/patterns'
-import { Badge, Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import { Badge, Button, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { capabilityRows } from '../../lib/runtime-report'
 import { ModeBadge, MODE_LEGEND, CheckStatusBadge, capabilityStateCopy, type CapabilityMode } from './shared'
 import type { CapabilityReport, OnboardingComponentStatus } from './types'
@@ -106,7 +106,7 @@ function CapabilityGrid({ report }: { report: CapabilityReport }) {
     <Section spacing="compact">
       <Stack gap="dense">
         <h2>What this runtime can do</h2>
-        <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">{MODE_LEGEND}</p>
+        <Text size="meta" tone="muted" as="p">{MODE_LEGEND}</Text>
       </Stack>
       <DataTable
         label="Runtime capabilities"
@@ -209,7 +209,7 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
     <Section spacing="compact" data-testid="onboarding-status">
       <Stack gap="dense">
         <h2>Setup checks</h2>
-        <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">Live checks against the active runtime — the same ones `bakin check all` runs.</p>
+        <Text size="meta" tone="muted" as="p">Live checks against the active runtime — the same ones `bakin check all` runs.</Text>
       </Stack>
       {onboarding === undefined && (
         <Stack gap="dense">

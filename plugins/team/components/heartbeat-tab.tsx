@@ -2,7 +2,7 @@
 
 import { Heart } from 'lucide-react'
 import { MarkdownContent } from '@makinbakin/sdk/content'
-import { Panel, Section } from '@makinbakin/sdk/layout'
+import { Inline, Panel, Section } from '@makinbakin/sdk/layout'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { SystemState } from '@makinbakin/sdk/ui'
 import { useJsonFetch } from '@makinbakin/sdk/hooks'
@@ -92,7 +92,7 @@ export function HeartbeatTab({ agentId }: HeartbeatTabProps) {
             Read-only narrative maintained by the agent while it works.
           </p>
         </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+        <Inline gap="dense">
           {lastUpdated ? (
             <StatusBadge tone="neutral" variant="solid" size="xs">
               Last updated {lastUpdated}
@@ -101,7 +101,7 @@ export function HeartbeatTab({ agentId }: HeartbeatTabProps) {
           <p className="m-0 max-w-prose text-bakin-typography-size-meta text-bakin-text-muted">
             {HEARTBEAT_DISABLED_REASON}
           </p>
-        </div>
+        </Inline>
       </div>
 
       <Panel className="min-h-96">

@@ -3,9 +3,10 @@
 import { useMemo } from 'react'
 import { ShieldAlert } from 'lucide-react'
 import { DataTable, ListRow, type DataTableColumn } from '@makinbakin/sdk/patterns'
-import { Text } from '@makinbakin/sdk/ui'
+import { Overline, Text } from '@makinbakin/sdk/ui'
 import { AgentBadge } from './agent-badge'
 import { JobActionsMenu, JobNameCell, JobScheduleCell, JobStatusBadge, type JobScoreInfo } from './job-row'
+
 import type { ScheduleJob } from "@makinbakin/sdk/hooks"
 
 function MobileJobRow({
@@ -35,9 +36,9 @@ function MobileJobRow({
               <span className="block truncate font-bakin-typography-weight-semibold text-bakin-text-primary">
                 {label}
               </span>
-              <span className="mt-bakin-1 block text-bakin-typography-size-meta uppercase tracking-wider text-bakin-text-muted">
+              <Overline className="mt-bakin-1 block">
                 {source}
-              </span>
+              </Overline>
             </span>
             <JobStatusBadge job={job} />
           </span>

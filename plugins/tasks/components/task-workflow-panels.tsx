@@ -4,17 +4,19 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  DrawerSection,
   Button,
+  DrawerSection,
   Field,
   FieldControl,
   FieldLabel,
+  Text,
   Textarea,
 } from '@makinbakin/sdk/ui'
 import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { AlertTriangle, Check, Hourglass, RefreshCw, X } from 'lucide-react'
 import { StepOutputViewer } from './step-output-viewer'
 import type { TaskDetail } from './use-task-detail'
+import { Inline } from '@makinbakin/sdk/layout'
 
 const STEP_TONE: Record<string, StatusTone> = {
   complete: 'success',
@@ -61,14 +63,14 @@ function WorkflowStepList({
               {index + 1}
             </span>
             <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+              <Inline gap="dense">
                 <span className="font-bakin-typography-weight-semibold text-bakin-text-primary">
                   {step.label || step.id}
                 </span>
                 <StatusBadge tone={statusTone(status)} variant={status === 'pending' ? 'outline' : 'solid'} size="xs">
                   {statusLabel(status)}
                 </StatusBadge>
-              </div>
+              </Inline>
               <div className="mt-bakin-1 flex min-w-0 flex-wrap items-center gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
                 {isGate ? (
                   <span className="inline-flex items-center gap-bakin-1">
@@ -179,12 +181,12 @@ export function MapChildrenPanel({ m }: { m: TaskDetail }) {
   return (
     <DrawerSection
       title={mapStepLabel}
-      actions={<span className="text-bakin-typography-size-meta text-bakin-text-muted">{rollup}</span>}
+      actions={<Text size="meta" tone="muted">{rollup}</Text>}
     >
       <ul className="m-0 list-none divide-y divide-bakin-border-subtle p-0">
         {rows.map((row) => (
           <li key={row.childTaskId} className="grid min-w-0 gap-bakin-2 py-bakin-3 first:pt-0">
-            <div className="flex min-w-0 items-center gap-bakin-2">
+            <Inline gap="dense" wrap={false}>
               <span className="shrink-0 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
                 {row.index + 1}/{rows.length}
               </span>
@@ -192,7 +194,7 @@ export function MapChildrenPanel({ m }: { m: TaskDetail }) {
                 {row.childTaskId}
               </code>
               <StatusBadge tone={statusTone(row.status)} size="xs">{statusLabel(row.status)}</StatusBadge>
-            </div>
+            </Inline>
             {row.status !== 'complete' ? (
               <div className="flex flex-wrap justify-end gap-bakin-2">
                 <Button
@@ -256,12 +258,12 @@ export function GateApprovalPanel({ m }: { m: TaskDetail }) {
         ) : null}
 
         {outputUnavailable && !priorStepOutput ? (
-          <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+          <Inline gap="dense">
             <span>Step output unavailable.</span>
             <Button type="button" variant="link" size="xs" onClick={() => { void fetchPriorOutput() }}>
               <RefreshCw aria-hidden="true" /> Retry
             </Button>
-          </div>
+          </Inline>
         ) : null}
 
         {priorStepOutput ? (
@@ -351,9 +353,9 @@ export function WorkflowPreview({ m }: { m: TaskDetail }) {
     <DrawerSection
       title="Workflow preview"
       actions={(
-        <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text size="meta" tone="muted">
           {wfDefinition.steps.length} steps
-        </span>
+        </Text>
       )}
     >
       <div className="grid min-w-0 gap-bakin-3">

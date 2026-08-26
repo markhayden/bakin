@@ -14,6 +14,7 @@ import {
   Search,
 } from 'lucide-react'
 import type { HealthOverviewViewModel, OverviewTone } from '../lib/health-view-model'
+import { Inline } from '@makinbakin/sdk/layout'
 
 interface OverviewPlatformPulseProps {
   model: HealthOverviewViewModel
@@ -128,7 +129,7 @@ export function OverviewPlatformPulse({
           <p className="m-0 leading-relaxed text-bakin-text-muted">{pulseDescription}</p>
         </div>
 
-        <div className="flex min-w-0 flex-wrap items-center gap-bakin-3">
+        <Inline>
           {!loading ? (
             <StatusBadge tone={TONE[overallTone].badge} variant="solid">
               {primaryCount > 0 ? primaryLabel : overallLabel}
@@ -147,7 +148,7 @@ export function OverviewPlatformPulse({
                 )
               : <span>not yet</span>}
           </span>
-        </div>
+        </Inline>
       </div>
 
       <div

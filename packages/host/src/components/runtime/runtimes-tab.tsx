@@ -35,6 +35,7 @@ import {
   FieldDescription,
   FieldLabel,
   SystemState,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { reduceSwitchProgress, SWITCH_PHASE_LABELS, type SwitchStepRow } from '../../lib/runtime-report'
 import { ExtensionsSection } from './extensions-section'
@@ -68,7 +69,7 @@ function ProgressSteps({ steps }: { steps: SwitchStepRow[] }) {
               tone={STEP_TONE[step.status]}
               markerLabel={STEP_MARKER_LABEL[step.status]}
               title={SWITCH_PHASE_LABELS[step.phase] ?? step.phase}
-              meta={step.detail ? <span className="text-bakin-typography-size-meta text-bakin-text-muted">{step.detail}</span> : undefined}
+              meta={step.detail ? <Text size="meta" tone="muted">{step.detail}</Text> : undefined}
             />
           ))}
         </Timeline>
@@ -136,7 +137,7 @@ function ResultCards({ result, onProceed, busy = false }: { result: SwitchResult
                   <Button size="sm" onClick={onProceed} disabled={busy} data-testid="switch-execute">
                     Switch to {RUNTIME_LABELS[result.to] ?? result.to}…
                   </Button>
-                  <span className="text-bakin-typography-size-meta text-bakin-text-muted">Opens the confirmation — nothing has been written yet.</span>
+                  <Text size="meta" tone="muted">Opens the confirmation — nothing has been written yet.</Text>
                 </Inline>
               )}
             </Stack>
@@ -404,7 +405,7 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
             <Button size="sm" variant="outline" data-testid="switch-preview" onClick={() => { setConfirming(false); void run(true) }}>
               Preview switch
             </Button>
-            <span className="text-bakin-typography-size-meta text-bakin-text-muted">Dry run — nothing is written.</span>
+            <Text size="meta" tone="muted">Dry run — nothing is written.</Text>
           </Inline>
         </Stack>
       </ConfirmDialog>

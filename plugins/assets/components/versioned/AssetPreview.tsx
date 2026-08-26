@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from 'react'
 import { Download, Pencil, Save, X } from 'lucide-react'
-import { Button, Textarea } from '@makinbakin/sdk/ui'
+import { Button, Text, Textarea } from '@makinbakin/sdk/ui'
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import { Panel } from '@makinbakin/sdk/layout'
 import { isEditableMimeType } from '../../lib/constants'
@@ -81,7 +81,7 @@ export function AssetPreview({ assetId, type, mimeType, version, currentFile, on
   return (
     <div className="flex flex-col items-center gap-bakin-3 rounded-bakin-surface bg-bakin-surface-default p-bakin-8 text-center" data-testid="preview-download">
       <AssetTypeIcon type={type} className="size-bakin-8" />
-      <p className="text-bakin-typography-size-body text-bakin-text-muted">Preview not available for this type.</p>
+      <Text size="body" tone="muted" as="p">Preview not available for this type.</Text>
       <a href={fileUrl} download className="flex items-center gap-bakin-1 text-bakin-typography-size-body text-bakin-signal-accent hover:underline">
         <Download className="size-bakin-4" /> Download
       </a>

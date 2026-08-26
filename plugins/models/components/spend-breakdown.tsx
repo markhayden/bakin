@@ -9,7 +9,7 @@ import {
   type DataTableColumn,
   type DataTableSort,
 } from '@makinbakin/sdk/patterns'
-import { SystemState } from '@makinbakin/sdk/ui'
+import { Overline, SystemState } from '@makinbakin/sdk/ui'
 
 import type { SpendResponse } from './use-models-data'
 import { formatTokens, formatUsd } from './spend-utils'
@@ -296,9 +296,9 @@ export function SpendBreakdown({
       ) : (
         <div className="grid min-w-0 gap-bakin-8 @5xl/spend-breakdown:grid-cols-[minmax(16rem,0.7fr)_minmax(0,1.3fr)]">
           <div className="min-w-0 @5xl/spend-breakdown:border-r @5xl/spend-breakdown:border-bakin-border-subtle @5xl/spend-breakdown:pr-bakin-8">
-            <p className="mb-bakin-4 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
+            <Overline as="p" className="mb-bakin-4">
               Highest estimated cost
-            </p>
+            </Overline>
             <RankedBarChart
               data={chartData}
               series={{ key: 'cost', label: 'Estimated cost' }}

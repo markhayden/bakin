@@ -6,6 +6,7 @@ import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import type { InteractionCoverage, UsageFeedData } from '../types'
 import { focusActivityElement } from './activity-navigation'
 import { INTERACTION_SOURCE_META } from './interaction-source-meta'
+import { Inline } from '@makinbakin/sdk/layout'
 
 const OUTCOMES = [
   { key: 'failed', label: 'failed' },
@@ -71,12 +72,12 @@ export function ActivityPulse({
       data-testid="activity-pulse"
     >
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-2 bg-bakin-surface-default px-bakin-4 py-bakin-3">
-        <div className="flex min-w-0 items-center gap-bakin-2">
+        <Inline gap="dense" wrap={false}>
           {needsAttention
             ? <AlertCircle className={`size-bakin-4 shrink-0 ${hasFailures ? 'text-bakin-signal-danger' : 'text-bakin-signal-highlight'}`} aria-hidden="true" />
             : <CheckCircle2 className="size-bakin-4 shrink-0 text-bakin-action-primary-background" aria-hidden="true" />}
           <h3 id="activity-pulse-title">Activity pulse</h3>
-        </div>
+        </Inline>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-bakin-2 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
           <span className={compatibilityLimited ? 'text-bakin-signal-highlight' : undefined}>
             {compatibilityLimited ? 'Partial data · restart Bakin for exact metrics' : coverageLabel(data.window, data.coverage)}

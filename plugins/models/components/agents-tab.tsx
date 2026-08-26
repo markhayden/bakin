@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react'
 import { useAgent, useAgentColor } from '@makinbakin/sdk/hooks'
 import { Panel } from '@makinbakin/sdk/layout'
 import { AgentAvatar, ListRow, ListRows, ModelSelect } from '@makinbakin/sdk/patterns'
-import { Button, Field, FieldLabel, SystemState } from '@makinbakin/sdk/ui'
+import { Button, Field, FieldLabel, SystemState, Text } from '@makinbakin/sdk/ui'
 
 import type { ModelsData } from './use-models-data'
 
@@ -118,10 +118,10 @@ export function AgentsTab({ m }: { m: ModelsData }) {
                     key={`${modelId}-${index}`}
                     className="flex flex-wrap items-center gap-bakin-2 px-bakin-0"
                   >
-                    <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+                    <Text size="meta" tone="muted">
                       {index + 1}
                       <span className="sr-only"> in fallback order</span>
-                    </span>
+                    </Text>
                     <ModelSelect
                       value={modelId}
                       ariaLabel={`Fallback model ${index + 1}`}

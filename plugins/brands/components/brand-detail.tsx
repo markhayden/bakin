@@ -29,12 +29,40 @@ import {
   ColorInput,
 } from '@makinbakin/sdk/patterns'
 import {
-  Banner, Button, Input, Textarea, Switch, Label, Skeleton, Progress, SystemState,
-  Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle,
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-  Tabs, TabsList, TabsTrigger,
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+  Banner,
+  Button,
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Progress,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Skeleton,
+  Switch,
+  SystemState,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  Text,
+  Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from '@makinbakin/sdk/ui'
 import { useQueryState, usePluginEvent, toast } from '@makinbakin/sdk/hooks'
 import {
@@ -1254,7 +1282,7 @@ function DocsEditor({
                 if (e.key === 'Enter') submitNewDoc()
               }}
             />
-            <p className="text-bakin-typography-size-meta text-bakin-text-muted">.md is added for you{newDocName.trim() && !newDocName.trim().endsWith('.md') ? ` — creates ${newDocName.trim()}.md` : ''}</p>
+            <Text size="meta" tone="muted" as="p">.md is added for you{newDocName.trim() && !newDocName.trim().endsWith('.md') ? ` — creates ${newDocName.trim()}.md` : ''}</Text>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewOpen(false)}>Cancel</Button>
@@ -1437,7 +1465,7 @@ function BrandAssetsSection({
           <div key={group.name} className="space-y-bakin-2 rounded-bakin-control bg-bakin-surface-default p-bakin-3">
             <div className="flex items-center gap-bakin-2 text-bakin-typography-size-body">
               <span className="font-bakin-typography-weight-medium">{group.name}</span>
-              {group.description && <span className="text-bakin-typography-size-meta text-bakin-text-muted">— {group.description}</span>}
+              {group.description && <Text size="meta" tone="muted">— {group.description}</Text>}
               <div className="ml-auto flex shrink-0 items-center gap-bakin-1">
                 <Button
                   variant="ghost" size="xs" className="text-bakin-text-muted"
@@ -1462,7 +1490,7 @@ function BrandAssetsSection({
                 </Button>
               </div>
             </div>
-            {group.assetIds.length === 0 && <p className="text-bakin-typography-size-meta text-bakin-text-muted">Empty group — add screenshots or imagery.</p>}
+            {group.assetIds.length === 0 && <Text size="meta" tone="muted" as="p">Empty group — add screenshots or imagery.</Text>}
             {group.assetIds.length > 0 && (
               <div className="grid gap-bakin-3 lg:grid-cols-2">
                 {group.assetIds.map((assetId) =>
@@ -1498,7 +1526,7 @@ function BrandAssetsSection({
               <Plus className="size-bakin-3" /> Add reference
             </Button>
           ) : (
-            <span className="text-bakin-typography-size-meta text-bakin-text-muted">4 of 4 — remove one to swap</span>
+            <Text size="meta" tone="muted">4 of 4 — remove one to swap</Text>
           )
         }
       >
@@ -1826,11 +1854,11 @@ function BrandSettingsTab({
       >
         {brand.draft ? (
           <>
-            <p className="text-bakin-typography-size-body text-bakin-text-muted">
+            <Text size="body" tone="muted" as="p">
               Review the tabs, then publish. Delete <code className="rounded bg-bakin-surface-default px-bakin-1 text-bakin-typography-size-meta">_intake.md</code> under
               Guidelines if you don't want the builder intake kept.
               {blocked > 0 && ` ${blocked} task${blocked === 1 ? ' is' : 's are'} waiting on this brand right now.`}
-            </p>
+            </Text>
             <Button variant="default" size="sm" className="w-fit" onClick={onPublish}>
               <Rocket className="size-bakin-3" /> Publish brand
             </Button>
@@ -1871,11 +1899,11 @@ function BrandSettingsTab({
           icon={ExternalLink}
           description="Where this brand kit came from — local edits win over the upstream copy."
         >
-          <p className="text-bakin-typography-size-body text-bakin-text-muted">
+          <Text size="body" tone="muted" as="p">
             <span className="font-bakin-typography-family-mono text-bakin-text-primary/80">{brand.source.repo}</span>
             {brand.source.commit ? ` @ ${brand.source.commit.slice(0, 8)}` : ''}. Check for upstream changes:
             <code className="ml-bakin-1 rounded bg-bakin-surface-default px-bakin-1 text-bakin-typography-size-meta">bakin brands check {brand.id}</code>
-          </p>
+          </Text>
         </SectionCard>
       )}
 
@@ -1885,12 +1913,12 @@ function BrandSettingsTab({
         description="Every branded task carries a compact card of this brand — rules, palette, terminology, and the always-in-context docs."
       >
         {cardInfo ? (
-          <p className="text-bakin-typography-size-body text-bakin-text-muted">
+          <Text size="body" tone="muted" as="p">
             The card currently adds ~{(cardInfo.cardBytes / 1024).toFixed(1)} KB of its {(cardInfo.maxBytes / 1024).toFixed(0)} KB allowance to every branded task
             {cardInfo.omitted > 0 ? ` — ${cardInfo.omitted} item${cardInfo.omitted === 1 ? ' is' : 's are'} left out for size (agents fetch them on demand).` : ' — nothing is left out.'}
-          </p>
+          </Text>
         ) : (
-          <p className="text-bakin-typography-size-body text-bakin-text-muted">Measuring the card…</p>
+          <Text size="body" tone="muted" as="p">Measuring the card…</Text>
         )}
         {dangling.length > 0 && (
           <div className="rounded-bakin-control bg-bakin-signal-highlight/10 p-bakin-3 ring-1 ring-bakin-signal-highlight/20">

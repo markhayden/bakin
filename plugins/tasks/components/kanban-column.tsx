@@ -17,6 +17,7 @@ import type { BudgetHold } from '../hooks/use-budget-status'
 import type { BrandHold } from '../hooks/use-brand-status'
 import type { LiveActivity } from '../hooks/use-live-activity'
 import type { Task, ColumnId } from '../types'
+import { Inline } from '@makinbakin/sdk/layout'
 
 interface KanbanColumnProps {
   id: ColumnId
@@ -96,12 +97,12 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
       >
         <KanbanLane label={config.label}>
           <KanbanLaneHeader>
-            <div className="flex min-w-0 items-center gap-bakin-2">
+            <Inline gap="dense" wrap={false}>
               <h2 className="truncate text-bakin-typography-size-body">
                 {config.label}
               </h2>
               <Badge size="xs" variant="outline" aria-label={countLabel}>{count}</Badge>
-            </div>
+            </Inline>
             {onAddTask ? (
               <Button type="button" variant="ghost" size="xs" onClick={() => onAddTask(id)}>
                 <Plus />

@@ -11,14 +11,14 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Drawer,
-  DrawerSection,
   Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
+  Drawer,
+  DrawerSection,
   Field,
   FieldDescription,
   FieldGroup,
@@ -27,6 +27,7 @@ import {
   Form,
   FormActions,
   Input,
+  Text,
   Textarea,
   Tooltip,
   TooltipContent,
@@ -178,9 +179,9 @@ export function BrandBuilder({
 
   const footer = (
     <FormActions align="between" className="sticky bottom-0 z-10 bg-bakin-surface-default pb-bakin-1">
-      <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+      <Text size="meta" tone="muted">
         Step {step + 1} of {STEPS.length}
-      </span>
+      </Text>
       <div className="flex min-w-0 gap-bakin-2">
         {step > 0 && (
           <Button variant="outline" size="sm" onClick={() => setStep((s) => s - 1)} disabled={busy}>

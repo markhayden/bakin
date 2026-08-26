@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { FileText, Image, Video, Music, Map, Database, Package, Clock } from 'lucide-react'
 import { useAgent } from '@makinbakin/sdk/hooks'
 import { AgentAvatar } from '@makinbakin/sdk/patterns'
-import { Badge } from '@makinbakin/sdk/ui'
+import { Badge, Text } from '@makinbakin/sdk/ui'
 import { formatAge } from '@makinbakin/sdk/utils'
 import { assetThumbUrl, assetCurrentUrl, assetVersionUrl } from './asset-urls'
 
@@ -70,7 +70,7 @@ function AssetAgentIdentity({ agentId }: { agentId: string }) {
         size="xs"
         decorative
       />
-      <span className="text-bakin-typography-size-meta text-bakin-text-muted">{agentId}</span>
+      <Text size="meta" tone="muted">{agentId}</Text>
     </div>
   )
 }
@@ -95,7 +95,7 @@ export function AssetMetaSummary({ agent, created, taskId, tags, maxTags = 4 }: 
         <span className="text-bakin-typography-size-meta text-bakin-text-muted/50">|</span>
         <div className="flex items-center gap-bakin-1">
           <Clock className="size-bakin-3 text-bakin-text-muted/50" />
-          <span className="text-bakin-typography-size-meta text-bakin-text-muted">{formatAge(created)}</span>
+          <Text size="meta" tone="muted">{formatAge(created)}</Text>
         </div>
         {taskId && (
           <>
@@ -111,7 +111,7 @@ export function AssetMetaSummary({ agent, created, taskId, tags, maxTags = 4 }: 
           {tags.slice(-maxTags).map(tag => (
             <Badge key={tag} variant="secondary" size="xs">{tag}</Badge>
           ))}
-          {tags.length > maxTags && <span className="text-bakin-typography-size-meta text-bakin-text-muted">+{tags.length - maxTags}</span>}
+          {tags.length > maxTags && <Text size="meta" tone="muted">+{tags.length - maxTags}</Text>}
         </div>
       )}
     </div>

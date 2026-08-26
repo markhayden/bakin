@@ -34,6 +34,7 @@ import {
   WORKFLOW_FEATURES,
   workflowMatchesFeatures,
 } from '../lib/workflow-presentation'
+import { Inline } from '@makinbakin/sdk/layout'
 
 interface ScoreInfo {
   score: number
@@ -68,12 +69,12 @@ function WorkflowSection({
 }) {
   return (
     <section className="flex min-w-0 flex-col gap-bakin-3">
-      <div className="flex min-w-0 items-center gap-bakin-2">
+      <Inline gap="dense" wrap={false}>
         <h2 className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-widest text-bakin-text-muted">
           {title}
         </h2>
         <Badge size="xs" variant="outline">{total}</Badge>
-      </div>
+      </Inline>
       {workflows.length === 0 ? (
         <SystemState
           kind="initial-empty"
@@ -278,10 +279,10 @@ export function WorkflowsPage() {
   }
 
   const searchFeedback = searchSignalActive && searchHook.status !== 'loading' ? (
-    <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+    <Inline gap="dense">
       {searchHook.status === 'unavailable' ? <SearchDegradedChip testId="workflows-search-degraded" /> : null}
       {searchHook.meta?.partial ? <SearchPartialChip meta={searchHook.meta} /> : null}
-    </div>
+    </Inline>
   ) : undefined
 
   const resultState = loading ? (

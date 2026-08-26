@@ -19,6 +19,7 @@ import {
   Button,
   Drawer,
   Input,
+  Text,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -233,10 +234,10 @@ function PreviewDrawerBody({
       )}
 
       {preview.mentions.length > 0 && (
-        <div className="text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="div">
           Mentions env-var-shaped strings (unmapped — no readiness claim): {preview.mentions.join(', ')}.
           Run <span className="font-bakin-typography-family-mono">bakin skills map</span> after install if this skill needs keys Bakin didn&apos;t recognize.
-        </div>
+        </Text>
       )}
 
       {preview.warnings.length > 0 && (
@@ -408,7 +409,7 @@ export function HubSkillsSection() {
               <ListRow key={row.packageId + row.skillName}>
                 <div className="min-w-0">
                   <div className="flex items-center gap-bakin-2 text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">
-                    {row.skillName} <span className="text-bakin-typography-size-meta text-bakin-text-muted">v{row.version}</span>
+                    {row.skillName} <Text size="meta" tone="muted">v{row.version}</Text>
                     <Badge tone="neutral" variant="soft" size="xs">{sourceChip(row.source, row.hub)}</Badge>
                   </div>
                   {/* The ref truncates in this narrow panel; the tooltip is the
@@ -444,11 +445,11 @@ export function HubSkillsSection() {
           the ecosystem. */}
       <div className="grid gap-bakin-2">
         <h3>Get more capabilities</h3>
-        <div className="text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="div">
           Official ones below install with one click and guided setup. Or bring any skill from the wider
           ecosystem — browse clawhub.ai (or a GitHub skills repo), copy the page link, paste it here.
           You&apos;ll review a full trust preview before anything installs.
-        </div>
+        </Text>
         <div className="flex gap-bakin-2">
           <Input
             value={ref}

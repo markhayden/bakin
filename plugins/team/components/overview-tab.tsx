@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
   SystemState,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { useAgentStore, useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
 import type { AgentUsage, AvailableModel } from '@makinbakin/sdk/types'
@@ -328,9 +329,9 @@ export function OverviewTab({
                 />
               ))}
             </StatGroup>
-            <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">
+            <Text size="meta" tone="muted" as="p">
               Recorder started {new Date(activity.sinceServerStart).toLocaleString()} and resets with the server.
-            </p>
+            </Text>
           </>
         ) : (
           <SystemState
