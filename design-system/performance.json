@@ -32,13 +32,13 @@
       "name": "sdk-content",
       "path": "packages/host/public/vendor/sdk-content.js",
       "bytes": 350320,
-      "reachableBytes": 777696
+      "reachableBytes": 794429
     },
     {
       "name": "sdk-conversation",
       "path": "packages/host/public/vendor/sdk-conversation.js",
       "bytes": 60362,
-      "reachableBytes": 644444
+      "reachableBytes": 661177
     },
     {
       "name": "sdk-layout",
@@ -56,13 +56,13 @@
       "name": "sdk-patterns",
       "path": "packages/host/public/vendor/sdk-patterns.js",
       "bytes": 2430,
-      "reachableBytes": 549000
+      "reachableBytes": 565733
     },
     {
       "name": "sdk-ui",
       "path": "packages/host/public/vendor/sdk-ui.js",
-      "bytes": 25150,
-      "reachableBytes": 451301
+      "bytes": 8352,
+      "reachableBytes": 451133
     }
   ],
   "vendorChunks": [
@@ -127,27 +127,15 @@
       "bytes": 157
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-2xrtj366.js",
+      "path": "packages/host/public/vendor/sdk-shared-0wmfydew.js",
       "bytes": 1328
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-6rpct40v.js",
-      "bytes": 3476
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-7x82wzt8.js",
-      "bytes": 1938
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-87nnc3kf.js",
-      "bytes": 5243
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-91ys6sqv.js",
+      "path": "packages/host/public/vendor/sdk-shared-16fenajr.js",
       "bytes": 30778
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-axwqnxts.js",
+      "path": "packages/host/public/vendor/sdk-shared-b4anyw19.js",
       "bytes": 280583
     },
     {
@@ -155,40 +143,48 @@
       "bytes": 199
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-ebr640ha.js",
-      "bytes": 26880
+      "path": "packages/host/public/vendor/sdk-shared-cv5pt64f.js",
+      "bytes": 1938
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-fhv9ztgc.js",
+      "path": "packages/host/public/vendor/sdk-shared-ef53s8g5.js",
+      "bytes": 5243
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-kt0jc17q.js",
+      "bytes": 124451
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-m9vr1wzs.js",
       "bytes": 290739
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-h5mfc0ya.js",
-      "bytes": 28974
+      "path": "packages/host/public/vendor/sdk-shared-mpp0pwpr.js",
+      "bytes": 26880
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-k6qa8h5g.js",
-      "bytes": 107718
+      "path": "packages/host/public/vendor/sdk-shared-n5teg51h.js",
+      "bytes": 3476
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-n8dd5ers.js",
-      "bytes": 711
+      "path": "packages/host/public/vendor/sdk-shared-qy5ktkb4.js",
+      "bytes": 3295
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-tbtbr6bf.js",
+      "path": "packages/host/public/vendor/sdk-shared-snqpdev8.js",
       "bytes": 82775
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-wyktsxx1.js",
-      "bytes": 103
+      "path": "packages/host/public/vendor/sdk-shared-v2e06e1h.js",
+      "bytes": 711
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-xk5hy9k5.js",
+      "path": "packages/host/public/vendor/sdk-shared-vkn81vy7.js",
+      "bytes": 28974
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-zz3ky8p4.js",
       "bytes": 2165
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-yhs43ptk.js",
-      "bytes": 3295
     },
     {
       "path": "packages/host/public/vendor/sdk-slots.js",
@@ -200,11 +196,11 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-ui.js",
-      "bytes": 25150
+      "bytes": 8352
     },
     {
       "path": "packages/host/public/vendor/sdk-utils.js",
-      "bytes": 8314
+      "bytes": 8326
     },
     {
       "path": "packages/host/public/vendor/tanstack-router.js",

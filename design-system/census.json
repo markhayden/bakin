@@ -18,13 +18,13 @@
     ]
   },
   "summary": {
-    "total": 102,
+    "total": 100,
     "byKind": {
       "host-route": 26,
       "plugin-route": 10,
       "plugin-slot": 31,
       "plugin-template": 2,
-      "shared-component": 33,
+      "shared-component": 31,
       "sdk-ui-export": 0
     },
     "nonVisualAliases": 3
@@ -2705,65 +2705,6 @@
         {
           "type": "source-export",
           "path": "src/components/ui/skeleton.tsx",
-          "detail": "exported values discovered from TSX source"
-        }
-      ]
-    },
-    {
-      "id": "shared-component:src/components/ui/table",
-      "kind": "shared-component",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "identity": {
-        "component": "src/components/ui/table"
-      },
-      "sourcePath": "src/components/ui/table.tsx",
-      "symbols": [
-        "Table",
-        "TableBody",
-        "TableCaption",
-        "TableCell",
-        "TableFooter",
-        "TableHead",
-        "TableHeader",
-        "TableRow"
-      ],
-      "exportStatus": "private",
-      "classification": "shared-ui",
-      "evidence": [
-        {
-          "type": "source-export",
-          "path": "src/components/ui/table.tsx",
-          "detail": "exported values discovered from TSX source"
-        }
-      ]
-    },
-    {
-      "id": "shared-component:src/components/ui/tabs",
-      "kind": "shared-component",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "identity": {
-        "component": "src/components/ui/tabs"
-      },
-      "sourcePath": "src/components/ui/tabs.tsx",
-      "symbols": [
-        "Tabs",
-        "TabsContent",
-        "TabsList",
-        "TabsTrigger",
-        "tabsListVariants"
-      ],
-      "exportStatus": "private",
-      "classification": "shared-ui",
-      "evidence": [
-        {
-          "type": "source-export",
-          "path": "src/components/ui/tabs.tsx",
           "detail": "exported values discovered from TSX source"
         }
       ]

@@ -241,9 +241,17 @@ function scanSource(file: LegacyStyleSource): Record<LegacyStyleRule, number> {
     file.source,
     /#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?\b|#(?=[0-9a-fA-F]{3,4}\b)(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{3,4}\b|\b(?:rgb|hsl)a?\([^)]*\)/g,
   )
+  // An arbitrary value that resolves a `--bakin-*` custom property is the token
+  // system being applied, not a magic number — and sometimes it is the ONLY
+  // correct spelling: `text-[length:var(--bakin-typography-size-meta)]` exists
+  // precisely because the `text-…-size-*` shorthand shares the `text-*` merge
+  // group with colour and gets silently dropped. Counting those as debt would
+  // mark the prescribed pattern as a violation and teach people to ignore the
+  // ratchet. Literal arbitrary values (`w-[240px]`, `h-[calc(100%-2rem)]`)
+  // still count.
   counts['arbitrary-size'] = matchCount(
     file.source,
-    new RegExp(`(?:^|[\\s"'\\x60])${VARIANT_PREFIX}(?:-?(?:w|h|min-w|max-w|min-h|max-h|size|p[trblxy]?|m[trblxy]?|gap(?:-[xy])?|space-[xy]|top|right|bottom|left|inset(?:-[xy])?|translate-[xy]|basis|grid-cols|grid-rows|text|leading|tracking|rounded|border))-\\[[^\\]]+\\](?=$|[\\s"'\\x60}])`, 'gm'),
+    new RegExp(`(?:^|[\\s"'\\x60])${VARIANT_PREFIX}(?:-?(?:w|h|min-w|max-w|min-h|max-h|size|p[trblxy]?|m[trblxy]?|gap(?:-[xy])?|space-[xy]|top|right|bottom|left|inset(?:-[xy])?|translate-[xy]|basis|grid-cols|grid-rows|text|leading|tracking|rounded|border))-\\[(?![^\\]]*var\\(--bakin-)[^\\]]+\\](?=$|[\\s"'\\x60}])`, 'gm'),
   )
   counts['raw-scale'] = matchCount(
     file.source,
@@ -301,6 +309,15 @@ function isTestOrStory(path: string): boolean {
   return /(?:^|\/)(?:tests|__tests__)(?:\/|$)|\.(?:test|spec|stories)\.[^.]+$/.test(path)
 }
 
+/**
+ * Generated artifacts cannot be hand-fixed, so recording their contents as
+ * migratable debt is pure noise — the token files literally define the palette
+ * in hex, which is their job. Fix the generator, not the output.
+ */
+function isGenerated(path: string): boolean {
+  return /\.generated\.[^.]+$/.test(path)
+}
+
 function hostBrowserSource(path: string): boolean {
   if (isTestOrStory(path)) return false
   if (path.endsWith('.tsx') || path.endsWith('.css')) return !path.includes('/api/')
@@ -308,7 +325,7 @@ function hostBrowserSource(path: string): boolean {
 }
 
 function sharedBrowserSource(path: string): boolean {
-  return !isTestOrStory(path) && ['.css', '.ts', '.tsx'].includes(extname(path))
+  return !isTestOrStory(path) && !isGenerated(path) && ['.css', '.ts', '.tsx'].includes(extname(path))
 }
 
 function pluginBrowserSource(path: string): boolean {
@@ -333,6 +350,13 @@ export function collectLegacyStyleSources(root: string, bitsPluginsRoot: string)
   }
   const coreRoots = [
     { path: join(root, 'packages/host/src'), include: hostBrowserSource },
+    // The kit implements the tokens, so it legitimately uses more raw values
+    // than product code — but it was the ONE browser surface with no style
+    // governance at all, which is how a font-size that tailwind-merge silently
+    // dropped shipped in WorkspacePage. Scanning it records that reality
+    // instead of leaving it invisible; the allowances are the honest baseline,
+    // not a target.
+    { path: join(root, 'packages/ui/src'), include: sharedBrowserSource },
     { path: join(root, 'packages/sdk/src'), include: sharedBrowserSource },
     { path: join(root, 'src/components'), include: sharedBrowserSource },
     { path: join(root, 'plugins'), include: pluginBrowserSource },
