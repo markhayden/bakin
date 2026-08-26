@@ -39,6 +39,11 @@ function makeM(over: Partial<ModelsData> = {}): ModelsData {
 
 afterEach(cleanup)
 
+// The thinking selects used to take their accessible name from a visible
+// FieldLabel ("Scheduled Thinking"); the model selects took theirs from
+// aria-label ("Scheduled model"). The routing matrix is a DataTable now, so the
+// column header carries the field name once and BOTH controls are named
+// uniformly by aria-label.
 describe('RoutingTab', () => {
   it('renders dispatch + system sections; chat is excluded', () => {
     render(<RoutingTab m={makeM()} />)
@@ -56,7 +61,7 @@ describe('RoutingTab', () => {
   it('thinking dropdowns offer only runtime-supported levels (Pi hides adaptive/max)', async () => {
     const user = userEvent.setup()
     render(<RoutingTab m={makeM()} />)
-    await user.click(screen.getByRole('combobox', { name: 'Scheduled Thinking' }))
+    await user.click(screen.getByRole('combobox', { name: 'Scheduled thinking' }))
     const options = screen.getAllByRole('option').map((o) => o.textContent)
     expect(options).toContain('Extra high')
     expect(options).not.toContain('Adaptive')
@@ -68,7 +73,7 @@ describe('RoutingTab', () => {
     render(<RoutingTab m={makeM({
       displayRouting: { routes: [{ workClass: 'relay', thinking: 'max' }], tagOverrides: [] },
     } as Partial<ModelsData>)} />)
-    await user.click(screen.getByRole('combobox', { name: 'Relay Thinking' }))
+    await user.click(screen.getByRole('combobox', { name: 'Relay thinking' }))
     expect(screen.getByRole('option', { name: 'Maximum · unsupported by this runtime' })).toBeTruthy()
   })
 })
