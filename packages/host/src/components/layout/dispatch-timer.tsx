@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Clock, Play } from 'lucide-react'
 import { Button } from '@makinbakin/sdk/ui'
+import { cn } from '@makinbakin/sdk/utils'
 
 export function DispatchTimer() {
   const [seconds, setSeconds] = useState<number | null>(null)
@@ -63,7 +64,7 @@ export function DispatchTimer() {
 
   return (
     <div className="flex items-center gap-1.5 text-xs font-mono text-bakin-text-muted">
-      <Clock className={`size-3 ${isDispatching ? 'animate-pulse' : ''}`} />
+      <Clock className={cn('size-3', isDispatching ? 'animate-pulse' : '')} />
       {/* Was a native `title`, which ARIA drops on a role-less span — so AT
           users got nothing while sighted users got a hover-only hint. The
           clock icon and countdown carry the meaning visually; this names it
@@ -76,10 +77,9 @@ export function DispatchTimer() {
         onClick={triggerDispatch}
         disabled={running || isDispatching}
         className="text-bakin-text-muted hover:text-bakin-text-primary"
-        title="Run dispatch now"
         aria-label="Run dispatch now"
       >
-        <Play className={`size-3 ${running ? 'animate-pulse' : ''}`} />
+        <Play className={cn('size-3', running ? 'animate-pulse' : '')} />
       </Button>
     </div>
   )

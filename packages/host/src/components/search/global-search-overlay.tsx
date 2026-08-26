@@ -35,14 +35,16 @@ import {
   Button,
   Command,
   CommandDialog,
-  CommandInput,
-  CommandList,
   CommandEmpty,
   CommandGroup,
+  CommandInput,
   CommandItem,
+  CommandList,
+  Overline,
   SystemState,
 } from '@makinbakin/sdk/ui'
 import { useSearchHotkey } from './use-search-hotkey'
+import { cn } from '@makinbakin/sdk/utils'
 
 const TABLE_PREFIX = 'bakin_'
 
@@ -186,7 +188,7 @@ export function GlobalSearchOverlay() {
         value={query}
         onValueChange={onQueryChange}
       />
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-bakin-border-subtle px-3 py-2" data-testid="global-search-chips">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-bakin-border-subtle px-bakin-3 py-bakin-2" data-testid="global-search-chips">
         {chipTypes.map((type) => (
           <Button
             key={type}
@@ -200,7 +202,7 @@ export function GlobalSearchOverlay() {
             {type}
           </Button>
         ))}
-        <SearchPartialChip meta={search.meta} className="ml-1" />
+        <SearchPartialChip meta={search.meta} className="ml-bakin-1" />
         <SegmentedControl
           ariaLabel="Result view"
           className="ml-auto"
@@ -217,7 +219,7 @@ export function GlobalSearchOverlay() {
           <SearchUnavailable retry={search.retry} className="py-10" />
         )}
         {search.status === 'error' && (
-          <div className="p-6" data-testid="global-search-error">
+          <div className="p-bakin-6" data-testid="global-search-error">
             <SystemState
               kind="error"
               recovery="unavailable"
@@ -228,12 +230,12 @@ export function GlobalSearchOverlay() {
           </div>
         )}
         {search.status === 'loading' && (
-          <div className="p-6" data-testid="global-search-spinner">
+          <div className="p-bakin-6" data-testid="global-search-spinner">
             <SystemState kind="loading" scope="section" title="Searching" />
           </div>
         )}
         {search.status === 'idle' && (
-          <div className="p-6 text-center text-sm text-bakin-text-muted">
+          <div className="p-bakin-6 text-center text-sm text-bakin-text-muted">
             Type to search everything — assets, tasks, memory, workflows.
           </div>
         )}
@@ -244,15 +246,15 @@ export function GlobalSearchOverlay() {
           <CommandGroup
             key={type}
             heading={(
-              <span className="flex items-center gap-2">
-                <span className="text-bakin-typography-size-meta font-semibold uppercase tracking-[0.12em] text-bakin-text-primary/70">{type.replace(/[_-]/g, ' ')}</span>
+              <span className="flex items-center gap-bakin-2">
+                <Overline>{type.replace(/[_-]/g, ' ')}</Overline>
                 <span className="rounded-bakin-pill bg-bakin-surface-default px-1.5 py-px text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">{results.length}</span>
                 <span className="h-px flex-1 bg-bakin-border-subtle" />
               </span>
             )}
             data-testid={`global-search-group-${type}`}
           >
-            <div className={viewMode === 'card' ? 'grid gap-3 p-1 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]' : undefined}>
+            <div className={viewMode === 'card' ? 'grid gap-bakin-3 p-bakin-1 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]' : undefined}>
               {results.map((result) => {
                 const renderer = renderers.get(type)
                 const descriptor = renderer ? renderer(result) : defaultDescriptor(result)
@@ -270,12 +272,12 @@ export function GlobalSearchOverlay() {
                   <img
                     src={thumbSrc}
                     alt=""
-                    className={`${sizeClass} rounded-bakin-control object-cover`}
+                    className={cn(sizeClass, 'rounded-bakin-control object-cover')}
                     onError={() => setBrokenThumbs((prev) => new Set(prev).add(descriptor.thumbnailUrl!))}
                   />
                 ) : (
-                  <div className={`flex ${sizeClass} items-center justify-center rounded-bakin-control bg-bakin-surface-default`}>
-                    <Icon className={`${iconClass} text-bakin-text-muted opacity-60`} />
+                  <div className={cn('flex', sizeClass, 'items-center justify-center rounded-bakin-control bg-bakin-surface-default')}>
+                    <Icon className={cn(iconClass, 'text-bakin-text-muted')} />
                   </div>
                 )
                 return viewMode === 'card' ? (
@@ -283,7 +285,7 @@ export function GlobalSearchOverlay() {
                     key={`${type}:${result.id}`}
                     value={`${type}:${result.id}`}
                     onSelect={() => onSelect(descriptor)}
-                    className={`flex flex-col items-stretch gap-2 rounded-bakin-surface border border-bakin-border-subtle p-3 ${inert ? 'opacity-60 cursor-default data-[selected=true]:bg-bakin-border-subtle/20' : ''}`}
+                    className={cn('flex flex-col items-stretch gap-bakin-2 rounded-bakin-surface border border-bakin-border-subtle p-bakin-3', inert ? 'opacity-60 cursor-default data-[selected=true]:bg-bakin-border-subtle/20' : '')}
                     data-testid={`global-search-hit-${result.id}`}
                     {...inertProps}
                   >
@@ -296,16 +298,16 @@ export function GlobalSearchOverlay() {
                       />
                     ) : (
                       <div className="flex aspect-square w-full items-center justify-center rounded-bakin-control bg-bakin-canvas-default/50">
-                        <Icon className="size-10 text-bakin-text-muted opacity-40" />
+                        <Icon className="size-10 text-bakin-text-muted" />
                       </div>
                     )}
                     <div className="min-w-0">
-                      <div className="line-clamp-2 text-sm font-medium">{descriptor.title}</div>
+                      <div className="line-clamp-2 text-sm font-bakin-typography-weight-medium">{descriptor.title}</div>
                       {descriptor.subtitle && (
                         <div className="mt-0.5 line-clamp-2 text-xs text-bakin-text-muted">{descriptor.subtitle}</div>
                       )}
                       {descriptor.meta && (
-                        <div className="mt-1 truncate text-bakin-typography-size-meta text-bakin-text-muted/70">{descriptor.meta}</div>
+                        <div className="mt-bakin-1 truncate text-bakin-typography-size-meta text-bakin-text-muted">{descriptor.meta}</div>
                       )}
                     </div>
                     {debug && (
@@ -317,18 +319,18 @@ export function GlobalSearchOverlay() {
                     key={`${type}:${result.id}`}
                     value={`${type}:${result.id}`}
                     onSelect={() => onSelect(descriptor)}
-                    className={`flex items-center gap-4 rounded-bakin-control px-4 py-3 ${inert ? 'opacity-60 cursor-default data-[selected=true]:bg-bakin-border-subtle/20' : ''}`}
+                    className={cn('flex items-center gap-bakin-4 rounded-bakin-control px-bakin-4 py-bakin-3', inert ? 'opacity-60 cursor-default data-[selected=true]:bg-bakin-border-subtle/20' : '')}
                     data-testid={`global-search-hit-${result.id}`}
                     {...inertProps}
                   >
-                    {media('size-16 shrink-0', 'size-6')}
+                    {media('size-16 shrink-0', 'size-bakin-6')}
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-base font-medium">{descriptor.title}</div>
+                      <div className="truncate text-base font-bakin-typography-weight-medium">{descriptor.title}</div>
                       {descriptor.subtitle && (
                         <div className="mt-0.5 line-clamp-2 text-sm text-bakin-text-muted">{descriptor.subtitle}</div>
                       )}
                       {descriptor.meta && (
-                        <div className="mt-0.5 truncate text-xs text-bakin-text-muted/70">{descriptor.meta}</div>
+                        <div className="mt-0.5 truncate text-xs text-bakin-text-muted">{descriptor.meta}</div>
                       )}
                     </div>
                     {debug && (

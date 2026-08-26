@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@makinbakin/sdk/ui'
 import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
+import { cn } from '@makinbakin/sdk/utils'
 
 interface BakinUpdateStatus {
   supported: boolean
@@ -85,9 +86,9 @@ function DispatchPausedBanner({ offset, resuming, resume }: { offset: boolean; r
   return (
     <div
       role="status"
-      className={`fixed left-0 right-0 z-50 flex h-9 items-center gap-3 border-b border-bakin-signal-danger/40 bg-bakin-signal-danger/15 px-4 text-xs text-bakin-text-primary ${offset ? 'top-9' : 'top-0'}`}
+      className={cn('fixed left-0 right-0 z-50 flex h-9 items-center gap-bakin-3 border-b border-bakin-signal-danger/40 bg-bakin-signal-danger/15 px-bakin-4 text-xs text-bakin-text-primary', offset ? 'top-9' : 'top-0')}
     >
-      <span className="font-medium text-bakin-signal-danger">Dispatch paused</span>
+      <span className="font-bakin-typography-weight-medium text-bakin-signal-danger">Dispatch paused</span>
       <span className="min-w-0 truncate text-bakin-text-muted">Kill switch is on — no task dispatch or billed media until resumed.</span>
       <Button
         type="button"
@@ -111,12 +112,11 @@ function DebugToggle() {
       variant="ghost"
       size="icon-sm"
       onClick={toggleDebug}
-      title="Debug mode"
       aria-pressed={debug}
       aria-label="Debug mode"
       className={debug ? 'text-bakin-text-primary' : 'text-bakin-text-muted hover:text-bakin-text-primary'}
     >
-      <Bug className="size-4" />
+      <Bug className="size-bakin-4" />
     </Button>
   )
 }
@@ -209,7 +209,7 @@ export function Header() {
       {showUpdateBanner && (
         <div
           role="status"
-          className="fixed top-0 left-0 right-0 z-50 flex h-9 items-center gap-3 border-b border-bakin-signal-info/30 bg-bakin-signal-info/10 px-4 text-xs text-bakin-text-primary"
+          className="fixed top-0 left-0 right-0 z-50 flex h-9 items-center gap-bakin-3 border-b border-bakin-signal-info/30 bg-bakin-signal-info/10 px-bakin-4 text-xs text-bakin-text-primary"
         >
           <Download className="size-3.5 shrink-0 text-bakin-signal-info" />
           <span className="min-w-0 truncate">
@@ -227,12 +227,12 @@ export function Header() {
         </div>
       )}
 
-      <header className="fixed top-(--bakin-header-top) left-0 right-0 z-50 h-14 border-b border-bakin-border-subtle/30 bg-bakin-canvas-default flex items-center px-4">
+      <header className="fixed top-(--bakin-header-top) left-0 right-0 z-50 h-14 border-b border-bakin-border-subtle/30 bg-bakin-canvas-default flex items-center px-bakin-4">
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="md:hidden mr-3 text-bakin-text-muted hover:text-bakin-text-primary"
+          className="md:hidden mr-bakin-3 text-bakin-text-muted hover:text-bakin-text-primary"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'}
           aria-expanded={mobileOpen}
@@ -245,34 +245,33 @@ export function Header() {
           variant="ghost"
           size="icon-sm"
           onClick={toggle}
-          className="hidden md:inline-flex text-bakin-text-muted hover:text-bakin-text-primary mr-2"
+          className="hidden md:inline-flex text-bakin-text-muted hover:text-bakin-text-primary mr-bakin-2"
           aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
         >
           {collapsed ? (
-            <PanelLeft className="size-4" />
+            <PanelLeft className="size-bakin-4" />
           ) : (
-            <PanelLeftClose className="size-4" />
+            <PanelLeftClose className="size-bakin-4" />
           )}
         </Button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-bakin-2">
           <img src="/bakin-logo.svg" alt="Bakin" className="h-7 w-7" />
-          <span className="text-base font-bold tracking-widest text-bakin-text-primary uppercase italic">Bakin</span>
+          <span className="text-base font-bakin-typography-weight-bold tracking-widest text-bakin-text-primary uppercase italic">Bakin</span>
           {version && <span className="hidden text-bakin-typography-size-meta font-mono text-bakin-text-muted md:inline">v{version}</span>}
         </div>
-        <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3 md:gap-4">
+        <div className="ml-auto flex min-w-0 items-center gap-bakin-2 sm:gap-3 md:gap-4">
           <Button
             type="button"
             variant="outline"
             size="icon-sm"
             onClick={() => openGlobalSearch()}
             aria-label="Search everything"
-            className="gap-2 border-bakin-border-subtle/60 text-xs font-bakin-typography-weight-regular text-bakin-text-muted hover:text-bakin-text-primary sm:h-auto sm:w-auto sm:min-w-0 sm:px-2.5 sm:py-1"
-            title="Search everything (⌘K)"
+            className="gap-bakin-2 border-bakin-border-subtle/60 text-xs font-bakin-typography-weight-regular text-bakin-text-muted hover:text-bakin-text-primary sm:h-auto sm:w-auto sm:min-w-0 sm:px-2.5 sm:py-1"
             data-testid="global-search-button"
           >
             <Search className="size-3.5" />
             <span className="hidden sm:inline">Search</span>
-            <kbd className="hidden rounded border border-bakin-border-subtle/60 px-1 font-mono text-bakin-typography-size-meta sm:inline">⌘K</kbd>
+            <kbd className="hidden rounded border border-bakin-border-subtle/60 px-bakin-1 font-mono text-bakin-typography-size-meta sm:inline">⌘K</kbd>
           </Button>
           <div className="hidden md:block"><DispatchTimer /></div>
           <div className="hidden md:block"><DebugToggle /></div>
@@ -285,7 +284,6 @@ export function Header() {
             onClick={toggleActivity}
             aria-label={activityOpen ? 'Close Live Activity' : 'Open Live Activity'}
             aria-pressed={activityOpen}
-            title="Live Activity"
             data-testid="mobile-live-activity-button"
             className="border-bakin-border-subtle/60 text-bakin-text-muted hover:text-bakin-text-primary md:hidden"
           >
@@ -322,12 +320,12 @@ export function Header() {
             </DialogDescription>
           </DialogHeader>
           {updateError && (
-            <div className="rounded-md border border-bakin-signal-danger/20 bg-bakin-signal-danger/10 px-3 py-2 text-sm text-bakin-signal-danger">
+            <div className="rounded-md border border-bakin-signal-danger/20 bg-bakin-signal-danger/10 px-bakin-3 py-bakin-2 text-sm text-bakin-signal-danger">
               {updateError}
             </div>
           )}
           {updateMessage && (
-            <div className="rounded-md border border-bakin-action-primary-background/20 bg-bakin-action-primary-background/10 px-3 py-2 text-sm text-bakin-action-primary-background">
+            <div className="rounded-md border border-bakin-action-primary-background/20 bg-bakin-action-primary-background/10 px-bakin-3 py-bakin-2 text-sm text-bakin-action-primary-background">
               {updateMessage}
             </div>
           )}

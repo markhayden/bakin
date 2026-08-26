@@ -82,7 +82,6 @@ export function NotificationToggle() {
       variant="ghost"
       size="icon-sm"
       onClick={handleClick}
-      title={enabled ? 'Disable gate notifications' : 'Enable gate notifications'}
       aria-label={enabled ? 'Disable gate notifications' : 'Enable gate notifications'}
       aria-pressed={enabled}
       className="text-bakin-text-muted hover:text-bakin-text-primary"

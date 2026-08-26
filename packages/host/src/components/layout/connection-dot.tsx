@@ -1,4 +1,5 @@
 import { useContentStore } from '@makinbakin/sdk/hooks'
+import { cn } from '@makinbakin/sdk/utils'
 
 export function ConnectionDot() {
   const connected = useContentStore((s) => s.connected)
@@ -11,11 +12,9 @@ export function ConnectionDot() {
     >
       <div
         aria-hidden="true"
-        className={`size-2 rounded-full ${
-          connected
+        className={cn('size-2 rounded-full', connected
             ? 'bg-bakin-action-primary-background animate-pulse-dot'
-            : 'bg-bakin-signal-danger'
-        }`}
+            : 'bg-bakin-signal-danger')}
       />
       <span className="sr-only text-bakin-text-muted sm:not-sr-only">
         {connected ? 'LIVE' : 'OFFLINE'}

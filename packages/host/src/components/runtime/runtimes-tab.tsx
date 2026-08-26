@@ -42,6 +42,7 @@ import { ExtensionsSection } from './extensions-section'
 import { EntityCardBody } from './shared'
 import { describeRequestError, responseError } from '../../lib/request-error'
 import type { CapabilityReport, SwitchResultPayload } from './types'
+import { cn } from '@makinbakin/sdk/utils'
 
 const STEP_TONE: Record<SwitchStepRow['status'], StatusTone> = {
   ok: 'success',
@@ -326,11 +327,9 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
               disabled={isActive || running !== null}
               data-testid={`switch-target-${name}`}
               onClick={() => { setTarget(name); setResult(null); setSteps([]); setConfirming(true) }}
-              className={`rounded-bakin-surface border bg-bakin-surface-default p-bakin-4 text-left text-bakin-text-primary shadow transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring ${
-                isActive
+              className={cn('rounded-bakin-surface border bg-bakin-surface-default p-bakin-4 text-left text-bakin-text-primary shadow transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring', isActive
                   ? 'cursor-default border-bakin-action-primary-background/40 bg-bakin-action-primary-background/5 ring-1 ring-bakin-action-primary-background/40'
-                  : 'border-bakin-border-subtle hover:bg-bakin-canvas-default/40'
-              }`}
+                  : 'border-bakin-border-subtle hover:bg-bakin-canvas-default/40')}
             >
               <EntityCardBody
                 icon={Cpu}
