@@ -48,7 +48,7 @@
       ],
       "allowances": {
         "packages/host/src/components/search/global-search-overlay.tsx": {
-          "arbitrary-size": 5
+          "arbitrary-size": 4
         },
         "src/components/tasks/activity-feed.tsx": {
           "arbitrary-size": 1

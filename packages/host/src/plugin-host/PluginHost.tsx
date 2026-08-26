@@ -593,7 +593,7 @@ function AppBootLoader() {
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-bakin-canvas-default text-bakin-text-primary" role="status" aria-live="polite">
       <div className="flex items-center gap-3.5 text-sm text-bakin-text-muted">
-        <span className="size-7 animate-spin rounded-full border-3 border-bakin-signal-accent/20 border-t-bakin-signal-accent" aria-hidden="true" />
+        <span className="size-7 animate-spin rounded-bakin-pill border-3 border-bakin-signal-accent/20 border-t-bakin-signal-accent" aria-hidden="true" />
         <span className="leading-none">
           Loading plugins
         </span>
@@ -605,8 +605,8 @@ function AppBootLoader() {
 function BootErrorPanel({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-bakin-canvas-default text-bakin-text-primary" role="alert" data-testid="plugin-boot-error">
-      <div className="flex max-w-md flex-col items-center gap-4 text-center">
-        <div className="text-sm font-medium">Couldn&apos;t load plugins</div>
+      <div className="flex max-w-md flex-col items-center gap-bakin-4 text-center">
+        <div className="text-sm font-bakin-typography-weight-medium">Couldn&apos;t load plugins</div>
         <p className="text-sm text-bakin-text-muted">
           The server didn&apos;t answer the plugin manifest request. It may be
           restarting — retry in a moment, or check that Bakin is running.
@@ -622,16 +622,16 @@ function BootErrorPanel({ onRetry }: { onRetry: () => void }) {
 function PluginFailureBanner({ pluginIds, onDismiss }: { pluginIds: string[]; onDismiss: () => void }) {
   return (
     <div
-      className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-between gap-4 border-t border-bakin-border-subtle/30 bg-bakin-canvas-default px-4 py-2.5 text-sm"
+      className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-between gap-bakin-4 border-t border-bakin-border-subtle/30 bg-bakin-canvas-default px-bakin-4 py-2.5 text-sm"
       role="alert"
       data-testid="plugin-boot-failures"
     >
       <span className="text-bakin-text-muted">
         {pluginIds.length === 1 ? 'A plugin' : `${pluginIds.length} plugins`} failed to load:{' '}
-        <span className="font-medium text-bakin-text-primary">{pluginIds.join(', ')}</span> — features they
+        <span className="font-bakin-typography-weight-medium text-bakin-text-primary">{pluginIds.join(', ')}</span> — features they
         provide are missing. See the browser console for details.
       </span>
-      <span className="flex shrink-0 items-center gap-2">
+      <span className="flex shrink-0 items-center gap-bakin-2">
         <Button type="button" variant="outline" size="xs" onClick={() => window.location.reload()}>
           Reload
         </Button>

@@ -79,12 +79,12 @@ export function AppSidebar({
   )
 
   return (
-    <nav aria-label="Main navigation" className="flex h-full min-h-0 w-full flex-col overflow-hidden px-2 py-3">
-      <div role="group" aria-label="Primary" className="flex shrink-0 flex-col gap-0.5 border-b border-bakin-border-subtle/70 pb-2">
+    <nav aria-label="Main navigation" className="flex h-full min-h-0 w-full flex-col overflow-hidden px-bakin-2 py-bakin-3">
+      <div role="group" aria-label="Primary" className="flex shrink-0 flex-col gap-0.5 border-b border-bakin-border-subtle/70 pb-bakin-2">
         {model.primary.map(renderNavItem)}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain py-2">
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain py-bakin-2">
         {model.sections.map((section, index) => {
           const headingId = `sidebar-section-${section.id}`
           return (
@@ -92,15 +92,15 @@ export function AppSidebar({
               key={section.id}
               aria-labelledby={headingId}
               className={collapsed
-                ? `${index > 0 ? 'mt-2 border-t border-bakin-border-subtle/60 pt-2' : ''} flex flex-col gap-0.5`
-                : `${index > 0 ? 'mt-3' : ''} flex flex-col gap-0.5`
+                ? `${index > 0 ? 'mt-bakin-2 border-t border-bakin-border-subtle/60 pt-bakin-2' : ''} flex flex-col gap-0.5`
+                : `${index > 0 ? 'mt-bakin-3' : ''} flex flex-col gap-0.5`
               }
             >
               <h2
                 id={headingId}
                 className={collapsed
                   ? 'sr-only'
-                  : 'px-3 pb-1.5 pt-1 text-bakin-typography-size-meta font-semibold uppercase tracking-widest text-bakin-text-muted/70'
+                  : 'px-bakin-3 pb-1.5 pt-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-widest text-bakin-text-muted/70'
                 }
               >
                 {section.label}
@@ -111,9 +111,9 @@ export function AppSidebar({
         })}
       </div>
 
-      <div role="group" aria-label="Utilities" className="flex shrink-0 flex-col gap-0.5 pt-2">
+      <div role="group" aria-label="Utilities" className="flex shrink-0 flex-col gap-0.5 pt-bakin-2">
         <SidebarPromo collapsed={collapsed} pathname={pathname} onNavigate={onNavigate} />
-        <div className="flex flex-col gap-0.5 border-t border-bakin-border-subtle/70 pt-2">
+        <div className="flex flex-col gap-0.5 border-t border-bakin-border-subtle/70 pt-bakin-2">
           {UTILITY_ITEMS.map(renderNavItem)}
         </div>
       </div>

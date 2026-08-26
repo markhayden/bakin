@@ -1,5 +1,6 @@
 import type { NavBadge as NavBadgeData, NavBadgeTone } from '@makinbakin/sdk'
 import { Badge, type BadgeTone } from '@makinbakin/sdk/ui'
+import { cn } from '@makinbakin/sdk/utils'
 
 const BADGE_TONE: Record<NavBadgeTone, BadgeTone> = {
   error: 'danger',
@@ -58,7 +59,7 @@ export function NavBadge({ badge }: { badge: NavBadgeData | undefined }) {
   return (
     <span
       data-testid="nav-badge-pill"
-      className={`ml-auto inline-block size-1.5 rounded-bakin-pill ${DOT_TONE[tone]}`}
+      className={cn('ml-auto inline-block size-1.5 rounded-bakin-pill', DOT_TONE[tone])}
     />
   )
 }
@@ -72,7 +73,7 @@ export function NavBadgeDot({ tone }: { tone: NavBadgeTone }) {
     <span
       data-testid="nav-badge-dot"
       aria-hidden="true"
-      className={`absolute right-1 top-1 size-1.5 rounded-bakin-pill ring-2 ring-bakin-canvas-default ${DOT_TONE[tone]}`}
+      className={cn('absolute right-1 top-1 size-1.5 rounded-bakin-pill ring-2 ring-bakin-canvas-default', DOT_TONE[tone])}
     />
   )
 }

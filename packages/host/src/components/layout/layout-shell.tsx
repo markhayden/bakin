@@ -5,6 +5,7 @@ import { Button } from '@makinbakin/sdk/ui'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { useActivityContext } from '@/context/activity-context'
 import { ActivityFeed } from '@/components/tasks/activity-feed'
+import { cn } from '@makinbakin/sdk/utils'
 
 const SHELL_TOP_CLASS = 'top-(--bakin-shell-top)'
 
@@ -40,7 +41,7 @@ export function LayoutShell({
     <>
       {/* One flex row: the kit rail's width drives content reflow — no
           hand-synced left offsets. */}
-      <div className={`fixed ${SHELL_TOP_CLASS} inset-x-0 bottom-0 flex`}>
+      <div className={cn('fixed', SHELL_TOP_CLASS, 'inset-x-0 bottom-0 flex')}>
         {/* Desktop sidebar — the kit collapsible rail in content mode: the
             nav owns its icon-mode rendering, the header owns the toggle. */}
         <div className="hidden min-h-0 md:flex">
@@ -73,7 +74,7 @@ export function LayoutShell({
             size="xs"
             aria-hidden="true"
             tabIndex={-1}
-            className={`fixed inset-x-0 bottom-0 ${SHELL_TOP_CLASS} z-40 h-auto w-auto rounded-none border-0 bg-bakin-canvas-default/75 p-0 active:not-aria-[haspopup]:translate-y-0 md:hidden`}
+            className={cn('fixed inset-x-0 bottom-0', SHELL_TOP_CLASS, 'z-40 h-auto w-auto rounded-none border-0 bg-bakin-canvas-default/75 p-0 active:not-aria-[haspopup]:translate-y-0 md:hidden')}
             onClick={closeActivity}
           />
         ) : null}
@@ -82,11 +83,9 @@ export function LayoutShell({
         <aside
           aria-label="Live Activity"
           data-slot="activity-panel"
-          className={`fixed bottom-0 right-0 ${SHELL_TOP_CLASS} z-50 max-w-full shrink-0 bg-bakin-canvas-default transition-[width] duration-150 ease-in-out md:static md:z-auto ${
-            activityOpen
+          className={cn('fixed bottom-0 right-0', SHELL_TOP_CLASS, 'z-50 max-w-full shrink-0 bg-bakin-canvas-default transition-[width] duration-150 ease-in-out md:static md:z-auto', activityOpen
               ? 'w-90 overflow-hidden border-l border-bakin-border-subtle'
-              : 'w-0 overflow-visible border-l border-transparent'
-          }`}
+              : 'w-0 overflow-visible border-l border-transparent')}
         >
           <ActivityFeed />
         </aside>

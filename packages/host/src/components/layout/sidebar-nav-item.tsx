@@ -40,6 +40,7 @@ import {
   collapsedParentRollupTone,
   isNavActive,
 } from './nav-badge-logic'
+import { cn } from '@makinbakin/sdk/utils'
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Activity,
@@ -86,7 +87,7 @@ interface SidebarNavItemProps {
 }
 
 function navRowClass(active: boolean, collapsed: boolean): string {
-  return `${collapsed ? 'justify-center px-0' : 'px-3'} flex w-full items-center gap-3 rounded-bakin-control py-1.5 text-sm transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring ${
+  return `${collapsed ? 'justify-center px-0' : 'px-bakin-3'} flex w-full items-center gap-bakin-3 rounded-bakin-control py-1.5 text-sm transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring ${
     active
       ? 'bg-bakin-border-subtle/35 text-bakin-text-primary shadow-[inset_2px_0_0_0_var(--bakin-color-signal-accent)]'
       : 'text-bakin-text-muted hover:bg-bakin-border-subtle/20 hover:text-bakin-text-primary'
@@ -127,14 +128,14 @@ function CollapsedNavGroup({
           }
           setOpen(true)
         }}
-        className={`${navRowClass(active, true)} relative`}
+        className={cn(navRowClass(active, true), 'relative')}
         aria-label={`${item.label}${rollupAriaSuffix}`}
       >
-        <Icon className="size-4 shrink-0" />
+        <Icon className="size-bakin-4 shrink-0" />
         {rollupTone && <NavBadgeDot tone={rollupTone} />}
       </PopoverTrigger>
       <PopoverContent side="right" align="start" sideOffset={8} className="w-48 gap-0.5 p-1.5">
-        <div className="px-2 py-1.5 text-xs font-semibold text-bakin-text-primary">{item.label}</div>
+        <div className="px-bakin-2 py-1.5 text-xs font-bakin-typography-weight-semibold text-bakin-text-primary">{item.label}</div>
         {item.children!.map((child) => {
           const ChildIcon = resolveNavIcon(child.icon)
           const childActive = isNavActive(pathname, child.href)
@@ -144,11 +145,9 @@ function CollapsedNavGroup({
               key={child.id}
               to={child.href}
               onClick={onNavigate}
-              className={`flex items-center gap-2 rounded-bakin-control px-2 py-1.5 text-sm transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring ${
-                childActive
+              className={cn('flex items-center gap-bakin-2 rounded-bakin-control px-bakin-2 py-1.5 text-sm transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring', childActive
                   ? 'bg-bakin-border-subtle/35 text-bakin-text-primary'
-                  : 'text-bakin-text-muted hover:bg-bakin-border-subtle/20 hover:text-bakin-text-primary'
-              }`}
+                  : 'text-bakin-text-muted hover:bg-bakin-border-subtle/20 hover:text-bakin-text-primary')}
               aria-current={childActive ? 'page' : undefined}
               aria-label={`${child.label}${navBadgeAriaSuffix(childBadge)}`}
             >
@@ -194,18 +193,18 @@ export function SidebarNavItem({
           aria-controls={groupId}
           aria-label={`${item.label}${navBadgeAriaSuffix(headerBadge)}`}
         >
-          <Icon className="size-4 shrink-0" />
+          <Icon className="size-bakin-4 shrink-0" />
           <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
           <NavBadge badge={headerBadge} />
           <ChevronRight
-            className={`size-3.5 shrink-0 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}
+            className={cn('size-3.5 shrink-0 transition-transform duration-150', expanded ? 'rotate-90' : '')}
             aria-hidden="true"
           />
         </button>
         {expanded && (
           <div
             id={groupId}
-            className="mx-1 mb-1 mt-1 flex flex-col overflow-hidden rounded-bakin-control bg-bakin-border-subtle/20 py-1"
+            className="mx-bakin-1 mb-bakin-1 mt-bakin-1 flex flex-col overflow-hidden rounded-bakin-control bg-bakin-border-subtle/20 py-bakin-1"
           >
             {item.children!.map((child) => {
               const ChildIcon = resolveNavIcon(child.icon)
@@ -216,11 +215,9 @@ export function SidebarNavItem({
                   key={child.id}
                   to={child.href}
                   onClick={onNavigate}
-                  className={`flex items-center gap-2.5 px-3 py-1.5 pl-6 text-xs transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring ${
-                    childActive
+                  className={cn('flex items-center gap-2.5 px-bakin-3 py-1.5 pl-bakin-6 text-xs transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring', childActive
                       ? 'bg-bakin-border-subtle/40 text-bakin-text-primary'
-                      : 'text-bakin-text-muted hover:bg-bakin-border-subtle/25 hover:text-bakin-text-primary'
-                  }`}
+                      : 'text-bakin-text-muted hover:bg-bakin-border-subtle/25 hover:text-bakin-text-primary')}
                   aria-current={childActive ? 'page' : undefined}
                   aria-label={`${child.label}${navBadgeAriaSuffix(childBadge)}`}
                 >
@@ -246,11 +243,11 @@ export function SidebarNavItem({
     <Link
       to={item.href}
       onClick={onNavigate}
-      className={`${navRowClass(active, collapsed)} relative`}
+      className={cn(navRowClass(active, collapsed), 'relative')}
       aria-current={active ? 'page' : undefined}
       aria-label={collapsed ? `${item.label}${navBadgeAriaSuffix(flatBadge)}` : undefined}
     >
-      <Icon className="size-4 shrink-0" />
+      <Icon className="size-bakin-4 shrink-0" />
       {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
       {!collapsed && <NavBadge badge={flatBadge} />}
       {collapsed && flatTone && <NavBadgeDot tone={flatTone} />}

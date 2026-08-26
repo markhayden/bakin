@@ -6,6 +6,7 @@ import { useAgent, useContentStore } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
 import { useActivityContext } from '@/context/activity-context'
 import { AgentAvatar } from '@/components/agent-avatar'
+import { cn } from '@makinbakin/sdk/utils'
 
 /** Non-agent sources that will never have a headshot image */
 const SYSTEM_SOURCES = new Set(['system', 'workflow', 'dispatch', 'watchdog', 'dashboard', 'api'])
@@ -25,7 +26,7 @@ function FeedAgentName({ agent }: { agent: string }) {
   const label = SYSTEM_SOURCES.has(agent) ? agent : resolved?.name || agent
   return (
     <span
-      className="text-bakin-typography-size-meta font-medium"
+      className="text-bakin-typography-size-meta font-bakin-typography-weight-medium"
       style={{ color: SYSTEM_SOURCES.has(agent) ? 'var(--bakin-color-text-muted)' : `var(--agent-${agent}, var(--bakin-color-text-muted))` }}
     >
       {label}
@@ -37,7 +38,7 @@ function FeedAvatar({ agent }: { agent: string }) {
   if (SYSTEM_SOURCES.has(agent)) {
     const Icon = SYSTEM_ICONS[agent] || Zap
     return (
-      <span className="size-6 rounded-full bg-bakin-surface-elevated flex items-center justify-center shrink-0">
+      <span className="size-bakin-6 rounded-bakin-pill bg-bakin-surface-elevated flex items-center justify-center shrink-0">
         <Icon className="size-3.5 text-bakin-text-muted" />
       </span>
     )
@@ -80,9 +81,9 @@ function DispatchFailureDebug({ data }: { data?: Record<string, unknown> }) {
   if (rows.length === 0 && !rawError) return null
 
   return (
-    <div className="mt-2 rounded-md bg-bakin-surface-elevated/40 px-2 py-1.5 text-bakin-typography-size-meta text-bakin-text-muted">
+    <div className="mt-bakin-2 rounded-md bg-bakin-surface-elevated/40 px-bakin-2 py-1.5 text-bakin-typography-size-meta text-bakin-text-muted">
       {rows.length > 0 && (
-        <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+        <div className="grid grid-cols-2 gap-x-bakin-2 gap-y-bakin-1">
           {rows.map(([label, value]) => (
             <div key={label} className="min-w-0">
               <span className="text-bakin-text-muted/60">{label}: </span>
@@ -92,9 +93,9 @@ function DispatchFailureDebug({ data }: { data?: Record<string, unknown> }) {
         </div>
       )}
       {rawError && (
-        <details className="mt-1">
+        <details className="mt-bakin-1">
           <summary className="cursor-pointer text-bakin-text-muted/70">Raw error</summary>
-          <p className="mt-1 break-words font-mono text-bakin-typography-size-meta leading-snug">{rawError}</p>
+          <p className="mt-bakin-1 break-words font-mono text-bakin-typography-size-meta leading-snug">{rawError}</p>
         </details>
       )}
     </div>
@@ -123,7 +124,6 @@ export function ActivityFeed() {
           size="icon-md"
           onClick={toggle}
           aria-label="Open Live Activity"
-          title="Live Activity"
           className="fixed bottom-bakin-4 right-bakin-4 top-auto z-50 hidden translate-y-0 rounded-bakin-pill border-bakin-border-subtle/30 bg-bakin-surface-default/95 shadow-bakin-elevation-overlay backdrop-blur-sm hover:bg-bakin-surface-elevated active:not-aria-[haspopup]:translate-y-0 md:inline-flex"
         >
           <Radio aria-hidden="true" className="size-bakin-4 text-bakin-text-muted" />
@@ -138,11 +138,11 @@ export function ActivityFeed() {
         className="flex h-full w-[min(360px,100vw)] flex-col bg-bakin-canvas-default"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-bakin-border-subtle/30 px-3 py-2">
+        <div className="flex items-center justify-between border-b border-bakin-border-subtle/30 px-bakin-3 py-bakin-2">
           <div className="flex items-center">
-            <span className="text-sm font-medium text-bakin-text-primary">Live Activity</span>
+            <span className="text-sm font-bakin-typography-weight-medium text-bakin-text-primary">Live Activity</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-bakin-1">
             <Button
               type="button"
               variant="ghost"
@@ -151,22 +151,20 @@ export function ActivityFeed() {
               aria-label="Close Live Activity"
               className="text-bakin-text-muted hover:text-bakin-text-primary"
             >
-              <ChevronRight className="size-4" />
+              <ChevronRight className="size-bakin-4" />
             </Button>
           </div>
         </div>
 
         {/* Event list */}
-        <div className="flex-1 overflow-y-auto py-1 flex flex-col">
+        <div className="flex-1 overflow-y-auto py-bakin-1 flex flex-col">
           {events.length === 0 && (
-            <p className="text-xs text-bakin-text-muted text-center mt-8">No activity yet</p>
+            <p className="text-xs text-bakin-text-muted text-center mt-bakin-8">No activity yet</p>
           )}
           {events.filter((evt) => debug || !evt.duplicate).map((evt, i) => (
             <div
               key={`${evt.id}-${i}`}
-              className={`flex gap-2.5 px-3 py-2.5 hover:bg-bakin-surface-elevated/50 transition-colors border-b border-bakin-border-subtle/18 last:border-0 ${
-                evt.type === 'alert' ? 'bg-bakin-signal-highlight/10' : ''
-              }`}
+              className={cn('flex gap-2.5 px-bakin-3 py-2.5 hover:bg-bakin-surface-elevated/50 transition-colors border-b border-bakin-border-subtle/18 last:border-0', evt.type === 'alert' ? 'bg-bakin-signal-highlight/10' : '')}
             >
               <FeedAvatar agent={evt.agent} />
               <div className="flex-1 min-w-0">
@@ -177,9 +175,7 @@ export function ActivityFeed() {
                 {evt.taskTitle && evt.type === 'log' && (
                   <p className="text-bakin-typography-size-meta text-bakin-text-muted mb-0.5 truncate">{evt.taskTitle}</p>
                 )}
-                <p className={`text-bakin-typography-size-body leading-snug break-words ${
-                  evt.type === 'alert' ? 'text-bakin-signal-highlight' : 'text-bakin-text-primary/80'
-                }`}>{evt.message}</p>
+                <p className={cn('text-bakin-typography-size-body leading-snug break-words', evt.type === 'alert' ? 'text-bakin-signal-highlight' : 'text-bakin-text-primary/80')}>{evt.message}</p>
                 {evt.eventName && (
                   <p className="text-bakin-typography-size-meta text-bakin-text-muted/60 mt-0.5 truncate font-mono">{evt.eventName}</p>
                 )}

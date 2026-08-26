@@ -117,7 +117,7 @@ export function ProviderKeysTab() {
 
   if (loading) {
     return (
-      <div className="space-y-3 max-w-2xl">
+      <div className="space-y-bakin-3 max-w-2xl">
         <Skeleton className="h-16 w-full" />
         <Skeleton className="h-16 w-full" />
       </div>
@@ -125,9 +125,9 @@ export function ProviderKeysTab() {
   }
 
   return (
-    <div className="space-y-3 max-w-2xl">
+    <div className="space-y-bakin-3 max-w-2xl">
       {error && (
-        <p role="alert" className="rounded-md border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 px-3 py-2 text-sm text-bakin-signal-danger">
+        <p role="alert" className="rounded-md border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 px-bakin-3 py-bakin-2 text-sm text-bakin-signal-danger">
           {error}
         </p>
       )}
@@ -153,14 +153,14 @@ export function ProviderKeysTab() {
                 ? 'No key configured.'
                 : `Managed by the runtime — configure it in ${runtimeLabel}.`
         return (
-          <div key={row.id} className="flex flex-col gap-2 rounded-md border p-3">
+          <div key={row.id} className="flex flex-col gap-bakin-2 rounded-md border p-bakin-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">{row.label}</span>
+              <span className="text-sm font-bakin-typography-weight-medium">{row.label}</span>
               <Badge variant={badge.variant}>{badge.label}</Badge>
             </div>
             <p className="text-xs text-bakin-text-muted">{detail}</p>
             {storeable && !envSet && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-bakin-2">
                 <Input
                   type="password"
                   placeholder={isStored ? 'Replace stored key…' : 'Enter API key…'}
@@ -181,19 +181,19 @@ export function ProviderKeysTab() {
         )
       })}
 
-      <div className="pt-4 space-y-2">
-        <h3 className="text-sm font-medium">Integration secrets</h3>
+      <div className="pt-bakin-4 space-y-bakin-2">
+        <h3 className="text-sm font-bakin-typography-weight-medium">Integration secrets</h3>
         <p className="text-xs text-bakin-text-muted">
           Named secrets used by installed capabilities and integrations (e.g. a search API key or a bot
           token). Values are write-only — they never leave the server. An environment variable with the
           matching name always overrides a stored value.
         </p>
         {Object.entries(secretNames).sort(([a], [b]) => a.localeCompare(b)).map(([provider, names]) => (
-          <div key={provider} className="flex flex-col gap-2 rounded-md border p-3">
-            <span className="text-sm font-medium">{provider}</span>
-            <div className="flex flex-wrap items-center gap-2">
+          <div key={provider} className="flex flex-col gap-bakin-2 rounded-md border p-bakin-3">
+            <span className="text-sm font-bakin-typography-weight-medium">{provider}</span>
+            <div className="flex flex-wrap items-center gap-bakin-2">
               {names.map(name => (
-                <span key={name} className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs">
+                <span key={name} className="inline-flex items-center gap-bakin-1 rounded-md border px-bakin-2 py-0.5 text-xs">
                   {name}
                   <button
                     type="button"
@@ -209,7 +209,7 @@ export function ProviderKeysTab() {
             </div>
           </div>
         ))}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-bakin-2">
           <Input
             placeholder="integration (e.g. brave)"
             value={addDraft.provider}

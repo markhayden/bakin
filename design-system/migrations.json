@@ -24,7 +24,7 @@
     "totals": {
       "raw-palette": 4,
       "arbitrary-size": 84,
-      "raw-scale": 921,
+      "raw-scale": 804,
       "raw-control": 20,
       "inline-style": 34,
       "generic-token": 72,
@@ -247,7 +247,7 @@
       "target": "canonical shell layout and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 18
+        "raw-scale": 6
       }
     },
     {
@@ -292,7 +292,7 @@
       "target": "canonical shell layout and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 46
+        "raw-scale": 26
       }
     },
     {
@@ -352,7 +352,7 @@
       "target": "canonical shell layout and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 30
+        "raw-scale": 15
       }
     },
     {
@@ -367,7 +367,7 @@
       "target": "canonical shell layout and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 17
+        "raw-scale": 8
       }
     },
     {
@@ -427,7 +427,7 @@
       "target": "canonical global-search overlay and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 33
+        "raw-scale": 14
       }
     },
     {
@@ -458,7 +458,7 @@
       "target": "supported host UI and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 14
+        "raw-scale": 7
       }
     },
     {
@@ -2745,7 +2745,7 @@
       "target": "focused SDK primitive/pattern and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 34
+        "raw-scale": 16
       }
     },
     {
@@ -2760,7 +2760,7 @@
       "target": "focused SDK primitive/pattern and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 28
+        "raw-scale": 11
       }
     }
   ]

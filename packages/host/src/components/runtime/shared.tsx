@@ -14,6 +14,7 @@
 import type { ComponentType, ReactNode } from 'react'
 import { Inline, Stack } from '@makinbakin/sdk/layout'
 import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { cn } from '@makinbakin/sdk/utils'
 
 export type CapabilityMode = 'native' | 'shimmed' | 'unavailable' | string
 
@@ -121,9 +122,9 @@ export function EntityCardBody({
     <Inline align="start" gap="item" wrap={false}>
       <span
         aria-hidden="true"
-        className={`flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control ${active ? 'bg-bakin-action-primary-background/10' : 'bg-bakin-canvas-default'}`}
+        className={cn('flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control', active ? 'bg-bakin-action-primary-background/10' : 'bg-bakin-canvas-default')}
       >
-        <Icon className={`size-bakin-4 ${active ? 'text-bakin-action-primary-background' : 'text-bakin-text-muted'}`} />
+        <Icon className={cn('size-bakin-4', active ? 'text-bakin-action-primary-background' : 'text-bakin-text-muted')} />
       </span>
       <Stack gap="dense" className="flex-1">
         <Inline gap="dense" align="center">
