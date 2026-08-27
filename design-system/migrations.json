@@ -24,7 +24,7 @@
     "totals": {
       "raw-palette": 4,
       "arbitrary-size": 84,
-      "raw-scale": 804,
+      "raw-scale": 665,
       "raw-control": 20,
       "inline-style": 34,
       "generic-token": 72,
@@ -47,7 +47,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 1,
-        "raw-scale": 18,
+        "raw-scale": 16,
         "raw-control": 3,
         "inline-style": 1
       }
@@ -66,7 +66,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 1,
-        "raw-scale": 13
+        "raw-scale": 3
       }
     },
     {
@@ -82,7 +82,7 @@
       "target": "official Messaging archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 64
+        "raw-scale": 35
       }
     },
     {
@@ -98,8 +98,7 @@
       "target": "official Messaging archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 1,
-        "raw-scale": 10
+        "arbitrary-size": 1
       }
     },
     {
@@ -133,7 +132,7 @@
       "target": "official Messaging archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 46
+        "raw-scale": 23
       }
     },
     {
@@ -149,7 +148,7 @@
       "target": "official Projects list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 4
+        "raw-scale": 1
       }
     },
     {
@@ -181,7 +180,7 @@
       "target": "official Projects list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 23
+        "raw-scale": 10
       }
     },
     {
@@ -198,7 +197,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 1,
-        "raw-scale": 75,
+        "raw-scale": 31,
         "inline-style": 1
       }
     },
@@ -216,7 +215,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 1,
-        "raw-scale": 6
+        "raw-scale": 3
       }
     },
     {
@@ -232,7 +231,7 @@
       "target": "official Projects list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 3
+        "raw-scale": 1
       }
     },
     {
