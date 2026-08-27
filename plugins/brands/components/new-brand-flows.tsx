@@ -5,7 +5,7 @@
  * every path ends with the user looking at the brand they made.
  */
 import { useCallback, useState } from 'react'
-import { Globe, FolderDown, Wand2, Loader2 } from 'lucide-react'
+import { Globe, FolderDown, Wand2, } from 'lucide-react'
 import { AgentSelect } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -29,7 +29,9 @@ import {
   FieldLabel,
   Form,
   Input,
+  Spinner,
   SubmitButton,
+  Text,
   Textarea,
 } from '@makinbakin/sdk/ui'
 import { useBrandAgentOptions } from './use-brand-agent-options'
@@ -206,9 +208,9 @@ export function FromWebsiteDialog({
               <FieldDescription>Used for the kit name and its stable identifier.</FieldDescription>
               <Input id="fw-name" autoFocus required placeholder="e.g. Acme" value={name} onChange={(e) => setName(e.target.value)} />
             {name.trim() && (
-              <p className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text mono size="meta" tone="muted" as="p">
                 id: {id}
-              </p>
+              </Text>
             )}
             </Field>
             <Field name="urls">
@@ -251,7 +253,7 @@ export function FromWebsiteDialog({
               Cancel
             </Button>
             <SubmitButton
-              busyLabel={<><Loader2 className="animate-spin motion-reduce:animate-none" /> Creating draft…</>}
+              busyLabel={<><Spinner /> Creating draft…</>}
               disabled={!ready}
               data-from-website-create
             >
@@ -415,7 +417,7 @@ export function ImportBrandDialog({
               Cancel
             </Button>
             <SubmitButton
-              busyLabel={<><Loader2 className="animate-spin motion-reduce:animate-none" /> {preview ? 'Importing…' : 'Fetching…'}</>}
+              busyLabel={<><Spinner /> {preview ? 'Importing…' : 'Fetching…'}</>}
               disabled={!source.trim()}
               data-import-confirm={preview ? true : undefined}
               data-import-preview-btn={preview ? undefined : true}

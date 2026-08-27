@@ -92,14 +92,14 @@ export function AssetMetaSummary({ agent, created, taskId, tags, maxTags = 4 }: 
     <div className="flex flex-col gap-bakin-1">
       <div className="flex items-center gap-bakin-2">
         <AssetAgentIdentity agentId={agent} />
-        <span className="text-bakin-typography-size-meta text-bakin-text-muted/50">|</span>
+        <span className="text-bakin-typography-size-meta text-bakin-text-muted">|</span>
         <div className="flex items-center gap-bakin-1">
-          <Clock className="size-bakin-3 text-bakin-text-muted/50" />
+          <Clock className="size-bakin-3 text-bakin-text-muted" />
           <Text size="meta" tone="muted">{formatAge(created)}</Text>
         </div>
         {taskId && (
           <>
-            <span className="text-bakin-typography-size-meta text-bakin-text-muted/50">|</span>
+            <span className="text-bakin-typography-size-meta text-bakin-text-muted">|</span>
             <Badge variant="outline" size="xs">{taskId.slice(0, 6)}</Badge>
           </>
         )}

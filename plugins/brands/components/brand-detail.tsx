@@ -1641,7 +1641,7 @@ function AssetTile({
             onClick={() => { setDraft(info?.description ?? ''); setEditing(true) }}
           >
             {info?.description
-              ? <span className="line-clamp-3 text-bakin-text-primary/90">{info.description} <Pencil className="inline size-bakin-3 text-bakin-text-muted" /></span>
+              ? <span className="line-clamp-3 text-bakin-text-primary">{info.description} <Pencil className="inline size-bakin-3 text-bakin-text-muted" /></span>
               : <span className="flex items-center gap-bakin-1 text-bakin-text-muted transition-colors hover:text-bakin-text-primary"><Plus className="size-bakin-3" /> Add a note</span>}
           </Button>
         )}
@@ -1900,7 +1900,7 @@ function BrandSettingsTab({
           description="Where this brand kit came from — local edits win over the upstream copy."
         >
           <Text size="body" tone="muted" as="p">
-            <span className="font-bakin-typography-family-mono text-bakin-text-primary/80">{brand.source.repo}</span>
+            <span className="font-bakin-typography-family-mono text-bakin-text-primary">{brand.source.repo}</span>
             {brand.source.commit ? ` @ ${brand.source.commit.slice(0, 8)}` : ''}. Check for upstream changes:
             <code className="ml-bakin-1 rounded bg-bakin-surface-default px-bakin-1 text-bakin-typography-size-meta">bakin brands check {brand.id}</code>
           </Text>

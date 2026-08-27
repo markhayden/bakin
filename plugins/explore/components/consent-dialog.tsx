@@ -1,4 +1,4 @@
-import { Loader2, ShieldAlert } from 'lucide-react'
+import { ShieldAlert } from 'lucide-react'
 import { KeyValue } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -11,6 +11,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Spinner,
 } from '@makinbakin/sdk/ui'
 
 /**
@@ -98,7 +99,7 @@ export function ConsentDialog({
             Decline
           </Button>
           <Button type="button" onClick={() => onAccept(consent)} disabled={busy} data-testid="consent-accept">
-            {busy ? <Loader2 aria-hidden="true" className="size-bakin-4 animate-spin" /> : null}
+            {busy ? <Spinner /> : null}
             {busy ? 'Installing…' : 'Accept and install'}
           </Button>
         </DialogFooter>

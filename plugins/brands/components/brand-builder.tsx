@@ -5,7 +5,7 @@
  * a DRAFT brand, and dispatches the drafting agent to author the rest.
  */
 import { useCallback, useMemo, useState } from 'react'
-import { ImagePlus, Loader2, X } from 'lucide-react'
+import { ImagePlus, X } from 'lucide-react'
 import { AgentSelect, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -27,6 +27,7 @@ import {
   Form,
   FormActions,
   Input,
+  Spinner,
   Text,
   Textarea,
   Tooltip,
@@ -191,7 +192,7 @@ export function BrandBuilder({
         {step < STEPS.length - 1
           ? gatedButton('Next', !canNext, nextBlockedReason, () => setStep((s) => s + 1), 'builder-next')
           : gatedButton(
-              busy ? <><Loader2 className="animate-spin motion-reduce:animate-none" /> Creating…</> : 'Create draft',
+              busy ? <><Spinner /> Creating…</> : 'Create draft',
               !canCreate || busy,
               createBlockedReason,
               undefined,
@@ -259,9 +260,9 @@ export function BrandBuilder({
               <FieldDescription>What the brand is called.</FieldDescription>
               <Input id="builder-name" required placeholder="e.g. Acme" value={a.name} onChange={(e) => set('name', e.target.value)} autoFocus />
               {a.name.trim() && (
-                <p className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                <Text mono size="meta" tone="muted" as="p">
                   id: {id}
-                </p>
+                </Text>
               )}
             </Field>
             <Field name="product">
@@ -448,8 +449,8 @@ function LogoDrop({ preview, fileName, onPick }: { preview: string | null; fileN
           : <span className="flex size-10 shrink-0 items-center justify-center rounded-bakin-control border border-bakin-border-subtle text-bakin-text-muted"><ImagePlus aria-hidden="true" className="size-bakin-4" /></span>}
         <span className="min-w-0">
           {fileName
-            ? <><span className="block truncate font-bakin-typography-weight-semibold">{fileName}</span><span className="block text-bakin-typography-size-meta text-bakin-text-muted">Browse or drop to replace</span></>
-            : <><span className="block font-bakin-typography-weight-semibold">Add a logo</span><span className="block text-bakin-typography-size-meta text-bakin-text-muted">Browse or drop an image here</span></>}
+            ? <><span className="block truncate font-bakin-typography-weight-semibold">{fileName}</span><Text size="meta" tone="muted" className="block">Browse or drop to replace</Text></>
+            : <><span className="block font-bakin-typography-weight-semibold">Add a logo</span><Text size="meta" tone="muted" className="block">Browse or drop an image here</Text></>}
         </span>
       </FileInput>
       {fileName && (

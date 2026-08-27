@@ -87,7 +87,7 @@ export function JobScheduleCell({ job }: { job: ScheduleJob }) {
         {job.tz && <Text as="span" size="meta" tone="muted" className="ml-bakin-1">{job.tz.replace(/^.*\//, '')}</Text>}
       </Text>
       {job.nextRun && !job.paused && (
-        <div className="text-bakin-typography-size-meta text-bakin-text-muted/70">
+        <div className="text-bakin-typography-size-meta text-bakin-text-muted">
           next {new Date(job.nextRun).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
         </div>
       )}

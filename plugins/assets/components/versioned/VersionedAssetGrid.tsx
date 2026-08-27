@@ -38,12 +38,13 @@ import {
   DialogHeader,
   DialogTitle,
   FileInput,
+  Spinner,
   SystemState,
   Text,
   type FileInputHandle,
 } from '@makinbakin/sdk/ui'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
-import { Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Tags, ArrowLeft, Inbox, Sparkles } from 'lucide-react'
+import { Upload, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Tags, ArrowLeft, Inbox, Sparkles } from 'lucide-react'
 import { ASSET_TYPES } from '../../lib/constants'
 import { createSseRefetchScheduler } from './sse-refetch'
 import { AssetEditDrawer } from './AssetEditDrawer'
@@ -83,7 +84,7 @@ const ENRICHMENT_BADGE: Record<VersionedAssetSummary['enrichment'], { className:
   pending: { className: 'text-bakin-signal-accent animate-pulse motion-reduce:animate-none', label: 'Enrichment in progress' },
   failed: { className: 'text-bakin-signal-danger', label: 'Enrichment failed — see asset detail' },
   skipped: { className: 'text-bakin-text-muted', label: 'Enrichment skipped (unsupported or no engine)' },
-  none: { className: 'text-bakin-text-muted/60', label: 'Not enriched yet — select and hit Enrich' },
+  none: { className: 'text-bakin-text-muted', label: 'Not enriched yet — select and hit Enrich' },
 }
 
 function EnrichmentDot({ status }: { status: VersionedAssetSummary['enrichment'] }) {
@@ -469,7 +470,7 @@ export function VersionedAssetGrid() {
           : 'Upload images, documents, or other files. Agents also create assets here as they work.'}
         action={(
           <Button onClick={openPicker} disabled={uploading} data-testid="add-first-asset">
-            {uploading ? <Loader2 className="size-bakin-4 animate-spin" /> : <Upload className="size-bakin-4" />}
+            {uploading ? <Spinner /> : <Upload className="size-bakin-4" />}
             {uploading ? 'Uploading…' : 'Add your first asset'}
           </Button>
         )}
@@ -504,7 +505,7 @@ export function VersionedAssetGrid() {
         actionsLabel="Asset actions"
         actions={(
           <Button className="min-w-28" onClick={openPicker} disabled={uploading} data-testid="add-asset">
-            {uploading ? <Loader2 className="size-bakin-4 animate-spin" /> : <Upload className="size-bakin-4" />}
+            {uploading ? <Spinner /> : <Upload className="size-bakin-4" />}
             {uploading ? 'Uploading…' : 'Add asset'}
           </Button>
         )}
@@ -781,10 +782,10 @@ export function VersionedAssetGrid() {
             <TagInput value={bulkTags} onChange={setBulkTags} suggestions={tagOptions.filter(o => o.value !== UNTAGGED).map(o => o.value)} placeholder="Add tags…" />
           </div>
           <Button size="sm" onClick={applyBulkTags} disabled={bulkBusy || bulkTags.length === 0} data-testid="bulk-apply-tags">
-            {bulkBusy ? <Loader2 className="size-bakin-4 animate-spin" /> : null} Save
+            {bulkBusy ? <Spinner /> : null} Save
           </Button>
           <Button size="sm" variant="outline" onClick={startEnrich} disabled={enriching} data-testid="bulk-enrich">
-            {enriching ? <Loader2 className="size-bakin-4 animate-spin" /> : <Sparkles className="size-bakin-4" />} Enrich
+            {enriching ? <Spinner /> : <Sparkles className="size-bakin-4" />} Enrich
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} data-testid="bulk-clear-selection">Clear</Button>
           {bulkError && <p className="text-bakin-typography-size-meta text-bakin-signal-danger">{bulkError}</p>}

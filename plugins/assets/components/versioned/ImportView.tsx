@@ -8,8 +8,8 @@
  * SSE event the watcher-fed tracker emits.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Download, FolderSearch, Loader2 } from 'lucide-react'
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SystemState, Text } from '@makinbakin/sdk/ui'
+import { Download, FolderSearch, } from 'lucide-react'
+import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner, SystemState, Text } from '@makinbakin/sdk/ui'
 import { DataTable, type DataTableColumn } from '@makinbakin/sdk/patterns'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
 import { formatAge, formatSize } from '@makinbakin/sdk/utils'
@@ -115,7 +115,7 @@ export function ImportView({ onImported, onCountChange }: { onImported?: () => v
           {files.length} unmanaged file{files.length === 1 ? '' : 's'} — imported assets are indexed and searchable like any other.
         </Text>
         <Button size="sm" onClick={() => runImport({ all: true }, 'all')} disabled={busy !== null} data-testid="import-all">
-          {busy === 'all' ? <Loader2 className="size-bakin-3 animate-spin" /> : <Download className="size-bakin-3" />}
+          {busy === 'all' ? <Spinner size="sm" /> : <Download className="size-bakin-3" />}
           Import all ({files.length})
         </Button>
       </div>
@@ -196,7 +196,7 @@ export function ImportView({ onImported, onCountChange }: { onImported?: () => v
             disabled={busy !== null}
             data-testid={`import-${file.name}`}
           >
-            {busy === file.relPath ? <Loader2 className="size-bakin-3 animate-spin" /> : <Download className="size-bakin-3" />}
+            {busy === file.relPath ? <Spinner size="sm" /> : <Download className="size-bakin-3" />}
             Import
           </Button>
         ),

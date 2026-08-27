@@ -4,7 +4,7 @@ import { PieChart } from '@makinbakin/sdk/charts'
 import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
-import { Button, Progress, Skeleton } from '@makinbakin/sdk/ui'
+import { Button, Progress, Skeleton, Text } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, Gauge, Layers3 } from 'lucide-react'
 import { formatTokenCount } from '../lib/format'
 import type { OverviewTelemetry } from './overview-telemetry'
@@ -118,7 +118,7 @@ export function OverviewContextTraffic({
             </div>
           </div>
         ) : (
-          <div className="mt-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">Waiting for startup-context estimates.</div>
+          <Text size="meta" tone="muted" as="div" className="mt-bakin-2">Waiting for startup-context estimates.</Text>
         )}
       </div>
 
@@ -136,7 +136,7 @@ export function OverviewContextTraffic({
             {sessions.onRetry && <Button size="xs" variant="ghost" onClick={sessions.onRetry}>Retry</Button>}
           </div>
         ) : totalTraffic === 0 ? (
-          <div className="mt-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">No latest-session traffic reported.</div>
+          <Text size="meta" tone="muted" as="div" className="mt-bakin-2">No latest-session traffic reported.</Text>
         ) : (
           <>
             <div className="mt-bakin-2">

@@ -13,9 +13,10 @@ import {
   Badge,
   Button,
   Input,
+  Spinner,
   Text,
 } from '@makinbakin/sdk/ui'
-import { Loader2, Pencil, RefreshCw, Sparkles, Tags } from 'lucide-react'
+import { Pencil, RefreshCw, Sparkles, Tags } from 'lucide-react'
 import { VERSIONED_API, TAGS_API, ENRICH_API } from './asset-urls'
 import type { VersionedAssetManifest } from './types'
 
@@ -114,7 +115,7 @@ export function EnrichmentCard({ manifest, onChanged }: Props) {
            
             data-testid="enrichment-rerun"
           >
-            {busy ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+            {busy ? <Spinner /> : <RefreshCw />}
           </Button>
         </div>
       </div>

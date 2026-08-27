@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
   SystemState,
+  Text,
 } from '@makinbakin/sdk/ui'
 
 import type { BudgetRuleWire, ModelsData } from './use-models-data'
@@ -325,9 +326,9 @@ export function BillingLanesSection({ m }: { m: ModelsData }) {
                     <p className="font-bakin-typography-weight-semibold text-bakin-text-primary">
                       {agent?.name ?? agentId}
                     </p>
-                    <p className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+                    <Text size="meta" tone="muted" as="p" className="mt-bakin-1">
                       {lane.provider} · detected {lane.lane}
-                    </p>
+                    </Text>
                   </div>
                 </Inline>
 

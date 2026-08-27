@@ -116,6 +116,9 @@ export {
 
 export { Tabs, TabsContent, TabsList, TabsTrigger, tabsListVariants } from './primitives/tabs'
 
+export { Spinner } from './primitives/spinner'
+export type { SpinnerProps, SpinnerSize } from './primitives/spinner'
+
 export { Overline, Text } from './primitives/text'
 export type {
   OverlineProps,

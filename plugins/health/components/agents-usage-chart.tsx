@@ -265,9 +265,9 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
                       className="flex min-h-28 flex-col items-center justify-center rounded-bakin-control border border-dashed border-bakin-border-subtle bg-bakin-canvas-default px-bakin-4 py-bakin-6 text-center"
                     >
                       <strong className="text-bakin-typography-size-title tabular-nums text-bakin-text-primary">$0.00</strong>
-                      <span className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+                      <Text size="meta" tone="muted" className="mt-bakin-1">
                         All {costedMessages} cost-reporting messages returned $0.00 in this window.
-                      </span>
+                      </Text>
                     </div>
                   ) : trend.data.length > WIDE_WINDOW_DAYS ? (
                     <div className="w-full" data-agent-token-trend-plot>

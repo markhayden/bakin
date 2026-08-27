@@ -2,7 +2,7 @@ import { ArrowUpRight, Check, Image as ImageIcon } from 'lucide-react'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import { Grid } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
-import { Drawer, DrawerSection } from '@makinbakin/sdk/ui'
+import { Drawer, DrawerSection, Text } from '@makinbakin/sdk/ui'
 import { KeyValue, ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
 import { EntryVisual } from './catalog-card'
 import type { ExploreCatalogEntry } from '../types'
@@ -87,9 +87,9 @@ export function DetailDrawer({
                 ))}
           </Grid>
           {entry.screenshots.length === 0 ? (
-            <p className="mt-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
+            <Text size="meta" tone="muted" as="p" className="mt-bakin-2">
               Screenshots coming soon
-            </p>
+            </Text>
           ) : null}
         </DrawerSection>
 

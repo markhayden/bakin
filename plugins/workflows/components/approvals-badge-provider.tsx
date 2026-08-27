@@ -13,7 +13,7 @@
 import { useCallback, useEffect } from 'react'
 import { useNavBadge, usePluginEvent, useRouter, toast, useToastStore } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
-import { Button } from '@makinbakin/sdk/ui'
+import { Button, Text } from '@makinbakin/sdk/ui'
 import { useState } from 'react'
 
 import { sendBrowserNotification } from '../lib/browser-notify'
@@ -37,7 +37,7 @@ function GateToast({ url, title, body, onNavigate }: { url: string; title: strin
     >
       <span className="block min-w-0">
         <span className="font-bakin-typography-weight-medium">{title}</span>
-        <span className="block text-bakin-typography-size-meta text-bakin-text-muted">{body}</span>
+        <Text size="meta" tone="muted" className="block">{body}</Text>
       </span>
     </Button>
   )

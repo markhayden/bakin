@@ -37,8 +37,8 @@ export function Monogram({ name, tint, size = 'lg' }: { name: string; tint?: str
     <span
       className={
         size === 'lg'
-          ? 'flex size-16 items-center justify-center rounded-bakin-surface text-2xl font-bakin-typography-weight-semibold text-bakin-text-primary/70 ring-1 ring-bakin-text-primary/10'
-          : 'flex size-10 shrink-0 items-center justify-center rounded-bakin-control text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary/70 ring-1 ring-bakin-text-primary/10'
+          ? 'flex size-16 items-center justify-center rounded-bakin-surface text-2xl font-bakin-typography-weight-semibold text-bakin-text-primary ring-1 ring-bakin-text-primary/10'
+          : 'flex size-10 shrink-0 items-center justify-center rounded-bakin-control text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary ring-1 ring-bakin-text-primary/10'
       }
       style={tint ? { backgroundColor: `${tint}33` } : undefined}
       data-brand-monogram
@@ -111,7 +111,7 @@ export function BrandCoverCard({ brand }: { brand: ListedBrand }) {
         {brand.description ? (
           <p className="line-clamp-2 text-bakin-typography-size-body text-bakin-text-muted">{brand.description}</p>
         ) : (
-          <p className="text-bakin-typography-size-body text-bakin-text-muted/60">No description yet.</p>
+          <p className="text-bakin-typography-size-body text-bakin-text-muted">No description yet.</p>
         )}
 
         {completeness && (

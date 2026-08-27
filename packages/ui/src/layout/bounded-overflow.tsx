@@ -32,7 +32,20 @@ export type BoundedOverflowProps = BoundedOverflowBaseProps & BoundedOverflowNam
   stickyScrollbar?: boolean
 }
 
-/** Labelled keyboard-scrollable boundary for wide tables, charts, and canvases. */
+/**
+ * Labelled keyboard-scrollable boundary for wide tables, charts, and canvases.
+ *
+ * HORIZONTAL ONLY, and deliberately so — the name is broader than the
+ * behaviour. Vertical is pinned to `hidden` because the page owns the one
+ * vertical scroll; a component that bounded height here would make nested
+ * vertical scrolling easy to reach for, which is the thing the scroll doctrine
+ * forbids. A genuinely panel-scoped vertical region belongs to `Panel scroll`,
+ * which pairs the height bound with its own labelling.
+ *
+ * Consumed by the kit patterns that need it (DataTable, the charts, Kanban,
+ * calendar grid, page canvas) rather than by product code directly — reach for
+ * the pattern, not this.
+ */
 export function BoundedOverflow({
   children,
   className,

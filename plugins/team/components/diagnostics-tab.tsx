@@ -18,7 +18,7 @@
  * incidents and their structured agent resources.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
+import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { ChartExplainer, Sparkline } from '@makinbakin/sdk/charts'
 import { usePluginEvent, useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
 import { DisclosurePanel, Grid, Inline, Panel, Section, Stack } from '@makinbakin/sdk/layout'
@@ -41,6 +41,7 @@ import {
   ProgressLabel,
   ProgressValue,
   Skeleton,
+  Spinner,
   SystemState,
   Text,
   Tooltip,
@@ -360,7 +361,7 @@ function DriftPanel({ agentId }: { agentId: string }) {
               <RefreshCw className="mr-1 size-3" /> Rescan
             </Button>
             <Button size="sm" onClick={() => void handleSync()} disabled={syncing || !scan?.packageId}>
-              {syncing ? <Loader2 className="mr-1 size-3 animate-spin" /> : null}
+              {syncing ? <Spinner size="sm" className="mr-1" /> : null}
               Sync now
             </Button>
           </div>

@@ -198,7 +198,7 @@ export function OverviewAgentSpend({
                       </span>
                       <span data-testid="agent-spend-metric" className="text-right tabular-nums">
                         <strong className="block text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{formatTokenCount(row.tokens.total)}</strong>
-                        <span className="block text-bakin-typography-size-meta text-bakin-text-muted">{rowCost(row) ?? 'cost —'}</span>
+                        <Text size="meta" tone="muted" className="block">{rowCost(row) ?? 'cost —'}</Text>
                       </span>
                     </PluginLink>
                   </ListRow>

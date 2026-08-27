@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 300,
-    "typeExports": 404
+    "valueExports": 301,
+    "typeExports": 406
   },
   "entrypoints": [
     {
@@ -144,6 +144,7 @@
         "SheetTrigger",
         "ShimmerText",
         "Skeleton",
+        "Spinner",
         "SubmitButton",
         "Switch",
         "SystemState",
@@ -316,6 +317,8 @@
         "ShimmerTextProps",
         "SkeletonProps",
         "SkeletonShape",
+        "SpinnerProps",
+        "SpinnerSize",
         "SubmitButtonProps",
         "SwitchProps",
         "SwitchSize",

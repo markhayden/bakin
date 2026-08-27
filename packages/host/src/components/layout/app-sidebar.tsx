@@ -100,7 +100,7 @@ export function AppSidebar({
                 id={headingId}
                 className={collapsed
                   ? 'sr-only'
-                  : 'px-bakin-3 pb-1.5 pt-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-widest text-bakin-text-muted/70'
+                  : 'px-bakin-3 pb-1.5 pt-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-widest text-bakin-text-muted'
                 }
               >
                 {section.label}

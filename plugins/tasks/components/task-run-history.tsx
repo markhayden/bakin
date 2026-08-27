@@ -3,10 +3,11 @@
 import { useState } from 'react'
 import { useTaskRunHistory, type TaskOutcome, type TaskRunEntry } from '@makinbakin/sdk/hooks'
 import {
-  DrawerSection,
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
+  DrawerSection,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { formatDateTime, formatDuration } from '@makinbakin/sdk/utils'
@@ -86,9 +87,9 @@ export function TaskRunHistory({ taskId }: { taskId: string }) {
                   className="grid min-w-0 gap-bakin-2 py-bakin-3 first:pt-0 @md/run:grid-cols-[minmax(0,1fr)_auto]"
                 >
                   <div className="flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1">
-                    <span className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                    <Text mono size="meta" tone="muted">
                       #{run.seq}
-                    </span>
+                    </Text>
                     <time className="text-bakin-typography-size-meta text-bakin-text-muted">
                       {formatDateTime(run.startedAt)}
                     </time>
