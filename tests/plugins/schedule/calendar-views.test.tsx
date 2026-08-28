@@ -161,7 +161,7 @@ describe('Schedule calendar views (occurrence-fed)', () => {
     expect(screen.getByText('11 PM')).toBeDefined()
     expect(screen.getAllByText('Late night release').length).toBeGreaterThan(0)
     // Disposition markers are screen-reader text, never a title tooltip.
-    expect(screen.getByText('Fired').className).toContain('sr-only')
+    expect(screen.getByRole('img', { name: 'Fired' })).toBeTruthy()
   })
 
   it('Week: a skipped past beat carries its skip reason', async () => {
@@ -173,7 +173,7 @@ describe('Schedule calendar views (occurrence-fed)', () => {
       render(<CalendarWeekly jobs={[makeJob()]} onSelectJob={() => {}} />)
     })
 
-    expect(screen.getByText('Skipped — overlap').className).toContain('sr-only')
+    expect(screen.getByRole('img', { name: 'Skipped — overlap' })).toBeTruthy()
   })
 
   it('Week: collapses a multi-occurrence daily series into one day summary', async () => {
@@ -245,7 +245,7 @@ describe('Schedule calendar views (occurrence-fed)', () => {
 
     const summary = screen.getByRole('button', { name: /Hourly Inbox Sync/ })
     expect(summary.textContent).toContain('2 done · 1 skipped')
-    expect(screen.queryByText('Skipped — overlap')).toBeNull()
+    expect(screen.queryByRole('img', { name: 'Skipped — overlap' })).toBeNull()
     expect(screen.getAllByText('Hourly Inbox Sync')).toHaveLength(1)
   })
 

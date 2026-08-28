@@ -2,7 +2,7 @@
 
 import { RankedBarChart, type ChartDatum } from '@makinbakin/sdk/charts'
 import { Grid, Section } from '@makinbakin/sdk/layout'
-import { Button } from '@makinbakin/sdk/ui'
+import { Button, Text } from '@makinbakin/sdk/ui'
 import { ChevronRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { isAttributedAgentRow } from '../lib/activity-feed-compat'
@@ -58,7 +58,7 @@ function BreakdownPanel({
       <h4 className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
         {title}
       </h4>
-      <p className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">{sub}</p>
+      <Text size="meta" tone="muted" as="p" className="mt-bakin-1">{sub}</Text>
       <div className="mt-bakin-3">{children}</div>
     </div>
   )

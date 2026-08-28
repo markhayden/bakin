@@ -2,14 +2,27 @@
 
 import { useMemo, useState } from 'react'
 import {
-  Badge, Button, Card, CardMedia, Input,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  Badge,
+  Button,
+  Card,
+  CardMedia,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Input,
+  Spinner,
   SystemState,
 } from '@makinbakin/sdk/ui'
 import { Grid } from '@makinbakin/sdk/layout'
 import { ConfirmDialog } from '@makinbakin/sdk/patterns'
-import { FolderOpen, MoreVertical, Pencil, Trash2, Loader2 } from 'lucide-react'
+import { FolderOpen, MoreVertical, Pencil, Trash2, } from 'lucide-react'
 import { AssetThumb } from './atoms'
 import { TAGS_API } from './asset-urls'
 import { UNTAGGED } from './tag-filter'
@@ -200,7 +213,7 @@ export function TagFolderGrid({ assets, filter = '', onOpenFolder, onChanged }: 
               disabled={busy || !renameTo.trim() || renameTo.trim() === renaming}
               data-testid="folder-rename-confirm"
             >
-              {busy ? <Loader2 className="size-bakin-4 animate-spin" /> : null} Rename
+              {busy ? <Spinner /> : null} Rename
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,9 +1,9 @@
 'use client'
 
 import {
+  Button,
   Drawer,
   DrawerSection,
-  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
   Separator,
+  Spinner,
   SubmitButton,
   Textarea,
 } from '@makinbakin/sdk/ui'
@@ -34,7 +35,7 @@ import {
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import { Panel } from '@makinbakin/sdk/layout'
 import { Slot } from '@makinbakin/sdk/slots'
-import { Copy, Loader2, MoreHorizontal, Pencil, Trash2, Workflow } from 'lucide-react'
+import { Copy, MoreHorizontal, Pencil, Trash2, Workflow } from 'lucide-react'
 import { COLUMN_CONFIG } from '../constants'
 import type { Task, ColumnId } from '../types'
 import { TaskRunHistory } from './task-run-history'
@@ -167,7 +168,7 @@ export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit 
         <Field name="description">
           <FieldLabel>
             Details
-            {pasting ? <Loader2 aria-label="Processing pasted content" className="ml-bakin-1 inline size-bakin-3 animate-spin" /> : null}
+            {pasting ? <Spinner size="sm" label="Processing pasted content" className="ml-bakin-1 inline" /> : null}
           </FieldLabel>
           <FieldDescription>
             Paste images or long text to attach them without crowding the task description.

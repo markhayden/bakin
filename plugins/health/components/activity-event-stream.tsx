@@ -3,7 +3,7 @@
 import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { Section } from '@makinbakin/sdk/layout'
 import { Pagination, StatusBadge, Timeline, TimelineEntry, type StatusTone } from '@makinbakin/sdk/patterns'
-import { SystemState } from '@makinbakin/sdk/ui'
+import { SystemState, Text } from '@makinbakin/sdk/ui'
 import { useState } from 'react'
 import type { UsageEntry, UsageFeedData } from '../types'
 import {
@@ -78,7 +78,7 @@ function ActivityEventRow({ entry }: { entry: UsageEntry }) {
       expandable
     >
       <p className="text-bakin-typography-size-body text-bakin-text-primary">{failed ? activityFailureReason(entry) : activityImpact(entry)}</p>
-      {failed && <p className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">{activityImpact(entry)}</p>}
+      {failed && <Text size="meta" tone="muted" as="p" className="mt-bakin-1">{activityImpact(entry)}</Text>}
       <dl className="mt-bakin-3 grid gap-x-bakin-4 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted @[28rem]/health:grid-cols-[max-content_minmax(0,1fr)]">
         <dt>Raw name</dt><dd className="break-all font-bakin-typography-family-mono text-bakin-text-primary">{entry.name}</dd>
         <dt>Type</dt><dd className="text-bakin-text-primary">{sourceLabel}</dd>

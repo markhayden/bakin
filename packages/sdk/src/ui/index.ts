@@ -35,6 +35,8 @@ export type {
   BadgeVariantOptions,
   LegacyBadgeVariant,
 } from '@bakin/ui'
+export { Spinner } from '@bakin/ui'
+export type { SpinnerProps, SpinnerSize } from '@bakin/ui'
 export { Overline, Text } from '@bakin/ui'
 export type {
   OverlineProps,

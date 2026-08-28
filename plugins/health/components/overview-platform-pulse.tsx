@@ -3,7 +3,7 @@
 import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
-import { Banner, Button, Skeleton } from '@makinbakin/sdk/ui'
+import { Banner, Button, Skeleton, Text } from '@makinbakin/sdk/ui'
 import {
   Activity,
   AlertTriangle,
@@ -164,7 +164,7 @@ export function OverviewPlatformPulse({
         >
           <Search className={`size-bakin-4 shrink-0 ${TONE[model.search.tone].text}`} aria-hidden="true" />
           <span className="min-w-0">
-            <span className="block text-bakin-typography-size-meta text-bakin-text-muted">Search</span>
+            <Text size="meta" tone="muted" className="block">Search</Text>
             <span className={`block font-bakin-typography-weight-semibold ${TONE[model.search.tone].text}`}>{model.search.statusLabel}</span>
           </span>
           <ChevronRight className="ml-auto size-bakin-3 text-bakin-text-muted transition-transform duration-[var(--bakin-motion-duration-transition)] group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
@@ -183,7 +183,7 @@ export function OverviewPlatformPulse({
             aria-hidden="true"
           />
           <span className="min-w-0">
-            <span className="block text-bakin-typography-size-meta text-bakin-text-muted">Agents</span>
+            <Text size="meta" tone="muted" className="block">Agents</Text>
             <strong className="block whitespace-nowrap font-bakin-typography-weight-semibold text-bakin-text-primary">{count(workingAgents, 'working')}</strong>
             <span className="block whitespace-nowrap text-bakin-typography-size-meta text-bakin-text-muted">{count(model.rightNow.connectedSessions, 'sessions')}</span>
           </span>
@@ -198,7 +198,7 @@ export function OverviewPlatformPulse({
         >
           <Activity className={`size-bakin-4 shrink-0 ${TONE[failureTone].text}`} aria-hidden="true" />
           <span className="min-w-0">
-            <span className="block text-bakin-typography-size-meta text-bakin-text-muted">Failures · 1h</span>
+            <Text size="meta" tone="muted" className="block">Failures · 1h</Text>
             <strong className={`block whitespace-nowrap font-bakin-typography-weight-semibold ${TONE[failureTone].text}`}>{count(recentFailures, 'failed')}</strong>
           </span>
           <ChevronRight className="ml-auto size-bakin-3 text-bakin-text-muted transition-transform duration-[var(--bakin-motion-duration-transition)] group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />

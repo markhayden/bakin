@@ -195,7 +195,7 @@ export function OverviewInteractions({
             />
           </div>
 
-          <p className="mt-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
+          <Text size="meta" tone="muted" as="p" className="mt-bakin-2">
             <span className="font-bakin-typography-weight-medium tabular-nums text-bakin-text-primary">{data.totals.foreground.toLocaleString()} foreground</span>
             {' · '}
             <span className="tabular-nums">{data.totals.background.toLocaleString()} background</span>
@@ -204,7 +204,7 @@ export function OverviewInteractions({
               monitoring excluded
               <span className="sr-only"> — successful routine polling and static delivery are excluded; failures always count.</span>
             </span>
-          </p>
+          </Text>
 
           {destinations.length > 0 && (
             <div className="mt-bakin-3 border-t border-bakin-border-subtle pt-bakin-3">

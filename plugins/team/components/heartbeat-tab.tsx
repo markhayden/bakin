@@ -7,6 +7,7 @@ import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { SystemState } from '@makinbakin/sdk/ui'
 import { useJsonFetch } from '@makinbakin/sdk/hooks'
 import type { HeartbeatRaw } from '../types'
+import { formatAge } from '@makinbakin/sdk/utils'
 
 const HEARTBEAT_DISABLED_REASON =
   'HEARTBEAT.md is maintained by the agent. Editing it here would conflict with the next agent-written update.'
@@ -15,18 +16,13 @@ export interface HeartbeatTabProps {
   agentId: string
 }
 
-function formatRelative(isoTimestamp: string | null): string {
+/** Heartbeats are a liveness signal, so sub-minute ages must resolve. */
+function formatHeartbeatAge(isoTimestamp: string | null): string {
   if (!isoTimestamp) return ''
-  const timestamp = new Date(isoTimestamp).getTime()
-  if (Number.isNaN(timestamp)) return ''
-  const seconds = Math.round((Date.now() - timestamp) / 1000)
-  if (seconds < 60) return `${seconds}s ago`
-  const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  return `${Math.round(hours / 24)}d ago`
+  if (Number.isNaN(new Date(isoTimestamp).getTime())) return ''
+  return formatAge(isoTimestamp, { precise: true })
 }
+
 
 export function HeartbeatTab({ agentId }: HeartbeatTabProps) {
   const { data, loading, error: fetchError } = useJsonFetch<{
@@ -79,7 +75,7 @@ export function HeartbeatTab({ agentId }: HeartbeatTabProps) {
     )
   }
 
-  const lastUpdated = formatRelative(heartbeat.lastUpdated)
+  const lastUpdated = formatHeartbeatAge(heartbeat.lastUpdated)
 
   return (
     <Section spacing="compact">

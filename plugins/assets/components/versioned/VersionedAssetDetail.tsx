@@ -21,14 +21,15 @@ import {
   Banner,
   Button,
   DropdownMenuItem,
-  Label,
   FileInput,
+  Label,
   Radio,
   RadioGroup,
+  Spinner,
   SystemState,
   type FileInputHandle,
 } from '@makinbakin/sdk/ui'
-import { ArrowLeft, Download, Pencil, Trash2, Upload, Loader2, X } from 'lucide-react'
+import { ArrowLeft, Download, Pencil, Trash2, Upload, X } from 'lucide-react'
 import { AssetMetaSummary, AssetThumb } from './atoms'
 import { AssetEditDrawer } from './AssetEditDrawer'
 import { EnrichmentCard } from './EnrichmentCard'
@@ -265,7 +266,7 @@ export function VersionedAssetDetail() {
               disabled={addingVersion}
               data-testid="add-version"
             >
-              {addingVersion ? <Loader2 className="animate-spin" /> : <Upload />}
+              {addingVersion ? <Spinner /> : <Upload />}
               {addingVersion ? 'Uploading…' : 'Add version'}
             </DropdownMenuItem>
             <DropdownMenuItem

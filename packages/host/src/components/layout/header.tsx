@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Download, Loader2, Menu, X, PanelLeftClose, PanelLeft, Bug, Search, Radio } from 'lucide-react'
+import { Download, Menu, X, PanelLeftClose, PanelLeft, Bug, Search, Radio } from 'lucide-react'
 import { ConnectionDot } from './connection-dot'
 import { DispatchTimer } from './dispatch-timer'
 import { NotificationToggle } from './notification-toggle'
@@ -16,6 +16,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Spinner,
 } from '@makinbakin/sdk/ui'
 import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
 import { cn } from '@makinbakin/sdk/utils'
@@ -334,7 +335,7 @@ export function Header() {
               Close
             </Button>
             <Button type="button" variant="info" onClick={applyUpdate} disabled={updating || Boolean(updateMessage)}>
-              {updating && <Loader2 className="size-3.5 animate-spin" />}
+              {updating && <Spinner size="sm" />}
               Update Bakin
             </Button>
           </DialogFooter>

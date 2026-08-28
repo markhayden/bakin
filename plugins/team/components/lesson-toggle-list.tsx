@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { FileText, Loader2 } from 'lucide-react'
+import { FileText, } from 'lucide-react'
 import { Section, Stack } from '@makinbakin/sdk/layout'
 import { ListRow, ListRows } from '@makinbakin/sdk/patterns'
-import { Button, Label, Switch, SystemState } from '@makinbakin/sdk/ui'
+import { Button, Label, Spinner, Switch, SystemState } from '@makinbakin/sdk/ui'
 import { useQueryState } from '@makinbakin/sdk/hooks'
 
 /**
@@ -213,10 +213,7 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
 
                 <div className="flex items-center justify-between gap-bakin-3 sm:justify-end">
                   {pendingId === lesson.lessonId ? (
-                    <Loader2
-                      aria-label={`Updating ${lesson.title}`}
-                      className="size-bakin-4 animate-spin text-bakin-text-muted motion-reduce:animate-none"
-                    />
+                    <Spinner label={`Updating ${lesson.title}`} className="text-bakin-text-muted" />
                   ) : null}
                   <Label htmlFor={switchId} className="text-bakin-text-muted">
                     <span className="text-bakin-typography-size-meta">

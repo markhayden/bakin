@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CalendarGrid, CalendarItem, CalendarNav } from '@makinbakin/sdk/patterns'
+import { CalendarGrid, CalendarItem, CalendarNav, StatusMarker } from '@makinbakin/sdk/patterns'
 import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from '@makinbakin/sdk/hooks'
 import { AgentBadge } from './agent-badge'
 import { RecurringDaySummary, type RecurringDaySummaryTone } from './recurring-day-summary'
@@ -86,15 +86,10 @@ function DispositionDot({ occurrence }: { occurrence: ScheduleOccurrence }) {
   if (!occurrence.past || !occurrence.disposition) return null
   const created = occurrence.disposition === 'created'
   return (
-    <span
-      className={`size-bakin-2 shrink-0 rounded-bakin-pill ${
-        created ? 'bg-bakin-action-primary-background' : 'bg-bakin-signal-highlight'
-      }`}
-    >
-      <span className="sr-only">
-        {created ? 'Fired' : `Skipped${occurrence.skipReason ? ` — ${occurrence.skipReason}` : ''}`}
-      </span>
-    </span>
+    <StatusMarker
+      tone={created ? 'success' : 'attention'}
+      label={created ? 'Fired' : `Skipped${occurrence.skipReason ? ` — ${occurrence.skipReason}` : ''}`}
+    />
   )
 }
 

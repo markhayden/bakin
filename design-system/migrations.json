@@ -24,7 +24,7 @@
     "totals": {
       "raw-palette": 4,
       "arbitrary-size": 84,
-      "raw-scale": 665,
+      "raw-scale": 663,
       "raw-control": 20,
       "inline-style": 34,
       "generic-token": 72,
@@ -291,7 +291,7 @@
       "target": "canonical shell layout and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 26
+        "raw-scale": 25
       }
     },
     {
@@ -2427,7 +2427,7 @@
       "target": "team/agent list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 7
+        "raw-scale": 6
       }
     },
     {

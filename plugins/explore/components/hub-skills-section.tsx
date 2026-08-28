@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, Loader2, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react'
+import { Download, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import { toast, useJsonFetch } from '@makinbakin/sdk/hooks'
 import {
@@ -19,6 +19,7 @@ import {
   Button,
   Drawer,
   Input,
+  Spinner,
   Text,
   Tooltip,
   TooltipContent,
@@ -274,7 +275,7 @@ function PreviewDrawerBody({
       <div className="mt-bakin-2 flex justify-end gap-bakin-2">
         <Button variant="outline" onClick={onCancel} disabled={busy}>Cancel</Button>
         <Button onClick={() => onInstall(preview)} disabled={busy} data-testid="confirm-install">
-          {busy ? <Loader2 className="size-bakin-4 animate-spin" /> : <Download className="size-bakin-4" />}
+          {busy ? <Spinner /> : <Download className="size-bakin-4" />}
           Install
         </Button>
       </div>
@@ -460,7 +461,7 @@ export function HubSkillsSection() {
             data-testid="hub-ref-input"
           />
           <Button onClick={() => void runPreview()} disabled={previewBusy || ref.trim() === ''} data-testid="hub-preview-button">
-            {previewBusy ? <Loader2 className="size-bakin-4 animate-spin" /> : <Download className="size-bakin-4" />}
+            {previewBusy ? <Spinner /> : <Download className="size-bakin-4" />}
             Preview & install
           </Button>
         </div>

@@ -61,9 +61,9 @@ function MessageRow({ message, index }: { message: SessionMessage; index: number
   return (
     <Panel as="article" aria-label={`Turn ${index + 1}: ${message.role}`}>
       <header className="mb-bakin-3 flex min-w-0 flex-wrap items-center gap-bakin-2">
-        <span className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text mono size="meta" tone="muted">
           #{index + 1}
-        </span>
+        </Text>
         <StatusBadge tone={ROLE_TONES[message.role]} variant="solid" size="xs">
           {message.role}
         </StatusBadge>

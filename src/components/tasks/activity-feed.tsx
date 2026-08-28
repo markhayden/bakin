@@ -6,7 +6,7 @@ import { useAgent, useContentStore } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
 import { useActivityContext } from '@/context/activity-context'
 import { AgentAvatar } from '@/components/agent-avatar'
-import { cn } from '@makinbakin/sdk/utils'
+import { cn, formatAge } from '@makinbakin/sdk/utils'
 
 /** Non-agent sources that will never have a headshot image */
 const SYSTEM_SOURCES = new Set(['system', 'workflow', 'dispatch', 'watchdog', 'dashboard', 'api'])
@@ -46,19 +46,6 @@ function FeedAvatar({ agent }: { agent: string }) {
   return <AgentAvatar agentId={agent} size="sm" />
 }
 
-function relativeTime(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime()
-  if (isNaN(diff) || diff < 0) return 'just now'
-  const seconds = Math.floor(diff / 1000)
-  if (seconds < 10) return 'just now'
-  if (seconds < 60) return `${seconds}s ago`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -86,15 +73,15 @@ function DispatchFailureDebug({ data }: { data?: Record<string, unknown> }) {
         <div className="grid grid-cols-2 gap-x-bakin-2 gap-y-bakin-1">
           {rows.map(([label, value]) => (
             <div key={label} className="min-w-0">
-              <span className="text-bakin-text-muted/60">{label}: </span>
-              <span className="text-bakin-text-primary/70">{value}</span>
+              <span className="text-bakin-text-muted">{label}: </span>
+              <span className="text-bakin-text-primary">{value}</span>
             </div>
           ))}
         </div>
       )}
       {rawError && (
         <details className="mt-bakin-1">
-          <summary className="cursor-pointer text-bakin-text-muted/70">Raw error</summary>
+          <summary className="cursor-pointer text-bakin-text-muted">Raw error</summary>
           <p className="mt-bakin-1 break-words font-mono text-bakin-typography-size-meta leading-snug">{rawError}</p>
         </details>
       )}
@@ -170,14 +157,14 @@ export function ActivityFeed() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-1.5 mb-0.5">
                   <FeedAgentName agent={evt.agent} />
-                  <span className="text-bakin-text-muted text-bakin-typography-size-meta shrink-0 tabular-nums">{relativeTime(evt.ts)}</span>
+                  <span className="text-bakin-text-muted text-bakin-typography-size-meta shrink-0 tabular-nums">{formatAge(evt.ts, { precise: true })}</span>
                 </div>
                 {evt.taskTitle && evt.type === 'log' && (
                   <p className="text-bakin-typography-size-meta text-bakin-text-muted mb-0.5 truncate">{evt.taskTitle}</p>
                 )}
-                <p className={cn('text-bakin-typography-size-body leading-snug break-words', evt.type === 'alert' ? 'text-bakin-signal-highlight' : 'text-bakin-text-primary/80')}>{evt.message}</p>
+                <p className={cn('text-bakin-typography-size-body leading-snug break-words', evt.type === 'alert' ? 'text-bakin-signal-highlight' : 'text-bakin-text-primary')}>{evt.message}</p>
                 {evt.eventName && (
-                  <p className="text-bakin-typography-size-meta text-bakin-text-muted/60 mt-0.5 truncate font-mono">{evt.eventName}</p>
+                  <p className="text-bakin-typography-size-meta text-bakin-text-muted mt-0.5 truncate font-mono">{evt.eventName}</p>
                 )}
                 {debug && evt.eventName === 'task.dispatch_failed' && (
                   <DispatchFailureDebug data={evt.data} />

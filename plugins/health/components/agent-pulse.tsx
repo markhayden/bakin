@@ -217,7 +217,7 @@ function LatestSessionDetails({ row, id, checking, unavailable }: {
             ))}
           </div>
           {costLabel && (
-            <p className="mt-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">{costLabel}</p>
+            <Text size="meta" tone="muted" as="p" className="mt-bakin-2">{costLabel}</Text>
           )}
         </div>
       ) : checking ? (

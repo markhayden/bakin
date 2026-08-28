@@ -787,6 +787,7 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=foundations-elevation--ladder&viewMode=story', png: 'foundations-elevation.png', role: 'heading' as const, name: 'Elevation' },
   { url: '/iframe.html?id=primitives-shimmertext--states-and-highlights&viewMode=story', png: 'primitives-shimmer-text.png', text: 'Sweep only what is actually in motion' },
   { url: '/iframe.html?id=primitives-text--sizes-and-tones&viewMode=story', png: 'primitives-text.png', role: 'heading' as const, name: 'Text sizes and tones' },
+  { url: '/iframe.html?id=primitives-spinner--labelled-and-decorative&viewMode=story', png: 'primitives-spinner.png', role: 'heading' as const, name: 'Announced or decorative — never silent and visible' },
   { url: '/iframe.html?id=primitives-text--overline-labels&viewMode=story', png: 'primitives-overline.png', role: 'heading' as const, name: 'Overline' },
 ]
 

@@ -1,6 +1,25 @@
+export interface FormatAgeOptions {
+  /**
+   * Resolve below a minute ("42s ago") instead of flattening to "just now".
+   *
+   * Live-status surfaces need it: on a heartbeat or an activity feed the
+   * difference between five seconds and fifty is the signal, and minute
+   * granularity erases it. Everything under ten seconds still reads
+   * "just now" so a ticking feed does not flicker through 1s/2s/3s.
+   */
+  precise?: boolean
+}
+
 /** Human-readable relative time from an ISO timestamp */
-export function formatAge(timestamp: string): string {
+export function formatAge(timestamp: string, options: FormatAgeOptions = {}): string {
   const ms = Date.now() - new Date(timestamp).getTime()
+  if (Number.isNaN(ms)) return 'just now'
+  const seconds = Math.floor(ms / 1000)
+  if (options.precise) {
+    // A clock skewed into the future reads as now, never as a negative age.
+    if (seconds < 10) return 'just now'
+    if (seconds < 60) return `${seconds}s ago`
+  }
   const mins = Math.floor(ms / 60000)
   if (mins < 1) return 'just now'
   if (mins < 60) return `${mins}m ago`

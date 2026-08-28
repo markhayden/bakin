@@ -11,12 +11,13 @@
  * and left alone (they self-heal).
  */
 import { useState } from 'react'
-import { Search, Send, CheckCircle2, AlertTriangle, Loader2, Lock } from 'lucide-react'
+import { Search, Send, CheckCircle2, AlertTriangle, Lock } from 'lucide-react'
 import {
   Button,
   Checkbox,
   Input,
   Label,
+  Spinner,
   SystemState,
   Text,
   Textarea,
@@ -169,7 +170,7 @@ export function MemoryCleanup() {
             placeholder="e.g. beacon"
           />
           <Button onClick={runFind} disabled={busy === 'find' || !term.trim()}>
-            {busy === 'find' ? <Loader2 className="animate-spin" /> : <Search />}
+            {busy === 'find' ? <Spinner /> : <Search />}
             Find
           </Button>
         </Inline>
@@ -325,7 +326,7 @@ export function MemoryCleanup() {
                 onClick={runDispatch}
                 disabled={busy === 'dispatch' || selected.size === 0 || (action === 'replace' && !replacement.trim())}
               >
-                {busy === 'dispatch' ? <Loader2 className="animate-spin" /> : <Send />}
+                {busy === 'dispatch' ? <Spinner /> : <Send />}
                 Dispatch to {selected.size} agent(s)
               </Button>
             </div>
@@ -355,7 +356,7 @@ export function MemoryCleanup() {
             ))}
             <div>
               <Button variant="outline" size="sm" onClick={runVerify} disabled={busy === 'verify'}>
-                {busy === 'verify' ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
+                {busy === 'verify' ? <Spinner /> : <CheckCircle2 />}
                 Verify
               </Button>
             </div>

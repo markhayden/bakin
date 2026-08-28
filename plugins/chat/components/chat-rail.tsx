@@ -6,7 +6,7 @@
  * contract (per-group labelled lists — refit T6.5).
  */
 import { useMemo, useState } from 'react'
-import { Loader2, PanelLeftClose, Pin, Trash2 } from 'lucide-react'
+import { PanelLeftClose, Pin, Trash2 } from 'lucide-react'
 import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { useAgent, useAgentList } from '@makinbakin/sdk/hooks'
 import {
@@ -24,6 +24,7 @@ import {
   Badge,
   Button,
   Skeleton,
+  Spinner,
   SystemState,
   Tooltip,
   TooltipContent,
@@ -115,10 +116,7 @@ function ChatRow({
         </span>
         {streaming ? (
           <span role="status" aria-label="Reply in progress" className="shrink-0">
-            <Loader2
-              data-chat-working
-              className="size-bakin-3 animate-spin text-bakin-text-muted motion-reduce:animate-none"
-            />
+            <Spinner size="sm" data-chat-working className="text-bakin-text-muted" />
           </span>
         ) : chat.unreadCount > 0 ? (
           <Badge

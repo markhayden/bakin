@@ -126,7 +126,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
       cell: (plugin) => (
         <>
           <p className="font-bakin-typography-weight-medium text-bakin-text-primary">{plugin.name}</p>
-          <p className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">{plugin.id}</p>
+          <Text mono size="meta" tone="muted" as="p">{plugin.id}</Text>
           {(plugin.status === 'failed' || plugin.activationConflict) && (
             <div className="mt-bakin-1 max-w-md text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
               <p>{plugin.activationConflict
@@ -405,7 +405,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                               <h3 className="font-bakin-typography-weight-medium">{check.checkName}</h3>
                               <StatusBadge variant="outline" tone={presentation.tone}>{presentation.label}</StatusBadge>
                             </div>
-                            <p className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">{check.description}</p>
+                            <Text size="meta" tone="muted" as="p" className="mt-bakin-1">{check.description}</Text>
                             <p className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-primary">{presentation.detail}</p>
                           </div>
                           <div className="text-left text-bakin-typography-size-meta text-bakin-text-muted @[40rem]/health-system:text-right">
