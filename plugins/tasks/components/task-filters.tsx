@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { AgentAvatar, AgentFilter, FacetFilter, StatusMarker } from '@makinbakin/sdk/patterns'
 import { useAgentIds, useAgentStore } from '@makinbakin/sdk/hooks'
-import { Switch } from "@makinbakin/sdk/ui"
+import { Field, FieldLabel, Switch } from '@makinbakin/sdk/ui'
 import { Eye, EyeOff } from 'lucide-react'
 import { COLUMN_CONFIG, STATUS_TONES } from '../constants'
 import type { ColumnId } from '../types'
@@ -113,19 +113,17 @@ export function TaskFilters({
       )}
 
       {onShowScheduledChange && (
-        <label
-          data-slot="scheduled-tasks-filter"
-          className="flex items-center gap-bakin-2 text-bakin-typography-size-body text-bakin-text-muted"
-        >
-          {showScheduled ? <Eye className="size-bakin-4" aria-hidden="true" /> : <EyeOff className="size-bakin-4" aria-hidden="true" />}
-          Scheduled Tasks
+        <Field orientation="horizontal" name="showScheduled" data-slot="scheduled-tasks-filter">
           <Switch
             checked={showScheduled}
             onCheckedChange={(checked: boolean) => onShowScheduledChange(checked)}
             size="sm"
-            aria-label={showScheduled ? 'Hide scheduled tasks' : 'Show scheduled tasks'}
           />
-        </label>
+          <FieldLabel>
+            {showScheduled ? <Eye className="size-bakin-4" aria-hidden="true" /> : <EyeOff className="size-bakin-4" aria-hidden="true" />}
+            Scheduled Tasks
+          </FieldLabel>
+        </Field>
       )}
 
     </Inline>

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryState } from '@makinbakin/sdk/hooks'
 import { Grid } from '@makinbakin/sdk/layout'
 import { StatTile, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
-import { Alert, AlertDescription, Button, Text } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, Button, Text, Tooltip, TooltipContent, TooltipTrigger } from '@makinbakin/sdk/ui'
 import { Puzzle, RefreshCw, Search, Server, ShieldCheck } from 'lucide-react'
 import { SystemSearchSection } from './system-search-section'
 import { SystemInventory, type SystemInventoryHandle } from './system-inventory'
@@ -146,16 +146,22 @@ export function SystemTabView({
         title="System"
         description="See whether Bakin can serve work, Search can be trusted, plugins are active, and health evidence is current."
         actions={(
-          <Button
-            size="sm"
-            variant="outline"
-            busy={refreshing}
-            onClick={() => void data.refreshSystemDetails()}
-            title="Reload live system data without running a new health sweep"
-          >
-            <RefreshCw aria-hidden="true" />
-            {refreshing ? 'Refreshing…' : 'Refresh live data'}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={(
+                <Button
+                  size="sm"
+                  variant="outline"
+                  busy={refreshing}
+                  onClick={() => void data.refreshSystemDetails()}
+                />
+              )}
+            >
+              <RefreshCw aria-hidden="true" />
+              {refreshing ? 'Refreshing…' : 'Refresh live data'}
+            </TooltipTrigger>
+            <TooltipContent>Reload live system data without running a new health sweep</TooltipContent>
+          </Tooltip>
         )}
       />
 

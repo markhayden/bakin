@@ -267,7 +267,7 @@ describe('WorkflowDetail', () => {
     })
 
     expect(await screen.findByText('Enabled')).toBeDefined()
-    const availabilitySwitch = screen.getByRole('switch', { name: /disable workflow/i })
+    const availabilitySwitch = screen.getByRole('switch', { name: 'Enabled' })
     expect(availabilitySwitch.parentElement?.className).not.toContain('border')
     await act(async () => { fireEvent.click(availabilitySwitch) })
 
@@ -320,7 +320,7 @@ describe('WorkflowDetail', () => {
     expect(await screen.findByText('Disabled')).toBeDefined()
     expect(screen.getByText(/matching and automatic starts skip this workflow/i)).toBeDefined()
     expect(getWorkflowEditButton().disabled).toBe(true)
-    await act(async () => { fireEvent.click(screen.getByRole('switch', { name: /enable workflow/i })) })
+    await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'Disabled' })) })
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     const [, availabilityInit] = fetchMock.mock.calls[1]

@@ -57,7 +57,7 @@ import {
   type SegmentedControlOption,
 } from '@makinbakin/sdk/patterns'
 import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
-import { Badge, Banner, Button, Switch } from '@makinbakin/sdk/ui'
+import { Badge, Banner, Button, Field, FieldLabel, Switch } from '@makinbakin/sdk/ui'
 import {
   useAgentList,
   usePluginJsonFetch,
@@ -439,20 +439,17 @@ function MemoryShellInner() {
           <PageControls
             label="Memory filters"
             actions={(
-              <div
-                role="group"
-                aria-label="System log visibility"
-                className="flex h-bakin-8 select-none items-center gap-bakin-2 rounded-bakin-control px-bakin-2 font-bakin-typography-weight-semibold text-bakin-text-muted"
-              >
-                <Microscope className="size-bakin-4" aria-hidden="true" />
-                <span className="text-bakin-typography-size-body">System Logs</span>
+              <Field orientation="horizontal" name="systemLogs" className="h-bakin-8 px-bakin-2">
                 <Switch
                   checked={debug}
                   onCheckedChange={(checked: boolean) => setDebugParam(checked ? '1' : '')}
                   size="sm"
-                  aria-label={debug ? 'Hide system logs' : 'Include system logs'}
                 />
-              </div>
+                <FieldLabel>
+                  <Microscope className="size-bakin-4" aria-hidden="true" />
+                  System Logs
+                </FieldLabel>
+              </Field>
             )}
           >
             <FacetFilter

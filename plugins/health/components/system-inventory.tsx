@@ -7,11 +7,12 @@ import {
   DataTable,
   ListRow,
   ListRows,
+  SearchInput,
   StatTile,
   StatusBadge,
   type DataTableColumn,
 } from '@makinbakin/sdk/patterns'
-import { Badge, Banner, Button, Input, Text, type BannerTone } from '@makinbakin/sdk/ui'
+import { Badge, Banner, Button, Text, type BannerTone } from '@makinbakin/sdk/ui'
 import { Clock3, Cpu, Hash, MemoryStick, Network, Users } from 'lucide-react'
 import { formatAge } from '@makinbakin/sdk/utils'
 import type { HealthSummary } from '../types'
@@ -253,7 +254,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
             <span className="block text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">Browse plugins, versions, activation state, and updates.</span>
           </span>
         )}
-        summaryMeta={<Badge variant="secondary">{plugins.length}</Badge>}
+        summaryMeta={<Badge tone="neutral" variant="soft">{plugins.length}</Badge>}
       >
         <div className="space-y-bakin-3">
           <div className="flex justify-end">
@@ -275,16 +276,13 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
               description={error ?? backgroundError}
             />
           )}
-          <label className="block max-w-sm text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">
-            Find a plugin
-            <Input
-              type="search"
-              value={pluginSearch}
-              onChange={(event) => onPluginSearchChange(event.target.value)}
-              placeholder="Name, id, or description"
-              className="mt-bakin-1"
-            />
-          </label>
+          <SearchInput
+            label="Find a plugin"
+            align="start"
+            value={pluginSearch}
+            onValueChange={onPluginSearchChange}
+            placeholder="Name, id, or description"
+          />
           {loading && plugins.length === 0 ? (
             <Text size="body" tone="muted" as="p">Loading installed plugins…</Text>
           ) : filteredPlugins.length === 0 ? (
@@ -318,7 +316,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
             <span className="block text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">Process, uptime, memory, port, and connected sessions.</span>
           </span>
         )}
-        summaryMeta={<Badge variant="secondary">{sessions === null ? 'Unavailable' : `${sessions} ${sessions === 1 ? 'session' : 'sessions'}`}</Badge>}
+        summaryMeta={<Badge tone="neutral" variant="soft">{sessions === null ? 'Unavailable' : `${sessions} ${sessions === 1 ? 'session' : 'sessions'}`}</Badge>}
       >
           <Grid layout="cards" gap="dense" aria-label="Bakin host metrics">
             <StatTile icon={Users} label="Connected sessions" value={sessions === null ? '—' : sessions} sub="Summed across agents" />
@@ -356,7 +354,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
             {report && checksToReview > 0 && (
               <StatusBadge tone="attention" variant="outline">{checksToReview} to review</StatusBadge>
             )}
-            <Badge variant="secondary">{report ? `${report.checks.length} checks` : 'Unavailable'}</Badge>
+            <Badge tone="neutral" variant="soft">{report ? `${report.checks.length} checks` : 'Unavailable'}</Badge>
           </>
         )}
       >
@@ -384,7 +382,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                     summaryMeta={(
                       <span className="flex items-center gap-bakin-2">
                         {concerning > 0 && <StatusBadge tone={concernTone} variant="outline">{concerning} to review</StatusBadge>}
-                        <Badge variant="secondary">{group.checks.length}</Badge>
+                        <Badge tone="neutral" variant="soft">{group.checks.length}</Badge>
                       </span>
                     )}
                   >

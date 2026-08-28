@@ -20,6 +20,8 @@ import {
   type AvatarSize,
 } from '@bakin/ui'
 
+import { cn } from '../utils'
+
 /** Presentation-ready agent identity supplied by a host or plugin. */
 export interface AgentIdentity {
   id: string
@@ -146,7 +148,7 @@ export function AgentDot({ status, ariaLabel, decorative = false, className }: A
       role={decorative ? undefined : 'img'}
       aria-hidden={decorative || undefined}
       aria-label={decorative ? undefined : (ariaLabel ?? presence[status].label)}
-      className={`inline-flex size-bakin-2 shrink-0 rounded-bakin-pill ring-2 ring-bakin-canvas-default ${presence[status].dot} ${className ?? ''}`}
+      className={cn('inline-flex size-bakin-2 shrink-0 rounded-bakin-pill ring-2 ring-bakin-canvas-default', presence[status].dot, className)}
     />
   )
 }

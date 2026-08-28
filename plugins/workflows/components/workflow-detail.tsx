@@ -11,7 +11,8 @@ import {
   PageBody,
   PageCanvas,
 } from '@makinbakin/sdk/patterns'
-import { Badge, Banner, Button, DropdownMenuItem, Skeleton, Switch, SystemState } from '@makinbakin/sdk/ui'
+import { Badge, Banner, Button, DropdownMenuItem, Field, FieldLabel, Skeleton, Switch, SystemState } from '@makinbakin/sdk/ui'
+import { cn } from '@makinbakin/sdk/utils'
 import { ArrowLeft, Pencil, Trash2 } from 'lucide-react'
 import { WorkflowCanvas } from './workflow-canvas'
 import { StepDetailDrawer } from './step-detail-drawer'
@@ -442,20 +443,22 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
             data-workflow-header-actions
           >
             {isManagedSource ? (
-              <div
-                className={`flex min-h-bakin-control shrink-0 items-center gap-bakin-2 ${availabilitySaving ? 'cursor-not-allowed' : ''}`}
+              <Field
+                orientation="horizontal"
+                name="availability"
+                disabled={availabilitySaving}
+                className={cn('min-h-bakin-control shrink-0', availabilitySaving && 'cursor-not-allowed')}
               >
                 <Switch
                   size="sm"
                   checked={!workflowDisabled}
                   onCheckedChange={handleAvailabilityChange}
                   disabled={availabilitySaving}
-                  aria-label={workflowDisabled ? 'Enable workflow' : 'Disable workflow'}
                 />
-                <span className={`select-none text-bakin-typography-size-body font-bakin-typography-weight-semibold ${workflowDisabled ? 'text-bakin-text-muted' : 'text-bakin-text-primary'}`}>
+                <FieldLabel className={cn(workflowDisabled && 'text-bakin-text-muted')}>
                   {workflowDisabled ? 'Disabled' : 'Enabled'}
-                </span>
-              </div>
+                </FieldLabel>
+              </Field>
             ) : null}
             <Button
               variant="outline"

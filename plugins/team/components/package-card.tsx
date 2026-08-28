@@ -25,7 +25,7 @@ import {
 } from '@makinbakin/sdk/ui'
 import { useRouter } from '@makinbakin/sdk/navigation'
 import { Inline, Panel } from '@makinbakin/sdk/layout'
-import { CopyButton, KeyValue, StatusBadge, type KeyValueItem } from '@makinbakin/sdk/patterns'
+import { ConfirmDialog, CopyButton, KeyValue, StatusBadge, type KeyValueItem } from '@makinbakin/sdk/patterns'
 import { toast, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
 import { PackageStateBadge } from './package-state-badge'
 import { AdoptDialog } from './adopt-dialog'
@@ -97,6 +97,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   const [adoptOpen, setAdoptOpen] = useState(false)
   const [updateOpen, setUpdateOpen] = useState(false)
   const [removeOpen, setRemoveOpen] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
@@ -383,15 +384,32 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
                 </p>
               </div>
               <Button
-                variant="destructive"
+                variant="danger"
                 disabled={actionBusy || Boolean(actionMessage)}
-                onClick={() => removePackage(true)}
+                onClick={() => setConfirmDeleteOpen(true)}
                 className="shrink-0"
               >
                 Delete agent
               </Button>
             </div>
           </div>
+          <ConfirmDialog
+            open={confirmDeleteOpen}
+            title={`Delete ${agentId}?`}
+            description="Runs orphan cleanup, then deletes the OpenClaw runtime agent. This cannot be undone."
+            confirmLabel="Delete agent"
+            busyLabel="Deleting…"
+            confirmTone="danger"
+            confirmValue={agentId}
+            busy={actionBusy}
+            confirmTestId="delete-agent-confirm"
+            onConfirm={() => {
+              void removePackage(true).finally(() => setConfirmDeleteOpen(false))
+            }}
+            onCancel={() => {
+              if (!actionBusy) setConfirmDeleteOpen(false)
+            }}
+          />
           {actionError ? (
             <Alert tone="danger">
               <AlertTitle>Package was not removed</AlertTitle>

@@ -438,7 +438,8 @@ describe('SystemTabView', () => {
     const inventory = screen.getByTestId('installed-features-details') as HTMLDetailsElement
     fireEvent.click(inventory.querySelector('summary')!)
     const pluginSearch = screen.getByRole('searchbox', { name: 'Find a plugin' })
-    expect(pluginSearch.getAttribute('data-slot')).toBe('input')
+    // The filter rides the kit SearchInput pattern, not a bare Input.
+    expect(pluginSearch.closest('[data-slot="search-input-control"]')).not.toBeNull()
     fireEvent.change(pluginSearch, { target: { value: 'assets' } })
     expect(inventory.querySelector('[data-plugin-id="notes"]')).toBeNull()
 

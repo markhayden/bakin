@@ -380,6 +380,15 @@ describe('PackageCard — update and remove actions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete or orphan agent package' }))
     fireEvent.click(screen.getByRole('button', { name: 'Delete agent' }))
 
+    // Deleting an agent is gated by a typed confirmation — nothing is sent
+    // until the agent id is typed back and the confirm button pressed.
+    const confirm = screen.getByTestId('delete-agent-confirm') as HTMLButtonElement
+    expect(confirm.disabled).toBe(true)
+    expect(fetchMock.mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method === 'DELETE')).toBe(false)
+    fireEvent.change(screen.getByPlaceholderText('pixel'), { target: { value: 'pixel' } })
+    await waitFor(() => expect(confirm.disabled).toBe(false))
+    fireEvent.click(confirm)
+
     await waitFor(() => {
       expect(fetchMock.mock.calls.some((call) => (
         call[0] === '/api/agent-packages/pixel'

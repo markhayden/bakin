@@ -2,12 +2,12 @@
  * Node config drawer — pure field/coercion helpers and label tables
  *
  * Field value seeding/coercion, required-field validation, parallel-child
- * normalization, the human-facing label/help/placeholder tables, and the
- * shared form styling constants. All pure (operate on step records +
- * FormField metadata); zero JSX. Extracted from node-config-drawer.tsx so the
+ * normalization, and the human-facing label/help/placeholder tables. All
+ * pure (operate on step records + FormField metadata); zero JSX. Extracted from node-config-drawer.tsx so the
  * form logic is unit-testable without jsdom, following the
  * lib/canvas-editor-state precedent.
  */
+import { humanizeKey } from '@makinbakin/sdk/utils'
 import type { FormField } from '@bakin/core/workflows/node-type-registry'
 
 /**
@@ -126,15 +126,6 @@ export function schemaIssueMessage(field: FormField, message: string): string {
   return message
 }
 
-function humanizeIdentifier(name: string): string {
-  return name
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase())
-}
-
 const FIELD_LABELS: Record<string, string> = {
   agent: 'Agent',
   skill: 'Skill instructions',
@@ -208,7 +199,7 @@ const STEP_KIND_LABELS: Record<string, string> = {
 }
 
 export function fieldLabel(field: FormField): string {
-  return FIELD_LABELS[field.name] ?? humanizeIdentifier(field.name)
+  return FIELD_LABELS[field.name] ?? humanizeKey(field.name)
 }
 
 export function fieldHelpText(field: FormField): string | undefined {
@@ -223,11 +214,5 @@ export function stepKindLabel(kind: string): string {
   if (!kind) return 'Unknown step'
   if (STEP_KIND_LABELS[kind]) return STEP_KIND_LABELS[kind]
   const localKind = kind.includes('.') ? kind.split('.').slice(1).join(' ') : kind
-  return `${humanizeIdentifier(localKind)} step`
+  return `${humanizeKey(localKind)} step`
 }
-
-export const FIELD_GROUP_CLASS = 'space-y-2.5'
-export const FIELD_LABEL_CLASS = 'text-sm font-medium leading-none'
-export const FIELD_HELP_CLASS = 'text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted/60'
-export const CONTROL_CLASS = 'min-h-10 text-sm'
-export const TEXTAREA_CLASS = 'min-h-24 text-sm leading-relaxed'

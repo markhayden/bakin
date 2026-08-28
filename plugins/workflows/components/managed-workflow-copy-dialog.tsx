@@ -1,20 +1,28 @@
 'use client'
 
 import { Copy, Workflow } from 'lucide-react'
-import { Alert, AlertDescription } from "@makinbakin/sdk/ui"
-import { Button } from "@makinbakin/sdk/ui"
-import { Checkbox } from "@makinbakin/sdk/ui"
 import {
+  Alert,
+  AlertDescription,
+  Button,
+  Checkbox,
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@makinbakin/sdk/ui"
-import { Input } from "@makinbakin/sdk/ui"
-import { Label } from "@makinbakin/sdk/ui"
-import { Textarea } from "@makinbakin/sdk/ui"
+  Field,
+  FieldControl,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  Form,
+  FormActions,
+  Input,
+  SubmitButton,
+  Textarea,
+} from '@makinbakin/sdk/ui'
 import type { WorkflowDialogFieldErrors } from './workflow-dialog-validation'
 
 interface ManagedWorkflowCopyDialogProps {
@@ -67,7 +75,6 @@ export function ManagedWorkflowCopyDialog({
   const namePlaceholder = isCreate ? 'Workflow name' : 'Workflow copy name'
   const idPlaceholder = isCreate ? 'workflow-id' : 'workflow-copy-id'
   const submitLabel = isCreate ? 'Create workflow' : 'Create copy'
-  const creatingLabel = isCreate ? 'Creating...' : 'Creating...'
   const cancelLabel = isCreate ? 'Cancel' : 'Back'
   const SubmitIcon = isCreate ? Workflow : Copy
   const nameErrorId = fieldErrors.name ? 'workflow-copy-name-error' : undefined
@@ -89,107 +96,97 @@ export function ManagedWorkflowCopyDialog({
             {description}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label
-              htmlFor="workflow-copy-name"
-              className={fieldErrors.name ? 'text-bakin-signal-danger' : undefined}
-            >
-              {nameLabel}
-            </Label>
-            <Input
-              id="workflow-copy-name"
-              value={copyName}
-              onChange={(e) => onCopyNameChange(e.target.value)}
-              placeholder={namePlaceholder}
-              aria-invalid={Boolean(fieldErrors.name) || undefined}
-              aria-describedby={nameErrorId}
-            />
-            {fieldErrors.name && (
-              <p id={nameErrorId} className="text-bakin-typography-size-meta font-bakin-typography-weight-medium leading-relaxed text-bakin-signal-danger">
-                {fieldErrors.name}
-              </p>
-            )}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label
-              htmlFor="workflow-copy-id"
-              className={fieldErrors.id ? 'text-bakin-signal-danger' : undefined}
-            >
-              Workflow id
-            </Label>
-            <Input
-              id="workflow-copy-id"
-              value={copyId}
-              onChange={(e) => onCopyIdChange(e.target.value)}
-              placeholder={idPlaceholder}
-              aria-invalid={Boolean(fieldErrors.id) || undefined}
-              aria-describedby={idErrorId}
-            />
-            {fieldErrors.id && (
-              <p id={idErrorId} className="text-bakin-typography-size-meta font-bakin-typography-weight-medium leading-relaxed text-bakin-signal-danger">
-                {fieldErrors.id}
-              </p>
-            )}
-          </div>
-          {showDescription && (
-            <div className="flex flex-col gap-1.5">
-              <Label
-                htmlFor="workflow-copy-description"
-                className={fieldErrors.description ? 'text-bakin-signal-danger' : undefined}
-              >
-                Description
-              </Label>
-              <Textarea
-                id="workflow-copy-description"
-                rows={3}
-                value={workflowDescription}
-                onChange={(e) => onWorkflowDescriptionChange?.(e.target.value)}
-                placeholder="Describe when this workflow should be used"
-                aria-invalid={Boolean(fieldErrors.description) || undefined}
-                aria-describedby={descriptionErrorId}
+        <Form
+          busy={creating}
+          onSubmit={(event) => {
+            event.preventDefault()
+            onCreate()
+          }}
+        >
+          <FieldGroup>
+            <Field name="name" invalid={Boolean(fieldErrors.name)}>
+              <FieldLabel htmlFor="workflow-copy-name" requirement="required">{nameLabel}</FieldLabel>
+              <Input
+                id="workflow-copy-name"
+                value={copyName}
+                onChange={(e) => onCopyNameChange(e.target.value)}
+                placeholder={namePlaceholder}
+                aria-invalid={Boolean(fieldErrors.name) || undefined}
+                aria-describedby={nameErrorId}
               />
-              {fieldErrors.description && (
-                <p id={descriptionErrorId} className="text-bakin-typography-size-meta font-bakin-typography-weight-medium leading-relaxed text-bakin-signal-danger">
-                  {fieldErrors.description}
-                </p>
+              {fieldErrors.name && (
+                <FieldError id={nameErrorId} match>{fieldErrors.name}</FieldError>
               )}
-            </div>
-          )}
-          {showDisableOriginal && (
-            <Label className="items-start gap-2 rounded-bakin-control border border-bakin-border-subtle bg-bakin-surface-default/30 p-2 text-bakin-text-primary">
-              <Checkbox
-                checked={disableOriginal}
-                onCheckedChange={(checked) => onDisableOriginalChange(checked === true)}
-                className="mt-0.5"
+            </Field>
+            <Field name="id" invalid={Boolean(fieldErrors.id)}>
+              <FieldLabel htmlFor="workflow-copy-id" requirement="required">Workflow id</FieldLabel>
+              <Input
+                id="workflow-copy-id"
+                value={copyId}
+                onChange={(e) => onCopyIdChange(e.target.value)}
+                placeholder={idPlaceholder}
+                aria-invalid={Boolean(fieldErrors.id) || undefined}
+                aria-describedby={idErrorId}
               />
-              <span className="flex flex-col gap-1">
-                <span className="text-bakin-typography-size-meta font-bakin-typography-weight-medium">Disable the managed workflow</span>
-                <span className="text-bakin-typography-size-meta font-bakin-typography-weight-regular leading-snug text-bakin-text-muted">
+              {fieldErrors.id && (
+                <FieldError id={idErrorId} match>{fieldErrors.id}</FieldError>
+              )}
+            </Field>
+            {showDescription && (
+              <Field name="description" invalid={Boolean(fieldErrors.description)}>
+                <FieldLabel htmlFor="workflow-copy-description">Description</FieldLabel>
+                <FieldControl
+                  render={(
+                    <Textarea
+                      id="workflow-copy-description"
+                      rows={3}
+                      value={workflowDescription}
+                      onChange={(e) => onWorkflowDescriptionChange?.(e.target.value)}
+                      placeholder="Describe when this workflow should be used"
+                      aria-invalid={Boolean(fieldErrors.description) || undefined}
+                      aria-describedby={descriptionErrorId}
+                    />
+                  )}
+                />
+                {fieldErrors.description && (
+                  <FieldError id={descriptionErrorId} match>{fieldErrors.description}</FieldError>
+                )}
+              </Field>
+            )}
+            {showDisableOriginal && (
+              <Field orientation="horizontal" name="disableOriginal">
+                <Checkbox
+                  aria-label="Disable the managed workflow"
+                  checked={disableOriginal}
+                  onCheckedChange={(checked) => onDisableOriginalChange(checked === true)}
+                />
+                <FieldLabel>Disable the managed workflow</FieldLabel>
+                <FieldDescription>
                   The original stays visible in Managed workflows, but matching and automatic starts will skip it.
-                </span>
-              </span>
-            </Label>
+                </FieldDescription>
+              </Field>
+            )}
+          </FieldGroup>
+          {error && (
+            <Alert tone="danger">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
-        </div>
-        {error && (
-          <Alert tone="danger">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            onClick={onCancel}
-            disabled={creating}
-          >
-            {cancelLabel}
-          </Button>
-          <Button onClick={onCreate} disabled={creating}>
-            <SubmitIcon className="mr-1 size-3.5" />
-            {creating ? creatingLabel : submitLabel}
-          </Button>
-        </DialogFooter>
+          <FormActions>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onCancel}
+              disabled={creating}
+            >
+              {cancelLabel}
+            </Button>
+            <SubmitButton busyLabel="Creating...">
+              <SubmitIcon className="mr-1 size-3.5" />
+              {submitLabel}
+            </SubmitButton>
+          </FormActions>
+        </Form>
       </DialogContent>
     </Dialog>
   )

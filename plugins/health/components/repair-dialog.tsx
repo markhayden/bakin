@@ -219,7 +219,7 @@ export function RepairDialog({
               <Button
                 onClick={() => void apply()}
                 disabled={repair.planning || repair.applying || selected.size === 0 || repair.stale}
-                variant={hasNonSafe ? 'destructive' : 'default'}
+                variant={hasNonSafe ? 'danger' : 'primary'}
               >
                 {repair.applying ? 'Applying and verifying…' : `Apply ${selected.size} repair${selected.size === 1 ? '' : 's'}`}
               </Button>

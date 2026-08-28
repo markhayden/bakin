@@ -17,6 +17,8 @@ import {
   AlertDescription,
   Button,
   Checkbox,
+  Field,
+  FieldLabel,
   Input,
   Label,
   Spinner,
@@ -207,20 +209,22 @@ export function MemoryCleanup() {
           {find.groups.map((g) => (
             <Panel key={g.agent} padding="compact">
               <Stack gap="dense">
-                <label className="flex cursor-pointer items-center gap-bakin-2">
+                <Field orientation="horizontal" name={`cleanup-agent-${g.agent}`}>
                   <Checkbox
                     checked={selected.has(g.agent)}
                     onCheckedChange={() => toggle(g.agent)}
                     disabled={g.actionableCount === 0}
                   />
-                  {g.agent}
-                  <StatusBadge tone="neutral" variant="soft">{g.actionableCount} editable</StatusBadge>
-                  {g.hits.length > g.actionableCount && (
-                    <StatusBadge tone="neutral" variant="outline">
-                      {g.hits.length - g.actionableCount} informational
-                    </StatusBadge>
-                  )}
-                </label>
+                  <FieldLabel>
+                    {g.agent}
+                    <StatusBadge tone="neutral" variant="soft">{g.actionableCount} editable</StatusBadge>
+                    {g.hits.length > g.actionableCount && (
+                      <StatusBadge tone="neutral" variant="outline">
+                        {g.hits.length - g.actionableCount} informational
+                      </StatusBadge>
+                    )}
+                  </FieldLabel>
+                </Field>
                 <DisclosurePanel
                   // Open by default: the operator confirms a destructive
                   // dispatch from this evidence, so hiding which files and
