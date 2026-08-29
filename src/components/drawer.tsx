@@ -3,9 +3,9 @@
 import { useRef, useState, useCallback, useEffect, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
-// Host bridge rather than `@makinbakin/sdk/patterns`: the SDK ui entrypoint
+// The dialog shim rather than `@makinbakin/sdk`: the SDK ui entrypoint
 // re-exports this Drawer, so importing the SDK here would be a module cycle.
-import { UnsavedChangesDialog } from '../../packages/host/src/ui/page-archetypes'
+import { UnsavedChangesDialog } from '@/components/ui/dialog'
 
 /** Drawers cannot save in place, so the exit dialog never renders its save action. */
 function noopSave(): void {

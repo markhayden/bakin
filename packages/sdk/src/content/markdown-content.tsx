@@ -7,16 +7,17 @@ import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
 import {
+  Button,
+  Checkbox,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  Button,
-  Checkbox,
 } from '@bakin/ui'
-import { CopyButton } from '@bakin/ui/patterns'
+// Deep subpath: the patterns barrel is most of the SDK patterns bundle.
+import { CopyButton } from '@bakin/ui/patterns/copy-button'
 
 const MARKER_PAIR = /<!--\s*bakin:([^\s]+?):start\s*-->([\s\S]*?)<!--\s*bakin:\1:end\s*-->/g
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v)(\?.*)?$/i

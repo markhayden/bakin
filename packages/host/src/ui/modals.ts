@@ -21,6 +21,10 @@ export {
   SheetTitle,
   SheetTrigger,
 } from '@bakin/ui'
+// Deep subpath on purpose: the patterns barrel would ride into every
+// consumer of this bridge (the SDK ui entrypoint included).
+export { UnsavedChangesDialog } from '@bakin/ui/patterns/unsaved-changes-dialog'
+export type { UnsavedChangesDialogProps } from '@bakin/ui/patterns/unsaved-changes-dialog'
 export type {
   DialogCloseProps,
   DialogContentProps,

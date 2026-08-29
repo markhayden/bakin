@@ -9,6 +9,7 @@ export {
   DialogPortal,
   DialogTitle,
   DialogTrigger,
+  UnsavedChangesDialog,
 } from '../../../packages/host/src/ui/modals'
 export type {
   DialogCloseProps,
@@ -21,4 +22,5 @@ export type {
   DialogProps,
   DialogTitleProps,
   DialogTriggerProps,
+  UnsavedChangesDialogProps,
 } from '../../../packages/host/src/ui/modals'

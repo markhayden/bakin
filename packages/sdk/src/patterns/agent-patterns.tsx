@@ -20,7 +20,9 @@ import {
   type AvatarSize,
 } from '@bakin/ui'
 
-import { cn } from '../utils'
+// The kit's own merger: the sdk utils barrel also re-exports the
+// conversation recorder, which the payload ratchet keeps out of base UI.
+import { cn } from '@bakin/ui/utils'
 
 /** Presentation-ready agent identity supplied by a host or plugin. */
 export interface AgentIdentity {

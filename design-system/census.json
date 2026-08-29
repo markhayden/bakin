@@ -2616,7 +2616,8 @@
         "DialogOverlay",
         "DialogPortal",
         "DialogTitle",
-        "DialogTrigger"
+        "DialogTrigger",
+        "UnsavedChangesDialog"
       ],
       "exportStatus": "private",
       "classification": "shared-ui",

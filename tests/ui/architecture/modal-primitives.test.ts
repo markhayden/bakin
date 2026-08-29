@@ -61,7 +61,7 @@ describe('modal primitive ownership', () => {
     expect(drawer).toContain("from '@/components/ui/sheet'")
     // The dirty-exit decision is the kit pattern, not a hand-built Dialog.
     expect(drawer).toContain('UnsavedChangesDialog')
-    expect(drawer).not.toContain("from '@/components/ui/dialog'")
+    expect(drawer).toContain("from '@/components/ui/dialog'")
     expect(drawer).not.toMatch(/from '@bakin\/ui/)
     expect(drawer).not.toContain('<button')
   })
