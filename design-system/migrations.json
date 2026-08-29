@@ -20,12 +20,12 @@
     "private-import"
   ],
   "summary": {
-    "paths": 169,
+    "paths": 168,
     "totals": {
       "raw-palette": 4,
       "arbitrary-size": 82,
-      "raw-scale": 554,
-      "raw-control": 21,
+      "raw-scale": 463,
+      "raw-control": 18,
       "inline-style": 33,
       "generic-token": 72,
       "unscoped-css": 0,
@@ -47,8 +47,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 1,
-        "raw-scale": 16,
-        "raw-control": 3,
+        "raw-scale": 10,
         "inline-style": 1
       }
     },
@@ -82,7 +81,7 @@
       "target": "official Messaging archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 35
+        "raw-scale": 6
       }
     },
     {
@@ -115,7 +114,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 2,
-        "raw-scale": 20,
+        "raw-scale": 13,
         "inline-style": 1
       }
     },
@@ -132,23 +131,7 @@
       "target": "official Messaging archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 23
-      }
-    },
-    {
-      "path": "bakin-bits-official/plugins/projects/components/new-project-dialog.tsx",
-      "owner": {
-        "repository": "bakin-bits-official",
-        "area": "plugin",
-        "pluginId": "projects"
-      },
-      "censusEntryId": "plugin-route:projects:/projects",
-      "migrationTask": "T69-T70",
-      "archetype": "detail",
-      "target": "official Projects list/detail/form archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 1
+        "raw-scale": 2
       }
     },
     {
@@ -180,7 +163,7 @@
       "target": "official Projects list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 10
+        "raw-scale": 4
       }
     },
     {
@@ -197,7 +180,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 1,
-        "raw-scale": 31,
+        "raw-scale": 12,
         "inline-style": 1
       }
     },
@@ -215,7 +198,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 1,
-        "raw-scale": 3
+        "raw-scale": 1
       }
     },
     {
