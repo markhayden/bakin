@@ -334,7 +334,7 @@ function AgentCell({ agentId, avatarOnly = false }: { agentId: string; avatarOnl
         size="xs"
         decorative
       />
-      <span className="text-bakin-typography-size-meta text-bakin-text-primary">{name}</span>
+      <Text size="meta">{name}</Text>
     </span>
   )
 }

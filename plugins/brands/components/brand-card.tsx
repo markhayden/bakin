@@ -106,9 +106,9 @@ export function BrandCoverCard({ brand }: { brand: ListedBrand }) {
 
       <CardContent className="flex-1 space-y-bakin-2" data-brand-card-body>
         {brand.description ? (
-          <p className="line-clamp-2 text-bakin-typography-size-body text-bakin-text-muted">{brand.description}</p>
+          <Text size="body" tone="muted" as="p" className="line-clamp-2">{brand.description}</Text>
         ) : (
-          <p className="text-bakin-typography-size-body text-bakin-text-muted">No description yet.</p>
+          <Text size="body" tone="muted" as="p">No description yet.</Text>
         )}
 
         {completeness && (
@@ -122,9 +122,9 @@ export function BrandCoverCard({ brand }: { brand: ListedBrand }) {
                     className="flex-1"
                     aria-label={`Brand kit ${completeness.percent}% complete`}
                   />
-                  <span className="shrink-0 text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
+                  <Text size="meta" tone="muted" className="shrink-0 tabular-nums">
                     {completeness.percent}% complete
-                  </span>
+                  </Text>
                 </div>
               }
             />

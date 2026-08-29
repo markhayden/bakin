@@ -129,9 +129,9 @@ export function EnrichmentCard({ manifest, onChanged }: Props) {
         </Alert>
       )}
       {enrichment.status === 'skipped' && enrichment.error && (
-        <p className="m-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="p" className="leading-relaxed">
           {enrichment.error}
-        </p>
+        </Text>
       )}
 
       {editing ? (
@@ -150,9 +150,9 @@ export function EnrichmentCard({ manifest, onChanged }: Props) {
         </div>
       ) : enrichment.caption ? (
         <div className="flex min-w-0 items-start gap-bakin-3" data-testid="enrichment-caption">
-          <p className="m-0 min-w-0 flex-1 text-bakin-typography-size-body leading-relaxed text-bakin-text-primary">
+          <Text size="body" as="p" className="min-w-0 flex-1 leading-relaxed">
             {enrichment.caption}
-          </p>
+          </Text>
           <Button
             type="button"
             size="icon-xs"
@@ -168,9 +168,9 @@ export function EnrichmentCard({ manifest, onChanged }: Props) {
       ) : null}
 
       {enrichment.summary ? (
-        <p className="m-0 text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+        <Text size="body" tone="muted" as="p" className="leading-relaxed">
           {enrichment.summary}
-        </p>
+        </Text>
       ) : null}
       {enrichment.transcript && (
         <DisclosurePanel variant="ghost" summary="Transcript">

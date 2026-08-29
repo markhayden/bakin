@@ -206,11 +206,11 @@ export function SystemSearchSection({
             <h2 id="search-system-title">Search readiness</h2>
             <SearchStageBadge status={readinessStatus} />
           </div>
-          <p className="mt-bakin-1 max-w-3xl text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+          <Text size="meta" tone="muted" as="p" className="mt-bakin-1 max-w-3xl leading-relaxed">
             {readinessStale
               ? 'Search evidence is stale. Run checks before relying on this status.'
               : readiness?.summary ?? 'Waiting for Search readiness evidence.'}
-          </p>
+          </Text>
         </div>
         {loading && !status && !telemetry && (
           <Text size="meta" tone="muted">Loading live Search data…</Text>
@@ -311,8 +311,8 @@ export function SystemSearchSection({
           onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
           summary={(
             <span className="min-w-0">
-              <span className="block text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">Index inventory &amp; repair</span>
-              <span className="block text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">Physical indexes, migrations, backlogs, and reindex controls.</span>
+              <Text size="body" weight="semibold" className="block">Index inventory &amp; repair</Text>
+              <Text size="meta" tone="muted" className="block">Physical indexes, migrations, backlogs, and reindex controls.</Text>
             </span>
           )}
           summaryMeta={<Badge variant="secondary">{status ? `${status.tables.length} tables` : 'Unavailable'}</Badge>}

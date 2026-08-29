@@ -27,6 +27,7 @@ import {
   Form,
   FormActions,
   Input,
+  Text,
   Textarea,
   buttonVariants,
 } from '@makinbakin/sdk/ui'
@@ -130,9 +131,9 @@ export function TaskBrandPanel({ taskId }: { taskId?: string }) {
 
         {injections.length > 0 ? (
           <div className="grid gap-bakin-2">
-            <p className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-muted">
+            <Text size="meta" tone="muted" weight="semibold" as="p">
               Recent injections
-            </p>
+            </Text>
             <ListRows variant="separated" size="sm" aria-label="What the agent saw">
               {injections.slice(0, 5).map((inj, i) => (
                 <ListRow key={inj.runId || i} className="grid gap-bakin-1">
@@ -159,9 +160,9 @@ export function TaskBrandPanel({ taskId }: { taskId?: string }) {
             </ListRows>
           </div>
         ) : !brand.blocked ? (
-          <p className="m-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+          <Text size="meta" tone="muted" as="p" className="leading-relaxed">
             No dispatches yet. The brand card will inject on the next run.
-          </p>
+          </Text>
         ) : null}
 
         {/* Quick-add lesson (#419 §6): close the correction loop from the task

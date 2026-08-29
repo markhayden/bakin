@@ -4,6 +4,7 @@ import { TurnOutputView } from '@makinbakin/sdk/conversation'
 import { Panel } from '@makinbakin/sdk/layout'
 import { KeyValue, type KeyValueItem } from '@makinbakin/sdk/patterns'
 import { humanizeKey } from '@makinbakin/sdk/utils'
+import { Text } from '@makinbakin/sdk/ui'
 import { isRenderableAssetRef } from '../lib/output-assets'
 
 /** Normalize step output — handles string (possibly JSON), object, or unexpected types. */
@@ -25,7 +26,7 @@ function OutputValue({ value }: { value: unknown }) {
       const ref = value
       return (
         <div className="grid min-w-0 gap-bakin-1">
-          <p className="m-0 break-all font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">{ref}</p>
+          <Text size="meta" tone="muted" mono as="p" className="break-all">{ref}</Text>
           <img
             src={`/api/assets/${encodeURIComponent(ref)}`}
             alt={ref}
@@ -41,15 +42,15 @@ function OutputValue({ value }: { value: unknown }) {
       // leaves ARE turn output, so they render through the single chunk
       // renderer (markdown default) instead of a local format heuristic.
       return (
-        <div className="text-bakin-typography-size-body text-bakin-text-primary">
+        <Text size="body" as="div">
           <TurnOutputView chunks={[{ type: 'text', content: str }]} />
-        </div>
+        </Text>
       )
     }
-    return <p className="m-0 break-words text-bakin-typography-size-body text-bakin-text-primary">{str}</p>
+    return <Text size="body" as="p" className="break-words">{str}</Text>
   }
   if (typeof value === 'boolean' || typeof value === 'number') {
-    return <p className="m-0 text-bakin-typography-size-body text-bakin-text-primary">{String(value)}</p>
+    return <Text size="body" as="p">{String(value)}</Text>
   }
   if (value && typeof value === 'object') {
     return (
@@ -60,7 +61,7 @@ function OutputValue({ value }: { value: unknown }) {
       />
     )
   }
-  return <p className="m-0 text-bakin-typography-size-body text-bakin-text-muted">{String(value ?? '—')}</p>
+  return <Text size="body" tone="muted" as="p">{String(value ?? '—')}</Text>
 }
 
 function outputItems(record: Record<string, unknown>): KeyValueItem[] {

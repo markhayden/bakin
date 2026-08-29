@@ -27,6 +27,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { useAgent, type ScheduleJob } from '@makinbakin/sdk/hooks'
 import { Panel } from '@makinbakin/sdk/layout'
@@ -194,9 +195,9 @@ export function JobDrawer({
             <div className="mt-bakin-2 flex min-w-0 flex-wrap items-center gap-bakin-2">
               <StatusBadge tone={status.tone} variant="solid" size="xs">{status.label}</StatusBadge>
               {nextRunCopy ? (
-                <span className="min-w-0 text-bakin-typography-size-meta text-bakin-text-muted">
+                <Text size="meta" tone="muted" className="min-w-0">
                   {nextRunCopy}
-                </span>
+                </Text>
               ) : null}
             </div>
           </div>

@@ -4,7 +4,7 @@ import { Heart } from 'lucide-react'
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import { Inline, Panel, Section } from '@makinbakin/sdk/layout'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
-import { SystemState } from '@makinbakin/sdk/ui'
+import { SystemState, Text } from '@makinbakin/sdk/ui'
 import { useJsonFetch } from '@makinbakin/sdk/hooks'
 import type { HeartbeatRaw } from '../types'
 import { formatAge } from '@makinbakin/sdk/utils'
@@ -94,9 +94,9 @@ export function HeartbeatTab({ agentId }: HeartbeatTabProps) {
               Last updated {lastUpdated}
             </StatusBadge>
           ) : null}
-          <p className="m-0 max-w-prose text-bakin-typography-size-meta text-bakin-text-muted">
+          <Text size="meta" tone="muted" as="p" className="max-w-prose">
             {HEARTBEAT_DISABLED_REASON}
-          </p>
+          </Text>
         </Inline>
       </div>
 

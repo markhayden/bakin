@@ -144,8 +144,8 @@ export function ImportView({ onImported, onCountChange }: { onImported?: () => v
               <AssetTypeIcon type={typeOverrides[file.relPath] ?? file.suggestedType} className="size-bakin-4" />
             </div>
             <div className="min-w-0">
-              <p className="m-0 truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{file.name}</p>
-              <p className="m-0 truncate text-bakin-typography-size-meta text-bakin-text-muted">{file.relPath}</p>
+              <Text size="body" weight="medium" as="p" className="truncate">{file.name}</Text>
+              <Text size="meta" tone="muted" as="p" className="truncate">{file.relPath}</Text>
             </div>
           </Inline>
         ),

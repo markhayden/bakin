@@ -129,7 +129,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
           <p className="font-bakin-typography-weight-medium text-bakin-text-primary">{plugin.name}</p>
           <Text mono size="meta" tone="muted" as="p">{plugin.id}</Text>
           {(plugin.status === 'failed' || plugin.activationConflict) && (
-            <div className="mt-bakin-1 max-w-md text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+            <Text size="meta" tone="muted" as="div" className="mt-bakin-1 max-w-md leading-relaxed">
               <p>{plugin.activationConflict
                 ? 'Registry and manifest activation states disagree.'
                 : plugin.errorMessage ?? 'The plugin did not activate.'}</p>
@@ -137,7 +137,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
               {plugin.missingDependencies && plugin.missingDependencies.length > 0 && (
                 <p>Missing dependencies: {plugin.missingDependencies.join(', ')}</p>
               )}
-            </div>
+            </Text>
           )}
         </>
       ),
@@ -250,8 +250,8 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
         data-testid="installed-features-details"
         summary={(
           <span className="min-w-0">
-            <span className="block text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">Installed features</span>
-            <span className="block text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">Browse plugins, versions, activation state, and updates.</span>
+            <Text size="body" weight="semibold" className="block">Installed features</Text>
+            <Text size="meta" tone="muted" className="block">Browse plugins, versions, activation state, and updates.</Text>
           </span>
         )}
         summaryMeta={<Badge tone="neutral" variant="soft">{plugins.length}</Badge>}
@@ -312,8 +312,8 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
         data-testid="bakin-host-details"
         summary={(
           <span className="min-w-0">
-            <span className="block text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">Bakin host details</span>
-            <span className="block text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">Process, uptime, memory, port, and connected sessions.</span>
+            <Text size="body" weight="semibold" className="block">Bakin host details</Text>
+            <Text size="meta" tone="muted" className="block">Process, uptime, memory, port, and connected sessions.</Text>
           </span>
         )}
         summaryMeta={<Badge tone="neutral" variant="soft">{sessions === null ? 'Unavailable' : `${sessions} ${sessions === 1 ? 'session' : 'sessions'}`}</Badge>}
@@ -345,8 +345,8 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
         data-testid="all-health-checks-details"
         summary={(
           <span className="min-w-0">
-            <span className="block text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">All health checks</span>
-            <span className="block text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">Every registered check, including healthy and not-applicable evidence.</span>
+            <Text size="body" weight="semibold" className="block">All health checks</Text>
+            <Text size="meta" tone="muted" className="block">Every registered check, including healthy and not-applicable evidence.</Text>
           </span>
         )}
         summaryMeta={(
@@ -404,12 +404,12 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                               <StatusBadge variant="outline" tone={presentation.tone}>{presentation.label}</StatusBadge>
                             </div>
                             <Text size="meta" tone="muted" as="p" className="mt-bakin-1">{check.description}</Text>
-                            <p className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-primary">{presentation.detail}</p>
+                            <Text size="meta" as="p" className="mt-bakin-1">{presentation.detail}</Text>
                           </div>
-                          <div className="text-left text-bakin-typography-size-meta text-bakin-text-muted @[40rem]/health-system:text-right">
+                          <Text size="meta" tone="muted" as="div" className="text-left @[40rem]/health-system:text-right">
                             <p>{check.owner.label}</p>
                             <p>{formatAge(check.latestExecution.completedAt)}</p>
-                          </div>
+                          </Text>
                         </ListRow>
                       ))}
                     </ListRows>

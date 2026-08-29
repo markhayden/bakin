@@ -214,9 +214,9 @@ export function BudgetRulesSection({ m }: { m: ModelsData }) {
       <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 @2xl/budget-rules:flex-row @2xl/budget-rules:items-start @2xl/budget-rules:justify-between">
         <Stack gap="dense">
           <h2>Budget rules</h2>
-          <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+          <Text size="body" tone="muted" as="p" className="max-w-prose leading-relaxed">
             Cap estimated metered cost or subscription-token usage by day or month. At the cap, work can defer until reset or pause until an operator resumes it.
-          </p>
+          </Text>
         </Stack>
         <Button
           type="button"
@@ -292,9 +292,9 @@ export function BillingLanesSection({ m }: { m: ModelsData }) {
     <Section className="@container/billing-lanes" spacing="compact" divider="top" aria-label="Billing lanes">
       <Stack gap="dense">
         <h2>Billing lanes</h2>
-        <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+        <Text size="body" tone="muted" as="p" className="max-w-prose leading-relaxed">
           Bakin detects whether each agent uses metered API billing or subscription tokens. Override a lane only when authentication lives outside the agent profile.
-        </p>
+        </Text>
       </Stack>
 
       {billing.length === 0 ? (

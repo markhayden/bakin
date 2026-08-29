@@ -940,7 +940,7 @@ describe('AgentsTab', () => {
     const identity = screen.getByRole('heading', { level: 2, name: 'Agents' })
     expect(identity.className).toContain('sr-only')
     const intro = screen.getByText(/Compare token use, cost, tracked work, and recorded outcomes across agents/i)
-    expect(intro.className).toContain('text-bakin-typography-size-meta')
+    expect(intro.getAttribute('data-size')).toBe('meta')
     expect(intro.className).toContain('leading-relaxed')
     expect(intro.className).toContain('text-bakin-text-muted')
     expect(screen.getByRole('heading', { level: 3, name: 'Agent pulse' })).toBeDefined()

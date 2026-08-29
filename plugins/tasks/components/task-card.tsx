@@ -36,6 +36,7 @@ import {
   CardHeader,
   CardTitle,
   Overline,
+  Text,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -304,9 +305,9 @@ export function TaskCardContent({
               onMouseEnter={() => setChildCardHighlight(childTaskId, true)}
               onMouseLeave={() => setChildCardHighlight(childTaskId, false)}
             >
-              <span className="truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text size="meta" tone="muted" mono className="truncate">
                 {shortId(childTaskId)} · {childTaskId.split('--').pop() || childTaskId}
-              </span>
+              </Text>
             </KanbanCardSignal>
           ) : null}
 

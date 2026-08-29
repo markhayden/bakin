@@ -9,7 +9,7 @@ import {
   StatusBadge,
   type StatusTone,
 } from '@makinbakin/sdk/patterns'
-import { Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import { Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { formatDateTime } from '@makinbakin/sdk/utils'
 
 const RUN_PAGE_SIZE = 8
@@ -72,21 +72,21 @@ export function RunHistory({ jobId }: { jobId: string }) {
       <ListRows variant="separated" aria-label="Recent scheduled job runs">
         {visibleRuns.map((run) => (
           <ListRow key={run.runId} className="flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-2">
-          <time className="w-36 shrink-0 text-bakin-typography-size-meta text-bakin-text-muted">
+          <Text size="meta" tone="muted" as="time" className="w-36 shrink-0">
             {formatDateTime(run.timestamp)}
-          </time>
+          </Text>
           <StatusBadge tone={runTone(run.status)} variant="solid" size="xs">
             {run.status}
           </StatusBadge>
           {run.status === 'skipped' && run.skippedReason ? (
-            <span className="min-w-0 text-bakin-typography-size-meta text-bakin-text-muted">
+            <Text size="meta" tone="muted" className="min-w-0">
               {run.skippedReason}
-            </span>
+            </Text>
           ) : null}
           {run.taskId ? (
-            <code className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+            <Text size="meta" tone="muted" mono as="code">
               {run.taskId.slice(0, 8)}
-            </code>
+            </Text>
           ) : null}
           {run.error ? (
             <span className="min-w-0 flex-1 truncate text-bakin-typography-size-meta text-bakin-signal-danger">

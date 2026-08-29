@@ -399,10 +399,10 @@ export function ImportBrandDialog({
                   ))}
                 </div>
               )}
-              <p className="text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+              <Text size="meta" tone="muted" as="p" className="leading-relaxed">
                 {preview.rules} rules · {preview.guidelines} guideline docs · {preview.lessons} lessons · {preview.assets} asset files
                 {preview.commit ? ` · ${preview.commit.slice(0, 8)}` : ''}
-              </p>
+              </Text>
               {preview.exists && (
                 <Alert tone="attention">
                   <AlertTitle>This brand already exists</AlertTitle>

@@ -3,6 +3,7 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ClipboardPlus } from 'lucide-react'
 import { NodeCard } from '@makinbakin/sdk/patterns'
+import { Text } from '@makinbakin/sdk/ui'
 import { AgentAssignmentLabel } from './agent-assignment-label'
 
 interface CreateTaskNodeData extends Record<string, unknown> {
@@ -28,12 +29,12 @@ export function CreateTaskNode({ data }: NodeProps) {
     >
       {agent && <AgentAssignmentLabel agent={agent} className="mt-bakin-1" />}
       {detail && (
-        <p className="mt-bakin-1 truncate text-bakin-typography-size-meta leading-snug text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="p" className="mt-bakin-1 truncate leading-snug">
           {detail}
-        </p>
+        </Text>
       )}
       {column && (
-        <div className="mt-bakin-1 truncate text-bakin-typography-size-meta text-bakin-text-muted">Column: {column}</div>
+        <Text size="meta" tone="muted" as="div" className="mt-bakin-1 truncate">Column: {column}</Text>
       )}
       <Handle type="target" position={Position.Top} className="!bg-bakin-text-muted" />
       <Handle type="source" position={Position.Bottom} className="!bg-bakin-text-muted" />

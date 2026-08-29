@@ -176,7 +176,7 @@ function FadeMore({
           className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-bakin-3 bg-gradient-to-t from-bakin-surface-default from-45% to-transparent px-bakin-1 pb-bakin-1 pt-20"
           data-fade-more
         >
-          <span className="min-w-0 truncate pb-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">{summary}</span>
+          <Text size="meta" tone="muted" className="min-w-0 truncate pb-bakin-1">{summary}</Text>
           <Button variant="outline" size="sm" className="shrink-0" onClick={onAction} data-fade-more-action>
             {actionLabel}
           </Button>
@@ -870,7 +870,7 @@ function OverviewTab({
             action={(
               <Inline gap="dense" wrap={false}>
               <Progress value={completeness.percent} className="h-1.5 w-24" aria-label={`Kit ${completeness.percent}% complete`} />
-                <span className="text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">{completeness.percent}%</span>
+                <Text size="meta" tone="muted" className="tabular-nums">{completeness.percent}%</Text>
               </Inline>
             )}
           />
@@ -972,7 +972,7 @@ function OverviewTab({
           : activity.slice(0, 8).map((a, i) => (
             <Inline key={`${a.ts}-${i}`} align="baseline" justify="between" gap="dense">
               <span>{activityLabel(a)}</span>
-              <span className="shrink-0 text-bakin-typography-size-meta text-bakin-text-muted">{relTime(a.ts)}</span>
+              <Text size="meta" tone="muted" className="shrink-0">{relTime(a.ts)}</Text>
             </Inline>
           ))}
       </Section>
@@ -1002,9 +1002,9 @@ function OverviewSectionHeader({
             {title}
           </h2>
         </Inline>
-        <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+        <Text size="body" tone="muted" as="p" className="max-w-prose leading-relaxed">
           {description}
-        </p>
+        </Text>
       </Stack>
       {action}
     </Inline>
@@ -1053,7 +1053,7 @@ function CardFootprintTile({ card }: { card: CardPreview | null }) {
       value={
         <>
           {kb.toFixed(1)}
-          <span className="text-bakin-typography-size-body font-bakin-typography-weight-regular text-bakin-text-muted"> / {maxKb.toFixed(0)} KB</span>
+          <Text size="body" tone="muted"> / {maxKb.toFixed(0)} KB</Text>
         </>
       }
       progress={{ percent: pct, tone: pct > 85 ? 'attention' : 'success' }}
@@ -1193,7 +1193,7 @@ function DocsEditor({
               <FileText className="size-bakin-3 shrink-0 text-bakin-text-muted" />
               <span className="truncate font-bakin-typography-family-mono text-bakin-typography-size-body">{d.name}</span>
             </Button>
-            {d.description && <span className="min-w-0 flex-1 truncate text-bakin-typography-size-meta text-bakin-text-muted">{d.description}</span>}
+            {d.description && <Text size="meta" tone="muted" className="min-w-0 flex-1 truncate">{d.description}</Text>}
             <div className="ml-auto flex shrink-0 items-center gap-bakin-3">
               {kind === 'guidelines' && (
                 <TooltipProvider delay={200}>

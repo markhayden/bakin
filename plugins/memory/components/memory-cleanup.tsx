@@ -346,14 +346,14 @@ export function MemoryCleanup() {
           <Stack gap="dense">
             <h3>Dispatched {dispatch.dispatched.length} scrub task(s)</h3>
             {dispatch.dispatched.map((d) => (
-              <p key={d.agent} className="text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text key={d.agent} size="meta" tone="muted" as="p">
                 {d.agent} → <PluginLink to="/tasks">task {d.taskId}</PluginLink> ({d.hitCount} file(s){d.managedCount ? `, ${d.managedCount} pinned` : ''})
-              </p>
+              </Text>
             ))}
             {dispatch.skipped.map((s) => (
-              <p key={s.agent} className="text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text key={s.agent} size="meta" tone="muted" as="p">
                 {s.agent} — skipped ({s.reason})
-              </p>
+              </Text>
             ))}
             {dispatch.failed?.map((f) => (
               <Alert key={f.agent} tone="danger">

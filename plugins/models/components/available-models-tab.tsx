@@ -209,18 +209,18 @@ export function AvailableModelsTab({
             <span className="min-w-0 break-words font-bakin-typography-weight-semibold text-bakin-text-primary">
               {model.name}
             </span>
-            <span className="min-w-0 break-words font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+            <Text size="meta" tone="muted" mono className="min-w-0 break-words">
               {model.id}
-            </span>
+            </Text>
             {model.description ? (
-              <span className="line-clamp-1 min-w-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+              <Text size="meta" tone="muted" className="line-clamp-1 min-w-0 leading-relaxed">
                 {model.description}
-              </span>
+              </Text>
             ) : null}
             {model.bestFor ? (
-              <span className="min-w-0 break-words text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text size="meta" tone="muted" className="min-w-0 break-words">
                 Best for: {model.bestFor}
-              </span>
+              </Text>
             ) : null}
           </div>
         </div>

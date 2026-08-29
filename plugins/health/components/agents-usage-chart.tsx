@@ -208,9 +208,9 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
                 description={error}
                 action={<Button size="sm" variant="outline" onClick={onRetry}>Try again</Button>}
               />
-              <p role="status" className="text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text role="status" size="meta" tone="muted" as="p">
                 Cost could not be checked because {lowerFirst(error)}.
-              </p>
+              </Text>
             </div>
           ) : (
             <>

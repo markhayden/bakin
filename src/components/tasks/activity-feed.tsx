@@ -5,7 +5,7 @@ import { ChevronRight, Workflow, Zap, Radio, MonitorDot, Plug } from 'lucide-rea
 import { useAgent, useContentStore } from '@makinbakin/sdk/hooks'
 import { DisclosurePanel } from '@makinbakin/sdk/layout'
 import { KeyValue, ListRow, ListRows } from '@makinbakin/sdk/patterns'
-import { Avatar, AvatarFallback, Button, SystemState } from '@makinbakin/sdk/ui'
+import { Avatar, AvatarFallback, Button, SystemState, Text } from '@makinbakin/sdk/ui'
 import { useActivityContext } from '@/context/activity-context'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { cn, formatAge } from '@makinbakin/sdk/utils'
@@ -158,10 +158,10 @@ export function ActivityFeed() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1.5 mb-0.5">
                       <FeedAgentName agent={evt.agent} />
-                      <span className="text-bakin-text-muted text-bakin-typography-size-meta shrink-0 tabular-nums">{formatAge(evt.ts, { precise: true })}</span>
+                      <Text size="meta" tone="muted" className="shrink-0 tabular-nums">{formatAge(evt.ts, { precise: true })}</Text>
                     </div>
                     {evt.taskTitle && evt.type === 'log' && (
-                      <p className="text-bakin-typography-size-meta text-bakin-text-muted mb-0.5 truncate">{evt.taskTitle}</p>
+                      <Text size="meta" tone="muted" as="p" className="mb-0.5 truncate">{evt.taskTitle}</Text>
                     )}
                     <p className={cn('text-bakin-typography-size-body leading-snug break-words', evt.type === 'alert' ? 'text-bakin-signal-highlight' : 'text-bakin-text-primary')}>{evt.message}</p>
                     {evt.eventName && (

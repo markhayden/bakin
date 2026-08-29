@@ -103,9 +103,9 @@ export function WorkflowProgressPanel({ m }: { m: TaskDetail }) {
     <DrawerSection
       title="Workflow"
       actions={(
-        <span className="max-w-48 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text size="meta" tone="muted" mono className="max-w-48 truncate">
           {activeWorkflowId}
-        </span>
+        </Text>
       )}
     >
       <WorkflowStepList definition={wfDefinition} instance={wfInstance} />
@@ -188,12 +188,12 @@ export function MapChildrenPanel({ m }: { m: TaskDetail }) {
         {rows.map((row) => (
           <ListRow key={row.childTaskId} className="grid min-w-0 gap-bakin-2">
             <Inline gap="dense" wrap={false}>
-              <span className="shrink-0 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text size="meta" tone="muted" mono className="shrink-0">
                 {row.index + 1}/{rows.length}
-              </span>
-              <code className="min-w-0 flex-1 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+              </Text>
+              <Text size="meta" tone="muted" mono as="code" className="min-w-0 flex-1 truncate">
                 {row.childTaskId}
-              </code>
+              </Text>
               <StatusBadge tone={statusTone(row.status)} size="xs">{statusLabel(row.status)}</StatusBadge>
             </Inline>
             {row.status !== 'complete' ? (
@@ -361,7 +361,7 @@ export function WorkflowPreview({ m }: { m: TaskDetail }) {
     >
       <div className="grid min-w-0 gap-bakin-3">
         {description ? (
-          <p className="m-0 text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">{description}</p>
+          <Text size="body" tone="muted" as="p" className="leading-relaxed">{description}</Text>
         ) : null}
         <WorkflowStepList definition={wfDefinition} instance={wfInstance} />
       </div>

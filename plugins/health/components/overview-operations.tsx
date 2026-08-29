@@ -1,5 +1,6 @@
 import type { HealthOverviewViewModel } from '../lib/health-view-model'
 import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
+import { Text } from '@makinbakin/sdk/ui'
 import { OverviewAgentSpend } from './overview-agent-spend'
 import { OverviewContextTraffic } from './overview-context-traffic'
 import { OverviewInteractions } from './overview-interactions'
@@ -22,9 +23,9 @@ export function OverviewOperations({
     >
       <Stack gap="dense">
         <h2 id="overview-operations-title">Operating telemetry</h2>
-        <p className="text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="p" className="leading-relaxed">
           Token use, context pressure, cache efficiency, and recorded interactions.
-        </p>
+        </Text>
       </Stack>
       <Grid layout="main-aside" gap="section" align="start">
         <OverviewAgentSpend resource={telemetry.history} model={model} />

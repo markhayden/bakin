@@ -29,6 +29,7 @@ import {
   Spinner,
   SystemState,
   type FileInputHandle,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { ArrowLeft, Download, Pencil, Trash2, Upload, X } from 'lucide-react'
 import { AssetMetaSummary, AssetThumb } from './atoms'
@@ -406,9 +407,9 @@ export function VersionedAssetDetail() {
               >
                 Version history
               </h2>
-              <p className="m-0 text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+              <Text size="body" tone="muted" as="p" className="leading-relaxed">
                 Select a version to preview it. Promoting a version does not remove newer history.
-              </p>
+              </Text>
             </Stack>
             <div className="flex flex-col gap-bakin-2" data-testid="version-timeline">
               {versions.map(v => (

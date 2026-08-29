@@ -68,9 +68,9 @@ function MessageRow({ message, index }: { message: SessionMessage; index: number
           {message.role}
         </StatusBadge>
         {message.toolName ? (
-          <code className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-primary">
+          <Text size="meta" mono as="code">
             {message.toolName}
-          </code>
+          </Text>
         ) : null}
         {message.model ? (
           <Text size="meta" tone="muted">{message.model}</Text>

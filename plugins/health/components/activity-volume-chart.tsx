@@ -12,6 +12,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Text,
 } from '@makinbakin/sdk/ui'
 import type { InteractionCoverage, UsageFeedData } from '../types'
 import { coveredActivityBuckets } from './activity-time-buckets'
@@ -61,9 +62,9 @@ export function ActivityVolumeChart({
     >
       <Stack gap="dense">
         <h3 id="activity-volume-title">Activity over time</h3>
-        <p className="text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="p" className="leading-relaxed">
           Calls recorded in each interval of the selected window, split by result.
-        </p>
+        </Text>
         {!coverage.hasFullWindow && (
           <Alert tone="attention">
             <AlertDescription>

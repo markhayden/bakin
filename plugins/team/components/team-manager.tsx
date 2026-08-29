@@ -152,9 +152,9 @@ export function TeamManager() {
                   Shared context for every agent
                 </Text>
               </div>
-              <code className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text size="meta" tone="muted" mono as="code">
                 global
-              </code>
+              </Text>
             </ListRow>
 
             {teams.map((team) => (
@@ -172,9 +172,9 @@ export function TeamManager() {
                   >
                     {team.label}
                   </Button>
-                  <code className="block font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                  <Text size="meta" tone="muted" mono as="code" className="block">
                     {team.id}
-                  </code>
+                  </Text>
                 </div>
                 <div className="min-w-0 sm:w-56">
                   <AgentSelect

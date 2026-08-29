@@ -1998,7 +1998,7 @@ describe('ActivityTab', () => {
     expect(screen.queryByText('What is Bakin doing?')).toBeNull()
     const intro = screen.getByText(/tool calls?/i)
     expect(intro.textContent ?? '').not.toMatch(/\bevery\b/i)
-    expect(intro.className).toContain('text-bakin-typography-size-meta')
+    expect(intro.getAttribute('data-size')).toBe('meta')
     expect(intro.className).toContain('text-bakin-text-muted')
     expect(intro.className).toContain('leading-relaxed')
     expect(screen.getByLabelText('Activity window')).toBeDefined()

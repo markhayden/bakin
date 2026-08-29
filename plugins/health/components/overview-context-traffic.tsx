@@ -126,8 +126,8 @@ export function OverviewContextTraffic({
       <Separator className="mt-bakin-4" />
       <div className="mt-bakin-3">
         <div className="flex items-baseline justify-between gap-bakin-3">
-          <span className="text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">Latest-session traffic</span>
-          {cachePercent !== null && <strong className="text-bakin-typography-size-body font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">{cachePercent}% from cache</strong>}
+          <Text size="meta" tone="muted" weight="medium">Latest-session traffic</Text>
+          {cachePercent !== null && <Text size="body" weight="semibold" as="strong" className="tabular-nums">{cachePercent}% from cache</Text>}
         </div>
 
         {sessions.loading && !sessions.data ? (

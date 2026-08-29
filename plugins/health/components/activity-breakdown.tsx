@@ -115,9 +115,9 @@ export function ActivityBreakdown({
         <h3 id="activity-breakdown-title">
           Call breakdown
         </h3>
-        <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">
+        <Text size="body" tone="muted" as="p" className="mt-bakin-1">
           Where recorded calls went and which agents generated them.
-        </p>
+        </Text>
       </div>
       <Grid layout="split" gap="section" align="start">
         <BreakdownPanel

@@ -24,6 +24,7 @@ import {
   Separator,
   Spinner,
   SubmitButton,
+  Text,
   Textarea,
 } from '@makinbakin/sdk/ui'
 import {
@@ -92,9 +93,9 @@ function TaskHero({
     >
       <AgentAvatar agent={agentIdentity} size="lg" decorative />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
+        <Text size="body" weight="semibold" as="div" className="truncate">
           {agentIdentity.name}
-        </div>
+        </Text>
         <div className="mt-bakin-1 flex min-w-0 flex-wrap items-center gap-bakin-2">
           <StatusBadge tone={STATUS_TONES[columnId]} variant="solid" size="xs">
             {colConfig.label}

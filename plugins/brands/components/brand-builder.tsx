@@ -361,9 +361,9 @@ export function BrandBuilder({
                 placeholder="Choose an agent..."
               />
             </Field>
-            <p className="text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+            <Text size="meta" tone="muted" as="p" className="leading-relaxed">
               This creates a <StatusBadge size="xs" tone="accent">Draft</StatusBadge> that stays unavailable to tasks and image tools until you review and publish it.
-            </p>
+            </Text>
             </div>
           </DrawerSection>
         )}

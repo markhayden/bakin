@@ -46,9 +46,9 @@ export function AgentsTab({ m }: { m: ModelsData }) {
         <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 @lg/model-config:flex-row @lg/model-config:items-start @lg/model-config:justify-between">
           <div className="min-w-0">
             <h2 id="global-model-defaults-heading">Global Defaults</h2>
-            <p className="mt-bakin-1 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+            <Text size="body" tone="muted" as="p" className="mt-bakin-1 max-w-prose leading-relaxed">
               Choose the primary model, the default for delegated work, and ordered fallbacks used across agents.
-            </p>
+            </Text>
           </div>
           {defaultsDirty && (
             <Button
@@ -190,9 +190,9 @@ export function AgentsTab({ m }: { m: ModelsData }) {
       <section aria-labelledby="agent-model-overrides-heading" className="min-w-0">
         <div className="mb-bakin-3">
           <h2 id="agent-model-overrides-heading">Agent Overrides</h2>
-          <p className="mt-bakin-1 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+          <Text size="body" tone="muted" as="p" className="mt-bakin-1 max-w-prose leading-relaxed">
             Override the defaults only where an agent needs a different model.
-          </p>
+          </Text>
         </div>
 
         {loading ? (

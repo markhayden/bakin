@@ -1,6 +1,6 @@
 'use client'
 
-import { Badge, Button, Card } from '@makinbakin/sdk/ui'
+import { Badge, Button, Card, Text } from '@makinbakin/sdk/ui'
 import { formatAge } from '@makinbakin/sdk/utils'
 import { Star, Trash2 } from 'lucide-react'
 import { AssetThumb, ProvenanceChips } from './atoms'
@@ -61,21 +61,21 @@ export function VersionRow({ assetId, assetType, version, isCurrent, isSelected,
 
       <div className="flex min-w-0 flex-col gap-bakin-2 pr-bakin-8">
         <Inline gap="dense">
-          <span className="font-bakin-typography-family-mono text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
+          <Text size="body" weight="semibold" mono>
             v{version.version}
-          </span>
+          </Text>
           <Badge tone="neutral" variant="soft" size="xs">{version.op}</Badge>
           {isCurrent && (
             <Badge tone="success" variant="solid" size="xs" data-testid="current-badge">current</Badge>
           )}
-          <span className="ml-auto text-bakin-typography-size-meta text-bakin-text-muted">
+          <Text size="meta" tone="muted" className="ml-auto">
             {formatAge(version.created)}
-          </span>
+          </Text>
         </Inline>
         {version.prompt ? (
-          <p className="m-0 line-clamp-2 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+          <Text size="meta" tone="muted" as="p" className="line-clamp-2 leading-relaxed">
             {version.prompt}
-          </p>
+          </Text>
         ) : null}
         <ProvenanceChips generation={version.generation} />
         {!isCurrent && (

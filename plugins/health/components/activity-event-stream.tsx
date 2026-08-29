@@ -70,15 +70,15 @@ function ActivityEventRow({ entry }: { entry: UsageEntry }) {
       meta={(
         <>
           <StatusBadge tone={state.tone} variant="solid">{state.label}</StatusBadge>
-          <span className="min-w-0 truncate text-bakin-typography-size-meta text-bakin-text-muted">
+          <Text size="meta" tone="muted" className="min-w-0 truncate">
             {sourceLabel} · {entry.agent ? `Agent: ${entry.agent}` : activityOwner(entry)}
-          </span>
-          {context && <span className="min-w-0 text-bakin-typography-size-meta text-bakin-text-muted">{context}</span>}
+          </Text>
+          {context && <Text size="meta" tone="muted" className="min-w-0">{context}</Text>}
         </>
       )}
       expandable
     >
-      <p className="text-bakin-typography-size-body text-bakin-text-primary">{failed ? activityFailureReason(entry) : activityImpact(entry)}</p>
+      <Text size="body" as="p">{failed ? activityFailureReason(entry) : activityImpact(entry)}</Text>
       {failed && <Text size="meta" tone="muted" as="p" className="mt-bakin-1">{activityImpact(entry)}</Text>}
       <KeyValue layout="columns" className="mt-bakin-3" items={activityDetailItems(entry, [{ label: 'Type', value: sourceLabel }])} />
     </TimelineEntry>
@@ -104,15 +104,15 @@ export function ActivityEventStream({ data }: { data: UsageFeedData }) {
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-bakin-2">
         <div>
           <h3 id="activity-recent-events-title">Recent events</h3>
-          <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">
+          <Text size="body" tone="muted" as="p" className="mt-bakin-1">
             {data.capabilities?.sourceBalancedActivity === true
               ? 'Newest visible calls from each source. Open one for details.'
               : 'Newest first. Open a row for the reason and technical evidence.'}
-          </p>
+          </Text>
         </div>
-        <span className="text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
+        <Text size="meta" tone="muted" className="tabular-nums">
           {entries.length.toLocaleString()} available · {data.totals.count.toLocaleString()} reported
-        </span>
+        </Text>
       </div>
 
       {entries.length === 0 ? (

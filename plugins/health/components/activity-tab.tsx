@@ -1,7 +1,7 @@
 'use client'
 
 import { useQueryState } from '@makinbakin/sdk/hooks'
-import { Alert, AlertDescription, Banner, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, Banner, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Text } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { ActivityBreakdown, type ActivityFailureSelection } from './activity-breakdown'
@@ -235,9 +235,9 @@ export function ActivityTab() {
       />
 
       {resource.loading && !data ? (
-        <div role="status" aria-label="Loading activity" className="py-bakin-8 text-center text-bakin-typography-size-body text-bakin-text-muted">
+        <Text role="status" aria-label="Loading activity" size="body" tone="muted" as="div" className="py-bakin-8 text-center">
           Loading activity…
-        </div>
+        </Text>
       ) : resource.error && !data ? (
         <Banner
           announce="assertive"

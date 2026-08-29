@@ -106,13 +106,13 @@ function AgentStepDetail({ step }: { step: AgentStep }) {
           <WorkflowAgentAvatar agentId={step.agent} size="lg" />
         )}
         <div className="flex-1 min-w-0">
-          <div className="text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">
+          <Text size="body" weight="medium" as="div">
             {step.agent === '$assigned'
               ? 'Assigned Agent'
               : isTeamStepToken(step.agent)
                 ? `Team · ${teamIdFromToken(step.agent)}`
                 : agentMeta?.name ?? step.agent}
-          </div>
+          </Text>
           <div className="flex items-center gap-2 mt-1">
             <StepTypeBadge type="agent" />
             {step.skill && (
@@ -156,7 +156,7 @@ function AgentStepDetail({ step }: { step: AgentStep }) {
                     <div key={out.id} className="flex items-center gap-2">
                       <span className="text-bakin-typography-size-body font-bakin-typography-weight-medium font-bakin-typography-family-mono">{out.id}</span>
                       {out.type && <Badge variant="outline" size="xs">{out.type}</Badge>}
-                      {out.path && <span className="text-bakin-typography-size-meta text-bakin-text-muted font-bakin-typography-family-mono">{out.path}</span>}
+                      {out.path && <Text size="meta" tone="muted" mono>{out.path}</Text>}
                     </div>
                   ))}
                 </div>
@@ -218,7 +218,7 @@ function GateStepDetail({ step }: { step: GateStep }) {
                   <ChannelIcon channelId={ch.channel} className="size-3" />
                   {getChannelLabel(ch.channel, channels)}
                 </Badge>
-                <span className="text-bakin-typography-size-body font-bakin-typography-family-mono text-bakin-text-muted">{ch.target}</span>
+                <Text size="body" tone="muted" mono>{ch.target}</Text>
               </ListRow>
             ))}
           </ListRows>
@@ -245,7 +245,7 @@ function GateStepDetail({ step }: { step: GateStep }) {
                 <Badge tone="neutral" variant="soft" size="xs" className="font-bakin-typography-family-mono">{step.on_reject.goto}</Badge>
               </div>
               {step.on_reject.note_to_agent && (
-                <p className="text-bakin-typography-size-meta text-bakin-text-muted ml-6">Rejection reason forwarded to agent</p>
+                <Text size="meta" tone="muted" as="p" className="ml-6">Rejection reason forwarded to agent</Text>
               )}
             </Panel>
           </DrawerSection>
@@ -287,9 +287,9 @@ function OutputStepDetail({ step }: { step: OutputStep }) {
             <WorkflowAgentAvatar agentId={step.agent} size="lg" />
           )}
           <div className="flex-1 min-w-0">
-            <div className="text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">
+            <Text size="body" weight="medium" as="div">
               {isTeamStepToken(step.agent) ? `Team · ${teamIdFromToken(step.agent)}` : step.agent}
-            </div>
+            </Text>
             <div className="flex items-center gap-2 mt-1">
               <StepTypeBadge type="output" />
               {step.skill && (
@@ -358,9 +358,9 @@ function ParallelStepDetail({ step }: { step: ParallelStep }) {
                 </div>
               )}
               {(child as AgentStep).task && (
-                <p className="text-bakin-typography-size-meta text-bakin-text-muted mt-2 leading-relaxed line-clamp-3">
+                <Text size="meta" tone="muted" as="p" className="mt-2 leading-relaxed line-clamp-3">
                   {(child as AgentStep).task}
-                </p>
+                </Text>
               )}
             </Panel>
           ))}
@@ -406,11 +406,11 @@ function MapWorkflowStepDetail({ step }: { step: MapWorkflowStep }) {
         ]}
       />
 
-      <p className="text-bakin-typography-size-meta text-bakin-text-muted leading-relaxed">
+      <Text size="meta" tone="muted" as="p" className="leading-relaxed">
         Fans out one child workflow per element of the source array at runtime.
         Live children appear as sub-tasks on the board; per-child retry and
         cancel live on the parent task's detail panel.
-      </p>
+      </Text>
 
       {step.description && (
         <DrawerSection title="Description">

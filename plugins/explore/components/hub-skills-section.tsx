@@ -172,7 +172,7 @@ function PreviewDrawerBody({
       )}
 
       {preview.description && (
-        <p className="text-bakin-typography-size-body text-bakin-text-primary">{preview.description}</p>
+        <Text size="body" as="p">{preview.description}</Text>
       )}
 
       <VerdictLine state={preview.verdictState} />

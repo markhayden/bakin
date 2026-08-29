@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FileText, } from 'lucide-react'
 import { Section, Stack } from '@makinbakin/sdk/layout'
 import { ListRow, ListRows } from '@makinbakin/sdk/patterns'
-import { Button, Label, Spinner, Switch, SystemState } from '@makinbakin/sdk/ui'
+import { Button, Label, Spinner, Switch, SystemState, Text } from '@makinbakin/sdk/ui'
 import { useQueryState } from '@makinbakin/sdk/hooks'
 
 /**
@@ -173,9 +173,9 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
             </p>
           </div>
           {packageId ? (
-            <code className="max-w-full truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+            <Text size="meta" tone="muted" mono as="code" className="max-w-full truncate">
               {packageId}
-            </code>
+            </Text>
           ) : null}
         </div>
 

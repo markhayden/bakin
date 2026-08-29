@@ -15,6 +15,7 @@ import type { ComponentType, ReactNode } from 'react'
 import { Inline, Stack } from '@makinbakin/sdk/layout'
 import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { cn } from '@makinbakin/sdk/utils'
+import { Text } from '@makinbakin/sdk/ui'
 
 export type CapabilityMode = 'native' | 'shimmed' | 'unavailable' | string
 
@@ -130,7 +131,7 @@ export function EntityCardBody({
         <Inline gap="dense" align="center">
           <Heading>{title}</Heading>
           {badge}
-          {meta ? <span className="ml-auto text-bakin-typography-size-meta text-bakin-text-muted">{meta}</span> : null}
+          {meta ? <Text size="meta" tone="muted" className="ml-auto">{meta}</Text> : null}
         </Inline>
         {blurb ? <p className="m-0 leading-relaxed text-bakin-text-muted">{blurb}</p> : null}
         {children}

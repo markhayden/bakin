@@ -7,7 +7,7 @@ import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { useAgentList } from '@makinbakin/sdk/hooks'
 import { Grid } from '@makinbakin/sdk/layout'
 import { AgentAvatar, ListRow, ListRows } from '@makinbakin/sdk/patterns'
-import { Card, CardContent, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import { Card, CardContent, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 
 import type { ChatSummaryDto } from './use-chat-data'
 
@@ -96,9 +96,9 @@ export function Launcher({
                       {agent.name || agent.id}
                     </span>
                     {agent.role ? (
-                      <span className="line-clamp-2 w-full text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">
+                      <Text size="meta" tone="muted" className="line-clamp-2 w-full">
                         {agent.role}
-                      </span>
+                      </Text>
                     ) : null}
                   </CardContent>
                 </Card>
@@ -134,13 +134,13 @@ export function Launcher({
                       >
                         {chat.title || 'New chat'}
                       </span>
-                      <span className="mt-bakin-2 block truncate text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">
+                      <Text size="meta" tone="muted" className="mt-bakin-2 block truncate">
                         {chat.lastMessagePreview || chat.agentId}
-                      </span>
+                      </Text>
                     </span>
-                    <span className="shrink-0 text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">
+                    <Text size="meta" tone="muted" className="shrink-0">
                       {formatRelativeTime(chat.updatedAt)}
-                    </span>
+                    </Text>
                 </ListRow>
               ))}
             </ListRows>

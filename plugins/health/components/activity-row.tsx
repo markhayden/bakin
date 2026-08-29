@@ -2,6 +2,7 @@
 
 import { DisclosurePanel } from '@makinbakin/sdk/layout'
 import { KeyValue, ListRow, StatusBadge, type KeyValueItem, type StatusTone } from '@makinbakin/sdk/patterns'
+import { Text } from '@makinbakin/sdk/ui'
 import type { UsageEntry } from '../types'
 
 export function formatActivityName(value: string): string {
@@ -134,7 +135,7 @@ export function ActivityRow({ entry }: { entry: UsageEntry }) {
             <StatusBadge tone={state.tone} variant="solid">{state.label}</StatusBadge>
             {entry.activityClass === 'routine' && <StatusBadge tone="neutral" variant="soft">Routine</StatusBadge>}
           </div>
-          {failed && <p className="text-bakin-typography-size-body text-bakin-text-primary">{activityFailureReason(entry)}</p>}
+          {failed && <Text size="body" as="p">{activityFailureReason(entry)}</Text>}
           <p className={failed ? 'text-bakin-typography-size-meta text-bakin-text-muted' : 'text-bakin-typography-size-body text-bakin-text-muted'}>{activityImpact(entry)}</p>
         </div>
         <time dateTime={entry.ts} className="shrink-0 text-bakin-typography-size-meta text-bakin-text-muted">{formatWhen(entry.ts)}</time>

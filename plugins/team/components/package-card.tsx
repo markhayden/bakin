@@ -193,9 +193,9 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
           <StatusBadge tone="neutral" variant="solid" size="xs">Self-managed</StatusBadge>
           <Text size="meta" tone="muted">main agent</Text>
         </Inline>
-        <p className="m-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="p" className="leading-relaxed">
           Your main agent is your own persona — its workspace files live with you, not a package template. Adoption is intentionally not offered here.
-        </p>
+        </Text>
       </div>
     )
   }
@@ -248,9 +248,9 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
         </Inline>
       </div>
       {state === 'unmanaged' && (
-        <p className="m-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="p" className="leading-relaxed">
           Adopt to enable lesson toggles, automatic skill projection, and update-from-source tracking. Your workspace files stay as-is.
-        </p>
+        </Text>
       )}
       {hasPackage && packageState?.entry && (
         <div className="grid gap-bakin-2">
@@ -311,9 +311,9 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
                   <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-text-primary">
                     {packageState.updateStatus.currentVersion || packageState.version || packageState.entry?.version || 'unknown'}
                   </p>
-                  <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                  <Text size="meta" tone="muted" mono as="p" className="mt-bakin-1">
                     commit {packageState.updateStatus.currentCommitSha?.slice(0, 7) || packageState.entry?.commitSha?.slice(0, 7) || 'unknown'}
-                  </p>
+                  </Text>
                 </div>
                 <div>
                   <Overline as="p">
@@ -322,9 +322,9 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
                   <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-signal-accent">
                     {packageState.updateStatus.latestVersion ?? 'latest'}
                   </p>
-                  <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                  <Text size="meta" tone="muted" mono as="p" className="mt-bakin-1">
                     commit {packageState.updateStatus.latestCommitSha?.slice(0, 7) || 'unknown'}
-                  </p>
+                  </Text>
                 </div>
               </div>
             </div>

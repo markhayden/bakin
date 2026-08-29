@@ -391,7 +391,7 @@ export function AgentPulse({
         </CardDescription>
         {rows.length > 0 && (
           <CardAction>
-            <p className="text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
+            <Text size="meta" tone="muted" as="p" className="tabular-nums">
               {pending.liveNow
                 ? 'Checking live activity'
                 : unavailable.liveNow
@@ -403,7 +403,7 @@ export function AgentPulse({
                   : plural(working, 'working agent')}
               {' · '}
               {pending.effort ? 'Checking review flags' : plural(review, 'to review', 'to review')}
-            </p>
+            </Text>
           </CardAction>
         )}
       </CardHeader>

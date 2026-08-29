@@ -44,6 +44,7 @@ import {
   Overline,
   Separator,
   SystemState,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { useSearchHotkey } from './use-search-hotkey'
 import { cn } from '@makinbakin/sdk/utils'
@@ -314,7 +315,7 @@ export function GlobalSearchOverlay() {
                         <div className="mt-0.5 line-clamp-2 text-xs text-bakin-text-muted">{descriptor.subtitle}</div>
                       )}
                       {descriptor.meta && (
-                        <div className="mt-bakin-1 truncate text-bakin-typography-size-meta text-bakin-text-muted">{descriptor.meta}</div>
+                        <Text size="meta" tone="muted" as="div" className="mt-bakin-1 truncate">{descriptor.meta}</Text>
                       )}
                     </div>
                     {debug && (

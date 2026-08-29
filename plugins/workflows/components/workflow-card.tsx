@@ -22,6 +22,7 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
+  Text,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -295,7 +296,7 @@ export function WorkflowCard({
               <WorkflowAgentAvatar key={id} agentId={id} size="sm" />
             ))}
             {assignments.agentIds.length > 5 && (
-              <span className="ml-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">+{assignments.agentIds.length - 5}</span>
+              <Text size="meta" tone="muted" className="ml-bakin-1">+{assignments.agentIds.length - 5}</Text>
             )}
             </div>
           </div>

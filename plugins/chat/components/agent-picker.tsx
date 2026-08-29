@@ -18,6 +18,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Text,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -77,7 +78,7 @@ export function AgentPicker({
                   <span className="ml-bakin-2 min-w-0">
                     <span className="block truncate">{agent.name || agent.id}</span>
                     {agent.role ? (
-                      <span className="block truncate text-bakin-typography-size-meta text-bakin-text-muted">{agent.role}</span>
+                      <Text size="meta" tone="muted" className="block truncate">{agent.role}</Text>
                     ) : null}
                   </span>
                 </CommandItem>

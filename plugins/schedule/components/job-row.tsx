@@ -47,9 +47,9 @@ export function JobStatusBadge({ job }: { job: ScheduleJob }) {
 export function JobNameCell({ job, scoreInfo }: { job: ScheduleJob; scoreInfo?: JobScoreInfo }) {
   return (
     <div className="flex flex-col gap-bakin-1">
-      <span className="text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
+      <Text size="body" weight="semibold">
         {job.displayName || job.id}
-      </span>
+      </Text>
       <Overline>
         {job.source === 'adopted' ? 'Adopted' : job.isBakinJob ? 'Bakin schedule' : 'Runtime cron'}
       </Overline>
@@ -73,9 +73,9 @@ export function JobScheduleCell({ job }: { job: ScheduleJob }) {
         {job.tz && <Text as="span" size="meta" tone="muted" className="ml-bakin-1">{job.tz.replace(/^.*\//, '')}</Text>}
       </Text>
       {job.nextRun && !job.paused && (
-        <div className="text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="div">
           next {new Date(job.nextRun).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-        </div>
+        </Text>
       )}
     </>
   )

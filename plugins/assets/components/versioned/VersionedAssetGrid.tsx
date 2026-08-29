@@ -603,7 +603,7 @@ export function VersionedAssetGrid() {
                       <div className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-canvas-default">
                         <AssetTypeIcon type={item.type} className="size-bakin-4" />
                       </div>
-                      <p className="m-0 truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{item.description || item.assetId}</p>
+                      <Text size="body" weight="medium" as="p" className="truncate">{item.description || item.assetId}</Text>
                     </Inline>
                   ),
                 },
@@ -779,7 +779,7 @@ export function VersionedAssetGrid() {
       {selected.size > 0 && (
         <div className="fixed inset-x-bakin-4 bottom-bakin-4 z-40 mx-auto flex max-w-xl flex-wrap items-center gap-bakin-2 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default/95 px-bakin-3 py-bakin-2 shadow-bakin-elevation-overlay backdrop-blur" data-testid="bulk-tag-bar">
           <Tags className="size-bakin-4 shrink-0 text-bakin-text-muted" />
-          <span className="shrink-0 text-bakin-typography-size-meta text-bakin-text-muted" data-testid="bulk-selected-count">{selected.size} selected</span>
+          <Text size="meta" tone="muted" className="shrink-0" data-testid="bulk-selected-count">{selected.size} selected</Text>
           <div className="min-w-0 flex-1">
             <TagInput value={bulkTags} onChange={setBulkTags} suggestions={tagOptions.filter(o => o.value !== UNTAGGED).map(o => o.value)} placeholder="Add tags…" />
           </div>

@@ -108,7 +108,7 @@ export function ExtensionsSection() {
       key: 'path',
       header: 'Path',
       cellClassName: 'whitespace-normal',
-      cell: (ext) => <span className="break-all font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">{ext.path}</span>,
+      cell: (ext) => <Text size="meta" tone="muted" mono className="break-all">{ext.path}</Text>,
     },
     {
       // Declared on the row and never rendered until now, on the one panel
@@ -118,7 +118,7 @@ export function ExtensionsSection() {
       cellClassName: 'whitespace-normal',
       cell: (ext) => (
         <span className="inline-flex min-w-0 items-center gap-bakin-1">
-          <span className="break-all font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">{ext.sha256}</span>
+          <Text size="meta" tone="muted" mono className="break-all">{ext.sha256}</Text>
           <CopyButton text={ext.sha256} label={`Copy SHA256 for ${ext.label}`} />
         </span>
       ),

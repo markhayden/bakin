@@ -429,9 +429,9 @@ function ExplorePageInner() {
             <h2>
               {TAB_INTROS[tab].title}
             </h2>
-            <p className="text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+            <Text size="body" tone="muted" as="p" className="leading-relaxed">
               {TAB_INTROS[tab].blurb}
-            </p>
+            </Text>
           </section>
         ) : null}
 

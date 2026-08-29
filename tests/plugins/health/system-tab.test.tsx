@@ -204,7 +204,7 @@ describe('SystemTabView', () => {
     const identity = screen.getByRole('heading', { level: 2, name: 'System' })
     expect(identity.className).toContain('sr-only')
     const intro = screen.getByText(/See whether Bakin can serve work, Search can be trusted, plugins are active, and health evidence is current/i)
-    expect(intro.className).toContain('text-bakin-typography-size-meta')
+    expect(intro.getAttribute('data-size')).toBe('meta')
     expect(intro.className).toContain('leading-relaxed')
     expect(intro.className).toContain('text-bakin-text-muted')
     expect(screen.getByRole('heading', { name: 'Platform pulse' })).toBeDefined()

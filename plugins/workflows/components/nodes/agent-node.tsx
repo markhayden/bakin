@@ -3,6 +3,7 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { AlertTriangle, User } from 'lucide-react'
 import { NodeCard } from '@makinbakin/sdk/patterns'
+import { Text } from '@makinbakin/sdk/ui'
 import { AgentAssignmentLabel } from './agent-assignment-label'
 import { StaleSkillChip } from './stale-skill-chip'
 
@@ -36,7 +37,7 @@ export function AgentNode({ data }: NodeProps) {
     >
       <AgentAssignmentLabel agent={agent} className="mt-bakin-1" />
       {excerpt && (
-        <p className="mt-bakin-1 line-clamp-2 text-bakin-typography-size-meta leading-snug text-bakin-text-muted">{excerpt}</p>
+        <Text size="meta" tone="muted" as="p" className="mt-bakin-1 line-clamp-2 leading-snug">{excerpt}</Text>
       )}
       <Handle type="target" position={Position.Top} className="!bg-bakin-text-muted" />
       <Handle type="source" position={Position.Bottom} className="!bg-bakin-text-muted" />

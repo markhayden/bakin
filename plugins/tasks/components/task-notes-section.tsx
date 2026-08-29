@@ -13,6 +13,7 @@ import {
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { Panel } from '@makinbakin/sdk/layout'
 import { KeyValue, ListRow, ListRows } from '@makinbakin/sdk/patterns'
@@ -54,7 +55,7 @@ function DispatchFailureLogPanel({ detail }: { detail: DispatchFailureDetail }) 
 function TaskLogMessage({ entry }: { entry: TaskLogEntry }) {
   const dispatchFailure = getDispatchFailureDetail(entry)
   if (dispatchFailure) return <DispatchFailureLogPanel detail={dispatchFailure} />
-  return <p className="m-0 text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">{entry.message}</p>
+  return <Text size="body" tone="muted" as="p" className="leading-relaxed">{entry.message}</Text>
 }
 
 interface TaskNotesSectionProps {
@@ -84,12 +85,12 @@ export function TaskNotesSection({ task, logMessage, setLogMessage, addingLog, o
           {visible.map((entry, i) => (
             <ListRow key={`${entry.timestamp}-${entry.author}-${i}`}>
               <div className="mb-bakin-1 flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1">
-                <time className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                <Text size="meta" tone="muted" mono as="time">
                   {formatDateTime(entry.timestamp)}
-                </time>
-                <span className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-primary">
+                </Text>
+                <Text size="meta" weight="semibold">
                   {entry.author}
-                </span>
+                </Text>
               </div>
               <TaskLogMessage entry={entry} />
             </ListRow>
@@ -139,7 +140,7 @@ export function TaskNotesSection({ task, logMessage, setLogMessage, addingLog, o
         </InputGroup>
       </form>
       {(!task.log || task.log.length === 0) && (
-        <p className="m-0 text-bakin-typography-size-body text-bakin-text-muted">No notes yet.</p>
+        <Text size="body" tone="muted" as="p">No notes yet.</Text>
       )}
       {notesListJSX}
     </DrawerSection>

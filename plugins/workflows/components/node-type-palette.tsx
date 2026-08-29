@@ -11,7 +11,7 @@
 
 import { useState, type DragEvent } from 'react'
 import { usePluginJsonFetch } from '@makinbakin/sdk/hooks'
-import { Button, Overline, SystemState } from '@makinbakin/sdk/ui'
+import { Button, Overline, SystemState, Text } from '@makinbakin/sdk/ui'
 import {
   CheckCircle2,
   ChevronLeft,
@@ -311,9 +311,9 @@ function PaletteItem({
           </span>
         )}
       </span>
-      <span className="line-clamp-2 w-full text-bakin-typography-size-meta leading-snug text-bakin-text-muted">
+      <Text size="meta" tone="muted" className="line-clamp-2 w-full leading-snug">
         {description}
-      </span>
+      </Text>
     </li>
   )
 }

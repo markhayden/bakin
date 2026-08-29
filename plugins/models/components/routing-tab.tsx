@@ -226,9 +226,9 @@ export function RoutingTab({ m }: { m: ModelsData }) {
   return (
     <div className="@container/routing flex min-w-0 flex-col gap-bakin-8">
       <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 @2xl/routing:flex-row @2xl/routing:items-start @2xl/routing:justify-between">
-        <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+        <Text size="body" tone="muted" as="p" className="max-w-prose leading-relaxed">
           Choose a model and thinking level for each kind of work. Blank routes inherit the agent&apos;s model, while tag overrides take priority over the routes below. Interactive chat always keeps the operator&apos;s selected model.
-        </p>
+        </Text>
         <Button
           type="button"
           variant="outline"
@@ -265,9 +265,9 @@ export function RoutingTab({ m }: { m: ModelsData }) {
       <Section spacing="compact" aria-label="Task dispatch routes">
         <Stack gap="dense">
           <h2 id="task-dispatch-routes-heading">Task dispatch</h2>
-          <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+          <Text size="body" tone="muted" as="p" className="max-w-prose leading-relaxed">
             Routes for scheduled, workflow, manually started, recovery, and decomposition work.
-          </p>
+          </Text>
         </Stack>
         {routeList(DISPATCH_ROWS, 'Task dispatch routes')}
       </Section>
@@ -275,9 +275,9 @@ export function RoutingTab({ m }: { m: ModelsData }) {
       <Section spacing="compact" divider="top" aria-label="System work routes">
         <Stack gap="dense">
           <h2 id="system-work-routes-heading">System work</h2>
-          <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+          <Text size="body" tone="muted" as="p" className="max-w-prose leading-relaxed">
             Background work Bakin performs for titles, enrichment, relays, team routing, and direct sends.
-          </p>
+          </Text>
         </Stack>
         {routeList(SYSTEM_ROWS, 'System work routes')}
       </Section>
@@ -286,9 +286,9 @@ export function RoutingTab({ m }: { m: ModelsData }) {
         <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 @2xl/routing:flex-row @2xl/routing:items-start @2xl/routing:justify-between">
           <Stack gap="dense">
             <h2 id="tag-overrides-heading">Tag overrides</h2>
-            <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+            <Text size="body" tone="muted" as="p" className="max-w-prose leading-relaxed">
               Match a task tag before its work-class route. The first matching override wins.
-            </p>
+            </Text>
           </Stack>
           <Button
             type="button"
