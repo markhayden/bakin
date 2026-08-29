@@ -45,7 +45,7 @@ import {
   unregisterPlugin,
 } from '@makinbakin/sdk/internal'
 import { Slot } from '@makinbakin/sdk/slots'
-import { Button } from '@makinbakin/sdk/ui'
+import { Banner, Button, Spinner, SystemState, Text } from '@makinbakin/sdk/ui'
 import { assertReactInstance } from '../lib/react-identity'
 import { findShadowingHostPaths } from '../lib/route-shadow'
 import { checkPluginDrift } from './drift-check'
@@ -591,61 +591,65 @@ function releasePluginBoot(): void {
 
 function AppBootLoader() {
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-bakin-canvas-default text-bakin-text-primary" role="status" aria-live="polite">
-      <div className="flex items-center gap-3.5 text-sm text-bakin-text-muted">
-        <span className="size-7 animate-spin rounded-bakin-pill border-3 border-bakin-signal-accent/20 border-t-bakin-signal-accent" aria-hidden="true" />
-        <span className="leading-none">
-          Loading plugins
-        </span>
-      </div>
+    <div className="fixed inset-0 flex items-center justify-center bg-bakin-canvas-default">
+      {/* SystemState's loading kind draws a pulsing dot; the boot screen has
+          nothing else moving, so the kit Spinner takes the glyph slot. */}
+      <SystemState
+        kind="loading"
+        scope="page"
+        icon={<Spinner size="md" className="text-bakin-signal-accent" />}
+        title="Loading plugins"
+        description="Fetching the plugin manifest and client bundles."
+      />
     </div>
   )
 }
 
 function BootErrorPanel({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-bakin-canvas-default text-bakin-text-primary" role="alert" data-testid="plugin-boot-error">
-      <div className="flex max-w-md flex-col items-center gap-bakin-4 text-center">
-        <div className="text-sm font-bakin-typography-weight-medium">Couldn&apos;t load plugins</div>
-        <p className="text-sm text-bakin-text-muted">
-          The server didn&apos;t answer the plugin manifest request. It may be
-          restarting — retry in a moment, or check that Bakin is running.
-        </p>
-        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-          Retry
-        </Button>
-      </div>
+    <div className="fixed inset-0 flex items-center justify-center bg-bakin-canvas-default">
+      <SystemState
+        kind="error"
+        scope="page"
+        data-testid="plugin-boot-error"
+        title="Couldn't load plugins"
+        description="The server didn't answer the plugin manifest request. It may be restarting — retry in a moment, or check that Bakin is running."
+        action={
+          <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+            Retry
+          </Button>
+        }
+      />
     </div>
   )
 }
 
 function PluginFailureBanner({ pluginIds, onDismiss }: { pluginIds: string[]; onDismiss: () => void }) {
   return (
-    <div
-      className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-between gap-bakin-4 border-t border-bakin-border-subtle/30 bg-bakin-canvas-default px-bakin-4 py-2.5 text-sm"
-      role="alert"
-      data-testid="plugin-boot-failures"
-    >
-      <span className="text-bakin-text-muted">
-        {pluginIds.length === 1 ? 'A plugin' : `${pluginIds.length} plugins`} failed to load:{' '}
-        <span className="font-bakin-typography-weight-medium text-bakin-text-primary">{pluginIds.join(', ')}</span> — features they
-        provide are missing. See the browser console for details.
-      </span>
-      <span className="flex shrink-0 items-center gap-bakin-2">
-        <Button type="button" variant="outline" size="xs" onClick={() => window.location.reload()}>
-          Reload
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          onClick={onDismiss}
-          aria-label="Dismiss"
-          className="text-bakin-text-muted hover:text-bakin-text-primary"
-        >
-          Dismiss
-        </Button>
-      </span>
+    <div className="fixed inset-x-0 bottom-0 z-50 bg-bakin-canvas-default p-bakin-2">
+      <Banner
+        tone="danger"
+        announce="assertive"
+        data-testid="plugin-boot-failures"
+        title={pluginIds.length === 1 ? 'A plugin failed to load' : `${pluginIds.length} plugins failed to load`}
+        description={
+          <>
+            <Text weight="medium">{pluginIds.join(', ')}</Text> — features they provide are missing. See the
+            browser console for details.
+          </>
+        }
+        action={
+          <>
+            {/* Deliberate full reload: a failed client bundle cannot be re-imported in place. */}
+            <Button type="button" variant="outline" size="xs" onClick={() => window.location.reload()}>
+              Reload
+            </Button>
+            <Button type="button" variant="ghost" size="xs" onClick={onDismiss} aria-label="Dismiss">
+              Dismiss
+            </Button>
+          </>
+        }
+      />
     </div>
   )
 }

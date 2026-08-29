@@ -15,7 +15,7 @@ import {
   InputGroupInput,
 } from '@makinbakin/sdk/ui'
 import { Panel } from '@makinbakin/sdk/layout'
-import { KeyValue } from '@makinbakin/sdk/patterns'
+import { KeyValue, ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import { formatDateTime } from '@makinbakin/sdk/utils'
 import { AlertTriangle, Send } from 'lucide-react'
 import type { Task, TaskLogEntry } from '../types'
@@ -80,9 +80,9 @@ export function TaskNotesSection({ task, logMessage, setLogMessage, addingLog, o
     const hasMore = reversed.length > NOTES_PAGE_SIZE
     return (
       <div className="pb-bakin-4">
-        <ol className="m-0 list-none divide-y divide-bakin-border-subtle p-0">
+        <ListRows variant="separated" aria-label="Task notes">
           {visible.map((entry, i) => (
-            <li key={`${entry.timestamp}-${entry.author}-${i}`} className="min-w-0 py-bakin-3 first:pt-0">
+            <ListRow key={`${entry.timestamp}-${entry.author}-${i}`}>
               <div className="mb-bakin-1 flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1">
                 <time className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
                   {formatDateTime(entry.timestamp)}
@@ -92,9 +92,9 @@ export function TaskNotesSection({ task, logMessage, setLogMessage, addingLog, o
                 </span>
               </div>
               <TaskLogMessage entry={entry} />
-            </li>
+            </ListRow>
           ))}
-        </ol>
+        </ListRows>
         {hasMore && !showAllNotes ? (
           <Button
             type="button"

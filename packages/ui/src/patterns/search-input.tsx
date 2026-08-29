@@ -2,8 +2,8 @@
 
 import * as React from 'react'
 
-import { Button } from '../primitives/button'
-import { Input } from '../primitives/input'
+import type { Input } from '../primitives/input'
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '../primitives/input-group'
 import { cn } from '../utils'
 
 type NativeSearchInputProps = Omit<
@@ -28,11 +28,7 @@ export interface SearchInputProps extends NativeSearchInputProps {
 
 function SearchIcon() {
   return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      className="pointer-events-none absolute left-bakin-3 top-1/2 size-bakin-4 -translate-y-1/2 fill-none stroke-current stroke-2 text-bakin-text-muted"
-    >
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="fill-none stroke-current stroke-2">
       <circle cx="11" cy="11" r="7" />
       <path d="m20 20-4-4" strokeLinecap="round" />
     </svg>
@@ -45,7 +41,7 @@ function SearchProgressIcon() {
       aria-hidden="true"
       data-slot="search-input-progress"
       viewBox="0 0 24 24"
-      className="pointer-events-none absolute left-bakin-3 top-1/2 size-bakin-4 -translate-y-1/2 animate-spin fill-none stroke-current stroke-2 text-bakin-text-muted motion-reduce:animate-none"
+      className="animate-spin fill-none stroke-current stroke-2 motion-reduce:animate-none"
     >
       <circle cx="12" cy="12" r="8" className="opacity-25" />
       <path d="M20 12a8 8 0 0 0-8-8" strokeLinecap="round" />
@@ -110,61 +106,65 @@ export function SearchInput({
         data-state={state}
         style={{ '--bakin-search-input-inline-size': focused ? '100%' : collapsedSize } as React.CSSProperties}
         className={cn(
-          'relative max-w-full min-w-0 transition-[inline-size] duration-[var(--bakin-motion-duration-transition)] ease-bakin-standard motion-reduce:transition-none',
+          'max-w-full min-w-0 transition-[inline-size] duration-[var(--bakin-motion-duration-transition)] ease-bakin-standard motion-reduce:transition-none',
           mobileFullWidth
             ? '[inline-size:100%] md:[inline-size:var(--bakin-search-input-inline-size)]'
             : '[inline-size:var(--bakin-search-input-inline-size)]',
         )}
       >
-        {busy ? <SearchProgressIcon /> : <SearchIcon />}
-        <Input
-          {...inputProps}
-          ref={inputRef}
-          id={id}
-          name={name}
-          type="search"
-          value={value}
-          aria-label={label}
-          aria-busy={busy || undefined}
-          placeholder={placeholder}
-          autoComplete={autoComplete}
-          autoFocus={autoFocus}
-          disabled={disabled}
-          readOnly={readOnly}
-          required={required}
-          onChange={(event) => onValueChange(event.currentTarget.value)}
-          onFocus={(event) => {
-            setFocused(true)
-            onFocus?.(event)
-          }}
-          onBlur={(event) => {
-            setFocused(false)
-            onBlur?.(event)
-          }}
-          className={cn(
-            'w-full overflow-hidden whitespace-nowrap pl-bakin-8 pr-bakin-8 text-ellipsis',
-            '[&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none',
-            inputClassName,
-          )}
-        />
-        {value.length > 0 && !disabled && !readOnly ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            data-slot="search-input-clear"
-            aria-label={`Clear ${label}`}
-            className="absolute right-bakin-1 top-1/2 z-[1] -translate-y-1/2 text-bakin-text-muted hover:text-bakin-text-primary active:not-aria-[haspopup]:-translate-y-1/2"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              onValueChange('')
-              inputRef.current?.focus({ preventScroll: true })
+        <InputGroup>
+          <InputGroupAddon align="inline-start">
+            {busy ? <SearchProgressIcon /> : <SearchIcon />}
+          </InputGroupAddon>
+          <InputGroupInput
+            {...inputProps}
+            ref={inputRef}
+            id={id}
+            name={name}
+            type="search"
+            value={value}
+            aria-label={label}
+            aria-busy={busy || undefined}
+            placeholder={placeholder}
+            autoComplete={autoComplete}
+            autoFocus={autoFocus}
+            disabled={disabled}
+            readOnly={readOnly}
+            required={required}
+            onChange={(event) => onValueChange(event.currentTarget.value)}
+            onFocus={(event) => {
+              setFocused(true)
+              onFocus?.(event)
             }}
-          >
-            <ClearIcon />
-          </Button>
-        ) : null}
-        {busy ? <span role="status" className="sr-only">Searching {label}</span> : null}
+            onBlur={(event) => {
+              setFocused(false)
+              onBlur?.(event)
+            }}
+            className={cn(
+              'overflow-hidden whitespace-nowrap text-ellipsis',
+              '[&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none',
+              inputClassName,
+            )}
+          />
+          {value.length > 0 && !disabled && !readOnly ? (
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                size="icon-xs"
+                data-slot="search-input-clear"
+                aria-label={`Clear ${label}`}
+                className="text-bakin-text-muted hover:text-bakin-text-primary"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  onValueChange('')
+                  inputRef.current?.focus({ preventScroll: true })
+                }}
+              >
+                <ClearIcon />
+              </InputGroupButton>
+            </InputGroupAddon>
+          ) : null}
+          {busy ? <span role="status" className="sr-only">Searching {label}</span> : null}
+        </InputGroup>
       </div>
     </div>
   )

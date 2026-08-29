@@ -9,7 +9,7 @@ import {
   DrawerSection,
   Text,
 } from '@makinbakin/sdk/ui'
-import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { ListRow, ListRows, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { formatDateTime, formatDuration } from '@makinbakin/sdk/utils'
 import { ChevronRight } from 'lucide-react'
 
@@ -78,13 +78,13 @@ export function TaskRunHistory({ taskId }: { taskId: string }) {
           />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <ol className="m-0 list-none divide-y divide-bakin-border-subtle p-0">
+          <ListRows variant="separated" aria-label="Dispatch runs">
             {runs.map((run) => {
               const duration = formatDuration(run.durationMs)
               return (
-                <li
+                <ListRow
                   key={run.runId}
-                  className="grid min-w-0 gap-bakin-2 py-bakin-3 first:pt-0 @md/run:grid-cols-[minmax(0,1fr)_auto]"
+                  className="grid min-w-0 gap-bakin-2 @md/run:grid-cols-[minmax(0,1fr)_auto]"
                 >
                   <div className="flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1">
                     <Text mono size="meta" tone="muted">
@@ -106,10 +106,10 @@ export function TaskRunHistory({ taskId }: { taskId: string }) {
                       {run.settleReason}
                     </p>
                   ) : null}
-                </li>
+                </ListRow>
               )
             })}
-          </ol>
+          </ListRows>
         </CollapsibleContent>
       </Collapsible>
     </DrawerSection>

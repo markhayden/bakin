@@ -750,7 +750,7 @@ describe('AgentsTab', () => {
     expect(row.textContent).toContain('Coverage unavailable')
     expect(row.textContent).toContain('Token totals unavailable · coverage unavailable')
     expect(row.textContent).toContain('Cost unavailable')
-    expect(row.textContent).not.toContain('8.0k tracked tokens')
+    expect(row.textContent).not.toContain('8k tracked tokens')
     expect(row.textContent).not.toContain('$0.03')
   })
 

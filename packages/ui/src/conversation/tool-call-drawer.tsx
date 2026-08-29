@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from 'react'
 
+import { CodeBlock, type CodeBlockLanguage } from '../content/code-block'
 import { KeyValue } from '../patterns/key-value'
 import { Badge, type BadgeTone } from '../primitives/badge'
 import {
@@ -21,18 +22,18 @@ const DRAWER_DEFAULT_WIDTH = 720
 const DRAWER_MIN_WIDTH = 320
 const DRAWER_MAX_WIDTH = 960
 
-function prettify(raw: string): string {
+function prettify(raw: string): { code: string; language: CodeBlockLanguage } {
   const trimmed = raw.trim()
-  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return raw
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return { code: raw, language: 'text' }
   try {
-    return JSON.stringify(JSON.parse(trimmed), null, 2)
+    return { code: JSON.stringify(JSON.parse(trimmed), null, 2), language: 'json' }
   } catch {
-    return raw
+    return { code: raw, language: 'text' }
   }
 }
 
 function DetailSection({ label, value }: { label: string; value: string }) {
-  const displayValue = prettify(value)
+  const { code, language } = prettify(value)
   return (
     <section className="grid min-w-0 gap-bakin-2" aria-label={label}>
       <div className="flex min-w-0 items-center gap-bakin-1">
@@ -41,9 +42,7 @@ function DetailSection({ label, value }: { label: string; value: string }) {
         </h3>
         <CopyButton text={value} label={`Copy ${label.toLowerCase()}`} />
       </div>
-      <pre className="max-h-80 max-w-full overflow-auto whitespace-pre-wrap break-words rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default p-bakin-3 font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-primary">
-        {displayValue}
-      </pre>
+      <CodeBlock code={code} language={language} wrap className="max-h-80 max-w-full overflow-y-auto" />
     </section>
   )
 }

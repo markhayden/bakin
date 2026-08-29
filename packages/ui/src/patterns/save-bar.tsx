@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '../primitives/alert'
 import { Button } from '../primitives/button'
 import { Spinner } from '../primitives/spinner'
 import { cn } from '../utils'
+import { StatusMarker } from './status-marker'
 
 export interface SaveBarProps {
   dirty: boolean
@@ -92,10 +93,10 @@ export function SaveBar({
     >
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1">
-          <span
-            aria-hidden="true"
+          <StatusMarker
+            tone="attention"
             data-slot="save-bar-signal"
-            className="size-bakin-2 shrink-0 animate-pulse rounded-bakin-pill bg-bakin-signal-highlight motion-reduce:animate-none"
+            className="animate-pulse motion-reduce:animate-none"
           />
           <p className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold">Unsaved changes</p>
           {children ? (

@@ -1,6 +1,6 @@
 'use client'
 
-import { Badge, Button } from '@makinbakin/sdk/ui'
+import { Badge, Button, Card } from '@makinbakin/sdk/ui'
 import { formatAge } from '@makinbakin/sdk/utils'
 import { Star, Trash2 } from 'lucide-react'
 import { AssetThumb, ProvenanceChips } from './atoms'
@@ -20,32 +20,34 @@ export function VersionRow({ assetId, assetType, version, isCurrent, isSelected,
   onDelete: (version: number) => void
 }) {
   return (
-    <article
-      className={`relative flex min-w-0 gap-bakin-3 border-t border-bakin-border-subtle px-bakin-2 py-bakin-3 transition-colors ${
-        isSelected
-          ? 'border-l-2 border-l-bakin-signal-accent bg-bakin-surface-default/70 pl-bakin-3'
-          : 'hover:bg-bakin-surface-default/40'
-      }`}
+    // Card (not ListRow): the parent stacks rows in a plain div, and a
+    // ListRow's <li> needs a ListRows parent. The whole-surface activation
+    // rides the kit interactive contract; `render` carries aria-pressed so
+    // the preview stays a real toggle button.
+    <Card
+      size="sm"
+      selected={isSelected}
+      interactive={{
+        label: `Preview version ${version.version}`,
+        render: (
+          <button
+            type="button"
+            aria-pressed={isSelected}
+            onClick={() => onSelect?.(version.version)}
+          />
+        ),
+      }}
+      className="flex-row px-bakin-2"
       data-testid={`version-row-${version.version}`}
       data-selected={isSelected || undefined}
     >
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        aria-label={`Preview version ${version.version}`}
-        aria-pressed={isSelected}
-        className="absolute inset-0 z-0 h-auto min-h-0 min-w-0 w-auto rounded-bakin-surface p-0 hover:bg-transparent"
-        onClick={() => onSelect?.(version.version)}
-      />
-
       {canDelete && (
         <Button
           type="button"
           size="icon-xs"
           variant="ghost"
           onClick={() => onDelete(version.version)}
-          className="absolute right-bakin-2 top-bakin-2 z-20 text-bakin-signal-danger"
+          className="absolute right-bakin-2 top-bakin-2 text-bakin-signal-danger"
           aria-label={`Delete version ${version.version}`}
           data-testid={`delete-version-${version.version}`}
         >
@@ -53,11 +55,11 @@ export function VersionRow({ assetId, assetType, version, isCurrent, isSelected,
         </Button>
       )}
 
-      <div className="pointer-events-none relative z-10 size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control bg-bakin-surface-default">
+      <div className="size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control bg-bakin-surface-default">
         <AssetThumb assetId={assetId} type={assetType} version={version.version} hasThumb={version.thumb !== null} />
       </div>
 
-      <div className="pointer-events-none relative z-10 flex min-w-0 flex-col gap-bakin-2 pr-bakin-8">
+      <div className="flex min-w-0 flex-col gap-bakin-2 pr-bakin-8">
         <Inline gap="dense">
           <span className="font-bakin-typography-family-mono text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
             v{version.version}
@@ -77,7 +79,7 @@ export function VersionRow({ assetId, assetType, version, isCurrent, isSelected,
         ) : null}
         <ProvenanceChips generation={version.generation} />
         {!isCurrent && (
-          <div className="pointer-events-auto relative z-20">
+          <div>
             <Button
               type="button"
               size="xs"
@@ -91,6 +93,6 @@ export function VersionRow({ assetId, assetType, version, isCurrent, isSelected,
           </div>
         )}
       </div>
-    </article>
+    </Card>
   )
 }

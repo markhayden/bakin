@@ -72,6 +72,11 @@ function DiagnosticsSection({ title, actions, children, divider = 'top' }: {
   )
 }
 
+/**
+ * Kept local on purpose: context budgets are reported in explicit binary
+ * units (KiB/MiB) to match the server's byte accounting, while the SDK's
+ * `formatSize` labels its 1024-multiples as KB/MB. Reported as a kit gap.
+ */
 function formatBytes(n: number): string {
   if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MiB`
   if (n >= 1024) return `${(n / 1024).toFixed(1)} KiB`

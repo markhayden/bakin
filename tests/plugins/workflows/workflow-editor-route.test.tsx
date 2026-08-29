@@ -57,6 +57,25 @@ mock.module('@makinbakin/sdk/ui', () => ({
   Skeleton: ({ className }: { className?: string }) => (
     <div data-testid="skeleton" className={className} />
   ),
+  // The route composes its loading/error states on SystemState; the stub
+  // keeps the title as a heading and renders the preview + action slots.
+  SystemState: ({ kind, title, description, preview, action }: {
+    kind: string
+    title?: React.ReactNode
+    description?: React.ReactNode
+    preview?: React.ReactNode
+    action?: React.ReactNode
+  }) => (
+    <section data-testid="system-state" data-kind={kind}>
+      <h2>{title}</h2>
+      {description ? <p>{description}</p> : null}
+      {preview}
+      {action}
+    </section>
+  ),
+  Button: ({ children, variant: _variant, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string }) => (
+    <button {...props}>{children}</button>
+  ),
 }))
 
 mock.module('@makinbakin/sdk/slots', () => ({

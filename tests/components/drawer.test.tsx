@@ -21,30 +21,8 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
-mock.module('@/components/ui/sheet', () => ({
-  Sheet: ({ children, busy }: { children: React.ReactNode; busy?: boolean }) => <div data-testid="sheet" data-busy={busy || undefined}>{children}</div>,
-  SheetContent: ({ children, style, className }: { children: React.ReactNode; style?: React.CSSProperties; className?: string }) => (
-    <div data-testid="sheet-content" style={style} className={className}>{children}</div>
-  ),
-  SheetHeader: ({ children, className, inset = 'default', ...props }: React.HTMLAttributes<HTMLDivElement> & { inset?: 'default' | 'none' }) => (
-    <div className={className} data-inset={inset} {...props}>{children}</div>
-  ),
-  SheetTitle: ({ children, className }: { children: React.ReactNode; className?: string }) => <h2 className={className}>{children}</h2>,
-  SheetDescription: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-}))
-
-mock.module('@/components/ui/dialog', () => ({
-  Dialog: ({ children, open }: { children: React.ReactNode; open?: boolean }) => open ? <div role="dialog">{children}</div> : null,
-  DialogContent: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={className}>{children}</div>,
-  DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogTitle: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogDescription: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-}))
-
-mock.module('@/components/ui/button', () => ({
-  Button: ({ children, variant: _variant, size: _size, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string; size?: string }) => <button {...props}>{children}</button>,
-}))
-
+// The Drawer now composes the real kit Sheet + UnsavedChangesDialog, which
+// portal into document.body — queries go through `screen` / `document.body`.
 describe('Drawer', () => {
   beforeEach(() => {
     const storage = new Map<string, string>()
@@ -73,23 +51,23 @@ describe('Drawer', () => {
   it('hydrates width from localStorage when available', () => {
     window.localStorage.setItem(DRAWER_WIDTH_STORAGE_KEY, '640')
 
-    const { getByTestId } = render(
+    render(
       <Drawer open onOpenChange={() => {}}>
         <div>Body</div>
       </Drawer>,
     )
 
-    expect(getByTestId('sheet-content').style.getPropertyValue('--bakin-drawer-width')).toBe('640px')
+    expect(screen.getByRole('dialog').style.getPropertyValue('--bakin-drawer-width')).toBe('640px')
   })
 
   it('persists the resized width on drag end', async () => {
-    const { container, getByTestId } = render(
+    render(
       <Drawer open onOpenChange={() => {}}>
         <div>Body</div>
       </Drawer>,
     )
 
-    const handle = container.querySelector('[role="separator"]')
+    const handle = document.body.querySelector('[role="separator"]')
     expect(handle).toBeTruthy()
 
     fireEvent.mouseDown(handle as Element, { clientX: 1000 })
@@ -98,7 +76,7 @@ describe('Drawer', () => {
 
     await waitFor(() => {
       expect(window.localStorage.getItem(DRAWER_WIDTH_STORAGE_KEY)).toBe('910')
-      expect(getByTestId('sheet-content').style.getPropertyValue('--bakin-drawer-width')).toBe('910px')
+      expect(screen.getByRole('dialog').style.getPropertyValue('--bakin-drawer-width')).toBe('910px')
     })
   })
 
@@ -136,14 +114,14 @@ describe('Drawer', () => {
         <div>Body</div>
       </Drawer>,
     )
-    expect(screen.getByTestId('sheet').getAttribute('data-busy')).toBe('true')
+    expect(screen.getByRole('dialog').getAttribute('aria-busy')).toBe('true')
     expect(screen.getByRole('button', { name: 'Close panel' })).toHaveProperty('disabled', true)
     fireEvent.click(screen.getByRole('button', { name: 'Close panel' }))
     expect(onOpenChange).not.toHaveBeenCalled()
   })
 
   it('uses valid responsive gutters and a reusable nested section inset', () => {
-    const { container } = render(
+    render(
       <Drawer open onOpenChange={() => {}} title="Task detail">
         <DrawerSection title="Details">
           <p>Task evidence</p>
@@ -151,7 +129,7 @@ describe('Drawer', () => {
       </Drawer>,
     )
 
-    const layout = container.querySelector('[data-slot="drawer-layout"]')
+    const layout = document.body.querySelector('[data-slot="drawer-layout"]')
     expect(layout?.className).toContain('px-bakin-4')
     expect(layout?.className).toContain('sm:px-bakin-6')
     expect(layout?.className).toContain('pt-bakin-4')
@@ -159,13 +137,13 @@ describe('Drawer', () => {
     expect(layout?.className).toContain('gap-bakin-6')
     expect(layout?.className).toContain('shrink-0')
     expect(layout?.className).not.toContain('px-bakin-7')
-    const content = container.querySelector('[data-slot="drawer-content"]')
+    const content = document.body.querySelector('[data-slot="drawer-content"]')
     expect(content).toBeTruthy()
     expect(content?.className).not.toContain('min-h-0')
     expect(content?.className).not.toContain('flex-1')
     expect(screen.getByRole('heading', { level: 2, name: 'Task detail' }).closest('[data-inset]')?.getAttribute('data-inset')).toBe('none')
     expect(screen.getByRole('heading', { level: 3, name: 'Details' })).toBeTruthy()
-    const sectionContent = container.querySelector('[data-slot="drawer-section-content"]')
+    const sectionContent = document.body.querySelector('[data-slot="drawer-section-content"]')
     expect(sectionContent?.className).toContain('px-bakin-2')
     expect(sectionContent?.closest('[data-slot="drawer-section"]')?.className).toContain('gap-bakin-3')
   })

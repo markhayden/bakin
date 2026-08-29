@@ -21,7 +21,9 @@ import { PluginLink } from '@makinbakin/sdk/navigation'
 import {
   AgentAvatar,
   KanbanCardSignal,
+  ScoreOverlay,
   StatusBadge,
+  type ScoreOverlayInfo,
 } from '@makinbakin/sdk/patterns'
 import {
   Badge,
@@ -47,10 +49,8 @@ import type { LiveActivity } from '../hooks/use-live-activity'
 import type { Task, ColumnId } from '../types'
 import { Inline } from '@makinbakin/sdk/layout'
 
-export interface TaskScoreInfo {
-  score: number
-  indexScores?: Record<string, number>
-}
+/** Search relevance for a task hit — the kit ScoreOverlay's own shape. */
+export type TaskScoreInfo = ScoreOverlayInfo
 
 function formatRelativeDate(dateStr: string): string {
   // Parse YYYY-MM-DD as local date, not UTC (appending T00:00 forces local interpretation)
@@ -148,11 +148,6 @@ export function TaskCardContent({
   const isFutureScheduled = availableAtMs !== null && availableAtMs > Date.now()
   const dispatchFailure = getLatestDispatchFailure(task.log)
 
-  const semKey = 'embeddings'
-  const bm25Key = scoreInfo?.indexScores
-    ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
-    : undefined
-
   const hasMetadata = Boolean(task.workflowId || task.projectId || task.brandId || (!task.brandId && warnUnbranded && !isComplete))
   const hasFooter = Boolean(task.agent || task.team || task.date)
   const hasSignals = Boolean(
@@ -181,17 +176,7 @@ export function TaskCardContent({
           <Overline className="font-bakin-typography-family-mono">
             {shortId(task.id)}
           </Overline>
-          {scoreInfo ? (
-            <span className="flex min-w-0 flex-wrap items-center gap-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta">
-              <span className="text-bakin-data-series-1">RRF {scoreInfo.score.toFixed(3)}</span>
-              <span className="text-bakin-data-series-2">
-                BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
-              </span>
-              <span className="text-bakin-data-series-3">
-                SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
-              </span>
-            </span>
-          ) : null}
+          {scoreInfo ? <ScoreOverlay info={scoreInfo} /> : null}
         </Inline>
 
         {onDelete ? (

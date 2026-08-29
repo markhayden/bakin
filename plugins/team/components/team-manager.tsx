@@ -8,6 +8,8 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
+  Avatar,
+  AvatarFallback,
   Button,
   DrawerSection,
   Field,
@@ -131,9 +133,11 @@ export function TeamManager() {
 
           <ListRows variant="bordered" aria-label="Teams">
             <ListRow className="flex min-w-0 items-center gap-bakin-3">
-              <div className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-surface-elevated">
-                <Users className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
-              </div>
+              <Avatar size="md">
+                <AvatarFallback>
+                  <Users className="size-bakin-4" aria-hidden="true" />
+                </AvatarFallback>
+              </Avatar>
               <div className="min-w-0 flex-1">
                 <Button
                   type="button"

@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from 'react'
 import { createRoute, useNavigate } from '@tanstack/react-router'
-import { Skeleton } from '@makinbakin/sdk/ui'
+import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
 import { Slot } from '@makinbakin/sdk/slots'
 import type { WorkflowDefinition } from '@makinbakin/sdk/types'
 import { Route as RootRoute } from './__root'
@@ -47,19 +47,34 @@ function WorkflowEditPage() {
 
   if (loading) {
     return (
-      <div className="p-6 max-w-3xl mx-auto flex flex-col gap-3">
-        <Skeleton className="h-8 w-1/3" />
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-32 w-full" />
-      </div>
+      <SystemState
+        kind="loading"
+        scope="page"
+        title="Loading workflow"
+        preview={
+          <div className="flex flex-col gap-bakin-3">
+            <Skeleton className="h-8 w-1/3" />
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-32 w-full" />
+          </div>
+        }
+      />
     )
   }
 
   if (error || !definition) {
     return (
-      <div className="p-6 max-w-3xl mx-auto text-sm text-bakin-text-muted">
-        {error ?? 'Workflow not found'}
-      </div>
+      <SystemState
+        kind="error"
+        scope="page"
+        title={error ?? 'Workflow not found'}
+        description="The workflow definition could not be loaded from this address."
+        action={
+          <Button variant="outline" onClick={() => navigate({ to: '/workflows' })}>
+            Back to workflows
+          </Button>
+        }
+      />
     )
   }
 

@@ -4,23 +4,16 @@
  * Extracted from components/health-page.tsx. (formatAge already comes from
  * @makinbakin/sdk/utils — not duplicated here.)
  */
+import { formatTokenCount } from '@makinbakin/sdk/conversation'
+import { formatDuration } from '@makinbakin/sdk/utils'
+
+/** Elapsed time since `since`, via the SDK duration helper (sub-second uptime reads as "850ms"). */
 export function formatUptime(since: string): string {
-  const ms = Date.now() - new Date(since).getTime()
-  const secs = Math.floor(ms / 1000)
-  if (secs < 60) return `${secs}s`
-  const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m ${secs % 60}s`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ${mins % 60}m`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ${hrs % 24}h`
+  return formatDuration(Math.max(0, Date.now() - Date.parse(since))) ?? '—'
 }
 
-export function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
-  return String(n)
-}
+/** Compact token count — the SDK conversation helper (890, 14.2k, 1.2m). */
+export { formatTokenCount }
 
 export function formatRuntimeCost(value: number | null): string {
   if (value === null) return 'unavailable'

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Clock, Play } from 'lucide-react'
-import { Button } from '@makinbakin/sdk/ui'
+import { Button, Text } from '@makinbakin/sdk/ui'
 import { cn } from '@makinbakin/sdk/utils'
 
 export function DispatchTimer() {
@@ -63,7 +63,7 @@ export function DispatchTimer() {
   const display = isDispatching ? 'running' : `${mins}:${secs.toString().padStart(2, '0')}`
 
   return (
-    <div className="flex items-center gap-1.5 text-xs font-mono text-bakin-text-muted">
+    <Text as="div" size="meta" tone="muted" mono className="flex items-center gap-1.5">
       <Clock className={cn('size-3', isDispatching ? 'animate-pulse' : '')} />
       {/* Was a native `title`, which ARIA drops on a role-less span — so AT
           users got nothing while sighted users got a hover-only hint. The
@@ -81,6 +81,6 @@ export function DispatchTimer() {
       >
         <Play className={cn('size-3', running ? 'animate-pulse' : '')} />
       </Button>
-    </div>
+    </Text>
   )
 }

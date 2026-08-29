@@ -1,9 +1,16 @@
 'use client'
 
 import { useRef, useState, useCallback, useEffect, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
+// Host bridge rather than `@makinbakin/sdk/patterns`: the SDK ui entrypoint
+// re-exports this Drawer, so importing the SDK here would be a module cycle.
+import { UnsavedChangesDialog } from '../../packages/host/src/ui/page-archetypes'
+
+/** Drawers cannot save in place, so the exit dialog never renders its save action. */
+function noopSave(): void {
+  // Intentionally empty — `canSaveInPlace={false}` hides the button.
+}
 
 const MIN_WIDTH = 320
 const MAX_WIDTH = 960
@@ -230,24 +237,17 @@ export function Drawer({
         </SheetContent>
       </Sheet>
 
-      <Dialog open={showDirtyConfirm} busy={busy} onOpenChange={setShowDirtyConfirm}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Unsaved changes</DialogTitle>
-            <DialogDescription>
-              You have unsaved changes that will be lost if you close this drawer.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setShowDirtyConfirm(false)} disabled={busy}>
-              Keep editing
-            </Button>
-            <Button variant="danger" onClick={confirmDiscard} disabled={busy}>
-              Discard changes
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <UnsavedChangesDialog
+        open={showDirtyConfirm}
+        busy={busy}
+        canSaveInPlace={false}
+        description="You have unsaved changes that will be lost if you close this drawer."
+        cancelLabel="Keep editing"
+        discardLabel="Discard changes"
+        onSave={noopSave}
+        onDiscard={confirmDiscard}
+        onCancel={() => setShowDirtyConfirm(false)}
+      />
     </>
   )
 }

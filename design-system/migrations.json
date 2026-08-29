@@ -20,13 +20,13 @@
     "private-import"
   ],
   "summary": {
-    "paths": 171,
+    "paths": 169,
     "totals": {
       "raw-palette": 4,
       "arbitrary-size": 82,
-      "raw-scale": 642,
-      "raw-control": 20,
-      "inline-style": 34,
+      "raw-scale": 554,
+      "raw-control": 21,
+      "inline-style": 33,
       "generic-token": 72,
       "unscoped-css": 0,
       "private-import": 0
@@ -246,7 +246,7 @@
       "target": "canonical shell layout and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 6
+        "raw-scale": 5
       }
     },
     {
@@ -261,7 +261,7 @@
       "target": "canonical shell layout and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 4
+        "raw-scale": 1
       }
     },
     {
@@ -276,7 +276,7 @@
       "target": "canonical shell layout and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 4
+        "raw-scale": 3
       }
     },
     {
@@ -301,21 +301,6 @@
         "area": "host"
       },
       "censusEntryId": "shared-component:packages/host/src/components/layout/layout-shell",
-      "migrationTask": "T44",
-      "archetype": "shell",
-      "target": "canonical shell layout and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 2
-      }
-    },
-    {
-      "path": "packages/host/src/components/layout/nav-badge.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "host"
-      },
-      "censusEntryId": "shared-component:packages/host/src/components/layout/nav-badge",
       "migrationTask": "T44",
       "archetype": "shell",
       "target": "canonical shell layout and namespaced semantic tokens",
@@ -351,7 +336,7 @@
       "target": "canonical shell layout and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 15
+        "raw-scale": 14
       }
     },
     {
@@ -366,7 +351,7 @@
       "target": "canonical shell layout and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 8
+        "raw-scale": 6
       }
     },
     {
@@ -426,7 +411,7 @@
       "target": "canonical global-search overlay and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 14
+        "raw-scale": 12
       }
     },
     {
@@ -443,21 +428,6 @@
       "allowances": {
         "raw-palette": 2,
         "generic-token": 72
-      }
-    },
-    {
-      "path": "packages/host/src/plugin-host/PluginHost.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "host"
-      },
-      "censusEntryId": "host-route:__root",
-      "migrationTask": "T47",
-      "archetype": "shell",
-      "target": "supported host UI and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 7
       }
     },
     {
@@ -502,7 +472,7 @@
       "target": "supported host UI and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 7
+        "raw-scale": 1
       }
     },
     {
@@ -517,7 +487,7 @@
       "target": "supported host UI and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 7
+        "raw-scale": 3
       }
     },
     {
@@ -1193,8 +1163,7 @@
       "target": "supported host UI and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 1,
-        "inline-style": 1
+        "arbitrary-size": 1
       }
     },
     {
@@ -1652,7 +1621,7 @@
       "target": "asset list/detail archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 2
+        "raw-scale": 1
       }
     },
     {
@@ -1720,6 +1689,22 @@
       }
     },
     {
+      "path": "plugins/assets/components/versioned/VersionRow.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "assets"
+      },
+      "censusEntryId": "plugin-slot:assets:page:/assets",
+      "migrationTask": "T50-T51",
+      "archetype": "detail",
+      "target": "asset list/detail archetypes and supported SDK UI",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-control": 1
+      }
+    },
+    {
       "path": "plugins/brands/components/brand-builder.tsx",
       "owner": {
         "repository": "bakin",
@@ -1748,7 +1733,7 @@
       "target": "brand list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 6
+        "raw-scale": 3
       }
     },
     {
@@ -2476,7 +2461,7 @@
       "target": "workflow pages/canvas archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 10
+        "raw-scale": 2
       }
     },
     {
@@ -2492,7 +2477,7 @@
       "target": "workflow pages/canvas archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 9
+        "raw-scale": 6
       }
     },
     {
@@ -2556,7 +2541,7 @@
       "target": "workflow pages/canvas archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 15
+        "raw-scale": 5
       }
     },
     {
@@ -2572,7 +2557,7 @@
       "target": "workflow pages/canvas archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 67
+        "raw-scale": 45
       }
     },
     {
@@ -2636,7 +2621,7 @@
       "target": "workflow pages/canvas archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 4
+        "raw-scale": 1
       }
     },
     {
@@ -2671,21 +2656,6 @@
       }
     },
     {
-      "path": "src/components/drawer.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/drawer",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 2
-      }
-    },
-    {
       "path": "src/components/provider-keys-tab.tsx",
       "owner": {
         "repository": "bakin",
@@ -2697,7 +2667,7 @@
       "target": "focused SDK primitive/pattern and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 14
+        "raw-scale": 11
       }
     },
     {
@@ -2712,7 +2682,7 @@
       "target": "focused SDK primitive/pattern and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 11
+        "raw-scale": 7
       }
     }
   ]

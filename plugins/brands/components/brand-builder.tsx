@@ -6,7 +6,7 @@
  */
 import { useCallback, useMemo, useState } from 'react'
 import { ImagePlus, X } from 'lucide-react'
-import { AgentSelect, KeyValue, StatusBadge } from '@makinbakin/sdk/patterns'
+import { AgentSelect, KeyValue, ListRow, ListRowActions, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertDescription,
@@ -385,27 +385,32 @@ function MaterialsDrop({ files, onChange }: { files: File[]; onChange: (files: F
   }
   return (
     <div className="grid gap-bakin-2">
-      {files.map((f, i) => (
-        <div
-          key={`${f.name}-${i}`}
-          className="flex min-w-0 items-center gap-bakin-2 rounded-bakin-control border border-bakin-border-subtle bg-bakin-surface-default px-bakin-3 py-bakin-2"
-        >
-          <span className="min-w-0 truncate">{f.name}</span>
-          <span className="shrink-0 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
-            {formatSize(f.size)}
-          </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            className="ml-auto text-bakin-text-muted hover:text-bakin-signal-danger"
-            onClick={() => onChange(files.filter((_, j) => j !== i))}
-            aria-label={`Remove ${f.name}`}
-          >
-            <X />
-          </Button>
-        </div>
-      ))}
+      {files.length > 0 && (
+        // Bordered, not separated: each file is a distinct removable resource
+        // (the variant's documented boundary), matching the prior per-file chip.
+        <ListRows variant="bordered" size="sm" aria-label="Attached brand materials">
+          {files.map((f, i) => (
+            <ListRow key={`${f.name}-${i}`} className="flex min-w-0 items-center gap-bakin-2">
+              <span className="min-w-0 truncate">{f.name}</span>
+              <Text mono size="meta" tone="muted" className="shrink-0">
+                {formatSize(f.size)}
+              </Text>
+              <ListRowActions>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="text-bakin-text-muted hover:text-bakin-signal-danger"
+                  onClick={() => onChange(files.filter((_, j) => j !== i))}
+                  aria-label={`Remove ${f.name}`}
+                >
+                  <X />
+                </Button>
+              </ListRowActions>
+            </ListRow>
+          ))}
+        </ListRows>
+      )}
       {!full && (
         // Kit FileInput: real button semantics (the raw label zone was not
         // keyboard-activatable) + kit-owned drag-over affordance.

@@ -15,6 +15,7 @@ import {
 import { Input } from '../primitives/input'
 import { Label } from '../primitives/label'
 import { Spinner } from '../primitives/spinner'
+import { Text } from '../primitives/text'
 import { cn } from '../utils'
 
 export type ConfirmDialogTone = 'danger' | 'primary'
@@ -112,7 +113,7 @@ export function ConfirmDialog({
             <Label htmlFor={inputId} className="text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
               {confirmPrompt ?? (
                 <>
-                  Type <code className="font-bakin-typography-family-mono text-bakin-text-primary">{confirmValue}</code> to confirm
+                  Type <Text as="code" mono size="meta">{confirmValue}</Text> to confirm
                 </>
               )}
             </Label>

@@ -2,6 +2,7 @@
 
 import type { ComponentType, ReactNode } from 'react'
 
+import { Progress, type ProgressTone } from '../primitives/progress'
 import { cn } from '../utils'
 import type { StatusTone } from './status-badge'
 
@@ -35,11 +36,11 @@ const VALUE_TONE_CLASSES: Record<StatusTone, string> = {
   accent: 'text-bakin-signal-accent',
 }
 
-const PROGRESS_TONE_CLASSES: Record<StatTileProgressTone, string> = {
-  success: 'bg-bakin-action-primary-background',
-  attention: 'bg-bakin-signal-highlight',
-  danger: 'bg-bakin-signal-danger',
-  accent: 'bg-bakin-signal-accent',
+const PROGRESS_TONES: Record<StatTileProgressTone, ProgressTone> = {
+  success: 'primary',
+  attention: 'attention',
+  danger: 'danger',
+  accent: 'accent',
 }
 
 function boundedPercent(percent: number): number {
@@ -95,25 +96,14 @@ export function StatTile({
         {value}
       </span>
       {progress && percent !== undefined ? (
-        <span
-          role="progressbar"
+        <Progress
+          value={percent}
+          max={100}
+          tone={PROGRESS_TONES[progress.tone ?? 'success']}
           aria-label={progressLabel}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={percent}
-          data-slot="stat-tile-progress"
-          data-tone={progress.tone ?? 'success'}
-          className="mt-bakin-3 block h-bakin-1 overflow-hidden rounded-bakin-pill bg-bakin-border-subtle/30"
-        >
-          <span
-            data-slot="stat-tile-progress-indicator"
-            className={cn(
-              'block h-full rounded-bakin-pill transition-[width] duration-[var(--bakin-motion-duration-transition)] ease-bakin-standard',
-              PROGRESS_TONE_CLASSES[progress.tone ?? 'success'],
-            )}
-            style={{ width: `${percent}%` }}
-          />
-        </span>
+          data-stat-tile-progress={progress.tone ?? 'success'}
+          className="mt-bakin-3"
+        />
       ) : null}
       {sub != null ? (
         <span data-slot="stat-tile-description" className="mt-bakin-2 block min-w-0 [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-muted">

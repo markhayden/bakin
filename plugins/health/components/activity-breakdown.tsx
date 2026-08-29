@@ -2,6 +2,7 @@
 
 import { RankedBarChart, type ChartDatum } from '@makinbakin/sdk/charts'
 import { Grid, Section } from '@makinbakin/sdk/layout'
+import { ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import { Button, Text } from '@makinbakin/sdk/ui'
 import { ChevronRight } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -136,12 +137,12 @@ export function ActivityBreakdown({
             compactData
           />
           {onReviewFailures && failedDestinations.length > 0 && (
-            <ul className="mt-bakin-3 space-y-bakin-1" aria-label="Review failed destinations">
+            <ListRows variant="separated" size="sm" className="mt-bakin-3" aria-label="Review failed destinations">
               {failedDestinations.map((row) => {
                 const source = row.sourceKind ? INTERACTION_SOURCE_META[row.sourceKind] : null
                 const failureLabel = `Review ${row.errors.toLocaleString()} failed ${source ? `${source.label} ` : ''}${row.label} ${row.errors === 1 ? 'call' : 'calls'}`
                 return (
-                  <li key={row.key} className="min-w-0">
+                  <ListRow key={row.key}>
                     <Button
                       type="button"
                       size="xs"
@@ -153,10 +154,10 @@ export function ActivityBreakdown({
                       <span className="min-w-0 truncate">{failureLabel}</span>
                       <ChevronRight className="size-bakin-3 shrink-0" aria-hidden="true" />
                     </Button>
-                  </li>
+                  </ListRow>
                 )
               })}
-            </ul>
+            </ListRows>
           )}
         </BreakdownPanel>
         <BreakdownPanel

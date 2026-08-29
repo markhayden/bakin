@@ -1,6 +1,6 @@
 import type { NavBadge as NavBadgeData, NavBadgeTone } from '@makinbakin/sdk'
 import { Badge, type BadgeTone } from '@makinbakin/sdk/ui'
-import { cn } from '@makinbakin/sdk/utils'
+import { StatusMarker, type StatusTone } from '@makinbakin/sdk/patterns'
 
 const BADGE_TONE: Record<NavBadgeTone, BadgeTone> = {
   error: 'danger',
@@ -9,11 +9,15 @@ const BADGE_TONE: Record<NavBadgeTone, BadgeTone> = {
   success: 'success',
 }
 
-const DOT_TONE: Record<NavBadgeTone, string> = {
-  error: 'bg-bakin-signal-danger',
-  attention: 'bg-bakin-signal-highlight',
-  info: 'bg-bakin-signal-info',
-  success: 'bg-bakin-action-primary-background',
+/**
+ * Presence-only dots ride the kit StatusMarker, whose tone vocabulary has no
+ * `info` member — `accent` is the marker's informational signal colour.
+ */
+const MARKER_TONE: Record<NavBadgeTone, StatusTone> = {
+  error: 'danger',
+  attention: 'attention',
+  info: 'accent',
+  success: 'success',
 }
 
 /**
@@ -56,12 +60,9 @@ export function NavBadge({ badge }: { badge: NavBadgeData | undefined }) {
       </Badge>
     )
   }
-  return (
-    <span
-      data-testid="nav-badge-pill"
-      className={cn('ml-auto inline-block size-1.5 rounded-bakin-pill', DOT_TONE[tone])}
-    />
-  )
+  // Unlabelled on purpose: the nav link's aria-label carries the badge
+  // state via navBadgeAriaSuffix, so the marker stays decorative.
+  return <StatusMarker data-testid="nav-badge-pill" tone={MARKER_TONE[tone]} className="ml-auto" />
 }
 
 /**
@@ -70,10 +71,10 @@ export function NavBadge({ badge }: { badge: NavBadgeData | undefined }) {
  */
 export function NavBadgeDot({ tone }: { tone: NavBadgeTone }) {
   return (
-    <span
+    <StatusMarker
       data-testid="nav-badge-dot"
-      aria-hidden="true"
-      className={cn('absolute right-1 top-1 size-1.5 rounded-bakin-pill ring-2 ring-bakin-canvas-default', DOT_TONE[tone])}
+      tone={MARKER_TONE[tone]}
+      className="absolute right-1 top-1 ring-2 ring-bakin-canvas-default"
     />
   )
 }

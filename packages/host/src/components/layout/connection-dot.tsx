@@ -1,5 +1,6 @@
 import { useContentStore } from '@makinbakin/sdk/hooks'
-import { cn } from '@makinbakin/sdk/utils'
+import { StatusMarker } from '@makinbakin/sdk/patterns'
+import { Text } from '@makinbakin/sdk/ui'
 
 export function ConnectionDot() {
   const connected = useContentStore((s) => s.connected)
@@ -8,17 +9,15 @@ export function ConnectionDot() {
     <div
       role="status"
       aria-label={connected ? 'Live connection' : 'Offline'}
-      className="flex shrink-0 items-center gap-2 text-xs font-mono"
+      className="flex shrink-0 items-center gap-2"
     >
-      <div
-        aria-hidden="true"
-        className={cn('size-2 rounded-full', connected
-            ? 'bg-bakin-action-primary-background animate-pulse-dot'
-            : 'bg-bakin-signal-danger')}
+      <StatusMarker
+        tone={connected ? 'success' : 'danger'}
+        className={connected ? 'animate-pulse-dot' : undefined}
       />
-      <span className="sr-only text-bakin-text-muted sm:not-sr-only">
+      <Text size="meta" tone="muted" mono className="sr-only sm:not-sr-only">
         {connected ? 'LIVE' : 'OFFLINE'}
-      </span>
+      </Text>
     </div>
   )
 }

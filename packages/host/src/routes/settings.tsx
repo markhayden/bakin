@@ -16,7 +16,7 @@ import { createRoute } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { NavList, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
 import { useJsonFetch } from '@makinbakin/sdk/hooks'
-import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import { Button, SystemState } from '@makinbakin/sdk/ui'
 import { PluginSettingsRenderer, type PluginSettingsSchema } from '@/components/plugin-settings-renderer'
 import {
   SYSTEM_SETTINGS_TAB_ID,
@@ -239,11 +239,7 @@ function SettingsRoute() {
             {activePlugin === PROVIDER_KEYS_TAB_ID ? (
               <ProviderKeysTab />
             ) : valuesLoading ? (
-              <div className="flex flex-col gap-bakin-4">
-                <Skeleton className="h-8 w-60" />
-                <Skeleton className="h-8 w-40" />
-                <Skeleton className="h-8 w-60" />
-              </div>
+              <SystemState kind="loading" title="Loading settings" />
             ) : valuesError ? (
               // Never render an empty form over values we failed to read — the
               // user could save it and destroy the stored config.

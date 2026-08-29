@@ -27,6 +27,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@makinbakin/sdk/ui'
+import { ScoreOverlay, type ScoreOverlayInfo } from '@makinbakin/sdk/patterns'
 import { WorkflowAgentAvatar } from './workflow-agent-identity'
 import type { WorkflowTemplate, WorkflowStep } from '../types'
 import {
@@ -167,10 +168,7 @@ function WorkflowStepPreview({
   )
 }
 
-interface ScoreInfo {
-  score: number
-  indexScores?: Record<string, number>
-}
+type ScoreInfo = ScoreOverlayInfo
 
 export function WorkflowCard({
   template,
@@ -186,26 +184,16 @@ export function WorkflowCard({
   const disabled = template.disabled === true
   const stepCount = template.stepCount ?? template.definition.steps.length
 
-  const semKey = 'embeddings'
-  const bm25Key = scoreInfo?.indexScores
-    ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
-    : undefined
-
   return (
     <div className="relative h-full min-w-0">
       {/* Debug-only search-score overlay lives beside the Card: interactive
           Cards position their direct children, so corner-pinned decorations
           anchor to this wrapper instead. */}
       {scoreInfo && (
-        <div className="pointer-events-none absolute right-bakin-3 top-bakin-3 z-10 flex flex-col items-end gap-bakin-1 rounded-bakin-control bg-bakin-canvas-default/90 px-bakin-2 py-bakin-1 text-right font-bakin-typography-family-mono text-bakin-typography-size-meta">
-          <span className="text-bakin-data-series-1">RRF {scoreInfo.score.toFixed(3)}</span>
-          <span className="text-bakin-data-series-2">
-            BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
-          </span>
-          <span className="text-bakin-data-series-3">
-            SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
-          </span>
-        </div>
+        <ScoreOverlay
+          info={scoreInfo}
+          className="pointer-events-none absolute right-bakin-3 top-bakin-3 z-10"
+        />
       )}
     <Card
       data-testid={`card-${template.filename}`}

@@ -59,7 +59,10 @@ describe('modal primitive ownership', () => {
 
     const drawer = readRepoFile('src/components/drawer.tsx')
     expect(drawer).toContain("from '@/components/ui/sheet'")
-    expect(drawer).toContain("from '@/components/ui/dialog'")
+    // The dirty-exit decision is the kit pattern, not a hand-built Dialog.
+    expect(drawer).toContain('UnsavedChangesDialog')
+    expect(drawer).not.toContain("from '@/components/ui/dialog'")
+    expect(drawer).not.toMatch(/from '@bakin\/ui/)
     expect(drawer).not.toContain('<button')
   })
 })

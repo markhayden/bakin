@@ -25,6 +25,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@makinbakin/sdk/ui'
+import { formatSize } from '@makinbakin/sdk/utils'
 import { describeRequestError } from '../lib/request-error'
 
 /**
@@ -64,10 +65,6 @@ interface SkillPreviewWire {
 interface SkillsListResponse {
   managed: Array<{ skillName: string; packageId: string; version: string; source: string; hub: boolean; capability?: string }>
   unmanaged: Array<{ name: string; scope: string }>
-}
-
-function fmtBytes(bytes: number): string {
-  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`
 }
 
 /**
@@ -261,7 +258,7 @@ function PreviewDrawerBody({
         <CodeBlock
           label={`Files in ${preview.skillName}`}
           wrap
-          code={preview.files.map((f) => `${f.path}  ${fmtBytes(f.bytes)}`).join('\n')}
+          code={preview.files.map((f) => `${f.path}  ${formatSize(f.bytes)}`).join('\n')}
         />
       </div>
 

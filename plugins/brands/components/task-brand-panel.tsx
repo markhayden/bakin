@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react'
 import { useDebug, useJsonFetch } from '@makinbakin/sdk/hooks'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { Inline, Panel } from '@makinbakin/sdk/layout'
-import { StatusBadge } from '@makinbakin/sdk/patterns'
+import { ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertDescription,
@@ -133,12 +133,9 @@ export function TaskBrandPanel({ taskId }: { taskId?: string }) {
             <p className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-muted">
               Recent injections
             </p>
-            <ul className="m-0 grid list-none gap-bakin-2 p-0" aria-label="What the agent saw">
+            <ListRows variant="separated" size="sm" aria-label="What the agent saw">
               {injections.slice(0, 5).map((inj, i) => (
-                <li
-                  key={inj.runId || i}
-                  className="grid gap-bakin-1 border-t border-bakin-border-subtle py-bakin-2 first:border-t-0 first:pt-0"
-                >
+                <ListRow key={inj.runId || i} className="grid gap-bakin-1">
                   <div className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
                     <span>{inj.ts ? new Date(inj.ts).toLocaleString() : 'Unknown time'}</span>
                     <span>{inj.agent || 'Unknown agent'}</span>
@@ -157,9 +154,9 @@ export function TaskBrandPanel({ taskId }: { taskId?: string }) {
                       ) : null}
                     </div>
                   ) : null}
-                </li>
+                </ListRow>
               ))}
-            </ul>
+            </ListRows>
           </div>
         ) : !brand.blocked ? (
           <p className="m-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">

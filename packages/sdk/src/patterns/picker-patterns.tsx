@@ -20,6 +20,7 @@ import {
   SelectValue,
   Skeleton,
   SystemState,
+  Text,
 } from '@bakin/ui'
 
 function classNames(...values: Array<string | false | null | undefined>): string {
@@ -155,9 +156,9 @@ function AssetChoices({
             <span className="min-w-0 flex-1">
               <span className="block truncate text-bakin-text-primary">{asset.label}</span>
               {asset.description ? (
-                <span className="mt-bakin-1 block truncate [font-size:var(--bakin-typography-size-meta)] text-bakin-text-muted">
+                <Text as="span" size="meta" tone="muted" className="mt-bakin-1 block truncate">
                   {asset.description}
-                </span>
+                </Text>
               ) : null}
             </span>
           </Button>
@@ -289,7 +290,7 @@ export function AssetPicker(props: AssetPickerProps) {
       <section aria-label={title} data-asset-picker="" data-variant="inline" className={classNames('grid min-w-0 gap-bakin-3', props.className)}>
         <header className="grid min-w-0 gap-bakin-1">
           <h2 className="m-0 [font-size:var(--bakin-typography-size-title)] font-bakin-typography-weight-semibold text-bakin-text-primary">{title}</h2>
-          <p className="m-0 text-bakin-text-muted">{description}</p>
+          <Text as="p" tone="muted">{description}</Text>
         </header>
         <AssetPickerPanel {...props} />
       </section>

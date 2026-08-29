@@ -5,7 +5,7 @@ import {
   TurnOutputView,
   type ConversationChunk,
 } from '@makinbakin/sdk/conversation'
-import { MarkdownContent } from '@makinbakin/sdk/content'
+import { CodeBlock, MarkdownContent } from '@makinbakin/sdk/content'
 import { PageShell, Stack } from '@makinbakin/sdk/layout'
 
 import './conversation.stories.css'
@@ -75,16 +75,7 @@ function SingleTurnStates() {
                 chunks={completedChunks}
                 renderText={(content, format) => format === 'markdown'
                   ? <MarkdownContent content={content} />
-                  : (
-                    <pre
-                      role="region"
-                      tabIndex={0}
-                      aria-label="Code output"
-                      className="max-w-full overflow-x-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-3 font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] leading-relaxed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
-                    >
-                      {content}
-                    </pre>
-                  )}
+                  : <CodeBlock code={content} label="Code output" className="max-w-full" />}
               />
             </div>
           </section>

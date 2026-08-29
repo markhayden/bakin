@@ -41,8 +41,13 @@ describe('NavBadge', () => {
     expect(renderToStaticMarkup(<NavBadge badge={{ count: 250 }} />)).toContain('99+')
   })
 
+  // Presence-only dots ride the kit StatusMarker; its tone vocabulary has no
+  // `info`, so the info tone maps onto the marker's `accent` signal.
   it('renders a dot (no count) when count is omitted', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ tone: 'info' }} />)).toContain('bg-bakin-signal-info')
+    const html = renderToStaticMarkup(<NavBadge badge={{ tone: 'info' }} />)
+    expect(html).toContain('data-status-marker="accent"')
+    // Decorative: the nav link's aria-label carries the state.
+    expect(html).toContain('aria-hidden="true"')
   })
 
   // Counted pills ride the kit Badge (size xs, solid) — tone maps to the

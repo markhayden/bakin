@@ -24,7 +24,7 @@ describe('focused markdown content', () => {
     const copy = getByRole('button', { name: 'Copy code' })
     fireEvent.click(copy)
     expect(writes).toEqual(['const ready: boolean = true'])
-    await waitFor(() => expect(copy.textContent).toContain('Copied'))
+    await waitFor(() => expect(copy.getAttribute('aria-label')).toBe('Copy code complete'))
   })
 
   it('keeps external links safe and delegates internal navigation when supplied', () => {

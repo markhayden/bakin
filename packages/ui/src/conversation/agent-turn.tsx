@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 
+import { CodeBlock } from '../content/code-block'
 import { Alert, AlertDescription } from '../primitives/alert'
 import { Spinner } from '../primitives/spinner'
 import { Avatar, AvatarFallback, AvatarImage } from '../primitives/avatar'
@@ -98,20 +99,8 @@ function turnText(items: readonly TurnItem[]): string {
 }
 
 function DefaultText({ content, format }: { content: string; format: ConversationTextFormat }) {
-  if (format === 'code') {
-    return (
-      <pre className="max-w-full overflow-x-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-3 font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-primary">
-        {content}
-      </pre>
-    )
-  }
-  if (format === 'plain') {
-    return (
-      <pre className="whitespace-pre-wrap break-words font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-primary">
-        {content}
-      </pre>
-    )
-  }
+  if (format === 'code') return <CodeBlock code={content} label="Code output" className="max-w-full" />
+  if (format === 'plain') return <CodeBlock code={content} wrap />
   return <div className="whitespace-pre-wrap break-words leading-relaxed text-bakin-text-primary">{content}</div>
 }
 

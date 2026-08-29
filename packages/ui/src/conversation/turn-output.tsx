@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 
+import { CodeBlock } from '../content/code-block'
 import { Alert, AlertDescription } from '../primitives/alert'
 import { Spinner } from '../primitives/spinner'
 import { cn } from '../utils'
@@ -110,25 +111,8 @@ function AlertIcon() {
 }
 
 function DefaultText({ content, format }: { content: string; format: ConversationTextFormat }) {
-  if (format === 'code') {
-    return (
-      <pre
-        role="region"
-        tabIndex={0}
-        aria-label="Code output"
-        className="max-w-full overflow-x-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-3 font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
-      >
-        {content}
-      </pre>
-    )
-  }
-  if (format === 'plain') {
-    return (
-      <pre className="whitespace-pre-wrap break-words font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-primary">
-        {content}
-      </pre>
-    )
-  }
+  if (format === 'code') return <CodeBlock code={content} label="Code output" className="max-w-full" />
+  if (format === 'plain') return <CodeBlock code={content} wrap />
   return <div className="whitespace-pre-wrap break-words leading-relaxed text-bakin-text-primary">{content}</div>
 }
 

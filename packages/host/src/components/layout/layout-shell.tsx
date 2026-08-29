@@ -67,13 +67,18 @@ export function LayoutShell({
           <div data-scroll-restoration-id="bakin-main" className="h-full overflow-y-auto flex flex-col">{children}</div>
         </main>
 
+        {/* Not a Sheet: the aside below is ONE persistent node that is a
+            desktop rail and a mobile overlay purely via CSS, so a portalled
+            drawer would need a second mount point (and remount the feed on
+            every toggle). The mobile scrim is therefore a real, named
+            dismiss control — reachable by keyboard and assistive tech —
+            rather than a hidden click target. */}
         {activityOpen ? (
           <Button
             type="button"
             variant="ghost"
             size="xs"
-            aria-hidden="true"
-            tabIndex={-1}
+            aria-label="Dismiss Live Activity"
             className={cn('fixed inset-x-0 bottom-0', SHELL_TOP_CLASS, 'z-40 h-auto w-auto rounded-none border-0 bg-bakin-canvas-default/75 p-0 active:not-aria-[haspopup]:translate-y-0 md:hidden')}
             onClick={closeActivity}
           />
