@@ -12,6 +12,9 @@
     "./charts": "./src/charts/index.ts",
     "./conversation": "./src/conversation/index.ts",
     "./content": "./src/content/index.ts",
+    "./patterns/copy-button": "./src/patterns/copy-button.tsx",
+    "./patterns/unsaved-changes-dialog": "./src/patterns/unsaved-changes-dialog.tsx",
+    "./utils": "./src/utils.ts",
     "./tokens": "./src/tokens.generated.ts"
   },
   "sideEffects": [
