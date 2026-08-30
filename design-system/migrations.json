@@ -23,8 +23,8 @@
     "paths": 168,
     "totals": {
       "raw-palette": 4,
-      "arbitrary-size": 82,
-      "raw-scale": 463,
+      "arbitrary-size": 81,
+      "raw-scale": 462,
       "raw-control": 18,
       "inline-style": 33,
       "generic-token": 72,
@@ -65,7 +65,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 1,
-        "raw-scale": 3
+        "raw-scale": 2
       }
     },
     {
@@ -869,7 +869,7 @@
       "target": "canonical shell layout and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 3
+        "arbitrary-size": 2
       }
     },
     {
