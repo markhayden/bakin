@@ -21,7 +21,7 @@ import { expect, waitFor, within } from 'storybook/test'
 import { OverlayBackdrop } from '../../support'
 
 const meta = {
-  title: 'Overlays/Dialog',
+  title: 'Components/Overlays/Dialog',
   component: Dialog,
   tags: ['public'],
   parameters: {

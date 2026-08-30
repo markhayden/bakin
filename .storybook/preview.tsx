@@ -28,6 +28,10 @@ const preview: Preview = {
     viewport: { value: 'desktop', isRotated: false },
   },
   parameters: {
+    options: {
+      // The three-tier sidebar: raw material, then components, then assembly.
+      storySort: { order: ['Tokens', 'Components', 'Recipes'] },
+    },
     layout: 'centered',
     a11y: {
       test: 'error',

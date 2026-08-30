@@ -7,7 +7,7 @@ import { Button, Skeleton, SystemState, type SystemStateProps } from '@makinbaki
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Feedback/SystemState',
+  title: 'Components/Feedback/SystemState',
   // No meta `component`: SystemState's discriminated-union props force
   // StoryObj to demand `args` on render-only stories.
   tags: ['public'],

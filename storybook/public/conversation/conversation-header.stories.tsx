@@ -13,7 +13,7 @@ import { AgentAvatar } from '@makinbakin/sdk/patterns'
 import { Badge, Button, Tooltip, TooltipContent, TooltipTrigger } from '@makinbakin/sdk/ui'
 
 const meta = {
-  title: 'Conversation/Header',
+  title: 'Components/Conversation/Header',
   component: ConversationHeader,
   tags: ['public'],
   parameters: {

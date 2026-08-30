@@ -6,7 +6,7 @@ import { StatusBadge, Timeline, TimelineEntry } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Lists/Timeline',
+  title: 'Components/Lists/Timeline',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

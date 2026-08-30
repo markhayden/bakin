@@ -18,7 +18,7 @@ import { Button } from '@makinbakin/sdk/ui'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Forms/UnsavedChangesDialog',
+  title: 'Components/Forms/UnsavedChangesDialog',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

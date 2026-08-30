@@ -7,7 +7,7 @@ import { CopyButton } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Primitives/CopyButton',
+  title: 'Components/Primitives/CopyButton',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

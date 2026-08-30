@@ -4,7 +4,7 @@ import { expect } from 'storybook/test'
 import { ChartExplainer, LineChart, type ChartDatum, type ChartSeries } from '@makinbakin/sdk/charts'
 
 const meta = {
-  title: 'Charts/ChartExplainer',
+  title: 'Components/Charts/ChartExplainer',
   component: ChartExplainer,
   tags: ['public'],
   parameters: {

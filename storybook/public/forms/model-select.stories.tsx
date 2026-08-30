@@ -7,7 +7,7 @@ import { DEFAULT_MODEL_VALUE, ModelSelect } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Forms/ModelSelect',
+  title: 'Components/Forms/ModelSelect',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

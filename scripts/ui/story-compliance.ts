@@ -192,10 +192,10 @@ function analyzeStoryFile(root: string, path: string, visualSources: string): St
 
   const titleExpression = meta ? objectProperty(meta, 'title') : undefined
   const title = titleExpression && ts.isStringLiteral(titleExpression) ? titleExpression.text : ''
-  // Recipes demonstrate assembly and Foundations document tokens — neither
+  // Recipes demonstrate assembly and Tokens document the raw material — neither
   // has a single component whose minimal usage a CanonicalUsage story could
   // show. Every other requirement still applies to both.
-  const recipes = title.startsWith('Recipes/') || title.startsWith('Foundations/')
+  const recipes = title.startsWith('Recipes/') || title.startsWith('Tokens/')
 
   // canonical-usage
   if (!recipes) {

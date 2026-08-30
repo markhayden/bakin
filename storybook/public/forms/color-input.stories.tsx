@@ -8,7 +8,7 @@ import { Input } from '@makinbakin/sdk/ui'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Forms/ColorInput',
+  title: 'Components/Forms/ColorInput',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

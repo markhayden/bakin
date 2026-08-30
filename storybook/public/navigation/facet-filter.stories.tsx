@@ -7,7 +7,7 @@ import { FacetFilter } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Navigation/FacetFilter',
+  title: 'Components/Navigation/FacetFilter',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

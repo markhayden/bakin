@@ -7,7 +7,7 @@ import { Input, Label } from '@makinbakin/sdk/ui'
 import { StoryCluster, StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Primitives/Label',
+  title: 'Components/Primitives/Label',
   component: Label,
   tags: ['public'],
   parameters: {

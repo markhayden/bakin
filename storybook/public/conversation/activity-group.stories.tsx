@@ -11,7 +11,7 @@ import { PageShell, Stack } from '@makinbakin/sdk/layout'
 import './conversation.stories.css'
 
 const meta = {
-  title: 'Conversation/Tool activity',
+  title: 'Components/Conversation/Tool activity',
   component: ActivityGroup,
   tags: ['public'],
   parameters: {

@@ -6,7 +6,7 @@ import { AgentAvatar, AgentDot, type AgentIdentity } from '@makinbakin/sdk/patte
 import { StoryCluster, StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Agents/AgentAvatar',
+  title: 'Components/Agents/AgentAvatar',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

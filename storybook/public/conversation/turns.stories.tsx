@@ -13,7 +13,7 @@ import { PageShell, Stack } from '@makinbakin/sdk/layout'
 import './conversation.stories.css'
 
 const meta = {
-  title: 'Conversation/Turns and messages',
+  title: 'Components/Conversation/Turns and messages',
   component: AgentTurn,
   tags: ['public'],
   parameters: {

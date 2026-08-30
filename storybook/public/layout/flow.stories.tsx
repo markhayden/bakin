@@ -15,7 +15,7 @@ import { StorySection, StoryStage } from '../../support'
 const gapOptions = ['none', 'dense', 'item', 'section', 'page'] as const
 
 const meta = {
-  title: 'Layout/Stack and Inline',
+  title: 'Components/Layout/Stack and Inline',
   component: Stack,
   tags: ['public'],
   parameters: {

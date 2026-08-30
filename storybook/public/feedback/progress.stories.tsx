@@ -12,7 +12,7 @@ import { expect } from 'storybook/test'
 import { StoryCluster, StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Feedback/Progress',
+  title: 'Components/Feedback/Progress',
   component: Progress,
   tags: ['public'],
   parameters: {

@@ -8,7 +8,7 @@ import { SegmentedControl } from '@makinbakin/sdk/patterns'
 import { StoryStage } from '../../support'
 
 const meta = {
-  title: 'Content/MarkdownEditor',
+  title: 'Components/Content/MarkdownEditor',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

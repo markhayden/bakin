@@ -7,7 +7,7 @@ import { Field, FieldDescription, FieldError, FieldLabel, Input } from '@makinba
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Primitives/Input',
+  title: 'Components/Primitives/Input',
   component: Input,
   tags: ['public'],
   parameters: {

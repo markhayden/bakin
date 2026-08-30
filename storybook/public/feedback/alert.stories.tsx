@@ -12,7 +12,7 @@ import { expect } from 'storybook/test'
 import { SignalIcon, StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Feedback/Alert',
+  title: 'Components/Feedback/Alert',
   component: Alert,
   tags: ['public'],
   parameters: {

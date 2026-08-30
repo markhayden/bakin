@@ -15,7 +15,7 @@ const channels = [
 ]
 
 const meta = {
-  title: 'Agents/ChannelIcon',
+  title: 'Components/Agents/ChannelIcon',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

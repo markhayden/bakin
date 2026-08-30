@@ -7,7 +7,7 @@ import { SortableHead, type SortDir } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Navigation/SortableHead',
+  title: 'Components/Navigation/SortableHead',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

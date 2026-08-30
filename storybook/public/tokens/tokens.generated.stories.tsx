@@ -1370,7 +1370,7 @@ function SemanticTokenCatalog() {
 }
 
 const meta = {
-  title: 'Foundations/Semantic tokens',
+  title: 'Tokens/Semantic tokens',
   component: SemanticTokenCatalog,
   tags: ['public'],
   parameters: {

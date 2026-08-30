@@ -177,7 +177,7 @@ function ElevationLadder() {
 }
 
 const meta = {
-  title: 'Foundations/Elevation',
+  title: 'Tokens/Elevation',
   component: ElevationLadder,
   tags: ['public'],
   parameters: {

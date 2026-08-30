@@ -18,7 +18,7 @@ import { expect, waitFor, within } from 'storybook/test'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Primitives/Select',
+  title: 'Components/Primitives/Select',
   component: Select,
   tags: ['public'],
   parameters: {

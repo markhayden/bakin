@@ -29,7 +29,7 @@ import {
 import './forms.stories.css'
 
 const meta = {
-  title: 'Forms/Field and form composition',
+  title: 'Components/Forms/Field and form composition',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

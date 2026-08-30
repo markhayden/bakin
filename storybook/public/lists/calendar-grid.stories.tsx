@@ -6,7 +6,7 @@ import { CalendarGrid } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Lists/CalendarGrid',
+  title: 'Components/Lists/CalendarGrid',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

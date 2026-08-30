@@ -6,7 +6,7 @@ import { KeyValue } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Lists/KeyValue',
+  title: 'Components/Lists/KeyValue',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

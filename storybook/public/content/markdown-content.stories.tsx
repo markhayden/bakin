@@ -6,7 +6,7 @@ import { MarkdownContent } from '@makinbakin/sdk/content'
 import { StoryStage } from '../../support'
 
 const meta = {
-  title: 'Content/MarkdownContent',
+  title: 'Components/Content/MarkdownContent',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

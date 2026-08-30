@@ -11,7 +11,7 @@ import {
 import { Button } from '@makinbakin/sdk/ui'
 
 const meta = {
-  title: 'Pages/Collapsible aside',
+  title: 'Components/Pages/Collapsible aside',
   component: PageAside,
   tags: ['public'],
   parameters: {

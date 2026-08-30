@@ -14,7 +14,7 @@ import { Button } from '@makinbakin/sdk/ui'
 import './conversation.stories.css'
 
 const meta = {
-  title: 'Conversation/Panel and tool detail',
+  title: 'Components/Conversation/Panel and tool detail',
   component: ConversationPanel,
   tags: ['public'],
   parameters: {

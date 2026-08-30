@@ -7,7 +7,7 @@ import { Grid } from '@makinbakin/sdk/layout'
 import { ChartStage } from './chart-story-stage'
 
 const meta = {
-  title: 'Charts/Sparkline',
+  title: 'Components/Charts/Sparkline',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

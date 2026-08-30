@@ -7,7 +7,7 @@ import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@makinbakin/sd
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Navigation/Tabs',
+  title: 'Components/Navigation/Tabs',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

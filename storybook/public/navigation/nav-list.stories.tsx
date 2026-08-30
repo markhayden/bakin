@@ -7,7 +7,7 @@ import { NavList, StatusBadge } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Navigation/NavList',
+  title: 'Components/Navigation/NavList',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
