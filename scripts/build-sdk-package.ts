@@ -277,7 +277,15 @@ function buildJsEntry(entry: SdkExportEntry, outDir: string): void {
       'bun',
       '--format',
       'esm',
-      '--production',
+      // NOT `--production`: that implies identifier mangling, and Bun 1.3's
+      // mangler produced a Linux-only output where clsx's inner helper and a
+      // base-ui local shared the name `Q3` — every consumer that bundled two
+      // SDK entries then crashed at first render ("Q3 is not a function").
+      // Syntax + whitespace minification keep the package small; names stay
+      // stable across platforms and readable in consumer stack traces.
+      '--minify-syntax',
+      '--minify-whitespace',
+      '--define', 'process.env.NODE_ENV:"production"',
       ...EXTERNAL_JS_PEERS.flatMap((specifier) => ['--external', specifier]),
     ], {
       cwd: REPO_ROOT,
