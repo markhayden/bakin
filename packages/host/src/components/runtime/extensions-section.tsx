@@ -95,11 +95,15 @@ export function ExtensionsSection() {
     {
       key: 'label',
       header: 'Extension',
+      sortable: true,
+      sortValue: (ext) => ext.label,
       cell: (ext) => <span className="font-bakin-typography-weight-medium">{ext.label}</span>,
     },
     {
       key: 'source',
       header: 'Source',
+      sortable: true,
+      sortValue: (ext) => ext.source,
       cell: (ext) => <span className="text-bakin-text-muted">{ext.source}</span>,
     },
     {
@@ -107,6 +111,8 @@ export function ExtensionsSection() {
       // truncating behind a native tooltip nobody can reach on touch.
       key: 'path',
       header: 'Path',
+      sortable: true,
+      sortValue: (ext) => ext.path,
       cellClassName: 'whitespace-normal',
       cell: (ext) => <Text size="meta" tone="muted" mono className="break-all">{ext.path}</Text>,
     },
@@ -126,6 +132,8 @@ export function ExtensionsSection() {
     {
       key: 'status',
       header: 'Status',
+      sortable: true,
+      sortValue: (ext) => ext.status,
       cell: (ext) => (
         <>
           {ext.status === 'allowed' && <StatusBadge tone="success" variant="soft">Allowed</StatusBadge>}
@@ -170,6 +178,7 @@ export function ExtensionsSection() {
         columns={columns}
         rows={report.extensions}
         rowKey={(ext) => ext.path}
+        defaultSort={{ field: 'label', dir: 'asc' }}
       />
 
       <ConfirmDialog

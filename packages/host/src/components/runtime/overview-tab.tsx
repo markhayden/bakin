@@ -87,16 +87,22 @@ function CapabilityGrid({ report }: { report: CapabilityReport }) {
     {
       key: 'label',
       header: 'Capability',
+      sortable: true,
+      sortValue: (row) => row.label,
       cell: (row) => <span className="font-bakin-typography-weight-medium">{row.label}</span>,
     },
     {
       key: 'mode',
       header: 'Mode',
+      sortable: true,
+      sortValue: (row) => row.mode ?? null,
       cell: (row) => (row.mode ? <ModeBadge mode={row.mode} /> : null),
     },
     {
       key: 'meaning',
       header: 'What it means',
+      sortable: true,
+      sortValue: (row) => row.meaning,
       cellClassName: 'whitespace-normal',
       cell: (row) => <span className="text-bakin-text-muted">{row.meaning}</span>,
     },
@@ -162,6 +168,8 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
     {
       key: 'name',
       header: 'Check',
+      sortable: true,
+      sortValue: (component) => component.name,
       cell: (component) => <span className="font-bakin-typography-weight-medium">{component.name}</span>,
     },
     {
@@ -169,12 +177,16 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
       // the message IS the finding, so it has to stay readable for everyone.
       key: 'message',
       header: 'Detail',
+      sortable: true,
+      sortValue: (component) => component.message,
       cellClassName: 'whitespace-normal',
       cell: (component) => <span className="text-bakin-text-muted">{component.message}</span>,
     },
     {
       key: 'remediation',
       header: 'Remediation',
+      sortable: true,
+      sortValue: (component) => (component.remediation && component.status !== 'ok' ? component.remediation : null),
       cellClassName: 'whitespace-normal',
       cell: (component) => (component.remediation && component.status !== 'ok'
         ? <span className="text-bakin-text-muted">{component.remediation}</span>
@@ -183,6 +195,8 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
     {
       key: 'status',
       header: 'Status',
+      sortable: true,
+      sortValue: (component) => component.status,
       cell: (component) => <CheckStatusBadge status={component.status} />,
     },
     {

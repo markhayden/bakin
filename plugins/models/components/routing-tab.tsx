@@ -162,8 +162,13 @@ export function RoutingTab({ m }: { m: ModelsData }) {
 
   const ROUTE_COLUMNS: ReadonlyArray<DataTableColumn<RouteRow>> = [
     {
+      // The only sortable column: Model and Thinking are selects, and reordering
+      // form rows by their current value would move fields under the operator.
+      // No defaultSort — WORK_CLASSES carries its own canonical order.
       key: 'workClass',
       header: 'Work class',
+      sortable: true,
+      sortValue: (workClass) => workClass.label,
       cellClassName: 'whitespace-normal align-top',
       cell: (workClass) => (
         <div className="min-w-0">

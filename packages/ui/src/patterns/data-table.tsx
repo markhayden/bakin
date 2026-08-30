@@ -1,6 +1,6 @@
 'use client'
 
-import type { ComponentPropsWithoutRef, ReactNode } from 'react'
+import { useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 
 import { cn } from '../utils'
 import { ListRow, ListRows, type ListRowsVariant } from './list-rows'
@@ -43,6 +43,14 @@ interface DataTableColumnBase<Row> {
    * avatar without its name in a `leading` slot). Defaults to `cell`.
    */
   narrowCell?: (row: Row) => ReactNode
+  /**
+   * Value the table sorts this column by when the consumer does not control
+   * sorting. Strings compare locale-aware and numerically ("v10" after "v9"),
+   * numbers/dates numerically, booleans false-before-true; `null`/`undefined`
+   * always sort last in either direction. Ignored while `sort`/`onSortChange`
+   * are supplied — a controlled consumer owns the order end to end.
+   */
+  sortValue?: (row: Row) => string | number | boolean | Date | null | undefined
 }
 
 /**
@@ -73,6 +81,13 @@ export interface DataTableProps<Row, F extends string = string> {
   label: string
   /** Controlled sort state; compose with `onSortChange`. The consumer owns ordering `rows`. */
   sort?: DataTableSort<F>
+  /**
+   * Initial sort for the uncontrolled mode (sortable columns with
+   * `sortValue`, no `sort`/`onSortChange`). Header clicks toggle direction on
+   * the active column and start ascending on a new one. Paginated consumers
+   * should stay controlled: the table only ever sees the visible slice.
+   */
+  defaultSort?: DataTableSort<F>
   /** Receives the clicked column key; the consumer owns toggle/direction logic. */
   onSortChange?: (field: F) => void
   /**
@@ -229,6 +244,46 @@ function ComposedNarrowRow<Row, F extends string>({
   )
 }
 
+type SortValue = string | number | boolean | Date | null | undefined
+
+function compareSortValues(a: SortValue, b: SortValue): number {
+  const aMissing = a === null || a === undefined
+  const bMissing = b === null || b === undefined
+  if (aMissing && bMissing) return 0
+  if (aMissing) return 1
+  if (bMissing) return -1
+  if (typeof a === 'string' && typeof b === 'string') {
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+  }
+  const an = a instanceof Date ? a.getTime() : typeof a === 'boolean' ? Number(a) : a
+  const bn = b instanceof Date ? b.getTime() : typeof b === 'boolean' ? Number(b) : b
+  if (typeof an === 'number' && typeof bn === 'number') return an - bn
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
+}
+
+/** Stable sort; missing values stay last regardless of direction. */
+function sortRows<Row, F extends string>(
+  rows: readonly Row[],
+  columns: ReadonlyArray<DataTableColumn<Row, F>>,
+  sort: DataTableSort<F> | undefined,
+): readonly Row[] {
+  if (!sort) return rows
+  const column = columns.find((candidate) => candidate.key === sort.field)
+  const accessor = column?.sortValue
+  if (!accessor) return rows
+  const sign = sort.dir === 'asc' ? 1 : -1
+  return rows
+    .map((row, index) => ({ row, index, value: accessor(row) }))
+    .sort((a, b) => {
+      const aMissing = a.value === null || a.value === undefined
+      const bMissing = b.value === null || b.value === undefined
+      if (aMissing !== bMissing) return aMissing ? 1 : -1
+      const order = compareSortValues(a.value, b.value) * sign
+      return order !== 0 ? order : a.index - b.index
+    })
+    .map((entry) => entry.row)
+}
+
 /**
  * Configured table over the public `Table*` primitives with sorting
  * (SortableHead), pagination (Pagination), and a built-in responsive dual
@@ -236,18 +291,22 @@ function ComposedNarrowRow<Row, F extends string>({
  * same rows as `ListRows`. The switch is container-query driven — a DataTable
  * inside a drawer collapses independently of the viewport.
  *
- * The consumer owns data concerns end to end: row order (controlled sort),
- * the visible slice (pagination passthrough), and loading/empty/error states
- * around the component. `Table*` stays public as the D9-gated escape hatch
+ * The consumer owns data concerns end to end: the visible slice (pagination
+ * passthrough) and loading/empty/error states around the component. Row order
+ * is controlled when `sort`/`onSortChange` are supplied; otherwise any column
+ * declaring `sortable` + `sortValue` makes the table sort itself (every
+ * table with headers is sortable by policy — a consumer opts out of a column
+ * by not declaring `sortValue`, not by hiding the affordance). `Table*` stays public as the D9-gated escape hatch
  * for tables this configuration cannot express.
  */
 export function DataTable<Row, F extends string = string>({
   columns,
-  rows,
+  rows: inputRows,
   rowKey,
   label,
-  sort,
+  sort: controlledSort,
   onSortChange,
+  defaultSort,
   pagination,
   collapseBelow = 'none',
   listVariant = 'separated',
@@ -260,6 +319,24 @@ export function DataTable<Row, F extends string = string>({
   className,
 }: DataTableProps<Row, F>) {
   const { className: tableClassName, ...tableRest } = tableProps ?? {}
+
+  // Uncontrolled sort: engaged only when nothing controls the order and at
+  // least one column can supply a value to sort by.
+  const selfSortable = !onSortChange && controlledSort === undefined
+    && columns.some((column) => column.sortable && column.sortValue)
+  const [internalSort, setInternalSort] = useState<DataTableSort<F> | undefined>(defaultSort)
+  const sort = selfSortable ? internalSort : controlledSort
+  const onSort = onSortChange ?? (selfSortable
+    ? (field: F) => setInternalSort((current) => (
+        current?.field === field
+          ? { field, dir: current.dir === 'asc' ? 'desc' : 'asc' }
+          : { field, dir: 'asc' }
+      ))
+    : undefined)
+  const rows = useMemo(
+    () => (selfSortable ? sortRows(inputRows, columns, internalSort) : inputRows),
+    [selfSortable, inputRows, columns, internalSort],
+  )
 
   const activationProps = (row: Row): ComponentPropsWithoutRef<'tr'> =>
     onRowActivate
@@ -294,14 +371,14 @@ export function DataTable<Row, F extends string = string>({
               <tr data-slot="table-row">
                 {columns.map((column) => {
                   const alignClass = ALIGN_CLASS[column.align ?? 'start']
-                  if (column.sortable && onSortChange) {
+                  if (column.sortable && onSort && (onSortChange || column.sortValue)) {
                     return (
                       <SortableHead
                         key={column.key}
                         field={column.key}
                         current={sort?.field ?? ('' as F)}
                         dir={sort?.dir ?? 'desc'}
-                        onSort={onSortChange}
+                        onSort={onSort}
                         className={cn(alignClass, column.headClassName)}
                       >
                         {column.header}

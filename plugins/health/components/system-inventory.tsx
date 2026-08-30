@@ -123,6 +123,8 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
     {
       key: 'plugin',
       header: 'Plugin',
+      sortable: true,
+      sortValue: (plugin) => plugin.name,
       cellClassName: 'whitespace-normal',
       cell: (plugin) => (
         <>
@@ -145,22 +147,33 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
     {
       key: 'version',
       header: 'Version',
+      sortable: true,
+      sortValue: (plugin) => plugin.version,
       cell: (plugin) => <span className="font-bakin-typography-family-mono text-bakin-text-muted">{plugin.version}</span>,
     },
     {
       key: 'source',
       header: 'Source',
+      sortable: true,
+      sortValue: (plugin) => plugin.source,
       cell: (plugin) => <span className="text-bakin-text-muted">{plugin.source}</span>,
     },
     {
       key: 'routes',
       header: 'Routes',
       align: 'end',
+      sortable: true,
+      sortValue: (plugin) => plugin.routes,
       cell: (plugin) => <span className="font-bakin-typography-family-mono tabular-nums">{plugin.routes}</span>,
     },
     {
       key: 'status',
       header: 'Status',
+      sortable: true,
+      // Mirrors the badge's precedence: failed → unknown → update available → active.
+      sortValue: (plugin) => (plugin.status === 'failed'
+        ? 'failed'
+        : plugin.status === 'unknown' ? 'unknown' : plugin.upgradeAvailable ? 'update available' : 'active'),
       cellClassName: 'whitespace-normal',
       cell: (plugin) => (
         <div className="flex flex-wrap items-center gap-bakin-2">
@@ -294,6 +307,8 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                 rows={filteredPlugins}
                 rowKey={(plugin) => plugin.id}
                 renderRow={() => null}
+                // mergeSystemPlugins already orders by name; the first render keeps it.
+                defaultSort={{ field: 'plugin', dir: 'asc' }}
                 tableProps={{ className: 'min-w-[760px]' }}
                 rowProps={(plugin) => ({
                   'data-plugin-id': plugin.id,

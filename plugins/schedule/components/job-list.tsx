@@ -2,12 +2,64 @@
 
 import { useMemo } from 'react'
 import { ShieldAlert } from 'lucide-react'
-import { DataTable, ListRow, type DataTableColumn } from '@makinbakin/sdk/patterns'
+import { DataTable, ListRow, type DataTableColumn, type DataTableSort } from '@makinbakin/sdk/patterns'
 import { Overline, Text } from '@makinbakin/sdk/ui'
 import { AgentBadge } from './agent-badge'
 import { JobActionsMenu, JobNameCell, JobScheduleCell, JobStatusBadge, type JobScoreInfo } from './job-row'
 
 import type { ScheduleJob } from "@makinbakin/sdk/hooks"
+
+export type JobSortField = 'name' | 'agent' | 'schedule' | 'status'
+
+type JobSortValue = string | number | Date | null | undefined
+
+/**
+ * One accessor per sortable column. Shared by the DataTable headers and by
+ * `sortJobs`, so the page can sort the WHOLE filtered list before it slices
+ * a page off — a header click must never reorder just the visible ten.
+ */
+const JOB_SORT_VALUE: Record<JobSortField, (job: ScheduleJob) => JobSortValue> = {
+  name: job => job.displayName || job.id,
+  agent: job => job.agentId ?? job.teamId ?? null,
+  // Next fire time — the order a schedule column is read for. Paused jobs
+  // show no next run, so they sort last like the cell's missing line.
+  schedule: job => (job.nextRun && !job.paused ? new Date(job.nextRun) : null),
+  status: job => jobStatusKey(job),
+}
+
+function compareJobSortValues(a: JobSortValue, b: JobSortValue): number {
+  if (a instanceof Date && b instanceof Date) return a.getTime() - b.getTime()
+  if (typeof a === 'number' && typeof b === 'number') return a - b
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
+}
+
+/** Stable whole-list sort with the DataTable semantics: missing values last either way. */
+export function sortJobs(jobs: readonly ScheduleJob[], sort: DataTableSort<JobSortField> | undefined): ScheduleJob[] {
+  if (!sort) return [...jobs]
+  const accessor = JOB_SORT_VALUE[sort.field]
+  const sign = sort.dir === 'asc' ? 1 : -1
+  return jobs
+    .map((job, index) => ({ job, index, value: accessor(job) }))
+    .sort((a, b) => {
+      const aMissing = a.value === null || a.value === undefined
+      const bMissing = b.value === null || b.value === undefined
+      if (aMissing !== bMissing) return aMissing ? 1 : -1
+      if (aMissing && bMissing) return a.index - b.index
+      const order = compareJobSortValues(a.value, b.value) * sign
+      return order !== 0 ? order : a.index - b.index
+    })
+    .map(entry => entry.job)
+}
+
+/** Sort key mirroring JobStatusBadge's precedence, from row data only. */
+function jobStatusKey(job: ScheduleJob): string {
+  if (job.paused) return job.pauseReason === 'auto-failures' ? 'auto-paused' : 'paused'
+  if (job.skipNextN && job.skippedCount !== undefined && job.skippedCount < job.skipNextN) return 'skipping'
+  if (job.consecutiveFailures > 0) return 'failures'
+  if (job.completed) return 'completed'
+  if (!job.enabled) return 'disabled'
+  return 'active'
+}
 
 function MobileJobRow({
   job,
@@ -98,6 +150,8 @@ export function JobList({
   onSkipNext,
   scoreMap,
   showScores,
+  sort,
+  onSortChange,
 }: {
   jobs: ScheduleJob[]
   onSelect: (job: ScheduleJob) => void
@@ -112,29 +166,40 @@ export function JobList({
   onSkipNext: (jobId: string) => void
   scoreMap?: Map<string, JobScoreInfo>
   showScores?: boolean
+  /** Controlled by the page, which sorts the whole filtered list before paginating. */
+  sort?: DataTableSort<JobSortField>
+  onSortChange?: (field: JobSortField) => void
 }) {
-  const columns = useMemo<ReadonlyArray<DataTableColumn<ScheduleJob>>>(() => [
+  const columns = useMemo<ReadonlyArray<DataTableColumn<ScheduleJob, JobSortField>>>(() => [
     {
       key: 'name',
       header: 'Name',
+      sortable: true,
+      sortValue: JOB_SORT_VALUE.name,
       headClassName: 'min-w-64',
       cell: job => <JobNameCell job={job} scoreInfo={showScores ? scoreMap?.get(job.id) : undefined} />,
     },
     {
       key: 'agent',
       header: 'Agent',
+      sortable: true,
+      sortValue: JOB_SORT_VALUE.agent,
       headClassName: 'min-w-36',
       cell: job => <AgentBadge agentId={job.agentId} size="md" />,
     },
     {
       key: 'schedule',
       header: 'Schedule',
+      sortable: true,
+      sortValue: JOB_SORT_VALUE.schedule,
       headClassName: 'min-w-48',
       cell: job => <JobScheduleCell job={job} />,
     },
     {
       key: 'status',
       header: 'Status',
+      sortable: true,
+      sortValue: JOB_SORT_VALUE.status,
       headClassName: 'min-w-28',
       cell: job => <JobStatusBadge job={job} />,
     },
@@ -169,6 +234,8 @@ export function JobList({
       columns={columns}
       rows={jobs}
       rowKey={job => job.id}
+      sort={sort}
+      onSortChange={onSortChange}
       listVariant="bordered"
       tableProps={{ 'data-testid': 'job-list', className: 'min-w-max' }}
       onRowActivate={onSelect}

@@ -749,6 +749,7 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=pages-page--aside-layout&viewMode=story', png: 'pages-page.png', role: 'complementary' as const, name: 'Workflow context' },
   { url: '/iframe.html?id=lists-datatable--sorted-paged-dual-render&viewMode=story', png: 'lists-data-table.png', text: 'Showing 4–6 of 8', unstableContent: true },
   { url: '/iframe.html?id=lists-datatable--narrow-roles&viewMode=story', png: 'lists-data-table-narrow.png', text: 'Narrow roles compose the mobile card' },
+  { url: '/iframe.html?id=lists-datatable--self-sorting&viewMode=story', png: 'lists-data-table-self-sorting.png', text: 'Every table with headers sorts' },
   { url: '/iframe.html?id=lists-timeline--status-rail-expansion-nesting&viewMode=story', png: 'lists-timeline.png', role: 'list' as const, name: 'Dispatch activity' },
   { url: '/iframe.html?id=lists-calendargrid--week-and-day-structure&viewMode=story', png: 'lists-calendar-grid.png', role: 'grid' as const, name: 'Week of July 12, 2026' },
   { url: '/iframe.html?id=lists-calendaritem--tones-and-densities&viewMode=story', png: 'lists-calendar-item.png', text: 'Invoice run due' },
