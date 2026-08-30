@@ -252,3 +252,59 @@ describe('DataTable', () => {
     expect(within(tableRegion).getAllByText('Margo (full)').length).toBe(1)
   })
 })
+
+describe('DataTable uncontrolled sort', () => {
+  interface Run { id: string; task: string; durationMs: number | null; finishedAt: string | null }
+  const runs: Run[] = [
+    { id: 'a', task: 'Publish v10', durationMs: 420, finishedAt: '2026-08-29T10:00:00Z' },
+    { id: 'b', task: 'Publish v9', durationMs: null, finishedAt: null },
+    { id: 'c', task: 'archive drafts', durationMs: 30, finishedAt: '2026-08-30T10:00:00Z' },
+  ]
+  const columns: ReadonlyArray<DataTableColumn<Run, 'task' | 'duration' | 'finished'>> = [
+    { key: 'task', header: 'Task', sortable: true, sortValue: (row) => row.task },
+    { key: 'duration', header: 'Duration', sortable: true, sortValue: (row) => row.durationMs, cell: (row) => row.durationMs ?? '—' },
+    { key: 'finished', header: 'Finished', sortable: true, sortValue: (row) => (row.finishedAt ? new Date(row.finishedAt) : null), cell: (row) => row.finishedAt ?? '—' },
+    { key: 'actions', header: 'Actions', hideLabel: true, cell: () => <button type="button">Menu</button> },
+  ]
+  const firstCells = () => screen.getAllByRole('row').slice(1).map((row) => within(row).getAllByRole('cell')[0]?.textContent)
+
+  it('sorts itself when no controlled sort is supplied, starting ascending on a new column', () => {
+    render(<DataTable label="Runs" columns={columns} rows={runs} rowKey={(row) => row.id} />)
+    expect(firstCells()).toEqual(['Publish v10', 'Publish v9', 'archive drafts'])
+    const task = screen.getByRole('columnheader', { name: 'Task' })
+    fireEvent.click(within(task).getByRole('button', { name: 'Task' }))
+    // Locale-aware and numeric: "v9" before "v10", case-insensitive.
+    expect(task.getAttribute('aria-sort')).toBe('ascending')
+    expect(firstCells()).toEqual(['archive drafts', 'Publish v9', 'Publish v10'])
+    fireEvent.click(within(task).getByRole('button', { name: 'Task' }))
+    expect(task.getAttribute('aria-sort')).toBe('descending')
+    expect(firstCells()).toEqual(['Publish v10', 'Publish v9', 'archive drafts'])
+  })
+
+  it('keeps missing values last in both directions and honours defaultSort', () => {
+    render(<DataTable label="Runs" columns={columns} rows={runs} rowKey={(row) => row.id} defaultSort={{ field: 'duration', dir: 'desc' }} />)
+    expect(firstCells()).toEqual(['Publish v10', 'archive drafts', 'Publish v9'])
+    const duration = screen.getByRole('columnheader', { name: 'Duration' })
+    fireEvent.click(within(duration).getByRole('button', { name: 'Duration' }))
+    expect(duration.getAttribute('aria-sort')).toBe('ascending')
+    expect(firstCells()).toEqual(['archive drafts', 'Publish v10', 'Publish v9'])
+    const finished = screen.getByRole('columnheader', { name: 'Finished' })
+    fireEvent.click(within(finished).getByRole('button', { name: 'Finished' }))
+    expect(firstCells()).toEqual(['Publish v10', 'archive drafts', 'Publish v9'])
+  })
+
+  it('never renders a sort affordance on a column without a value to sort by', () => {
+    render(<DataTable label="Runs" columns={columns} rows={runs} rowKey={(row) => row.id} />)
+    const actions = screen.getByRole('columnheader', { name: 'Actions' })
+    expect(within(actions).queryByRole('button')).toBeNull()
+  })
+
+  it('defers to the consumer when sort is controlled', () => {
+    const onSortChange = mock(() => {})
+    render(<DataTable label="Runs" columns={columns} rows={runs} rowKey={(row) => row.id} sort={{ field: 'task', dir: 'desc' }} onSortChange={onSortChange} />)
+    // Controlled: rows stay in the order given; the header only reports.
+    expect(firstCells()).toEqual(['Publish v10', 'Publish v9', 'archive drafts'])
+    fireEvent.click(within(screen.getByRole('columnheader', { name: 'Task' })).getByRole('button', { name: 'Task' }))
+    expect(onSortChange).toHaveBeenCalledWith('task')
+  })
+})

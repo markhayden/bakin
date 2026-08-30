@@ -259,6 +259,17 @@ genuinely bespoke rows, not the default. See the DataTable `NarrowRoles`
 story for the executable contract.
 :::
 
+:::note[Every table with headers sorts]
+Declare `sortable: true` with a `sortValue` accessor on each column that
+carries a value (names, dates, counts, status), and `DataTable` orders the
+rows itself — header clicks toggle direction, strings compare locale-aware
+and numerically, rows without a value stay last either way. Pass
+`defaultSort` to set the first render. Only action or purely decorative
+columns stay unsortable. Paginated tables keep the controlled form
+(`sort` + `onSortChange`) because the table only ever sees the visible
+slice. See the DataTable `SelfSorting` story.
+:::
+
 For media-led detail pages, use the default full `Page` canvas and
 `PageHeader measure="wide"` with the preview in the primary column and
 context, enrichment, downloads, and version history in the named `PageAside`.

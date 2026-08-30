@@ -127,6 +127,8 @@ export function ImportView({ onImported, onCountChange }: { onImported?: () => v
         rowKey={file => file.relPath}
         rowProps={file => ({ 'data-testid': `import-row-${file.name}` })}
         tableProps={{ className: 'min-w-max' }}
+        // The scan already returns newest-first; the initial render keeps it.
+        defaultSort={{ field: 'age', dir: 'desc' }}
       />
     </div>
   )
@@ -137,6 +139,8 @@ export function ImportView({ onImported, onCountChange }: { onImported?: () => v
         key: 'file',
         header: 'File',
         narrow: 'primary',
+        sortable: true,
+        sortValue: file => file.name,
         headClassName: 'min-w-64',
         cell: file => (
           <Inline wrap={false}>
@@ -154,17 +158,23 @@ export function ImportView({ onImported, onCountChange }: { onImported?: () => v
         key: 'size',
         header: 'Size',
         narrow: 'meta',
+        sortable: true,
+        sortValue: file => file.size,
         cell: file => <span className="text-bakin-text-muted">{formatSize(file.size)}</span>,
       },
       {
         key: 'age',
         header: 'Age',
         narrow: 'meta',
+        sortable: true,
+        sortValue: file => file.mtimeMs,
         cell: file => <span className="text-bakin-text-muted">{formatAge(new Date(file.mtimeMs).toISOString())}</span>,
       },
       {
         key: 'type',
         header: 'Import as',
+        sortable: true,
+        sortValue: file => typeOverrides[file.relPath] ?? file.suggestedType,
         cell: file => (
           <Select
             value={typeOverrides[file.relPath] ?? file.suggestedType}

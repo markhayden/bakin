@@ -19,7 +19,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'DataTable is the sanctioned table type: columns/rows configuration over the public Table semantics, controlled sorting via SortableHead, Pagination passthrough, and a built-in responsive dual render — wide containers show a real table, narrow containers show the same rows as ListRows. The switch is container-query driven, so a DataTable in a drawer collapses independently of the viewport. Consumers own row order, the visible slice, and surrounding loading/empty/error states. The Table* primitives stay public only as the reviewed escape hatch for tables this configuration cannot express.',
+        component: 'DataTable is the sanctioned table type: columns/rows configuration over the public Table semantics, sorting via SortableHead (controlled, or self-sorting from a column `sortValue`), Pagination passthrough, and a built-in responsive dual render — wide containers show a real table, narrow containers show the same rows as ListRows. The switch is container-query driven, so a DataTable in a drawer collapses independently of the viewport. Consumers own row order, the visible slice, and surrounding loading/empty/error states. The Table* primitives stay public only as the reviewed escape hatch for tables this configuration cannot express.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'keyboard', 'dense-data', 'non-color'],
@@ -305,6 +305,56 @@ export const NarrowRoles = {
     await expect(first!).toHaveTextContent('Owner')
     // Empty narrowCell content drops its meta item, label included.
     await expect(second!).not.toHaveTextContent('Duration')
+  },
+} satisfies Story
+
+interface Release { id: string; name: string; downloads: number | null; shippedAt: string | null }
+const RELEASES: Release[] = [
+  { id: 'r1', name: 'Router v10', downloads: 1280, shippedAt: '2026-08-12' },
+  { id: 'r2', name: 'Router v9', downloads: 4310, shippedAt: '2026-05-02' },
+  { id: 'r3', name: 'archive tool', downloads: null, shippedAt: null },
+  { id: 'r4', name: 'Brand kit', downloads: 96, shippedAt: '2026-08-28' },
+]
+const RELEASE_COLUMNS: ReadonlyArray<DataTableColumn<Release, 'name' | 'downloads' | 'shipped'>> = [
+  { key: 'name', header: 'Name', sortable: true, sortValue: (row) => row.name, narrow: 'primary' },
+  { key: 'downloads', header: 'Downloads', sortable: true, align: 'end', sortValue: (row) => row.downloads, cell: (row) => row.downloads?.toLocaleString() ?? '—', narrow: 'meta' },
+  { key: 'shipped', header: 'Shipped', sortable: true, sortValue: (row) => (row.shippedAt ? new Date(row.shippedAt) : null), cell: (row) => row.shippedAt ?? 'Unreleased', narrow: 'meta' },
+]
+
+export const SelfSorting = {
+  render: () => (
+    <StoryStage
+      eyebrow="Lists / tables"
+      title="Every table with headers sorts"
+      description="A column that declares sortValue is sortable without consumer state: the table owns direction, strings compare locale-aware and numerically, and rows without a value stay last in either direction."
+    >
+      <StorySection title="Releases">
+        <DataTable
+          label="Releases"
+          columns={RELEASE_COLUMNS}
+          rows={RELEASES}
+          rowKey={(row) => row.id}
+          defaultSort={{ field: 'shipped', dir: 'desc' }}
+          collapseBelow="xl"
+        />
+      </StorySection>
+    </StoryStage>
+  ),
+  play: async ({ canvas, canvasElement, userEvent }) => {
+    const tableRegion = canvasElement.querySelector('[data-slot="data-table-table"]') as HTMLElement
+    if (getComputedStyle(tableRegion).display === 'none') return
+    const rowsText = () => within(tableRegion).getAllByRole('row').slice(1).map((row) => within(row).getAllByRole('cell')[0]?.textContent)
+    // defaultSort: newest shipped first, unreleased last.
+    await expect(rowsText()).toEqual(['Brand kit', 'Router v10', 'Router v9', 'archive tool'])
+    const name = canvas.getByRole('columnheader', { name: 'Name' })
+    await userEvent.click(within(name).getByRole('button', { name: 'Name' }))
+    await expect(name).toHaveAttribute('aria-sort', 'ascending')
+    // Numeric-aware: v9 before v10; case-insensitive.
+    await expect(rowsText()).toEqual(['archive tool', 'Brand kit', 'Router v9', 'Router v10'])
+    await userEvent.click(within(name).getByRole('button', { name: 'Name' }))
+    await expect(name).toHaveAttribute('aria-sort', 'descending')
+    await expect(rowsText()).toEqual(['Router v10', 'Router v9', 'Brand kit', 'archive tool'])
+    ;(document.activeElement as HTMLElement | null)?.blur?.()
   },
 } satisfies Story
 

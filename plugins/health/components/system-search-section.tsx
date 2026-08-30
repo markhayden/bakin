@@ -114,6 +114,8 @@ export function SystemSearchSection({
     {
       key: 'index',
       header: 'Index',
+      sortable: true,
+      sortValue: (table) => table.logical,
       cellClassName: 'whitespace-normal align-top',
       cell: (table) => (
         <>
@@ -129,6 +131,11 @@ export function SystemSearchSection({
     {
       key: 'state',
       header: 'State',
+      sortable: true,
+      // Same precedence as the badge: migrating → active → needs attention.
+      sortValue: (table) => (table.state === 'migrating'
+        ? 'migrating'
+        : table.healthy && !table.legs.some((leg) => Boolean(leg.error)) ? 'active' : 'needs attention'),
       cellClassName: 'whitespace-normal align-top',
       cell: (table) => {
         const erroredLegs = table.legs.filter((leg) => Boolean(leg.error))
@@ -154,18 +161,24 @@ export function SystemSearchSection({
       key: 'documents',
       header: 'Documents',
       align: 'end',
+      sortable: true,
+      sortValue: (table) => table.docCount ?? null,
       cellClassName: 'align-top',
       cell: (table) => <span className="font-bakin-typography-family-mono tabular-nums">{table.docCount ?? '—'}</span>,
     },
     {
       key: 'lastIndexed',
       header: 'Last indexed',
+      sortable: true,
+      sortValue: (table) => table.lastIndexedAt ?? null,
       cellClassName: 'align-top',
       cell: (table) => <span className="text-bakin-text-muted">{relativeEpoch(table.lastIndexedAt)}</span>,
     },
     {
       key: 'backlog',
       header: 'Backlog',
+      sortable: true,
+      sortValue: (table) => table.journalPending + legBacklog(table.legs),
       cellClassName: 'align-top',
       cell: (table) => (
         <span className="text-bakin-text-muted">
@@ -359,6 +372,7 @@ export function SystemSearchSection({
                   rows={status.tables}
                   rowKey={(table) => table.logical}
                   columns={indexColumns}
+                  defaultSort={{ field: 'index', dir: 'asc' }}
                   renderRow={() => null}
                   tableProps={{ className: 'min-w-[760px]' }}
                 />

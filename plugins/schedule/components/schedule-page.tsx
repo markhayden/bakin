@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, type ReactNode } from 'react'
+import { useCallback, useState, useEffect, useMemo, type ReactNode } from 'react'
 import { usePathname, useQueryState, useRouter, useSearchParams } from '@makinbakin/sdk/navigation'
 import {
   AgentAvatar,
@@ -18,6 +18,7 @@ import {
   WorkspacePageCompactHeader,
   WorkspacePageHeader,
   type SegmentedControlOption,
+  type DataTableSort,
 } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -38,7 +39,7 @@ import {
   type ScheduleJob,
 } from '@makinbakin/sdk/hooks'
 import { List, CalendarDays, CalendarRange, Clock, Plus } from 'lucide-react'
-import { JobList } from './job-list'
+import { JobList, sortJobs, type JobSortField } from './job-list'
 import { JobDrawer } from './job-drawer'
 import { JobForm, type JobFormData } from './job-form'
 import { DeleteScheduleDialog } from './delete-schedule-dialog'
@@ -144,15 +145,27 @@ export function SchedulePage() {
     }
   }), [agentIds, agentMap, displaySettings])
 
+  // Header sort applies to the WHOLE filtered list, then the page slices —
+  // the table only ever sees ten rows, so it cannot own this itself.
+  const [listSort, setListSort] = useState<DataTableSort<JobSortField> | undefined>(undefined)
+  const toggleListSort = useCallback((field: JobSortField) => {
+    setListSort(current => (
+      current?.field === field
+        ? { field, dir: current.dir === 'asc' ? 'desc' : 'asc' }
+        : { field, dir: 'asc' }
+    ))
+  }, [])
+  const sortedJobs = useMemo(() => sortJobs(filtered, listSort), [filtered, listSort])
+
   const showAllJobs = pageParam === 'all'
   const requestedPage = Number.parseInt(pageParam, 10)
-  const pageCount = Math.max(1, Math.ceil(filtered.length / LIST_PAGE_SIZE))
+  const pageCount = Math.max(1, Math.ceil(sortedJobs.length / LIST_PAGE_SIZE))
   const page = Number.isFinite(requestedPage)
     ? Math.min(Math.max(requestedPage, 1), pageCount)
     : 1
   const visibleListJobs = showAllJobs
-    ? filtered
-    : filtered.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE)
+    ? sortedJobs
+    : sortedJobs.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE)
 
   // Derive drawer/form visibility from URL state. Deep links resolve
   // against the UNFILTERED list — a ?jobId= must open its job even when the
@@ -493,6 +506,8 @@ export function SchedulePage() {
                     onSkipNext={(id) => skipNext(id)}
                     scoreMap={scoreMap}
                     showScores={debug && !!search.trim()}
+                    sort={listSort}
+                    onSortChange={toggleListSort}
                   />
                   <Pagination
                     ariaLabel="Scheduled jobs pagination"

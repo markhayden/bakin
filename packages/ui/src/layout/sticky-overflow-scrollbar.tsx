@@ -136,7 +136,7 @@ export function StickyOverflowScrollbar({
       aria-hidden="true"
       data-slot="bounded-overflow-scrollbar"
       className={layoutClassName(
-        // pb-[env(...)] guards the iOS home indicator when the region runs
+        // The safe-area padding-bottom guards the iOS home indicator when the region runs
         // to the true viewport bottom.
         'fixed bottom-0 z-20 h-bakin-3 cursor-pointer touch-none select-none bg-bakin-canvas-default/90 py-[3px] mb-[env(safe-area-inset-bottom)]',
         !needsBar && 'hidden',
