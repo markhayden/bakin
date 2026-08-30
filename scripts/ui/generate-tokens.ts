@@ -772,6 +772,7 @@ const TOKEN_CATALOG_CSS = `
   font-size: .78rem;
   overflow-wrap: anywhere;
 }
+.bakin-token-row__label { display: block; font-size: .9375rem; font-weight: 600; line-height: 1.25; }
 .bakin-token-row__name { display: block; color: var(--bakin-color-text-primary); }
 .bakin-token-row__intent {
   margin: var(--bakin-layout-space-1) 0 0;
@@ -927,6 +928,12 @@ function colorShortName(token: Token): string {
   return token.name.replace('semantic.color.', '')
 }
 
+function tokenLabel(path: string): string {
+  const segments = path.replace('semantic.', '').split('.')
+  const tail = segments.slice(-2).join(' ')
+  return tail.charAt(0).toUpperCase() + tail.slice(1)
+}
+
 function colorGroupName(token: Token): string {
   const segments = token.name.split('.')
   const head = segments[2] ?? 'color'
@@ -991,6 +998,7 @@ function TokenSpecRow({ token }: { token: Token }) {
       <div className="bakin-token-row__identity">
         <TokenPreview token={token} />
         <div>
+          <strong className="bakin-token-row__label">{tokenLabel(token.name)}</strong>
           <code className="bakin-token-row__name">{token.name}</code>
           <p className="bakin-token-row__intent">{token.description}</p>
         </div>
@@ -1103,7 +1111,7 @@ function SemanticTokenCatalog() {
       <div className="bakin-token-catalog__content">
         <header>
           <p className="bakin-token-catalog__eyebrow">Foundation / public contract</p>
-          <h1 id="semantic-token-catalog-title">Semantic UI tokens</h1>
+          <h1 id="semantic-token-catalog-title">Token reference</h1>
           <p className="bakin-token-catalog__lede">Namespaced properties for plugin and product UI. Internal reference values and component aliases are intentionally excluded from the author contract.</p>
           <div className="bakin-token-catalog__summary" aria-label="Catalog summary">
             <span>{TOKENS.length} public tokens</span>
@@ -1124,7 +1132,7 @@ function SemanticTokenCatalog() {
 }
 
 const meta = {
-  title: 'Tokens/Semantic tokens',
+  title: 'Tokens/Reference',
   component: SemanticTokenCatalog,
   tags: ['public'],
   parameters: {
@@ -1143,7 +1151,7 @@ type Story = StoryObj<typeof meta>
 
 export const Catalog: Story = {
   play: async ({ canvas, userEvent }) => {
-    await expect(canvas.getByRole('heading', { name: 'Semantic UI tokens' })).toBeVisible()
+    await expect(canvas.getByRole('heading', { name: 'Token reference' })).toBeVisible()
     await expect(canvas.getByText(colorShortName(COLOR_TOKENS[0]))).toBeVisible()
     await expect(canvas.getByText(specimenSample(SIZE_TOKENS[0]))).toBeVisible()
     await userEvent.click(canvas.getByText('View full spec — Color'))

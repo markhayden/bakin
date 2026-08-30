@@ -1,0 +1,5 @@
+/* Docs pages read full width — the default 1000px column wastes the canvas
+   for token tables and wide component grids. */
+.sbdocs.sbdocs-content {
+  max-width: none;
+}

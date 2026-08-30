@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect } from 'storybook/test'
 
+import { tokenLabel } from '../../support/token-label'
 import { GENERATED_TOKENS } from '../../support/tokens.data'
 
 const cssVar = (path: string) => `--bakin-${path.replace(/^semantic\./, '').replace(/\./g, '-')}`
@@ -10,7 +11,9 @@ const WEIGHTS = pub.filter((token) => token.type === 'fontWeight')
 const FAMILIES = pub.filter((token) => token.type === 'fontFamily')
 
 const CSS = `
-.bakin-type-doc { min-height: 100vh; background: var(--bakin-color-canvas-default); color: var(--bakin-color-text-primary); padding: var(--bakin-layout-space-8); font-family: var(--bakin-typography-family-ui); }
+.bakin-type-doc {
+.bakin-token-label { display: block; font-size: .875rem; font-weight: 600; line-height: 1.2; margin-bottom: .125rem; }
+ min-height: 100vh; background: var(--bakin-color-canvas-default); color: var(--bakin-color-text-primary); padding: var(--bakin-layout-space-8); font-family: var(--bakin-typography-family-ui); }
 .bakin-type-doc__content { width: min(100%, 64rem); margin: 0 auto; }
 .bakin-type-doc h1 { margin: 0; font-size: clamp(2rem, 6vw, 3.75rem); line-height: 1; letter-spacing: -.045em; }
 .bakin-type-doc h2 { margin: var(--bakin-layout-space-8) 0 var(--bakin-layout-space-3); font-size: 1.125rem; }
@@ -33,7 +36,10 @@ function TypographyDoc() {
         <ul>
           {SIZES.map((token) => (
             <li key={token.path} className="bakin-type-row" aria-label={token.path}>
-              <code>{cssVar(token.path)}</code>
+              <span>
+                <strong className="bakin-token-label">{tokenLabel(token.path)}</strong>
+                <code>{cssVar(token.path)}</code>
+              </span>
               <p style={{ fontSize: `var(${cssVar(token.path)})` }}>{SAMPLE}</p>
             </li>
           ))}
@@ -42,7 +48,10 @@ function TypographyDoc() {
         <ul>
           {WEIGHTS.map((token) => (
             <li key={token.path} className="bakin-type-row" aria-label={token.path}>
-              <code>{cssVar(token.path)}</code>
+              <span>
+                <strong className="bakin-token-label">{tokenLabel(token.path)}</strong>
+                <code>{cssVar(token.path)}</code>
+              </span>
               <p style={{ fontWeight: `var(${cssVar(token.path)})` as never }}>{SAMPLE}</p>
             </li>
           ))}
@@ -51,7 +60,10 @@ function TypographyDoc() {
         <ul>
           {FAMILIES.map((token) => (
             <li key={token.path} className="bakin-type-row" aria-label={token.path}>
-              <code>{cssVar(token.path)}</code>
+              <span>
+                <strong className="bakin-token-label">{tokenLabel(token.path)}</strong>
+                <code>{cssVar(token.path)}</code>
+              </span>
               <p style={{ fontFamily: `var(${cssVar(token.path)})` }}>{SAMPLE}</p>
             </li>
           ))}

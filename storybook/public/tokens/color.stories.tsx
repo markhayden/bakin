@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect } from 'storybook/test'
 
+import { tokenLabel } from '../../support/token-label'
 import { GENERATED_TOKENS } from '../../support/tokens.data'
 
 const cssVar = (path: string) => `--bakin-${path.replace(/^semantic\./, '').replace(/\./g, '-')}`
@@ -11,7 +12,9 @@ const COLORS = GENERATED_TOKENS
 const GROUPS = [...new Set(COLORS.map((token) => token.path.split('.')[2]))]
 
 const CSS = `
-.bakin-color-doc { min-height: 100vh; background: var(--bakin-color-canvas-default); color: var(--bakin-color-text-primary); padding: var(--bakin-layout-space-8); font-family: var(--bakin-typography-family-ui); }
+.bakin-color-doc {
+.bakin-token-label { display: block; font-size: .875rem; font-weight: 600; line-height: 1.2; margin-bottom: .125rem; }
+ min-height: 100vh; background: var(--bakin-color-canvas-default); color: var(--bakin-color-text-primary); padding: var(--bakin-layout-space-8); font-family: var(--bakin-typography-family-ui); }
 .bakin-color-doc__content { width: min(100%, 76rem); margin: 0 auto; }
 .bakin-color-doc h1 { margin: 0; font-size: clamp(2rem, 6vw, 3.75rem); line-height: 1; letter-spacing: -.045em; }
 .bakin-color-doc__lede { max-width: 46rem; margin: var(--bakin-layout-space-3) 0 0; color: var(--bakin-color-text-muted); line-height: 1.65; }
@@ -43,6 +46,7 @@ function ColorDoc() {
                 <li key={token.path} className="bakin-color-swatch" aria-label={token.path}>
                   <span className="bakin-color-swatch__chip" style={{ background: `var(${cssVar(token.path)})` }} aria-hidden="true" />
                   <span>
+                    <strong className="bakin-token-label">{tokenLabel(token.path)}</strong>
                     <code>{cssVar(token.path)}</code>
                     {token.description ? <p>{token.description}</p> : null}
                     {token.contrast ? (

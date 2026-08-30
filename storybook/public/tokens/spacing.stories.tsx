@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect } from 'storybook/test'
 
+import { tokenLabel } from '../../support/token-label'
 import { GENERATED_TOKENS } from '../../support/tokens.data'
 
 const cssVar = (path: string) => `--bakin-${path.replace(/^semantic\./, '').replace(/\./g, '-')}`
@@ -15,7 +16,9 @@ const SPACE = DIMENSIONS.filter((token) => token.path.includes('.space.') || tok
 const RADII = DIMENSIONS.filter((token) => token.path.includes('.radius.'))
 
 const CSS = `
-.bakin-space-doc { min-height: 100vh; background: var(--bakin-color-canvas-default); color: var(--bakin-color-text-primary); padding: var(--bakin-layout-space-8); font-family: var(--bakin-typography-family-ui); }
+.bakin-space-doc {
+.bakin-token-label { display: block; font-size: .875rem; font-weight: 600; line-height: 1.2; margin-bottom: .125rem; }
+ min-height: 100vh; background: var(--bakin-color-canvas-default); color: var(--bakin-color-text-primary); padding: var(--bakin-layout-space-8); font-family: var(--bakin-typography-family-ui); }
 .bakin-space-doc__content { width: min(100%, 64rem); margin: 0 auto; }
 .bakin-space-doc h1 { margin: 0; font-size: clamp(2rem, 6vw, 3.75rem); line-height: 1; letter-spacing: -.045em; }
 .bakin-space-doc h2 { margin: var(--bakin-layout-space-8) 0 var(--bakin-layout-space-3); font-size: 1.125rem; }
@@ -38,7 +41,10 @@ function SpacingDoc() {
         <ul>
           {SPACE.map((token) => (
             <li key={token.path} className="bakin-space-row" aria-label={token.path}>
-              <code>{cssVar(token.path)}</code>
+              <span>
+                <strong className="bakin-token-label">{tokenLabel(token.path)}</strong>
+                <code>{cssVar(token.path)}</code>
+              </span>
               <small>{dim(token.value)}</small>
               <span className="bakin-space-row__bar" style={{ inlineSize: `var(${cssVar(token.path)})` }} aria-hidden="true" />
             </li>
@@ -48,7 +54,10 @@ function SpacingDoc() {
         <ul>
           {RADII.map((token) => (
             <li key={token.path} className="bakin-space-row" aria-label={token.path}>
-              <code>{cssVar(token.path)}</code>
+              <span>
+                <strong className="bakin-token-label">{tokenLabel(token.path)}</strong>
+                <code>{cssVar(token.path)}</code>
+              </span>
               <small>{dim(token.value)}</small>
               <span className="bakin-radius-chip" style={{ borderRadius: `var(${cssVar(token.path)})` }} aria-hidden="true" />
             </li>

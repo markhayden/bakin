@@ -775,7 +775,7 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=components-layout-panel--code-frame&viewMode=story', png: 'layout-panel-code.png', text: 'bakin agents sync --check copywriter' },
   { url: '/iframe.html?id=components-layout-disclosurepanel--open-by-default&viewMode=story', png: 'layout-disclosure-panel.png', text: 'Session detail' },
   { url: '/iframe.html?id=components-layout-boundedoverflow--wide-operations-table&viewMode=story', png: 'layout-bounded-overflow.png', role: 'region' as const, name: 'Active operation details' },
-  { url: '/iframe.html?id=tokens-semantic-tokens--catalog&viewMode=story', png: 'foundations-semantic-tokens.png', text: 'Semantic UI tokens' },
+  { url: '/iframe.html?id=tokens-reference--catalog&viewMode=story', png: 'tokens-reference.png', text: 'Token reference' },
   { url: '/iframe.html?id=testing-plugin-ui-fixture-host--canonical-usage&viewMode=story', png: 'testing-plugin-ui-fixture.png', text: 'Canonical fixture page' },
   { url: '/iframe.html?id=components-pages-workspacepage--canonical-usage&viewMode=story', png: 'pages-workspace-page.png', role: 'region' as const, name: 'Workspace canvas' },
   { url: '/iframe.html?id=components-lists-listrows--list-varieties&viewMode=story', png: 'lists-list-rows.png', role: 'list' as const, name: 'Bordered lesson rows' },
