@@ -120,8 +120,10 @@ export function TaskFilters({
             size="sm"
           />
           <FieldLabel>
-            {showScheduled ? <Eye className="size-bakin-4" aria-hidden="true" /> : <EyeOff className="size-bakin-4" aria-hidden="true" />}
-            Scheduled Tasks
+            <span className="inline-flex items-center gap-bakin-1">
+              {showScheduled ? <Eye className="size-bakin-4" aria-hidden="true" /> : <EyeOff className="size-bakin-4" aria-hidden="true" />}
+              Scheduled Tasks
+            </span>
           </FieldLabel>
         </Field>
       )}
