@@ -207,11 +207,8 @@ export function HealthPage() {
           </span>
         ) : undefined}
         actions={(
-          <Button type="button" onClick={() => { void runChecks() }} disabled={runningChecks}>
-            <RefreshCw
-              className={runningChecks ? 'animate-spin motion-reduce:animate-none' : undefined}
-              aria-hidden="true"
-            />
+          <Button type="button" onClick={() => { void runChecks() }} busy={runningChecks}>
+            <RefreshCw aria-hidden="true" />
             {runningChecks ? 'Running checks…' : 'Run checks'}
           </Button>
         )}
@@ -254,27 +251,22 @@ export function HealthPage() {
         </Tabs>
 
         <PageBody
+          id={`health-panel-${activeTab}`}
+          role="tabpanel"
+          labelledBy={`health-tab-${activeTab}`}
           gap="page"
-          label={`${HEALTH_TABS.find((tab) => tab.id === activeTab)?.label ?? 'Health'} health view`}
           busy={runningChecks}
           className="pt-bakin-6"
         >
-          <div
-            id={`health-panel-${activeTab}`}
-            role="tabpanel"
-            aria-labelledby={`health-tab-${activeTab}`}
-            className="min-w-0"
-          >
-            {activeTab === 'overview' && (
-              <OverviewPanel
-                onRunChecksReady={registerOverviewRunChecks}
-                onRunChecks={runChecks}
-              />
-            )}
-            {activeTab === 'agents' && <AgentsTab />}
-            {activeTab === 'activity' && <ActivityTab />}
-            {activeTab === 'system' && <SystemTab />}
-          </div>
+          {activeTab === 'overview' && (
+            <OverviewPanel
+              onRunChecksReady={registerOverviewRunChecks}
+              onRunChecks={runChecks}
+            />
+          )}
+          {activeTab === 'agents' && <AgentsTab />}
+          {activeTab === 'activity' && <ActivityTab />}
+          {activeTab === 'system' && <SystemTab />}
         </PageBody>
       </div>
     </Page>

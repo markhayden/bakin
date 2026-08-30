@@ -5,6 +5,7 @@ import { Button, SystemState, Text } from '@makinbakin/sdk/ui'
 import {
   AgentAvatar,
   DataTable,
+  ScoreOverlay,
   StatusBadge,
   type DataTableColumn,
   type SortDir,
@@ -207,10 +208,6 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
       cell: (task) => {
         const drawerTask = taskForDrawer(task)
         const scoreInfo = scoreMap?.get(task.id)
-        const semKey = 'embeddings'
-        const bm25Key = scoreInfo?.indexScores
-          ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
-          : undefined
         return (
           <Inline gap="dense" wrap={false}>
             <Button
@@ -226,17 +223,7 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
             >
               <span className="truncate">{task.title}</span>
             </Button>
-            {scoreInfo && (
-              <span className="flex shrink-0 items-center gap-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta">
-                <span className="text-bakin-data-series-1">RRF {scoreInfo.score.toFixed(3)}</span>
-                <span className="text-bakin-data-series-2">
-                  BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
-                </span>
-                <span className="text-bakin-data-series-3">
-                  SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
-                </span>
-              </span>
-            )}
+            {scoreInfo && <ScoreOverlay info={scoreInfo} className="shrink-0" />}
           </Inline>
         )
       },
@@ -347,7 +334,7 @@ function AgentCell({ agentId, avatarOnly = false }: { agentId: string; avatarOnl
         size="xs"
         decorative
       />
-      <span className="text-bakin-typography-size-meta text-bakin-text-primary">{name}</span>
+      <Text size="meta">{name}</Text>
     </span>
   )
 }

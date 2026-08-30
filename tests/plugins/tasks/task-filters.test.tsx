@@ -61,8 +61,10 @@ describe('task filters', () => {
     const scheduledFilter = screen.getByText('Scheduled Tasks').closest('[data-slot="scheduled-tasks-filter"]')
     expect(scheduledFilter?.className).not.toContain('hover:bg-accent')
     expect(scheduledFilter?.className).not.toContain('hover:text-foreground')
-    expect(screen.getByText('Scheduled Tasks').className).toContain('text-bakin-typography-size-body')
-    expect(screen.getByRole('switch', { name: /Hide scheduled tasks/ })).toBeTruthy()
+    // The visible FieldLabel names the switch — no state-encoded aria-label.
+    expect(screen.getByText('Scheduled Tasks').closest('[data-slot="field-label"]')?.className)
+      .toContain('text-[length:var(--bakin-typography-size-body)]')
+    expect(screen.getByRole('switch', { name: 'Scheduled Tasks' })).toBeTruthy()
     expect(screen.getByTestId('agent-avatar').getAttribute('data-size')).toBe('sm')
   })
 })

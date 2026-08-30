@@ -10,11 +10,14 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MarkdownContent } from '@makinbakin/sdk/content'
-import { Grid, Inline, Section, Stack } from '@makinbakin/sdk/layout'
+import { Grid, Inline, Panel, Section, Stack } from '@makinbakin/sdk/layout'
 import { useRouter, useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
+import { cn } from '@makinbakin/sdk/utils'
 import {
   ConfirmDialog,
   DangerZone,
+  ListRow,
+  ListRows,
   Page,
   PageBody,
   PageHeader,
@@ -29,6 +32,8 @@ import {
   ColorInput,
 } from '@makinbakin/sdk/patterns'
 import {
+  Alert,
+  AlertDescription,
   Banner,
   Button,
   Card,
@@ -36,6 +41,7 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
+  CardMedia,
   CardTitle,
   Dialog,
   DialogContent,
@@ -170,7 +176,7 @@ function FadeMore({
           className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-bakin-3 bg-gradient-to-t from-bakin-surface-default from-45% to-transparent px-bakin-1 pb-bakin-1 pt-20"
           data-fade-more
         >
-          <span className="min-w-0 truncate pb-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">{summary}</span>
+          <Text size="meta" tone="muted" className="min-w-0 truncate pb-bakin-1">{summary}</Text>
           <Button variant="outline" size="sm" className="shrink-0" onClick={onAction} data-fade-more-action>
             {actionLabel}
           </Button>
@@ -854,12 +860,8 @@ function OverviewTab({
     <Stack gap="section" data-brand-overview>
       {/* Finish-your-kit checklist: server-computed, every miss is a jump link. */}
       {completeness && completeness.percent < 100 && (
-        <Section
-          spacing="compact"
-          data-kit-completeness
-          data-tone="neutral"
-          className="relative overflow-hidden rounded-bakin-surface border border-bakin-border-strong bg-bakin-surface-default px-bakin-4 py-bakin-4 before:absolute before:inset-y-0 before:start-0 before:w-bakin-1 before:bg-bakin-text-muted"
-        >
+        <Panel as="section" tone="neutral" data-kit-completeness>
+        <Section as="div" spacing="compact">
           <OverviewSectionHeader
             title="Finish your kit"
             icon={Info}
@@ -868,7 +870,7 @@ function OverviewTab({
             action={(
               <Inline gap="dense" wrap={false}>
               <Progress value={completeness.percent} className="h-1.5 w-24" aria-label={`Kit ${completeness.percent}% complete`} />
-                <span className="text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">{completeness.percent}%</span>
+                <Text size="meta" tone="muted" className="tabular-nums">{completeness.percent}%</Text>
               </Inline>
             )}
           />
@@ -906,6 +908,7 @@ function OverviewTab({
             ))}
           </Grid>
         </Section>
+        </Panel>
       )}
 
       {/* Stat tiles */}
@@ -969,7 +972,7 @@ function OverviewTab({
           : activity.slice(0, 8).map((a, i) => (
             <Inline key={`${a.ts}-${i}`} align="baseline" justify="between" gap="dense">
               <span>{activityLabel(a)}</span>
-              <span className="shrink-0 text-bakin-typography-size-meta text-bakin-text-muted">{relTime(a.ts)}</span>
+              <Text size="meta" tone="muted" className="shrink-0">{relTime(a.ts)}</Text>
             </Inline>
           ))}
       </Section>
@@ -999,9 +1002,9 @@ function OverviewSectionHeader({
             {title}
           </h2>
         </Inline>
-        <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+        <Text size="body" tone="muted" as="p" className="max-w-prose leading-relaxed">
           {description}
-        </p>
+        </Text>
       </Stack>
       {action}
     </Inline>
@@ -1050,7 +1053,7 @@ function CardFootprintTile({ card }: { card: CardPreview | null }) {
       value={
         <>
           {kb.toFixed(1)}
-          <span className="text-bakin-typography-size-body font-bakin-typography-weight-regular text-bakin-text-muted"> / {maxKb.toFixed(0)} KB</span>
+          <Text size="body" tone="muted"> / {maxKb.toFixed(0)} KB</Text>
         </>
       }
       progress={{ percent: pct, tone: pct > 85 ? 'attention' : 'success' }}
@@ -1164,16 +1167,19 @@ function DocsEditor({
         {docs.length === 0 && (
           <SectionEmpty>No {copy.title.toLowerCase()} yet — create one and the editor opens on a fresh page.</SectionEmpty>
         )}
+        {docs.length > 0 && (
+        <ListRows variant="bordered" aria-label={copy.title}>
         {docs.map((d) => (
           // Each row is a distinct tile — flat hover-only rows blended into one block.
           // Benched lessons read as benched.
-          <div
+          <ListRow
             key={d.name}
             // Disabled lessons de-emphasize via muted text — never an
             // opacity fade that drops text below contrast.
-            className={`flex items-center gap-bakin-3 rounded-bakin-control bg-bakin-text-primary/5 px-bakin-3 py-bakin-2 ring-1 ring-bakin-text-primary/5 transition-colors hover:bg-bakin-text-primary/10 motion-reduce:transition-none ${
-              kind === 'lessons' && (brand.disabledLessons ?? []).includes(d.name) ? '[&_span]:text-bakin-text-muted' : ''
-            }`}
+            className={cn(
+              'flex items-center gap-bakin-3',
+              kind === 'lessons' && (brand.disabledLessons ?? []).includes(d.name) && '[&_span]:text-bakin-text-muted',
+            )}
             data-doc-row={d.name}
           >
             {/* The filename is the identity — it never yields space to the description. */}
@@ -1187,7 +1193,7 @@ function DocsEditor({
               <FileText className="size-bakin-3 shrink-0 text-bakin-text-muted" />
               <span className="truncate font-bakin-typography-family-mono text-bakin-typography-size-body">{d.name}</span>
             </Button>
-            {d.description && <span className="min-w-0 flex-1 truncate text-bakin-typography-size-meta text-bakin-text-muted">{d.description}</span>}
+            {d.description && <Text size="meta" tone="muted" className="min-w-0 flex-1 truncate">{d.description}</Text>}
             <div className="ml-auto flex shrink-0 items-center gap-bakin-3">
               {kind === 'guidelines' && (
                 <TooltipProvider delay={200}>
@@ -1248,8 +1254,10 @@ function DocsEditor({
                 <Trash2 className="size-bakin-3" />
               </Button>
             </div>
-          </div>
+          </ListRow>
         ))}
+        </ListRows>
+        )}
       </div>
 
       <ConfirmDialog
@@ -1462,11 +1470,11 @@ function BrandAssetsSection({
           <SectionEmpty>No groups yet — e.g. "product-ui" for real screenshots agents should reference instead of inventing UI.</SectionEmpty>
         )}
         {brand.assetGroups.map((group, gi) => (
-          <div key={group.name} className="space-y-bakin-2 rounded-bakin-control bg-bakin-surface-default p-bakin-3">
-            <div className="flex items-center gap-bakin-2 text-bakin-typography-size-body">
-              <span className="font-bakin-typography-weight-medium">{group.name}</span>
-              {group.description && <Text size="meta" tone="muted">— {group.description}</Text>}
-              <div className="ml-auto flex shrink-0 items-center gap-bakin-1">
+          <Card key={group.name} size="sm">
+            <CardHeader>
+              <CardTitle>{group.name}</CardTitle>
+              {group.description && <CardDescription>{group.description}</CardDescription>}
+              <CardAction className="flex items-center gap-bakin-1">
                 <Button
                   variant="ghost" size="xs" className="text-bakin-text-muted"
                   onClick={() => openPicker(`Add to ${group.name}`, group.description || 'Pick or upload reference material for this group.', (assetId) => onSave({ assetGroups: brand.assetGroups.map((g, j) => (j === gi && !g.assetIds.includes(assetId) ? { ...g, assetIds: [...g.assetIds, assetId] } : g)) }))}
@@ -1488,25 +1496,27 @@ function BrandAssetsSection({
                 >
                   <Trash2 className="size-bakin-3" />
                 </Button>
-              </div>
-            </div>
-            {group.assetIds.length === 0 && <Text size="meta" tone="muted" as="p">Empty group — add screenshots or imagery.</Text>}
-            {group.assetIds.length > 0 && (
-              <div className="grid gap-bakin-3 lg:grid-cols-2">
-                {group.assetIds.map((assetId) =>
-                  tile(assetId, (m) => ({ assetGroups: m.assetGroups.map((g) => (g.name === group.name ? { ...g, assetIds: g.assetIds.filter((id) => id !== assetId) } : g)) })),
-                )}
-              </div>
-            )}
-          </div>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              {group.assetIds.length === 0 && <Text size="meta" tone="muted" as="p">Empty group — add screenshots or imagery.</Text>}
+              {group.assetIds.length > 0 && (
+                <div className="grid gap-bakin-3 lg:grid-cols-2">
+                  {group.assetIds.map((assetId) =>
+                    tile(assetId, (m) => ({ assetGroups: m.assetGroups.map((g) => (g.name === group.name ? { ...g, assetIds: g.assetIds.filter((id) => id !== assetId) } : g)) })),
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         ))}
         {groupDraft && (
-          <div className="flex items-center gap-bakin-2 rounded-bakin-control bg-bakin-surface-default p-bakin-2">
+          <Panel padding="compact" className="flex items-center gap-bakin-2">
             <Input className="w-40" placeholder="product-ui" aria-label="Group name" value={groupDraft.name} onChange={(e) => setGroupDraft({ ...groupDraft, name: e.target.value })} />
             <Input className="flex-1" placeholder="real product UI — use for any product visual" aria-label="Group usage note" value={groupDraft.description} onChange={(e) => setGroupDraft({ ...groupDraft, description: e.target.value })} />
-            <Button variant="default" size="sm" disabled={!groupDraft.name.trim()} onClick={() => { onSave({ assetGroups: [...brand.assetGroups, { name: groupDraft.name.trim(), description: groupDraft.description.trim() || undefined, assetIds: [] }] }); setGroupDraft(null) }}>Add group</Button>
+            <Button variant="primary" size="sm" disabled={!groupDraft.name.trim()} onClick={() => { onSave({ assetGroups: [...brand.assetGroups, { name: groupDraft.name.trim(), description: groupDraft.description.trim() || undefined, assetIds: [] }] }); setGroupDraft(null) }}>Add group</Button>
             <Button variant="ghost" size="sm" onClick={() => setGroupDraft(null)}>Cancel</Button>
-          </div>
+          </Panel>
         )}
       </SectionCard>
 
@@ -1585,33 +1595,35 @@ function AssetTile({
   return (
     // Horizontal card: compact image LEFT, the description gets the width it
     // deserves on the right. Two across, stretch to fit.
-    <div className="group relative flex overflow-hidden rounded-bakin-surface bg-bakin-surface-default ring-1 ring-bakin-text-primary/10 transition-shadow hover:ring-bakin-text-primary/25" data-asset-card={assetId}>
-      <Button
-        type="button"
-        variant="ghost"
-        size="inline"
-        className="block min-h-36 w-36 shrink-0 self-stretch overflow-hidden rounded-none bg-bakin-canvas-default/50 text-left hover:bg-bakin-canvas-default/60"
-        aria-label="Open in the asset viewer"
-        onClick={open}
-      >
-        {isImage && info?.hasThumb
-          ? <img src={`/api/assets/${assetId}/thumb`} alt="" className="size-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-          : (() => {
-              const TypeGlyph = TYPE_ICON[info?.type ?? 'other'] ?? File
-              return (
-                <span className="flex size-full items-center justify-center text-bakin-text-muted">
-                  <TypeGlyph aria-hidden="true" className="size-bakin-8" />
-                </span>
-              )
-            })()}
-      </Button>
+    <Card orientation="row" size="sm" data-asset-card={assetId}>
+      <CardMedia className="w-36">
+        <Button
+          type="button"
+          variant="ghost"
+          size="inline"
+          className="block size-full min-h-36 overflow-hidden rounded-none bg-bakin-canvas-default/50 text-left hover:bg-bakin-canvas-default/60"
+          aria-label="Open in the asset viewer"
+          onClick={open}
+        >
+          {isImage && info?.hasThumb
+            ? <img src={`/api/assets/${assetId}/thumb`} alt="" className="size-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+            : (() => {
+                const TypeGlyph = TYPE_ICON[info?.type ?? 'other'] ?? File
+                return (
+                  <span className="flex size-full items-center justify-center text-bakin-text-muted">
+                    <TypeGlyph aria-hidden="true" className="size-bakin-8" />
+                  </span>
+                )
+              })()}
+        </Button>
+      </CardMedia>
       <Button
         type="button"
         variant="ghost"
         size="icon-xs"
         // The reveal convention: hover/focus reveal on pointer-hover
         // viewports only — touch keeps the control visible.
-        className="absolute right-1.5 top-1.5 bg-bakin-canvas-default/70 text-bakin-text-muted backdrop-blur transition-opacity hover:text-bakin-signal-danger md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100 motion-reduce:transition-none"
+        className="absolute right-1.5 top-1.5 bg-bakin-canvas-default/70 text-bakin-text-muted backdrop-blur transition-opacity hover:text-bakin-signal-danger md:opacity-0 md:focus-visible:opacity-100 md:group-hover/card:opacity-100 motion-reduce:transition-none"
         onClick={onRemove}
         aria-label="Remove"
       >
@@ -1619,7 +1631,7 @@ function AssetTile({
       </Button>
 
       {/* pr-9 reserves the hover-trash gutter — the floating icon must never sit on the note text. */}
-      <div className="flex min-w-0 flex-1 flex-col gap-bakin-1 py-bakin-3 pl-bakin-3 pr-9 text-bakin-typography-size-meta">
+      <CardContent className="flex min-w-0 flex-1 flex-col gap-bakin-1 py-bakin-3 pr-9 text-bakin-typography-size-meta">
         {extra}
         {editing ? (
           <Textarea
@@ -1647,9 +1659,9 @@ function AssetTile({
         )}
         {/* Machine detail — surfaces on hover only; when shown it reads at
             full muted contrast (never double-faded). */}
-        <span className="truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted opacity-0 transition-opacity group-hover:opacity-100 motion-reduce:transition-none">{assetId}</span>
-      </div>
-    </div>
+        <span className="truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted opacity-0 transition-opacity group-hover/card:opacity-100 motion-reduce:transition-none">{assetId}</span>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -1921,9 +1933,14 @@ function BrandSettingsTab({
           <Text size="body" tone="muted" as="p">Measuring the card…</Text>
         )}
         {dangling.length > 0 && (
-          <div className="rounded-bakin-control bg-bakin-signal-highlight/10 p-bakin-3 ring-1 ring-bakin-signal-highlight/20">
-            {dangling.map((d) => <p key={d.assetId} className="flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-signal-highlight"><AlertTriangle className="size-bakin-3" /> asset {d.assetId} is missing ({d.where}) — remove or replace it under Assets</p>)}
-          </div>
+          <Alert tone="attention">
+            <AlertTriangle />
+            <AlertDescription>
+              <ul className="m-0 grid list-none gap-bakin-1 p-0">
+                {dangling.map((d) => <li key={d.assetId}>asset {d.assetId} is missing ({d.where}) — remove or replace it under Assets</li>)}
+              </ul>
+            </AlertDescription>
+          </Alert>
         )}
       </SectionCard>
 

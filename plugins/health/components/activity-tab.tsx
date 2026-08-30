@@ -1,7 +1,7 @@
 'use client'
 
 import { useQueryState } from '@makinbakin/sdk/hooks'
-import { Banner, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, Banner, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Text } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { ActivityBreakdown, type ActivityFailureSelection } from './activity-breakdown'
@@ -226,8 +226,8 @@ export function ActivityTab() {
                 <SelectItem value="agent">{INTERACTION_SOURCE_META.agent.label}</SelectItem>
               </SelectContent>
             </Select>
-            <Button size="sm" variant="outline" onClick={() => void resource.refresh()} disabled={resource.refreshing}>
-              <RefreshCw className={resource.refreshing ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" />
+            <Button size="sm" variant="outline" onClick={() => void resource.refresh()} busy={resource.refreshing}>
+              <RefreshCw aria-hidden="true" />
               Refresh
             </Button>
           </>
@@ -235,9 +235,9 @@ export function ActivityTab() {
       />
 
       {resource.loading && !data ? (
-        <div role="status" aria-label="Loading activity" className="py-bakin-8 text-center text-bakin-typography-size-body text-bakin-text-muted">
+        <Text role="status" aria-label="Loading activity" size="body" tone="muted" as="div" className="py-bakin-8 text-center">
           Loading activity…
-        </div>
+        </Text>
       ) : resource.error && !data ? (
         <Banner
           announce="assertive"
@@ -253,9 +253,11 @@ export function ActivityTab() {
       ) : (
         <>
           {resource.backgroundError && (
-            <p role="status" className="text-bakin-typography-size-meta text-bakin-signal-highlight">
-              Showing the last loaded activity; refresh failed: {resource.backgroundError}
-            </p>
+            <Alert tone="attention">
+              <AlertDescription>
+                Showing the last loaded activity; refresh failed: {resource.backgroundError}
+              </AlertDescription>
+            </Alert>
           )}
 
           {data && (

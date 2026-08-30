@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Download, FolderSearch, } from 'lucide-react'
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner, SystemState, Text } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner, SystemState, Text } from '@makinbakin/sdk/ui'
 import { DataTable, type DataTableColumn } from '@makinbakin/sdk/patterns'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
 import { formatAge, formatSize } from '@makinbakin/sdk/utils'
@@ -119,7 +119,7 @@ export function ImportView({ onImported, onCountChange }: { onImported?: () => v
           Import all ({files.length})
         </Button>
       </div>
-      {error && <p className="text-bakin-typography-size-meta text-bakin-signal-danger" data-testid="import-error">{error}</p>}
+      {error && <Alert tone="danger" data-testid="import-error"><AlertDescription>{error}</AlertDescription></Alert>}
       <DataTable
         label="Unmanaged files"
         columns={columns}
@@ -144,8 +144,8 @@ export function ImportView({ onImported, onCountChange }: { onImported?: () => v
               <AssetTypeIcon type={typeOverrides[file.relPath] ?? file.suggestedType} className="size-bakin-4" />
             </div>
             <div className="min-w-0">
-              <p className="m-0 truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{file.name}</p>
-              <p className="m-0 truncate text-bakin-typography-size-meta text-bakin-text-muted">{file.relPath}</p>
+              <Text size="body" weight="medium" as="p" className="truncate">{file.name}</Text>
+              <Text size="meta" tone="muted" as="p" className="truncate">{file.relPath}</Text>
             </div>
           </Inline>
         ),

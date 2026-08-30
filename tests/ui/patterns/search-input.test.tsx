@@ -61,8 +61,7 @@ describe('canonical search input', () => {
     const input = screen.getByRole('searchbox', { name: 'Search tasks' })
     const clear = screen.getByRole('button', { name: 'Clear Search tasks' })
     expect(input.className).toContain('[&::-webkit-search-cancel-button]:appearance-none')
-    expect(clear.className).toContain('active:not-aria-[haspopup]:-translate-y-1/2')
-    expect(clear.className).not.toContain('active:not-aria-[haspopup]:translate-y-px')
+    expect(clear.closest('[data-slot="input-group-addon"]')?.getAttribute('data-align')).toBe('inline-end')
 
     fireEvent.click(clear)
 

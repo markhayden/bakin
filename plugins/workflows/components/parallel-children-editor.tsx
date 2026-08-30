@@ -3,25 +3,34 @@
 /**
  * Node config drawer — parallel child-step list editor (add/remove/reorder
  * agent children plus the per-child id/label/agent/skill/task form).
- * Extracted from node-config-drawer.tsx (FW4); JSX unchanged.
+ * Extracted from node-config-drawer.tsx (FW4).
  */
 
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
-import { Button } from "@makinbakin/sdk/ui"
-import { Input } from "@makinbakin/sdk/ui"
-import { Textarea } from "@makinbakin/sdk/ui"
-import { Label } from "@makinbakin/sdk/ui"
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Field,
+  FieldControl,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  Input,
+  SystemState,
+  Textarea,
+} from '@makinbakin/sdk/ui'
+import { Section } from '@makinbakin/sdk/layout'
 import { WorkflowAgentSelect } from './workflow-agent-identity'
 
-import {
-  type ParallelChildRow,
-  nextChildId,
-  FIELD_GROUP_CLASS,
-  FIELD_LABEL_CLASS,
-  FIELD_HELP_CLASS,
-  CONTROL_CLASS,
-  TEXTAREA_CLASS,
-} from '../lib/node-config-fields'
+import { type ParallelChildRow, nextChildId } from '../lib/node-config-fields'
+
+const HEADING_ID = 'parallel-children-heading'
 
 export function ParallelChildrenEditor({
   childrenRows,
@@ -58,9 +67,11 @@ export function ParallelChildrenEditor({
   }
 
   return (
-    <div className="border-t border-bakin-border-subtle pt-5">
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <span className="text-bakin-typography-size-body font-bakin-typography-weight-medium">Parallel child steps</span>
+    <Section divider="top" spacing="compact" aria-labelledby={HEADING_ID}>
+      <div className="flex items-center justify-between gap-bakin-2">
+        <h3 id={HEADING_ID} className="m-0 text-bakin-typography-size-body font-bakin-typography-weight-semibold">
+          Parallel child steps
+        </h3>
         <Button
           type="button"
           variant="ghost"
@@ -71,141 +82,131 @@ export function ParallelChildrenEditor({
           <Plus className="mr-1 size-3.5" /> Agent
         </Button>
       </div>
-      <div className="space-y-5">
-        {childrenRows.map((child, index) => {
-          const childId = child.id || `child-${index + 1}`
-          if (child.type !== 'agent') {
-            return (
-              <div key={`${childId}-${index}`} className="rounded-bakin-control border border-bakin-signal-highlight/40 bg-bakin-signal-highlight/10 p-3 text-bakin-typography-size-meta leading-relaxed text-bakin-signal-highlight">
-                Child {childId} has unsupported type {child.type}; it is preserved read-only.
-              </div>
-            )
-          }
+      {childrenRows.map((child, index) => {
+        const childId = child.id || `child-${index + 1}`
+        if (child.type !== 'agent') {
           return (
-            <div key={`${childId}-${index}`} className="rounded-bakin-control border border-bakin-border-subtle p-4">
-              <div className="mb-4 flex items-center justify-between gap-2">
-                <span className="min-w-0 truncate text-bakin-typography-size-body font-bakin-typography-weight-medium">{child.label || childId}</span>
-                <div className="flex items-center gap-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-label={`Move child ${childId} up`}
-                    onClick={() => moveChild(index, -1)}
-                    disabled={index === 0}
-                  >
-                    <ArrowUp className="size-3.5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-label={`Move child ${childId} down`}
-                    onClick={() => moveChild(index, 1)}
-                    disabled={index === childrenRows.length - 1}
-                  >
-                    <ArrowDown className="size-3.5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-label={`Remove child ${childId}`}
-                    onClick={() => removeChild(index)}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              </div>
-              <div className="grid gap-5">
-                <div className={FIELD_GROUP_CLASS}>
-                  <Label className={FIELD_LABEL_CLASS} htmlFor={`parallel-child-${index}-id`}>
-                    Child step ID
-                  </Label>
+            <Alert key={`${childId}-${index}`} tone="attention">
+              <AlertDescription>
+                Child {childId} has unsupported type {child.type}; it is preserved read-only.
+              </AlertDescription>
+            </Alert>
+          )
+        }
+        return (
+          <Card key={`${childId}-${index}`} size="sm">
+            <CardHeader>
+              <CardTitle className="truncate">{child.label || childId}</CardTitle>
+              <CardAction className="flex items-center gap-bakin-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Move child ${childId} up`}
+                  onClick={() => moveChild(index, -1)}
+                  disabled={index === 0}
+                >
+                  <ArrowUp className="size-3.5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Move child ${childId} down`}
+                  onClick={() => moveChild(index, 1)}
+                  disabled={index === childrenRows.length - 1}
+                >
+                  <ArrowDown className="size-3.5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Remove child ${childId}`}
+                  onClick={() => removeChild(index)}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              <FieldGroup>
+                <Field name="id">
+                  <FieldLabel htmlFor={`parallel-child-${index}-id`}>Child step ID</FieldLabel>
                   <Input
                     id={`parallel-child-${index}-id`}
                     aria-label={`Child step ID for ${childId}`}
                     value={child.id}
                     placeholder="write-caption"
-                    className={CONTROL_CLASS}
                     onChange={(e) => updateChild(index, { id: e.target.value })}
                   />
-                  <p className={FIELD_HELP_CLASS}>
-                    Stable identifier used by workflow links.
-                  </p>
-                </div>
-                <div className={FIELD_GROUP_CLASS}>
-                  <Label className={FIELD_LABEL_CLASS} htmlFor={`parallel-child-${index}-label`}>
-                    Display name
-                  </Label>
+                  <FieldDescription>Stable identifier used by workflow links.</FieldDescription>
+                </Field>
+                <Field name="label">
+                  <FieldLabel htmlFor={`parallel-child-${index}-label`}>Display name</FieldLabel>
                   <Input
                     id={`parallel-child-${index}-label`}
                     aria-label={`Display name for child ${childId}`}
                     value={child.label}
                     placeholder="Write Caption"
-                    className={CONTROL_CLASS}
                     onChange={(e) => updateChild(index, { label: e.target.value })}
                   />
-                  <p className={FIELD_HELP_CLASS}>
-                    Human-readable name shown inside the parallel group.
-                  </p>
-                </div>
-                <div className={FIELD_GROUP_CLASS}>
-                  <Label className={FIELD_LABEL_CLASS}>Agent</Label>
+                  <FieldDescription>Human-readable name shown inside the parallel group.</FieldDescription>
+                </Field>
+                <Field name="agent">
+                  <FieldLabel htmlFor={`parallel-child-${index}-agent`}>Agent</FieldLabel>
                   <WorkflowAgentSelect
+                    id={`parallel-child-${index}-agent`}
                     value={typeof child.agent === 'string' ? child.agent : ''}
                     onValueChange={(v) => updateChild(index, { agent: v || '' })}
                     includeAssigned
                     allowNone={false}
-                    className={CONTROL_CLASS}
                   />
-                  <p className={FIELD_HELP_CLASS}>
+                  <FieldDescription>
                     Choose who should run this child step — or a team to route at dispatch.
-                  </p>
-                </div>
-                <div className={FIELD_GROUP_CLASS}>
-                  <Label className={FIELD_LABEL_CLASS} htmlFor={`parallel-child-${index}-skill`}>
-                    Skill instructions
-                  </Label>
+                  </FieldDescription>
+                </Field>
+                <Field name="skill">
+                  <FieldLabel htmlFor={`parallel-child-${index}-skill`}>Skill instructions</FieldLabel>
                   <Input
                     id={`parallel-child-${index}-skill`}
                     aria-label={`Skill instructions for child ${childId}`}
                     value={typeof child.skill === 'string' ? child.skill : ''}
                     placeholder="brand-voice"
-                    className={CONTROL_CLASS}
                     onChange={(e) => updateChild(index, { skill: e.target.value || undefined })}
                   />
-                  <p className={FIELD_HELP_CLASS}>
-                    Optional skill or instruction bundle to load first.
-                  </p>
-                </div>
-                <div className={FIELD_GROUP_CLASS}>
-                  <Label className={FIELD_LABEL_CLASS} htmlFor={`parallel-child-${index}-task`}>
-                    Task brief
-                  </Label>
-                  <Textarea
-                    id={`parallel-child-${index}-task`}
-                    aria-label={`Task brief for child ${childId}`}
-                    rows={3}
-                    value={typeof child.task === 'string' ? child.task : ''}
-                    placeholder="Draft the caption for this audience segment."
-                    className={TEXTAREA_CLASS}
-                    onChange={(e) => updateChild(index, { task: e.target.value || undefined })}
+                  <FieldDescription>Optional skill or instruction bundle to load first.</FieldDescription>
+                </Field>
+                <Field name="task">
+                  <FieldLabel htmlFor={`parallel-child-${index}-task`}>Task brief</FieldLabel>
+                  <FieldControl
+                    render={(
+                      <Textarea
+                        id={`parallel-child-${index}-task`}
+                        aria-label={`Task brief for child ${childId}`}
+                        rows={3}
+                        value={typeof child.task === 'string' ? child.task : ''}
+                        placeholder="Draft the caption for this audience segment."
+                        onChange={(e) => updateChild(index, { task: e.target.value || undefined })}
+                      />
+                    )}
                   />
-                  <p className={FIELD_HELP_CLASS}>
-                    Short, concrete instruction for this child agent.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )
-        })}
-        {childrenRows.length === 0 && (
-          <div className="rounded-bakin-control border border-bakin-border-subtle p-3 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
-            Add at least one child agent before saving this parallel step.
-          </div>
-        )}
-      </div>
-    </div>
+                  <FieldDescription>Short, concrete instruction for this child agent.</FieldDescription>
+                </Field>
+              </FieldGroup>
+            </CardContent>
+          </Card>
+        )
+      })}
+      {childrenRows.length === 0 && (
+        <SystemState
+          kind="initial-empty"
+          scope="inline"
+          headingLevel={4}
+          title="No child agents yet"
+          description="Add at least one child agent before saving this parallel step."
+        />
+      )}
+    </Section>
   )
 }

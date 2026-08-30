@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { Stack } from '@makinbakin/sdk/layout'
 import { StatGroup, StatTile } from '@makinbakin/sdk/patterns'
+import { Text } from '@makinbakin/sdk/ui'
 import type { TaskColumns } from '../types'
 
 interface TaskMetricsProps {
@@ -39,9 +40,9 @@ export function TaskMetrics({ columns, timestamp }: TaskMetricsProps) {
         <StatTile label="Agents" value={metrics.agentsActive} valueTone="accent" />
       </StatGroup>
       {timestamp && (
-        <span className="self-end font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text size="meta" tone="muted" mono className="self-end">
           Updated {timestamp}
-        </span>
+        </Text>
       )}
     </Stack>
   )

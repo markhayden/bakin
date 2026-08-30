@@ -4,18 +4,13 @@ import { PieChart } from '@makinbakin/sdk/charts'
 import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
-import { Button, Progress, Skeleton, Text } from '@makinbakin/sdk/ui'
+import { Button, Progress, Separator, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
+import { formatSize } from '@makinbakin/sdk/utils'
 import { ArrowUpRight, Gauge, Layers3 } from 'lucide-react'
 import { formatTokenCount } from '../lib/format'
 import type { OverviewTelemetry } from './overview-telemetry'
 
 const DEFAULT_CONTEXT_BUDGET = 64 * 1024
-
-function formatBytes(value: number): string {
-  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`
-  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`
-  return `${value} B`
-}
 
 function sessionTimeLabel(value: string, verb: 'Active' | 'Started'): string {
   const relative = formatRelativeTime(value)
@@ -94,16 +89,22 @@ export function OverviewContextTraffic({
         {context.loading ? (
           <Skeleton className="mt-bakin-2 h-10 w-full" />
         ) : context.error ? (
-          <div className="mt-bakin-2 flex items-center justify-between gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
-            <span>Startup context could not be checked.</span>
-            {context.onRetry && <Button size="xs" variant="ghost" onClick={context.onRetry}>Retry</Button>}
-          </div>
+          <SystemState
+            kind="error"
+            scope="inline"
+            headingLevel={4}
+            className="mt-bakin-2"
+            title="Startup context could not be checked."
+            action={context.onRetry
+              ? <Button size="xs" variant="ghost" onClick={context.onRetry}>Retry</Button>
+              : undefined}
+          />
         ) : highest ? (
           <div className="mt-bakin-2">
             <div className="flex items-baseline justify-between gap-bakin-3 text-bakin-typography-size-body">
               <span className="truncate font-bakin-typography-weight-medium text-bakin-text-primary">{highest.agentId}</span>
               <span className="shrink-0 tabular-nums text-bakin-text-muted">
-                {formatBytes(highest.estimatedMaxTaskBytes)} / {formatBytes(budget)}
+                {formatSize(highest.estimatedMaxTaskBytes)} / {formatSize(budget)}
               </span>
             </div>
             <Progress
@@ -122,19 +123,26 @@ export function OverviewContextTraffic({
         )}
       </div>
 
-      <div className="mt-bakin-4 border-t border-bakin-border-subtle pt-bakin-3">
+      <Separator className="mt-bakin-4" />
+      <div className="mt-bakin-3">
         <div className="flex items-baseline justify-between gap-bakin-3">
-          <span className="text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">Latest-session traffic</span>
-          {cachePercent !== null && <strong className="text-bakin-typography-size-body font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">{cachePercent}% from cache</strong>}
+          <Text size="meta" tone="muted" weight="medium">Latest-session traffic</Text>
+          {cachePercent !== null && <Text size="body" weight="semibold" as="strong" className="tabular-nums">{cachePercent}% from cache</Text>}
         </div>
 
         {sessions.loading && !sessions.data ? (
           <Skeleton className="mt-bakin-2 h-12 w-full" />
         ) : sessions.error && !sessions.data ? (
-          <div className="mt-bakin-2 flex items-center justify-between gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
-            <span>Session traffic unavailable.</span>
-            {sessions.onRetry && <Button size="xs" variant="ghost" onClick={sessions.onRetry}>Retry</Button>}
-          </div>
+          <SystemState
+            kind="error"
+            scope="inline"
+            headingLevel={4}
+            className="mt-bakin-2"
+            title="Session traffic unavailable."
+            action={sessions.onRetry
+              ? <Button size="xs" variant="ghost" onClick={sessions.onRetry}>Retry</Button>
+              : undefined}
+          />
         ) : totalTraffic === 0 ? (
           <Text size="meta" tone="muted" as="div" className="mt-bakin-2">No latest-session traffic reported.</Text>
         ) : (
@@ -148,7 +156,8 @@ export function OverviewContextTraffic({
                 compactData
               />
             </div>
-            <div className="mt-bakin-2 space-y-bakin-1 border-t border-bakin-border-subtle pt-bakin-2">
+            <Separator className="mt-bakin-2" />
+            <div className="mt-bakin-2 space-y-bakin-1">
               {latestSessions.slice(0, 2).map((session) => {
                 const evidenceAt = session.lastMessageAt ?? session.sessionStarted
                 const verb = session.lastMessageAt ? 'Active' as const : 'Started' as const

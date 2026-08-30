@@ -13,8 +13,12 @@
 import { useState } from 'react'
 import { Search, Send, CheckCircle2, AlertTriangle, Lock } from 'lucide-react'
 import {
+  Alert,
+  AlertDescription,
   Button,
   Checkbox,
+  Field,
+  FieldLabel,
   Input,
   Label,
   Spinner,
@@ -205,20 +209,22 @@ export function MemoryCleanup() {
           {find.groups.map((g) => (
             <Panel key={g.agent} padding="compact">
               <Stack gap="dense">
-                <label className="flex cursor-pointer items-center gap-bakin-2">
+                <Field orientation="horizontal" name={`cleanup-agent-${g.agent}`}>
                   <Checkbox
                     checked={selected.has(g.agent)}
                     onCheckedChange={() => toggle(g.agent)}
                     disabled={g.actionableCount === 0}
                   />
-                  {g.agent}
-                  <StatusBadge tone="neutral" variant="soft">{g.actionableCount} editable</StatusBadge>
-                  {g.hits.length > g.actionableCount && (
-                    <StatusBadge tone="neutral" variant="outline">
-                      {g.hits.length - g.actionableCount} informational
-                    </StatusBadge>
-                  )}
-                </label>
+                  <FieldLabel>
+                    {g.agent}
+                    <StatusBadge tone="neutral" variant="soft">{g.actionableCount} editable</StatusBadge>
+                    {g.hits.length > g.actionableCount && (
+                      <StatusBadge tone="neutral" variant="outline">
+                        {g.hits.length - g.actionableCount} informational
+                      </StatusBadge>
+                    )}
+                  </FieldLabel>
+                </Field>
                 <DisclosurePanel
                   // Open by default: the operator confirms a destructive
                   // dispatch from this evidence, so hiding which files and
@@ -340,19 +346,19 @@ export function MemoryCleanup() {
           <Stack gap="dense">
             <h3>Dispatched {dispatch.dispatched.length} scrub task(s)</h3>
             {dispatch.dispatched.map((d) => (
-              <p key={d.agent} className="text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text key={d.agent} size="meta" tone="muted" as="p">
                 {d.agent} → <PluginLink to="/tasks">task {d.taskId}</PluginLink> ({d.hitCount} file(s){d.managedCount ? `, ${d.managedCount} pinned` : ''})
-              </p>
+              </Text>
             ))}
             {dispatch.skipped.map((s) => (
-              <p key={s.agent} className="text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text key={s.agent} size="meta" tone="muted" as="p">
                 {s.agent} — skipped ({s.reason})
-              </p>
+              </Text>
             ))}
             {dispatch.failed?.map((f) => (
-              <p key={f.agent} className="text-bakin-typography-size-meta text-bakin-signal-danger">
-                {f.agent} — failed ({f.reason})
-              </p>
+              <Alert key={f.agent} tone="danger">
+                <AlertDescription>{f.agent} — failed ({f.reason})</AlertDescription>
+              </Alert>
             ))}
             <div>
               <Button variant="outline" size="sm" onClick={runVerify} disabled={busy === 'verify'}>

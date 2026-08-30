@@ -25,7 +25,7 @@ import {
 } from '@makinbakin/sdk/ui'
 import { useRouter } from '@makinbakin/sdk/navigation'
 import { Inline, Panel } from '@makinbakin/sdk/layout'
-import { CopyButton, KeyValue, StatusBadge, type KeyValueItem } from '@makinbakin/sdk/patterns'
+import { ConfirmDialog, CopyButton, KeyValue, StatusBadge, type KeyValueItem } from '@makinbakin/sdk/patterns'
 import { toast, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
 import { PackageStateBadge } from './package-state-badge'
 import { AdoptDialog } from './adopt-dialog'
@@ -97,6 +97,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   const [adoptOpen, setAdoptOpen] = useState(false)
   const [updateOpen, setUpdateOpen] = useState(false)
   const [removeOpen, setRemoveOpen] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
@@ -192,9 +193,9 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
           <StatusBadge tone="neutral" variant="solid" size="xs">Self-managed</StatusBadge>
           <Text size="meta" tone="muted">main agent</Text>
         </Inline>
-        <p className="m-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="p" className="leading-relaxed">
           Your main agent is your own persona — its workspace files live with you, not a package template. Adoption is intentionally not offered here.
-        </p>
+        </Text>
       </div>
     )
   }
@@ -247,9 +248,9 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
         </Inline>
       </div>
       {state === 'unmanaged' && (
-        <p className="m-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="p" className="leading-relaxed">
           Adopt to enable lesson toggles, automatic skill projection, and update-from-source tracking. Your workspace files stay as-is.
-        </p>
+        </Text>
       )}
       {hasPackage && packageState?.entry && (
         <div className="grid gap-bakin-2">
@@ -310,9 +311,9 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
                   <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-text-primary">
                     {packageState.updateStatus.currentVersion || packageState.version || packageState.entry?.version || 'unknown'}
                   </p>
-                  <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                  <Text size="meta" tone="muted" mono as="p" className="mt-bakin-1">
                     commit {packageState.updateStatus.currentCommitSha?.slice(0, 7) || packageState.entry?.commitSha?.slice(0, 7) || 'unknown'}
-                  </p>
+                  </Text>
                 </div>
                 <div>
                   <Overline as="p">
@@ -321,9 +322,9 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
                   <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-signal-accent">
                     {packageState.updateStatus.latestVersion ?? 'latest'}
                   </p>
-                  <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                  <Text size="meta" tone="muted" mono as="p" className="mt-bakin-1">
                     commit {packageState.updateStatus.latestCommitSha?.slice(0, 7) || 'unknown'}
-                  </p>
+                  </Text>
                 </div>
               </div>
             </div>
@@ -343,8 +344,8 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
             <Button variant="outline" onClick={() => setUpdateOpen(false)}>
               Close
             </Button>
-            <Button disabled={actionBusy || Boolean(actionMessage)} onClick={() => syncPackage()}>
-              {actionBusy ? <RefreshCw className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
+            <Button busy={actionBusy} disabled={Boolean(actionMessage)} onClick={() => syncPackage()}>
+              <RefreshCw aria-hidden="true" />
               {actionBusy ? 'Syncing…' : 'Sync agent'}
             </Button>
           </DialogFooter>
@@ -383,15 +384,32 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
                 </p>
               </div>
               <Button
-                variant="destructive"
+                variant="danger"
                 disabled={actionBusy || Boolean(actionMessage)}
-                onClick={() => removePackage(true)}
+                onClick={() => setConfirmDeleteOpen(true)}
                 className="shrink-0"
               >
                 Delete agent
               </Button>
             </div>
           </div>
+          <ConfirmDialog
+            open={confirmDeleteOpen}
+            title={`Delete ${agentId}?`}
+            description="Runs orphan cleanup, then deletes the OpenClaw runtime agent. This cannot be undone."
+            confirmLabel="Delete agent"
+            busyLabel="Deleting…"
+            confirmTone="danger"
+            confirmValue={agentId}
+            busy={actionBusy}
+            confirmTestId="delete-agent-confirm"
+            onConfirm={() => {
+              void removePackage(true).finally(() => setConfirmDeleteOpen(false))
+            }}
+            onCancel={() => {
+              if (!actionBusy) setConfirmDeleteOpen(false)
+            }}
+          />
           {actionError ? (
             <Alert tone="danger">
               <AlertTitle>Package was not removed</AlertTitle>

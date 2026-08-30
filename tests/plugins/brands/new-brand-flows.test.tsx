@@ -34,13 +34,18 @@ afterEach(() => {
 })
 
 describe('brand creation flows', () => {
-  it('uses canonical rich buttons for each brands-local creation choice', async () => {
+  it('uses canonical interactive cards for each brands-local creation choice', async () => {
     const onPick = mock()
     render(<NewBrandChooser open onOpenChange={mock()} onPick={onPick} />)
 
-    const build = await screen.findByRole('button', { name: /Build my brand/ })
-    expect(build.dataset.slot).toBe('button')
-    expect(build.dataset.createPath).toBe('build')
+    // Each path is a Card with a whole-surface action: the accessible button
+    // is the card's overlay control, and the path identity rides the card.
+    const build = await screen.findByRole('button', { name: 'Build my brand' })
+    expect(build.dataset.slot).toBe('surface-overlay')
+    const card = build.closest('[data-slot="card"]') as HTMLElement | null
+    expect(card).not.toBeNull()
+    expect(card!.dataset.createPath).toBe('build')
+    expect(card!.dataset.interactive).toBe('')
     expect(build.closest('[data-slot="dialog-content"]')).not.toBeNull()
 
     fireEvent.click(build)

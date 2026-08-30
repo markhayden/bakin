@@ -23,6 +23,7 @@ import {
   Badge,
   Button,
   SystemState,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { MarkdownEditor, type MarkdownEditorMode } from '@makinbakin/sdk/content'
 
@@ -229,8 +230,8 @@ export function TeamDetail({ teamId }: { teamId: string }) {
           </>
         ) : undefined}
         actions={members ? (
-          <Button type="button" onClick={() => void syncTeam()} disabled={syncing}>
-            <RefreshCw className={syncing ? 'animate-spin motion-reduce:animate-none' : undefined} aria-hidden="true" />
+          <Button type="button" onClick={() => void syncTeam()} busy={syncing}>
+            <RefreshCw aria-hidden="true" />
             {syncing ? 'Syncing…' : isGlobal ? 'Sync all agents' : 'Sync team'}
           </Button>
         ) : undefined}
@@ -250,9 +251,9 @@ export function TeamDetail({ teamId }: { teamId: string }) {
                 </p>
               </div>
               {contentPath ? (
-                <code className="break-all font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                <Text size="meta" tone="muted" mono as="code" className="break-all">
                   {contentPath}
-                </code>
+                </Text>
               ) : null}
             </div>
 

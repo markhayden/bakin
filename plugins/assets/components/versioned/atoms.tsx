@@ -92,14 +92,14 @@ export function AssetMetaSummary({ agent, created, taskId, tags, maxTags = 4 }: 
     <div className="flex flex-col gap-bakin-1">
       <div className="flex items-center gap-bakin-2">
         <AssetAgentIdentity agentId={agent} />
-        <span className="text-bakin-typography-size-meta text-bakin-text-muted">|</span>
+        <Text size="meta" tone="muted">|</Text>
         <div className="flex items-center gap-bakin-1">
           <Clock className="size-bakin-3 text-bakin-text-muted" />
           <Text size="meta" tone="muted">{formatAge(created)}</Text>
         </div>
         {taskId && (
           <>
-            <span className="text-bakin-typography-size-meta text-bakin-text-muted">|</span>
+            <Text size="meta" tone="muted">|</Text>
             <Badge variant="outline" size="xs">{taskId.slice(0, 6)}</Badge>
           </>
         )}
@@ -109,7 +109,7 @@ export function AssetMetaSummary({ agent, created, taskId, tags, maxTags = 4 }: 
           {/* Most-recent tags win the cap — tags append chronologically, so a
               freshly added tag must be visible, not hidden behind "+N". */}
           {tags.slice(-maxTags).map(tag => (
-            <Badge key={tag} variant="secondary" size="xs">{tag}</Badge>
+            <Badge key={tag} tone="neutral" variant="soft" size="xs">{tag}</Badge>
           ))}
           {tags.length > maxTags && <Text size="meta" tone="muted">+{tags.length - maxTags}</Text>}
         </div>
@@ -125,8 +125,8 @@ export function ProvenanceChips({ generation }: {
   if (!generation) return null
   return (
     <div className="flex flex-wrap items-center gap-bakin-1">
-      <Badge variant="secondary" size="xs">{generation.provider}</Badge>
-      <Badge variant="secondary" size="xs">{generation.model}</Badge>
+      <Badge tone="neutral" variant="soft" size="xs">{generation.provider}</Badge>
+      <Badge tone="neutral" variant="soft" size="xs">{generation.model}</Badge>
       {generation.surface && generation.surface !== 'custom' && (
         <Badge variant="outline" size="xs">{generation.surface}</Badge>
       )}

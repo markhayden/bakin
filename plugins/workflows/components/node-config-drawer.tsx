@@ -16,26 +16,34 @@
 
 import { useMemo, useState } from 'react'
 import { Trash2, X } from 'lucide-react'
-import { Button } from "@makinbakin/sdk/ui"
-import { Input } from "@makinbakin/sdk/ui"
-import { Textarea } from "@makinbakin/sdk/ui"
-import { Label } from "@makinbakin/sdk/ui"
-import { Checkbox } from "@makinbakin/sdk/ui"
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
+  Checkbox,
+  Field,
+  FieldControl,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@makinbakin/sdk/ui"
+  Textarea,
+} from '@makinbakin/sdk/ui'
 import {
   InspectorPanel,
   InspectorPanelContent,
   InspectorPanelFooter,
   InspectorPanelHeader,
-} from "@makinbakin/sdk/patterns"
-import { WorkflowAgentSelect } from './workflow-agent-identity'
+} from '@makinbakin/sdk/patterns'
 import { useJsonFetch } from '@makinbakin/sdk/hooks'
+import { WorkflowAgentSelect } from './workflow-agent-identity'
 
 import {
   type ParallelChildRow,
@@ -53,15 +61,8 @@ import {
   fieldHelpText,
   fieldPlaceholder,
   stepKindLabel,
-  FIELD_GROUP_CLASS,
-  FIELD_LABEL_CLASS,
-  FIELD_HELP_CLASS,
-  CONTROL_CLASS,
-  TEXTAREA_CLASS,
 } from '../lib/node-config-fields'
 import { ParallelChildrenEditor } from './parallel-children-editor'
-
-const FIELD_ERROR_CLASS = 'text-bakin-typography-size-meta font-bakin-typography-weight-medium leading-relaxed text-bakin-signal-danger'
 
 export interface NodeConfigDrawerProps {
   /** Step currently under edit, or null when nothing selected. */
@@ -169,15 +170,17 @@ export function NodeConfigDrawer({
     return (
       <InspectorPanel label="Step configuration" side>
         <PanelHeader onClose={onClose} title={stepKindLabel(kind)} />
-        <InspectorPanelContent className="text-bakin-typography-size-body leading-relaxed text-bakin-signal-highlight">
-          <p className="m-0">
-            No registered node type for <code>{kind || '(missing)'}</code>. Step is preserved
-            but cannot be edited here - the plugin may not be active.
-          </p>
+        <InspectorPanelContent>
+          <Alert tone="attention">
+            <AlertDescription>
+              No registered node type for <code>{kind || '(missing)'}</code>. Step is preserved
+              but cannot be edited here - the plugin may not be active.
+            </AlertDescription>
+          </Alert>
         </InspectorPanelContent>
         {onDelete && (
           <InspectorPanelFooter className="justify-start">
-            <Button type="button" size="sm" variant="destructive" onClick={onDelete}>
+            <Button type="button" size="sm" variant="danger" onClick={onDelete}>
               <Trash2 className="mr-1 size-3.5" />
               Delete step
             </Button>
@@ -302,9 +305,9 @@ export function NodeConfigDrawer({
       <PanelHeader onClose={onClose} title={stepKindLabel(kind)} />
 
       <InspectorPanelContent>
-        <div className="space-y-6">
-          <div className={FIELD_GROUP_CLASS}>
-            <Label className={FIELD_LABEL_CLASS} htmlFor="node-config-id">Step ID</Label>
+        <FieldGroup>
+          <Field name="id" invalid={Boolean(idError)}>
+            <FieldLabel htmlFor="node-config-id" requirement="required">Step ID</FieldLabel>
             <Input
               id="node-config-id"
               value={id}
@@ -314,21 +317,18 @@ export function NodeConfigDrawer({
                 markDirty()
               }}
               placeholder="write-copy"
-              className={CONTROL_CLASS}
               aria-invalid={Boolean(idError) || undefined}
               aria-describedby={idError ? 'node-config-id-error' : undefined}
             />
             {idError && (
-              <p id="node-config-id-error" className={FIELD_ERROR_CLASS}>
-                {idError}
-              </p>
+              <FieldError id="node-config-id-error" match>{idError}</FieldError>
             )}
-            <p className={FIELD_HELP_CLASS}>
+            <FieldDescription>
               Stable identifier used by workflow links and approval paths.
-            </p>
-          </div>
-          <div className={FIELD_GROUP_CLASS}>
-            <Label className={FIELD_LABEL_CLASS} htmlFor="node-config-label">Display name</Label>
+            </FieldDescription>
+          </Field>
+          <Field name="label" invalid={Boolean(labelError)}>
+            <FieldLabel htmlFor="node-config-label" requirement="required">Display name</FieldLabel>
             <Input
               id="node-config-label"
               value={label}
@@ -338,73 +338,81 @@ export function NodeConfigDrawer({
                 markDirty()
               }}
               placeholder="Write Copy"
-              className={CONTROL_CLASS}
               aria-invalid={Boolean(labelError) || undefined}
               aria-describedby={labelError ? 'node-config-label-error' : undefined}
             />
             {labelError && (
-              <p id="node-config-label-error" className={FIELD_ERROR_CLASS}>
-                {labelError}
-              </p>
+              <FieldError id="node-config-label-error" match>{labelError}</FieldError>
             )}
-            <p className={FIELD_HELP_CLASS}>
+            <FieldDescription>
               Human-readable name shown on the canvas node.
-            </p>
-          </div>
+            </FieldDescription>
+          </Field>
 
           {editableFields.map((field) => {
             const fieldError = fieldErrors[field.name]
             const errorId = fieldError ? `node-config-${field.name}-error` : undefined
+            const helpText = fieldHelpText(field)
+            // Boolean fields put the checkbox beside its label; everything
+            // else stacks label over control.
+            const horizontal = field.type === 'boolean'
+            const control = (
+              <NodeFieldRenderer
+                field={field}
+                value={fieldValues[field.name]}
+                workflowOptions={workflowOptions}
+                invalid={Boolean(fieldError)}
+                describedBy={errorId}
+                onChange={(v) => updateFieldValue(field.name, v)}
+              />
+            )
 
             return (
-              <div key={field.name} className={FIELD_GROUP_CLASS}>
-                <Label
-                  className={`${FIELD_LABEL_CLASS} ${fieldError ? 'text-bakin-signal-danger' : ''}`}
+              <Field
+                key={field.name}
+                name={field.name}
+                orientation={horizontal ? 'horizontal' : 'vertical'}
+                invalid={Boolean(fieldError)}
+              >
+                {horizontal ? control : null}
+                <FieldLabel
                   htmlFor={`node-config-${field.name}`}
+                  requirement={field.required ? 'required' : undefined}
                 >
                   {fieldLabel(field)}
-                  {field.required && <span className="ml-1 text-bakin-signal-danger">*</span>}
-                </Label>
-                <FieldControl
-                  field={field}
-                  value={fieldValues[field.name]}
-                  workflowOptions={workflowOptions}
-                  invalid={Boolean(fieldError)}
-                  describedBy={errorId}
-                  onChange={(v) => updateFieldValue(field.name, v)}
-                />
+                </FieldLabel>
+                {horizontal ? null : control}
                 {fieldError && (
-                  <p id={errorId} className={FIELD_ERROR_CLASS}>
-                    {fieldError}
-                  </p>
+                  <FieldError id={errorId} match>{fieldError}</FieldError>
                 )}
-                {fieldHelpText(field) && (
-                  <p className={FIELD_HELP_CLASS}>{fieldHelpText(field)}</p>
-                )}
-              </div>
+                {helpText && <FieldDescription>{helpText}</FieldDescription>}
+              </Field>
             )
           })}
+        </FieldGroup>
 
-          {kind === 'parallel' && (
-            <ParallelChildrenEditor
-              childrenRows={parallelChildren}
-              onChange={(next) => {
-                setParallelChildren(next)
-                markDirty('steps')
-              }}
-            />
-          )}
+        {kind === 'parallel' && (
+          <ParallelChildrenEditor
+            childrenRows={parallelChildren}
+            onChange={(next) => {
+              setParallelChildren(next)
+              markDirty('steps')
+            }}
+          />
+        )}
 
-          {errors.length > 0 && (
-            <div className="rounded-bakin-control border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 p-3 text-bakin-typography-size-meta leading-relaxed text-bakin-signal-danger">
-              <ul className="list-disc pl-4">
+        {errors.length > 0 && (
+          <Alert tone="danger">
+            <AlertTitle>Fix these before applying</AlertTitle>
+            <AlertDescription>
+              <ul className="m-0 grid gap-bakin-1 pl-bakin-4">
                 {errors.map((err, i) => (
                   <li key={i}>{err}</li>
                 ))}
               </ul>
-            </div>
-          )}
-        </div>
+            </AlertDescription>
+          </Alert>
+        )}
       </InspectorPanelContent>
 
       <InspectorPanelFooter className="justify-between">
@@ -412,7 +420,7 @@ export function NodeConfigDrawer({
           <Button
             type="button"
             size="sm"
-            variant="destructive"
+            variant="danger"
             onClick={onDelete}
           >
             <Trash2 className="mr-1 size-3.5" />
@@ -432,7 +440,8 @@ export function NodeConfigDrawer({
   )
 }
 
-function FieldControl({
+/** Renders the control for one `FormField`; the enclosing `Field` owns label/error/help. */
+function NodeFieldRenderer({
   field,
   value,
   workflowOptions,
@@ -458,7 +467,6 @@ function FieldControl({
           id={`node-config-${field.name}`}
           aria-invalid={invalid || undefined}
           aria-describedby={describedBy}
-          className={CONTROL_CLASS}
         >
           <SelectValue placeholder="Choose a workflow..." />
         </SelectTrigger>
@@ -477,15 +485,18 @@ function FieldControl({
   switch (field.type) {
     case 'text':
       return (
-        <Textarea
-          id={`node-config-${field.name}`}
-          rows={3}
-          value={str}
-          placeholder={placeholder}
-          className={TEXTAREA_CLASS}
-          aria-invalid={invalid || undefined}
-          aria-describedby={describedBy}
-          onChange={(e) => onChange(e.target.value)}
+        <FieldControl
+          render={(
+            <Textarea
+              id={`node-config-${field.name}`}
+              rows={3}
+              value={str}
+              placeholder={placeholder}
+              aria-invalid={invalid || undefined}
+              aria-describedby={describedBy}
+              onChange={(e) => onChange(e.target.value)}
+            />
+          )}
         />
       )
     case 'number':
@@ -495,7 +506,6 @@ function FieldControl({
           type="number"
           value={value === undefined || value === null ? '' : (value as number)}
           placeholder={placeholder}
-          className={CONTROL_CLASS}
           aria-invalid={invalid || undefined}
           aria-describedby={describedBy}
           onChange={(e) => {
@@ -510,15 +520,13 @@ function FieldControl({
       )
     case 'boolean':
       return (
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id={`node-config-${field.name}`}
-            checked={Boolean(value)}
-            aria-invalid={invalid || undefined}
-            aria-describedby={describedBy}
-            onCheckedChange={(v) => onChange(v === true)}
-          />
-        </div>
+        <Checkbox
+          id={`node-config-${field.name}`}
+          checked={Boolean(value)}
+          aria-invalid={invalid || undefined}
+          aria-describedby={describedBy}
+          onCheckedChange={(v) => onChange(v === true)}
+        />
       )
     case 'select':
       return (
@@ -527,7 +535,6 @@ function FieldControl({
             id={`node-config-${field.name}`}
             aria-invalid={invalid || undefined}
             aria-describedby={describedBy}
-            className={CONTROL_CLASS}
           >
             <SelectValue placeholder="Choose an option..." />
           </SelectTrigger>
@@ -550,7 +557,6 @@ function FieldControl({
           allowNone={!field.required}
           aria-invalid={invalid || undefined}
           aria-describedby={describedBy}
-          className={CONTROL_CLASS}
         />
       )
     case 'skill':
@@ -560,7 +566,6 @@ function FieldControl({
           id={`node-config-${field.name}`}
           value={str}
           placeholder={placeholder}
-          className={CONTROL_CLASS}
           aria-invalid={invalid || undefined}
           aria-describedby={describedBy}
           onChange={(e) => onChange(e.target.value)}
@@ -571,7 +576,6 @@ function FieldControl({
         <Input
           id={`node-config-${field.name}`}
           value={str}
-          className={CONTROL_CLASS}
           aria-invalid={invalid || undefined}
           aria-describedby={describedBy}
           onChange={(e) => onChange(e.target.value)}

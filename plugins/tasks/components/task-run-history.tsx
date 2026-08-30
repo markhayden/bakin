@@ -9,7 +9,7 @@ import {
   DrawerSection,
   Text,
 } from '@makinbakin/sdk/ui'
-import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { ListRow, ListRows, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { formatDateTime, formatDuration } from '@makinbakin/sdk/utils'
 import { ChevronRight } from 'lucide-react'
 
@@ -65,11 +65,11 @@ export function TaskRunHistory({ taskId }: { taskId: string }) {
       >
         <CollapsibleTrigger>
           <span className="min-w-0">
-            <span className="block text-bakin-typography-size-body text-bakin-text-primary">{summary}</span>
+            <Text size="body" className="block">{summary}</Text>
             {outcome?.completedAt ? (
-              <span className="block text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">
+              <Text size="meta" tone="muted" className="block">
                 Completed {formatDateTime(outcome.completedAt)}
-              </span>
+              </Text>
             ) : null}
           </span>
           <ChevronRight
@@ -78,21 +78,21 @@ export function TaskRunHistory({ taskId }: { taskId: string }) {
           />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <ol className="m-0 list-none divide-y divide-bakin-border-subtle p-0">
+          <ListRows variant="separated" aria-label="Dispatch runs">
             {runs.map((run) => {
               const duration = formatDuration(run.durationMs)
               return (
-                <li
+                <ListRow
                   key={run.runId}
-                  className="grid min-w-0 gap-bakin-2 py-bakin-3 first:pt-0 @md/run:grid-cols-[minmax(0,1fr)_auto]"
+                  className="grid min-w-0 gap-bakin-2 @md/run:grid-cols-[minmax(0,1fr)_auto]"
                 >
                   <div className="flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1">
                     <Text mono size="meta" tone="muted">
                       #{run.seq}
                     </Text>
-                    <time className="text-bakin-typography-size-meta text-bakin-text-muted">
+                    <Text size="meta" tone="muted" as="time">
                       {formatDateTime(run.startedAt)}
-                    </time>
+                    </Text>
                     <StatusBadge tone={STATUS_TONE[run.status]} size="xs">
                       {run.status}
                     </StatusBadge>
@@ -102,14 +102,14 @@ export function TaskRunHistory({ taskId }: { taskId: string }) {
                     {duration ? <span>{duration}</span> : null}
                   </div>
                   {run.settleReason ? (
-                    <p className="m-0 break-words text-bakin-typography-size-meta text-bakin-text-muted @md/run:col-span-2">
+                    <Text size="meta" tone="muted" as="p" className="break-words @md/run:col-span-2">
                       {run.settleReason}
-                    </p>
+                    </Text>
                   ) : null}
-                </li>
+                </ListRow>
               )
             })}
-          </ol>
+          </ListRows>
         </CollapsibleContent>
       </Collapsible>
     </DrawerSection>

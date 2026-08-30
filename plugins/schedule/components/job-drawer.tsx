@@ -17,7 +17,7 @@ import {
   Undo2,
   Workflow,
 } from 'lucide-react'
-import { AgentAvatar, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { AgentAvatar, KeyValue, StatusBadge, type KeyValueItem, type StatusTone } from '@makinbakin/sdk/patterns'
 import {
   Button,
   Drawer,
@@ -27,9 +27,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  Overline,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { useAgent, type ScheduleJob } from '@makinbakin/sdk/hooks'
+import { Panel } from '@makinbakin/sdk/layout'
 import { AgentBadge } from './agent-badge'
 import { RunHistory } from './run-history'
 import { PauseControls } from './pause-controls'
@@ -46,32 +47,41 @@ function sourceLabel(job: ScheduleJob): string {
   return job.isBakinJob ? 'Bakin schedule' : 'Runtime cron'
 }
 
-function MetadataItem({
-  icon: Icon,
-  label,
-  value,
-  mono = false,
-  className,
-}: {
-  icon?: typeof Clock
-  label: string
-  value: React.ReactNode
-  mono?: boolean
-  className?: string
-}) {
+function IconLabel({ icon: Icon, children }: { icon: typeof Clock; children: React.ReactNode }) {
   return (
-    <div className={`min-w-0 rounded-bakin-surface bg-bakin-surface-default p-bakin-3 ${className ?? ''}`}>
-      <Overline as="dt" className="flex items-center gap-bakin-1">
-        {Icon ? <Icon aria-hidden="true" className="size-bakin-3" /> : null}
-        {label}
-      </Overline>
-      <dd className={`m-0 mt-bakin-1 break-words text-bakin-text-primary ${
-        mono ? 'font-bakin-typography-family-mono text-bakin-typography-size-meta' : 'font-bakin-typography-weight-medium'
-      }`}>
-        {value}
-      </dd>
-    </div>
+    <span className="inline-flex items-center gap-bakin-1">
+      <Icon aria-hidden="true" className="size-bakin-3" />
+      {children}
+    </span>
   )
+}
+
+function jobDetailItems(job: ScheduleJob): KeyValueItem[] {
+  const items: KeyValueItem[] = [
+    {
+      label: <IconLabel icon={Clock}>Schedule</IconLabel>,
+      value: (
+        <>
+          {job.humanSchedule}
+          {job.tz ? <span className="ml-bakin-1 text-bakin-text-muted">({job.tz})</span> : null}
+        </>
+      ),
+    },
+  ]
+  if (job.cron) items.push({ label: <IconLabel icon={Timer}>Cron</IconLabel>, value: job.cron, mono: true })
+  if (job.workflowId) items.push({ label: <IconLabel icon={Workflow}>Workflow</IconLabel>, value: job.workflowId })
+  if (job.owner) items.push({ label: 'Owner', value: job.owner })
+  if (job.lastTaskId) items.push({ label: 'Last task', value: job.lastTaskId.slice(0, 8), mono: true })
+  if (job.toolsAllow?.length || job.toolsAllowMissing) {
+    items.push({
+      label: <IconLabel icon={job.toolsAllowMissing ? ShieldAlert : ShieldCheck}>Cron tools</IconLabel>,
+      value: job.toolsAllow?.length ? job.toolsAllow.join(', ') : 'Missing allowlist',
+      mono: !job.toolsAllowMissing,
+      breakValue: true,
+    })
+  }
+  items.push({ label: 'Job ID', value: job.id, mono: true, breakValue: true })
+  return items
 }
 
 export function JobDrawer({
@@ -164,7 +174,7 @@ export function JobDrawer({
       )}
     >
       <div className="flex min-w-0 flex-col gap-bakin-6 pb-bakin-6">
-        <div className="flex min-w-0 items-center gap-bakin-4 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4">
+        <Panel className="flex min-w-0 items-center gap-bakin-4">
           {jobAgent ? (
             <AgentAvatar
               agent={{
@@ -185,13 +195,13 @@ export function JobDrawer({
             <div className="mt-bakin-2 flex min-w-0 flex-wrap items-center gap-bakin-2">
               <StatusBadge tone={status.tone} variant="solid" size="xs">{status.label}</StatusBadge>
               {nextRunCopy ? (
-                <span className="min-w-0 text-bakin-typography-size-meta text-bakin-text-muted">
+                <Text size="meta" tone="muted" className="min-w-0">
                   {nextRunCopy}
-                </span>
+                </Text>
               ) : null}
             </div>
           </div>
-        </div>
+        </Panel>
 
         <DrawerSection title="Actions" contentClassName="flex flex-wrap gap-bakin-2">
           <Button variant="outline" size="sm" onClick={() => onRunNow(job.id)}>
@@ -224,32 +234,7 @@ export function JobDrawer({
         </DrawerSection>
 
         <DrawerSection title="Details">
-          <dl className="m-0 grid grid-cols-1 gap-bakin-3 sm:grid-cols-2">
-            <MetadataItem
-              icon={Clock}
-              label="Schedule"
-              value={(
-                <>
-                  {job.humanSchedule}
-                  {job.tz ? <span className="ml-bakin-1 font-bakin-typography-weight-regular text-bakin-text-muted">({job.tz})</span> : null}
-                </>
-              )}
-            />
-            {job.cron ? <MetadataItem icon={Timer} label="Cron" value={job.cron} mono /> : null}
-            {job.workflowId ? <MetadataItem icon={Workflow} label="Workflow" value={job.workflowId} /> : null}
-            {job.owner ? <MetadataItem label="Owner" value={job.owner} /> : null}
-            {job.lastTaskId ? <MetadataItem label="Last task" value={job.lastTaskId.slice(0, 8)} mono /> : null}
-            {job.toolsAllow?.length || job.toolsAllowMissing ? (
-              <MetadataItem
-                icon={job.toolsAllowMissing ? ShieldAlert : ShieldCheck}
-                label="Cron tools"
-                value={job.toolsAllow?.length ? job.toolsAllow.join(', ') : 'Missing allowlist'}
-                mono={!job.toolsAllowMissing}
-                className="sm:col-span-2"
-              />
-            ) : null}
-            <MetadataItem label="Job ID" value={job.id} mono className="sm:col-span-2" />
-          </dl>
+          <KeyValue layout="columns" items={jobDetailItems(job)} />
           {job.requireTriage || job.allowOverlap ? (
             <div className="mt-bakin-3 flex flex-wrap gap-bakin-2">
               {job.requireTriage ? <StatusBadge tone="attention" variant="soft" size="xs">Triage required</StatusBadge> : null}
@@ -263,9 +248,9 @@ export function JobDrawer({
             title="Task prompt"
             actions={<Terminal aria-hidden="true" className="size-bakin-4 text-bakin-text-muted" />}
           >
-            <div className="whitespace-pre-wrap rounded-bakin-surface border-l-2 border-bakin-signal-accent bg-bakin-surface-default p-bakin-4 leading-relaxed text-bakin-text-primary">
+            <Panel tone="accent" className="whitespace-pre-wrap leading-relaxed text-bakin-text-primary">
               {job.taskPrompt}
-            </div>
+            </Panel>
           </DrawerSection>
         ) : null}
 

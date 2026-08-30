@@ -31,7 +31,16 @@ import {
 import { useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import type { NavBadge as NavBadgeData, NavItem } from '@makinbakin/sdk'
-import { Popover, PopoverContent, PopoverTrigger, Tooltip, TooltipContent, TooltipTrigger } from '@makinbakin/sdk/ui'
+import {
+  Popover,
+  PopoverContent,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@makinbakin/sdk/ui'
 import { NavBadge, NavBadgeDot, navBadgeAriaSuffix } from './nav-badge'
 import {
   badgeIsActive,
@@ -87,11 +96,13 @@ interface SidebarNavItemProps {
 }
 
 function navRowClass(active: boolean, collapsed: boolean): string {
-  return `${collapsed ? 'justify-center px-0' : 'px-bakin-3'} flex w-full items-center gap-bakin-3 rounded-bakin-control py-1.5 text-sm transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring ${
+  return cn(
+    'flex w-full items-center gap-bakin-3 rounded-bakin-control py-1.5 text-sm transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring',
+    collapsed ? 'justify-center px-0' : 'px-bakin-3',
     active
       ? 'bg-bakin-border-subtle/35 text-bakin-text-primary shadow-[inset_2px_0_0_0_var(--bakin-color-signal-accent)]'
-      : 'text-bakin-text-muted hover:bg-bakin-border-subtle/20 hover:text-bakin-text-primary'
-  }`
+      : 'text-bakin-text-muted hover:bg-bakin-border-subtle/20 hover:text-bakin-text-primary',
+  )
 }
 
 function CollapsedNavGroup({
@@ -135,7 +146,9 @@ function CollapsedNavGroup({
         {rollupTone && <NavBadgeDot tone={rollupTone} />}
       </PopoverTrigger>
       <PopoverContent side="right" align="start" sideOffset={8} className="w-48 gap-0.5 p-1.5">
-        <div className="px-bakin-2 py-1.5 text-xs font-bakin-typography-weight-semibold text-bakin-text-primary">{item.label}</div>
+        <PopoverHeader className="px-bakin-2 py-1.5">
+          <PopoverTitle>{item.label}</PopoverTitle>
+        </PopoverHeader>
         {item.children!.map((child) => {
           const ChildIcon = resolveNavIcon(child.icon)
           const childActive = isNavActive(pathname, child.href)

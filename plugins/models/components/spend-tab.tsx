@@ -12,6 +12,7 @@ import {
   Input,
   Skeleton,
   SystemState,
+  Text,
 } from '@makinbakin/sdk/ui'
 
 import { BillingLanesSection, BudgetRulesSection } from './spend-budget-controls'
@@ -247,13 +248,13 @@ function SpendTrend({
     : 'Subscription token use over time'
 
   return (
-    <div className="@container/spend-trend min-w-0 border-t border-bakin-border-subtle pt-bakin-6">
-      <div className="mb-bakin-4 flex min-w-0 flex-col items-start gap-bakin-3 @2xl/spend-trend:flex-row @2xl/spend-trend:items-center @2xl/spend-trend:justify-between">
+    <Section className="@container/spend-trend" spacing="compact" divider="top" aria-label="Spend over time">
+      <div className="flex min-w-0 flex-col items-start gap-bakin-3 @2xl/spend-trend:flex-row @2xl/spend-trend:items-center @2xl/spend-trend:justify-between">
         <div className="min-w-0">
           <h3>Spend over time</h3>
-          <p className="mt-bakin-1 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+          <Text size="meta" tone="muted" as="p" className="mt-bakin-1 leading-relaxed">
             One unit per view keeps estimated dollars distinct from subscription-plan usage.
-          </p>
+          </Text>
         </div>
         <SegmentedControl
           options={TREND_METRICS}
@@ -282,7 +283,7 @@ function SpendTrend({
           emptyLabel="No spend history is available in this window."
         />
       </div>
-    </div>
+    </Section>
   )
 }
 
@@ -310,9 +311,9 @@ function SpendOverview({
     <Section spacing="compact" aria-label="Spending overview">
       <Stack gap="dense">
         <h2>Spending overview</h2>
-        <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+        <Text size="body" tone="muted" as="p" className="max-w-prose leading-relaxed">
           Costs are estimates from recorded token usage. Cached-token discounts may make provider invoices slightly lower.
-        </p>
+        </Text>
       </Stack>
 
       <Grid layout="thirds" gap="dense" role="group" aria-label="Spend summary">

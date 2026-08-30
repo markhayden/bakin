@@ -2,8 +2,11 @@
 
 import * as React from 'react'
 
+import { Alert, AlertDescription } from '../primitives/alert'
 import { Button } from '../primitives/button'
+import { Spinner } from '../primitives/spinner'
 import { cn } from '../utils'
+import { StatusMarker } from './status-marker'
 
 export interface SaveBarProps {
   dirty: boolean
@@ -90,10 +93,10 @@ export function SaveBar({
     >
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1">
-          <span
-            aria-hidden="true"
+          <StatusMarker
+            tone="attention"
             data-slot="save-bar-signal"
-            className="size-bakin-2 shrink-0 animate-pulse rounded-bakin-pill bg-bakin-signal-highlight motion-reduce:animate-none"
+            className="animate-pulse motion-reduce:animate-none"
           />
           <p className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold">Unsaved changes</p>
           {children ? (
@@ -105,13 +108,9 @@ export function SaveBar({
             </div>
           ) : null}
           {error ? (
-            <p
-              role="alert"
-              data-savebar-error=""
-              className="m-0 ml-1.5 basis-full border-l-2 border-bakin-signal-danger pl-bakin-2 [overflow-wrap:anywhere] text-bakin-typography-size-meta text-bakin-signal-danger"
-            >
-              {error}
-            </p>
+            <Alert tone="danger" data-savebar-error="" className="basis-full">
+              <AlertDescription className="[overflow-wrap:anywhere]">{error}</AlertDescription>
+            </Alert>
           ) : null}
         </div>
       </div>
@@ -126,12 +125,7 @@ export function SaveBar({
           {discardLabel}
         </Button>
         <Button className="flex-1 sm:flex-none" size="sm" onClick={onSave} disabled={saving} data-savebar-save="">
-          {saving ? (
-            <span
-              aria-hidden="true"
-              className="size-bakin-3 animate-spin rounded-bakin-pill border-2 border-current border-r-transparent motion-reduce:animate-none"
-            />
-          ) : null}
+          {saving ? <Spinner size="sm" /> : null}
           {saving ? savingLabel : error ? retryLabel : saveLabel}
         </Button>
       </div>

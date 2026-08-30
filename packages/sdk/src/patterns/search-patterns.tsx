@@ -15,6 +15,9 @@ import {
 } from '@bakin/ui'
 
 import { PluginLink } from '../navigation/plugin-link'
+// The kit's own merger: the sdk utils barrel also re-exports the
+// conversation recorder, which the payload ratchet keeps out of base UI.
+import { cn } from '@bakin/ui/utils'
 
 /** Search response metadata needed to disclose partial source coverage. */
 export interface SearchPartialMeta {
@@ -217,7 +220,10 @@ export function ScoreOverlay({ info, className }: ScoreOverlayProps) {
       role="note"
       aria-label="Search relevance details"
       data-testid="score-overlay"
-      className={`flex w-fit max-w-full flex-col gap-bakin-1 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default/95 px-bakin-2 py-bakin-2 font-bakin-typography-family-mono [font-size:var(--bakin-typography-size-meta)] leading-tight shadow-bakin-elevation-raised ${className ?? ''}`}
+      className={cn(
+        'flex w-fit max-w-full flex-col gap-bakin-1 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default/95 px-bakin-2 py-bakin-2 font-bakin-typography-family-mono [font-size:var(--bakin-typography-size-meta)] leading-tight shadow-bakin-elevation-raised',
+        className,
+      )}
     >
       <span className="font-bakin-typography-weight-semibold text-bakin-signal-highlight">RRF {info.score.toFixed(4)}</span>
       {info.matchedFields !== undefined ? (
@@ -228,9 +234,12 @@ export function ScoreOverlay({ info, className }: ScoreOverlayProps) {
       {legs.map(([leg, raw], index) => {
         const value = raw < 0 ? 1 + raw : raw
         return (
-          <span key={leg} className={legToneClasses[index % legToneClasses.length]} title={leg}>
-            {legLabel(leg)} {value.toFixed(4)}
-          </span>
+          <Tooltip key={leg}>
+            <TooltipTrigger render={<span />} className={legToneClasses[index % legToneClasses.length]}>
+              {legLabel(leg)} {value.toFixed(4)}
+            </TooltipTrigger>
+            <TooltipContent>{leg}</TooltipContent>
+          </Tooltip>
         )
       })}
     </div>

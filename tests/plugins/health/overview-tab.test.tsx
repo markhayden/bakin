@@ -230,7 +230,7 @@ describe('OverviewTabView', () => {
     const identity = screen.getByRole('heading', { level: 2, name: 'Overview' })
     expect(identity.className).toContain('sr-only')
     const intro = screen.getByText('See what needs attention, fix it, and confirm Bakin is working.')
-    expect(intro.className).toContain('text-bakin-typography-size-meta')
+    expect(intro.getAttribute('data-size')).toBe('meta')
     expect(intro.className).toContain('leading-relaxed')
     expect(intro.className).toContain('text-bakin-text-muted')
 
@@ -259,7 +259,7 @@ describe('OverviewTabView', () => {
     expect(onRepair).toHaveBeenCalledWith(repair)
 
     const spend = screen.getByTestId('overview-agent-spend')
-    expect(within(spend).getByText('1.3M tokens')).toBeDefined()
+    expect(within(spend).getByText('1.3m')).toBeDefined()
     expect(within(spend).getByText('$6.20')).toBeDefined()
     expect(within(spend).getByText('Today + yesterday')).toBeDefined()
     expect(within(spend).getByRole('group', { name: 'Agent token use by day' })).toBeDefined()
@@ -274,7 +274,7 @@ describe('OverviewTabView', () => {
 
     const interactions = screen.getByTestId('overview-interactions')
     expect(within(interactions).getByRole('heading', { name: 'Interactions' })).toBeDefined()
-    expect(within(interactions).getByText('132 interactions')).toBeDefined()
+    expect(within(interactions).getByText('132')).toBeDefined()
     expect(within(interactions).getByText('2 failed')).toBeDefined()
     expect(within(interactions).getByText('· 1h')).toBeDefined()
     expect(within(interactions).getByText('52 foreground')).toBeDefined()
@@ -472,7 +472,7 @@ describe('OverviewTabView', () => {
 
     render(<OverviewTabView model={buildHealthOverviewViewModel({ report: report(), now: NOW })} telemetry={telemetry} />)
 
-    expect(within(screen.getByTestId('overview-agent-spend')).getByText('1.9M tokens')).toBeDefined()
+    expect(within(screen.getByTestId('overview-agent-spend')).getByText('1.9m', { selector: '[data-slot="stat-tile-value"]' })).toBeDefined()
   })
 
   it('marks incomplete runtime cost as partial instead of presenting it as total spend', () => {
@@ -504,10 +504,10 @@ describe('OverviewTabView', () => {
 
     const spend = screen.getByTestId('overview-agent-spend')
     expect(within(spend).getByText('Partial coverage')).toBeDefined()
-    expect(within(spend).getByText('1.0M tokens')).toBeDefined()
+    expect(within(spend).getByText('1m', { selector: '[data-slot="stat-tile-value"]' })).toBeDefined()
     expect(within(spend).getByText('Fully scanned agents only')).toBeDefined()
     expect(within(spend).queryByText('pixel', { exact: true })).toBeNull()
-    expect(spend.textContent).not.toContain('1.3M tokens')
+    expect(spend.textContent).not.toContain('1.3m')
   })
 
   it('does not show retained usage as current spend when the new scan is unavailable', () => {
@@ -521,7 +521,7 @@ describe('OverviewTabView', () => {
     const spend = screen.getByTestId('overview-agent-spend')
     expect(within(spend).getByText('Scan unavailable')).toBeDefined()
     expect(spend.textContent).toContain('Retained rows are not shown as current agent spend')
-    expect(spend.textContent).not.toContain('1.3M tokens')
+    expect(spend.textContent).not.toContain('1.3m')
   })
 
   it('holds the context verdict until its budget is known', () => {

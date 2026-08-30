@@ -34,6 +34,7 @@ import {
   Field,
   FieldDescription,
   FieldLabel,
+  Separator,
   SystemState,
   Text,
 } from '@makinbakin/sdk/ui'
@@ -134,12 +135,15 @@ function ResultCards({ result, onProceed, busy = false }: { result: SwitchResult
                 <StatTile label={`cron jobs ${result.dryRun ? 'would be adopted' : 'adopted'}`} value={result.cron ? result.cron.adopted.length : '—'} />
               </StatGroup>
               {result.dryRun && onProceed && (
-                <Inline gap="dense" align="center" className="border-t border-bakin-border-subtle pt-bakin-3">
-                  <Button size="sm" onClick={onProceed} disabled={busy} data-testid="switch-execute">
-                    Switch to {RUNTIME_LABELS[result.to] ?? result.to}…
-                  </Button>
-                  <Text size="meta" tone="muted">Opens the confirmation — nothing has been written yet.</Text>
-                </Inline>
+                <>
+                  <Separator />
+                  <Inline gap="dense" align="center">
+                    <Button size="sm" onClick={onProceed} disabled={busy} data-testid="switch-execute">
+                      Switch to {RUNTIME_LABELS[result.to] ?? result.to}…
+                    </Button>
+                    <Text size="meta" tone="muted">Opens the confirmation — nothing has been written yet.</Text>
+                  </Inline>
+                </>
               )}
             </Stack>
           </CardContent>
@@ -313,10 +317,10 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
 
   return (
     <Stack gap="item">
-      <p className="m-0 text-bakin-text-muted">
+      <Text as="p" tone="muted">
         The runtime is the engine that runs your agents. Switching is a real migration, not a toggle —
         agents start fresh sessions on the target and runtime-owned state stays behind. Preview first.
-      </p>
+      </Text>
       <Grid layout="split" gap="item">
         {roster.map((name) => {
           const isActive = name === report.adapter
@@ -400,7 +404,8 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
             <FieldLabel>Adopt the runtime's cron jobs into Bakin schedules</FieldLabel>
             <FieldDescription>Native cron jobs stop with the old runtime — adopting keeps them running as Bakin schedules.</FieldDescription>
           </Field>
-          <Inline gap="dense" align="center" className="border-t border-bakin-border-subtle pt-bakin-3">
+          <Separator />
+          <Inline gap="dense" align="center">
             <Button size="sm" variant="outline" data-testid="switch-preview" onClick={() => { setConfirming(false); void run(true) }}>
               Preview switch
             </Button>

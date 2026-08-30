@@ -3,6 +3,7 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { AlertTriangle, Radio } from 'lucide-react'
 import { NodeCard } from '@makinbakin/sdk/patterns'
+import { Text } from '@makinbakin/sdk/ui'
 import { AgentAssignmentLabel } from './agent-assignment-label'
 import { StaleSkillChip } from './stale-skill-chip'
 
@@ -36,11 +37,11 @@ export function OutputNode({ data }: NodeProps) {
     >
       {agent && <AgentAssignmentLabel agent={agent} className="mt-bakin-1" />}
       {channelText ? (
-        <div className="mt-bakin-1 truncate text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="div" className="mt-bakin-1 truncate">
           Channels: {channelText}
-        </div>
+        </Text>
       ) : description ? (
-        <p className="mt-bakin-1 line-clamp-2 text-bakin-typography-size-meta leading-snug text-bakin-text-muted">{description}</p>
+        <Text size="meta" tone="muted" as="p" className="mt-bakin-1 line-clamp-2 leading-snug">{description}</Text>
       ) : null}
       <Handle type="target" position={Position.Top} className="!bg-bakin-text-muted" />
     </NodeCard>

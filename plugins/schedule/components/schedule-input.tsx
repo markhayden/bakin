@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CalendarClock, Clock, Repeat } from 'lucide-react'
 import { SegmentedControl, StatusBadge, type SegmentedControlOption } from '@makinbakin/sdk/patterns'
-import { Alert, AlertDescription, FieldError, Input, Overline } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, FieldError, Input, Overline, Text } from '@makinbakin/sdk/ui'
 import type { ParseResult } from '../types'
 import { Inline } from '@makinbakin/sdk/layout'
 
@@ -113,9 +113,9 @@ export function ScheduleInput({
         </Inline>
       ) : null}
       {loading ? (
-        <span role="status" className="text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text role="status" size="meta" tone="muted">
           Parsing…
-        </span>
+        </Text>
       ) : null}
       {error ? <FieldError match>{error}</FieldError> : null}
       {parsed ? (
@@ -127,9 +127,9 @@ export function ScheduleInput({
               <StatusBadge tone="success" variant="solid" size="xs">
                 {parsed.kind === 'at' ? 'One-time' : 'Recurring'}
               </StatusBadge>
-              <code className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text size="meta" tone="muted" mono as="code">
                 {parsed.expr}
-              </code>
+              </Text>
             </span>
             {parsed.nextRuns?.length ? (
               <span className="mt-bakin-2 grid gap-bakin-1">
@@ -137,7 +137,7 @@ export function ScheduleInput({
                   {parsed.kind === 'at' ? 'Fires' : 'Next runs'}
                 </Overline>
                 {parsed.nextRuns.slice(0, 5).map((run) => (
-                  <time key={run} className="text-bakin-typography-size-meta text-bakin-text-muted">
+                  <Text key={run} size="meta" tone="muted" as="time">
                     {new Date(run).toLocaleString('en-US', {
                       weekday: 'short',
                       month: 'short',
@@ -145,7 +145,7 @@ export function ScheduleInput({
                       hour: 'numeric',
                       minute: '2-digit',
                     })}
-                  </time>
+                  </Text>
                 ))}
               </span>
             ) : null}

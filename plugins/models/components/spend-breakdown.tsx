@@ -9,7 +9,7 @@ import {
   type DataTableColumn,
   type DataTableSort,
 } from '@makinbakin/sdk/patterns'
-import { Overline, SystemState } from '@makinbakin/sdk/ui'
+import { Overline, SystemState, Text } from '@makinbakin/sdk/ui'
 
 import type { SpendResponse } from './use-models-data'
 import { formatTokens, formatUsd } from './spend-utils'
@@ -213,9 +213,9 @@ export function SpendBreakdown({
             {row.title}
           </span>
           {row.description ? (
-            <span className="min-w-0 break-words text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+            <Text size="meta" tone="muted" className="min-w-0 break-words leading-relaxed">
               {row.description}
-            </span>
+            </Text>
           ) : null}
         </div>
       ),
@@ -268,9 +268,9 @@ export function SpendBreakdown({
           <h2>
             Spend breakdown
           </h2>
-          <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+          <Text size="body" tone="muted" as="p" className="max-w-prose leading-relaxed">
             Inspect one allocation at a time. Provider totals use the current monthly budget window; the other views follow the selected page window.
-          </p>
+          </Text>
         </Stack>
         <SegmentedControl
           options={DIMENSIONS}

@@ -26,6 +26,7 @@ import {
   Skeleton,
   Spinner,
   SystemState,
+  Text,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -110,9 +111,9 @@ function ChatRow({
           >
             {chat.title || 'New chat'}
           </span>
-          <span className="mt-bakin-2 block truncate text-bakin-typography-size-meta text-bakin-text-muted">
+          <Text size="meta" tone="muted" className="mt-bakin-2 block truncate">
             {chat.lastMessagePreview || chat.agentId} · {formatRelativeTime(chat.updatedAt)}
-          </span>
+          </Text>
         </span>
         {streaming ? (
           <span role="status" aria-label="Reply in progress" className="shrink-0">

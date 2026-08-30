@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Button, buttonVariants } from '@makinbakin/sdk/ui'
+import { RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { expect } from 'storybook/test'
 
@@ -43,7 +44,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'Use Button for actions. Choose intent with `variant`, hierarchy with placement, and the smallest size that still preserves a 24px target. Primary green carries affirmative product actions such as Install; the same treatment may remain disabled and labelled Installed after completion. `default`, `destructive`, and `icon` remain migration aliases; new code should use `primary`, `danger`, and `icon-md`.',
+        component: 'Use Button for actions. Choose intent with `variant`, hierarchy with placement, and the smallest size that still preserves a 24px target. Primary green carries affirmative product actions such as Install; the same treatment may remain disabled and labelled Installed after completion. `default`, `destructive`, and `icon` remain migration aliases; new code should use `primary`, `danger`, and `icon-md`. A control whose action is still running takes `busy`: it announces `aria-busy`, goes inert without leaving the tab order, and rotates its leading icon (still under reduced motion). Use `Spinner` for content that is loading, `busy` for the control the user just pressed.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'disabled', 'non-color', 'overflow'],
@@ -152,6 +153,32 @@ export const States = {
     await expect(canvas.getByRole('button', { name: 'Install' })).toHaveAttribute('data-size', 'xs')
     await expect(canvas.getByRole('button', { name: 'Installed' })).toBeDisabled()
     await expect(canvas.getByRole('button', { name: 'Installed' })).toHaveAttribute('data-variant', 'primary')
+  },
+} satisfies Story
+
+export const Busy = {
+  render: () => (
+    <StoryStage
+      eyebrow="State"
+      title="Busy control"
+      description="The control the user pressed reports progress in place: aria-busy, inert but still focusable, leading icon in motion. Spinner is reserved for content that is loading."
+    >
+      <StorySection title="Refresh in flight">
+        <StoryCluster>
+          <Button variant="outline" size="sm"><RefreshCw />Refresh</Button>
+          <Button variant="outline" size="sm" busy><RefreshCw />Refresh</Button>
+          <Button variant="ghost" size="icon-sm" busy aria-label="Refresh models"><RefreshCw /></Button>
+        </StoryCluster>
+      </StorySection>
+    </StoryStage>
+  ),
+  play: async ({ canvas }) => {
+    const [idle, busy] = canvas.getAllByRole('button', { name: 'Refresh' })
+    await expect(idle).not.toHaveAttribute('aria-busy')
+    await expect(busy).toHaveAttribute('aria-busy', 'true')
+    await expect(busy).toHaveAttribute('aria-disabled', 'true')
+    await expect(busy).not.toHaveAttribute('disabled')
+    await expect(canvas.getByRole('button', { name: 'Refresh models' })).toHaveAttribute('aria-busy', 'true')
   },
 } satisfies Story
 

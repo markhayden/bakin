@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import {
+  Alert,
+  AlertDescription,
   Badge,
   Button,
   Card,
@@ -103,7 +105,7 @@ function FolderCard({ folder, onOpen, onRename, onDelete }: {
       <div className="flex items-center gap-bakin-2 p-bakin-3">
         <FolderOpen className="size-bakin-4 shrink-0 text-bakin-text-muted" />
         <span className="truncate font-bakin-typography-weight-medium text-bakin-text-primary">{folder.label}</span>
-        <Badge variant="secondary" size="xs" className="ml-auto shrink-0" data-testid={`folder-count-${folder.tag}`}>
+        <Badge tone="neutral" variant="soft" size="xs" className="ml-auto shrink-0" data-testid={`folder-count-${folder.tag}`}>
           {folder.assets.length}
         </Badge>
       </div>
@@ -205,7 +207,7 @@ export function TagFolderGrid({ assets, filter = '', onOpenFolder, onChanged }: 
             autoFocus
             data-testid="folder-rename-input"
           />
-          {error && renaming !== null && <p className="text-bakin-typography-size-meta text-bakin-signal-danger">{error}</p>}
+          {error && renaming !== null && <Alert tone="danger"><AlertDescription>{error}</AlertDescription></Alert>}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setRenaming(null)}>Cancel</Button>
             <Button

@@ -2,6 +2,9 @@
 
 import { useId, useState, type ReactNode } from 'react'
 
+import { StatusBadge, type StatusTone } from '../patterns/status-badge'
+import { Spinner } from '../primitives/spinner'
+
 import { cn } from '../utils'
 import type { ConversationToolCall } from './fold'
 
@@ -54,12 +57,7 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
 }
 
 function SpinnerIcon() {
-  return (
-    <span
-      aria-hidden="true"
-      className="size-bakin-3 shrink-0 animate-spin rounded-bakin-pill border-2 border-current border-r-transparent motion-reduce:animate-none"
-    />
-  )
+  return <Spinner size="sm" className="shrink-0" />
 }
 
 function ToolIcon() {
@@ -70,15 +68,15 @@ function ToolIcon() {
   )
 }
 
-function StatusGlyph({ status }: { status: ConversationToolCall['status'] }) {
-  if (status === 'running') return <SpinnerIcon />
-  if (status === 'failed') {
-    return (
-      <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-3 shrink-0 fill-none stroke-current stroke-2">
-        <path d="m5 5 6 6m0-6-6 6" strokeLinecap="round" />
-      </svg>
-    )
-  }
+function FailedGlyph() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-3 shrink-0 fill-none stroke-current stroke-2">
+      <path d="m5 5 6 6m0-6-6 6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function CompletedGlyph() {
   return (
     <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-3 shrink-0 fill-none stroke-current stroke-2">
       <path d="m3.5 8 3 3 6-6" strokeLinecap="round" strokeLinejoin="round" />
@@ -93,22 +91,12 @@ function statusLabel(status: ConversationToolCall['status']): 'running' | 'faile
 }
 
 function CallStatus({ status }: { status: ConversationToolCall['status'] }) {
-  const tone = status === 'failed' ? 'danger' : status === 'running' ? 'attention' : 'neutral'
+  const tone: StatusTone = status === 'failed' ? 'danger' : status === 'running' ? 'attention' : 'neutral'
+  const Glyph = status === 'running' ? SpinnerIcon : status === 'failed' ? FailedGlyph : CompletedGlyph
   return (
-    <span
-      data-call-status={status}
-      data-tone={tone}
-      className={cn(
-        'inline-flex shrink-0 items-center gap-bakin-1 rounded-bakin-pill border px-bakin-2 py-bakin-1',
-        'font-bakin-typography-weight-medium text-[length:var(--bakin-typography-size-meta)] leading-none',
-        tone === 'danger' && 'border-bakin-signal-danger/50 bg-bakin-signal-danger/10 text-bakin-signal-danger',
-        tone === 'attention' && 'border-bakin-signal-highlight/50 bg-bakin-signal-highlight/10 text-bakin-text-primary',
-        tone === 'neutral' && 'border-bakin-border-subtle bg-bakin-surface-default text-bakin-text-muted',
-      )}
-    >
-      <StatusGlyph status={status} />
+    <StatusBadge tone={tone} variant="soft" icon={Glyph} data-call-status={status}>
       {statusLabel(status)}
-    </span>
+    </StatusBadge>
   )
 }
 

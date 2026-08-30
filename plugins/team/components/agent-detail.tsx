@@ -29,6 +29,9 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
   type FileInputHandle,
 } from '@makinbakin/sdk/ui'
 import {
@@ -241,12 +244,15 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         )}
         description={profile.role || undefined}
         meta={(
-          <code
-            className="max-w-full truncate font-bakin-typography-family-mono"
-            title={profile.workspacePath}
-          >
-            {profile.workspacePath}
-          </code>
+          <Tooltip>
+            <TooltipTrigger
+              render={<code />}
+              className="max-w-full truncate font-bakin-typography-family-mono"
+            >
+              {profile.workspacePath}
+            </TooltipTrigger>
+            <TooltipContent>{profile.workspacePath}</TooltipContent>
+          </Tooltip>
         )}
         overflowActionsLabel="Agent actions"
         overflowActions={(
@@ -487,7 +493,7 @@ function SkillsTab({ agentId }: { agentId: string }) {
       items={skills.map((skill) => ({
         id: skill.id,
         label: skill.name,
-        meta: skill.hasSkillMd ? <Badge variant="secondary" size="xs">Guide</Badge> : undefined,
+        meta: skill.hasSkillMd ? <Badge tone="neutral" variant="soft" size="xs">Guide</Badge> : undefined,
       }))}
       selectedId={selectedSkill}
       onSelect={setSelectedSkill}

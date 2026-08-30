@@ -2,20 +2,22 @@
 
 /** Canonical rich-content implementation for the focused content entrypoint. */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
 import {
+  Button,
+  Checkbox,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  Button,
-  Checkbox,
 } from '@bakin/ui'
+// Deep subpath: the patterns barrel is most of the SDK patterns bundle.
+import { CopyButton } from '@bakin/ui/patterns/copy-button'
 
 const MARKER_PAIR = /<!--\s*bakin:([^\s]+?):start\s*-->([\s\S]*?)<!--\s*bakin:\1:end\s*-->/g
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v)(\?.*)?$/i
@@ -65,48 +67,12 @@ function languageOf(className: string | undefined): string | null {
   return /language-([\w+-]+)/.exec(className ?? '')?.[1] ?? null
 }
 
-function CopyIcon({ copied }: { copied: boolean }) {
-  return copied ? (
-    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-3 fill-none stroke-current stroke-2">
-      <path d="m3.5 8 2.8 2.8 6.2-6.2" />
-    </svg>
-  ) : (
-    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-3 fill-none stroke-current stroke-[1.5]">
-      <rect x="5.25" y="5.25" width="7" height="7" rx="1.25" />
-      <path d="M10.75 5.25v-1.5h-7v7h1.5" />
-    </svg>
-  )
-}
-
-async function copyText(text: string): Promise<boolean> {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text)
-      return true
-    } catch {
-      // Fall back for denied permissions and plain-HTTP origins.
-    }
-  }
-  try {
-    const textarea = document.createElement('textarea')
-    textarea.value = text
-    textarea.setAttribute('readonly', '')
-    textarea.style.position = 'fixed'
-    textarea.style.opacity = '0'
-    document.body.appendChild(textarea)
-    textarea.focus()
-    textarea.select()
-    const copied = document.execCommand('copy')
-    textarea.remove()
-    return copied
-  } catch {
-    return false
-  }
-}
-
-function CodeBlock({ children }: { children?: ReactNode }) {
-  const [copied, setCopied] = useState(false)
-  const resetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+/**
+ * Fenced-code frame for rehype-highlight output. The kit `CodeBlock` takes a
+ * plain string and tokenizes JSON only, so it cannot host the highlighter's
+ * per-language element children; the copy action is the kit's `CopyButton`.
+ */
+function FencedCode({ children }: { children?: ReactNode }) {
   const child = Array.isArray(children) ? children[0] : children
   const codeProps = child && typeof child === 'object' && 'props' in child
     ? (child as { props: { className?: string; children?: unknown } }).props
@@ -114,35 +80,13 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   const language = languageOf(codeProps?.className)
   const raw = nodeText(codeProps?.children).replace(/\n$/, '')
 
-  useEffect(() => () => {
-    if (resetRef.current) clearTimeout(resetRef.current)
-  }, [])
-
-  const copy = useCallback(async () => {
-    if (!await copyText(raw)) return
-    setCopied(true)
-    if (resetRef.current) clearTimeout(resetRef.current)
-    resetRef.current = setTimeout(() => setCopied(false), 1500)
-  }, [raw])
-
   return (
     <div data-md-code="" className="my-bakin-4 min-w-0 overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default">
       <div className="flex min-h-bakin-8 items-center justify-between gap-bakin-2 border-b border-bakin-border-subtle bg-bakin-surface-default px-bakin-3 py-bakin-1">
         <span className="truncate font-bakin-typography-family-mono [font-size:var(--bakin-typography-size-meta)] uppercase tracking-wider text-bakin-text-muted">
           {language ?? 'text'}
         </span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          data-md-copy=""
-          onClick={() => void copy()}
-          aria-label="Copy code"
-          className="shrink-0 text-bakin-text-muted"
-        >
-          <CopyIcon copied={copied} />
-          <span aria-live="polite">{copied ? 'Copied' : 'Copy'}</span>
-        </Button>
+        <CopyButton text={raw} label="Copy code" className="shrink-0" />
       </div>
       <pre className="m-0 max-w-full overflow-x-auto p-bakin-4 font-bakin-typography-family-mono [font-size:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-primary">
         {children}
@@ -207,7 +151,7 @@ function SafeAnchor({
 
 function MarkdownBody({ content, renderInternalLink }: MarkdownContentProps) {
   const components = useMemo<Components>(() => ({
-    pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+    pre: ({ children }) => <FencedCode>{children}</FencedCode>,
     img: ({ src, alt }) => <MediaImage src={src} alt={alt} />,
     a: ({ href = '', children }) => (
       <SafeAnchor href={href} renderInternalLink={renderInternalLink}>{children}</SafeAnchor>

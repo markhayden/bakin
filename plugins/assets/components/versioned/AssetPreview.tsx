@@ -8,9 +8,10 @@
  */
 import { useEffect, useState } from 'react'
 import { Download, Pencil, Save, X } from 'lucide-react'
-import { Button, Text, Textarea } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, Avatar, AvatarFallback, Button, Text, Textarea } from '@makinbakin/sdk/ui'
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import { Panel } from '@makinbakin/sdk/layout'
+import { cn } from '@makinbakin/sdk/utils'
 import { isEditableMimeType } from '../../lib/constants'
 import { AssetTypeIcon } from './atoms'
 import { assetVersionUrl, VERSIONED_API } from './asset-urls'
@@ -38,32 +39,32 @@ export function AssetPreview({ assetId, type, mimeType, version, currentFile, on
 
   if (type === 'images') {
     return (
-      <div className="flex max-h-[76vh] items-center justify-center rounded-bakin-surface bg-bakin-surface-default p-bakin-2" data-testid="preview-image">
+      <Panel padding="compact" className="flex max-h-[76vh] items-center justify-center" data-testid="preview-image">
         <img src={fileUrl} alt={assetId} onClick={onImageClick}
-          className={`max-h-[74vh] max-w-full rounded-bakin-control object-contain ${onImageClick ? 'cursor-zoom-in' : ''}`} />
-      </div>
+          className={cn('max-h-[74vh] max-w-full rounded-bakin-control object-contain', onImageClick && 'cursor-zoom-in')} />
+      </Panel>
     )
   }
   if (type === 'video') {
     return (
-      <div className="overflow-hidden rounded-bakin-surface bg-bakin-surface-default" data-testid="preview-video">
+      <Panel padding="compact" data-testid="preview-video">
         <video src={fileUrl} controls preload="metadata" className="max-h-[76vh] w-full" />
-      </div>
+      </Panel>
     )
   }
   if (type === 'audio') {
     return (
-      <div className="flex flex-col items-center gap-bakin-4 rounded-bakin-surface bg-bakin-surface-default p-bakin-6" data-testid="preview-audio">
-        <div className="flex size-20 items-center justify-center rounded-bakin-pill bg-bakin-border-subtle/30"><AssetTypeIcon type="audio" className="size-bakin-8" /></div>
+      <Panel padding="compact" className="flex flex-col items-center gap-bakin-4" data-testid="preview-audio">
+        <Avatar size="xl" aria-hidden="true"><AvatarFallback><AssetTypeIcon type="audio" className="size-bakin-6" /></AvatarFallback></Avatar>
         <audio src={fileUrl} controls preload="metadata" className="w-full" />
-      </div>
+      </Panel>
     )
   }
   if (type === 'pdf') {
     return (
-      <div className="h-[78vh] overflow-hidden rounded-bakin-surface bg-bakin-surface-default" data-testid="preview-pdf">
+      <Panel padding="compact" className="h-[78vh]" data-testid="preview-pdf">
         <embed src={fileUrl} type="application/pdf" className="h-full w-full" />
-      </div>
+      </Panel>
     )
   }
   if (type === 'text' || type === 'plans' || type === 'research' || type === 'data') {
@@ -79,13 +80,13 @@ export function AssetPreview({ assetId, type, mimeType, version, currentFile, on
   }
 
   return (
-    <div className="flex flex-col items-center gap-bakin-3 rounded-bakin-surface bg-bakin-surface-default p-bakin-8 text-center" data-testid="preview-download">
+    <Panel padding="compact" className="flex flex-col items-center gap-bakin-3 text-center" data-testid="preview-download">
       <AssetTypeIcon type={type} className="size-bakin-8" />
       <Text size="body" tone="muted" as="p">Preview not available for this type.</Text>
       <a href={fileUrl} download className="flex items-center gap-bakin-1 text-bakin-typography-size-body text-bakin-signal-accent hover:underline">
         <Download className="size-bakin-4" /> Download
       </a>
-    </div>
+    </Panel>
   )
 }
 
@@ -145,7 +146,7 @@ function TextPreview({ assetId, fileUrl, mimeType, currentFile, onSaved }: {
           className="h-[72vh] w-full resize-none font-bakin-typography-family-mono text-bakin-typography-size-body"
           spellCheck={false}
         />
-        {error && <p className="px-bakin-1 pt-bakin-1 text-bakin-typography-size-meta text-bakin-signal-danger">{error}</p>}
+        {error && <Alert tone="danger" className="mt-bakin-2"><AlertDescription>{error}</AlertDescription></Alert>}
         <div className="flex justify-end gap-bakin-2 pt-bakin-2">
           <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={saving}><X className="size-bakin-4" /> Cancel</Button>
           <Button size="sm" onClick={save} disabled={saving} data-testid="save-version">

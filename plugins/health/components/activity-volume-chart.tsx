@@ -2,6 +2,18 @@
 
 import { AreaChart, BarChart, ChartDataTable, ChartExplainer, type ChartSeries } from '@makinbakin/sdk/charts'
 import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
+import {
+  Alert,
+  AlertDescription,
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Text,
+} from '@makinbakin/sdk/ui'
 import type { InteractionCoverage, UsageFeedData } from '../types'
 import { coveredActivityBuckets } from './activity-time-buckets'
 
@@ -50,13 +62,15 @@ export function ActivityVolumeChart({
     >
       <Stack gap="dense">
         <h3 id="activity-volume-title">Activity over time</h3>
-        <p className="text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="p" className="leading-relaxed">
           Calls recorded in each interval of the selected window, split by result.
-        </p>
+        </Text>
         {!coverage.hasFullWindow && (
-          <p className="text-bakin-typography-size-meta text-bakin-signal-highlight">
-            Partial history since {bucketLabel(coverage.startsAt)}; intervals entirely before that are omitted.
-          </p>
+          <Alert tone="attention">
+            <AlertDescription>
+              Partial history since {bucketLabel(coverage.startsAt)}; intervals entirely before that are omitted.
+            </AlertDescription>
+          </Alert>
         )}
       </Stack>
       <Grid layout="main-aside" gap="section" align="start">
@@ -116,32 +130,35 @@ export function ActivityVolumeChart({
             caption="Activity over time data"
             defaultOpen
             renderTable={(context) => (
+              // Kit Table owns its own horizontal-overflow container, so the
+              // vertical cap lives on this wrapper; a sticky head cannot pin
+              // to it through the Table's scroll container (reported gap).
               <div className="max-h-64 min-w-0 overflow-auto">
-                <table className="w-full text-bakin-typography-size-meta tabular-nums">
-                  <caption className="sr-only">{context.caption}</caption>
-                  <thead className="sticky top-0 bg-bakin-canvas-default text-bakin-text-muted">
-                    <tr className="border-b border-bakin-border-subtle">
-                      <th scope="col" className="px-bakin-3 py-bakin-2 text-left font-bakin-typography-weight-medium">Interval</th>
+                <Table className="tabular-nums">
+                  <TableCaption className="sr-only">{context.caption}</TableCaption>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead scope="col">Interval</TableHead>
                       {context.series.map((item) => (
-                        <th key={item.key} scope="col" className="px-bakin-3 py-bakin-2 text-right font-bakin-typography-weight-medium">{item.label}</th>
+                        <TableHead key={item.key} scope="col" className="text-right">{item.label}</TableHead>
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {context.data.map((datum) => (
-                      <tr key={datum.x} className="border-b border-bakin-border-subtle last:border-b-0">
-                        <th scope="row" className="whitespace-nowrap px-bakin-3 py-bakin-2 text-left font-bakin-typography-weight-medium text-bakin-text-primary">
+                      <TableRow key={datum.x}>
+                        <TableHead scope="row">
                           <time dateTime={datum.x}>{datum.xLabel ?? datum.x}</time>
-                        </th>
+                        </TableHead>
                         {context.series.map((item) => (
-                          <td key={item.key} className="px-bakin-3 py-bakin-2 text-right text-bakin-text-primary">
+                          <TableCell key={item.key} className="text-right">
                             {context.formatValue(datum.values[item.key] ?? 0)}
-                          </td>
+                          </TableCell>
                         ))}
-                      </tr>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             )}
           />

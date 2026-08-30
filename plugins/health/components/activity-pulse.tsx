@@ -2,11 +2,12 @@
 
 import { PieChart, RankedBarChart, type ChartDatum } from '@makinbakin/sdk/charts'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
+import { Alert, AlertDescription } from '@makinbakin/sdk/ui'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import type { InteractionCoverage, UsageFeedData } from '../types'
 import { focusActivityElement } from './activity-navigation'
 import { INTERACTION_SOURCE_META } from './interaction-source-meta'
-import { Inline } from '@makinbakin/sdk/layout'
+import { Inline, Panel, Section } from '@makinbakin/sdk/layout'
 
 const OUTCOMES = [
   { key: 'failed', label: 'failed' },
@@ -66,12 +67,12 @@ export function ActivityPulse({
   }))
 
   return (
-    <section
+    <Panel
+      as="section"
       aria-labelledby="activity-pulse-title"
-      className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-border-subtle"
       data-testid="activity-pulse"
     >
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-2 bg-bakin-surface-default px-bakin-4 py-bakin-3">
+      <div className="mb-bakin-3 flex min-w-0 flex-wrap items-center justify-between gap-bakin-2">
         <Inline gap="dense" wrap={false}>
           {needsAttention
             ? <AlertCircle className={`size-bakin-4 shrink-0 ${hasFailures ? 'text-bakin-signal-danger' : 'text-bakin-signal-highlight'}`} aria-hidden="true" />
@@ -88,11 +89,12 @@ export function ActivityPulse({
         </div>
       </div>
 
-      <div className="grid gap-px @[58rem]/health:grid-cols-[minmax(0,1.3fr)_minmax(18rem,.8fr)]">
-        <div className="@container/activity-outcomes min-w-0 bg-bakin-surface-default p-bakin-4">
+      <Section as="div" divider="top" spacing="compact">
+      <div className="grid gap-bakin-4 @[58rem]/health:grid-cols-[minmax(0,1.3fr)_minmax(18rem,.8fr)]">
+        <div className="@container/activity-outcomes min-w-0">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-3">
             <div>
-              <h4 className="text-bakin-typography-size-meta font-bakin-typography-weight-medium uppercase tracking-wide text-bakin-text-muted">
+              <h4>
                 {compatibilityLimited ? 'Reported outcomes' : 'How calls ended'}
               </h4>
               <span className="sr-only">
@@ -162,14 +164,16 @@ export function ActivityPulse({
           )}
         </div>
 
-        <div className="min-w-0 bg-bakin-surface-default p-bakin-4">
-          <h4 className="text-bakin-typography-size-meta font-bakin-typography-weight-medium uppercase tracking-wide text-bakin-text-muted">
+        <div className="min-w-0">
+          <h4>
             {compatibilityLimited ? 'Where recent calls went' : 'Where calls went'}
           </h4>
           {compatibilityLimited && (
-            <p className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-signal-highlight">
-              Recent breakdown covers {representedKindTotal.toLocaleString()} events.
-            </p>
+            <Alert tone="attention" className="mt-bakin-1">
+              <AlertDescription>
+                Recent breakdown covers {representedKindTotal.toLocaleString()} events.
+              </AlertDescription>
+            </Alert>
           )}
           <div className="mt-bakin-3" role="group" aria-label={mixAriaLabel(data)}>
             <RankedBarChart
@@ -184,6 +188,7 @@ export function ActivityPulse({
           </div>
         </div>
       </div>
-    </section>
+      </Section>
+    </Panel>
   )
 }

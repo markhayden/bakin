@@ -17,7 +17,7 @@ import type { BudgetHold } from '../hooks/use-budget-status'
 import type { BrandHold } from '../hooks/use-brand-status'
 import type { LiveActivity } from '../hooks/use-live-activity'
 import type { Task, ColumnId } from '../types'
-import { Inline } from '@makinbakin/sdk/layout'
+import { Inline, Section } from '@makinbakin/sdk/layout'
 
 interface KanbanColumnProps {
   id: ColumnId
@@ -134,11 +134,10 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
             ))}
 
             {showScheduled && scheduled.length > 0 ? (
-              <section aria-labelledby={`${id}-scheduled-heading`} className="mt-bakin-2 grid gap-bakin-2 border-t border-bakin-border-subtle pt-bakin-3">
+              <Section aria-labelledby={`${id}-scheduled-heading`} divider="top" spacing="compact" className="mt-bakin-2">
                 <div className="flex min-w-0 items-center justify-between gap-bakin-2">
                   <h3
                     id={`${id}-scheduled-heading`}
-                    className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted"
                   >
                     Scheduled
                   </h3>
@@ -168,7 +167,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
                     />
                   </div>
                 ))}
-              </section>
+              </Section>
             ) : null}
           </KanbanLaneBody>
         </KanbanLane>

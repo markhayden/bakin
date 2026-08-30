@@ -3,7 +3,7 @@
 import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
-import { Banner, Button, Skeleton, Text } from '@makinbakin/sdk/ui'
+import { Banner, Button, Skeleton, Spinner, Text } from '@makinbakin/sdk/ui'
 import {
   Activity,
   AlertTriangle,
@@ -137,7 +137,7 @@ export function OverviewPlatformPulse({
           ) : null}
           <span className="flex items-center gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
             {checking
-              ? <Clock3 className="size-bakin-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              ? <Spinner size="sm" />
               : <Clock3 className="size-bakin-3" aria-hidden="true" />}
             <span className="font-bakin-typography-weight-medium text-bakin-text-primary">Checked</span>
             {model.evidenceObservedAt
@@ -185,7 +185,7 @@ export function OverviewPlatformPulse({
           <span className="min-w-0">
             <Text size="meta" tone="muted" className="block">Agents</Text>
             <strong className="block whitespace-nowrap font-bakin-typography-weight-semibold text-bakin-text-primary">{count(workingAgents, 'working')}</strong>
-            <span className="block whitespace-nowrap text-bakin-typography-size-meta text-bakin-text-muted">{count(model.rightNow.connectedSessions, 'sessions')}</span>
+            <Text size="meta" tone="muted" className="block whitespace-nowrap">{count(model.rightNow.connectedSessions, 'sessions')}</Text>
           </span>
           <ChevronRight className="ml-auto size-bakin-3 text-bakin-text-muted transition-transform duration-[var(--bakin-motion-duration-transition)] group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
         </PluginLink>

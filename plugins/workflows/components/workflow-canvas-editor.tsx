@@ -1113,7 +1113,7 @@ export function WorkflowCanvasEditor({
                 </Button>
                 <Button
                   aria-label="Delete selected step"
-                  variant="destructive"
+                  variant="danger"
                   size="sm"
                   onClick={deleteSelectedStep}
                   disabled={nodeDrawerDirty}

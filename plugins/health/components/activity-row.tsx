@@ -1,7 +1,8 @@
 'use client'
 
 import { DisclosurePanel } from '@makinbakin/sdk/layout'
-import { ListRow, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { KeyValue, ListRow, StatusBadge, type KeyValueItem, type StatusTone } from '@makinbakin/sdk/patterns'
+import { Text } from '@makinbakin/sdk/ui'
 import type { UsageEntry } from '../types'
 
 export function formatActivityName(value: string): string {
@@ -82,6 +83,33 @@ export function activityImpact(entry: UsageEntry): string {
   return 'A tool call did not complete. Retry it; if this keeps happening, run health checks.'
 }
 
+export function formatActivityDuration(entry: UsageEntry): string {
+  return entry.durationMs === null ? 'Not recorded' : `${entry.durationMs.toLocaleString()} ms`
+}
+
+/**
+ * The technical-detail rows shared by the activity list row and the event
+ * stream: raw name, the caller's classification rows, owner, duration, and
+ * the raw metadata payload.
+ */
+export function activityDetailItems(entry: UsageEntry, classification: KeyValueItem[]): KeyValueItem[] {
+  const items: KeyValueItem[] = [
+    { label: 'Raw name', value: entry.name, mono: true, breakValue: true },
+    ...classification,
+    { label: 'Agent', value: activityOwner(entry) },
+    { label: 'Duration', value: formatActivityDuration(entry) },
+  ]
+  if (entry.meta) {
+    items.push({
+      label: 'Metadata',
+      value: <span className="block min-w-0 overflow-x-auto whitespace-pre-wrap">{JSON.stringify(entry.meta, null, 2)}</span>,
+      mono: true,
+      breakValue: true,
+    })
+  }
+  return items
+}
+
 function formatWhen(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
@@ -107,7 +135,7 @@ export function ActivityRow({ entry }: { entry: UsageEntry }) {
             <StatusBadge tone={state.tone} variant="solid">{state.label}</StatusBadge>
             {entry.activityClass === 'routine' && <StatusBadge tone="neutral" variant="soft">Routine</StatusBadge>}
           </div>
-          {failed && <p className="text-bakin-typography-size-body text-bakin-text-primary">{activityFailureReason(entry)}</p>}
+          {failed && <Text size="body" as="p">{activityFailureReason(entry)}</Text>}
           <p className={failed ? 'text-bakin-typography-size-meta text-bakin-text-muted' : 'text-bakin-typography-size-body text-bakin-text-muted'}>{activityImpact(entry)}</p>
         </div>
         <time dateTime={entry.ts} className="shrink-0 text-bakin-typography-size-meta text-bakin-text-muted">{formatWhen(entry.ts)}</time>
@@ -118,14 +146,13 @@ export function ActivityRow({ entry }: { entry: UsageEntry }) {
         summary="Technical details"
         className="mt-bakin-3 text-bakin-typography-size-meta text-bakin-text-muted"
       >
-        <dl className="grid gap-x-bakin-4 gap-y-bakin-1 sm:grid-cols-[max-content_1fr]">
-          <dt>Raw name</dt><dd className="break-all font-bakin-typography-family-mono text-bakin-text-primary">{entry.name}</dd>
-          <dt>Kind</dt><dd className="text-bakin-text-primary">{entry.kind}</dd>
-          <dt>Class</dt><dd className="text-bakin-text-primary">{entry.activityClass}</dd>
-          <dt>Agent</dt><dd className="text-bakin-text-primary">{activityOwner(entry)}</dd>
-          <dt>Duration</dt><dd className="text-bakin-text-primary">{entry.durationMs === null ? 'Not recorded' : `${entry.durationMs.toLocaleString()} ms`}</dd>
-          {entry.meta && <><dt>Metadata</dt><dd className="min-w-0 overflow-x-auto whitespace-pre-wrap break-all font-bakin-typography-family-mono text-bakin-text-primary">{JSON.stringify(entry.meta, null, 2)}</dd></>}
-        </dl>
+        <KeyValue
+          layout="columns"
+          items={activityDetailItems(entry, [
+            { label: 'Kind', value: entry.kind },
+            { label: 'Class', value: entry.activityClass },
+          ])}
+        />
       </DisclosurePanel>
     </ListRow>
   )

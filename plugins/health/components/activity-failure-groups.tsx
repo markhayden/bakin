@@ -3,7 +3,8 @@
 import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { Grid, Inline, Panel, Section } from '@makinbakin/sdk/layout'
 import { ListRows, Pagination, StatusBadge } from '@makinbakin/sdk/patterns'
-import { Button } from '@makinbakin/sdk/ui'
+import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, Text } from '@makinbakin/sdk/ui'
+import { cn } from '@makinbakin/sdk/utils'
 import { AlertCircle, ChevronDown } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { InteractionCoverage, UsageEntry, UsageFailureGroup, UsageFailureGroupPage, UsageFeedData } from '../types'
@@ -142,71 +143,71 @@ function FailureGroup({
       id={failureGroupElementId(group)}
       role="group"
       aria-label={label}
-      className={`min-w-0 border-b border-bakin-border-subtle outline-none last:border-b-0 ${selected ? 'border-l-2 border-l-bakin-signal-danger bg-bakin-surface-default' : ''} focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-bakin-focus-ring`}
+      className={cn(
+        'min-w-0 border-b border-bakin-border-subtle outline-none last:border-b-0 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-bakin-focus-ring',
+        selected && 'border-l-2 border-l-bakin-signal-danger bg-bakin-surface-default',
+      )}
       data-selected={selected ? 'true' : undefined}
       tabIndex={-1}
     >
-      <div className="grid min-w-0 gap-bakin-3 px-bakin-3 py-bakin-4 @[38rem]/health:grid-cols-[minmax(0,1fr)_auto] @[38rem]/health:items-center">
-        <div className="min-w-0">
-          <Inline gap="dense">
-            <Icon className="size-bakin-4 shrink-0" aria-hidden="true" />
-            <h4 className="min-w-0 truncate">
-              {displayName}
-            </h4>
-            <span className="text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">
-              {meta.label}
-            </span>
-          </Inline>
+      <Collapsible open={expanded} onOpenChange={setExpanded} className="border-y-0">
+        <div className="grid min-w-0 gap-bakin-3 px-bakin-3 py-bakin-4 @[38rem]/health:grid-cols-[minmax(0,1fr)_auto] @[38rem]/health:items-center">
+          <div className="min-w-0">
+            <Inline gap="dense">
+              <Icon className="size-bakin-4 shrink-0" aria-hidden="true" />
+              <h4 className="min-w-0 truncate">
+                {displayName}
+              </h4>
+              <Text size="meta" tone="muted" weight="medium">
+                {meta.label}
+              </Text>
+            </Inline>
 
-          <p className="mt-bakin-2 truncate text-bakin-typography-size-body text-bakin-text-primary">{reason}</p>
-          <div className="mt-bakin-2 flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
-            <StatusBadge tone="danger" variant="solid">{failureCountLabel(group)}</StatusBadge>
-            <span className="min-w-0 truncate">
-              {agents}
-            </span>
-            <span>
-              Last failed{' '}
-              <time dateTime={group.lastFailureAt}>
-                {relative}
-              </time>
-            </span>
+            <Text size="body" as="p" className="mt-bakin-2 truncate">{reason}</Text>
+            <div className="mt-bakin-2 flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+              <StatusBadge tone="danger" variant="solid">{failureCountLabel(group)}</StatusBadge>
+              <span className="min-w-0 truncate">
+                {agents}
+              </span>
+              <span>
+                Last failed{' '}
+                <time dateTime={group.lastFailureAt}>
+                  {relative}
+                </time>
+              </span>
+            </div>
           </div>
+
+          <CollapsibleTrigger
+            className="min-h-0 w-auto py-0 text-bakin-typography-size-meta"
+            aria-label={`${disclosureLabel} for ${label}`}
+            aria-controls={disclosureId}
+            disabled={events.length === 0}
+          >
+            {disclosureLabel}
+            <ChevronDown
+              className="transition-transform group-data-[panel-open]/collapsible:rotate-180 motion-reduce:transition-none"
+              aria-hidden="true"
+            />
+          </CollapsibleTrigger>
         </div>
 
-        <Button
-          size="xs"
-          variant="outline"
-          aria-label={`${disclosureLabel} for ${label}`}
-          aria-expanded={expanded}
-          aria-controls={disclosureId}
-          onClick={() => setExpanded((value) => !value)}
-          disabled={events.length === 0}
-        >
-          {disclosureLabel}
-          <ChevronDown
-            className={expanded ? 'rotate-180 transition-transform motion-reduce:transition-none' : 'transition-transform motion-reduce:transition-none'}
-            aria-hidden="true"
-          />
-        </Button>
-      </div>
-
-      {expanded && (
-        <div
+        <CollapsibleContent
           id={disclosureId}
           className="border-t border-bakin-border-subtle bg-bakin-surface-default px-bakin-3 py-bakin-3"
         >
           {events.length < group.failures && (
-            <p className="mb-bakin-3 text-bakin-typography-size-meta text-bakin-text-muted">
+            <Text size="meta" tone="muted" as="p" className="mb-bakin-3">
               Showing the {events.length.toLocaleString()} most recent of {group.failures.toLocaleString()} failures in this window.
-            </p>
+            </Text>
           )}
           <ListRows aria-label={`Failure events for ${label}`}>
             {events.map((entry, index) => (
               <ActivityRow key={entry.id || `${entry.ts}:${entry.kind}:${entry.name}:${index}`} entry={entry} />
             ))}
           </ListRows>
-        </div>
-      )}
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   )
 }
@@ -224,7 +225,7 @@ function FailurePatternHighlights({
 
   return (
     <div className="min-w-0">
-      <h4 className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
+      <h4>
         {label}
       </h4>
       {highlights.length > 0 ? (
@@ -243,24 +244,24 @@ function FailurePatternHighlights({
                 <span className="flex min-w-0 items-center gap-bakin-2">
                   <Icon className={`size-bakin-3 shrink-0 `} aria-hidden="true" />
                   <span className="min-w-0">
-                    <strong className="block truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">
+                    <Text size="body" weight="medium" as="strong" className="block truncate">
                       {failureGroupDisplayName(group)}
-                    </strong>
-                    <span className="block truncate text-bakin-typography-size-meta text-bakin-text-muted">
+                    </Text>
+                    <Text size="meta" tone="muted" className="block truncate">
                       <span>{meta.label} · </span>
                       <span>{reason}</span>
-                    </span>
+                    </Text>
                   </span>
                 </span>
-                <strong className="whitespace-nowrap text-right text-bakin-typography-size-meta font-bakin-typography-weight-medium tabular-nums text-bakin-text-primary">
+                <Text size="meta" weight="medium" as="strong" className="whitespace-nowrap text-right tabular-nums">
                   {failureCountLabel(group)}
-                </strong>
+                </Text>
               </li>
             )
           })}
         </ol>
       ) : (
-        <p className="mt-bakin-2 text-bakin-typography-size-body text-bakin-text-muted">Refreshing failure patterns…</p>
+        <Text size="body" tone="muted" as="p" className="mt-bakin-2">Refreshing failure patterns…</Text>
       )}
     </div>
   )
@@ -280,14 +281,14 @@ function ResultsToVerify({
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-bakin-2">
         <div>
           <h4>Results to verify</h4>
-          <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">
+          <Text size="body" tone="muted" as="p" className="mt-bakin-1">
             Confirm whether these calls completed before retrying them.
-          </p>
+          </Text>
         </div>
         {unverified.length < totalUnverified && (
-          <span className="text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
+          <Text size="meta" tone="muted" className="tabular-nums">
             Showing {unverified.length.toLocaleString()} of {totalUnverified.toLocaleString()}
-          </span>
+          </Text>
         )}
       </div>
       {unverified.length > 0 ? (
@@ -394,7 +395,7 @@ export function ActivityFailureGroups({
             <AlertCircle className={`size-bakin-4 ${totalFailures > 0 ? 'text-bakin-signal-danger' : 'text-bakin-signal-highlight'}`} aria-hidden="true" />
             <h3 id="activity-needs-attention-title">Hiccups</h3>
           </div>
-          <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">{description}</p>
+          <Text size="body" tone="muted" as="p" className="mt-bakin-1">{description}</Text>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-bakin-2 text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
           {totalFailures > 0 && (
@@ -430,7 +431,7 @@ export function ActivityFailureGroups({
           <Panel tone="danger">
             <Grid layout="main-aside" gap="section" align="start">
             <div className="min-w-0">
-              <h4 className="mb-bakin-2 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
+              <h4 className="mb-bakin-2">
                 Failures over time
               </h4>
               <ActivityFailureTrend buckets={buckets} coverage={coverage} />

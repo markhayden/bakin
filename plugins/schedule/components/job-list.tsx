@@ -46,23 +46,23 @@ function MobileJobRow({
           <span className="flex min-w-0 items-center gap-bakin-3">
             <AgentBadge agentId={job.agentId} size="sm" showName={false} />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-bakin-typography-size-body text-bakin-text-muted">
+              <Text size="body" tone="muted" className="block truncate">
                 {job.humanSchedule}
                 {job.tz ? (
                   <Text as="span" size="meta" tone="muted" className="ml-bakin-1">
                     {job.tz.replace(/^.*\//, '')}
                   </Text>
                 ) : null}
-              </span>
+              </Text>
               {job.nextRun && !job.paused ? (
-                <span className="mt-bakin-1 block text-bakin-typography-size-meta text-bakin-text-muted">
+                <Text size="meta" tone="muted" className="mt-bakin-1 block">
                   Next {new Date(job.nextRun).toLocaleString([], {
                     month: 'short',
                     day: 'numeric',
                     hour: 'numeric',
                     minute: '2-digit',
                   })}
-                </span>
+                </Text>
               ) : null}
             </span>
           </span>

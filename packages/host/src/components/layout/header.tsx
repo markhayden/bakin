@@ -9,13 +9,20 @@ import { useSidebarContext } from '@/context/sidebar-context'
 import { useActivityContext } from '@/context/activity-context'
 import { useDebug } from '@makinbakin/sdk/hooks'
 import {
+  Alert,
+  AlertDescription,
   Button,
+  CommandShortcut,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
   Spinner,
 } from '@makinbakin/sdk/ui'
 import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
@@ -167,6 +174,20 @@ export function Header() {
     root.style.removeProperty('--bakin-shell-top')
   }, [showUpdateBanner, dispatchPaused])
 
+  // The drawer is `md:hidden`, but a Sheet that is open while hidden would
+  // still hold its focus trap and scroll lock — close it when the viewport
+  // grows past the mobile breakpoint instead of leaving it invisibly modal.
+  useEffect(() => {
+    if (!mobileOpen || typeof window.matchMedia !== 'function') return
+    const desktop = window.matchMedia('(min-width: 768px)')
+    const closeOnDesktop = () => {
+      if (desktop.matches) setMobileOpen(false)
+    }
+    closeOnDesktop()
+    desktop.addEventListener('change', closeOnDesktop)
+    return () => desktop.removeEventListener('change', closeOnDesktop)
+  }, [mobileOpen])
+
   async function applyUpdate() {
     setUpdating(true)
     setUpdateError(null)
@@ -272,7 +293,7 @@ export function Header() {
           >
             <Search className="size-3.5" />
             <span className="hidden sm:inline">Search</span>
-            <kbd className="hidden rounded border border-bakin-border-subtle/60 px-bakin-1 font-mono text-bakin-typography-size-meta sm:inline">⌘K</kbd>
+            <CommandShortcut className="ml-0 hidden pl-0 sm:inline">⌘K</CommandShortcut>
           </Button>
           <div className="hidden md:block"><DispatchTimer /></div>
           <div className="hidden md:block"><DebugToggle /></div>
@@ -293,24 +314,25 @@ export function Header() {
         </div>
       </header>
 
-      {/* Mobile sidebar overlay */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <Button
-            type="button"
-            variant="ghost"
-            className="absolute inset-0 h-auto w-auto rounded-none border-0 bg-bakin-canvas-default/75 p-0 hover:bg-bakin-canvas-default/75 active:not-aria-[haspopup]:translate-y-0"
-            onClick={() => setMobileOpen(false)}
-            aria-label="Close navigation"
-          />
-          <div
-            id="mobile-navigation-drawer"
-            className="absolute bottom-0 left-0 top-(--bakin-shell-top) w-52 overflow-hidden border-r border-bakin-border-subtle/30 bg-bakin-canvas-default"
-          >
+      {/* Mobile navigation drawer — the kit Sheet owns the scrim, Escape,
+          focus trap, and scroll lock. The visually hidden title names the
+          dialog; the SheetHeader keeps the close button clear of the nav. */}
+      <Sheet open={mobileOpen} onOpenChange={(next) => setMobileOpen(next)}>
+        <SheetContent
+          id="mobile-navigation-drawer"
+          side="left"
+          closeLabel="Close navigation"
+          className="md:hidden data-[side=left]:w-52 data-[side=left]:sm:w-52 data-[side=left]:sm:max-w-none"
+          overlayProps={{ className: 'md:hidden' }}
+        >
+          <SheetHeader>
+            <SheetTitle className="sr-only">Navigation</SheetTitle>
+          </SheetHeader>
+          <div className="min-h-0 flex-1">
             <AppSidebar forceExpanded onNavigate={() => setMobileOpen(false)} />
           </div>
-        </div>
-      )}
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={updateDialogOpen} onOpenChange={setUpdateDialogOpen}>
         <DialogContent>
@@ -321,14 +343,14 @@ export function Header() {
             </DialogDescription>
           </DialogHeader>
           {updateError && (
-            <div className="rounded-md border border-bakin-signal-danger/20 bg-bakin-signal-danger/10 px-bakin-3 py-bakin-2 text-sm text-bakin-signal-danger">
-              {updateError}
-            </div>
+            <Alert tone="danger">
+              <AlertDescription>{updateError}</AlertDescription>
+            </Alert>
           )}
           {updateMessage && (
-            <div className="rounded-md border border-bakin-action-primary-background/20 bg-bakin-action-primary-background/10 px-bakin-3 py-bakin-2 text-sm text-bakin-action-primary-background">
-              {updateMessage}
-            </div>
+            <Alert tone="success">
+              <AlertDescription>{updateMessage}</AlertDescription>
+            </Alert>
           )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setUpdateDialogOpen(false)}>

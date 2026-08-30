@@ -14,6 +14,8 @@ import {
 } from '../primitives/dialog'
 import { Input } from '../primitives/input'
 import { Label } from '../primitives/label'
+import { Spinner } from '../primitives/spinner'
+import { Text } from '../primitives/text'
 import { cn } from '../utils'
 
 export type ConfirmDialogTone = 'danger' | 'primary'
@@ -52,13 +54,7 @@ function confirmButtonVariant(
 }
 
 function BusySignal() {
-  return (
-    <span
-      aria-hidden="true"
-      data-slot="action-busy-signal"
-      className="size-bakin-3 animate-spin rounded-bakin-pill border-2 border-current border-r-transparent motion-reduce:animate-none"
-    />
-  )
+  return <Spinner size="sm" data-slot="action-busy-signal" />
 }
 
 /** Controlled confirmation for consequential work, including exact typed confirmation. */
@@ -117,7 +113,7 @@ export function ConfirmDialog({
             <Label htmlFor={inputId} className="text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
               {confirmPrompt ?? (
                 <>
-                  Type <code className="font-bakin-typography-family-mono text-bakin-text-primary">{confirmValue}</code> to confirm
+                  Type <Text as="code" mono size="meta">{confirmValue}</Text> to confirm
                 </>
               )}
             </Label>

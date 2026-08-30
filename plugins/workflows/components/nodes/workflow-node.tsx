@@ -3,6 +3,7 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Workflow } from 'lucide-react'
 import { NodeCard } from '@makinbakin/sdk/patterns'
+import { Text } from '@makinbakin/sdk/ui'
 
 interface WorkflowNodeData extends Record<string, unknown> {
   label: string
@@ -24,10 +25,10 @@ export function WorkflowNode({ data }: NodeProps) {
       title={label}
     >
       {workflow_id && (
-        <div className="mt-bakin-1 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">{workflow_id}</div>
+        <Text size="meta" tone="muted" mono as="div" className="mt-bakin-1 truncate">{workflow_id}</Text>
       )}
       {description && (
-        <p className="mt-bakin-1 truncate text-bakin-typography-size-meta leading-snug text-bakin-text-muted">{description}</p>
+        <Text size="meta" tone="muted" as="p" className="mt-bakin-1 truncate leading-snug">{description}</Text>
       )}
       <Handle type="target" position={Position.Top} className="!bg-bakin-text-muted" />
       <Handle type="source" position={Position.Bottom} className="!bg-bakin-text-muted" />

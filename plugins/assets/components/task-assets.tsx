@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
-import { Button, buttonVariants, DrawerSection } from '@makinbakin/sdk/ui'
+import { Button, buttonVariants, DrawerSection, Text } from '@makinbakin/sdk/ui'
 import { ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import { PluginLink, useRouter } from '@makinbakin/sdk/navigation'
 import { FolderOpen, Plus, X } from 'lucide-react'
@@ -95,7 +95,7 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
                 <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-primary">{asset.description || asset.assetId}</span>
+                <Text size="meta" weight="medium" className="block truncate">{asset.description || asset.assetId}</Text>
                 {asset.versionCount > 1 && (
                   <span className="block text-bakin-typography-size-meta text-bakin-action-primary-background">v{asset.currentVersion} · {asset.versionCount} versions</span>
                 )}

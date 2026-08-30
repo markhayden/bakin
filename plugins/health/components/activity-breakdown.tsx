@@ -2,6 +2,7 @@
 
 import { RankedBarChart, type ChartDatum } from '@makinbakin/sdk/charts'
 import { Grid, Section } from '@makinbakin/sdk/layout'
+import { ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import { Button, Text } from '@makinbakin/sdk/ui'
 import { ChevronRight } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -55,7 +56,7 @@ function BreakdownPanel({
 }) {
   return (
     <div className="min-w-0">
-      <h4 className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
+      <h4>
         {title}
       </h4>
       <Text size="meta" tone="muted" as="p" className="mt-bakin-1">{sub}</Text>
@@ -114,9 +115,9 @@ export function ActivityBreakdown({
         <h3 id="activity-breakdown-title">
           Call breakdown
         </h3>
-        <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">
+        <Text size="body" tone="muted" as="p" className="mt-bakin-1">
           Where recorded calls went and which agents generated them.
-        </p>
+        </Text>
       </div>
       <Grid layout="split" gap="section" align="start">
         <BreakdownPanel
@@ -136,12 +137,12 @@ export function ActivityBreakdown({
             compactData
           />
           {onReviewFailures && failedDestinations.length > 0 && (
-            <ul className="mt-bakin-3 space-y-bakin-1" aria-label="Review failed destinations">
+            <ListRows variant="separated" size="sm" className="mt-bakin-3" aria-label="Review failed destinations">
               {failedDestinations.map((row) => {
                 const source = row.sourceKind ? INTERACTION_SOURCE_META[row.sourceKind] : null
                 const failureLabel = `Review ${row.errors.toLocaleString()} failed ${source ? `${source.label} ` : ''}${row.label} ${row.errors === 1 ? 'call' : 'calls'}`
                 return (
-                  <li key={row.key} className="min-w-0">
+                  <ListRow key={row.key}>
                     <Button
                       type="button"
                       size="xs"
@@ -153,10 +154,10 @@ export function ActivityBreakdown({
                       <span className="min-w-0 truncate">{failureLabel}</span>
                       <ChevronRight className="size-bakin-3 shrink-0" aria-hidden="true" />
                     </Button>
-                  </li>
+                  </ListRow>
                 )
               })}
-            </ul>
+            </ListRows>
           )}
         </BreakdownPanel>
         <BreakdownPanel

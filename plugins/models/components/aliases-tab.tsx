@@ -180,9 +180,9 @@ export function AliasesTab({
             {entries.length} {entries.length === 1 ? 'alias' : 'aliases'}
           </Text>
         </div>
-        <p className="max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+        <Text size="body" tone="muted" as="p" className="max-w-prose leading-relaxed">
           Aliases give agents and routing rules a stable short name even when the underlying model changes.
-        </p>
+        </Text>
       </div>
 
       <PageBody label="Configured model aliases" busy={aliasBusy}>
@@ -201,9 +201,9 @@ export function AliasesTab({
 
             return (
               <ListRow key={name} data-alias-row className="px-bakin-4 py-bakin-3">
-                <code className="min-w-0 truncate font-bakin-typography-family-mono text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
+                <Text size="body" weight="semibold" mono as="code" className="min-w-0 truncate">
                   {name}
-                </code>
+                </Text>
 
                 <Inline wrap={false}>
                   <BrandIcon
@@ -213,12 +213,12 @@ export function AliasesTab({
                     size="md"
                   />
                   <div className="min-w-0">
-                    <p className="truncate text-bakin-typography-size-body text-bakin-text-primary">
+                    <Text size="body" as="p" className="truncate">
                       {model?.name ?? 'Model not in the current catalog'}
-                    </p>
-                    <p className="mt-bakin-1 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                    </Text>
+                    <Text size="meta" tone="muted" mono as="p" className="mt-bakin-1 truncate">
                       {target}
-                    </p>
+                    </Text>
                   </div>
                 </Inline>
 

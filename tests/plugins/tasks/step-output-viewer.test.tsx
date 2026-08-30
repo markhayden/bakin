@@ -23,7 +23,8 @@ describe('StepOutputViewer', () => {
     expect(panel?.querySelector('dl')).not.toBeNull()
     expect(screen.getByText('Summary')).toBeTruthy()
     expect(screen.getByText('Approved for launch')).toBeTruthy()
-    expect(screen.getByText('Item Count')).toBeTruthy()
+    // Labels come from the SDK's shared humanizeKey (sentence case), not a local title-caser.
+    expect(screen.getByText('Item count')).toBeTruthy()
     expect(screen.getByText('3')).toBeTruthy()
     expect(screen.getByText('true')).toBeTruthy()
   })

@@ -40,7 +40,7 @@ export function TagInput({ value, onChange, suggestions = [], placeholder = 'Add
     <div className="relative" data-testid="tag-input">
       <div className="flex flex-wrap items-center gap-bakin-1 rounded-bakin-control border border-bakin-border-subtle bg-transparent px-bakin-2 py-bakin-1">
         {value.map(tag => (
-          <Badge key={tag} variant="secondary" className="gap-bakin-1 pr-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-regular" data-testid={`tag-chip-${tag}`}>
+          <Badge key={tag} tone="neutral" variant="soft" className="gap-bakin-1 pr-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-regular" data-testid={`tag-chip-${tag}`}>
             {tag}
             <Button
               type="button"

@@ -72,6 +72,11 @@ function DiagnosticsSection({ title, actions, children, divider = 'top' }: {
   )
 }
 
+/**
+ * Kept local on purpose: context budgets are reported in explicit binary
+ * units (KiB/MiB) to match the server's byte accounting, while the SDK's
+ * `formatSize` labels its 1024-multiples as KB/MB. Reported as a kit gap.
+ */
 function formatBytes(n: number): string {
   if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MiB`
   if (n >= 1024) return `${(n / 1024).toFixed(1)} KiB`
@@ -343,13 +348,13 @@ function DriftPanel({ agentId }: { agentId: string }) {
         <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
           <div className="min-w-0">
             <h2 id="diagnostics-drift">Drift</h2>
-            <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+            <Text size="meta" tone="muted" as="p" className="mt-bakin-1">
               {loading
                 ? 'Comparing managed files with the installed package.'
                 : findings.length === 0
                   ? 'Managed files match the package and composed context.'
                   : `${findings.length} ${findings.length === 1 ? 'finding needs' : 'findings need'} review.`}
-            </p>
+            </Text>
           </div>
           <div className="flex items-center gap-bakin-2">
             <Button
@@ -406,17 +411,17 @@ function DriftPanel({ agentId }: { agentId: string }) {
                   <div className="min-w-0">
                     <div className="flex min-w-0 flex-wrap items-baseline gap-x-bakin-2 gap-y-bakin-1">
                       <strong className="capitalize">{findingLabel(finding)}</strong>
-                      <span className="truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                      <Text size="meta" tone="muted" mono className="truncate">
                         {finding.file ?? finding.target ?? ''}
-                      </span>
+                      </Text>
                     </div>
                     <p className="m-0 mt-bakin-1 text-bakin-text-muted">{finding.message}</p>
                     {finding.staleInputs && finding.staleInputs.length > 0 && (
-                      <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+                      <Text size="meta" tone="muted" as="p" className="mt-bakin-1">
                         Changed inputs: <span className="font-bakin-typography-family-mono">{finding.staleInputs.join(', ')}</span>
-                      </p>
+                      </Text>
                     )}
-                    {finding.hint ? <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">{finding.hint}</p> : null}
+                    {finding.hint ? <Text size="meta" tone="muted" as="p" className="mt-bakin-1">{finding.hint}</Text> : null}
                   </div>
                 </li>
               ))}

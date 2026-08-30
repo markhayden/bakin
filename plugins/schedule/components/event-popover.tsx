@@ -9,6 +9,7 @@ import {
   buttonVariants,
   Field,
   FieldControl,
+  Overline,
   FieldError,
   FieldLabel,
   Popover,
@@ -104,9 +105,9 @@ export function EventChip({
               title={event.title}
               time={showTime ? time : undefined}
               detail={(
-                <span className="uppercase tracking-wider">
+                <Overline>
                   {event.pluginId} · {event.kind}{event.status ? ` · ${event.status}` : ''}
-                </span>
+                </Overline>
               )}
               leading={(
                 <CalendarDays

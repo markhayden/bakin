@@ -4,15 +4,17 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
+  Badge,
   Button,
   DrawerSection,
   Field,
   FieldControl,
   FieldLabel,
+  Spinner,
   Text,
   Textarea,
 } from '@makinbakin/sdk/ui'
-import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { ListRow, ListRowActions, ListRows, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { AlertTriangle, Check, Hourglass, RefreshCw, X } from 'lucide-react'
 import { StepOutputViewer } from './step-output-viewer'
 import type { TaskDetail } from './use-task-detail'
@@ -45,23 +47,22 @@ function WorkflowStepList({
   instance: TaskDetail['wfInstance']
 }) {
   return (
-    <ol
+    <ListRows
+      variant="separated"
+      aria-label="Workflow steps"
       data-workflow-step-list=""
       data-orientation="vertical"
-      className="m-0 list-none divide-y divide-bakin-border-subtle rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default px-bakin-3"
     >
       {definition.steps.map((step, index) => {
         const state = instance?.stepStates[step.id]
         const status = state?.status || 'pending'
         const isGate = step.type === 'gate'
         return (
-          <li key={step.id} className="flex min-w-0 items-start gap-bakin-3 py-bakin-3">
-            <span
-              aria-hidden="true"
-              className="grid size-bakin-6 shrink-0 place-items-center rounded-bakin-pill border border-bakin-border-subtle bg-bakin-canvas-default font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted"
-            >
+          <ListRow key={step.id} className="flex min-w-0 items-start gap-bakin-3">
+            {/* A step number is a position marker, not an identity — Badge, not Avatar. */}
+            <Badge aria-hidden="true" tone="neutral" variant="outline" size="sm" className="font-bakin-typography-family-mono">
               {index + 1}
-            </span>
+            </Badge>
             <div className="min-w-0 flex-1">
               <Inline gap="dense">
                 <span className="font-bakin-typography-weight-semibold text-bakin-text-primary">
@@ -87,10 +88,10 @@ function WorkflowStepList({
                 ) : null}
               </div>
             </div>
-          </li>
+          </ListRow>
         )
       })}
-    </ol>
+    </ListRows>
   )
 }
 
@@ -102,9 +103,9 @@ export function WorkflowProgressPanel({ m }: { m: TaskDetail }) {
     <DrawerSection
       title="Workflow"
       actions={(
-        <span className="max-w-48 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text size="meta" tone="muted" mono className="max-w-48 truncate">
           {activeWorkflowId}
-        </span>
+        </Text>
       )}
     >
       <WorkflowStepList definition={wfDefinition} instance={wfInstance} />
@@ -183,20 +184,20 @@ export function MapChildrenPanel({ m }: { m: TaskDetail }) {
       title={mapStepLabel}
       actions={<Text size="meta" tone="muted">{rollup}</Text>}
     >
-      <ul className="m-0 list-none divide-y divide-bakin-border-subtle p-0">
+      <ListRows variant="separated" aria-label={`${mapStepLabel} children`}>
         {rows.map((row) => (
-          <li key={row.childTaskId} className="grid min-w-0 gap-bakin-2 py-bakin-3 first:pt-0">
+          <ListRow key={row.childTaskId} className="grid min-w-0 gap-bakin-2">
             <Inline gap="dense" wrap={false}>
-              <span className="shrink-0 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text size="meta" tone="muted" mono className="shrink-0">
                 {row.index + 1}/{rows.length}
-              </span>
-              <code className="min-w-0 flex-1 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+              </Text>
+              <Text size="meta" tone="muted" mono as="code" className="min-w-0 flex-1 truncate">
                 {row.childTaskId}
-              </code>
+              </Text>
               <StatusBadge tone={statusTone(row.status)} size="xs">{statusLabel(row.status)}</StatusBadge>
             </Inline>
             {row.status !== 'complete' ? (
-              <div className="flex flex-wrap justify-end gap-bakin-2">
+              <ListRowActions className="flex-wrap gap-bakin-2">
                 <Button
                   type="button"
                   size="xs"
@@ -217,11 +218,11 @@ export function MapChildrenPanel({ m }: { m: TaskDetail }) {
                     <X aria-hidden="true" /> Cancel
                   </Button>
                 ) : null}
-              </div>
+              </ListRowActions>
             ) : null}
-          </li>
+          </ListRow>
         ))}
-      </ul>
+      </ListRows>
     </DrawerSection>
   )
 }
@@ -252,7 +253,7 @@ export function GateApprovalPanel({ m }: { m: TaskDetail }) {
       <AlertDescription>
         {outputLoading ? (
           <p role="status" className="inline-flex items-center gap-bakin-2">
-            <RefreshCw aria-hidden="true" className="size-bakin-3 animate-spin motion-reduce:animate-none" />
+            <Spinner size="sm" />
             Loading step output…
           </p>
         ) : null}
@@ -268,7 +269,7 @@ export function GateApprovalPanel({ m }: { m: TaskDetail }) {
 
         {priorStepOutput ? (
           <section aria-label="Prior step output" className="mt-bakin-3 grid min-w-0 gap-bakin-2">
-            <h4 className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
+            <h4>
               Prior step output
             </h4>
             <StepOutputViewer output={priorStepOutput} />
@@ -360,7 +361,7 @@ export function WorkflowPreview({ m }: { m: TaskDetail }) {
     >
       <div className="grid min-w-0 gap-bakin-3">
         {description ? (
-          <p className="m-0 text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">{description}</p>
+          <Text size="body" tone="muted" as="p" className="leading-relaxed">{description}</Text>
         ) : null}
         <WorkflowStepList definition={wfDefinition} instance={wfInstance} />
       </div>

@@ -517,7 +517,9 @@ describe('ModelsPage component', () => {
     fireEvent.click(screen.getByText('Refresh'))
 
     await waitFor(() => {
-      expect(screen.getByText('Refreshing…').closest('button')?.disabled).toBe(true)
+      // Busy contract: the control announces and goes inert without leaving the tab order.
+      expect(screen.getByText('Refreshing…').closest('button')?.getAttribute('aria-busy')).toBe('true')
+      expect(screen.getByText('Refreshing…').closest('button')?.getAttribute('aria-disabled')).toBe('true')
     })
 
     refreshDeferred.resolve(jsonResponse(refreshResponse))

@@ -252,12 +252,13 @@ function ExplorePageInner() {
               variant="outline"
               size="sm"
               data-testid="refresh-catalog"
-              disabled={busyAction !== null}
+              disabled={busyAction !== null && busyAction !== 'refresh'}
+              busy={busyAction === 'refresh'}
               onClick={() => void runAction('refresh')}
             />
           )}
         >
-          <RefreshCw className={busyAction === 'refresh' ? 'animate-spin' : undefined} />
+          <RefreshCw />
           Refresh catalog
         </TooltipTrigger>
         <TooltipContent>Fetch the latest official catalog from GitHub</TooltipContent>
@@ -428,9 +429,9 @@ function ExplorePageInner() {
             <h2>
               {TAB_INTROS[tab].title}
             </h2>
-            <p className="text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+            <Text size="body" tone="muted" as="p" className="leading-relaxed">
               {TAB_INTROS[tab].blurb}
-            </p>
+            </Text>
           </section>
         ) : null}
 

@@ -1858,7 +1858,7 @@ describe('ActivityTab', () => {
 
     expect(expand.getAttribute('aria-expanded')).toBe('true')
     expect(expand.getAttribute('aria-label')).toBe('Hide 2 failure events for Tools · Search Query')
-    expect(expand.getAttribute('data-size')).toBe('xs')
+    expect(expand.getAttribute('data-slot')).toBe('collapsible-trigger')
     const events = within(tools).getByRole('list', { name: 'Failure events for Tools · Search Query' })
     expect(events.getAttribute('data-list-rows')).toBe('')
     expect(events.getAttribute('data-variant')).toBe('bordered')
@@ -1998,7 +1998,7 @@ describe('ActivityTab', () => {
     expect(screen.queryByText('What is Bakin doing?')).toBeNull()
     const intro = screen.getByText(/tool calls?/i)
     expect(intro.textContent ?? '').not.toMatch(/\bevery\b/i)
-    expect(intro.className).toContain('text-bakin-typography-size-meta')
+    expect(intro.getAttribute('data-size')).toBe('meta')
     expect(intro.className).toContain('text-bakin-text-muted')
     expect(intro.className).toContain('leading-relaxed')
     expect(screen.getByLabelText('Activity window')).toBeDefined()

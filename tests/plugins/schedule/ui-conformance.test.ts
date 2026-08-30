@@ -59,8 +59,10 @@ describe('Schedule UI conformance', () => {
     // Row keyboard activation is DataTable-owned — no hand-rolled handlers.
     expect(contents).not.toContain('onKeyDown=')
     expect(contents).not.toContain('tabIndex')
-    // Debug relevance scores ride the shared data-series palette.
-    expect(contents).toContain('text-bakin-data-series-1')
+    // Debug relevance scores ride the kit ScoreOverlay (which owns the
+    // shared data-series palette) — never a hand-rolled chip block.
+    expect(contents).toContain('<ScoreOverlay')
+    expect(contents).not.toContain('text-bakin-data-series-1')
     expect(contents).not.toMatch(/\b(?:red|amber|cyan|purple|zinc|emerald|blue)-\d+/)
     expect(contents).not.toMatch(/text-\[(?:\d|\.)/)
   })

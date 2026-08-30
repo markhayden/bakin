@@ -24,7 +24,7 @@ import {
   type DataTableColumn,
   type DataTableSort,
 } from '@makinbakin/sdk/patterns'
-import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import { Button, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import type { SearchResult } from '@makinbakin/sdk/hooks'
 import { useDebug } from '@makinbakin/sdk/hooks'
 import { tierDisplayName } from './tier-labels'
@@ -178,9 +178,9 @@ export function MemorySearchResults({
           return (
             <span className="flex min-w-0 items-center gap-bakin-1">
               <AgentAvatar agent={identity} size="xs" decorative />
-              <span className="truncate text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text size="meta" tone="muted" className="truncate">
                 {identity.name}
-              </span>
+              </Text>
             </span>
           )
         },
@@ -191,9 +191,9 @@ export function MemorySearchResults({
         sortable: true,
         align: 'end',
         cell: (result) => (
-          <span className="tabular-nums text-bakin-typography-size-meta text-bakin-text-muted">
+          <Text size="meta" tone="muted" className="tabular-nums">
             {formatUpdated(result)}
-          </span>
+          </Text>
         ),
       },
     ]

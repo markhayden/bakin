@@ -1,6 +1,6 @@
 import { ArrowUpRight, Blocks } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@makinbakin/sdk/ui'
+import { Badge, Text, Tooltip, TooltipContent, TooltipTrigger } from '@makinbakin/sdk/ui'
 import { cn } from '@makinbakin/sdk/utils'
 
 interface SidebarPromoProps {
@@ -23,14 +23,14 @@ export function SidebarPromo({ collapsed, pathname, onNavigate }: SidebarPromoPr
             ? 'border-bakin-signal-accent/45 bg-bakin-signal-accent/10'
             : 'border-bakin-signal-accent/20 bg-bakin-signal-accent/5 hover:border-bakin-signal-accent/35 hover:bg-bakin-signal-accent/10')}
       >
-        <span className="block text-sm font-bakin-typography-weight-semibold text-bakin-text-primary">Make Bakin Yours</span>
-        <span className="mt-bakin-1 block text-xs leading-4 text-bakin-text-muted">
+        <Text as="span" weight="semibold" className="block">Make Bakin Yours</Text>
+        <Text as="span" size="meta" tone="muted" className="mt-bakin-1 block">
           Do more with Bakin—discover agent kits, plugins &amp; more.
-        </span>
-        <span className="mt-2.5 inline-flex items-center gap-bakin-1 rounded-bakin-control border border-bakin-signal-accent/25 bg-bakin-signal-accent/10 px-bakin-2 py-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-signal-accent transition-colors group-hover:border-bakin-signal-accent/40 group-hover:bg-bakin-signal-accent/15">
+        </Text>
+        <Badge tone="accent" variant="outline" size="sm" className="mt-2.5">
           Browse add-ons
-          <ArrowUpRight className="size-bakin-3" aria-hidden="true" />
-        </span>
+          <ArrowUpRight aria-hidden="true" />
+        </Badge>
       </Link>
     )
   }

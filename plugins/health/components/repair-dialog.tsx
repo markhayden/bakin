@@ -15,8 +15,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Spinner,
+  SystemState,
 } from '@makinbakin/sdk/ui'
-import { AlertTriangle, CircleCheck, RefreshCw, Wrench } from 'lucide-react'
+import { AlertTriangle, CircleCheck, Wrench } from 'lucide-react'
 import { useRepairPlan } from '../hooks/use-repair-plan'
 
 const SAFETY_TONE = {
@@ -118,7 +120,7 @@ export function RepairDialog({
 
         {repair.planning && (
           <div role="status" className="flex items-center gap-bakin-2 py-bakin-6 text-bakin-typography-size-body text-bakin-text-muted">
-            <RefreshCw className="size-bakin-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            <Spinner />
             Planning against the current evidence…
           </div>
         )}
@@ -140,9 +142,12 @@ export function RepairDialog({
         {!repair.planning && repair.plan && !repair.result && !repair.stale && (
           <div className="max-h-[min(52vh,28rem)] space-y-bakin-3 overflow-y-auto pr-bakin-1">
             {repair.plan.items.length === 0 && (
-              <p className="rounded-bakin-control border border-bakin-border-subtle p-bakin-4 text-bakin-typography-size-body text-bakin-text-muted">
-                No deterministic repair is available for this issue. Follow its resolution steps instead.
-              </p>
+              <SystemState
+                kind="initial-empty"
+                scope="inline"
+                title="No deterministic repair is available for this issue."
+                description="Follow its resolution steps instead."
+              />
             )}
             {repair.plan.items.map((item) => {
               const nonSafe = item.safety !== 'safe'
@@ -154,7 +159,7 @@ export function RepairDialog({
                     onCheckedChange={() => toggle(item.id)}
                     aria-label={`${nonSafe ? 'Select and confirm' : 'Select'} repair: ${item.title}`}
                   />
-                  <span className="min-w-0 space-y-bakin-2 text-bakin-typography-size-body">
+                  <div className="min-w-0 space-y-bakin-2 text-bakin-typography-size-body">
                     <span className="flex flex-wrap items-center gap-bakin-2 font-bakin-typography-weight-medium text-bakin-text-primary">
                       {item.title}
                       <StatusBadge variant="outline" tone={SAFETY_TONE[item.safety]}>{item.safety}</StatusBadge>
@@ -166,12 +171,14 @@ export function RepairDialog({
                       </span>
                     )}
                     {nonSafe && (
-                      <span className="flex items-start gap-bakin-1 text-bakin-typography-size-meta text-bakin-signal-highlight">
-                        <AlertTriangle className="mt-bakin-0 size-bakin-3 shrink-0" aria-hidden="true" />
-                        Selecting this item is its individual confirmation. Review the described change first.
-                      </span>
+                      <Alert tone="attention">
+                        <AlertTriangle aria-hidden="true" />
+                        <AlertDescription>
+                          Selecting this item is its individual confirmation. Review the described change first.
+                        </AlertDescription>
+                      </Alert>
                     )}
-                  </span>
+                  </div>
                 </div>
               )
             })}
@@ -188,16 +195,14 @@ export function RepairDialog({
                 <div><p className="font-bakin-typography-weight-medium capitalize">{item.status}</p><p className="text-bakin-text-muted">{item.message}</p></div>
               </div>
             ))}
-            <div className={repair.result.verifiedIncidentIds.length === 0
-              ? 'rounded-bakin-control border border-bakin-action-primary-background/30 bg-bakin-action-primary-background/5 p-bakin-3 text-bakin-typography-size-body'
-              : 'rounded-bakin-control border border-bakin-signal-highlight/30 bg-bakin-signal-highlight/5 p-bakin-3 text-bakin-typography-size-body'}>
-              <p className="font-bakin-typography-weight-medium">Verification</p>
-              <p className="mt-bakin-1 text-bakin-text-muted">
+            <Alert tone={repair.result.verifiedIncidentIds.length === 0 ? 'success' : 'attention'}>
+              <AlertTitle>Verification</AlertTitle>
+              <AlertDescription>
                 {repair.result.verifiedIncidentIds.length === 0
                   ? 'Fresh checks no longer show the selected issue.'
                   : `The repair ran, but ${repair.result.verifiedIncidentIds.length} related incident${repair.result.verifiedIncidentIds.length === 1 ? '' : 's'} remain.`}
-              </p>
-            </div>
+              </AlertDescription>
+            </Alert>
           </div>
         )}
 
@@ -214,7 +219,7 @@ export function RepairDialog({
               <Button
                 onClick={() => void apply()}
                 disabled={repair.planning || repair.applying || selected.size === 0 || repair.stale}
-                variant={hasNonSafe ? 'destructive' : 'default'}
+                variant={hasNonSafe ? 'danger' : 'primary'}
               >
                 {repair.applying ? 'Applying and verifying…' : `Apply ${selected.size} repair${selected.size === 1 ? '' : 's'}`}
               </Button>

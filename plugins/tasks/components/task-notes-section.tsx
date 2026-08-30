@@ -13,9 +13,10 @@ import {
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
-  Overline,
+  Text,
 } from '@makinbakin/sdk/ui'
 import { Panel } from '@makinbakin/sdk/layout'
+import { KeyValue, ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import { formatDateTime } from '@makinbakin/sdk/utils'
 import { AlertTriangle, Send } from 'lucide-react'
 import type { Task, TaskLogEntry } from '../types'
@@ -30,21 +31,12 @@ function DispatchFailureLogPanel({ detail }: { detail: DispatchFailureDetail }) 
   ] as Array<[string, string]>
 
   return (
-    <Alert tone="danger" className="@container/dispatch mt-bakin-2">
+    <Alert tone="danger" className="mt-bakin-2">
       <AlertTriangle aria-hidden="true" />
       <AlertTitle>{compactDispatchFailureLabel(detail)}</AlertTitle>
       <AlertDescription>
         <p>{specificDispatchFailureLabel(detail)}</p>
-        <dl className="mt-bakin-3 grid min-w-0 grid-cols-1 gap-bakin-2 @sm/dispatch:grid-cols-2">
-          {rows.map(([label, value]) => (
-            <div key={label} className="min-w-0">
-              <Overline as="dt">
-                {label}
-              </Overline>
-              <dd className="m-0 break-words text-bakin-typography-size-meta text-bakin-text-primary">{value}</dd>
-            </div>
-          ))}
-        </dl>
+        <KeyValue layout="columns" className="mt-bakin-3" items={rows.map(([label, value]) => ({ label, value }))} />
         {detail.rawError ? (
           <Collapsible className="mt-bakin-3 border-b-0">
             <CollapsibleTrigger className="text-bakin-typography-size-meta">Technical details</CollapsibleTrigger>
@@ -63,7 +55,7 @@ function DispatchFailureLogPanel({ detail }: { detail: DispatchFailureDetail }) 
 function TaskLogMessage({ entry }: { entry: TaskLogEntry }) {
   const dispatchFailure = getDispatchFailureDetail(entry)
   if (dispatchFailure) return <DispatchFailureLogPanel detail={dispatchFailure} />
-  return <p className="m-0 text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">{entry.message}</p>
+  return <Text size="body" tone="muted" as="p" className="leading-relaxed">{entry.message}</Text>
 }
 
 interface TaskNotesSectionProps {
@@ -89,21 +81,21 @@ export function TaskNotesSection({ task, logMessage, setLogMessage, addingLog, o
     const hasMore = reversed.length > NOTES_PAGE_SIZE
     return (
       <div className="pb-bakin-4">
-        <ol className="m-0 list-none divide-y divide-bakin-border-subtle p-0">
+        <ListRows variant="separated" aria-label="Task notes">
           {visible.map((entry, i) => (
-            <li key={`${entry.timestamp}-${entry.author}-${i}`} className="min-w-0 py-bakin-3 first:pt-0">
+            <ListRow key={`${entry.timestamp}-${entry.author}-${i}`}>
               <div className="mb-bakin-1 flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1">
-                <time className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                <Text size="meta" tone="muted" mono as="time">
                   {formatDateTime(entry.timestamp)}
-                </time>
-                <span className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-primary">
+                </Text>
+                <Text size="meta" weight="semibold">
                   {entry.author}
-                </span>
+                </Text>
               </div>
               <TaskLogMessage entry={entry} />
-            </li>
+            </ListRow>
           ))}
-        </ol>
+        </ListRows>
         {hasMore && !showAllNotes ? (
           <Button
             type="button"
@@ -148,7 +140,7 @@ export function TaskNotesSection({ task, logMessage, setLogMessage, addingLog, o
         </InputGroup>
       </form>
       {(!task.log || task.log.length === 0) && (
-        <p className="m-0 text-bakin-typography-size-body text-bakin-text-muted">No notes yet.</p>
+        <Text size="body" tone="muted" as="p">No notes yet.</Text>
       )}
       {notesListJSX}
     </DrawerSection>

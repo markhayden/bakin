@@ -209,18 +209,18 @@ export function AvailableModelsTab({
             <span className="min-w-0 break-words font-bakin-typography-weight-semibold text-bakin-text-primary">
               {model.name}
             </span>
-            <span className="min-w-0 break-words font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+            <Text size="meta" tone="muted" mono className="min-w-0 break-words">
               {model.id}
-            </span>
+            </Text>
             {model.description ? (
-              <span className="line-clamp-1 min-w-0 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+              <Text size="meta" tone="muted" className="line-clamp-1 min-w-0 leading-relaxed">
                 {model.description}
-              </span>
+              </Text>
             ) : null}
             {model.bestFor ? (
-              <span className="min-w-0 break-words text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text size="meta" tone="muted" className="min-w-0 break-words">
                 Best for: {model.bestFor}
-              </span>
+              </Text>
             ) : null}
           </div>
         </div>
@@ -297,8 +297,8 @@ export function AvailableModelsTab({
       title="Models could not be loaded"
       description={modelsError}
       action={(
-        <Button type="button" variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-          <RefreshCw className={refreshing ? 'animate-spin motion-reduce:animate-none' : undefined} />
+        <Button type="button" variant="outline" size="sm" onClick={handleRefresh} busy={refreshing}>
+          <RefreshCw />
           Retry
         </Button>
       )}
@@ -309,8 +309,8 @@ export function AvailableModelsTab({
       title="No models are available"
       description="The connected runtime did not report any usable models."
       action={(
-        <Button type="button" variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-          <RefreshCw className={refreshing ? 'animate-spin motion-reduce:animate-none' : undefined} />
+        <Button type="button" variant="outline" size="sm" onClick={handleRefresh} busy={refreshing}>
+          <RefreshCw />
           Refresh catalog
         </Button>
       )}
@@ -342,9 +342,9 @@ export function AvailableModelsTab({
               size="sm"
               variant="outline"
               onClick={handleRefresh}
-              disabled={refreshing}
+              busy={refreshing}
             >
-              <RefreshCw className={refreshing ? 'animate-spin motion-reduce:animate-none' : undefined} />
+              <RefreshCw />
               {refreshing ? 'Refreshing…' : 'Refresh'}
             </Button>
           </>

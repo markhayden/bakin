@@ -1,7 +1,7 @@
 'use client'
 
 import { MoreHorizontal, Play, Pause, RotateCcw, Trash2, Pencil, Copy, SkipForward, CirclePlus, Undo2, ShieldAlert } from 'lucide-react'
-import { StatusBadge } from '@makinbakin/sdk/patterns'
+import { ScoreOverlay, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Button,
   DropdownMenu,
@@ -45,15 +45,11 @@ export function JobStatusBadge({ job }: { job: ScheduleJob }) {
 
 /** Name cell: label, source, tool warnings, and the debug relevance scores. */
 export function JobNameCell({ job, scoreInfo }: { job: ScheduleJob; scoreInfo?: JobScoreInfo }) {
-  const semKey = 'embeddings'
-  const bm25Key = scoreInfo?.indexScores
-    ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
-    : undefined
   return (
     <div className="flex flex-col gap-bakin-1">
-      <span className="text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
+      <Text size="body" weight="semibold">
         {job.displayName || job.id}
-      </span>
+      </Text>
       <Overline>
         {job.source === 'adopted' ? 'Adopted' : job.isBakinJob ? 'Bakin schedule' : 'Runtime cron'}
       </Overline>
@@ -63,17 +59,7 @@ export function JobNameCell({ job, scoreInfo }: { job: ScheduleJob; scoreInfo?: 
           Missing cron tools
         </span>
       )}
-      {scoreInfo && (
-        <span className="mt-bakin-1 flex items-center gap-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta">
-          <span className="text-bakin-data-series-1">RRF {scoreInfo.score.toFixed(3)}</span>
-          <span className="text-bakin-data-series-2">
-            BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
-          </span>
-          <span className="text-bakin-data-series-3">
-            SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
-          </span>
-        </span>
-      )}
+      {scoreInfo && <ScoreOverlay info={scoreInfo} className="mt-bakin-1" />}
     </div>
   )
 }
@@ -87,9 +73,9 @@ export function JobScheduleCell({ job }: { job: ScheduleJob }) {
         {job.tz && <Text as="span" size="meta" tone="muted" className="ml-bakin-1">{job.tz.replace(/^.*\//, '')}</Text>}
       </Text>
       {job.nextRun && !job.paused && (
-        <div className="text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text size="meta" tone="muted" as="div">
           next {new Date(job.nextRun).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-        </div>
+        </Text>
       )}
     </>
   )

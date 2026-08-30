@@ -23,6 +23,7 @@ import {
   SelectValue,
   SubmitButton,
   Switch,
+  SystemState,
 } from '@bakin/ui'
 import type {
   BooleanSettingsField,
@@ -265,16 +266,14 @@ function ListField({ disabled, error, field, onChange, value }: ListFieldProps) 
         <FieldsetLegend>{field.label}</FieldsetLegend>
         {field.description ? <FieldsetDescription>{field.description}</FieldsetDescription> : null}
         {error ? (
-          <div role="alert" className="border-l-2 border-bakin-signal-danger pl-bakin-2 [font-size:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-signal-danger">
-            {error}
-          </div>
+          <Alert tone="danger">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         ) : null}
       </div>
 
       {rows.length === 0 ? (
-        <p className="rounded-bakin-surface border border-dashed border-bakin-border-subtle px-bakin-3 py-bakin-3 [font-size:var(--bakin-typography-size-body)] text-bakin-text-muted">
-          No items yet.
-        </p>
+        <SystemState kind="initial-empty" scope="inline" headingLevel={4} title="No items yet." />
       ) : (
         <div className="grid min-w-0 gap-bakin-3">
           {rows.map((row, rowIndex) => (

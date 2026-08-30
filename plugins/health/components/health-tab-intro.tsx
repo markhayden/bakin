@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Text } from '@makinbakin/sdk/ui'
 
 interface HealthTabIntroProps {
   title: string
@@ -18,12 +19,12 @@ export function HealthTabIntro({
     >
       <div className="min-w-0 flex-1 basis-80">
         <h2 className="sr-only">{title}</h2>
-        <p
-          className="m-0 max-w-3xl text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted"
+        <Text
+          size="meta" tone="muted" as="p" className="max-w-3xl leading-relaxed"
           data-slot="health-tab-intro-description"
         >
           {description}
-        </p>
+        </Text>
       </div>
       {actions && (
         <div className="flex max-w-full flex-wrap items-center gap-bakin-2" data-slot="health-tab-intro-actions">

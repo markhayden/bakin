@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { SearchReadiness, SearchStageStatus } from '@makinbakin/sdk/types'
-import { DisclosurePanel, Grid, Panel } from '@makinbakin/sdk/layout'
+import { DisclosurePanel, Grid, Panel, Section } from '@makinbakin/sdk/layout'
 import {
   DataTable,
   StatTile,
@@ -118,10 +118,11 @@ export function SystemSearchSection({
       cell: (table) => (
         <>
           <div className="font-bakin-typography-family-mono font-bakin-typography-weight-medium text-bakin-text-primary">{table.logical}</div>
-          <details className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
-            <summary className="cursor-pointer">Technical identity</summary>
-            <p className="mt-bakin-1 break-all font-bakin-typography-family-mono">{table.physical} · schema v{table.schemaVersion} · {table.pluginId}</p>
-          </details>
+          <DisclosurePanel variant="ghost" summary="Technical identity" className="mt-bakin-1">
+            <Text as="p" size="meta" tone="muted" mono className="break-all">
+              {table.physical} · schema v{table.schemaVersion} · {table.pluginId}
+            </Text>
+          </DisclosurePanel>
         </>
       ),
     },
@@ -141,7 +142,9 @@ export function SystemSearchSection({
           <>
             <StatusBadge variant="outline" tone={stateTone}>{stateLabel}</StatusBadge>
             {erroredLegs.map((leg) => (
-              <p key={leg.name} className="mt-bakin-1 max-w-48 text-bakin-typography-size-meta text-bakin-signal-danger">{leg.name}: {leg.error}</p>
+              <Alert key={leg.name} tone="danger" className="mt-bakin-1 max-w-48">
+                <AlertDescription>{leg.name}: {leg.error}</AlertDescription>
+              </Alert>
             ))}
           </>
         )
@@ -196,25 +199,25 @@ export function SystemSearchSection({
   ]
 
   return (
-    <section aria-labelledby="search-system-title" className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default">
-      <header className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3 border-b border-bakin-border-subtle px-bakin-4 py-bakin-3">
+    <Panel as="section" aria-labelledby="search-system-title">
+      <header className="mb-bakin-3 flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-bakin-2">
             <h2 id="search-system-title">Search readiness</h2>
             <SearchStageBadge status={readinessStatus} />
           </div>
-          <p className="mt-bakin-1 max-w-3xl text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+          <Text size="meta" tone="muted" as="p" className="mt-bakin-1 max-w-3xl leading-relaxed">
             {readinessStale
               ? 'Search evidence is stale. Run checks before relying on this status.'
               : readiness?.summary ?? 'Waiting for Search readiness evidence.'}
-          </p>
+          </Text>
         </div>
         {loading && !status && !telemetry && (
           <Text size="meta" tone="muted">Loading live Search data…</Text>
         )}
       </header>
 
-      <div className="space-y-bakin-4 p-bakin-4">
+      <Section as="div" divider="top" spacing="compact">
         <div
           data-testid="search-readiness-pipeline"
           role="group"
@@ -308,8 +311,8 @@ export function SystemSearchSection({
           onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
           summary={(
             <span className="min-w-0">
-              <span className="block text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">Index inventory &amp; repair</span>
-              <span className="block text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">Physical indexes, migrations, backlogs, and reindex controls.</span>
+              <Text size="body" weight="semibold" className="block">Index inventory &amp; repair</Text>
+              <Text size="meta" tone="muted" className="block">Physical indexes, migrations, backlogs, and reindex controls.</Text>
             </span>
           )}
           summaryMeta={<Badge variant="secondary">{status ? `${status.tables.length} tables` : 'Unavailable'}</Badge>}
@@ -373,7 +376,7 @@ export function SystemSearchSection({
             description={mutation.message}
           />
         )}
-      </div>
-    </section>
+      </Section>
+    </Panel>
   )
 }

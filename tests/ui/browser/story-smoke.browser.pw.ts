@@ -1710,7 +1710,8 @@ test('conversation tool activity preserves disclosure, exact status, motion, and
   await test.step('status meaning survives reduced motion', async () => {
     await expect(page.getByText('failed', { exact: true })).toBeVisible()
     await expect(page.getByText('running', { exact: true })).toBeVisible()
-    const spinner = page.locator('[data-call-status="running"] [aria-hidden="true"]')
+    // The kit badge wraps its icon in an aria-hidden slot; target the Spinner itself.
+    const spinner = page.locator('[data-call-status="running"] [data-slot="spinner"]')
     await expect(spinner).toBeVisible()
     expect(await spinner.evaluate((element) => getComputedStyle(element).animationName)).toBe('none')
   })
@@ -1774,7 +1775,8 @@ test('conversation turns preserve identity, lifecycle, attachments, and containm
     await retry.focus()
     await expect(retry).toBeFocused()
     await retry.press('Enter')
-    await expect(page.getByRole('status')).toHaveText('Retry requested')
+    // A replayed error row is a polite status region too; the story names its own.
+    await expect(page.getByRole('status', { name: 'Selection outcome' })).toHaveText('Retry requested')
   })
 
   await test.step('200% text remains document-contained', async () => {
@@ -2270,16 +2272,17 @@ test('plugin settings and single-turn output preserve validation, evidence, and 
     await page.goto(pluginSettingsStory, { waitUntil: 'networkidle' })
     await expect(page.getByRole('textbox', { name: 'Messaging workspace name' })).toHaveValue('Publishing operations')
     await expect(page.getByRole('group', { name: 'Content types row 2' })).toBeVisible()
-    await expect(page.getByRole('status')).toContainText('Messaging settings saved')
+    await expect(page.getByRole('status').filter({ hasText: 'Messaging settings saved' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Save settings' })).toBeDisabled()
   })
 
   await test.step('turn output keeps tool status, live status, typed failure, and keyboard-scrollable code', async () => {
     await page.goto(turnOutputStory, { waitUntil: 'networkidle' })
     await expect(page.getByText('failed', { exact: true })).toBeVisible()
-    await expect(page.getByRole('status')).toContainText('waiting for the publishing agent')
+    await expect(page.getByRole('status').filter({ hasText: 'waiting for the publishing agent' })).toBeVisible()
     await expect(page.getByRole('alert')).toContainText('session_died')
-    const code = page.getByRole('region', { name: 'Code output' })
+    // CodeBlock is a named, focusable group (see its own contract note).
+    const code = page.getByRole('group', { name: 'Code output' })
     await code.focus()
     await expect(code).toBeFocused()
     expect(await code.evaluate((element) => getComputedStyle(element).overflowX)).toBe('auto')

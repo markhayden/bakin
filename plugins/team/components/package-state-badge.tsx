@@ -1,7 +1,7 @@
 'use client'
 
 import { StatusBadge, StatusMarker, type StatusTone } from '@makinbakin/sdk/patterns'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@makinbakin/sdk/ui'
+import { Text, Tooltip, TooltipContent, TooltipTrigger } from '@makinbakin/sdk/ui'
 
 export type PackageState =
   | 'absent'
@@ -81,9 +81,9 @@ export function PackageStateBadge({ state, packageId, title, compact }: PackageS
         <TooltipContent>{tooltip}</TooltipContent>
       </Tooltip>
       {packageId && state !== 'unmanaged' && state !== 'absent' ? (
-        <code className="break-all font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+        <Text size="meta" tone="muted" mono as="code" className="break-all">
           {packageId}
-        </code>
+        </Text>
       ) : null}
     </span>
   )

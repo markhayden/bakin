@@ -2,6 +2,9 @@
 
 import type { ReactNode } from 'react'
 
+import { CodeBlock } from '../content/code-block'
+import { Alert, AlertDescription } from '../primitives/alert'
+import { Spinner } from '../primitives/spinner'
 import { Avatar, AvatarFallback, AvatarImage } from '../primitives/avatar'
 import { Button } from '../primitives/button'
 import { cn } from '../utils'
@@ -46,12 +49,7 @@ function DefaultAvatar({ agent }: { agent: ConversationAgent }) {
 }
 
 function SpinnerIcon() {
-  return (
-    <span
-      aria-hidden="true"
-      className="size-bakin-3 shrink-0 animate-spin rounded-bakin-pill border-2 border-current border-r-transparent motion-reduce:animate-none"
-    />
-  )
+  return <Spinner size="sm" className="shrink-0" />
 }
 
 function AlertIcon() {
@@ -101,20 +99,8 @@ function turnText(items: readonly TurnItem[]): string {
 }
 
 function DefaultText({ content, format }: { content: string; format: ConversationTextFormat }) {
-  if (format === 'code') {
-    return (
-      <pre className="max-w-full overflow-x-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-3 font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-primary">
-        {content}
-      </pre>
-    )
-  }
-  if (format === 'plain') {
-    return (
-      <pre className="whitespace-pre-wrap break-words font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-primary">
-        {content}
-      </pre>
-    )
-  }
+  if (format === 'code') return <CodeBlock code={content} label="Code output" className="max-w-full" />
+  if (format === 'plain') return <CodeBlock code={content} wrap />
   return <div className="whitespace-pre-wrap break-words leading-relaxed text-bakin-text-primary">{content}</div>
 }
 
@@ -240,19 +226,17 @@ export function AgentTurn({
             )
           }
           return (
-            <div
-              key={index}
-              data-conv-error=""
-              className="flex min-w-0 flex-wrap items-center gap-bakin-2 rounded-bakin-surface border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 px-bakin-3 py-bakin-2 text-bakin-signal-danger"
-            >
+            <Alert key={index} tone="danger" role="status" data-conv-error="">
               <AlertIcon />
-              <span className="min-w-0 break-words">{item.message}</span>
-              {item.errorKind ? (
-                <span className="min-w-0 max-w-full break-all rounded-bakin-control bg-bakin-signal-danger/10 px-bakin-1 font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)]">
-                  {item.errorKind}
-                </span>
-              ) : null}
-            </div>
+              <AlertDescription className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+                <span className="min-w-0 break-words">{item.message}</span>
+                {item.errorKind ? (
+                  <span className="min-w-0 max-w-full break-all rounded-bakin-control bg-bakin-signal-danger/10 px-bakin-1 font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)]">
+                    {item.errorKind}
+                  </span>
+                ) : null}
+              </AlertDescription>
+            </Alert>
           )
         })}
 

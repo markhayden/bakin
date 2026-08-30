@@ -153,7 +153,7 @@ function TurnStates() {
                 }}
                 onRetry={() => setOutcome('Retry requested')}
               />
-              <p role="status" className="bakin-conversation-story__selection">{outcome}</p>
+              <p role="status" aria-label="Selection outcome" className="bakin-conversation-story__selection">{outcome}</p>
             </div>
           </section>
         </Stack>
@@ -174,6 +174,8 @@ export const CompleteAndLifecycleStates = {
     const retry = canvas.getByRole('button', { name: 'Try again' })
     retry.focus()
     await userEvent.keyboard('{Enter}')
-    await expect(canvas.getByRole('status')).toHaveTextContent('Retry requested')
+    // Named on purpose: a replayed error row is a polite status region too,
+    // so a bare role query would match both.
+    await expect(canvas.getByRole('status', { name: 'Selection outcome' })).toHaveTextContent('Retry requested')
   },
 } satisfies Story

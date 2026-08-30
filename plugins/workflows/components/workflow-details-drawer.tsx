@@ -2,17 +2,27 @@
 
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
-import { Button } from "@makinbakin/sdk/ui"
-import { Input } from "@makinbakin/sdk/ui"
-import { Label } from "@makinbakin/sdk/ui"
-import { Textarea } from "@makinbakin/sdk/ui"
+import {
+  Button,
+  Field,
+  FieldControl,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  Form,
+  Input,
+  SubmitButton,
+  Textarea,
+} from '@makinbakin/sdk/ui'
 import {
   InspectorPanel,
   InspectorPanelContent,
   InspectorPanelFooter,
   InspectorPanelHeader,
-} from "@makinbakin/sdk/patterns"
+} from '@makinbakin/sdk/patterns'
 import type { WorkflowDefinition } from '../types'
+
+const FORM_ID = 'workflow-details-form'
 
 /**
  * Controlled inspector panel for editing a workflow's name + description.
@@ -60,51 +70,60 @@ export function WorkflowDetailsDrawer({
         )}
       />
       <InspectorPanelContent>
-        <div className="mb-3">
-          <Label className="text-bakin-typography-size-meta" htmlFor="workflow-details-name">
-            Name <span className="text-bakin-signal-danger">*</span>
-          </Label>
-          <Input
-            id="workflow-details-name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Workflow name"
-            aria-invalid={!canApply || undefined}
-          />
-          {!canApply && (
-            <p className="mt-1 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-signal-danger">Enter a workflow name.</p>
-          )}
-        </div>
-        <div className="mb-3">
-          <Label className="text-bakin-typography-size-meta" htmlFor="workflow-details-description">
-            Description
-          </Label>
-          <Textarea
-            id="workflow-details-description"
-            rows={5}
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="Describe when this workflow should be used"
-          />
-        </div>
-      </InspectorPanelContent>
-      <InspectorPanelFooter className="justify-between">
-        <Button size="sm" variant="ghost" onClick={onClose} disabled={applying}>
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          onClick={async () => {
+        <Form
+          id={FORM_ID}
+          busy={applying}
+          onSubmit={async (event) => {
+            event.preventDefault()
             if (!canApply) return
             await onApply({
               name: name.trim(),
               description: description.trim(),
             })
           }}
-          disabled={!canApply || applying}
         >
-          {applying ? 'Saving...' : applyLabel}
+          <FieldGroup>
+            <Field name="name" invalid={!canApply}>
+              <FieldLabel htmlFor="workflow-details-name" requirement="required">Name</FieldLabel>
+              <Input
+                id="workflow-details-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Workflow name"
+                aria-invalid={!canApply || undefined}
+              />
+              {!canApply && <FieldError match>Enter a workflow name.</FieldError>}
+            </Field>
+            <Field name="description">
+              <FieldLabel htmlFor="workflow-details-description">Description</FieldLabel>
+              <FieldControl
+                render={(
+                  <Textarea
+                    id="workflow-details-description"
+                    rows={5}
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    placeholder="Describe when this workflow should be used"
+                  />
+                )}
+              />
+            </Field>
+          </FieldGroup>
+        </Form>
+      </InspectorPanelContent>
+      <InspectorPanelFooter className="justify-between">
+        <Button type="button" size="sm" variant="ghost" onClick={onClose} disabled={applying}>
+          Cancel
         </Button>
+        <SubmitButton
+          form={FORM_ID}
+          size="sm"
+          busy={applying}
+          busyLabel="Saving..."
+          disabled={!canApply}
+        >
+          {applyLabel}
+        </SubmitButton>
       </InspectorPanelFooter>
     </InspectorPanel>
   )

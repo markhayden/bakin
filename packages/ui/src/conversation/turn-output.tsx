@@ -2,6 +2,9 @@
 
 import type { ReactNode } from 'react'
 
+import { CodeBlock } from '../content/code-block'
+import { Alert, AlertDescription } from '../primitives/alert'
+import { Spinner } from '../primitives/spinner'
 import { cn } from '../utils'
 import { ToolCallRow } from './activity-group'
 import {
@@ -95,12 +98,7 @@ export interface TurnOutputViewProps {
 }
 
 function SpinnerIcon() {
-  return (
-    <span
-      aria-hidden="true"
-      className="size-bakin-3 shrink-0 animate-spin rounded-bakin-pill border-2 border-current border-r-transparent motion-reduce:animate-none"
-    />
-  )
+  return <Spinner size="sm" className="shrink-0" />
 }
 
 function AlertIcon() {
@@ -113,25 +111,8 @@ function AlertIcon() {
 }
 
 function DefaultText({ content, format }: { content: string; format: ConversationTextFormat }) {
-  if (format === 'code') {
-    return (
-      <pre
-        role="region"
-        tabIndex={0}
-        aria-label="Code output"
-        className="max-w-full overflow-x-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-3 font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
-      >
-        {content}
-      </pre>
-    )
-  }
-  if (format === 'plain') {
-    return (
-      <pre className="whitespace-pre-wrap break-words font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-primary">
-        {content}
-      </pre>
-    )
-  }
+  if (format === 'code') return <CodeBlock code={content} label="Code output" className="max-w-full" />
+  if (format === 'plain') return <CodeBlock code={content} wrap />
   return <div className="whitespace-pre-wrap break-words leading-relaxed text-bakin-text-primary">{content}</div>
 }
 
@@ -189,21 +170,17 @@ export function TurnOutputView({
       ) : null}
 
       {error ? (
-        <div
-          role="alert"
-          className={cn(
-            'flex min-w-0 flex-wrap items-center gap-bakin-2 rounded-bakin-surface border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 px-bakin-3 py-bakin-2 text-bakin-signal-danger',
-            rowClassName,
-          )}
-        >
+        <Alert tone="danger" className={rowClassName}>
           <AlertIcon />
-          <span className="min-w-0 break-words">{error.message}</span>
-          {error.kind ? (
-            <span className="min-w-0 max-w-full break-all rounded-bakin-control bg-bakin-signal-danger/10 px-bakin-1 font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)]">
-              {error.kind}
-            </span>
-          ) : null}
-        </div>
+          <AlertDescription className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+            <span className="min-w-0 break-words">{error.message}</span>
+            {error.kind ? (
+              <span className="min-w-0 max-w-full break-all rounded-bakin-control bg-bakin-signal-danger/10 px-bakin-1 font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)]">
+                {error.kind}
+              </span>
+            ) : null}
+          </AlertDescription>
+        </Alert>
       ) : null}
     </div>
   )

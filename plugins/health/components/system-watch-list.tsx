@@ -46,9 +46,9 @@ export function SystemWatchList({
           </Text>
         </div>
         {findings.length > 0 && (
-          <span className="shrink-0 text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
+          <Text size="meta" tone="muted" className="shrink-0 tabular-nums">
             {findings.length} {findings.length === 1 ? 'finding' : 'findings'}
-          </span>
+          </Text>
         )}
       </div>
 
@@ -95,7 +95,7 @@ export function SystemWatchList({
                         <StatusBadge tone={tone} variant="outline">{finding.label}</StatusBadge>
                         <Overline>{finding.category}</Overline>
                       </Inline>
-                      <p className="mt-bakin-1 line-clamp-2 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">{finding.detail}</p>
+                      <Text size="meta" tone="muted" as="p" className="mt-bakin-1 line-clamp-2 leading-relaxed">{finding.detail}</Text>
                     </div>
                   </div>
                   <Button

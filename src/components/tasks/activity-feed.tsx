@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react'
 import { ChevronRight, Workflow, Zap, Radio, MonitorDot, Plug } from 'lucide-react'
 import { useAgent, useContentStore } from '@makinbakin/sdk/hooks'
-import { Button } from '@makinbakin/sdk/ui'
+import { DisclosurePanel } from '@makinbakin/sdk/layout'
+import { KeyValue, ListRow, ListRows } from '@makinbakin/sdk/patterns'
+import { Avatar, AvatarFallback, Button, SystemState, Text } from '@makinbakin/sdk/ui'
 import { useActivityContext } from '@/context/activity-context'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { cn, formatAge } from '@makinbakin/sdk/utils'
@@ -38,9 +40,11 @@ function FeedAvatar({ agent }: { agent: string }) {
   if (SYSTEM_SOURCES.has(agent)) {
     const Icon = SYSTEM_ICONS[agent] || Zap
     return (
-      <span className="size-bakin-6 rounded-bakin-pill bg-bakin-surface-elevated flex items-center justify-center shrink-0">
-        <Icon className="size-3.5 text-bakin-text-muted" />
-      </span>
+      <Avatar size="sm">
+        <AvatarFallback>
+          <Icon className="size-bakin-3" aria-hidden="true" />
+        </AvatarFallback>
+      </Avatar>
     )
   }
   return <AgentAvatar agentId={agent} size="sm" />
@@ -70,20 +74,12 @@ function DispatchFailureDebug({ data }: { data?: Record<string, unknown> }) {
   return (
     <div className="mt-bakin-2 rounded-md bg-bakin-surface-elevated/40 px-bakin-2 py-1.5 text-bakin-typography-size-meta text-bakin-text-muted">
       {rows.length > 0 && (
-        <div className="grid grid-cols-2 gap-x-bakin-2 gap-y-bakin-1">
-          {rows.map(([label, value]) => (
-            <div key={label} className="min-w-0">
-              <span className="text-bakin-text-muted">{label}: </span>
-              <span className="text-bakin-text-primary">{value}</span>
-            </div>
-          ))}
-        </div>
+        <KeyValue layout="inline" items={rows.map(([label, value]) => ({ label, value }))} />
       )}
       {rawError && (
-        <details className="mt-bakin-1">
-          <summary className="cursor-pointer text-bakin-text-muted">Raw error</summary>
-          <p className="mt-bakin-1 break-words font-mono text-bakin-typography-size-meta leading-snug">{rawError}</p>
-        </details>
+        <DisclosurePanel variant="ghost" summary="Raw error" className="mt-bakin-1">
+          <p className="m-0 break-words font-mono text-bakin-typography-size-meta leading-snug">{rawError}</p>
+        </DisclosurePanel>
       )}
     </div>
   )
@@ -146,32 +142,39 @@ export function ActivityFeed() {
         {/* Event list */}
         <div className="flex-1 overflow-y-auto py-bakin-1 flex flex-col">
           {events.length === 0 && (
-            <p className="text-xs text-bakin-text-muted text-center mt-bakin-8">No activity yet</p>
+            <SystemState kind="initial-empty" scope="section" title="No activity yet" />
           )}
-          {events.filter((evt) => debug || !evt.duplicate).map((evt, i) => (
-            <div
-              key={`${evt.id}-${i}`}
-              className={cn('flex gap-2.5 px-bakin-3 py-2.5 hover:bg-bakin-surface-elevated/50 transition-colors border-b border-bakin-border-subtle/18 last:border-0', evt.type === 'alert' ? 'bg-bakin-signal-highlight/10' : '')}
-            >
-              <FeedAvatar agent={evt.agent} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-1.5 mb-0.5">
-                  <FeedAgentName agent={evt.agent} />
-                  <span className="text-bakin-text-muted text-bakin-typography-size-meta shrink-0 tabular-nums">{formatAge(evt.ts, { precise: true })}</span>
-                </div>
-                {evt.taskTitle && evt.type === 'log' && (
-                  <p className="text-bakin-typography-size-meta text-bakin-text-muted mb-0.5 truncate">{evt.taskTitle}</p>
-                )}
-                <p className={cn('text-bakin-typography-size-body leading-snug break-words', evt.type === 'alert' ? 'text-bakin-signal-highlight' : 'text-bakin-text-primary')}>{evt.message}</p>
-                {evt.eventName && (
-                  <p className="text-bakin-typography-size-meta text-bakin-text-muted mt-0.5 truncate font-mono">{evt.eventName}</p>
-                )}
-                {debug && evt.eventName === 'task.dispatch_failed' && (
-                  <DispatchFailureDebug data={evt.data} />
-                )}
-              </div>
-            </div>
-          ))}
+          {/* ListRows sm is the documented dense rail/feed scale; rows are
+              identity-led (avatar + agent), not status-led, and this 360px
+              rail never reaches Timeline's gutter breakpoint. */}
+          {events.length > 0 && (
+            <ListRows variant="separated" size="sm" aria-label="Live activity">
+              {events.filter((evt) => debug || !evt.duplicate).map((evt, i) => (
+                <ListRow
+                  key={`${evt.id}-${i}`}
+                  className={cn('flex gap-bakin-2', evt.type === 'alert' && 'bg-bakin-signal-highlight/10')}
+                >
+                  <FeedAvatar agent={evt.agent} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-1.5 mb-0.5">
+                      <FeedAgentName agent={evt.agent} />
+                      <Text size="meta" tone="muted" className="shrink-0 tabular-nums">{formatAge(evt.ts, { precise: true })}</Text>
+                    </div>
+                    {evt.taskTitle && evt.type === 'log' && (
+                      <Text size="meta" tone="muted" as="p" className="mb-0.5 truncate">{evt.taskTitle}</Text>
+                    )}
+                    <p className={cn('text-bakin-typography-size-body leading-snug break-words', evt.type === 'alert' ? 'text-bakin-signal-highlight' : 'text-bakin-text-primary')}>{evt.message}</p>
+                    {evt.eventName && (
+                      <p className="text-bakin-typography-size-meta text-bakin-text-muted mt-0.5 truncate font-mono">{evt.eventName}</p>
+                    )}
+                    {debug && evt.eventName === 'task.dispatch_failed' && (
+                      <DispatchFailureDebug data={evt.data} />
+                    )}
+                  </div>
+                </ListRow>
+              ))}
+            </ListRows>
+          )}
         </div>
       </div>
     </>

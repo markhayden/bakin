@@ -8,6 +8,8 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
+  Avatar,
+  AvatarFallback,
   Button,
   DrawerSection,
   Field,
@@ -131,9 +133,11 @@ export function TeamManager() {
 
           <ListRows variant="bordered" aria-label="Teams">
             <ListRow className="flex min-w-0 items-center gap-bakin-3">
-              <div className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-surface-elevated">
-                <Users className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
-              </div>
+              <Avatar size="md">
+                <AvatarFallback>
+                  <Users className="size-bakin-4" aria-hidden="true" />
+                </AvatarFallback>
+              </Avatar>
               <div className="min-w-0 flex-1">
                 <Button
                   type="button"
@@ -148,9 +152,9 @@ export function TeamManager() {
                   Shared context for every agent
                 </Text>
               </div>
-              <code className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+              <Text size="meta" tone="muted" mono as="code">
                 global
-              </code>
+              </Text>
             </ListRow>
 
             {teams.map((team) => (
@@ -168,9 +172,9 @@ export function TeamManager() {
                   >
                     {team.label}
                   </Button>
-                  <code className="block font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                  <Text size="meta" tone="muted" mono as="code" className="block">
                     {team.id}
-                  </code>
+                  </Text>
                 </div>
                 <div className="min-w-0 sm:w-56">
                   <AgentSelect

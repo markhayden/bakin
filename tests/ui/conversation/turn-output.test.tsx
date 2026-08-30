@@ -48,7 +48,7 @@ describe('focused turn output', () => {
     expect(container.querySelector('pre')?.textContent).toContain('const value = 1')
     expect(container.querySelector('pre')?.classList.contains('overflow-x-auto')).toBe(true)
     expect(container.querySelector('pre')?.getAttribute('tabindex')).toBe('0')
-    expect(container.querySelector('pre')?.getAttribute('role')).toBe('region')
+    expect(container.querySelector('pre')?.getAttribute('role')).toBe('group')
     expect(container.querySelector('pre')?.getAttribute('aria-label')).toBe('Code output')
 
     rerender(<TurnOutputView chunks={[text('Rich answer')]} renderText={renderText} />)

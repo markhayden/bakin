@@ -12,10 +12,8 @@
  * rendered back.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Skeleton } from '@/components/ui/skeleton'
+import { StatusBadge, type StatusBadgeVariant, type StatusTone } from '@makinbakin/sdk/patterns'
+import { Alert, AlertDescription, Badge, Button, Field, FieldLabel, Input, Skeleton } from '@makinbakin/sdk/ui'
 
 export const PROVIDER_KEYS_TAB_ID = '__provider_keys__'
 
@@ -27,10 +25,10 @@ interface ReadinessRow {
   configuredEnvVars?: string[]
 }
 
-function badgeFor(servedBy: ReadinessRow['servedBy']): { label: string; variant: 'default' | 'secondary' | 'outline' } {
-  if (servedBy === 'runtime') return { label: 'Runtime', variant: 'default' }
-  if (servedBy === 'shim') return { label: 'Bakin key', variant: 'secondary' }
-  return { label: 'Not set', variant: 'outline' }
+function badgeFor(servedBy: ReadinessRow['servedBy']): { label: string; tone: StatusTone; variant: StatusBadgeVariant } {
+  if (servedBy === 'runtime') return { label: 'Runtime', tone: 'success', variant: 'solid' }
+  if (servedBy === 'shim') return { label: 'Bakin key', tone: 'neutral', variant: 'soft' }
+  return { label: 'Not set', tone: 'neutral', variant: 'outline' }
 }
 
 export function ProviderKeysTab() {
@@ -127,9 +125,9 @@ export function ProviderKeysTab() {
   return (
     <div className="space-y-bakin-3 max-w-2xl">
       {error && (
-        <p role="alert" className="rounded-md border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 px-bakin-3 py-bakin-2 text-sm text-bakin-signal-danger">
-          {error}
-        </p>
+        <Alert tone="danger">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
       <p className="text-sm text-bakin-text-muted">
         Runtime-managed providers are configured in {runtimeLabel} and shown here read-only. Bakin keys are
@@ -156,17 +154,20 @@ export function ProviderKeysTab() {
           <div key={row.id} className="flex flex-col gap-bakin-2 rounded-md border p-bakin-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-bakin-typography-weight-medium">{row.label}</span>
-              <Badge variant={badge.variant}>{badge.label}</Badge>
+              <StatusBadge tone={badge.tone} variant={badge.variant}>{badge.label}</StatusBadge>
             </div>
             <p className="text-xs text-bakin-text-muted">{detail}</p>
             {storeable && !envSet && (
               <div className="flex items-center gap-bakin-2">
-                <Input
-                  type="password"
-                  placeholder={isStored ? 'Replace stored key…' : 'Enter API key…'}
-                  value={drafts[row.id] ?? ''}
-                  onChange={e => setDrafts(d => ({ ...d, [row.id]: e.target.value }))}
-                />
+                <Field name={`${row.id}-api-key`} className="min-w-0 flex-1">
+                  <FieldLabel className="sr-only">{row.label} API key</FieldLabel>
+                  <Input
+                    type="password"
+                    placeholder={isStored ? 'Replace stored key…' : 'Enter API key…'}
+                    value={drafts[row.id] ?? ''}
+                    onChange={e => setDrafts(d => ({ ...d, [row.id]: e.target.value }))}
+                  />
+                </Field>
                 <Button size="sm" disabled={busy === row.id || !(drafts[row.id] ?? '').trim()} onClick={() => save(row.id)}>
                   Save
                 </Button>
@@ -193,7 +194,7 @@ export function ProviderKeysTab() {
             <span className="text-sm font-bakin-typography-weight-medium">{provider}</span>
             <div className="flex flex-wrap items-center gap-bakin-2">
               {names.map(name => (
-                <span key={name} className="inline-flex items-center gap-bakin-1 rounded-md border px-bakin-2 py-0.5 text-xs">
+                <Badge key={name} tone="neutral" variant="outline" className="gap-bakin-1 pr-bakin-1">
                   {name}
                   <button
                     type="button"
@@ -204,28 +205,37 @@ export function ProviderKeysTab() {
                   >
                     ×
                   </button>
-                </span>
+                </Badge>
               ))}
             </div>
           </div>
         ))}
         <div className="flex items-center gap-bakin-2">
-          <Input
-            placeholder="integration (e.g. brave)"
-            value={addDraft.provider}
-            onChange={e => setAddDraft(d => ({ ...d, provider: e.target.value }))}
-          />
-          <Input
-            placeholder="secret name (e.g. apiKey)"
-            value={addDraft.name}
-            onChange={e => setAddDraft(d => ({ ...d, name: e.target.value }))}
-          />
-          <Input
-            type="password"
-            placeholder="value"
-            value={addDraft.value}
-            onChange={e => setAddDraft(d => ({ ...d, value: e.target.value }))}
-          />
+          <Field name="secret-provider" className="min-w-0 flex-1">
+            <FieldLabel className="sr-only">Integration</FieldLabel>
+            <Input
+              placeholder="integration (e.g. brave)"
+              value={addDraft.provider}
+              onChange={e => setAddDraft(d => ({ ...d, provider: e.target.value }))}
+            />
+          </Field>
+          <Field name="secret-name" className="min-w-0 flex-1">
+            <FieldLabel className="sr-only">Secret name</FieldLabel>
+            <Input
+              placeholder="secret name (e.g. apiKey)"
+              value={addDraft.name}
+              onChange={e => setAddDraft(d => ({ ...d, name: e.target.value }))}
+            />
+          </Field>
+          <Field name="secret-value" className="min-w-0 flex-1">
+            <FieldLabel className="sr-only">Value</FieldLabel>
+            <Input
+              type="password"
+              placeholder="value"
+              value={addDraft.value}
+              onChange={e => setAddDraft(d => ({ ...d, value: e.target.value }))}
+            />
+          </Field>
           <Button
             size="sm"
             disabled={!addDraft.provider.trim() || !addDraft.name.trim() || !addDraft.value.trim()}

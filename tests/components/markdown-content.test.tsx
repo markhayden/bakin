@@ -58,17 +58,17 @@ describe('MarkdownContent code blocks', () => {
       configurable: true,
     })
     const { container } = render(<MarkdownContent content={CODE_MD} />)
-    const copy = container.querySelector('button[data-md-copy]')
+    const copy = container.querySelector('[data-md-code] button[data-slot="copy-button"]')
     expect(copy).not.toBeNull()
     await act(async () => { fireEvent.click(copy!) })
     expect(writes).toEqual(['const x: number = 1'])
-    await waitFor(() => expect(copy!.textContent).toContain('Copied'))
+    await waitFor(() => expect(copy!.getAttribute('aria-label')).toBe('Copy code complete'))
   })
 
   it('inline code gets no header chrome or copy button', async () => {
     const { container } = render(<MarkdownContent content={'use `bun test` here'} />)
     expect(container.querySelector('code')).not.toBeNull()
-    expect(container.querySelector('button[data-md-copy]')).toBeNull()
+    expect(container.querySelector('button[data-slot="copy-button"]')).toBeNull()
   })
 })
 
