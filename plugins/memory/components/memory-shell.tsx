@@ -446,8 +446,10 @@ function MemoryShellInner() {
                   size="sm"
                 />
                 <FieldLabel>
-                  <Microscope className="size-bakin-4" aria-hidden="true" />
-                  System Logs
+                  <span className="inline-flex items-center gap-bakin-1">
+                    <Microscope className="size-bakin-4" aria-hidden="true" />
+                    System Logs
+                  </span>
                 </FieldLabel>
               </Field>
             )}
