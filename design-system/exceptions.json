@@ -226,36 +226,6 @@
       "removalCondition": "Remove when the last pill-variant consumer migrates to the underline variant and the frozen geometry is deleted."
     },
     {
-      "id": "sdk-tone-badge-idiom",
-      "status": "approved-temporary",
-      "scope": [
-        "packages/sdk/src/utils/index.ts"
-      ],
-      "allowances": {
-        "packages/sdk/src/utils/index.ts": {
-          "raw-palette": 15
-        }
-      },
-      "closestPattern": {
-        "storyPath": "storybook/public/feedback/status-badge.stories.tsx",
-        "storyExport": "CanonicalUsage"
-      },
-      "mismatch": "toneBadgeClass maps five status tones onto the codebase-wide bg-X-500/10 text-X-400 border-X-500/20 outline-badge idiom; the strings must be full literals so Tailwind's content scanner emits the utilities, and the five-hue ramp (green/amber/red/zinc/blue) predates equivalent semantic tone tokens.",
-      "compositionLimit": "Template-constructed class names would defeat the Tailwind scanner, and the semantic palette does not yet define the translucent tone ramp triplets these badges render; StatusBadge consumes this exact map, so moving the literals would only relocate the debt.",
-      "alternative": "Keep the fifteen palette utilities as one frozen literal map in the SDK utils, consumed only through toneBadgeClass and the StatusBadge pattern.",
-      "safeguards": {
-        "accessibility": "Tone colors are paired with text labels via StatusBadge; the 400-series text on translucent 10% fills keeps AA contrast on the dark canvas.",
-        "responsiveness": "Badges are content-sized pills; no fixed dimensions are introduced by the class map.",
-        "routing": "Purely presentational classes with no navigation involvement.",
-        "isolation": "The idiom lives in one exported helper; consumers call toneBadgeClass rather than re-declaring palette classes."
-      },
-      "approvedBy": "Mark Hayden",
-      "approvedOn": "2026-07-31",
-      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the sdk utils tone-badge idiom keep as a formal exception.",
-      "reviewBy": "2026-10-30",
-      "removalCondition": "Remove when semantic tone-ramp tokens (success/pending/error/muted/info fills and borders) land in the token pipeline and toneBadgeClass re-points to them."
-    },
-    {
       "id": "models-routing-tab-work-classes-import",
       "status": "approved-temporary",
       "scope": [

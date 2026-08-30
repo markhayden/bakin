@@ -3,7 +3,7 @@
 import * as React from 'react'
 
 import { cn } from '../utils'
-import { verticalSelectionIndex, type VerticalSelectionKey } from './selection-navigation'
+import { verticalSelectionIndex, type VerticalSelectionKey } from '../behaviors/selection-navigation'
 
 export interface NavListItem<T extends string = string> {
   id: T

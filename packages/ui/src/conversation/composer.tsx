@@ -14,9 +14,11 @@ import {
   type ReactNode,
 } from 'react'
 
+import { usePersistedLeadingEdgeResize } from '../behaviors/use-persisted-leading-edge-resize'
 import { Button } from '../primitives/button'
 import { cn } from '../utils'
-import { usePersistedLeadingEdgeResize } from './use-persisted-leading-edge-resize'
+import { RemoveIcon, SpinnerIcon } from './glyphs'
+import { ResizeHandle } from './resize-handle'
 
 const HISTORY_LIMIT = 50
 const DEFAULT_MIN_HEIGHT = 88
@@ -117,26 +119,10 @@ function SendIcon() {
   )
 }
 
-function StopIcon() {
+function StopSquareIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-3 fill-current">
       <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" />
-    </svg>
-  )
-}
-
-function RemoveIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-3 fill-none stroke-current stroke-[1.5]">
-      <path d="m4 4 8 8M12 4l-8 8" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function SpinnerIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-4 animate-spin fill-none stroke-current stroke-[1.5] motion-reduce:animate-none">
-      <path d="M14 8a6 6 0 1 1-3.1-5.25" strokeLinecap="round" />
     </svg>
   )
 }
@@ -386,17 +372,12 @@ export function Composer({
         className,
       )}
     >
-      <div
-        {...resizeHandleProps}
-        aria-label="Resize message input"
-        className={cn(
-          'group/handle flex h-bakin-2 w-full touch-none items-center justify-center outline-none',
-          disabled ? 'cursor-not-allowed' : 'cursor-row-resize',
-          'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-bakin-focus-ring',
-        )}
-      >
-        <span className="h-px w-bakin-8 rounded-bakin-pill bg-bakin-border-subtle opacity-0 transition-opacity group-hover/handle:opacity-100 group-focus-visible/handle:opacity-100" />
-      </div>
+      <ResizeHandle
+        orientation="horizontal"
+        handleProps={resizeHandleProps}
+        label="Resize message input"
+        className={cn('flex h-bakin-2 w-full', disabled ? 'cursor-not-allowed' : 'cursor-row-resize')}
+      />
 
       <div className="px-bakin-4 pb-bakin-3">
         <div
@@ -419,7 +400,7 @@ export function Composer({
                         aria-label={`Uploading ${item.name}`}
                         className="flex size-20 items-center justify-center rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default text-bakin-text-muted"
                       >
-                        <SpinnerIcon />
+                        <SpinnerIcon size="md" />
                         <span className="sr-only">Uploading {item.name}</span>
                       </div>
                     ) : status === 'error' ? (
@@ -553,7 +534,7 @@ export function Composer({
                 title="Stop the reply (Esc)"
                 className="rounded-bakin-pill"
               >
-                <StopIcon />
+                <StopSquareIcon />
               </Button>
             ) : busy ? (
               <Button
@@ -566,7 +547,7 @@ export function Composer({
                 title="Sending…"
                 className="rounded-bakin-pill"
               >
-                <SpinnerIcon />
+                <SpinnerIcon size="md" />
                 <span className="sr-only">Reply in progress</span>
               </Button>
             ) : (

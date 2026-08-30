@@ -2,9 +2,7 @@
 
 import type { ReactNode } from 'react'
 
-import { CodeBlock } from '../content/code-block'
 import { Alert, AlertDescription } from '../primitives/alert'
-import { Spinner } from '../primitives/spinner'
 import { cn } from '../utils'
 import { ToolCallRow } from './activity-group'
 import {
@@ -13,6 +11,7 @@ import {
   type ConversationTextFormat,
 } from './fold'
 import type { ConversationTextRenderer } from './agent-turn'
+import { AlertIcon, DefaultText, SpinnerIcon } from './glyphs'
 
 export interface TurnTextSegment {
   format: ConversationTextFormat
@@ -95,25 +94,6 @@ export interface TurnOutputViewProps {
   /** Applied to each tool, status, and error row. */
   rowClassName?: string
   className?: string
-}
-
-function SpinnerIcon() {
-  return <Spinner size="sm" className="shrink-0" />
-}
-
-function AlertIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-4 shrink-0 fill-none stroke-current stroke-[1.5]">
-      <path d="M8 2 14 13H2L8 2Z" strokeLinejoin="round" />
-      <path d="M8 6v3.5M8 11.75v.25" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function DefaultText({ content, format }: { content: string; format: ConversationTextFormat }) {
-  if (format === 'code') return <CodeBlock code={content} label="Code output" className="max-w-full" />
-  if (format === 'plain') return <CodeBlock code={content} wrap />
-  return <div className="whitespace-pre-wrap break-words leading-relaxed text-bakin-text-primary">{content}</div>
 }
 
 /** Compact renderer for task and workflow embeds that contain one normalized turn. */

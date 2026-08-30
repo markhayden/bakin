@@ -25,6 +25,7 @@ import {
   Switch,
   SystemState,
 } from '@bakin/ui'
+import { cn } from '@bakin/ui/utils'
 import type {
   BooleanSettingsField,
   ListSettingsField,
@@ -65,10 +66,6 @@ export interface PluginSettingsRendererProps {
   resetLabel?: string
   ariaLabel?: string
   className?: string
-}
-
-function classNames(...values: Array<string | false | null | undefined>): string {
-  return values.filter(Boolean).join(' ')
 }
 
 function defaultForField(field: SettingsField): unknown {
@@ -392,7 +389,7 @@ export function PluginSettingsRenderer({
       aria-label={ariaLabel}
       busy={busy}
       onSubmit={submit}
-      className={classNames('min-w-0', className)}
+      className={cn('min-w-0', className)}
     >
       {schema.fields.map((field) => field.type === 'list' ? (
         <ListField

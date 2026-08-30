@@ -3,7 +3,7 @@
 import * as React from 'react'
 
 import { cn } from '../utils'
-import { horizontalSelectionIndex, type HorizontalSelectionKey } from './selection-navigation'
+import { horizontalSelectionIndex, type HorizontalSelectionKey } from '../behaviors/selection-navigation'
 
 export interface AgentFilterOption {
   value: string

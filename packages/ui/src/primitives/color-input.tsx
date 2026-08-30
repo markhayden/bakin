@@ -2,7 +2,7 @@
 
 import type { AriaAttributes } from 'react'
 
-import { cn } from '../utils'
+import { cn, focusRing } from '../utils'
 
 export interface ColorInputProps extends Pick<AriaAttributes, 'aria-describedby' | 'aria-invalid'> {
   /** Current color. Non-hex values render on the swatch as a safe fallback. */
@@ -65,7 +65,7 @@ export function ColorInput({
       data-slot="color-input"
       className={cn(
         'size-bakin-8 shrink-0 cursor-pointer appearance-none rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default p-bakin-1',
-        'outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
+        focusRing,
         'aria-invalid:border-bakin-signal-danger',
         'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-[var(--bakin-state-opacity-disabled)]',
         '[&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-[calc(var(--bakin-radius-control)-2px)] [&::-webkit-color-swatch]:border-none',

@@ -3,10 +3,10 @@
 import { useId, useState, type ReactNode } from 'react'
 
 import { StatusBadge, type StatusTone } from '../patterns/status-badge'
-import { Spinner } from '../primitives/spinner'
 
 import { cn } from '../utils'
 import type { ConversationToolCall } from './fold'
+import { SpinnerIcon } from './glyphs'
 
 /** Format a tool-call duration for compact conversation metadata. */
 export function formatDuration(ms: number | undefined): string {
@@ -54,10 +54,6 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
       <path d="m6 3.5 4.5 4.5L6 12.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
-}
-
-function SpinnerIcon() {
-  return <Spinner size="sm" className="shrink-0" />
 }
 
 function ToolIcon() {

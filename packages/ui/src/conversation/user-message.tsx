@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react'
 
-import { cn } from '../utils'
+import { cn, focusRing } from '../utils'
 import type { ConversationTurn, DisplayAttachment } from './fold'
 import { CopyButton, TurnTimestamp } from './turn-controls'
 
@@ -36,7 +36,7 @@ function DefaultAttachment({ attachment }: { attachment: DisplayAttachment }) {
       className={cn(
         'inline-flex min-h-bakin-8 max-w-full items-center gap-bakin-2 rounded-bakin-control border border-bakin-border-subtle',
         'bg-bakin-surface-default px-bakin-3 py-bakin-2 text-bakin-text-primary underline-offset-4 hover:underline',
-        'outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
+        focusRing,
       )}
     >
       <FileIcon />

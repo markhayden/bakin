@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { BoundedOverflow } from '../layout/bounded-overflow'
+import { axisLabel, contiguousSegments, shouldRenderXLabel } from './axis'
 import { ChartDataTable, type ChartDatum, type ChartSeries } from './chart-data-table'
 import { ChartTooltip } from './chart-tooltip'
 import { assignSeriesColors } from './palette'
@@ -66,33 +67,10 @@ function xPosition(index: number, count: number, width: number): number {
   return count <= 1 ? LEFT + plotWidth / 2 : LEFT + (index / (count - 1)) * plotWidth
 }
 
-function shouldRenderXLabel(index: number, count: number): boolean {
-  if (count <= 6) return true
-  return index === count - 1 || index % Math.ceil(count / 6) === 0
-}
-
-function axisLabel(label: string): string {
-  return label.length <= 14 ? label : `${label.slice(0, 13)}…`
-}
-
 function xLabelAnchor(index: number, count: number): 'start' | 'middle' | 'end' {
   if (index === 0) return 'start'
   if (index === count - 1) return 'end'
   return 'middle'
-}
-
-function contiguousSegments(points: readonly (Point | null)[]): Point[][] {
-  const segments: Point[][] = []
-  let current: Point[] = []
-  for (const point of points) {
-    if (point) current.push(point)
-    else if (current.length > 0) {
-      segments.push(current)
-      current = []
-    }
-  }
-  if (current.length > 0) segments.push(current)
-  return segments
 }
 
 function openPath(points: readonly { x: number; y: number }[]): string {

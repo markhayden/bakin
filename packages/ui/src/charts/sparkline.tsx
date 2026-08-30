@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 
+import { contiguousSegments } from './axis'
 import { ChartDataTable } from './chart-data-table'
 import { ChartTooltip } from './chart-tooltip'
 import { CHART_SERIES_COLORS } from './palette'
@@ -28,22 +29,6 @@ interface Point {
 
 interface ActivePoint extends Point {
   text: string
-}
-
-function contiguousSegments(points: readonly (Point | null)[]): Point[][] {
-  const segments: Point[][] = []
-  let current: Point[] = []
-
-  for (const point of points) {
-    if (point) {
-      current.push(point)
-    } else if (current.length > 0) {
-      segments.push(current)
-      current = []
-    }
-  }
-  if (current.length > 0) segments.push(current)
-  return segments
 }
 
 /** Compact exact trend summary; pair it with visible current value and direction copy. */

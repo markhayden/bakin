@@ -30,7 +30,7 @@ mock.module('@tanstack/react-router', () => ({
 
 import { GlobalSearchOverlay } from '../../packages/host/src/components/search/global-search-overlay'
 import { registerPlugin, unregisterPlugin } from '../../packages/sdk/src/register'
-import { configureLazyPlugins, setLazyPluginLoader, setPluginLoadState } from '../../packages/sdk/src/lazy'
+import { configureLazyPlugins, setLazyPluginLoader, setPluginLoadState } from '../../packages/sdk/src/internal/lazy'
 
 function mockSearchFetch(handler: (url: string) => { status: number; body: unknown }) {
   ;(globalThis as Record<string, unknown>).fetch = mock((url: string) =>

@@ -50,32 +50,32 @@ export { parseSearchPlain, stringifySearchPlain } from '../navigation/search-par
 
 // ── Lazy plugin loading (manifest-driven demand loading) ────────────────────
 /** Install the manifest-derived slot/route ownership index for lazy loading. */
-export { configureLazyPlugins } from '../lazy'
+export { configureLazyPlugins } from './lazy'
 /** Install the demand loader that imports a plugin's client bundle. */
-export { setLazyPluginLoader } from '../lazy'
+export { setLazyPluginLoader } from './lazy'
 /** Report a plugin client's load progress: idle → loading → loaded | error. */
-export { setPluginLoadState } from '../lazy'
+export { setPluginLoadState } from './lazy'
 /** Current load state for a plugin client. Unknown plugins report 'idle'. */
-export { getPluginLoadState } from '../lazy'
+export { getPluginLoadState } from './lazy'
 /** Last load error message for a plugin whose state is 'error', if any. */
-export { getPluginLoadError } from '../lazy'
+export { getPluginLoadError } from './lazy'
 /** Plugins whose manifests declare the given slot in `contributes.slots`. */
-export { getSlotOwners } from '../lazy'
+export { getSlotOwners } from './lazy'
 /** Plugins whose manifest `contributes.routes` patterns match a pathname. */
-export { getRouteOwners } from '../lazy'
+export { getRouteOwners } from './lazy'
 /** Ask the host to lazy-load every idle plugin that fills the named slot. */
-export { requestSlotPlugins } from '../lazy'
+export { requestSlotPlugins } from './lazy'
 /** Ask the host to lazy-load every idle plugin whose route patterns match the pathname. */
-export { requestRoutePlugins } from '../lazy'
+export { requestRoutePlugins } from './lazy'
 /** Ask the host to lazy-load every idle plugin — cross-plugin surfaces (⌘K search). */
-export { requestAllPlugins } from '../lazy'
+export { requestAllPlugins } from './lazy'
 /** Reset a failed plugin to idle and re-request its client bundle. */
-export { retryPluginLoad } from '../lazy'
+export { retryPluginLoad } from './lazy'
 /** Monotonic lazy-store version for useSyncExternalStore consumers. */
-export { getLazyPluginsVersion } from '../lazy'
+export { getLazyPluginsVersion } from './lazy'
 /** Subscribe to lazy-plugin store mutations. Returns an unsubscribe fn. */
-export { subscribeLazyPlugins } from '../lazy'
-export type { LazyPluginIndex, PluginLoadState } from '../lazy'
+export { subscribeLazyPlugins } from './lazy'
+export type { LazyPluginIndex, PluginLoadState } from './lazy'
 
 // ── Plugin UI ownership (host-injected; not an author-facing component) ────
 /** Transparent DOM/context boundary used around registered page and slot UI. */

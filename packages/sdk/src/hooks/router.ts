@@ -8,9 +8,9 @@ export {
   usePathname,
   useRouter,
   useSearchParams,
-} from '@makinbakin/sdk/navigation'
+} from '../navigation'
 export type {
   Router,
   RouterNavigationOptions,
   StringNavigationOptions,
-} from '@makinbakin/sdk/navigation'
+} from '../navigation'

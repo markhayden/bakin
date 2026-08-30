@@ -2,6 +2,7 @@
 
 import { useId, useMemo } from 'react'
 
+import { reportedValue } from './axis'
 import { ChartDataTable, chartSeriesColor, type ChartDatum, type ChartSeries } from './chart-data-table'
 import { chartToneColor, type ChartTone } from './palette'
 
@@ -40,10 +41,6 @@ export interface RankedBarChartProps {
 }
 
 const MUTED_TOTAL_OPACITY = 0.45
-
-function reportedValue(value: number | undefined): number | null {
-  return Number.isFinite(value) && value! >= 0 ? value! : null
-}
 
 /**
  * Ranked single-unit comparison with full labels, visible exact values, and

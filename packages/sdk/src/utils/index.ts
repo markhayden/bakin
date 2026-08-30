@@ -18,35 +18,15 @@ export {
   healthResourceId,
   healthUnknown,
   healthWarning,
-} from '../../../core/src/health/observation-builders'
+} from '@bakin/core/health/observation-builders'
 
 /** Tailwind class merger (clsx + tailwind-merge). */
-export { cn } from '../../../../src/lib/utils'
+export { cn } from '@bakin/ui/utils'
+// The one focus-ring spelling; see the Component Internals Contract in the UI overview.
+export { focusRing, focusRingInset } from '@bakin/ui/utils'
 // Clipboard write that works on the tailnet's plain-HTTP origin (where
 // navigator.clipboard is undefined) — resolves true only on a real copy.
 export { copyToClipboard } from '@bakin/ui'
-
-/** Semantic tone for an outline status badge. */
-export type BadgeTone = 'success' | 'pending' | 'error' | 'muted' | 'info'
-
-// Full literal class strings (not template-constructed) so Tailwind's content
-// scanner detects them — `@source` covers this file. Maps the codebase's
-// `bg-X-500/10 text-X-400 border-X-500/20` outline-badge idiom onto five tones.
-const TONE_BADGE_CLASS: Record<BadgeTone, string> = {
-  success: 'bg-green-500/10 text-green-400 border-green-500/20',
-  pending: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  error: 'bg-red-500/10 text-red-400 border-red-500/20',
-  muted: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
-  info: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-}
-
-/**
- * Classes for an outline status badge of the given tone — the
- * `bg-X-500/10 text-X-400 border-X-500/20` idiom, used with `<Badge variant="outline">`.
- */
-export function toneBadgeClass(tone: BadgeTone): string {
-  return TONE_BADGE_CLASS[tone]
-}
 
 /** Pure assetId shape validators (see ./asset-id). */
 export { isValidAssetId, yearMonthFromAssetId } from './asset-id'

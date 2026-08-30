@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { copyToClipboard } from '../clipboard'
+import { copyToClipboard } from '../behaviors/clipboard'
 import { Button } from '../primitives/button'
 import { cn } from '../utils'
 

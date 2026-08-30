@@ -22,21 +22,13 @@ import {
   SystemState,
   Text,
 } from '@bakin/ui'
+import { cn } from '@bakin/ui/utils'
 
-function classNames(...values: Array<string | false | null | undefined>): string {
-  return values.filter(Boolean).join(' ')
-}
-
-const presentationColor = /^(?:#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})|(?:rgb|hsl)a?\([0-9.,%+\-\s/]+\)|var\(--[a-z0-9][a-z0-9-]*\)|[a-z]+)$/i
-
-function safePresentationColor(value?: string): string | undefined {
-  const color = value?.trim()
-  return color && presentationColor.test(color) ? color : undefined
-}
+import { safePresentationColor } from './presentation-color'
 
 function AssetGlyph({ className }: { className?: string }) {
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className={classNames('fill-none stroke-current stroke-[1.6]', className)}>
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={cn('fill-none stroke-current stroke-[1.6]', className)}>
       <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
       <circle cx="9" cy="10" r="2" />
       <path d="m5.5 17 4.2-4 2.8 2.6 2.7-2.8 3.3 4.2" strokeLinecap="round" strokeLinejoin="round" />
@@ -102,7 +94,7 @@ function AssetThumbnail({ asset, view }: { asset: AssetPickerAsset; view: AssetP
   return (
     <span
       aria-hidden="true"
-      className={classNames(
+      className={cn(
         'flex shrink-0 items-center justify-center overflow-hidden rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default text-bakin-text-muted',
         view === 'grid' ? 'aspect-square w-full' : 'size-bakin-8',
       )}
@@ -131,7 +123,7 @@ function AssetChoices({
     <ul
       data-asset-picker-choices=""
       data-view={view}
-      className={classNames(
+      className={cn(
         'm-0 min-w-0 list-none p-0',
         view === 'grid' ? 'grid grid-cols-2 gap-bakin-2 sm:grid-cols-4' : 'grid grid-cols-1 gap-bakin-1',
       )}
@@ -145,7 +137,7 @@ function AssetChoices({
             onClick={() => onPick(asset.id)}
             aria-label={`Select ${asset.label}`}
             data-asset-picker-item={asset.id}
-            className={classNames(
+            className={cn(
               'h-auto min-w-0 max-w-full text-left',
               view === 'grid'
                 ? 'w-full flex-col items-stretch justify-start gap-bakin-2 p-bakin-2'
@@ -203,7 +195,7 @@ function AssetPickerPanel({
       <div
         {...resolvedDropProps}
         data-drop-active={dropActive || undefined}
-        className={classNames(
+        className={cn(
           'flex min-w-0 flex-col gap-bakin-2 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default p-bakin-2 transition-colors sm:flex-row sm:items-center',
           dropActive && 'border-bakin-focus-ring',
           dropClassName,
@@ -287,7 +279,7 @@ export function AssetPicker(props: AssetPickerProps) {
 
   if (props.variant === 'inline') {
     return (
-      <section aria-label={title} data-asset-picker="" data-variant="inline" className={classNames('grid min-w-0 gap-bakin-3', props.className)}>
+      <section aria-label={title} data-asset-picker="" data-variant="inline" className={cn('grid min-w-0 gap-bakin-3', props.className)}>
         <header className="grid min-w-0 gap-bakin-1">
           <h2 className="m-0 [font-size:var(--bakin-typography-size-title)] font-bakin-typography-weight-semibold text-bakin-text-primary">{title}</h2>
           <Text as="p" tone="muted">{description}</Text>
@@ -299,7 +291,7 @@ export function AssetPicker(props: AssetPickerProps) {
 
   return (
     <Dialog open={props.open} onOpenChange={(open) => props.onOpenChange(open)} busy={props.busy}>
-      <DialogContent data-asset-picker="" data-variant="dialog" className={classNames('max-w-3xl', props.className)}>
+      <DialogContent data-asset-picker="" data-variant="dialog" className={cn('max-w-3xl', props.className)}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -466,7 +458,7 @@ export function ColorPicker({
       aria-describedby={ariaDescribedBy}
       aria-invalid={ariaInvalid}
       data-color-picker=""
-      className={classNames('flex min-w-0 flex-wrap gap-bakin-2', className)}
+      className={cn('flex min-w-0 flex-wrap gap-bakin-2', className)}
       style={{ maxInlineSize: colorRowCap(columns) }}
     >
       {options.map((option, index) => {

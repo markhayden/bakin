@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 
-import { Avatar, AvatarFallback, AvatarImage } from '../primitives/avatar'
+import { usePersistedLeadingEdgeResize } from '../behaviors/use-persisted-leading-edge-resize'
 import { cn } from '../utils'
 import {
   type AgentTurnProps,
@@ -19,32 +19,18 @@ import {
   type ConversationMessage,
   type ConversationToolCall,
 } from './fold'
+import { DefaultAvatar } from './glyphs'
 import {
   QueuedMessageList,
   type ConversationQueuedItem,
 } from './queued-message-list'
+import { ResizeHandle } from './resize-handle'
 import { ToolCallDrawer } from './tool-call-drawer'
 import type { ConversationAttachmentRenderer } from './user-message'
-import { usePersistedLeadingEdgeResize } from './use-persisted-leading-edge-resize'
 
 const PANEL_DEFAULT_HEIGHT = 420
 const PANEL_MIN_HEIGHT = 240
 const PANEL_MAX_HEIGHT = 800
-
-function initials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean)
-  if (words.length === 0) return '?'
-  return words.slice(0, 2).map((word) => word[0]).join('').toUpperCase()
-}
-
-function DefaultHeaderAvatar({ agent }: { agent: ConversationAgent }) {
-  return (
-    <Avatar size="xs">
-      {agent.avatarUrl ? <AvatarImage src={agent.avatarUrl} alt="" /> : null}
-      <AvatarFallback>{initials(agent.name)}</AvatarFallback>
-    </Avatar>
-  )
-}
 
 /** Props for a bounded, single-session conversation embedded in a host surface. */
 export interface ConversationPanelProps {
@@ -171,13 +157,12 @@ export function ConversationPanel({
       style={panelStyle}
     >
       {!fitParent ? (
-        <div
-          {...handleProps}
-          aria-label="Resize conversation panel"
-          className="group/handle flex h-bakin-2 w-full shrink-0 touch-none cursor-row-resize items-center justify-center outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-bakin-focus-ring"
-        >
-          <span className="h-px w-bakin-8 rounded-bakin-pill bg-bakin-border-subtle opacity-0 transition-opacity group-hover/handle:opacity-100 group-focus-visible/handle:opacity-100" />
-        </div>
+        <ResizeHandle
+          orientation="horizontal"
+          handleProps={handleProps}
+          label="Resize conversation panel"
+          className="flex h-bakin-2 w-full shrink-0 cursor-row-resize"
+        />
       ) : null}
 
       {showHeader ? (
@@ -186,7 +171,7 @@ export function ConversationPanel({
           titleAs="h2"
           avatar={agent ? (
             <span aria-hidden="true" className="shrink-0">
-              {renderAvatar ? renderAvatar(agent) : <DefaultHeaderAvatar agent={agent} />}
+              {renderAvatar ? renderAvatar(agent) : <DefaultAvatar agent={agent} size="xs" />}
             </span>
           ) : undefined}
           title={title ?? 'Conversation'}

@@ -21,7 +21,7 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 import { act, fireEvent, render } from '@testing-library/react'
 import '../rtl-settle'
 
-import { copyToClipboard } from '../../packages/ui/src/clipboard'
+import { copyToClipboard } from '../../packages/ui/src/behaviors/clipboard'
 import { CopyButton } from '@makinbakin/sdk/patterns'
 import { waitUntil } from '../helpers/wait'
 
