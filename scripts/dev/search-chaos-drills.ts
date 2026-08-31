@@ -15,8 +15,10 @@ import { join } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-const DEV_BINARY = '/Users/roscoe/go/src/github.com/antflydb/antfly-main/zig/zig-out/bin/antfly'
-const REPO = '/Users/roscoe/go/src/github.com/markhayden/bakin'
+// Drills exercise the PINNED engine by default (the machine install);
+// BAKIN_ANTFLY_BIN points them at a dev build or a staged evaluation binary.
+const DEV_BINARY = process.env.BAKIN_ANTFLY_BIN ?? join(homedir(), '.antfly', 'bin', 'antfly')
+const REPO = join(import.meta.dir, '..', '..')
 
 // ONE BAKIN_HOME for the whole run, set BEFORE any repo import —
 // getContentDir() caches on first resolution, so per-drill reassignment
