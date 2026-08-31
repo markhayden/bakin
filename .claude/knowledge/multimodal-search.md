@@ -57,15 +57,19 @@ plain formats read directly, PDF via lazy `pdf-parse` with a 100-page cap,
 design-tool PDFs, and Bakin-side extraction also feeds BM25 keyword search.
 The engine never reads local files except `media_url` bytes.
 
-## Mixed corpora and antfly#319
+## Mixed corpora (antfly#319: RESOLVED at 0.2.0)
 
-A table where some docs have `media_url` and some don't is the NORMAL case —
-and upstream's backfill accounting never reaches "complete" when the template
-skips docs ([antflydb/antfly#319](https://github.com/antflydb/antfly/issues/319)).
-The adapter's `mapIndexStatuses` applies idle-detection (pending 0 + no
-active batch + not retrying ⇒ ready); a canary in
-`tests/integration/antfly/workaround-regressions.test.ts` fails when upstream
-fixes the accounting so the override can be deleted.
+A table where some docs have `media_url` and some don't is the NORMAL case.
+The old failure — backfill accounting never reaching "complete" when the
+template skips docs
+([antflydb/antfly#319](https://github.com/antflydb/antfly/issues/319)) — is
+fixed in the 0.2.0 pin: skip-heavy corpora clear their flags honestly at
+idle, proven at scale including interrupted rebuilds (gate T7,
+`tasks/evidence-antfly-0.2.0.md`). The `mapIndexStatuses` idle-detection
+override was deleted 2026-08-31; guards in
+`tests/integration/antfly/workaround-regressions.test.ts` fail if the lying
+flags ever return. An interrupted backfill leaves a sticky-honest
+`backfill_state:"degraded"` scar on a fully functional leg (maps ready).
 
 ## Fusion + debug scores
 

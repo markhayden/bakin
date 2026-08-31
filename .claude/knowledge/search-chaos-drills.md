@@ -1,13 +1,23 @@
 # Search Chaos Drills — Results Record
 
-Spec T22. Every drill runs against a REAL engine (dev build `6538c0774` +
-bakin#317 patch) with fully ephemeral state (temp BAKIN_HOME, temp data
-dirs, random ports — never `~/.bakin`, never the live 3737/3738 servers).
+Spec T22. Every drill runs against a REAL engine with fully ephemeral state
+(temp BAKIN_HOME, temp data dirs, random ports — never `~/.bakin`, never the
+live 3737/3738 servers). The engine binary defaults to the pinned machine
+install (`~/.antfly/bin/antfly`); `BAKIN_ANTFLY_BIN` overrides.
 
 **Re-run:** `bun scripts/dev/search-chaos-drills.ts` (manually invoked; NOT
 part of `bun run test`; exits non-zero on any drill failure).
 
-## Results — 2026-07-03, all five PASS
+## Results — 2026-08-31, antfly 0.2.0 final, all five PASS
+
+Re-run on the target M4 against the release binary as part of the 0.2.0
+adoption gate (`tasks/evidence-antfly-0.2.0.md`) — post-de-hardening code
+(no write gate, sync backfill, per-index leg creation). All five drills
+passed in under 30 s total: engine-SIGKILL resume, process-SIGKILL resume,
+550-write outage drain with no-op re-enqueue, wipe detection + rebuild
+(200 docs), and upgrade-under-load with 68/68 writes landed, 0 pending.
+
+## Results — 2026-07-03 (dev build `6538c0774` + bakin#317 patch), all five PASS
 
 | # | drill | observed |
 |---|---|---|

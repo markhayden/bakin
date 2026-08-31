@@ -31,7 +31,7 @@ import {
   buildBatchDeletes,
   buildBatchInserts,
   buildQueryRequest,
-  buildTableCreate,
+  buildTableProvisioning,
   embedderUsable,
   mapIndexStatuses,
   mapQueryResponse,
@@ -49,6 +49,8 @@ const MIN_RETRY_BUDGET_MS = 100
 const SCAN_FALLBACK_MAX_ROWS = 250
 const SCAN_FALLBACK_MAX_MS = 750
 const WRITE_TIMEOUT_MS = 30_000
+/** Sync batch writes wait for full_index across a whole backfill chunk. */
+const SYNC_BATCH_TIMEOUT_MS = 120_000
 const AVAILABLE_TTL_MS = 3_000
 
 export interface AntflyClientOpts {
@@ -174,14 +176,22 @@ export class AntflySearchClient implements SearchAdapter {
       }
       return []
     },
-    // Creates/drops ride the write gate too: they provision/tear down
-    // embedding legs, and concurrent structural ops are part of the same
-    // Metal-crash surface as concurrent batch writes (2026-07-22 ladder).
+    // The rc.18-era process-wide write gate is GONE (2026-08-31): 0.2.0
+    // survives concurrent embed-bearing writes (45-min 3-stream soak,
+    // 9,843 batches) AND concurrent structural create/drop pipelines —
+    // both probed on the target hardware (tasks/evidence-antfly-0.2.0.md).
     create: async (name: string, config: TableConfig): Promise<void> => {
-      await this.serializedWrite(() => this.request('POST', paths.table(name), buildTableCreate(config, this.settings)))
+      const plan = buildTableProvisioning(config, this.settings)
+      await this.request('POST', paths.table(name), plan.table)
+      // Embeddings legs ride the per-index endpoint — the only create path
+      // whose enrichment worker actually starts on 0.2.0 — and MUST land
+      // before the first document write (see buildTableProvisioning).
+      for (const index of plan.indexes) {
+        await this.request('POST', paths.index(name, index.name), index)
+      }
     },
     drop: async (name: string): Promise<void> => {
-      await this.serializedWrite(() => this.request('DELETE', paths.table(name)))
+      await this.request('DELETE', paths.table(name))
     },
     stats: async (name: string): Promise<TableStats | null> => {
       // Doc count from index status, NEVER a query (queries can hang during backfill).
@@ -211,41 +221,26 @@ export class AntflySearchClient implements SearchAdapter {
     }
   }
 
-  /**
-   * ONE write in flight, ever, process-wide. Root-caused 2026-07-22 via a
-   * minimal shell ladder: THREE parallel batch-write streams into
-   * embedding-leg tables CRASH the engine outright
-   * (metal-command-buffer-failed, MTLCommandBufferErrorDomain, process
-   * exit) — reproducible with plain curl, no Bakin involved. launchd's
-   * respawn masked the crash as mysterious "wedging" for a whole night.
-   * Serializing writes at the client honors the engine's real concurrency
-   * contract; reads are unaffected. Remove when upstream survives
-   * concurrent embed-bearing writes (antfly issue pending).
-   */
-  private writeGate: Promise<unknown> = Promise.resolve()
-  private serializedWrite<T>(fn: () => Promise<T>): Promise<T> {
-    const next = this.writeGate.then(fn, fn)
-    this.writeGate = next.catch(() => {})
-    return next
-  }
-
   documents = {
     index: async (table: string, key: string, doc: Document): Promise<void> => {
-      await this.serializedWrite(() => this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc }])))
+      await this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc }]))
     },
     batchIndex: async (table: string, items: IndexItem[], opts?: { sync?: boolean }): Promise<BatchResult> => {
       if (items.length === 0) return { indexed: 0, failed: [] }
-      const result = await this.serializedWrite(() =>
-        this.requestJson<WireBatchResponse>('POST', paths.batch(table), buildBatchInserts(items, opts)))
+      // Sync (default) waits for full_index on the whole chunk — embed-heavy
+      // 50-doc backfill chunks can legitimately take tens of seconds, so the
+      // batch write gets its own generous ceiling instead of the 30s default.
+      const result = await this.requestJson<WireBatchResponse>(
+        'POST', paths.batch(table), buildBatchInserts(items, opts),
+        opts?.sync === false ? undefined : SYNC_BATCH_TIMEOUT_MS)
       return { indexed: result?.inserted ?? items.length, failed: [] }
     },
     remove: async (table: string, key: string): Promise<void> => {
-      await this.serializedWrite(() => this.request('POST', paths.batch(table), buildBatchDeletes([key])))
+      await this.request('POST', paths.batch(table), buildBatchDeletes([key]))
     },
     batchRemove: async (table: string, keys: string[]): Promise<number> => {
       if (keys.length === 0) return 0
-      const result = await this.serializedWrite(() =>
-        this.requestJson<WireBatchResponse>('POST', paths.batch(table), buildBatchDeletes(keys)))
+      const result = await this.requestJson<WireBatchResponse>('POST', paths.batch(table), buildBatchDeletes(keys))
       return result?.deleted ?? 0
     },
     get: async (table: string, key: string): Promise<Document | null> => {
@@ -264,7 +259,7 @@ export class AntflySearchClient implements SearchAdapter {
       const current = await this.documents.get(table, key)
       if (!current) return // absent — nothing to transform
       const next = await fn(current)
-      await this.serializedWrite(() => this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc: next }])))
+      await this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc: next }]))
     },
   }
 
@@ -431,8 +426,8 @@ export class AntflySearchClient implements SearchAdapter {
   }
 
   async *scan(table: string, opts?: ScanOpts, timeoutMs?: number): AsyncIterable<ScannedDocument> {
-    // The lookup endpoint requires a body — `{}` scans all keys.
-    const body = opts?.fields?.length ? { fields: opts.fields } : {}
+    // Bodyless scans all keys (legal since 0.2.0); a body only narrows fields.
+    const body = opts?.fields?.length ? { fields: opts.fields } : undefined
     const response = await this.request('POST', paths.lookup(table), body, timeoutMs)
     const text = await response.text()
     let warnedKeyless = false

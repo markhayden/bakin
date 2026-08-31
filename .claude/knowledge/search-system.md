@@ -36,7 +36,7 @@ Degradation is honest, never silent, and never lossy:
 adapter's release host (SHA256-verified against
 `packages/adapter-antfly/src/pin.ts` — no brew/npm/python/sudo) into
 `~/.antfly/bin/antfly`, then provisions an **OS-supervised service** running
-`antfly swarm` on `127.0.0.1:3738` (health port 3739) with data under
+`antfly standalone` on `127.0.0.1:3738` (health port 3739) with data under
 `~/.bakin/antfly/` and logs at `~/.bakin/logs/antfly.log`. Bakin is a pure
 HTTP client; the OS owns start, keep-alive, and crash-restart.
 
@@ -222,9 +222,10 @@ no state file — each content type declares its own `schemaVersion`.
   re-provisions the OS service unit unconditionally (argv must match the
   binary being installed) and, on a version change, CLEARS the derived
   engine data dir — the repair reindex regenerates every table from source.
-  In-place engine-side file-format migrations are never trusted again
-  (rc.18→rc.21 migrated one-way, stalled the data plane, and broke
-  rollback).
+  In-place engine-side file-format migrations are never trusted (the rc
+  line migrated one-way and broke rollback; 0.2.0 doesn't migrate at all —
+  it refuses foreign-version data loudly in BOTH directions and leaves the
+  bytes untouched, so wipe+reindex is the only correct move either way).
 
 ### Boot does nothing (guarantee)
 
@@ -501,27 +502,24 @@ weights come from the content type's `indexes[].weight` and ride
 - **`_index_scores` keys are neutral leg names** (`full_text`, the declared
   embedding-leg names) — they map 1:1 onto `scoreBreakdown` with no
   normalization. Embedding legs report `-cosine_distance`.
-- **`filter_query` is BROKEN on the pinned Zig engine** (rejects
-  `match_phrase`, analyzer-mangles keyword matches — live-probed, canary-
-  pinned). Filters compose INTO the `full_text_search` node
-  (`composeFtsWithFilters`) and force the FTS-only lane so an unfiltered
-  semantic leg can't leak filter-violating docs. Delete when upstream fixes
-  `filter_query` (canary flips).
-- **`order_by` LANDED in rc.18** (public exact-sort with a SortField
-  contract + 422 rejection taxonomy) but only for schema-mapped sortable
-  fields — Bakin sends no schema (type inference), and no Bakin surface
-  offers field sort, so `Query.sort` is still never sent. Adopt only when a
-  sort feature exists: declare sortable field capabilities at create, then
-  map `Query.sort → order_by`.
+- **`filter_query` WORKS on 0.2.0 and filters BOTH lanes** (keyword
+  equality incl. hyphenated values, should-IN disjuncts, numeric ranges,
+  must_not — live-probed 2026-08-31; the rc.17 filter-in-AST workaround is
+  gone). Filtered searches keep the semantic lane: the no-leak property is
+  guarded in workaround-regressions. One engine rule: a pure-negation
+  filter_query matches NOTHING — `buildFilterQuery` adds a `match_all`
+  base conjunct for exclusion-only filters.
+- **`order_by` still 422s on inferred fields** (0.2.0 unchanged: only
+  schema-mapped sortable fields sort; the create response now returns
+  `field_capabilities` per field — the adoption path if a sort feature ever
+  exists). Bakin sends no schema, so `Query.sort` is never sent.
 - **`timeout_ms` (rc.18) is the cooperative server-side query deadline**
   (expiry → 504). Bakin sends it on every budgeted query — see Latency
   Contract below.
-- **Totals are page-scoped** without `count: true`. `limit: 0` flows send
-  `count: true` (true total + full-corpus facet buckets; incompatible with a
-  reranker — a count has nothing to rerank). Queries that want hits AND true
-  totals (semantic or faceted flows) run a **companion count query** in
-  parallel (`toCountRequest`); if it fails, totals/facets fall back to page
-  scope.
+- **Totals are corpus-true `{value, relation}` objects on every response**
+  (since rc.18; the page-scoped count twin was deleted and this is now a
+  guard). `limit: 0` flows still send `count: true` (count-only; a reranker
+  cannot ride a count — server 400).
 - **`semantic + offset > 0` hard-400s** — offset is only sent on
   FTS-only queries.
 - **The semantic leg requires concrete index names** — naming none (or a
@@ -530,21 +528,37 @@ weights come from the content type's `indexes[].weight` and ride
   query is naturally FTS-only. No server introspection.
 - **`sync_level: 'full_index'`** on every batch write (`aknn` was removed
   upstream — using it 500s).
-- **Scans** go through `POST /db/v1/tables/{t}/lookup`, which requires a body
-  (`{}` scans all keys), and stream NDJSON rows keyed by `key` (older docs
-  said `_key`; both accepted). `batchRemove` returns attempted counts.
+- **Scans** go through `POST /db/v1/tables/{t}/documents` (the old
+  `/lookup` is 405), bodyless for all-keys (legal since 0.2.0; a body only
+  narrows `fields`), streaming NDJSON rows keyed by `_id`. `batchRemove`
+  returns attempted counts.
 - **Table creates carry no `schema`** (type inference covers Bakin's needs)
-  and no full-text index entry (the server always creates its own); embedding
-  indexes carry explicit `dimension`. Embedders always run **in-process** —
-  an inference `url` flips antfly onto an external HTTP path whose failures
+  and no full-text index entry (the server always creates its own).
+  **Embedding legs are created via `POST /db/v1/tables/{t}/indexes/{name}`
+  AFTER the table create and BEFORE the first doc write** — 0.2.0 silently
+  ignores inline `indexes` at table-create (accepted + stored, enrichment
+  never starts; ticketed upstream), and adding a leg to a POPULATED table
+  wedges it durably (drop-and-rebuild is the repair). Embedding indexes
+  carry explicit `dimension`; embedders always run **in-process** — an
+  inference `url` flips antfly onto an external HTTP path whose failures
   wedge backfills.
 - **No server-side query cancellation** — client timeouts abandon the request
   (15s queries, 30s writes).
 - `GET /db/v1/tables/{t}/indexes` → per-index `{config, status}` with
   `rebuilding`, `total_indexed`, `backfill_state`, `doc_count`,
-  `worker_failed` — the source for `tables.health()` and doc counts
-  (`tables.stats()` reads it too; **never a query**, which can hang during
-  backfill).
+  `worker_failed`, and (0.2.0) a rich `enrichment_runtime`
+  (`worker_started`, pending/active/error counters) — the source for
+  `tables.health()` and doc counts (`tables.stats()` reads it too; **never
+  a query**, which can hang during backfill). Flags are honest on 0.2.0
+  (the empty-table and #319 idle-detection overrides are gone); an
+  interrupted backfill leaves a sticky-honest `backfill_state:"degraded"`
+  scar on a fully functional leg, which maps ready.
+- **Writes are concurrency-safe on 0.2.0** — the rc.18 process-wide client
+  write gate is gone (45-min 3-stream embed soak + 8-way structural
+  concurrency probed on the target hardware). Blue/green backfills write
+  sync chunks (contract default) on the fast write-path embed lane; async
+  (`sync:false`) docs drain through the engine's paced catch-up loop at
+  ~4 docs/s — avoid it for bulk work.
 
 Each still-standing engine constraint has a regression pin in
 `tests/integration/antfly/workaround-regressions.test.ts` written to FAIL when

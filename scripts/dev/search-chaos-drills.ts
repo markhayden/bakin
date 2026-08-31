@@ -15,8 +15,10 @@ import { join } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-const DEV_BINARY = '/Users/roscoe/go/src/github.com/antflydb/antfly-main/zig/zig-out/bin/antfly'
-const REPO = '/Users/roscoe/go/src/github.com/markhayden/bakin'
+// Drills exercise the PINNED engine by default (the machine install);
+// BAKIN_ANTFLY_BIN points them at a dev build or a staged evaluation binary.
+const DEV_BINARY = process.env.BAKIN_ANTFLY_BIN ?? join(homedir(), '.antfly', 'bin', 'antfly')
+const REPO = join(import.meta.dir, '..', '..')
 
 // ONE BAKIN_HOME for the whole run, set BEFORE any repo import —
 // getContentDir() caches on first resolution, so per-drill reassignment
@@ -68,7 +70,7 @@ async function startEngine(root: string, port: number, binary = DEV_BINARY): Pro
     if (existsSync(src) && !existsSync(dst)) symlinkSync(src, dst)
   }
   const fd = openSync(join(root, 'engine.log'), 'a')
-  const proc = spawn(binary, ['swarm', '--host', '127.0.0.1', '--port', String(port), '--health-port', String(port + 1),
+  const proc = spawn(binary, ['standalone', '--host', '127.0.0.1', '--port', String(port), '--health-port', String(port + 1),
     '--data-dir', dataDir, '--models-dir', modelsDir], { stdio: ['ignore', fd, fd] })
   const deadline = Date.now() + 120_000
   while (Date.now() < deadline) {

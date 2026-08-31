@@ -27,7 +27,7 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 import {
   buildQueryRequest,
   buildFilterQuery,
-  buildTableCreate,
+  buildTableProvisioning,
   buildBatchInserts,
   buildBatchDeletes,
   mapQueryResponse,
@@ -65,23 +65,21 @@ describe('buildQueryRequest', () => {
     })
   })
 
-  it('filters drop the semantic leg — an unfiltered lane would leak filter-violating docs', () => {
+  it('filters KEEP the semantic leg — filter_query constrains both lanes on 0.2.0', () => {
+    // The rc.17-era FTS-only forcing is gone: the no-leak property of
+    // filter_query on semantic/hybrid lanes is live-probed (evidence file)
+    // and guarded by workaround-regressions.
     const req = buildQueryRequest('t', {
       text: 'dark dashboard',
       filters: [{ field: 'agent', op: 'eq', value: 'pixel' }],
       adapterOptions: { searchableFields: ['title'], indexes: ['assets_text'] },
     }, S)
-    expect(req.semantic_search).toBeUndefined()
-    expect(req.merge_config).toBeUndefined()
-    expect(req.full_text_search).toEqual({
-      must: { conjuncts: [
-        { match: 'dark dashboard', field: 'title' },
-        { match_phrase: 'pixel', field: 'agent' },
-      ] },
-    })
+    expect(req.semantic_search).toBe('dark dashboard')
+    expect(req.full_text_search).toEqual({ match: 'dark dashboard', field: 'title' })
+    expect(req.filter_query).toEqual({ match_phrase: 'pixel', field: 'agent' })
   })
 
-  it('filters compose INTO the full_text_search node (rc.17: filter_query is broken)', () => {
+  it('filters ride filter_query; the full_text_search node stays clean', () => {
     const req = buildQueryRequest('t', {
       text: 'cats',
       strategy: 'fts',
@@ -92,12 +90,9 @@ describe('buildQueryRequest', () => {
       ],
       adapterOptions: { searchableFields: ['title'] },
     }, S)
-    // filter_query must NEVER be sent: rc.17 400s on match_phrase nodes and
-    // analyzer-mangles `match` on keyword fields (live-probed 2026-07-04).
-    expect(req.filter_query).toBeUndefined()
-    expect(req.full_text_search).toEqual({
+    expect(req.full_text_search).toEqual({ match: 'cats', field: 'title' })
+    expect(req.filter_query).toEqual({
       must: { conjuncts: [
-        { match: 'cats', field: 'title' },
         { match_phrase: 'note', field: 'kind' },
         { min: 3, inclusive_min: true, field: 'n' },
       ] },
@@ -105,20 +100,15 @@ describe('buildQueryRequest', () => {
     })
   })
 
-  it('match-all list flow: bare filters/facets become filtered match_all full-text-only', () => {
+  it('match-all list flow: bare filters/facets become match_all + filter_query, full-text-only', () => {
     const req = buildQueryRequest('t', {
       text: '',
       filters: [{ field: 'kind', op: 'eq', value: 'note' }],
       facets: ['kind'],
       limit: 10,
     }, S)
-    expect(req.full_text_search).toEqual({
-      must: { conjuncts: [
-        { match_all: {} },
-        { match_phrase: 'note', field: 'kind' },
-      ] },
-    })
-    expect(req.filter_query).toBeUndefined()
+    expect(req.full_text_search).toEqual({ match_all: {} })
+    expect(req.filter_query).toEqual({ match_phrase: 'note', field: 'kind' })
     expect(req.semantic_search).toBeUndefined()
     expect(req.aggregations).toEqual({ kind: { type: 'terms', field: 'kind', size: 50 } })
   })
@@ -166,6 +156,12 @@ describe('buildFilterQuery', () => {
   it('numeric equality uses a closed range', () => {
     expect(buildFilterQuery([{ field: 'n', op: 'eq', value: 5 }])).toEqual({
       min: 5, max: 5, inclusive_min: true, inclusive_max: true, field: 'n',
+    })
+  })
+  it('exclusion-only filters get a match_all base — a pure-negation filter_query matches NOTHING on the engine', () => {
+    expect(buildFilterQuery([{ field: 'agent', op: 'neq', value: 'system' }])).toEqual({
+      must: { conjuncts: [{ match_all: {} }] },
+      must_not: { disjuncts: [{ match_phrase: 'system', field: 'agent' }] },
     })
   })
 })
@@ -233,9 +229,9 @@ describe('buildBatch*', () => {
   })
 })
 
-describe('buildTableCreate (capability legs)', () => {
+describe('buildTableProvisioning (capability legs)', () => {
   it('full-text legs are omitted (server-managed); embedding legs map to indexes', () => {
-    const req = buildTableCreate({
+    const plan = buildTableProvisioning({
       fields: { title: { type: 'text' } },
       legs: [
         { name: 'full_text', capability: 'full-text', fields: ['title', 'caption'] },
@@ -243,9 +239,11 @@ describe('buildTableCreate (capability legs)', () => {
         { name: 'assets_visual', capability: 'media-embedding', fields: [], mediaUrlField: 'media_url' },
       ],
     }, S)
-    expect(req.num_shards).toBe(1)
-    expect(Object.keys(req.indexes ?? {})).toEqual(['assets_text', 'assets_visual'])
-    expect(req.indexes?.assets_text).toEqual({
+    // The table body carries NO inline indexes (0.2.0 silently ignores
+    // them); legs ride the plan for per-index endpoint creation.
+    expect(plan.table).toEqual({ num_shards: 1 })
+    expect(plan.indexes.map((i) => i.name)).toEqual(['assets_text', 'assets_visual'])
+    expect(plan.indexes[0]).toEqual({
       name: 'assets_text',
       type: 'embeddings',
       template: '{{title}} {{caption}}',
@@ -253,7 +251,7 @@ describe('buildTableCreate (capability legs)', () => {
       embedder: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' },
       chunker: { provider: 'antfly', model: 'fixed', text: { target_tokens: 200, overlap_tokens: 25 } },
     })
-    expect(req.indexes?.assets_visual).toEqual({
+    expect(plan.indexes[1]).toEqual({
       name: 'assets_visual',
       type: 'embeddings',
       template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}',
@@ -273,14 +271,14 @@ describe('buildTableCreate (capability legs)', () => {
         visual: { provider: 'disabled', model: '', dimension: 0 },
       },
     }
-    const req = buildTableCreate({
+    const plan = buildTableProvisioning({
       fields: { title: { type: 'text' } },
       legs: [
         { name: 'assets_text', capability: 'text-embedding', fields: ['title'] },
         { name: 'assets_visual', capability: 'media-embedding', fields: [], mediaUrlField: 'media_url' },
       ],
     }, disabledVisual)
-    expect(Object.keys(req.indexes ?? {})).toEqual(['assets_text'])
+    expect(plan.indexes.map((i) => i.name)).toEqual(['assets_text'])
   })
 
   it('a zero-dimension embedder is treated as unusable even with a live provider', () => {
@@ -291,22 +289,22 @@ describe('buildTableCreate (capability legs)', () => {
         default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 0 },
       },
     }
-    const req = buildTableCreate({
+    const plan = buildTableProvisioning({
       fields: {},
       legs: [{ name: 'sem', capability: 'text-embedding', fields: ['title'] }],
     }, zeroDim)
-    expect(req.indexes).toBeUndefined()
+    expect(plan.indexes).toEqual([])
   })
 
   it('legacy indexes[] declarations still translate during the transition', () => {
-    const req = buildTableCreate({
+    const plan = buildTableProvisioning({
       fields: {},
       indexes: [
         { name: 'sem', fields: ['title'], kind: 'vector' },
         { name: 'ft', fields: ['title'], kind: 'text' },
       ],
     }, S)
-    expect(Object.keys(req.indexes ?? {})).toEqual(['sem'])
+    expect(plan.indexes.map((i) => i.name)).toEqual(['sem'])
   })
 })
 
@@ -324,24 +322,29 @@ describe('mapIndexStatuses', () => {
     ])
   })
 
-  // rc.18 WORKAROUND — a full_text leg (no enrichment_runtime) on an empty
-  // or fully caught-up table reports rebuilding/backfill_active FOREVER.
-  // Observed live 2026-07-11: every empty green parked because its FTS leg
-  // never went ready (bakin#spec search-trust-and-speed, GATE B). Idle
-  // detection for runtime-less legs: caught up (indexed >= docs) with the
-  // flags still up ⇒ ready.
-  it('treats a caught-up runtime-less (full_text) leg as ready despite stuck flags', () => {
+  it('an interrupted-backfill `degraded` leg maps ready — a sticky-honest scar, not a failure', () => {
+    // 0.2.0 stamps backfill_state:"degraded" permanently after an
+    // interrupted backfill even though the leg completes its work and
+    // serves correct queries (gate T7). Only real failure evidence
+    // (worker_failed / fatal errors / backfill_state:"failed") maps error.
     const entries: WireIndexStatusEntry[] = [
-      // empty table — the parked-green case
-      { config: { name: 'full_text_index_v0', type: 'full_text' }, status: { index_type: 'full_text', rebuilding: true, total_indexed: 0, backfill_active: true, backfill_state: 'running', doc_count: 0 } },
-      // caught up with docs — the stuck-flags case
-      { config: { name: 'ft2', type: 'full_text' }, status: { index_type: 'full_text', rebuilding: true, total_indexed: 60, backfill_active: true, backfill_state: 'running', doc_count: 60 } },
-      // genuinely mid-backfill — must stay building
+      { config: { name: 'sem', type: 'embeddings' }, status: { index_type: 'embeddings', rebuilding: false, total_indexed: 60, backfill_active: false, backfill_state: 'degraded', doc_count: 3000, enrichment_runtime: { pending_sequence_count: 0, retrying: false, active_embed_batch_items: 0 } } },
+    ]
+    expect(mapIndexStatuses(entries)).toEqual([
+      { leg: 'sem', state: 'ready', indexedCount: 60, pendingCount: 0 },
+    ])
+  })
+
+  it('trusts raised flags on runtime-less legs — 0.2.0 reports them honestly', () => {
+    // The rc.18 caught-up-idle override is gone: a never-written table
+    // reports ready flags on 0.2.0 (guarded in workaround-regressions), so
+    // raised flags on a full_text leg mean a real backfill.
+    const entries: WireIndexStatusEntry[] = [
+      { config: { name: 'full_text_index_v0', type: 'full_text' }, status: { index_type: 'full_text', rebuilding: false, total_indexed: 0, backfill_active: false, backfill_state: 'ready', doc_count: 0 } },
       { config: { name: 'ft3', type: 'full_text' }, status: { index_type: 'full_text', rebuilding: true, total_indexed: 10, backfill_active: true, backfill_state: 'running', doc_count: 60 } },
     ]
     expect(mapIndexStatuses(entries)).toEqual([
       { leg: 'full_text_index_v0', state: 'ready', indexedCount: 0 },
-      { leg: 'ft2', state: 'ready', indexedCount: 60 },
       { leg: 'ft3', state: 'building', indexedCount: 10 },
     ])
   })

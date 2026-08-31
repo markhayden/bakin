@@ -290,7 +290,13 @@ async function backfill(adapter: SearchAdapter, def: TableEnsureDef, physical: s
   let chunk: Array<{ key: string; doc: Document }> = []
   const flush = async () => {
     if (chunk.length === 0) return
-    await adapter.documents.batchIndex(physical, chunk, { sync: false })
+    // Sync (the contract default): each chunk waits for full indexing, so
+    // the backfill rides the engine's fast write-path embed lane and the
+    // table converges as the last chunk lands. The old { sync: false } was
+    // an rc.18-era workaround — async docs drain through antfly 0.2.0's
+    // provisioned catch-up loop at a paced ~4 docs/s (~20x slower than the
+    // write path; measured, tasks/evidence-antfly-0.2.0.md).
+    await adapter.documents.batchIndex(physical, chunk)
     noteSearchEngineProgress()
     emitted += chunk.length
     setPhase(def.logical, 'backfilling', emitted)

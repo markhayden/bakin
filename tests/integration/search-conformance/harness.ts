@@ -41,7 +41,12 @@ export function resolveAntflyBinary(): string | null {
       if (candidate !== process.env.BAKIN_ANTFLY_BIN) {
         try {
           const reported = execFileSync(candidate, ['--version'], { encoding: 'utf-8', timeout: 10_000 }).trim()
-          if (!reported.includes(ANTFLY_PIN.version)) {
+          // Exact token equality, not substring: "0.2.0-rc.18" CONTAINS
+          // "0.2.0", so an includes() check would let a stale rc binary
+          // impersonate the final-release pin (the GATE-B stale-engine
+          // incident, resurrected).
+          const token = reported.match(/\d+\.\d+\.\d+[-.\w]*/)?.[0]
+          if (token !== ANTFLY_PIN.version) {
             console.warn(
               `search-conformance: SKIPPING ${candidate} — reports "${reported}" but the pin is ${ANTFLY_PIN.version}. ` +
               'Run `bakin install search` to upgrade, or set BAKIN_ANTFLY_BIN to test this binary anyway.',
@@ -123,10 +128,11 @@ export async function spawnEphemeralAntfly(binary: string, opts: SpawnOpts = {})
   const healthPort = port + 1
 
   const argv = [
-    // rc.19+ renamed the single-process server subcommand swarm → standalone.
-    // BAKIN_ANTFLY_SUBCOMMAND overrides for cross-version evaluation runs
-    // (e.g. pointing BAKIN_ANTFLY_BIN at a pre-rc.19 binary).
-    process.env.BAKIN_ANTFLY_SUBCOMMAND ?? 'swarm',
+    // `standalone` is the single-process server subcommand (rc.19+ rename;
+    // the pinned 0.2.0 has no `swarm`). BAKIN_ANTFLY_SUBCOMMAND overrides for
+    // cross-version evaluation runs (e.g. BAKIN_ANTFLY_BIN at a pre-rc.19
+    // binary, which needs `swarm`).
+    process.env.BAKIN_ANTFLY_SUBCOMMAND ?? 'standalone',
     '--host', '127.0.0.1',
     '--port', String(port),
     '--health-port', String(healthPort),

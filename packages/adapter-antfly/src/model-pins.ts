@@ -1,5 +1,7 @@
 /**
- * Pinned model distributions for the pinned engine (see pin.ts, rc.18).
+ * Pinned model distributions for the pinned engine (see pin.ts, 0.2.0 —
+ * re-verified 2026-08-31: the same distributions load and embed on the
+ * 0.2.0 Metal runtime, hashes unchanged; tasks/evidence-antfly-0.2.0.md).
  *
  * `antfly inference pull` fetches whatever distribution HuggingFace serves,
  * and the old completeness check accepted ANY nonzero weight file — which

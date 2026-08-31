@@ -125,35 +125,31 @@ if (!binary) {
       expect(result.status).toBeGreaterThanOrEqual(400)
     })
 
-    it('PIN rc.18: /lookup is gone (405) — scans live at /documents, still needing a {} body', async () => {
+    it('PIN: /lookup is gone (405) — scans live at /documents; GUARD: bodyless scans are legal', async () => {
       // WHEN THE 405 HALF FAILS: /lookup came back — no action, we use
-      // /documents. WHEN THE BODYLESS HALF FAILS: bodyless scans became
-      // legal → optional cleanup in client.scan + shrink this pin.
+      // /documents. WHEN THE BODYLESS HALF FAILS (≥400): the needs-a-body
+      // quirk is back — restore the `{}` fallback in client.scan.
       const legacy = await api('POST', `/db/v1/tables/${T}/lookup`, {})
       expect(legacy.status).toBe(405)
       const bodyless = await api('POST', `/db/v1/tables/${T}/documents`)
-      expect(bodyless.status).toBeGreaterThanOrEqual(400)
-      const withBody = await api('POST', `/db/v1/tables/${T}/documents`, {})
-      expect(withBody.status).toBe(200)
+      expect(bodyless.status).toBe(200)
     })
 
-    it('PIN antfly#319: mixed-corpus media leg — raw flags stuck building, health() overrides to ready', async () => {
-      // rc.18 behavior (re-pinned 2026-07-22 after the rc.21 crash dossier):
-      // docs whose media template renders empty never complete the leg's
-      // backfill accounting, so raw flags stay raised while fully idle; the
-      // idle-detection override in mapIndexStatuses maps ready. rc.21 fixed
-      // THIS accounting (verified) but is unshippable for other reasons —
-      // when a healthy release ships, flip this back to the guard form
-      // (git history, 2026-07-21).
+    it('GUARD 0.2.0 (was the antfly#319 pin): mixed-corpus media leg accounting completes — flags clear at idle', async () => {
+      // The idle-detection override in mapIndexStatuses was DELETED
+      // 2026-08-31: 0.2.0 clears the flags honestly for skip-heavy corpora,
+      // proven at scale incl. interrupted rebuilds (gate T7). WHEN THIS
+      // FAILS (flags raised at idle): skip-heavy greens will park
+      // unconverged again — resurrect the override from git history.
       if (!instance.modelsAvailable || !existsSync(join(homedir(), '.antfly', 'inference', 'models', 'antflydb', 'clipclap'))) {
         console.warn('⚠ antfly#319 guard skipped — clipclap model not present')
         return
       }
       const T2 = 'pins_mixed'
-      await api('POST', `/db/v1/tables/${T2}`, {
-        num_shards: 1,
-        indexes: { vis: { name: 'vis', type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } } },
-      })
+      await api('POST', `/db/v1/tables/${T2}`, { num_shards: 1 })
+      await sleep(500)
+      // Per-index endpoint: the only create path whose enrichment starts on 0.2.0.
+      await api('POST', `/db/v1/tables/${T2}/indexes/vis`, { type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } })
       await sleep(1200)
       const png = join(instance.root, 'pin319.png')
       const { solidPng } = await import('./golden-queries')
@@ -181,10 +177,10 @@ if (!binary) {
         await sleep(1000)
       }
       expect(raw).not.toBeNull()
-      // CANARY: raw flags still lie (building forever) on rc.18 — when this
-      // flips on a future pin, revisit the override (guard form in history).
-      expect(raw!.rebuilding === true || raw!.backfill_active === true).toBe(true)
-      // WORKAROUND GUARD: our health mapping overrides to ready.
+      // Honest flags at idle — no override needed.
+      expect(raw!.rebuilding).toBe(false)
+      expect(raw!.backfill_active).toBe(false)
+      // And the un-overridden mapping agrees.
       const { AntflySearchClient } = await import('../../../packages/adapter-antfly/src/client')
       const { DEFAULT_SETTINGS } = await import('../../../packages/adapter-antfly/src/defaults')
       const client = new AntflySearchClient({ ...DEFAULT_SETTINGS, url: instance.url }, { fetchImpl: nativeFetch })
@@ -194,23 +190,19 @@ if (!binary) {
       expect(vis?.indexedCount).toBe(1)
     }, 180_000)
 
-    it('GUARD antfly#319 (idle-detection override): an idle embeddings leg maps ready regardless of raw flags', async () => {
-      // The override this guards was retired at the rc.21 repin, then
-      // RESTORED hours later: the production memory-table green (50
-      // embeddable of ~10k skipped audit rows, rebuild interrupted by an
-      // engine bounce) sat with rebuilding/backfill_active raised while
-      // fully idle — and parked unconverged. A minimal 2-doc skip corpus
-      // does NOT reproduce the stuck flags on rc.21 (they clear), so the
-      // trigger is scale- or interruption-dependent and this cannot be a
-      // fails-when-fixed pin. The override's semantics are safe regardless
-      // (pending 0 + no active batch + not retrying ⇒ idle ⇒ ready).
-      // Retirement is MANUAL: prove a full-scale interrupted rebuild
-      // converges without it before deleting.
+    it('GUARD 0.2.0: text-skip corpus — flags clear at idle, mapping is ready with NO override', async () => {
+      // History: the override was retired at the rc.21 repin, restored
+      // hours later (the production memory-table park — 50 embeddable of
+      // ~10k skipped rows, interrupted rebuild), and finally DELETED
+      // 2026-08-31 after gate T7 proved its retirement condition at scale:
+      // interrupted rebuilds of both media-skip and text-skip corpora
+      // converge with honest flags on 0.2.0 (sticky `degraded` scar aside,
+      // which maps ready). WHEN THIS FAILS: resurrect the override.
       const T6 = 'pins_textskip'
-      await api('POST', `/db/v1/tables/${T6}`, {
-        num_shards: 1,
-        indexes: { sem: { name: 'sem', type: 'embeddings', template: '{{#if body}}{{body}}{{/if}}', dimension: 384, embedder: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' } } },
-      })
+      await api('POST', `/db/v1/tables/${T6}`, { num_shards: 1 })
+      await sleep(500)
+      // Per-index endpoint: the only create path whose enrichment starts on 0.2.0.
+      await api('POST', `/db/v1/tables/${T6}/indexes/sem`, { type: 'embeddings', template: '{{#if body}}{{body}}{{/if}}', dimension: 384, embedder: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' } })
       await sleep(1200)
       for (let i = 0; i < 10; i++) {
         const r = await api('POST', `/db/v1/tables/${T6}/batch`, {
@@ -237,10 +229,9 @@ if (!binary) {
         console.warn('⚠ text-skip pin skipped — embeddable doc never indexed (no BAAI model?)')
         return
       }
-      // Record (not assert) whether the raw flags lie on this corpus —
-      // evidence for eventual manual retirement, not a gate.
-      console.warn(`text-skip raw flags: rebuilding=${String(raw.rebuilding)} backfill_active=${String(raw.backfill_active)}`)
-      // WORKAROUND GUARD: idle-detection maps the leg ready either way.
+      // Honest flags at idle — the override's trigger state no longer exists.
+      expect(raw.rebuilding).toBe(false)
+      expect(raw.backfill_active).toBe(false)
       const { AntflySearchClient } = await import('../../../packages/adapter-antfly/src/client')
       const { DEFAULT_SETTINGS } = await import('../../../packages/adapter-antfly/src/defaults')
       const client = new AntflySearchClient({ ...DEFAULT_SETTINGS, url: instance.url }, { fetchImpl: nativeFetch })
@@ -249,14 +240,12 @@ if (!binary) {
       expect(sem?.state).toBe('ready')
     }, 180_000)
 
-    it('PIN rc.18: an EMPTY (never-written) table reports backfill running forever on every leg', async () => {
-      // WHEN THIS FAILS (flags clear on an empty table): upstream fixed
-      // empty-table backfill accounting → delete the !runtime idle-detection
-      // block in mapIndexStatuses + this pin. (A written-then-caught-up FTS
-      // leg clears its flags fine on rc.18 — verified here 2026-07-11; the
-      // lie is specific to tables no write has ever touched. Live impact:
-      // every empty blue/green green parks because converged() never sees
-      // ready legs — bakin_team / bakin_brands, evidence file GATE B.)
+    it('GUARD 0.2.0 (was the empty-table lying-flags pin): a never-written table reports honest ready flags', async () => {
+      // Upstream fixed empty-table backfill accounting in 0.2.0, so the
+      // !runtime idle-detection block in mapIndexStatuses was deleted
+      // (2026-08-31). WHEN THIS FAILS (flags raised on an empty table):
+      // empty blue/green greens will park unconverged again — resurrect
+      // the caught-up-idle override from git history.
       const T4 = 'pins_empty_table'
       await api('POST', `/db/v1/tables/${T4}`, { num_shards: 1 })
       await sleep(3000)
@@ -265,11 +254,10 @@ if (!binary) {
       const ft = entries.find((e) => e.config?.type === 'full_text')?.status as Record<string, unknown> | undefined
       expect(ft).toBeDefined()
       expect(ft!.doc_count).toBe(0)
-      // CANARY: raw flags lie on the never-written table.
-      expect(ft!.rebuilding === true || ft!.backfill_active === true).toBe(true)
-      expect(ft!.backfill_state).toBe('running')
-      // WORKAROUND GUARD: our health mapping overrides to ready (caught up:
-      // indexed 0 >= docs 0, no enrichment runtime to consult).
+      expect(ft!.rebuilding).toBe(false)
+      expect(ft!.backfill_active).toBe(false)
+      expect(ft!.backfill_state).toBe('ready')
+      // And the un-overridden mapping agrees.
       const { AntflySearchClient } = await import('../../../packages/adapter-antfly/src/client')
       const { DEFAULT_SETTINGS } = await import('../../../packages/adapter-antfly/src/defaults')
       const client = new AntflySearchClient({ ...DEFAULT_SETTINGS, url: instance.url }, { fetchImpl: nativeFetch })
@@ -286,10 +274,10 @@ if (!binary) {
         return
       }
       const T3 = 'pins_webp'
-      await api('POST', `/db/v1/tables/${T3}`, {
-        num_shards: 1,
-        indexes: { vis: { name: 'vis', type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } } },
-      })
+      await api('POST', `/db/v1/tables/${T3}`, { num_shards: 1 })
+      await sleep(500)
+      // Per-index endpoint: the only create path whose enrichment starts on 0.2.0.
+      await api('POST', `/db/v1/tables/${T3}/indexes/vis`, { type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } })
       await sleep(1200)
       const sharp = (await import('sharp')).default
       const webp = join(instance.root, 'pin-webp.webp')
@@ -323,10 +311,10 @@ if (!binary) {
       // FAILS (batch lands): upstream added per-document batch errors →
       // consider passing originals unconditionally + delete this pin.
       const T5 = 'pins_badmedia'
-      await api('POST', `/db/v1/tables/${T5}`, {
-        num_shards: 1,
-        indexes: { vis: { name: 'vis', type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } } },
-      })
+      await api('POST', `/db/v1/tables/${T5}`, { num_shards: 1 })
+      await sleep(500)
+      // Per-index endpoint: the only create path whose enrichment starts on 0.2.0.
+      await api('POST', `/db/v1/tables/${T5}/indexes/vis`, { type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } })
       await sleep(1200)
       const { writeFileSync } = await import('node:fs')
       const bad = join(instance.root, 'pin-bad.webp')
@@ -342,11 +330,10 @@ if (!binary) {
         await sleep(500)
       }
       expect(status).toBe(500)
-      // rc.20+: the failed batch flips the engine's read path to
-      // ReadUnavailable for EVERY table until a successful write lands
-      // (reported upstream 2026-07; see read-unavailable-storm in
-      // engine-status.ts). Heal it here so later tests query a healthy
-      // engine — and pin the healing behavior itself while we're at it.
+      // 0.2.0: the failed batch no longer poisons unrelated reads (the
+      // rc.20 ReadUnavailable flip is gone — gate T4a). A healing write +
+      // probe still run here so later tests query a healthy engine, and
+      // they double as a guard on that isolation property.
       const heal = await api('POST', `/db/v1/tables/${T}/batch`, {
         inserts: { heal1: { title: 'healing write' } },
         sync_level: 'full_index',
@@ -359,53 +346,80 @@ if (!binary) {
       expect(probe.status).toBe(200)
     }, 120_000)
 
-    it('PIN: filter_query rejects match_phrase nodes (the eq-filter shape) with 400', async () => {
-      // WHEN THIS FAILS: upstream accepts match_phrase in filter_query →
-      // re-probe keyword-field equality end-to-end and, if it filters
-      // correctly, move filters back to filter_query (delete
-      // composeFtsWithFilters in translate.ts) + delete this pin.
-      //
-      // History: the old canary here probed `match` on a TEXT field — the
-      // one shape that works — which justified deleting the original
-      // filter-in-AST workaround while every string-eq filter (match_phrase)
-      // 400'd and keyword-field `match` filters returned nothing. That's
-      // what blanked the memory dashboard. Probe the shape production sends.
+    it('GUARD 0.2.0 (was the filter_query 400 pin): match_phrase filter_query filters correctly', async () => {
+      // The rc.17 workaround (composeFtsWithFilters) was deleted 2026-08-31:
+      // filter_query now accepts match_phrase and filters the corpus
+      // (probed for keyword equality incl. hyphenated values, ranges,
+      // should-INs, must_not-with-base — evidence file). WHEN THIS FAILS
+      // (400 again, or wrong hit count): the filter-in-AST workaround has
+      // to come back — resurrect composeFtsWithFilters from git history.
       const result = await api('POST', `/db/v1/tables/${T}/query`, {
         full_text_search: { match_all: {} },
         filter_query: { match_phrase: 'alpha cats', field: 'title' },
         limit: 10,
       })
-      expect(result.status).toBe(400)
+      const hits = resp0(result.json)?.hits as { hits: Array<{ _id: string }> } | undefined
+      expect(result.status).toBe(200)
+      expect(hits?.hits.map((h) => h._id)).toEqual(['d1'])
     })
 
-    it('CONTRACT CANARY: fts-composed filters keep filtering (composeFtsWithFilters shape)', async () => {
-      // Inverse pin: asserts the CURRENT workaround shape keeps working —
-      // equality rides as a match_phrase conjunct inside full_text_search.
-      const result = await api('POST', `/db/v1/tables/${T}/query`, {
-        full_text_search: {
-          must: {
-            conjuncts: [
-              { match_all: {} },
-              { match_phrase: 'cats', field: 'title' },
-            ],
+    it('GUARD 0.2.0: filter_query constrains the SEMANTIC lane (no cross-filter leak)', async () => {
+      // buildQueryRequest stopped forcing filtered searches FTS-only on the
+      // strength of this property — an agent-filtered hybrid search must
+      // never merge another agent's rows in from the unfiltered vector leg.
+      // WHEN THIS FAILS (violating doc in the results): restore the
+      // hasFilters ⇒ full_text_only forcing in buildQueryRequest.
+      if (!instance.modelsAvailable || !existsSync(join(homedir(), '.antfly', 'inference', 'models', 'BAAI'))) {
+        console.warn('⚠ semantic-filter leak guard skipped — BAAI model not present')
+        return
+      }
+      const T7 = 'pins_semfilter'
+      await api('POST', `/db/v1/tables/${T7}`, { num_shards: 1 })
+      await sleep(1000)
+      // Per-index endpoint: the only create path whose enrichment starts.
+      await api('POST', `/db/v1/tables/${T7}/indexes/sem`, {
+        type: 'embeddings', template: '{{#if body}}{{body}}{{/if}}', dimension: 384,
+        embedder: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' },
+      })
+      await sleep(1200)
+      for (let i = 0; i < 10; i++) {
+        const r = await api('POST', `/db/v1/tables/${T7}/batch`, {
+          inserts: {
+            mine: { agent: 'pixel', body: 'mountain lakes at dawn' },
+            other: { agent: 'system', body: 'mountain lakes at dusk' },
           },
-        },
+          sync_level: 'full_index',
+        })
+        if (r.status < 300) break
+        await sleep(500)
+      }
+      const result = await api('POST', `/db/v1/tables/${T7}/query`, {
+        semantic_search: 'mountain lakes',
+        indexes: ['sem'],
+        filter_query: { match_phrase: 'pixel', field: 'agent' },
         limit: 10,
       })
-      const hits = resp0(result.json)?.hits as { hits: unknown[] } | undefined
+      const hits = resp0(result.json)?.hits as { hits: Array<{ _id: string }> } | undefined
       expect(result.status).toBe(200)
-      expect(hits?.hits).toHaveLength(2)
-    })
+      expect(hits?.hits.map((h) => h._id)).toEqual(['mine'])
+    }, 120_000)
   })
 
   describe('engine-burn watchdog log signature', () => {
-    it('PIN: the pinned binary still emits the catch-up wedge signature the watchdog greps for', () => {
+    it('PIN: the pinned binary still emits the wedge signatures the watchdog greps for', () => {
       // packages/adapter-antfly/src/engine-status.ts WEDGE_PATTERNS depends
-      // on this exact upstream log string ("provisioned startup catch-up
-      // debt persists", antfly#350). A version bump that rewords it would
-      // silently blind one detection layer — this pin makes that loud.
+      // on these exact upstream log strings ("provisioned startup catch-up
+      // debt persists" — antfly#350; "error.StorageReadTemporarilyUnavailable"
+      // — the 2026-08-31 table-wedge signature). A version bump that rewords
+      // either would silently blind one detection layer — this pin makes
+      // that loud. (The rc-era SendFailed/TableReadChurn/ReadUnavailable
+      // names vanished from the 0.2.0 binary; their patterns were removed.)
       const bytes = readFileSync(binary)
       expect(bytes.includes('catch-up debt persists')).toBe(true)
+      // The binary stores the BARE Zig error name; the `error.` prefix the
+      // WEDGE_PATTERN matches is added by Zig's error formatting at log
+      // time. Grep the bare name here.
+      expect(bytes.includes('StorageReadTemporarilyUnavailable')).toBe(true)
     })
   })
 }
