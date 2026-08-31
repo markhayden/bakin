@@ -287,3 +287,19 @@ and administrative surfaces during the full style-guide sweep:
 - **Only mounted views poll.** URL-backed tabs mount only the selected panel.
   Resource hooks cancel superseded requests, retain last good data after a
   background failure, and distinguish initial error, refreshing, and stale.
+
+## 13. Component internals — slots, state attributes, reserved names
+
+- Target kit component parts via `data-slot`, never class strings; assert
+  state via `data-tone`/`data-size`/`data-variant`/`data-busy`. Slot names
+  are contract; classes are not. `DataTable` re-emits `table*` slots — scope
+  under `[data-slot="data-table"]` when both renders may be in the DOM.
+- Reserved `@container` names (never declare yourself): page-shell,
+  layout-grid, page-header, list-rows, timeline, data-table, key-value,
+  form, card-header, banner. Same for kit `group/…` names.
+- `layout/` primitives concatenate className (no tailwind-merge) by design —
+  use their props, not utility overrides; everything else merges via `cn()`.
+- Flex/grid children carrying text need `min-w-0`; `truncate` is inert
+  without it.
+- Use the exported `focusRing`/`focusRingInset` recipe for custom
+  interactive elements; never hand-type the outline stack.

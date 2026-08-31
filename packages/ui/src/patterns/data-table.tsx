@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 
-import { cn } from '../utils'
+import { cn, focusRing } from '../utils'
 import { ListRow, ListRows, type ListRowsVariant } from './list-rows'
 import { Pagination, type PaginationProps } from './pagination'
 import { SortableHead, type SortDir } from './sortable-head'
@@ -350,7 +350,7 @@ export function DataTable<Row, F extends string = string>({
             onRowActivate(row)
           },
           className:
-            'cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
+            `cursor-pointer ${focusRing}`,
         }
       : {}
 

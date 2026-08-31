@@ -998,6 +998,55 @@ import '@makinbakin/sdk/styles.css'
 
 This is the exact artifact used by Bakin and the public component catalog. It supplies the namespaced `--bakin-*` semantic tokens and supported component styling; it does not make the host's arbitrary Tailwind utility vocabulary public API.
 
+## Component Internals Contract
+
+Kit components mark their structure with `data-slot` attributes (about 315
+distinct values today, over 120 of them queried by tests and stories). This
+section makes explicit what was previously tribal knowledge.
+
+**`data-slot` is the stable way to target a kit component's parts.** Query
+`[data-slot="page-header-title"]`, never a class string — classes are
+implementation detail and change without notice; slot names are renamed only
+with a migration note. The high-traffic slots (`page-shell-content`,
+`system-state`, `input-group-control`, `list-row`, `card`, `page-header-*`,
+`data-table-*`, `search-input-*`) are exercised by the public story suite,
+which is the executable inventory: grep `storybook/public` for the slot you
+intend to rely on. One known overlap: `DataTable`'s wide render re-emits the
+`table*` slot names that the `Table` primitives also emit, so scope table
+slot queries under `[data-slot="data-table"]` when both may be present.
+
+**State rides `data-*` attributes, not classes.** Components expose their
+resolved state as `data-tone`, `data-size`, `data-variant`, `data-align`,
+`data-busy`, `data-state`, `data-orientation` and friends. Assert on these in
+tests (`data-size="meta"` on `Text`, `data-tone` on `Alert`) rather than on
+class names.
+
+**Container-query and group names are reserved.** The kit owns these
+`@container` names — do not declare them on your own elements or the kit's
+responsive behavior breaks: `page-shell`, `layout-grid`, `page-header`,
+`list-rows`, `timeline`, `data-table`, `key-value`, `form`, `card-header`,
+`banner`. The same applies to `group/…` names emitted by kit markup (e.g.
+`group/button`, `group/handle`, `group/card`).
+
+**Two class-merge semantics exist on purpose.** Everything outside `layout/`
+merges consumer `className` overrides with `cn()` (tailwind-merge: your
+conflicting utility wins). The `layout/` primitives (`Stack`, `Inline`,
+`Grid`, `Section`, `PageShell`, `Panel`, …) intentionally concatenate
+without merging — a conflicting override there stacks instead of replacing,
+so shape layout with the components' own props (`gap`, `padding`, `width`)
+rather than utility overrides.
+
+**The `min-w-0` invariant.** Any flex or grid child that can carry
+user-supplied text must have `min-w-0` (kit components apply it internally —
+79 of the kit's own files do). Omitting it is the classic
+"page scrolls sideways on one long title" bug; `truncate` only works beneath
+a `min-w-0` ancestor chain.
+
+**Focus rings are a recipe, not a hand-typed stack.** The kit exports
+`focusRing` (and `focusRingInset` for inset contexts) from its utils; custom
+interactive elements inside plugin-owned markup should compose it rather
+than re-spell the outline stack — the audit found three drifted spellings.
+
 ## Navigation Stays Separate
 
 UI composition does not redefine routing. Follow the existing presentation-based routing contract: paths identify pages, while query parameters represent overlays, tabs, filters, and other composable view state. Import `PluginLink`, `useRouter()`, and the query-state hooks from `@makinbakin/sdk/navigation`.

@@ -943,7 +943,7 @@ Plugin authors import from `@makinbakin/sdk/*`. Full sub-path map:
 | `@makinbakin/sdk/patterns` | Application patterns (`PageHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ConfirmDialog`, `ChannelIcon`, `StatusBadge`, ...) — the former `@makinbakin/sdk/components` barrel is REMOVED (storybook-refit P-final) |
 | `@makinbakin/sdk/slots` | `Slot`, `registerSlot`, `__clearSlot` |
 | `@makinbakin/sdk/types` | Canonical, self-contained contract types (`PluginContext`, `BakinPlugin`, `Task`, `WorkflowDefinition`, ...), split into primitives/manifest/runtime/services/registration/context behind a barrel. The single source of truth — `packages/core/src/plugin-types.ts` re-exports the identical leaf types from here and keeps its own fuller internal tier (see repo-architecture.md § two-tier type contract). |
-| `@makinbakin/sdk/utils` | `cn`, `formatAge`, `formatDateTime`, `formatDuration`, `formatSize`, `isStale`, `toneBadgeClass` |
+| `@makinbakin/sdk/utils` | `cn`, `formatAge`, `formatDateTime`, `formatDuration`, `formatSize`, `isStale` |
 
 ### Shared client primitives (WS3/WS3b)
 
@@ -953,7 +953,6 @@ The audit consolidated copy-pasted client patterns into the SDK; reach for these
 - `useAvailableModels()` → `AvailableModel[]` — module-cached, read-only model catalog (mirrors `useNotificationChannels`; the models page owns the live refresh flow).
 - `ConfirmDialog` — controlled, busy/error-aware confirmation dialog for destructive actions.
 - `EmptyState` — `variant='panel'` for the larger-chip full-tab empty surface (default stays compact).
-- `toneBadgeClass(tone)` — the `bg-X-500/10 text-X-400 border-X-500/20` outline-badge idiom across `success|pending|error|muted|info`.
 - `formatDateTime(ts)` / `formatDuration(ms)` — calendar-aware absolute time and elapsed-duration formatters next to `formatAge`.
 
 Published to npm as `@makinbakin/sdk`. `scripts/publish-sdk.ts` pushes on the

@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from 'react'
 
+import { usePersistedLeadingEdgeResize } from '../behaviors/use-persisted-leading-edge-resize'
 import { CodeBlock, type CodeBlockLanguage } from '../content/code-block'
 import { KeyValue } from '../patterns/key-value'
 import { Badge, type BadgeTone } from '../primitives/badge'
@@ -15,8 +16,8 @@ import {
 import { cn } from '../utils'
 import { formatDuration } from './activity-group'
 import type { ConversationToolCall } from './fold'
+import { ResizeHandle } from './resize-handle'
 import { CopyButton } from './turn-controls'
-import { usePersistedLeadingEdgeResize } from './use-persisted-leading-edge-resize'
 
 const DRAWER_DEFAULT_WIDTH = 720
 const DRAWER_MIN_WIDTH = 320
@@ -99,17 +100,12 @@ export function ToolCallDrawer({
         style={style}
         className="gap-0 sm:w-[var(--bakin-tool-drawer-width)] sm:max-w-[calc(100vw-var(--bakin-layout-space-6))]"
       >
-        <div
-          {...handleProps}
-          aria-label="Resize tool detail"
-          className={cn(
-            'group/handle absolute inset-y-0 left-0 z-10 hidden w-bakin-2 touch-none items-center justify-center outline-none sm:flex',
-            open ? 'cursor-col-resize' : 'cursor-default',
-            'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-bakin-focus-ring',
-          )}
-        >
-          <span className="h-bakin-8 w-px rounded-bakin-pill bg-bakin-border-subtle opacity-0 transition-opacity group-hover/handle:opacity-100 group-focus-visible/handle:opacity-100" />
-        </div>
+        <ResizeHandle
+          orientation="vertical"
+          handleProps={handleProps}
+          label="Resize tool detail"
+          className={cn('absolute inset-y-0 left-0 z-10 hidden w-bakin-2 sm:flex', open ? 'cursor-col-resize' : 'cursor-default')}
+        />
 
         <SheetHeader className="border-b border-bakin-border-subtle">
           <SheetTitle className="break-all font-bakin-typography-family-mono">

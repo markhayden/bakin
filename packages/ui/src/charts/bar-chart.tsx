@@ -3,6 +3,7 @@
 import { useId, useMemo, useState } from 'react'
 
 import { BoundedOverflow } from '../layout/bounded-overflow'
+import { axisLabel, reportedValue, shouldRenderXLabel } from './axis'
 import { ChartDataTable, chartSeriesColor, type ChartDatum, type ChartSeries } from './chart-data-table'
 import { ChartTooltip } from './chart-tooltip'
 
@@ -37,19 +38,6 @@ const LEFT = 48
 const RIGHT = 16
 const TOP = 12
 const BOTTOM = 28
-
-function reportedValue(value: number | undefined): number | null {
-  return Number.isFinite(value) && value! >= 0 ? value! : null
-}
-
-function shouldRenderXLabel(index: number, count: number): boolean {
-  if (count <= 6) return true
-  return index === count - 1 || index % Math.ceil(count / 6) === 0
-}
-
-function axisLabel(label: string): string {
-  return label.length <= 14 ? label : `${label.slice(0, 13)}…`
-}
 
 /** Dependency-free grouped or stacked non-negative comparison chart with exact data. */
 export function BarChart({

@@ -3,7 +3,7 @@
 import * as React from 'react'
 
 import { BoundedOverflow } from '../layout/bounded-overflow'
-import { cn } from '../utils'
+import { cn, focusRingInset } from '../utils'
 
 export type CalendarGridView = 'month' | 'week' | 'day'
 export type CalendarGridScroll = 'contained' | 'page'
@@ -593,7 +593,7 @@ export function CalendarGrid<T extends CalendarGridItem>({
                   {...cellProps(0, columnIndex, cellLabel([dayLabel(day), 'all day'], dayItems.length))}
                   data-today={isToday ? '' : undefined}
                   className={cn(
-                    'min-h-12 border-l border-t border-bakin-border-subtle p-bakin-1 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring',
+                    `min-h-12 border-l border-t border-bakin-border-subtle p-bakin-1 ${focusRingInset}`,
                     isToday && 'bg-bakin-signal-accent/5',
                   )}
                 >
@@ -625,7 +625,7 @@ export function CalendarGrid<T extends CalendarGridItem>({
                   )}
                   data-today={isToday ? '' : undefined}
                   className={cn(
-                    'min-h-12 border-l border-t border-bakin-border-subtle p-bakin-1 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring',
+                    `min-h-12 border-l border-t border-bakin-border-subtle p-bakin-1 ${focusRingInset}`,
                     isToday && 'bg-bakin-signal-accent/5',
                     cellItems.length === 0 && 'hover:bg-bakin-surface-default',
                   )}

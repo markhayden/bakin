@@ -24,6 +24,8 @@ import {
 // conversation recorder, which the payload ratchet keeps out of base UI.
 import { cn } from '@bakin/ui/utils'
 
+import { safePresentationColor } from './presentation-color'
+
 /** Presentation-ready agent identity supplied by a host or plugin. */
 export interface AgentIdentity {
   id: string
@@ -45,13 +47,6 @@ const presence = {
   offline: { label: 'Offline', dot: 'bg-bakin-text-muted', active: false },
   error: { label: 'Needs attention', dot: 'bg-bakin-signal-danger', active: false },
 } as const satisfies Record<AgentPresenceStatus, { label: string; dot: string; active: boolean }>
-
-const presentationColor = /^(?:#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})|(?:rgb|hsl)a?\([0-9.,%+\-\s/]+\)|var\(--[a-z0-9][a-z0-9-]*\)|[a-z]+)$/i
-
-function safePresentationColor(value?: string): string | undefined {
-  const color = value?.trim()
-  return color && presentationColor.test(color) ? color : undefined
-}
 
 function identityInitials(agent: AgentIdentity): string {
   if (agent.initials?.trim()) return agent.initials.trim().slice(0, 2).toUpperCase()

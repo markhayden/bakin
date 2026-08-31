@@ -24,7 +24,7 @@
  * retry without the shell crashing on a failed import.
  */
 
-import { matchRoutePattern } from './register'
+import { matchRoutePattern } from '../register'
 
 export type PluginLoadState = 'idle' | 'loading' | 'loaded' | 'error'
 

@@ -33,7 +33,7 @@ import {
   requestSlotPlugins,
   retryPluginLoad,
   subscribeLazyPlugins,
-} from '../lazy'
+} from '../internal/lazy'
 
 // The registry core lives in ./registry (react-free) so the SDK root
 // barrel — which re-exports ../register → registerSlot/clearSlotsOwnedBy —
@@ -81,7 +81,7 @@ class SlotEntryBoundary extends Component<
   render(): ReactNode {
     if (this.state.error) {
       return (
-        <div className="rounded-md border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 px-3 py-2 text-xs text-bakin-signal-danger" role="alert">
+        <div className="rounded-bakin-control border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 px-bakin-3 py-bakin-2 text-[length:var(--bakin-typography-size-meta)] text-bakin-signal-danger" role="alert">
           {this.props.owner ? `Plugin "${this.props.owner}"` : 'A plugin'} failed to render this section.
         </div>
       )
@@ -93,14 +93,14 @@ class SlotEntryBoundary extends Component<
 /** Fallback shown in place of slot content when an owning plugin's client bundle failed to load. */
 function SlotLoadError({ slotName, pluginIds }: { slotName: string; pluginIds: string[] }): JSX.Element {
   return (
-    <div className="flex flex-col items-start gap-2 rounded-md border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 px-4 py-3 text-sm text-bakin-signal-danger" role="alert">
+    <div className="flex flex-col items-start gap-bakin-2 rounded-bakin-control border border-bakin-signal-danger/40 bg-bakin-signal-danger/10 px-bakin-4 py-bakin-3 text-[length:var(--bakin-typography-size-body)] text-bakin-signal-danger" role="alert">
       <span>
         {pluginIds.length === 1 ? `Plugin "${pluginIds[0]}" failed to load` : `Plugins ${pluginIds.map((id) => `"${id}"`).join(', ')} failed to load`}
         {getPluginLoadError(pluginIds[0]) ? ` — ${getPluginLoadError(pluginIds[0])}` : ''}
       </span>
       <button
         type="button"
-        className="rounded border border-bakin-signal-danger/40 px-2 py-1 text-xs hover:bg-bakin-signal-danger/20"
+        className="rounded-bakin-control border border-bakin-signal-danger/40 px-bakin-2 py-bakin-1 text-[length:var(--bakin-typography-size-meta)] hover:bg-bakin-signal-danger/20"
         onClick={() => pluginIds.forEach(retryPluginLoad)}
         aria-label={`Retry loading ${slotName}`}
       >

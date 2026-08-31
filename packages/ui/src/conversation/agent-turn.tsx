@@ -2,10 +2,7 @@
 
 import type { ReactNode } from 'react'
 
-import { CodeBlock } from '../content/code-block'
 import { Alert, AlertDescription } from '../primitives/alert'
-import { Spinner } from '../primitives/spinner'
-import { Avatar, AvatarFallback, AvatarImage } from '../primitives/avatar'
 import { Button } from '../primitives/button'
 import { cn } from '../utils'
 import { ActivityGroup } from './activity-group'
@@ -15,6 +12,7 @@ import type {
   ConversationTurn,
   TurnItem,
 } from './fold'
+import { AlertIcon, DefaultAvatar, DefaultText, SpinnerIcon } from './glyphs'
 import { CopyButton, TurnTimestamp } from './turn-controls'
 import {
   formatTokenCount,
@@ -33,35 +31,7 @@ export type ConversationAvatarRenderer = (agent: ConversationAgent) => ReactNode
 export type ConversationTextRenderer = (content: string, format: ConversationTextFormat) => ReactNode
 export type ConversationTextTransform = (text: string) => { text: string; extras?: ReactNode }
 
-function initials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean)
-  if (words.length === 0) return '?'
-  return words.slice(0, 2).map((word) => word[0]).join('').toUpperCase()
-}
-
-function DefaultAvatar({ agent }: { agent: ConversationAgent }) {
-  return (
-    <Avatar size="sm">
-      {agent.avatarUrl ? <AvatarImage src={agent.avatarUrl} alt="" /> : null}
-      <AvatarFallback>{initials(agent.name)}</AvatarFallback>
-    </Avatar>
-  )
-}
-
-function SpinnerIcon() {
-  return <Spinner size="sm" className="shrink-0" />
-}
-
-function AlertIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-4 shrink-0 fill-none stroke-current stroke-[1.5]">
-      <path d="M8 2 14 13H2L8 2Z" strokeLinejoin="round" />
-      <path d="M8 6v3.5M8 11.75v.25" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function StopIcon() {
+function StopCircleIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-3 shrink-0 fill-none stroke-current stroke-[1.5]">
       <circle cx="8" cy="8" r="5.5" />
@@ -98,12 +68,6 @@ function turnText(items: readonly TurnItem[]): string {
     .join('\n\n')
 }
 
-function DefaultText({ content, format }: { content: string; format: ConversationTextFormat }) {
-  if (format === 'code') return <CodeBlock code={content} label="Code output" className="max-w-full" />
-  if (format === 'plain') return <CodeBlock code={content} wrap />
-  return <div className="whitespace-pre-wrap break-words leading-relaxed text-bakin-text-primary">{content}</div>
-}
-
 /** Props for a standalone author-bound streaming indicator. */
 export interface ThinkingIndicatorProps {
   agent: ConversationAgent
@@ -122,7 +86,7 @@ export function ThinkingIndicator({
   return (
     <div className={cn('flex min-w-0 items-center gap-bakin-3', className)}>
       <span data-conv-avatar="" className="shrink-0" aria-hidden="true">
-        {renderAvatar ? renderAvatar(agent) : <DefaultAvatar agent={agent} />}
+        {renderAvatar ? renderAvatar(agent) : <DefaultAvatar agent={agent} size="sm" />}
       </span>
       <span className="min-w-0">
         <span className="block truncate text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-primary">
@@ -191,7 +155,7 @@ export function AgentTurn({
       )}
     >
       <span data-conv-avatar="" className="row-span-2 shrink-0" aria-hidden="true">
-        {renderAvatar ? renderAvatar(resolvedAgent) : <DefaultAvatar agent={resolvedAgent} />}
+        {renderAvatar ? renderAvatar(resolvedAgent) : <DefaultAvatar agent={resolvedAgent} size="sm" />}
       </span>
 
       <header className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1">
@@ -257,7 +221,7 @@ export function AgentTurn({
 
         {turn.status === 'aborted' ? (
           <div className="flex items-center gap-bakin-2 text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
-            <StopIcon /> Stopped
+            <StopCircleIcon /> Stopped
           </div>
         ) : null}
 

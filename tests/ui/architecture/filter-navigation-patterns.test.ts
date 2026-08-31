@@ -12,7 +12,7 @@ describe('canonical filter and navigation patterns', () => {
       'packages/ui/src/patterns/facet-filter.tsx',
       'packages/ui/src/patterns/search-input.tsx',
       'packages/ui/src/patterns/segmented-control.tsx',
-      'packages/ui/src/patterns/selection-navigation.ts',
+      'packages/ui/src/behaviors/selection-navigation.ts',
       'packages/ui/src/patterns/sortable-head.tsx',
     ].map(read).join('\n')
     expect(sources).not.toMatch(/@\/|@makinbakin\/sdk|lucide-react|useQueryState|window\.|document\./)

@@ -1,6 +1,6 @@
 import * as React from 'react'
 
-import { cn } from '../utils'
+import { cn, focusRing } from '../utils'
 
 /**
  * The one whole-surface activation contract, shared by Card and ListRow:
@@ -18,7 +18,7 @@ export interface InteractiveAction {
 }
 
 const overlayClassName =
-  'absolute inset-0 z-0 cursor-pointer rounded-bakin-surface outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring'
+  `absolute inset-0 z-0 cursor-pointer rounded-bakin-surface ${focusRing}`
 
 export function interactiveOverlay(interactive: InteractiveAction): React.ReactElement {
   if (interactive.render) {

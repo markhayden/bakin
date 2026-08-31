@@ -1,6 +1,7 @@
 'use client'
 
 import { Button } from '../primitives/button'
+import { RemoveIcon } from './glyphs'
 
 /** One accepted follow-up waiting behind the active conversation turn. */
 export interface ConversationQueuedItem {
@@ -14,14 +15,6 @@ export interface QueuedMessageListProps {
   items: readonly ConversationQueuedItem[]
   /** Removing returns the full item so consumers can restore it to a draft. */
   onRemove?: (item: ConversationQueuedItem) => void
-}
-
-function RemoveIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-3 fill-none stroke-current stroke-[1.5]">
-      <path d="m4 4 8 8M12 4l-8 8" strokeLinecap="round" />
-    </svg>
-  )
 }
 
 /**

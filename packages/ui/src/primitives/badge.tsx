@@ -2,7 +2,7 @@ import { mergeProps } from '@base-ui/react/merge-props'
 import { useRender } from '@base-ui/react/use-render'
 import { cva } from 'class-variance-authority'
 
-import { cn } from '../utils'
+import { cn, focusRing } from '../utils'
 
 export type BadgeTone = 'neutral' | 'primary' | 'success' | 'attention' | 'danger' | 'accent' | 'info'
 export type BadgeVariant = 'soft' | 'solid' | 'outline' | 'ghost' | 'link'
@@ -42,7 +42,7 @@ const badgeStyles = cva(
     'group/badge inline-flex w-fit shrink-0 items-center justify-center whitespace-nowrap',
     'overflow-hidden rounded-bakin-pill border font-bakin-typography-family-ui font-bakin-typography-weight-semibold',
     'transition-[background-color,border-color,color] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard',
-    'outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
+    focusRing,
     'aria-invalid:border-bakin-signal-danger [&>svg]:pointer-events-none [&>svg]:shrink-0',
   ],
   {

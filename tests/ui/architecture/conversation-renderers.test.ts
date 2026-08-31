@@ -18,9 +18,11 @@ describe('focused conversation renderers', () => {
     const implementation = read('packages/ui/src/conversation/activity-group.tsx')
     expect(implementation).not.toMatch(/@\/|@makinbakin\/sdk|@bakin\/core|lucide-react/)
     expect(implementation).toContain('text-bakin-text-primary')
-    // Reduced motion is honoured by the Spinner primitive the group composes,
-    // not by a hand-rolled ring — the guarantee moved, it did not disappear.
-    expect(implementation).toContain("from '../primitives/spinner'")
+    // Reduced motion is honoured by the Spinner primitive that the shared
+    // glyph module composes — the guarantee moved with the glyph, it did not
+    // disappear.
+    expect(implementation).toContain("from './glyphs'")
+    expect(read('packages/ui/src/conversation/glyphs.tsx')).toContain("from '../primitives/spinner'")
     expect(implementation).not.toContain('border-r-transparent')
     expect(existsSync(resolve(ROOT, 'src/components/conversation/activity-group.tsx'))).toBe(false)
   })
@@ -37,8 +39,9 @@ describe('focused conversation renderers', () => {
     expect(agentTurn).not.toMatch(/@\/|@makinbakin\/sdk|@bakin\/core|lucide-react|markdown-content/)
     expect(userMessage).not.toMatch(/@\/|@makinbakin\/sdk|@bakin\/core|lucide-react|markdown-content/)
     expect(agentTurn).toContain('text-bakin-text-primary')
-    // Reduced motion rides the Spinner primitive; see the activity-group pin above.
-    expect(agentTurn).toContain("from '../primitives/spinner'")
+    // Reduced motion rides the Spinner primitive via the shared glyph module;
+    // see the activity-group pin above.
+    expect(agentTurn).toContain("from './glyphs'")
     expect(agentTurn).not.toContain('border-r-transparent')
   })
 
