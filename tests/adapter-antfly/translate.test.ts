@@ -65,23 +65,21 @@ describe('buildQueryRequest', () => {
     })
   })
 
-  it('filters drop the semantic leg — an unfiltered lane would leak filter-violating docs', () => {
+  it('filters KEEP the semantic leg — filter_query constrains both lanes on 0.2.0', () => {
+    // The rc.17-era FTS-only forcing is gone: the no-leak property of
+    // filter_query on semantic/hybrid lanes is live-probed (evidence file)
+    // and guarded by workaround-regressions.
     const req = buildQueryRequest('t', {
       text: 'dark dashboard',
       filters: [{ field: 'agent', op: 'eq', value: 'pixel' }],
       adapterOptions: { searchableFields: ['title'], indexes: ['assets_text'] },
     }, S)
-    expect(req.semantic_search).toBeUndefined()
-    expect(req.merge_config).toBeUndefined()
-    expect(req.full_text_search).toEqual({
-      must: { conjuncts: [
-        { match: 'dark dashboard', field: 'title' },
-        { match_phrase: 'pixel', field: 'agent' },
-      ] },
-    })
+    expect(req.semantic_search).toBe('dark dashboard')
+    expect(req.full_text_search).toEqual({ match: 'dark dashboard', field: 'title' })
+    expect(req.filter_query).toEqual({ match_phrase: 'pixel', field: 'agent' })
   })
 
-  it('filters compose INTO the full_text_search node (rc.17: filter_query is broken)', () => {
+  it('filters ride filter_query; the full_text_search node stays clean', () => {
     const req = buildQueryRequest('t', {
       text: 'cats',
       strategy: 'fts',
@@ -92,12 +90,9 @@ describe('buildQueryRequest', () => {
       ],
       adapterOptions: { searchableFields: ['title'] },
     }, S)
-    // filter_query must NEVER be sent: rc.17 400s on match_phrase nodes and
-    // analyzer-mangles `match` on keyword fields (live-probed 2026-07-04).
-    expect(req.filter_query).toBeUndefined()
-    expect(req.full_text_search).toEqual({
+    expect(req.full_text_search).toEqual({ match: 'cats', field: 'title' })
+    expect(req.filter_query).toEqual({
       must: { conjuncts: [
-        { match: 'cats', field: 'title' },
         { match_phrase: 'note', field: 'kind' },
         { min: 3, inclusive_min: true, field: 'n' },
       ] },
@@ -105,20 +100,15 @@ describe('buildQueryRequest', () => {
     })
   })
 
-  it('match-all list flow: bare filters/facets become filtered match_all full-text-only', () => {
+  it('match-all list flow: bare filters/facets become match_all + filter_query, full-text-only', () => {
     const req = buildQueryRequest('t', {
       text: '',
       filters: [{ field: 'kind', op: 'eq', value: 'note' }],
       facets: ['kind'],
       limit: 10,
     }, S)
-    expect(req.full_text_search).toEqual({
-      must: { conjuncts: [
-        { match_all: {} },
-        { match_phrase: 'note', field: 'kind' },
-      ] },
-    })
-    expect(req.filter_query).toBeUndefined()
+    expect(req.full_text_search).toEqual({ match_all: {} })
+    expect(req.filter_query).toEqual({ match_phrase: 'note', field: 'kind' })
     expect(req.semantic_search).toBeUndefined()
     expect(req.aggregations).toEqual({ kind: { type: 'terms', field: 'kind', size: 50 } })
   })
@@ -166,6 +156,12 @@ describe('buildFilterQuery', () => {
   it('numeric equality uses a closed range', () => {
     expect(buildFilterQuery([{ field: 'n', op: 'eq', value: 5 }])).toEqual({
       min: 5, max: 5, inclusive_min: true, inclusive_max: true, field: 'n',
+    })
+  })
+  it('exclusion-only filters get a match_all base — a pure-negation filter_query matches NOTHING on the engine', () => {
+    expect(buildFilterQuery([{ field: 'agent', op: 'neq', value: 'system' }])).toEqual({
+      must: { conjuncts: [{ match_all: {} }] },
+      must_not: { disjuncts: [{ match_phrase: 'system', field: 'agent' }] },
     })
   })
 })

@@ -359,43 +359,63 @@ if (!binary) {
       expect(probe.status).toBe(200)
     }, 120_000)
 
-    it('PIN: filter_query rejects match_phrase nodes (the eq-filter shape) with 400', async () => {
-      // WHEN THIS FAILS: upstream accepts match_phrase in filter_query →
-      // re-probe keyword-field equality end-to-end and, if it filters
-      // correctly, move filters back to filter_query (delete
-      // composeFtsWithFilters in translate.ts) + delete this pin.
-      //
-      // History: the old canary here probed `match` on a TEXT field — the
-      // one shape that works — which justified deleting the original
-      // filter-in-AST workaround while every string-eq filter (match_phrase)
-      // 400'd and keyword-field `match` filters returned nothing. That's
-      // what blanked the memory dashboard. Probe the shape production sends.
+    it('GUARD 0.2.0 (was the filter_query 400 pin): match_phrase filter_query filters correctly', async () => {
+      // The rc.17 workaround (composeFtsWithFilters) was deleted 2026-08-31:
+      // filter_query now accepts match_phrase and filters the corpus
+      // (probed for keyword equality incl. hyphenated values, ranges,
+      // should-INs, must_not-with-base — evidence file). WHEN THIS FAILS
+      // (400 again, or wrong hit count): the filter-in-AST workaround has
+      // to come back — resurrect composeFtsWithFilters from git history.
       const result = await api('POST', `/db/v1/tables/${T}/query`, {
         full_text_search: { match_all: {} },
         filter_query: { match_phrase: 'alpha cats', field: 'title' },
         limit: 10,
       })
-      expect(result.status).toBe(400)
+      const hits = resp0(result.json)?.hits as { hits: Array<{ _id: string }> } | undefined
+      expect(result.status).toBe(200)
+      expect(hits?.hits.map((h) => h._id)).toEqual(['d1'])
     })
 
-    it('CONTRACT CANARY: fts-composed filters keep filtering (composeFtsWithFilters shape)', async () => {
-      // Inverse pin: asserts the CURRENT workaround shape keeps working —
-      // equality rides as a match_phrase conjunct inside full_text_search.
-      const result = await api('POST', `/db/v1/tables/${T}/query`, {
-        full_text_search: {
-          must: {
-            conjuncts: [
-              { match_all: {} },
-              { match_phrase: 'cats', field: 'title' },
-            ],
+    it('GUARD 0.2.0: filter_query constrains the SEMANTIC lane (no cross-filter leak)', async () => {
+      // buildQueryRequest stopped forcing filtered searches FTS-only on the
+      // strength of this property — an agent-filtered hybrid search must
+      // never merge another agent's rows in from the unfiltered vector leg.
+      // WHEN THIS FAILS (violating doc in the results): restore the
+      // hasFilters ⇒ full_text_only forcing in buildQueryRequest.
+      if (!instance.modelsAvailable || !existsSync(join(homedir(), '.antfly', 'inference', 'models', 'BAAI'))) {
+        console.warn('⚠ semantic-filter leak guard skipped — BAAI model not present')
+        return
+      }
+      const T7 = 'pins_semfilter'
+      await api('POST', `/db/v1/tables/${T7}`, { num_shards: 1 })
+      await sleep(1000)
+      // Per-index endpoint: the only create path whose enrichment starts.
+      await api('POST', `/db/v1/tables/${T7}/indexes/sem`, {
+        type: 'embeddings', template: '{{#if body}}{{body}}{{/if}}', dimension: 384,
+        embedder: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' },
+      })
+      await sleep(1200)
+      for (let i = 0; i < 10; i++) {
+        const r = await api('POST', `/db/v1/tables/${T7}/batch`, {
+          inserts: {
+            mine: { agent: 'pixel', body: 'mountain lakes at dawn' },
+            other: { agent: 'system', body: 'mountain lakes at dusk' },
           },
-        },
+          sync_level: 'full_index',
+        })
+        if (r.status < 300) break
+        await sleep(500)
+      }
+      const result = await api('POST', `/db/v1/tables/${T7}/query`, {
+        semantic_search: 'mountain lakes',
+        indexes: ['sem'],
+        filter_query: { match_phrase: 'pixel', field: 'agent' },
         limit: 10,
       })
-      const hits = resp0(result.json)?.hits as { hits: unknown[] } | undefined
+      const hits = resp0(result.json)?.hits as { hits: Array<{ _id: string }> } | undefined
       expect(result.status).toBe(200)
-      expect(hits?.hits).toHaveLength(2)
-    })
+      expect(hits?.hits.map((h) => h._id)).toEqual(['mine'])
+    }, 120_000)
   })
 
   describe('engine-burn watchdog log signature', () => {

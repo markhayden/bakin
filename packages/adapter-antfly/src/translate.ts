@@ -114,36 +114,26 @@ function filterClauses(filters: Filter[] | undefined): { must: WireQueryNode[]; 
 }
 
 /**
- * Bakin filters → ONE boolean AST node. Retained for callers/tests that
- * want the standalone shape; buildQueryRequest composes filters into the
- * full_text_search node instead (see composeFtsWithFilters).
+ * Bakin filters → the `filter_query` node. On 0.2.0 filter_query filters
+ * BOTH the full-text and semantic lanes (every clause shape — match_phrase
+ * keyword equality incl. hyphenated values, should-disjunct INs, numeric
+ * ranges, must_not exclusions, and the semantic/hybrid no-leak property —
+ * live-probed 2026-08-31; tasks/evidence-antfly-0.2.0.md).
+ *
+ * A pure-negation node matches NOTHING on the engine, so exclusion-only
+ * filters get a match_all base conjunct.
  */
 export function buildFilterQuery(filters: Filter[] | undefined): WireQueryNode | undefined {
   const { must, mustNot } = filterClauses(filters)
   if (must.length === 0 && mustNot.length === 0) return undefined
   if (must.length === 1 && mustNot.length === 0) return must[0]
   const node: WireQueryNode = {}
-  if (must.length > 0) node.must = { conjuncts: must }
-  if (mustNot.length > 0) node.must_not = { disjuncts: mustNot }
-  return node
-}
-
-/**
- * rc.17 WORKAROUND — filters ride INSIDE the full_text_search node, never
- * `filter_query`. On the pinned engine, `filter_query` 400s on match_phrase
- * nodes ("invalid query request") and silently analyzer-mangles `match`
- * nodes on keyword fields (tier:"durable" matched nothing while
- * tier:"turn" did). Every clause shape (match_phrase conjuncts, must_not
- * exclusions, should-disjunct INs, numeric ranges) is live-verified to
- * behave in the full_text_search position (probed 2026-07-04). Pinned by
- * tests/integration/antfly/workaround-regressions.test.ts — remove when
- * upstream fixes filter_query.
- */
-export function composeFtsWithFilters(base: WireQueryNode, filters: Filter[] | undefined): WireQueryNode {
-  const { must, mustNot } = filterClauses(filters)
-  if (must.length === 0 && mustNot.length === 0) return base
-  const node: WireQueryNode = { must: { conjuncts: [base, ...must] } }
-  if (mustNot.length > 0) node.must_not = { disjuncts: mustNot }
+  if (mustNot.length > 0) {
+    node.must = { conjuncts: must.length > 0 ? must : [{ match_all: {} }] }
+    node.must_not = { disjuncts: mustNot }
+  } else {
+    node.must = { conjuncts: must }
+  }
   return node
 }
 
@@ -168,13 +158,11 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
   const aggregations = buildAggregations(q)
   const isMatchAll = text === '*'
   const listFlow = text.length === 0 && (hasFilters || aggregations !== undefined)
-  // Filters force the FTS-only lane: they can only be enforced inside the
-  // full_text_search node on rc.17 (see composeFtsWithFilters), and an
-  // unfiltered semantic leg would merge filter-violating documents into the
-  // response (e.g. another agent's rows in an agent-filtered search).
-  // Filter correctness beats semantic recall; remove when upstream fixes
-  // filter_query.
-  const effectiveStrategy: Strategy = isMatchAll || listFlow || hasFilters ? 'full_text_only' : strategy
+  // Filters no longer force the FTS-only lane: on 0.2.0 `filter_query`
+  // constrains the semantic and hybrid lanes too (no-leak probed — an
+  // agent-filtered hybrid search cannot merge another agent's rows), so
+  // filtered searches keep semantic recall.
+  const effectiveStrategy: Strategy = isMatchAll || listFlow ? 'full_text_only' : strategy
 
   const request: WireQueryRequest = {
     table,
@@ -186,15 +174,15 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
     request.timeout_ms = Math.round(q.deadlineMs)
   }
 
-  // Filters compose INTO the full_text_search node (rc.17 filter_query is
-  // broken — see composeFtsWithFilters).
   if (isMatchAll || listFlow) {
-    request.full_text_search = composeFtsWithFilters({ match_all: {} }, q.filters)
+    request.full_text_search = { match_all: {} }
   } else if (text.length > 0 && effectiveStrategy !== 'semantic_only') {
-    request.full_text_search = composeFtsWithFilters(
-      fullTextNode(text, readStringArray(q.adapterOptions?.searchableFields)),
-      q.filters,
-    )
+    request.full_text_search = fullTextNode(text, readStringArray(q.adapterOptions?.searchableFields))
+  }
+
+  if (hasFilters) {
+    const filterQuery = buildFilterQuery(q.filters)
+    if (filterQuery) request.filter_query = filterQuery
   }
 
   // The semantic leg needs concrete vector indexes to search — naming none
