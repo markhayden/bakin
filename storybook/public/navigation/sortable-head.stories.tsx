@@ -8,7 +8,17 @@ import { StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Navigation/SortableHead',
+  component: SortableHead,
   tags: ['public'],
+  // Canonical args at meta level so the render-based showcase inherits the
+  // required controlled-sort contract without per-story type noise.
+  args: {
+    field: 'updated',
+    current: 'updated',
+    dir: 'desc',
+    onSort: () => {},
+    children: 'Updated',
+  },
   parameters: {
     layout: 'fullscreen',
     docs: {
@@ -18,19 +28,29 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'interaction', 'non-color', 'overflow', 'url-state-guidance'],
   },
-} satisfies Meta
+} satisfies Meta<typeof SortableHead>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  argTypes: {
+    dir: { control: 'select', options: ['asc', 'desc'] },
+    current: { control: 'select', options: ['updated', 'task'] },
+    disabled: { control: 'boolean' },
+    // Sorting is controlled: field identity, the callback, and the header
+    // label are the consumer's table wiring, not knobs.
+    field: { control: false },
+    onSort: { control: false },
+    children: { control: false },
+  },
+  render: (args) => (
     <table style={{ inlineSize: 'min(90vw, 30rem)', borderCollapse: 'collapse' }}>
       <thead>
         <tr>
-          <SortableHead field="task" current="updated" dir="desc" onSort={() => {}}>Task</SortableHead>
-          <SortableHead field="updated" current="updated" dir="desc" onSort={() => {}}>Updated</SortableHead>
+          <SortableHead field="task" current={args.current} dir={args.dir} onSort={args.onSort}>Task</SortableHead>
+          <SortableHead {...args} />
         </tr>
       </thead>
       <tbody>

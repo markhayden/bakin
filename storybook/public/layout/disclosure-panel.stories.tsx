@@ -34,6 +34,14 @@ export const CanonicalUsage = {
       </p>
     ),
   },
+  argTypes: {
+    summary: { control: 'text' },
+    summaryMeta: { control: 'text' },
+    variant: { control: 'select', options: ['default', 'soft', 'ghost'] },
+    open: { control: 'boolean' },
+    // Revealed evidence is composition.
+    children: { control: false },
+  },
   render: (args) => (
     <div style={{ width: 'min(100%, 28rem)', minWidth: 0 }}>
       <DisclosurePanel {...args} />

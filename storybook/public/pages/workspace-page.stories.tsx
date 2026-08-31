@@ -35,22 +35,35 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
-  render: () => (
-    <WorkspacePage data-testid="canonical-workspace-page">
-      <WorkspacePageHeader>
-        <PageHeader title="Conversation workspace" />
-      </WorkspacePageHeader>
-      {/* The stat-strip zone between identity and controls. Omit the
-          component entirely when a workspace has no metrics — the frame
-          closes up with no reserved band. */}
-      <WorkspacePageMetrics>
-        <span aria-label="Workspace metrics">3 active · 1 blocked</span>
-      </WorkspacePageMetrics>
-      <WorkspacePageBody>
-        <section aria-label="Workspace canvas">Workspace canvas</section>
-      </WorkspacePageBody>
-    </WorkspacePage>
-  ),
+  // data-testid rides the render spread: React's data-* JSX allowance
+  // doesn't extend to typed args objects.
+  render: (args) => <WorkspacePage {...args} data-testid="canonical-workspace-page" />,
+  args: {
+    mode: 'contained',
+    flow: false,
+    // Header/metrics/body zones are the archetype's composition, not knobs.
+    children: (
+      <>
+        <WorkspacePageHeader>
+          <PageHeader title="Conversation workspace" />
+        </WorkspacePageHeader>
+        {/* The stat-strip zone between identity and controls. Omit the
+            component entirely when a workspace has no metrics — the frame
+            closes up with no reserved band. */}
+        <WorkspacePageMetrics>
+          <span aria-label="Workspace metrics">3 active · 1 blocked</span>
+        </WorkspacePageMetrics>
+        <WorkspacePageBody>
+          <section aria-label="Workspace canvas">Workspace canvas</section>
+        </WorkspacePageBody>
+      </>
+    ),
+  },
+  argTypes: {
+    mode: { control: 'select', options: ['contained', 'immersive'] },
+    flow: { control: 'boolean' },
+    children: { control: false },
+  },
   play: async ({ canvas }) => {
     const page = canvas.getByTestId('canonical-workspace-page')
     await expect(page).toHaveAttribute('data-archetype', 'workspace')

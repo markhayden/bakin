@@ -58,6 +58,19 @@ export const CanonicalUsage = {
     registrations: [{ id: 'fixture-canonical', routes: { '/fixture/canonical': CanonicalFixturePage } }],
     fixture: { ...DEFAULT_PLUGIN_UI_FIXTURE, route: '/fixture/canonical' },
   },
+  argTypes: {
+    surfaceState: {
+      control: 'select',
+      options: ['ready', 'initial-empty', 'no-results', 'loading', 'error', 'permission-denied'],
+    },
+    // Registrations must keep a stable identity across renders; the fixture,
+    // slots, and state-action callback are harness wiring, not knobs.
+    registrations: { control: false },
+    fixture: { control: false },
+    slots: { control: false },
+    onStateAction: { control: false },
+    className: { control: false },
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     await waitFor(() => expect(canvas.getByText('Canonical fixture page')).toBeVisible())

@@ -31,6 +31,15 @@ export const CanonicalUsage = {
     description: 'Queued workflows will resume automatically.',
     announce: 'polite',
   },
+  argTypes: {
+    tone: { control: 'select', options: ['info', 'success', 'attention', 'danger'] },
+    announce: { control: 'select', options: ['off', 'polite', 'assertive'] },
+    title: { control: 'text' },
+    description: { control: 'text' },
+    headingLevel: { control: 'select', options: [2, 3, 4] },
+    // Recovery actions are composed elements, not knobs.
+    action: { control: false },
+  },
   // Width frame: Banner's container-type zeroes its intrinsic width, so the
   // centered (shrink-to-fit) canvas would collapse it. In the app it sits in
   // block flow where width is inherited; the frame reproduces that.

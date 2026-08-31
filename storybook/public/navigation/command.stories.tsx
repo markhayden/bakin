@@ -59,18 +59,26 @@ function TaskCommands() {
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <Command label="Find an action">
-      <CommandInput placeholder="Find an action…" />
-      <CommandList label="Actions">
-        <CommandEmpty>No matching actions.</CommandEmpty>
-        <CommandGroup heading="Change state">
-          <CommandItem value="mark-running">Mark running</CommandItem>
-          <CommandItem value="mark-blocked">Mark blocked</CommandItem>
-        </CommandGroup>
-      </CommandList>
-    </Command>
-  ),
+  args: {
+    label: 'Find an action',
+    children: (
+      <>
+        <CommandInput placeholder="Find an action…" />
+        <CommandList label="Actions">
+          <CommandEmpty>No matching actions.</CommandEmpty>
+          <CommandGroup heading="Change state">
+            <CommandItem value="mark-running">Mark running</CommandItem>
+            <CommandItem value="mark-blocked">Mark blocked</CommandItem>
+          </CommandGroup>
+        </CommandList>
+      </>
+    ),
+  },
+  argTypes: {
+    label: { control: 'text' },
+    // The filterable structure (input, list, groups, items) is composition.
+    children: { control: false },
+  },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('combobox', { name: 'Find an action' })).toBeVisible()
     await expect(canvas.getByRole('option', { name: 'Mark blocked' })).toBeVisible()
