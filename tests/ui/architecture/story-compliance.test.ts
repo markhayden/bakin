@@ -50,6 +50,7 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   render: () => <Button variant="primary">Continue</Button>,
+  argTypes: { variant: { control: 'select', options: ['primary', 'secondary'] } },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('button', { name: 'Continue' })).toBeVisible()
   },
@@ -150,9 +151,35 @@ export default {
 }
 export const CanonicalUsage = {
   args: { children: 'Continue' },
+  argTypes: { children: { control: 'text' } },
   play: async () => { await expect(true).toBe(true) },
 }
 `)
+    writeVisualSpec(root, ['Primitives/Button'])
+    const [entry] = collectStoryCompliance(root)
+    expect(entry!.missing).toEqual([])
+  })
+
+  it('reports interactive-controls when CanonicalUsage has no argTypes anywhere', () => {
+    const root = makeRoot()
+    writeStory(root, 'uncontrolled.stories.tsx', COMPLIANT_STORY.replace(
+      "  argTypes: { variant: { control: 'select', options: ['primary', 'secondary'] } },\n",
+      '',
+    ))
+    writeVisualSpec(root, ['Primitives/Button'])
+    const [entry] = collectStoryCompliance(root)
+    expect(entry!.missing).toEqual(['interactive-controls'])
+  })
+
+  it('accepts meta-level argTypes for interactive-controls', () => {
+    const root = makeRoot()
+    writeStory(root, 'meta-controls.stories.tsx', COMPLIANT_STORY.replace(
+      "  argTypes: { variant: { control: 'select', options: ['primary', 'secondary'] } },\n",
+      '',
+    ).replace(
+      "  tags: ['public'],",
+      "  tags: ['public'],\n  argTypes: { variant: { control: 'select', options: ['primary', 'secondary'] } },",
+    ))
     writeVisualSpec(root, ['Primitives/Button'])
     const [entry] = collectStoryCompliance(root)
     expect(entry!.missing).toEqual([])

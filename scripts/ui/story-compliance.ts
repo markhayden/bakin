@@ -9,6 +9,10 @@
  *                       (`Recipes/` entries are exempt from this one rule);
  *  - play-assertion:    at least one story in the file has a play function
  *                       that actually asserts (references `expect`);
+ *  - interactive-controls: the `CanonicalUsage` story is controllable — it or
+ *                       its meta declares `argTypes` so the Storybook UI can
+ *                       exercise the component's real props (`Recipes/` and
+ *                       `Tokens/` entries are exempt alongside canonical-usage);
  *  - coverage-axes:     meta declares non-empty `parameters.bakinCoverage`;
  *  - docs-description:  meta declares `parameters.docs.description.component`;
  *  - visual-baseline:   some spec under tests/ui/visual references the entry
@@ -32,6 +36,7 @@ const SDK_PREFIX = '@makinbakin/sdk'
 
 export type StoryRequirement =
   | 'canonical-usage'
+  | 'interactive-controls'
   | 'play-assertion'
   | 'coverage-axes'
   | 'docs-description'
@@ -215,6 +220,11 @@ function analyzeStoryFile(root: string, path: string, visualSources: string): St
           missing.add('canonical-usage')
         }
       }
+      // interactive-controls: the canonical story must be exercisable from
+      // the Storybook UI — argTypes on the story itself or on the meta.
+      const argTypes = objectProperty(first.initializer, 'argTypes')
+        ?? (meta ? objectProperty(meta, 'argTypes') : undefined)
+      if (!argTypes) missing.add('interactive-controls')
     }
   }
 
