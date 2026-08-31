@@ -8,6 +8,7 @@ import { ChartStage } from './chart-story-stage'
 
 const meta = {
   title: 'Components/Charts/Sparkline',
+  component: Sparkline,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -18,20 +19,29 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'non-color', 'keyboard', 'dense-data', 'missing-data'],
   },
-} satisfies Meta
+} satisfies Meta<typeof Sparkline>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <Sparkline
-      label="Completed tasks across the last six reporting windows"
-      labels={['Window 1', 'Window 2', 'Window 3', 'Window 4', 'Window 5', 'Window 6']}
-      values={[18, 24, null, 31, 34, 42]}
-    />
-  ),
+  args: {
+    label: 'Completed tasks across the last six reporting windows',
+    labels: ['Window 1', 'Window 2', 'Window 3', 'Window 4', 'Window 5', 'Window 6'],
+    values: [18, 24, null, 31, 34, 42],
+  },
+  argTypes: {
+    area: { control: 'boolean' },
+    width: { control: 'number' },
+    height: { control: 'number' },
+    label: { control: 'text' },
+    // Fixture data; stroke stays palette-governed rather than a free color knob.
+    values: { control: false },
+    labels: { control: false },
+    stroke: { control: false },
+    formatValue: { control: false },
+  },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('group', { name: 'Completed tasks across the last six reporting windows' })).toBeVisible()
     await expect(canvas.queryByRole('img', { name: /Window 3/ })).not.toBeInTheDocument()
@@ -72,6 +82,8 @@ function Trend({
 }
 
 export const CompactTrends = {
+  // Type-satisfying only: each Trend example owns its sparkline props.
+  args: { label: 'Completed tasks across the last six reporting windows', values: [18, 24, 21, 31, 34, 42] },
   render: () => (
     <ChartStage
       eyebrow="Data / compact trend"
@@ -99,7 +111,13 @@ export const CompactTrends = {
 } satisfies Story
 
 export const AreaFill = {
-  render: () => (
+  args: {
+    area: true,
+    label: 'Assets generated across the last six reporting windows',
+    labels: ['Window 1', 'Window 2', 'Window 3', 'Window 4', 'Window 5', 'Window 6'],
+    values: [18, 24, null, 31, 34, 42],
+  },
+  render: (args) => (
     <ChartStage
       eyebrow="Data / compact trend"
       title="An area fill emphasizes magnitude without changing the contract"
@@ -111,12 +129,7 @@ export const AreaFill = {
           <strong>42</strong>
           <p>Up 8 from the prior window</p>
         </div>
-        <Sparkline
-          area
-          label="Assets generated across the last six reporting windows"
-          labels={['Window 1', 'Window 2', 'Window 3', 'Window 4', 'Window 5', 'Window 6']}
-          values={[18, 24, null, 31, 34, 42]}
-        />
+        <Sparkline {...args} />
       </article>
       <ChartExplainer>Use the fill when accumulated magnitude is the message; the default line remains the neutral choice.</ChartExplainer>
     </ChartStage>

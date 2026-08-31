@@ -41,8 +41,13 @@ const canonicalCalls: ConversationToolCall[] = [
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  args: { calls: canonicalCalls },
-  render: () => <ActivityGroup calls={canonicalCalls} />,
+  args: { calls: canonicalCalls, defaultExpanded: false },
+  argTypes: {
+    defaultExpanded: { control: 'boolean' },
+    // Call rows are the transcript's data; the detail action is consumer-owned.
+    calls: { control: false },
+    onOpenCall: { control: false },
+  },
   play: async ({ canvas, userEvent }) => {
     const trigger = canvas.getByRole('button', { name: /Searched the web/ })
     await expect(trigger).toHaveAttribute('aria-expanded', 'false')

@@ -9,6 +9,7 @@ import { StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Content/MarkdownEditor',
+  component: MarkdownEditor,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -19,22 +20,35 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'reduced-motion'],
   },
-} satisfies Meta
+} satisfies Meta<typeof MarkdownEditor>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    label: 'Release notes',
+    content: '## Handoff\n\nRelease owner: **Maya**',
+    mode: 'edit',
+    height: 'compact',
+    onChange: () => {},
+  },
+  argTypes: {
+    mode: { control: 'select', options: ['edit', 'preview'] },
+    height: { control: 'select', options: ['compact', 'document', 'viewport', 'fill'] },
+    format: { control: 'select', options: ['markdown', 'yaml', 'json', 'text'] },
+    label: { control: 'text' },
+    placeholder: { control: 'text' },
+    content: { control: 'text' },
+    // The host owns persistence and routing composition.
+    onChange: { control: false },
+    description: { control: false },
+    renderInternalLink: { control: false },
+  },
+  render: (args) => (
     <div style={{ width: 'min(100%, 36rem)' }}>
-      <MarkdownEditor
-        label="Release notes"
-        content={'## Handoff\n\nRelease owner: **Maya**'}
-        mode="edit"
-        height="compact"
-        onChange={() => {}}
-      />
+      <MarkdownEditor {...args} />
     </div>
   ),
   play: async ({ canvas }) => {
@@ -96,6 +110,8 @@ function EditorExample() {
 }
 
 export const ControlledEditor = {
+  // Type-satisfying only: the stateful example owns its props.
+  args: { label: 'Release handoff content', content: '', mode: 'edit', onChange: () => {} },
   render: () => <EditorExample />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)

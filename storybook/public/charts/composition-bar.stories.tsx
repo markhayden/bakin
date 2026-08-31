@@ -37,6 +37,15 @@ export const CanonicalUsage = {
     size: 'default',
     legend: true,
   },
+  argTypes: {
+    size: { control: 'select', options: ['default', 'inline'] },
+    legend: { control: 'boolean' },
+    label: { control: 'text' },
+    // Fixture segments and the status-tone mapping are the story's subject, not controls.
+    data: { control: false },
+    tones: { control: false },
+    formatValue: { control: false },
+  },
   render: (args) => (
     <div style={{ width: 360 }}>
       <CompositionBar {...args} />

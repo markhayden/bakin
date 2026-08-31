@@ -13,6 +13,7 @@ function MetricIcon({ className }: { className?: string }) {
 
 const meta = {
   title: 'Components/Charts/StatTile',
+  component: StatTile,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -23,22 +24,31 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'non-color', 'progress', 'keyboard', 'dense-data'],
   },
-} satisfies Meta
+} satisfies Meta<typeof StatTile>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <StatTile
-      label="Success rate"
-      value="91.4%"
-      valueTone="success"
-      sub="128 of 140 observed"
-      progress={{ percent: 91.4, tone: 'success', label: 'Success rate' }}
-    />
-  ),
+  args: {
+    label: 'Success rate',
+    value: '91.4%',
+    valueTone: 'success',
+    sub: '128 of 140 observed',
+    progress: { percent: 91.4, tone: 'success', label: 'Success rate' },
+  },
+  argTypes: {
+    variant: { control: 'select', options: ['plain', 'surface'] },
+    valueTone: { control: 'select', options: ['neutral', 'success', 'attention', 'danger', 'accent'] },
+    label: { control: 'text' },
+    value: { control: 'text' },
+    sub: { control: 'text' },
+    // The meter object, icon, and click handler are consumer-owned composition.
+    progress: { control: false },
+    icon: { control: false },
+    onClick: { control: false },
+  },
   play: async ({ canvas }) => {
     // The exact value and label are visible text — the non-color status cue.
     await expect(canvas.getByText('Success rate')).toBeVisible()
@@ -55,6 +65,8 @@ export const CanonicalUsage = {
 } satisfies Story
 
 export const DenseMetrics = {
+  // Type-satisfying only: the showcase owns its tiles.
+  args: { label: 'Success rate', value: '91.4%' },
   render: () => (
     <StoryStage
       eyebrow="Data / scan rhythm"
@@ -106,6 +118,8 @@ function ActionableMetricsExample() {
 }
 
 export const ActionableMetrics = {
+  // Type-satisfying only: the stateful example owns its props.
+  args: { label: 'Success rate', value: '91.4%' },
   render: () => <ActionableMetricsExample />,
   play: async ({ canvas, userEvent }) => {
     const blocked = canvas.getByRole('button', { name: /Blocked tasks 3/ })

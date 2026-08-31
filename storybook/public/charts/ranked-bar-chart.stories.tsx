@@ -5,9 +5,23 @@ import { ChartExplainer, RankedBarChart, type ChartDatum } from '@makinbakin/sdk
 
 import { ChartStage } from './chart-story-stage'
 
+const canonicalData: ChartDatum[] = [
+  { x: 'writer', xLabel: 'writer-agent', values: { runs: 48 } },
+  { x: 'reviewer', xLabel: 'reviewer-agent', values: { runs: 31 } },
+  { x: 'publisher', xLabel: 'publisher-agent', values: {}, missingLabels: { runs: 'Not reported' } },
+]
+
 const meta = {
   title: 'Components/Charts/RankedBarChart',
+  component: RankedBarChart,
   tags: ['public'],
+  // Canonical fixture args at meta level keep required props satisfied for the
+  // render-based showcase stories below.
+  args: {
+    data: canonicalData,
+    series: { key: 'runs', label: 'Completed runs' },
+    label: 'Completed runs by agent',
+  },
   parameters: {
     layout: 'fullscreen',
     docs: {
@@ -17,26 +31,26 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'non-color', 'keyboard', 'missing-data', 'multi-series'],
   },
-} satisfies Meta
+} satisfies Meta<typeof RankedBarChart>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
-const canonicalData: ChartDatum[] = [
-  { x: 'writer', xLabel: 'writer-agent', values: { runs: 48 } },
-  { x: 'reviewer', xLabel: 'reviewer-agent', values: { runs: 31 } },
-  { x: 'publisher', xLabel: 'publisher-agent', values: {}, missingLabels: { runs: 'Not reported' } },
-]
-
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <RankedBarChart
-      data={canonicalData}
-      series={{ key: 'runs', label: 'Completed runs' }}
-      label="Completed runs by agent"
-    />
-  ),
+  argTypes: {
+    compactData: { control: 'boolean' },
+    showDataTable: { control: 'boolean' },
+    dataTableExpandable: { control: 'boolean' },
+    label: { control: 'text' },
+    description: { control: 'text' },
+    // Fixture data; the secondary overlay and status tones are showcase subjects.
+    data: { control: false },
+    series: { control: false },
+    secondary: { control: false },
+    tones: { control: false },
+    formatValue: { control: false },
+  },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('group', { name: 'Completed runs by agent' })).toBeVisible()
     const bar = canvas.getByRole('img', { name: 'writer-agent — Completed runs: 48' })

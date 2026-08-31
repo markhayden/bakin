@@ -46,18 +46,26 @@ const meterStats: ContextMeterStats = {
 
 export const CanonicalUsage = {
   args: { title: 'Release review' },
-  render: () => (
+  argTypes: {
+    title: { control: 'text' },
+    titleAs: { control: 'select', options: ['h2', 'h3', 'div'] },
+    // Identity, actions, and the meta line are slotted composition.
+    avatar: { control: false },
+    actions: { control: false },
+    meta: { control: false },
+  },
+  render: (args) => (
     <ConversationHeader
       // Container-typed component: centered canvases need a definite inline size.
       style={{ inlineSize: '40rem', maxInlineSize: '90vw' }}
       avatar={<AgentAvatar agent={agent} size="sm" />}
-      title="Release review"
       meta={
         <>
           <ContextMeter stats={meterStats} />
           <Badge size="xs" variant="outline">1.2m tokens · $0.84</Badge>
         </>
       }
+      {...args}
     />
   ),
   play: async ({ canvas }) => {
