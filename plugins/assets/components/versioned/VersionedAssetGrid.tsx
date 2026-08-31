@@ -130,7 +130,11 @@ function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo 
         >
           <Pencil />
         </Button>
-        {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute left-bakin-1 top-bakin-1 z-10" />}
+        {/* Debug scores live top-right BELOW the edit button's row: every
+            corner is taken (checkbox TL, pencil TR, versions BL, size BR),
+            and the old top-left placement sat on the always-visible
+            selection checkbox. */}
+        {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute right-bakin-1 top-bakin-8 z-10" />}
         {asset.versionCount > 1 && (
           <span className="absolute bottom-bakin-2 left-bakin-2 rounded-bakin-control bg-bakin-canvas-default/85 px-bakin-2 py-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-action-primary-background" data-testid="version-badge">
             {asset.versionCount} versions
