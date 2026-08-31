@@ -249,14 +249,12 @@ if (!binary) {
       expect(sem?.state).toBe('ready')
     }, 180_000)
 
-    it('PIN rc.18: an EMPTY (never-written) table reports backfill running forever on every leg', async () => {
-      // WHEN THIS FAILS (flags clear on an empty table): upstream fixed
-      // empty-table backfill accounting → delete the !runtime idle-detection
-      // block in mapIndexStatuses + this pin. (A written-then-caught-up FTS
-      // leg clears its flags fine on rc.18 — verified here 2026-07-11; the
-      // lie is specific to tables no write has ever touched. Live impact:
-      // every empty blue/green green parks because converged() never sees
-      // ready legs — bakin_team / bakin_brands, evidence file GATE B.)
+    it('GUARD 0.2.0 (was the empty-table lying-flags pin): a never-written table reports honest ready flags', async () => {
+      // Upstream fixed empty-table backfill accounting in 0.2.0, so the
+      // !runtime idle-detection block in mapIndexStatuses was deleted
+      // (2026-08-31). WHEN THIS FAILS (flags raised on an empty table):
+      // empty blue/green greens will park unconverged again — resurrect
+      // the caught-up-idle override from git history.
       const T4 = 'pins_empty_table'
       await api('POST', `/db/v1/tables/${T4}`, { num_shards: 1 })
       await sleep(3000)
@@ -265,11 +263,10 @@ if (!binary) {
       const ft = entries.find((e) => e.config?.type === 'full_text')?.status as Record<string, unknown> | undefined
       expect(ft).toBeDefined()
       expect(ft!.doc_count).toBe(0)
-      // CANARY: raw flags lie on the never-written table.
-      expect(ft!.rebuilding === true || ft!.backfill_active === true).toBe(true)
-      expect(ft!.backfill_state).toBe('running')
-      // WORKAROUND GUARD: our health mapping overrides to ready (caught up:
-      // indexed 0 >= docs 0, no enrichment runtime to consult).
+      expect(ft!.rebuilding).toBe(false)
+      expect(ft!.backfill_active).toBe(false)
+      expect(ft!.backfill_state).toBe('ready')
+      // And the un-overridden mapping agrees.
       const { AntflySearchClient } = await import('../../../packages/adapter-antfly/src/client')
       const { DEFAULT_SETTINGS } = await import('../../../packages/adapter-antfly/src/defaults')
       const client = new AntflySearchClient({ ...DEFAULT_SETTINGS, url: instance.url }, { fetchImpl: nativeFetch })

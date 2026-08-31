@@ -418,17 +418,6 @@ export function mapIndexStatuses(entries: WireIndexStatusEntry[]): TableLegHealt
       && (runtime.active_embed_batch_items ?? 0) === 0) {
       building = false
     }
-    // rc.18 WORKAROUND — runtime-less legs (full_text) report
-    // rebuilding/backfill_active FOREVER once caught up, including on
-    // freshly created EMPTY tables (observed live 2026-07-11: every empty
-    // green parked because its FTS leg never went ready). Caught up
-    // (indexed >= docs) with the flags still raised and no runtime to
-    // consult ⇒ idle ⇒ ready. Pinned by the runtime-less-leg canary in
-    // workaround-regressions; delete when upstream clears the flags.
-    if (building && !runtime
-      && (status?.total_indexed ?? 0) >= (status?.doc_count ?? 0)) {
-      building = false
-    }
     return {
       leg: entry.config.name,
       state: failed ? 'error' as const : building ? 'building' as const : 'ready' as const,
