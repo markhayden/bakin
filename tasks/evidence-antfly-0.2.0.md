@@ -365,6 +365,43 @@ the same docs at ~30–40 docs/s across concurrent streams. 20k docs ⇒ 83 min
 backfill vs ~10 min via the write path. Availability during backfill is
 excellent (separate note of praise); throughput is the issue.
 
+## Phase 4 — Full-Stack Validation (2026-08-31)
+
+**Chaos drills (T19): ALL FIVE PASS** against the 0.2.0 release binary on the
+target M4, post-de-hardening code, in under 30 s total — engine-SIGKILL
+resume, process-SIGKILL resume, 550-write outage drain + no-op re-enqueue,
+wipe detection + rebuild, upgrade-under-load (68/68 writes, 0 pending).
+Recorded in `.claude/knowledge/search-chaos-drills.md`. (The drill script's
+hardcoded dev-binary/repo paths were un-hardcoded; `BAKIN_ANTFLY_BIN`
+overrides.)
+
+**Isolated full-stack e2e (T20)** — verify-skill boot (guest-URL settings)
+against a local 0.2.0 child engine:
+- Fresh home boot ensured 11 blue/green tables through the NEW provisioning
+  path — every embeddings leg `worker_started: true`, empty tables honestly
+  `ready` (the T12 behavior in production shape).
+- 20 tasks via REST → outbox → engine: FTS doc_count 20 AND embeddings
+  ti 20/20 (write-path embeds through the full stack).
+- `bakin reindex --force` rebuilt all tables (87 docs, ~17 s) under a query
+  loop: **zero non-200s, p99 2 ms during the rebuild** — blue/green + sync
+  backfill holding availability end-to-end.
+- `bakin check search` correctly FAILS on the machine's rc.18 binary vs the
+  new pin ("run `bakin install search`") — the upgrade detection working as
+  designed; models check green.
+
+## T18 — New-Feature Survey Verdicts (judgment scope)
+
+| 0.2.0 surface | Verdict | Rationale |
+|---|---|---|
+| AFB portable backup/restore | **TICKET** | Wipe+reindex already covers rebuilds (derived data); AFB could make cutover/rollback O(copy) instead of O(reindex) — worth a bakin enhancement, not needed to flip |
+| `/ml/v1/*` API surface | **NO-OP** | Adapter makes no ML HTTP calls; models are filesystem distributions |
+| Fallback algebraic bucket aggregations | **TICKET** | Facets work today; richer aggregation shapes are a search-UX enhancement |
+| Secrets live-rotation / auth / RBAC | **NO-OP for now** | Loopback-only single-user instance; revisit if the engine ever leaves 127.0.0.1 |
+| `field_capabilities` + schema-mapped sort | **TICKET** | The path to finally shipping `Query.sort` → `order_by` (pin stays until a sort feature exists) |
+| `artifact` enrichments + `document_extraction` (+ Florence-2 OCR) | **TICKET** | Overlaps Bakin's own assets-enrichment/PDF pipeline (#747) — evaluate replacing the remotePDF-era path with durable page-level units |
+| `agents` (retrieval/query-builder) | **TICKET** | Direct enabler for "Ask Bakin" (bakin#70) |
+| `lite` embedded engine | **NO-OP** | OS-supervised standalone is the deployment model |
+
 ## New-Surface Notes (T18 feed)
 
 - `backup`/`restore` (AFB portable format), `artifact` (enrichment
