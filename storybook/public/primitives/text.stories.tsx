@@ -30,6 +30,14 @@ export const CanonicalUsage = {
     tone: 'muted',
     children: 'Last indexed 4 minutes ago',
   },
+  argTypes: {
+    size: { control: 'select', options: ['body', 'meta'] },
+    tone: { control: 'select', options: ['default', 'muted'] },
+    weight: { control: 'select', options: ['regular', 'medium', 'semibold'] },
+    mono: { control: 'boolean' },
+    children: { control: 'text' },
+    as: { control: false },
+  },
   play: async ({ canvas, args }) => {
     // De-emphasis is a colour token, not an opacity fade: the text must still
     // be a real, readable node rather than a partially transparent one.

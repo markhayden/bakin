@@ -33,13 +33,22 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <div>
-      <Label htmlFor="repository-path">Repository path</Label>
-      <InputGroup aria-label="Repository address">
+  args: {
+    // One editable control plus contextual adornments — composition, not a control.
+    children: (
+      <>
         <InputGroupAddon><InputGroupText>github.com/</InputGroupText></InputGroupAddon>
         <InputGroupInput id="repository-path" defaultValue="makinbakin/reference-plugin" />
-      </InputGroup>
+      </>
+    ),
+  },
+  argTypes: {
+    children: { control: false },
+  },
+  render: (args) => (
+    <div>
+      <Label htmlFor="repository-path">Repository path</Label>
+      <InputGroup aria-label="Repository address" {...args} />
     </div>
   ),
   play: async ({ canvas }) => {

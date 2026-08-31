@@ -8,6 +8,7 @@ import { StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Primitives/CopyButton',
+  component: CopyButton,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -18,19 +19,26 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'keyboard', 'interaction'],
   },
-} satisfies Meta
+} satisfies Meta<typeof CopyButton>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    text: 'bakin agents sync --check copywriter',
+    label: 'Copy command',
+  },
+  argTypes: {
+    text: { control: 'text' },
+    label: { control: 'text' },
+    className: { control: false },
+  },
+  render: (args) => (
     <Panel variant="code" padding="compact" className="flex min-w-0 items-center gap-bakin-2">
-      <code className="min-w-0 flex-1 break-all text-bakin-text-primary">
-        bakin agents sync --check copywriter
-      </code>
-      <CopyButton text="bakin agents sync --check copywriter" label="Copy command" />
+      <code className="min-w-0 flex-1 break-all text-bakin-text-primary">{args.text}</code>
+      <CopyButton {...args} />
     </Panel>
   ),
   // Deliberately does NOT click: the success state reverts after 1.5s, so a

@@ -25,8 +25,18 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <RadioGroup aria-label="Delete scope" defaultValue="asset">
+  args: {
+    defaultValue: 'asset',
+    disabled: false,
+  },
+  argTypes: {
+    defaultValue: { control: 'select', options: ['asset', 'current'] },
+    disabled: { control: 'boolean' },
+    // Option rows are composition — each Radio needs its visible label element.
+    children: { control: false },
+  },
+  render: (args) => (
+    <RadioGroup aria-label="Delete scope" {...args}>
       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <Radio value="asset" />
         Delete the whole asset

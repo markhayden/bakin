@@ -22,15 +22,24 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    htmlFor: 'project-name',
+    children: 'Project name',
+  },
+  argTypes: {
+    children: { control: 'text' },
+    // The association is the contract: htmlFor must keep matching the input id.
+    htmlFor: { control: false },
+  },
+  render: (args) => (
     <div>
-      <Label htmlFor="project-name">Project name</Label>
+      <Label {...args} />
       <Input id="project-name" placeholder="Q3 launch" />
     </div>
   ),
-  play: async ({ canvas, userEvent }) => {
-    const input = canvas.getByLabelText('Project name')
-    await userEvent.click(canvas.getByText('Project name'))
+  play: async ({ canvas, userEvent, args }) => {
+    const input = canvas.getByLabelText(String(args.children))
+    await userEvent.click(canvas.getByText(String(args.children)))
     await expect(input).toHaveFocus()
   },
 } satisfies Story

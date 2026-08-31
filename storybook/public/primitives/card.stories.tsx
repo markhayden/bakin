@@ -31,15 +31,25 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <Card aria-labelledby="canonical-card-title">
-      <CardHeader>
-        <CardTitle id="canonical-card-title">Resolve launch blockers</CardTitle>
-        <CardDescription>4 linked assets · owned by Research Ops</CardDescription>
-      </CardHeader>
-      <CardContent>Two approvals are waiting and one runtime check needs attention.</CardContent>
-    </Card>
-  ),
+  args: {
+    'aria-labelledby': 'canonical-card-title',
+    // The bounded object's content is composition; controls cover the card frame.
+    children: (
+      <>
+        <CardHeader>
+          <CardTitle id="canonical-card-title">Resolve launch blockers</CardTitle>
+          <CardDescription>4 linked assets · owned by Research Ops</CardDescription>
+        </CardHeader>
+        <CardContent>Two approvals are waiting and one runtime check needs attention.</CardContent>
+      </>
+    ),
+  },
+  argTypes: {
+    size: { control: 'select', options: ['sm', 'md'] },
+    tone: { control: 'select', options: ['neutral', 'success', 'attention', 'danger', 'accent'] },
+    selected: { control: 'boolean' },
+    children: { control: false },
+  },
   play: async ({ canvas }) => {
     const title = canvas.getByText('Resolve launch blockers')
     const card = title.closest('[data-slot="card"]')

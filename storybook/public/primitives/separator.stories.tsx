@@ -20,10 +20,18 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    orientation: 'horizontal',
+    decorative: true,
+  },
+  argTypes: {
+    orientation: { control: 'select', options: ['horizontal', 'vertical'] },
+    decorative: { control: 'boolean' },
+  },
+  render: (args) => (
     <div>
       <p>Deployment policy</p>
-      <Separator />
+      <Separator {...args} />
       <p>All production runs require approval.</p>
     </div>
   ),
