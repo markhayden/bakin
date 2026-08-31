@@ -740,6 +740,8 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=components-forms-unsavedchangesdialog--canonical-usage&viewMode=story', png: 'forms-unsaved-changes-dialog.png', role: 'dialog' as const, name: 'Unsaved changes' },
   { url: '/iframe.html?id=components-forms-plugin-settings-renderer--messaging-schema-workflow&viewMode=story', png: 'forms-plugin-settings-renderer.png', text: 'Let plugin settings feel native without hiding their rules' },
   { url: '/iframe.html?id=recipes-destructive-settings-flow--settings-flow&viewMode=story', png: 'recipes-destructive-settings-flow.png', text: 'Workspace deletion confirmed' },
+  { url: '/iframe.html?id=recipes-filterable-table-page--filterable-table&viewMode=story', png: 'recipes-filterable-table.png', text: 'Showing 1–8 of 12' },
+  { url: '/iframe.html?id=recipes-form-in-a-drawer--edit-flow&viewMode=story', png: 'recipes-form-in-drawer.png', text: 'Agent profile saved' },
   { url: '/iframe.html?id=components-navigation-pagination--paged-boundaries&viewMode=story', png: 'navigation-pagination.png', text: 'Showing 21–40 of 94' },
   { url: '/iframe.html?id=components-charts-rankedbarchart--ranked-comparison&viewMode=story', png: 'charts-ranked-bar-chart.png', text: 'Rank long labels without forcing them onto an axis' },
   { url: '/iframe.html?id=components-charts-chartexplainer--canonical-usage&viewMode=story', png: 'charts-chart-explainer.png', role: 'note' as const },
