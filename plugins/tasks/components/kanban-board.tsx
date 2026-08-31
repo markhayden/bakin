@@ -668,8 +668,11 @@ export function KanbanBoard() {
                 stickyScrollbar
                 data-task-board-scroll
                 // pb clears the pinned scrollbar so fully-scrolled cards
-                // never rest on it.
-                className="px-bakin-4 pb-bakin-6 @md/page-shell:px-bakin-6"
+                // never rest on it. flex-1 lets the board region absorb the
+                // flow body's leftover height, so with short columns the
+                // region's bottom edge — where the sticky rail attaches —
+                // is the viewport bottom, not mid-page.
+                className="flex-1 px-bakin-4 pb-bakin-6 @md/page-shell:px-bakin-6"
               >
                 {COLUMN_ORDER.map((colId) => (
                   <KanbanColumn

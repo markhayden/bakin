@@ -26,8 +26,12 @@ export type WorkspacePageProps = Omit<
   /**
    * Document-flow workspace: the body grows with its content and the page
    * owns the ONE vertical scroll (identity + content scroll as a single
-   * document; the compact row still sticks). Default keeps the
-   * viewport-bound canvas whose children own their scrolling.
+   * document; the compact row still sticks). The body still fills the
+   * remaining viewport as a MINIMUM, so a trailing canvas (board, grid)
+   * reaches the fold and pinned affordances such as a sticky horizontal
+   * scrollbar sit at the window bottom even when content is short.
+   * Default keeps the viewport-bound canvas whose children own their
+   * scrolling.
    */
   flow?: boolean
 }
@@ -289,7 +293,10 @@ export type WorkspacePageBodyProps = React.ComponentPropsWithoutRef<'div'>
 /**
  * Flush remaining canvas. The mobile activity trigger lives in the host nav,
  * so this body only preserves the device safe area. In a `flow` workspace
- * the body grows with its content instead of bounding it.
+ * the body grows with its content instead of bounding it — while still
+ * absorbing the shell's leftover height (the shell content box is a
+ * min-h-full column), so short content leaves the body at the fold rather
+ * than mid-page.
  */
 export function WorkspacePageBody({
   className,
@@ -305,7 +312,10 @@ export function WorkspacePageBody({
       className={cn(
         'flex min-w-0 pb-[env(safe-area-inset-bottom)] @md/page-shell:pb-0',
         flow
-          ? 'flex-none flex-col'
+          // flex-1 (not flex-none): the shell content box is a min-h-full
+          // column, so growing here is what carries a short flow page to
+          // the viewport bottom; tall content still exceeds it freely.
+          ? 'flex-1 flex-col'
           : 'min-h-0 flex-1 overflow-hidden',
         !flow && mode === 'immersive' &&
           'h-[calc(100%-var(--bakin-workspace-compact-header-height))] min-h-[calc(100%-var(--bakin-workspace-compact-header-height))] flex-none',
