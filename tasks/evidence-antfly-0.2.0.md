@@ -304,6 +304,29 @@ idle runtime + repair clean ⇒ ready (advisory-grade surface at most);
 `repair_degraded:true` / repair issues ⇒ failed. Blue/green convergence is
 unaffected (converged() sees ready legs).
 
+## Phase 2 — De-Hardening Census + Outcomes (2026-08-31)
+
+Pin census vs the 0.2.0 binary (post-repin): 4 pins flipped red, 8 held.
+
+| Candidate | Outcome | Commit |
+|---|---|---|
+| composeFtsWithFilters (filter-in-AST) | **REMOVED** — filter_query works for every production shape; bonus: filtered searches keep the semantic lane (no-leak probed + guarded); pure-negation gets a match_all base | 3a |
+| mapIndexStatuses `!runtime` empty-table idle block | **REMOVED** — empty-table flags honest | 3b |
+| `{}` scan-body fallback | **REMOVED** — bodyless /documents legal | 3c |
+| rc-era wedge patterns (SendFailed / TableReadChurn / ReadUnavailable) | **REMOVED** — error names gone from the binary; replaced by the observed 0.2.0 `StorageReadTemporarilyUnavailable` storm signature (byte-grep pinned) | 3d |
+| antfly#319 idle-detection override | **REMOVED** — retirement condition met at scale (gate T7); pin suite moved to per-index endpoint creation (inline legs are dead) | 3e |
+| Process-wide write serialization gate | **REMOVED** — T3 soak + 8-way concurrent structural create/drop probe both clean; backfill switched to sync writes (fast lane) with a 120 s chunk ceiling | 3f |
+| EMBED_SAFE_RE + thumbs-first | **RETAINED** — undecodable media still poisons the whole batch (pin held); no per-doc error policy yet | — |
+| order_by / Query.sort | **RETAINED** — inferred fields still 422; `field_capabilities` schema-mapping is the enhancement path | — |
+
+Structural-concurrency probe (pre-3f): 8 parallel create+embeddings-leg+
+sync-write pipelines then 8 parallel drops on engine B — all 200/201/204,
+engine alive, queries healthy.
+
+Post-Phase-2 verification: the full workaround suite (12 tests incl. the new
+guards) is GREEN against the 0.2.0 binary in 16 s (vs 120 s+ with dead legs);
+search-conformance 18/18.
+
 ## Drafted Upstream Tickets (file in P5 via gh against antflydb/antfly)
 
 **Draft 1 — "0.2.0: adding an embeddings index to a populated table wedges the
