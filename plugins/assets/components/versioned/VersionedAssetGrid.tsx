@@ -130,12 +130,12 @@ function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo 
         >
           <Pencil />
         </Button>
-        {/* Debug scores align with the checkbox row, inset left of the edit
-            pencil's slot (right-bakin-8 clears the icon-xs button at
-            right-bakin-2): every corner is taken (checkbox TL, pencil TR,
-            versions BL, size BR), and the old top-left placement sat on the
-            always-visible selection checkbox. */}
-        {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute right-bakin-8 top-bakin-2 z-10" />}
+        {/* Debug scores share the checkbox's row and the size callout's
+            right margin. The hover-revealed edit pencil (z-20) overlaps the
+            panel's corner when visible — accepted for this debug-only
+            surface; the old top-left placement sat on the always-visible
+            selection checkbox, which was worse. */}
+        {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute right-bakin-2 top-bakin-2 z-10" />}
         {asset.versionCount > 1 && (
           <span className="absolute bottom-bakin-2 left-bakin-2 rounded-bakin-control bg-bakin-canvas-default/85 px-bakin-2 py-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-action-primary-background" data-testid="version-badge">
             {asset.versionCount} versions
