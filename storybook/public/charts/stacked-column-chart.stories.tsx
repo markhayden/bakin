@@ -12,23 +12,6 @@ import {
 
 import { ChartStage } from './chart-story-stage'
 
-const meta = {
-  title: 'Components/Charts/StackedColumnChart',
-  tags: ['public'],
-  parameters: {
-    layout: 'fullscreen',
-    docs: {
-      description: {
-        component: 'StackedColumnChart shows dense composition across windows for a stable set of entities. Colors come from the fixed color-vision-deficiency-checked palette and follow the entity, not the filter: the first eight entity slots stay stable, later entities fold into one visibly named Other group, and visible names plus slot copy preserve meaning without color. A missing window renders as Not reported — never zero — an in-progress window is labelled, the interactive legend never hides the last visible series, keyboard focus mirrors pointer tooltips per column, and the exact-data table renders expanded by default so the evidence stays visible — `compactData` collapses it behind its disclosure for space-tight contexts. An empty dataset is a named state without invented marks.',
-      },
-    },
-    bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'empty', 'overflow', 'multi-series', 'cvd', 'non-color', 'keyboard', 'interaction', 'missing-data'],
-  },
-} satisfies Meta
-
-export default meta
-type Story = StoryObj<typeof meta>
-
 const canonicalKeys = ['writer', 'reviewer', 'publisher']
 
 const canonicalData: ChartDatum[] = [
@@ -38,16 +21,48 @@ const canonicalData: ChartDatum[] = [
   { x: 'jul-27', xLabel: 'Jul 27', values: { writer: 5, reviewer: 4, publisher: 2 } },
 ]
 
+const meta = {
+  title: 'Components/Charts/StackedColumnChart',
+  component: StackedColumnChart,
+  tags: ['public'],
+  // Canonical fixture args at meta level keep required props satisfied for the
+  // render-based showcase stories below.
+  args: {
+    data: canonicalData,
+    seriesKeys: canonicalKeys,
+    label: 'Agent runs by day',
+    height: 160,
+  },
+  parameters: {
+    layout: 'fullscreen',
+    docs: {
+      description: {
+        component: 'StackedColumnChart shows dense composition across windows for a stable set of entities. Colors come from the fixed color-vision-deficiency-checked palette and follow the entity, not the filter: the first eight entity slots stay stable, later entities fold into one visibly named Other group, and visible names plus slot copy preserve meaning without color. A missing window renders as Not reported — never zero — an in-progress window is labelled, the interactive legend never hides the last visible series, keyboard focus mirrors pointer tooltips per column, and the exact-data table renders expanded by default so the evidence stays visible — `compactData` collapses it behind its disclosure for space-tight contexts. An empty dataset is a named state without invented marks.',
+      },
+    },
+    bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'empty', 'overflow', 'multi-series', 'cvd', 'non-color', 'keyboard', 'interaction', 'missing-data'],
+  },
+} satisfies Meta<typeof StackedColumnChart>
+
+export default meta
+type Story = StoryObj<typeof meta>
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <StackedColumnChart
-      data={canonicalData}
-      seriesKeys={canonicalKeys}
-      label="Agent runs by day"
-      height={160}
-    />
-  ),
+  argTypes: {
+    height: { control: 'number' },
+    compactData: { control: 'boolean' },
+    showDataTable: { control: 'boolean' },
+    dataTableExpandable: { control: 'boolean' },
+    label: { control: 'text' },
+    dataLabel: { control: 'text' },
+    // Fixture data; entity sets and partial-window marking are showcase subjects.
+    data: { control: false },
+    series: { control: false },
+    seriesKeys: { control: false },
+    partialKeys: { control: false },
+    formatValue: { control: false },
+  },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('group', { name: 'Agent runs by day' })).toBeVisible()
     await expect(canvas.getByRole('button', { name: 'writer' })).toHaveAttribute('aria-pressed', 'true')

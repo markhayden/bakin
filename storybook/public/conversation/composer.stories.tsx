@@ -37,16 +37,28 @@ let canonicalSent = ''
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  args: { storageKey: 'storybook-canonical-composer', onSend: () => {} },
+  args: {
+    storageKey: 'storybook-canonical-composer',
+    inputLabel: 'Message the agent',
+    onSend: (content) => { canonicalSent = content },
+  },
+  argTypes: {
+    busy: { control: 'boolean' },
+    disabled: { control: 'boolean' },
+    placeholder: { control: 'text' },
+    inputLabel: { control: 'text' },
+    maxLength: { control: 'number' },
+    // Draft identity and the send/abort/attachment wiring are consumer-owned.
+    storageKey: { control: false },
+    onSend: { control: false },
+    onAbort: { control: false },
+    attachments: { control: false },
+  },
   // Width frame: the centered (shrink-to-fit) canvas collapses the composer
   // to min-content; in the app it spans the conversation column.
-  render: () => (
+  render: (args) => (
     <div style={{ inlineSize: '40rem', maxInlineSize: '100%' }}>
-      <Composer
-        storageKey="storybook-canonical-composer"
-        inputLabel="Message the agent"
-        onSend={(content) => { canonicalSent = content }}
-      />
+      <Composer {...args} />
     </div>
   ),
   play: async ({ canvas, userEvent }) => {

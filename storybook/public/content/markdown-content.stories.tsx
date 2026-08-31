@@ -7,6 +7,7 @@ import { StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Content/MarkdownContent',
+  component: MarkdownContent,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -17,7 +18,7 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'dense-data', 'scroll-ownership'],
   },
-} satisfies Meta
+} satisfies Meta<typeof MarkdownContent>
 
 export default meta
 type Story = StoryObj<typeof meta>
@@ -57,9 +58,12 @@ This section is projector-managed and remains visibly identified.
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <MarkdownContent content={'# Release notes\n\nThe **routing contract** remains authoritative.'} />
-  ),
+  args: { content: '# Release notes\n\nThe **routing contract** remains authoritative.' },
+  argTypes: {
+    content: { control: 'text' },
+    // Internal links delegate to the consumer's routing link.
+    renderInternalLink: { control: false },
+  },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('heading', { name: 'Release notes', level: 1 })).toBeVisible()
     await expect(canvas.getByText('routing contract')).toBeVisible()
@@ -67,6 +71,8 @@ export const CanonicalUsage = {
 } satisfies Story
 
 export const ReadingAndCode = {
+  // Type-satisfying only: the showcase owns its content.
+  args: { content: releaseMarkdown },
   render: () => (
     <StoryStage
       eyebrow="Content / trusted Markdown"

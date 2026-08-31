@@ -15,6 +15,7 @@ const PAYLOAD = `{
 
 const meta = {
   title: 'Components/Content/CodeBlock',
+  component: CodeBlock,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -25,16 +26,24 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'dense-data'],
   },
-} satisfies Meta
+} satisfies Meta<typeof CodeBlock>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: { code: PAYLOAD, language: 'json', label: 'Tool payload', copyable: true, wrap: false },
+  argTypes: {
+    code: { control: 'text' },
+    language: { control: 'select', options: ['json', 'text'] },
+    label: { control: 'text' },
+    copyable: { control: 'boolean' },
+    wrap: { control: 'boolean' },
+  },
+  render: (args) => (
     <div style={{ inlineSize: '32rem', maxInlineSize: '100%' }}>
-      <CodeBlock code={PAYLOAD} language="json" label="Tool payload" copyable />
+      <CodeBlock {...args} />
     </div>
   ),
   play: async ({ canvasElement }) => {
@@ -48,6 +57,8 @@ export const CanonicalUsage = {
 } satisfies Story
 
 export const LanguagesAndHonesty = {
+  // Type-satisfying only: the showcase owns its payloads.
+  args: { code: PAYLOAD },
   render: () => (
     <StoryStage
       eyebrow="Content / Code"

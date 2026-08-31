@@ -43,7 +43,15 @@ const canonicalTurn: Extract<ConversationTurn, { kind: 'agent' }> = {
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
   args: { turn: canonicalTurn, agent: canonicalAgent },
-  render: () => (
+  argTypes: {
+    // Transcript data drives the turn — there is nothing to flip; renderers
+    // and handlers are consumer-owned composition.
+    turn: { control: false },
+    agent: { control: false },
+    onRetry: { control: false },
+    onOpenCall: { control: false },
+  },
+  render: (args) => (
     <>
       <UserMessage
         turn={{
@@ -53,7 +61,7 @@ export const CanonicalUsage = {
           content: 'Are the routing examples ready to publish?',
         }}
       />
-      <AgentTurn agent={canonicalAgent} turn={canonicalTurn} />
+      <AgentTurn {...args} />
     </>
   ),
   play: async ({ canvas }) => {

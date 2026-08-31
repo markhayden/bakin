@@ -7,6 +7,7 @@ import { StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Charts/StatGroup',
+  component: StatGroup,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -17,20 +18,28 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'dense-data'],
   },
-} satisfies Meta
+} satisfies Meta<typeof StatGroup>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <StatGroup label="Task summary metrics">
-      <StatTile label="Active" value={4} valueTone="accent" />
-      <StatTile label="Blocked" value={23} valueTone="danger" />
-      <StatTile label="Total" value={35} />
-    </StatGroup>
-  ),
+  args: {
+    label: 'Task summary metrics',
+    // Peer tiles are composition — the group's one control is its accessible name.
+    children: (
+      <>
+        <StatTile label="Active" value={4} valueTone="accent" />
+        <StatTile label="Blocked" value={23} valueTone="danger" />
+        <StatTile label="Total" value={35} />
+      </>
+    ),
+  },
+  argTypes: {
+    label: { control: 'text' },
+    children: { control: false },
+  },
   play: async ({ canvas }) => {
     const group = canvas.getByRole('group', { name: 'Task summary metrics' })
     await expect(group).toBeVisible()
@@ -40,6 +49,8 @@ export const CanonicalUsage = {
 } satisfies Story
 
 export const CompactMetrics = {
+  // Type-satisfying only: the showcase owns its tiles.
+  args: { label: 'Task summary metrics', children: null },
   render: () => (
     <StoryStage
       eyebrow="Data / compact peer summary"

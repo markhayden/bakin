@@ -54,8 +54,16 @@ const canonicalTurns: ConversationTurn[] = [
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  args: { turns: canonicalTurns },
-  render: () => <Conversation turns={canonicalTurns} agent={canonicalAgent} />,
+  args: { turns: canonicalTurns, agent: canonicalAgent },
+  argTypes: {
+    mode: { control: 'select', options: ['document', 'contained'] },
+    // Transcript data, identity lookup, and renderers are consumer-owned.
+    turns: { control: false },
+    agent: { control: false },
+    resolveAgent: { control: false },
+    emptyState: { control: false },
+  },
+  render: (args) => <Conversation {...args} />,
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('article', { name: 'Your message' })).toBeVisible()
     await expect(canvas.getByRole('article', { name: 'Release agent reply' })).toBeVisible()

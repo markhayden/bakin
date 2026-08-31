@@ -40,18 +40,28 @@ const canonicalMessages: ConversationMessage[] = [
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  args: { messages: canonicalMessages, onSend: () => {}, storageKey: 'storybook-canonical-panel' },
-  render: () => (
-    <ConversationPanel
-      messages={canonicalMessages}
-      agent={canonicalAgent}
-      onSend={() => {}}
-      storageKey="storybook-canonical-panel"
-      title="Release review"
-      inputLabel="Message the release agent"
-      autoFocus={false}
-    />
-  ),
+  args: {
+    messages: canonicalMessages,
+    agent: canonicalAgent,
+    onSend: () => {},
+    storageKey: 'storybook-canonical-panel',
+    title: 'Release review',
+    inputLabel: 'Message the release agent',
+    autoFocus: false,
+  },
+  argTypes: {
+    readOnly: { control: 'boolean' },
+    showHeader: { control: 'boolean' },
+    chrome: { control: 'select', options: ['panel', 'top-divider'] },
+    title: { control: 'text' },
+    placeholder: { control: 'text' },
+    // Transport, history, identity, and draft storage are consumer-owned.
+    messages: { control: false },
+    agent: { control: false },
+    onSend: { control: false },
+    storageKey: { control: false },
+  },
+  render: (args) => <ConversationPanel {...args} />,
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('region', { name: 'Release review' })).toBeVisible()
     await expect(canvas.getByRole('article', { name: 'Release agent reply' })).toBeVisible()

@@ -42,6 +42,18 @@ export const CanonicalUsage = {
     showDataTable: true,
     dataTableExpandable: true,
   },
+  argTypes: {
+    donut: { control: 'boolean' },
+    compactData: { control: 'boolean' },
+    showDataTable: { control: 'boolean' },
+    dataTableExpandable: { control: 'boolean' },
+    label: { control: 'text' },
+    description: { control: 'text' },
+    // Fixture data and the status-tone mapping are the story's subject, not controls.
+    data: { control: false },
+    tones: { control: false },
+    formatValue: { control: false },
+  },
   play: async ({ canvas, args }) => {
     await expect(canvas.getByRole('group', { name: 'Runs by agent' })).toBeVisible()
     await expect(canvas.getByRole('list', { name: 'Runs by agent legend' })).toHaveTextContent('Reviewer')

@@ -5,23 +5,6 @@ import { ChartDataTable, ChartExplainer, type ChartDatum, type ChartSeries } fro
 
 import { ChartStage } from './chart-story-stage'
 
-const meta = {
-  title: 'Components/Charts/ChartDataTable',
-  tags: ['public'],
-  parameters: {
-    layout: 'fullscreen',
-    docs: {
-      description: {
-        component: 'ChartDataTable is the exact-data disclosure behind every chart summary: a chart never hides its evidence. The disclosure names the dataset, the table keeps absent values distinct from zero with per-cell missing labels (an unknown is not a zero), horizontal overflow is owned locally by a keyboard-focusable region, long labels stay intact, and an empty dataset is named honestly instead of inventing rows. Visual charts embed it automatically; use it directly when a summary needs its exact values disclosed or visually hidden but reachable.',
-      },
-    },
-    bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'empty', 'overflow', 'multi-series', 'non-color', 'keyboard', 'missing-data'],
-  },
-} satisfies Meta
-
-export default meta
-type Story = StoryObj<typeof meta>
-
 const canonicalSeries: ChartSeries[] = [
   { key: 'completed', label: 'Completed' },
   { key: 'failed', label: 'Failed' },
@@ -33,15 +16,46 @@ const canonicalData: ChartDatum[] = [
   { x: 'jul-26', xLabel: 'Jul 26', values: { completed: 21 }, missingLabels: { failed: 'Still processing' } },
 ]
 
+const meta = {
+  title: 'Components/Charts/ChartDataTable',
+  component: ChartDataTable,
+  tags: ['public'],
+  // Canonical fixture args at meta level keep required props satisfied for the
+  // render-based showcase stories below.
+  args: {
+    caption: 'Task outcomes exact data',
+    data: canonicalData,
+    series: canonicalSeries,
+  },
+  parameters: {
+    layout: 'fullscreen',
+    docs: {
+      description: {
+        component: 'ChartDataTable is the exact-data disclosure behind every chart summary: a chart never hides its evidence. The disclosure names the dataset, the table keeps absent values distinct from zero with per-cell missing labels (an unknown is not a zero), horizontal overflow is owned locally by a keyboard-focusable region, long labels stay intact, and an empty dataset is named honestly instead of inventing rows. Visual charts embed it automatically; use it directly when a summary needs its exact values disclosed or visually hidden but reachable.',
+      },
+    },
+    bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'empty', 'overflow', 'multi-series', 'non-color', 'keyboard', 'missing-data'],
+  },
+} satisfies Meta<typeof ChartDataTable>
+
+export default meta
+type Story = StoryObj<typeof meta>
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <ChartDataTable
-      caption="Task outcomes exact data"
-      data={canonicalData}
-      series={canonicalSeries}
-    />
-  ),
+  argTypes: {
+    defaultOpen: { control: 'boolean' },
+    expandable: { control: 'boolean' },
+    visuallyHidden: { control: 'boolean' },
+    caption: { control: 'text' },
+    // Fixture data; renderTable is the documented escape hatch, not a control.
+    data: { control: false },
+    series: { control: false },
+    formatValue: { control: false },
+    missingValue: { control: false },
+    renderTable: { control: false },
+    className: { control: false },
+  },
   play: async ({ canvas, userEvent }) => {
     const disclosure = canvas.getByText('View Task outcomes exact data')
     await expect(disclosure).toBeVisible()

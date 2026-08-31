@@ -34,7 +34,9 @@ const canonicalData: ChartDatum[] = [
 ]
 
 export const CanonicalUsage = {
-  render: () => (
+  args: { children: 'The failed series skips Jul 26 because that window was not reported.' },
+  argTypes: { children: { control: 'text' } },
+  render: (args) => (
     <div>
       <LineChart
         data={canonicalData}
@@ -42,7 +44,7 @@ export const CanonicalUsage = {
         label="Task outcomes"
         description="Completed and failed tasks across four days."
       />
-      <ChartExplainer>The failed series skips Jul 26 because that window was not reported.</ChartExplainer>
+      <ChartExplainer {...args} />
     </div>
   ),
   play: async ({ canvas }) => {

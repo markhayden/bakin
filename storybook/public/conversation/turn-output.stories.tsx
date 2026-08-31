@@ -36,7 +36,13 @@ const canonicalChunks: ConversationChunk[] = [
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
   args: { chunks: canonicalChunks, live: true },
-  render: () => <TurnOutputView chunks={canonicalChunks} live />,
+  argTypes: {
+    live: { control: 'boolean' },
+    // Chunk streams and rich-text rendering are consumer-owned.
+    chunks: { control: false },
+    renderText: { control: false },
+    textFrame: { control: false },
+  },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('status')).toHaveTextContent('reading the route plan…')
     await expect(canvas.getByText('read_file')).toBeVisible()

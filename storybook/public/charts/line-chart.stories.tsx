@@ -49,6 +49,19 @@ export const CanonicalUsage = {
     showDataTable: true,
     dataTableExpandable: true,
   },
+  argTypes: {
+    smooth: { control: 'boolean' },
+    compactData: { control: 'boolean' },
+    showDataTable: { control: 'boolean' },
+    dataTableExpandable: { control: 'boolean' },
+    height: { control: 'number' },
+    label: { control: 'text' },
+    description: { control: 'text' },
+    // Fixture data and formatters are the story's evidence, not knobs.
+    data: { control: false },
+    series: { control: false },
+    formatValue: { control: false },
+  },
   play: async ({ canvas, args }) => {
     await expect(canvas.getByRole('group', { name: 'Task outcomes' })).toBeVisible()
     await expect(canvas.getByRole('list', { name: 'Task outcomes legend' })).toHaveTextContent('Failed')
