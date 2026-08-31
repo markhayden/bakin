@@ -46,20 +46,17 @@ const MAX_TAIL_BYTES = 512 * 1024
 const WEDGE_PATTERNS: ReadonlyArray<{ signal: string; pattern: RegExp; minOccurrences?: number }> = [
   // The startup catch-up loop re-opening/closing a table group forever
   // ("provisioned startup catch-up debt persists", one line per ~2s spin).
+  // Still emitted by 0.2.0 (byte-grep pinned in workaround-regressions).
   { signal: 'startup-catchup-spin', pattern: /catch-up debt persists/g },
-  // The 2026-07-14 lock-contention wedge: the engine spammed
-  // "Connection error: error.SendFailed" for a day with NO catch-up-debt
-  // lines, so the watchdog saw only high CPU and never escalated. A few
-  // lines are a normal disconnect; a storm is a wedged I/O loop.
-  { signal: 'connection-send-failed-storm', pattern: /error\.SendFailed/g, minOccurrences: 50 },
-  // Same incident: route handlers repeatedly failing with TableReadChurn
-  // while the engine still answered health probes.
-  { signal: 'table-read-churn', pattern: /error\.TableReadChurn/g, minOccurrences: 10 },
-  // rc.20/rc.21: a failed media batch can flip the public read path to
-  // ReadUnavailable for every table until the next successful write lands
-  // (verified 2026-07-21; reported upstream). A sustained storm means no
-  // healing write arrived — the engine-restart repair clears it.
-  { signal: 'read-unavailable-storm', pattern: /error\.ReadUnavailable/g, minOccurrences: 10 },
+  // 0.2.0 table wedge (observed 2026-08-31, add-leg-to-populated-table
+  // incident — evidence file): a wedged table's reads hang client-side
+  // while the log spams "public table query read failed …
+  // err=error.StorageReadTemporarilyUnavailable" for every attempt, and
+  // the wedge survives restarts. A sustained storm means a durably
+  // unreadable table — the blue/green drop-and-rebuild repair clears it.
+  // (The rc-era SendFailed / TableReadChurn / ReadUnavailable signatures
+  // were removed: those error names no longer exist in the 0.2.0 binary.)
+  { signal: 'storage-read-unavailable-storm', pattern: /error\.StorageReadTemporarilyUnavailable/g, minOccurrences: 10 },
 ]
 
 interface ProbeState {

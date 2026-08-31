@@ -84,33 +84,20 @@ describe('scanLogDelta', () => {
     expect(after.signals).toEqual([])
   })
 
-  it('SendFailed fires only as a STORM — a benign disconnect burst stays quiet', () => {
-    const file = logFile('sendfailed.log')
+  it('StorageReadTemporarilyUnavailable fires only as a STORM — a transient read miss stays quiet', () => {
+    const file = logFile('storageread.log')
     writeFileSync(file, 'boot ok\n')
     const base = scanLogDelta(file, null)
 
-    // A client dropping mid-restart: a handful of lines, not a wedge.
-    appendFileSync(file, 'Connection error: error.SendFailed\n'.repeat(10))
+    // A couple of read misses during heavy structural work: not a wedge.
+    appendFileSync(file, 'public table query read failed table=t err=error.StorageReadTemporarilyUnavailable\n'.repeat(3))
     const burst = scanLogDelta(file, base.nextOffset)
     expect(burst.signals).toEqual([])
 
-    // The 2026-07-14 wedge shape: sustained spam within one window.
-    appendFileSync(file, 'Connection error: error.SendFailed\n'.repeat(60))
+    // The 2026-08-31 wedge shape: every read attempt fails, sustained spam.
+    appendFileSync(file, 'public table query read failed table=t err=error.StorageReadTemporarilyUnavailable\n'.repeat(20))
     const storm = scanLogDelta(file, burst.nextOffset)
-    expect(storm.signals).toEqual(['connection-send-failed-storm'])
-  })
-
-  it('TableReadChurn fires past its floor', () => {
-    const file = logFile('readchurn.log')
-    writeFileSync(file, 'boot ok\n')
-    const base = scanLogDelta(file, null)
-
-    appendFileSync(file, 'Route handler error: error.TableReadChurn\n'.repeat(3))
-    expect(scanLogDelta(file, base.nextOffset).signals).toEqual([])
-
-    appendFileSync(file, 'Route handler error: error.TableReadChurn\n'.repeat(12))
-    const churn = scanLogDelta(file, base.nextOffset)
-    expect(churn.signals).toEqual(['table-read-churn'])
+    expect(storm.signals).toEqual(['storage-read-unavailable-storm'])
   })
 
   it('handles rotation (file shrank) without throwing or double-firing history', () => {

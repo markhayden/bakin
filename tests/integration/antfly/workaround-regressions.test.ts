@@ -337,11 +337,10 @@ if (!binary) {
         await sleep(500)
       }
       expect(status).toBe(500)
-      // rc.20+: the failed batch flips the engine's read path to
-      // ReadUnavailable for EVERY table until a successful write lands
-      // (reported upstream 2026-07; see read-unavailable-storm in
-      // engine-status.ts). Heal it here so later tests query a healthy
-      // engine — and pin the healing behavior itself while we're at it.
+      // 0.2.0: the failed batch no longer poisons unrelated reads (the
+      // rc.20 ReadUnavailable flip is gone — gate T4a). A healing write +
+      // probe still run here so later tests query a healthy engine, and
+      // they double as a guard on that isolation property.
       const heal = await api('POST', `/db/v1/tables/${T}/batch`, {
         inserts: { heal1: { title: 'healing write' } },
         sync_level: 'full_index',
@@ -414,13 +413,17 @@ if (!binary) {
   })
 
   describe('engine-burn watchdog log signature', () => {
-    it('PIN: the pinned binary still emits the catch-up wedge signature the watchdog greps for', () => {
+    it('PIN: the pinned binary still emits the wedge signatures the watchdog greps for', () => {
       // packages/adapter-antfly/src/engine-status.ts WEDGE_PATTERNS depends
-      // on this exact upstream log string ("provisioned startup catch-up
-      // debt persists", antfly#350). A version bump that rewords it would
-      // silently blind one detection layer — this pin makes that loud.
+      // on these exact upstream log strings ("provisioned startup catch-up
+      // debt persists" — antfly#350; "error.StorageReadTemporarilyUnavailable"
+      // — the 2026-08-31 table-wedge signature). A version bump that rewords
+      // either would silently blind one detection layer — this pin makes
+      // that loud. (The rc-era SendFailed/TableReadChurn/ReadUnavailable
+      // names vanished from the 0.2.0 binary; their patterns were removed.)
       const bytes = readFileSync(binary)
       expect(bytes.includes('catch-up debt persists')).toBe(true)
+      expect(bytes.includes('error.StorageReadTemporarilyUnavailable')).toBe(true)
     })
   })
 }
