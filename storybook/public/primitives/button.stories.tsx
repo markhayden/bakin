@@ -60,6 +60,12 @@ export const CanonicalUsage = {
     variant: 'primary',
     children: 'Continue',
   },
+  argTypes: {
+    variant: { control: 'select', options: ['primary', 'secondary', 'outline', 'ghost', 'danger', 'warning', 'info', 'accent', 'link'] },
+    size: { control: 'select', options: ['xs', 'sm', 'md', 'lg', 'inline', 'icon-xs', 'icon-sm', 'icon-md', 'icon-lg'] },
+    busy: { control: 'boolean' },
+    disabled: { control: 'boolean' },
+  },
   play: async ({ canvas, args }) => {
     const button = canvas.getByRole('button', { name: String(args.children) })
     await expect(button).toBeVisible()

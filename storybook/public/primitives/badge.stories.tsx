@@ -29,6 +29,11 @@ export const CanonicalUsage = {
     variant: 'solid',
     children: 'Published',
   },
+  argTypes: {
+    tone: { control: 'select', options: ['neutral', 'primary', 'success', 'attention', 'danger', 'accent', 'info'] },
+    variant: { control: 'select', options: ['soft', 'solid', 'outline', 'ghost', 'link'] },
+    size: { control: 'select', options: ['xs', 'sm', 'md'] },
+  },
   play: async ({ canvas, args }) => {
     // The visible label is the non-color cue: the status reads without the tone.
     const badge = canvas.getByText(String(args.children))

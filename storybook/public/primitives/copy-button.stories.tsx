@@ -8,6 +8,7 @@ import { StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Primitives/CopyButton',
+  component: CopyButton,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -18,19 +19,26 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'keyboard', 'interaction'],
   },
-} satisfies Meta
+} satisfies Meta<typeof CopyButton>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    text: 'bakin agents sync --check copywriter',
+    label: 'Copy command',
+  },
+  argTypes: {
+    text: { control: 'text' },
+    label: { control: 'text' },
+    className: { control: false },
+  },
+  render: (args) => (
     <Panel variant="code" padding="compact" className="flex min-w-0 items-center gap-bakin-2">
-      <code className="min-w-0 flex-1 break-all text-bakin-text-primary">
-        bakin agents sync --check copywriter
-      </code>
-      <CopyButton text="bakin agents sync --check copywriter" label="Copy command" />
+      <code className="min-w-0 flex-1 break-all text-bakin-text-primary">{args.text}</code>
+      <CopyButton {...args} />
     </Panel>
   ),
   // Deliberately does NOT click: the success state reverts after 1.5s, so a
@@ -43,7 +51,8 @@ export const CanonicalUsage = {
 } satisfies Story
 
 export const CopyConfirmation = {
-  render: () => (
+  args: { text: 'agent_01H9X2', label: 'Copy agent id' },
+  render: (args) => (
     <StoryStage
       eyebrow="Primitives / Copy"
       title="Confirm in the accessible name, not a tooltip"
@@ -51,8 +60,8 @@ export const CopyConfirmation = {
     >
       <StorySection title="After copying" description="The acknowledgement is short and non-blocking.">
         <div className="flex min-w-0 items-center gap-bakin-2">
-          <code className="min-w-0 flex-1 break-all font-bakin-typography-family-mono">agent_01H9X2</code>
-          <CopyButton text="agent_01H9X2" label="Copy agent id" />
+          <code className="min-w-0 flex-1 break-all font-bakin-typography-family-mono">{args.text}</code>
+          <CopyButton {...args} />
         </div>
       </StorySection>
     </StoryStage>
@@ -66,7 +75,8 @@ export const CopyConfirmation = {
 } satisfies Story
 
 export const NamingMultipleActions = {
-  render: () => (
+  args: { text: 'agent_01H9X2', label: 'Copy agent id' },
+  render: (args) => (
     <StoryStage
       eyebrow="Primitives / Copy"
       title="Name each action for what it copies"
@@ -75,8 +85,8 @@ export const NamingMultipleActions = {
       <StorySection title="Distinct labels" description="Never ship a page of identical “Copy” actions.">
         <div className="grid gap-bakin-2">
           <div className="flex min-w-0 items-center gap-bakin-2">
-            <code className="min-w-0 flex-1 break-all font-bakin-typography-family-mono">agent_01H9X2</code>
-            <CopyButton text="agent_01H9X2" label="Copy agent id" />
+            <code className="min-w-0 flex-1 break-all font-bakin-typography-family-mono">{args.text}</code>
+            <CopyButton {...args} />
           </div>
           <div className="flex min-w-0 items-center gap-bakin-2">
             <code className="min-w-0 flex-1 break-all font-bakin-typography-family-mono">

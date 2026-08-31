@@ -25,7 +25,11 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  args: { label: 'Loading agents' },
+  args: { label: 'Loading agents', size: 'md' },
+  argTypes: {
+    size: { control: 'select', options: ['sm', 'md'] },
+    label: { control: 'text' },
+  },
   play: async ({ canvas, args }) => {
     // A labelled spinner is a live status, not silent decoration — the whole
     // reason this primitive exists is that hand-rolled ones were unnamed.

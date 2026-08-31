@@ -32,8 +32,23 @@ export const CanonicalUsage = {
   args: {
     label: 'Profile image',
     accept: 'image/png,image/jpeg,image/webp',
+    children: 'Choose image',
+    multiple: false,
+    disabled: false,
+    variant: 'outline',
+    size: 'sm',
   },
-  render: (args) => <FileInput {...args}>Choose image</FileInput>,
+  argTypes: {
+    variant: { control: 'select', options: ['primary', 'secondary', 'outline', 'ghost', 'danger', 'warning', 'info', 'accent', 'link'] },
+    // icon-* sizes are for icon-only triggers; not meaningful with a text label.
+    size: { control: 'select', options: ['xs', 'sm', 'md', 'lg', 'inline'] },
+    accept: { control: 'text' },
+    multiple: { control: 'boolean' },
+    disabled: { control: 'boolean' },
+    children: { control: 'text' },
+    onFiles: { control: false },
+    onRejected: { control: false },
+  },
   play: async ({ canvas, userEvent, args }) => {
     await expect(canvas.getByRole('button', { name: 'Choose image' })).toBeVisible()
     const input = canvas.getByLabelText<HTMLInputElement>('Profile image')

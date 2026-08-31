@@ -20,12 +20,25 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <div style={{ width: 'min(100%, 28rem)' }}>
-      <Collapsible>
+  args: {
+    defaultOpen: false,
+    disabled: false,
+    // Disclosure content is composition, not a control.
+    children: (
+      <>
         <CollapsibleTrigger>Advanced retry policy</CollapsibleTrigger>
         <CollapsibleContent>Retry twice, waiting 30 seconds and then 2 minutes before marking the dispatch blocked.</CollapsibleContent>
-      </Collapsible>
+      </>
+    ),
+  },
+  argTypes: {
+    defaultOpen: { control: 'boolean' },
+    disabled: { control: 'boolean' },
+    children: { control: false },
+  },
+  render: (args) => (
+    <div style={{ width: 'min(100%, 28rem)' }}>
+      <Collapsible {...args} />
     </div>
   ),
   play: async ({ canvas, userEvent }) => {
