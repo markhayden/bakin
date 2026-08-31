@@ -51,7 +51,8 @@ export const CanonicalUsage = {
 } satisfies Story
 
 export const CopyConfirmation = {
-  render: () => (
+  args: { text: 'agent_01H9X2', label: 'Copy agent id' },
+  render: (args) => (
     <StoryStage
       eyebrow="Primitives / Copy"
       title="Confirm in the accessible name, not a tooltip"
@@ -59,8 +60,8 @@ export const CopyConfirmation = {
     >
       <StorySection title="After copying" description="The acknowledgement is short and non-blocking.">
         <div className="flex min-w-0 items-center gap-bakin-2">
-          <code className="min-w-0 flex-1 break-all font-bakin-typography-family-mono">agent_01H9X2</code>
-          <CopyButton text="agent_01H9X2" label="Copy agent id" />
+          <code className="min-w-0 flex-1 break-all font-bakin-typography-family-mono">{args.text}</code>
+          <CopyButton {...args} />
         </div>
       </StorySection>
     </StoryStage>
@@ -74,7 +75,8 @@ export const CopyConfirmation = {
 } satisfies Story
 
 export const NamingMultipleActions = {
-  render: () => (
+  args: { text: 'agent_01H9X2', label: 'Copy agent id' },
+  render: (args) => (
     <StoryStage
       eyebrow="Primitives / Copy"
       title="Name each action for what it copies"
@@ -83,8 +85,8 @@ export const NamingMultipleActions = {
       <StorySection title="Distinct labels" description="Never ship a page of identical “Copy” actions.">
         <div className="grid gap-bakin-2">
           <div className="flex min-w-0 items-center gap-bakin-2">
-            <code className="min-w-0 flex-1 break-all font-bakin-typography-family-mono">agent_01H9X2</code>
-            <CopyButton text="agent_01H9X2" label="Copy agent id" />
+            <code className="min-w-0 flex-1 break-all font-bakin-typography-family-mono">{args.text}</code>
+            <CopyButton {...args} />
           </div>
           <div className="flex min-w-0 items-center gap-bakin-2">
             <code className="min-w-0 flex-1 break-all font-bakin-typography-family-mono">
