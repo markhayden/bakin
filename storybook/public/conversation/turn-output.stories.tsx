@@ -11,7 +11,7 @@ import { PageShell, Stack } from '@makinbakin/sdk/layout'
 import './conversation.stories.css'
 
 const meta = {
-  title: 'Conversation/Single-turn output',
+  title: 'Components/Conversation/Single-turn output',
   component: TurnOutputView,
   tags: ['public'],
   parameters: {

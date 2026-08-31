@@ -6,7 +6,7 @@ import { expect } from 'storybook/test'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Primitives/Checkbox',
+  title: 'Components/Primitives/Checkbox',
   component: Checkbox,
   tags: ['public'],
   parameters: {

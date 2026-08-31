@@ -9,7 +9,7 @@ import { Badge } from '@makinbakin/sdk/ui'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Feedback/DangerZone',
+  title: 'Components/Feedback/DangerZone',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

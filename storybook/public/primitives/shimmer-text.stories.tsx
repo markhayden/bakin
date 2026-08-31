@@ -5,7 +5,7 @@ import { expect } from 'storybook/test'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Primitives/ShimmerText',
+  title: 'Components/Primitives/ShimmerText',
   component: ShimmerText,
   tags: ['public'],
   parameters: {

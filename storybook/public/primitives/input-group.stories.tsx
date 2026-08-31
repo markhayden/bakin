@@ -18,7 +18,7 @@ import {
 import { SendIcon, StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Primitives/InputGroup',
+  title: 'Components/Primitives/InputGroup',
   component: InputGroup,
   tags: ['public'],
   parameters: {

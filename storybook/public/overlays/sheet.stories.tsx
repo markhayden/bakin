@@ -20,7 +20,7 @@ import { expect, waitFor, within } from 'storybook/test'
 import { OverlayBackdrop, StoryCluster } from '../../support'
 
 const meta = {
-  title: 'Overlays/Sheet',
+  title: 'Components/Overlays/Sheet',
   component: Sheet,
   tags: ['public'],
   parameters: {

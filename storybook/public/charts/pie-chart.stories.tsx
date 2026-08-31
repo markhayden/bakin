@@ -12,7 +12,7 @@ const canonicalData: PieChartDatum[] = [
 ]
 
 const meta = {
-  title: 'Charts/PieChart',
+  title: 'Components/Charts/PieChart',
   component: PieChart,
   tags: ['public'],
   args: {

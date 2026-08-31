@@ -18,7 +18,7 @@ const canonicalData: ChartDatum[] = [
 ]
 
 const meta = {
-  title: 'Charts/LineChart',
+  title: 'Components/Charts/LineChart',
   component: LineChart,
   tags: ['public'],
   args: {

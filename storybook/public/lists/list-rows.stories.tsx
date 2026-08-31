@@ -9,7 +9,7 @@ import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
 import './list-rows.stories.css'
 
 const meta = {
-  title: 'Lists/ListRows',
+  title: 'Components/Lists/ListRows',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

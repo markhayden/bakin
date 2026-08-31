@@ -6,7 +6,7 @@ import { ChartExplainer, RankedBarChart, type ChartDatum } from '@makinbakin/sdk
 import { ChartStage } from './chart-story-stage'
 
 const meta = {
-  title: 'Charts/RankedBarChart',
+  title: 'Components/Charts/RankedBarChart',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

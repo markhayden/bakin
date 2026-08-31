@@ -5,7 +5,7 @@ import { Section } from '@makinbakin/sdk/layout'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Layout/Section',
+  title: 'Components/Layout/Section',
   component: Section,
   tags: ['public'],
   parameters: {

@@ -9,7 +9,7 @@ import { Badge, Input, Label } from '@makinbakin/sdk/ui'
 import { OverlayBackdrop, StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Forms/SaveBar',
+  title: 'Components/Forms/SaveBar',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

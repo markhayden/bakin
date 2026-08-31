@@ -6,7 +6,7 @@ import { AgentStatus, type AgentPresenceStatus } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Agents/AgentStatus',
+  title: 'Components/Agents/AgentStatus',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

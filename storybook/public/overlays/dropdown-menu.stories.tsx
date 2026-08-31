@@ -20,7 +20,7 @@ import { expect, waitFor, within } from 'storybook/test'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Overlays/DropdownMenu',
+  title: 'Components/Overlays/DropdownMenu',
   component: DropdownMenu,
   tags: ['public'],
   parameters: {

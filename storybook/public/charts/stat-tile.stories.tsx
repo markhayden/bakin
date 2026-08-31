@@ -12,7 +12,7 @@ function MetricIcon({ className }: { className?: string }) {
 }
 
 const meta = {
-  title: 'Charts/StatTile',
+  title: 'Components/Charts/StatTile',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

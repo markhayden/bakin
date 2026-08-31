@@ -8,7 +8,7 @@ import './bounded-overflow.stories.css'
 // No `component:` on meta — BoundedOverflow's required label prop would force
 // `args` onto render-only stories (same shape as the chart entries).
 const meta = {
-  title: 'Layout/BoundedOverflow',
+  title: 'Components/Layout/BoundedOverflow',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

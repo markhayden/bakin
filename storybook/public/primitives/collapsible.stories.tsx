@@ -5,7 +5,7 @@ import { expect, waitFor } from 'storybook/test'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Primitives/Collapsible',
+  title: 'Components/Primitives/Collapsible',
   component: Collapsible,
   tags: ['public'],
   parameters: {

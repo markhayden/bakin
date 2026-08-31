@@ -5,7 +5,7 @@ import { expect } from 'storybook/test'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Primitives/Separator',
+  title: 'Components/Primitives/Separator',
   component: Separator,
   tags: ['public'],
   parameters: {

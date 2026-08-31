@@ -6,7 +6,7 @@ import { Banner, Button } from '@makinbakin/sdk/ui'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Feedback/Banner',
+  title: 'Components/Feedback/Banner',
   component: Banner,
   tags: ['public'],
   parameters: {

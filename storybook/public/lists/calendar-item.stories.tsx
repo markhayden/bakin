@@ -6,7 +6,7 @@ import { CalendarItem } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Lists/CalendarItem',
+  title: 'Components/Lists/CalendarItem',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

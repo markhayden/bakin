@@ -8,7 +8,7 @@ import { Button } from '@makinbakin/sdk/ui'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Forms/AssetPicker',
+  title: 'Components/Forms/AssetPicker',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

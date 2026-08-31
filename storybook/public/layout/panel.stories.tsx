@@ -5,7 +5,7 @@ import { Panel } from '@makinbakin/sdk/layout'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Layout/Panel',
+  title: 'Components/Layout/Panel',
   component: Panel,
   tags: ['public'],
   parameters: {

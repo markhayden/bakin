@@ -6,7 +6,7 @@ import { NodeCard } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Lists/NodeCard',
+  title: 'Components/Lists/NodeCard',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

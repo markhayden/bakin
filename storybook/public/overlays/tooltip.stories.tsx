@@ -5,7 +5,7 @@ import { expect, waitFor, within } from 'storybook/test'
 import { StoryCluster, StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Overlays/Tooltip',
+  title: 'Components/Overlays/Tooltip',
   component: Tooltip,
   tags: ['public'],
   // delay={0} is the deterministic fixture: hover/focus assertions never race a timer.

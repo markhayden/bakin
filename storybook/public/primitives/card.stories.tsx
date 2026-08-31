@@ -16,7 +16,7 @@ import { expect, fn, userEvent } from 'storybook/test'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Primitives/Card',
+  title: 'Components/Primitives/Card',
   component: Card,
   tags: ['public'],
   parameters: {

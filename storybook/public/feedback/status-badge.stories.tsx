@@ -13,7 +13,7 @@ function SignalIcon({ className }: { className?: string }) {
 }
 
 const meta = {
-  title: 'Feedback/StatusBadge',
+  title: 'Components/Feedback/StatusBadge',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

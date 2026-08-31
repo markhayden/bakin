@@ -37,7 +37,7 @@ function ButtonBehaviorFixture() {
 }
 
 const meta = {
-  title: 'Primitives/Button',
+  title: 'Components/Primitives/Button',
   component: Button,
   tags: ['public'],
   parameters: {

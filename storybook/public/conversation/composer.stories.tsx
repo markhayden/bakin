@@ -16,7 +16,7 @@ import {
 import './conversation.stories.css'
 
 const meta = {
-  title: 'Conversation/Composer and attachments',
+  title: 'Components/Conversation/Composer and attachments',
   component: Composer,
   tags: ['public'],
   parameters: {

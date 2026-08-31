@@ -127,7 +127,7 @@
         }
       },
       "closestPattern": {
-        "storyPath": "storybook/public/foundations/tokens.generated.stories.tsx",
+        "storyPath": "storybook/public/tokens/tokens.generated.stories.tsx",
         "storyExport": "Catalog"
       },
       "mismatch": "These sites render values that only exist at runtime in user data: brand palette swatches and strips, per-series chart swatches, per-agent identity colors (including the #a1a1aa neutral fallback seeded in AgentThemeProvider and the --agent-* variables in globals.css), the data-driven agent color in the activity feed, the computed color-row cap in picker patterns, the user-resizable drawer width variable, and the React Flow edge-label transform. Semantic tokens are a fixed vocabulary and cannot name colors or geometry that arrive from data.",

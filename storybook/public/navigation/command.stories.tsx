@@ -36,7 +36,7 @@ const commandSurfaceStyle: CSSProperties = {
 }
 
 const meta = {
-  title: 'Navigation/Command',
+  title: 'Components/Navigation/Command',
   component: Command,
   tags: ['public'],
   parameters: {

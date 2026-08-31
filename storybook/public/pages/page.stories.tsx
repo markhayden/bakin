@@ -13,7 +13,7 @@ import {
 import { Badge, Button, SystemState } from '@makinbakin/sdk/ui'
 
 const meta = {
-  title: 'Pages/Page',
+  title: 'Components/Pages/Page',
   component: Page,
   args: {
     children: null,

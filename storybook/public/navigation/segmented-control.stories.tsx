@@ -7,7 +7,7 @@ import { SegmentedControl } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Navigation/SegmentedControl',
+  title: 'Components/Navigation/SegmentedControl',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
