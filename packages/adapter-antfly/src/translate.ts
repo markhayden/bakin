@@ -284,10 +284,12 @@ export function mapQueryResponse(envelope: WireQueryEnvelope | null, _table: str
 export function buildBatchInserts(items: Array<{ key: string; doc: Record<string, unknown> }>, opts?: { sync?: boolean }): WireBatchRequest {
   const inserts: Record<string, Record<string, unknown>> = {}
   for (const item of items) inserts[item.key] = item.doc
-  // sync=false omits sync_level: indexing proceeds async and the caller
-  // (blue/green backfill) polls leg health for convergence. Synchronous
-  // full_index on 50-doc chunks serializes behind one Metal embed queue
-  // and times out on any real corpus (observed at the rc.17 cutover).
+  // sync=false omits sync_level: indexing proceeds async through the
+  // engine's catch-up loop (slow on 0.2.0 — ~4 docs/s) and the caller polls
+  // leg health for convergence. Sync (default) waits for full_index and
+  // rides the fast write-path embed lane; the client gives sync batch
+  // writes a generous timeout (SYNC_BATCH_TIMEOUT_MS) because an
+  // embed-heavy chunk legitimately takes tens of seconds.
   return opts?.sync === false ? { inserts } : { inserts, sync_level: 'full_index' }
 }
 
