@@ -39,8 +39,16 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <DropdownMenu>
+  args: { defaultOpen: false },
+  argTypes: {
+    defaultOpen: { control: 'boolean' },
+    disabled: { control: 'boolean' },
+    modal: { control: 'boolean' },
+    // Trigger and items are composition; the action set is not a control.
+    children: { control: false },
+  },
+  render: (args) => (
+    <DropdownMenu {...args}>
       <DropdownMenuTrigger render={<Button variant="outline" />}>Task actions</DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem>Open details</DropdownMenuItem>

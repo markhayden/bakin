@@ -10,6 +10,7 @@ import { OverlayBackdrop, StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Forms/SaveBar',
+  component: SaveBar,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -20,18 +21,31 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'overflow', 'interaction', 'busy', 'error-retry', 'mobile-action-order'],
   },
-} satisfies Meta
+} satisfies Meta<typeof SaveBar>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    dirty: true,
+    onSave: () => {},
+    onDiscard: () => {},
+    // Draft context is composition.
+    children: <span>1 field changed</span>,
+  },
+  argTypes: {
+    dirty: { control: 'boolean' },
+    saving: { control: 'boolean' },
+    error: { control: 'text' },
+    saveLabel: { control: 'text' },
+    discardLabel: { control: 'text' },
+    children: { control: false },
+  },
+  render: (args) => (
     <div style={{ width: 'min(90vw, 44rem)' }}>
-      <SaveBar dirty onSave={() => {}} onDiscard={() => {}}>
-        <span>1 field changed</span>
-      </SaveBar>
+      <SaveBar {...args} />
     </div>
   ),
   play: async ({ canvas }) => {
@@ -95,6 +109,8 @@ function RetryableSaveExample() {
 }
 
 export const SaveFailureAndRetry = {
+  // Type-satisfying only: the stateful example owns its props.
+  args: { dirty: true, onSave: () => {}, onDiscard: () => {} },
   render: () => <RetryableSaveExample />,
   play: async ({ canvas, userEvent }) => {
     await expect(canvas.getByRole('alert')).toHaveTextContent('could not be saved')
@@ -105,21 +121,20 @@ export const SaveFailureAndRetry = {
 } satisfies Story
 
 export const SaveFailure = {
-  render: () => (
+  args: {
+    dirty: true,
+    error: 'The workflow could not be saved. The last published definition is still active.',
+    onSave: () => {},
+    onDiscard: () => {},
+  },
+  render: (args) => (
     <StoryStage
       eyebrow="Draft / recovery"
       title="Keep a failed draft actionable"
       description="Durable error copy stays beside the staged work and the same primary action becomes an explicit retry."
     >
       <OverlayBackdrop />
-      <SaveBar
-        dirty
-        error="The workflow could not be saved. The last published definition is still active."
-        onSave={() => {}}
-        onDiscard={() => {}}
-      >
-        4 workflow steps changed
-      </SaveBar>
+      <SaveBar {...args}>4 workflow steps changed</SaveBar>
     </StoryStage>
   ),
   play: async ({ canvas }) => {

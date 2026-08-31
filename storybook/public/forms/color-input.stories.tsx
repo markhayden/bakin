@@ -9,6 +9,7 @@ import { StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Forms/ColorInput',
+  component: ColorInput,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -19,16 +20,21 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'disabled', 'validation'],
   },
-} satisfies Meta
+} satisfies Meta<typeof ColorInput>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <ColorInput ariaLabel="Primary brand color" value="#ff5a00" onValueChange={() => {}} />
-  ),
+  args: { ariaLabel: 'Primary brand color', value: '#ff5a00', onValueChange: () => {} },
+  argTypes: {
+    value: { control: 'color' },
+    disabled: { control: 'boolean' },
+    ariaLabel: { control: 'text' },
+    // The consumer owns the value; the handler is wiring, not a control.
+    onValueChange: { control: false },
+  },
   play: async ({ canvas }) => {
     const input = canvas.getByLabelText<HTMLInputElement>('Primary brand color')
     await expect(input).toBeVisible()
@@ -36,8 +42,8 @@ export const CanonicalUsage = {
   },
 } satisfies Story
 
-function PairedHexExample() {
-  const [hex, setHex] = useState('#1d4ed8')
+function PairedHexExample({ initialValue }: { initialValue: string }) {
+  const [hex, setHex] = useState(initialValue)
   const invalid = !/^#[0-9a-f]{6}$/i.test(hex.trim())
   return (
     <StoryStage
@@ -66,7 +72,8 @@ function PairedHexExample() {
 }
 
 export const PairedHexField = {
-  render: () => <PairedHexExample />,
+  args: { value: '#1d4ed8', onValueChange: () => {} },
+  render: (args) => <PairedHexExample initialValue={args.value} />,
   play: async ({ canvas }) => {
     const swatch = canvas.getByLabelText<HTMLInputElement>('Primary color swatch')
     await expect(swatch).toHaveValue('#1d4ed8')

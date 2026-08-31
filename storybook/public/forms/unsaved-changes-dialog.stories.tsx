@@ -19,6 +19,7 @@ import { StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Forms/UnsavedChangesDialog',
+  component: UnsavedChangesDialog,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -29,21 +30,27 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'interaction', 'focus-return', 'mobile-action-order', 'routing-boundary'],
   },
-} satisfies Meta
+} satisfies Meta<typeof UnsavedChangesDialog>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <UnsavedChangesDialog
-      open
-      onSave={() => {}}
-      onDiscard={() => {}}
-      onCancel={() => {}}
-    />
-  ),
+  args: {
+    open: true,
+    onSave: () => {},
+    onDiscard: () => {},
+    onCancel: () => {},
+  },
+  argTypes: {
+    open: { control: 'boolean' },
+    busy: { control: 'boolean' },
+    saveDisabled: { control: 'boolean' },
+    canSaveInPlace: { control: 'boolean' },
+    error: { control: 'text' },
+    finalFocus: { control: false },
+  },
   play: async () => {
     const page = within(document.body)
     const dialog = await page.findByRole('dialog', { name: 'Unsaved changes' })
@@ -119,6 +126,8 @@ function RoutedExitDecisionExample() {
 }
 
 export const UnsavedExitDecision = {
+  // Type-satisfying only: the routed example owns its props.
+  args: { open: false, onSave: () => {}, onDiscard: () => {}, onCancel: () => {} },
   render: () => <RoutedExitDecisionExample />,
   play: async ({ userEvent }) => {
     const page = within(document.body)

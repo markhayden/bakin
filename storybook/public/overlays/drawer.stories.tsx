@@ -22,10 +22,26 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
-  render: function CanonicalDrawer() {
+  args: {
+    title: 'Task detail',
+    description: 'Task 842 · official workflows plugin',
+    dirty: false,
+    busy: false,
+  },
+  argTypes: {
+    title: { control: 'text' },
+    description: { control: 'text' },
+    dirty: { control: 'boolean' },
+    busy: { control: 'boolean' },
+    // The story owns open state so the drawer starts visible; body is composition.
+    open: { control: false },
+    onOpenChange: { control: false },
+    children: { control: false },
+  },
+  render: function CanonicalDrawer(args) {
     const [open, setOpen] = useState(true)
     return (
-      <Drawer open={open} onOpenChange={setOpen} title="Task detail" description="Task 842 · official workflows plugin">
+      <Drawer {...args} open={open} onOpenChange={setOpen}>
         <DrawerSection title="Details">
           <p>Review the migration evidence before closing the task.</p>
         </DrawerSection>

@@ -15,6 +15,7 @@ const library: AssetLibraryAsset[] = [
 
 const meta = {
   title: 'Components/Forms/AssetLibraryPicker',
+  component: AssetLibraryPicker,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -25,21 +26,28 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'loading', 'error', 'empty', 'busy'],
   },
-} satisfies Meta
+} satisfies Meta<typeof AssetLibraryPicker>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <AssetLibraryPicker
-      open
-      onOpenChange={() => {}}
-      onPick={() => {}}
-      loadAssets={async () => library}
-    />
-  ),
+  args: {
+    open: true,
+    onOpenChange: () => {},
+    onPick: () => {},
+    // Fixture loader; the default wiring targets the assets plugin endpoints.
+    loadAssets: async () => library,
+  },
+  argTypes: {
+    open: { control: 'boolean' },
+    title: { control: 'text' },
+    description: { control: 'text' },
+    loadAssets: { control: false },
+    uploadAsset: { control: false },
+    filter: { control: false },
+  },
   play: async () => {
     const page = within(document.body)
     await page.findByRole('dialog', { name: 'Choose an asset' })
@@ -73,6 +81,8 @@ function PickFlowExample() {
 }
 
 export const PickFlow = {
+  // Type-satisfying only: the stateful example owns its props.
+  args: { open: false, onOpenChange: () => {}, onPick: () => {} },
   render: () => <PickFlowExample />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
@@ -119,6 +129,8 @@ function LibraryStatesExample() {
 }
 
 export const LibraryStates = {
+  // Type-satisfying only: the stateful example owns its props.
+  args: { open: false, onOpenChange: () => {}, onPick: () => {} },
   render: () => <LibraryStatesExample />,
   play: async ({ canvas }) => {
     const page = within(document.body)

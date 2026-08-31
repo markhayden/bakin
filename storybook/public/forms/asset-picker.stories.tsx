@@ -9,6 +9,7 @@ import { StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Forms/AssetPicker',
+  component: AssetPicker,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -19,7 +20,7 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'loading', 'error', 'empty', 'disabled', 'long-content', 'reduced-motion'],
   },
-} satisfies Meta
+} satisfies Meta<typeof AssetPicker>
 
 export default meta
 type Story = StoryObj<typeof meta>
@@ -39,16 +40,26 @@ const readyAssets: AssetPickerCollection = {
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <AssetPicker
-      variant="inline"
-      view="list"
-      collection={readyAssets}
-      query=""
-      onQueryChange={() => {}}
-      onPick={() => {}}
-    />
-  ),
+  args: {
+    variant: 'inline',
+    view: 'list',
+    // Collection, query, and handlers are the consumer-owned controlled
+    // surface; controls cover the picker's own presentation flags.
+    collection: readyAssets,
+    query: '',
+    onQueryChange: () => {},
+    onPick: () => {},
+  },
+  argTypes: {
+    view: { control: 'select', options: ['grid', 'list'] },
+    busy: { control: 'boolean' },
+    title: { control: 'text' },
+    description: { control: 'text' },
+    // The dialog variant needs open/onOpenChange — a composition choice.
+    variant: { control: false },
+    collection: { control: false },
+    query: { control: false },
+  },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('searchbox', { name: 'Search assets' })).toBeVisible()
     await expect(canvas.getByRole('button', { name: 'Select Campaign hero' })).toBeVisible()
@@ -90,6 +101,8 @@ function DialogLibraryExample() {
 }
 
 export const DialogLibrary = {
+  // Type-satisfying only: the stateful example owns its props.
+  args: { variant: 'inline', collection: readyAssets, query: '', onQueryChange: () => {}, onPick: () => {} },
   render: () => <DialogLibraryExample />,
   play: async ({ canvasElement }) => {
     const page = within(document.body)
@@ -156,6 +169,8 @@ function InlineStatesExample() {
 }
 
 export const InlineAttachRelinkAndStates = {
+  // Type-satisfying only: the stateful example owns its props.
+  args: { variant: 'inline', collection: readyAssets, query: '', onQueryChange: () => {}, onPick: () => {} },
   render: () => <InlineStatesExample />,
   play: async ({ canvas }) => {
     await userEvent.click(canvas.getByRole('button', { name: 'Select Launch brief' }))

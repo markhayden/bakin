@@ -8,6 +8,7 @@ import { StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Forms/ModelSelect',
+  component: ModelSelect,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -18,7 +19,7 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'disabled', 'empty', 'long-content'],
   },
-} satisfies Meta
+} satisfies Meta<typeof ModelSelect>
 
 export default meta
 type Story = StoryObj<typeof meta>
@@ -38,16 +39,27 @@ const fieldStyle = {
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    id: 'canonical-model',
+    value: DEFAULT_MODEL_VALUE,
+    onValueChange: () => {},
+    // The provider-grouped catalog is consumer-owned fixture data.
+    models,
+    defaultLabel: 'Use workspace default',
+  },
+  argTypes: {
+    disabled: { control: 'boolean' },
+    defaultLabel: { control: 'text' },
+    placeholder: { control: 'text' },
+    value: { control: false },
+    models: { control: false },
+    // Paired with the visible label element in render.
+    id: { control: false },
+  },
+  render: (args) => (
     <div style={{ width: 'min(80vw, 20rem)' }}>
       <label htmlFor="canonical-model">Model</label>
-      <ModelSelect
-        id="canonical-model"
-        value={DEFAULT_MODEL_VALUE}
-        onValueChange={() => {}}
-        models={models}
-        defaultLabel="Use workspace default"
-      />
+      <ModelSelect {...args} />
     </div>
   ),
   play: async ({ canvas }) => {
@@ -89,6 +101,8 @@ function GroupedCatalogExample() {
 }
 
 export const GroupedCatalog = {
+  // Type-satisfying only: the stateful example owns its props.
+  args: { value: DEFAULT_MODEL_VALUE, onValueChange: () => {}, models },
   render: () => <GroupedCatalogExample />,
   play: async ({ canvas }) => {
     const model = canvas.getByRole('combobox', { name: 'Model' })
@@ -103,7 +117,8 @@ export const GroupedCatalog = {
 } satisfies Story
 
 export const UnavailableModelCatalog = {
-  render: () => (
+  args: { id: 'unavailable-picker-model', value: 'acme/saved-model', onValueChange: () => {}, models: [] },
+  render: (args) => (
     <StoryStage
       eyebrow="Models / provider catalog"
       title="Keep the saved model readable when the catalog is unavailable"
@@ -112,12 +127,7 @@ export const UnavailableModelCatalog = {
       <StorySection title="Execution defaults">
         <div style={fieldStyle}>
           <label htmlFor="unavailable-picker-model">Model</label>
-          <ModelSelect
-            id="unavailable-picker-model"
-            value="acme/saved-model"
-            onValueChange={() => {}}
-            models={[]}
-          />
+          <ModelSelect {...args} />
         </div>
       </StorySection>
     </StoryStage>
