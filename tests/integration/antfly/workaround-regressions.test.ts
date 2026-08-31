@@ -135,23 +135,21 @@ if (!binary) {
       expect(bodyless.status).toBe(200)
     })
 
-    it('PIN antfly#319: mixed-corpus media leg — raw flags stuck building, health() overrides to ready', async () => {
-      // rc.18 behavior (re-pinned 2026-07-22 after the rc.21 crash dossier):
-      // docs whose media template renders empty never complete the leg's
-      // backfill accounting, so raw flags stay raised while fully idle; the
-      // idle-detection override in mapIndexStatuses maps ready. rc.21 fixed
-      // THIS accounting (verified) but is unshippable for other reasons —
-      // when a healthy release ships, flip this back to the guard form
-      // (git history, 2026-07-21).
+    it('GUARD 0.2.0 (was the antfly#319 pin): mixed-corpus media leg accounting completes — flags clear at idle', async () => {
+      // The idle-detection override in mapIndexStatuses was DELETED
+      // 2026-08-31: 0.2.0 clears the flags honestly for skip-heavy corpora,
+      // proven at scale incl. interrupted rebuilds (gate T7). WHEN THIS
+      // FAILS (flags raised at idle): skip-heavy greens will park
+      // unconverged again — resurrect the override from git history.
       if (!instance.modelsAvailable || !existsSync(join(homedir(), '.antfly', 'inference', 'models', 'antflydb', 'clipclap'))) {
         console.warn('⚠ antfly#319 guard skipped — clipclap model not present')
         return
       }
       const T2 = 'pins_mixed'
-      await api('POST', `/db/v1/tables/${T2}`, {
-        num_shards: 1,
-        indexes: { vis: { name: 'vis', type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } } },
-      })
+      await api('POST', `/db/v1/tables/${T2}`, { num_shards: 1 })
+      await sleep(500)
+      // Per-index endpoint: the only create path whose enrichment starts on 0.2.0.
+      await api('POST', `/db/v1/tables/${T2}/indexes/vis`, { type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } })
       await sleep(1200)
       const png = join(instance.root, 'pin319.png')
       const { solidPng } = await import('./golden-queries')
@@ -179,10 +177,10 @@ if (!binary) {
         await sleep(1000)
       }
       expect(raw).not.toBeNull()
-      // CANARY: raw flags still lie (building forever) on rc.18 — when this
-      // flips on a future pin, revisit the override (guard form in history).
-      expect(raw!.rebuilding === true || raw!.backfill_active === true).toBe(true)
-      // WORKAROUND GUARD: our health mapping overrides to ready.
+      // Honest flags at idle — no override needed.
+      expect(raw!.rebuilding).toBe(false)
+      expect(raw!.backfill_active).toBe(false)
+      // And the un-overridden mapping agrees.
       const { AntflySearchClient } = await import('../../../packages/adapter-antfly/src/client')
       const { DEFAULT_SETTINGS } = await import('../../../packages/adapter-antfly/src/defaults')
       const client = new AntflySearchClient({ ...DEFAULT_SETTINGS, url: instance.url }, { fetchImpl: nativeFetch })
@@ -192,23 +190,19 @@ if (!binary) {
       expect(vis?.indexedCount).toBe(1)
     }, 180_000)
 
-    it('GUARD antfly#319 (idle-detection override): an idle embeddings leg maps ready regardless of raw flags', async () => {
-      // The override this guards was retired at the rc.21 repin, then
-      // RESTORED hours later: the production memory-table green (50
-      // embeddable of ~10k skipped audit rows, rebuild interrupted by an
-      // engine bounce) sat with rebuilding/backfill_active raised while
-      // fully idle — and parked unconverged. A minimal 2-doc skip corpus
-      // does NOT reproduce the stuck flags on rc.21 (they clear), so the
-      // trigger is scale- or interruption-dependent and this cannot be a
-      // fails-when-fixed pin. The override's semantics are safe regardless
-      // (pending 0 + no active batch + not retrying ⇒ idle ⇒ ready).
-      // Retirement is MANUAL: prove a full-scale interrupted rebuild
-      // converges without it before deleting.
+    it('GUARD 0.2.0: text-skip corpus — flags clear at idle, mapping is ready with NO override', async () => {
+      // History: the override was retired at the rc.21 repin, restored
+      // hours later (the production memory-table park — 50 embeddable of
+      // ~10k skipped rows, interrupted rebuild), and finally DELETED
+      // 2026-08-31 after gate T7 proved its retirement condition at scale:
+      // interrupted rebuilds of both media-skip and text-skip corpora
+      // converge with honest flags on 0.2.0 (sticky `degraded` scar aside,
+      // which maps ready). WHEN THIS FAILS: resurrect the override.
       const T6 = 'pins_textskip'
-      await api('POST', `/db/v1/tables/${T6}`, {
-        num_shards: 1,
-        indexes: { sem: { name: 'sem', type: 'embeddings', template: '{{#if body}}{{body}}{{/if}}', dimension: 384, embedder: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' } } },
-      })
+      await api('POST', `/db/v1/tables/${T6}`, { num_shards: 1 })
+      await sleep(500)
+      // Per-index endpoint: the only create path whose enrichment starts on 0.2.0.
+      await api('POST', `/db/v1/tables/${T6}/indexes/sem`, { type: 'embeddings', template: '{{#if body}}{{body}}{{/if}}', dimension: 384, embedder: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' } })
       await sleep(1200)
       for (let i = 0; i < 10; i++) {
         const r = await api('POST', `/db/v1/tables/${T6}/batch`, {
@@ -235,10 +229,9 @@ if (!binary) {
         console.warn('⚠ text-skip pin skipped — embeddable doc never indexed (no BAAI model?)')
         return
       }
-      // Record (not assert) whether the raw flags lie on this corpus —
-      // evidence for eventual manual retirement, not a gate.
-      console.warn(`text-skip raw flags: rebuilding=${String(raw.rebuilding)} backfill_active=${String(raw.backfill_active)}`)
-      // WORKAROUND GUARD: idle-detection maps the leg ready either way.
+      // Honest flags at idle — the override's trigger state no longer exists.
+      expect(raw.rebuilding).toBe(false)
+      expect(raw.backfill_active).toBe(false)
       const { AntflySearchClient } = await import('../../../packages/adapter-antfly/src/client')
       const { DEFAULT_SETTINGS } = await import('../../../packages/adapter-antfly/src/defaults')
       const client = new AntflySearchClient({ ...DEFAULT_SETTINGS, url: instance.url }, { fetchImpl: nativeFetch })
@@ -281,10 +274,10 @@ if (!binary) {
         return
       }
       const T3 = 'pins_webp'
-      await api('POST', `/db/v1/tables/${T3}`, {
-        num_shards: 1,
-        indexes: { vis: { name: 'vis', type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } } },
-      })
+      await api('POST', `/db/v1/tables/${T3}`, { num_shards: 1 })
+      await sleep(500)
+      // Per-index endpoint: the only create path whose enrichment starts on 0.2.0.
+      await api('POST', `/db/v1/tables/${T3}/indexes/vis`, { type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } })
       await sleep(1200)
       const sharp = (await import('sharp')).default
       const webp = join(instance.root, 'pin-webp.webp')
@@ -318,10 +311,10 @@ if (!binary) {
       // FAILS (batch lands): upstream added per-document batch errors →
       // consider passing originals unconditionally + delete this pin.
       const T5 = 'pins_badmedia'
-      await api('POST', `/db/v1/tables/${T5}`, {
-        num_shards: 1,
-        indexes: { vis: { name: 'vis', type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } } },
-      })
+      await api('POST', `/db/v1/tables/${T5}`, { num_shards: 1 })
+      await sleep(500)
+      // Per-index endpoint: the only create path whose enrichment starts on 0.2.0.
+      await api('POST', `/db/v1/tables/${T5}/indexes/vis`, { type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } })
       await sleep(1200)
       const { writeFileSync } = await import('node:fs')
       const bad = join(instance.root, 'pin-bad.webp')
@@ -423,7 +416,10 @@ if (!binary) {
       // names vanished from the 0.2.0 binary; their patterns were removed.)
       const bytes = readFileSync(binary)
       expect(bytes.includes('catch-up debt persists')).toBe(true)
-      expect(bytes.includes('error.StorageReadTemporarilyUnavailable')).toBe(true)
+      // The binary stores the BARE Zig error name; the `error.` prefix the
+      // WEDGE_PATTERN matches is added by Zig's error formatting at log
+      // time. Grep the bare name here.
+      expect(bytes.includes('StorageReadTemporarilyUnavailable')).toBe(true)
     })
   })
 }

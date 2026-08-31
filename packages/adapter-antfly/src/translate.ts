@@ -402,22 +402,15 @@ export function mapIndexStatuses(entries: WireIndexStatusEntry[]): TableLegHealt
       || runtime?.worker_failed === true
       || (runtime?.fatal_error_count ?? 0) > 0
       || status?.backfill_state === 'failed'
-    let building = status?.rebuilding === true || status?.backfill_active === true
-    // antfly#319 idle-detection override — RESTORED at rc.21 (2026-07-22,
-    // the memory-table park during the production rebuild). Upstream's
-    // rc.21 fix is PARTIAL: MEDIA-template skip accounting clears its
-    // flags (the mixed-corpus guard pin), but TEXT-template legs whose
-    // docs render empty (memory: 50 embeddable of ~10k audit rows) still
-    // report rebuilding/backfill_active forever while fully idle —
-    // pending 0, no active batch, not retrying. Idle ⇒ ready, or every
-    // skip-heavy green parks unconverged. Pinned by the text-skip canary
-    // in workaround-regressions; delete when THAT pin fails.
-    if (building && runtime
-      && runtime.pending_sequence_count === 0
-      && runtime.retrying !== true
-      && (runtime.active_embed_batch_items ?? 0) === 0) {
-      building = false
-    }
+    // The antfly#319 idle-detection override is GONE (2026-08-31): 0.2.0
+    // clears rebuilding/backfill_active honestly at idle — proven at scale
+    // for both the media-skip and text-skip corpora INCLUDING interrupted
+    // rebuilds (gate T7, evidence file), the exact retirement condition the
+    // override carried. Raised flags now mean real work. An interrupted
+    // backfill leaves a sticky-honest `backfill_state: "degraded"` scar on
+    // an otherwise fully functional leg — deliberately mapped ready (not
+    // 'failed': repair counters stay clean and queries serve correctly).
+    const building = status?.rebuilding === true || status?.backfill_active === true
     return {
       leg: entry.config.name,
       state: failed ? 'error' as const : building ? 'building' as const : 'ready' as const,
