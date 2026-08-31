@@ -56,8 +56,15 @@ function TaskPanel() {
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <Sheet>
+  args: { defaultOpen: false, busy: false },
+  argTypes: {
+    defaultOpen: { control: 'boolean' },
+    busy: { control: 'boolean' },
+    // side lives on SheetContent; trigger and panel body are composition.
+    children: { control: false },
+  },
+  render: (args) => (
+    <Sheet {...args}>
       <SheetTrigger render={<Button variant="outline" />}>Open task panel</SheetTrigger>
       <SheetContent>
         <SheetHeader>

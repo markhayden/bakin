@@ -54,15 +54,23 @@ export const CanonicalUsage = {
     onSubmit: () => {},
   },
   parameters: { layout: 'centered' },
+  argTypes: {
+    busy: { control: 'boolean' },
+    disabled: { control: 'boolean' },
+    saveLabel: { control: 'text' },
+    ariaLabel: { control: 'text' },
+    // Schema, values, and feedback are consumer-owned data; handlers are wiring.
+    schema: { control: false },
+    values: { control: false },
+    feedback: { control: false },
+    onSubmit: { control: false },
+    onValidationError: { control: false },
+  },
   // Width frame: the renderer's settings rows are container-typed, zeroing
   // intrinsic width — the centered (shrink-to-fit) canvas would collapse them.
-  render: () => (
+  render: (args) => (
     <div style={{ inlineSize: '40rem', maxInlineSize: '100%' }}>
-      <PluginSettingsRenderer
-        schema={canonicalSchema}
-        values={{ workspaceName: 'Creator operations', requiresApproval: true }}
-        onSubmit={() => {}}
-      />
+      <PluginSettingsRenderer {...args} />
     </div>
   ),
   play: async ({ canvas, userEvent }) => {

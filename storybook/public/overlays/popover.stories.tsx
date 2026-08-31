@@ -37,8 +37,15 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <Popover>
+  args: { defaultOpen: false },
+  argTypes: {
+    defaultOpen: { control: 'boolean' },
+    modal: { control: 'boolean' },
+    // Trigger and panel are composition; the anchored content is not a control.
+    children: { control: false },
+  },
+  render: (args) => (
+    <Popover {...args}>
       <PopoverTrigger render={<Button variant="outline" />}>Inspect filters</PopoverTrigger>
       <PopoverContent>
         <PopoverHeader>

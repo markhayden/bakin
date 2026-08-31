@@ -36,8 +36,16 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <Dialog>
+  args: { defaultOpen: false, busy: false },
+  argTypes: {
+    defaultOpen: { control: 'boolean' },
+    busy: { control: 'boolean' },
+    modal: { control: 'select', options: [true, false, 'trap-focus'] },
+    // Trigger and content are composition; the dialog body is not a control.
+    children: { control: false },
+  },
+  render: (args) => (
+    <Dialog {...args}>
       <DialogTrigger render={<Button variant="outline" />}>Delete connection</DialogTrigger>
       <DialogContent>
         <DialogHeader>

@@ -22,8 +22,15 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <Tooltip>
+  args: { defaultOpen: false },
+  argTypes: {
+    defaultOpen: { control: 'boolean' },
+    disabled: { control: 'boolean' },
+    // Trigger and label are composition; delay is fixed at 0 by the provider fixture.
+    children: { control: false },
+  },
+  render: (args) => (
+    <Tooltip {...args}>
       <TooltipTrigger render={<Button variant="outline" />}>Retry guidance</TooltipTrigger>
       <TooltipContent>Retry after the runtime reconnects.</TooltipContent>
     </Tooltip>

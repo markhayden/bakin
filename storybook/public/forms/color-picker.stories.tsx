@@ -8,6 +8,7 @@ import { StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Forms/ColorPicker',
+  component: ColorPicker,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -18,7 +19,7 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'non-color'],
   },
-} satisfies Meta
+} satisfies Meta<typeof ColorPicker>
 
 export default meta
 type Story = StoryObj<typeof meta>
@@ -34,9 +35,15 @@ const colors = [
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <ColorPicker ariaLabel="Agent color" value="series-1" onValueChange={() => {}} options={colors} />
-  ),
+  args: { ariaLabel: 'Agent color', value: 'series-1', onValueChange: () => {}, options: colors },
+  argTypes: {
+    value: { control: 'select', options: colors.map((option) => option.value) },
+    columns: { control: 'select', options: [4, 6, 8] },
+    disabled: { control: 'boolean' },
+    // The palette is consumer-owned data; the handler is wiring.
+    options: { control: false },
+    onValueChange: { control: false },
+  },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('radiogroup', { name: 'Agent color' })).toBeVisible()
     await expect(canvas.getByRole('radio', { name: 'Ocean' })).toHaveAttribute('aria-checked', 'true')
@@ -44,8 +51,8 @@ export const CanonicalUsage = {
   },
 } satisfies Story
 
-function PaletteChoicesExample() {
-  const [color, setColor] = useState('series-1')
+function PaletteChoicesExample({ initialValue }: { initialValue: string }) {
+  const [color, setColor] = useState(initialValue)
   return (
     <StoryStage
       eyebrow="Models and identity"
@@ -64,7 +71,8 @@ function PaletteChoicesExample() {
 }
 
 export const PaletteChoices = {
-  render: () => <PaletteChoicesExample />,
+  args: { value: 'series-1', onValueChange: () => {}, options: colors },
+  render: (args) => <PaletteChoicesExample initialValue={args.value} />,
   play: async ({ canvas }) => {
     const ocean = canvas.getByRole('radio', { name: 'Ocean' })
     ocean.focus()

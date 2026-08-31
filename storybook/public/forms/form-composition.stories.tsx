@@ -30,6 +30,7 @@ import './forms.stories.css'
 
 const meta = {
   title: 'Components/Forms/Field and form composition',
+  component: Form,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -40,19 +41,27 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'keyboard', 'validation', 'busy', 'disabled', 'error'],
   },
-} satisfies Meta
+} satisfies Meta<typeof Form>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
+  args: { busy: false },
+  argTypes: {
+    busy: { control: 'boolean' },
+    // Field composition is the story's subject, not a control surface.
+    children: { control: false },
+    errors: { control: false },
+    onFormSubmit: { control: false },
+  },
   // Width frame: Form's container-type zeroes its intrinsic width, so the
   // centered (shrink-to-fit) canvas would collapse it to min-content. In the
   // app forms sit in block flow where width is inherited.
-  render: () => (
+  render: (args) => (
     <div style={{ inlineSize: '40rem', maxInlineSize: '100%' }}>
-      <Form aria-label="Workspace settings">
+      <Form aria-label="Workspace settings" {...args}>
         <Field name="workspaceName">
           <FieldLabel requirement="required">Workspace name</FieldLabel>
           <FieldDescription>Shown in page chrome and plugin-contributed sections.</FieldDescription>
