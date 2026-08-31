@@ -438,8 +438,8 @@ export class AntflySearchClient implements SearchAdapter {
   }
 
   async *scan(table: string, opts?: ScanOpts, timeoutMs?: number): AsyncIterable<ScannedDocument> {
-    // The lookup endpoint requires a body — `{}` scans all keys.
-    const body = opts?.fields?.length ? { fields: opts.fields } : {}
+    // Bodyless scans all keys (legal since 0.2.0); a body only narrows fields.
+    const body = opts?.fields?.length ? { fields: opts.fields } : undefined
     const response = await this.request('POST', paths.lookup(table), body, timeoutMs)
     const text = await response.text()
     let warnedKeyless = false

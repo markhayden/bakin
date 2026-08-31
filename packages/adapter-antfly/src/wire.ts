@@ -138,6 +138,6 @@ export const paths = {
   index: (t: string, name: string) => `/db/v1/tables/${encodeURIComponent(t)}/indexes/${encodeURIComponent(name)}`,
   document: (t: string, key: string) => `/db/v1/tables/${encodeURIComponent(t)}/documents/${encodeURIComponent(key)}`,
   // rc.18 moved bulk key scans from /lookup (now 405) to /documents —
-  // same NDJSON contract, same needs-a-body quirk.
+  // same NDJSON contract; bodyless scans are legal since 0.2.0.
   lookup: (t: string) => `/db/v1/tables/${encodeURIComponent(t)}/documents`,
 } as const

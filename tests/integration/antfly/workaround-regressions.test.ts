@@ -125,16 +125,14 @@ if (!binary) {
       expect(result.status).toBeGreaterThanOrEqual(400)
     })
 
-    it('PIN rc.18: /lookup is gone (405) — scans live at /documents, still needing a {} body', async () => {
+    it('PIN: /lookup is gone (405) — scans live at /documents; GUARD: bodyless scans are legal', async () => {
       // WHEN THE 405 HALF FAILS: /lookup came back — no action, we use
-      // /documents. WHEN THE BODYLESS HALF FAILS: bodyless scans became
-      // legal → optional cleanup in client.scan + shrink this pin.
+      // /documents. WHEN THE BODYLESS HALF FAILS (≥400): the needs-a-body
+      // quirk is back — restore the `{}` fallback in client.scan.
       const legacy = await api('POST', `/db/v1/tables/${T}/lookup`, {})
       expect(legacy.status).toBe(405)
       const bodyless = await api('POST', `/db/v1/tables/${T}/documents`)
-      expect(bodyless.status).toBeGreaterThanOrEqual(400)
-      const withBody = await api('POST', `/db/v1/tables/${T}/documents`, {})
-      expect(withBody.status).toBe(200)
+      expect(bodyless.status).toBe(200)
     })
 
     it('PIN antfly#319: mixed-corpus media leg — raw flags stuck building, health() overrides to ready', async () => {
