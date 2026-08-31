@@ -13,6 +13,18 @@ import { StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Agents/AgentSelect',
+  component: AgentSelect,
+  // Canonical controlled-selector shape; render-based showcase stories
+  // inherit these required props and own their own state.
+  args: {
+    ariaLabel: 'Owner',
+    value: 'maya',
+    onValueChange: () => {},
+    agents: [
+      { id: 'maya', name: 'Maya Chen', color: '#8b5cf6' },
+      { id: 'patch', name: 'Patch', color: '#f97316' },
+    ],
+  },
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -23,7 +35,7 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'disabled', 'empty', 'non-color', 'long-content'],
   },
-} satisfies Meta
+} satisfies Meta<typeof AgentSelect>
 
 export default meta
 type Story = StoryObj<typeof meta>
@@ -38,17 +50,19 @@ const agents = [
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <AgentSelect
-      ariaLabel="Owner"
-      value="maya"
-      onValueChange={() => {}}
-      agents={[
-        { id: 'maya', name: 'Maya Chen', color: '#8b5cf6' },
-        { id: 'patch', name: 'Patch', color: '#f97316' },
-      ]}
-    />
-  ),
+  argTypes: {
+    value: { control: 'select', options: ['maya', 'patch', ''] },
+    disabled: { control: 'boolean' },
+    allowNone: { control: 'boolean' },
+    includeAssigned: { control: 'boolean' },
+    placeholder: { control: 'text' },
+    // The play and a11y contract query the accessible name; option data and
+    // the change handler are consumer-owned wiring.
+    ariaLabel: { control: false },
+    agents: { control: false },
+    teams: { control: false },
+    onValueChange: { control: false },
+  },
   play: async ({ canvas }) => {
     const trigger = canvas.getByRole('combobox', { name: 'Owner' })
     await expect(trigger).toBeVisible()

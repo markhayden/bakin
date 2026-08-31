@@ -14,6 +14,7 @@ import './search-trust.stories.css'
 
 const meta = {
   title: 'Components/Feedback/Search trust states',
+  component: SearchUnavailable,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -24,14 +25,21 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'non-color', 'reduced-motion', 'error', 'dense-data'],
   },
-} satisfies Meta
+} satisfies Meta<typeof SearchUnavailable>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => <SearchUnavailable retry={() => {}} healthAction={null} />,
+  args: { retry: () => {}, healthAction: null },
+  argTypes: {
+    scope: { control: 'select', options: ['inline', 'section', 'page'] },
+    headingLevel: { control: 'select', options: [2, 3, 4] },
+    // Retry re-runs the consumer's query; the health action is a host-owned link.
+    retry: { control: false },
+    healthAction: { control: false },
+  },
   play: async ({ canvas }) => {
     const state = canvas.getByRole('alert', { name: 'Search is unavailable' })
     await expect(state).toBeVisible()

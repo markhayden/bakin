@@ -47,17 +47,22 @@ const rows = (
 )
 
 export const CanonicalUsage = {
-  args: { label: 'Session list' },
-  render: () => (
-    <PageAside
-      label="Session list"
-      width="session"
-      style={{ blockSize: '20rem' }}
-      collapsible={{ collapsed: false, onCollapsedChange: () => {} }}
-    >
-      {rows}
-    </PageAside>
-  ),
+  args: {
+    label: 'Session list',
+    width: 'session',
+    style: { blockSize: '20rem' },
+    // The collapse contract is a controlled object — the roundtrip story
+    // exercises it; here the rail starts expanded.
+    collapsible: { collapsed: false, onCollapsedChange: () => {} },
+    children: rows,
+  },
+  argTypes: {
+    width: { control: 'select', options: ['nav', 'session'] },
+    label: { control: 'text' },
+    collapsible: { control: false },
+    children: { control: false },
+    style: { control: false },
+  },
   play: async ({ canvas, canvasElement }) => {
     await expect(canvas.getByRole('complementary', { name: 'Session list' })).toBeVisible()
     await expect(canvas.getByRole('button', { name: 'Open Release readiness' })).toBeVisible()

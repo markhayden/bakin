@@ -7,6 +7,17 @@ import { StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Lists/KeyValue',
+  component: KeyValue,
+  // Canonical fixture args at meta level: the render-based layouts story
+  // inherits the required items.
+  args: {
+    items: [
+      { label: 'Model', value: 'claude-sonnet-4' },
+      { label: 'Tokens', value: '12.3k in / 4.1k out', numeric: true },
+      { label: 'Cost', value: '$0.42', numeric: true },
+      { label: 'Route', value: null },
+    ],
+  },
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -17,25 +28,23 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'dense-data'],
   },
-} satisfies Meta
+} satisfies Meta<typeof KeyValue>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
+  argTypes: {
+    layout: { control: 'select', options: ['inline', 'rows', 'columns'] },
+    // Pair data is the fixture, not a knob.
+    items: { control: false },
+  },
   // The list fills its container, so the centered canvas needs a definite
   // inline size or it collapses to its content width.
-  render: () => (
+  render: (args) => (
     <div style={{ inlineSize: '22rem', maxInlineSize: '100%' }}>
-      <KeyValue
-        items={[
-          { label: 'Model', value: 'claude-sonnet-4' },
-          { label: 'Tokens', value: '12.3k in / 4.1k out', numeric: true },
-          { label: 'Cost', value: '$0.42', numeric: true },
-          { label: 'Route', value: null },
-        ]}
-      />
+      <KeyValue {...args} />
     </div>
   ),
   play: async ({ canvasElement }) => {

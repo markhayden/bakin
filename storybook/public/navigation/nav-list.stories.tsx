@@ -8,7 +8,20 @@ import { StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Navigation/NavList',
+  component: NavList,
   tags: ['public'],
+  // Canonical args at meta level so the render-based showcase inherits the
+  // required selection contract without per-story type noise.
+  args: {
+    label: 'Plugin settings',
+    selectedId: 'tasks',
+    onSelect: () => {},
+    items: [
+      { id: 'tasks', label: 'Tasks' },
+      { id: 'schedule', label: 'Schedule' },
+      { id: 'health', label: 'Health' },
+    ],
+  },
   parameters: {
     layout: 'fullscreen',
     docs: {
@@ -18,25 +31,21 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'interaction', 'disabled', 'long-labels'],
   },
-} satisfies Meta
+} satisfies Meta<typeof NavList>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <NavList
-      label="Plugin settings"
-      selectedId="tasks"
-      onSelect={() => {}}
-      items={[
-        { id: 'tasks', label: 'Tasks' },
-        { id: 'schedule', label: 'Schedule' },
-        { id: 'health', label: 'Health' },
-      ]}
-    />
-  ),
+  argTypes: {
+    label: { control: 'text' },
+    selectedId: { control: 'select', options: ['tasks', 'schedule', 'health', null] },
+    // Entry data and the selection callback are consumer-owned state wiring.
+    items: { control: false },
+    sections: { control: false },
+    onSelect: { control: false },
+  },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('navigation', { name: 'Plugin settings' })).toBeVisible()
     await expect(canvas.getByRole('button', { name: 'Tasks' })).toHaveAttribute('aria-current', 'true')

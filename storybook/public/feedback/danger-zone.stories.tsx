@@ -10,6 +10,15 @@ import { StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Feedback/DangerZone',
+  component: DangerZone,
+  // Canonical fixture args at meta level: the render-based story inherits the
+  // required props (description/confirmLabel/confirmValue/onConfirm).
+  args: {
+    description: 'Delete the Acme publishing workspace, disconnect 4 agents, and stop 3 scheduled workflows. This cannot be undone.',
+    confirmLabel: 'Delete workspace',
+    confirmValue: 'acme-publishing',
+    onConfirm: () => {},
+  },
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -20,21 +29,27 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'interaction', 'typed-confirmation', 'focus-return'],
   },
-} satisfies Meta
+} satisfies Meta<typeof DangerZone>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  argTypes: {
+    title: { control: 'text' },
+    description: { control: 'text' },
+    confirmLabel: { control: 'text' },
+    confirmValue: { control: 'text' },
+    headingLevel: { control: 'select', options: [2, 3, 4] },
+    busy: { control: 'boolean' },
+    error: { control: 'text' },
+    // The mutation is consumer-owned.
+    onConfirm: { control: false },
+  },
+  render: (args) => (
     <div style={{ width: 'min(90vw, 36rem)' }}>
-      <DangerZone
-        description="Delete the Acme publishing workspace, disconnect 4 agents, and stop 3 scheduled workflows. This cannot be undone."
-        confirmLabel="Delete workspace"
-        confirmValue="acme-publishing"
-        onConfirm={() => {}}
-      />
+      <DangerZone {...args} />
     </div>
   ),
   play: async ({ canvas, userEvent }) => {

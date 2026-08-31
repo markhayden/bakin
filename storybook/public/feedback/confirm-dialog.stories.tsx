@@ -10,6 +10,18 @@ import { StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Feedback/ConfirmDialog',
+  component: ConfirmDialog,
+  // Canonical fixture args at meta level: render-based stories inherit the
+  // required props (open/title/onConfirm/onCancel).
+  args: {
+    open: true,
+    title: 'Delete archived workflow?',
+    description: 'This permanently deletes the workflow definition and its preserved run history. Scheduled triggers will stop.',
+    confirmLabel: 'Delete workflow',
+    confirmValue: 'launch-publishing',
+    onConfirm: () => {},
+    onCancel: () => {},
+  },
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -20,24 +32,31 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'interaction', 'typed-confirmation', 'focus-return', 'busy', 'error-retry'],
   },
-} satisfies Meta
+} satisfies Meta<typeof ConfirmDialog>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <ConfirmDialog
-      open
-      title="Delete archived workflow?"
-      description="This permanently deletes the workflow definition and its preserved run history. Scheduled triggers will stop."
-      confirmLabel="Delete workflow"
-      confirmValue="launch-publishing"
-      onConfirm={() => {}}
-      onCancel={() => {}}
-    />
-  ),
+  argTypes: {
+    open: { control: 'boolean' },
+    title: { control: 'text' },
+    description: { control: 'text' },
+    confirmLabel: { control: 'text' },
+    busyLabel: { control: 'text' },
+    cancelLabel: { control: 'text' },
+    confirmTone: { control: 'select', options: ['danger', 'primary'] },
+    cancelVariant: { control: 'select', options: ['outline', 'ghost'] },
+    confirmValue: { control: 'text' },
+    busy: { control: 'boolean' },
+    error: { control: 'text' },
+    // The consumer owns the mutation, dismissal, and focus return.
+    onConfirm: { control: false },
+    onCancel: { control: false },
+    finalFocus: { control: false },
+    children: { control: false },
+  },
   play: async ({ userEvent }) => {
     const page = within(document.body)
     const dialog = await page.findByRole('dialog', { name: 'Delete archived workflow?' })
