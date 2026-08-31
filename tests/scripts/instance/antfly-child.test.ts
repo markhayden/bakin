@@ -27,12 +27,12 @@ describe('binary + models resolution', () => {
 })
 
 describe('antflyChildArgs', () => {
-  it('pins the adapter buildServiceArgv shape (swarm/host/port/health/data/models)', () => {
+  it('pins the adapter buildServiceArgv shape (standalone/host/port/health/data/models)', () => {
     // Token-for-token contract with packages/adapter-antfly/src/service.ts
     // buildServiceArgv — health port is ALWAYS port+1. The rig child skips
     // --preload-model on purpose (dev instance; first embed cold-loads).
     expect(antflyChildArgs('/bin/antfly', RIG_ANTFLY_PORT, DATA, '/models')).toEqual([
-      '/bin/antfly', 'swarm',
+      '/bin/antfly', 'standalone',
       '--host', '127.0.0.1',
       '--port', '3838',
       '--health-port', '3839',

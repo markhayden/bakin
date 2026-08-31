@@ -366,7 +366,7 @@ function legFromLegacyIndex(idx: SearchIndexConfig): TableLegConfig | null {
 }
 
 /**
- * Capability legs → antfly index declarations. Full-text legs are omitted:
+ * Capability legs → the table-provisioning plan. Full-text legs are omitted:
  * the server always creates its own full_text index. No `schema` is sent —
  * type inference covers Bakin's needs. Never an inference URL (in-process
  * embedding only; a URL routes over HTTP and wedges backfill).
@@ -374,20 +374,30 @@ function legFromLegacyIndex(idx: SearchIndexConfig): TableLegConfig | null {
  * Legs whose embedder is disabled/unusable are SKIPPED — the table is
  * created keyword-only for those capabilities (honest degrade, D11)
  * instead of shipping the engine a spec it 500s on.
+ *
+ * The plan is two-phase by NECESSITY on 0.2.0: inline `indexes` at
+ * table-create are silently dead (accepted + stored, enrichment never
+ * starts), so embeddings legs go through the per-index endpoint
+ * (paths.index) after the table exists. Order matters for a second reason:
+ * legs must land BEFORE the first document write — adding an embeddings leg
+ * to a populated table wedges it durably on 0.2.0 (both in the evidence
+ * file + filed upstream).
  */
-export function buildTableCreate(config: TableConfig, settings: AntflySettings): WireTableCreateRequest {
+export interface TableProvisioningPlan {
+  table: WireTableCreateRequest
+  indexes: WireIndexConfig[]
+}
+
+export function buildTableProvisioning(config: TableConfig, settings: AntflySettings): TableProvisioningPlan {
   const legs: TableLegConfig[] = config.legs
     ?? (config.indexes ?? []).map(legFromLegacyIndex).filter((l): l is TableLegConfig => l !== null)
-  const indexes: Record<string, WireIndexConfig> = {}
+  const indexes: WireIndexConfig[] = []
   for (const leg of legs) {
     if (leg.capability === 'full-text') continue
     const index = embeddingIndexFromLeg(leg, settings)
-    if (index !== null) indexes[leg.name] = index
+    if (index !== null) indexes.push(index)
   }
-  return {
-    num_shards: 1,
-    ...(Object.keys(indexes).length > 0 ? { indexes } : {}),
-  }
+  return { table: { num_shards: 1 }, indexes }
 }
 
 // ---------------------------------------------------------------------------

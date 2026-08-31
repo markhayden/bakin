@@ -31,7 +31,7 @@ import {
   buildBatchDeletes,
   buildBatchInserts,
   buildQueryRequest,
-  buildTableCreate,
+  buildTableProvisioning,
   embedderUsable,
   mapIndexStatuses,
   mapQueryResponse,
@@ -178,7 +178,14 @@ export class AntflySearchClient implements SearchAdapter {
     // embedding legs, and concurrent structural ops are part of the same
     // Metal-crash surface as concurrent batch writes (2026-07-22 ladder).
     create: async (name: string, config: TableConfig): Promise<void> => {
-      await this.serializedWrite(() => this.request('POST', paths.table(name), buildTableCreate(config, this.settings)))
+      const plan = buildTableProvisioning(config, this.settings)
+      await this.serializedWrite(() => this.request('POST', paths.table(name), plan.table))
+      // Embeddings legs ride the per-index endpoint — the only create path
+      // whose enrichment worker actually starts on 0.2.0 — and MUST land
+      // before the first document write (see buildTableProvisioning).
+      for (const index of plan.indexes) {
+        await this.serializedWrite(() => this.request('POST', paths.index(name, index.name), index))
+      }
     },
     drop: async (name: string): Promise<void> => {
       await this.serializedWrite(() => this.request('DELETE', paths.table(name)))

@@ -90,7 +90,10 @@ export interface WireIndexConfig {
 
 export interface WireTableCreateRequest {
   num_shards?: number
-  indexes?: Record<string, WireIndexConfig>
+  // No inline `indexes`: 0.2.0 accepts them at table-create (200, stored,
+  // echoed) but NEVER starts their enrichment worker — a silent no-op
+  // (evidence file, upstream draft 2). Embeddings legs are created via
+  // paths.index() after the table exists.
 }
 
 /** GET /db/v1/tables/{t}/indexes element. */
@@ -130,6 +133,9 @@ export const paths = {
   batch: (t: string) => `/db/v1/tables/${encodeURIComponent(t)}/batch`,
   query: (t: string) => `/db/v1/tables/${encodeURIComponent(t)}/query`,
   indexes: (t: string) => `/db/v1/tables/${encodeURIComponent(t)}/indexes`,
+  // Per-index create — the ONLY path that wires enrichment on 0.2.0 (the
+  // name rides the URL; bare POST …/indexes is 405).
+  index: (t: string, name: string) => `/db/v1/tables/${encodeURIComponent(t)}/indexes/${encodeURIComponent(name)}`,
   document: (t: string, key: string) => `/db/v1/tables/${encodeURIComponent(t)}/documents/${encodeURIComponent(key)}`,
   // rc.18 moved bulk key scans from /lookup (now 405) to /documents —
   // same NDJSON contract, same needs-a-body quirk.

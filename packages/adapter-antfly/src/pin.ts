@@ -18,23 +18,25 @@ export interface AntflyPin {
 }
 
 export const ANTFLY_PIN: AntflyPin = {
-  // rc.18 (tagged 2026-07-09) — RE-PINNED 2026-07-22 after the rc.21
-  // evaluation ended in a crash dossier: concurrent embed-bearing writes
-  // crash the engine outright (metal-command-buffer-failed, process exit);
-  // it exits mid table-create even on an EMPTY data dir; sustained embed
-  // load sickens the data plane; and the in-place rc.18→rc.21 upgrade
-  // migrates table files one-way. All reported upstream with shell-only
-  // repros (antfly#382 + the crash dossier). Re-evaluate on the next
-  // release: bump version+checksums, flip the server subcommand back to
-  // `standalone` (rc.19+ rename) at the three spawn sites, and re-run
-  // tests/integration/antfly/ + the reproduction ladder BEFORE adopting.
-  // rc.18 runs the pre-rename `swarm` subcommand.
-  version: '0.2.0-rc.18',
+  // v0.2.0 FINAL (published 2026-08-11) — ADOPTED 2026-08-31 after the full
+  // hard-gate evaluation on the target M4 (tasks/evidence-antfly-0.2.0.md):
+  // every rc.19–rc.21 dossier blocker (antfly#382/#383/#384/#386) disproven
+  // locally, 45-min concurrent embed-write soak clean, reindex-under-load
+  // fixed (194x median query latency vs rc.18, zero failed queries). The
+  // server subcommand is `standalone` (the rc.19+ rename; `swarm` is gone).
+  // Known 0.2.0 sharp edges, both OFF Bakin's production path and ticketed
+  // upstream: inline `indexes` at table-create are silently dead (we create
+  // legs via POST /tables/{t}/indexes/{name} — see client.ts tables.create),
+  // and adding a leg to a POPULATED table wedges it durably. For the next
+  // repin: bump version+checksums from the release's antfly_zig_checksums.txt
+  // and re-run tests/integration/antfly/ + the reproduction ladder (rungs in
+  // the evidence file) BEFORE adopting.
+  version: '0.2.0',
   baseUrl: 'https://releases.antfly.io/antfly',
   checksums: {
-    'darwin-arm64': 'e2b0df4461d78782d11a4e2740f299844a9a6cfed4df1a167c632a5b9ecdafe1',
-    'linux-arm64': 'c74b3ea59b3e99f46cb8d3bbc723b9fd672b8a62779ca050ce11de1f5044a1ad',
-    'linux-x64': 'e3d606d153f7713f389e414b40b855850347c4f67aec8827217e6076cc31a0be',
+    'darwin-arm64': '82690d5c7e7cac5f7cd56c46ced8f4dd9acace577fb7982060667bcdb2632db6',
+    'linux-arm64': 'a4993e854f4c7676708602b2765113f0caad8b8b1097e6c12fac5f562be16ac6',
+    'linux-x64': '1eb63abba8d0608355a075e3a39586ee72d9c8a4870ba2365558cea2b7d3defe',
   },
 }
 

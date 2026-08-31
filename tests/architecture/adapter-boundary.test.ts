@@ -81,7 +81,7 @@ const DENYLIST = [
     // Engine/model names must not leak into core, SDK, src, or plugin code —
     // a second search adapter must require zero changes upstream of the
     // factory. Comments count: they rot into load-bearing assumptions.
-    regex: /(?:antflydb\/|clipclap|bge-small|mxbai-rerank|releases\.antfly\.io|antfly\s+swarm)/i,
+    regex: /(?:antflydb\/|clipclap|bge-small|mxbai-rerank|releases\.antfly\.io|antfly\s+standalone)/i,
     allow: (rel: string) =>
       rel === 'src/core/search-adapter-factory.ts'
       // Settings surfaces carry the ADAPTER'S OWN defaults/keys for

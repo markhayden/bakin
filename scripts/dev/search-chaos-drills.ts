@@ -68,7 +68,7 @@ async function startEngine(root: string, port: number, binary = DEV_BINARY): Pro
     if (existsSync(src) && !existsSync(dst)) symlinkSync(src, dst)
   }
   const fd = openSync(join(root, 'engine.log'), 'a')
-  const proc = spawn(binary, ['swarm', '--host', '127.0.0.1', '--port', String(port), '--health-port', String(port + 1),
+  const proc = spawn(binary, ['standalone', '--host', '127.0.0.1', '--port', String(port), '--health-port', String(port + 1),
     '--data-dir', dataDir, '--models-dir', modelsDir], { stdio: ['ignore', fd, fd] })
   const deadline = Date.now() + 120_000
   while (Date.now() < deadline) {

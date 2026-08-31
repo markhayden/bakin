@@ -27,7 +27,7 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 import {
   buildQueryRequest,
   buildFilterQuery,
-  buildTableCreate,
+  buildTableProvisioning,
   buildBatchInserts,
   buildBatchDeletes,
   mapQueryResponse,
@@ -233,9 +233,9 @@ describe('buildBatch*', () => {
   })
 })
 
-describe('buildTableCreate (capability legs)', () => {
+describe('buildTableProvisioning (capability legs)', () => {
   it('full-text legs are omitted (server-managed); embedding legs map to indexes', () => {
-    const req = buildTableCreate({
+    const plan = buildTableProvisioning({
       fields: { title: { type: 'text' } },
       legs: [
         { name: 'full_text', capability: 'full-text', fields: ['title', 'caption'] },
@@ -243,9 +243,11 @@ describe('buildTableCreate (capability legs)', () => {
         { name: 'assets_visual', capability: 'media-embedding', fields: [], mediaUrlField: 'media_url' },
       ],
     }, S)
-    expect(req.num_shards).toBe(1)
-    expect(Object.keys(req.indexes ?? {})).toEqual(['assets_text', 'assets_visual'])
-    expect(req.indexes?.assets_text).toEqual({
+    // The table body carries NO inline indexes (0.2.0 silently ignores
+    // them); legs ride the plan for per-index endpoint creation.
+    expect(plan.table).toEqual({ num_shards: 1 })
+    expect(plan.indexes.map((i) => i.name)).toEqual(['assets_text', 'assets_visual'])
+    expect(plan.indexes[0]).toEqual({
       name: 'assets_text',
       type: 'embeddings',
       template: '{{title}} {{caption}}',
@@ -253,7 +255,7 @@ describe('buildTableCreate (capability legs)', () => {
       embedder: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' },
       chunker: { provider: 'antfly', model: 'fixed', text: { target_tokens: 200, overlap_tokens: 25 } },
     })
-    expect(req.indexes?.assets_visual).toEqual({
+    expect(plan.indexes[1]).toEqual({
       name: 'assets_visual',
       type: 'embeddings',
       template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}',
@@ -273,14 +275,14 @@ describe('buildTableCreate (capability legs)', () => {
         visual: { provider: 'disabled', model: '', dimension: 0 },
       },
     }
-    const req = buildTableCreate({
+    const plan = buildTableProvisioning({
       fields: { title: { type: 'text' } },
       legs: [
         { name: 'assets_text', capability: 'text-embedding', fields: ['title'] },
         { name: 'assets_visual', capability: 'media-embedding', fields: [], mediaUrlField: 'media_url' },
       ],
     }, disabledVisual)
-    expect(Object.keys(req.indexes ?? {})).toEqual(['assets_text'])
+    expect(plan.indexes.map((i) => i.name)).toEqual(['assets_text'])
   })
 
   it('a zero-dimension embedder is treated as unusable even with a live provider', () => {
@@ -291,22 +293,22 @@ describe('buildTableCreate (capability legs)', () => {
         default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 0 },
       },
     }
-    const req = buildTableCreate({
+    const plan = buildTableProvisioning({
       fields: {},
       legs: [{ name: 'sem', capability: 'text-embedding', fields: ['title'] }],
     }, zeroDim)
-    expect(req.indexes).toBeUndefined()
+    expect(plan.indexes).toEqual([])
   })
 
   it('legacy indexes[] declarations still translate during the transition', () => {
-    const req = buildTableCreate({
+    const plan = buildTableProvisioning({
       fields: {},
       indexes: [
         { name: 'sem', fields: ['title'], kind: 'vector' },
         { name: 'ft', fields: ['title'], kind: 'text' },
       ],
     }, S)
-    expect(Object.keys(req.indexes ?? {})).toEqual(['sem'])
+    expect(plan.indexes.map((i) => i.name)).toEqual(['sem'])
   })
 })
 

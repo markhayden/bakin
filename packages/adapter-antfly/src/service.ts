@@ -133,8 +133,8 @@ export function servicePaths(): ServicePaths {
  * The server argv — identical across launchd/systemd/child so behavior never
  * depends on the supervisor. Preloads every antfly-provider embedder so the
  * first embed doesn't hit a cold-model-load-vs-timeout wedge.
- * (rc.18 uses `swarm`; rc.19+ renamed it `standalone` — flip this with
- * the pin when a healthy release ships.)
+ * (`standalone` is the single-process server subcommand since rc.19 renamed
+ * `swarm`; the 0.2.0 pin requires it — `swarm` no longer exists.)
  *
  * Preload pre-check: the engine EXITS on a preload it cannot load instead
  * of degrading, and the supervisor's respawn turns one broken model into
@@ -158,7 +158,7 @@ export function buildServiceArgv(
       .map((e) => `embedder:${e.model}`),
   )]
   return [
-    paths.binary, 'swarm',
+    paths.binary, 'standalone',
     '--host', '127.0.0.1',
     '--port', String(port),
     '--health-port', String(port + 1),
