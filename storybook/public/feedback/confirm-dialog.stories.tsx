@@ -9,7 +9,7 @@ import { Button } from '@makinbakin/sdk/ui'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Feedback/ConfirmDialog',
+  title: 'Components/Feedback/ConfirmDialog',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

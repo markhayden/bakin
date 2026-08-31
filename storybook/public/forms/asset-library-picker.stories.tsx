@@ -14,7 +14,7 @@ const library: AssetLibraryAsset[] = [
 ]
 
 const meta = {
-  title: 'Forms/AssetLibraryPicker',
+  title: 'Components/Forms/AssetLibraryPicker',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

@@ -12,7 +12,7 @@ import {
 import './forms.stories.css'
 
 const meta = {
-  title: 'Forms/Plugin settings renderer',
+  title: 'Components/Forms/Plugin settings renderer',
   component: PluginSettingsRenderer,
   tags: ['public'],
   parameters: {

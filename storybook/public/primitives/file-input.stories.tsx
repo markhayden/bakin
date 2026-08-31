@@ -7,7 +7,7 @@ import { expect, fn } from 'storybook/test'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Primitives/FileInput',
+  title: 'Components/Primitives/FileInput',
   component: FileInput,
   tags: ['public'],
   parameters: {

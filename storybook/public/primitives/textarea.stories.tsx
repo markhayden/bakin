@@ -7,7 +7,7 @@ import { Field, FieldControl, FieldError, FieldLabel, Textarea } from '@makinbak
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Primitives/Textarea',
+  title: 'Components/Primitives/Textarea',
   component: Textarea,
   tags: ['public'],
   parameters: {

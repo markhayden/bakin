@@ -5,7 +5,7 @@ import { DisclosurePanel } from '@makinbakin/sdk/layout'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Layout/DisclosurePanel',
+  title: 'Components/Layout/DisclosurePanel',
   component: DisclosurePanel,
   tags: ['public'],
   parameters: {

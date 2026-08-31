@@ -9,29 +9,29 @@ function isCancelledStorybookA11yInstrumentation(request: Request): boolean {
 }
 
 const responsiveWidths = [1024, 720, 480, 320] as const
-const behaviorStory = '/iframe.html?id=primitives-button--behavior-fixture&viewMode=story'
-const alertTonesStory = '/iframe.html?id=feedback-alert--tones&viewMode=story'
-const cardStressStory = '/iframe.html?id=primitives-card--content-stress&viewMode=story'
-const collapsibleCanonicalStory = '/iframe.html?id=primitives-collapsible--canonical-usage&viewMode=story'
-const collapsibleBehaviorStory = '/iframe.html?id=primitives-collapsible--behavior&viewMode=story'
-const skeletonLoadingStory = '/iframe.html?id=feedback-skeleton--loading-object&viewMode=story'
-const separatorOrientationStory = '/iframe.html?id=primitives-separator--orientation&viewMode=story'
-const avatarSizesStory = '/iframe.html?id=primitives-avatar--sizes-and-fallbacks&viewMode=story'
-const inputStatesStory = '/iframe.html?id=primitives-input--states-and-mobile-modes&viewMode=story'
-const checkboxStatesStory = '/iframe.html?id=primitives-checkbox--states&viewMode=story'
-const switchStatesStory = '/iframe.html?id=primitives-switch--states&viewMode=story'
-const dialogFocusReturnStory = '/iframe.html?id=overlays-dialog--controlled-focus-return&viewMode=story'
-const anchoredCoexistenceStory = '/iframe.html?id=overlays-popover--anchored-layer-coexistence&viewMode=story'
-const layoutFlowStory = '/iframe.html?id=layout-pageshell--responsive-page&viewMode=story'
-const layoutRecipesStory = '/iframe.html?id=layout-grid--responsive-recipes&viewMode=story'
-const layoutOverflowStory = '/iframe.html?id=layout-boundedoverflow--wide-operations-table&viewMode=story'
-const formOverviewStory = '/iframe.html?id=forms-field-and-form-composition--overview&viewMode=story'
-const asyncValidationStory = '/iframe.html?id=forms-field-and-form-composition--async-validation&viewMode=story'
-const submissionWorkflowStory = '/iframe.html?id=forms-field-and-form-composition--submission-workflow&viewMode=story'
-const systemStateStory = '/iframe.html?id=feedback-systemstate--state-matrix&viewMode=story'
-const toastTonesStory = '/iframe.html?id=feedback-toast--tones-and-actions&viewMode=story'
-const toastDismissStory = '/iframe.html?id=feedback-toast--dismiss-behavior&viewMode=story'
-const bannerTonesStory = '/iframe.html?id=feedback-banner--tones-and-actions&viewMode=story'
+const behaviorStory = '/iframe.html?id=components-primitives-button--behavior-fixture&viewMode=story'
+const alertTonesStory = '/iframe.html?id=components-feedback-alert--tones&viewMode=story'
+const cardStressStory = '/iframe.html?id=components-primitives-card--content-stress&viewMode=story'
+const collapsibleCanonicalStory = '/iframe.html?id=components-primitives-collapsible--canonical-usage&viewMode=story'
+const collapsibleBehaviorStory = '/iframe.html?id=components-primitives-collapsible--behavior&viewMode=story'
+const skeletonLoadingStory = '/iframe.html?id=components-feedback-skeleton--loading-object&viewMode=story'
+const separatorOrientationStory = '/iframe.html?id=components-primitives-separator--orientation&viewMode=story'
+const avatarSizesStory = '/iframe.html?id=components-primitives-avatar--sizes-and-fallbacks&viewMode=story'
+const inputStatesStory = '/iframe.html?id=components-primitives-input--states-and-mobile-modes&viewMode=story'
+const checkboxStatesStory = '/iframe.html?id=components-primitives-checkbox--states&viewMode=story'
+const switchStatesStory = '/iframe.html?id=components-primitives-switch--states&viewMode=story'
+const dialogFocusReturnStory = '/iframe.html?id=components-overlays-dialog--controlled-focus-return&viewMode=story'
+const anchoredCoexistenceStory = '/iframe.html?id=components-overlays-popover--anchored-layer-coexistence&viewMode=story'
+const layoutFlowStory = '/iframe.html?id=components-layout-pageshell--responsive-page&viewMode=story'
+const layoutRecipesStory = '/iframe.html?id=components-layout-grid--responsive-recipes&viewMode=story'
+const layoutOverflowStory = '/iframe.html?id=components-layout-boundedoverflow--wide-operations-table&viewMode=story'
+const formOverviewStory = '/iframe.html?id=components-forms-field-and-form-composition--overview&viewMode=story'
+const asyncValidationStory = '/iframe.html?id=components-forms-field-and-form-composition--async-validation&viewMode=story'
+const submissionWorkflowStory = '/iframe.html?id=components-forms-field-and-form-composition--submission-workflow&viewMode=story'
+const systemStateStory = '/iframe.html?id=components-feedback-systemstate--state-matrix&viewMode=story'
+const toastTonesStory = '/iframe.html?id=components-feedback-toast--tones-and-actions&viewMode=story'
+const toastDismissStory = '/iframe.html?id=components-feedback-toast--dismiss-behavior&viewMode=story'
+const bannerTonesStory = '/iframe.html?id=components-feedback-banner--tones-and-actions&viewMode=story'
 const listPageStory = '/iframe.html?id=recipes-list-and-detail-pages--list-index&viewMode=story'
 const listHeaderControlsStory = '/iframe.html?id=recipes-list-and-detail-pages--list-header-controls&viewMode=story'
 const listNoResultsStory = '/iframe.html?id=recipes-list-and-detail-pages--list-no-results&viewMode=story'
@@ -49,45 +49,45 @@ const verticalWorkflowStory = '/iframe.html?id=recipes-workflow-and-action-pages
 const horizontalWorkflowStory = '/iframe.html?id=recipes-workflow-and-action-pages--horizontal-workflow&viewMode=story'
 const reviewActionStory = '/iframe.html?id=recipes-workflow-and-action-pages--review-action&viewMode=story'
 const workflowUnavailableStory = '/iframe.html?id=recipes-workflow-and-action-pages--workflow-unavailable&viewMode=story'
-const saveFailureStory = '/iframe.html?id=forms-savebar--save-failure&viewMode=story'
-const typedConfirmationStory = '/iframe.html?id=feedback-confirmdialog--typed-confirmation&viewMode=story'
-const unsavedExitStory = '/iframe.html?id=forms-unsavedchangesdialog--unsaved-exit-decision&viewMode=story'
-const facetFilterStory = '/iframe.html?id=navigation-facetfilter--facet-filtering&viewMode=story'
-const searchBehaviorStory = '/iframe.html?id=navigation-searchinput--search-behavior&viewMode=story'
-const longQueryStory = '/iframe.html?id=navigation-searchinput--long-query&viewMode=story'
-const agentFilterStory = '/iframe.html?id=agents-agentselect--agent-filtering&viewMode=story'
-const segmentedNavigationStory = '/iframe.html?id=navigation-segmentedcontrol--segmented-navigation&viewMode=story'
-const underlineNavigationStory = '/iframe.html?id=navigation-tabs--underline-navigation&viewMode=story'
-const sortableTableStory = '/iframe.html?id=navigation-sortablehead--sortable-table&viewMode=story'
-const statusLanguageStory = '/iframe.html?id=feedback-statusbadge--status-vocabulary&viewMode=story'
-const denseMetricsStory = '/iframe.html?id=charts-stattile--dense-metrics&viewMode=story'
-const actionableMetricsStory = '/iframe.html?id=charts-stattile--actionable-metrics&viewMode=story'
-const chartExactDataStory = '/iframe.html?id=charts-chartdatatable--exact-data-disclosure&viewMode=story'
-const chartPaletteStory = '/iframe.html?id=charts-stackedcolumnchart--stable-palette&viewMode=story'
-const chartCompactTrendsStory = '/iframe.html?id=charts-sparkline--compact-trends&viewMode=story'
-const lineChartsStory = '/iframe.html?id=charts-linechart--missing-data-and-empty&viewMode=story'
-const barChartsStory = '/iframe.html?id=charts-barchart--grouped-and-stacked&viewMode=story'
-const stackedColumnsStory = '/iframe.html?id=charts-stackedcolumnchart--dense-composition&viewMode=story'
-const conversationToolActivityStory = '/iframe.html?id=conversation-tool-activity--states-and-disclosure&viewMode=story'
-const conversationTurnsStory = '/iframe.html?id=conversation-turns-and-messages--complete-and-lifecycle-states&viewMode=story'
-const conversationDocumentTimelineStory = '/iframe.html?id=conversation-timeline-and-empty-state--document-timeline&viewMode=story'
-const conversationContainedStory = '/iframe.html?id=conversation-timeline-and-empty-state--contained-and-empty-states&viewMode=story'
-const conversationProductComposerStory = '/iframe.html?id=conversation-composer-and-attachments--product-composer&viewMode=story'
-const conversationComposerStatesStory = '/iframe.html?id=conversation-composer-and-attachments--attachment-and-availability-states&viewMode=story'
-const conversationProductPanelStory = '/iframe.html?id=conversation-panel-and-tool-detail--product-panel&viewMode=story'
-const conversationReadOnlyPanelStory = '/iframe.html?id=conversation-panel-and-tool-detail--read-only-states&viewMode=story'
-const conversationToolDetailStory = '/iframe.html?id=conversation-panel-and-tool-detail--exact-tool-detail&viewMode=story'
-const markdownReadingStory = '/iframe.html?id=content-markdowncontent--reading-and-code&viewMode=story'
-const markdownEditorStory = '/iframe.html?id=content-markdowneditor--controlled-editor&viewMode=story'
-const searchTrustStory = '/iframe.html?id=feedback-search-trust-states--availability-and-evidence&viewMode=story'
-const agentIdentityStory = '/iframe.html?id=agents-agentstatus--presence-language&viewMode=story'
-const agentAssignmentStory = '/iframe.html?id=agents-agentselect--assignment-and-filtering&viewMode=story'
-const assetDialogStory = '/iframe.html?id=forms-assetpicker--dialog-library&viewMode=story'
-const assetInlineStory = '/iframe.html?id=forms-assetpicker--inline-attach-relink-and-states&viewMode=story'
-const modelSelectStory = '/iframe.html?id=forms-modelselect--grouped-catalog&viewMode=story'
-const colorPickerStory = '/iframe.html?id=forms-colorpicker--palette-choices&viewMode=story'
-const pluginSettingsStory = '/iframe.html?id=forms-plugin-settings-renderer--messaging-schema-workflow&viewMode=story'
-const turnOutputStory = '/iframe.html?id=conversation-single-turn-output--embedded-output-states&viewMode=story'
+const saveFailureStory = '/iframe.html?id=components-forms-savebar--save-failure&viewMode=story'
+const typedConfirmationStory = '/iframe.html?id=components-feedback-confirmdialog--typed-confirmation&viewMode=story'
+const unsavedExitStory = '/iframe.html?id=components-forms-unsavedchangesdialog--unsaved-exit-decision&viewMode=story'
+const facetFilterStory = '/iframe.html?id=components-navigation-facetfilter--facet-filtering&viewMode=story'
+const searchBehaviorStory = '/iframe.html?id=components-navigation-searchinput--search-behavior&viewMode=story'
+const longQueryStory = '/iframe.html?id=components-navigation-searchinput--long-query&viewMode=story'
+const agentFilterStory = '/iframe.html?id=components-agents-agentselect--agent-filtering&viewMode=story'
+const segmentedNavigationStory = '/iframe.html?id=components-navigation-segmentedcontrol--segmented-navigation&viewMode=story'
+const underlineNavigationStory = '/iframe.html?id=components-navigation-tabs--underline-navigation&viewMode=story'
+const sortableTableStory = '/iframe.html?id=components-navigation-sortablehead--sortable-table&viewMode=story'
+const statusLanguageStory = '/iframe.html?id=components-feedback-statusbadge--status-vocabulary&viewMode=story'
+const denseMetricsStory = '/iframe.html?id=components-charts-stattile--dense-metrics&viewMode=story'
+const actionableMetricsStory = '/iframe.html?id=components-charts-stattile--actionable-metrics&viewMode=story'
+const chartExactDataStory = '/iframe.html?id=components-charts-chartdatatable--exact-data-disclosure&viewMode=story'
+const chartPaletteStory = '/iframe.html?id=components-charts-stackedcolumnchart--stable-palette&viewMode=story'
+const chartCompactTrendsStory = '/iframe.html?id=components-charts-sparkline--compact-trends&viewMode=story'
+const lineChartsStory = '/iframe.html?id=components-charts-linechart--missing-data-and-empty&viewMode=story'
+const barChartsStory = '/iframe.html?id=components-charts-barchart--grouped-and-stacked&viewMode=story'
+const stackedColumnsStory = '/iframe.html?id=components-charts-stackedcolumnchart--dense-composition&viewMode=story'
+const conversationToolActivityStory = '/iframe.html?id=components-conversation-tool-activity--states-and-disclosure&viewMode=story'
+const conversationTurnsStory = '/iframe.html?id=components-conversation-turns-and-messages--complete-and-lifecycle-states&viewMode=story'
+const conversationDocumentTimelineStory = '/iframe.html?id=components-conversation-timeline-and-empty-state--document-timeline&viewMode=story'
+const conversationContainedStory = '/iframe.html?id=components-conversation-timeline-and-empty-state--contained-and-empty-states&viewMode=story'
+const conversationProductComposerStory = '/iframe.html?id=components-conversation-composer-and-attachments--product-composer&viewMode=story'
+const conversationComposerStatesStory = '/iframe.html?id=components-conversation-composer-and-attachments--attachment-and-availability-states&viewMode=story'
+const conversationProductPanelStory = '/iframe.html?id=components-conversation-panel-and-tool-detail--product-panel&viewMode=story'
+const conversationReadOnlyPanelStory = '/iframe.html?id=components-conversation-panel-and-tool-detail--read-only-states&viewMode=story'
+const conversationToolDetailStory = '/iframe.html?id=components-conversation-panel-and-tool-detail--exact-tool-detail&viewMode=story'
+const markdownReadingStory = '/iframe.html?id=components-content-markdowncontent--reading-and-code&viewMode=story'
+const markdownEditorStory = '/iframe.html?id=components-content-markdowneditor--controlled-editor&viewMode=story'
+const searchTrustStory = '/iframe.html?id=components-feedback-search-trust-states--availability-and-evidence&viewMode=story'
+const agentIdentityStory = '/iframe.html?id=components-agents-agentstatus--presence-language&viewMode=story'
+const agentAssignmentStory = '/iframe.html?id=components-agents-agentselect--assignment-and-filtering&viewMode=story'
+const assetDialogStory = '/iframe.html?id=components-forms-assetpicker--dialog-library&viewMode=story'
+const assetInlineStory = '/iframe.html?id=components-forms-assetpicker--inline-attach-relink-and-states&viewMode=story'
+const modelSelectStory = '/iframe.html?id=components-forms-modelselect--grouped-catalog&viewMode=story'
+const colorPickerStory = '/iframe.html?id=components-forms-colorpicker--palette-choices&viewMode=story'
+const pluginSettingsStory = '/iframe.html?id=components-forms-plugin-settings-renderer--messaging-schema-workflow&viewMode=story'
+const turnOutputStory = '/iframe.html?id=components-conversation-single-turn-output--embedded-output-states&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -156,21 +156,21 @@ test('action and status family keeps responsive semantics across browsers', asyn
     await expect(page.getByRole('alert')).toContainText('Connection failed')
     await expect(page.getByRole('status')).toHaveCount(4)
 
-    await page.goto('/iframe.html?id=feedback-progress--states&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-feedback-progress--states&viewMode=story', { waitUntil: 'networkidle' })
     await expect(page.getByRole('progressbar', { name: 'Generating assets' })).toHaveAttribute('aria-valuenow', '42')
     await expect(page.getByRole('progressbar', { name: 'Connecting to runtime' })).not.toHaveAttribute('aria-valuenow')
   })
 
   await test.step('interactive badge and alert actions expose keyboard focus', async () => {
-    await page.goto('/iframe.html?id=primitives-badge--interactive&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-primitives-badge--interactive&viewMode=story', { waitUntil: 'networkidle' })
     await expect(page.getByRole('link', { name: 'Open 4 filtered tasks' })).toBeFocused()
 
-    await page.goto('/iframe.html?id=feedback-alert--with-action&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-feedback-alert--with-action&viewMode=story', { waitUntil: 'networkidle' })
     await expect(page.getByRole('button', { name: 'Retry' })).toBeFocused()
   })
 
   await test.step('progress interaction updates the exact accessible value', async () => {
-    await page.goto('/iframe.html?id=feedback-progress--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-feedback-progress--behavior&viewMode=story', { waitUntil: 'networkidle' })
     await expect(page.getByRole('progressbar', { name: 'Migration' })).toHaveAttribute('aria-valuenow', '40')
   })
 
@@ -281,7 +281,7 @@ test('text fields keep native state, focus, and mobile-mode contracts across bro
   })
 
   await test.step('adornment text focuses the editable control without stealing button semantics', async () => {
-    await page.goto('/iframe.html?id=primitives-inputgroup--adornments&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-primitives-inputgroup--adornments&viewMode=story', { waitUntil: 'networkidle' })
     const repository = page.getByLabel('Repository path')
     await page.getByText('github.com/', { exact: true }).click()
     await expect(repository).toBeFocused()
@@ -349,7 +349,7 @@ test('selection controls keep keyboard, state, target, and overflow contracts ac
   })
 
   await test.step('checkbox and switch retain labelled keyboard state', async () => {
-    await page.goto('/iframe.html?id=primitives-checkbox--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-primitives-checkbox--behavior&viewMode=story', { waitUntil: 'networkidle' })
     const checkbox = page.getByRole('checkbox', { name: 'Include archived tasks' })
     // The play function tabs to the checkbox and toggles it on then off with Space;
     // its terminal state is focused and unchecked, and any play failure surfaces as a console error.
@@ -358,7 +358,7 @@ test('selection controls keep keyboard, state, target, and overflow contracts ac
     await expect(page.getByRole('checkbox', { name: 'Partially selected workspaces' })).toHaveAttribute('aria-checked', 'mixed')
     expect((await checkbox.boundingBox())?.height).toBeGreaterThanOrEqual(24)
 
-    await page.goto('/iframe.html?id=primitives-switch--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-primitives-switch--behavior&viewMode=story', { waitUntil: 'networkidle' })
     const control = page.getByRole('switch', { name: 'Automatic retry' })
     // Same terminal-state contract: the play toggles on then off and announces each state.
     await expect(control).toBeFocused()
@@ -368,7 +368,7 @@ test('selection controls keep keyboard, state, target, and overflow contracts ac
   })
 
   await test.step('select opens, groups, blocks disabled activation, selects, and returns focus', async () => {
-    await page.goto('/iframe.html?id=primitives-select--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-primitives-select--behavior&viewMode=story', { waitUntil: 'networkidle' })
     const trigger = page.getByRole('combobox', { name: 'Execution runtime' })
     await expect(trigger).toBeFocused()
     await expect(trigger).toContainText('Pi')
@@ -429,7 +429,7 @@ test('modal and side overlays keep focus, dismissal, motion, and viewport contra
 
   await test.step('nested dialog escape closes one layer at a time and returns focus', async () => {
     await page.setViewportSize({ width: 1024, height: 900 })
-    await page.goto('/iframe.html?id=overlays-dialog--nested-behavior&viewMode=story&bakin-browser-fixture=1', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-overlays-dialog--nested-behavior&viewMode=story&bakin-browser-fixture=1', { waitUntil: 'networkidle' })
     await expect(page.locator('#storybook-root')).toHaveAttribute('data-story-ready', 'true')
     const outerTrigger = page.getByRole('button', { name: 'Open workflow settings' })
     await page.keyboard.press('Tab')
@@ -448,7 +448,7 @@ test('modal and side overlays keep focus, dismissal, motion, and viewport contra
   })
 
   await test.step('busy dialogs block every dismissal path and expose state', async () => {
-    await page.goto('/iframe.html?id=overlays-dialog--busy&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-overlays-dialog--busy&viewMode=story', { waitUntil: 'networkidle' })
     const dialog = page.getByRole('dialog', { name: 'Publishing workflow' })
     await expect(dialog).toHaveAttribute('aria-busy', 'true')
     await expect(page.getByRole('button', { name: 'Close dialog' })).toBeDisabled()
@@ -460,7 +460,7 @@ test('modal and side overlays keep focus, dismissal, motion, and viewport contra
 
   await test.step('mobile side sheets fill the viewport and disable motion', async () => {
     await page.setViewportSize({ width: 320, height: 800 })
-    await page.goto('/iframe.html?id=overlays-sheet--right-panel&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-overlays-sheet--right-panel&viewMode=story', { waitUntil: 'networkidle' })
     const sheet = page.getByRole('dialog', { name: 'Edit task' })
     const bounds = await sheet.boundingBox()
     expect(bounds?.width).toBe(320)
@@ -471,7 +471,7 @@ test('modal and side overlays keep focus, dismissal, motion, and viewport contra
 
   await test.step('Drawer resize and dirty confirmation remain keyboard operable', async () => {
     await page.setViewportSize({ width: 1024, height: 900 })
-    await page.goto('/iframe.html?id=overlays-drawer--dirty-behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-overlays-drawer--dirty-behavior&viewMode=story', { waitUntil: 'networkidle' })
     const resizer = page.getByRole('separator', { name: 'Resize panel' })
     const initialWidth = Number(await resizer.getAttribute('aria-valuenow'))
     await resizer.focus()
@@ -516,7 +516,7 @@ test('anchored overlays keep collision, keyboard, focus, and labelling contracts
 
   await test.step('popover remains viewport-bounded and returns focus on Escape', async () => {
     await page.setViewportSize({ width: 320, height: 800 })
-    await page.goto('/iframe.html?id=overlays-popover--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-overlays-popover--behavior&viewMode=story', { waitUntil: 'networkidle' })
     const trigger = page.getByRole('button', { name: 'Open route context' })
     // The play function opens and Escape-dismisses the popover itself; wait for its
     // terminal focus-return state before driving the trigger again.
@@ -533,7 +533,7 @@ test('anchored overlays keep collision, keyboard, focus, and labelling contracts
 
   await test.step('menu subnavigation and shortcut naming remain semantic', async () => {
     await page.setViewportSize({ width: 1024, height: 900 })
-    await page.goto('/iframe.html?id=overlays-dropdownmenu--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-overlays-dropdownmenu--behavior&viewMode=story', { waitUntil: 'networkidle' })
     const trigger = page.getByRole('button', { name: 'Task actions' })
     // The play function walks the same submenu path and ends with focus returned to
     // the trigger; wait for that terminal state before reopening the menu.
@@ -552,7 +552,7 @@ test('anchored overlays keep collision, keyboard, focus, and labelling contracts
   })
 
   await test.step('tooltip opens from keyboard focus and dismisses without moving focus', async () => {
-    await page.goto('/iframe.html?id=overlays-tooltip--behavior&viewMode=story&bakinCrossBrowser=1', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-overlays-tooltip--behavior&viewMode=story&bakinCrossBrowser=1', { waitUntil: 'networkidle' })
     const trigger = page.getByRole('button', { name: 'Show retry guidance' })
     await trigger.focus()
     await expect(trigger).toBeFocused()
@@ -563,7 +563,7 @@ test('anchored overlays keep collision, keyboard, focus, and labelling contracts
   })
 
   await test.step('command filtering and dialog focus restoration remain keyboard operable', async () => {
-    await page.goto('/iframe.html?id=navigation-command--dialog-behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=components-navigation-command--dialog-behavior&viewMode=story', { waitUntil: 'networkidle' })
     const trigger = page.getByRole('button', { name: 'Open command palette' })
     await trigger.click()
     const input = page.getByRole('combobox', { name: 'Find a task action' })

@@ -12,7 +12,7 @@ import { expect } from 'storybook/test'
 import { StoryCluster, StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Primitives/Avatar',
+  title: 'Components/Primitives/Avatar',
   component: Avatar,
   tags: ['public'],
   parameters: {

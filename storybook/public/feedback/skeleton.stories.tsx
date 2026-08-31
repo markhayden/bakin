@@ -6,7 +6,7 @@ import { expect } from 'storybook/test'
 import { StoryStage } from '../../support'
 
 const meta = {
-  title: 'Feedback/Skeleton',
+  title: 'Components/Feedback/Skeleton',
   component: Skeleton,
   tags: ['public'],
   parameters: {

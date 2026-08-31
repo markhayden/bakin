@@ -17,7 +17,7 @@ import {
 import './conversation.stories.css'
 
 const meta = {
-  title: 'Conversation/Timeline and empty state',
+  title: 'Components/Conversation/Timeline and empty state',
   component: Conversation,
   tags: ['public'],
   parameters: {

@@ -7,7 +7,7 @@ import { ColorPicker } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Forms/ColorPicker',
+  title: 'Components/Forms/ColorPicker',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

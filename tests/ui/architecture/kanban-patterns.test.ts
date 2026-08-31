@@ -20,7 +20,7 @@ describe('canonical kanban composition', () => {
     expect(existsSync(resolve(ROOT, storyPath))).toBe(true)
     const story = read(storyPath)
     const guide = read('docs/src/content/docs/extending/ui/overview.md')
-    expect(story).toContain("title: 'Lists/Kanban'")
+    expect(story).toContain("title: 'Components/Lists/Kanban'")
     expect(story).toContain('StatusBadge')
     expect(story).toContain('Card')
     expect(story).toContain('DragAndDropFeedback')

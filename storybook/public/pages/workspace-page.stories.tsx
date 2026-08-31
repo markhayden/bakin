@@ -14,7 +14,7 @@ import { Badge, Button, DropdownMenuItem } from '@makinbakin/sdk/ui'
 import './workspace-page.stories.css'
 
 const meta = {
-  title: 'Pages/WorkspacePage',
+  title: 'Components/Pages/WorkspacePage',
   component: WorkspacePage,
   args: {
     children: null,

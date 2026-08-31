@@ -6,7 +6,7 @@ import { StatGroup, StatTile } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Charts/StatGroup',
+  title: 'Components/Charts/StatGroup',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

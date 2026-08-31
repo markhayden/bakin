@@ -13,7 +13,7 @@ import { buttonVariants } from '@makinbakin/sdk/ui'
 import './search-trust.stories.css'
 
 const meta = {
-  title: 'Feedback/Search trust states',
+  title: 'Components/Feedback/Search trust states',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

@@ -12,7 +12,7 @@ import {
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Agents/AgentSelect',
+  title: 'Components/Agents/AgentSelect',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

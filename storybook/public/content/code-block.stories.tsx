@@ -14,7 +14,7 @@ const PAYLOAD = `{
 }`
 
 const meta = {
-  title: 'Content/CodeBlock',
+  title: 'Components/Content/CodeBlock',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

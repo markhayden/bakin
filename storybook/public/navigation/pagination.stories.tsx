@@ -7,7 +7,7 @@ import { Pagination } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Navigation/Pagination',
+  title: 'Components/Navigation/Pagination',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

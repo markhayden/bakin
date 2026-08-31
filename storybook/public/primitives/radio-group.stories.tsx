@@ -6,7 +6,7 @@ import { expect } from 'storybook/test'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Primitives/RadioGroup',
+  title: 'Components/Primitives/RadioGroup',
   component: RadioGroup,
   tags: ['public'],
   parameters: {

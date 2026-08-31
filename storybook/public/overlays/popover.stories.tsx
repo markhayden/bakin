@@ -22,7 +22,7 @@ import { expect, waitFor, within } from 'storybook/test'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Overlays/Popover',
+  title: 'Components/Overlays/Popover',
   component: Popover,
   tags: ['public'],
   parameters: {

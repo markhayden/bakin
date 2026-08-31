@@ -6,7 +6,7 @@ import { CalendarNav } from '@makinbakin/sdk/patterns'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Lists/CalendarNav',
+  title: 'Components/Lists/CalendarNav',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

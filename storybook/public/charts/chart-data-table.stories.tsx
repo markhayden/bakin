@@ -6,7 +6,7 @@ import { ChartDataTable, ChartExplainer, type ChartDatum, type ChartSeries } fro
 import { ChartStage } from './chart-story-stage'
 
 const meta = {
-  title: 'Charts/ChartDataTable',
+  title: 'Components/Charts/ChartDataTable',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

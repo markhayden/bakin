@@ -6,7 +6,7 @@ import { ChartExplainer, CompositionBar } from '@makinbakin/sdk/charts'
 import { ChartStage } from './chart-story-stage'
 
 const meta = {
-  title: 'Charts/CompositionBar',
+  title: 'Components/Charts/CompositionBar',
   component: CompositionBar,
   tags: ['public'],
   args: {

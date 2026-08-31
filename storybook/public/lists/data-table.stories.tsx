@@ -13,7 +13,7 @@ import {
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Lists/DataTable',
+  title: 'Components/Lists/DataTable',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

@@ -30,7 +30,7 @@ import {
 import './kanban.stories.css'
 
 const meta = {
-  title: 'Lists/Kanban',
+  title: 'Components/Lists/Kanban',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

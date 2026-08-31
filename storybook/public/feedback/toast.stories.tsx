@@ -7,7 +7,7 @@ import { Toast, ToastAction, ToastRegion } from '@makinbakin/sdk/ui'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Feedback/Toast',
+  title: 'Components/Feedback/Toast',
   // No meta `component`: Toast's required `description` prop forces StoryObj
   // to demand `args` on render-only stories.
   tags: ['public'],

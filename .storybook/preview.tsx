@@ -1,4 +1,5 @@
 import type { Preview } from '@storybook/react-vite'
+import { themes } from 'storybook/theming'
 
 import '@fontsource/space-grotesk/latin-400.css'
 import '@fontsource/space-grotesk/latin-500.css'
@@ -10,6 +11,7 @@ import '@fontsource/jetbrains-mono/latin-500.css'
 // The host, public package, and Storybook all load this one compiled artifact.
 import '@makinbakin/sdk/styles.css'
 import '../storybook/fixtures/runtime.css'
+import './docs.css'
 import {
   BAKIN_STORYBOOK_VIEWPORTS,
   DEFAULT_STORY_FIXTURE,
@@ -28,7 +30,12 @@ const preview: Preview = {
     viewport: { value: 'desktop', isRotated: false },
   },
   parameters: {
+    options: {
+      // The three-tier sidebar: raw material, then components, then assembly.
+      storySort: { order: ['Tokens', 'Components', 'Recipes'] },
+    },
     layout: 'centered',
+    docs: { theme: themes.dark },
     a11y: {
       test: 'error',
       options: {

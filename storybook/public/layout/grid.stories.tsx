@@ -7,7 +7,7 @@ import { StorySection, StoryStage } from '../../support'
 import './grid.stories.css'
 
 const meta = {
-  title: 'Layout/Grid',
+  title: 'Components/Layout/Grid',
   component: Grid,
   tags: ['public'],
   parameters: {

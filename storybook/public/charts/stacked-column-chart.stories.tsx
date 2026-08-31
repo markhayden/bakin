@@ -13,7 +13,7 @@ import {
 import { ChartStage } from './chart-story-stage'
 
 const meta = {
-  title: 'Charts/StackedColumnChart',
+  title: 'Components/Charts/StackedColumnChart',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

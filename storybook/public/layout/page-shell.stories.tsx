@@ -7,7 +7,7 @@ import { Badge, Button, Separator } from '@makinbakin/sdk/ui'
 import './page-shell.stories.css'
 
 const meta = {
-  title: 'Layout/PageShell',
+  title: 'Components/Layout/PageShell',
   component: PageShell,
   tags: ['public'],
   parameters: {

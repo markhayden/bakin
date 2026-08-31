@@ -8,7 +8,7 @@ import { DEFAULT_STORY_FIXTURE } from '../../fixtures'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Navigation/SearchInput',
+  title: 'Components/Navigation/SearchInput',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

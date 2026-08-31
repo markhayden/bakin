@@ -7,7 +7,7 @@ import { expect } from 'storybook/test'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Primitives/Switch',
+  title: 'Components/Primitives/Switch',
   component: Switch,
   tags: ['public'],
   parameters: {

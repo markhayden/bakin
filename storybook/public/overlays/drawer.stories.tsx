@@ -7,7 +7,7 @@ import { expect, waitFor, within } from 'storybook/test'
 import '../foundation/primitives.stories.css'
 
 const meta = {
-  title: 'Overlays/Drawer',
+  title: 'Components/Overlays/Drawer',
   component: Drawer,
   args: { open: false, onOpenChange: () => undefined, children: null },
   tags: ['public'],
