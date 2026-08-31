@@ -322,6 +322,19 @@ describe('mapIndexStatuses', () => {
     ])
   })
 
+  it('an interrupted-backfill `degraded` leg maps ready — a sticky-honest scar, not a failure', () => {
+    // 0.2.0 stamps backfill_state:"degraded" permanently after an
+    // interrupted backfill even though the leg completes its work and
+    // serves correct queries (gate T7). Only real failure evidence
+    // (worker_failed / fatal errors / backfill_state:"failed") maps error.
+    const entries: WireIndexStatusEntry[] = [
+      { config: { name: 'sem', type: 'embeddings' }, status: { index_type: 'embeddings', rebuilding: false, total_indexed: 60, backfill_active: false, backfill_state: 'degraded', doc_count: 3000, enrichment_runtime: { pending_sequence_count: 0, retrying: false, active_embed_batch_items: 0 } } },
+    ]
+    expect(mapIndexStatuses(entries)).toEqual([
+      { leg: 'sem', state: 'ready', indexedCount: 60, pendingCount: 0 },
+    ])
+  })
+
   it('trusts raised flags on runtime-less legs — 0.2.0 reports them honestly', () => {
     // The rc.18 caught-up-idle override is gone: a never-written table
     // reports ready flags on 0.2.0 (guarded in workaround-regressions), so

@@ -303,6 +303,41 @@ describe('scan', () => {
   })
 })
 
+describe('tables.create (0.2.0 two-phase provisioning)', () => {
+  it('creates the table, then each embeddings leg via the per-index endpoint, in order', async () => {
+    // Inline `indexes` at table-create are silently dead on 0.2.0 (accepted,
+    // stored, enrichment never starts) — the legs MUST ride
+    // POST /tables/{t}/indexes/{name}, after the table and before any write.
+    const calls: Array<{ method: string; url: string; body: unknown }> = []
+    const client = makeClient([
+      {
+        match: () => true,
+        handle: (url, init) => {
+          calls.push({ method: init?.method ?? 'GET', url, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+          return json({}, 201)
+        },
+      },
+    ])
+    await client.tables.create('t', {
+      fields: { title: { type: 'text' } },
+      legs: [
+        { name: 'full_text', capability: 'full-text', fields: ['title'] },
+        { name: 'sem', capability: 'text-embedding', fields: ['title'] },
+        { name: 'vis', capability: 'media-embedding', fields: [], mediaUrlField: 'media_url' },
+      ],
+    })
+    expect(calls.map((c) => `${c.method} ${new URL(c.url).pathname}`)).toEqual([
+      'POST /db/v1/tables/t',
+      'POST /db/v1/tables/t/indexes/sem',
+      'POST /db/v1/tables/t/indexes/vis',
+    ])
+    // The table body carries no inline indexes; each leg body names itself.
+    expect(calls[0].body).toEqual({ num_shards: 1 })
+    expect((calls[1].body as { name: string; type: string }).name).toBe('sem')
+    expect((calls[2].body as { name: string; type: string }).type).toBe('embeddings')
+  })
+})
+
 describe('identity', () => {
   it('mappingFingerprint is stable and changes with embedder settings', () => {
     const a = new AntflySearchClient(DEFAULT_SETTINGS, { fetchImpl: fetch })
