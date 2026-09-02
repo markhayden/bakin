@@ -163,9 +163,15 @@ export function ActivityFeed() {
                     {evt.taskTitle && evt.type === 'log' && (
                       <Text size="meta" tone="muted" as="p" className="mb-0.5 truncate leading-tight">{evt.taskTitle}</Text>
                     )}
-                    <p className={cn('text-bakin-typography-size-meta leading-tight break-words', evt.type === 'alert' ? 'text-bakin-signal-highlight' : 'text-bakin-text-primary')}>{evt.message}</p>
+                    <Text
+                      size="meta"
+                      as="p"
+                      className={cn('leading-tight break-words', evt.type === 'alert' && 'text-bakin-signal-highlight')}
+                    >
+                      {evt.message}
+                    </Text>
                     {evt.eventName && (
-                      <p className="mt-0.5 truncate font-mono text-bakin-text-muted [font-size:calc(var(--bakin-typography-size-meta)*0.9)] leading-tight">{evt.eventName}</p>
+                      <Text size="meta" tone="muted" mono as="p" className="mt-0.5 truncate leading-tight">{evt.eventName}</Text>
                     )}
                     {debug && evt.eventName === 'task.dispatch_failed' && (
                       <DispatchFailureDebug data={evt.data} />
