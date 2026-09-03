@@ -12,7 +12,8 @@
  *      JSON, plugin dir
  *   6. Remove lockfile entry
  */
-import { existsSync, rmSync } from 'fs'
+import { existsSync, rmSync, readFileSync } from 'fs'
+import { readPluginManifestJson } from '@bakin/core/plugins/manifest'
 import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
@@ -77,6 +78,28 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       ok: false,
       error: `Plugin "${pluginId}" is not installed (no lockfile entry, no plugin dir).`,
     }, { status: 404 })
+  }
+
+  const installedPlugin = pluginRegistry.getPlugin?.(pluginId)
+  const manifestPath = join(pluginDir, 'bakin-plugin.json')
+  if (existsSync(manifestPath)) {
+    try {
+      const manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf8'))
+      if (manifest.uninstallPreflightRequired && !installedPlugin?.beforeUninstall) {
+        return Response.json({ ok: false, error: 'Activate this plugin before removing it so its persistent resources can be checked' }, { status: 409 })
+      }
+    } catch {
+      return Response.json({ ok: false, error: 'Cannot verify plugin removal policy; repair its manifest first' }, { status: 409 })
+    }
+  }
+  if (installedPlugin?.beforeUninstall) {
+    try {
+      const ctx = pluginRegistry.getPluginContext?.(pluginId)
+      if (!ctx) throw new Error('Plugin must be active to verify removal safety')
+      await installedPlugin.beforeUninstall(ctx)
+    } catch (error) {
+      return Response.json({ ok: false, error: error instanceof Error ? error.message : 'Plugin removal preflight failed' }, { status: 409 })
+    }
   }
 
   // ─── 1. onUninstall hook ───────────────────────────────────────────────────

@@ -212,6 +212,8 @@ export interface PluginManifestSignature {
 
 /** The `bakin-plugin.json` manifest. Required for every plugin. */
 export interface PluginManifest {
+  /** Removal must run the loaded plugin's beforeUninstall hook successfully. */
+  uninstallPreflightRequired?: boolean
   /** Unique plugin identifier (kebab-case). */
   id: string
   /** Human-readable plugin name. */

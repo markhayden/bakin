@@ -82,6 +82,8 @@ export interface ExecToolResult {
 
 /** Context passed to an exec tool handler. Subset of PluginContext sans UI registration. */
 export interface PluginToolContext {
+  /** Verified caller, set by the host transport and absent on untrusted calls. */
+  invocation?: { agentId: string }
   /** Plugin-scoped storage adapter. */
   storage: StorageAdapter
   /** Cross-plugin event bus. */
@@ -106,6 +108,8 @@ export interface PluginToolContext {
 
 /** MCP exec tool definition registered via `ctx.registerExecTool()`. */
 export interface ExecToolDefinition<Shape extends ZodRawShape = ZodRawShape> {
+  /** Requires a runtime-bound or credential-verified caller. */
+  requiresVerifiedAgent?: boolean
   /** Tool name. Convention: `bakin_exec_{pluginId}_{action}`. */
   name: string
   /** Description shown to the agent (used for tool selection). */

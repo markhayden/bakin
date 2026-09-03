@@ -113,7 +113,7 @@ export interface PluginTestContext {
    */
   seedSearchResults(results: SearchResult[], aggregations?: SearchResponse['aggregations']): void
   /** Build the `PluginToolContext` an exec tool receives as its third arg. */
-  toolContext(): PluginToolContext
+  toolContext(invocation?: PluginToolContext['invocation']): PluginToolContext
   /** Delete the temp directory. Call from `afterAll`. Safe to call twice. */
   dispose(): void
 }
@@ -163,6 +163,7 @@ export function createTestContext(
   let seededAggregations: SearchResponse['aggregations'] = undefined
 
   const storage = new MarkdownStorageAdapter(dir)
+  Object.defineProperty(storage, 'localRoot', { value: dir, enumerable: true })
   const events = new BakinEventBus(() => {})
   const hookHandlers = new Map<string, Array<(data: unknown) => unknown>>()
 
@@ -332,7 +333,8 @@ export function createTestContext(
       seededResults = results
       seededAggregations = aggregations
     },
-    toolContext: () => ({
+    toolContext: (invocation) => ({
+      invocation,
       storage: ctx.storage,
       events: ctx.events,
       pluginId: ctx.pluginId,

@@ -484,7 +484,11 @@ export function parsePluginManifest(raw: unknown): PluginManifest {
     }
   }
 
+  if (raw.uninstallPreflightRequired !== undefined && typeof raw.uninstallPreflightRequired !== 'boolean') {
+    throw new PluginManifestError('uninstallPreflightRequired must be a boolean')
+  }
   return {
+    ...(raw.uninstallPreflightRequired === undefined ? {} : { uninstallPreflightRequired: raw.uninstallPreflightRequired }),
     id,
     name: stringField(raw, 'name', { required: true })!,
     version: stringField(raw, 'version', { required: true })!,

@@ -23,7 +23,7 @@
  * Per CLAUDE.md, content-dir is mocked to a temp dir so nothing leaks.
  */
 import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
-import { cpSync, existsSync, mkdirSync, rmSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join, resolve } from 'path'
 
 const testDir = (() => {
@@ -83,6 +83,17 @@ afterAll(() => {
 })
 
 describe('user plugin lifecycle', () => {
+  it('refuses removal when a persistent-resource plugin cannot run its required preflight', async () => {
+    const dir = join(testDir, 'plugins', 'persistent-test')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'bakin-plugin.json'), JSON.stringify({
+      id: 'persistent-test', name: 'Persistent test', version: '1.0.0', bakin: '>=0.0.1',
+      description: 'Test', uninstallPreflightRequired: true,
+    }))
+    const request = makeRequest('http://localhost/api/plugins/remove', { method: 'POST', body: JSON.stringify({ pluginId: 'persistent-test' }) })
+    expect((await removePost(request, new URL(request.url))).status).toBe(409)
+    expect(existsSync(dir)).toBe(true)
+  })
   it('install → build → serve → remove', async () => {
     // 1. POST /api/plugins/install with local source path
     const installReq = makeRequest('http://localhost/api/plugins/install', {

@@ -20,6 +20,8 @@ export interface StorageStat {
 
 /** Plugin-scoped filesystem adapter passed via `ctx.storage`. */
 export interface StorageAdapter {
+  /** Local private storage root, when supported (e.g. for SQLite or Unix sockets). */
+  readonly localRoot?: string
   read(path: string): string | null
   write(path: string, content: string): void
   append(path: string, content: string): void
@@ -155,6 +157,8 @@ export interface BakinPlugin {
   onSettingsChange?(settings: Record<string, unknown>): void | Promise<void>
   /** Called when the plugin is uninstalled — clean up persisted data here. */
   onUninstall?(ctx: PluginContext): void | Promise<void>
+  /** Reject to prevent removal while persistent resources still need attention. */
+  beforeUninstall?(ctx: PluginContext): void | Promise<void>
   /** Settings schema rendered on this plugin's settings page. */
   settingsSchema?: PluginSettingsSchema
   /**
