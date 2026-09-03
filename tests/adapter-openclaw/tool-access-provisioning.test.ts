@@ -39,6 +39,17 @@ const entryFor = (agent: string, base = BASE) => ({
 })
 
 describe('applyBakinMcpEntries', () => {
+  it('provisions distinct credentials in headers and detects credential drift without exposing them in status', () => {
+    const config: BakinMcpConfig = {}
+    const credential = (agent: string) => `test-credential-${agent}`
+    applyBakinMcpEntries(config, ['patch', 'chef'], BASE, credential)
+    expect(config.mcp!.servers!['bakin-patch'].headers).toEqual({ Authorization: 'Bearer test-credential-patch' })
+    expect(config.mcp!.servers!['bakin-chef'].headers).toEqual({ Authorization: 'Bearer test-credential-chef' })
+    expect(applyBakinMcpEntries(config, ['patch', 'chef'], BASE, credential)).toEqual([])
+    const report = verifyBakinMcpEntries(config, ['patch'], BASE, () => 'rotated')
+    expect(report.agentEntries[0].correct).toBe(false)
+    expect(JSON.stringify(report)).not.toContain('credential')
+  })
   it('writes byte-identical mcp.servers entries for every agent, preserving foreign entries', () => {
     const config: BakinMcpConfig = {
       mcp: { servers: { existing: { url: 'http://localhost:9999/mcp' } } },

@@ -241,6 +241,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   private onToolActivity?: AdapterInitOpts['onToolActivity']
   private onTurnActivity?: AdapterInitOpts['onTurnActivity']
   private bakinMcpBaseUrl?: string
+  private getMcpCredential?: (agentId: string) => string
   private approvalResponsesWarningLogged = false
   private approvalResolveWarningLogged = false
   private approvalGatewayClient: OpenClawApprovalGatewayClient | null = null
@@ -261,6 +262,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     this.onToolActivity = opts.onToolActivity
     this.onTurnActivity = opts.onTurnActivity
     this.bakinMcpBaseUrl = opts.bakinMcpBaseUrl
+    this.getMcpCredential = opts.getMcpCredential
     this.settings = mergeSettings(opts.settings ?? (this.settings as unknown as Record<string, unknown>))
   }
 
@@ -1148,7 +1150,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     }
     const agents = await this.runtimeAgentIds()
     const config = readOpenClawConfigForMutation() as BakinMcpConfig
-    const changes = applyBakinMcpEntries(config, agents, baseUrl)
+    const changes = applyBakinMcpEntries(config, agents, baseUrl, this.getMcpCredential)
     if (changes.length === 0) return
     writeOpenClawConfig(config as Record<string, unknown>)
     resetOpenClawConfigCache()
@@ -1175,7 +1177,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     }
     const agents = await this.runtimeAgentIds()
     const config = (readOpenClawConfig() ?? {}) as BakinMcpConfig
-    const status = verifyBakinMcpEntries(config, agents, baseUrl)
+    const status = verifyBakinMcpEntries(config, agents, baseUrl, this.getMcpCredential)
     const missing = status.agentEntries.filter((entry) => !entry.correct)
     const issues = [
       ...(missing.length > 0

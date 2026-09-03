@@ -72,7 +72,7 @@ export function createRuntimeExecToolProvider(): RuntimeExecToolProvider {
         const result = await tool.handler(
           parsedParams.data as Record<string, unknown>,
           agentId,
-          typeof registry.getToolContext === 'function' ? registry.getToolContext(name) : undefined,
+          typeof registry.getToolContext === 'function' ? registry.getToolContext(name, { agentId }) : undefined,
         )
         const durationMs = Date.now() - start
         recordUsage({

@@ -19,6 +19,9 @@ export async function post(req: Request, url: URL): Promise<Response> {
 
   const tool = getExecTool(toolName)
   if (!tool) return Response.json({ error: `Unknown exec tool: ${toolName}` }, { status: 404 })
+  if (tool.requiresVerifiedAgent) {
+    return Response.json({ ok: false, error: 'Verified agent transport required' }, { status: 403 })
+  }
 
   let body: { params?: Record<string, unknown>; agent?: string }
   try {

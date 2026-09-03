@@ -97,6 +97,12 @@ mock.module('@/core/logger', () => ({
 }))
 
 describe('MCP Server', () => {
+  it('rejects a forged credential before dispatching to an MCP session', async () => {
+    const { handleMcpRequest } = await import('@/core/mcp-server')
+    const response = createMockResponse()
+    await handleMcpRequest(createMockRequest('POST', '/mcp?agent=patch', {}, { authorization: 'Bearer forged' }), response)
+    expect(response.writeHead).toHaveBeenCalledWith(403, expect.any(Object))
+  })
   beforeEach(() => {
     mock.clearAllMocks()
   })
@@ -290,6 +296,33 @@ describe('MCP Server', () => {
     } finally {
       server.close()
     }
+  })
+  it('binds authenticated HTTP sessions to the credential on every request', async () => {
+    const { handleMcpRequest } = await import('@/core/mcp-server')
+    const { getMcpCredential } = await import('@/core/mcp-credentials')
+    const { createServer } = await import('node:http')
+    const server = createServer((req, res) => { void handleMcpRequest(req, res) })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/mcp`
+    const nativeFetch = (Bun as unknown as { fetch: typeof fetch }).fetch
+    const authorization = `Bearer ${getMcpCredential('patch')}`
+    try {
+      const response = await nativeFetch(`${base}?agent=patch`, {
+        method: 'POST', headers: { authorization, 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'verified-test', version: '0' } } }),
+      })
+      expect(response.status).toBe(200)
+      const sid = response.headers.get('mcp-session-id')!
+      await response.body?.cancel()
+      for (const [query, credential] of [['', ''], ['?agent=chef', authorization], ['', `Bearer ${getMcpCredential('chef')}`]]) {
+        const denied = await nativeFetch(`${base}${query}`, { method: 'DELETE', headers: { 'mcp-session-id': sid, ...(credential ? { authorization: credential } : {}) } })
+        expect(denied.status).toBe(403)
+        await denied.body?.cancel()
+      }
+      const closed = await nativeFetch(base, { method: 'DELETE', headers: { 'mcp-session-id': sid, authorization } })
+      expect(closed.status).toBe(200)
+      await closed.body?.cancel()
+    } finally { server.closeAllConnections(); server.close() }
   })
 })
 
