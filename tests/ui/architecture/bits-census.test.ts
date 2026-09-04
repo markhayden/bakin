@@ -178,6 +178,13 @@ describe('official Bits census', () => {
 })
 
 describe('official compatibility matrix', () => {
+  it('records newly added official plugins instead of silently omitting Terminal', () => {
+    const { bakinRoot, bitsRoot, bitsPluginsRoot } = createFixture()
+    writeFixture(bitsRoot, 'plugins/terminal/bakin-plugin.json', manifest('terminal', ['/terminal'], []))
+    writeFixture(bitsRoot, 'plugins/terminal/client.tsx', "import { registerPlugin } from '@makinbakin/sdk'; function TerminalPage() { return <main /> }; registerPlugin({ id: 'terminal', routes: { '/terminal': TerminalPage } })")
+    const matrix = buildCompatibilityMatrix(bakinRoot, bitsPluginsRoot, { bakinRef: 'a'.repeat(40), bitsRef: 'b'.repeat(40) })
+    expect(matrix.plugins.terminal).toMatchObject({ repository: 'bakin-bits-official', routes: { total: 1, visual: 1 } })
+  })
   it('records exact refs, SDK versions, plugin ranges, and both first-party repositories', () => {
     const { bakinRoot, bitsPluginsRoot } = createFixture()
     const matrix = buildCompatibilityMatrix(bakinRoot, bitsPluginsRoot, {

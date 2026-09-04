@@ -797,7 +797,8 @@ export function buildCompatibilityMatrix(
   const census = scanOfficialCensus(root, bitsPluginsRoot)
   const bitsRepository = dirname(bitsPluginsRoot)
   const plugins: CompatibilityMatrix['plugins'] = {}
-  for (const pluginId of ['messaging', 'projects', '_template']) {
+  const pluginIds = readdirSync(bitsPluginsRoot).filter((id) => existsSync(join(bitsPluginsRoot, id, 'bakin-plugin.json'))).sort()
+  for (const pluginId of pluginIds) {
     const manifestPath = join(bitsPluginsRoot, pluginId, 'bakin-plugin.json')
     if (!existsSync(manifestPath)) throw new Error(`Official Bits compatibility input is missing ${pluginId}/bakin-plugin.json`)
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as {
@@ -859,7 +860,7 @@ export function validateCompatibilityMatrix(matrix: CompatibilityMatrix): string
   if (!matrix.sdk.workspaceVersion || !matrix.sdk.officialBitsFixtureVersion) {
     errors.push('compatibility matrix is missing SDK versions')
   }
-  for (const pluginId of ['messaging', 'projects', '_template']) {
+  for (const pluginId of new Set(['messaging', 'projects', '_template', ...Object.keys(matrix.plugins)])) {
     const plugin = matrix.plugins[pluginId]
     if (!plugin) {
       errors.push(`compatibility matrix is missing official Bits ${pluginId}`)

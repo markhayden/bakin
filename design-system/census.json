@@ -18,10 +18,10 @@
     ]
   },
   "summary": {
-    "total": 100,
+    "total": 102,
     "byKind": {
       "host-route": 26,
-      "plugin-route": 10,
+      "plugin-route": 12,
       "plugin-slot": 31,
       "plugin-template": 2,
       "shared-component": 31,
@@ -951,6 +951,66 @@
           "type": "client-registration",
           "path": "bakin-bits-official/plugins/projects/client.tsx",
           "detail": "registerPlugin routes \"/projects/new\" -> ProjectsNewRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:terminal:/terminal",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "terminal"
+      },
+      "identity": {
+        "route": "/terminal"
+      },
+      "sourcePath": "bakin-bits-official/plugins/terminal/client-registration.tsx",
+      "symbols": [
+        "TerminalPage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/terminal/bakin-plugin.json",
+          "detail": "contributes.routes[0].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/terminal/client-registration.tsx",
+          "detail": "registerPlugin routes \"/terminal\" -> TerminalPage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:terminal:/terminal/[sessionId]",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "terminal"
+      },
+      "identity": {
+        "route": "/terminal/[sessionId]"
+      },
+      "sourcePath": "bakin-bits-official/plugins/terminal/client-registration.tsx",
+      "symbols": [
+        "TerminalPage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/terminal/bakin-plugin.json",
+          "detail": "contributes.routes[1].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/terminal/client-registration.tsx",
+          "detail": "registerPlugin routes \"/terminal/[sessionId]\" -> TerminalPage"
         }
       ]
     },
