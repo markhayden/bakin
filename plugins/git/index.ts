@@ -24,6 +24,12 @@ const execFileAsync = promisify(execFile)
 
 const REGISTRY_PATH = 'worktrees.json'
 const DEFAULT_WORKTREE_DIR = 'git-worktrees'
+let mutations: Promise<unknown> = Promise.resolve()
+function serialize<T>(operation: () => Promise<T>): Promise<T> {
+  const next = mutations.then(operation)
+  mutations = next.catch(() => {})
+  return next
+}
 // No default allowed root: repo access is an explicit operator decision.
 // (The old hardcoded personal path silently confined fresh installs to a
 // stranger's directory convention — same-agent-concurrency audit F7.)
@@ -39,6 +45,10 @@ const prepareShape = {
   purpose: z.string().max(200).optional(),
 }
 const prepareSchema = z.object(prepareShape)
+const ownerPrepareSchema = prepareSchema.extend({
+  taskId: z.string().min(1).optional(),
+  sessionId: z.string().min(1).max(100).optional(),
+}).refine((input) => Boolean(input.taskId) !== Boolean(input.sessionId), 'Exactly one worktree owner is required')
 
 const statusShape = {
   repoPath: z.string().min(1).optional(),
@@ -72,7 +82,7 @@ const routeReleaseSchema = releaseSchema.and(z.object({
   agent: z.string().min(1).optional(),
 }))
 
-type PrepareInput = z.infer<typeof prepareSchema>
+type PrepareInput = z.infer<typeof ownerPrepareSchema>
 type ReleaseInput = z.infer<typeof releaseSchema>
 
 interface WorktreeEntry {
@@ -81,7 +91,9 @@ interface WorktreeEntry {
   worktreePath: string
   branch: string
   baseRef: string
-  taskId: string
+  taskId?: string
+  sessionId?: string
+  mergeRef?: string
   agent: string
   purpose?: string
   state: 'active' | 'released'
@@ -273,15 +285,15 @@ function buildBranch(input: PrepareInput, agent: string): string {
     throw new Error("Branch names under 'bakin/run/' are reserved for dispatch-managed run worktrees")
   }
   if (input.branch) return input.branch
-  const task = slug(input.taskId) || 'task'
-  return `bakin/${task}-${normalizeAgent(agent)}`
+  const task = slug(input.taskId ?? input.sessionId!) || 'work'
+  return `bakin/${input.sessionId ? 'terminal/' : ''}${task}-${normalizeAgent(agent)}`
 }
 
 function buildWorktreePath(ctx: PluginContextLite, repoPath: string, input: PrepareInput, agent: string, branch: string): string {
   const settings = readSettings(ctx)
   const root = resolvePath(settings.worktreeRoot)
   const repoPart = `${slug(basename(repoPath)) || 'repo'}-${shortHash(repoPath)}`
-  const taskPart = `${slug(input.taskId) || 'task'}-${normalizeAgent(agent)}-${shortHash(branch)}`
+  const taskPart = `${slug(input.taskId ?? input.sessionId!) || 'work'}-${normalizeAgent(agent)}-${shortHash(branch)}`
   return join(root, repoPart, taskPart)
 }
 
@@ -292,13 +304,15 @@ function registryId(repoPath: string, taskId: string, agent: string, branch: str
 function findActiveForTask(
   registry: Registry,
   repoPath: string,
-  taskId: string,
+  taskId: string | undefined,
   agent: string,
+  sessionId?: string,
 ): WorktreeEntry | undefined {
   return registry.worktrees.find((entry) =>
     entry.state === 'active'
     && entry.repoPath === repoPath
     && entry.taskId === taskId
+    && entry.sessionId === sessionId
     && entry.agent === agent
   )
 }
@@ -329,6 +343,7 @@ function publicEntry(entry: WorktreeEntry, status?: GitStatus | { error: string 
     branch: entry.branch,
     baseRef: entry.baseRef,
     taskId: entry.taskId,
+    sessionId: entry.sessionId,
     agent: entry.agent,
     purpose: entry.purpose,
     state: entry.state,
@@ -355,15 +370,24 @@ async function prepareWorktree(
   raw: Record<string, unknown>,
   agent: string,
 ): Promise<ExecToolResult> {
+  return serialize(() => prepareWorktreeUnlocked(ctx, raw, agent))
+}
+
+async function prepareWorktreeUnlocked(
+  ctx: PluginContextLite,
+  raw: Record<string, unknown>,
+  agent: string,
+): Promise<ExecToolResult> {
   try {
-    const input = parseParams(prepareSchema, raw)
+    const input = parseParams(ownerPrepareSchema, raw)
     const repoPath = await resolveRepoRoot(ctx, input.repoPath)
     const branch = buildBranch(input, agent)
     validateBaseRef(input.baseRef)
     await validateBranch(repoPath, branch)
+    const mergeRef = input.sessionId ? await runGit(repoPath, ['symbolic-ref', 'HEAD']) : undefined
 
     const registry = readRegistry(ctx)
-    const existing = findActiveForTask(registry, repoPath, input.taskId, agent)
+    const existing = findActiveForTask(registry, repoPath, input.taskId, agent, input.sessionId)
     if (existing) {
       if (existing.branch !== branch) {
         return {
@@ -403,12 +427,14 @@ async function prepareWorktree(
 
     const now = new Date().toISOString()
     const entry: WorktreeEntry = {
-      id: registryId(repoPath, input.taskId, agent, branch),
+      id: registryId(repoPath, input.taskId ?? `session:${input.sessionId}`, agent, branch),
       repoPath,
       worktreePath,
       branch,
       baseRef: input.baseRef,
       taskId: input.taskId,
+      sessionId: input.sessionId,
+      mergeRef,
       agent,
       purpose: input.purpose,
       state: 'active',
@@ -418,7 +444,7 @@ async function prepareWorktree(
     registry.worktrees.push(entry)
     writeRegistry(ctx, registry)
 
-    ctx.activity.log(agent, `Prepared git worktree for task ${input.taskId}`, { taskId: input.taskId, category: 'git' })
+    ctx.activity.log(agent, `Prepared git worktree for ${input.sessionId ? 'terminal session' : 'task'} ${input.taskId ?? input.sessionId}`, { taskId: input.taskId, category: 'git' })
     const status = await readGitStatus(entry).catch((err) => ({ error: err instanceof Error ? err.message : String(err) }))
     return {
       ok: true,
@@ -481,6 +507,14 @@ async function releaseWorktree(
   raw: Record<string, unknown>,
   agent: string,
 ): Promise<ExecToolResult> {
+  return serialize(() => releaseWorktreeUnlocked(ctx, raw, agent))
+}
+
+async function releaseWorktreeUnlocked(
+  ctx: PluginContextLite,
+  raw: Record<string, unknown>,
+  agent: string,
+): Promise<ExecToolResult> {
   try {
     const input = parseParams(releaseSchema, raw)
     const repoPath = input.repoPath ? await resolveRepoRoot(ctx, input.repoPath) : undefined
@@ -488,6 +522,18 @@ async function releaseWorktree(
     const entry = findReleaseTarget(registry, input, repoPath)
     if (!entry) {
       return { ok: false, error: 'No active tracked worktree matched the release request.' }
+    }
+
+    if (entry.sessionId) {
+      if (raw.sessionId !== entry.sessionId || input.force) {
+        return { ok: false, error: 'Terminal-owned worktrees must be released through their session lifecycle.' }
+      }
+      const status = await runGit(entry.worktreePath, ['status', '--porcelain', '--ignored', '--untracked-files=all', '--ignore-submodules=none'])
+      if (status) return { ok: false, error: 'Worktree contains tracked, untracked, ignored, or submodule changes.' }
+      const currentHead = await runGit(entry.worktreePath, ['rev-parse', 'HEAD'])
+      if (!entry.mergeRef || !(await tryGit(entry.repoPath, ['merge-base', '--is-ancestor', currentHead, entry.mergeRef])).ok) {
+        return { ok: false, error: 'Worktree commits are not proven merged into the original branch.' }
+      }
     }
 
     if (!existsSync(entry.worktreePath)) {
@@ -536,21 +582,21 @@ export async function checkWorktrees(ctx: PluginContextLite): Promise<HealthChec
     if (missing.length > 0) {
       return healthObserved(missing.map((entry) => healthWarning({
         key: `missing.${entry.id}`,
-        summary: `The worktree for task ${entry.taskId} is missing.`,
+        summary: `The worktree for ${entry.sessionId ? 'terminal session' : 'task'} ${entry.sessionId ?? entry.taskId} is missing.`,
         evidence: { worktreePath: entry.worktreePath },
         incident: {
           key: `missing.${entry.id}`,
           title: 'A tracked Git worktree is missing',
-          impact: `Task ${entry.taskId} may no longer have its isolated working directory.`,
+          impact: `${entry.sessionId ? 'Terminal session' : 'Task'} ${entry.sessionId ?? entry.taskId} may no longer have its isolated working directory.`,
           disposition: 'action_required',
           // Resource ids must satisfy the contract's stable-key format — a
           // raw path here failed validation and hid this REAL finding
           // behind a generic Verify card for three releases (2026-07-23).
           resources: [
-            { kind: 'task', id: healthResourceId(entry.taskId), label: entry.taskId.slice(0, 120) },
+            ...(entry.taskId ? [{ kind: 'task' as const, id: healthResourceId(entry.taskId), label: entry.taskId.slice(0, 120) }] : []),
             { kind: 'directory', id: healthResourceId(entry.worktreePath), label: entry.worktreePath.slice(0, 120) },
           ],
-          resolution: { key: 'release-worktree', type: 'instructions', label: 'Review worktree', steps: ['Confirm the task no longer needs this worktree, then release its stale registry entry with the Git release tool.'] },
+          resolution: { key: 'release-worktree', type: 'instructions', label: 'Review worktree', steps: [entry.sessionId ? 'Review this session in Terminal. Restore or investigate the missing checkout before retrying safe cleanup.' : 'Confirm the task no longer needs this worktree, then release its stale registry entry with the Git release tool.'] },
         },
       })) as [ReturnType<typeof healthWarning>, ...ReturnType<typeof healthWarning>[]])
     }
@@ -652,6 +698,14 @@ const gitPlugin = definePlugin({
     ],
   },
   activate(ctx: PluginContext) {
+    ctx.hooks.register('git.prepareSessionWorktree', async (raw) => {
+      const input = z.object({ repoPath: z.string(), sessionId: z.string().min(1), agent: z.string().min(1) }).parse(raw)
+      return prepareWorktree(ctx, input, input.agent)
+    })
+    ctx.hooks.register('git.releaseSessionWorktree', async (raw) => {
+      const input = z.object({ sessionId: z.string().min(1), worktreePath: z.string().min(1) }).parse(raw)
+      return releaseWorktree(ctx, input, 'terminal')
+    })
     ctx.registerExecTool({
       name: 'bakin_exec_git_prepare_worktree',
       description: 'Create or reuse an isolated git worktree for a task. Call this before editing code for a Bakin task.',

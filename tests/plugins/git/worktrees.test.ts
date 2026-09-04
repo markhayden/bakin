@@ -53,6 +53,38 @@ async function activateGitPlugin() {
 }
 
 describe('git plugin worktree tools', () => {
+  maybeIt('session ownership is separate and cleanup preserves ignored files and unmerged commits', async () => {
+    const repoPath = seedRepo()
+    const activated = createTestContext('git', bakinHome)
+    activated.ctx.getSettings = (() => ({ allowedRepoRoots: [reposRoot], worktreeRoot })) as typeof activated.ctx.getSettings
+    const hooks = new Map<string, (data: any) => any>()
+    activated.ctx.hooks.register = ((name: string, handler: (data: any) => any) => {
+      hooks.set(name, handler)
+      return () => hooks.delete(name)
+    }) as typeof activated.ctx.hooks.register
+    await gitPlugin.activate(activated.ctx)
+    expect(hooks.has('git.prepareSessionWorktree')).toBe(true)
+    const prepared = await hooks.get('git.prepareSessionWorktree')!({ repoPath, sessionId: 'session-1', agent: 'patch' })
+    expect(prepared.ok).toBe(true)
+    expect(prepared.taskId).toBeUndefined()
+    expect(prepared.sessionId).toBe('session-1')
+    const path = prepared.worktreePath as string
+    const release = () => hooks.get('git.releaseSessionWorktree')!({ sessionId: 'session-1', worktreePath: path })
+    writeFileSync(join(path, '.gitignore'), 'ignored.txt\n')
+    runGit(['add', '.gitignore'], path)
+    runGit(['commit', '-m', 'ignore'], path)
+    expect((await release()).ok).toBe(false)
+    runGit(['merge', prepared.branch], repoPath)
+    writeFileSync(join(path, 'ignored.txt'), 'keep this')
+    expect((await release()).ok).toBe(false)
+    expect(existsSync(join(path, 'ignored.txt'))).toBe(true)
+    const generic = findTool(activated.execTools, 'bakin_exec_git_release_worktree')!
+    expect((await callTool(generic, { worktreePath: path, force: true }, 'patch')).ok).toBe(false)
+    rmSync(join(path, 'ignored.txt'))
+    expect((await release()).ok).toBe(true)
+    expect(existsSync(path)).toBe(false)
+    expect(runGit(['rev-parse', prepared.branch], repoPath)).toBeTruthy()
+  })
   maybeIt('creates and reuses an isolated worktree for a task', async () => {
     const repoPath = seedRepo()
     const activated = await activateGitPlugin()
