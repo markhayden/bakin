@@ -2,6 +2,37 @@
 
 Date: 2026-09-09. Scope: development implementation, not release approval.
 
+## Local Dev Installation and Form Follow-up
+
+On explicit user request, Terminal is now installed in the existing local dev
+instance at `http://localhost:3737/terminal`, using its normal Bakin home. Both
+permanent checkouts are on `feat/terminal-plugin`; nothing was merged or published.
+The plugin is linked from the permanent official Bits checkout with hot reload.
+Its private launchd service is installed and ready. The old disposable preview
+has been stopped. Agent access remains opt-in; no agents were silently enabled.
+
+New Terminal loads named runtime agents (disabled entries remain visible), active
+tasks, optional Projects choices, and valid directory/agent defaults. Task links
+and agent workspaces suggest values without replacing manual titles/directories.
+The public AgentSelect `CanonicalUsage` and Select `CanonicalUsage` patterns are
+composed through SDK `/patterns` and `/ui`; no system extension was needed.
+
+Verification: installed-SDK typecheck/unit tests/UI fixture, Bits typecheck/lint,
+and core quick conformance passed. Installed-host Playwright checks passed for
+defaults, disabled agents, task/project linking, preserved edits, real shell
+input/reconnect/completion, and desktop/mobile layouts. Initial smoke-test failures
+were service readiness and the host's mobile Live Activity overlay; tests now
+close that overlay and complete only their own sessions even on failure. The
+actual 10-agent roster and long task label were checked in the mobile dialog.
+All smoke-test shells were completed; no user session was touched.
+
+Before restart, live-run and streaming-chat APIs both reported no active work.
+The existing generated-version and embedded-assets edits were preserved exactly.
+Configuration and edit backups are in
+`/private/tmp/bakin-terminal-install-backup-20260909` (private directory).
+The dev server logs to `~/.bakin/dev-terminal.log` and uses the existing data.
+The broad pre-release gate failures below remain unresolved, not waived.
+
 ## Passing Checks
 
 - Core affected tests:70 passed,220 assertions across10 files covering MCP
