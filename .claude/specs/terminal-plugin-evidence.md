@@ -2,6 +2,38 @@
 
 Date: 2026-09-09. Scope: development implementation, not release approval.
 
+## Screenshot-driven Design Pass
+
+The reported HTTP-origin crash was reproduced with `crypto.randomUUID` absent.
+Terminal client markers now use 128 cryptographically random bits through
+`getRandomValues`, which is available on insecure HTTP contexts. The installed
+page was also checked at the device's HTTP Tailscale address: `isSecureContext`
+was false, `randomUUID` undefined, and Terminal loaded successfully.
+
+Removed the hand-styled session rail, row selection, toolbar rhythm, and text
+styles. Public PageAside, dense ListRows, Stack/Inline/Section, Text, AgentSelect,
+and BoundedOverflow now own those concerns. Empty/loading/error states use
+SystemState page scope with no empty rail or decorative frame. Request failures
+have a retry state instead of being mistaken for missing service setup; stale
+refresh failures retain usable content and clear after recovery. Narrow screens
+use Select for session navigation. The only plugin CSS left is xterm's focused
+terminal outline, using the kit focus token, plus xterm's own renderer styles.
+
+Selected stories: WorkspacePage/FullBleedWorkspace,
+CollapsibleAside/CollapseRoundtrip, ListRows/DenseRows,
+SystemState/ScopeAndRecovery, Flow/CanonicalUsage, and Text/CanonicalUsage.
+No public contract, token, baseline, exception, or style allowance was changed.
+
+Verification: core quick conformance (228 architecture tests plus TypeScript),
+Bits lint/typecheck, clean installed-SDK tests (15 passing unit tests), and the
+canonical plugin UI fixture passed. Focused browser checks cover absent UUID,
+empty/error/recovery states, rail collapse, route selection, long-title mobile
+navigation, populated form behavior, and real shell input/reconnect/completion.
+Screenshots in Bits `plugins/terminal/test-results/{design,live}` were inspected.
+Full conformance was not rerun for this composition-only pass; existing broad
+gate failures below still block a merge-ready release claim. The dev Tailwind
+watcher regenerated `packages/sdk/styles.css` for the new consumer classes.
+
 ## Local Dev Installation and Form Follow-up
 
 On explicit user request, Terminal is now installed in the existing local dev
