@@ -423,7 +423,7 @@ async function inspectBrowserPage(page: import('playwright').Page): Promise<Brow
   return inspection
 }
 
-async function keyboardFocusFindings(
+export async function keyboardFocusFindings(
   page: import('playwright').Page,
   viewport: 'desktop' | 'mobile',
 ): Promise<PluginUiConformanceFinding[]> {
@@ -437,7 +437,7 @@ async function keyboardFocusFindings(
         && rect.width > 0
         && rect.height > 0
         && !element.matches(':disabled')
-        && element.getAttribute('aria-disabled') !== 'true'
+        // Kit buttons may stay focusable while disabled so their tooltip can explain why.
         && element.tabIndex >= 0
         && !element.closest('[inert], [aria-hidden="true"]')
     })

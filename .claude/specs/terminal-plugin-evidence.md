@@ -143,9 +143,39 @@ automatically purged; output payloads and live worktrees are bounded separately.
 
 ## UI Conformance
 
-- Pattern: `storybook/public/pages/workspace-page.stories.tsx` / `FullBleedWorkspace`.
+- Pattern: `storybook/public/pages/page.stories.tsx` / `CanonicalUsage`,
+  `lists/list-rows.stories.tsx` / `InteractiveRows`, and
+  `pages/workspace-page.stories.tsx` / `ImmersiveCanvas`.
 - Contract: SDK `/patterns`, `/ui`, `/navigation`; plugin-owned xterm content.
-- Story/style-guide update:not needed; no supported browser contract changed.
+- Story/style-guide update:workspace and tooltip interaction regressions;
+  plugin README and knowledge notes describe the index/detail navigation.
 - Deviation:none.
 - Verification:quick gate, real-SDK fixture, live desktop/mobile browser tests
   passed; full gate blocked as described above.
+
+## Immersive Index and Tooltips (2026-09-09)
+
+The user's final navigation choice supersedes the earlier session picker:
+`/terminal` is a kit list; `/terminal/:id` is a full-width immersive workspace
+with Back navigation. Agent assignment and paths are in a kit popover; session
+completion actions use the kit menu. All icon controls have explanatory hover
+and keyboard tooltips. Disabled controls retain focus for their explanations.
+
+Regression checks caught and fixed two existing kit boundary bugs: fractional
+header heights could prevent the compact row appearing, and a long tooltip
+could overflow a 320px viewport. Public story interaction assertions cover
+these contracts; no visual baseline or public API was changed. The conformance
+runner also incorrectly excluded focusable aria-disabled controls from its
+expected tab sequence; the new browser regression failed before that fix and
+passes afterward.
+
+Focused evidence:6 workspace/tooltip Storybook tests, the focusable-disabled
+browser regression, 2 design browser tests covering index/Back, full-width
+output, empty/error states, all tooltips, keyboard focus and narrow popovers.
+Real shell verification covers input, viewport fit, reconnect and termination;
+test-created processes are completed. Screenshots are in the Bits checkout's
+`plugins/terminal/test-results/{design,live}`. The clean installed-SDK fixture
+and its HTML report are under `test-results/plugin-ui-conformance/terminal`.
+The all-at-once root-preload Terminal test run hit a Bun SIGTRAP; the clean
+installed-SDK run passed all 15 unit tests. One combined browser invocation
+timed out; focused reruns passed. No timeouts or safety gates were relaxed.

@@ -171,7 +171,9 @@ export function WorkspacePageCompactHeader({
         ([entry]) => setStuck(!entry.isIntersecting),
         {
           root,
-          rootMargin: overlay ? '-56px 0px 0px 0px' : '-1px 0px 0px 0px',
+          // scrollHeight rounds fractional header heights; keep the same 1px
+          // boundary tolerance as flow/mobile so the compact row always appears.
+          rootMargin: overlay ? '-57px 0px 0px 0px' : '-1px 0px 0px 0px',
           threshold: 0,
         },
       )

@@ -56,4 +56,11 @@ Focused tests cover credentials/MCP policy/session binding, OpenClaw provisionin
 runtime tools, SDK testing, Git worktrees, and plugin remove/unlink lifecycle.
 Terminal unit and opt-in real process/browser tests live in Bits. Use isolated
 homes and private tmux/launchd jobs; never test against the live user's sessions.
-The public UI uses `FullBleedWorkspace` without extending the design system.
+The session index uses `Page` plus route-backed `ListRows`; each session uses
+`WorkspacePage` / `ImmersiveCanvas` with a compact Back link. There is no session
+rail or navigation select. Agent assignment and paths live in the kit Popover;
+completion/deletion actions live in DropdownMenu. Terminal icon tools have
+explanatory kit tooltips, including focusable disabled controls. Fit resizes
+only a session owned by this browser. No public API or design exception was
+added. Shared kit fixes cover fractional-height compact-header activation,
+viewport-bounded tooltips, and conformance of focusable disabled buttons.
