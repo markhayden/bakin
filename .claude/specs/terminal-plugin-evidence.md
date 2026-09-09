@@ -179,3 +179,18 @@ and its HTML report are under `test-results/plugin-ui-conformance/terminal`.
 The all-at-once root-preload Terminal test run hit a Bun SIGTRAP; the clean
 installed-SDK run passed all 15 unit tests. One combined browser invocation
 timed out; focused reruns passed. No timeouts or safety gates were relaxed.
+
+Final installed-checkout verification used Bits `6705a8b` and the assembled
+matching core SDK. The real-shell test also navigates Back to the index and
+reopens its own session, proving output/process continuity. Service status was
+200/ready with zero running sessions after cleanup. The final HTML report has
+no package blockers or conformance findings and both screenshot assets load.
+The full gate was rerun in `/private/tmp/bakin-terminal-core`; quick conformance
+and lint passed before the repository suite reproduced the previously recorded
+runtime-switch dry-run byte-identity failure. This is not a merge-ready claim.
+
+The dev Tailwind watcher's accumulated class cache differs from a fresh
+canonical CSS build, so the final SDK was assembled in the isolated checkout.
+No stylesheet-identity check, legacy-style allowance, baseline, or budget was
+relaxed. The development checkout's generated CSS remains uncommitted along
+with the pre-existing generated-version and embedded-asset edits.
