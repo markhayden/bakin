@@ -31,7 +31,9 @@ interface DataTableColumnBase<Row> {
    * fallback; declared anywhere = the composed narrow card.
    */
   narrow?: DataTableNarrowRole
+  /** Header constraints, such as a width or explicit non-wrapping label. */
   headClassName?: string
+  /** Cells wrap by default; explicit width/min-width/whitespace classes override this. */
   cellClassName?: string
   /**
    * Cell content for one row. Defaults to `row[key]` when the row is a plain
@@ -99,8 +101,9 @@ export interface DataTableProps<Row, F extends string = string> {
    * Container-query breakpoint (measured on the DataTable itself, never the
    * viewport) below which the list render replaces the table.
    *
-   * Defaults to `'none'` — the table stays a table at every width and scrolls
-   * horizontally inside its own container. Every consumer in the fleet chose
+   * Defaults to `'none'` — the table stays a table at every width. Flexible
+   * cells wrap to fit; explicit constraints or intrinsically wide content
+   * can still scroll horizontally inside its container. Every consumer chose
    * this explicitly, so it is the default rather than a prop each caller has
    * to remember; comparable records read better as aligned columns than as
    * stacked label/value pairs. Opt into `'xl' | '2xl' | '3xl'` when a table's
@@ -343,7 +346,14 @@ export function DataTable<Row, F extends string = string>({
       ? {
           tabIndex: 0,
           'aria-label': rowActivateLabel?.(row),
-          onClick: () => onRowActivate(row),
+          onClick: (event) => {
+            const target = event.target
+            // Portals still bubble through React; nested controls own their action.
+            if (event.defaultPrevented || !(target instanceof Element) || !event.currentTarget.contains(target)) return
+            const control = target.closest('a[href],button,input,select,textarea,label,summary,[role="button"],[role="link"],[role="checkbox"],[role="menuitem"],[contenteditable]:not([contenteditable="false"]),[tabindex]')
+            if (control && control !== event.currentTarget) return
+            onRowActivate(row)
+          },
           onKeyDown: (event) => {
             if (event.currentTarget !== event.target || (event.key !== 'Enter' && event.key !== ' ')) return
             event.preventDefault()
@@ -379,7 +389,7 @@ export function DataTable<Row, F extends string = string>({
                         current={sort?.field ?? ('' as F)}
                         dir={sort?.dir ?? 'desc'}
                         onSort={onSort}
-                        className={cn(alignClass, column.headClassName)}
+                        className={cn('whitespace-normal wrap-anywhere', alignClass, column.headClassName)}
                       >
                         {column.header}
                       </SortableHead>
@@ -391,7 +401,7 @@ export function DataTable<Row, F extends string = string>({
                       scope="col"
                       data-slot="table-head"
                       className={cn(
-                        'h-10 whitespace-nowrap px-bakin-2 align-middle text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-muted',
+                        'h-10 whitespace-normal wrap-anywhere px-bakin-2 align-middle text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-muted',
                         alignClass,
                         column.headClassName,
                       )}
@@ -425,7 +435,7 @@ export function DataTable<Row, F extends string = string>({
                         key={column.key}
                         data-slot="table-cell"
                         className={cn(
-                          'whitespace-nowrap p-bakin-2 align-middle',
+                          'whitespace-normal wrap-anywhere p-bakin-2 align-middle',
                           ALIGN_CLASS[column.align ?? 'start'],
                           column.cellClassName,
                         )}

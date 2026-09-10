@@ -292,7 +292,10 @@ and administrative surfaces during the full style-guide sweep:
 
 - Target kit component parts via `data-slot`, never class strings; assert
   state via `data-tone`/`data-size`/`data-variant`/`data-busy`. Slot names
-  are contract; classes are not. `DataTable` re-emits `table*` slots — scope
+  are contract; classes are not. `DataTable` fills the available width with
+  wrapping cells; explicit column minimum widths/non-wrapping content can still
+  require local scrolling. Its row activation excludes nested controls and
+  portalled menu events. `DataTable` re-emits `table*` slots — scope
   under `[data-slot="data-table"]` when both renders may be in the DOM.
 - Reserved `@container` names (never declare yourself): page-shell,
   layout-grid, page-header, list-rows, timeline, data-table, key-value,
