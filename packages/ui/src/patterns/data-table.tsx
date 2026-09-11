@@ -389,7 +389,7 @@ export function DataTable<Row, F extends string = string>({
                         current={sort?.field ?? ('' as F)}
                         dir={sort?.dir ?? 'desc'}
                         onSort={onSort}
-                        className={cn('whitespace-normal wrap-anywhere', alignClass, column.headClassName)}
+                        className={cn(alignClass, column.headClassName)}
                       >
                         {column.header}
                       </SortableHead>
@@ -401,7 +401,7 @@ export function DataTable<Row, F extends string = string>({
                       scope="col"
                       data-slot="table-head"
                       className={cn(
-                        'h-10 whitespace-normal wrap-anywhere px-bakin-2 align-middle text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-muted',
+                        'h-10 whitespace-nowrap px-bakin-2 align-middle text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-muted',
                         alignClass,
                         column.headClassName,
                       )}
