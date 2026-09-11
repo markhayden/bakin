@@ -56,11 +56,29 @@ Focused tests cover credentials/MCP policy/session binding, OpenClaw provisionin
 runtime tools, SDK testing, Git worktrees, and plugin remove/unlink lifecycle.
 Terminal unit and opt-in real process/browser tests live in Bits. Use isolated
 homes and private tmux/launchd jobs; never test against the live user's sessions.
-The session index uses `Page` plus route-backed `ListRows`; each session uses
+The session index uses `Page` plus `DataTable` with SDK router row activation
+and session-title links; each session uses
 `WorkspacePage` / `ImmersiveCanvas` with a compact Back link. There is no session
 rail or navigation select. Agent assignment and paths live in the kit Popover;
-completion/deletion actions live in DropdownMenu. Terminal icon tools have
-explanatory kit tooltips, including focusable disabled controls. Fit resizes
-only a session owned by this browser. No public API or design exception was
+session controls are right-aligned in the full and compact title rows, with
+New terminal available only on the index. Flexible table cells wrap to use the
+available width; explicit column constraints still permit local scrolling when
+needed. Each index row has a kit menu for taking control, completing an exited
+session, terminating, and deleting completed output. Confirmations retain the
+target session ID and show its title, and API errors remain in the dialog for
+retry. Deleting output does not delete metadata or retained worktrees.
+Completion/deletion actions live in DropdownMenu, alongside Reconnect terminal
+and the explicit Send Tab to terminal checkbox. Reconnect only reattaches the
+output stream; it does not restart the process. Connection and ownership status
+share the title header, with no separate output toolbar. The terminal has a kit
+16px inset, and xterm's theme plus unused viewport match its canvas background.
+Terminal icon tools have
+explanatory kit tooltips, including focusable disabled controls. The xterm surface
+always fills the pane; its cell grid automatically fits on mount, resize, font
+readiness, and reconnect when this browser owns input. There is no Fit control.
+Read-only viewers never resize an agent-controlled PTY. Agent assignment uses
+the full-width kit `AgentSelect` with registered display names, portraits, and
+accent colors; terminal access policy still determines disabled choices.
+No public API or design exception was
 added. Shared kit fixes cover fractional-height compact-header activation,
 viewport-bounded tooltips, and conformance of focusable disabled buttons.

@@ -194,3 +194,119 @@ canonical CSS build, so the final SDK was assembled in the isolated checkout.
 No stylesheet-identity check, legacy-style allowance, baseline, or budget was
 relaxed. The development checkout's generated CSS remains uncommitted along
 with the pre-existing generated-version and embedded-asset edits.
+
+## Automatic Fit and Agent Identity (2026-09-09)
+
+Installed Bits commits `d1ae8c4` and `ae52145` make the kit agent assignment
+field full-width, with the same registered identity presentation as Tasks.
+Terminal permissions remain authoritative; no agent was enabled by this change.
+The xterm surface now fills the pane instead of retaining its initial 360px
+height. The input owner's cell grid automatically fits on mount, pane resize,
+font readiness, and reconnect. Resize requests are debounced and coalesced, and
+do not invalidate queued input. Read-only viewers do not resize shared PTYs.
+The user explicitly requested automatic-only fitting, so the Fit tool is removed.
+
+Existing public contracts used: `agents/agent-select` / `AssignmentAndFiltering`
+and `pages/workspace-page` / `ImmersiveCanvas`. No public story or API change is
+needed; the only added domain CSS sets the plugin-owned xterm root height.
+
+Red reproductions measured a 116px agent field beside 398px inputs and a 360px
+xterm surface inside an approximately 870px pane. Both regressions now pass.
+Verification: Bits typecheck/lint, core quick conformance, clean installed-SDK
+conformance (16 unit tests, 61 assertions, zero findings), new-session browser
+coverage, and live shell input/automatic desktop-mobile resize/reconnect/cleanup.
+After removing Fit, all three design browser tests pass (20 assertions), including
+the absence of the button and zero resize requests from an agent-owned viewer.
+Desktop/mobile screenshots and the final fixture HTML report were inspected.
+The full repository suite was not repeated for this narrow consumer follow-up;
+the previously recorded runtime-switch failure remains a separate blocker.
+
+Manual smoke test: title `Manual shell test`, program `Shell`, working directory
+`/tmp`, assigned agent `Unassigned`, task `No task`, project `No project`.
+Run `pwd` and `printf 'terminal test OK\n'`; finish with Session actions >
+Terminate and complete. Shell sessions have no Checkout field.
+
+## Table Index and Header Actions (2026-09-09)
+
+The latest navigation refinement uses `lists/data-table.stories.tsx` /
+`ActivatableRows` for the index, with Session, Program, Agent, Status, and Working
+directory columns. `DataTable` owns row activation and horizontal overflow;
+navigation still uses the public SDK router and session-title links. Detail
+controls now occupy the full and compact workspace header action slots, replacing
+New terminal. The separate session-control row is removed; the xterm status row
+and automatic viewport fitting are unchanged. No new kit contract or exception.
+
+Verification: Bits typecheck/lint, core quick conformance (228 tests), clean
+installed-SDK fixture (zero findings), three design browser tests and one real
+shell test (32 assertions). The browser regression asserts table columns, absence
+of New terminal inside a session, controls inside the compact title row, tooltips,
+Back navigation, mobile containment, automatic fit, reconnect, and test-owned
+shell completion. Desktop/mobile screenshots and the fixture HTML report were
+inspected. Full repository conformance was not repeated for this consumer change.
+
+## Stream Controls and Seamless Inset (2026-09-10)
+
+Bits `599a9de` and `90941f8` move stream controls into the existing session-actions
+menu using `overlays/dropdown-menu.stories.tsx` / `Actions`: Send Tab to terminal
+is a controlled checkbox item, and Reconnect terminal only reattaches the stream.
+Connection and ownership status share the title header; the separate toolbar is
+removed. The `BoundedOverflow` output uses kit `p-bakin-4` padding and the canvas
+background. xterm's public theme option matches that computed background, and
+the plugin-scoped viewport rule covers unused space below retained short grids.
+This is domain rendering CSS, not a new system pattern or exception.
+
+Verification: core quick conformance, Bits typecheck/lint, real-SDK conformance
+and HTML report, and four live browser tests (40 assertions). Browser coverage
+checks both xterm background layers, the 16px inset, no extra toolbar height,
+header status and menu controls, desktop/mobile containment and automatic fit,
+read-only non-resizing, actual Tab delivery when enabled and focus escape when
+disabled, reconnect, Back navigation, and completion of test-owned shells.
+Screenshot review caught the unused black viewport below short completed output;
+the scoped rule fixes it and the final desktop/mobile evidence was inspected.
+The full repository suite was not repeated for this consumer-only follow-up.
+
+Session-actions width follow-up: Bits `256ef4a` sets the existing DropdownMenu
+content to `w-72` (288px), retaining kit available-width collision limits. This
+uses `overlays/dropdown-menu.stories.tsx` / `Actions`, with no public contract
+change. The regression reproduces the former 160px menu and verifies single-line
+labels on desktop and mobile, plus 320px viewport containment. All three design
+browser tests pass (35 assertions); both menu screenshots were inspected.
+Bits typecheck/lint and core quick conformance also pass.
+
+## Flexible Tables and Index Actions (2026-09-12)
+
+The requested kit update changes `DataTable` default cells from `nowrap` to
+wrapping, including unbroken paths. It retains native auto table layout,
+readable non-wrapping headers, and explicit column width/minimum-width overrides;
+genuinely constrained content can still scroll locally. No new public API is
+needed. `CanonicalUsage` now exercises long paths in a 320px container and an
+explicit column minimum that intentionally overflows. `ActivatableRows` tests
+nested menu actions without row navigation, backed by unit coverage for buttons,
+links, and React portals. API inventory remains unchanged and valid.
+
+Terminal composes shared `SessionActions` in each row and the session header.
+Rows offer Take control, Complete session (exited/owned only), Terminate and
+complete, and Delete completed output. The latter retains metadata. Confirmations
+carry the target ID rather than depending on the selected route, name the target,
+use the latest known generation, block repeated submits, and keep API errors
+visible for retry. Existing service authorization and cleanup rules are unchanged.
+The title has a proportional width, paths wrap, and the action column uses the
+existing row-size token. Menus use the kit's bounded `w-xs` size, replacing the
+earlier raw width utility without adding a style allowance.
+
+Focused verification: 15 DataTable unit tests, five public Storybook interaction
+and accessibility checks, five installed-plugin browser tests (56 assertions),
+and the real-SDK index conformance fixture with zero findings. The browser tests
+cover long-path fit, row-button tooltips, pointer/keyboard isolation, cancellation,
+correct multi-row targeting, delete failure/retry, explicit ownership handoff,
+termination, desktop/mobile menus, and the existing real-shell workflow. Evidence
+is under `plugins/terminal/test-results/design` and
+`test-results/plugin-ui-conformance/terminal`. No visual baseline was regenerated.
+
+Final gates: core quick conformance passes (228 tests and TypeScript); Bits lint
+and typecheck pass. Full conformance reached the repository suite: 9,313 passed,
+two skipped, and one failed in the previously observed runtime-switch dry-run
+byte-identity test. That failure prevents later full-gate stages from running;
+this is not a clean full-conformance or merge-ready result. The separate public
+table stories and installed-SDK/browser checks above passed. The final quick
+gate was rerun successfully without the full suite competing for resources.
