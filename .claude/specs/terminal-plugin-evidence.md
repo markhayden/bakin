@@ -310,3 +310,31 @@ byte-identity test. That failure prevents later full-gate stages from running;
 this is not a clean full-conformance or merge-ready result. The separate public
 table stories and installed-SDK/browser checks above passed. The final quick
 gate was rerun successfully without the full suite competing for resources.
+
+## Review fixes (2026-09-17)
+
+A full branch review found and fixed four issues across both repositories.
+
+The Bits full suite segfaulted five out of five runs (bun 1.3.13 runner
+crash) while main stayed clean. Bisection isolated the trigger: a top-level
+`import { chromium } from 'playwright'` in any bun `--isolate` test child
+crashes the runner intermittently even when every test in the file is
+skipped. The four terminal browser tests now gate and lazy-load playwright
+through a shared `tests/browser.ts` helper; five consecutive full-suite runs
+pass with 549 tests and zero failures. The same eager import existed in
+Bakin's `focusable-disabled.browser.test.ts` and was fixed the same way.
+
+That Bakin test was also dead: nothing set `BAKIN_UI_BROWSER_TEST`, so the
+aria-disabled focus-order contract never executed. `ui:test:conformance`
+now runs it with the flag, covering the ui-visual verify job and full
+conformance; verified passing locally.
+
+Two Bits contract failures were closed: `test-sdk/testing/ui/conformance.js`
+now stubs `transformPluginCss` (pass-through; plugin sources carry their own
+ownership scope), and `catalog.json` lists the terminal plugin
+(not default-selected — it needs tmux and the macOS service setup).
+
+The committed `packages/sdk/styles.css` predated the branch's kit changes
+and the sibling terminal plugin, so installed-plugin utilities such as
+`w-(--bakin-layout-size-row)` were missing from the served artifact; it was
+rebuilt with bakin-bits-official at the repinned compatibility ref.
