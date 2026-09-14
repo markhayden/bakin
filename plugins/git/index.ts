@@ -524,20 +524,28 @@ async function releaseWorktreeUnlocked(
       return { ok: false, error: 'No active tracked worktree matched the release request.' }
     }
 
+    // `teardown` is the session-delete path: the operator is discarding the
+    // whole session, so force-remove the checkout (the branch is kept, so any
+    // committed work survives). Safe releases still require clean + merged.
+    const teardown = raw.teardown === true
+    const force = input.force || teardown
+
     if (entry.sessionId) {
-      if (raw.sessionId !== entry.sessionId || input.force) {
+      if (raw.sessionId !== entry.sessionId || (input.force && !teardown)) {
         return { ok: false, error: 'Terminal-owned worktrees must be released through their session lifecycle.' }
       }
-      const status = await runGit(entry.worktreePath, ['status', '--porcelain', '--ignored', '--untracked-files=all', '--ignore-submodules=none'])
-      if (status) return { ok: false, error: 'Worktree contains tracked, untracked, ignored, or submodule changes.' }
-      const currentHead = await runGit(entry.worktreePath, ['rev-parse', 'HEAD'])
-      if (!entry.mergeRef || !(await tryGit(entry.repoPath, ['merge-base', '--is-ancestor', currentHead, entry.mergeRef])).ok) {
-        return { ok: false, error: 'Worktree commits are not proven merged into the original branch.' }
+      if (!teardown) {
+        const status = await runGit(entry.worktreePath, ['status', '--porcelain', '--ignored', '--untracked-files=all', '--ignore-submodules=none'])
+        if (status) return { ok: false, error: 'Worktree contains tracked, untracked, ignored, or submodule changes.' }
+        const currentHead = await runGit(entry.worktreePath, ['rev-parse', 'HEAD'])
+        if (!entry.mergeRef || !(await tryGit(entry.repoPath, ['merge-base', '--is-ancestor', currentHead, entry.mergeRef])).ok) {
+          return { ok: false, error: 'Worktree commits are not proven merged into the original branch.' }
+        }
       }
     }
 
     if (!existsSync(entry.worktreePath)) {
-      if (!input.force) {
+      if (!force) {
         return {
           ok: false,
           error: `Tracked worktree is missing from disk: ${entry.worktreePath}. Re-run with force=true to mark it released.`,
@@ -545,14 +553,14 @@ async function releaseWorktreeUnlocked(
       }
     } else {
       const status = await readGitStatus(entry)
-      if (status.dirty && !input.force) {
+      if (status.dirty && !force) {
         return {
           ok: false,
           error: `Worktree is dirty; commit, stash, or re-run with force=true before release. Path: ${entry.worktreePath}`,
           status: status.status,
         }
       }
-      const args = input.force
+      const args = force
         ? ['worktree', 'remove', '--force', entry.worktreePath]
         : ['worktree', 'remove', entry.worktreePath]
       await runGit(entry.repoPath, args)
@@ -703,7 +711,7 @@ const gitPlugin = definePlugin({
       return prepareWorktree(ctx, input, input.agent)
     })
     ctx.hooks.register('git.releaseSessionWorktree', async (raw) => {
-      const input = z.object({ sessionId: z.string().min(1), worktreePath: z.string().min(1) }).parse(raw)
+      const input = z.object({ sessionId: z.string().min(1), worktreePath: z.string().min(1), teardown: z.boolean().optional() }).parse(raw)
       return releaseWorktree(ctx, input, 'terminal')
     })
     ctx.registerExecTool({

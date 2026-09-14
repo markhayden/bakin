@@ -85,6 +85,26 @@ describe('git plugin worktree tools', () => {
     expect(existsSync(path)).toBe(false)
     expect(runGit(['rev-parse', prepared.branch], repoPath)).toBeTruthy()
   })
+  maybeIt('teardown force-removes a dirty, unmerged session worktree but keeps its branch', async () => {
+    const repoPath = seedRepo()
+    const activated = createTestContext('git', bakinHome)
+    activated.ctx.getSettings = (() => ({ allowedRepoRoots: [reposRoot], worktreeRoot })) as typeof activated.ctx.getSettings
+    const hooks = new Map<string, (data: any) => any>()
+    activated.ctx.hooks.register = ((name: string, handler: (data: any) => any) => { hooks.set(name, handler); return () => hooks.delete(name) }) as typeof activated.ctx.hooks.register
+    await gitPlugin.activate(activated.ctx)
+    const prepared = await hooks.get('git.prepareSessionWorktree')!({ repoPath, sessionId: 'session-teardown', agent: 'patch' })
+    const path = prepared.worktreePath as string
+    // Commit work on the branch, then leave uncommitted changes — a real
+    // abandoned session. The safe release refuses both.
+    writeFileSync(join(path, 'work.txt'), 'committed')
+    runGit(['add', 'work.txt'], path); runGit(['commit', '-m', 'work'], path)
+    writeFileSync(join(path, 'work.txt'), 'uncommitted edit')
+    expect((await hooks.get('git.releaseSessionWorktree')!({ sessionId: 'session-teardown', worktreePath: path })).ok).toBe(false)
+    // Teardown succeeds: checkout gone, branch (with the commit) kept.
+    expect((await hooks.get('git.releaseSessionWorktree')!({ sessionId: 'session-teardown', worktreePath: path, teardown: true })).ok).toBe(true)
+    expect(existsSync(path)).toBe(false)
+    expect(runGit(['rev-parse', prepared.branch], repoPath)).toBeTruthy()
+  })
   maybeIt('creates and reuses an isolated worktree for a task', async () => {
     const repoPath = seedRepo()
     const activated = await activateGitPlugin()
