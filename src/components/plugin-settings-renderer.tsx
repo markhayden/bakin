@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   PluginSettingsRenderer as SettingsForm,
   type PluginSettingsFeedback,
 } from '@makinbakin/sdk/patterns'
-import { useToastStore } from '@makinbakin/sdk/hooks'
+import { useAgentList, useAgentStore, useToastStore } from '@makinbakin/sdk/hooks'
 import type { PluginSettingsSchema } from '@makinbakin/sdk/types'
 
 export type { PluginSettingsSchema }
@@ -33,6 +33,22 @@ export function PluginSettingsRenderer({
   const [feedback, setFeedback] = useState<PluginSettingsFeedback | null>(null)
   const add = useToastStore((state) => state.add)
 
+  // Roster for any `agent-toggles` field. The store hydrates from cache
+  // instantly; refresh once so the grid reflects the live roster.
+  const roster = useAgentList()
+  const display = useAgentStore((state) => state.displaySettings)
+  const loadAgents = useAgentStore((state) => state.load)
+  useEffect(() => { void loadAgents() }, [loadAgents])
+  const agents = useMemo(
+    () => roster.map((agent) => ({
+      id: agent.id,
+      name: display[agent.id]?.displayName ?? agent.name,
+      imageSrc: agent.headshot,
+      color: display[agent.id]?.accentColor,
+    })),
+    [roster, display],
+  )
+
   function submit(nextValues: Record<string, unknown>) {
     setSaving(true)
     setFeedback(null)
@@ -50,6 +66,7 @@ export function PluginSettingsRenderer({
     <SettingsForm
       schema={schema}
       values={values}
+      agents={agents}
       onSubmit={submit}
       onValidationError={(message) => add({ type: 'error', message })}
       feedback={feedback}

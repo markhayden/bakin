@@ -26,7 +26,9 @@ import {
   SystemState,
 } from '@bakin/ui'
 import { cn } from '@bakin/ui/utils'
+import { AgentAvatar, type AgentIdentity } from './agent-patterns'
 import type {
+  AgentTogglesSettingsField,
   BooleanSettingsField,
   ListSettingsField,
   NumberSettingsField,
@@ -51,6 +53,12 @@ export interface PluginSettingsFeedback {
 export interface PluginSettingsRendererProps {
   schema: PluginSettingsSchema
   values: Record<string, unknown>
+  /**
+   * Agent roster for `agent-toggles` fields. The consumer supplies it (the
+   * pattern never fetches) so the renderer stays data-driven; each entry
+   * renders as an avatar + name + switch.
+   */
+  agents?: AgentIdentity[]
   /** Persistence stays consumer-owned; this fires only after schema validation passes. */
   onSubmit: (values: Record<string, unknown>) => void
   /** Consumer-owned persistence state. */
@@ -74,6 +82,7 @@ function defaultForField(field: SettingsField): unknown {
     case 'boolean': return false
     case 'number': return 0
     case 'list': return []
+    case 'agent-toggles': return []
     default: return ''
   }
 }
@@ -326,8 +335,54 @@ function ListField({ disabled, error, field, onChange, value }: ListFieldProps) 
   )
 }
 
+interface AgentTogglesFieldProps {
+  field: AgentTogglesSettingsField
+  value: unknown
+  agents: AgentIdentity[] | undefined
+  disabled?: boolean
+  onChange: (value: string[]) => void
+}
+
+function AgentTogglesField({ agents, disabled, field, onChange, value }: AgentTogglesFieldProps) {
+  const enabled = new Set(Array.isArray(value) ? (value as unknown[]).filter((id): id is string => typeof id === 'string') : [])
+  const roster = agents ?? []
+  const toggle = (id: string, on: boolean) => {
+    const next = new Set(enabled)
+    if (on) next.add(id); else next.delete(id)
+    onChange(roster.map((agent) => agent.id).filter((id) => next.has(id)))
+  }
+  return (
+    <Fieldset disabled={disabled}>
+      <FieldsetLegend>{field.label}</FieldsetLegend>
+      {field.description ? <FieldsetDescription>{field.description}</FieldsetDescription> : null}
+      {roster.length === 0 ? (
+        <SystemState kind="initial-empty" scope="section" title="No agents" description="No agents are available to enable." />
+      ) : (
+        <div className="grid grid-cols-1 gap-bakin-3 sm:grid-cols-2 xl:grid-cols-3">
+          {roster.map((agent) => (
+            <label
+              key={agent.id}
+              className="flex min-w-0 items-center gap-bakin-3 rounded-bakin-control border border-bakin-border-subtle bg-bakin-surface-default p-bakin-3"
+            >
+              <AgentAvatar size="sm" decorative agent={agent} />
+              <span className="min-w-0 flex-1 truncate font-bakin-typography-weight-medium">{agent.name}</span>
+              <Switch
+                checked={enabled.has(agent.id)}
+                disabled={disabled}
+                onCheckedChange={(on: boolean) => toggle(agent.id, on)}
+                aria-label={`Enable ${agent.name}`}
+              />
+            </label>
+          ))}
+        </div>
+      )}
+    </Fieldset>
+  )
+}
+
 /** Schema-driven settings form with consumer-owned persistence and feedback. */
 export function PluginSettingsRenderer({
+  agents,
   ariaLabel = 'Plugin settings',
   busy = false,
   busyLabel = 'Saving settings',
@@ -397,6 +452,15 @@ export function PluginSettingsRenderer({
           field={field}
           value={draft[field.key]}
           error={errors[field.key]}
+          disabled={disabled || busy}
+          onChange={(value) => setValue(field.key, value)}
+        />
+      ) : field.type === 'agent-toggles' ? (
+        <AgentTogglesField
+          key={field.key}
+          field={field}
+          agents={agents}
+          value={draft[field.key]}
           disabled={disabled || busy}
           onChange={(value) => setValue(field.key, value)}
         />

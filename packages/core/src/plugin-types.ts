@@ -784,12 +784,23 @@ export interface ListSettingsField extends BaseSettingsField {
   uniqueField?: string
 }
 
+/**
+ * Per-agent on/off grid. Renders every roster agent with its avatar and a
+ * toggle; the persisted value is the array of enabled agent ids. Reusable by
+ * any plugin that gates a feature per agent.
+ */
+export interface AgentTogglesSettingsField extends BaseSettingsField {
+  type: 'agent-toggles'
+  default?: string[]
+}
+
 export type SettingsField =
   | StringSettingsField
   | NumberSettingsField
   | BooleanSettingsField
   | SelectSettingsField
   | ListSettingsField
+  | AgentTogglesSettingsField
 
 export interface PluginSettingsSchema {
   fields: SettingsField[]
