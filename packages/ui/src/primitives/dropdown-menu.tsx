@@ -13,6 +13,7 @@ import {
   optionSeparatorClasses,
 } from './option-list'
 import { PluginPortalBoundary } from './portal-ownership'
+import { Switch } from './switch'
 
 export type DropdownMenuProps = MenuPrimitive.Root.Props
 export type DropdownMenuPortalProps = MenuPrimitive.Portal.Props
@@ -139,6 +140,20 @@ export function DropdownMenuCheckboxItem({ className, children, checked, inset, 
     <MenuPrimitive.CheckboxItem {...props} checked={checked} data-slot="dropdown-menu-checkbox-item" data-inset={inset || undefined} className={mergeClassName(`${optionItemClasses} data-inset:pl-7`, className)}>
       {children}
       <MenuPrimitive.CheckboxItemIndicator><ItemIndicator /></MenuPrimitive.CheckboxItemIndicator>
+    </MenuPrimitive.CheckboxItem>
+  )
+}
+
+/**
+ * A menu row whose on/off state is a Switch instead of a check — the toggle
+ * stays in place and the menu stays open when flipped. The switch is
+ * decorative; the row itself carries the `menuitemcheckbox` semantics.
+ */
+export function DropdownMenuSwitchItem({ className, children, checked, inset, ...props }: DropdownMenuCheckboxItemProps) {
+  return (
+    <MenuPrimitive.CheckboxItem {...props} checked={checked} data-slot="dropdown-menu-switch-item" data-inset={inset || undefined} className={mergeClassName(optionItemClasses, className)}>
+      <span className="flex min-w-0 flex-1 items-center gap-bakin-2">{children}</span>
+      <Switch checked={checked} size="sm" tabIndex={-1} aria-hidden className="pointer-events-none ml-auto" />
     </MenuPrimitive.CheckboxItem>
   )
 }
