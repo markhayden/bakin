@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react'
+import { Fragment, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 
 import { cn, focusRing } from '../utils'
 import { ListRow, ListRows, type ListRowsVariant } from './list-rows'
@@ -216,15 +216,17 @@ function ComposedNarrowRow<Row, F extends string>({
             ))}
           </span>
           {meta.length > 0 ? (
-            <span className="flex min-w-0 flex-wrap items-baseline gap-x-bakin-2 text-[length:var(--bakin-typography-size-meta)]">
+            <span className="flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1 text-[length:var(--bakin-typography-size-meta)]">
               {meta.map(({ column, content }, index) => (
-                <span key={column.key} className="inline-flex min-w-0 items-baseline gap-x-bakin-1">
+                <Fragment key={column.key}>
                   {index > 0 ? <span aria-hidden="true" className="text-bakin-text-muted">·</span> : null}
-                  {column.hideLabel
-                    ? srHeader(column)
-                    : <span className="text-bakin-text-muted">{column.header}</span>}
-                  <span className="min-w-0 break-words text-bakin-text-primary">{content}</span>
-                </span>
+                  <span className="inline-flex min-w-0 items-center gap-x-bakin-1">
+                    {column.hideLabel
+                      ? srHeader(column)
+                      : <span className="text-bakin-text-muted">{column.header}</span>}
+                    <span className="min-w-0 break-words text-bakin-text-primary">{content}</span>
+                  </span>
+                </Fragment>
               ))}
             </span>
           ) : null}
