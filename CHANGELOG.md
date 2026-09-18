@@ -6,13 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
-### Changed
+## [0.0.1-rc.27] - 2026-09-18
 
+The release that ships persistent shared terminals and makes every setting a link — on top of the Antfly 0.2.0 search stabilization and Hub skills that landed earlier in the window.
+
+### Changed
 - **Antfly v0.2.0 final adopted — the rc-era siege lifts (`tasks/evidence-antfly-0.2.0.md`).** Six weeks after the rc.19–rc.21 evaluation ended in a crash dossier and a re-pin to rc.18, the official 0.2.0 release passed the full hard gate on the target M4: the R4 concurrency killer survived a 45-minute 3-stream embed soak (9,843 batches, zero failures — rc.21 died in 51 seconds), the #382 poison-read and #386 hot-queue-drop crashes are gone, the one-way table migration (#383) became loud two-way refusal with bytes untouched, and the #319 lying-flags family is fixed at scale. The headline: **search stays fully usable during a reindex** — 10,483 queries against a live 20k-doc backfill returned zero failures at 1ms median, where rc.18 measured 194ms median, multi-second tails, and 15 failures on the identical procedure. With the blockers disproven, six rc-era workarounds came out one commit each: filters ride `filter_query` again (and filtered searches now keep semantic recall — the no-leak property is probed and guarded), the #319 and empty-table health overrides retired, the dead rc-era wedge signatures replaced by the one 0.2.0 actually emits, the process-wide write serialization gate removed, and blue/green backfills switched to sync writes on the engine's fast embed lane (~20× the paced async catch-up path). Two new 0.2.0 sharp edges are ticketed upstream and steered around: inline indexes at table-create are silently dead (legs now go through the per-index endpoint, always before the first write) and adding a leg to a populated table wedges it durably (never Bakin's flow; watchdog signature added). The server subcommand is `standalone`; upgrading is a rebuild event as always — `bakin install search` + repair reindex.
 
 ### Added
-
+- **Terminal — persistent shared terminals with per-agent access (#828).** A tmux-backed terminal you and your agents share: open a session in the browser, reattach to it from any device over Tailscale (start one from your phone), and watch an agent work in a live terminal — taking over with a keystroke when it goes off the rails and handing back automatically when you go idle or navigate away. Sessions are named, segmented (Active / Needs review / Completed / All), and always deletable. Repo work runs in a retained git worktree (the branch is the deliverable, torn down only on a clean, provably-merged finish), and agents drive their own sessions through an identity-bound exec tool that can only touch what they're assigned. Access is per-agent and **opt-in** — only the main agent is enabled by default, because a terminal is a real shell running as your user: an enabled agent can read your on-disk secrets, so the enable-agent setting says so in as many words. Powered by new SDK surface shipped here for plugin authors: the `agent-toggles` settings field (a per-agent avatar grid), `DropdownMenuSwitchItem`, and verified-agent exec-tool binding. Install it from onboarding or Explore → Capabilities.
+- **Every setting is a link (#829, #830).** The Settings and Team pages now put their category in the URL (`?tab=`) and let a producer link straight to a single field (`?field=`): a health incident's "fix this" now lands you on the exact setting, tinted and scrolled into view, with the form fully editable and focus never stolen. Health, runtime, and image resolutions deep-link to their category and field; `PluginSettingsRenderer` gains `highlightKey` so any plugin's settings inherit the same behavior.
 - **Hub skills (#687)** — install Agent-Skills-format skills from ClawHub, GitHub skill repos, or local dirs onto whichever runtime is active. Paste a clawhub.ai/github.com link into `bakin skills install` or the Explore → Capabilities install box; every install shows a trust preview (files, translated requirements, hub security verdict, instruction-risk warnings) behind a consent gate — hub-flagged malware is refused with no override, versions are pinned, provenance recorded. `bakin skills {install,list,remove,map}`; `skills map` dispatches an agent to map unrecognized requirements with mechanically verified output. Also: Pi adapter now projects nested skill files with exec bits on scripts, `runtimes`/`platforms` manifest gates are enforced server-side at install, and secret saves live-inject declared env vars (no more restart after the guided key step).
+- **Storybook is the executable contract — three-tier catalog + live playground (#783–#803).** Public Storybook is reorganized into Tokens / Components / Recipes, every public component gains real interactive controls (a playground, not static stories), and Recipes document composed patterns like filterable-table and form-in-drawer. Underneath, a fourth kit-conformance pass moved the official surface fully onto the shared design system — DataTable self-sorts any table with headers, typography/tabs/table primitives relocated into the kit, host chrome migrated, and the kit's shared internals got a written contract with story-compliance and controls ratchets that enforce it. Mostly plugin-author-facing — and the reason the Terminal plugin above composes the kit end-to-end without a single escape hatch.
+
+### Fixed
+- **Assets debug overlay + tasks board polish (#813–#816).** The debug score overlay no longer covers the selection checkbox (top-aligned, flush-right to the size callout), and the tasks board fills viewport height so its scroll rail pins to the window bottom.
 
 ## [0.0.1-rc.26] - 2026-07-24
 
@@ -470,5 +478,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.25]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.25
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.26...HEAD
 [0.0.1-rc.26]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.26
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.27...HEAD
+[0.0.1-rc.27]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.27
