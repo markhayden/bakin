@@ -15,7 +15,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { StatusBadge, type StatusBadgeVariant, type StatusTone } from '@makinbakin/sdk/patterns'
 import { Alert, AlertDescription, Badge, Button, Field, FieldLabel, Input, Skeleton } from '@makinbakin/sdk/ui'
 
-export const PROVIDER_KEYS_TAB_ID = '__provider_keys__'
+export const PROVIDER_KEYS_TAB_ID = 'integrations'
 
 interface ReadinessRow {
   id: string

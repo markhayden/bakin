@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   Alert,
   AlertDescription,
@@ -74,6 +74,29 @@ export interface PluginSettingsRendererProps {
   resetLabel?: string
   ariaLabel?: string
   className?: string
+  /**
+   * Field key a deep link points at (`?field=<key>` on the host settings page).
+   * The matching field is marked `data-highlighted="true"` and scrolled into
+   * view once per key; re-renders never re-scroll, and clearing the key re-arms
+   * it. Unknown keys are inert. Never steals focus.
+   */
+  highlightKey?: string
+}
+
+/** Applied to every field; only bites while `data-highlighted` is present. */
+const HIGHLIGHT_CLASSES =
+  'data-highlighted:-mx-bakin-2 data-highlighted:rounded-bakin-surface data-highlighted:bg-bakin-action-primary-background/10 data-highlighted:px-bakin-2 data-highlighted:py-bakin-2'
+
+/** Marker + ref for the ONE field a deep link targets. */
+interface HighlightProps {
+  highlighted?: boolean
+  highlightRef?: (node: HTMLElement | null) => void
+}
+
+function highlightAttrs({ highlighted, highlightRef }: HighlightProps) {
+  return highlighted
+    ? { 'data-highlighted': 'true' as const, ref: highlightRef }
+    : {}
 }
 
 function defaultForField(field: SettingsField): unknown {
@@ -162,7 +185,7 @@ function validateSettings(
   return errors
 }
 
-interface ScalarFieldProps {
+interface ScalarFieldProps extends HighlightProps {
   field: ScalarSettingsField
   value: unknown
   onChange: (value: unknown) => void
@@ -177,13 +200,23 @@ function ScalarField({
   disabled,
   error,
   field,
+  highlighted,
+  highlightRef,
   name,
   onChange,
   value,
 }: ScalarFieldProps) {
+  const highlight = highlightAttrs({ highlighted, highlightRef })
   if (field.type === 'boolean') {
     return (
-      <Field name={name} orientation="horizontal" invalid={Boolean(error)} disabled={disabled}>
+      <Field
+        name={name}
+        orientation="horizontal"
+        invalid={Boolean(error)}
+        disabled={disabled}
+        className={HIGHLIGHT_CLASSES}
+        {...highlight}
+      >
         <Switch size="sm" checked={Boolean(value)} onCheckedChange={onChange} disabled={disabled} />
         <FieldLabel requirement={field.required ? 'required' : undefined}>{field.label}</FieldLabel>
         {!compact && field.description ? <FieldDescription>{field.description}</FieldDescription> : null}
@@ -193,7 +226,7 @@ function ScalarField({
   }
 
   return (
-    <Field name={name} invalid={Boolean(error)} disabled={disabled}>
+    <Field name={name} invalid={Boolean(error)} disabled={disabled} className={HIGHLIGHT_CLASSES} {...highlight}>
       <FieldLabel requirement={field.required ? 'required' : undefined}>{field.label}</FieldLabel>
       {!compact && field.description ? <FieldDescription>{field.description}</FieldDescription> : null}
       {field.type === 'select' ? (
@@ -227,7 +260,7 @@ function ScalarField({
   )
 }
 
-interface ListFieldProps {
+interface ListFieldProps extends HighlightProps {
   field: ListSettingsField
   value: unknown
   onChange: (value: unknown) => void
@@ -251,7 +284,7 @@ function DeleteIcon() {
   )
 }
 
-function ListField({ disabled, error, field, onChange, value }: ListFieldProps) {
+function ListField({ disabled, error, field, highlighted, highlightRef, onChange, value }: ListFieldProps) {
   const rows = Array.isArray(value) ? value as Record<string, unknown>[] : []
   const canAdd = field.maxItems === undefined || rows.length < field.maxItems
   const minimum = field.minItems ?? (field.required ? 1 : 0)
@@ -266,7 +299,8 @@ function ListField({ disabled, error, field, onChange, value }: ListFieldProps) 
     <Fieldset
       disabled={disabled}
       aria-invalid={Boolean(error)}
-      className="grid-cols-1"
+      className={cn('grid-cols-1', HIGHLIGHT_CLASSES)}
+      {...highlightAttrs({ highlighted, highlightRef })}
     >
       <div className="grid min-w-0 gap-bakin-1">
         <FieldsetLegend>{field.label}</FieldsetLegend>
@@ -389,6 +423,7 @@ export function PluginSettingsRenderer({
   className,
   disabled = false,
   feedback,
+  highlightKey,
   onReset,
   onSubmit,
   onValidationError,
@@ -410,6 +445,25 @@ export function PluginSettingsRenderer({
     setDraft(initial)
     setErrors({})
   }, [initial, initialSignature])
+
+  // Deep-link highlight: scroll to the target ONCE per key. The form re-renders
+  // on every keystroke and values refresh; re-scrolling then would yank the
+  // viewport mid-interaction. Clearing the key re-arms so a later link to the
+  // same field scrolls again.
+  const highlightNode = useRef<HTMLElement | null>(null)
+  const scrolledFor = useRef<string | null>(null)
+  const setHighlightNode = useCallback((node: HTMLElement | null) => {
+    highlightNode.current = node
+  }, [])
+  useEffect(() => {
+    if (!highlightKey) {
+      scrolledFor.current = null
+      return
+    }
+    if (scrolledFor.current === highlightKey || !highlightNode.current) return
+    highlightNode.current.scrollIntoView?.({ block: 'center' })
+    scrolledFor.current = highlightKey
+  }, [highlightKey])
 
   function setValue(key: string, value: unknown) {
     setDraft((current) => ({ ...current, [key]: value }))
@@ -454,6 +508,8 @@ export function PluginSettingsRenderer({
           error={errors[field.key]}
           disabled={disabled || busy}
           onChange={(value) => setValue(field.key, value)}
+          highlighted={highlightKey === field.key}
+          highlightRef={setHighlightNode}
         />
       ) : field.type === 'agent-toggles' ? (
         <AgentTogglesField
@@ -473,6 +529,8 @@ export function PluginSettingsRenderer({
           error={errors[field.key]}
           disabled={disabled || busy}
           onChange={(value) => setValue(field.key, value)}
+          highlighted={highlightKey === field.key}
+          highlightRef={setHighlightNode}
         />
       ))}
 

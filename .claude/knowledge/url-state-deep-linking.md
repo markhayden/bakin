@@ -103,6 +103,8 @@ registerPlugin({
 | `jobId` | string | job id | Deep-link to open schedule job detail drawer |
 | `recordId` | string | memory rowId (`<tier>:<hash>`) | Deep-link to open memory detail drawer (resolved via `GET /record`) |
 | `lessonId` | string | lesson id | Highlight + scroll to a lesson on the team Lessons tab (`?tab=lessons`) |
+| `tab` | string | `overview`, `system`, `models`, … | Active tab / category of a page; the default tab is omitted. On `/settings` the values are `system` (System & Alerts, default), `integrations` (Integrations & Keys), or a plugin id |
+| `field` | string | settings field key (`dispatch.paused`) | Highlight + scroll ONCE to one field on `/settings?tab=<category>` (kit `PluginSettingsRenderer` `highlightKey`); inert on `integrations` and for unknown keys; dropped when the category changes |
 | `mode` | string | `create`, `edit`, `duplicate` | Form mode (schedule plugin) |
 | `page` | string | `1`, `2` | Pagination page number |
 | `sort` | string | `name`, `size`, `created`, `type` | Sort column (list view) |
@@ -174,3 +176,4 @@ Pattern: client-side filtering runs immediately (instant feedback), search fires
 | Memory | ✅ Done | `q` (search query), `tier` (multi-select), `agent` (single-select — shared avatar-strip `AgentFilter`), `kind` (multi-select, durable-only), `recordId` (deep link — detail drawer, ⌘K target). Landing page is the search surface — no sub-routes. |
 | Projects | ✅ Done | `status`, `q` on list; path-based `/projects/[id]` and `/projects/[id]/edit` for detail |
 | Models | ✅ Done | `tab` (agents/available/aliases/routing/spend) |
+| Settings (host) | ✅ Done | `tab` (`system` default / `integrations` / `<pluginId>`; unknown → `system` via replace, only after schemas load), `field` (one-shot field highlight). Producers: health `delivery-discord` ×4, `channel-aliases`, images `providers-unavailable`, runtime Capabilities tab. Spec `.claude/specs/settings-url-state.md`. |

@@ -15,6 +15,8 @@ export interface PluginSettingsRendererProps {
   schema: PluginSettingsSchema
   values: Record<string, unknown>
   onSave: (values: Record<string, unknown>) => Promise<void>
+  /** Field key a `?field=` deep link targets; passed through to the kit form. */
+  highlightKey?: string
 }
 
 /**
@@ -22,6 +24,7 @@ export interface PluginSettingsRendererProps {
  * renderer from `@makinbakin/sdk/patterns` and own persistence feedback.
  */
 export function PluginSettingsRenderer({
+  highlightKey,
   onSave,
   pluginId,
   schema,
@@ -74,6 +77,7 @@ export function PluginSettingsRenderer({
       saveLabel="Save"
       busyLabel="Saving..."
       ariaLabel={`${pluginId} settings`}
+      highlightKey={highlightKey}
     />
   )
 }

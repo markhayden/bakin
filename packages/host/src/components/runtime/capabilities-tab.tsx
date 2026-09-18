@@ -120,6 +120,7 @@ export function CapabilitiesTab() {
                     {cap.secrets.some((s) => s.status === 'missing') && (
                       <Link
                         to="/settings"
+                        search={{ tab: 'integrations' }}
                         className={buttonVariants({ variant: 'outline', size: 'sm' })}
                       >
                         Add the key in Settings

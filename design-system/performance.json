@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 191880,
+    "canonicalBytes": 192625,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -19,7 +19,7 @@
   },
   "hostInitialJs": {
     "path": "packages/host/dist/main.js",
-    "bytes": 231401
+    "bytes": 231963
   },
   "sdkUiBundles": [
     {
@@ -38,7 +38,7 @@
       "name": "sdk-conversation",
       "path": "packages/host/public/vendor/sdk-conversation.js",
       "bytes": 55829,
-      "reachableBytes": 660619
+      "reachableBytes": 661390
     },
     {
       "name": "sdk-layout",
@@ -56,7 +56,7 @@
       "name": "sdk-patterns",
       "path": "packages/host/public/vendor/sdk-patterns.js",
       "bytes": 2468,
-      "reachableBytes": 567904
+      "reachableBytes": 568675
     },
     {
       "name": "sdk-ui",
@@ -179,8 +179,8 @@
       "bytes": 1264
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-r3qk2h74.js",
-      "bytes": 31328
+      "path": "packages/host/public/vendor/sdk-shared-r50ndrk1.js",
+      "bytes": 32099
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-t4hfcfsj.js",

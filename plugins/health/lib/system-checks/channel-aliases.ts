@@ -88,7 +88,7 @@ export async function checkChannelAliases(runtime: Pick<AgentRuntimeAdapter, 'ch
           key: 'open-settings',
           type: 'navigate',
           label: 'Review channel aliases',
-          href: '/settings',
+          href: '/settings?tab=system',
         },
       },
     })])
