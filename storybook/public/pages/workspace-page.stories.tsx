@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect } from 'storybook/test'
+import { expect, waitFor } from 'storybook/test'
 
 import {
   PageHeader,
@@ -203,5 +203,15 @@ export const ImmersiveCanvas = {
     await expect(body!.className).toContain(
       'h-[calc(100%-var(--bakin-workspace-compact-header-height))]',
     )
+    const originalHeight = header!.style.height
+    try {
+      // Wrapped titles can leave a fractional header height at the scroll boundary.
+      header!.style.height = `${Math.floor(header!.getBoundingClientRect().height) + 0.375}px`
+      page.scrollTop = page.scrollHeight
+      await waitFor(() => expect(compact!).toHaveAttribute('data-stuck'))
+    } finally {
+      header!.style.height = originalHeight
+      page.scrollTop = 0
+    }
   },
 } satisfies Story

@@ -248,7 +248,12 @@ export function WorkflowDetail() {
 The host owns the page's `main` landmark and vertical scroll. These recipes therefore render no nested `main`, fixed-height page pane, or vertical scroller. Put a truly wide table or canvas inside `BoundedOverflow`; do not make the entire list or detail body horizontally scrollable.
 
 :::note[Mobile table rows: declare narrow roles]
-`DataTable` collapses to `ListRows` in narrow containers. Do not leave a
+`DataTable` fills its container with wrapping cells by default, including long
+unbroken values such as paths. Column `headClassName` and `cellClassName` can
+preserve explicit widths, minimum widths, or `whitespace-nowrap`; only those
+constraints or intrinsically wide content require local horizontal scrolling.
+The default `collapseBelow="none"` keeps the table at every width. Opting into
+a collapse breakpoint switches to `ListRows` in narrow containers. Do not leave a
 data-dense table on the flat label/value fallback — declare a `narrow` role
 per column (`primary`, `leading`, `trailing`, `meta`, `label`, `hidden`) so
 the kit composes one consistent mobile card: identity bold, status trailing
@@ -257,6 +262,10 @@ on the same line, metadata folded into one muted dot-separated line. Use
 `null` to drop an absent value). `renderRow` remains the escape hatch for
 genuinely bespoke rows, not the default. See the DataTable `NarrowRoles`
 story for the executable contract.
+
+Row menus belong in a column's `cell`, with `hideLabel` for an accessible but
+visually hidden Actions header. `onRowActivate` ignores nested controls, links,
+and portalled menu events; consumers do not need a second row-click handler.
 :::
 
 :::note[Every table with headers sorts]

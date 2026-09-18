@@ -9,6 +9,7 @@
  */
 
 export interface BakinMcpServerEntry {
+  headers?: Record<string, string>
   url?: string
   description?: string
   /** OpenClaw per-server MCP request timeout (ms). */
@@ -76,10 +77,11 @@ function isScopedToAgent(entry: BakinMcpServerEntry, agent: string): boolean {
 }
 
 /** Whether an existing entry already matches the golden shape for `agent`. */
-function isCurrentEntry(entry: BakinMcpServerEntry | undefined, agent: string, url: string): boolean {
+function isCurrentEntry(entry: BakinMcpServerEntry | undefined, agent: string, url: string, credential?: string): boolean {
   return (
     entry !== undefined &&
     entry.url === url &&
+    entry.headers?.Authorization === (credential ? `Bearer ${credential}` : undefined) &&
     entry.requestTimeoutMs === BAKIN_MCP_REQUEST_TIMEOUT_MS &&
     entry.type === BAKIN_MCP_TRANSPORT_TYPE &&
     isScopedToAgent(entry, agent)
@@ -95,6 +97,7 @@ export function applyBakinMcpEntries(
   config: BakinMcpConfig,
   agents: string[],
   baseUrl: string,
+  getCredential?: (agentId: string) => string,
 ): string[] {
   config.mcp ??= {}
   config.mcp.servers ??= {}
@@ -105,8 +108,10 @@ export function applyBakinMcpEntries(
     const name = serverName(agent)
     const url = mcpUrl(agent, baseUrl)
     const existing = servers[name]
-    if (!isCurrentEntry(existing, agent, url)) {
+    const credential = getCredential?.(agent)
+    if (!isCurrentEntry(existing, agent, url, credential)) {
       servers[name] = {
+        ...(credential ? { headers: { Authorization: `Bearer ${credential}` } } : {}),
         url,
         description: `Bakin MCP for ${agent}`,
         requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS,
@@ -153,13 +158,14 @@ export function verifyBakinMcpEntries(
   config: BakinMcpConfig,
   agents: string[],
   baseUrl: string,
+  getCredential?: (agentId: string) => string,
 ): BakinMcpVerifyStatus {
   const servers = config.mcp?.servers ?? {}
   const agentEntries = agents.map((agent) => {
     const name = serverName(agent)
     const expectedUrl = mcpUrl(agent, baseUrl)
     const entry = servers[name]
-    const correct = isCurrentEntry(entry, agent, expectedUrl)
+    const correct = isCurrentEntry(entry, agent, expectedUrl, getCredential?.(agent))
     return { agent, name, url: entry?.url ?? '', correct }
   })
   const staleEntries = Object.keys(servers).filter(

@@ -13,7 +13,7 @@ const meta = {
   parameters: {
     layout: 'fullscreen',
     docs: { description: { component: 'Tooltip provides concise supplemental context on hover and keyboard focus. Icon-only triggers still need their own accessible name; required instructions and errors must remain visible without the tooltip.' } },
-    bakinCoverage: ['desktop', 'keyboard'],
+    bakinCoverage: ['desktop', 'keyboard', 'mobile-320', 'overflow'],
   },
 } satisfies Meta<typeof Tooltip>
 
@@ -79,6 +79,11 @@ export const Behavior = {
     // Pointer path: hover shows, unhover hides.
     await userEvent.hover(trigger)
     await waitFor(() => expect(page.getByRole('tooltip')).toBeVisible())
+    await waitFor(() => {
+      const bounds = page.getByRole('tooltip').getBoundingClientRect()
+      expect(bounds.left).toBeGreaterThanOrEqual(0)
+      expect(bounds.right).toBeLessThanOrEqual(window.innerWidth)
+    })
     await userEvent.unhover(trigger)
     await waitFor(() => expect(page.queryByRole('tooltip')).not.toBeInTheDocument())
     // Keyboard path: focus shows without any pointer, Escape dismisses.

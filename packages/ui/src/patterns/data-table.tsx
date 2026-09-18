@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react'
+import { Fragment, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 
 import { cn, focusRing } from '../utils'
 import { ListRow, ListRows, type ListRowsVariant } from './list-rows'
@@ -31,7 +31,9 @@ interface DataTableColumnBase<Row> {
    * fallback; declared anywhere = the composed narrow card.
    */
   narrow?: DataTableNarrowRole
+  /** Header constraints, such as a width or explicit non-wrapping label. */
   headClassName?: string
+  /** Cells wrap by default; explicit width/min-width/whitespace classes override this. */
   cellClassName?: string
   /**
    * Cell content for one row. Defaults to `row[key]` when the row is a plain
@@ -99,8 +101,9 @@ export interface DataTableProps<Row, F extends string = string> {
    * Container-query breakpoint (measured on the DataTable itself, never the
    * viewport) below which the list render replaces the table.
    *
-   * Defaults to `'none'` — the table stays a table at every width and scrolls
-   * horizontally inside its own container. Every consumer in the fleet chose
+   * Defaults to `'none'` — the table stays a table at every width. Flexible
+   * cells wrap to fit; explicit constraints or intrinsically wide content
+   * can still scroll horizontally inside its container. Every consumer chose
    * this explicitly, so it is the default rather than a prop each caller has
    * to remember; comparable records read better as aligned columns than as
    * stacked label/value pairs. Opt into `'xl' | '2xl' | '3xl'` when a table's
@@ -213,15 +216,17 @@ function ComposedNarrowRow<Row, F extends string>({
             ))}
           </span>
           {meta.length > 0 ? (
-            <span className="flex min-w-0 flex-wrap items-baseline gap-x-bakin-2 text-[length:var(--bakin-typography-size-meta)]">
+            <span className="flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1 text-[length:var(--bakin-typography-size-meta)]">
               {meta.map(({ column, content }, index) => (
-                <span key={column.key} className="inline-flex min-w-0 items-baseline gap-x-bakin-1">
+                <Fragment key={column.key}>
                   {index > 0 ? <span aria-hidden="true" className="text-bakin-text-muted">·</span> : null}
-                  {column.hideLabel
-                    ? srHeader(column)
-                    : <span className="text-bakin-text-muted">{column.header}</span>}
-                  <span className="min-w-0 break-words text-bakin-text-primary">{content}</span>
-                </span>
+                  <span className="inline-flex min-w-0 items-center gap-x-bakin-1">
+                    {column.hideLabel
+                      ? srHeader(column)
+                      : <span className="text-bakin-text-muted">{column.header}</span>}
+                    <span className="min-w-0 break-words text-bakin-text-primary">{content}</span>
+                  </span>
+                </Fragment>
               ))}
             </span>
           ) : null}
@@ -343,7 +348,14 @@ export function DataTable<Row, F extends string = string>({
       ? {
           tabIndex: 0,
           'aria-label': rowActivateLabel?.(row),
-          onClick: () => onRowActivate(row),
+          onClick: (event) => {
+            const target = event.target
+            // Portals still bubble through React; nested controls own their action.
+            if (event.defaultPrevented || !(target instanceof Element) || !event.currentTarget.contains(target)) return
+            const control = target.closest('a[href],button,input,select,textarea,label,summary,[role="button"],[role="link"],[role="checkbox"],[role="menuitem"],[contenteditable]:not([contenteditable="false"]),[tabindex]')
+            if (control && control !== event.currentTarget) return
+            onRowActivate(row)
+          },
           onKeyDown: (event) => {
             if (event.currentTarget !== event.target || (event.key !== 'Enter' && event.key !== ' ')) return
             event.preventDefault()
@@ -425,7 +437,7 @@ export function DataTable<Row, F extends string = string>({
                         key={column.key}
                         data-slot="table-cell"
                         className={cn(
-                          'whitespace-nowrap p-bakin-2 align-middle',
+                          'whitespace-normal wrap-anywhere p-bakin-2 align-middle',
                           ALIGN_CLASS[column.align ?? 'start'],
                           column.cellClassName,
                         )}

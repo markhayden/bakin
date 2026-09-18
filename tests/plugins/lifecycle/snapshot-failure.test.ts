@@ -90,7 +90,7 @@ function seed(pluginId: string): void {
   const pluginDir = join(testDir, 'plugins', pluginId)
   mkdirSync(pluginDir, { recursive: true })
   writeFileSync(join(pluginDir, 'bakin-plugin.json'),
-    JSON.stringify({ id: pluginId, name: pluginId, version: '1.0.0' }),
+    JSON.stringify({ id: pluginId, name: pluginId, description: 'Snapshot failure fixture', version: '1.0.0', bakin: '>=0.0.1', permissions: [], contributes: { apiRoutes: [], execTools: [], clientRoutes: [] } }),
     'utf-8')
   writePluginLockfile(addPlugin(readPluginLockfile(), pluginId, {
     source: pluginDir,

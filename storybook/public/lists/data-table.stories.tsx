@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useMemo, useState } from 'react'
-import { expect, fn, userEvent, waitFor, within } from 'storybook/test'
+import { expect, fn, waitFor, within } from 'storybook/test'
 
 import {
   DataTable,
@@ -11,6 +11,7 @@ import {
 } from '@makinbakin/sdk/patterns'
 
 import { StorySection, StoryStage } from '../../support'
+import { Button, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@makinbakin/sdk/ui'
 
 const meta = {
   title: 'Components/Lists/DataTable',
@@ -39,8 +40,7 @@ interface DataTableCanonicalArgs {
 export const CanonicalUsage = {
   parameters: { layout: 'padded' },
   args: {
-    // Matches the component default: a table stays a table and scrolls
-    // horizontally. The control below explores opting into collapsing.
+    // Flexible columns fit the container; explicit minimum widths can scroll.
     collapseBelow: 'none',
     listVariant: 'separated',
   },
@@ -82,10 +82,24 @@ export const CanonicalUsage = {
     await expect(table).toBeVisible()
     await expect(canvas.getAllByRole('columnheader')).toHaveLength(3)
     await expect(canvas.getAllByRole('row')).toHaveLength(3)
+    const container = table.parentElement!
+    const originalWidth = container.style.width
+    const cell = table.querySelector('td')!
+    const originalText = cell.textContent
+    cell.textContent = `/workspace/${'long-directory-'.repeat(20)}`
+    container.style.width = '320px'
+    await waitFor(() => expect(container.scrollWidth).toBeLessThanOrEqual(container.clientWidth + 1))
+    // Constraints are intentional: they may require scrolling, but only here.
+    cell.style.minWidth = '400px'
+    await waitFor(() => expect(container.scrollWidth).toBeGreaterThan(container.clientWidth))
+    cell.style.minWidth = ''
+    cell.textContent = originalText
+    container.style.width = originalWidth
   },
 } satisfies StoryObj<DataTableCanonicalArgs>
 
 const activateRow = fn()
+const rowAction = fn()
 
 export const ActivatableRows = {
   parameters: {
@@ -102,6 +116,10 @@ export const ActivatableRows = {
       columns={[
         { key: 'task', header: 'Task' },
         { key: 'status', header: 'Status' },
+        { key: 'actions', header: 'Actions', hideLabel: true, headClassName: 'w-12', cell: (row) => <DropdownMenu>
+          <DropdownMenuTrigger render={<Button size="sm" variant="ghost" aria-label={`Actions for ${row.task}`} />}>Actions</DropdownMenuTrigger>
+          <DropdownMenuContent><DropdownMenuItem onClick={() => rowAction(row.id)}>Archive</DropdownMenuItem></DropdownMenuContent>
+        </DropdownMenu> },
       ]}
       rows={[
         { id: 'run-1', task: 'Publish launch announcement', status: 'Done' },
@@ -112,8 +130,9 @@ export const ActivatableRows = {
       rowActivateLabel={(row) => `Open ${row.task}`}
     />
   ),
-  play: async ({ canvas }) => {
+  play: async ({ canvas, userEvent }) => {
     activateRow.mockClear()
+    rowAction.mockClear()
     const row = canvas.getAllByRole('row', { name: 'Open Publish launch announcement' })[0]!
     await expect(row.getAttribute('tabindex')).toBe('0')
     await userEvent.click(row)
@@ -122,6 +141,11 @@ export const ActivatableRows = {
     row.focus()
     await userEvent.keyboard('{Enter}')
     await expect(activateRow).toHaveBeenCalledTimes(2)
+    await userEvent.click(within(row).getByRole('button', { name: 'Actions for Publish launch announcement' }))
+    await userEvent.click(await within(document.body).findByRole('menuitem', { name: 'Archive' }))
+    await expect(rowAction).toHaveBeenCalledWith('run-1')
+    await expect(activateRow).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(document.querySelector('[data-slot="dropdown-menu-content"]')).toBeNull())
   },
 } satisfies StoryObj
 

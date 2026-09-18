@@ -49,6 +49,8 @@ export interface ApprovalActor {
 // Storage
 // ---------------------------------------------------------------------------
 export interface StorageAdapter {
+  /** Absolute private root when backed by a local filesystem. Not browser assets. */
+  readonly localRoot?: string
   read(path: string): string | null
   write(path: string, content: string): void
   append(path: string, content: string): void
@@ -142,6 +144,8 @@ export type { ExecToolResult } from '@makinbakin/sdk/types'
 /** Definition for a registerable execution tool */
 /** Context available to exec tool handlers — provides access to plugin services */
 export interface PluginToolContext {
+  /** Set only by a verified transport, never from tool parameters. */
+  invocation?: { agentId: string }
   storage: StorageAdapter
   events: EventBus
   pluginId: string
@@ -155,6 +159,8 @@ export interface PluginToolContext {
 }
 
 export interface ExecToolDefinition<Shape extends ZodRawShape = ZodRawShape> {
+  /** Reject unverified HTTP/MCP callers before invoking the handler. */
+  requiresVerifiedAgent?: boolean
   name: string
   description: string
   label?: string // Short human-readable action phrase for activity feed (e.g., "Created a task")
@@ -778,12 +784,23 @@ export interface ListSettingsField extends BaseSettingsField {
   uniqueField?: string
 }
 
+/**
+ * Per-agent on/off grid. Renders every roster agent with its avatar and a
+ * toggle; the persisted value is the array of enabled agent ids. Reusable by
+ * any plugin that gates a feature per agent.
+ */
+export interface AgentTogglesSettingsField extends BaseSettingsField {
+  type: 'agent-toggles'
+  default?: string[]
+}
+
 export type SettingsField =
   | StringSettingsField
   | NumberSettingsField
   | BooleanSettingsField
   | SelectSettingsField
   | ListSettingsField
+  | AgentTogglesSettingsField
 
 export interface PluginSettingsSchema {
   fields: SettingsField[]
@@ -816,6 +833,8 @@ export interface BakinPlugin {
    * a half-removed state.
    */
   onUninstall?(ctx: PluginContext): void | Promise<void>
+  /** Preflight before destructive removal. A rejection aborts removal. */
+  beforeUninstall?(ctx: PluginContext): void | Promise<void>
   /** Declarative settings schema for auto-generated settings UI */
   settingsSchema?: PluginSettingsSchema
   navItems?: NavItem[]

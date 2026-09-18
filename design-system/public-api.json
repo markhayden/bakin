@@ -10,7 +10,7 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 301,
+    "valueExports": 302,
     "typeExports": 406
   },
   "entrypoints": [
@@ -85,6 +85,7 @@
         "DropdownMenuSub",
         "DropdownMenuSubContent",
         "DropdownMenuSubTrigger",
+        "DropdownMenuSwitchItem",
         "DropdownMenuTrigger",
         "Field",
         "FieldControl",

@@ -163,6 +163,8 @@ export interface AdapterInitOpts {
    * (Pi) ignore it.
    */
   bakinMcpBaseUrl?: string
+  /** Host-issued credential scoped to a single agent; never log this value. */
+  getMcpCredential?: (agentId: string) => string
 }
 
 export interface AdapterVersionInfo {

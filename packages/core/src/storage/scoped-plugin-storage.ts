@@ -19,6 +19,7 @@ function assertSafePluginId(pluginId: string): void {
 }
 
 export class ScopedPluginStorageAdapter implements StorageAdapter {
+  get localRoot(): string { return this.root }
   readonly root: string
   private readonly pluginId: string
 

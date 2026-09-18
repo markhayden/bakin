@@ -59,6 +59,26 @@ beforeEach(() => {
 })
 
 describe('MCP tool policy', () => {
+  it('rejects protected tools on unverified MCP and generic HTTP transports', async () => {
+    const name = `bakin_exec_verified_${Date.now()}`
+    const { addExecTool } = await import('@/core/exec-tools/registry')
+    const handler = mock(async () => ({ ok: true }))
+    addExecTool({ name, description: 'Protected test', parameters: {}, requiresVerifiedAgent: true, handler })
+    const unverified = await connectPolicyClient('patch')
+    try {
+      expect((await unverified.client.callTool({ name, arguments: {} })).isError).toBe(true)
+      expect(handler).not.toHaveBeenCalled()
+    } finally { await unverified.close() }
+    const { post } = await import('../../packages/host/src/api/exec-tools/[toolName]')
+    const url = new URL(`http://localhost/api/exec-tools/${name}`)
+    expect((await post(new Request(url, { method: 'POST', body: JSON.stringify({ agent: 'patch', params: {} }) }), url)).status).toBe(403)
+    expect(handler).not.toHaveBeenCalled()
+    const verified = await connectPolicyClient('patch', true)
+    try {
+      expect((await verified.client.callTool({ name, arguments: {} })).isError).toBeFalsy()
+      expect(handler).toHaveBeenCalledTimes(1)
+    } finally { await verified.close() }
+  })
   it('lists and invokes only tools allowed by a managed agent package', async () => {
     const suffix = `managed_${Date.now()}`
     const allowedTool = `bakin_exec_policy_allowed_${suffix}`
@@ -202,10 +222,10 @@ function registerDummyTool(name: string): void {
   })
 }
 
-async function connectPolicyClient(agentId: string): Promise<{ client: Client; close: () => Promise<void> }> {
+async function connectPolicyClient(agentId: string, verified = false): Promise<{ client: Client; close: () => Promise<void> }> {
   const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
   const server = new McpServer({ name: `bakin-policy-${agentId}`, version: '1.0.0' })
-  registerTools(server, () => agentId)
+  registerTools(server, () => agentId, verified)
 
   const client = new Client({ name: `policy-client-${agentId}`, version: '1.0.0' })
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()

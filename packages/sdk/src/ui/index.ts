@@ -131,6 +131,7 @@ export type {
 export {
   DropdownMenu,
   DropdownMenuCheckboxItem,
+  DropdownMenuSwitchItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,

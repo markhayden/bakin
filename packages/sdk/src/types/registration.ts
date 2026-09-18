@@ -82,6 +82,8 @@ export interface ExecToolResult {
 
 /** Context passed to an exec tool handler. Subset of PluginContext sans UI registration. */
 export interface PluginToolContext {
+  /** Verified caller, set by the host transport and absent on untrusted calls. */
+  invocation?: { agentId: string }
   /** Plugin-scoped storage adapter. */
   storage: StorageAdapter
   /** Cross-plugin event bus. */
@@ -106,6 +108,8 @@ export interface PluginToolContext {
 
 /** MCP exec tool definition registered via `ctx.registerExecTool()`. */
 export interface ExecToolDefinition<Shape extends ZodRawShape = ZodRawShape> {
+  /** Requires a runtime-bound or credential-verified caller. */
+  requiresVerifiedAgent?: boolean
   /** Tool name. Convention: `bakin_exec_{pluginId}_{action}`. */
   name: string
   /** Description shown to the agent (used for tool selection). */
@@ -233,6 +237,15 @@ export interface ListSettingsField extends BaseSettingsField {
   uniqueField?: string
 }
 
+/**
+ * Per-agent on/off grid. The renderer lists every agent in the roster with its
+ * avatar and a toggle; the stored value is the array of enabled agent ids.
+ */
+export interface AgentTogglesSettingsField extends BaseSettingsField {
+  type: 'agent-toggles'
+  default?: string[]
+}
+
 /** Union of all supported settings field types. */
 export type SettingsField =
   | StringSettingsField
@@ -240,6 +253,7 @@ export type SettingsField =
   | BooleanSettingsField
   | SelectSettingsField
   | ListSettingsField
+  | AgentTogglesSettingsField
 
 /** Plugin settings schema — declares fields rendered on the settings page. */
 export interface PluginSettingsSchema {

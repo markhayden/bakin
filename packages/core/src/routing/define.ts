@@ -73,6 +73,7 @@ export interface DefinePluginInput {
   onShutdown?(): void | Promise<void>
   onSettingsChange?(settings: Record<string, unknown>): void | Promise<void>
   onUninstall?(ctx: any): void | Promise<void>
+  beforeUninstall?(ctx: any): void | Promise<void>
   settingsSchema?: PluginSettingsSchema
   navItems?: NavItem[]
   contentFiles?: ContentFile[]

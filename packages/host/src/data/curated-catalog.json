@@ -370,6 +370,31 @@
       "builtin": true
     },
     {
+      "id": "terminal",
+      "kind": "plugin",
+      "name": "Terminal",
+      "emoji": "🖥️",
+      "description": "Persistent shared terminals with per-agent access and retained coding worktrees.",
+      "category": "Engineering",
+      "tags": [
+        "terminal",
+        "shell",
+        "tmux"
+      ],
+      "useCases": [
+        "Open a persistent shell you can reattach to from any device",
+        "Watch an agent work in a live terminal and take over when it goes off the rails",
+        "Keep a coding session's worktree until the work is reviewed"
+      ],
+      "source": "github:markhayden/bakin-bits-official#plugins/terminal",
+      "ref": null,
+      "trust": "official",
+      "dependencies": [
+        "git"
+      ],
+      "defaultSelected": false
+    },
+    {
       "id": "explore",
       "kind": "plugin",
       "name": "Explore",

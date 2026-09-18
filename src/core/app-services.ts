@@ -5,6 +5,7 @@ import {
   resolveAntflyPassword,
 } from '@bakin/core/media'
 import { appendAudit } from './audit'
+import { getMcpCredential } from './mcp-credentials'
 import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
 import { createRuntimeExecToolProvider } from './exec-tools/provider'
@@ -103,6 +104,7 @@ export async function createAppServices(): Promise<AppServices> {
     onToolActivity,
     onTurnActivity,
     bakinMcpBaseUrl: resolveBakinMcpBaseUrl(),
+    getMcpCredential,
     // Handle only (#669): runtimes without native delivery expose
     // runtime.channels by delegating to this when configured. Boot/shutdown
     // stay server-owned (server.ts / lifecycle.ts) — createAppServices is

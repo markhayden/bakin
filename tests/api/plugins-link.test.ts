@@ -123,6 +123,14 @@ describe('POST /api/plugins/link — refusal mapping', () => {
 })
 
 describe('POST /api/plugins/unlink', () => {
+  it('keeps persistent plugins linked until the removal preflight can run', async () => {
+    writeManifest(sourceDir, { id: 'persistent', name: 'Persistent', version: '0.1.0', permissions: [], uninstallPreflightRequired: true })
+    await callLink({ localPath: sourceDir })
+    const res = await callUnlink({ pluginId: 'persistent' })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('preflight')
+    expect(existsSync(join(testDir, 'plugins', 'persistent'))).toBe(true)
+  })
   it('removes the symlink and the lockfile entry', async () => {
     writeManifest(sourceDir, { id: 'apiunlinked', name: 'AU', version: '0.1.0', permissions: [] })
     await callLink({ localPath: sourceDir })

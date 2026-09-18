@@ -52,11 +52,12 @@ describe('shipped curated-catalog.json', () => {
 
   it('ships installable official plugins pointing at the official bits repo', () => {
     const installable = catalog.entries.filter(e => e.kind === 'plugin' && !e.builtin)
-    expect(installable.map(p => p.id).sort()).toEqual(['messaging', 'projects'])
+    expect(installable.map(p => p.id).sort()).toEqual(['messaging', 'projects', 'terminal'])
     for (const plugin of installable) {
       expect(plugin.source).toBe(`github:markhayden/bakin-bits-official#plugins/${plugin.id}`)
       expect(plugin.trust).toBe('official')
-      expect(plugin.defaultSelected).toBe(true)
+      // Terminal grants agents shell access, so it is listed but opt-in; the rest are pre-selected.
+      expect(plugin.defaultSelected).toBe(plugin.id !== 'terminal')
     }
   })
 

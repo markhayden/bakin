@@ -179,6 +179,17 @@ async function main(): Promise<void> {
       console.log(`— ${entry.id}: server-only — ${entry.reason}`)
     }
   }
+  // Runner-behavior teeth that need a real browser stay env-gated in the
+  // plain suite; this script is where they actually execute.
+  const browserTeeth = Bun.spawn(
+    ['bun', 'test', 'tests/ui/conformance/focusable-disabled.browser.test.ts', '--isolate'],
+    { cwd: REPO_ROOT, env: { ...process.env, BAKIN_UI_BROWSER_TEST: '1' }, stdout: 'inherit', stderr: 'inherit' },
+  )
+  if (await browserTeeth.exited !== 0) {
+    console.error('✗ runner browser teeth: focusable-disabled behavior check failed')
+    process.exitCode = 1
+  }
+
   if (process.exitCode) return
   console.log(`Plugin UI conformance verified. Reports: ${resolve(REPO_ROOT, REPORT_ROOT)}`)
 }

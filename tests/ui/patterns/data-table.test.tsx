@@ -2,6 +2,7 @@
 
 import { describe, expect, it, mock } from 'bun:test'
 import { fireEvent, render, screen, within } from '@testing-library/react'
+import { createPortal } from 'react-dom'
 import { DataTable, ListRow, type DataTableColumn } from '@makinbakin/sdk/patterns'
 import '../../rtl-settle'
 
@@ -23,6 +24,43 @@ const COLUMNS: ReadonlyArray<DataTableColumn<RunRow, 'task'>> = [
 ]
 
 describe('DataTable', () => {
+  it('wraps flexible cells while preserving explicit column constraints', () => {
+    render(<DataTable label="Fit" rows={ROWS} rowKey={(row) => row.id} columns={[
+      { key: 'task', header: 'Task' },
+      { key: 'owner', header: 'Owner', headClassName: 'w-32', cellClassName: 'min-w-32 whitespace-nowrap' },
+    ]} />)
+    const cells = screen.getAllByRole('cell')
+    expect(cells[0]!.className).toContain('whitespace-normal')
+    expect(cells[0]!.className).toContain('wrap-anywhere')
+    expect(cells[1]!.className).toContain('min-w-32')
+    expect(cells[1]!.className).toContain('whitespace-nowrap')
+    expect(cells[1]!.className).not.toContain('whitespace-normal')
+  })
+
+  it('does not activate a row through nested controls, links, or portalled content', () => {
+    const activate = mock(() => {})
+    const action = mock(() => {})
+    render(<DataTable label="Actions" rows={ROWS.slice(0, 1)} rowKey={(row) => row.id}
+      onRowActivate={activate} rowActivateLabel={(row) => `Open ${row.task}`}
+      columns={[
+        { key: 'task', header: 'Task' },
+        { key: 'actions', header: 'Actions', cell: () => <>
+          <button onClick={action}><span>Menu</span></button>
+          <a href="#details">Details</a>
+          {createPortal(<div data-testid="portalled-action" onClick={action}>Portal</div>, document.body)}
+        </> },
+      ]} />)
+    fireEvent.click(screen.getByText('Menu'))
+    fireEvent.click(screen.getByRole('link', { name: 'Details' }))
+    fireEvent.click(screen.getByTestId('portalled-action'))
+    expect(action).toHaveBeenCalledTimes(2)
+    expect(activate).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText(ROWS[0]!.task))
+    expect(activate).toHaveBeenCalledTimes(1)
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Menu' }), { key: 'Enter' })
+    expect(activate).toHaveBeenCalledTimes(1)
+  })
+
   it('renders the container-query dual render: one table and one list sharing the label', () => {
     const { container } = render(
       <DataTable

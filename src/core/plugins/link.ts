@@ -353,6 +353,13 @@ export async function unlinkPlugin(id: string): Promise<UnlinkResult> {
   const pluginsRoot = join(getContentDir(), 'plugins')
   const pluginDir = join(pluginsRoot, id)
   const linkedSource = entry.linkedSource ?? ''
+  const manifestPath = join(pluginDir, 'bakin-plugin.json')
+  if (existsSync(manifestPath)) {
+    let manifest: { uninstallPreflightRequired?: boolean }
+    try { manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) }
+    catch { throw new LinkRefusedError('Cannot verify plugin removal policy; repair its manifest first') }
+    if (manifest.uninstallPreflightRequired) throw new LinkRefusedError(`plugin "${id}" requires persistent-resource preflight; use \`bakin plugins remove ${id}\` instead`)
+  }
 
   // Best-effort cleanup of the symlink. If it's already gone, we still
   // want the lockfile entry to vanish — keeping a stale entry would

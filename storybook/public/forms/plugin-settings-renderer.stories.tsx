@@ -258,6 +258,52 @@ export const BusyAndUnavailable = {
   },
 } satisfies Story
 
+const accessRoster = [
+  { id: 'main', name: 'Roscoe', color: '#22c55e' },
+  { id: 'patch', name: 'Patch', color: '#6366f1' },
+  { id: 'scout', name: 'Scout', color: '#f59e0b' },
+]
+
+const accessSchema: PluginSettingsSchema = {
+  fields: [{
+    key: 'enabledAgents',
+    type: 'agent-toggles',
+    label: 'Enable terminal access',
+    description: 'Enabled agents can open and operate terminal sessions.',
+    default: ['main'],
+  }],
+}
+
+function AgentTogglesExample() {
+  const [values, setValues] = useState<Record<string, unknown>>({ enabledAgents: ['main'] })
+  return (
+    <PageShell width="content" className="bakin-form-story bakin-form-story--workflow">
+      <Stack gap="section">
+        <header className="bakin-form-story__intro">
+          <p className="bakin-form-story__eyebrow">Per-agent enablement</p>
+          <h1>Gate a feature per agent with a roster grid</h1>
+          <p>The consumer supplies the roster; each agent renders as an avatar and a toggle. The stored value is the array of enabled agent ids.</p>
+        </header>
+        <PluginSettingsRenderer schema={accessSchema} values={values} agents={accessRoster} onSubmit={setValues} />
+      </Stack>
+    </PageShell>
+  )
+}
+
+export const AgentTogglesGrid = {
+  args: { schema: accessSchema, values: { enabledAgents: ['main'] }, agents: accessRoster, onSubmit: () => {} },
+  render: () => <AgentTogglesExample />,
+  play: async ({ canvas, userEvent }) => {
+    // Roster renders one switch per agent; the default enables main only.
+    await expect(canvas.getByRole('switch', { name: 'Enable Roscoe' })).toBeChecked()
+    const patch = canvas.getByRole('switch', { name: 'Enable Patch' })
+    await expect(patch).not.toBeChecked()
+    await userEvent.click(patch)
+    await expect(patch).toBeChecked()
+    await userEvent.click(canvas.getByRole('button', { name: 'Save settings' }))
+  },
+} satisfies Story
+
 export const HighlightedField = {
   args: {
     schema: messagingSchema,

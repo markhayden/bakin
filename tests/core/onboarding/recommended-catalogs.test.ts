@@ -27,9 +27,11 @@ import { RECOMMENDED_PLUGINS } from '../../../src/core/onboarding/recommended-pl
 
 describe('official plugin onboarding recommendations', () => {
   it('derives official plugin choices from the unified catalog', () => {
-    expect(RECOMMENDED_PLUGINS.map(plugin => plugin.id)).toEqual(['messaging', 'projects'])
+    expect(RECOMMENDED_PLUGINS.map(plugin => plugin.id)).toEqual(['messaging', 'projects', 'terminal'])
     expect(RECOMMENDED_PLUGINS.every(plugin => plugin.trust === 'official')).toBe(true)
-    expect(RECOMMENDED_PLUGINS.every(plugin => plugin.defaultSelected === true)).toBe(true)
+    // Terminal is offered but not pre-selected: it grants agents shell access, so it stays opt-in.
+    expect(Object.fromEntries(RECOMMENDED_PLUGINS.map(plugin => [plugin.id, plugin.defaultSelected])))
+      .toEqual({ messaging: true, projects: true, terminal: false })
     expect(RECOMMENDED_PLUGINS.every(plugin => plugin.source.startsWith('github:markhayden/bakin-bits-official#plugins/'))).toBe(true)
   })
 

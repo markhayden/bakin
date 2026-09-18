@@ -101,7 +101,7 @@ export function removeExecToolsByPlugin(pluginId: string): number {
  * the MCP handler — safe against the plugin-registry ↔ registry circular by
  * then, since both modules are fully evaluated before any tool handler runs.
  */
-export function getToolContext(toolName: string): PluginToolContext | undefined {
+export function getToolContext(toolName: string, invocation?: PluginToolContext['invocation']): PluginToolContext | undefined {
   const tool = execTools.get(toolName)
   if (!tool?.source) return undefined
   const pluginId = tool.source.startsWith('plugin:') ? tool.source.slice(7) : tool.source
@@ -117,6 +117,7 @@ export function getToolContext(toolName: string): PluginToolContext | undefined 
 
   const state = getRuntimePluginState(pluginId)
   const ctx: PluginToolContext = {
+    invocation,
     storage,
     events: new BakinEventBus(broadcastFn),
     pluginId,

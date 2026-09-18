@@ -32,6 +32,7 @@ const repoSourceRoots = [
 export const EXTRACTED_PLUGINS: Record<string, string> = {
   messaging: 'messaging',
   project: 'projects',
+  terminal: 'terminal',
 }
 
 function envExternalRoots(): string[] {

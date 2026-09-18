@@ -82,6 +82,9 @@ describe('@makinbakin/sdk/testing external-author flow', () => {
   })
 
   it('storage lives under the harness temp dir, not the real home', () => {
+    expect(harness.ctx.storage.localRoot).toBe(harness.dir)
+    expect(harness.toolContext({ agentId: 'patch' }).invocation).toEqual({ agentId: 'patch' })
+    expect(harness.toolContext().invocation).toBeUndefined()
     expect(harness.dir).toContain('bakin-demo-crm-test-')
     expect(harness.ctx.storage.exists('last-greeting.txt')).toBe(true)
   })

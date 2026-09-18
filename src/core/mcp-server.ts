@@ -21,6 +21,7 @@
  * Agent identity is bound at session initialization from the query param.
  */
 import { randomUUID } from 'crypto'
+import { verifyMcpCredential } from './mcp-credentials'
 import type { IncomingMessage, ServerResponse } from 'http'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -59,6 +60,7 @@ const log = createLogger('mcp')
 // ---------------------------------------------------------------------------
 
 interface McpSession {
+  verified: boolean
   server: McpServer
   transport: StreamableHTTPServerTransport
   agentId: string
@@ -123,7 +125,7 @@ setInterval(() => {
 // Tool registration — all tools come from the exec tool registry
 // ---------------------------------------------------------------------------
 
-export function registerTools(server: McpServer, getAgent: () => string): void {
+export function registerTools(server: McpServer, getAgent: () => string, verified = false): void {
   const policy = resolveMcpToolPolicy(getAgent())
   for (const tool of getAllExecTools()) {
     const registered = server.tool(
@@ -132,6 +134,9 @@ export function registerTools(server: McpServer, getAgent: () => string): void {
       tool.parameters,
       async (params) => {
         const agent = getAgent()
+        if (tool.requiresVerifiedAgent && !verified) {
+          return { content: [{ type: 'text' as const, text: 'ERROR: Verified agent transport required' }], isError: true }
+        }
         const activityClass = tool.activityClass ?? 'user'
         const taskId = (params as Record<string, unknown>).taskId as string | undefined
         log.info('Exec tool called', { tool: tool.name, agent, taskId })
@@ -144,7 +149,7 @@ export function registerTools(server: McpServer, getAgent: () => string): void {
         }
 
         try {
-          const toolCtx = getToolContext(tool.name)
+          const toolCtx = getToolContext(tool.name, verified ? { agentId: agent } : undefined)
           const result = await tool.handler(params as Record<string, unknown>, agent, toolCtx)
           const durationMs = Date.now() - start
 
@@ -284,7 +289,7 @@ function installPolicyCallGuard(
 // Session factory
 // ---------------------------------------------------------------------------
 
-function createSession(agentId: string): McpSession {
+function createSession(agentId: string, verified: boolean): McpSession {
   const server = new McpServer(
     { name: 'bakin', version: '1.0.0' },
     { capabilities: { logging: {} } },
@@ -303,9 +308,10 @@ function createSession(agentId: string): McpSession {
   })
 
   // Register tools with agent identity closure
-  registerTools(server, () => agentId)
+  registerTools(server, () => agentId, verified)
 
   const session: McpSession = {
+    verified,
     server,
     transport,
     agentId,
@@ -342,6 +348,16 @@ export async function handleMcpRequest(
   }
 
   const agentId = url.searchParams.get('agent')
+  const sessionHeader = req.headers['mcp-session-id'] as string | undefined
+  const boundSession = sessionHeader ? sessions.get(sessionHeader) : undefined
+  const authorization = req.headers.authorization
+  const verified = verifyMcpCredential(boundSession?.agentId ?? agentId ?? '', authorization)
+  if ((authorization && !verified) || (boundSession?.verified && !verified)
+    || (boundSession && agentId && agentId !== boundSession.agentId)) {
+    res.writeHead(403, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ error: 'Invalid agent credential or session binding' }))
+    return
+  }
 
   // ─── GET: streamable-http notification stream ───────────────────────
   // A GET with a live Mcp-Session-Id opens the session's server→client
@@ -409,7 +425,7 @@ export async function handleMcpRequest(
       return
     }
 
-    const session = createSession(agentId)
+    const session = createSession(agentId, verified)
     await session.server.connect(session.transport)
 
     await session.transport.handleRequest(req, res, body)

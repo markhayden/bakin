@@ -18,6 +18,7 @@
  */
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
+import { getMcpCredential } from './mcp-credentials'
 
 import { z } from 'zod'
 
@@ -542,6 +543,7 @@ async function createSecondaryTargetRuntime(target: RuntimeAdapterName): Promise
     settings: getSettings().runtime.settings,
     execTools: createRuntimeExecToolProvider(),
     bakinMcpBaseUrl: resolveBakinMcpBaseUrl(),
+    getMcpCredential,
   })
   return runtime
 }
