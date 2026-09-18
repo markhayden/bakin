@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const home = mkdtempSync(join(tmpdir(), 'bakin-mcp-credentials-'))
-mock.module('../../src/core/content-dir', () => ({ getContentDir: () => home }))
+const contentDir = () => ({ getContentDir: () => home })
+mock.module('../../src/core/content-dir', contentDir)
+mock.module('../../packages/core/src/content-dir', contentDir)
 const { getMcpCredential, verifyMcpCredential } = await import('../../src/core/mcp-credentials')
 afterAll(() => rmSync(home, { recursive: true, force: true }))
 
