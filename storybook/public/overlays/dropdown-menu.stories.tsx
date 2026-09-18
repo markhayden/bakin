@@ -98,7 +98,7 @@ export const Behavior = {
     await userEvent.click(trigger)
     const page = within(document.body)
     await waitFor(() => expect(page.getByRole('menu', { name: 'Task actions' })).toBeVisible())
-    await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowRight}')
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowRight}')
     await waitFor(() => expect(page.getByRole('menuitem', { name: 'Needs attention' })).toBeVisible())
     await userEvent.keyboard('{Escape}{Escape}')
     await waitFor(() => expect(trigger).toHaveFocus())
