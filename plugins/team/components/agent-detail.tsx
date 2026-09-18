@@ -86,6 +86,15 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const [profile, setProfile] = useState<AgentProfile | null>(null)
   const [tabParam, setTabParam] = useQueryState('tab', 'overview')
   const activeTab = (TABS.some((tab) => tab.id === tabParam) ? tabParam : 'overview') as Tab
+  // In-page selections (`?skill=`, `?file=`) belong to one tab; leaving the
+  // tab drops them in the same navigation so `?tab=memory&skill=x` never lingers.
+  const [, setSkillParam] = useQueryState('skill', '')
+  const [, setFileParam] = useQueryState('file', '')
+  const selectTab = (tabId: Tab) => {
+    setTabParam(tabId)
+    setSkillParam('')
+    setFileParam('')
+  }
   const [loading, setLoading] = useState(true)
   const [avatarKey, setAvatarKey] = useState(0)
   const avatarInputRef = useRef<FileInputHandle>(null)
@@ -300,7 +309,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         </Alert>
       ) : null}
 
-      <Tabs value={activeTab} onValueChange={(tabId) => setTabParam(tabId as Tab)}>
+      <Tabs value={activeTab} onValueChange={(tabId) => selectTab(tabId as Tab)}>
         <TabsList variant="underline" activateOnFocus aria-label="Agent sections">
           {TABS.map((item) => (
             <TabsTrigger key={item.id} value={item.id}>
@@ -430,20 +439,19 @@ function WorkspaceFileBrowser({
   )
 }
 
-function SkillsTab({ agentId }: { agentId: string }) {
+export function SkillsTab({ agentId }: { agentId: string }) {
   const [skills, setSkills] = useState<SkillSummary[]>([])
-  const [selectedSkill, setSelectedSkill] = useState<string | null>(null)
+  // `?skill=<id>` is the selection; the first skill is the default (omitted
+  // from the URL) and a stale id shows the first skill without rewriting it.
+  const [skillParam, setSkillParam] = useQueryState('skill', '')
+  const selectedSkill = skills.some((skill) => skill.id === skillParam) ? skillParam : (skills[0]?.id ?? null)
   const [skillContent, setSkillContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetch(`/api/plugins/team/${agentId}/skills`)
       .then((response) => response.json())
-      .then((data) => {
-        const list: SkillSummary[] = data.skills ?? []
-        setSkills(list)
-        if (list.length > 0) setSelectedSkill((current) => current ?? list[0].id)
-      })
+      .then((data) => setSkills(data.skills ?? []))
       .finally(() => setLoading(false))
   }, [agentId])
 
@@ -496,7 +504,7 @@ function SkillsTab({ agentId }: { agentId: string }) {
         meta: skill.hasSkillMd ? <Badge tone="neutral" variant="soft" size="xs">Guide</Badge> : undefined,
       }))}
       selectedId={selectedSkill}
-      onSelect={setSelectedSkill}
+      onSelect={setSkillParam}
       content={skillContent ? (
         <Panel variant="code" scroll={false}>
           <pre className="leading-relaxed">
@@ -517,20 +525,18 @@ function SkillsTab({ agentId }: { agentId: string }) {
   )
 }
 
-function MemoryTab({ agentId }: { agentId: string }) {
+export function MemoryTab({ agentId }: { agentId: string }) {
   const [files, setFiles] = useState<string[]>([])
-  const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  // `?file=<name>` is the selection; same default/stale rules as the Skills tab.
+  const [fileParam, setFileParam] = useQueryState('file', '')
+  const selectedFile = files.includes(fileParam) ? fileParam : (files[0] ?? null)
   const [content, setContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetch(`/api/plugins/team/${agentId}/memory`)
       .then((response) => response.json())
-      .then((data) => {
-        const list: string[] = data.files ?? []
-        setFiles(list)
-        if (list.length > 0) setSelectedFile((current) => current ?? list[0])
-      })
+      .then((data) => setFiles(data.files ?? []))
       .finally(() => setLoading(false))
   }, [agentId])
 
@@ -582,7 +588,7 @@ function MemoryTab({ agentId }: { agentId: string }) {
         label: <span className="font-bakin-typography-family-mono">{file.replace('.md', '')}</span>,
       }))}
       selectedId={selectedFile}
-      onSelect={setSelectedFile}
+      onSelect={setFileParam}
       content={content ? (
         <Panel variant="code" scroll={false}>
           <pre className="leading-relaxed">
