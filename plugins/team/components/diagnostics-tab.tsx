@@ -784,8 +784,14 @@ function useAgentLiveActivity(agentId: string): { label: string; ts: number } | 
   return chip
 }
 
+type TimelineWindow = '24h' | '7d'
+
 function TimelinePanel({ agentId }: { agentId: string }) {
-  const [window, setWindow] = useState<'24h' | '7d'>('24h')
+  // The window rides `?activity_window=` (health's `<area>_window` naming);
+  // `24h` is the default and omitted. Anything else reads as 24h without
+  // rewriting the URL. The page number already rides `?activityPage=`.
+  const [windowParam, setWindowParam] = useQueryState('activity_window', '24h')
+  const window: TimelineWindow = windowParam === '7d' ? '7d' : '24h'
   const [pageParam, setPageParam] = useQueryState('activityPage', '1')
   const [events, setEvents] = useState<TimelineEventView[]>([])
   const [loading, setLoading] = useState(true)
@@ -854,7 +860,8 @@ function TimelinePanel({ agentId }: { agentId: string }) {
           ]}
           value={window}
           onValueChange={(next) => {
-            setWindow(next)
+            // Both setters batch into ONE replace navigation.
+            setWindowParam(next)
             setPageParam('1')
           }}
         />
