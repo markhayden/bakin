@@ -42,18 +42,19 @@ Branch: `feat/settings-url-state` (MAIN checkout). Plan: `tasks/settings-url-sta
 - [ ] Server restart → Health incident lands on tinted field (Mark, 3737)
 - [x] **Checkpoint B** (full `bun run test` — see commit) → commit 3
 
-## Task 4 — docs (commit `docs(settings): URL state, field deep links, knowledge + docs-site sweep`)
-- [ ] `url-state-deep-linking.md`: Settings status row; `field` param row; `tab` value note
-- [ ] `docs/src/content/docs/using/settings.md`: "Deep links" paragraph
-- [ ] Confirm `delivery-bridge.md`, `doctor-and-health-checks.md`, README need nothing
-- [ ] Spec status → Phase 1 SHIPPED (PR #)
-- [ ] commit 4
+## Task 4 — docs (commit `docs(settings): URL state, field deep links, knowledge + docs-site sweep`) — DONE 2026-09-18
+- [x] `url-state-deep-linking.md`: Settings status row; `tab` + `field` param rows
+- [x] `docs/src/content/docs/using/settings.md`: "Deep links" section; `bun run docs:validate` green (49 pages)
+- [x] Confirmed `delivery-bridge.md`, `doctor-and-health-checks.md`, README, CLAUDE.md mention none of the retargeted copy or old ids — no edit
+- [x] Spec status → Phase 1 IMPLEMENTED (PR open; SHIPPED + number recorded when merged)
+- [x] commit 4
 
 ## Checkpoint C — merge-ready
-- [ ] `bun run ui:conformance --full`, `bun run check:cycles`, full `bun run test`, lint, typecheck
-- [ ] No stamp files staged (`generated-version.ts`, `_embedded-assets-static.ts`)
-- [ ] `gh pr create` with the live checklist in the body; do NOT merge
-- [ ] Hand off with the UI-conformance evidence block
+- [x] `bun run check:cycles` (12 pinned, 0 new), full `bun run test` (9318/0 after commit 3; docs-only since), lint (0 errors), typecheck
+- [x] `bun run ui:conformance --full` — see PR body for the result line
+- [x] No stamp files staged (`_embedded-assets-static.ts` reverted to HEAD before the push)
+- [x] `gh pr create` with the live checklist in the body; NOT merged
+- [x] Hand off with the UI-conformance evidence block
 
 ## Phase 2 (after PR 1 is in good shape) — one PR per plugin, planned separately against the spec's rules
 - [ ] team (skill / file / activity_window / mode)

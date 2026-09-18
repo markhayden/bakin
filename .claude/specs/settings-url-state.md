@@ -1,6 +1,6 @@
 # Spec: Settings URL State + App-Wide Selection-State Audit
 
-**Status:** DRAFT — interview complete 2026-09-18, awaiting plan
+**Status:** Phase 1 IMPLEMENTED 2026-09-18 on `feat/settings-url-state` (4 commits, PR open, awaiting Mark's live checklist + merge). Phase 2 (audit fixes) not started.
 **Date:** 2026-09-18
 **Priority:** Tech-debt reduction. Single user, single machine. NO backwards compatibility, NO shims, NO redirects for old shapes. Clean and clear over compatible.
 **Parent:** `.claude/specs/routing-overhaul.md` (the URL taxonomy this spec extends)
@@ -40,7 +40,7 @@ Phase 1 puts the settings category and an optional field highlight in the URL, w
 2. The Storybook recipe "Recipes/Settings and dashboard pages" keeps its local-state category — it is a router-less composition demo. Only the kit `PluginSettingsRenderer` story changes (new `highlightKey` coverage).
 3. `notifications.channelAliases` has NO field on the System & Alerts form; the channel-aliases incident therefore targets the category only. Adding that field is out of scope (noted as a follow-up).
 4. The runtime Capabilities tab uses TanStack `Link` (host-internal, allowed) with the typed `search` prop (`to="/settings" search={{ tab: 'integrations' }}`) — a query string inside `to` fails the typed-route check. The test router shim (`tests/shims/tanstack-router.ts`) now composes `search` into the anchor href and returns a real React element (its old raw object crashed React 19 when rendered); React is lazy-required inside the stub because a module-top value import segfaults bun 1.3.13 under the global alias.
-5. `savedValues` reset on category change stays exactly as today; only the source of `selectedId` moves.
+5. ~~`savedValues` reset on category change stays exactly as today.~~ Planning found this wrong: with the URL driving the category, Back/Forward changes it without a click, so clear-on-select would show category A's just-saved values under B. The cache is tagged with the values URL it was saved against and used only while that URL is active (`plan.md` "Architecture decisions"); pinned by a test.
 
 ## Tech Stack
 
