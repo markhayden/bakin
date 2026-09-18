@@ -91,7 +91,15 @@ function relaxNumberSteps() {
   }
 }
 
-async function renderSettings() {
+// The category is URL state (`?tab=`); the router shim reads happy-dom's real
+// window.location, so a category is chosen by mounting at its URL.
+function setURL(url: string) {
+  const happy = (window as unknown as { happyDOM?: { setURL: (u: string) => void } }).happyDOM
+  happy?.setURL(url)
+}
+
+async function renderSettings(tab?: string) {
+  setURL(tab ? `http://localhost/settings?tab=${tab}` : 'http://localhost/settings')
   await actRender(() => render(<SettingsPage />))
 }
 
@@ -188,9 +196,7 @@ describe('/settings save honesty', () => {
       JSON.stringify({ error: 'Invalid plugin id' }),
       { status: 400, headers: { 'Content-Type': 'application/json' } },
     )
-    await renderSettings()
-    const demoTab = await waitFor(() => screen.getByRole('button', { name: 'Demo' }))
-    await act(async () => { fireEvent.click(demoTab) })
+    await renderSettings('demo')
     const toggle = await waitFor(() => screen.getByRole('switch', { name: /demo enabled/i }))
     await act(async () => { fireEvent.click(toggle) })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^save$/i })) })
