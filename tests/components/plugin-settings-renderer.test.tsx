@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach, mock } from 'bun:test'
+import { describe, it, expect, afterEach, beforeEach, mock } from 'bun:test'
 import { act, render, screen, fireEvent } from '@testing-library/react'
 import '../rtl-settle'
 import { join } from 'path'
@@ -242,5 +242,96 @@ describe('PluginSettingsRenderer — list field', () => {
     expect(gridContainer!.className).toContain('@md/settings-row:grid-cols-2')
     expect(gridContainer!.className).toContain('@2xl/settings-row:grid-cols-3')
     expect(gridContainer!.style.gridTemplateColumns).toBe('')
+  })
+})
+
+const highlightSchema: PluginSettingsSchema = {
+  fields: [
+    { key: 'dispatch.paused', type: 'boolean', label: 'Pause all dispatch', default: false },
+    { key: 'watchdog.intervalMs', type: 'number', label: 'Watchdog interval', default: 1000 },
+    {
+      key: 'contentTypes',
+      type: 'list',
+      label: 'Content Types',
+      itemShape: { id: { key: 'id', type: 'string', label: 'ID' } },
+    },
+  ],
+}
+
+describe('PluginSettingsRenderer — highlightKey (field deep link)', () => {
+  const scrollIntoView = mock()
+  const proto = Element.prototype as unknown as { scrollIntoView?: () => void }
+  const realScrollIntoView = proto.scrollIntoView
+
+  beforeEach(() => {
+    scrollIntoView.mockClear()
+    proto.scrollIntoView = scrollIntoView
+  })
+  afterEach(() => {
+    proto.scrollIntoView = realScrollIntoView
+  })
+
+  function renderHighlighted(highlightKey?: string) {
+    return render(
+      <PluginSettingsRenderer
+        pluginId="system"
+        schema={highlightSchema}
+        values={{}}
+        onSave={mock()}
+        highlightKey={highlightKey}
+      />
+    )
+  }
+
+  it('marks exactly the matching scalar field and scrolls it into view once', () => {
+    renderHighlighted('watchdog.intervalMs')
+    const marked = document.querySelectorAll('[data-highlighted="true"]')
+    expect(marked).toHaveLength(1)
+    expect(marked[0]!.textContent).toContain('Watchdog interval')
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+  })
+
+  it('marks a list field at its fieldset', () => {
+    renderHighlighted('contentTypes')
+    const marked = document.querySelectorAll('[data-highlighted="true"]')
+    expect(marked).toHaveLength(1)
+    expect(marked[0]!.getAttribute('data-slot')).toBe('fieldset')
+  })
+
+  it('marks nothing without a key or with an unknown key', () => {
+    const { rerender } = renderHighlighted()
+    expect(document.querySelector('[data-highlighted]')).toBeNull()
+    rerender(
+      <PluginSettingsRenderer pluginId="system" schema={highlightSchema} values={{}} onSave={mock()} highlightKey="nope" />
+    )
+    expect(document.querySelector('[data-highlighted]')).toBeNull()
+    expect(scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it('does not re-scroll on re-render, but re-arms after the key clears', async () => {
+    const { rerender } = renderHighlighted('dispatch.paused')
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    // A values refresh re-renders the form mid-interaction — no viewport yank.
+    await act(async () => {
+      rerender(
+        <PluginSettingsRenderer pluginId="system" schema={highlightSchema} values={{ 'dispatch.paused': true }} onSave={mock()} highlightKey="dispatch.paused" />
+      )
+    })
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      rerender(
+        <PluginSettingsRenderer pluginId="system" schema={highlightSchema} values={{}} onSave={mock()} />
+      )
+    })
+    expect(document.querySelector('[data-highlighted]')).toBeNull()
+
+    await act(async () => {
+      rerender(
+        <PluginSettingsRenderer pluginId="system" schema={highlightSchema} values={{}} onSave={mock()} highlightKey="dispatch.paused" />
+      )
+    })
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
   })
 })

@@ -13,9 +13,10 @@
  * touches only the active category (Recipes/Settings and dashboard pages).
  */
 import { createRoute } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { NavList, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
 import { useJsonFetch } from '@makinbakin/sdk/hooks'
+import { usePathname, useQueryState } from '@makinbakin/sdk/navigation'
 import { Button, SystemState } from '@makinbakin/sdk/ui'
 import { PluginSettingsRenderer, type PluginSettingsSchema } from '@/components/plugin-settings-renderer'
 import {
@@ -78,11 +79,30 @@ function SettingsFrame({ children }: { children: React.ReactNode }) {
 const ACTIVE_HEADING_ID = 'active-settings-heading'
 const REQUEST_TIMEOUT_MS = 15_000
 
+/** Ids the built-in categories own; a plugin declaring one is refused. */
+const RESERVED_CATEGORY_IDS: ReadonlySet<string> = new Set([SYSTEM_SETTINGS_TAB_ID, PROVIDER_KEYS_TAB_ID])
+
+/**
+ * A just-persisted form, tagged with the values URL it was saved against so it
+ * stands in for the pre-save GET exactly while that URL is the active one.
+ * The category can change without a click (Back/Forward on `?tab=`), so a
+ * bare "clear on select" would let category A's saved values render under B.
+ */
+interface SavedValues {
+  url: string
+  values: Record<string, unknown>
+}
+
 function SettingsRoute() {
-  const [selectedId, setSelectedId] = useState<string>('')
-  // Values the user just persisted, so the form keeps showing what was written
-  // without a second round trip. Cleared when the category changes.
-  const [savedValues, setSavedValues] = useState<Record<string, unknown> | null>(null)
+  // The active category is URL state (`?tab=`), so deep links and refresh
+  // keep their place. `system` is the default and is omitted from the URL.
+  const [tabParam, setTab] = useQueryState('tab', SYSTEM_SETTINGS_TAB_ID)
+  // `?field=<key>` highlights one field of a schema-rendered category. It is
+  // inert on Integrations & Keys (bespoke, not schema-rendered) and for keys
+  // the schema does not carry — an unknown field is not an error.
+  const [fieldParam, setField] = useQueryState('field', '')
+  const pathname = usePathname()
+  const [savedValues, setSavedValues] = useState<SavedValues | null>(null)
 
   // Schema discovery. The "System & Alerts" and "Integrations & Keys" tabs are
   // injected first so System & Alerts is the default landing tab.
@@ -95,14 +115,30 @@ function SettingsRoute() {
 
   const plugins = useMemo<PluginSchemaEntry[]>(() => {
     if (!schemaData) return []
+    const accepted = schemaData.filter((entry) => {
+      if (!RESERVED_CATEGORY_IDS.has(entry.id)) return true
+      console.warn(`[bakin] settings: plugin id "${entry.id}" is reserved for a built-in category; its settings are not shown`)
+      return false
+    })
     return [
       { id: SYSTEM_SETTINGS_TAB_ID, name: 'System & Alerts', schema: SYSTEM_SETTINGS_SCHEMA, source: 'built-in' },
       { id: PROVIDER_KEYS_TAB_ID, name: 'Integrations & Keys', schema: { fields: [] }, source: 'built-in' },
-      ...schemaData,
+      ...accepted,
     ]
   }, [schemaData])
 
-  const activePlugin = selectedId || (plugins.length > 0 ? SYSTEM_SETTINGS_TAB_ID : '')
+  const schemasReady = plugins.length > 0
+  const tabKnown = plugins.some((p) => p.id === tabParam)
+  const activePlugin = !schemasReady ? '' : tabKnown ? tabParam : SYSTEM_SETTINGS_TAB_ID
+
+  useEffect(() => {
+    // An unknown `?tab=` (removed plugin, typo) normalizes to the default —
+    // but only once the schema list exists (before that nothing is "unknown"),
+    // and only while this is the current route: the outgoing page can observe
+    // the next route's search params for one render before it unmounts.
+    if (pathname !== '/settings' || !schemasReady || tabKnown) return
+    setTab(SYSTEM_SETTINGS_TAB_ID)
+  }, [pathname, schemasReady, tabKnown, setTab])
 
   // Values for the active category. The system tab reads from /api/settings
   // (core settings.json) instead of /api/plugin-settings/*; Integrations & Keys
@@ -124,18 +160,18 @@ function SettingsRoute() {
     if (!valuesData) return {}
     return activePlugin === SYSTEM_SETTINGS_TAB_ID ? flattenSystemSettings(valuesData) : valuesData
   }, [valuesData, activePlugin])
-  const values = savedValues ?? loadedValues
+  // Saved values stand in exactly while `valuesUrl` is the one they were saved
+  // against. Same url ⇒ `useJsonFetch` never refetches, so falling back to the
+  // pre-save GET would render stale values (the dispatch kill switch reverting
+  // to OFF while the server has it ON) and the next save would write them back.
+  const values = savedValues !== null && savedValues.url === valuesUrl ? savedValues.values : loadedValues
 
   const selectPlugin = (id: string) => {
-    // Re-selecting the active category must NOT drop what was just saved. The
-    // id is unchanged, so `valuesUrl` is unchanged, so `useJsonFetch` never
-    // refetches — clearing here would fall back to the pre-save GET and render
-    // stale values (the dispatch kill switch reverting to OFF while the server
-    // has it ON). Saving from that stale form then writes the stale value back.
-    // The invariant: clear `savedValues` exactly when `valuesUrl` changes.
     if (id === activePlugin) return
-    setSavedValues(null)
-    setSelectedId(id)
+    // Both setters batch into ONE replace navigation; a field highlight is
+    // meaningless outside the category it was linked into.
+    setTab(id)
+    setField('')
   }
 
   const handleSave = async (newValues: Record<string, unknown>) => {
@@ -149,16 +185,17 @@ function SettingsRoute() {
       // A non-ok write MUST reject: reporting "saved" over a rejected write
       // hides changes as consequential as the dispatch kill switch.
       if (!res.ok) throw await responseError(res, 'System settings were not saved')
-      setSavedValues(newValues)
+      setSavedValues({ url: '/api/settings', values: newValues })
       return
     }
-    const res = await fetch(`/api/plugin-settings/${activePlugin}`, {
+    const url = `/api/plugin-settings/${activePlugin}`
+    const res = await fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newValues),
     })
     if (!res.ok) throw await responseError(res, 'Settings were not saved')
-    setSavedValues(newValues)
+    setSavedValues({ url, values: newValues })
   }
 
   const plugin = plugins.find(p => p.id === activePlugin)
@@ -263,6 +300,7 @@ function SettingsRoute() {
                 schema={plugin.schema}
                 values={values}
                 onSave={handleSave}
+                highlightKey={fieldParam || undefined}
               />
             )}
           </PageBody>

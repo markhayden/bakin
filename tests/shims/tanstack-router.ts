@@ -62,11 +62,18 @@ export const RouterProvider: ComponentType<{ router: unknown; children?: ReactNo
 
 export const Outlet: ComponentType = () => null
 
-export const Link: ComponentType<{ to?: string; children?: ReactNode; className?: string; onClick?: (e: unknown) => void }> = ({
+export const Link: ComponentType<{ to?: string; search?: Record<string, string>; children?: ReactNode; className?: string; onClick?: (e: unknown) => void }> = ({
   to,
+  search,
   children,
   className,
   onClick,
 }) => {
-  return { type: 'a', props: { href: to, className, onClick, children }, key: null, ref: null } as any
+  // Compose `search` into the href like the real Link, so tests can assert deep links.
+  const query = search ? new URLSearchParams(search).toString() : ''
+  const href = query ? `${to}?${query}` : to
+  // Lazy: a module-top value import of react here changes preload order under
+  // the global alias and segfaults bun 1.3.13 in some files.
+  const { createElement } = require('react') as typeof import('react')
+  return createElement('a', { href, className, onClick }, children)
 }

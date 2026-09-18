@@ -22,7 +22,16 @@ import { setStoredSecret } from '../../../packages/core/src/media/secret-store'
 
 type Disposition = string
 interface ObservedLike {
-  observations?: Array<{ status: string; key: string; incident?: { key: string; disposition: Disposition; class?: string } }>
+  observations?: Array<{
+    status: string
+    key: string
+    incident?: {
+      key: string
+      disposition: Disposition
+      class?: string
+      resolution?: { type: string; href?: string }
+    }
+  }>
   reason?: string
 }
 
@@ -55,6 +64,7 @@ describe('delivery.discord doctor check', () => {
     const incident = result.observations?.[0]?.incident
     expect(incident?.key).toBe('missing-token')
     expect(incident?.disposition).toBe('action_required')
+    expect(incident?.resolution).toMatchObject({ type: 'navigate', href: '/settings?tab=integrations' })
   })
 
   it('flags missing guilds', async () => {
@@ -62,6 +72,10 @@ describe('delivery.discord doctor check', () => {
     setStoredSecret('discord', 'botToken', 'tok')
     const result = await checkDeliveryDiscord(runtimeWith('unavailable')) as ObservedLike
     expect(result.observations?.[0]?.incident?.key).toBe('missing-guilds')
+    expect(result.observations?.[0]?.incident?.resolution).toMatchObject({
+      type: 'navigate',
+      href: '/settings?tab=system&field=integrations.discord.guildIds',
+    })
   })
 
   it('reports idle-healthy on a natively-delivering runtime', async () => {
@@ -88,6 +102,15 @@ describe('delivery.discord doctor check', () => {
     expect(keys).toContain('empty-approvers')
     expect(keys).toContain('empty-inbound-allowlist')
     expect(result.observations?.every(r => r.incident?.class === 'policy_denial')).toBe(true)
+    const hrefFor = (key: string) => result.observations?.find(r => r.incident?.key === key)?.incident?.resolution
+    expect(hrefFor('empty-approvers')).toMatchObject({
+      type: 'navigate',
+      href: '/settings?tab=system&field=integrations.discord.approvers',
+    })
+    expect(hrefFor('empty-inbound-allowlist')).toMatchObject({
+      type: 'navigate',
+      href: '/settings?tab=system&field=integrations.discord.inbound.allowFrom',
+    })
   })
 
   it('skips the inbound notice when inbound chat is off', async () => {

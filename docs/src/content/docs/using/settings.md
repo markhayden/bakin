@@ -9,6 +9,10 @@ Every knob Bakin gives you, in one panel. System-wide stuff (dispatch, watchdog,
   <img src="/docs/media/screenshots/using-settings--panel.webp" alt="The settings panel, gear icon top-right of the dashboard. Tabs on the left, fields on the right." loading="lazy">
 </figure>
 
+## Deep links
+
+Every category has a URL. `/settings?tab=models` opens the Models category and survives a refresh; `/settings` alone is System & Alerts (`?tab=system`), and `/settings?tab=integrations` is Integrations & Keys. Add `&field=<key>` to land on one setting — `/settings?tab=system&field=dispatch.paused` scrolls to the kill switch and marks it. Health incidents and the Runtime page use these links, so "Open System & Alerts" takes you to the exact knob, not the landing tab.
+
 ## System & Alerts
 
 The built-in tab covers the runtime knobs that don't belong to any single plugin. A grab bag of small things, organized by what they affect:

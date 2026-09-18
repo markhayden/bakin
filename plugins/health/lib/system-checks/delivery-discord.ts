@@ -28,7 +28,7 @@ export async function checkDeliveryDiscord(runtime: Pick<AgentRuntimeAdapter, 'c
         impact: 'Channel delivery, gate approval cards, and inbound Discord chat cannot start.',
         disposition: 'action_required',
         resources: [{ kind: 'setting', id: 'integrations.discord', label: 'Discord integration' }],
-        resolution: { key: 'open-keys', type: 'navigate', label: 'Open Integrations & Keys', href: '/settings' },
+        resolution: { key: 'open-keys', type: 'navigate', label: 'Open Integrations & Keys', href: '/settings?tab=integrations' },
       },
     })])
   }
@@ -45,7 +45,7 @@ export async function checkDeliveryDiscord(runtime: Pick<AgentRuntimeAdapter, 'c
         impact: 'The bridge has no channels to enumerate or deliver to.',
         disposition: 'action_required',
         resources: [{ kind: 'setting', id: 'integrations.discord', label: 'Discord integration' }],
-        resolution: { key: 'open-settings', type: 'navigate', label: 'Open System & Alerts', href: '/settings' },
+        resolution: { key: 'open-settings', type: 'navigate', label: 'Open System & Alerts', href: '/settings?tab=system&field=integrations.discord.guildIds' },
       },
     })])
   }
@@ -90,7 +90,7 @@ export async function checkDeliveryDiscord(runtime: Pick<AgentRuntimeAdapter, 'c
         impact: 'Gate cards render in Discord but every click is denied until an approver is allowlisted.',
         disposition: 'watch',
         resources: [{ kind: 'setting', id: 'integrations.discord', label: 'Discord integration' }],
-        resolution: { key: 'open-settings', type: 'navigate', label: 'Open System & Alerts', href: '/settings' },
+        resolution: { key: 'open-settings', type: 'navigate', label: 'Open System & Alerts', href: '/settings?tab=system&field=integrations.discord.approvers' },
       },
     }))
   }
@@ -106,7 +106,7 @@ export async function checkDeliveryDiscord(runtime: Pick<AgentRuntimeAdapter, 'c
         impact: 'Messages at the bot are silently denied (audited) until a sender is allowlisted.',
         disposition: 'watch',
         resources: [{ kind: 'setting', id: 'integrations.discord', label: 'Discord integration' }],
-        resolution: { key: 'open-settings', type: 'navigate', label: 'Open System & Alerts', href: '/settings' },
+        resolution: { key: 'open-settings', type: 'navigate', label: 'Open System & Alerts', href: '/settings?tab=system&field=integrations.discord.inbound.allowFrom' },
       },
     }))
   }

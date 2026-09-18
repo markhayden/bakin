@@ -39,7 +39,7 @@ describe('Images health check', () => {
     const providers = result.find(observation => observation.key === 'providers')
     expect(providers?.status).toBe('warning')
     expect(providers?.incident?.disposition).toBe('advisory')
-    expect(providers?.incident?.resolution).toMatchObject({ type: 'navigate', href: '/settings' })
+    expect(providers?.incident?.resolution).toMatchObject({ type: 'navigate', href: '/settings?tab=integrations', label: 'Open Integrations & Keys' })
   })
 
   it('makes a missing Assets save API actionable', async () => {

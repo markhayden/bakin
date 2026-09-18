@@ -176,7 +176,7 @@ export async function checkImages(ctx: PluginContext): Promise<HealthCheckRunInp
             key: 'providers-unavailable', title: 'Image generation is not configured',
             impact: 'Image generation and editing requests are unavailable; other Bakin work can continue.',
             disposition: 'advisory', resources: [{ kind: 'capability', id: 'image-generation', label: 'Image generation' }],
-            resolution: { key: 'configure-images', type: 'navigate', label: 'Review runtime settings', href: '/settings' },
+            resolution: { key: 'configure-images', type: 'navigate', label: 'Open Integrations & Keys', href: '/settings?tab=integrations' },
           },
         }),
   ])
