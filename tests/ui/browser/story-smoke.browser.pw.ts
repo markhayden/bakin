@@ -544,6 +544,7 @@ test('anchored overlays keep collision, keyboard, focus, and labelling contracts
     await page.keyboard.press('ArrowDown')
     await page.keyboard.press('ArrowDown')
     await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('ArrowDown')
     await page.keyboard.press('ArrowRight')
     await expect(page.getByRole('menuitem', { name: 'Needs attention' })).toBeVisible()
     await page.keyboard.press('Escape')
