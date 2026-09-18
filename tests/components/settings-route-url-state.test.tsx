@@ -223,4 +223,31 @@ describe('/settings ?tab= category', () => {
     const demoSwitch = await waitFor(() => screen.getByRole('switch', { name: /demo paused/i }))
     expect(demoSwitch.getAttribute('aria-checked')).toBe('false')
   })
+
+  it('?field= highlights the named field on a schema-rendered category', async () => {
+    await renderAt('/settings?tab=demo&field=dispatch.paused')
+    await waitFor(() => expect(activeHeading()).toBe('Demo'))
+    const marked = await waitFor(() => {
+      const el = document.querySelector('[data-highlighted="true"]')
+      expect(el).not.toBeNull()
+      return el!
+    })
+    expect(marked.textContent).toContain('Demo paused')
+    expect(navigations).toHaveLength(0)
+  })
+
+  it('?field= is inert on Integrations & Keys and for unknown keys', async () => {
+    await renderAt('/settings?tab=integrations&field=dispatch.paused')
+    await waitFor(() => expect(activeHeading()).toBe('Integrations & Keys'))
+    await settleFor(50, 'a bespoke category has no schema fields to highlight')
+    expect(document.querySelector('[data-highlighted]')).toBeNull()
+    expect(navigations).toHaveLength(0)
+
+    cleanup()
+    await renderAt('/settings?tab=demo&field=nope')
+    await waitFor(() => expect(activeHeading()).toBe('Demo'))
+    await settleFor(50, 'an unknown field key highlights nothing and is not an error')
+    expect(document.querySelector('[data-highlighted]')).toBeNull()
+    expect(navigations).toHaveLength(0)
+  })
 })

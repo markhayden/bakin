@@ -97,7 +97,10 @@ function SettingsRoute() {
   // The active category is URL state (`?tab=`), so deep links and refresh
   // keep their place. `system` is the default and is omitted from the URL.
   const [tabParam, setTab] = useQueryState('tab', SYSTEM_SETTINGS_TAB_ID)
-  const [, setField] = useQueryState('field', '')
+  // `?field=<key>` highlights one field of a schema-rendered category. It is
+  // inert on Integrations & Keys (bespoke, not schema-rendered) and for keys
+  // the schema does not carry — an unknown field is not an error.
+  const [fieldParam, setField] = useQueryState('field', '')
   const pathname = usePathname()
   const [savedValues, setSavedValues] = useState<SavedValues | null>(null)
 
@@ -297,6 +300,7 @@ function SettingsRoute() {
                 schema={plugin.schema}
                 values={values}
                 onSave={handleSave}
+                highlightKey={fieldParam || undefined}
               />
             )}
           </PageBody>

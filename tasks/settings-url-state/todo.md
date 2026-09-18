@@ -17,19 +17,18 @@ Branch: `feat/settings-url-state` (MAIN checkout). Plan: `tasks/settings-url-sta
 - [ ] 3737 manual by Mark (live checklist in the PR body)
 - [x] **Checkpoint A** → commit 1
 
-## Task 2 — `?field=` → kit `highlightKey` (commit `feat(sdk): highlightKey on PluginSettingsRenderer`)
-- [ ] Kit prop `highlightKey?: string`; `data-highlighted` + ref on the matching `Field`/`Fieldset`
-- [ ] Scroll-once effect keyed on `highlightKey`, re-armed on clear; `scrollIntoView?.()` optional
-- [ ] Highlight tint: canonical selected treatment (`bg-bakin-action-primary-background/10`, rounded, breathing room) — verify tokens exist in `styles.css` first
-- [ ] Story `HighlightedField` + play assertion; `bakinCoverage` += `deep-link`
-- [ ] Host adapter `src/components/plugin-settings-renderer.tsx` passes `highlightKey`
-- [ ] Route passes `fieldParam || undefined` (never on `integrations`)
-- [ ] Kit test in `tests/components/plugin-settings-renderer.test.tsx` (one highlighted element; scroll once; re-arm)
-- [ ] Route tests 5–6 in `settings-route-url-state.test.tsx`
-- [ ] `bun run build:css` → stage `packages/sdk/styles.css`
-- [ ] `ui:test:stories`, `ui:story-compliance:check`, `ui:kit-coverage:check`, lint, typecheck, `ui:conformance --quick`
-- [ ] `build:vendors` + hard refresh → 3737 manual: field tinted + scrolled; category switch drops `field`
-- [ ] commit 2
+## Task 2 — `?field=` → kit `highlightKey` (commit `feat(sdk): highlightKey on PluginSettingsRenderer`) — DONE 2026-09-18
+- [x] Kit prop `highlightKey?: string`; `data-highlighted` + callback ref on the matching `Field`/`Fieldset`
+- [x] Scroll-once effect keyed on `highlightKey`, re-armed on clear; `scrollIntoView?.()` optional
+- [x] Highlight tint: canonical selected treatment (`data-highlighted:` variants — tint, rounded, -mx/px/py bakin-2 so no layout shift); tokens verified in `styles.css`
+- [x] Story `HighlightedField` + play assertion (one target, not focused); `bakinCoverage` += `deep-link`; no new visual baseline needed (spec references the file by one existing story id)
+- [x] Host adapter passes `highlightKey`; route passes `fieldParam || undefined`
+- [x] Kit tests (4) in `plugin-settings-renderer.test.tsx`; route tests (2) in `settings-route-url-state.test.tsx`
+- [x] `bun run build:css` → `packages/sdk/styles.css` staged with the kit change
+- [x] `ui:story-compliance:check`, `ui:kit-coverage:check`, lint (0 errors), typecheck, `ui:conformance --quick`; `ui:test:stories` (see log)
+- [x] Headless Playwright on rebuilt 3799: 9/9 (one target, correct field, scrolled into a 500px viewport, tint applied, no focus stolen, DOM-click edit does not re-scroll, inert on integrations, switch drops field + highlight) + screenshot reviewed
+- [ ] 3737 manual by Mark
+- [x] commit 2
 
 ## Task 3 — producers (commit `fix(health,runtime): deep-link settings resolutions to their category and field`)
 - [ ] `delivery-discord.ts` ×4 hrefs (integrations / guildIds / approvers / inbound.allowFrom)

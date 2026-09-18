@@ -22,7 +22,7 @@ const meta = {
         component: 'PluginSettingsRenderer turns the public settings schema into an accessible draft form. Builders retain persistence, busy state, save feedback, routing, and notifications.',
       },
     },
-    bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'validation', 'busy', 'disabled', 'error', 'long-content', 'dense-data', 'official-bits'],
+    bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'validation', 'busy', 'disabled', 'error', 'long-content', 'dense-data', 'official-bits', 'deep-link'],
   },
 } satisfies Meta<typeof PluginSettingsRenderer>
 
@@ -255,5 +255,40 @@ export const BusyAndUnavailable = {
     await expect(canvas.getByRole('form', { name: 'Busy Messaging settings' })).toHaveAttribute('aria-busy', 'true')
     await expect(canvas.getByRole('button', { name: 'Saving settings' })).toBeDisabled()
     await expect(canvas.getByRole('alert')).toHaveTextContent('Settings could not be saved')
+  },
+} satisfies Story
+
+export const HighlightedField = {
+  args: {
+    schema: messagingSchema,
+    values: initialValues,
+    onSubmit: () => {},
+    highlightKey: 'requiresApproval',
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'A settings deep link (`/settings?tab=<category>&field=<key>`) names one field. The renderer marks it `data-highlighted`, scrolls it into view once, and never steals focus — the host page owns the URL and passes the key through.',
+      },
+    },
+  },
+  render: (args) => (
+    <PageShell width="content" className="bakin-form-story bakin-form-story--workflow">
+      <Stack gap="section">
+        <header className="bakin-form-story__intro">
+          <p className="bakin-form-story__eyebrow">Deep link target</p>
+          <h1>Land the reader on the setting the link named</h1>
+          <p>Health incidents and other producers link straight to a field. The tint marks the target; the form stays fully editable.</p>
+        </header>
+        <PluginSettingsRenderer {...args} />
+      </Stack>
+    </PageShell>
+  ),
+  play: async ({ canvas }) => {
+    const target = canvas.getByRole('switch', { name: 'Require approval before publishing' })
+    const field = target.closest('[data-highlighted="true"]')
+    await expect(field).not.toBeNull()
+    await expect(canvas.getAllByRole('switch').filter((el) => el.closest('[data-highlighted]'))).toHaveLength(1)
+    await expect(target).not.toHaveFocus()
   },
 } satisfies Story
