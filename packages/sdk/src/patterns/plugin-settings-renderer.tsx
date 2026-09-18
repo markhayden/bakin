@@ -360,7 +360,7 @@ function AgentTogglesField({ agents, disabled, field, onChange, value }: AgentTo
       ) : (
         <div className="grid grid-cols-1 gap-bakin-3 sm:grid-cols-2 xl:grid-cols-3">
           {roster.map((agent) => (
-            <label
+            <div
               key={agent.id}
               className="flex min-w-0 items-center gap-bakin-3 rounded-bakin-control border border-bakin-border-subtle bg-bakin-surface-default p-bakin-3"
             >
@@ -372,7 +372,7 @@ function AgentTogglesField({ agents, disabled, field, onChange, value }: AgentTo
                 onCheckedChange={(on: boolean) => toggle(agent.id, on)}
                 aria-label={`Enable ${agent.name}`}
               />
-            </label>
+            </div>
           ))}
         </div>
       )}

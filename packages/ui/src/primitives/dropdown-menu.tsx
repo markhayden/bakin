@@ -13,7 +13,6 @@ import {
   optionSeparatorClasses,
 } from './option-list'
 import { PluginPortalBoundary } from './portal-ownership'
-import { Switch } from './switch'
 
 export type DropdownMenuProps = MenuPrimitive.Root.Props
 export type DropdownMenuPortalProps = MenuPrimitive.Portal.Props
@@ -145,15 +144,25 @@ export function DropdownMenuCheckboxItem({ className, children, checked, inset, 
 }
 
 /**
- * A menu row whose on/off state is a Switch instead of a check — the toggle
- * stays in place and the menu stays open when flipped. The switch is
- * decorative; the row itself carries the `menuitemcheckbox` semantics.
+ * A menu row whose on/off state reads as a switch instead of a check — the
+ * toggle stays in place and the menu stays open when flipped. The switch is a
+ * DECORATIVE, non-interactive graphic (a real Switch would nest an interactive
+ * control inside the `menuitemcheckbox` and fail `nested-interactive`); the row
+ * itself carries the `menuitemcheckbox` semantics and checked state.
  */
 export function DropdownMenuSwitchItem({ className, children, checked, inset, ...props }: DropdownMenuCheckboxItemProps) {
   return (
     <MenuPrimitive.CheckboxItem {...props} checked={checked} data-slot="dropdown-menu-switch-item" data-inset={inset || undefined} className={mergeClassName(optionItemClasses, className)}>
       <span className="flex min-w-0 flex-1 items-center gap-bakin-2">{children}</span>
-      <Switch checked={checked} size="sm" tabIndex={-1} aria-hidden className="pointer-events-none ml-auto" />
+      <span
+        aria-hidden="true"
+        data-slot="dropdown-menu-switch-indicator"
+        data-state={checked ? 'checked' : 'unchecked'}
+        className="pointer-events-none relative ml-auto inline-flex h-bakin-6 w-bakin-8 shrink-0 items-center rounded-bakin-pill px-bakin-1"
+      >
+        <span className={cn('pointer-events-none absolute inset-x-0 inset-y-bakin-1 rounded-bakin-pill border transition-colors', checked ? 'border-bakin-action-primary-background bg-bakin-action-primary-background' : 'border-bakin-text-muted/60 bg-bakin-border-subtle/35')} />
+        <span className={cn('pointer-events-none relative block size-bakin-3 rounded-bakin-pill shadow-sm transition-transform', checked ? 'translate-x-bakin-3 bg-bakin-action-primary-foreground' : 'translate-x-0 bg-bakin-text-muted')} />
+      </span>
     </MenuPrimitive.CheckboxItem>
   )
 }
