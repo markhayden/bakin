@@ -68,6 +68,7 @@ const DEMO_SCHEMAS = [{
 }]
 
 let schemas: unknown[]
+let schemasStatus: number
 let releaseSchemas: (() => void) | null
 let systemSaves: string[]
 
@@ -80,7 +81,7 @@ function installFetch() {
       if (releaseSchemas === null) {
         await new Promise<void>((resolve) => { releaseSchemas = resolve })
       }
-      return new Response(JSON.stringify(schemas), { status: 200 })
+      return new Response(JSON.stringify(schemas), { status: schemasStatus })
     }
     if (url.endsWith('/api/plugin-settings/demo')) {
       return new Response(JSON.stringify({ 'dispatch.paused': false }), { status: 200 })
@@ -116,6 +117,7 @@ function activeHeading(): string | null {
 beforeEach(() => {
   navigations.length = 0
   schemas = DEMO_SCHEMAS
+  schemasStatus = 200
   releaseSchemas = () => {}
   toastAdd.mockClear()
   installFetch()
@@ -158,6 +160,16 @@ describe('/settings ?tab= category', () => {
     expect(navigations[0]).toMatchObject({ to: '/settings', search: {}, replace: true })
     await settleFor(50, 'normalization must not loop')
     expect(navigations).toHaveLength(1)
+  })
+
+  it('never rewrites an unknown ?tab= when schema discovery fails', async () => {
+    // A failed discovery renders the error state; it must not also decide the
+    // tab is "unknown" and replace the user's URL out from under a retry.
+    schemasStatus = 500
+    await renderAt('/settings?tab=models')
+    await waitFor(() => expect(screen.getByText('Settings could not be loaded')).toBeTruthy())
+    await settleFor(50, 'nothing is unknown until the schema list exists')
+    expect(navigations).toHaveLength(0)
   })
 
   it('never normalizes params that belong to another route', async () => {
