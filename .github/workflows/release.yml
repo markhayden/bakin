@@ -138,6 +138,10 @@ jobs:
           git clone --filter=blob:none --no-checkout https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/external/bakin-bits-official"
           git -C "${{ runner.workspace }}/external/bakin-bits-official" fetch --depth 1 origin "$BITS_REF"
           git -C "${{ runner.workspace }}/external/bakin-bits-official" checkout --detach FETCH_HEAD
+          # packages/host/src/globals.css @source scans the Bits repo as a sibling of the checkout
+          # (../../../../bakin-bits-official/plugins) — the same location ci-main/ci-pr clone it to.
+          # Without this the SDK stylesheet builds core-only and fails assertSdkStylesheetIdentity.
+          ln -sfn "${{ runner.workspace }}/external/bakin-bits-official" "${{ runner.workspace }}/bakin-bits-official"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
