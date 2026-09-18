@@ -21,7 +21,7 @@ import { validateRouteContracts, type RouteFinding } from './route-contract-chec
 const repoRoot = resolve(new URL('../..', import.meta.url).pathname)
 
 /** Plugins whose source is not in this repo — exempt from validation. */
-const EXTRACTED_PLUGINS = ['messaging', 'projects']
+const EXTRACTED_PLUGINS = ['messaging', 'projects', 'terminal']
 
 interface CliArgs {
   mode: 'warn' | 'error'
