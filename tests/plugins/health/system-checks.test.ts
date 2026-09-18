@@ -697,6 +697,9 @@ describe('checkChannelAliases', () => {
     const results = observed(await checkChannelAliases(mockRuntime))
     expect(results[0].status).toBe('warning')
     expect(results[0].detail).toContain('notifications.channelAliases.general')
+    // The aliases live in settings.json with no form field yet, so the link
+    // lands on the System & Alerts category rather than a specific field.
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'navigate', href: '/settings?tab=system' })
   })
 })
 

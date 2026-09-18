@@ -18,13 +18,9 @@ mock.module('../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({ db: join(testDir, 'bakin.db') }),
 }))
 // The hub links into /explore and /settings; a bare RTL render has no
-// router, so Link becomes a plain anchor.
-mock.module('@tanstack/react-router', () => ({
-  Link: ({ to, children, className }: { to: string; children: unknown; className?: string }) => (
-    <a href={to} className={className}>{children as never}</a>
-  ),
-  createRoute: () => ({}),
-}))
+// router, so the house shim renders Link as a plain anchor (with `search`
+// composed into the href, so deep links are assertable).
+mock.module('@tanstack/react-router', () => require('../shims/tanstack-router'))
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../rtl-settle'
@@ -185,6 +181,8 @@ describe('CapabilitiesTab', () => {
     expect(screen.getByText(/model parakeet missing \(897 MB\)/)).toBeTruthy()
     expect(screen.getByText(/Google Chrome not installed/)).toBeTruthy()
     expect(screen.getByText('Add the key in Settings')).toBeTruthy()
+    // Deep link straight to Integrations & Keys, not the settings landing tab.
+    expect(screen.getByText('Add the key in Settings').closest('a')?.getAttribute('href')).toBe('/settings?tab=integrations')
   })
 
   it('empty state invites the user to Explore', async () => {

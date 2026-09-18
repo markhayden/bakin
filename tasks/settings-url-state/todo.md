@@ -30,14 +30,17 @@ Branch: `feat/settings-url-state` (MAIN checkout). Plan: `tasks/settings-url-sta
 - [ ] 3737 manual by Mark
 - [x] commit 2
 
-## Task 3 — producers (commit `fix(health,runtime): deep-link settings resolutions to their category and field`)
-- [ ] `delivery-discord.ts` ×4 hrefs (integrations / guildIds / approvers / inbound.allowFrom)
-- [ ] `channel-aliases.ts` → `/settings?tab=system`
-- [ ] `capabilities-tab.tsx` → `/settings?tab=integrations`
-- [ ] `delivery-discord-check.test.ts` asserts the four hrefs; `system-checks.test.ts` asserts channel-aliases href (add case if absent)
-- [ ] grep: no bare `/settings` hrefs outside sidebar + route-shadow
-- [ ] Focused tests, lint, typecheck; server restart → Health incident lands on tinted field
-- [ ] **Checkpoint B** (full `bun run test`) → commit 3
+## Task 3 — producers (commit `fix(health,runtime,images): deep-link settings resolutions to their category and field`) — DONE 2026-09-18
+- [x] `delivery-discord.ts` ×4 hrefs (integrations / guildIds / approvers / inbound.allowFrom)
+- [x] `channel-aliases.ts` → `/settings?tab=system`
+- [x] `capabilities-tab.tsx` → `to="/settings" search={{ tab: 'integrations' }}` (typed Link rejects a query string in `to`)
+- [x] `plugins/images/index.ts` → `/settings?tab=integrations`, relabeled "Open Integrations & Keys" (seventh producer, found by the sweep)
+- [x] Tests: `delivery-discord-check` (4 hrefs), `system-checks` (channel-aliases href), `runtime-hub` (anchor href via the shared shim), `images/health-checks` (href + label)
+- [x] Shim: `Link` composes `search` into href + returns a real element via lazy `require('react')` (top-level import segfaults bun in `global-search-overlay`); all 7 shim consumers green (49/49)
+- [x] grep: bare `/settings` remains only in the sidebar nav item, `route-shadow.ts`, the route itself, team plugin API paths, and a README mention
+- [x] Focused tests, lint (0 errors), typecheck, `ui:conformance --quick`
+- [ ] Server restart → Health incident lands on tinted field (Mark, 3737)
+- [x] **Checkpoint B** (full `bun run test` — see commit) → commit 3
 
 ## Task 4 — docs (commit `docs(settings): URL state, field deep links, knowledge + docs-site sweep`)
 - [ ] `url-state-deep-linking.md`: Settings status row; `field` param row; `tab` value note
