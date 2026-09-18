@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, RefreshCw } from 'lucide-react'
 import { Inline, Section } from '@makinbakin/sdk/layout'
-import { PluginLink, useHistoryBack } from '@makinbakin/sdk/navigation'
+import { PluginLink, useHistoryBack, useQueryState } from '@makinbakin/sdk/navigation'
 import {
   AgentAvatar,
   Page,
@@ -66,7 +66,11 @@ export function TeamDetail({ teamId }: { teamId: string }) {
   const [syncing, setSyncing] = useState(false)
   const [syncResults, setSyncResults] = useState<SyncResultRow[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [mode, setMode] = useState<MarkdownEditorMode>('edit')
+  // Edit vs preview rides `?mode=`; `edit` is the default and omitted, so only
+  // `?mode=preview` ever appears. Same pathname ⇒ the unsaved-changes guard
+  // never fires on a mode toggle.
+  const [modeParam, setModeParam] = useQueryState('mode', 'edit')
+  const mode: MarkdownEditorMode = modeParam === 'preview' ? 'preview' : 'edit'
 
   const contextUrl = isGlobal
     ? '/api/plugins/team/context/global'
@@ -271,7 +275,7 @@ export function TeamDetail({ teamId }: { teamId: string }) {
               ariaLabel="Shared context mode"
               options={[{ value: 'edit', label: 'Edit' }, { value: 'preview', label: 'Preview' }]}
               value={mode}
-              onValueChange={(value) => setMode(value as MarkdownEditorMode)}
+              onValueChange={(value) => setModeParam(value)}
             />
             {/* These rules are markdown that agents read as markdown, so the
                 author sees them rendered — same contract as the workspace

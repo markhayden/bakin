@@ -103,9 +103,12 @@ registerPlugin({
 | `jobId` | string | job id | Deep-link to open schedule job detail drawer |
 | `recordId` | string | memory rowId (`<tier>:<hash>`) | Deep-link to open memory detail drawer (resolved via `GET /record`) |
 | `lessonId` | string | lesson id | Highlight + scroll to a lesson on the team Lessons tab (`?tab=lessons`) |
+| `skill` | string | skill id | Selected skill on the team Skills tab (`?tab=skills`); default = first, stale id → first without rewriting; cleared on tab change |
+| `file` | string | `2026-09-18.md` | Selected daily memory file on the team Memory tab (`?tab=memory`); same rules as `skill` |
+| `activity_window` | string | `24h`, `7d` | Team Diagnostics activity-timeline window (default `24h`); changing it resets `activityPage` in the same navigation. Health uses the same name with its own defaults |
 | `tab` | string | `overview`, `system`, `models`, … | Active tab / category of a page; the default tab is omitted. On `/settings` the values are `system` (System & Alerts, default), `integrations` (Integrations & Keys), or a plugin id |
 | `field` | string | settings field key (`dispatch.paused`) | Highlight + scroll ONCE to one field on `/settings?tab=<category>` (kit `PluginSettingsRenderer` `highlightKey`); inert on `integrations` and for unknown keys; dropped when the category changes |
-| `mode` | string | `create`, `edit`, `duplicate` | Form mode (schedule plugin) |
+| `mode` | string | `create`, `edit`, `duplicate`, `preview` | Form mode (schedule plugin); edit-vs-preview on routed markdown editors (team shared context — default `edit`, so only `?mode=preview` appears) |
 | `page` | string | `1`, `2` | Pagination page number |
 | `sort` | string | `name`, `size`, `created`, `type` | Sort column (list view) |
 | `dir` | string | `asc`, `desc` | Sort direction |
@@ -177,3 +180,4 @@ Pattern: client-side filtering runs immediately (instant feedback), search fires
 | Projects | ✅ Done | `status`, `q` on list; path-based `/projects/[id]` and `/projects/[id]/edit` for detail |
 | Models | ✅ Done | `tab` (agents/available/aliases/routing/spend) |
 | Settings (host) | ✅ Done | `tab` (`system` default / `integrations` / `<pluginId>`; unknown → `system` via replace, only after schemas load), `field` (one-shot field highlight). Producers: health `delivery-discord` ×4, `channel-aliases`, images `providers-unavailable`, runtime Capabilities tab. Spec `.claude/specs/settings-url-state.md`. |
+| Team | ✅ Done | Agent page: `tab`, `skill` (Skills), `file` (Memory), `activity_window` + `activityPage` (Diagnostics), `lessonId` (Lessons); `/team/teams/$teamId`: `mode` (`preview`). Tab change clears `skill`/`file`. Spec `.claude/specs/settings-url-state.md` Phase 2. |

@@ -18,6 +18,19 @@ const contentDirMock = () => ({
 mock.module('../../../src/core/content-dir', contentDirMock)
 mock.module('../../../packages/core/src/content-dir', contentDirMock)
 
+// Router shim + a STABLE spy navigate so URL writes are assertable; useLocation
+// reads happy-dom's window.location (seeded via setURL below).
+const navigations: Array<Record<string, unknown>> = []
+const navigate = (opts: Record<string, unknown>) => navigations.push(opts)
+mock.module('@tanstack/react-router', () => ({
+  ...require('../../shims/tanstack-router'),
+  useNavigate: () => navigate,
+}))
+function setURL(url: string) {
+  const happy = (window as unknown as { happyDOM?: { setURL: (u: string) => void } }).happyDOM
+  happy?.setURL(url)
+}
+
 mock.module('@makinbakin/sdk/charts', () => ({
   Sparkline: ({ label }: { label: string }) => <svg aria-label={label} />,
   ChartExplainer: ({ children }: { children: ReactNode }) => <p role="note">{children}</p>,
@@ -451,5 +464,59 @@ describe('DiagnosticsChipsView', () => {
     expect(buttons[0]!.textContent).toContain('Drift')
     expect(buttons[0]!.textContent).toContain('Needs attention')
     expect(buttons[1]!.textContent).toContain('OK')
+  })
+})
+
+describe('TimelinePanel ?activity_window=', () => {
+  const tab = (name: string) => screen.getByRole('tab', { name })
+
+  it('cold-loads the window named by ?activity_window= and fetches with it', async () => {
+    navigations.length = 0
+    setURL('http://localhost/team/pixel?tab=diagnostics&activity_window=7d')
+    const fetchMock = stubFetch()
+    await actRender(() => render(<DiagnosticsTab agentId="pixel" />))
+    await waitFor(() => expect(tab('7 days').getAttribute('aria-selected')).toBe('true'))
+    const timelineCalls = fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/timeline'))
+    expect(timelineCalls.some((u) => u.includes('window=7d'))).toBe(true)
+    expect(navigations).toHaveLength(0)
+    setURL('http://localhost/')
+  })
+
+  it('reads an unknown window as 24h without rewriting the URL', async () => {
+    navigations.length = 0
+    setURL('http://localhost/team/pixel?tab=diagnostics&activity_window=nope')
+    stubFetch()
+    await actRender(() => render(<DiagnosticsTab agentId="pixel" />))
+    await waitFor(() => expect(tab('24 hours').getAttribute('aria-selected')).toBe('true'))
+    expect(navigations).toHaveLength(0)
+    setURL('http://localhost/')
+  })
+
+  it('changing the window resets the page in the same replace navigation', async () => {
+    navigations.length = 0
+    setURL('http://localhost/team/pixel?tab=diagnostics&activity_window=7d&activityPage=3')
+    stubFetch()
+    await actRender(() => render(<DiagnosticsTab agentId="pixel" />))
+    await waitFor(() => expect(tab('7 days').getAttribute('aria-selected')).toBe('true'))
+    await act(async () => { fireEvent.click(tab('24 hours')) })
+    await waitFor(() => expect(navigations).toHaveLength(1))
+    // Both land on their defaults, so both are dropped — one URL.
+    expect(navigations[0]).toMatchObject({ to: '/team/pixel', search: { tab: 'diagnostics' }, replace: true })
+    expect((navigations[0] as { search: Record<string, string> }).search).not.toHaveProperty('activity_window')
+    expect((navigations[0] as { search: Record<string, string> }).search).not.toHaveProperty('activityPage')
+    setURL('http://localhost/')
+  })
+
+  it('choosing 7 days writes ?activity_window=7d without a page param', async () => {
+    navigations.length = 0
+    setURL('http://localhost/team/pixel?tab=diagnostics')
+    stubFetch()
+    await actRender(() => render(<DiagnosticsTab agentId="pixel" />))
+    await waitFor(() => expect(tab('24 hours').getAttribute('aria-selected')).toBe('true'))
+    await act(async () => { fireEvent.click(tab('7 days')) })
+    await waitFor(() => expect(navigations).toHaveLength(1))
+    expect(navigations[0]).toMatchObject({ to: '/team/pixel', search: { tab: 'diagnostics', activity_window: '7d' }, replace: true })
+    expect((navigations[0] as { search: Record<string, string> }).search).not.toHaveProperty('activityPage')
+    setURL('http://localhost/')
   })
 })

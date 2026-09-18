@@ -31,9 +31,14 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
 }))
+// Seedable location + a STABLE spy navigate so `?mode=` reads and writes are
+// assertable without a RouterProvider.
+let searchStr = ''
+const navigations: Array<Record<string, unknown>> = []
+const navigate = (opts: Record<string, unknown>) => navigations.push(opts)
 mock.module('@tanstack/react-router', () => ({
-  useNavigate: () => mock(),
-  useLocation: () => ({ pathname: '/team/teams/media', searchStr: '', search: {} }),
+  useNavigate: () => navigate,
+  useLocation: () => ({ pathname: '/team/teams/media', searchStr, search: {} }),
   useParams: () => ({ teamId: 'media' }),
 }))
 
@@ -94,6 +99,8 @@ function installFetch() {
 beforeEach(() => {
   cleanup()
   installFetch()
+  searchStr = ''
+  navigations.length = 0
 })
 
 afterEach(() => cleanup())
@@ -139,5 +146,41 @@ describe('TeamDetail', () => {
     await waitFor(() => expect(screen.getByText('Roscoe')).toBeDefined())
     expect(screen.getByRole('button', { name: /Sync all agents/ })).toBeDefined()
     expect(fetchCalls.some((c) => c.url.endsWith('/context/global'))).toBe(true)
+  })
+})
+
+describe('TeamDetail ?mode=', () => {
+  const tab = (name: string) => screen.getByRole('tab', { name })
+
+  it('cold-loads preview mode from ?mode=preview without navigating', async () => {
+    searchStr = '?mode=preview'
+    render(<TeamDetail teamId="media" />)
+    await waitFor(() => expect(tab('Preview').getAttribute('aria-selected')).toBe('true'))
+    expect(screen.getByLabelText('Shared context content preview')).toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: 'Shared context content' })).toBeNull()
+    expect(navigations).toHaveLength(0)
+  })
+
+  it('defaults to edit mode with a clean URL', async () => {
+    render(<TeamDetail teamId="media" />)
+    await waitFor(() => expect(tab('Edit').getAttribute('aria-selected')).toBe('true'))
+    expect(screen.getByRole('textbox', { name: 'Shared context content' })).toBeTruthy()
+    expect(navigations).toHaveLength(0)
+  })
+
+  it('switching to Preview writes ?mode=preview and back to Edit drops it — one replace each, no unsaved-changes dialog', async () => {
+    render(<TeamDetail teamId="media" />)
+    const editor = await waitFor(() => screen.getByRole('textbox', { name: 'Shared context content' }))
+    fireEvent.change(editor, { target: { value: '# Media Team\n\nedited' } })
+    fireEvent.click(tab('Preview'))
+    await waitFor(() => expect(navigations).toHaveLength(1))
+    expect(navigations[0]).toMatchObject({ to: '/team/teams/media', search: { mode: 'preview' }, replace: true })
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    searchStr = '?mode=preview'
+    fireEvent.click(tab('Edit'))
+    await waitFor(() => expect(navigations).toHaveLength(2))
+    expect(navigations[1]).toMatchObject({ to: '/team/teams/media', search: {}, replace: true })
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })

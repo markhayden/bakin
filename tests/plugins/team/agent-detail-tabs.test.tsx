@@ -50,14 +50,18 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
 // useQueryState is what we're actually pinning.  The factory reads a global
 // seed that each test sets so we can simulate different URLs without touching
 // jsdom's window.location.
-const queryState: { tab: string } = { tab: 'profile' }
+const queryState: Record<string, string> = { tab: 'profile' }
 const setTabSpy = mock((v: string) => { queryState.tab = v })
+// Every other param (`skill`, `file`) records (key, value) so the tab-switch
+// clears are assertable.
+const setParamSpy = mock((key: string, v: string) => { queryState[key] = v })
 
 mock.module('@/hooks/use-query-state', () => ({
-  useQueryState: (_key: string, defaultValue: string) => {
+  useQueryState: (key: string, defaultValue: string) => {
     // Mirror the real hook's shape: [value, setValue, pushValue].  The
     // component uses setTabParam (the replace variant) to switch tabs.
-    return [queryState.tab || defaultValue, setTabSpy, mock()]
+    const set = key === 'tab' ? setTabSpy : (v: string) => setParamSpy(key, v)
+    return [queryState[key] || defaultValue, set, mock()]
   },
 }))
 
@@ -84,6 +88,7 @@ const originalFetch = global.fetch
 beforeEach(() => {
   queryState.tab = 'profile'
   setTabSpy.mockClear()
+  setParamSpy.mockClear()
 
   // Minimal profile payload so the component falls out of its loading shell.
   global.fetch = mock((url: RequestInfo | URL) => {
@@ -147,6 +152,9 @@ describe('AgentDetail — tab URL contract', () => {
     const rulesTab = await waitFor(() => screen.getByRole('tab', { name: 'AGENTS.md' }))
     fireEvent.click(rulesTab)
     expect(setTabSpy).toHaveBeenCalledWith('rules')
+    // Leaving a tab drops its in-page selection params in the same tick.
+    expect(setParamSpy).toHaveBeenCalledWith('skill', '')
+    expect(setParamSpy).toHaveBeenCalledWith('file', '')
   })
 
   it('renders the new Heartbeat, Active Context, and Memory tabs in the bar', async () => {
