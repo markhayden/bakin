@@ -230,6 +230,20 @@ The `/team/:id` page (`agent-detail.tsx`) is a thin orchestrator: header + tab b
 
 URL state via `useQueryState('tab', 'overview')`. Unknown values fall back to `overview`.
 
+**Every bookmark-worthy selection on the agent page rides the URL** (spec `.claude/specs/settings-url-state.md`, Phase 2 rules):
+
+| Param | Where | Default (omitted) | Notes |
+|---|---|---|---|
+| `tab` | page | `overview` | unknown → `overview` (no rewrite) |
+| `skill` | Skills tab (`SkillsTab`, exported) | first installed skill | stale id → first skill, URL NOT rewritten; replace-mode; cleared when the tab changes |
+| `file` | Memory tab (`MemoryTab`, exported) | first daily file | same rules as `skill` |
+| `activity_window` | Diagnostics → Activity timeline | `24h` | only `7d` is non-default; changing it resets `activityPage` in the SAME navigation |
+| `activityPage` | Diagnostics → Activity timeline | `1` | `all` sentinel |
+| `lessonId` | Lessons tab | — | one-shot highlight + scroll (⌘K lesson hits) |
+| `mode` | `/team/teams/$teamId` shared-context editor (`TeamDetail`) | `edit` | only `?mode=preview` appears; same pathname ⇒ the unsaved-changes guard never fires on a toggle |
+
+`AgentDetail`'s tab handler sets `tab` and clears `skill` + `file` in one tick (setters batch into one replace navigation), so `?tab=memory&skill=x` never lingers. Health links into `?tab=diagnostics` (5 producers) and the team hit renderer into `?tab=lessons&lessonId=`; nothing links to a specific skill or file yet — the URLs are simply linkable now.
+
 ### Header Contract
 
 The header contains: back arrow, avatar (clickable for upload), name, role, gateway-restart banner (when dirty), delete button (suppressed on the main agent). It used to host the model picker, team selector, and subagent perms badge — all moved to OverviewTab so the header stays informational.

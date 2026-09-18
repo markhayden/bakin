@@ -1,6 +1,6 @@
 # Spec: Settings URL State + App-Wide Selection-State Audit
 
-**Status:** Phase 1 IMPLEMENTED 2026-09-18 on `feat/settings-url-state` (4 commits, PR open, awaiting Mark's live checklist + merge). Phase 2 (audit fixes) not started.
+**Status:** Phase 1 SHIPPED — PR #829 merged 2026-09-18. Phase 2 in progress: PR 1 (team) on `feat/team-url-state` (`tasks/team-url-state/plan.md`).
 **Date:** 2026-09-18
 **Priority:** Tech-debt reduction. Single user, single machine. NO backwards compatibility, NO shims, NO redirects for old shapes. Clean and clear over compatible.
 **Parent:** `.claude/specs/routing-overhaul.md` (the URL taxonomy this spec extends)
@@ -175,15 +175,16 @@ Rollback: `git revert` any checkpoint; 3 depends on 1+2 (targets exist), 4 is do
 1. **Any selection that changes what a routed page shows goes in the URL.** Tabs → `tab`; in-page master-detail selection → a noun param (`skill`, `file`, `step`, `version`); edit-vs-preview → the existing `mode` param (`mode=edit`); time windows → the existing `<area>_window` naming.
 2. **History by presentation:** drawers/overlays PUSH (Back closes them); tabs and in-page selection REPLACE.
 3. **Stays local:** wizard steps inside modals, delete-confirm targets, async phases, DataTable sort, hover/drag, search-overlay view mode (localStorage by design).
-4. Every fix ships with: URL-seeded RTL test via the shim, producer links updated (⌘K hit renderers, toasts, incident resolutions), and a row in `url-state-deep-linking.md`.
+4. **Stale noun params do not rewrite the URL.** A `?skill=`/`?file=`/`?step=`/`?version=` naming something that no longer exists shows the default (first item) and leaves the URL alone. Only page-level `tab` values normalize (settings/health precedent) — an in-page selection has nothing user-visible to fix, and rewriting would need an effect + spy plumbing for no gain.
+5. Every fix ships with: URL-seeded RTL test via the shim, producer links updated (⌘K hit renderers, toasts, incident resolutions), and a row in `url-state-deep-linking.md`.
 
 ### Findings (sweep of 2026-09-18; every `packages/host/src/{routes,components}` + `plugins/*/components` file)
 
 | # | Plugin | File | Gap | Fix | PR |
 |---|--------|------|-----|-----|----|
-| 1 | team | `agent-detail.tsx:435` / `:522` | Selected skill + selected memory file (`NavList`, local state) inside URL-backed `?tab=skills` / `?tab=memory` | `?skill=<name>`, `?file=<name>` (replace) | `feat/team-url-state` |
-| 2 | team | `diagnostics-tab.tsx:788` | Activity window local while its page number (`activityPage`) is URL state; window change resets page | `?activity_window=` (replace), matching health | `feat/team-url-state` |
-| 3 | team | `team-detail.tsx:69` | Team-context edit vs preview on a routed page | `?mode=edit` | `feat/team-url-state` |
+| 1 | team | `agent-detail.tsx:435` / `:522` | Selected skill + selected memory file (`NavList`, local state) inside URL-backed `?tab=skills` / `?tab=memory` | `?skill=<name>`, `?file=<name>` (replace) | `feat/team-url-state` — implemented 2026-09-18 |
+| 2 | team | `diagnostics-tab.tsx:788` | Activity window local while its page number (`activityPage`) is URL state; window change resets page | `?activity_window=` (replace), matching health | `feat/team-url-state` — implemented 2026-09-18 |
+| 3 | team | `team-detail.tsx:69` | Team-context edit vs preview on a routed page | `?mode=edit` | `feat/team-url-state` — implemented 2026-09-18 |
 | 4 | tasks | `kanban-board.tsx:430` | `taskId` consumed once then cleared — inbound deep link only; card clicks never write the URL | Push `taskId` on open, clear on close (memory/schedule pattern) | `feat/tasks-url-state` |
 | 5 | workflows | `workflow-detail.tsx:111` | Step drawer selection on a routed page | `?step=<id>` (push) | `feat/workflows-url-state` |
 | 6 | assets | `VersionedAssetDetail.tsx:59` | Previewed version on `/assets/$assetId` | `?version=<n>` (replace) | `feat/assets-url-state` |
