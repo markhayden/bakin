@@ -92,16 +92,24 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
   // and conversation routes it's the rail filter. Never both.
   const draftAgent = draft ? agentParam : ''
   const agentFilter = draft ? '' : agentParam
-  const [search, setSearch] = useState('')
+  // Rail search rides `?q=` like every other list surface (replace-mode,
+  // omitted when empty).
+  const [search, setSearch] = useQueryState('q', '')
   const [collapsed, setCollapsed] = useRailCollapsed()
   const { chats, allChats, loading, refresh } = useChats(agentFilter)
   const router = useRouter()
   const composerRef = useRef<ComposerHandle | null>(null)
 
-  /** Carry the active rail filter across page-identity navigations. */
+  /** Carry the active rail filter + search across page-identity navigations. */
   const withFilter = useCallback(
-    (path: string) => (agentFilter ? `${path}?agent=${encodeURIComponent(agentFilter)}` : path),
-    [agentFilter],
+    (path: string) => {
+      const params = new URLSearchParams()
+      if (agentFilter) params.set('agent', agentFilter)
+      if (search.trim()) params.set('q', search)
+      const qs = params.toString()
+      return qs ? `${path}?${qs}` : path
+    },
+    [agentFilter, search],
   )
 
   // Live in-flight indicators: seed from the list, keep fresh via events.

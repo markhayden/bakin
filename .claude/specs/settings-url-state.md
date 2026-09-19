@@ -1,6 +1,6 @@
 # Spec: Settings URL State + App-Wide Selection-State Audit
 
-**Status:** Phase 1 SHIPPED — PR #829 merged 2026-09-18. Phase 2 in progress: PR 1 (team) SHIPPED #830; PR 2 (tasks) SHIPPED #839; PR 3 (workflows) SHIPPED #840; PR 4 (assets) SHIPPED #842; PR 5 (brands) SHIPPED #850; PR 6 (health) on `feat/health-url-state` (`tasks/health-url-state/plan.md`).
+**Status:** Phase 1 SHIPPED — PR #829 merged 2026-09-18. Phase 2 in progress: PR 1 (team) SHIPPED #830; PR 2 (tasks) SHIPPED #839; PR 3 (workflows) SHIPPED #840; PR 4 (assets) SHIPPED #842; PR 5 (brands) SHIPPED #850; PR 6 (health) SHIPPED #853; PR 7 (chat) on `feat/chat-url-state` (`tasks/chat-url-state/plan.md`) — the last Phase 2 PR.
 **Date:** 2026-09-18
 **Priority:** Tech-debt reduction. Single user, single machine. NO backwards compatibility, NO shims, NO redirects for old shapes. Clean and clear over compatible.
 **Parent:** `.claude/specs/routing-overhaul.md` (the URL taxonomy this spec extends)
@@ -190,7 +190,7 @@ Rollback: `git revert` any checkpoint; 3 depends on 1+2 (targets exist), 4 is do
 | 6 | assets | `VersionedAssetDetail.tsx:59` | Previewed version on `/assets/$assetId` | `?version=<n>` (replace) | `feat/assets-url-state` — implemented 2026-09-18 |
 | 7 | brands | `brand-doc-editor.tsx:56` | Doc edit vs preview on a routed page | `?mode=edit` | `feat/brands-url-state` — implemented 2026-09-18 |
 | 8 | health | `agents-usage-chart.tsx:149` | Chart metric local beside URL-backed `agents_window` | `?agents_metric=` (replace) | `feat/health-url-state` — implemented 2026-09-18 |
-| 9 | chat | `chat-page.tsx:95` | Rail search — the only list search not on `q` | `useQueryState('q','')` | `feat/chat-url-state` |
+| 9 | chat | `chat-page.tsx:95` | Rail search — the only list search not on `q` | `useQueryState('q','')` | `feat/chat-url-state` — implemented 2026-09-18 |
 
 Legitimately local (no action): brand-builder wizard step, explore install-dialog key step, health `selectedRepair`, workflow canvas node selection (dirty-guarded editor), all delete-confirm / rename targets, DataTable sorts, search-overlay `viewMode`, sidebar expansion.
 
@@ -207,3 +207,4 @@ None blocking. Follow-ups recorded, not scheduled:
 - Integrations & Keys is bespoke (`ProviderKeysTab`); per-secret highlighting would need it to adopt keyed sections first.
 - The `/` route redirects to `/tasks` without forwarding the search string (`packages/host/src/routes/index.tsx`); forwarding it is a one-line routing-contract change worth its own PR. Until then producers must build `/tasks?…`, never `/?…`.
 - The create-new task drawer stays component-level; `?mode=create` would need dirty-guard work and was not requested.
+- Found by PR 7 (chat): `/chat?agent=<id>` looped React ("Maximum update depth exceeded") because `useChats` rebuilt the filtered list every render and the streaming-indicator effect keyed on it wrote a new Set each time — fixed in `fix(chat): memoize the agent-filtered chat list` with a probe case. Lesson for the rules: making filters travel with navigation exposes list pages to URL states nothing rendered before; every Phase 2 PR should cold-load each param combination it makes reachable.

@@ -156,3 +156,71 @@ describe('ChatPage path-based identity', () => {
     expect(navigations.some((value) => (value as { to?: string }).to === '/chat')).toBe(true)
   })
 })
+
+describe('ChatPage ?agent= list filter', () => {
+  it('renders the filtered list page without an update loop', async () => {
+    // useChats returned a fresh filtered array every render whenever ?agent=
+    // was set, and the streaming-indicator effect keyed on it set state with a
+    // new Set each time — "Maximum update depth exceeded" on /chat?agent=<id>.
+    mockFetch()
+    setURL('http://localhost:3737/chat?agent=main')
+    let view!: ReturnType<typeof render>
+    await act(async () => { view = render(<ChatPage />) })
+    await waitFor(() => expect(view.container.querySelector(`[data-chat-row="${CHAT_A}"]`)).not.toBeNull())
+    expect(view.container.textContent).toContain('1 shown')
+  })
+})
+
+describe('ChatPage ?q= rail search', () => {
+  // The header SearchInput is an accessible searchbox named by its label.
+  const searchbox = (container: HTMLElement) =>
+    container.querySelector('input[type="search"][aria-label="Chat search"]') as HTMLInputElement | null
+
+  it('cold-loads the rail search from ?q= and filters the rail without navigating', async () => {
+    mockFetch()
+    navigations.length = 0
+    setURL('http://localhost:3737/chat?q=reddit')
+    let view!: ReturnType<typeof render>
+    await act(async () => { view = render(<ChatPage />) })
+    await waitFor(() => expect(view.container.querySelector(`[data-chat-row="${CHAT_A}"]`)).not.toBeNull())
+    expect(searchbox(view.container)?.value).toBe('reddit')
+    expect(navigations).toHaveLength(0)
+  })
+
+  it('a non-matching ?q= hides the rail row', async () => {
+    mockFetch()
+    setURL('http://localhost:3737/chat?q=zzz-no-match')
+    let view!: ReturnType<typeof render>
+    await act(async () => { view = render(<ChatPage />) })
+    await waitFor(() => expect(searchbox(view.container)).not.toBeNull())
+    expect(searchbox(view.container)!.value).toBe('zzz-no-match')
+    await waitFor(() => expect(view.container.textContent).toContain('0 shown'))
+    expect(view.container.querySelector(`[data-chat-row="${CHAT_A}"]`)).toBeNull()
+  })
+
+  it('typing writes ?q= in one replace navigation', async () => {
+    mockFetch()
+    navigations.length = 0
+    setURL('http://localhost:3737/chat')
+    let view!: ReturnType<typeof render>
+    await act(async () => { view = render(<ChatPage />) })
+    await waitFor(() => expect(searchbox(view.container)).not.toBeNull())
+    await act(async () => { fireEvent.change(searchbox(view.container)!, { target: { value: 'red' } }) })
+    await waitFor(() => expect(navigations.length).toBeGreaterThan(0))
+    const last = navigations[navigations.length - 1] as { to: string; search: Record<string, string>; replace?: boolean }
+    expect(last).toMatchObject({ to: '/chat', search: { q: 'red' }, replace: true })
+  })
+
+  it('selecting a rail chat keeps ?agent= and ?q=', async () => {
+    mockFetch()
+    navigations.length = 0
+    setURL('http://localhost:3737/chat?agent=main&q=reddit')
+    let view!: ReturnType<typeof render>
+    await act(async () => { view = render(<ChatPage />) })
+    await waitFor(() => expect(view.container.querySelector(`[data-chat-row="${CHAT_A}"]`)).not.toBeNull())
+    await act(async () => { fireEvent.click(view.container.querySelector(`[data-chat-row="${CHAT_A}"] button`)!) })
+    const pushed = navigations.find((n) => (n as { to?: string }).to === `/chat/${CHAT_A}`) as { search: Record<string, string> } | undefined
+    expect(pushed).toBeDefined()
+    expect(pushed!.search).toEqual({ agent: 'main', q: 'reddit' })
+  })
+})
