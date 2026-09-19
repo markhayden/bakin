@@ -25,6 +25,7 @@ import { noteSearchEngineProgress } from './progress'
 import { getContentDir } from '../content-dir'
 import { createLogger } from '../logger'
 import type { Document, SearchAdapter, TableConfig } from '../adapters/search'
+import { isMissingTable } from '../adapters/search/errors'
 
 const log = createLogger('search-tables')
 
@@ -516,8 +517,16 @@ export async function sweepTombstones(adapter: SearchAdapter, opts?: { dwellMs?:
       await adapter.tables.drop(row.physical)
       db().prepare('DELETE FROM search_table_tombstones WHERE physical = ?').run(row.physical)
       forgetCreatedPhysical(row.physical)
-    } catch {
-      // still failing — stays tombstoned
+    } catch (err) {
+      if (isMissingTable(err)) {
+        // The engine no longer has this table (e.g. a version-change rebuild
+        // wiped the data dir) — the DELETE 404s forever, so a retained row
+        // would warn hourly for eternity. Already gone == dropped.
+        db().prepare('DELETE FROM search_table_tombstones WHERE physical = ?').run(row.physical)
+        forgetCreatedPhysical(row.physical)
+        log.info('tombstoned table already absent from the engine — retired', { physical: row.physical })
+      }
+      // anything else: still failing — stays tombstoned
     }
   }
   return db().prepare<{ n: number }, []>('SELECT COUNT(*) AS n FROM search_table_tombstones').get()?.n ?? 0

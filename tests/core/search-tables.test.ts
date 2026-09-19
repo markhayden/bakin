@@ -45,6 +45,7 @@ import {
   type TableEnsureDef,
 } from '../../packages/core/src/search/tables'
 import { createMockSearchAdapter } from '../../packages/core/src/adapters/search/testing'
+import { SearchEngineUnavailableError, SearchRequestRejectedError } from '../../packages/core/src/adapters/search/errors'
 import { closeAllDbs } from '../../packages/core/src/storage/db'
 import type { SearchAdapter } from '../../packages/core/src/adapters/search'
 import { settleFor } from '../helpers/wait'
@@ -199,6 +200,45 @@ describe('blue/green migration', () => {
     expect(await sweepTombstones(adapter, { dwellMs: 0 })).toBe(0)
     expect((await adapter.tables.list()).map((t) => t.name)).not.toContain(blue)
     expect(tableStatus('bakin_notes')?.state).toBe('active')
+  })
+
+  it('sweepTombstones retires a tombstone whose table is already gone from the engine (404)', async () => {
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const blue = queryTarget('bakin_notes')!
+    await ensureTable(adapter, makeDef({ schemaVersion: 2 }), 'fp-a')
+    expect((await adapter.tables.list()).map((t) => t.name)).toContain(blue)
+
+    // The engine loses the physical out-of-band (version-change rebuild
+    // wipes the data dir): DELETE now 404s on every sweep, forever.
+    const missing404: SearchAdapter = {
+      ...adapter,
+      tables: {
+        ...adapter.tables,
+        drop: async (name: string) => {
+          if (name === blue) throw new SearchRequestRejectedError(`antfly rejected DELETE (${404})`, undefined, 404)
+          return adapter.tables.drop(name)
+        },
+      },
+    }
+    expect(await sweepTombstones(missing404, { dwellMs: 0 })).toBe(0)
+  })
+
+  it('sweepTombstones keeps a tombstone when the drop fails for any non-404 reason', async () => {
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    await ensureTable(adapter, makeDef({ schemaVersion: 2 }), 'fp-a')
+
+    const engineDown: SearchAdapter = {
+      ...adapter,
+      tables: {
+        ...adapter.tables,
+        drop: async () => { throw new SearchEngineUnavailableError('antfly unreachable') },
+      },
+    }
+    expect(await sweepTombstones(engineDown, { dwellMs: 0 })).toBe(1)
+    // Engine back: the retained tombstone drops on the next sweep.
+    expect(await sweepTombstones(adapter, { dwellMs: 0 })).toBe(0)
   })
 
   it('an adapter mappingFingerprint change migrates without any def change', async () => {
