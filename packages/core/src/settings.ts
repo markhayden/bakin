@@ -356,14 +356,14 @@ export const DEFAULT_SETTINGS: BakinSettings = {
         // SD2). Applied per table; tables fan out in parallel.
         queryBudgetMs: 2000,
         reranker: {
-          // Still disabled at v0.2.0-rc.9, for a new reason. The rc.2 mxbai
-          // SIGABRT (bakin#456) is fixed — reranking no longer crashes the
-          // server and ranks correctly on Metal — but it's throughput-bound:
-          // ~200ms/candidate (linear; 20 docs ~4s), it serializes, and it needs
-          // an explicit TERMITE_PREFERRED_BACKEND=metal (auto-select hits the
-          // onnx variant -> MissingWeight). Default-on across the multi-table
-          // fan-out is too slow; opt in per-query with a bounded top-K instead.
-          enabled: false,
+          // DEFAULT-ON since antfly 0.2.2 (#846, 2026-09-19 M4 benchmark,
+          // tasks/evidence-reranker-846.md): top-10 single-table rerank costs
+          // Δp95 +28ms warm and metal auto-selects the pinned distribution.
+          // Scope: single-table queries with a rerankField when the caller
+          // leaves rerank unset (adapter-side attach); the multi-table
+          // fan-out never reranks per-table (engine 502s >4 concurrent
+          // reranks) — cross-table search reranks its merged top-K once.
+          enabled: true,
           provider: 'antfly',
           model: 'mixedbread-ai/mxbai-rerank-base-v1',
         },

@@ -625,6 +625,43 @@ describe('search-registry', () => {
     expect(result.meta.tables).toEqual([{ table: 'bakin_tasks', hits: 1, took_ms: 5 }])
   })
 
+  it('crossTableSearch reranks the merged top-K in ONE batched call (#846)', async () => {
+    buildSearchAPI('tasks').registerContentType(makeDef('tasks'))
+    buildSearchAPI('assets').registerContentType(makeDef('assets'))
+
+    searchHarness.calls.multiQuery.mockResolvedValue([
+      { hits: [{ key: 'weak', document: { title: 'unrelated note' }, score: 0.9 }], total: 1, diagnostics: { strategy: 'hybrid', durationMs: 5 } },
+      { hits: [{ key: 'strong', document: { title: 'the exact answer' }, score: 0.3 }], total: 1, diagnostics: { strategy: 'hybrid', durationMs: 5 } },
+    ])
+    // Cross-encoder disagrees with fusion: the low-fusion hit is the answer.
+    searchHarness.calls.rerank.mockResolvedValue([0.01, 0.98])
+
+    const result = await crossTableSearch('exact answer')
+    expect(searchHarness.calls.rerank).toHaveBeenCalledTimes(1)
+    const [queryArg, textsArg] = searchHarness.calls.rerank.mock.calls[0]!
+    expect(queryArg).toBe('exact answer')
+    expect(textsArg).toHaveLength(2)
+    expect(result.results.map((r) => r.id)).toEqual(['strong', 'weak'])
+    expect(result.results[0]!.rerankScore).toBe(0.98)
+  })
+
+  it('crossTableSearch keeps fusion order when rerank degrades to null, and skips rerank on offset pages', async () => {
+    buildSearchAPI('tasks').registerContentType(makeDef('tasks'))
+    searchHarness.calls.multiQuery.mockResolvedValue([
+      { hits: [
+        { key: 'a', document: { title: 'first' }, score: 0.9 },
+        { key: 'b', document: { title: 'second' }, score: 0.5 },
+      ], total: 2, diagnostics: { strategy: 'hybrid', durationMs: 5 } },
+    ])
+    searchHarness.calls.rerank.mockResolvedValue(null)
+    const degraded = await crossTableSearch('anything')
+    expect(degraded.results.map((r) => r.id)).toEqual(['a', 'b'])
+
+    searchHarness.calls.rerank.mockClear()
+    await crossTableSearch('anything', { offset: 1 })
+    expect(searchHarness.calls.rerank).not.toHaveBeenCalled()
+  })
+
   it('crossTableSearch returns fallback when search adapter is unavailable', async () => {
     searchHarness.setAvailable(false)
 

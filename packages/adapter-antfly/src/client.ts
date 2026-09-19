@@ -144,6 +144,37 @@ export class AntflySearchClient implements SearchAdapter {
     return value
   }
 
+  /**
+   * Standalone batched rerank (#846): ONE /ml/v1/rerank call scores every
+   * text against the query (~116ms flat for 5–20 prompts on the M4 —
+   * tasks/evidence-reranker-846.md). Null on disabled/unconfigured/any
+   * failure: the caller keeps its existing order (D11), never errors.
+   */
+  async rerank(query: string, texts: string[]): Promise<number[] | null> {
+    const reranker = this.settings.search.reranker
+    if (!reranker.enabled || !reranker.model || texts.length === 0) return null
+    try {
+      const raw = await this.requestJson<{ data?: Array<{ index?: number; score?: number }> }>(
+        'POST',
+        paths.rerank(),
+        { model: reranker.model, query, prompts: texts },
+        10_000,
+      )
+      const data = raw?.data
+      if (!Array.isArray(data) || data.length !== texts.length) return null
+      const scores = new Array<number>(texts.length).fill(0)
+      for (let i = 0; i < data.length; i++) {
+        const entry = data[i]
+        scores[typeof entry.index === 'number' ? entry.index : i] = typeof entry.score === 'number' ? entry.score : 0
+      }
+      return scores
+    } catch {
+      // Unavailable or rejected — fusion order stands; the engine's own
+      // health surfaces carry the failure story.
+      return null
+    }
+  }
+
   capabilities(): SearchAdapterCapabilities {
     // Honest capabilities: a leg whose embedder is disabled in settings is
     // NOT offered — table creates skip it (keyword-only degrade) and the
@@ -394,7 +425,13 @@ export class AntflySearchClient implements SearchAdapter {
     // burned its own slice back-to-back). The fan-out's budget is the MAX
     // single-table deadline; tables past it are honestly omitted.
     let results: QueryResult[]
-    if (queries.some((entry) => entry.query.rerank)) {
+    // Effective-rerank mirrors translate's default-attach (#846): a query
+    // that left rerank UNSET but carries a rerankField will rerank when
+    // enabled — it must serialize too, or defaulted fan-outs stampede the
+    // one Metal queue into 502s.
+    const willRerank = (entry: { query: Query }) => entry.query.rerank
+      ?? (this.settings.search.reranker.enabled && typeof entry.query.adapterOptions?.rerankField === 'string')
+    if (queries.some(willRerank)) {
       const budgetMs = Math.max(...queries.map((entry) => entry.query.deadlineMs ?? QUERY_TIMEOUT_MS))
       const endAt = Date.now() + budgetMs
       results = []

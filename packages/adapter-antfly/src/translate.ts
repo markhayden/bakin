@@ -207,7 +207,15 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
 
   if (aggregations) request.aggregations = aggregations
 
-  if (q.rerank && settings.search.reranker.model) {
+  // Default-on (#846, 2026-09-19 benchmark: top-10 rerank Δp95 +28ms warm on
+  // the M4 — see tasks/evidence-reranker-846.md): when the CALLER left
+  // rerank unset, `reranker.enabled` decides for single-table queries that
+  // carry a rerankField. Explicit rerank:false always wins. This lives in
+  // the adapter so the enable knob stays adapter-private (D17).
+  const wantRerank = q.rerank ?? (
+    settings.search.reranker.enabled && typeof q.adapterOptions?.rerankField === 'string'
+  )
+  if (wantRerank && settings.search.reranker.model) {
     request.reranker = {
       provider: settings.search.reranker.provider,
       model: settings.search.reranker.model,

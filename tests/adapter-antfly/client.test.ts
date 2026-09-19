@@ -384,3 +384,43 @@ describe('multiQuery fan-out budget (2026-07-22)', () => {
     }
   })
 })
+
+describe('standalone rerank (#846)', () => {
+  it('POSTs /ml/v1/rerank with {model, query, prompts} and returns scores in prompt order', async () => {
+    let sent: unknown = null
+    const client = makeClient([{
+      match: (url) => url.includes('/ml/v1/rerank'),
+      handle: (_url, init) => {
+        sent = JSON.parse(String(init?.body))
+        return json({ object: 'list', data: [
+          { object: 'rerank.score', index: 0, score: 0.0002 },
+          { object: 'rerank.score', index: 1, score: 0.996 },
+        ] })
+      },
+    }])
+    const scores = await client.rerank('sourdough hydration', ['vlan routing', 'sourdough schedule'])
+    expect(scores).toEqual([0.0002, 0.996])
+    expect(sent).toEqual({
+      model: 'mixedbread-ai/mxbai-rerank-base-v1',
+      query: 'sourdough hydration',
+      prompts: ['vlan routing', 'sourdough schedule'],
+    })
+  })
+
+  it('degrades to null on engine failure — never throws into the merge path', async () => {
+    const client = makeClient([{
+      match: (url) => url.includes('/ml/v1/rerank'),
+      handle: () => json({ error: 'boom' }, 500),
+    }])
+    expect(await client.rerank('q', ['a', 'b'])).toBeNull()
+  })
+
+  it('returns null without a fetch when the reranker is disabled or unconfigured', async () => {
+    const off = new AntflySearchClient(
+      { ...DEFAULT_SETTINGS, search: { ...DEFAULT_SETTINGS.search, reranker: { ...DEFAULT_SETTINGS.search.reranker, enabled: false } } },
+      { fetchImpl: scriptedFetch([]) }, // any fetch would throw 'unrouted'
+    )
+    expect(await off.rerank('q', ['a'])).toBeNull()
+    expect(await makeClient([]).rerank('q', [])).toBeNull() // empty input → trivial null
+  })
+})
