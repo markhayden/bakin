@@ -781,6 +781,36 @@ describe('checkSearchAdapter', () => {
     })
   })
 
+  it('a scarred-but-converged leg stays a HEALTHY table with an advisory scar observation (#845)', async () => {
+    mockSearchEnabled = true
+    mockSearchInstalled = true
+    mockSearchAvailable = true
+    mockSearchHealth = {
+      enabled: true,
+      engineReachable: true,
+      outbox: { pending: 0, quarantined: 0, oldestPendingAt: null },
+      tables: [{
+        logical: 'bakin_assets', physical: 'bakin_assets_v2', schemaVersion: 2, state: 'active', phase: null,
+        pluginId: 'assets', docCount: 98, lastIndexedAt: null, lastRebuildAt: null, journalPending: 0,
+        legs: [{ name: 'assets_visual', totalIndexed: 41, rebuilding: false, pending: 0, scar: { fatalCount: 1, note: 'historical enrichment failure recorded; leg converged and serving' } }],
+        healthy: true,
+      }],
+    }
+
+    const results = observed(await checkSearchAdapter())
+    const tablesRow = results.find((candidate) => candidate.key === 'indexes.tables')!
+    expect(tablesRow.status).toBe('healthy')
+    expect((tablesRow.evidence as { unhealthyTables: string[] }).unhealthyTables).toEqual([])
+
+    const scarRow = results.find((candidate) => candidate.key === 'indexes.scars')!
+    expect(scarRow.status).toBe('warning')
+    expect(scarRow.summary).toContain('historical enrichment failure')
+    expect(scarRow.incident).toMatchObject({
+      disposition: 'advisory',
+      resolution: { type: 'repair', actionId: 'search-scar-rebuild' },
+    })
+  })
+
   it('reports no registered content types and table-health failures explicitly', async () => {
     mockSearchEnabled = true
     mockSearchInstalled = true
@@ -1165,6 +1195,7 @@ describe('plugin registration', () => {
       'search-consistency-restart',
       'search-engine-burn-restart',
       'search-outbox-revive',
+      'search-scar-rebuild',
       'search-spin-rebuild',
       'spend-evidence-refresh-pricing',
       'sweep-run-dirs',

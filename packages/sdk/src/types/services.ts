@@ -256,6 +256,9 @@ export interface SearchHealthIndex {
   /** Numeric backlog for this leg (docs queued for enrichment), when the engine reports one. */
   pending?: number
   error?: string
+  /** Historical failure annotation on a converged, serving leg (#845) —
+   *  advisory-grade; never makes the table unhealthy. */
+  scar?: { fatalCount: number; note: string }
 }
 
 /** Health of a single registered content-type table (blue/green aware). */

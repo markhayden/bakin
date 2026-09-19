@@ -552,7 +552,15 @@ weights come from the content type's `indexes[].weight` and ride
   a query**, which can hang during backfill). Flags are honest on 0.2.0
   (the empty-table and #319 idle-detection overrides are gone); an
   interrupted backfill leaves a sticky-honest `backfill_state:"degraded"`
-  scar on a fully functional leg, which maps ready.
+  scar on a fully functional leg, which maps ready — and on 0.2.2 `degraded`
+  is also the NORMAL state for partial-coverage media legs. **Fatal counters
+  are history, not state (#845):** `fatal_error_count > 0` maps `error` only
+  alongside LIVE distress (`worker_failed`, state `failed`, `retrying`, or
+  the 0.2.2 engine-declared `stalled`); otherwise the leg stays `ready`
+  carrying a `TableLegHealth.scar` annotation, which the `health.search`
+  check surfaces as an ADVISORY (`indexes.scars`, class cleanup_backlog)
+  with the `search-scar-rebuild` repair (same blue/green rebuild engine as
+  the spin repair, driven by the last-observed scarred tables).
 - **Writes are concurrency-safe on 0.2.0** — the rc.18 process-wide client
   write gate is gone (45-min 3-stream embed soak + 8-way structural
   concurrency probed on the target hardware). Blue/green backfills write
