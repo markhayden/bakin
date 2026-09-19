@@ -7,10 +7,10 @@
   ],
   "repositories": {
     "bakin": {
-      "ref": "4aaa3b2ecb53f7f901646f1058bc74a6ad2cf777"
+      "ref": "6b723fd38e2372a9fb5aa347d998b62d71f8f6fa"
     },
     "bakin-bits-official": {
-      "ref": "a7243aa8e5f4af3d362b42cb942a32444b627350"
+      "ref": "a3cfa639ea7e5557acef974dd89dd3367e7e4929"
     }
   },
   "sdk": {
