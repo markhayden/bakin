@@ -574,6 +574,17 @@ weights come from the content type's `indexes[].weight` and ride
   check surfaces as an ADVISORY (`indexes.scars`, class cleanup_backlog)
   with the `search-scar-rebuild` repair (same blue/green rebuild engine as
   the spin repair, driven by the last-observed scarred tables).
+- **Reranking (#846, default-on since antfly 0.2.2):** single-table queries
+  with a `rerankField` rerank by default (adapter-side attach when the caller
+  leaves `rerank` unset; explicit `rerank: false` wins; Δp95 +28ms warm,
+  `tasks/evidence-reranker-846.md`). The multi-table fan-out NEVER reranks
+  per-table (>4 concurrent reranks hit engine admission control → 502;
+  `crossTableSearch` passes `rerank: false` and the client's serialization
+  guard counts defaulted reranks too). Cross-table calibration comes from ONE
+  batched pass instead: the neutral optional `SearchAdapter.rerank(query,
+  texts)` (antfly: standalone `/ml/v1/rerank`, `{model, query, prompts}`,
+  ~116ms flat for 5–20 texts) reranks the merged top-20 on first pages,
+  degrading honestly to fusion order on null.
 - **First-class activity signals (#847):** 0.2.2's engine-declared
   `activity.phase`, `stalled`/`stall_reason`, `active_progress_*`, and
   `readiness.pending_reasons` ride `TableLegHealth` as optional

@@ -425,7 +425,13 @@ export class AntflySearchClient implements SearchAdapter {
     // burned its own slice back-to-back). The fan-out's budget is the MAX
     // single-table deadline; tables past it are honestly omitted.
     let results: QueryResult[]
-    if (queries.some((entry) => entry.query.rerank)) {
+    // Effective-rerank mirrors translate's default-attach (#846): a query
+    // that left rerank UNSET but carries a rerankField will rerank when
+    // enabled — it must serialize too, or defaulted fan-outs stampede the
+    // one Metal queue into 502s.
+    const willRerank = (entry: { query: Query }) => entry.query.rerank
+      ?? (this.settings.search.reranker.enabled && typeof entry.query.adapterOptions?.rerankField === 'string')
+    if (queries.some(willRerank)) {
       const budgetMs = Math.max(...queries.map((entry) => entry.query.deadlineMs ?? QUERY_TIMEOUT_MS))
       const endAt = Date.now() + budgetMs
       results = []

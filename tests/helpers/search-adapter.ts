@@ -162,6 +162,9 @@ export function createSearchAdapterHarness() {
       diagnostics: { strategy: 'none', durationMs: 0 },
     }
   })
+  // Default null = "rerank unavailable" so every existing merge-order
+  // expectation is untouched; tests opt in with mockResolvedValue (#846).
+  const rerank = mock(async (_query: string, _texts: string[]): Promise<number[] | null> => null)
   const multiQuery = mock(async (queries: Array<{ table: string; query: Query }>): Promise<QueryResult[]> => (
     Promise.all(queries.map((entry) => adapter.query(entry.table, entry.query)))
   ))
@@ -201,6 +204,7 @@ export function createSearchAdapterHarness() {
     },
     query,
     multiQuery,
+    rerank,
     scan,
   }
 
@@ -242,6 +246,7 @@ export function createSearchAdapterHarness() {
       documentsGet,
       query,
       multiQuery,
+      rerank,
       scan,
     },
   }
