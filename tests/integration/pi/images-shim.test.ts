@@ -98,7 +98,7 @@ describe('codex-native images (primary route)', () => {
     expect(headers.Authorization).toBe(`Bearer ${FAKE_JWT}`)
     expect(headers['chatgpt-account-id']).toBe('acct-123')
     const body = JSON.parse(call.init.body as string)
-    expect(body.model).toBe('gpt-5.4-mini') // cheapest working carrier — burn control
+    expect(body.model).toBe('gpt-5.6-luna') // cheapest working carrier — burn control (5.4 family retired ~2026-09-08)
     expect(body.tools).toEqual([{ type: 'image_generation', output_format: 'png' }])
 
     expect(existsSync(result.images[0].filePath)).toBe(true)

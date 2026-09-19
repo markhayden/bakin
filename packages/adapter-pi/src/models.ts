@@ -6,7 +6,7 @@
  * tests and PI_HOME overrides behave. Model ids cross the boundary as
  * `provider/modelId` (matching Bakin's models-plugin convention).
  */
-import { AuthStorage, ModelRegistry } from '@earendil-works/pi-coding-agent'
+import { ModelRegistry, ModelRuntime } from '@earendil-works/pi-coding-agent'
 
 import type { AgentRuntimeAdapter, RuntimeAvailableModel, RuntimeCapabilities, RuntimeRoutingPolicy, RuntimeRoutingSupport } from '@bakin/core/adapters/runtime'
 import { RuntimeError } from '@bakin/core/adapters/runtime'
@@ -15,32 +15,61 @@ import { getPiPath } from './home'
 
 interface PiModelHandle {
   registry: ModelRegistry
-  auth: AuthStorage
+  runtime: ModelRuntime
 }
 
-let handle: PiModelHandle | null = null
+let handlePromise: Promise<PiModelHandle> | null = null
+let resolvedHandle: PiModelHandle | null = null
 
-export function getModelRegistry(): PiModelHandle {
-  if (!handle) {
-    const auth = AuthStorage.create(getPiPath('agent', 'auth.json'))
-    handle = { registry: ModelRegistry.create(auth, getPiPath('agent', 'models.json')), auth }
+export function getModelRegistry(): Promise<PiModelHandle> {
+  if (!handlePromise) {
+    // 0.85.x: ModelRuntime is the canonical async model/auth facade;
+    // ModelRegistry survives as its synchronous read facade. Paths stay
+    // EXPLICIT under getPiHome() (never Pi's env/default resolution).
+    // modelsStorePath wires in Pi's dynamically refreshed catalog
+    // (models-store.json) so retired/added provider models reach Bakin
+    // without an SDK re-pin. allowModelNetwork stays default-false: no
+    // network at create (initialize() is write-free by conformance pin).
+    handlePromise = ModelRuntime.create({
+      authPath: getPiPath('agent', 'auth.json'),
+      modelsPath: getPiPath('agent', 'models.json'),
+      modelsStorePath: getPiPath('agent', 'models-store.json'),
+    }).then((runtime) => {
+      resolvedHandle = { runtime, registry: new ModelRegistry(runtime) }
+      return resolvedHandle
+    })
   }
-  return handle
+  return handlePromise
+}
+
+/**
+ * Synchronous snapshot access for sync read paths (findPiModel /
+ * context-stats). Null until the first getModelRegistry() resolves;
+ * callers already treat an unresolvable model conservatively.
+ */
+function getResolvedHandle(): PiModelHandle | null {
+  if (!handlePromise) void getModelRegistry().catch(() => { /* surfaced on the awaited path */ })
+  return resolvedHandle
 }
 
 /** Reset cached registry (tests / restart()). */
 export function resetModelRegistry(): void {
-  handle = null
+  handlePromise = null
+  resolvedHandle = null
 }
 
 export function qualifiedModelId(provider: string, id: string): string {
   return `${provider}/${id}`
 }
 
-/** Find a Pi model by `provider/modelId` (or bare modelId as fallback). */
+/** Find a Pi model by `provider/modelId` (or bare modelId as fallback).
+ *  Sync snapshot read — undefined until the runtime handle has resolved
+ *  (turn paths await getModelRegistry() first, so they always see it). */
 export function findPiModel(modelRef: string | undefined) {
   if (!modelRef) return undefined
-  const { registry } = getModelRegistry()
+  const handle = getResolvedHandle()
+  if (!handle) return undefined
+  const { registry } = handle
   const slash = modelRef.indexOf('/')
   if (slash > 0) {
     const found = registry.find(modelRef.slice(0, slash), modelRef.slice(slash + 1))
@@ -52,8 +81,10 @@ export function findPiModel(modelRef: string | undefined) {
 export function createModelsSurface(): AgentRuntimeAdapter['models'] {
   return {
     async listAvailable(opts?: { includeUnavailable?: boolean }): Promise<RuntimeAvailableModel[]> {
-      const { registry } = getModelRegistry()
-      registry.refresh()
+      const { registry } = await getModelRegistry()
+      // 0.85.x: refresh() is async (models.json/models-store reload) — await
+      // it or the synchronous reads below race the reload.
+      await registry.refresh()
       const models = opts?.includeUnavailable ? registry.getAll() : registry.getAvailable()
       return models.map((m) => ({
         id: qualifiedModelId(String(m.provider), m.id),
@@ -114,12 +145,8 @@ export function createModelsSurface(): AgentRuntimeAdapter['models'] {
  * declare audio input.
  */
 export async function capabilitiesForModel(modelRef: string | undefined): Promise<RuntimeCapabilities> {
-  const model = findPiModel(modelRef) ?? defaultModel()
+  const { registry } = await getModelRegistry()
+  const model = findPiModel(modelRef) ?? registry.getAvailable()[0]
   if (!model) return { imageInput: false, audioInput: false }
   return { imageInput: model.input.includes('image'), audioInput: false }
-}
-
-function defaultModel() {
-  const { registry } = getModelRegistry()
-  return registry.getAvailable()[0]
 }

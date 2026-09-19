@@ -209,8 +209,8 @@ export function createPiHealthChecks(
       group: RUNTIME_GROUP,
       run: async () => {
         try {
-          const { registry } = getModelRegistry()
-          registry.refresh()
+          const { registry } = await getModelRegistry()
+          await registry.refresh()
           const available = registry.getAvailable()
           if (available.length === 0) {
             return observedError(

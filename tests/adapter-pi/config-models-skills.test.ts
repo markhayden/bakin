@@ -33,9 +33,11 @@ beforeAll(async () => {
   resetModelRegistry()
   const agentDir = join(testDir, 'pi', 'agent')
   mkdirSync(agentDir, { recursive: true })
-  // Fixture auth: one provider configured.
+  // Fixture auth: one provider configured. 0.85.x enforces credential type
+  // per provider — openai-codex is OAuth-only, so an api_key credential
+  // reads as UNCONFIGURED (availability empty).
   writeFileSync(join(agentDir, 'auth.json'), JSON.stringify({
-    'openai-codex': { type: 'api_key', key: 'sk-test-not-real' },
+    'openai-codex': { type: 'oauth', refresh: 'r-test', access: 'a-test-not-real', expires: Date.now() + 3_600_000 },
   }))
   // Fixture custom model so the registry has a deterministic entry.
   writeFileSync(join(agentDir, 'models.json'), JSON.stringify({

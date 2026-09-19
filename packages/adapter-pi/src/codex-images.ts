@@ -34,10 +34,11 @@ const JWT_CLAIM_PATH = 'https://api.openai.com/auth'
 // backend's gpt-image-2 does the actual rendering, so carrier quality is
 // irrelevant to the image. Codex-subscription image turns burn the rolling
 // usage window ~3-5x faster than chat turns, so default to the CHEAPEST
-// carrier that the ChatGPT account accepts for this call (probed: 5.4-mini
-// works and is marginally faster; 5.3-codex-spark is rejected by the
-// account). Override via settings.runtime.settings.images.carrierModel.
-const DEFAULT_CARRIER_MODEL = 'gpt-5.4-mini'
+// carrier that the ChatGPT account accepts for this call (probed
+// 2026-09-18: the gpt-5.4 family was RETIRED for ChatGPT-account Codex
+// ~09-08 — 5.4-mini and 5.3-codex-spark are both rejected; 5.6-luna is the
+// cheapest accepted). Override via settings.runtime.settings.images.carrierModel.
+const DEFAULT_CARRIER_MODEL = 'gpt-5.6-luna'
 /** What the backend's image_generation tool actually runs (per OpenAI's announcement + reference impl). */
 export const CODEX_IMAGE_MODEL = 'gpt-image-2'
 export const CODEX_IMAGE_PROVIDER = 'openai-codex'
@@ -55,7 +56,7 @@ export interface CodexImageOptions {
 }
 
 export async function codexImageAuth(): Promise<{ token: string; accountId: string } | null> {
-  const { registry } = getModelRegistry()
+  const { registry } = await getModelRegistry()
   const token = await registry.getApiKeyForProvider(CODEX_IMAGE_PROVIDER)
   if (!token) return null
   const parts = token.split('.')
