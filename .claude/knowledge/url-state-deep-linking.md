@@ -183,3 +183,4 @@ Pattern: client-side filtering runs immediately (instant feedback), search fires
 | Models | ✅ Done | `tab` (agents/available/aliases/routing/spend) |
 | Settings (host) | ✅ Done | `tab` (`system` default / `integrations` / `<pluginId>`; unknown → `system` via replace, only after schemas load), `field` (one-shot field highlight). Producers: health `delivery-discord` ×4, `channel-aliases`, images `providers-unavailable`, runtime Capabilities tab. Spec `.claude/specs/settings-url-state.md`. |
 | Team | ✅ Done | Agent page: `tab`, `skill` (Skills), `file` (Memory), `activity_window` + `activityPage` (Diagnostics), `lessonId` (Lessons); `/team/teams/$teamId`: `mode` (`preview`). Tab change clears `skill`/`file`. Spec `.claude/specs/settings-url-state.md` Phase 2. |
+| Brands | ✅ Done | `q` on list; `tab` + `draftTask` on `/brands/$brandId`; `mode` (`preview`) on the doc editor `/brands/$brandId/docs/$kind/$name`; `create=1` for new docs |
