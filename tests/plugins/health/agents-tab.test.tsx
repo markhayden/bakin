@@ -6,6 +6,10 @@ import { useState } from 'react'
 import '../../rtl-settle'
 
 const queryKeys: string[] = []
+// Seeded URL values per key + a per-key write spy so cold-load and writes
+// of any `?<key>=` are assertable through the mocked hook.
+const querySeed: Record<string, string> = {}
+const queryWrites: Array<[string, string]> = []
 
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => () => undefined,
@@ -14,7 +18,9 @@ mock.module('@tanstack/react-router', () => ({
 mock.module('@makinbakin/sdk/hooks', () => ({
   useQueryState: (key: string, initial: string) => {
     queryKeys.push(key)
-    return useState(initial)
+    const [value, setValue] = useState(querySeed[key] ?? initial)
+    const write = (next: string) => { queryWrites.push([key, next]); setValue(next) }
+    return [value, write, write]
   },
 }))
 
@@ -293,6 +299,7 @@ function agentRow(surface: HTMLElement, agent: string): HTMLElement {
 afterEach(() => {
   cleanup()
   queryKeys.length = 0
+  queryWrites.length = 0
   globalThis.fetch = originalFetch
 })
 
@@ -308,6 +315,8 @@ describe('AgentsTab', () => {
     expect(screen.queryByRole('heading', { level: 3, name: 'Reported cost' })).toBeNull()
     expect(screen.queryByRole('heading', { level: 3, name: 'Latest-session details' })).toBeNull()
     expect(queryKeys).toContain('agents_window')
+    // The metric beside the window is URL state too (Phase 2 rule 1).
+    expect(queryKeys).toContain('agents_metric')
     expect(urls).toContain('/api/plugins/health/usage-history?window=24h')
     expect(urls).toContain('/api/plugins/health/agent-effort?window=24h')
     expect(urls).not.toContain('/api/plugins/models/spend?window=24h')
@@ -1166,5 +1175,43 @@ describe('AgentsTab', () => {
     expect(usageCost.textContent).not.toContain('$0.00')
     expect(within(usageCost).getByRole('link', { name: 'View budgets in Models' }).getAttribute('href'))
       .toBe('/models?tab=spend')
+  })
+})
+
+describe('AgentsUsageChart ?agents_metric=', () => {
+  it('cold-loads Reported cost from ?agents_metric=cost', async () => {
+    querySeed.agents_metric = 'cost'
+    stubAgentFetch()
+    render(<AgentsTab />)
+    const usageCostHeading = await screen.findByRole('heading', { level: 3, name: 'Usage & cost' })
+    const usageCost = usageCostHeading.closest<HTMLElement>('[data-section-card]')
+    const control = within(usageCost!).getByRole('tablist', { name: 'Usage metric' })
+    await waitFor(() => expect(within(control).getByRole('tab', { name: 'Reported cost' }).getAttribute('aria-selected')).toBe('true'))
+    expect(queryWrites.filter(([k]) => k === 'agents_metric')).toHaveLength(0)
+    delete querySeed.agents_metric
+  })
+
+  it('reads an unknown metric as tokens without writing', async () => {
+    querySeed.agents_metric = 'nope'
+    stubAgentFetch()
+    render(<AgentsTab />)
+    const usageCostHeading = await screen.findByRole('heading', { level: 3, name: 'Usage & cost' })
+    const usageCost = usageCostHeading.closest<HTMLElement>('[data-section-card]')
+    const control = within(usageCost!).getByRole('tablist', { name: 'Usage metric' })
+    expect(within(control).getByRole('tab', { name: 'Tokens' }).getAttribute('aria-selected')).toBe('true')
+    expect(queryWrites.filter(([k]) => k === 'agents_metric')).toHaveLength(0)
+    delete querySeed.agents_metric
+  })
+
+  it('choosing a metric writes ?agents_metric=', async () => {
+    stubAgentFetch()
+    render(<AgentsTab />)
+    const usageCostHeading = await screen.findByRole('heading', { level: 3, name: 'Usage & cost' })
+    const usageCost = usageCostHeading.closest<HTMLElement>('[data-section-card]')
+    const control = within(usageCost!).getByRole('tablist', { name: 'Usage metric' })
+    fireEvent.click(within(control).getByRole('tab', { name: 'Reported cost' }))
+    await waitFor(() => expect(queryWrites).toContainEqual(['agents_metric', 'cost']))
+    fireEvent.click(within(control).getByRole('tab', { name: 'Tokens' }))
+    await waitFor(() => expect(queryWrites).toContainEqual(['agents_metric', 'tokens']))
   })
 })

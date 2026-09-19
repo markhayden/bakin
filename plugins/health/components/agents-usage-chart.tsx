@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useQueryState } from '@makinbakin/sdk/hooks'
 import { AreaChart, ChartExplainer, StackedColumnChart } from '@makinbakin/sdk/charts'
 import { Panel } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
@@ -146,7 +146,11 @@ function lowerFirst(value: string): string {
 
 /** Historical transcript-observed usage and runtime-reported cost in one surface. */
 export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageChartProps) {
-  const [metric, setMetric] = useState<UsageMetric>('tokens')
+  // The metric rides `?agents_metric=` beside the window's `?agents_window=`
+  // (default `tokens`, omitted; only `cost` appears). Anything else reads as
+  // tokens without rewriting the URL.
+  const [metricParam, setMetricParam] = useQueryState('agents_metric', 'tokens')
+  const metric: UsageMetric = metricParam === 'cost' ? 'cost' : 'tokens'
   const scoped = data ? scopeUsageHistoryToCompleteEvidence(data) : null
   const visibleData = scoped?.history ?? null
   const evidenceIncomplete = scoped !== null && scoped.status !== 'complete'
@@ -185,7 +189,7 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
           <SegmentedControl
             options={USAGE_METRICS}
             value={metric}
-            onValueChange={setMetric}
+            onValueChange={(next) => setMetricParam(next)}
             ariaLabel="Usage metric"
           />
         </CardAction>
