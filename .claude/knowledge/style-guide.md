@@ -96,6 +96,10 @@ never sit at rest in a card — surface on hover or behind the detail view.
   text for provenance such as workflow or project, and full-width
   `KanbanCardSignal` rows for approval, live-turn, blocked, or failure
   feedback. Do not turn every metadata value into another outlined chip.
+  Team identity in the task footer uses `Badge tone="neutral" variant="soft"`
+  at `size="sm"`, with the team icon beside the label and the agent avatar
+  alongside it. The small size supplies icon spacing; team identity is not
+  an accent-colored status signal.
   Domain drag-and-drop keeps its stable scroll, lane, and keyed sortable
   wrappers rather than reshaping proven interaction DOM to match a
   presentation-only wrapper. During a drag, render the record at its exact

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import { expect } from 'storybook/test'
-import { Activity, AlertTriangle, GripVertical, Workflow } from 'lucide-react'
+import { Activity, AlertTriangle, GripVertical, Users, Workflow } from 'lucide-react'
 
 import { PageShell, Stack } from '@makinbakin/sdk/layout'
 import {
@@ -95,6 +95,7 @@ interface ExampleTaskProps {
   status: string
   tone: StatusTone
   owner: string
+  team?: string
   workflow?: string
   signal?: {
     label: string
@@ -109,7 +110,7 @@ function CloseIcon() {
   return <svg aria-hidden="true" viewBox="0 0 16 16"><path d="m4 4 8 8m0-8-8 8" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.75" /></svg>
 }
 
-function ExampleTask({ id, title, description, status, tone, owner, workflow, signal, onOpen }: ExampleTaskProps) {
+function ExampleTask({ id, title, description, status, tone, owner, team, workflow, signal, onOpen }: ExampleTaskProps) {
   return (
     <Card size="sm" data-example-task={id}>
       <CardHeader>
@@ -156,7 +157,12 @@ function ExampleTask({ id, title, description, status, tone, owner, workflow, si
       ) : null}
       <CardFooter>
         <AgentAvatar agent={{ id: owner.toLowerCase(), name: owner }} size="sm" />
-        <span>{owner}</span>
+        {team ? (
+          <Badge size="sm" tone="neutral" variant="soft">
+            <Users aria-hidden="true" />
+            {team}
+          </Badge>
+        ) : <span>{owner}</span>}
       </CardFooter>
     </Card>
   )
@@ -180,14 +186,14 @@ function TaskBoardExample() {
           <header className="bakin-kanban-story__intro">
             <p>Operational work / bounded objects</p>
             <h1>Keep lanes quiet and tasks scannable</h1>
-            <p>The board owns horizontal overflow. Lanes provide structure; cards carry record identity, status, ownership, and local actions.</p>
+            <p>The board owns horizontal overflow. Filled status labels carry state; neutral soft team badges sit beside the agent avatar with room for the team icon.</p>
           </header>
 
           <KanbanBoard label="Task board">
             <KanbanColumn labelledBy="todo-lane-heading">
               <LaneHeading id="todo-lane-heading" title="Todo" count={2} />
               <KanbanColumnBody>
-                <ExampleTask id="TASK-01" title="Prepare launch brief" description="Collect the final positioning, audience, and channel requirements." status="Todo" tone="accent" owner="Margo" onOpen={setOpened} />
+                <ExampleTask id="TASK-01" title="Prepare launch brief" description="Collect the final positioning, audience, and channel requirements." status="Todo" tone="accent" owner="Margo" team="research" onOpen={setOpened} />
                 <ExampleTask id="TASK-02" title="Production publishing approval for the extraordinarily long campaign name" description="Long content wraps inside the object without widening its lane or the page." status="Todo" tone="accent" owner="Rolo" onOpen={setOpened} />
               </KanbanColumnBody>
             </KanbanColumn>
@@ -195,7 +201,7 @@ function TaskBoardExample() {
             <KanbanColumn labelledBy="blocked-lane-heading">
               <LaneHeading id="blocked-lane-heading" title="Blocked" count={1} />
               <KanbanColumnBody>
-                <ExampleTask id="TASK-03" title="Publish launch announcement" description="The draft is ready, but delivery cannot continue yet." status="Blocked" tone="danger" owner="Pixel" signal={{ label: 'Action required', detail: 'Runtime adapter unavailable', tone: 'danger', icon: AlertTriangle }} onOpen={setOpened} />
+                <ExampleTask id="TASK-03" title="Publish launch announcement" description="The draft is ready, but delivery cannot continue yet." status="Blocked" tone="danger" owner="Pixel" team="creative" signal={{ label: 'Action required', detail: 'Runtime adapter unavailable', tone: 'danger', icon: AlertTriangle }} onOpen={setOpened} />
               </KanbanColumnBody>
             </KanbanColumn>
 
@@ -343,6 +349,13 @@ export const TaskBoardComposition = {
     await expect(board.querySelectorAll('[data-slot="card"]')).toHaveLength(5)
     await expect(board.querySelector('[data-slot="kanban-column"] [data-slot="card"]')).toBeTruthy()
     await expect(board.querySelectorAll('[data-slot="kanban-card-signal"]')).toHaveLength(3)
+    for (const team of ['research', 'creative']) {
+      const badge = canvas.getByText(team)
+      await expect(badge.closest('[data-slot="card-footer"]')).toBeTruthy()
+      await expect(badge).toHaveAttribute('data-tone', 'neutral')
+      await expect(badge).toHaveAttribute('data-variant', 'soft')
+      await expect(badge).toHaveAttribute('data-size', 'sm')
+    }
     const taskButton = canvas.getByRole('button', { name: 'Prepare launch brief' })
     await userEvent.click(taskButton)
     await expect(canvas.getByRole('status', { name: '' })).toHaveTextContent('Prepare launch brief')
