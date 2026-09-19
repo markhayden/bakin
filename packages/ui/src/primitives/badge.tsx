@@ -61,7 +61,7 @@ const badgeStyles = cva(
         solid: '',
         outline: 'bg-transparent',
         ghost: 'border-transparent bg-transparent',
-        link: 'border-transparent bg-transparent underline-offset-4 hover:underline',
+        link: 'border-transparent bg-transparent underline decoration-1 decoration-current/50 underline-offset-2 hover:decoration-current focus-visible:decoration-current',
       },
       size: {
         xs: 'h-bakin-4 min-w-bakin-4 gap-0 px-bakin-1 text-[.625rem] leading-none [&>svg]:size-bakin-2',
