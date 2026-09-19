@@ -100,6 +100,7 @@ registerPlugin({
 | `status` | string[] | `todo,blocked` | Status filter (multi-select via FacetFilter) |
 | `type` | string[] | `images,video` | Type filter (multi-select via FacetFilter) |
 | `taskId` | string | task id | Task detail drawer open state: opening PUSHES it (Back closes), closing REPLACES it away; resolves against the unfiltered board; stale → page feedback |
+| `step` | string | canvas node id (`write`, `parent__child`) | Step detail drawer open state on `/workflows/$id`: push on open (Back closes), replace on close; stale → closed, no rewrite |
 | `jobId` | string | job id | Deep-link to open schedule job detail drawer |
 | `recordId` | string | memory rowId (`<tier>:<hash>`) | Deep-link to open memory detail drawer (resolved via `GET /record`) |
 | `lessonId` | string | lesson id | Highlight + scroll to a lesson on the team Lessons tab (`?tab=lessons`) |
@@ -173,7 +174,7 @@ Pattern: client-side filtering runs immediately (instant feedback), search fires
 | Assets | ✅ Done | `view`, `q`, `type`, `asset`, `page`, `sort`, `dir` |
 | Messaging (Calendar) | ✅ Done | `view`, `q`, `agent`, `status`, `type`, `itemId` (deep link), `mode` (edit) |
 | Messaging (Brainstorm) | ✅ Done | `session` (deep link to planning session), search via parent PluginHeader |
-| Workflows | ✅ Done | `q` on list; path-based `/workflows/[id]` for canvas detail, step drawer via node click |
+| Workflows | ✅ Done | `q` on list; path-based `/workflows/$id` for canvas detail; `step` is the step drawer's open state (push on node click so Back closes, replace on close; stale id → drawer closed, URL untouched). Editor selection on `/edit` stays local. |
 | Schedule | ✅ Done | `view`, `q`, `agent`, `jobId` (deep link), `mode` (create/edit/duplicate) |
 | Health | ✅ Done | `tab` (overview/activity/agents/system) |
 | Memory | ✅ Done | `q` (search query), `tier` (multi-select), `agent` (single-select — shared avatar-strip `AgentFilter`), `kind` (multi-select, durable-only), `recordId` (deep link — detail drawer, ⌘K target). Landing page is the search surface — no sub-routes. |
