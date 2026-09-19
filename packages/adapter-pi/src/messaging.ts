@@ -311,7 +311,7 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
   scaffoldAgentDirs(record.id)
   const workspace = getAgentWorkspaceDir(record.id)
   const agentDir = getPiAgentDir()
-  const { auth, registry: modelRegistry } = getModelRegistry()
+  const { runtime: modelRuntime } = await getModelRegistry()
 
   // Per-run isolation (same-agent-concurrency D2): ONLY the session's
   // tool-execution cwd moves to the handed run dir. The settings manager,
@@ -380,8 +380,7 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
   const { session } = await createAgentSession({
     cwd: executionCwd,
     agentDir,
-    authStorage: auth,
-    modelRegistry,
+    modelRuntime,
     sessionManager: sessionManagerForThread(record.id, args.threadId),
     settingsManager,
     resourceLoader,

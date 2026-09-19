@@ -17,7 +17,7 @@ import { listAuthCredentials } from './config'
 import { MAIN_AGENT_ID, seedMainAgentIfEmpty } from './main-agent'
 import { createMemorySurface } from './memory'
 import { createMessagingSurface, enforcePiOffline } from './messaging'
-import { capabilitiesForModel, createModelsSurface, resetModelRegistry } from './models'
+import { capabilitiesForModel, createModelsSurface, getModelRegistry, resetModelRegistry } from './models'
 import { readRegistry } from './registry'
 import { createImagesSurface } from './images'
 import { createExtensionsSurface } from './extensions'
@@ -55,6 +55,10 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     // for the whole adapter lifecycle; installing packages is a deliberate
     // terminal act, never a side effect of serving a turn.
     enforcePiOffline()
+    // Warm the ModelRuntime handle (0.85.x: async create) so the sync
+    // snapshot readers (findPiModel / context-stats) see the catalog from
+    // boot. Read-only — initialize() stays write-free (conformance pin).
+    await getModelRegistry()
   }
 
   async shutdown(): Promise<void> {}

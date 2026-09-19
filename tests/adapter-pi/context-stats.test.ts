@@ -42,7 +42,7 @@ mock.module('../../src/core/logger', () => ({
 
 import { resetPiHome, getAgentSessionsDir, getAgentWorkspaceDir } from '../../packages/adapter-pi/src/home'
 import { sessionContextStats, __resetContextStatsCacheForTest } from '../../packages/adapter-pi/src/context-stats'
-import { findPiModel } from '../../packages/adapter-pi/src/models'
+import { findPiModel, getModelRegistry } from '../../packages/adapter-pi/src/models'
 
 resetPiHome()
 
@@ -50,7 +50,9 @@ const AGENT = 'main'
 const MODEL_PROVIDER = 'anthropic'
 const MODEL_ID = 'claude-sonnet-4-5'
 /** Resolve the expected window from the live catalog — a hardcoded number
- *  would fail confusingly on an SDK catalog bump. */
+ *  would fail confusingly on an SDK catalog bump. findPiModel is a sync
+ *  snapshot read (0.85.x), so warm the handle before reading it. */
+await getModelRegistry()
 const CATALOG_WINDOW = findPiModel(`${MODEL_PROVIDER}/${MODEL_ID}`)?.contextWindow ?? 0
 
 const T_BASE = 1_785_000_000_000 // epoch ms — the REAL message timestamp shape
