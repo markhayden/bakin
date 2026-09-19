@@ -5,6 +5,7 @@ import {
   PluginLink,
   useHistoryBack,
   useParams,
+  useQueryState,
   useRouter,
 } from '@makinbakin/sdk/navigation'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
@@ -56,7 +57,12 @@ export function VersionedAssetDetail() {
   const [versionError, setVersionError] = useState<string | null>(null)
   const [lightbox, setLightbox] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
-  const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
+  // `?version=<n>` selects the previewed version; the current version is the
+  // default and omitted from the URL. Anything the manifest does not carry
+  // previews the current version WITHOUT rewriting the URL (rule 4).
+  const [versionParam, setVersionParam] = useQueryState('version', '')
+  const parsedVersion = Number.parseInt(versionParam, 10)
+  const selectedVersion: number | null = Number.isFinite(parsedVersion) ? parsedVersion : null
   const versionInputRef = useRef<FileInputHandle | null>(null)
 
   const fetchManifest = useCallback(() => {
@@ -421,7 +427,7 @@ export function VersionedAssetDetail() {
                   isCurrent={v.version === manifest.currentVersion}
                   isSelected={v.version === previewVersion}
                   canDelete={manifest.versions.length > 1}
-                  onSelect={setSelectedVersion}
+                  onSelect={(n) => setVersionParam(n === manifest.currentVersion ? '' : String(n))}
                   onPromote={promote}
                   onDelete={deleteVersion}
                 />
