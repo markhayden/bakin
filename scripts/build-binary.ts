@@ -35,6 +35,23 @@ const TARGETS: Target[] = [
   { triple: 'bun-linux-arm64', outName: 'bakin-linux-arm64' },
 ]
 
+/**
+ * Browser-automation packages that must NOT be bundled into the server binary.
+ *
+ * The SDK's plugin-UI conformance runner
+ * (`@makinbakin/sdk/testing/ui/conformance`) reaches the server graph through
+ * the shared CSS-containment helpers in `src/core/whiskit/plugin-css.ts`, and
+ * lazily `await import('playwright')` inside a try/catch. `bun build --compile`
+ * eagerly bundles dynamic imports into the standalone binary, which drags in
+ * `playwright` → `playwright-core` → `chromium-bidi` deep CJS paths that Bun
+ * cannot resolve for the compile target. The server never runs the conformance
+ * runner (it lives behind the separate `bakin-plugin-test-ui` CLI), so we keep
+ * these external — if the dead path is ever reached the existing catch throws a
+ * friendly "install playwright as a devDependency" error. Mirrors the
+ * `EXTERNAL_JS_PEERS` posture in `scripts/build-sdk-package.ts`.
+ */
+const EXTERNAL_BROWSER_AUTOMATION = ['playwright', 'playwright-core', 'chromium-bidi']
+
 async function regenerateEmbeddedManifest(): Promise<void> {
   const proc = Bun.spawn(['bun', 'run', join(REPO_ROOT, 'scripts/generate-embedded-assets.ts')], {
     cwd: REPO_ROOT,
@@ -53,6 +70,7 @@ async function compile(target: Target): Promise<void> {
     '--compile',
     `--target=${target.triple}`,
     `--outfile=${outfile}`,
+    ...EXTERNAL_BROWSER_AUTOMATION.flatMap((pkg) => ['--external', pkg]),
     join(REPO_ROOT, 'server.ts'),
   ], {
     cwd: REPO_ROOT,
