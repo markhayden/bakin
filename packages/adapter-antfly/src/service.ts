@@ -262,7 +262,9 @@ export function getAntflyServiceStatus(settings: AntflySettings, io: ServiceIo =
 
 export interface EnsureResult {
   mode: ServiceMode
-  action: 'unchanged' | 'provisioned' | 'restarted' | 'skipped'
+  /** 'reloaded' = config was already right but the unit was NOT loaded
+   *  (a bootout survivor) — ensure re-loaded it (#859 self-heal). */
+  action: 'unchanged' | 'provisioned' | 'restarted' | 'reloaded' | 'skipped'
 }
 
 /** The --data-dir argument in a rendered plist/unit, for repoint detection. */
@@ -310,7 +312,23 @@ export async function ensureProvisioned(settings: AntflySettings, io: ServiceIo 
     const plistPath = launchdPlistPath(io)
     const desired = renderLaunchdPlist(argv, paths.logFile)
     const current = existsSync(plistPath) ? readFileSync(plistPath, 'utf-8') : null
-    if (current === desired) return { mode, action: 'unchanged' }
+    const uidUnchanged = typeof process.getuid === 'function' ? process.getuid() : 501
+    if (current === desired) {
+      // A correct plist on disk says nothing about launchd state: the
+      // installer's stop (bootout) or a human unload leaves the unit
+      // UNLOADED with identical bytes — the exact hole that shipped a
+      // green install with the engine down (#859). One read-only probe
+      // makes 'unchanged' honest; heal by bootstrapping the same plist.
+      const probe = await io.exec('launchctl', ['print', `gui/${uidUnchanged}/${LAUNCHD_LABEL}`])
+      if (probe.code === 0) return { mode, action: 'unchanged' }
+      const boot = await io.exec('launchctl', ['bootstrap', `gui/${uidUnchanged}`, plistPath])
+      if (boot.code !== 0) {
+        log.error('launchd unit was unloaded and re-bootstrap failed', undefined, { stderr: boot.stderr })
+      } else {
+        log.info('launchd unit was unloaded with a correct plist — re-bootstrapped', { plistPath })
+      }
+      return { mode, action: 'reloaded' }
+    }
     warnOnDataDirRepoint(current, paths.dataDir)
     mkdirSync(dirname(plistPath), { recursive: true })
     writeFileSync(plistPath, desired)
@@ -334,7 +352,20 @@ export async function ensureProvisioned(settings: AntflySettings, io: ServiceIo 
   const unitPath = systemdUnitPath(io)
   const desired = renderSystemdUnit(argv, paths.logFile)
   const current = existsSync(unitPath) ? readFileSync(unitPath, 'utf-8') : null
-  if (current === desired) return { mode, action: 'unchanged' }
+  if (current === desired) {
+    // Same honesty as launchd (#859): a byte-identical unit file can still
+    // be stopped. `is-active` exits 0 only when active; 'activating' (exit 3
+    // with that stdout) is a unit already on its way up — don't double-start.
+    const probe = await io.exec('systemctl', ['--user', 'is-active', SYSTEMD_UNIT])
+    if (probe.code === 0 || probe.stdout.trim() === 'activating') return { mode, action: 'unchanged' }
+    const start = await io.exec('systemctl', ['--user', 'start', SYSTEMD_UNIT])
+    if (start.code !== 0) {
+      log.error('systemd unit was stopped and restart failed', undefined, { stderr: start.stderr })
+    } else {
+      log.info('systemd unit was stopped with a correct unit file — started', { unitPath })
+    }
+    return { mode, action: 'reloaded' }
+  }
   warnOnDataDirRepoint(current, paths.dataDir)
   mkdirSync(dirname(unitPath), { recursive: true })
   writeFileSync(unitPath, desired)

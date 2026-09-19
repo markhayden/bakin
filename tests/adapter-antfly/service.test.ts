@@ -135,7 +135,72 @@ describe('ensureProvisioned idempotence', () => {
     const io2 = fakeIo({ platform: 'darwin' })
     const second = await ensureProvisioned(DEFAULT_SETTINGS, io2)
     expect(second).toEqual({ mode: 'launchd', action: 'unchanged' })
-    expect(io2.record).toHaveLength(0)
+    // #859: 'unchanged' now also verifies the unit is LOADED — exactly one
+    // read-only probe, still zero writes/bootstraps.
+    expect(io2.record).toHaveLength(1)
+    expect(io2.record[0][1]).toBe('print')
+  })
+
+  it('launchd: identical plist but unit NOT loaded → bootstrap + reloaded (#859 self-heal)', async () => {
+    const io = fakeIo({ platform: 'darwin' })
+    await ensureProvisioned(DEFAULT_SETTINGS, io) // plist on disk
+    const record: string[][] = []
+    const io2 = fakeIo({
+      platform: 'darwin',
+      record,
+      exec: async (cmd, args) => {
+        record.push([cmd, ...args])
+        if (args[0] === 'print') return { code: 113, stdout: '', stderr: 'Could not find service' }
+        return { code: 0, stdout: '', stderr: '' }
+      },
+    })
+    const result = await ensureProvisioned(DEFAULT_SETTINGS, io2)
+    expect(result).toEqual({ mode: 'launchd', action: 'reloaded' })
+    const bootstrap = io2.record.find((c) => c[1] === 'bootstrap')
+    expect(bootstrap).toBeDefined()
+    expect(bootstrap![3]).toBe(launchdPlistPath(io2))
+  })
+
+  it('systemd: identical unit + active → one is-active probe, unchanged; inactive → start + reloaded', async () => {
+    const io = fakeIo({ platform: 'linux' })
+    await ensureProvisioned(DEFAULT_SETTINGS, io) // unit on disk
+
+    const active = fakeIo({ platform: 'linux' })
+    expect(await ensureProvisioned(DEFAULT_SETTINGS, active)).toEqual({ mode: 'systemd', action: 'unchanged' })
+    expect(active.record).toHaveLength(1)
+    expect(active.record[0]).toEqual(['systemctl', '--user', 'is-active', 'bakin-antfly.service'])
+
+    const record: string[][] = []
+    const inactive = fakeIo({
+      platform: 'linux',
+      record,
+      exec: async (cmd, args) => {
+        record.push([cmd, ...args])
+        if (args[1] === 'is-active') return { code: 3, stdout: 'inactive\n', stderr: '' }
+        return { code: 0, stdout: '', stderr: '' }
+      },
+    })
+    expect(await ensureProvisioned(DEFAULT_SETTINGS, inactive)).toEqual({ mode: 'systemd', action: 'reloaded' })
+    expect(inactive.record).toContainEqual(['systemctl', '--user', 'start', 'bakin-antfly.service'])
+    rmSync(systemdUnitPath(io), { force: true }) // shared testDir — later tests expect a first write
+  })
+
+  it('systemd: activating counts as loaded — no redundant start', async () => {
+    const io = fakeIo({ platform: 'linux' })
+    await ensureProvisioned(DEFAULT_SETTINGS, io)
+    const record: string[][] = []
+    const activating = fakeIo({
+      platform: 'linux',
+      record,
+      exec: async (cmd, args) => {
+        record.push([cmd, ...args])
+        if (args[1] === 'is-active') return { code: 3, stdout: 'activating\n', stderr: '' }
+        return { code: 0, stdout: '', stderr: '' }
+      },
+    })
+    expect(await ensureProvisioned(DEFAULT_SETTINGS, activating)).toEqual({ mode: 'systemd', action: 'unchanged' })
+    expect(activating.record).toHaveLength(1)
+    rmSync(systemdUnitPath(io), { force: true }) // shared testDir — later tests expect a first write
   })
 
   it('launchd: settings drift rewrites the plist and restarts (bootout + bootstrap)', async () => {
