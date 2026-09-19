@@ -1,6 +1,6 @@
 # Spec: Settings URL State + App-Wide Selection-State Audit
 
-**Status:** Phase 1 SHIPPED — PR #829 merged 2026-09-18. Phase 2 in progress: PR 1 (team) on `feat/team-url-state` (`tasks/team-url-state/plan.md`).
+**Status:** Phase 1 SHIPPED — PR #829 merged 2026-09-18. Phase 2 in progress: PR 1 (team) SHIPPED #830; PR 2 (tasks) on `feat/tasks-url-state` (`tasks/tasks-url-state/plan.md`).
 **Date:** 2026-09-18
 **Priority:** Tech-debt reduction. Single user, single machine. NO backwards compatibility, NO shims, NO redirects for old shapes. Clean and clear over compatible.
 **Parent:** `.claude/specs/routing-overhaul.md` (the URL taxonomy this spec extends)
@@ -185,7 +185,7 @@ Rollback: `git revert` any checkpoint; 3 depends on 1+2 (targets exist), 4 is do
 | 1 | team | `agent-detail.tsx:435` / `:522` | Selected skill + selected memory file (`NavList`, local state) inside URL-backed `?tab=skills` / `?tab=memory` | `?skill=<name>`, `?file=<name>` (replace) | `feat/team-url-state` — implemented 2026-09-18 |
 | 2 | team | `diagnostics-tab.tsx:788` | Activity window local while its page number (`activityPage`) is URL state; window change resets page | `?activity_window=` (replace), matching health | `feat/team-url-state` — implemented 2026-09-18 |
 | 3 | team | `team-detail.tsx:69` | Team-context edit vs preview on a routed page | `?mode=edit` | `feat/team-url-state` — implemented 2026-09-18 |
-| 4 | tasks | `kanban-board.tsx:430` | `taskId` consumed once then cleared — inbound deep link only; card clicks never write the URL | Push `taskId` on open, clear on close (memory/schedule pattern) | `feat/tasks-url-state` |
+| 4 | tasks | `kanban-board.tsx:430` | `taskId` consumed once then cleared — inbound deep link only; card clicks never write the URL | Push `taskId` on open, clear on close (memory/schedule pattern) | `feat/tasks-url-state` — implemented 2026-09-18 |
 | 5 | workflows | `workflow-detail.tsx:111` | Step drawer selection on a routed page | `?step=<id>` (push) | `feat/workflows-url-state` |
 | 6 | assets | `VersionedAssetDetail.tsx:59` | Previewed version on `/assets/$assetId` | `?version=<n>` (replace) | `feat/assets-url-state` |
 | 7 | brands | `brand-doc-editor.tsx:56` | Doc edit vs preview on a routed page | `?mode=edit` | `feat/brands-url-state` |
@@ -205,3 +205,5 @@ One PR per plugin (team, tasks, workflows, assets, brands, health, chat — 7 PR
 None blocking. Follow-ups recorded, not scheduled:
 - `notifications.channelAliases` has no System & Alerts field; the channel-aliases incident can only target the category until one exists.
 - Integrations & Keys is bespoke (`ProviderKeysTab`); per-secret highlighting would need it to adopt keyed sections first.
+- The `/` route redirects to `/tasks` without forwarding the search string (`packages/host/src/routes/index.tsx`); forwarding it is a one-line routing-contract change worth its own PR. Until then producers must build `/tasks?…`, never `/?…`.
+- The create-new task drawer stays component-level; `?mode=create` would need dirty-guard work and was not requested.

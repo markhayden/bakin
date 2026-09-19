@@ -99,7 +99,7 @@ registerPlugin({
 | `agent` | string | `main`, `all` | Agent filter (single-select) |
 | `status` | string[] | `todo,blocked` | Status filter (multi-select via FacetFilter) |
 | `type` | string[] | `images,video` | Type filter (multi-select via FacetFilter) |
-| `taskId` | string | task id | Deep-link to open task detail drawer |
+| `taskId` | string | task id | Task detail drawer open state: opening PUSHES it (Back closes), closing REPLACES it away; resolves against the unfiltered board; stale → page feedback |
 | `jobId` | string | job id | Deep-link to open schedule job detail drawer |
 | `recordId` | string | memory rowId (`<tier>:<hash>`) | Deep-link to open memory detail drawer (resolved via `GET /record`) |
 | `lessonId` | string | lesson id | Highlight + scroll to a lesson on the team Lessons tab (`?tab=lessons`) |
@@ -169,7 +169,7 @@ Pattern: client-side filtering runs immediately (instant feedback), search fires
 | Plugin | URL State | Notes |
 |--------|-----------|-------|
 | Chat | ✅ Done | Path-based: `/chat/$chatId`, `/chat/new?agent=`; list filter `agent` |
-| Tasks | ✅ Done | `view`, `q`, `agent`, `status`, `taskId` (deep link). Edit/create state is component-level (`editing` useState), not URL-driven. |
+| Tasks | ✅ Done | `view`, `q`, `agent`, `scheduled`, `status`, `brand`, `taskId` — the drawer's open state (push on open so Back closes, replace on close; stale id → "Task not found" feedback, never a rewrite). Create/edit form state is component-level by design. |
 | Assets | ✅ Done | `view`, `q`, `type`, `asset`, `page`, `sort`, `dir` |
 | Messaging (Calendar) | ✅ Done | `view`, `q`, `agent`, `status`, `type`, `itemId` (deep link), `mode` (edit) |
 | Messaging (Brainstorm) | ✅ Done | `session` (deep link to planning session), search via parent PluginHeader |
