@@ -76,6 +76,11 @@ selection anywhere.
   **Asset refs render as thumbnail CARDS** (grid, image-first) — never
   horizontal rows.
 
+## URL State (client)
+
+- `/brands` list: `q`. `/brands/$brandId`: `tab` (`overview` default), `draftTask`.
+- `/brands/$brandId/docs/$kind/$name` doc editor: **`mode`** — Edit vs Preview (`edit` default, omitted; only `?mode=preview` appears), replace-mode; same shape as the team shared-context editor. `create=1` still marks create mode. The unsaved-changes guard ignores same-pathname navigations, so a mode toggle while dirty never prompts. Spec `.claude/specs/settings-url-state.md` Phase 2.
+
 ## Builder modes
 
 `POST /builder` accepts questionnaire mode (product required) OR **website

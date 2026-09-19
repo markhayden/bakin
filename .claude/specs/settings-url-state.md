@@ -1,6 +1,6 @@
 # Spec: Settings URL State + App-Wide Selection-State Audit
 
-**Status:** Phase 1 SHIPPED — PR #829 merged 2026-09-18. Phase 2 in progress: PR 1 (team) SHIPPED #830; PR 2 (tasks) SHIPPED #839; PR 3 (workflows) SHIPPED #840; PR 4 (assets) on `feat/assets-url-state` (`tasks/assets-url-state/plan.md`).
+**Status:** Phase 1 SHIPPED — PR #829 merged 2026-09-18. Phase 2 in progress: PR 1 (team) SHIPPED #830; PR 2 (tasks) SHIPPED #839; PR 3 (workflows) SHIPPED #840; PR 4 (assets) SHIPPED #842; PR 5 (brands) on `feat/brands-url-state` (`tasks/brands-url-state/plan.md`).
 **Date:** 2026-09-18
 **Priority:** Tech-debt reduction. Single user, single machine. NO backwards compatibility, NO shims, NO redirects for old shapes. Clean and clear over compatible.
 **Parent:** `.claude/specs/routing-overhaul.md` (the URL taxonomy this spec extends)
@@ -188,7 +188,7 @@ Rollback: `git revert` any checkpoint; 3 depends on 1+2 (targets exist), 4 is do
 | 4 | tasks | `kanban-board.tsx:430` | `taskId` consumed once then cleared — inbound deep link only; card clicks never write the URL | Push `taskId` on open, clear on close (memory/schedule pattern) | `feat/tasks-url-state` — implemented 2026-09-18 |
 | 5 | workflows | `workflow-detail.tsx:111` | Step drawer selection on a routed page | `?step=<id>` (push) | `feat/workflows-url-state` — implemented 2026-09-18 |
 | 6 | assets | `VersionedAssetDetail.tsx:59` | Previewed version on `/assets/$assetId` | `?version=<n>` (replace) | `feat/assets-url-state` — implemented 2026-09-18 |
-| 7 | brands | `brand-doc-editor.tsx:56` | Doc edit vs preview on a routed page | `?mode=edit` | `feat/brands-url-state` |
+| 7 | brands | `brand-doc-editor.tsx:56` | Doc edit vs preview on a routed page | `?mode=edit` | `feat/brands-url-state` — implemented 2026-09-18 |
 | 8 | health | `agents-usage-chart.tsx:149` | Chart metric local beside URL-backed `agents_window` | `?agents_metric=` (replace) | `feat/health-url-state` |
 | 9 | chat | `chat-page.tsx:95` | Rail search — the only list search not on `q` | `useQueryState('q','')` | `feat/chat-url-state` |
 
