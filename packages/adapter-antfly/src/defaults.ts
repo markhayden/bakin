@@ -58,18 +58,16 @@ export const DEFAULT_SETTINGS: AntflySettings = {
     defaultLimit: 20,
     queryBudgetMs: 2000,
     reranker: {
-      // Still disabled at v0.2.0-rc.9, but for a NEW reason. The rc.2 mxbai
-      // SIGABRT (bakin#456) IS fixed — the reranker no longer crashes the server
-      // and ranks correctly (live-verified: relevant doc 0.998 vs 0.0006). It
-      // stays OFF because it's throughput-bound: ~200ms per candidate on Metal
-      // (linear — 5 docs ~1.3s, 20 ~4s, 100 ~28s), it serializes (one Metal
-      // queue, so concurrent reranked queries back up), and it only loads on an
-      // explicit TERMITE_PREFERRED_BACKEND=metal (auto-select picks the onnx
-      // variant -> MissingWeight). Default-on across Bakin's multi-table fan-out
-      // is too slow, but a bounded top-K rerank (5-10 candidates ~1-2s) is a fine
-      // per-query opt-in (rerankField) on a Metal host. Revisit default-on if
-      // upstream gets the reranker onto a faster path.
-      enabled: false,
+      // DEFAULT-ON since antfly 0.2.2 (#846, 2026-09-19 benchmark on the M4,
+      // tasks/evidence-reranker-846.md): the rc-era ~200ms/candidate path is
+      // gone — top-10 rerank costs Δp95 +28ms warm, and metal AUTO-selects
+      // the pinned safetensors (no TERMITE_PREFERRED_BACKEND needed). Applies
+      // to SINGLE-TABLE queries with a rerankField when the caller leaves
+      // rerank unset (translate.ts); explicit rerank:false wins. The global
+      // multi-table fan-out NEVER reranks per-table (10-way concurrency gets
+      // 502'd by engine admission control — measured) — cross-table search
+      // reranks its MERGED top-K once via the adapter's standalone rerank().
+      enabled: true,
       provider: 'antfly',
       model: 'mixedbread-ai/mxbai-rerank-base-v1',
     },

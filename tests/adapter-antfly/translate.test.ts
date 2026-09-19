@@ -308,6 +308,26 @@ describe('buildTableProvisioning (capability legs)', () => {
   })
 })
 
+describe('reranker default-on (#846)', () => {
+  const withField = { searchableFields: ['title'], indexes: ['sem'], rerankField: 'body' }
+
+  it('attaches the reranker when the caller left rerank UNSET and a rerankField exists', () => {
+    const req = buildQueryRequest('t', { text: 'q', adapterOptions: withField }, S)
+    expect(req.reranker).toEqual({ provider: 'antfly', model: 'mixedbread-ai/mxbai-rerank-base-v1', field: 'body' })
+  })
+
+  it('explicit rerank:false always wins; no rerankField means no default attach', () => {
+    expect(buildQueryRequest('t', { text: 'q', rerank: false, adapterOptions: withField }, S).reranker).toBeUndefined()
+    expect(buildQueryRequest('t', { text: 'q', adapterOptions: { searchableFields: ['title'], indexes: ['sem'] } }, S).reranker).toBeUndefined()
+  })
+
+  it('reranker.enabled=false restores pure opt-in', () => {
+    const off = { ...S, search: { ...S.search, reranker: { ...S.search.reranker, enabled: false } } }
+    expect(buildQueryRequest('t', { text: 'q', adapterOptions: withField }, off).reranker).toBeUndefined()
+    expect(buildQueryRequest('t', { text: 'q', rerank: true, adapterOptions: withField }, off).reranker).toBeDefined()
+  })
+})
+
 describe('mapIndexStatuses', () => {
   it('maps engine status to per-leg health states', () => {
     const entries: WireIndexStatusEntry[] = [

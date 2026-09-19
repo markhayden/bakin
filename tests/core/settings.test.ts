@@ -80,10 +80,9 @@ describe('Settings', () => {
     const settings = getSettings()
     expect(settings.search.settings.search.strategy).toBe('rrf')
     expect(settings.search.settings.search.defaultLimit).toBe(20)
-    // Still default-off at v0.2.0-rc.9: the rc.2 mxbai SIGABRT (bakin#456) is
-    // fixed, but reranking is slow (~3s/query) and needs an explicit Metal
-    // backend, so it stays off and is opt-in per query.
-    expect(settings.search.settings.search.reranker.enabled).toBe(false)
+    // Default-ON since antfly 0.2.2 (#846): single-table rerank is Δp95
+    // +28ms warm on the M4; the multi-table fan-out never reranks per-table.
+    expect(settings.search.settings.search.reranker.enabled).toBe(true)
     expect(settings.search.settings.search.reranker.provider).toBe('antfly')
     expect(settings.search.settings.search.reranker.model).toBe('mixedbread-ai/mxbai-rerank-base-v1')
     expect(settings.search.settings.embedders.default.provider).toBe('antfly')
