@@ -16,6 +16,11 @@ mock.module('@makinbakin/sdk/navigation', () => ({
   }) => <a href={to} {...props}>{children}</a>,
   useHistoryBack: () => goBack,
   useParams: () => ({ assetId: '20260704-gourmet-popcorn-f1a2b3c4' }),
+  // The page reads `?version=` through the same module; state-backed here.
+  useQueryState: (_key: string, defaultValue: string) => {
+    const React = require('react') as typeof import('react')
+    return React.useState(defaultValue)
+  },
   useRouter: () => ({
     back: mock(),
     forward: mock(),
