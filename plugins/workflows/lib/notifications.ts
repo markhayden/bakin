@@ -359,7 +359,8 @@ async function sendGateContextMessage(
     }
 
     const approvalUrl = typeof context?.approvalUrl === 'string' ? context.approvalUrl : buildGateApprovalUrl(instance.taskId, stepId)
-    const taskUrl = `${bakinBaseUrl()}/?taskId=${encodeURIComponent(instance.taskId)}`
+    // /tasks, not / — the root route redirects to /tasks and drops the search string.
+    const taskUrl = `${bakinBaseUrl()}/tasks?taskId=${encodeURIComponent(instance.taskId)}`
 
     const header = [
       '🚦 **Task Needs Review**',

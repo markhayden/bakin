@@ -377,3 +377,13 @@ Test files:
 - `tests/plugins/tasks/routes.test.ts` — Integration tests for REST API routes and MCP exec tools
 
 Run: `bun test --isolate tests/core/task-store.test.ts tests/plugins/tasks/`
+
+## URL State (client)
+
+Everything bookmark-worthy on `/tasks` rides the URL (`.claude/knowledge/url-state-deep-linking.md`; spec `.claude/specs/settings-url-state.md` Phase 2):
+
+- Filters/view: `view`, `q`, `agent`, `scheduled`, `status[]`, `brand[]` — replace-mode.
+- **`taskId` is the detail drawer's open state.** Opening a card (kanban or table) PUSHES `?taskId=<id>` so Back closes the drawer; close / delete / dismiss REPLACE it away; refresh reopens it. The param resolves against the UNFILTERED board once the first fetch has landed (filters never hide a deep link; the empty initial board never eats one). The drawer shows a snapshot taken once per id — `useTaskDetail` re-initializes its form on task identity, so re-deriving from every board refresh would reset an in-progress edit — and the snapshot only counts while it matches the URL. A stale `?taskId=` (task deleted) renders "Task not found" + Dismiss in the board's feedback slot (schedule composition); it is never a toast and never a silent URL rewrite.
+- The create-new drawer (`editing && !task`) is component-level by design — not URL state.
+- Producers: the ⌘K hit renderer (`client.tsx`), scheduled-events (`lib/scheduled-events.ts`), brands' task button, workflows' gate attention + notifications — all `/tasks?taskId=`. The `/` route redirects to `/tasks` WITHOUT forwarding search, so never build `/?taskId=`.
+

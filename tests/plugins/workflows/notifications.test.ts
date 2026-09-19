@@ -374,7 +374,9 @@ describe('runtime gate notifications', () => {
     expect(body).toContain('🚦 **Task Needs Review**\n\n**Review Draft** — `content-pipeline`\nTask `task-42` | Step `review-gate`')
     expect(body).not.toContain('Owner reviews the draft before publishing')
     expect(body).toContain('Hello world')
-    expect(body).toMatch(/\*\*\[Review & Approve in Bakin\]\(http.*\/gates\/task-42\/decision\?stepId=review-gate\)\*\* · \[View Task\]\(http.*\/\?taskId=task-42\)/)
+    // The task link must target /tasks — the `/` route redirects to /tasks and
+    // DROPS the search string, so `/?taskId=` never opened the task.
+    expect(body).toMatch(/\*\*\[Review & Approve in Bakin\]\(http.*\/gates\/task-42\/decision\?stepId=review-gate\)\*\* · \[View Task\]\(http.*\/tasks\?taskId=task-42\)/)
     // Divider separates the context message from the provider's button card.
     expect(body).toContain('─'.repeat(30))
     expect(call.content.files).toBeUndefined()

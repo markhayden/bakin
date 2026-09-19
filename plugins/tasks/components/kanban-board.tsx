@@ -34,7 +34,7 @@ import {
   WorkspacePageHeader,
   WorkspacePageMetrics,
 } from '@makinbakin/sdk/patterns'
-import { Badge, Button, SystemState } from '@makinbakin/sdk/ui'
+import { Alert, AlertAction, AlertDescription, AlertTitle, Badge, Button, SystemState } from '@makinbakin/sdk/ui'
 import { Kanban, Plus, Table2 } from 'lucide-react'
 import { KanbanColumn } from './kanban-column'
 import { DeleteTaskDialog } from './delete-task-dialog'
@@ -234,7 +234,9 @@ export function KanbanBoard() {
     }
   }, [columns, view])
 
-  const [taskIdParam, setTaskIdParam] = useQueryState('taskId', '')
+  // `?taskId=` is the drawer's open state: opening PUSHES it (Back closes the
+  // drawer), closing REPLACES it away, refresh reopens it.
+  const [taskIdParam, setTaskIdParam, pushTaskId] = useQueryState('taskId', '')
   const hasBoardFilters = Boolean(search) || agentFilter !== 'all' || brandFilter.length > 0
 
   const { filteredColumns, allTasksFlat, aggregations, searchResults, searchStatus, searchMeta } = useTaskFilters(displayColumns, {
@@ -430,27 +432,46 @@ export function KanbanBoard() {
   const [detailTask, setDetailTask] = useState<{ task: Task; columnId: ColumnId } | null>(null)
   const [editing, setEditing] = useState(false)
 
-  const taskIdHandled = useRef(false)
+  // Resolve `?taskId=` against the UNFILTERED board (active agent/search
+  // filters must not hide a deep link), only once the first board fetch has
+  // landed (resolving against the empty initial board ate deep links on fresh
+  // loads). The drawer shows a SNAPSHOT taken once per id: the detail form
+  // re-initializes on task identity, so re-deriving on every board refresh
+  // would reset an in-progress edit.
   useEffect(() => {
-    // Wait for the first board fetch — consuming the param against the empty
-    // initial board silently ate deep links on fresh page loads.
-    if (!taskIdParam || taskIdHandled.current || !boardLoaded) return
-    taskIdHandled.current = true
-
-    // Search the UNFILTERED board so active agent/search filters can't hide
-    // the deep-linked task.
+    if (!taskIdParam || !boardLoaded || detailTask?.task.id === taskIdParam) return
     for (const [colId, colTasks] of Object.entries(boardData.columns) as [ColumnId, Task[]][]) {
       const match = colTasks.find(t => t.id === taskIdParam)
       if (match) {
         setDetailTask({ task: match, columnId: colId })
         setEditing(false)
-        setTaskIdParam('')
         return
       }
     }
-    toast('Task not found', 'error')
+    setDetailTask(null)
+  }, [taskIdParam, boardLoaded, boardData.columns, detailTask])
+  // The URL is the open state; the snapshot only counts while it matches the
+  // URL, so Back/Forward never shows a stale task under a new id.
+  const drawerTask = detailTask !== null && detailTask.task.id === taskIdParam ? detailTask : null
+
+  const taskExists = useMemo(
+    () => (Object.values(boardData.columns) as Task[][]).some(colTasks => colTasks.some((t) => t.id === taskIdParam)),
+    [boardData.columns, taskIdParam],
+  )
+  // A stale link (task deleted since it was created) is page feedback — never a
+  // toast that also rewrites the URL out from under the user.
+  const taskNotFound = Boolean(taskIdParam) && boardLoaded && !boardFailed && !taskExists
+
+  const openTask = useCallback((task: Task, columnId: ColumnId) => {
+    setDetailTask({ task, columnId })
+    setEditing(false)
+    pushTaskId(task.id)
+  }, [pushTaskId])
+  const closeTask = useCallback(() => {
     setTaskIdParam('')
-  }, [taskIdParam, boardLoaded, boardData.columns, setTaskIdParam])
+    setDetailTask(null)
+    setEditing(false)
+  }, [setTaskIdParam])
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
 
   const confirmDelete = useCallback(async () => {
@@ -500,6 +521,23 @@ export function KanbanBoard() {
       {searchStatus === 'unavailable' && <SearchDegradedChip testId="tasks-search-degraded" />}
       {searchMeta?.partial && <SearchPartialChip meta={searchMeta} />}
     </Inline>
+  ) : undefined
+
+  const pageFeedback = taskNotFound || searchFeedback ? (
+    <div className="grid min-w-0 gap-bakin-3">
+      {taskNotFound ? (
+        <Alert tone="danger" data-testid="tasks-task-not-found">
+          <AlertTitle>Task not found</AlertTitle>
+          <AlertDescription>It may have been deleted since this link was created.</AlertDescription>
+          <AlertAction>
+            <Button type="button" variant="outline" size="xs" onClick={closeTask}>
+              Dismiss
+            </Button>
+          </AlertAction>
+        </Alert>
+      ) : null}
+      {searchFeedback}
+    </div>
   ) : undefined
 
   let resultState: React.ReactNode
@@ -651,7 +689,7 @@ export function KanbanBoard() {
           <PageBody
             label="Task results"
             busy={boardLoaded && boardRefreshing}
-            feedback={searchFeedback}
+            feedback={pageFeedback}
             state={resultState}
             gap="content"
             className="pt-bakin-2"
@@ -687,7 +725,7 @@ export function KanbanBoard() {
                     warnUnbranded={warnUnbranded}
                     scoreMap={scoreMap}
                     onDelete={setDeleteTarget}
-                    onTaskClick={(task, columnId) => { setDetailTask({ task, columnId }); setEditing(false) }}
+                    onTaskClick={openTask}
                     compact={colId === 'archived'}
                     totalCount={colId === 'archived' ? columns.archived.length : undefined}
                     showScheduled={showScheduled}
@@ -703,10 +741,7 @@ export function KanbanBoard() {
                 statusFilter={statusFilter}
                 isSearching={Boolean(search)}
                 scoreMap={scoreMap}
-                onTaskOpen={(task, columnId) => {
-                  setDetailTask({ task, columnId })
-                  setEditing(false)
-                }}
+                onTaskOpen={openTask}
               />
             </div>
           )}
@@ -715,23 +750,22 @@ export function KanbanBoard() {
       </WorkspacePage>
 
       <TaskDetailDrawer
-        task={detailTask?.task ?? null}
-        columnId={detailTask?.columnId ?? null}
-        open={editing || !!detailTask}
+        task={drawerTask?.task ?? null}
+        columnId={drawerTask?.columnId ?? null}
+        open={editing || drawerTask !== null}
         editing={editing}
-        onClose={() => { setDetailTask(null); setEditing(false) }}
+        onClose={closeTask}
         onEdit={() => setEditing(true)}
         onCancelEdit={() => setEditing(false)}
         onDelete={(task) => {
-          setDetailTask(null)
-          setEditing(false)
+          closeTask()
           setDeleteTarget({ id: task.id, title: task.title })
         }}
         onDuplicate={async (task) => {
           const ok = await apiFetch('/api/plugins/tasks/', {
             title: `${task.title} (copy)`,
             description: task.description || undefined,
-            column: detailTask?.columnId || 'todo',
+            column: drawerTask?.columnId || 'todo',
             assignee: task.agent || undefined,
             workflowId: task.workflowId || undefined,
           })
