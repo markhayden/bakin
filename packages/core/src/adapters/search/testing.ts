@@ -45,10 +45,21 @@ export function createMockSearchAdapter(
     available: async () => true,
     capabilities: () => ({
       legs: ['full-text', 'text-embedding', 'media-embedding'],
-      rerank: false,
+      rerank: true,
       facets: true,
       transform: true,
     }),
+    // Deterministic lexical stand-in for the cross-encoder (#846): score =
+    // query-term overlap fraction. Enough for merge-order tests; null paths
+    // are exercised by overriding this member.
+    rerank: async (query: string, texts: string[]): Promise<number[] | null> => {
+      if (texts.length === 0) return null
+      const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
+      return texts.map((text) => {
+        const lower = text.toLowerCase()
+        return terms.length === 0 ? 0 : terms.filter((t) => lower.includes(t)).length / terms.length
+      })
+    },
     mappingFingerprint: () => 'mock-mapping-v1',
 
     tables: {

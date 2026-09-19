@@ -29,6 +29,16 @@ export interface SearchAdapter {
   capabilities(): SearchAdapterCapabilities
 
   /**
+   * OPTIONAL: cross-encoder relevance scores for arbitrary texts against a
+   * query (#846) — one score per text, same order. The primitive behind
+   * cross-table search's merged-top-K rerank: ONE batched call instead of
+   * per-table reranks (which the engine's admission control 502s under
+   * fan-out concurrency). Resolves null when unavailable, disabled, or the
+   * call fails — callers keep their existing order, never error (D11).
+   */
+  rerank?(query: string, texts: string[]): Promise<number[] | null>
+
+  /**
    * OPTIONAL: engine-process introspection (pid/CPU/wedge signatures) for
    * the doctor's burn watchdog. Absent or resolving null = the adapter (or
    * its current mode, e.g. an externally managed guest engine) cannot

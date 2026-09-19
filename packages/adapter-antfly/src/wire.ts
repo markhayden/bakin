@@ -137,6 +137,8 @@ export interface WireTableInfo {
 
 export const paths = {
   status: () => '/db/v1/status',
+  /** Standalone batched rerank (#846): RerankRequest {model, query, prompts}. */
+  rerank: () => '/ml/v1/rerank',
   tables: () => '/db/v1/tables',
   table: (t: string) => `/db/v1/tables/${encodeURIComponent(t)}`,
   batch: (t: string) => `/db/v1/tables/${encodeURIComponent(t)}/batch`,
