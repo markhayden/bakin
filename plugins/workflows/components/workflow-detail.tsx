@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from '@makinbakin/sdk/hooks'
+import { useQueryState } from '@makinbakin/sdk/navigation'
 import {
   PageHeader,
   WorkspacePage,
@@ -108,8 +109,11 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
   const [skillDrift, setSkillDrift] = useState<WorkflowSkillDriftSummary | undefined>()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  // `?step=<nodeId>` is the step drawer's open state: a node click PUSHES it
+  // (Back closes the drawer), closing REPLACES it away, refresh reopens it.
+  // Derived, not snapshotted, so a refetched definition (skill repair) shows
+  // the repaired step. A stale id leaves the drawer closed without rewriting.
+  const [stepParam, setStepParam, pushStep] = useQueryState('step', '')
   const [copyOpen, setCopyOpen] = useState(false)
   const [copyError, setCopyError] = useState<string | null>(null)
   const [copyFieldErrors, setCopyFieldErrors] = useState<WorkflowDialogFieldErrors>({})
@@ -166,12 +170,14 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
     // Skip trigger and subflow group nodes
     if (nodeId === '__trigger' || nodeId.endsWith('__trigger')) return
 
-    const step = findStepByNodeId(definition, nodeId, subWorkflows)
-    if (step) {
-      setSelectedStep(step)
-      setDrawerOpen(true)
-    }
-  }, [definition, subWorkflows])
+    if (findStepByNodeId(definition, nodeId, subWorkflows)) pushStep(nodeId)
+  }, [definition, subWorkflows, pushStep])
+
+  const selectedStep = useMemo(
+    () => (stepParam && definition ? findStepByNodeId(definition, stepParam, subWorkflows) : null),
+    [stepParam, definition, subWorkflows],
+  )
+  const drawerOpen = selectedStep !== null
 
   const isManagedSource = source === 'plugin' || source === 'agent-package'
   const canDelete = source === 'user'
@@ -564,7 +570,7 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
         step={selectedStep}
         allSteps={definition.steps}
         open={drawerOpen}
-        onOpenChange={setDrawerOpen}
+        onOpenChange={(open) => { if (!open) setStepParam('') }}
         skillDrift={skillDrift}
         onSkillRepaired={() => fetchDefinition({ preserveLoading: true })}
       />

@@ -372,6 +372,12 @@ The runtime uses a deterministic task id by default
 without creating a duplicate. Use this for one-time scheduled work; do not model
 that as plugin-owned cron or health-check behavior.
 
+## URL State (client)
+
+- `/workflows` list: `q` (search).
+- `/workflows/$id` detail: **`step=<nodeId>` is the step drawer's open state** (spec `.claude/specs/settings-url-state.md` Phase 2). A canvas node click PUSHES it (Back closes the drawer), `StepDetailDrawer.onOpenChange(false)` REPLACES it away, refresh reopens it. The value is the canvas node id (`parent__child` for nested steps) resolved through the same `findStepByNodeId` the click path uses; `selectedStep` is derived (not snapshotted), so a definition refetch after skill repair shows the repaired step. A stale id (step removed) leaves the drawer closed WITHOUT rewriting the URL (rule 4); there is no not-found alert because nothing produces step links yet (⌘K workflow hits open `/workflows/$id`). Trigger nodes (`__trigger`) never open a step.
+- `/workflows/$id/edit` canvas selection stays local (editor selection is transient and dirty-guarded).
+
 ## CRUD Routes
 
 | Method | Path | Behavior |
