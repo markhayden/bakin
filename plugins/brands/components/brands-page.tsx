@@ -142,7 +142,7 @@ export function BrandsPage() {
       <PageHeader
         title="Branding"
         description="Define the voice, visual identity, rules, and references agents use to keep every output on-brand."
-        meta={data ? <Badge size="xs" variant="outline">{visible.length} shown</Badge> : undefined}
+        meta={data ? <Badge size="xs" tone="neutral" variant="soft">{visible.length} shown</Badge> : undefined}
         controlsLabel="Brand search"
         controls={(
           <SearchInput

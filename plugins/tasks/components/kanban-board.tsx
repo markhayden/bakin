@@ -587,7 +587,7 @@ export function KanbanBoard() {
           <PageHeader
             title="Tasks"
             description="Create, assign, and track work across your agents from the backlog through completion."
-            meta={boardLoaded ? <Badge size="xs" variant="outline">{resultCount} shown</Badge> : undefined}
+            meta={boardLoaded ? <Badge size="xs" tone="neutral" variant="soft">{resultCount} shown</Badge> : undefined}
             controlsLabel="Task search, view, and actions"
             controls={(
               <div className="grid w-full min-w-0 gap-bakin-2 @3xl/page-header:flex @3xl/page-header:items-start">

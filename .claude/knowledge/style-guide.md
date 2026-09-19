@@ -67,6 +67,10 @@ never sit at rest in a card — surface on hover or behind the detail view.
   chip. Use the filled treatment by default so status reads immediately;
   reserve outline for secondary, uncertain, historical, or low-emphasis
   context. Use soft badges for metadata rather than primary state.
+- **Page-header counts** use `Badge tone="neutral" variant="soft"`: results
+  shown, available items, agents, members, and step counts are supporting
+  metadata. Keep semantic status labels separate; do not restyle every badge
+  inside `PageHeader` with a descendant selector.
 - Use `Banner`, `Alert`, and canonical danger patterns for attention and danger
   surfaces; do not restyle status colors locally.
 

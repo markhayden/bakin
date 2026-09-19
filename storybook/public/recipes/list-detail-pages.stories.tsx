@@ -219,7 +219,7 @@ function ListIndexExample() {
             <h2>{activeFilter === 'All' ? 'Active work' : activeFilter}</h2>
             <p>One content hierarchy; object boundaries appear only where the repeated task requires them.</p>
           </Stack>
-          <Badge tone="neutral" variant="outline">{visibleTasks.length} shown</Badge>
+          <Badge tone="neutral" variant="soft">{visibleTasks.length} shown</Badge>
         </div>
         <ul className="bakin-archetype-story__list" aria-label="Active tasks">
           {visibleTasks.map((task) => (
@@ -280,7 +280,7 @@ function ListPaginationExample() {
         eyebrow="Memory / indexed records"
         title="Keep long result sets scannable"
         description="Paginate repeated content by default. Keep the page in routed URL state and reserve Show all for deliberate inspection."
-        meta={<Badge tone="neutral" variant="outline">{visible.length} shown</Badge>}
+        meta={<Badge tone="neutral" variant="soft">{visible.length} shown</Badge>}
       />
       <PageBody label="Indexed memory records">
         <ul className="bakin-archetype-story__list bakin-archetype-story__list--separated" aria-label="Memory records">

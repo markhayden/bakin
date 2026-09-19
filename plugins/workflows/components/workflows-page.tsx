@@ -327,7 +327,7 @@ export function WorkflowsPage() {
       <PageHeader
         title="Workflows"
         description="Build and manage reusable, multi-step agent processes with approvals, branching, skills, and automated handoffs."
-        meta={loading ? undefined : <Badge size="xs" variant="outline">{filtered.length} shown</Badge>}
+        meta={loading ? undefined : <Badge size="xs" tone="neutral" variant="soft">{filtered.length} shown</Badge>}
         controlsLabel="Workflow search"
         controls={(
           <SearchInput

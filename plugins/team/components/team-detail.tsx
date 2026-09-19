@@ -229,7 +229,7 @@ export function TeamDetail({ teamId }: { teamId: string }) {
         title={pageTitle}
         meta={members ? (
           <>
-            <Badge size="xs" variant="outline">{members.length} members</Badge>
+            <Badge size="xs" tone="neutral" variant="soft">{members.length} members</Badge>
             <code className="font-bakin-typography-family-mono">{teamId}</code>
           </>
         ) : undefined}

@@ -343,7 +343,7 @@ function ExplorePageInner() {
       <PageHeader
         title="Explore"
         description="Find and install official agents, plugins, lessons, and capabilities to extend your Bakin workspace."
-        meta={catalogState ? <Badge size="xs" variant="outline">{entries.length} available</Badge> : undefined}
+        meta={catalogState ? <Badge size="xs" tone="neutral" variant="soft">{entries.length} available</Badge> : undefined}
         controlsLabel="Catalog search"
         controls={(
           <SearchInput

@@ -385,7 +385,7 @@ export function SchedulePage() {
             title="Schedule"
             description="Plan recurring work and see exactly when each agent, workflow, and system event will run."
             meta={loading ? undefined : (
-              <Badge data-testid="header-count" size="xs" variant="outline">
+              <Badge data-testid="header-count" size="xs" tone="neutral" variant="soft">
                 {filtered.length} shown
               </Badge>
             )}

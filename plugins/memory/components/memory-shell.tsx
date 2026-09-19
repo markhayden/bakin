@@ -403,7 +403,7 @@ function MemoryShellInner() {
         description="Search what your agents remember, inspect saved context, and clean up stale or unnecessary records."
         // Both belong to Browse: Scrub has its own find field, and a row count
         // for a list it isn't showing is just noise.
-        meta={scrubMode ? undefined : <Badge size="xs" variant="outline">{visibleResults.length} shown</Badge>}
+        meta={scrubMode ? undefined : <Badge size="xs" tone="neutral" variant="soft">{visibleResults.length} shown</Badge>}
         controlsLabel="Memory search"
         controls={scrubMode ? undefined : (
           <SearchInput
