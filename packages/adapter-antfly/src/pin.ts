@@ -18,25 +18,27 @@ export interface AntflyPin {
 }
 
 export const ANTFLY_PIN: AntflyPin = {
-  // v0.2.0 FINAL (published 2026-08-11) — ADOPTED 2026-08-31 after the full
-  // hard-gate evaluation on the target M4 (tasks/evidence-antfly-0.2.0.md):
-  // every rc.19–rc.21 dossier blocker (antfly#382/#383/#384/#386) disproven
-  // locally, 45-min concurrent embed-write soak clean, reindex-under-load
-  // fixed (194x median query latency vs rc.18, zero failed queries). The
-  // server subcommand is `standalone` (the rc.19+ rename; `swarm` is gone).
-  // Known 0.2.0 sharp edges, both OFF Bakin's production path and ticketed
-  // upstream: inline `indexes` at table-create are silently dead (we create
-  // legs via POST /tables/{t}/indexes/{name} — see client.ts tables.create),
-  // and adding a leg to a POPULATED table wedges it durably. For the next
-  // repin: bump version+checksums from the release's antfly_zig_checksums.txt
-  // and re-run tests/integration/antfly/ + the reproduction ladder (rungs in
-  // the evidence file) BEFORE adopting.
-  version: '0.2.0',
+  // v0.2.2 (published 2026-09-14) — ADOPTED 2026-09-18 after the repin gate
+  // on the target M4 (tasks/evidence-antfly-0.2.2.md, bakin#843): every 0.2.0
+  // sharp edge we filed is FIXED (antfly#617 add-leg wedge → clean
+  // progressive backfill; #618 inline indexes → honest 400 rejection; #619
+  // backfill pacing → ~17x, 20k rebuild ~83min → ~5min), and the 2026-09-18
+  // live forced-rebuild HTTP-starvation wedge does not reproduce (0 probe
+  // failures across three rebuild cycles under concurrent backfill load —
+  // the 0.2.1 HBC cache-fill bounding). NO workaround pins flipped: order_by
+  // on inferred fields still 422s and undecodable media still poisons its
+  // whole batch, so the adapter carries the same workarounds as 0.2.0.
+  // Upstream now also publishes Linux *_gnu (glibc) tarballs — we keep the
+  // original names; switch if musl issues surface in Docker/CI.
+  // For the next repin: bump version+checksums from the release's
+  // antfly_zig_checksums.txt and re-run tests/integration/antfly/ + the
+  // reproduction ladder (rungs in the evidence files) BEFORE adopting.
+  version: '0.2.2',
   baseUrl: 'https://releases.antfly.io/antfly',
   checksums: {
-    'darwin-arm64': '82690d5c7e7cac5f7cd56c46ced8f4dd9acace577fb7982060667bcdb2632db6',
-    'linux-arm64': 'a4993e854f4c7676708602b2765113f0caad8b8b1097e6c12fac5f562be16ac6',
-    'linux-x64': '1eb63abba8d0608355a075e3a39586ee72d9c8a4870ba2365558cea2b7d3defe',
+    'darwin-arm64': '556a012141b7e3db0796902e3e219ad12c08a36cd9ff6b0ef0e9813948ecbcc6',
+    'linux-arm64': '03154bf9bd3bbc7335e0662563c69bd3259c3bbfe8fcf8509b5f4a6265be4d84',
+    'linux-x64': '17ebb65e906ce24a0a7e2672e8316c867fd9d7550b1f42eb4e1f714bb0697456',
   },
 }
 
