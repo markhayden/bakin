@@ -163,7 +163,21 @@ test('action and status family keeps responsive semantics across browsers', asyn
 
   await test.step('interactive badge and alert actions expose keyboard focus', async () => {
     await page.goto('/iframe.html?id=components-primitives-badge--interactive&viewMode=story', { waitUntil: 'networkidle' })
-    await expect(page.getByRole('link', { name: 'Open 4 filtered tasks' })).toBeFocused()
+    const textLink = page.getByRole('link', { name: 'View filtered tasks' })
+    const outlineLink = page.getByRole('link', { name: 'Open 4 filtered tasks' })
+    await expect(textLink).toBeFocused()
+    await expect(textLink).toHaveCSS('text-decoration-line', 'underline')
+    await expect(outlineLink).toHaveCSS('text-decoration-line', 'none')
+    const textColor = await textLink.evaluate((element) => getComputedStyle(element).color)
+    await expect(textLink).toHaveCSS('text-decoration-color', textColor)
+    await page.keyboard.press('Shift+Tab')
+    await expect(outlineLink).toBeFocused()
+    await expect(textLink).not.toHaveCSS('text-decoration-color', textColor)
+    // Real pointer movement exercises CSS :hover; synthetic story events do not.
+    await textLink.hover()
+    await expect(textLink).toHaveCSS('text-decoration-color', textColor)
+    await page.mouse.move(0, 0)
+    await expect(textLink).not.toHaveCSS('text-decoration-color', textColor)
 
     await page.goto('/iframe.html?id=components-feedback-alert--with-action&viewMode=story', { waitUntil: 'networkidle' })
     await expect(page.getByRole('button', { name: 'Retry' })).toBeFocused()

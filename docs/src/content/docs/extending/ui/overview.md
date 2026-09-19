@@ -530,6 +530,8 @@ For badges, `tone` describes meaning (`neutral`, `primary`, `success`, `attentio
 
 Routine alerts announce with `role="status"`. Danger alerts default to `role="alert"`, so reserve them for conditions that need immediate assistive-technology announcement. Progress accepts an exact `value` for determinate work or `null` for indeterminate work; always supply a visible `ProgressLabel` or an `aria-label`. Fixed reference points (a compaction threshold, a budget cap) render as `markers` ticks on the track; the tick only marks where — name what it means in visible text.
 
+The badge `link` treatment has a subtle persistent underline that strengthens on hover or keyboard focus, making navigation identifiable without hovering. `ghost` stays plain. Render navigation with a native anchor (`render={<a href="…" />}`); choosing a treatment does not supply link semantics. Other badge treatments keep their own appearance when rendered as anchors.
+
 `buttonVariants()` and `badgeVariants()` are supported escape hatches for links and render integrations that must share a primitive's visual treatment while preserving the correct native element. They do not make the generated class string, arbitrary Tailwind utilities, or internal DOM structure part of the SDK contract. Prefer the component whenever it has the right semantics.
 
 Existing `default` and `destructive` action variants and `default`, `secondary`, and `destructive` badge variants remain compatibility aliases while owned consumers migrate. New work uses the semantic names above.
