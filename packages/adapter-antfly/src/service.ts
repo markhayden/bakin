@@ -367,7 +367,16 @@ export async function startService(settings: AntflySettings, io: ServiceIo = def
   if (mode === 'launchd') {
     const uid = typeof process.getuid === 'function' ? process.getuid() : 501
     const kick = await io.exec('launchctl', ['kickstart', '-k', `gui/${uid}/${LAUNCHD_LABEL}`])
-    if (kick.code !== 0) await ensureProvisioned(settings, io)
+    if (kick.code !== 0) {
+      // kickstart cannot start an UNLOADED unit (the post-bootout upgrade
+      // window, #859) — bootstrap the existing plist directly. Only when
+      // that also fails (plist missing/invalid) fall back to a full
+      // re-provision; ensureProvisioned's unchanged fast path would no-op
+      // on a byte-identical plist, which is exactly the state kickstart
+      // just failed in. start = make it run; ensure = make the config right.
+      const boot = await io.exec('launchctl', ['bootstrap', `gui/${uid}`, launchdPlistPath(io)])
+      if (boot.code !== 0) await ensureProvisioned(settings, io)
+    }
   } else if (mode === 'systemd') {
     await io.exec('systemctl', ['--user', 'start', SYSTEMD_UNIT])
   } else if (mode === 'child') {

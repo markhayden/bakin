@@ -40,6 +40,7 @@ import {
   renderSystemdUnit,
   restartService,
   servicePaths,
+  startService,
   systemdUnitPath,
   type ServiceIo,
 } from '../../packages/adapter-antfly/src/service'
@@ -181,6 +182,61 @@ describe('ensureProvisioned idempotence', () => {
     const child = fakeIo({ env: { HOME: testDir, BAKIN_SEARCH_SERVICE_MODE: 'child' } })
     expect(await ensureProvisioned(DEFAULT_SETTINGS, child)).toEqual({ mode: 'child', action: 'skipped' })
     expect(child.record).toHaveLength(0)
+  })
+})
+
+describe('startService (kickstart → bootstrap fallback, #859)', () => {
+  it('launchd: healthy kickstart issues no bootstrap', async () => {
+    const io = fakeIo({ platform: 'darwin' })
+    await ensureProvisioned(DEFAULT_SETTINGS, io) // plist on disk
+    const io2 = fakeIo({ platform: 'darwin' })
+    await startService(DEFAULT_SETTINGS, io2)
+    expect(io2.record.some((c) => c[1] === 'kickstart')).toBe(true)
+    expect(io2.record.some((c) => c[1] === 'bootstrap')).toBe(false)
+  })
+
+  it('launchd: kickstart failure (booted-out unit) bootstraps the EXISTING plist — the 2026-09-19 upgrade hole', async () => {
+    const io = fakeIo({ platform: 'darwin' })
+    await ensureProvisioned(DEFAULT_SETTINGS, io) // plist on disk, byte-identical to desired
+    const record: string[][] = []
+    const io2 = fakeIo({
+      platform: 'darwin',
+      record,
+      exec: async (cmd, args) => {
+        record.push([cmd, ...args])
+        // The post-bootout state: kickstart cannot find the unit.
+        if (args[0] === 'kickstart') return { code: 113, stdout: '', stderr: 'Could not find service' }
+        return { code: 0, stdout: '', stderr: '' }
+      },
+    })
+    await startService(DEFAULT_SETTINGS, io2)
+    const bootstrap = io2.record.find((c) => c[1] === 'bootstrap')
+    expect(bootstrap).toBeDefined()
+    expect(bootstrap![3]).toBe(launchdPlistPath(io2))
+  })
+
+  it('launchd: bootstrap failure falls back to full provisioning (plist rewrite path)', async () => {
+    rmSync(launchdPlistPath(fakeIo({ platform: 'darwin' })), { force: true })
+    const record: string[][] = []
+    let bootstraps = 0
+    const io = fakeIo({
+      platform: 'darwin',
+      record,
+      exec: async (cmd, args) => {
+        record.push([cmd, ...args])
+        if (args[0] === 'kickstart') return { code: 113, stdout: '', stderr: 'Could not find service' }
+        if (args[0] === 'bootstrap') {
+          bootstraps += 1
+          // First (direct) bootstrap fails; ensureProvisioned's own attempt succeeds.
+          return bootstraps === 1 ? { code: 5, stdout: '', stderr: 'Input/output error' } : { code: 0, stdout: '', stderr: '' }
+        }
+        return { code: 0, stdout: '', stderr: '' }
+      },
+    })
+    await startService(DEFAULT_SETTINGS, io)
+    // ensureProvisioned ran: it rewrote the missing plist and bootstrapped again.
+    expect(existsSync(launchdPlistPath(io))).toBe(true)
+    expect(bootstraps).toBeGreaterThanOrEqual(2)
   })
 })
 
