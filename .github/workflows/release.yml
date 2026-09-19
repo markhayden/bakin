@@ -190,7 +190,11 @@ jobs:
       # irreversible publish, so it runs the whole suite in one place; the
       # per-shard split is a PR-latency optimization, not a correctness one.
       - name: Test
-        run: bun run test:ci
+        # Single-runner gate: the whole suite unsharded on one 4-vCPU runner
+        # starves at --parallel=4 (400ms tests crawl to 100s+ and cross the
+        # 60s timeout — see the ci-main sharding note). test:ci:gate halves
+        # parallelism and widens the timeout so this one job stays honest.
+        run: bun run test:ci:gate
 
       - name: Build CSS
         run: bun run build:css
