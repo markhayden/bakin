@@ -75,6 +75,19 @@ OS-supervised instances stay warm across Bakin restarts by design. Upgrades
 are `stopService()` → swap binary (verify-then-commit, `installer.ts`) →
 `startService()`. `ANTFLY_PATH` overrides binary discovery for dev builds.
 
+**Supervision honesty (#859, 2026-09-19):** a byte-identical unit file says
+nothing about supervisor state, so `ensureProvisioned`'s `unchanged` fast path
+performs ONE read-only probe (`launchctl print` / `systemctl is-active`,
+`activating` counts as up) and re-loads an unloaded unit — surfaced as
+`action: 'reloaded'`. `startService` bootstraps the on-disk plist directly
+when `kickstart` finds no unit (the post-`bootout` upgrade window that once
+shipped a green install with the engine down), falling back to full
+provisioning only if that bootstrap fails. Every installer path that
+(re)starts the service gates on `waitForEngineReady` (60 s upgrade/noop, 30 s
+reset) and returns `failed` — CLI exits non-zero — when the engine never
+answers; a "successful" install with a dead engine is impossible by
+construction.
+
 ## Architecture
 
 ```
