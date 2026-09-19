@@ -189,12 +189,18 @@ jobs:
       # NOTE: unsharded on purpose. This job is a single gate before an
       # irreversible publish, so it runs the whole suite in one place; the
       # per-shard split is a PR-latency optimization, not a correctness one.
-      - name: Test
-        # Single-runner gate: the whole suite unsharded on one 4-vCPU runner
-        # starves at --parallel=4 (400ms tests crawl to 100s+ and cross the
-        # 60s timeout — see the ci-main sharding note). test:ci:gate halves
-        # parallelism and widens the timeout so this one job stays honest.
-        run: bun run test:ci:gate
+      # Single-runner gate: run the whole suite in 3 SEQUENTIAL shards so each
+      # bun invocation carries a third of the files in a fresh process. The
+      # unsharded run both starves AND accumulates enough memory to crash a
+      # file on one 4-vCPU runner (the ci-main sharding note). Same shard split
+      # and --parallel=4 that ci-main runs across 3 runners; sequential here
+      # because this is a single pre-publish gate job.
+      - name: Test (shard 1/3)
+        run: bun run test:ci --shard=1/3
+      - name: Test (shard 2/3)
+        run: bun run test:ci --shard=2/3
+      - name: Test (shard 3/3)
+        run: bun run test:ci --shard=3/3
 
       - name: Build CSS
         run: bun run build:css
