@@ -101,6 +101,7 @@ registerPlugin({
 | `type` | string[] | `images,video` | Type filter (multi-select via FacetFilter) |
 | `taskId` | string | task id | Task detail drawer open state: opening PUSHES it (Back closes), closing REPLACES it away; resolves against the unfiltered board; stale → page feedback |
 | `step` | string | canvas node id (`write`, `parent__child`) | Step detail drawer open state on `/workflows/$id`: push on open (Back closes), replace on close; stale → closed, no rewrite |
+| `version` | string | `1`, `3` | Previewed version on `/assets/$assetId`; the manifest's current version is the default (omitted); replace-mode; stale → current without rewrite |
 | `jobId` | string | job id | Deep-link to open schedule job detail drawer |
 | `recordId` | string | memory rowId (`<tier>:<hash>`) | Deep-link to open memory detail drawer (resolved via `GET /record`) |
 | `lessonId` | string | lesson id | Highlight + scroll to a lesson on the team Lessons tab (`?tab=lessons`) |
@@ -171,7 +172,7 @@ Pattern: client-side filtering runs immediately (instant feedback), search fires
 |--------|-----------|-------|
 | Chat | ✅ Done | Path-based: `/chat/$chatId`, `/chat/new?agent=`; list filter `agent` |
 | Tasks | ✅ Done | `view`, `q`, `agent`, `scheduled`, `status`, `brand`, `taskId` — the drawer's open state (push on open so Back closes, replace on close; stale id → "Task not found" feedback, never a rewrite). Create/edit form state is component-level by design. |
-| Assets | ✅ Done | `view`, `q`, `type`, `asset`, `page`, `sort`, `dir` |
+| Assets | ✅ Done | List: `view`, `q`, `type`, `tags`, `page`, `sort`, `dir`; detail is path-based `/assets/$assetId` with `version` (previewed version; current = default omitted; stale → current, no rewrite) |
 | Messaging (Calendar) | ✅ Done | `view`, `q`, `agent`, `status`, `type`, `itemId` (deep link), `mode` (edit) |
 | Messaging (Brainstorm) | ✅ Done | `session` (deep link to planning session), search via parent PluginHeader |
 | Workflows | ✅ Done | `q` on list; path-based `/workflows/$id` for canvas detail; `step` is the step drawer's open state (push on node click so Back closes, replace on close; stale id → drawer closed, URL untouched). Editor selection on `/edit` stays local. |

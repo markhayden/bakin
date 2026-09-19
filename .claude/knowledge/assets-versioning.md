@@ -42,6 +42,15 @@ the `assetId`, never a filename.
 - Markdown/text assets ride the same spine; "markdown out of v1" only meant no
   markdown-specific diff/merge UI.
 
+## URL State (detail page)
+
+`/assets/$assetId?version=<n>` selects the previewed version (spec `.claude/specs/settings-url-state.md` Phase 2). The
+manifest's `currentVersion` is the default and is omitted from the URL; picking another version writes it
+(replace-mode — an in-page selection, not an overlay); picking the current version drops it; a version the manifest
+does not carry previews the current one WITHOUT rewriting the URL (rule 4). A promote changes the default; a pinned
+`?version=` keeps pointing at the (still existing) old version and the badge says "selected". The list page's params
+(`view`, `q`, `type`, `tags`, `page`, `sort`, `dir`) are unchanged.
+
 ## Key modules (`plugins/assets/lib/`)
 
 - `asset-id.ts` — generate/validate assetId, shard derivation.
