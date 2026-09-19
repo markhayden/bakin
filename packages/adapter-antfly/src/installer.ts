@@ -68,6 +68,23 @@ async function isLocalServerResponding(): Promise<boolean> {
   }
 }
 
+/** Bounded post-start readiness gate (#859): poll until the engine answers
+ *  or the budget expires. Every path that (re)starts the service MUST gate
+ *  on this before reporting success — a green install with a dead engine
+ *  is how the 2026-09-19 cutover stranded search. */
+async function waitForEngineReady(budgetMs: number, pollMs = 1_000): Promise<boolean> {
+  const deadline = Date.now() + budgetMs
+  for (;;) {
+    if (await isLocalServerResponding()) return true
+    if (Date.now() >= deadline) return false
+    await new Promise((resolve) => setTimeout(resolve, pollMs))
+  }
+}
+
+const ENGINE_DEAD_AFTER_START = (budgetMs: number) =>
+  `the engine is not answering after ${Math.round(budgetMs / 1000)}s — the service unit may have failed to load or the engine is crash-looping. ` +
+  'Check `~/.bakin/logs/antfly.log` and the supervisor (`launchctl list | grep antfly` / `systemctl --user status bakin-antfly`), then re-run `bakin install search`.'
+
 /**
  * Full clean reset of the engine's DERIVED state: stop the supervised
  * service, wipe the data dir (indexes only — models and source content are
@@ -98,15 +115,7 @@ export async function resetAntflyEngineData(
     rmSync(dataDir, { recursive: true, force: true })
     await ensureProvisioned(SERVICE_DEFAULTS)
     await startService(SERVICE_DEFAULTS)
-    const deadline = Date.now() + 30_000
-    let responding = false
-    while (Date.now() < deadline) {
-      if (await isLocalServerResponding()) {
-        responding = true
-        break
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1_000))
-    }
+    const responding = await waitForEngineReady(30_000)
     const durationMs = Date.now() - start
     if (!responding) {
       return {
@@ -170,7 +179,12 @@ export async function installAntflyDependency(
   opts: SearchAdapterSetupOptions,
   logger: AdapterLogger = noopLogger,
   pin: AntflyPin = ANTFLY_PIN,
+  timings: { readyBudgetMs?: number; pollMs?: number } = {},
 ) {
+  // Fresh boots wipe + preload models; 60s covers the slowest observed
+  // cold start with headroom. Tests inject tiny budgets.
+  const readyBudgetMs = timings.readyBudgetMs ?? 60_000
+  const pollMs = timings.pollMs ?? 1_000
   const start = Date.now()
   const targetPath = antflyBinaryPath()
 
@@ -195,6 +209,16 @@ export async function installAntflyDependency(
     await ensureProvisioned(SERVICE_DEFAULTS)
     if (!await isLocalServerResponding()) {
       await startService(SERVICE_DEFAULTS)
+      // Gate the restart (#859): a noop that leaves the engine dead is not
+      // a noop — fail honestly instead of reporting "provisioned and running".
+      if (!await waitForEngineReady(readyBudgetMs, pollMs)) {
+        return {
+          name: 'antfly',
+          status: 'failed' as const,
+          message: `Antfly v${pin.version} is installed at ${existing}, but ${ENGINE_DEAD_AFTER_START(readyBudgetMs)}`,
+          durationMs: Date.now() - start,
+        }
+      }
     }
     return {
       name: 'antfly',
@@ -364,6 +388,16 @@ export async function installAntflyDependency(
       // `standalone` plist driving a `swarm`-era binary — silent no-boot).
       await ensureProvisioned(SERVICE_DEFAULTS)
       await startService(SERVICE_DEFAULTS)
+      // Readiness gate (#859): the 0.2.2 cutover swapped the binary, left
+      // the unit un-bootstrapped, and reported success — never again.
+      if (!await waitForEngineReady(readyBudgetMs, pollMs)) {
+        return {
+          name: 'antfly',
+          status: 'failed' as const,
+          message: `Antfly v${installedVersion} was installed to ${targetPath} (checksum verified), but ${ENGINE_DEAD_AFTER_START(readyBudgetMs)}`,
+          durationMs: Date.now() - start,
+        }
+      }
     }
     const durationMs = Date.now() - start
     logger.info('Antfly installed', { binary: targetPath, version: installedVersion, durationMs })

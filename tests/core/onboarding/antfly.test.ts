@@ -176,12 +176,23 @@ describe('installAntflyDependency', () => {
 
   it('is a noop when the pinned version is already installed — but still ensures the service is up (#717)', async () => {
     writeBinary(managedBinary, PIN_VERSION)
-    const result = await installAntflyDependency(optsAutoYes, undefined, makePin())
+    // Dark on the first probe (triggers the start), answering afterwards —
+    // the #859 readiness gate only reports noop once the engine is LIVE.
+    let readyzCalls = 0
+    mockDownloadFetch(async (url) => {
+      if (url.endsWith('/readyz')) {
+        readyzCalls += 1
+        if (readyzCalls === 1) throw new Error('connection refused')
+        return new Response('ok', { status: 200 })
+      }
+      throw new Error(`unexpected download: ${url}`)
+    })
+    const result = await installAntflyDependency(optsAutoYes, undefined, makePin(), { readyBudgetMs: 2_000, pollMs: 50 })
     expect(result.status).toBe('noop')
-    // The noop path now provisions + probes readyz (and starts the managed
+    // The noop path provisions + probes readyz (and starts the managed
     // service when dark): a current binary with a dead service was the
     // field failure #717 fixes. No tarball download happens.
-    expect(fetchCalls.length).toBeGreaterThan(0)
+    expect(readyzCalls).toBeGreaterThanOrEqual(2)
     expect(fetchCalls.every((u) => u.endsWith('/readyz'))).toBe(true)
   })
 
@@ -213,6 +224,72 @@ describe('installAntflyDependency', () => {
       expect(result.message).toContain('Stop it manually')
       // Old binary untouched.
       expect(readFileSync(managedBinary, 'utf-8')).toContain('0.1.1')
+    } finally {
+      delete process.env.BAKIN_SEARCH_SERVICE_MODE
+    }
+  })
+
+  it('upgrade readiness gate: engine never answers after the swap → failed with recovery guidance (#859)', async () => {
+    process.env.BAKIN_SEARCH_SERVICE_MODE = 'child'
+    try {
+      writeBinary(managedBinary, '0.1.1')
+      let readyzCalls = 0
+      mockDownloadFetch(async (url) => {
+        if (url.endsWith('/readyz')) {
+          readyzCalls += 1
+          // 1: pre-swap probe (responding → managed stop path). 2: post-stop
+          // still-responding check (must be down or the install refuses).
+          // 3+: the post-start readiness gate — the engine never comes back.
+          if (readyzCalls === 1) return new Response('ok', { status: 200 })
+          throw new Error('connection refused')
+        }
+        return new Response(tarballBytes.slice().buffer as ArrayBuffer, { status: 200 })
+      })
+
+      const result = await installAntflyDependency(optsAutoYes, undefined, makePin(), { readyBudgetMs: 300, pollMs: 50 })
+      expect(result.status).toBe('failed')
+      expect(result.message).toContain('not answering')
+      expect(result.message).toContain('bakin install search')
+      expect(readyzCalls).toBeGreaterThanOrEqual(3)
+    } finally {
+      delete process.env.BAKIN_SEARCH_SERVICE_MODE
+    }
+  })
+
+  it('upgrade readiness gate: engine answers after the swap → installed', async () => {
+    process.env.BAKIN_SEARCH_SERVICE_MODE = 'child'
+    try {
+      writeBinary(managedBinary, '0.1.1')
+      let readyzCalls = 0
+      mockDownloadFetch(async (url) => {
+        if (url.endsWith('/readyz')) {
+          readyzCalls += 1
+          if (readyzCalls === 2) throw new Error('connection refused') // post-stop check
+          return new Response('ok', { status: 200 })
+        }
+        return new Response(tarballBytes.slice().buffer as ArrayBuffer, { status: 200 })
+      })
+
+      const result = await installAntflyDependency(optsAutoYes, undefined, makePin(), { readyBudgetMs: 2_000, pollMs: 50 })
+      expect(result.status).toBe('installed')
+      expect(readFileSync(managedBinary, 'utf-8')).toContain(PIN_VERSION)
+    } finally {
+      delete process.env.BAKIN_SEARCH_SERVICE_MODE
+    }
+  })
+
+  it('already-installed path gates its restart too: dead engine → failed, not a green noop (#859)', async () => {
+    process.env.BAKIN_SEARCH_SERVICE_MODE = 'child'
+    try {
+      writeBinary(managedBinary, PIN_VERSION) // binary already current
+      mockDownloadFetch(async (url) => {
+        if (url.endsWith('/readyz')) throw new Error('connection refused')
+        return new Response(tarballBytes.slice().buffer as ArrayBuffer, { status: 200 })
+      })
+
+      const result = await installAntflyDependency(optsAutoYes, undefined, makePin(), { readyBudgetMs: 300, pollMs: 50 })
+      expect(result.status).toBe('failed')
+      expect(result.message).toContain('not answering')
     } finally {
       delete process.env.BAKIN_SEARCH_SERVICE_MODE
     }
