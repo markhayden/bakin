@@ -102,6 +102,7 @@ registerPlugin({
 | `taskId` | string | task id | Task detail drawer open state: opening PUSHES it (Back closes), closing REPLACES it away; resolves against the unfiltered board; stale → page feedback |
 | `step` | string | canvas node id (`write`, `parent__child`) | Step detail drawer open state on `/workflows/$id`: push on open (Back closes), replace on close; stale → closed, no rewrite |
 | `version` | string | `1`, `3` | Previewed version on `/assets/$assetId`; the manifest's current version is the default (omitted); replace-mode; stale → current without rewrite |
+| `agents_metric` | string | `tokens`, `cost` | Health Agents usage-chart metric beside `agents_window` (default `tokens`, omitted); unknown reads as tokens without a write |
 | `jobId` | string | job id | Deep-link to open schedule job detail drawer |
 | `recordId` | string | memory rowId (`<tier>:<hash>`) | Deep-link to open memory detail drawer (resolved via `GET /record`) |
 | `lessonId` | string | lesson id | Highlight + scroll to a lesson on the team Lessons tab (`?tab=lessons`) |
@@ -177,7 +178,7 @@ Pattern: client-side filtering runs immediately (instant feedback), search fires
 | Messaging (Brainstorm) | ✅ Done | `session` (deep link to planning session), search via parent PluginHeader |
 | Workflows | ✅ Done | `q` on list; path-based `/workflows/$id` for canvas detail; `step` is the step drawer's open state (push on node click so Back closes, replace on close; stale id → drawer closed, URL untouched). Editor selection on `/edit` stays local. |
 | Schedule | ✅ Done | `view`, `q`, `agent`, `jobId` (deep link), `mode` (create/edit/duplicate) |
-| Health | ✅ Done | `tab` (overview/activity/agents/system) |
+| Health | ✅ Done | `tab` (overview/activity/agents/system); Agents tab: `agents_window` + `agents_metric` (`tokens` default, `cost`); Activity tab: `activity_window`, `activity_kind`; System tab: `system_plugin` |
 | Memory | ✅ Done | `q` (search query), `tier` (multi-select), `agent` (single-select — shared avatar-strip `AgentFilter`), `kind` (multi-select, durable-only), `recordId` (deep link — detail drawer, ⌘K target). Landing page is the search surface — no sub-routes. |
 | Projects | ✅ Done | `status`, `q` on list; path-based `/projects/[id]` and `/projects/[id]/edit` for detail |
 | Models | ✅ Done | `tab` (agents/available/aliases/routing/spend) |
