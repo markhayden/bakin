@@ -426,6 +426,17 @@ export function mapIndexStatuses(entries: WireIndexStatusEntry[]): TableLegHealt
       ...(runtime?.pending_sequence_count !== undefined ? { pendingCount: runtime.pending_sequence_count } : {}),
       ...(failed && status?.last_error ? { error: status.last_error } : {}),
       ...(scarred ? { scar: { fatalCount, note: 'historical enrichment failure recorded; leg converged and serving' } } : {}),
+      // 0.2.2 first-class activity signals (#847) — evidence only, never
+      // flip inputs. Omitted entirely on engines/legs that don't report them.
+      ...(status?.activity?.phase ? { phase: status.activity.phase } : {}),
+      ...(runtime?.stalled === true ? { stalled: true } : {}),
+      ...(runtime?.stalled === true && runtime.stall_reason ? { stallReason: runtime.stall_reason } : {}),
+      ...(typeof runtime?.active_progress_completed === 'number' && typeof runtime?.active_progress_total === 'number' && runtime.active_progress_total > 0
+        ? { progress: { completed: runtime.active_progress_completed, total: runtime.active_progress_total } }
+        : {}),
+      ...(status?.readiness?.pending_reasons && status.readiness.pending_reasons.length > 0
+        ? { pendingReasons: status.readiness.pending_reasons }
+        : {}),
     }
   })
 }

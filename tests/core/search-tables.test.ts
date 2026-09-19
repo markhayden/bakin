@@ -265,6 +265,35 @@ describe('blue/green migration', () => {
     expect(tableStatus('bakin_notes')?.state).toBe('active')
   })
 
+  it('converge narrates the engine-declared phase through onProgress when legs report one (#847)', async () => {
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const blue = queryTarget('bakin_notes')!
+
+    // Green legs report an engine phase while building, then converge.
+    let polls = 0
+    const phased: SearchAdapter = {
+      ...adapter,
+      tables: {
+        ...adapter.tables,
+        health: async (name) => {
+          if (name === blue) return [{ leg: 'full_text', state: 'ready' as const, indexedCount: 2 }]
+          polls += 1
+          return polls < 3
+            ? [{ leg: 'full_text', state: 'building' as const, indexedCount: polls, phase: 'catch-up' }]
+            : [{ leg: 'full_text', state: 'ready' as const, indexedCount: 2, phase: 'idle' }]
+        },
+      },
+    }
+    const phases: string[] = []
+    const result = await ensureTable(phased, makeDef({ schemaVersion: 2 }), 'fp-a', {
+      convergePollMs: 10,
+      onProgress: (phase) => phases.push(phase),
+    })
+    expect(result).toBe('migrated')
+    expect(phases.some((p) => p.includes('catch-up'))).toBe(true)
+  })
+
   it('converge failure parks the migration (never flips early); resume completes it', async () => {
     const adapter = createMockSearchAdapter()
     await ensureTable(adapter, makeDef(), 'fp-a')

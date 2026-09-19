@@ -28,6 +28,10 @@ export interface SpinLegSnapshot {
   indexedCount: number
   /** Pending journal rows for this logical table (inflow that explains work). */
   outboxPending: number
+  /** 0.2.2 engine-declared stall (#847) — fires the incident immediately,
+   *  no zero-progress window needed; counts may even still be moving. */
+  stalled?: boolean
+  stallReason?: string
 }
 
 export interface SpinSampleState {
@@ -55,7 +59,11 @@ export function detectSpins(
     at: now,
     counts: Object.fromEntries(candidates.map((leg) => [key(leg), leg.indexedCount])),
   }
-  if (!prev) return { spins: [], nextState: snapshot }
+  // Engine-declared stalls (#847) bypass the inference entirely: the window
+  // exists to DISTINGUISH slow progress from none, and the engine just told
+  // us. Fires on the first sample and with moving counts.
+  const declared = legs.filter((leg) => leg.building && leg.stalled === true)
+  if (!prev) return { spins: declared, nextState: snapshot }
   if (now - prev.at < windowMs) {
     // window still open — keep the old sample, drop keys that stopped building
     const counts: Record<string, number> = {}
@@ -64,9 +72,11 @@ export function detectSpins(
       if (k in prev.counts) counts[k] = prev.counts[k]!
       else counts[k] = leg.indexedCount // new candidate joins the current window
     }
-    return { spins: [], nextState: { at: prev.at, counts } }
+    return { spins: declared, nextState: { at: prev.at, counts } }
   }
-  const spins = candidates.filter((leg) => prev.counts[key(leg)] === leg.indexedCount)
+  const inferred = candidates.filter((leg) => prev.counts[key(leg)] === leg.indexedCount)
+  const declaredKeys = new Set(declared.map(key))
+  const spins = [...declared, ...inferred.filter((leg) => !declaredKeys.has(key(leg)))]
   return { spins, nextState: snapshot }
 }
 
@@ -117,6 +127,8 @@ export async function checkSearchSpin(): Promise<HealthCheckRunInput> {
           building: leg.state === 'building',
           indexedCount: leg.indexedCount,
           outboxPending: pending,
+          ...(leg.stalled === true ? { stalled: true } : {}),
+          ...(leg.stallReason ? { stallReason: leg.stallReason } : {}),
         })
       }
     }
@@ -142,10 +154,12 @@ export async function checkSearchSpin(): Promise<HealthCheckRunInput> {
   const observations: HealthObservationInput[] = [healthError({
     key: 'indexes.spin',
     summary: `Backfill spin detected in ${tables.length} Search table${tables.length === 1 ? '' : 's'}.`,
-    detail: `${spins.map((spin) => `${spin.logical} (${spin.leg})`).join(', ')} reported no progress with an empty journal for at least 10 minutes.`,
+    detail: spins
+      .map((spin) => `${spin.logical} (${spin.leg})${spin.stalled ? ` — engine-declared stall${spin.stallReason ? `: ${spin.stallReason}` : ''}` : ' — no progress with an empty journal for at least 10 minutes'}`)
+      .join('; '),
     evidence: {
       tables,
-      legs: spins.map(({ logical, leg, indexedCount, outboxPending }) => ({ logical, leg, indexedCount, outboxPending })),
+      legs: spins.map(({ logical, leg, indexedCount, outboxPending, stalled, stallReason }) => ({ logical, leg, indexedCount, outboxPending, ...(stalled ? { stalled, stallReason } : {}) })),
       windowMs: SPIN_WINDOW_MS,
     },
     incident: {

@@ -30,6 +30,23 @@ const leg = (over: Partial<SpinLegSnapshot> = {}): SpinLegSnapshot => ({
 })
 
 describe('detectSpins', () => {
+  it('an engine-declared stalled leg spins IMMEDIATELY — no window wait, even with moving counts (#847)', () => {
+    // The count-window inference misses a leg whose counters MOVE while the
+    // engine itself declares the worker stalled; 0.2.2 hands us the signal.
+    const stalledLeg = leg({ stalled: true, stallReason: 'inference queue saturated' })
+    const first = detectSpins(null, 1_000, [stalledLeg], WINDOW)
+    expect(first.spins).toEqual([stalledLeg])
+    // …and it keeps firing mid-window while counts advance.
+    const second = detectSpins(first.nextState, 2_000, [{ ...stalledLeg, indexedCount: stalledLeg.indexedCount + 50 }], WINDOW)
+    expect(second.spins).toHaveLength(1)
+    expect(second.spins[0].stallReason).toBe('inference queue saturated')
+  })
+
+  it('stalled=false behaves exactly as before — window inference only', () => {
+    const { spins } = detectSpins(null, 1_000, [leg({ stalled: false })], WINDOW)
+    expect(spins).toEqual([])
+  })
+
   it('never fires on the first sample', () => {
     const { spins, nextState } = detectSpins(null, 1_000, [leg()], WINDOW)
     expect(spins).toEqual([])
