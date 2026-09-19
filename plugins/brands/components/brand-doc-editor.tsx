@@ -10,6 +10,7 @@ import { MarkdownEditor, type MarkdownEditorMode } from '@makinbakin/sdk/content
 import { toast } from '@makinbakin/sdk/hooks'
 import {
   useParams,
+  useQueryState,
   useRouter,
   useSearchParams,
   useUnsavedChangesGuard,
@@ -53,7 +54,11 @@ function BrandDocEditorInner({ brandId, kind, name }: { brandId: string; kind: s
   const [state, setState] = useState<LoadState>({ status: 'loading' })
   const [content, setContent] = useState('')
   const [brandName, setBrandName] = useState(brandId)
-  const [mode, setMode] = useState<MarkdownEditorMode>('edit')
+  // Edit vs preview rides `?mode=`; `edit` is the default and omitted, so only
+  // `?mode=preview` ever appears (same shape as the team shared-context editor).
+  // Same pathname ⇒ the unsaved-changes guard never fires on a mode toggle.
+  const [modeParam, setModeParam] = useQueryState('mode', 'edit')
+  const mode: MarkdownEditorMode = modeParam === 'preview' ? 'preview' : 'edit'
   const [brainstormOpen, setBrainstormOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -223,7 +228,7 @@ function BrandDocEditorInner({ brandId, kind, name }: { brandId: string; kind: s
               { value: 'preview', label: 'Preview' },
             ]}
             value={mode}
-            onValueChange={setMode}
+            onValueChange={(value) => setModeParam(value)}
           />
         )}
         actions={(

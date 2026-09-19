@@ -29,10 +29,16 @@ mock.module('@tanstack/react-router', () => ({
   useRouter: () => ({ history: { block: () => () => {} }, parseLocation: (l: unknown) => l }),
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
 }))
+// Key-aware over `routeSearch` (bun resolves the SDK's useQueryState to this
+// mock too); writes are recorded per key so URL updates are assertable.
+const setParamSpy = mock((_key: string, _value: string) => {})
 mock.module('@/hooks/use-query-state', () => ({
-  useQueryState: (_key: string, defaultValue: string) => {
+  useQueryState: (key: string, defaultValue: string) => {
     const React = require('react') as typeof import('react')
-    return React.useState(defaultValue)
+    const [local, setLocal] = React.useState<string | null>(null)
+    const value = local ?? routeSearch[key] ?? defaultValue
+    const set = (v: string) => { setParamSpy(key, v); setLocal(v) }
+    return [value, set, set]
   },
 }))
 // The brainstorm panel pulls the conversation kit + agent store — its own concern.
@@ -66,6 +72,7 @@ const DETAIL = {
 let fetchCalls: Array<{ url: string; method: string; body?: unknown }>
 beforeEach(() => {
   navigateMock.mockClear()
+  setParamSpy.mockClear()
   fetchCalls = []
   routeParams = { brandId: 'acme', kind: 'guidelines', name: 'voice.md' }
   routeSearch = {}
@@ -261,6 +268,49 @@ describe('BrandDocEditorPage', () => {
     expect(screen.queryByText(/This document doesn't exist/)).toBeNull()
     expect(document.querySelector('[data-slot="page-header"]')).not.toBeNull()
     expect(document.querySelector('[data-slot="system-state"]')).not.toBeNull()
+    await settleReact()
+  })
+})
+
+describe('BrandDocEditorPage ?mode=', () => {
+  const tab = (name: string) => screen.getByRole('tab', { name })
+
+  it('cold-loads preview mode from ?mode=preview without navigating', async () => {
+    routeSearch = { mode: 'preview' }
+    await act(async () => { render(<BrandDocEditorPage />) })
+    await waitFor(() => expect(tab('Preview').getAttribute('aria-selected')).toBe('true'))
+    expect(screen.getByLabelText('Acme guidelines content preview')).toBeDefined()
+    expect(screen.queryByRole('textbox', { name: 'Acme guidelines content' })).toBeNull()
+    expect(setParamSpy).not.toHaveBeenCalled()
+    await settleReact()
+  })
+
+  it('defaults to edit mode with a clean URL', async () => {
+    await act(async () => { render(<BrandDocEditorPage />) })
+    await waitFor(() => expect(tab('Edit').getAttribute('aria-selected')).toBe('true'))
+    expect(screen.getByRole('textbox', { name: 'Acme guidelines content' })).toBeDefined()
+    expect(setParamSpy).not.toHaveBeenCalled()
+    await settleReact()
+  })
+
+  it('toggling mode writes ?mode= (replace) and never opens the unsaved-changes dialog', async () => {
+    await act(async () => { render(<BrandDocEditorPage />) })
+    const editor = await waitFor(() => screen.getByRole('textbox', { name: 'Acme guidelines content' }))
+    await act(async () => { fireEvent.change(editor, { target: { value: '# Voice\n\nedited' } }) })
+    await waitFor(() => expect(document.querySelector('[data-savebar]')).not.toBeNull())
+
+    await act(async () => { fireEvent.click(tab('Preview')) })
+    await waitFor(() => expect(setParamSpy).toHaveBeenCalledWith('mode', 'preview'))
+    await waitFor(() => expect(tab('Preview').getAttribute('aria-selected')).toBe('true'))
+    expect(screen.getByLabelText('Acme guidelines content preview')).toBeDefined()
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    await act(async () => { fireEvent.click(tab('Edit')) })
+    await waitFor(() => expect(setParamSpy).toHaveBeenCalledWith('mode', 'edit'))
+    await waitFor(() => expect(tab('Edit').getAttribute('aria-selected')).toBe('true'))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    // Edits survive the round trip.
+    expect((screen.getByRole('textbox', { name: 'Acme guidelines content' }) as HTMLTextAreaElement).value).toContain('edited')
     await settleReact()
   })
 })
