@@ -113,6 +113,8 @@ export interface WireIndexStatusEntry {
     enrichment_runtime?: {
       pending_sequence_count: number
       retrying?: boolean
+      /** 0.2.2: engine-declared zero-progress signal. */
+      stalled?: boolean
       worker_failed?: boolean
       fatal_error_count?: number
       active_embed_batch_items?: number

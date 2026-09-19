@@ -7,8 +7,9 @@
  */
 import { getSettings } from '../../../../src/core/settings'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthObservationInput, SearchHealthSnapshot } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDefinition, SearchHealthSnapshot } from '@makinbakin/sdk'
 import { checkSearchOutboxObservations } from './search-outbox'
+import { repairTargetSelection } from './repair-support'
 
 export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
   const settings = getSettings()
@@ -329,9 +330,46 @@ export async function checkSearchIndexObservations(
       unreadableTables: boundedTableNames(unreadableTables),
       unhealthyTables: boundedTableNames(unhealthyTables),
     }
+    // Scarred-but-converged legs (#845): historical fatal counters on
+    // serving legs. Advisory-grade — the table stays healthy; the rebuild
+    // repair is the one path that clears an engine-cumulative counter.
+    const scarredTables = health.tables.filter(
+      (table) => table.healthy && table.legs.some((leg) => leg.scar),
+    )
+    lastScarTables = scarredTables.map((table) => table.logical)
+    const scarObservations = scarredTables.length > 0
+      ? [healthWarning({
+          key: 'indexes.scars',
+          summary: `${scarredTables.length} Search table${scarredTables.length === 1 ? ' carries' : 's carry'} a historical enrichment failure scar (converged and serving).`,
+          detail: scarredTables
+            .map((table) => `${table.logical}: ${table.legs.filter((leg) => leg.scar).map((leg) => `${leg.name} (${leg.scar!.fatalCount} fatal)`).join(', ')}`)
+            .join('; ')
+            .slice(0, 1_000),
+          evidence: { scarredTables: boundedTableNames(scarredTables.map((table) => table.logical)) },
+          incident: {
+            key: 'table-scars',
+            title: 'Search legs carry historical enrichment scars',
+            class: 'cleanup_backlog',
+            impact: 'Purely historical — the legs are converged and serving. A blue/green rebuild clears the engine-cumulative counters.',
+            disposition: 'advisory',
+            resources: scarredTables.slice(0, 50).map((table) => ({
+              kind: 'search_table' as const,
+              id: tableResourceId(table.logical),
+              label: table.logical.slice(0, 120),
+            })),
+            resolution: {
+              key: 'rebuild-scarred-tables',
+              type: 'repair',
+              label: 'Rebuild scarred tables blue/green',
+              actionId: 'search-scar-rebuild',
+            },
+          },
+        })]
+      : []
+
     const concerning = [...new Set([...unreadableTables, ...unhealthyTables])]
     if (concerning.length > 0) {
-      return [healthWarning({
+      return [...scarObservations, healthWarning({
         key: 'indexes.tables',
         summary: `${concerning.length} of ${health.tables.length} Search table${health.tables.length === 1 ? '' : 's'} could not be fully verified.`,
         detail: unreadableTables.length > 0
@@ -353,7 +391,7 @@ export async function checkSearchIndexObservations(
       })]
     }
 
-    return [healthHealthy({
+    return [...scarObservations, healthHealthy({
       key: 'indexes.tables',
       summary: `${health.tables.length} Search table${health.tables.length === 1 ? '' : 's'} contain ${totalDocuments} indexed document${totalDocuments === 1 ? '' : 's'}.`,
       evidence,
@@ -392,5 +430,68 @@ async function safeOutboxObservations(): Promise<HealthObservationInput[]> {
         resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
       },
     })]
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scar repair (#845) — same blue/green rebuild engine as the spin repair,
+// driven by the tables the LAST check run observed as scarred (mirrors the
+// spin repair's lastSpinTables pattern; a repair fired from a scar incident
+// must rebuild the scarred tables, not whatever the spin watchdog last saw).
+// ---------------------------------------------------------------------------
+
+let lastScarTables: string[] = []
+
+export function searchScarRepair(): HealthRepairActionDefinition {
+  return {
+    id: 'search-scar-rebuild',
+    name: 'Rebuild scarred Search indexes',
+    async plan(target) {
+      return [{
+        id: 'rebuild-scarred-indexes',
+        actionId: 'search-scar-rebuild',
+        title: 'Rebuild scarred search tables (blue/green)',
+        reason: 'Converged legs carry historical enrichment failure counters; a fresh generation clears them.',
+        safety: 'destructive',
+        ...repairTargetSelection(target),
+        changes: [{
+          kind: 'other',
+          target: 'search tables',
+          action: 'update',
+          description: 'Backfill fresh physical tables from source data and flip on convergence; queries keep answering from the current tables throughout.',
+        }],
+      }]
+    },
+    async apply(items) {
+      if (items.length === 0) return []
+      const { rebuildRegisteredTables } = await import('../../../../src/core/search-registry')
+      const targets = [...lastScarTables]
+      const outcomes: string[] = []
+      let failed = 0
+      try {
+        for (const logical of targets) {
+          const [result] = await rebuildRegisteredTables(logical)
+          if (!result || result.error || result.result === 'parked') failed++
+          outcomes.push(`${logical}: ${result?.error ?? result?.result ?? 'no registered definition'}`)
+        }
+        return items.map((item) => ({
+          itemId: item.id,
+          actionId: item.actionId,
+          status: failed > 0 ? 'failed' as const : 'applied' as const,
+          message: targets.length === 0 ? 'Nothing needs rebuilding.' : outcomes.join('; '),
+          affectedCheckIds: ['health.search'],
+          changes: item.changes,
+        }))
+      } catch (err) {
+        return items.map((item) => ({
+          itemId: item.id,
+          actionId: item.actionId,
+          status: 'failed' as const,
+          message: err instanceof Error ? err.message : String(err),
+          affectedCheckIds: ['health.search'],
+          changes: item.changes,
+        }))
+      }
+    },
   }
 }

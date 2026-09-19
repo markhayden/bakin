@@ -335,6 +335,33 @@ describe('mapIndexStatuses', () => {
     ])
   })
 
+  it('scarred-but-converged: a historical fatal count on an idle, drained leg maps ready + scar (#845)', () => {
+    // The bakin_assets incident: ONE bad media doc left fatal_error_count=1
+    // forever while the leg was fully converged and serving. Cumulative
+    // counters are history, not state — only live distress means error.
+    const entries: WireIndexStatusEntry[] = [
+      { config: { name: 'vis', type: 'embeddings' }, status: { index_type: 'embeddings', rebuilding: false, total_indexed: 41, backfill_active: false, backfill_state: 'degraded', doc_count: 98, enrichment_runtime: { pending_sequence_count: 0, retrying: false, stalled: false, worker_failed: false, fatal_error_count: 1 } } },
+    ]
+    const [leg] = mapIndexStatuses(entries)
+    expect(leg.state).toBe('ready')
+    expect(leg.scar).toEqual({ fatalCount: 1, note: 'historical enrichment failure recorded; leg converged and serving' })
+  })
+
+  it('a fatal count WITH live distress still maps error — retrying, stalled, or worker_failed', () => {
+    const base = { index_type: 'embeddings', rebuilding: false, total_indexed: 10, backfill_active: false, backfill_state: 'degraded', doc_count: 98 }
+    const mk = (runtime: Record<string, unknown>): WireIndexStatusEntry => (
+      { config: { name: 'vis', type: 'embeddings' }, status: { ...base, enrichment_runtime: { pending_sequence_count: 0, ...runtime } } } as WireIndexStatusEntry
+    )
+    expect(mapIndexStatuses([mk({ fatal_error_count: 1, retrying: true })])[0].state).toBe('error')
+    expect(mapIndexStatuses([mk({ fatal_error_count: 1, stalled: true })])[0].state).toBe('error')
+    expect(mapIndexStatuses([mk({ fatal_error_count: 1, worker_failed: true })])[0].state).toBe('error')
+    // and a leg-level failed state stays error regardless of counters
+    const failed: WireIndexStatusEntry[] = [
+      { config: { name: 'vis', type: 'embeddings' }, status: { ...base, backfill_state: 'failed', enrichment_runtime: { pending_sequence_count: 0, fatal_error_count: 1 } } },
+    ]
+    expect(mapIndexStatuses(failed)[0].state).toBe('error')
+  })
+
   it('trusts raised flags on runtime-less legs — 0.2.0 reports them honestly', () => {
     // The rc.18 caught-up-idle override is gone: a never-written table
     // reports ready flags on 0.2.0 (guarded in workaround-regressions), so

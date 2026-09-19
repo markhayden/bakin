@@ -83,6 +83,11 @@ export interface TableLegHealth {
   /** Numeric backlog for this leg (docs queued), when the engine reports one. */
   pendingCount?: number
   error?: string
+  /** Historical failure ANNOTATION on a converged, serving leg (#845):
+   *  cumulative fatal counters with no live distress. state stays 'ready' —
+   *  health surfaces this as advisory with a rebuild affordance, never as
+   *  an unhealthy table. */
+  scar?: { fatalCount: number; note: string }
 }
 
 export interface SearchFieldConfig {
