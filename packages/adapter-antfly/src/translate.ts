@@ -399,11 +399,17 @@ export function mapIndexStatuses(entries: WireIndexStatusEntry[]): TableLegHealt
   return entries.map((entry) => {
     const status = entry.status
     const runtime = status?.enrichment_runtime
+    // Cumulative fatal counters are HISTORY, not state (#845): one bad doc
+    // months ago must not read as a permanently unhealthy table. fatal>0
+    // maps error only alongside LIVE distress (worker down, leg failed,
+    // retry loop, engine-declared stall); otherwise it becomes a scar
+    // annotation on a ready leg — advisory surface, rebuild affordance.
+    const fatalCount = (status?.fatal_error_count ?? 0) + (runtime?.fatal_error_count ?? 0)
     const failed = status?.worker_failed === true
-      || (status?.fatal_error_count ?? 0) > 0
       || runtime?.worker_failed === true
-      || (runtime?.fatal_error_count ?? 0) > 0
       || status?.backfill_state === 'failed'
+      || (fatalCount > 0 && (runtime?.retrying === true || runtime?.stalled === true))
+    const scarred = !failed && fatalCount > 0
     // The antfly#319 idle-detection override is GONE (2026-08-31): 0.2.0
     // clears rebuilding/backfill_active honestly at idle — proven at scale
     // for both the media-skip and text-skip corpora INCLUDING interrupted
@@ -419,6 +425,7 @@ export function mapIndexStatuses(entries: WireIndexStatusEntry[]): TableLegHealt
       indexedCount: status?.total_indexed ?? 0,
       ...(runtime?.pending_sequence_count !== undefined ? { pendingCount: runtime.pending_sequence_count } : {}),
       ...(failed && status?.last_error ? { error: status.last_error } : {}),
+      ...(scarred ? { scar: { fatalCount, note: 'historical enrichment failure recorded; leg converged and serving' } } : {}),
     }
   })
 }
