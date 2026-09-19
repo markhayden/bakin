@@ -6,7 +6,7 @@
  * that into per-chat live state on top of the durable v2 transcript, which
  * maps 1:1 onto the conversation kit's ConversationMessage rows.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { emitPluginEvent, usePluginEvent } from '@makinbakin/sdk/hooks'
 import {
   useConversationThread,
@@ -121,7 +121,14 @@ export function useChats(agentFilter: string) {
   usePluginEvent('chat.titled', () => { void refresh() })
   usePluginEvent('chat.seen', () => { void refresh() })
 
-  const filtered = agentFilter ? chats.filter((c) => c.agentId === agentFilter) : chats
+  // Memoized: a fresh filtered array every render fed the page's
+  // streaming-indicator effect (keyed on this list) a new identity each
+  // time, and its `new Set(...)` state write looped React ("Maximum update
+  // depth exceeded") on every /chat?agent=<id> list page.
+  const filtered = useMemo(
+    () => (agentFilter ? chats.filter((c) => c.agentId === agentFilter) : chats),
+    [chats, agentFilter],
+  )
   return { chats: filtered, allChats: chats, loading, refresh }
 }
 

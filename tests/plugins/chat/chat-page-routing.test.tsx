@@ -156,3 +156,17 @@ describe('ChatPage path-based identity', () => {
     expect(navigations.some((value) => (value as { to?: string }).to === '/chat')).toBe(true)
   })
 })
+
+describe('ChatPage ?agent= list filter', () => {
+  it('renders the filtered list page without an update loop', async () => {
+    // useChats returned a fresh filtered array every render whenever ?agent=
+    // was set, and the streaming-indicator effect keyed on it set state with a
+    // new Set each time — "Maximum update depth exceeded" on /chat?agent=<id>.
+    mockFetch()
+    setURL('http://localhost:3737/chat?agent=main')
+    let view!: ReturnType<typeof render>
+    await act(async () => { view = render(<ChatPage />) })
+    await waitFor(() => expect(view.container.querySelector(`[data-chat-row="${CHAT_A}"]`)).not.toBeNull())
+    expect(view.container.textContent).toContain('1 shown')
+  })
+})
