@@ -327,22 +327,35 @@ interface ConvergeSnapshot {
   legsAllReady: boolean
   /** First leg in state 'error', if any — parks immediately. */
   failedLeg: string | null
+  /** Engine-declared per-leg activity (#847) — EVIDENCE only (park logs,
+   *  onProgress narration); never a converge/flip input. */
+  evidence: Array<{ leg: string; phase?: string; stalled?: boolean; stallReason?: string; progress?: { completed: number; total: number }; pendingReasons?: string[] }>
 }
 
 async function observeGreen(adapter: SearchAdapter, physical: string): Promise<ConvergeSnapshot> {
   const stats = await adapter.tables.stats(physical).catch(() => null)
   const count = stats ? stats.documents : null
   if (!adapter.tables.health) {
-    return { count, indexed: count ?? 0, pending: 0, legsAllReady: true, failedLeg: null }
+    return { count, indexed: count ?? 0, pending: 0, legsAllReady: true, failedLeg: null, evidence: [] }
   }
   const legs = await adapter.tables.health(physical).catch(() => null)
-  if (!legs) return { count, indexed: 0, pending: 0, legsAllReady: false, failedLeg: null }
+  if (!legs) return { count, indexed: 0, pending: 0, legsAllReady: false, failedLeg: null, evidence: [] }
   return {
     count,
     indexed: legs.reduce((sum, leg) => sum + (leg.indexedCount ?? 0), 0),
     pending: legs.reduce((sum, leg) => sum + (leg.pendingCount ?? 0), 0),
     legsAllReady: legs.every((leg) => leg.state === 'ready'),
     failedLeg: legs.find((leg) => leg.state === 'error')?.leg ?? null,
+    evidence: legs
+      .filter((leg) => leg.phase || leg.stalled || leg.progress || leg.pendingReasons)
+      .map((leg) => ({
+        leg: leg.leg,
+        ...(leg.phase ? { phase: leg.phase } : {}),
+        ...(leg.stalled ? { stalled: leg.stalled } : {}),
+        ...(leg.stallReason ? { stallReason: leg.stallReason } : {}),
+        ...(leg.progress ? { progress: leg.progress } : {}),
+        ...(leg.pendingReasons ? { pendingReasons: leg.pendingReasons } : {}),
+      })),
   }
 }
 
@@ -631,10 +644,17 @@ async function convergeAndFlip(
   let lastProgressAt = Date.now()
   let parkReason: string | null = null
 
+  let lastNarratedPhase: string | null = null
   while (!convergeVerdict(snap, prev, emitted)) {
     if (snap.failedLeg) {
       parkReason = `leg '${snap.failedLeg}' reports error`
       break
+    }
+    // Engine-declared phase narration (#847) — display-only, once per change.
+    const enginePhase = snap.evidence.find((leg) => leg.phase)?.phase ?? null
+    if (enginePhase && enginePhase !== lastNarratedPhase) {
+      lastNarratedPhase = enginePhase
+      opts?.onProgress?.(`converging (${enginePhase})`, snap.indexed)
     }
     const now = Date.now()
     if (progressed(snap, prev)) {
@@ -683,7 +703,15 @@ async function convergeAndFlip(
     // NEVER flip early. Park with dual-write still on; the migration pump
     // and the doctor resume the job when the engine recovers.
     setPhase(def.logical, 'parked')
-    log.warn('migration parked — green never converged', { logical: def.logical, green, emitted, reason: parkReason })
+    log.warn('migration parked — green never converged', {
+      logical: def.logical,
+      green,
+      emitted,
+      reason: parkReason,
+      // Engine-declared activity at park time (#847) — the "why" a human
+      // (or the migration pump's next attempt) reads first.
+      ...(snap.evidence.length > 0 ? { legEvidence: snap.evidence.slice(0, 10) } : {}),
+    })
     return 'parked'
   }
 

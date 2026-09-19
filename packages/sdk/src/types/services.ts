@@ -259,6 +259,12 @@ export interface SearchHealthIndex {
   /** Historical failure annotation on a converged, serving leg (#845) —
    *  advisory-grade; never makes the table unhealthy. */
   scar?: { fatalCount: number; note: string }
+  /** Engine-declared activity signals (#847) — evidence only. */
+  phase?: string
+  stalled?: boolean
+  stallReason?: string
+  progress?: { completed: number; total: number }
+  pendingReasons?: string[]
 }
 
 /** Health of a single registered content-type table (blue/green aware). */

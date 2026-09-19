@@ -574,6 +574,14 @@ weights come from the content type's `indexes[].weight` and ride
   check surfaces as an ADVISORY (`indexes.scars`, class cleanup_backlog)
   with the `search-scar-rebuild` repair (same blue/green rebuild engine as
   the spin repair, driven by the last-observed scarred tables).
+- **First-class activity signals (#847):** 0.2.2's engine-declared
+  `activity.phase`, `stalled`/`stall_reason`, `active_progress_*`, and
+  `readiness.pending_reasons` ride `TableLegHealth` as optional
+  EVIDENCE-ONLY fields. The spin watchdog fires immediately on a declared
+  stall (no zero-progress window; counts may still be moving); park logs
+  record a bounded per-leg evidence snapshot; converge narrates
+  `converging (<phase>)` through onProgress; health legs pass the fields to
+  UI/CLI. The blue/green FLIP decision remains count-based by design.
 - **Writes are concurrency-safe on 0.2.0** — the rc.18 process-wide client
   write gate is gone (45-min 3-stream embed soak + 8-way structural
   concurrency probed on the target hardware). Blue/green backfills write

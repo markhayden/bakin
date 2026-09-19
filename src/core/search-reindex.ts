@@ -88,6 +88,11 @@ export async function getSearchHealth(): Promise<SearchHealthSnapshot> {
         ...(leg.pendingCount !== undefined ? { pending: leg.pendingCount } : {}),
         ...(leg.error ? { error: leg.error } : {}),
         ...(leg.scar ? { scar: leg.scar } : {}),
+        ...(leg.phase ? { phase: leg.phase } : {}),
+        ...(leg.stalled ? { stalled: leg.stalled } : {}),
+        ...(leg.stallReason ? { stallReason: leg.stallReason } : {}),
+        ...(leg.progress ? { progress: leg.progress } : {}),
+        ...(leg.pendingReasons ? { pendingReasons: leg.pendingReasons } : {}),
       }))
       healthy = legHealth.every((leg) => leg.state !== 'error')
     } catch { /* leg health unavailable — default to healthy */ }
