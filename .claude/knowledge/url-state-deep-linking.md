@@ -171,7 +171,7 @@ Pattern: client-side filtering runs immediately (instant feedback), search fires
 
 | Plugin | URL State | Notes |
 |--------|-----------|-------|
-| Chat | ✅ Done | Path-based: `/chat/$chatId`, `/chat/new?agent=`; list filter `agent` |
+| Chat | ✅ Done | Path-based: `/chat/$chatId`, `/chat/new?agent=`; rail filter `agent` + rail search `q` (both carried onto the pushed conversation URL) |
 | Tasks | ✅ Done | `view`, `q`, `agent`, `scheduled`, `status`, `brand`, `taskId` — the drawer's open state (push on open so Back closes, replace on close; stale id → "Task not found" feedback, never a rewrite). Create/edit form state is component-level by design. |
 | Assets | ✅ Done | List: `view`, `q`, `type`, `tags`, `page`, `sort`, `dir`; detail is path-based `/assets/$assetId` with `version` (previewed version; current = default omitted; stale → current, no rewrite) |
 | Messaging (Calendar) | ✅ Done | `view`, `q`, `agent`, `status`, `type`, `itemId` (deep link), `mode` (edit) |
