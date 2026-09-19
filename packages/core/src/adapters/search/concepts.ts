@@ -88,6 +88,13 @@ export interface TableLegHealth {
    *  health surfaces this as advisory with a rebuild affordance, never as
    *  an unhealthy table. */
   scar?: { fatalCount: number; note: string }
+  /** Engine-declared activity signals (#847) — EVIDENCE surfaces only; the
+   *  blue/green flip decision stays count-based. */
+  phase?: string
+  stalled?: boolean
+  stallReason?: string
+  progress?: { completed: number; total: number }
+  pendingReasons?: string[]
 }
 
 export interface SearchFieldConfig {

@@ -109,15 +109,22 @@ export interface WireIndexStatusEntry {
     worker_failed?: boolean
     fatal_error_count?: number
     last_error?: string
+    /** 0.2.2: engine-declared activity (phase + progress timestamps). */
+    activity?: { phase?: string; last_progress_at?: string }
+    /** 0.2.2: engine-declared readiness with named blockers. */
+    readiness?: { state?: string; queryable?: boolean; complete?: boolean; pending_reasons?: string[] }
     /** Live enrichment/embed pipeline counters (embeddings legs only). */
     enrichment_runtime?: {
       pending_sequence_count: number
       retrying?: boolean
-      /** 0.2.2: engine-declared zero-progress signal. */
+      /** 0.2.2: engine-declared zero-progress signal + its reason. */
       stalled?: boolean
+      stall_reason?: string
       worker_failed?: boolean
       fatal_error_count?: number
       active_embed_batch_items?: number
+      active_progress_completed?: number
+      active_progress_total?: number
     }
   } | null
 }

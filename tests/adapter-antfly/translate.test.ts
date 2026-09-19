@@ -362,6 +362,29 @@ describe('mapIndexStatuses', () => {
     expect(mapIndexStatuses(failed)[0].state).toBe('error')
   })
 
+  it('maps 0.2.2 first-class activity signals when present, omits them otherwise (#847)', () => {
+    const entries: WireIndexStatusEntry[] = [
+      { config: { name: 'sem', type: 'embeddings' }, status: {
+        index_type: 'embeddings', rebuilding: true, total_indexed: 120, backfill_active: true, backfill_state: 'running', doc_count: 500,
+        activity: { phase: 'backfill', last_progress_at: '2026-09-19T16:44:24Z' },
+        readiness: { state: 'pending', queryable: true, complete: false, pending_reasons: ['embedding backlog'] },
+        enrichment_runtime: { pending_sequence_count: 380, retrying: false, stalled: true, stall_reason: 'inference queue saturated', active_progress_completed: 120, active_progress_total: 500 },
+      } },
+      // Sparse leg: none of the new surfaces — none of the new fields appear.
+      { config: { name: 'ft', type: 'full_text' }, status: { index_type: 'full_text', rebuilding: false, total_indexed: 5, backfill_active: false, backfill_state: 'ready', doc_count: 5 } },
+    ]
+    const [sem, ft] = mapIndexStatuses(entries)
+    expect(sem).toMatchObject({
+      state: 'building',
+      phase: 'backfill',
+      stalled: true,
+      stallReason: 'inference queue saturated',
+      progress: { completed: 120, total: 500 },
+      pendingReasons: ['embedding backlog'],
+    })
+    expect(ft).toEqual({ leg: 'ft', state: 'ready', indexedCount: 5 })
+  })
+
   it('trusts raised flags on runtime-less legs — 0.2.0 reports them honestly', () => {
     // The rc.18 caught-up-idle override is gone: a never-written table
     // reports ready flags on 0.2.0 (guarded in workaround-regressions), so
