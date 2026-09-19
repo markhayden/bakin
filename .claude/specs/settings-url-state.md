@@ -1,6 +1,6 @@
 # Spec: Settings URL State + App-Wide Selection-State Audit
 
-**Status:** Phase 1 SHIPPED — PR #829 merged 2026-09-18. Phase 2 in progress: PR 1 (team) SHIPPED #830; PR 2 (tasks) SHIPPED #839; PR 3 (workflows) SHIPPED #840; PR 4 (assets) SHIPPED #842; PR 5 (brands) SHIPPED #850; PR 6 (health) SHIPPED #853; PR 7 (chat) on `feat/chat-url-state` (`tasks/chat-url-state/plan.md`) — the last Phase 2 PR.
+**Status:** Phase 1 SHIPPED — PR #829 merged 2026-09-18. Phase 2 in progress: PR 1 (team) SHIPPED #830; PR 2 (tasks) SHIPPED #839; PR 3 (workflows) SHIPPED #840; PR 4 (assets) SHIPPED #842; PR 5 (brands) SHIPPED #850; PR 6 (health) SHIPPED #853; PR 7 (chat) SHIPPED #856. **Phase 2 COMPLETE 2026-09-18** — the audit's nine gaps closed across #830 team, #839 tasks, #840 workflows, #842 assets, #850 brands, #853 health, #856 chat.
 **Date:** 2026-09-18
 **Priority:** Tech-debt reduction. Single user, single machine. NO backwards compatibility, NO shims, NO redirects for old shapes. Clean and clear over compatible.
 **Parent:** `.claude/specs/routing-overhaul.md` (the URL taxonomy this spec extends)
@@ -198,7 +198,7 @@ Reference implementations to copy: `plugins/memory/components/use-record-deep-li
 
 ### Phase 2 delivery
 
-One PR per plugin (team, tasks, workflows, assets, brands, health, chat — 7 PRs), each with the Phase 1 commit shape (state → tests → producers → docs). Order by value: team, tasks, workflows, then the rest. Each PR is planned with `/agent-skills:plan` against this spec's rules; this table is updated with PR numbers as they open.
+Delivered as one PR per plugin, each with the Phase 1 commit shape (state → tests → producers → docs), planned in `tasks/<plugin>-url-state/`: team #830, tasks #839, workflows #840, assets #842, brands #850, health #853, chat #856 (all merged 2026-09-18). Two bugs surfaced and were fixed on the way: the workflows gate notification linking to `/?taskId=` (dropped by the `/` redirect, #839) and the `/chat?agent=` React update loop (#856).
 
 ## Open Questions
 
