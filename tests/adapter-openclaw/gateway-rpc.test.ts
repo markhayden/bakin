@@ -323,6 +323,23 @@ describe('optional scopes + granted-scope truth (#880)', () => {
     c.close()
   })
 
+  it('an ACK WITHOUT auth.scopes (pre-scope-reporting gateway) verifies the requested set — never optimistic-forever', async () => {
+    // Review #2: a gateway that never reports scopes doesn't gate on them
+    // either; leaving grantedScopes() null would pin the health check's
+    // "unverified" advisory permanently with no way to clear it.
+    FakeWebSocket.connectPayload = { type: 'hello-ok', protocol: 4 }
+    const c = makeClient({ optionalScopes: ['operator.admin'] })
+    const request = c.request('agent', {}, { timeoutMs: 1000 })
+    await waitUntil(() => FakeWebSocket.instances.length === 1 && FakeWebSocket.instances[0]!.sentFrames.length >= 2, { label: 'connect + agent frames' })
+    expect(c.grantedScopes()).toEqual(['operator.read', 'operator.write', 'operator.admin'])
+    expect(c.connectionEpoch()).toBe(1)
+    const ws = FakeWebSocket.instances[0]!
+    const agentFrame = ws.sentFrames.find((f) => f.method === 'agent')!
+    ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { status: 'ok' } })
+    await request
+    c.close()
+  })
+
   it('a NOT_PAIRED connect refusal downgrades ONCE: retries without optional scopes, sticky, and reports the loss', async () => {
     let connectAttempt = 0
     FakeWebSocket.connectResponder = (frame, ws) => {
@@ -374,6 +391,16 @@ describe('optional scopes + granted-scope truth (#880)', () => {
     expect(FakeWebSocket.instances.length).toBe(1)
     expect(c.hasScope('operator.admin')).toBe(true) // still optimistic-requested
     c.close()
+  })
+
+  it('isModelOverrideRejection requires the response-frame code marker — free text quoting the phrase never qualifies (review #2)', async () => {
+    const { isModelOverrideRejection } = await import('../../packages/adapter-openclaw/src/errors')
+    // A real admission rejection carries the adapter-appended code marker.
+    expect(isModelOverrideRejection(new Error('provider/model overrides are not authorized for this caller.; code=INVALID_REQUEST'))).toBe(true)
+    // A trajectory post-mortem / wrapped output QUOTING the phrase does not
+    // — a false match re-sends the turn and flips perTurnModel process-wide.
+    expect(isModelOverrideRejection(new Error('agent said: "provider/model overrides are not authorized" in its reply'))).toBe(false)
+    expect(isModelOverrideRejection(new Error('some other failure; code=INVALID_REQUEST'))).toBe(false)
   })
 
   it('a scope-upgrade refusal whose approvedScopes do NOT cover the base set never drops the optional set', async () => {

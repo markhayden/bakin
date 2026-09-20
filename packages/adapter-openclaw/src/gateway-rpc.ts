@@ -131,6 +131,7 @@ export class OpenClawGatewayRpcClient {
   private retryingConnect = false
   /** The gateway's authoritative granted set from the last hello-ok ACK (null before first connect). */
   private grantedScopesValue: string[] | null = null
+  private connectionEpochValue = 0
 
   constructor(private readonly opts: OpenClawGatewayRpcClientOptions) {}
 
@@ -143,6 +144,15 @@ export class OpenClawGatewayRpcClient {
   /** Granted scopes from the last successful connect ACK; null = never connected. */
   grantedScopes(): string[] | null {
     return this.grantedScopesValue ? [...this.grantedScopesValue] : null
+  }
+
+  /**
+   * Monotonic counter of successful connect ACKs. Evidence tied to one
+   * connection (e.g. a mid-session override denial, #880) records the epoch
+   * it was observed on; a later epoch means a NEW granted set superseded it.
+   */
+  connectionEpoch(): number {
+    return this.connectionEpochValue
   }
 
   /**
@@ -257,6 +267,10 @@ export class OpenClawGatewayRpcClient {
   private sendConnect(): void {
     if (this.connectSent) return
     this.connectSent = true
+    // Granted scopes are evidence about ONE connection — reset so a
+    // reconnect can never serve the previous connection's stale set
+    // (review #2).
+    this.grantedScopesValue = null
     const token = this.opts.token()
     const role = this.opts.role ?? 'operator'
     const auth: Record<string, unknown> = token ? { token } : {}
@@ -314,10 +328,16 @@ export class OpenClawGatewayRpcClient {
         }
         // The ACK's auth.scopes is the gateway's AUTHORITATIVE granted set
         // (#880) — capabilities like per-turn model overrides key off it.
+        // A gateway that predates scope reporting (no auth.scopes in the
+        // ACK) doesn't gate on scopes either: acceptance of the connect IS
+        // the grant of the requested set. Recording it keeps hasScope()/
+        // grantedScopes() verified instead of optimistic-forever
+        // (review #2: a standing 'unverified' advisory could never clear).
         const auth = (payload as { auth?: { scopes?: unknown } } | null)?.auth
-        if (auth && Array.isArray(auth.scopes)) {
-          this.grantedScopesValue = auth.scopes.filter((s): s is string => typeof s === 'string')
-        }
+        this.grantedScopesValue = auth && Array.isArray(auth.scopes)
+          ? auth.scopes.filter((s): s is string => typeof s === 'string')
+          : this.requestScopes()
+        this.connectionEpochValue += 1
         const state = this.connectState
         if (!state) return
         clearTimeout(state.timeout)
@@ -498,11 +518,17 @@ export class OpenClawGatewayRpcClient {
   private handleClose(): void {
     this.connected = false
     this.connectSent = false
-    // #880 downgrade retry: keep the pending connectState (its timeout still
-    // bounds the whole handshake) and re-dial with the reduced scope set.
+    // #880 downgrade retry: keep the pending connectState but re-arm its
+    // timer with a fresh handshake budget — a slow scope-refusal handshake
+    // must not starve the second attempt (review #2).
     if (this.retryingConnect && this.connectState) {
       this.retryingConnect = false
       this.connectNonce = null
+      clearTimeout(this.connectState.timeout)
+      this.connectState.timeout = setTimeout(() => {
+        this.failConnect(new RuntimeError(`${this.label()} connect timed out`, { kind: 'transport' }))
+        this.ws?.close()
+      }, CONNECT_TIMEOUT_MS)
       this.dialSocket()
       return
     }

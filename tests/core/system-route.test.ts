@@ -88,15 +88,22 @@ describe('model clamp — runtime refuses per-turn overrides (#880)', () => {
     routingSupport = null
   })
 
-  it('writes a durable route.model_clamped audit receipt (#880 review R7)', async () => {
+  it('writes route.model_clamped ONCE per work class per standing denial — never per turn (#880 reviews R7 + #2)', async () => {
     routingSupport = { supportedThinkingLevels: ['off'], perTurnModel: false }
     auditEvents.length = 0
+    await applyRoutingCapabilities({ model: 'openai/gpt-5.5', source: 'class' }, 'enrichment')
     await applyRoutingCapabilities({ model: 'openai/gpt-5.5', source: 'class' }, 'enrichment')
     expect(auditEvents).toEqual([{
       event: 'route.model_clamped',
       agent: 'system',
       data: { workClass: 'enrichment', requested: 'openai/gpt-5.5', reason: 'override_denied' },
     }])
+    // Denial ends (overrides pass again) → a NEW denial audits fresh.
+    routingSupport = { supportedThinkingLevels: ['off'], perTurnModel: true }
+    await applyRoutingCapabilities({ model: 'openai/gpt-5.5', source: 'class' }, 'enrichment')
+    routingSupport = { supportedThinkingLevels: ['off'], perTurnModel: false }
+    await applyRoutingCapabilities({ model: 'openai/gpt-5.5', source: 'class' }, 'enrichment')
+    expect(auditEvents).toHaveLength(2)
     routingSupport = null
   })
 

@@ -51,7 +51,13 @@ export function extractOpenClawProviderInfo(message: string): RuntimeProviderInf
  */
 export function isModelOverrideRejection(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err)
+  // Both the gateway's refusal phrase AND the response-frame code marker
+  // (appended by gateway-rpc's handleResponse) must be present: a match here
+  // triggers a re-send and a process-wide capability flip, so free text that
+  // merely QUOTES the phrase (trajectory post-mortems, wrapped agent output)
+  // must never qualify (review #2).
   return message.includes('provider/model overrides are not authorized')
+    && message.includes('code=INVALID_REQUEST')
 }
 
 export function openClawRuntimeErrorFromMessage(message: string, cause?: unknown): RuntimeError {

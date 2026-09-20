@@ -201,8 +201,20 @@ describe('OpenClaw runtime Gateway chat', () => {
     // rejected turn's key risks a gateway dedupe replay of the rejection.
     expect(agentFrames[1]!.params.idempotencyKey).not.toBe(agentFrames[0]!.params.idempotencyKey)
     expect(String(agentFrames[1]!.params.idempotencyKey)).toBe(`${String(agentFrames[0]!.params.idempotencyKey)}-clamped`)
-    // Sticky capability flip: every later turn clamps pre-send in core.
+    // Capability flip for THIS connection: every later turn clamps pre-send in core.
     expect(runtime.models.routingSupport().perTurnModel).toBe(false)
+
+    // Review #2: the denial is epoch-scoped, not process-permanent. A
+    // reconnect whose ACK re-grants operator.admin supersedes it — the
+    // operator fixing authorization must not require a server restart.
+    ws.close()
+    FakeWebSocket.onRequest = (frame, fws) => {
+      if (frame.method !== 'agent') return
+      fws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('reconnected ok') })
+    }
+    const after = await runtime.messaging.send({ agentId: 'pixel', content: 'Say ok.', threadId: 'task:t-880:d2' })
+    expect(after.content).toBe('reconnected ok')
+    expect(runtime.models.routingSupport().perTurnModel).toBe(true)
   })
 
   it('surfaces token usage on a successful turn from the trajectory', async () => {

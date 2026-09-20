@@ -17,8 +17,14 @@ mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 let routingConfig: unknown = { routes: [], tagOverrides: [] }
+let hookThrows = false
 mock.module('../../packages/core/src/hooks/hook-registry-singleton', () => ({
-  getHookRegistry: () => ({ invoke: async () => routingConfig }),
+  getHookRegistry: () => ({
+    invoke: async () => {
+      if (hookThrows) throw new Error('models plugin reloading')
+      return routingConfig
+    },
+  }),
 }))
 
 import { createOpenClawHealthChecks } from '../../packages/adapter-openclaw/src/health-checks'
@@ -67,6 +73,26 @@ describe('override-authorization check (#880)', () => {
   it('reports on authorization alone when the models plugin is unavailable', async () => {
     routingConfig = undefined
     const result = await runCheck(false)
+    if (result.outcome !== 'observed') throw new Error('expected observed')
+    expect(result.observations[0]!.status).toBe('healthy')
+  })
+
+  it('a failed routing-config read on an unauthorized connection is UNKNOWN, never healthy (review #2)', async () => {
+    // The old behavior defaulted modelRoutes=0 → healthy "nothing is
+    // clamped" while routes might exist — the exact incident masked.
+    hookThrows = true
+    const result = await runCheck(false)
+    hookThrows = false
+    if (result.outcome !== 'observed') throw new Error('expected observed')
+    const obs = result.observations[0]!
+    expect(obs.status).toBe('unknown')
+    expect(obs.evidence).toMatchObject({ routesKnown: false })
+  })
+
+  it('a failed routing-config read on an AUTHORIZED connection stays healthy — routes are irrelevant', async () => {
+    hookThrows = true
+    const result = await runCheck(true)
+    hookThrows = false
     if (result.outcome !== 'observed') throw new Error('expected observed')
     expect(result.observations[0]!.status).toBe('healthy')
   })

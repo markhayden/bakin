@@ -50,13 +50,16 @@ export function createOpenClawHealthChecks(deps: OpenClawHealthDeps): HealthChec
         const perTurnModel = deps.routingSupport().perTurnModel
         const verified = deps.scopesVerified()
         let modelRoutes = 0
+        let routesKnown = true
         try {
           const config = await getHookRegistry().invoke<RoutingConfigLite>('models.getRoutingConfig', {})
           modelRoutes = (config?.routes ?? []).filter((r) => r.model).length
             + (config?.tagOverrides ?? []).filter((t) => t.model).length
         } catch (err) {
-          // Models plugin absent/unavailable — report on authorization alone,
-          // but never silently (review finding: no empty catches).
+          // Models plugin absent/unavailable — failed evidence, never a
+          // healthy verdict built on a defaulted count (review #2), and
+          // never a silent catch.
+          routesKnown = false
           log.warn('models.getRoutingConfig unavailable for override-authorization check', { error: String(err) })
         }
 
@@ -66,13 +69,15 @@ export function createOpenClawHealthChecks(deps: OpenClawHealthDeps): HealthChec
           return healthObserved([healthUnknown({
             key: 'override-authorization',
             summary: 'Override authorization is unverified — the gateway connection has not reported its granted scopes yet.',
-            evidence: { verified: false, modelRoutes },
+            evidence: { verified: false, modelRoutes, routesKnown },
             incident: {
               key: 'override-authorization-unverified',
               title: 'OpenClaw override authorization not yet verified',
-              impact: modelRoutes > 0
-                ? 'Model routes are configured; whether the gateway honors them is unknown until the first connection.'
-                : 'No model routes configured; nothing depends on override authorization yet.',
+              impact: !routesKnown
+                ? 'Routing configuration could not be read; whether the gateway honors model routes is unknown until the first connection.'
+                : modelRoutes > 0
+                  ? 'Model routes are configured; whether the gateway honors them is unknown until the first connection.'
+                  : 'No model routes configured; nothing depends on override authorization yet.',
               disposition: 'advisory',
               resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
               resolution: { key: 'verify-connection', type: 'instructions', label: 'Verify', steps: ['Send any agent turn (or restart Bakin) so the gateway connection reports its granted scopes.'] },
@@ -84,8 +89,26 @@ export function createOpenClawHealthChecks(deps: OpenClawHealthDeps): HealthChec
           return observedHealthy(
             'override-authorization',
             'Gateway connection is authorized for per-turn model overrides.',
-            { perTurnModel: true, modelRoutes, verified: true },
+            { perTurnModel: true, modelRoutes, routesKnown, verified: true },
           )
+        }
+        if (!routesKnown) {
+          // Unauthorized connection AND the route count is unreadable: this
+          // is exactly the state the check exists to catch, with half its
+          // evidence missing — unknown, never healthy.
+          return healthObserved([healthUnknown({
+            key: 'override-authorization',
+            summary: 'Gateway refuses per-turn model overrides, and the routing configuration could not be read — whether routes are being clamped is unknown.',
+            evidence: { perTurnModel: false, routesKnown: false },
+            incident: {
+              key: 'override-authorization',
+              title: 'OpenClaw override authorization cannot be assessed',
+              impact: 'The connection lacks model-override authorization; if model routes are configured, routed turns are being clamped to agent defaults.',
+              disposition: 'advisory',
+              resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
+              resolution: { key: 'retry-check', type: 'instructions', label: 'Retry', steps: ['Re-run the check once the models plugin is available.'] },
+            },
+          })])
         }
         if (modelRoutes === 0) {
           return observedHealthy(

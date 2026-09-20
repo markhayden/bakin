@@ -249,9 +249,17 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   private approvalResolveWarningLogged = false
   private approvalGatewayClient: OpenClawApprovalGatewayClient | null = null
   private chatGatewayClient: OpenClawGatewayRpcClient | null = null
-  /** Sticky (#880): the gateway rejected a per-turn model override mid-session
-   *  — routingSupport().perTurnModel flips false so core clamps pre-send. */
-  private modelOverridesDenied = false
+  /** #880: connection epoch on which the gateway rejected a per-turn model
+   *  override at admission — routingSupport().perTurnModel flips false so
+   *  core clamps pre-send. Scoped to the epoch (review #2): a later
+   *  reconnect whose ACK grants operator.admin is FRESH evidence that
+   *  supersedes the denial; only a denial on the CURRENT connection holds. */
+  private modelOverridesDeniedEpoch: number | null = null
+
+  private modelOverridesDenied(): boolean {
+    return this.modelOverridesDeniedEpoch != null
+      && this.modelOverridesDeniedEpoch === (this.chatGatewayClient?.connectionEpoch() ?? this.modelOverridesDeniedEpoch)
+  }
 
   /**
    * Whether override authorization is VERIFIED evidence (#880): true once a
@@ -260,7 +268,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    * health surfaces must report unknown, never healthy, on it.
    */
   gatewayScopesVerified(): boolean {
-    return this.modelOverridesDenied || this.chatGatewayClient?.grantedScopes() != null
+    return this.modelOverridesDenied() || this.chatGatewayClient?.grantedScopes() != null
   }
   private emittedApprovalResponseKeys: string[] = []
   private emittedApprovalResponseKeySet = new Set<string>()
@@ -1092,10 +1100,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       // 2026.9.5 gates per-turn model overrides behind operator.admin
       // (#880). DYNAMIC: granted-scope truth from the gateway connection
       // (optimistic true before first connect — the loopback self-pairing
-      // path grants requested scopes), AND the sticky mid-session denial
-      // flag (an admission rejection is authoritative even if the ACK
-      // claimed admin).
-      perTurnModel: !this.modelOverridesDenied && (this.chatGatewayClient?.hasScope('operator.admin') ?? true),
+      // path grants requested scopes), AND the mid-session denial (an
+      // admission rejection is authoritative even if the ACK claimed
+      // admin — but only for its own connection epoch).
+      perTurnModel: !this.modelOverridesDenied() && (this.chatGatewayClient?.hasScope('operator.admin') ?? true),
     }),
     routingPolicy: async (): Promise<RuntimeRoutingPolicy> => readRoutingPolicy(),
     setRoutingPolicy: async (patch: Partial<RuntimeRoutingPolicy>, reason: string): Promise<void> => {
@@ -1987,11 +1995,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       // per-turn model override (policy/scope changed after connect). The
       // rejection happens BEFORE any run starts or bills, so retrying the
       // same turn once WITHOUT the override is safe and the turn SUCCEEDS
-      // with a receipt instead of failing. The sticky flag flips
-      // routingSupport().perTurnModel so every later turn clamps pre-send
-      // in core. (Adapter-side message interpretation — sanctioned here.)
+      // with a receipt instead of failing. Recording the denial's
+      // connection epoch flips routingSupport().perTurnModel so every later
+      // turn on THIS connection clamps pre-send in core; a reconnect that
+      // re-grants admin supersedes it. (Adapter-side message
+      // interpretation — sanctioned here.)
       if (opts.model && isModelOverrideRejection(err)) {
-        this.modelOverridesDenied = true
+        this.modelOverridesDeniedEpoch = this.chatGatewayClient?.connectionEpoch() ?? 0
         this.logger.warn('Gateway refused the per-turn model override — retrying once on the agent default (#880)', {
           agentId: opts.agentId,
           requestedModel: opts.model,

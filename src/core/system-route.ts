@@ -15,6 +15,16 @@ import { clampThinkingLevel, resolveWorkClassRoute, type ResolvedTurn, type Rout
 const log = createLogger('system-route')
 
 /**
+ * Audit-dedupe for a STANDING override denial (#880): route.model_clamped is
+ * a state-transition receipt, not a per-turn one — without this, every
+ * enrichment/auto-title/relay of a denied connection appends an identical
+ * audit row (review #2: unbounded duplicate growth telling one story). The
+ * per-turn story rides task.routed / run_costs; clears when overrides pass
+ * again so a NEW denial audits fresh.
+ */
+const auditedClampClasses = new Set<WorkClass>()
+
+/**
  * Clamp a resolved route to what the active runtime declares it honors —
  * BOTH knobs: thinking levels (supportedThinkingLevels) and per-turn model
  * overrides (perTurnModel, #880). Clamp-and-warn with receipts — never
@@ -41,16 +51,23 @@ export async function applyRoutingCapabilities(route: ResolvedTurn, workClass: W
       log.warn('Model route clamped: runtime refuses per-turn overrides', { workClass, requested })
       next = { ...next, modelClamp: { requested, reason: 'override_denied' } }
       delete next.model
-      // Durable receipt for EVERY caller — system sends have no task.routed
-      // audit of their own (review finding: system-class clamps left only a
-      // log line, violating the receipt+audit contract).
-      try {
-        const { appendAudit } = await import('./audit')
-        const { getContentDir } = await import('./content-dir')
-        appendAudit(getContentDir(), 'route.model_clamped', 'system', { workClass, requested, reason: 'override_denied' })
-      } catch (auditErr) {
-        log.warn('Model-clamp audit not recorded', { workClass, error: String(auditErr) })
+      // Durable receipt at the state TRANSITION (once per work class per
+      // standing denial) — system sends have no task.routed audit of their
+      // own, but a standing denial must not grow audit.jsonl per turn.
+      if (!auditedClampClasses.has(workClass)) {
+        auditedClampClasses.add(workClass)
+        try {
+          const { appendAudit } = await import('./audit')
+          const { getContentDir } = await import('./content-dir')
+          appendAudit(getContentDir(), 'route.model_clamped', 'system', { workClass, requested, reason: 'override_denied' })
+        } catch (auditErr) {
+          log.warn('Model-clamp audit not recorded', { workClass, error: String(auditErr) })
+        }
       }
+    } else if (next.model) {
+      // Overrides are passing again — the denial ended; a future denial is a
+      // new transition and audits fresh.
+      auditedClampClasses.clear()
     }
 
     if (next.thinking) {
