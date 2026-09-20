@@ -121,6 +121,15 @@ export class AntflyAdapter implements SearchAdapter {
     return this.client.query(table, q)
   }
 
+  // Delegation MUST cover every optional contract member: consumers
+  // feature-detect (`typeof search.rerank === 'function'`), so a member
+  // missing HERE silently disables the feature even though the client
+  // implements it — exactly how the merged-top-K rerank shipped dark
+  // (#846 field find, 2026-09-19).
+  rerank(query: string, texts: string[]): Promise<number[] | null> {
+    return this.client.rerank(query, texts)
+  }
+
   multiQuery(queries: Array<{ table: string; query: Query }>): Promise<QueryResult[]> {
     return this.client.multiQuery(queries)
   }
