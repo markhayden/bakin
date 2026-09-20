@@ -36,18 +36,14 @@ import {
 } from '../internal/lazy'
 
 // The registry core lives in ./registry (react-free) so the SDK root
-// barrel — which re-exports ../register → registerSlot/clearSlotsOwnedBy —
-// stays server-safe. Re-exported here so the public `@makinbakin/sdk/slots`
-// surface is unchanged.
+// barrel — which uses ../register → registerSlot/clearSlotsOwnedBy —
+// stays server-safe. Registry inspection and owner cleanup remain internal;
+// plugin authors tear down contributions through unregisterPlugin.
 
 /** Register a component for a named slot. Lower `order` renders first; default `order` is 100. */
 export { registerSlot } from './registry'
-/** Read the registered entries for a slot. Exported for tooling / tests. */
-export { getSlotEntries } from './registry'
 /** Slot names with at least one entry owned by the given plugin (manifest drift checks). */
 export { getSlotNamesOwnedBy } from './registry'
-/** Remove every slot entry owned by the given plugin (hot-swap teardown). */
-export { clearSlotsOwnedBy } from './registry'
 
 import { getSlotEntries } from './registry'
 

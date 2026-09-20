@@ -12,10 +12,41 @@ import { TurnOutputView } from '@makinbakin/sdk/conversation'
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import { PageShell } from '@makinbakin/sdk/layout'
 import { PluginLink, useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
-import { PluginSettingsRenderer } from '@makinbakin/sdk/patterns'
+import { AgentDot, AgentStatus, ColorPicker, PluginSettingsRenderer } from '@makinbakin/sdk/patterns'
 import { PluginUiFixtureHost, createPluginUiFixtureFetch } from '@makinbakin/sdk/testing/ui'
 import { definePluginUiConformance } from '@makinbakin/sdk/testing/ui/conformance'
 import { Button } from '@makinbakin/sdk/ui'
+import { pluginFetch } from '@makinbakin/sdk/utils'
+import { Slot, registerSlot } from '@makinbakin/sdk/slots'
+import { defineHookContract } from '@makinbakin/sdk/metadata'
+import { useHorizontalResize } from '@makinbakin/sdk/hooks'
+
+// Each rejected import guards the emitted declarations. Restoring an export
+// makes its @ts-expect-error unused, failing the external-consumer typecheck.
+// @ts-expect-error URL construction is private to pluginFetch.
+export { pluginApiUrl } from '@makinbakin/sdk/utils'
+// @ts-expect-error Clipboard behavior is private to the UI implementation.
+export { copyToClipboard } from '@makinbakin/sdk/utils'
+// @ts-expect-error Slot inspection is internal.
+export { getSlotEntries } from '@makinbakin/sdk/slots'
+// @ts-expect-error Plugin teardown owns slot cleanup.
+export { clearSlotsOwnedBy } from '@makinbakin/sdk/slots'
+// @ts-expect-error Header overflow is composed through the public header props.
+export { PageHeaderOverflowMenu } from '@makinbakin/sdk/patterns'
+// @ts-expect-error The removed standalone overflow component has no public props.
+export type { PageHeaderOverflowMenuProps } from '@makinbakin/sdk/patterns'
+// @ts-expect-error Assigned selection is owned by AgentSelect.
+export { ASSIGNED_AGENT_VALUE } from '@makinbakin/sdk/patterns'
+// @ts-expect-error Use the navigation dirty-exit contract instead.
+export { useFormGuard } from '@makinbakin/sdk/hooks'
+// @ts-expect-error The unused file-drop hook was removed.
+export { useFileDrop } from '@makinbakin/sdk/hooks'
+// @ts-expect-error The removed file-drop hook has no public options type.
+export type { UseFileDropOptions } from '@makinbakin/sdk/hooks'
+// @ts-expect-error The removed file-drop hook has no public result type.
+export type { UseFileDropResult } from '@makinbakin/sdk/hooks'
+// @ts-expect-error The unused vertical resize wrapper was removed.
+export { useVerticalResize } from '@makinbakin/sdk/hooks'
 
 export interface FocusedSdkConsumer {
   charts: typeof Charts
@@ -42,6 +73,14 @@ export const focusedSdkValues = {
   createPluginUiFixtureFetch,
   definePluginUiConformance,
   useUnsavedChangesGuard,
+  pluginFetch,
+  Slot,
+  registerSlot,
+  defineHookContract,
+  AgentDot,
+  AgentStatus,
+  ColorPicker,
+  useHorizontalResize,
 }
 
 /** Representative props prove consumers need no private implementation types. */

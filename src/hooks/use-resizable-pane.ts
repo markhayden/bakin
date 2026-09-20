@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
- * Shared core for the two split-pane resize hooks. A pane is anchored to the
+ * Shared split-pane resize behavior. A pane is anchored to the
  * trailing edge (bottom for 'y', right for 'x') and resized by dragging the
  * divider on its leading edge — dragging toward that edge (up / left) grows it.
- * {@link useVerticalResize} and {@link useHorizontalResize} are thin wrappers;
+ * {@link useHorizontalResize} provides the right-anchored panel wrapper;
  * keep all drag / persistence / a11y logic here so it lives in exactly one place.
  */
 export type ResizeAxis = 'x' | 'y'

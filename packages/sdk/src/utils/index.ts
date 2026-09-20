@@ -24,9 +24,6 @@ export {
 export { cn } from '@bakin/ui/utils'
 // The one focus-ring spelling; see the Component Internals Contract in the UI overview.
 export { focusRing, focusRingInset } from '@bakin/ui/utils'
-// Clipboard write that works on the tailnet's plain-HTTP origin (where
-// navigator.clipboard is undefined) — resolves true only on a real copy.
-export { copyToClipboard } from '@bakin/ui'
 
 /** Pure assetId shape validators (see ./asset-id). */
 export { isValidAssetId, yearMonthFromAssetId } from './asset-id'
@@ -54,4 +51,4 @@ export type { TurnRecorder } from '../../../../src/components/conversation/turn-
 export { humanizeKey, formatStructured, summarizeStructured, unwrapToolResult, type FormatStructuredOptions } from '@bakin/core/format'
 
 /** Fetch a plugin's own API route (`/api/plugins/<id>/<path>`) with JSON defaults. */
-export { pluginFetch, pluginApiUrl } from './plugin-fetch'
+export { pluginFetch } from './plugin-fetch'

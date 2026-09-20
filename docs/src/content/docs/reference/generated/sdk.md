@@ -102,10 +102,8 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | Hook | Description |
 | --- | --- |
 | `useDebug` | Read/toggle the global debug (X-Ray) flag. |
-| `useFormGuard` | Guard a form against unmounting while submission is in flight. |
 | `toast` | Fire a toast notification (success/error/info). |
 | `useToastStore` | Subscribe to the toast store for custom toast UIs. |
-| `useVerticalResize` | Imperatively resize a vertical pane via mouse drag handle. |
 
 ### Runtime
 
@@ -121,6 +119,7 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | `useNavBadge` | Sync a nav item's badge to a derived value; the recommended provider glue. |
 | `useJsonFetch` | Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. |
 | `usePluginJsonFetch` | Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. |
+| `UseJsonFetchOptions` | — |
 | `UseJsonFetchResult` | — |
 | `useOccurrences` | — |
 | `ScheduleOccurrence` | — |
@@ -131,9 +130,6 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | `usePluginEvent` | Subscribe to a server-pushed plugin event over the shell's single connection. |
 | `emitPluginEvent` | Subscribe to a server-pushed plugin event over the shell's single connection. |
 | `PluginEventPayload` | Subscribe to a server-pushed plugin event over the shell's single connection. |
-| `useFileDrop` | Headless drag-drop file intake (drag-over state + handlers + accept filter) — style your own zone. |
-| `UseFileDropOptions` | — |
-| `UseFileDropResult` | — |
 | `useHistoryBack` | — |
 | `useHorizontalResize` | Resize a side-by-side split pane by dragging the divider between columns. |
 | `useAvailableModels` | The available-models catalog (cached, read-only); empty until loaded. |
@@ -147,7 +143,7 @@ Source: `packages/sdk/src/ui/index.ts`. Supported Bakin primitives backed by the
 import { Alert, Badge, Button, Progress } from '@makinbakin/sdk/ui'
 ```
 
-Available: `Alert`, `AlertAction`, `AlertDescription`, `AlertTitle`, `alertVariants`, `AlertProps`, `AlertTone`, `AlertVariantOptions`, `LegacyAlertVariant`, `Drawer`, `DrawerProps`, `DrawerSection`, `DrawerSectionHeadingLevel`, `DrawerSectionProps`, `Avatar`, `AvatarBadge`, `AvatarFallback`, `AvatarGroup`, `AvatarGroupCount`, `AvatarImage`, `AvatarProps`, `AvatarSize`, `LegacyAvatarSize`, `Badge`, `badgeVariants`, `BadgeProps`, `BadgeSize`, `BadgeTone`, `BadgeVariant`, `BadgeVariantOptions`, `LegacyBadgeVariant`, `Button`, `buttonVariants`, `ButtonProps`, `ButtonSize`, `ButtonVariant`, `ButtonVariantOptions`, `LegacyButtonSize`, `LegacyButtonVariant`, `Card`, `CardAction`, `CardContent`, `CardDescription`, `CardFooter`, `CardHeader`, `CardMedia`, `CardTitle`, `InteractiveAction`, `CardFooterVariant`, `CardInteractive`, `CardOrientation`, `CardProps`, `CardSize`, `CardTone`, `LegacyCardSize`, `Checkbox`, `CheckboxProps`, `Radio`, `RadioGroup`, `RadioGroupProps`, `RadioProps`, `FileInput`, `FileInputHandle`, `FileInputProps`, `Collapsible`, `CollapsibleContent`, `CollapsibleTrigger`, `CollapsibleContentProps`, `CollapsibleProps`, `CollapsibleTriggerProps`, `Command`, `CommandDialog`, `CommandEmpty`, `CommandGroup`, `CommandInput`, `CommandItem`, `CommandList`, `CommandSeparator`, `CommandShortcut`, `CommandDialogProps`, `CommandEmptyProps`, `CommandGroupProps`, `CommandInputProps`, `CommandItemProps`, `CommandListProps`, `CommandProps`, `CommandSeparatorProps`, `CommandShortcutProps`, `Dialog`, `DialogClose`, `DialogContent`, `DialogDescription`, `DialogFooter`, `DialogHeader`, `DialogOverlay`, `DialogPortal`, `DialogTitle`, `DialogTrigger`, `DialogCloseProps`, `DialogContentProps`, `DialogDescriptionProps`, `DialogFooterProps`, `DialogHeaderProps`, `DialogOverlayProps`, `DialogPortalProps`, `DialogProps`, `DialogTitleProps`, `DialogTriggerProps`, `DropdownMenu`, `DropdownMenuCheckboxItem`, `DropdownMenuContent`, `DropdownMenuGroup`, `DropdownMenuItem`, `DropdownMenuLabel`, `DropdownMenuPortal`, `DropdownMenuRadioGroup`, `DropdownMenuRadioItem`, `DropdownMenuSeparator`, `DropdownMenuShortcut`, `DropdownMenuSub`, `DropdownMenuSubContent`, `DropdownMenuSubTrigger`, `DropdownMenuTrigger`, `DropdownMenuCheckboxItemProps`, `DropdownMenuContentProps`, `DropdownMenuGroupProps`, `DropdownMenuItemProps`, `DropdownMenuItemVariant`, `DropdownMenuLabelProps`, `DropdownMenuPortalProps`, `DropdownMenuProps`, `DropdownMenuRadioGroupProps`, `DropdownMenuRadioItemProps`, `DropdownMenuSeparatorProps`, `DropdownMenuShortcutProps`, `DropdownMenuSubContentProps`, `DropdownMenuSubProps`, `DropdownMenuSubTriggerProps`, `DropdownMenuTriggerProps`, `Field`, `FieldControl`, `FieldDescription`, `FieldError`, `FieldGroup`, `FieldLabel`, `Fieldset`, `FieldsetDescription`, `FieldsetLegend`, `Form`, `FormActions`, `SubmitButton`, `FieldControlProps`, `FieldDescriptionProps`, `FieldErrorProps`, `FieldGroupProps`, `FieldLabelProps`, `FieldOrientation`, `FieldProps`, `FieldRequirement`, `FieldsetDescriptionProps`, `FieldsetLegendProps`, `FieldsetProps`, `FormActionsAlign`, `FormActionsProps`, `FormProps`, `SubmitButtonProps`, `Banner`, `SystemState`, `Toast`, `ToastAction`, `ToastRegion`, `systemStateDefaults`, `BannerProps`, `BannerTone`, `FeedbackAnnouncement`, `SystemStateAlign`, `SystemStateContent`, `SystemStateHeadingLevel`, `SystemStateKind`, `SystemStateProps`, `SystemStateScope`, `ToastActionProps`, `ToastProps`, `ToastRegionProps`, `ToastTone`, `Input`, `InputProps`, `InputGroup`, `InputGroupAddon`, `InputGroupButton`, `InputGroupInput`, `InputGroupText`, `InputGroupTextarea`, `InputGroupAddonAlign`, `InputGroupAddonProps`, `InputGroupButtonProps`, `InputGroupButtonSize`, `InputGroupInputProps`, `InputGroupProps`, `InputGroupTextProps`, `InputGroupTextareaProps`, `Label`, `LabelProps`, `Popover`, `PopoverContent`, `PopoverDescription`, `PopoverHeader`, `PopoverPortal`, `PopoverTitle`, `PopoverTrigger`, `PopoverContentProps`, `PopoverDescriptionProps`, `PopoverHeaderProps`, `PopoverPortalProps`, `PopoverProps`, `PopoverTitleProps`, `PopoverTriggerProps`, `Progress`, `ProgressIndicator`, `ProgressLabel`, `ProgressTrack`, `ProgressValue`, `ProgressIndicatorProps`, `ProgressMarker`, `ProgressProps`, `ProgressSize`, `ProgressTone`, `ProgressTrackMarker`, `ProgressTrackProps`, `Select`, `SelectContent`, `SelectGroup`, `SelectItem`, `SelectLabel`, `SelectScrollDownButton`, `SelectScrollUpButton`, `SelectSeparator`, `SelectTrigger`, `SelectValue`, `SelectContentProps`, `SelectGroupProps`, `SelectItemProps`, `SelectLabelProps`, `SelectProps`, `SelectScrollDownButtonProps`, `SelectScrollUpButtonProps`, `SelectSeparatorProps`, `SelectTriggerProps`, `SelectTriggerSize`, `SelectValueProps`, `Separator`, `SeparatorProps`, `Sheet`, `SheetClose`, `SheetContent`, `SheetDescription`, `SheetFooter`, `SheetHeader`, `SheetOverlay`, `SheetPortal`, `SheetTitle`, `SheetTrigger`, `SheetCloseProps`, `SheetContentProps`, `SheetDescriptionProps`, `SheetFooterProps`, `SheetHeaderProps`, `SheetOverlayProps`, `SheetPortalProps`, `SheetProps`, `SheetSide`, `SheetTitleProps`, `SheetTriggerProps`, `Skeleton`, `SkeletonProps`, `SkeletonShape`, `ShimmerText`, `ShimmerTextBase`, `ShimmerTextHighlight`, `ShimmerTextProps`, `Switch`, `SwitchProps`, `SwitchSize`, `Textarea`, `TextareaProps`, `Tooltip`, `TooltipContent`, `TooltipPortal`, `TooltipProvider`, `TooltipTrigger`, `TooltipContentProps`, `TooltipPortalProps`, `TooltipProps`, `TooltipProviderProps`, `TooltipTriggerProps`.
+Available: `Alert`, `AlertAction`, `AlertDescription`, `AlertTitle`, `alertVariants`, `AlertProps`, `AlertTone`, `AlertVariantOptions`, `LegacyAlertVariant`, `Drawer`, `DrawerProps`, `DrawerSection`, `DrawerSectionHeadingLevel`, `DrawerSectionProps`, `Avatar`, `AvatarBadge`, `AvatarFallback`, `AvatarGroup`, `AvatarGroupCount`, `AvatarImage`, `AvatarProps`, `AvatarSize`, `LegacyAvatarSize`, `Badge`, `badgeVariants`, `BadgeProps`, `BadgeSize`, `BadgeTone`, `BadgeVariant`, `BadgeVariantOptions`, `LegacyBadgeVariant`, `Spinner`, `SpinnerProps`, `SpinnerSize`, `Overline`, `Text`, `OverlineProps`, `TextProps`, `TextSize`, `TextTone`, `TextWeight`, `Button`, `buttonVariants`, `ButtonProps`, `ButtonSize`, `ButtonVariant`, `ButtonVariantOptions`, `LegacyButtonSize`, `LegacyButtonVariant`, `Card`, `CardAction`, `CardContent`, `CardDescription`, `CardFooter`, `CardHeader`, `CardMedia`, `CardTitle`, `InteractiveAction`, `CardFooterVariant`, `CardInteractive`, `CardOrientation`, `CardProps`, `CardSize`, `CardTone`, `LegacyCardSize`, `Checkbox`, `CheckboxProps`, `Radio`, `RadioGroup`, `RadioGroupProps`, `RadioProps`, `FileInput`, `FileInputHandle`, `FileInputProps`, `Collapsible`, `CollapsibleContent`, `CollapsibleTrigger`, `CollapsibleContentProps`, `CollapsibleProps`, `CollapsibleTriggerProps`, `Command`, `CommandDialog`, `CommandEmpty`, `CommandGroup`, `CommandInput`, `CommandItem`, `CommandList`, `CommandSeparator`, `CommandShortcut`, `CommandDialogProps`, `CommandEmptyProps`, `CommandGroupProps`, `CommandInputProps`, `CommandItemProps`, `CommandListProps`, `CommandProps`, `CommandSeparatorProps`, `CommandShortcutProps`, `Dialog`, `DialogClose`, `DialogContent`, `DialogDescription`, `DialogFooter`, `DialogHeader`, `DialogOverlay`, `DialogPortal`, `DialogTitle`, `DialogTrigger`, `DialogCloseProps`, `DialogContentProps`, `DialogDescriptionProps`, `DialogFooterProps`, `DialogHeaderProps`, `DialogOverlayProps`, `DialogPortalProps`, `DialogProps`, `DialogTitleProps`, `DialogTriggerProps`, `DropdownMenu`, `DropdownMenuCheckboxItem`, `DropdownMenuSwitchItem`, `DropdownMenuContent`, `DropdownMenuGroup`, `DropdownMenuItem`, `DropdownMenuLabel`, `DropdownMenuPortal`, `DropdownMenuRadioGroup`, `DropdownMenuRadioItem`, `DropdownMenuSeparator`, `DropdownMenuShortcut`, `DropdownMenuSub`, `DropdownMenuSubContent`, `DropdownMenuSubTrigger`, `DropdownMenuTrigger`, `DropdownMenuCheckboxItemProps`, `DropdownMenuContentProps`, `DropdownMenuGroupProps`, `DropdownMenuItemProps`, `DropdownMenuItemVariant`, `DropdownMenuLabelProps`, `DropdownMenuPortalProps`, `DropdownMenuProps`, `DropdownMenuRadioGroupProps`, `DropdownMenuRadioItemProps`, `DropdownMenuSeparatorProps`, `DropdownMenuShortcutProps`, `DropdownMenuSubContentProps`, `DropdownMenuSubProps`, `DropdownMenuSubTriggerProps`, `DropdownMenuTriggerProps`, `Field`, `FieldControl`, `FieldDescription`, `FieldError`, `FieldGroup`, `FieldLabel`, `Fieldset`, `FieldsetDescription`, `FieldsetLegend`, `Form`, `FormActions`, `SubmitButton`, `FieldControlProps`, `FieldDescriptionProps`, `FieldErrorProps`, `FieldGroupProps`, `FieldLabelProps`, `FieldOrientation`, `FieldProps`, `FieldRequirement`, `FieldsetDescriptionProps`, `FieldsetLegendProps`, `FieldsetProps`, `FormActionsAlign`, `FormActionsProps`, `FormProps`, `SubmitButtonProps`, `Banner`, `SystemState`, `Toast`, `ToastAction`, `ToastRegion`, `systemStateDefaults`, `BannerProps`, `BannerTone`, `FeedbackAnnouncement`, `SystemStateAlign`, `SystemStateContent`, `SystemStateHeadingLevel`, `SystemStateKind`, `SystemStateProps`, `SystemStateScope`, `ToastActionProps`, `ToastProps`, `ToastRegionProps`, `ToastTone`, `Input`, `InputProps`, `InputGroup`, `InputGroupAddon`, `InputGroupButton`, `InputGroupInput`, `InputGroupText`, `InputGroupTextarea`, `InputGroupAddonAlign`, `InputGroupAddonProps`, `InputGroupButtonProps`, `InputGroupButtonSize`, `InputGroupInputProps`, `InputGroupProps`, `InputGroupTextProps`, `InputGroupTextareaProps`, `Label`, `LabelProps`, `Popover`, `PopoverContent`, `PopoverDescription`, `PopoverHeader`, `PopoverPortal`, `PopoverTitle`, `PopoverTrigger`, `PopoverContentProps`, `PopoverDescriptionProps`, `PopoverHeaderProps`, `PopoverPortalProps`, `PopoverProps`, `PopoverTitleProps`, `PopoverTriggerProps`, `Progress`, `ProgressIndicator`, `ProgressLabel`, `ProgressTrack`, `ProgressValue`, `ProgressIndicatorProps`, `ProgressMarker`, `ProgressProps`, `ProgressSize`, `ProgressTone`, `ProgressTrackMarker`, `ProgressTrackProps`, `Select`, `SelectContent`, `SelectGroup`, `SelectItem`, `SelectLabel`, `SelectScrollDownButton`, `SelectScrollUpButton`, `SelectSeparator`, `SelectTrigger`, `SelectValue`, `SelectContentProps`, `SelectGroupProps`, `SelectItemProps`, `SelectLabelProps`, `SelectProps`, `SelectScrollDownButtonProps`, `SelectScrollUpButtonProps`, `SelectSeparatorProps`, `SelectTriggerProps`, `SelectTriggerSize`, `SelectValueProps`, `Separator`, `SeparatorProps`, `Sheet`, `SheetClose`, `SheetContent`, `SheetDescription`, `SheetFooter`, `SheetHeader`, `SheetOverlay`, `SheetPortal`, `SheetTitle`, `SheetTrigger`, `SheetCloseProps`, `SheetContentProps`, `SheetDescriptionProps`, `SheetFooterProps`, `SheetHeaderProps`, `SheetOverlayProps`, `SheetPortalProps`, `SheetProps`, `SheetSide`, `SheetTitleProps`, `SheetTriggerProps`, `Skeleton`, `SkeletonProps`, `SkeletonShape`, `ShimmerText`, `ShimmerTextBase`, `ShimmerTextHighlight`, `ShimmerTextProps`, `Switch`, `SwitchProps`, `SwitchSize`, `Table`, `TableBody`, `TableCaption`, `TableCell`, `TableFooter`, `TableHead`, `TableHeader`, `TableRow`, `Tabs`, `TabsContent`, `TabsList`, `TabsTrigger`, `tabsListVariants`, `Textarea`, `TextareaProps`, `Tooltip`, `TooltipContent`, `TooltipPortal`, `TooltipProvider`, `TooltipTrigger`, `TooltipContentProps`, `TooltipPortalProps`, `TooltipProps`, `TooltipProviderProps`, `TooltipTriggerProps`.
 
 ## `@makinbakin/sdk/layout`
 
@@ -165,6 +161,7 @@ Canonical page and responsive composition. Source: `packages/sdk/src/layout/inde
 | `Stack` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
 | `BoundedOverflowProps` | — |
 | `DisclosurePanelProps` | — |
+| `DisclosurePanelVariant` | — |
 | `GridAlign` | — |
 | `GridLayout` | — |
 | `GridProps` | — |
@@ -203,14 +200,18 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `KanbanCardSignal` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `KanbanColumn` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `KanbanColumnBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `KanbanColumnEmpty` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `KanbanColumnHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `CalendarGrid` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `CalendarItem` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `CalendarNav` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListRow` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListRowActions` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListRowGroup` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListRowLabels` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListRows` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `NavList` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `NodeCard` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `Page` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `PageAside` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `useCollapsedAside` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -221,12 +222,14 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `PageTimeline` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `Pagination` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `PageHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `PageHeaderOverflowMenu` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `WorkspacePage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `WorkspacePageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `WorkspacePageCompactHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `WorkspacePageHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `WorkspacePageMetrics` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ConfirmDialog` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `CopyButton` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `KeyValue` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DangerZone` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DataTable` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `FacetFilter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -257,7 +260,6 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `AgentDot` | Present agent identity without importing a registry or host store. |
 | `AgentStatus` | Present agent identity without importing a registry or host store. |
 | `AgentSelect` | Present agent identity without importing a registry or host store. |
-| `ASSIGNED_AGENT_VALUE` | Stable assignment-value helpers shared by forms and workflow configuration. |
 | `TEAM_VALUE_PREFIX` | Stable assignment-value helpers shared by forms and workflow configuration. |
 | `isTeamValue` | Stable assignment-value helpers shared by forms and workflow configuration. |
 | `teamIdFromValue` | Stable assignment-value helpers shared by forms and workflow configuration. |
@@ -309,11 +311,16 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `KanbanBoardProps` | — |
 | `KanbanCardSignalProps` | — |
 | `KanbanColumnBodyProps` | — |
+| `KanbanColumnEmptyProps` | — |
 | `KanbanColumnHeaderProps` | — |
 | `KanbanColumnProps` | — |
 | `CalendarGridItem` | — |
 | `CalendarGridProps` | — |
 | `CalendarGridView` | — |
+| `CalendarItemDensity` | — |
+| `CalendarItemProps` | — |
+| `CalendarItemTone` | — |
+| `CalendarNavProps` | — |
 | `ListRowActionsProps` | — |
 | `ListRowGroupProps` | — |
 | `ListRowLabelsProps` | — |
@@ -326,6 +333,9 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `NavListItem` | — |
 | `NavListProps` | — |
 | `NavListSection` | — |
+| `NodeCardBorder` | — |
+| `NodeCardProps` | — |
+| `NodeCardTone` | — |
 | `PageAsideCollapsible` | — |
 | `PageAsideProps` | — |
 | `PageAsideWidth` | — |
@@ -339,7 +349,6 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `PageControlsProps` | — |
 | `PageDensity` | — |
 | `PageHeaderMeasure` | — |
-| `PageHeaderOverflowMenuProps` | — |
 | `PageHeaderProps` | — |
 | `PageProps` | — |
 | `PageScroll` | — |
@@ -349,10 +358,15 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `WorkspacePageBodyProps` | — |
 | `WorkspacePageCompactHeaderProps` | — |
 | `WorkspacePageHeaderProps` | — |
+| `WorkspacePageMetricsProps` | — |
 | `WorkspacePageMode` | — |
 | `WorkspacePageProps` | — |
 | `ConfirmDialogCancelVariant` | — |
 | `ConfirmDialogProps` | — |
+| `CopyButtonProps` | — |
+| `KeyValueItem` | — |
+| `KeyValueLayout` | — |
+| `KeyValueProps` | — |
 | `ConfirmDialogTone` | — |
 | `DangerZoneHeadingLevel` | — |
 | `DangerZoneProps` | — |
@@ -488,7 +502,6 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `ActivityGroupProps` | — |
 | `ToolCallRowProps` | — |
 | `AgentTurn` | Agent and user turn presentation with consumer-owned identity and rich text. |
-| `CopyButton` | Agent and user turn presentation with consumer-owned identity and rich text. |
 | `ThinkingIndicator` | Agent and user turn presentation with consumer-owned identity and rich text. |
 | `TurnTimestamp` | Agent and user turn presentation with consumer-owned identity and rich text. |
 | `UserMessage` | Agent and user turn presentation with consumer-owned identity and rich text. |
@@ -498,7 +511,6 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `ConversationAvatarRenderer` | — |
 | `ConversationTextRenderer` | — |
 | `ConversationTextTransform` | — |
-| `CopyButtonProps` | — |
 | `ThinkingIndicatorProps` | — |
 | `TurnTimestampProps` | — |
 | `UserMessageProps` | — |
@@ -526,7 +538,10 @@ Opt-in rich content rendering and editing. Source: `packages/sdk/src/content/ind
 
 | Export | Description |
 | --- | --- |
-| `MarkdownContent` | Render safe GFM, code, media, and visibly identified Bakin-managed sections. |
+| `CodeBlock` | Render safe GFM, code, media, and visibly identified Bakin-managed sections. |
+| `CodeBlockLanguage` | — |
+| `CodeBlockProps` | — |
+| `MarkdownContent` | — |
 | `MarkdownContentProps` | — |
 | `MarkdownInternalLinkProps` | — |
 | `MarkdownEditor` | Controlled edit or preview surface with semantic format and height options. |
@@ -542,9 +557,7 @@ Source: `packages/sdk/src/slots/index.tsx`.
 | Slot system | Description |
 | --- | --- |
 | `registerSlot` | Register a component for a named slot. Lower `order` renders first; default `order` is 100. |
-| `getSlotEntries` | Read the registered entries for a slot. Exported for tooling / tests. |
 | `getSlotNamesOwnedBy` | Slot names with at least one entry owned by the given plugin (manifest drift checks). |
-| `clearSlotsOwnedBy` | Remove every slot entry owned by the given plugin (hot-swap teardown). |
 | `Slot` | Render all components registered for the named slot, in order. Extra props |
 
 ## `@makinbakin/sdk/types`
@@ -641,9 +654,8 @@ Source: `packages/sdk/src/utils/index.ts`.
 | `healthUnknown` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
 | `healthWarning` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
 | `cn` | Tailwind class merger (clsx + tailwind-merge). |
-| `copyToClipboard` | — |
-| `BadgeTone` | Semantic tone for an outline status badge. |
-| `toneBadgeClass` | Classes for an outline status badge of the given tone — the |
+| `focusRing` | — |
+| `focusRingInset` | — |
 | `isValidAssetId` | Pure assetId shape validators (see ./asset-id). |
 | `yearMonthFromAssetId` | Pure assetId shape validators (see ./asset-id). |
 | `formatAge` | Format a Date or ISO string as a relative age (e.g. "5m ago"). |
@@ -662,7 +674,6 @@ Source: `packages/sdk/src/utils/index.ts`.
 | `unwrapToolResult` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
 | `FormatStructuredOptions` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
 | `pluginFetch` | Fetch a plugin's own API route (`/api/plugins/&lt;id>/&lt;path>`) with JSON defaults. |
-| `pluginApiUrl` | Fetch a plugin's own API route (`/api/plugins/&lt;id>/&lt;path>`) with JSON defaults. |
 
 ## `@makinbakin/sdk/metadata`
 
@@ -744,5 +755,5 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Aug 6, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Sep 19, 2026 · Bakin 0.0.0-dev</span>
 </aside>

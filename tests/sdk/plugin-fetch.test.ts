@@ -1,6 +1,7 @@
 import { describe, expect, it, mock, afterEach } from 'bun:test'
 
-import { pluginApiUrl, pluginFetch } from '@makinbakin/sdk/utils'
+import { pluginFetch } from '@makinbakin/sdk/utils'
+import { pluginApiUrl } from '../../packages/sdk/src/utils/plugin-fetch'
 
 const realFetch = globalThis.fetch
 

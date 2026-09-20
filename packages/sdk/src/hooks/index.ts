@@ -26,8 +26,6 @@ export { useContentStore } from '@/hooks/use-content-store'
 export { useNavBadge } from '@/hooks/use-nav-badge'
 /** Read/toggle the global debug (X-Ray) flag. */
 export { useDebug } from '@/hooks/use-debug'
-/** Guard a form against unmounting while submission is in flight. */
-export { useFormGuard } from '@/hooks/use-form-guard'
 /** Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. */
 export { useJsonFetch, usePluginJsonFetch } from '@/hooks/use-json-fetch'
 export type { UseJsonFetchOptions, UseJsonFetchResult } from '@/hooks/use-json-fetch'
@@ -58,17 +56,12 @@ export { useSidebar } from '@/hooks/use-sidebar'
 export { useSSE } from '@/hooks/use-sse'
 /** Subscribe to a server-pushed plugin event over the shell's single connection. */
 export { usePluginEvent, emitPluginEvent, type PluginEventPayload } from '@/hooks/use-plugin-event'
-/** Headless drag-drop file intake (drag-over state + handlers + accept filter) — style your own zone. */
-export { useFileDrop } from '@/hooks/use-file-drop'
-export type { UseFileDropOptions, UseFileDropResult } from '@/hooks/use-file-drop'
 /** @deprecated Import history-aware back from `@makinbakin/sdk/navigation`. */
 export { useHistoryBack } from '@/hooks/use-history-back'
 /** Fire a toast notification (success/error/info). */
 export { toast } from '@/hooks/use-toast'
 /** Subscribe to the toast store for custom toast UIs. */
 export { useToastStore } from '@/hooks/use-toast'
-/** Imperatively resize a vertical pane via mouse drag handle. */
-export { useVerticalResize } from '@/hooks/use-vertical-resize'
 /** Resize a side-by-side split pane by dragging the divider between columns. */
 export { useHorizontalResize } from '@/hooks/use-horizontal-resize'
 

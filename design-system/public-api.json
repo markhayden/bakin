@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 302,
-    "typeExports": 406
+    "valueExports": 300,
+    "typeExports": 405
   },
   "entrypoints": [
     {
@@ -407,7 +407,6 @@
         "AgentStatus",
         "AssetLibraryPicker",
         "AssetPicker",
-        "ASSIGNED_AGENT_VALUE",
         "CalendarGrid",
         "CalendarItem",
         "CalendarNav",
@@ -448,7 +447,6 @@
         "PageComposer",
         "PageControls",
         "PageHeader",
-        "PageHeaderOverflowMenu",
         "PageTimeline",
         "Pagination",
         "PluginSettingsRenderer",
@@ -567,7 +565,6 @@
         "PageControlsProps",
         "PageDensity",
         "PageHeaderMeasure",
-        "PageHeaderOverflowMenuProps",
         "PageHeaderProps",
         "PageProps",
         "PageScroll",

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'bun:test'
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 
 import {
@@ -10,10 +10,26 @@ import {
   WorkspacePageCompactHeader,
   WorkspacePageHeader,
 } from '@makinbakin/sdk/patterns'
+import { DropdownMenuItem } from '@makinbakin/sdk/ui'
 
 afterEach(() => cleanup())
 
 describe('workspace page recipe', () => {
+  it('opens secondary actions through the compact header public props', async () => {
+    render(
+      <WorkspacePage mode="immersive">
+        <WorkspacePageCompactHeader
+          title="Workflow"
+          overflowActionsLabel="Workflow actions"
+          overflowActions={<DropdownMenuItem>Duplicate workflow</DropdownMenuItem>}
+        />
+      </WorkspacePage>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Workflow actions' }))
+    expect(await screen.findByRole('menuitem', { name: 'Duplicate workflow' })).toBeTruthy()
+  })
+
   it('keeps canonical header insets while the body owns the flush remaining canvas', () => {
     const { container } = render(
       <WorkspacePage>
