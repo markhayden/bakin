@@ -6,6 +6,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.28] - 2026-09-20
+
+A search-focused release with faster indexing, relevance reranking, and more accurate health reporting, alongside shareable workspace views and a calmer badge hierarchy.
+
+### Added
+
+- **Shareable task and workflow-step drawers (#839, #840).** Opening a task or workflow step now updates the URL, so links and refreshes reopen the same item and browser Back closes the drawer. Task links resolve even when the task is outside the current board filters; missing tasks show a dismissible message.
+- **Links preserve more of your workspace (#842, #850, #853, #856).** Asset links can select a specific version, brand-document links retain Edit/Preview mode, and Health links retain the Tokens/Reported cost chart selection. Chat search lives in the URL, and both search and agent filters survive switching conversations.
+- **Search progress explains what the engine is doing (#862).** Index health and reindex progress now carry engine-reported activity phases, stall reasons, and progress evidence. A declared embedding stall is detected immediately instead of waiting for the usual no-progress window; index cutovers still require the existing count-based convergence checks.
+
+### Changed
+
+- **Antfly upgraded from 0.2.0 to 0.2.2 (#858).** The new engine fixes the populated-table index-creation wedge and improves background indexing throughput. In the recorded M4 evaluation, fresh-table backfill throughput improved from roughly 4 to 65–70 documents per second, and rebuild-under-load probes completed without failures. Existing embedding models are unchanged.
+- **Search reranking is enabled by default (#864, #866).** Eligible single-table searches use the reranker, while the first page of cross-table search reranks its merged top 20 results in one batch rather than competing across tables. Explicit opt-outs are respected; cross-table results retain their original search order if the reranking pass is unavailable. The adapter delegation fix ensures the merged-result pass actually runs.
+- **Pi runtime and model catalog updated (#854).** Pi moves from 0.80.3 to 0.85.1, adding the GPT-5.6 family to its bundled catalog and reading Pi's refreshed model catalog. The default model used to carry Codex image-generation requests changes to `gpt-5.6-luna`. Existing user-selected routing models are not rewritten.
+- **Clearer badge hierarchy across the app (#863, #867).** Header counts and task-team labels use softer treatments; Health interaction summaries and incident metadata stay quiet beside solid primary states. Recent-event and agent-row status chips are smaller, System states are filled, and link badges have a subtle underline. Storybook now makes the available treatments and real usage examples easier to compare.
+
+### Fixed
+
+- **Search installs no longer report success with a stopped engine (#860).** Installation repairs unloaded or inactive service registrations and waits for the engine to answer. If startup never completes, the command fails with diagnostic guidance instead of claiming the service is running.
+- **Recovered indexes no longer stay permanently unhealthy (#861).** Historical embedding errors are retained as advisory evidence when a leg is otherwise ready, with a targeted rebuild action. Live failures and stalls still report unhealthy status.
+- **Removed indexes stop producing phantom cleanup warnings (#851).** Cleanup now retires records for tables the engine confirms are already gone, while preserving genuine failures for retry.
+- **Filtered Chat no longer enters a React update loop (#856).** Opening Chat with an agent filter now renders normally.
+- **Workflow approval notifications open the intended task (#839).** Task links now go directly to `/tasks?taskId=...` instead of losing the task selection through the root-page redirect.
+
+### Upgrade notes
+
+- After updating Bakin, run `bakin install search` to install Antfly 0.2.2, then `bakin reindex` to rebuild the derived search indexes. The engine-version change clears its derived index data; source content and downloaded models are preserved. Allow the rebuild to converge, then verify with `bakin check search` and `bakin check search-models`.
+
 ## [0.0.1-rc.27] - 2026-09-18
 
 The release that ships persistent shared terminals and makes every setting a link — on top of the Antfly 0.2.0 search stabilization and Hub skills that landed earlier in the window.
@@ -480,5 +509,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.26]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.26
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.27...HEAD
 [0.0.1-rc.27]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.27
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.28...HEAD
+[0.0.1-rc.28]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.28
