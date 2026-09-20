@@ -1066,6 +1066,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       perAgentSubagentModel: true,
       // Gateway forwards every per-turn thinking level as-is.
       supportedThinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'],
+      // 2026.9.5 gates per-turn model overrides behind operator.admin
+      // (#880). Static optimistic-true for T1; T4 derives this from the
+      // gateway connection's GRANTED scopes.
+      perTurnModel: true,
     }),
     routingPolicy: async (): Promise<RuntimeRoutingPolicy> => readRoutingPolicy(),
     setRoutingPolicy: async (patch: Partial<RuntimeRoutingPolicy>, reason: string): Promise<void> => {

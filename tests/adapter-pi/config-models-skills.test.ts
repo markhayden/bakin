@@ -84,6 +84,8 @@ describe('routing policy (P2.3)', () => {
       perAgentSubagentModel: false,
       // adaptive/max have no Pi semantics — Bakin clamps before the send.
       supportedThinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+      // In-process runtime always honors per-turn model refs (#880).
+      perTurnModel: true,
     })
   })
 
