@@ -169,8 +169,11 @@ describe('mock seed', () => {
     const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'imitation-crab', 'fixtures')
     const config = JSON.parse(readFileSync(join(fixturesDir, 'openclaw.json'), 'utf-8'))
 
-    expect(config.agents.list).toHaveLength(5)
-    const ids = config.agents.list.map((a: { id: string }) => a.id)
+    // 2026.9.5 keyed registry (#873) — the fixture is a faithful modern config.
+    expect(config.agents.list).toBeUndefined()
+    expect(config.agents.ownership).toBe('explicit')
+    const ids = Object.keys(config.agents.entries)
+    expect(ids).toHaveLength(5)
     expect(ids).toContain('main')
     expect(ids).toContain('pixel')
     expect(ids).toContain('rolo')
@@ -178,7 +181,7 @@ describe('mock seed', () => {
     expect(ids).toContain('patch')
 
     // Each agent has identity
-    for (const agent of config.agents.list) {
+    for (const agent of Object.values(config.agents.entries) as Array<{ identity: { name: string; emoji: string } }>) {
       expect(agent.identity).toBeDefined()
       expect(agent.identity.name).toBeTruthy()
       expect(agent.identity.emoji).toBeTruthy()

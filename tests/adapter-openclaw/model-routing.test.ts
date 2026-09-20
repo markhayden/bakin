@@ -107,30 +107,69 @@ describe('applyRoutingPolicy', () => {
 })
 
 describe('setAgentModels', () => {
-  it('persists model + subagentModel onto agents.list[] and null-clears both', () => {
+  it('persists model + subagentModel (legacy config upgrades to entries) and null-clears both', () => {
     writeConfig({ agents: { list: [{ id: 'pixel', model: { primary: 'old/model' } }] } })
 
     setAgentModels('pixel', { model: 'anthropic/claude-opus-4-6', subagentModel: 'anthropic/claude-haiku-4-5' })
-    let agent = (readConfigFile().agents as { list: Array<Record<string, unknown>> }).list[0]
+    const entriesOf = () => (readConfigFile().agents as { entries: Record<string, Record<string, unknown>> }).entries
+    let agent = entriesOf().pixel!
     expect(agent.model).toEqual({ primary: 'anthropic/claude-opus-4-6' })
     expect(agent.subagents).toEqual({ model: 'anthropic/claude-haiku-4-5' })
 
     setAgentModels('pixel', { model: null, subagentModel: null })
-    agent = (readConfigFile().agents as { list: Array<Record<string, unknown>> }).list[0]
+    agent = entriesOf().pixel!
     expect(agent.model).toBeUndefined()
     expect((agent.subagents as Record<string, unknown>).model).toBeUndefined()
   })
 
-  it('preserves other model-object fields when updating primary', () => {
+  it('preserves other model-object fields when updating primary (and upgrades legacy list → entries, #873)', () => {
     writeConfig({ agents: { list: [{ id: 'main', model: { primary: 'a/b', temperature: 0.2 } }] } })
     setAgentModels('main', { model: 'c/d' })
-    const agent = (readConfigFile().agents as { list: Array<Record<string, unknown>> }).list[0]
-    expect(agent.model).toEqual({ primary: 'c/d', temperature: 0.2 })
+    const agents = readConfigFile().agents as { list?: unknown; entries: Record<string, Record<string, unknown>> }
+    // One-way upgrade: the legacy array is gone, main lives under entries.
+    expect(agents.list).toBeUndefined()
+    expect(agents.entries.main!.model).toEqual({ primary: 'c/d', temperature: 0.2 })
   })
 
   it('throws for an unknown agent', () => {
     writeConfig({ agents: { list: [] } })
     expect(() => setAgentModels('ghost', { model: 'a/b' })).toThrow('Agent not found')
+  })
+
+  it('writes non-main models onto a keyed entries registry (the #873 throw)', () => {
+    writeConfig({
+      agents: {
+        ownership: 'explicit',
+        entries: {
+          main: { model: 'openai/gpt-5.5' },
+          pixel: { model: { primary: 'old/model', temperature: 0.1 }, futureField: true },
+        },
+      },
+    })
+    setAgentModels('pixel', { model: 'openai/gpt-5.6-luna', subagentModel: 'openai/gpt-5.4' })
+    const agents = readConfigFile().agents as { ownership?: string; entries: Record<string, Record<string, unknown>> }
+    expect(agents.entries.pixel!.model).toEqual({ primary: 'openai/gpt-5.6-luna', temperature: 0.1 })
+    expect(agents.entries.pixel!.subagents).toEqual({ model: 'openai/gpt-5.4' })
+    // Untouched siblings + policy + unknown fields round-trip.
+    expect(agents.entries.pixel!.futureField).toBe(true)
+    expect(agents.entries.main!.model).toBe('openai/gpt-5.5')
+    expect(agents.ownership).toBe('explicit')
+  })
+
+  it('refuses to invent main inside an authoritative registry without one', () => {
+    writeConfig({ agents: { ownership: 'explicit', entries: { pixel: {} } } })
+    expect(() => setAgentModels('main', { model: 'a/b' })).toThrow('Agent not found')
+  })
+})
+
+describe('applyRoutingPolicy — registry preservation (#873 pin)', () => {
+  it('defaults writes keep entries + ownership intact', () => {
+    writeConfig({ agents: { ownership: 'explicit', entries: { main: { model: 'openai/gpt-5.5' } } } })
+    applyRoutingPolicy({ defaultModel: 'x/y' })
+    const agents = readConfigFile().agents as { ownership?: string; entries?: Record<string, unknown>; defaults?: { model?: { primary?: string } } }
+    expect(agents.ownership).toBe('explicit')
+    expect(agents.entries?.main).toBeDefined()
+    expect(agents.defaults?.model?.primary).toBe('x/y')
   })
 })
 
@@ -144,12 +183,12 @@ describe('config-safety regressions (branch review)', () => {
     expect(readFileSync(configPath(), 'utf-8')).toContain('SECRET')
   })
 
-  it('setAgentModels materializes the implicit main on a minimal config', () => {
+  it('setAgentModels materializes the implicit main on a minimal config — into entries (#873)', () => {
     writeConfig({ agents: { defaults: { model: { primary: 'gpt-5.5' } } } })
     setAgentModels('main', { model: 'gpt-6' })
-    const config = readConfigFile() as { agents?: { list?: Array<{ id: string; model?: { primary?: string } }> } }
-    const main = config.agents?.list?.find((a) => a.id === 'main')
-    expect(main?.model?.primary).toBe('gpt-6')
+    const config = readConfigFile() as { agents?: { list?: unknown; entries?: Record<string, { model?: { primary?: string } }> } }
+    expect(config.agents?.list).toBeUndefined()
+    expect(config.agents?.entries?.main?.model?.primary).toBe('gpt-6')
   })
 
   it('alias writes preserve non-alias model entries and their extra properties', () => {

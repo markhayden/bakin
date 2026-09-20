@@ -7,7 +7,7 @@ import type {
   RuntimeMemoryReadRange,
   RuntimeMemoryTier,
 } from '@bakin/core/adapters/runtime'
-import { readOpenClawConfig } from './config'
+import { configuredWorkspaceFor, readOpenClawConfig } from './config'
 import { getOpenClawHome, getOpenClawPath } from './home'
 import { tryGetMainAgentId } from './main-agent'
 import { readSessionStoreCached } from './session-store'
@@ -692,8 +692,9 @@ function agentSessionsDir(agentId: string): string {
 function workspacePath(agentId: string): string {
   const config = readOpenClawConfig()
   const isMain = agentId === tryGetMainAgentId()
-  const agent = config?.agents?.list?.find((entry) => entry.id === agentId)
-  const configured = agent?.workspace ?? (isMain ? config?.agents?.defaults?.workspace : undefined)
+  // Shared entries-aware lookup (#873); this caller keeps its own stricter
+  // trust rule below (existsSync only — reads must never invent dirs).
+  const configured = configuredWorkspaceFor(config, agentId, isMain)
   // The configured workspace may be an absolute path under a DIFFERENT OpenClaw
   // home than the one this process resolves — e.g. host-side Bakin reading a
   // container-onboarded config in the dockerized dev rig, where it points at

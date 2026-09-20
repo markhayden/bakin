@@ -49,6 +49,41 @@ describe('OpenClaw runtime binary resolution', () => {
     expect(readFileSync(callsFile, 'utf-8')).toContain('gateway restart')
   })
 
+  it('create on an agent already in the keyed registry fails typed WITHOUT shelling agents add (#873 adoption regression)', async () => {
+    // The #873 installer contradiction: the lying roster said pixel "does
+    // not exist" (blocking --adopt) while `openclaw agents add` said it
+    // "already exists". With entries decoded, the duplicate guard and the
+    // CLI agree again.
+    const binDir = join(testDir, 'bin')
+    const callsFile = join(testDir, 'calls-dup.txt')
+    const openClawHome = join(testDir, 'openclaw-dup')
+    mkdirSync(binDir, { recursive: true })
+    mkdirSync(openClawHome, { recursive: true })
+    const shim = join(binDir, 'openclaw')
+    writeFileSync(shim, `#!/bin/sh\necho "$@" >> "${callsFile}"\necho "{}"\n`, 'utf-8')
+    chmodSync(shim, 0o755)
+    process.env.OPENCLAW_HOME = openClawHome
+    writeFileSync(join(openClawHome, 'openclaw.json'), JSON.stringify({
+      agents: {
+        ownership: 'explicit',
+        entries: { main: {}, pixel: { identity: { name: 'Pixel' } } },
+      },
+    }))
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const { resetOpenClawConfigCache } = await import('../../packages/adapter-openclaw/src/config')
+    resetOpenClawConfigCache()
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: shim } })
+    await runtime.initialize({ contentDir: testDir })
+
+    // The roster SEES the entries agents (what makes package --adopt work)…
+    const roster = await runtime.agents.list()
+    expect(roster.map((a) => a.id).sort()).toEqual(['main', 'pixel'])
+    // …and a duplicate create fails typed instead of double-creating.
+    await expect(runtime.agents.create({ id: 'pixel', name: 'Pixel' })).rejects.toThrow('Agent already exists')
+    expect(existsSync(callsFile) ? readFileSync(callsFile, 'utf-8') : '').not.toContain('agents add')
+  })
+
   it('writes agent config directly when OpenClaw blocks agent add on plugin allow warning', async () => {
     const binDir = join(testDir, 'bin')
     const callsFile = join(testDir, 'calls.txt')
@@ -75,13 +110,14 @@ echo "{}"
     const agent = await runtime.agents.create({ id: 'pixel', name: 'Pixel' })
 
     const config = JSON.parse(readFileSync(join(openClawHome, 'openclaw.json'), 'utf-8')) as {
-      agents?: { list?: Array<Record<string, unknown>> }
+      agents?: { list?: unknown; entries?: Record<string, Record<string, unknown>> }
     }
-    const configured = config.agents?.list?.find((entry) => entry.id === 'pixel')
+    // #873: the fallback write lands on the canonical keyed registry.
+    expect(config.agents?.list).toBeUndefined()
+    const configured = config.agents?.entries?.pixel
     expect(agent.id).toBe('pixel')
     expect(agent.name).toBe('Pixel')
     expect(configured).toMatchObject({
-      id: 'pixel',
       name: 'Pixel',
       workspace: join(openClawHome, 'workspaces', 'pixel'),
       agentDir: join(openClawHome, 'agents', 'pixel', 'agent'),
@@ -135,14 +171,16 @@ echo "{}"
     await runtime.agents.remove('pixel')
 
     const config = JSON.parse(readFileSync(join(openClawHome, 'openclaw.json'), 'utf-8')) as {
-      agents?: { list?: Array<{ id?: string; subagents?: { allowAgents?: string[] } }> }
+      agents?: { list?: unknown; entries?: Record<string, { subagents?: { allowAgents?: string[] } }> }
     }
     const cron = JSON.parse(readFileSync(join(openClawHome, 'cron', 'jobs.json'), 'utf-8')) as {
       jobs?: Array<{ id?: string; agentId?: string }>
     }
     expect(readFileSync(callsFile, 'utf-8')).toContain('agents delete pixel --force --json')
-    expect(config.agents?.list?.some((entry) => entry.id === 'pixel')).toBe(false)
-    expect(config.agents?.list?.find((entry) => entry.id === 'main')?.subagents?.allowAgents ?? []).not.toContain('pixel')
+    // #873: removal upgrades the legacy seed to entries and scrubs allowlists there.
+    expect(config.agents?.list).toBeUndefined()
+    expect(config.agents?.entries?.pixel).toBeUndefined()
+    expect(config.agents?.entries?.main?.subagents?.allowAgents ?? []).not.toContain('pixel')
     expect(existsSync(workspace)).toBe(false)
     expect(existsSync(agentRoot)).toBe(false)
     expect(cron.jobs?.some((job) => job.agentId === 'pixel')).toBe(false)

@@ -11,9 +11,16 @@ import type { RuntimeAgent } from '@bakin/core/adapters/runtime'
 import { RuntimeError } from '@bakin/core/adapters/runtime'
 import {
   readOpenClawConfig,
+  readOpenClawConfigForMutation,
   resetOpenClawConfigCache,
   materializeImplicitMainAgent,
   findAgentById,
+  findAgentIn,
+  upsertAgentIn,
+  existingAgentForWrite,
+  ensureAgentEntries,
+  agentListFrom,
+  configuredWorkspaceFor,
   type OpenClawConfig,
   type OpenClawAgent,
 } from './config'
@@ -37,12 +44,6 @@ export function agentModelPrimary(model: OpenClawAgent['model']): string | undef
   return model?.primary
 }
 
-export function openClawAgentsList(config: OpenClawConfig): OpenClawAgent[] {
-  config.agents ??= {}
-  config.agents.list ??= []
-  return config.agents.list
-}
-
 export function upsertOpenClawAgentConfig(input: {
   id: string
   name: string
@@ -50,9 +51,12 @@ export function upsertOpenClawAgentConfig(input: {
   model?: string
   emoji?: string
 }): void {
-  const config: OpenClawConfig = readOpenClawConfig() ?? {}
-  const list = openClawAgentsList(config)
-  const existing = list.find((agent) => agent.id === input.id)
+  // Strict read (#873 fold-in): the lenient `readOpenClawConfig() ?? {}`
+  // meant a CORRUPT openclaw.json was silently replaced by a near-empty
+  // file on the next agent upsert — wiping gateway token + channels. Same
+  // refusal posture as every other mutator.
+  const config: OpenClawConfig = readOpenClawConfigForMutation()
+  const existing = findAgentIn(config, input.id)
   const agentDir = getOpenClawPath('agents', input.id, 'agent')
   const identity = input.name || input.emoji
     ? {
@@ -62,21 +66,24 @@ export function upsertOpenClawAgentConfig(input: {
       }
     : existing?.identity
 
-  if (!existing && list.length === 0 && input.id !== 'main') {
-    list.push({ id: 'main' })
-  }
+  // Creating the first agent on a virgin config makes the registry
+  // authoritative — materialize implicit main FIRST or it silently
+  // vanishes from the roster (review finding; the legacy writer's
+  // `list.push({id:'main'})` guard, rebuilt on D2's rules: on an already-
+  // authoritative registry without main this is a null no-op, never an
+  // invention).
+  if (input.id !== 'main') materializeImplicitMainAgent(config)
 
-  const next = {
-    ...(existing ?? { id: input.id }),
+  // Patch the LIVE entry (#873): unknown fields round-trip via the object
+  // itself, never a reconstruction. Legacy configs upgrade to entries here.
+  const entry = upsertAgentIn(config, input.id)
+  Object.assign(entry, {
     name: input.name,
     workspace: input.workspace,
     agentDir,
     ...(input.model ? { model: input.model } : {}),
     ...(identity ? { identity } : {}),
-  }
-
-  if (existing) Object.assign(existing, next)
-  else list.push(next)
+  })
 
   mkdirSync(agentDir, { recursive: true })
   mkdirSync(join(agentDir, 'sessions'), { recursive: true })
@@ -85,11 +92,14 @@ export function upsertOpenClawAgentConfig(input: {
 }
 
 export function updateOpenClawAgentIdentity(agentId: string, input: { name?: string; emoji?: string }): void {
-  const config = readOpenClawConfig()
-  const agent = config?.agents?.list?.find((entry) => entry.id === agentId)
+  const config = readOpenClawConfigForMutation()
+  const agent = findAgentIn(config, agentId)
   if (!agent) throw new RuntimeError(`Agent not found: ${agentId}`, { kind: 'not_found' })
-  agent.identity = {
-    ...(agent.identity ?? {}),
+  // Upgrade-then-edit: the write must land on entries even when the agent
+  // was found in a legacy list.
+  const entry = upsertAgentIn(config, agentId)
+  entry.identity = {
+    ...(entry.identity ?? {}),
     ...(input.name ? { name: input.name } : {}),
     ...(input.emoji ? { emoji: input.emoji } : {}),
   }
@@ -97,10 +107,10 @@ export function updateOpenClawAgentIdentity(agentId: string, input: { name?: str
 }
 
 export function updateAgentAllowlist(agentId: string, updater: (current: string[]) => string[]): void {
-  const config = readOpenClawConfig()
-  const agent = agentId === 'main' && config
+  const config = readOpenClawConfigForMutation()
+  const agent = agentId === 'main'
     ? materializeImplicitMainAgent(config)
-    : config?.agents?.list?.find((entry) => entry.id === agentId)
+    : existingAgentForWrite(config, agentId)
   if (!agent) throw new RuntimeError(`Agent not found: ${agentId}`, { kind: 'not_found' })
   agent.subagents ??= {}
   agent.subagents.allowAgents = updater(agent.subagents.allowAgents ?? [])
@@ -108,25 +118,25 @@ export function updateAgentAllowlist(agentId: string, updater: (current: string[
 }
 
 export function removeOpenClawAgentConfig(agentId: string): void {
-  const config = readOpenClawConfig()
-  const agents = config?.agents?.list
-  if (!config?.agents || !agents) return
+  const config = readOpenClawConfigForMutation()
+  if (!config.agents) return
 
-  let changed = false
-  const filtered = agents.filter((agent) => agent.id !== agentId)
-  if (filtered.length !== agents.length) {
-    config.agents.list = filtered
-    changed = true
-  }
+  // Decide BEFORE upgrading so an unknown-agent no-op never rewrites the
+  // file. Past this guard something always changes, so the write below is
+  // unconditional (review finding: the old `changed` bookkeeping was dead).
+  const hadAgent = Boolean(findAgentIn(config, agentId))
+  const needsScrub = agentListFrom(config).some((agent) => agent.subagents?.allowAgents?.includes(agentId))
+  if (!hadAgent && !needsScrub) return
 
-  for (const agent of config.agents.list ?? []) {
-    const allowAgents = agent.subagents?.allowAgents
+  const entries = ensureAgentEntries(config)
+  delete entries[agentId]
+  for (const entry of Object.values(entries)) {
+    const allowAgents = entry.subagents?.allowAgents
     if (!allowAgents?.includes(agentId)) continue
-    agent.subagents!.allowAgents = allowAgents.filter((id) => id !== agentId)
-    changed = true
+    entry.subagents!.allowAgents = allowAgents.filter((id) => id !== agentId)
   }
 
-  if (changed) writeOpenClawConfig(config as unknown as Record<string, unknown>)
+  writeOpenClawConfig(config as unknown as Record<string, unknown>)
 }
 
 export function removeOpenClawAgentArtifacts(agentId: string, workspace: string): void {
@@ -193,8 +203,7 @@ function isForeignOpenClawPath(path: string): boolean {
 export function getWorkspacePath(agentId: string): string {
   const config = readOpenClawConfig()
   const isMain = agentId === tryGetMainAgentId()
-  const agent = config?.agents?.list?.find((entry) => entry.id === agentId)
-  const configured = agent?.workspace ?? (isMain ? config?.agents?.defaults?.workspace : undefined)
+  const configured = configuredWorkspaceFor(config, agentId, isMain)
   // Trust the configured path unless it belongs to a foreign OpenClaw home
   // that doesn't exist here (the dockerized-rig scenario) — writes through
   // this path must NOT silently land in the default workspace just because

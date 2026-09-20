@@ -66,3 +66,62 @@ describe('agentListFrom', () => {
     expect(agentListFrom(null)).toEqual([])
   })
 })
+
+describe('agentListFrom — 2026.9.5 keyed entries (#873)', () => {
+  // Representative slice of a REAL migrated config (this box, 2026-09-20):
+  // string-model main with a models map + allowlist, object-model pixel.
+  const entriesConfig = {
+    agents: {
+      ownership: 'explicit',
+      defaults: { model: { primary: 'openai/gpt-5.4' }, workspace: '/home/ws' },
+      entries: {
+        main: {
+          model: 'openai/gpt-5.5',
+          identity: { name: 'Roscoe', emoji: '🐷' },
+          subagents: { allowAgents: ['pixel'] },
+          models: { 'openai/gpt-5.5': { agentRuntime: { id: 'codex' } } },
+          workspace: '/home/ws',
+        },
+        pixel: {
+          name: 'pixel',
+          workspace: '/home/workspaces/pixel',
+          identity: { name: 'Pixel', emoji: '🎨' },
+          model: { primary: 'openai/gpt-5.5' },
+        },
+      },
+    },
+  } as never
+
+  it('decodes every entry with the map key as the agent id', () => {
+    const list = agentListFrom(entriesConfig)
+    expect(list.map((a) => a.id).sort()).toEqual(['main', 'pixel'])
+    const main = list.find((a) => a.id === 'main')!
+    expect(main.model).toBe('openai/gpt-5.5') // string model passes through
+    expect(main.identity?.name).toBe('Roscoe')
+    expect(main.subagents?.allowAgents).toEqual(['pixel'])
+    // Unknown entry fields survive the decode untouched.
+    expect((main as { models?: unknown }).models).toBeDefined()
+    const pixel = list.find((a) => a.id === 'pixel')!
+    expect((pixel.model as { primary?: string }).primary).toBe('openai/gpt-5.5')
+  })
+
+  it('the map key wins over any embedded id field', () => {
+    const list = agentListFrom({ agents: { entries: { rolo: { id: 'impostor' } as never } } } as never)
+    expect(list.map((a) => a.id)).toEqual(['rolo'])
+  })
+
+  it('entries wins over a lingering legacy list (hybrid file)', () => {
+    const list = agentListFrom({
+      agents: { entries: { main: {} }, list: [{ id: 'stale-a' }, { id: 'stale-b' }] },
+    } as never)
+    expect(list.map((a) => a.id)).toEqual(['main'])
+  })
+
+  it('an EMPTY entries map is authoritative — no fabricated Main', () => {
+    expect(agentListFrom({ agents: { entries: {}, defaults: { workspace: '/w' } } } as never)).toEqual([])
+  })
+
+  it('ownership explicit means never synthesize, even without entries', () => {
+    expect(agentListFrom({ agents: { ownership: 'explicit', defaults: { workspace: '/w' } } } as never)).toEqual([])
+  })
+})

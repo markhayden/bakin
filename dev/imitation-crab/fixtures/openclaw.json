@@ -1,60 +1,104 @@
 {
-  "agents": {
-    "defaults": {
-      "model": { "primary": "anthropic/claude-sonnet-4-20250514" },
-      "models": {
-        "fast": { "alias": "google/gemini-2.5-flash" },
-        "haiku": { "alias": "anthropic/claude-haiku-4-5" },
-        "opus": { "alias": "anthropic/claude-opus-4-6" },
-        "sonnet": { "alias": "anthropic/claude-sonnet-4-6" }
-      },
-      "workspace": "~/.openclaw/workspace"
+ "agents": {
+  "ownership": "explicit",
+  "defaults": {
+   "model": {
+    "primary": "anthropic/claude-sonnet-4-20250514"
+   },
+   "models": {
+    "fast": {
+     "alias": "google/gemini-2.5-flash"
     },
-    "list": [
-      {
-        "id": "main",
-        "identity": { "name": "Margo", "emoji": "🐷" },
-        "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
-      },
-      {
-        "id": "pixel",
-        "identity": { "name": "Pixel", "emoji": "🎨" },
-        "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
-      },
-      {
-        "id": "rolo",
-        "identity": { "name": "Rolo", "emoji": "🎬" },
-        "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
-      },
-      {
-        "id": "jessica",
-        "identity": { "name": "Jessica", "emoji": "🔎" },
-        "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
-      },
-      {
-        "id": "patch",
-        "identity": { "name": "Patch", "emoji": "⚙️" },
-        "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
-      }
-    ]
-  },
-  "gateway": {
-    "auth": { "token": "mock-gateway-token-imitationcrab" }
-  },
-  "channels": {
-    "discord": {
-      "token": "mock-discord-token",
-      "guilds": { "000000000000": { "name": "mock-server" } }
+    "haiku": {
+     "alias": "anthropic/claude-haiku-4-5"
+    },
+    "opus": {
+     "alias": "anthropic/claude-opus-4-6"
+    },
+    "sonnet": {
+     "alias": "anthropic/claude-sonnet-4-6"
     }
+   },
+   "workspace": "~/.openclaw/workspace"
   },
-  "skills": {
-    "entries": {
-      "web-search": { "apiKey": "mock-websearch-key" }
+  "entries": {
+   "main": {
+    "identity": {
+     "name": "Margo",
+     "emoji": "🐷"
+    },
+    "model": {
+     "primary": "anthropic/claude-sonnet-4-20250514"
     }
-  },
-  "models": {
-    "providers": {
-      "google": { "apiKey": "mock-gemini-key", "env": { "GEMINI_API_KEY": "mock-gemini-key" } }
+   },
+   "pixel": {
+    "identity": {
+     "name": "Pixel",
+     "emoji": "🎨"
+    },
+    "model": {
+     "primary": "anthropic/claude-sonnet-4-20250514"
     }
+   },
+   "rolo": {
+    "identity": {
+     "name": "Rolo",
+     "emoji": "🎬"
+    },
+    "model": {
+     "primary": "anthropic/claude-sonnet-4-20250514"
+    }
+   },
+   "jessica": {
+    "identity": {
+     "name": "Jessica",
+     "emoji": "🔎"
+    },
+    "model": {
+     "primary": "anthropic/claude-sonnet-4-20250514"
+    }
+   },
+   "patch": {
+    "identity": {
+     "name": "Patch",
+     "emoji": "⚙️"
+    },
+    "model": {
+     "primary": "anthropic/claude-sonnet-4-20250514"
+    }
+   }
   }
+ },
+ "gateway": {
+  "auth": {
+   "token": "mock-gateway-token-imitationcrab"
+  }
+ },
+ "channels": {
+  "discord": {
+   "token": "mock-discord-token",
+   "guilds": {
+    "000000000000": {
+     "name": "mock-server"
+    }
+   }
+  }
+ },
+ "skills": {
+  "entries": {
+   "web-search": {
+    "apiKey": "mock-websearch-key"
+   }
+  }
+ },
+ "models": {
+  "providers": {
+   "google": {
+    "apiKey": "mock-gemini-key",
+    "env": {
+     "GEMINI_API_KEY": "mock-gemini-key"
+    }
+   }
+  }
+ }
 }

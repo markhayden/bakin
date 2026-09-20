@@ -8,8 +8,10 @@
  *   fallbackModels       → agents.defaults.model.fallbacks
  *   defaultSubagentModel → agents.defaults.subagents.model
  *   aliases              → agents.defaults.models ({ name: { alias: target } })
- * Per-agent assignments (model / subagentModel) live on agents.list[] and are
- * written through `setAgentModels` (backing agents.update).
+ * Per-agent assignments (model / subagentModel) live on agents.entries[<id>]
+ * (2026.9.5 keyed registry, #873; legacy agents.list configs upgrade on
+ * first write) and are written through `setAgentModels` (backing
+ * agents.update).
  *
  * Bakin never sees these shapes — the parsing that used to live in the models
  * plugin's config-io moved here, behind the adapter boundary.
@@ -17,6 +19,7 @@
 import type { RuntimeRoutingPolicy } from '@bakin/core/adapters/runtime'
 
 import {
+  existingAgentForWrite,
   materializeImplicitMainAgent,
   readOpenClawConfig,
   readOpenClawConfigForMutation,
@@ -113,18 +116,18 @@ export function applyRoutingPolicy(patch: Partial<RuntimeRoutingPolicy>): void {
   resetOpenClawConfigCache()
 }
 
-/** Persist per-agent model assignments onto agents.list[] (null clears). */
+/** Persist per-agent model assignments onto agents.entries[<id>] (null clears). */
 export function setAgentModels(
   agentId: string,
   patch: { model?: string | null; subagentModel?: string | null },
 ): void {
   const config: OpenClawConfig = readOpenClawConfigForMutation()
-  // A minimal config declares no agents.list — `main` exists implicitly.
-  // Materialize it exactly like updateAgentAllowlist does, or assigning a
-  // model to main on a fresh install always throws.
+  // A minimal config declares no registry — `main` exists implicitly there.
+  // Materialize it exactly like updateAgentAllowlist does (entries-bound,
+  // and null inside an authoritative registry — never invented, #873 D2).
   const agent = agentId === 'main'
     ? materializeImplicitMainAgent(config)
-    : config.agents?.list?.find((a) => a.id === agentId)
+    : existingAgentForWrite(config, agentId)
   if (!agent) throw new Error(`Agent not found in runtime config: ${agentId}`)
 
   if (patch.model !== undefined) {
