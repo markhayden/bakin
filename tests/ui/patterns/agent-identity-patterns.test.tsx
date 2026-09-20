@@ -71,6 +71,22 @@ describe('focused agent identity patterns', () => {
 })
 
 describe('focused agent assignment pattern', () => {
+  it('preserves the assigned-agent option without a public sentinel export', async () => {
+    const onValueChange = mock(() => {})
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <AgentSelect ariaLabel="Assign owner" value="maya" onValueChange={onValueChange} agents={agents} includeAssigned />,
+    )
+
+    await user.click(screen.getByRole('combobox', { name: 'Assign owner' }))
+    await user.click(await screen.findByRole('option', { name: 'Assigned agent' }))
+    expect(onValueChange).toHaveBeenCalledWith('$assigned')
+    rerender(
+      <AgentSelect ariaLabel="Assign owner" value="$assigned" onValueChange={onValueChange} agents={agents} includeAssigned />,
+    )
+    expect(screen.getByRole('combobox', { name: 'Assign owner' }).textContent).toContain('Assigned agent')
+  })
+
   it('uses an associated field label when the consumer does not supply an aria label', () => {
     render(
       <>

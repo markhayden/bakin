@@ -116,6 +116,12 @@ describe('buildSdkPackage', () => {
     expect(Object.hasOwn(slots, 'clearSlotsOwnedBy')).toBe(false)
     const metadata = await import(pathToFileURL(join(outDir, 'metadata/index.js')).href)
     expect(metadata.defineHookContract).toBeFunction()
+    const patterns = await import(pathToFileURL(join(outDir, 'patterns/index.js')).href)
+    expect(patterns.AgentDot).toBeFunction()
+    expect(patterns.AgentStatus).toBeFunction()
+    expect(patterns.ColorPicker).toBeFunction()
+    expect(Object.hasOwn(patterns, 'PageHeaderOverflowMenu')).toBe(false)
+    expect(Object.hasOwn(patterns, 'ASSIGNED_AGENT_VALUE')).toBe(false)
 
     const consumerDir = join(repoRoot, `.tmp-sdk-focused-consumer-${Date.now()}`)
     try {

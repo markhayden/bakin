@@ -12,7 +12,7 @@ import { TurnOutputView } from '@makinbakin/sdk/conversation'
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import { PageShell } from '@makinbakin/sdk/layout'
 import { PluginLink, useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
-import { PluginSettingsRenderer } from '@makinbakin/sdk/patterns'
+import { AgentDot, AgentStatus, ColorPicker, PluginSettingsRenderer } from '@makinbakin/sdk/patterns'
 import { PluginUiFixtureHost, createPluginUiFixtureFetch } from '@makinbakin/sdk/testing/ui'
 import { definePluginUiConformance } from '@makinbakin/sdk/testing/ui/conformance'
 import { Button } from '@makinbakin/sdk/ui'
@@ -30,6 +30,12 @@ export { copyToClipboard } from '@makinbakin/sdk/utils'
 export { getSlotEntries } from '@makinbakin/sdk/slots'
 // @ts-expect-error Plugin teardown owns slot cleanup.
 export { clearSlotsOwnedBy } from '@makinbakin/sdk/slots'
+// @ts-expect-error Header overflow is composed through the public header props.
+export { PageHeaderOverflowMenu } from '@makinbakin/sdk/patterns'
+// @ts-expect-error The removed standalone overflow component has no public props.
+export type { PageHeaderOverflowMenuProps } from '@makinbakin/sdk/patterns'
+// @ts-expect-error Assigned selection is owned by AgentSelect.
+export { ASSIGNED_AGENT_VALUE } from '@makinbakin/sdk/patterns'
 
 export interface FocusedSdkConsumer {
   charts: typeof Charts
@@ -60,6 +66,9 @@ export const focusedSdkValues = {
   Slot,
   registerSlot,
   defineHookContract,
+  AgentDot,
+  AgentStatus,
+  ColorPicker,
 }
 
 /** Representative props prove consumers need no private implementation types. */

@@ -227,7 +227,6 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `PageTimeline` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `Pagination` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `PageHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `PageHeaderOverflowMenu` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `WorkspacePage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `WorkspacePageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `WorkspacePageCompactHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -266,7 +265,6 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `AgentDot` | Present agent identity without importing a registry or host store. |
 | `AgentStatus` | Present agent identity without importing a registry or host store. |
 | `AgentSelect` | Present agent identity without importing a registry or host store. |
-| `ASSIGNED_AGENT_VALUE` | Stable assignment-value helpers shared by forms and workflow configuration. |
 | `TEAM_VALUE_PREFIX` | Stable assignment-value helpers shared by forms and workflow configuration. |
 | `isTeamValue` | Stable assignment-value helpers shared by forms and workflow configuration. |
 | `teamIdFromValue` | Stable assignment-value helpers shared by forms and workflow configuration. |
@@ -356,7 +354,6 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `PageControlsProps` | — |
 | `PageDensity` | — |
 | `PageHeaderMeasure` | — |
-| `PageHeaderOverflowMenuProps` | — |
 | `PageHeaderProps` | — |
 | `PageProps` | — |
 | `PageScroll` | — |

@@ -14,10 +14,10 @@ Plan: [implementation and rollback](plan.md).
 - [x] T2: facade removal; live behavior remains green.
 - [x] T3: package JS/declarations and docs agree.
 - [x] Checkpoint A passes; commit C1 (this checkpoint).
-- [ ] T4: pattern removal guards and preservation checks.
-- [ ] T5: facade and exact public API/coverage contraction.
-- [ ] T6: package contract, public guidance, story evidence.
-- [ ] Checkpoint B passes; commit C2.
+- [x] T4: pattern removal guards and preservation checks.
+- [x] T5: facade and exact public API/coverage contraction.
+- [x] T6: package contract, public guidance, story evidence.
+- [x] Checkpoint B passes; commit C2 (this checkpoint).
 - [ ] T7: hook removal guards and implementation deletion.
 - [ ] T8: comments/guidance and package declaration checks.
 - [ ] T9: documentation reconciliation and Bits follow-up record.
@@ -49,6 +49,14 @@ Final full-suite verification follows all three slices.
 Generated SDK reference refreshed with the canonical renderer; unrelated outputs
 from the broad docs generator were restored to their pre-task contents. Subsequent
 slice refreshes use the existing SDK renderer and stable writer directly.
+
+C1: `0b3de8905`. Phase B: 6 pass / 2 intended export failures before removal;
+159 focused/package tests pass after removal. Added behavioral proof that the
+assigned option still emits `$assigned` and compact-header overflow still opens.
+Quick conformance, lint (same five warnings), and docs validation pass. Six public
+Storybook files / 16 Chromium interaction tests pass; report:
+`test-results/ui-stories/junit.xml`. API delta is exactly two values and one type;
+kit-coverage allowance tightens from 28 to 27. No story visual or behavior change.
 
 ## Separate follow-ups
 

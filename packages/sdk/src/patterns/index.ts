@@ -35,7 +35,6 @@ export {
   PageTimeline,
   Pagination,
   PageHeader,
-  PageHeaderOverflowMenu,
   WorkspacePage,
   WorkspacePageBody,
   WorkspacePageCompactHeader,
@@ -84,7 +83,6 @@ export type {
 export { AgentAvatar, AgentDot, AgentStatus, AgentSelect } from './agent-patterns'
 /** Stable assignment-value helpers shared by forms and workflow configuration. */
 export {
-  ASSIGNED_AGENT_VALUE,
   TEAM_VALUE_PREFIX,
   isTeamValue,
   teamIdFromValue,
@@ -188,7 +186,6 @@ export type {
   PageControlsProps,
   PageDensity,
   PageHeaderMeasure,
-  PageHeaderOverflowMenuProps,
   PageHeaderProps,
   PageProps,
   PageScroll,
