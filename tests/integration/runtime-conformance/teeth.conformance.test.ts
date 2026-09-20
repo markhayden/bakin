@@ -275,6 +275,33 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
       .rejects.toThrow(/conformance violation: declared thinking level 'max' failed a turn/)
   })
 
+  it('fails per-turn model honesty when a declared-true runtime rejects overrides (#880)', async () => {
+    const runtime = createMockRuntimeAdapter()
+    // Lie: perTurnModel stays true (the mock default) but any turn carrying
+    // a model is refused — the OpenClaw 2026.9.5 operator.admin class.
+    const realSend = runtime.messaging.send.bind(runtime.messaging)
+    runtime.messaging.send = async (args) => {
+      if (args.model) throw new Error('provider/model overrides are not authorized for this caller.')
+      return realSend(args)
+    }
+    const target = { ...honestTargetShell(runtime) }
+    await expect(runtimeConformanceChecks.perTurnModelHonesty(target))
+      .rejects.toThrow(/conformance violation: declared perTurnModel=true but a turn carrying model/)
+  })
+
+  it('skips per-turn model honesty for an HONEST perTurnModel=false runtime (#880)', async () => {
+    const runtime = createMockRuntimeAdapter()
+    const support = runtime.models.routingSupport()
+    runtime.models.routingSupport = () => ({ ...support, perTurnModel: false })
+    // Sends carrying a model would fail — but the check must never send one.
+    runtime.messaging.send = async (args) => {
+      if (args.model) throw new Error('should not have sent a model override')
+      return { id: 'ok', content: 'ok' }
+    }
+    const target = { ...honestTargetShell(runtime) }
+    await runtimeConformanceChecks.perTurnModelHonesty(target) // resolves = skip-with-reason
+  })
+
   it('fails the ping check when an unserveable runtime reports true', async () => {
     const runtime = createMockRuntimeAdapter()
     const target = {
