@@ -2064,6 +2064,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       displayName: 'Bakin',
       clientMode: 'backend',
       scopes: ['operator.read', 'operator.write'],
+      // 2026.9.5 gates per-turn model overrides behind operator.admin
+      // (#880). Optional: loopback backend clients get it via the
+      // self-pairing bypass; a topology that refuses triggers ONE
+      // downgrade reconnect and routing clamps to agent defaults.
+      optionalScopes: ['operator.admin'],
       useDeviceAuth: true,
       label: 'OpenClaw chat gateway',
       // Long-lived adapter client: per-turn tap/stream subscriptions must

@@ -102,7 +102,10 @@ describe('OpenClaw runtime Gateway chat', () => {
         mode: 'backend',
       },
       role: 'operator',
-      scopes: ['operator.read', 'operator.write'],
+      // operator.admin is the #880 optional scope: per-turn model overrides
+      // need it on OpenClaw 2026.9.5; a refusing gateway triggers the
+      // downgrade reconnect instead of an outage.
+      scopes: ['operator.read', 'operator.write', 'operator.admin'],
       auth: { token: 'test-token' },
     })
     expect(agentRequest?.params).toMatchObject({

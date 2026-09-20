@@ -52,10 +52,17 @@ class FakeWebSocket {
   /** hello-ok payload the fake returns for connect; tests override per case. */
   static connectPayload: Record<string, unknown> = { type: 'hello-ok', protocol: 4, auth: { scopes: [] } }
 
+  /** Per-test connect override (e.g. NOT_PAIRED refusals); null = default hello-ok. */
+  static connectResponder: ((frame: Frame, ws: FakeWebSocket) => void) | null = null
+
   send(raw: string): void {
     const frame = JSON.parse(raw) as Frame
     this.sentFrames.push(frame)
     if (frame.method === 'connect') {
+      if (FakeWebSocket.connectResponder) {
+        FakeWebSocket.connectResponder(frame, this)
+        return
+      }
       this.emitMessage({ type: 'res', id: frame.id, ok: true, payload: FakeWebSocket.connectPayload })
     }
     // Other methods: never answered — tests control resolution manually.
@@ -83,6 +90,7 @@ beforeEach(() => {
   globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
   FakeWebSocket.instances.length = 0
   FakeWebSocket.connectPayload = { type: 'hello-ok', protocol: 4, auth: { scopes: [] } }
+  FakeWebSocket.connectResponder = null
   client = new OpenClawGatewayRpcClient({
     url: 'ws://127.0.0.1:1',
     token: () => null,
@@ -275,5 +283,81 @@ describe('accepted-ack surfacing', () => {
 
     ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { status: 'ok' } })
     await request
+  })
+})
+
+describe('optional scopes + granted-scope truth (#880)', () => {
+  function makeClient(opts: { optionalScopes?: string[] } = {}): OpenClawGatewayRpcClient {
+    return new OpenClawGatewayRpcClient({
+      url: 'ws://127.0.0.1:1',
+      token: () => null,
+      logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
+      clientId: 'test-client',
+      displayName: 'Test',
+      clientMode: 'backend',
+      scopes: ['operator.read', 'operator.write'],
+      ...(opts.optionalScopes ? { optionalScopes: opts.optionalScopes } : {}),
+      label: 'Test gateway',
+    })
+  }
+
+  it('requests base + optional scopes on connect and parses the granted set from the ACK', async () => {
+    FakeWebSocket.connectPayload = {
+      type: 'hello-ok', protocol: 4,
+      auth: { scopes: ['operator.read', 'operator.write', 'operator.admin'] },
+    }
+    const c = makeClient({ optionalScopes: ['operator.admin'] })
+    // Optimistic before connect: requested = assumed granted.
+    expect(c.hasScope('operator.admin')).toBe(true)
+    const request = c.request('agent', {}, { timeoutMs: 1000 })
+    await waitUntil(() => FakeWebSocket.instances.length === 1 && FakeWebSocket.instances[0]!.sentFrames.length >= 2, { label: 'connect + agent frames' })
+    const connectFrame = FakeWebSocket.instances[0]!.sentFrames.find((f) => f.method === 'connect')!
+    expect(connectFrame.params.scopes).toEqual(['operator.read', 'operator.write', 'operator.admin'])
+    // Authoritative after the ACK.
+    expect(c.grantedScopes()).toEqual(['operator.read', 'operator.write', 'operator.admin'])
+    expect(c.hasScope('operator.admin')).toBe(true)
+    const ws = FakeWebSocket.instances[0]!
+    const agentFrame = ws.sentFrames.find((f) => f.method === 'agent')!
+    ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { status: 'ok' } })
+    await request
+    c.close()
+  })
+
+  it('a NOT_PAIRED connect refusal downgrades ONCE: retries without optional scopes, sticky, and reports the loss', async () => {
+    let connectAttempt = 0
+    FakeWebSocket.connectResponder = (frame, ws) => {
+      connectAttempt += 1
+      if ((frame.params.scopes as string[]).includes('operator.admin')) {
+        ws.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'pairing required', code: 'NOT_PAIRED', details: { requestedScopes: frame.params.scopes, approvedScopes: ['operator.read', 'operator.write'] } } })
+        return
+      }
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { type: 'hello-ok', protocol: 4, auth: { scopes: ['operator.read', 'operator.write'] } } })
+    }
+    const c = makeClient({ optionalScopes: ['operator.admin'] })
+    const request = c.request('agent', {}, { timeoutMs: 2000 })
+    await waitUntil(() => FakeWebSocket.instances.length === 2, { label: 'downgrade re-dial' })
+    const second = FakeWebSocket.instances[1]!
+    await waitUntil(() => second.sentFrames.some((f) => f.method === 'connect'), { label: 'second connect frame' })
+    const secondConnect = second.sentFrames.find((f) => f.method === 'connect')!
+    expect(secondConnect.params.scopes).toEqual(['operator.read', 'operator.write'])
+    expect(connectAttempt).toBe(2)
+    // The ORIGINAL request survives the downgrade and completes.
+    await waitUntil(() => second.sentFrames.some((f) => f.method === 'agent'), { label: 'agent frame after downgrade' })
+    const agentFrame = second.sentFrames.find((f) => f.method === 'agent')!
+    second.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { status: 'ok' } })
+    await request
+    expect(c.hasScope('operator.admin')).toBe(false)
+    expect(c.grantedScopes()).toEqual(['operator.read', 'operator.write'])
+    c.close()
+  })
+
+  it('a NOT_PAIRED refusal WITHOUT optional scopes fails the connect (no retry loop)', async () => {
+    FakeWebSocket.connectResponder = (frame, ws) => {
+      ws.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'pairing required', code: 'NOT_PAIRED' } })
+    }
+    const c = makeClient()
+    await expect(c.request('agent', {}, { timeoutMs: 1000 })).rejects.toThrow(/NOT_PAIRED/)
+    expect(FakeWebSocket.instances.length).toBe(1)
+    c.close()
   })
 })
