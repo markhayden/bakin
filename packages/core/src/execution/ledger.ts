@@ -301,6 +301,33 @@ const MIGRATIONS = [
       db.exec("UPDATE run_costs SET work_class = 'auto-title' WHERE run_id LIKE 'chat:%:title'")
     },
   },
+  {
+    // Model rejections (#852): one durable row per model the account's
+    // provider deterministically rejected (typed model_not_supported).
+    // UNIQUE(model) IS the debounce — repeats update the open row; a later
+    // success/probe resolves it; a rejection after resolve reopens it.
+    // The models plugin overlays open rows as available:false on every read
+    // (never persisted into its cache). Coordination facts only.
+    version: 9,
+    up: (db: Db) => {
+      db.exec(
+        `CREATE TABLE model_rejections (
+           id            INTEGER PRIMARY KEY AUTOINCREMENT,
+           model         TEXT NOT NULL,
+           provider      TEXT NOT NULL DEFAULT '',
+           first_seen_at INTEGER NOT NULL,
+           last_seen_at  INTEGER NOT NULL,
+           occurrences   INTEGER NOT NULL DEFAULT 1,
+           detail        TEXT,
+           status        TEXT NOT NULL DEFAULT 'open',
+           resolved_at   INTEGER,
+           resolution    TEXT,
+           UNIQUE(model)
+         )`,
+      )
+      db.exec("CREATE INDEX model_rejections_live ON model_rejections(status) WHERE status = 'open'")
+    },
+  },
 ]
 
 /** Open the db with this module's schema applied. Every verb goes through here. */
@@ -1300,6 +1327,122 @@ export function resolveExpiredBudgetIncidents(input: {
       )
       .run(input.now, input.dailyWindowStartMs, input.monthlyWindowStartMs)
     return res.changes
+  })
+}
+
+export type ModelRejectionResolution = 'model_succeeded' | 'probe_succeeded' | 'manual'
+
+export interface ModelRejectionRow {
+  id: number
+  /** Qualified id: provider/model. */
+  model: string
+  provider: string
+  firstSeenAt: number
+  lastSeenAt: number
+  /** Lifetime rejection count — survives resolve/reopen cycles. */
+  occurrences: number
+  detail: string | null
+  status: 'open' | 'resolved'
+  resolvedAt: number | null
+  resolution: ModelRejectionResolution | null
+}
+
+interface RawModelRejectionRow {
+  id: number
+  model: string
+  provider: string
+  first_seen_at: number
+  last_seen_at: number
+  occurrences: number
+  detail: string | null
+  status: string
+  resolved_at: number | null
+  resolution: string | null
+}
+
+const MODEL_REJECTION_COLUMNS = 'id, model, provider, first_seen_at, last_seen_at, occurrences, detail, status, resolved_at, resolution'
+const MODEL_REJECTION_DETAIL_CAP = 500
+
+function toModelRejectionRow(r: RawModelRejectionRow): ModelRejectionRow {
+  return {
+    id: r.id,
+    model: r.model,
+    provider: r.provider,
+    firstSeenAt: r.first_seen_at,
+    lastSeenAt: r.last_seen_at,
+    occurrences: r.occurrences,
+    detail: r.detail,
+    status: r.status as 'open' | 'resolved',
+    resolvedAt: r.resolved_at,
+    resolution: r.resolution as ModelRejectionResolution | null,
+  }
+}
+
+/**
+ * Record a provider model rejection (#852). Idempotent per model via the
+ * UNIQUE: an open row absorbs repeats (occurrences++, fresh last_seen);
+ * a resolved row REOPENS (`opened: true` = new alertable event).
+ */
+export function recordModelRejection(input: {
+  model: string
+  provider?: string
+  detail?: string
+  at?: number
+}): { opened: boolean; id: number } {
+  return guard('recordModelRejection', () => {
+    const at = input.at ?? Date.now()
+    const detail = input.detail ? input.detail.slice(0, MODEL_REJECTION_DETAIL_CAP) : null
+    const db = ledger()
+    return db.transaction(() => {
+      const inserted = db
+        .prepare(
+          `INSERT INTO model_rejections (model, provider, first_seen_at, last_seen_at, detail)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(model) DO NOTHING`,
+        )
+        .run(input.model, input.provider ?? '', at, at, detail)
+      const existing = db
+        .prepare<RawModelRejectionRow, [string]>(
+          `SELECT ${MODEL_REJECTION_COLUMNS} FROM model_rejections WHERE model = ?`,
+        )
+        .get(input.model)!
+      if (inserted.changes > 0) return { opened: true, id: existing.id }
+      const reopened = existing.status === 'resolved'
+      db.prepare(
+        `UPDATE model_rejections
+            SET status = 'open', last_seen_at = ?, occurrences = occurrences + 1,
+                detail = COALESCE(?, detail), resolved_at = NULL, resolution = NULL
+          WHERE id = ?`,
+      ).run(at, detail, existing.id)
+      return { opened: reopened, id: existing.id }
+    })()
+  })
+}
+
+/** Resolve an open rejection (later success / probe / manual). False = nothing open. */
+export function resolveModelRejection(input: {
+  model: string
+  resolution: ModelRejectionResolution
+  resolvedAt?: number
+}): boolean {
+  return guard('resolveModelRejection', () => {
+    const res = ledger()
+      .prepare(`UPDATE model_rejections SET status = 'resolved', resolution = ?, resolved_at = ? WHERE model = ? AND status = 'open'`)
+      .run(input.resolution, input.resolvedAt ?? Date.now(), input.model)
+    return res.changes > 0
+  })
+}
+
+/** Rejections, most recently seen first. `openOnly` = live rows. */
+export function listModelRejections(opts: { openOnly?: boolean } = {}): ModelRejectionRow[] {
+  return guard('listModelRejections', () => {
+    const where = opts.openOnly ? `WHERE status = 'open'` : ''
+    return ledger()
+      .prepare<RawModelRejectionRow, []>(
+        `SELECT ${MODEL_REJECTION_COLUMNS} FROM model_rejections ${where} ORDER BY last_seen_at DESC, id DESC`,
+      )
+      .all()
+      .map(toModelRejectionRow)
   })
 }
 
