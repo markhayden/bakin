@@ -134,13 +134,51 @@ async function readImageFromSse(response: Response): Promise<string | null> {
 }
 
 /**
- * One codex image call. `files` non-empty = edit semantics (input images).
- * Throws typed RuntimeErrors only.
+ * One codex image call, with a two-rung carrier ladder (#852): a rejected
+ * CONFIGURED carrier (typed model_not_supported — never 429/401/5xx, which
+ * could double-bill) falls back to DEFAULT_CARRIER_MODEL, then stops. The
+ * carrier does not affect the rendered image (gpt-image-2 renders), so the
+ * fallback is silent-with-receipt: `metadata.carrierModel` names the rung
+ * that ran and `metadata.rejectedCarriers` the rung(s) that died — core's
+ * availability wrapper turns those into durable rejection evidence.
+ * Deliberately NO registry-derived third rung: the registry is the
+ * component that lied in #852; both explicit rungs dying is an SDK-repin
+ * event that should fail loudly.
+ * `files` non-empty = edit semantics (input images). Throws typed
+ * RuntimeErrors only.
  */
 export async function generateViaCodex(
   input: RuntimeImageGenerateInput,
   files: string[],
   options: CodexImageOptions = {},
+): Promise<RuntimeImageGenerationResult> {
+  const configured = options.carrierModel
+  const rungs = configured && configured !== DEFAULT_CARRIER_MODEL
+    ? [configured, DEFAULT_CARRIER_MODEL]
+    : [configured ?? DEFAULT_CARRIER_MODEL]
+  const rejectedCarriers: string[] = []
+  for (let i = 0; i < rungs.length; i += 1) {
+    const carrier = rungs[i]!
+    try {
+      const result = await attemptViaCodex(input, files, options, carrier)
+      return rejectedCarriers.length > 0
+        ? { ...result, metadata: { ...result.metadata, rejectedCarriers: [...rejectedCarriers] } }
+        : result
+    } catch (err) {
+      const laddersOn = err instanceof RuntimeError && err.kind === 'model_not_supported' && i < rungs.length - 1
+      if (!laddersOn) throw err
+      rejectedCarriers.push(`${CODEX_IMAGE_PROVIDER}/${carrier}`)
+    }
+  }
+  // Unreachable: the last rung always returns or throws above.
+  throw new RuntimeError('adapter-pi: carrier ladder exhausted without a verdict', { kind: 'runtime_failed' })
+}
+
+async function attemptViaCodex(
+  input: RuntimeImageGenerateInput,
+  files: string[],
+  options: CodexImageOptions,
+  carrierModel: string,
 ): Promise<RuntimeImageGenerationResult> {
   const auth = await codexImageAuth()
   if (!auth) {
@@ -150,7 +188,6 @@ export async function generateViaCodex(
     )
   }
   const outputFormat = normalizeFormat(input.outputFormat)
-  const carrierModel = options.carrierModel ?? DEFAULT_CARRIER_MODEL
   const doFetch: FetchLike = options.fetchImpl ?? (fetch as unknown as FetchLike)
 
   let response: Response

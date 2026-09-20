@@ -180,6 +180,24 @@ describe('images + adapter shape', () => {
     expect(openRow('openai-codex/gpt-dead-carrier')).toBeUndefined()
   })
 
+  test('a successful ladder result with rejectedCarriers records each burned rung (#852)', async () => {
+    const adapter = fakeAdapter({
+      imagesGetter: () => ({
+        generate: async () => ({
+          images: [],
+          provider: 'openai-codex',
+          model: 'gpt-image-2',
+          metadata: { carrierModel: 'gpt-5.6-luna', rejectedCarriers: ['openai-codex/gpt-dead-rung'] },
+        }),
+        edit: async () => ({ images: [] }),
+      }),
+    })
+    await withModelAvailabilityObservation(adapter).images!.generate({ prompt: 'x' } as never)
+    expect(openRow('openai-codex/gpt-dead-rung')).toBeDefined()
+    // The rung that ran resolves as usual (nothing open for it here — no throw).
+    expect(openRow('openai-codex/gpt-5.6-luna')).toBeUndefined()
+  })
+
   test('the wrapper never forces lazy surface getters at wrap time', () => {
     let accesses = 0
     const adapter = fakeAdapter({

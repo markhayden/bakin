@@ -123,6 +123,17 @@ function carrierModelOf(result: unknown): string | undefined {
 
 function wrapImages(images: ImagesSurface): ImagesSurface {
   const observeResult = (result: unknown): void => {
+    // A successful call can still have burned rungs on the carrier ladder
+    // (#852): the adapter reports them as facts on the result; core turns
+    // them into the same durable evidence a thrown rejection produces.
+    const rejected = (result as { metadata?: { rejectedCarriers?: unknown } } | undefined)?.metadata?.rejectedCarriers
+    if (Array.isArray(rejected)) {
+      for (const model of rejected) {
+        if (typeof model === 'string' && model) {
+          noteModelRejected(model, { detail: 'carrier rejected during image fallback', source: 'images' })
+        }
+      }
+    }
     const carrier = carrierModelOf(result)
     if (carrier) noteModelSucceeded(carrier, 'images')
   }
