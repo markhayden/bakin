@@ -204,6 +204,10 @@ export interface AgentRuntimeAdapter {
   }
   models?: {
     listAvailable(opts?: { includeUnavailable?: boolean }): Promise<AvailableModel[]>
+    /** OPTIONAL (#852): 1-token account-callability probe. Feature-detect
+     *  (`models.probe?.`); rejects typed on failure, `model_not_supported`
+     *  when the provider rejected the model id. */
+    probe?(modelId: string, opts?: { signal?: AbortSignal }): Promise<void>
   }
   /**
    * Runtime session reads (declares the surface the host facade already

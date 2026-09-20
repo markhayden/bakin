@@ -484,6 +484,35 @@ describe('messaging.send', () => {
   })
 })
 
+describe('models.probe (#852)', () => {
+  test('probe of a callable model resolves', async () => {
+    seedProvider([{ steps: [{ text: 'OK' }] }])
+    await adapter.models.probe!('fakeai/fake-model')
+  }, 30_000)
+
+  test('probe of an account-rejected model throws typed model_not_supported naming the model', async () => {
+    seedProvider([
+      { status: 400, errorBody: { error: { message: "The 'fake-model' model is not supported when using Codex with a ChatGPT account" } } },
+    ])
+    try {
+      await adapter.models.probe!('fakeai/fake-model')
+      throw new Error('expected probe to reject')
+    } catch (err) {
+      expect((err as RuntimeError).kind).toBe('model_not_supported')
+      expect((err as RuntimeError).providerInfo?.model).toBe('fakeai/fake-model')
+    }
+  }, 30_000)
+
+  test('probe of a model missing from the catalog is a typed runtime_failed, never a hang', async () => {
+    try {
+      await adapter.models.probe!('fakeai/no-such-model')
+      throw new Error('expected probe to reject')
+    } catch (err) {
+      expect((err as RuntimeError).kind).toBe('runtime_failed')
+    }
+  })
+})
+
 describe('messaging.stream', () => {
   test.each([
     ['completed', 'main', undefined],
