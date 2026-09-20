@@ -103,6 +103,36 @@ describe('ListRows', () => {
     expect(list.getAttribute('aria-labelledby')).toBeNull()
   })
 
+  it('keeps existing plain group headers unchanged', () => {
+    render(<ListRowGroup label="Today"><ListRows><ListRow>Chat</ListRow></ListRows></ListRowGroup>)
+    const group = screen.getByRole('list', { name: 'Today' }).closest('[data-slot="list-row-group"]')!
+    const label = group.querySelector('[data-slot="list-row-group-label"]')!
+    expect(group.getAttribute('data-header-variant')).toBe('plain')
+    expect(label.tagName).toBe('DIV')
+    expect(label.className).not.toContain('border-l-2')
+    expect(label.className).toContain('text-bakin-text-muted')
+  })
+
+  it('owns a flush, neutral section header without consumer styling overrides', () => {
+    render(<ListRowGroup label="Completed projects" headerVariant="section"><ListRows><ListRow>Archive</ListRow></ListRows></ListRowGroup>)
+    const heading = screen.getByRole('heading', { name: 'Completed projects', level: 3 })
+    const list = screen.getByRole('list', { name: 'Completed projects' })
+    expect(heading.getAttribute('data-header-tone')).toBe('neutral')
+    expect(heading.className).toContain('border-bakin-border-subtle')
+    expect(heading.className).toContain('bg-bakin-surface-default')
+    expect(heading.parentElement).toBe(list.parentElement)
+    expect(list.getAttribute('aria-labelledby')).toBe(heading.id)
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1)
+  })
+
+  it('supports an explicit section tone and heading level without coloring the rows', () => {
+    render(<ListRowGroup label="Planning projects" headerVariant="section" headerTone="accent" headingLevel={2}><ListRows><ListRow>Launch</ListRow></ListRows></ListRowGroup>)
+    const heading = screen.getByRole('heading', { name: 'Planning projects', level: 2 })
+    expect(heading.getAttribute('data-header-tone')).toBe('accent')
+    expect(heading.className).toContain('border-bakin-signal-accent')
+    expect(screen.getByRole('listitem').getAttribute('data-header-tone')).toBeNull()
+  })
+
   it('shares one grid template across rows via the columns capability', () => {
     render(
       <ListRows

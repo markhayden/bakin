@@ -253,6 +253,34 @@ export function WorkflowDetail() {
 
 The host owns the page's `main` landmark and vertical scroll. These recipes therefore render no nested `main`, fixed-height page pane, or vertical scroller. Put a truly wide table or canvas inside `BoundedOverflow`; do not make the entire list or detail body horizontally scrollable.
 
+### Collection families and group headings
+
+Use divider-separated `ListRows` for text-first browsing, `Card` with `Grid` when
+a meaningful preview is central (for example assets or branding), and `DataTable`
+for column-wise comparison. These are three collection families, not three new
+components. See **Recipes/Collection patterns** for the same records in each.
+Set `variant="separated"` explicitly: the existing runtime default is still
+`bordered` for compatibility; compact navigation can retain `plain` rows.
+
+For collection sections, use `ListRowGroup label="Completed projects"
+headerVariant="section"`. The component owns the flush heading, subtle background,
+left rail, spacing, and accessible list name. The rail defaults to neutral gray;
+`headerTone` accepts `neutral`, `accent`, `success`, `attention`, `danger`, or `info`
+when color communicates meaning. `headingLevel` defaults to `3`; match the owning
+page hierarchy and pass label content, not a nested heading element. Existing
+compact groups keep the default `headerVariant="plain"` and their appearance.
+See **Components/Lists/ListRows — SectionGroups** for controls.
+
+Keep optional overflow actions in `ListRowActions`, `CardAction`, or a table
+Actions cell. Give the menu trigger a record-specific accessible name. Compact
+Pin/Details controls and menus must remain independent of row activation;
+do not require hover for touch access.
+
+Mobile filter/sort interaction design is tracked in
+[#759](https://github.com/markhayden/bakin/issues/759). A table migration is not
+complete if switching to rows removes sorting: preserve existing capabilities
+until the shared mobile contract or a separately reviewed parity fix is ready.
+
 :::note[Mobile table rows: declare narrow roles]
 `DataTable` fills its container with wrapping cells by default, including long
 unbroken values such as paths. Column `headClassName` and `cellClassName` can

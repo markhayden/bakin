@@ -15,7 +15,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'ListRows and ListRow provide the three sanctioned visual relationships for repeated content. Use bordered rows for interactive resources and nested details, separated rows for a dense continuous log, and plain rows only when surrounding hierarchy already makes each item unambiguous. Consumers own domain content and actions; the pattern owns semantics, spacing, and boundaries.',
+        component: 'Prefer separated rows for text-first collection browsing. Cards serve meaningful previews; tables serve column-wise comparison (see Recipes/Collection patterns). Bordered rows remain supported for compatibility and bounded nested details; plain rows fit compact rails with existing hierarchy. The current ListRows runtime default remains bordered, so new collection compositions set variant="separated" explicitly. Consumers own content and actions; the pattern owns semantics, spacing, and boundaries.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'keyboard', 'dense-data', 'non-color'],
@@ -89,7 +89,7 @@ function ListVarietiesExample() {
 
           <ListPattern
             title="Bordered"
-            description="Default for interactive resources, settings, and expandable nested details. Every row is a complete object."
+            description="Supported for compatibility and bounded nested details. New text-first collections prefer separated rows; the runtime default remains bordered during migration."
           >
             <ListRows aria-label="Bordered lesson rows">
               <ListRow className="bakin-lists-story__row">
@@ -151,7 +151,7 @@ function ListVarietiesExample() {
 
           <ListPattern
             title="Plain"
-            description="For short supporting facts where a section heading already establishes the relationship. Do not use it for interactive records."
+            description="For supporting facts or compact navigation where surrounding hierarchy establishes the relationship. Interactive controls remain available; text-first collection pages prefer separated rows."
           >
             <ListRows aria-label="Plain supporting facts" variant="plain">
               <ListRow className="bakin-lists-story__fact">
@@ -254,6 +254,49 @@ export const Grouped = {
     await expect(within(group as HTMLElement).getAllByRole('listitem')).toHaveLength(1)
   },
 } satisfies Story
+
+interface SectionGroupsArgs {
+  headerTone: 'neutral' | 'accent' | 'success' | 'attention' | 'danger' | 'info'
+  headingLevel: 2 | 3 | 4 | 5 | 6
+}
+
+export const SectionGroups = {
+  parameters: {
+    layout: 'padded',
+    docs: { description: { story: 'Collection sections use a flush, subtly filled heading with a neutral left rail. Set headerTone only when the grouping has semantic meaning; headingLevel follows the surrounding document. Plain headings remain available for compact rails.' } },
+  },
+  args: { headerTone: 'neutral', headingLevel: 3 },
+  argTypes: {
+    headerTone: { control: 'select', options: ['neutral', 'accent', 'success', 'attention', 'danger', 'info'] },
+    headingLevel: { control: 'select', options: [2, 3, 4, 5, 6] },
+  },
+  render: (args: SectionGroupsArgs) => (
+    <Stack gap="item">
+      <ListRowGroup label="Planning projects" headerVariant="section" {...args}>
+        <ListRows variant="separated" className="border-y-0">
+          <ListRow>Spring menu launch</ListRow>
+          <ListRow>Food blog redesign</ListRow>
+        </ListRows>
+      </ListRowGroup>
+      <ListRowGroup label="Completed projects" headerVariant="section" {...args}>
+        <ListRows variant="separated" className="border-y-0">
+          <ListRow>Recipe archive migration</ListRow>
+        </ListRows>
+      </ListRowGroup>
+    </Stack>
+  ),
+  play: async ({ canvas, args }) => {
+    for (const name of ['Planning projects', 'Completed projects']) {
+      const heading = canvas.getByRole('heading', { name, level: args.headingLevel })
+      const list = canvas.getByRole('list', { name })
+      await expect(heading).toHaveAttribute('data-header-tone', args.headerTone)
+      await expect(list).toHaveAttribute('aria-labelledby', heading.id)
+      await expect(heading.getBoundingClientRect().left).toBe(list.getBoundingClientRect().left)
+      await expect(heading.getBoundingClientRect().right).toBe(list.getBoundingClientRect().right)
+    }
+    await expect(canvas.getAllByRole('listitem')).toHaveLength(3)
+  },
+} satisfies StoryObj<SectionGroupsArgs>
 
 const routeRows = [
   { name: 'Subagent work', summary: 'Deep multi-step build and research tasks', status: 'Routed', tone: 'success' as const },
