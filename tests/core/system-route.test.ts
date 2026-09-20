@@ -25,8 +25,15 @@ mock.module('../../packages/core/src/hooks/hook-registry-singleton', () => ({
   }),
 }))
 
+const auditEvents: Array<{ event: string; agent: string; data: Record<string, unknown> }> = []
+mock.module('../../src/core/audit', () => ({
+  appendAudit: (_dir: string, event: string, agent: string, data: Record<string, unknown> = {}) => {
+    auditEvents.push({ event, agent, data })
+  },
+}))
+
 // Controlled runtime capability for the clamp paths (#880). null = app
-// services unavailable → applyThinkingCapability fails open.
+// services unavailable → applyRoutingCapabilities fails open.
 let routingSupport: { supportedThinkingLevels: readonly string[]; perTurnModel: boolean } | null = null
 mock.module('../../src/core/app-services-store', () => ({
   getAppServices: () => {
@@ -35,7 +42,7 @@ mock.module('../../src/core/app-services-store', () => ({
   },
 }))
 
-import { applyThinkingCapability, resolveSystemRoute, routeSendArgs } from '../../src/core/system-route'
+import { applyRoutingCapabilities, resolveSystemRoute, routeSendArgs } from '../../src/core/system-route'
 
 describe('resolveSystemRoute', () => {
   it('resolves a matching class route', async () => {
@@ -81,6 +88,18 @@ describe('model clamp — runtime refuses per-turn overrides (#880)', () => {
     routingSupport = null
   })
 
+  it('writes a durable route.model_clamped audit receipt (#880 review R7)', async () => {
+    routingSupport = { supportedThinkingLevels: ['off'], perTurnModel: false }
+    auditEvents.length = 0
+    await applyRoutingCapabilities({ model: 'openai/gpt-5.5', source: 'class' }, 'enrichment')
+    expect(auditEvents).toEqual([{
+      event: 'route.model_clamped',
+      agent: 'system',
+      data: { workClass: 'enrichment', requested: 'openai/gpt-5.5', reason: 'override_denied' },
+    }])
+    routingSupport = null
+  })
+
   it('perTurnModel=true leaves the route byte-identical', async () => {
     routingSupport = { supportedThinkingLevels: ['off', 'low'], perTurnModel: true }
     hookResult = { routes: [{ workClass: 'relay', model: 'openai/gpt-5.5' }], tagOverrides: [] }
@@ -90,7 +109,7 @@ describe('model clamp — runtime refuses per-turn overrides (#880)', () => {
 
   it('applies to dispatch classes through the same capability gate', async () => {
     routingSupport = { supportedThinkingLevels: ['off'], perTurnModel: false }
-    const route = await applyThinkingCapability({ model: 'openai/gpt-5.5', source: 'class' }, 'adhoc')
+    const route = await applyRoutingCapabilities({ model: 'openai/gpt-5.5', source: 'class' }, 'adhoc')
     expect(route.model).toBeUndefined()
     expect(route.modelClamp?.requested).toBe('openai/gpt-5.5')
     routingSupport = null

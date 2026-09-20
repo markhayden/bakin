@@ -197,6 +197,10 @@ describe('OpenClaw runtime Gateway chat', () => {
     expect(agentFrames).toHaveLength(2)
     expect(agentFrames[0]!.params.model).toBe('openai/gpt-5.5')
     expect(agentFrames[1]!.params.model).toBeUndefined()
+    // The retry carries a FRESH idempotency key (review R3): reusing the
+    // rejected turn's key risks a gateway dedupe replay of the rejection.
+    expect(agentFrames[1]!.params.idempotencyKey).not.toBe(agentFrames[0]!.params.idempotencyKey)
+    expect(String(agentFrames[1]!.params.idempotencyKey)).toBe(`${String(agentFrames[0]!.params.idempotencyKey)}-clamped`)
     // Sticky capability flip: every later turn clamps pre-send in core.
     expect(runtime.models.routingSupport().perTurnModel).toBe(false)
   })

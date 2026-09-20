@@ -252,6 +252,16 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   /** Sticky (#880): the gateway rejected a per-turn model override mid-session
    *  — routingSupport().perTurnModel flips false so core clamps pre-send. */
   private modelOverridesDenied = false
+
+  /**
+   * Whether override authorization is VERIFIED evidence (#880): true once a
+   * connect ACK reported granted scopes or an admission verdict landed.
+   * False = perTurnModel is still the optimistic pre-connect assumption —
+   * health surfaces must report unknown, never healthy, on it.
+   */
+  gatewayScopesVerified(): boolean {
+    return this.modelOverridesDenied || this.chatGatewayClient?.grantedScopes() != null
+  }
   private emittedApprovalResponseKeys: string[] = []
   private emittedApprovalResponseKeySet = new Set<string>()
   private preResolvedApprovalIdList: string[] = []
@@ -1987,7 +1997,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
           requestedModel: opts.model,
         })
         const { model: _deniedModel, ...rest } = opts
-        const retried = await this.runOpenClawAgentGateway(rest)
+        // Fresh idempotency key: the gateway dedupes on the key for ~5
+        // minutes, and if the rejected admission registered it, the clamped
+        // retry would replay the rejection (review finding). The rejected
+        // attempt never ran, so there is nothing to double-send.
+        const retried = await this.runOpenClawAgentGateway({ ...rest, idempotencyKey: `${idempotencyKey}-clamped` })
         return { ...retried, modelOverrideDenied: { requested: opts.model } }
       }
       if (err instanceof TrajectoryRecoveredTurn) {

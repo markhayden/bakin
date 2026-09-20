@@ -131,7 +131,11 @@ export async function meterAgentTurn(opts: {
     // Prefer the model the runtime ACTUALLY ran (from usage) over the one we
     // requested — a per-turn override the provider rejected/fell back from
     // must be priced against what ran, not what we asked for (review #3).
-    const ranModel = usage?.model ?? opts.resolvedModel
+    // #880: an override-DENIED turn ran on the agent default; when usage
+    // doesn't name the actual model, the resolved (denied) model must not
+    // be billed — honest null ("runtime didn't report the model") instead.
+    const overrideDenied = Boolean((opts.result.metadata as { modelOverrideDenied?: unknown } | undefined)?.modelOverrideDenied)
+    const ranModel = usage?.model ?? (overrideDenied ? undefined : opts.resolvedModel)
     let priced: {
       model: string | null; provider?: string | null; lane?: 'metered' | 'subscription' | null; costUsdMicros: number | null
     } | undefined

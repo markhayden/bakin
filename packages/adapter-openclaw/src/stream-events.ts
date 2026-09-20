@@ -56,7 +56,7 @@ function bareToolName(name: string): string {
 
 /** How one OpenClaw turn ended, from the RPC settle (or a pushed abort). */
 export type OpenClawTurnFinish =
-  | { kind: 'ok'; content: string | null; usage?: MessageUsage }
+  | { kind: 'ok'; content: string | null; usage?: MessageUsage; modelOverrideDenied?: { requested: string } }
   | { kind: 'aborted' }
   | { kind: 'error'; errorKind: string; message?: string }
 
@@ -215,7 +215,13 @@ export class OpenClawTurnChunkMachine {
       // with send() — conformance-pinned) so streamed turns are meterable.
       const residual = this.flushTo(outcome.content)
       this.done = true
-      return [...residual, { type: 'done', ...(outcome.usage ? { usage: outcome.usage } : {}) }]
+      return [...residual, {
+        type: 'done',
+        ...(outcome.usage ? { usage: outcome.usage } : {}),
+        // #880 race receipt: streams surface the clamp on the done chunk
+        // (send surfaces it via result metadata) — never a silent drop.
+        ...(outcome.modelOverrideDenied ? { data: { modelOverrideDenied: outcome.modelOverrideDenied } } : {}),
+      }]
     }
     this.done = true
     if (outcome.kind === 'aborted') return [{ type: 'done' }]
@@ -287,7 +293,7 @@ export interface OpenClawTurnStreamDeps {
   /** The turn's idempotency key — the runId frames will carry until the ack says otherwise. */
   idempotencyKey: string
   /** Send the agent RPC; `onAccepted` fires on the gateway's first answer. */
-  run: (hooks: { onAccepted: (ack: OpenClawGatewayAcceptedAck) => void }) => Promise<{ content: string; usage?: MessageUsage }>
+  run: (hooks: { onAccepted: (ack: OpenClawGatewayAcceptedAck) => void }) => Promise<{ content: string; usage?: MessageUsage; modelOverrideDenied?: { requested: string } }>
   /** Map a rejected RPC to a terminal outcome (kind:'aborted' → clean done). */
   classifyFailure: (err: unknown) => OpenClawTurnFinish
   /** Internal terminal-outcome tap; callback failures are contained. */
@@ -362,7 +368,12 @@ export async function* streamOpenClawTurnChunks(deps: OpenClawTurnStreamDeps): A
   })
   rpc.then(
     (result) => {
-      const outcome = { kind: 'ok', content: result.content, usage: result.usage } as const
+      const outcome = {
+        kind: 'ok',
+        content: result.content,
+        usage: result.usage,
+        ...(result.modelOverrideDenied ? { modelOverrideDenied: result.modelOverrideDenied } : {}),
+      } as const
       const chunks = machine.finish(outcome)
       notifyFinish(outcome, chunks)
       push(chunks)

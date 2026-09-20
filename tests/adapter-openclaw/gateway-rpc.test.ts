@@ -360,4 +360,29 @@ describe('optional scopes + granted-scope truth (#880)', () => {
     expect(FakeWebSocket.instances.length).toBe(1)
     c.close()
   })
+
+  it('a BASE pairing failure (no approvedScopes evidence) never drops the optional set (review regression)', async () => {
+    // Fresh unpaired install: the device has no record at all. Dropping
+    // admin here would mean pairing WITH admin later never gets requested
+    // until a restart.
+    FakeWebSocket.connectResponder = (frame, ws) => {
+      ws.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'device is not paired', code: 'NOT_PAIRED' } })
+    }
+    const c = makeClient({ optionalScopes: ['operator.admin'] })
+    await expect(c.request('agent', {}, { timeoutMs: 1000 })).rejects.toThrow(/NOT_PAIRED/)
+    // No downgrade re-dial — one socket, and admin stays requested next time.
+    expect(FakeWebSocket.instances.length).toBe(1)
+    expect(c.hasScope('operator.admin')).toBe(true) // still optimistic-requested
+    c.close()
+  })
+
+  it('a scope-upgrade refusal whose approvedScopes do NOT cover the base set never drops the optional set', async () => {
+    FakeWebSocket.connectResponder = (frame, ws) => {
+      ws.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'pairing required', code: 'NOT_PAIRED', details: { approvedScopes: ['operator.read'] } } })
+    }
+    const c = makeClient({ optionalScopes: ['operator.admin'] })
+    await expect(c.request('agent', {}, { timeoutMs: 1000 })).rejects.toThrow(/NOT_PAIRED/)
+    expect(FakeWebSocket.instances.length).toBe(1)
+    c.close()
+  })
 })

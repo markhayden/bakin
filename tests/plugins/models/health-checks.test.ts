@@ -157,6 +157,18 @@ describe('routes-model-clamped — runtime refuses per-turn overrides (#880)', (
     expect(finding.evidence).toMatchObject({ workClasses: ['relay', 'auto-title'], perTurnModel: false })
   })
 
+  it('counts tag overrides too — a tag-only routing config still clamps (#880 review R4)', async () => {
+    const result = await checkModelRouting(deps({
+      getRoutingConfig: () => ({ routes: [], tagOverrides: [{ tag: 'heavy', model: 'openai/gpt-5.5' }] }),
+      supportsPerTurnModel: () => false,
+      listAvailableModels: async () => [{ id: 'openai/gpt-5.5' }],
+    }))
+    if (result.outcome !== 'observed') throw new Error('expected observed')
+    const finding = result.observations.find((o) => o.key === 'routes-model-clamped')!
+    expect(finding.status).toBe('warning')
+    expect(finding.evidence).toMatchObject({ workClasses: [], tags: ['heavy'] })
+  })
+
   it('stays silent with no model routes, or when overrides are honored', async () => {
     const noRoutes = await checkModelRouting(deps({ supportsPerTurnModel: () => false }))
     if (noRoutes.outcome !== 'observed') throw new Error('expected observed')

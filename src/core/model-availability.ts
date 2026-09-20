@@ -79,7 +79,11 @@ function wrapMessaging(messaging: AgentRuntimeAdapter['messaging']): AgentRuntim
     async send(args: MessageArgs) {
       try {
         const result = await messaging.send(args)
-        if (args.model) noteModelSucceeded(args.model, 'send')
+        // #880: a turn that carried a model but was override-denied ran on
+        // the agent DEFAULT — crediting args.model would falsely heal an
+        // open rejection for a model that was never exercised.
+        const overrideDenied = Boolean((result.metadata as { modelOverrideDenied?: unknown } | undefined)?.modelOverrideDenied)
+        if (args.model && !overrideDenied) noteModelSucceeded(args.model, 'send')
         return result
       } catch (err) {
         observeThrown(err, 'send')
@@ -90,6 +94,7 @@ function wrapMessaging(messaging: AgentRuntimeAdapter['messaging']): AgentRuntim
       return {
         async *[Symbol.asyncIterator]() {
           let sawError = false
+          let overrideDenied = false
           for await (const chunk of messaging.stream(args)) {
             if (chunk.type === 'error') {
               sawError = true
@@ -101,10 +106,13 @@ function wrapMessaging(messaging: AgentRuntimeAdapter['messaging']): AgentRuntim
                 })
               }
             }
+            if (chunk.type === 'done' && (chunk.data as { modelOverrideDenied?: unknown } | undefined)?.modelOverrideDenied) {
+              overrideDenied = true // #880: ran on the default, not args.model
+            }
             yield chunk
           }
           // Terminal done without an error chunk = the turn completed.
-          if (!sawError && args.model) noteModelSucceeded(args.model, 'stream')
+          if (!sawError && !overrideDenied && args.model) noteModelSucceeded(args.model, 'stream')
         },
       } satisfies AsyncIterable<ChatChunk>
     },

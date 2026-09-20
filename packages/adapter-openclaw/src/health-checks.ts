@@ -6,8 +6,11 @@
  */
 import type { HealthCheckRegistrationInput, HealthCheckRunInput, JsonObject } from '@bakin/core/plugin-types'
 import type { RuntimeRoutingSupport } from '@bakin/core/adapters/runtime'
-import { healthError, healthHealthy, healthObserved } from '@bakin/core/health/observation-builders'
+import { healthError, healthHealthy, healthObserved, healthUnknown } from '@bakin/core/health/observation-builders'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
+import { createLogger } from '@bakin/core/logger'
+
+const log = createLogger('adapter-openclaw:health')
 
 const RUNTIME_GROUP = { key: 'runtime', label: 'Runtime' }
 
@@ -23,6 +26,10 @@ function observedHealthy(key: string, summary: string, evidence?: JsonObject): H
 export interface OpenClawHealthDeps {
   /** The live adapter's routing support — perTurnModel is DYNAMIC (#880). */
   routingSupport: () => RuntimeRoutingSupport
+  /** True once the gateway REPORTED granted scopes (or an admission verdict
+   *  landed). False = perTurnModel is the optimistic pre-connect assumption
+   *  — the check reports UNKNOWN, never healthy, on unverified evidence. */
+  scopesVerified: () => boolean
 }
 
 /**
@@ -41,20 +48,43 @@ export function createOpenClawHealthChecks(deps: OpenClawHealthDeps): HealthChec
       group: RUNTIME_GROUP,
       run: async () => {
         const perTurnModel = deps.routingSupport().perTurnModel
+        const verified = deps.scopesVerified()
         let modelRoutes = 0
         try {
           const config = await getHookRegistry().invoke<RoutingConfigLite>('models.getRoutingConfig', {})
           modelRoutes = (config?.routes ?? []).filter((r) => r.model).length
             + (config?.tagOverrides ?? []).filter((t) => t.model).length
-        } catch {
-          // Models plugin absent/unavailable — report on authorization alone.
+        } catch (err) {
+          // Models plugin absent/unavailable — report on authorization alone,
+          // but never silently (review finding: no empty catches).
+          log.warn('models.getRoutingConfig unavailable for override-authorization check', { error: String(err) })
+        }
+
+        if (!verified) {
+          // Missing evidence is UNKNOWN, never healthy: before the first
+          // connect ACK, perTurnModel is an optimistic assumption.
+          return healthObserved([healthUnknown({
+            key: 'override-authorization',
+            summary: 'Override authorization is unverified — the gateway connection has not reported its granted scopes yet.',
+            evidence: { verified: false, modelRoutes },
+            incident: {
+              key: 'override-authorization-unverified',
+              title: 'OpenClaw override authorization not yet verified',
+              impact: modelRoutes > 0
+                ? 'Model routes are configured; whether the gateway honors them is unknown until the first connection.'
+                : 'No model routes configured; nothing depends on override authorization yet.',
+              disposition: 'advisory',
+              resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
+              resolution: { key: 'verify-connection', type: 'instructions', label: 'Verify', steps: ['Send any agent turn (or restart Bakin) so the gateway connection reports its granted scopes.'] },
+            },
+          })])
         }
 
         if (perTurnModel) {
           return observedHealthy(
             'override-authorization',
             'Gateway connection is authorized for per-turn model overrides.',
-            { perTurnModel: true, modelRoutes },
+            { perTurnModel: true, modelRoutes, verified: true },
           )
         }
         if (modelRoutes === 0) {

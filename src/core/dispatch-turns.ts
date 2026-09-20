@@ -438,8 +438,8 @@ export async function resolveDispatchRouting(task: DispatchTask, isRecovery: boo
       isRecovery,
       config,
     })
-    const { applyThinkingCapability } = await import('./system-route')
-    return await applyThinkingCapability(resolved, classifyDispatchWorkClass(task, isRecovery))
+    const { applyRoutingCapabilities } = await import('./system-route')
+    return await applyRoutingCapabilities(resolved, classifyDispatchWorkClass(task, isRecovery))
   } catch (err) {
     log.error('Routing resolve failed; using agent default', err, { id: task.id })
     return { source: 'inherit' }

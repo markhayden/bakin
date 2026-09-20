@@ -343,12 +343,34 @@ export class OpenClawGatewayRpcClient {
       })
   }
 
-  /** Adapter-side interpretation (sanctioned here): pairing/scope refusals carry NOT_PAIRED. */
+  /**
+   * Adapter-side interpretation (sanctioned here): downgrade ONLY when the
+   * refusal is provably about the OPTIONAL scopes — the paired device's
+   * approvedScopes cover the base set but not the optional one. A BASE
+   * pairing failure (fresh unpaired install: no approvedScopes evidence)
+   * must NOT drop the optional set, or the operator pairs the device WITH
+   * admin later and Bakin never re-requests it until a restart
+   * (review finding).
+   */
   private shouldDowngradeOptionalScopes(err: unknown): boolean {
     if (this.optionalScopesDropped) return false
-    if (!this.opts.optionalScopes?.length) return false
+    const optional = this.opts.optionalScopes ?? []
+    if (optional.length === 0) return false
     const message = err instanceof Error ? err.message : String(err)
-    return /\bNOT_PAIRED\b/.test(message)
+    if (!/\bNOT_PAIRED\b/.test(message)) return false
+    const detailsMatch = /details=(\{.*\})/.exec(message)
+    if (!detailsMatch) return false
+    try {
+      const details = JSON.parse(detailsMatch[1]!) as { approvedScopes?: unknown }
+      if (!Array.isArray(details.approvedScopes)) return false
+      const approved = new Set(details.approvedScopes.filter((s): s is string => typeof s === 'string'))
+      // Scope-upgrade refusal: base scopes are already approved, at least
+      // one optional scope is not.
+      return this.opts.scopes.every((scope) => approved.has(scope))
+        && optional.some((scope) => !approved.has(scope))
+    } catch {
+      return false // unparseable evidence — never downgrade on a guess
+    }
   }
 
   private sendRequest(

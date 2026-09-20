@@ -140,6 +140,20 @@ describe('meterAgentTurn', () => {
     expect(costRows[0].model).toBe('modelY')
   })
 
+  it('never attributes spend to a DENIED override model when usage lacks a model (#880 review R1)', async () => {
+    // Race-retry ran on the agent default; usage carries no model name.
+    // Falling back to resolvedModel would price the model that did NOT run.
+    await meterAgentTurn({ workClass: 'relay', agent: 'pixel', activityClass: 'system', resolvedModel: 'openai/gpt-5.5',
+      result: { id: 'm', usage: { input: 10, output: 5 }, metadata: { modelOverrideDenied: { requested: 'openai/gpt-5.5' } } } })
+    expect(costRows[0].model ?? null).toBeNull()
+  })
+
+  it('still prefers the usage-reported model on an override-denied turn', async () => {
+    await meterAgentTurn({ workClass: 'relay', agent: 'pixel', activityClass: 'system', resolvedModel: 'openai/gpt-5.5',
+      result: { id: 'm', usage: { input: 10, output: 5, model: 'anthropic/claude-sonnet-5' }, metadata: { modelOverrideDenied: { requested: 'openai/gpt-5.5' } } } })
+    expect(costRows[0].model).toBe('anthropic/claude-sonnet-5')
+  })
+
   it('persists the billing attribution (provider + lane) from the pricing hook', async () => {
     priceTurnImpl = () => ({ model: 'openai-codex/gpt-5.5-codex', provider: 'openai-codex', lane: 'subscription', costUsdMicros: null })
     await meterAgentTurn({ workClass: 'send', agent: 'main', activityClass: 'user', result: { id: 'm', usage: { input: 10, output: 5 } } })

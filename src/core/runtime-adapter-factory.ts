@@ -52,7 +52,16 @@ export function createRuntimeAdapterHealthChecks(
       return createPiHealthChecks(getRuntimeSettings)
     case 'openclaw':
       return adapter
-        ? createOpenClawHealthChecks({ routingSupport: () => adapter.models.routingSupport() })
+        ? createOpenClawHealthChecks({
+            routingSupport: () => adapter.models.routingSupport(),
+            // Adapter-specific evidence accessor (duck-typed through the
+            // availability Proxy — not a contract member; false = the
+            // check reports unknown, never healthy, pre-connect).
+            scopesVerified: () => {
+              const probe = adapter as unknown as { gatewayScopesVerified?: () => boolean }
+              return probe.gatewayScopesVerified?.() ?? false
+            },
+          })
         : []
     default:
       throw new Error(`Unknown runtime adapter: ${name}`)

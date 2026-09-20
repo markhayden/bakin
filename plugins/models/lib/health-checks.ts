@@ -172,11 +172,14 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
   //     One finding for the whole config (the per-turn receipts carry the
   //     per-turn story); same family as thinking clamps.
   const modelRoutes = config.routes.filter((r) => r.model)
-  if (modelRoutes.length > 0 && !deps.supportsPerTurnModel()) {
+  // Tag overrides with models clamp exactly the same way at send time —
+  // counting only routes under-reported real standing clamps (review finding).
+  const modelTagOverrides = config.tagOverrides.filter((t) => t.model)
+  if ((modelRoutes.length > 0 || modelTagOverrides.length > 0) && !deps.supportsPerTurnModel()) {
     observations.push(healthWarning({
       key: 'routes-model-clamped',
-      summary: `The active runtime refuses per-turn model overrides — ${modelRoutes.length} model route(s) are clamped to agent defaults.`,
-      evidence: { workClasses: modelRoutes.map((r) => r.workClass), perTurnModel: false },
+      summary: `The active runtime refuses per-turn model overrides — ${modelRoutes.length + modelTagOverrides.length} model route(s)/override(s) are clamped to agent defaults.`,
+      evidence: { workClasses: modelRoutes.map((r) => r.workClass), tags: modelTagOverrides.map((t) => t.tag), perTurnModel: false },
       incident: {
         key: 'routes-model-clamped',
         title: 'Work-class model routes are clamped by the runtime',

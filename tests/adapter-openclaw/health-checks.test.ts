@@ -25,13 +25,14 @@ import { createOpenClawHealthChecks } from '../../packages/adapter-openclaw/src/
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
-function runCheck(perTurnModel: boolean) {
+function runCheck(perTurnModel: boolean, scopesVerified = true) {
   const [check] = createOpenClawHealthChecks({
     routingSupport: () => ({
       defaultModel: true, fallbackModels: true, defaultSubagentModel: true,
       aliases: true, perAgentSubagentModel: true,
       supportedThinkingLevels: ['off'], perTurnModel,
     }),
+    scopesVerified: () => scopesVerified,
   })
   return check!.run()
 }
@@ -68,5 +69,16 @@ describe('override-authorization check (#880)', () => {
     const result = await runCheck(false)
     if (result.outcome !== 'observed') throw new Error('expected observed')
     expect(result.observations[0]!.status).toBe('healthy')
+  })
+
+  it('reports UNKNOWN, never healthy, before the gateway verifies granted scopes', async () => {
+    // Review finding R5: pre-connect, perTurnModel:true is an optimistic
+    // assumption — missing evidence must not read as authorized.
+    routingConfig = { routes: [{ workClass: 'relay', model: 'openai/gpt-5.5' }], tagOverrides: [] }
+    const result = await runCheck(true, false)
+    if (result.outcome !== 'observed') throw new Error('expected observed')
+    const obs = result.observations[0]!
+    expect(obs.status).toBe('unknown')
+    expect((obs as { incident?: { disposition?: string } }).incident?.disposition).toBe('advisory')
   })
 })

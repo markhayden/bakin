@@ -15,13 +15,15 @@ import { clampThinkingLevel, resolveWorkClassRoute, type ResolvedTurn, type Rout
 const log = createLogger('system-route')
 
 /**
- * Clamp a resolved route's thinking level to what the active runtime declares
- * it honors (clamp-and-warn — never silent, never a failed turn). Shared by
- * dispatch and system-send resolution. Fail-open: if the capability read
- * fails, the route passes through unchanged (the adapter's own guard is the
- * backstop).
+ * Clamp a resolved route to what the active runtime declares it honors —
+ * BOTH knobs: thinking levels (supportedThinkingLevels) and per-turn model
+ * overrides (perTurnModel, #880). Clamp-and-warn with receipts — never
+ * silent, never a failed turn. Shared by dispatch and system-send
+ * resolution (the ONLY capability gate: a route that skips this function
+ * skips the #880 clamp). Fail-open: if the capability read fails, the route
+ * passes through unchanged (the adapter's own guard is the backstop).
  */
-export async function applyThinkingCapability(route: ResolvedTurn, workClass: WorkClass): Promise<ResolvedTurn> {
+export async function applyRoutingCapabilities(route: ResolvedTurn, workClass: WorkClass): Promise<ResolvedTurn> {
   if (!route.thinking && !route.model) return route
   try {
     // Leaf accessor (app-services-store), NOT the composition root — a
@@ -35,9 +37,20 @@ export async function applyThinkingCapability(route: ResolvedTurn, workClass: Wo
     // them behind operator.admin) — drop the model with a receipt so the
     // turn proceeds on the agent default instead of failing at admission.
     if (next.model && support.perTurnModel === false) {
-      log.warn('Model route clamped: runtime refuses per-turn overrides', { workClass, requested: next.model })
-      next = { ...next, modelClamp: { requested: next.model, reason: 'override_denied' } }
+      const requested = next.model
+      log.warn('Model route clamped: runtime refuses per-turn overrides', { workClass, requested })
+      next = { ...next, modelClamp: { requested, reason: 'override_denied' } }
       delete next.model
+      // Durable receipt for EVERY caller — system sends have no task.routed
+      // audit of their own (review finding: system-class clamps left only a
+      // log line, violating the receipt+audit contract).
+      try {
+        const { appendAudit } = await import('./audit')
+        const { getContentDir } = await import('./content-dir')
+        appendAudit(getContentDir(), 'route.model_clamped', 'system', { workClass, requested, reason: 'override_denied' })
+      } catch (auditErr) {
+        log.warn('Model-clamp audit not recorded', { workClass, error: String(auditErr) })
+      }
     }
 
     if (next.thinking) {
@@ -60,7 +73,7 @@ export async function resolveSystemRoute(workClass: WorkClass): Promise<Resolved
     const { getHookRegistry } = await import('@bakin/core/hooks/hook-registry-singleton')
     const config = await getHookRegistry().invoke<RoutingConfig>('models.getRoutingConfig', {})
     if (!config) return { source: 'inherit' }
-    return await applyThinkingCapability(resolveWorkClassRoute(config, workClass), workClass)
+    return await applyRoutingCapabilities(resolveWorkClassRoute(config, workClass), workClass)
   } catch (err) {
     log.error('System route resolve failed; using agent default', err, { workClass })
     return { source: 'inherit' }
