@@ -31,6 +31,7 @@ import {
   setModelsCache,
 } from '../../../plugins/models/lib/available-models'
 import { readPersistedCache, clearPersistedCache } from '../../../plugins/models/lib/models-cache'
+import { buildRoutingHealthDeps, recommendRoutes } from '../../../plugins/models/lib/health-checks'
 import type { AvailableModel } from '../../../plugins/models/types'
 
 afterAll(() => {
@@ -95,6 +96,31 @@ describe('rejection overlay (#852)', () => {
     const after = await fetchAvailableModels(fakeCtx)
     expect(after.models.find((m) => m.id === DEAD)!.available).toBe(true)
     expect(after.models.find((m) => m.id === DEAD)!.rejection).toBeUndefined()
+  })
+
+  test('END-TO-END: a recorded rejection vanishes from the recommender pool (the post-#854 skill-mapping regression)', async () => {
+    // The chain the incident rode: cache → buildRoutingHealthDeps →
+    // recommendRoutes. DEAD is budget-tier, so without rejection evidence it
+    // is the top cheap-route pick.
+    setModelsCache({ models: cachedFixture(), fetchedAt: Date.now() })
+    const healthCtx = {
+      getSettings: <T,>() => ({}) as T,
+      runtime: { models: { routingSupport: () => ({ supportedThinkingLevels: ['off', 'low'] as const }) } },
+    }
+    const deps = buildRoutingHealthDeps(healthCtx as never, {
+      readRoutingConfig: () => ({ routes: [], tagOverrides: [] }),
+      listAvailableModels: async () => (await fetchAvailableModels(fakeCtx)).models,
+      listRunCostsSince: () => [],
+    })
+
+    const before = await recommendRoutes(deps)
+    expect(before.proposals.some((p) => p.model === DEAD)).toBe(true)
+
+    recordModelRejection({ model: DEAD, provider: 'openai-codex' })
+    const after = await recommendRoutes(deps)
+    expect(after.proposals.some((p) => p.model === DEAD)).toBe(false)
+    // And the deps surface the rejection facts for the health evidence.
+    expect(deps.listOpenModelRejections().some((r) => r.model === DEAD)).toBe(true)
   })
 
   test('live fetch: the response is overlaid but the caches persist the raw runtime snapshot', async () => {

@@ -26,4 +26,4 @@ Branch: `feat/852-model-availability` (main checkout; Mark live-tests before mer
 
 ## Phase 6 — Docs + gate
 - [x] T11: knowledge docs + CLAUDE.md touch-ups + README confirm-no-impact — commit 11
-- [ ] T12: final gate (lint/test/conformance) + PR for #852 + live-test checklist
+- [x] T12: final gate (lint/test/conformance) + PR for #852 + live-test checklist

@@ -36,7 +36,7 @@ import { RuntimeError } from '../../packages/core/src/adapters/runtime'
 import type { AgentRuntimeAdapter, ChatChunk } from '../../packages/core/src/adapters/runtime'
 import { closeDb } from '../../packages/core/src/storage/db'
 import { listModelRejections, recordModelRejection } from '../../src/core/execution-ledger'
-import { withModelAvailabilityObservation } from '../../src/core/model-availability'
+import { noteProbeOutcome, withModelAvailabilityObservation } from '../../src/core/model-availability'
 
 afterAll(() => {
   closeDb()
@@ -152,6 +152,31 @@ describe('success edge', () => {
     const wrapped = withModelAvailabilityObservation(fakeAdapter({}))
     for await (const _ of wrapped.messaging.stream({ agentId: 'a', content: 'x', model: 'p/stream-alive' })) { /* drain */ }
     expect(openRow('p/stream-alive')).toBeUndefined()
+  })
+})
+
+describe('noteProbeOutcome — probes ride the same evidence pipeline (#852 D5)', () => {
+  test('probe success resolves the open rejection with the probe_succeeded resolution', () => {
+    recordModelRejection({ model: 'p/probe-live', at: 1 })
+    noteProbeOutcome('p/probe-live', { ok: true })
+    expect(openRow('p/probe-live')).toBeUndefined()
+    const row = listModelRejections().find((r) => r.model === 'p/probe-live')!
+    expect(row.resolution).toBe('probe_succeeded')
+  })
+
+  test('probe rejection records under the PROBED id when the adapter error carries no model', () => {
+    noteProbeOutcome('p/probe-dead', {
+      ok: false,
+      err: new RuntimeError('rejected', { kind: 'model_not_supported' }),
+    })
+    expect(openRow('p/probe-dead')).toBeDefined()
+  })
+
+  test('an inconclusive probe failure (transport) records nothing in either direction', () => {
+    recordModelRejection({ model: 'p/probe-flaky', at: 1 })
+    noteProbeOutcome('p/probe-flaky', { ok: false, err: new RuntimeError('net down', { kind: 'transport' }) })
+    // Still open (not resolved), occurrences unchanged (not re-recorded).
+    expect(openRow('p/probe-flaky')!.occurrences).toBe(1)
   })
 })
 
