@@ -202,6 +202,37 @@ export function findAgentIn(config: OpenClawConfig, id: string): OpenClawAgentEn
   return config.agents?.list?.find((agent) => agent.id === id) ?? null
 }
 
+/** The live entry for a write, created if absent (upgrades legacy configs first). */
+export function upsertAgentIn(config: OpenClawConfig, id: string): OpenClawAgentEntry {
+  const entries = ensureAgentEntries(config)
+  entries[id] ??= {}
+  return entries[id]
+}
+
+/** Delete the entry for `id` (upgrades legacy configs first). True when something was removed. */
+export function deleteAgentIn(config: OpenClawConfig, id: string): boolean {
+  const entries = ensureAgentEntries(config)
+  if (!(id in entries)) return false
+  delete entries[id]
+  return true
+}
+
+/**
+ * The configured workspace for an agent — per-entry `workspace`, else
+ * `agents.defaults.workspace` for main only. Shared shape-lookup for
+ * agent-config's getWorkspacePath and memory's workspacePath; each caller
+ * keeps its own trust predicate over the returned path.
+ */
+export function configuredWorkspaceFor(
+  config: OpenClawConfig | null,
+  agentId: string,
+  isMain: boolean,
+): string | undefined {
+  if (!config) return undefined
+  const agent = findAgentIn(config, agentId)
+  return agent?.workspace ?? (isMain ? config.agents?.defaults?.workspace : undefined)
+}
+
 /**
  * Materialize `main` for a write path — ONLY when the roster would have
  * synthesized it (virgin config, or main already present). An authoritative

@@ -75,13 +75,14 @@ echo "{}"
     const agent = await runtime.agents.create({ id: 'pixel', name: 'Pixel' })
 
     const config = JSON.parse(readFileSync(join(openClawHome, 'openclaw.json'), 'utf-8')) as {
-      agents?: { list?: Array<Record<string, unknown>> }
+      agents?: { list?: unknown; entries?: Record<string, Record<string, unknown>> }
     }
-    const configured = config.agents?.list?.find((entry) => entry.id === 'pixel')
+    // #873: the fallback write lands on the canonical keyed registry.
+    expect(config.agents?.list).toBeUndefined()
+    const configured = config.agents?.entries?.pixel
     expect(agent.id).toBe('pixel')
     expect(agent.name).toBe('Pixel')
     expect(configured).toMatchObject({
-      id: 'pixel',
       name: 'Pixel',
       workspace: join(openClawHome, 'workspaces', 'pixel'),
       agentDir: join(openClawHome, 'agents', 'pixel', 'agent'),
@@ -135,14 +136,16 @@ echo "{}"
     await runtime.agents.remove('pixel')
 
     const config = JSON.parse(readFileSync(join(openClawHome, 'openclaw.json'), 'utf-8')) as {
-      agents?: { list?: Array<{ id?: string; subagents?: { allowAgents?: string[] } }> }
+      agents?: { list?: unknown; entries?: Record<string, { subagents?: { allowAgents?: string[] } }> }
     }
     const cron = JSON.parse(readFileSync(join(openClawHome, 'cron', 'jobs.json'), 'utf-8')) as {
       jobs?: Array<{ id?: string; agentId?: string }>
     }
     expect(readFileSync(callsFile, 'utf-8')).toContain('agents delete pixel --force --json')
-    expect(config.agents?.list?.some((entry) => entry.id === 'pixel')).toBe(false)
-    expect(config.agents?.list?.find((entry) => entry.id === 'main')?.subagents?.allowAgents ?? []).not.toContain('pixel')
+    // #873: removal upgrades the legacy seed to entries and scrubs allowlists there.
+    expect(config.agents?.list).toBeUndefined()
+    expect(config.agents?.entries?.pixel).toBeUndefined()
+    expect(config.agents?.entries?.main?.subagents?.allowAgents ?? []).not.toContain('pixel')
     expect(existsSync(workspace)).toBe(false)
     expect(existsSync(agentRoot)).toBe(false)
     expect(cron.jobs?.some((job) => job.agentId === 'pixel')).toBe(false)
