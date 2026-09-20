@@ -36,6 +36,7 @@ function deps(over: Partial<RoutingHealthDeps> = {}): RoutingHealthDeps {
       { id: 'google/gemini-2.5-flash' },
     ],
     supportedThinkingLevels: () => ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+    supportsPerTurnModel: () => true,
     listRecentRunCosts: () => [],
     listOpenModelRejections: () => [],
     now: () => NOW,
@@ -140,6 +141,32 @@ describe('route-model-missing — account-rejected evidence (#852)', () => {
     })
     if (result.outcome !== 'observed') throw new Error('expected observed')
     expect(result.observations.find((o) => o.key === 'route-model-missing-relay')).toBeDefined()
+  })
+})
+
+describe('routes-model-clamped — runtime refuses per-turn overrides (#880)', () => {
+  it('fires a watch finding when model routes exist and the runtime clamps them', async () => {
+    const result = await checkModelRouting(deps({
+      getRoutingConfig: () => ({ routes: [{ workClass: 'relay', model: 'openai/gpt-5.5' }, { workClass: 'auto-title', model: 'openai/gpt-5.5' }], tagOverrides: [] }),
+      supportsPerTurnModel: () => false,
+      listAvailableModels: async () => [{ id: 'openai/gpt-5.5' }],
+    }))
+    if (result.outcome !== 'observed') throw new Error('expected observed')
+    const finding = result.observations.find((o) => o.key === 'routes-model-clamped')!
+    expect(finding.status).toBe('warning')
+    expect(finding.evidence).toMatchObject({ workClasses: ['relay', 'auto-title'], perTurnModel: false })
+  })
+
+  it('stays silent with no model routes, or when overrides are honored', async () => {
+    const noRoutes = await checkModelRouting(deps({ supportsPerTurnModel: () => false }))
+    if (noRoutes.outcome !== 'observed') throw new Error('expected observed')
+    expect(noRoutes.observations.find((o) => o.key === 'routes-model-clamped')).toBeUndefined()
+
+    const honored = await checkModelRouting(deps({
+      getRoutingConfig: () => ({ routes: [{ workClass: 'relay', model: 'anthropic/claude-haiku-4-5' }], tagOverrides: [] }),
+    }))
+    if (honored.outcome !== 'observed') throw new Error('expected observed')
+    expect(honored.observations.find((o) => o.key === 'routes-model-clamped')).toBeUndefined()
   })
 })
 

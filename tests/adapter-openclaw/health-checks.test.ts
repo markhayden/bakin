@@ -1,0 +1,72 @@
+/**
+ * #880 — the OpenClaw adapter's override-authorization health check:
+ * healthy when overrides are honored OR nothing is routed; action_required
+ * when model routes exist on a connection the gateway refuses.
+ */
+import { describe, it, expect, mock, afterAll } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { rmSync } from 'fs'
+
+const testDir = join(tmpdir(), `bakin-test-oc-health-${Date.now()}`)
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir, db: join(testDir, 'bakin.db') }),
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
+
+let routingConfig: unknown = { routes: [], tagOverrides: [] }
+mock.module('../../packages/core/src/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: () => ({ invoke: async () => routingConfig }),
+}))
+
+import { createOpenClawHealthChecks } from '../../packages/adapter-openclaw/src/health-checks'
+
+afterAll(() => rmSync(testDir, { recursive: true, force: true }))
+
+function runCheck(perTurnModel: boolean) {
+  const [check] = createOpenClawHealthChecks({
+    routingSupport: () => ({
+      defaultModel: true, fallbackModels: true, defaultSubagentModel: true,
+      aliases: true, perAgentSubagentModel: true,
+      supportedThinkingLevels: ['off'], perTurnModel,
+    }),
+  })
+  return check!.run()
+}
+
+describe('override-authorization check (#880)', () => {
+  it('healthy when the connection is authorized', async () => {
+    routingConfig = { routes: [{ workClass: 'relay', model: 'openai/gpt-5.5' }], tagOverrides: [] }
+    const result = await runCheck(true)
+    if (result.outcome !== 'observed') throw new Error('expected observed')
+    expect(result.observations[0]!.status).toBe('healthy')
+  })
+
+  it('healthy (with note) when unauthorized but nothing is routed', async () => {
+    routingConfig = { routes: [], tagOverrides: [] }
+    const result = await runCheck(false)
+    if (result.outcome !== 'observed') throw new Error('expected observed')
+    expect(result.observations[0]!.status).toBe('healthy')
+    expect(result.observations[0]!.summary).toContain('nothing is clamped')
+  })
+
+  it('action_required when model routes exist on an unauthorized connection', async () => {
+    routingConfig = { routes: [{ workClass: 'relay', model: 'openai/gpt-5.5' }], tagOverrides: [{ tag: 'x', model: 'openai/gpt-5.4' }] }
+    const result = await runCheck(false)
+    if (result.outcome !== 'observed') throw new Error('expected observed')
+    const obs = result.observations[0]!
+    expect(obs.status).toBe('error')
+    expect(obs.summary).toContain('2 model route(s)')
+    expect((obs as { incident?: { disposition?: string; resolution?: { steps?: string[] } } }).incident?.disposition).toBe('action_required')
+    expect((obs as { incident?: { resolution?: { steps?: string[] } } }).incident?.resolution?.steps?.join(' ')).toContain('operator.admin')
+  })
+
+  it('reports on authorization alone when the models plugin is unavailable', async () => {
+    routingConfig = undefined
+    const result = await runCheck(false)
+    if (result.outcome !== 'observed') throw new Error('expected observed')
+    expect(result.observations[0]!.status).toBe('healthy')
+  })
+})
