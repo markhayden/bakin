@@ -196,6 +196,33 @@ If a new provider-data need appears, add a typed adapter method — never a
 config escape hatch. Deep reference:
 `.claude/knowledge/runtime-capabilities.md`.
 
+### OpenClaw agents registry: entries-canonical (#873)
+
+OpenClaw 2026.9.5 moved its agent registry from the legacy `agents.list`
+array to the keyed `agents.entries` map (the key IS the id) with an
+`agents.ownership` policy field. The adapter is **entries-canonical**
+(`packages/adapter-openclaw/src/config.ts`):
+
+- `agentListFrom` is THE shape decoder (entries → legacy nonempty list →
+  synthesis). All roster reads flow through it; decoded objects are copies.
+- Writes go ONLY through the accessor trio `findAgentIn` / `upsertAgentIn` /
+  `deleteAgentIn` (+ `configuredWorkspaceFor` for workspace lookups): they
+  patch the LIVE `entries[<id>]` object so unknown fields round-trip, and
+  `ensureAgentEntries` upgrades a legacy list config one-way on its first
+  mutation (list merged into entries, then deleted). **Bakin never writes
+  `agents.list` and never authors `ownership`/policy fields.**
+- Implicit-Main synthesis happens ONLY for a genuinely virgin config (no
+  entries, no explicit ownership, no nonempty list) — OpenClaw's own
+  fresh-install semantic. An existing `entries` map (even empty) or
+  `ownership: 'explicit'` is authoritative: an empty roster renders honestly
+  empty (a real install always has main, so an empty registry means
+  OpenClaw itself is broken — never paper over it with a fabricated Main).
+- Config mutators use the strict `readOpenClawConfigForMutation()` (corrupt
+  file ⇒ throw, never replaced — the upsert wipe fix rode this change).
+- Never re-inline `config.agents?.list?.find(...)` / entry lookups outside
+  config.ts — that inline-bypass rot is exactly what turned the 2026.9.5
+  schema change into a 6-file incident.
+
 ## Task Metadata
 
 `~/.bakin/tasks/` is the source of truth for task metadata. Runtime execution
