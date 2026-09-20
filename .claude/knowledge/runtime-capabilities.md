@@ -90,6 +90,7 @@ need crosses a neutral method:
 | credential presence (onboarding llm/channels) | `credentialStatus()` — names only, never secrets |
 | model routing policy (defaults/fallbacks/aliases/subagent defaults) | `models.routingPolicy()` / `setRoutingPolicy()` + `models.routingSupport()` (declares which knobs the runtime HONORS; unsupported patches are rejected, never silently stored). `RuntimeRoutingSupport.supportedThinkingLevels` declares which per-turn thinking levels the runtime honors (Pi: `off`…`xhigh`; OpenClaw: all 8 incl. `adaptive`/`max`) — Bakin's work-class thinking routes clamp-and-warn against it (`applyThinkingCapability`), never a silent drop |
 | per-agent model assignments | `agents.update({ model, subagentModel })` — null clears; OpenClaw persists into `agents.list[]`, Pi into its registry |
+| account-callability probe (#852) | `models.probe?(modelId, { signal? })` — OPTIONAL member (the channels/cron pattern: feature-detect `models.probe?.`, never bare-deref). Fires a minimal (~1-token) completion; resolves on success, rejects typed (`model_not_supported` when the provider rejected the model id). Pi implements via `ModelRuntime.completeSimple` (no agent session, 20 s ceiling); OpenClaw omits. Billed and user-triggered only — never scheduled, never fired from background refresh |
 | roster integrity (onboarding runtime check) | `agents.list()` + adapter-resolved `metadata.workspacePath` |
 
 Routing policy stays RUNTIME-owned (the runtime honors these knobs at session

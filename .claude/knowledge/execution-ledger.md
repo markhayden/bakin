@@ -119,6 +119,23 @@ budget_incidents  one durable row per cap-rule breach per window
               stays suppressed for its window — the operator dismissed it), resolveBudgetIncident, listBudgetIncidents,
               resolveExpiredBudgetIncidents (gate-time rollover sweep),
               findOpenCapIncident (pause-mode gate probe).
+model_rejections  one durable row per model the account's provider
+              deterministically rejected (#852, migration v9; typed
+              model_not_supported). UNIQUE(model) IS the debounce:
+              repeats absorb into the open row (occurrences++, fresh
+              last_seen_at, detail capped 500 chars); a later success or
+              probe resolves (resolution model_succeeded|probe_succeeded|
+              manual); a rejection after resolve REOPENS the same row (new
+              alertable event; occurrences is a lifetime count). Written
+              ONLY by the runtime facade wrapper
+              (src/core/model-availability.ts) + probe orchestration; read
+              by the models plugin's availability overlay (flips
+              available:false on every read — never persisted in the
+              models cache) and the models.routing health evidence.
+              Ledger-unavailable FAILS OPEN for this table (nothing marked
+              unavailable on missing evidence — opposite of the budget
+              gate). Verbs: recordModelRejection, resolveModelRejection,
+              listModelRejections.
 ```
 
 `exec_key` is the live-run lock scope: the task id for regular tasks,

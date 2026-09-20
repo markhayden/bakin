@@ -157,6 +157,7 @@ dispatch modules** — an architecture test pins this.
 | `provider_cooldown` | structural | `provider_cooldown` / `auth_profile_unavailable` (via `providerInfo`) |
 | `runtime_failed` | structural | `runtime_adapter_failure` |
 | `session_death` | **recovery ladder** (below) | `runtime_turn_died` |
+| `model_not_supported` | **none — immediate block** (#852: the account cannot call the routed model; deterministic like repo-binding failures — waiting never fixes it; audited `task.model_not_supported_blocked` with routing remediation; the facade wrapper records the rejection as durable availability evidence) | `model_not_supported` |
 | `aborted` | **none — terminal** (intentional cancel; audited `task.turn_aborted`, never retried, never diagnosed) | — |
 
 Non-RuntimeError fallback (mocks/unexpected): `TypeError`, `AbortError`, and
@@ -198,8 +199,8 @@ structured dispatch failure detail in addition to the retry/cooldown class:
 
 - `category` — `model_provider_unavailable` or `runtime_unavailable`
 - `reasonCode` — currently `provider_cooldown`,
-  `auth_profile_unavailable`, `dispatch_timeout`, `transport_failure`,
-  `runtime_adapter_failure`, or `runtime_dispatch_failed`
+  `auth_profile_unavailable`, `model_not_supported`, `dispatch_timeout`,
+  `transport_failure`, `runtime_adapter_failure`, or `runtime_dispatch_failed`
 - `summary` — compact UI text such as
   `Dispatch failed: model provider unavailable`
 - `specificReason` — drawer/debug detail such as
