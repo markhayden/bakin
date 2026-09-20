@@ -30,6 +30,16 @@ export interface OpenClawGatewayRpcClientOptions {
   displayName: string
   clientMode: string
   scopes: string[]
+  /**
+   * Scopes requested opportunistically on top of `scopes` (#880:
+   * operator.admin for per-turn model overrides). If the gateway REFUSES
+   * the connect over them (a pairing scope-upgrade it won't auto-approve),
+   * the client retries the handshake once without them — sticky for the
+   * client's lifetime — so an elevated request can never regress a
+   * previously-working connection into an outage. `hasScope()` reports the
+   * outcome.
+   */
+  optionalScopes?: string[]
   role?: string
   label?: string
   /** Present the home device identity on connect (required for operator.write / dispatch). */
@@ -115,8 +125,46 @@ export class OpenClawGatewayRpcClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private connectSent = false
   private connectNonce: string | null = null
+  /** Sticky: optional scopes were refused at connect (#880 downgrade) — every later dial omits them. */
+  private optionalScopesDropped = false
+  /** Mid-handshake downgrade retry in flight — handleClose re-dials instead of rejecting. */
+  private retryingConnect = false
+  /** The gateway's authoritative granted set from the last hello-ok ACK (null before first connect). */
+  private grantedScopesValue: string[] | null = null
+  private connectionEpochValue = 0
 
   constructor(private readonly opts: OpenClawGatewayRpcClientOptions) {}
+
+  /** Scopes to request on the next connect: base + optional until a refusal drops the optional set. */
+  private requestScopes(): string[] {
+    const optional = this.opts.optionalScopes ?? []
+    return this.optionalScopesDropped ? [...this.opts.scopes] : [...this.opts.scopes, ...optional]
+  }
+
+  /** Granted scopes from the last successful connect ACK; null = never connected. */
+  grantedScopes(): string[] | null {
+    return this.grantedScopesValue ? [...this.grantedScopesValue] : null
+  }
+
+  /**
+   * Monotonic counter of successful connect ACKs. Evidence tied to one
+   * connection (e.g. a mid-session override denial, #880) records the epoch
+   * it was observed on; a later epoch means a NEW granted set superseded it.
+   */
+  connectionEpoch(): number {
+    return this.connectionEpochValue
+  }
+
+  /**
+   * Whether this connection holds `scope`. OPTIMISTIC before the first ACK
+   * (requested = assumed granted, matching the loopback self-pairing grant);
+   * authoritative once the gateway reports its granted set; false for an
+   * optional scope the connect handshake refused (#880).
+   */
+  hasScope(scope: string): boolean {
+    if (this.grantedScopesValue) return this.grantedScopesValue.includes(scope)
+    return this.requestScopes().includes(scope)
+  }
 
   async request(method: string, params: Record<string, unknown>, opts: OpenClawGatewayRequestOptions | number = {}): Promise<unknown> {
     await this.ensureConnected()
@@ -196,6 +244,14 @@ export class OpenClawGatewayRpcClient {
     })
     this.connectState = { promise, resolve: resolveConnect, reject: rejectConnect, timeout }
 
+    this.dialSocket()
+
+    return promise
+  }
+
+  /** Open a fresh socket for the current connectState (initial dial + the #880 downgrade retry). */
+  private dialSocket(): void {
+    const WebSocketCtor = globalThis.WebSocket
     const ws = new WebSocketCtor(this.opts.url)
     this.ws = ws
     ws.addEventListener('open', () => {
@@ -206,13 +262,15 @@ export class OpenClawGatewayRpcClient {
     ws.addEventListener('error', () => {
       if (!this.connected) this.failConnect(new RuntimeError(`${this.label()} socket error`, { kind: 'transport' }))
     })
-
-    return promise
   }
 
   private sendConnect(): void {
     if (this.connectSent) return
     this.connectSent = true
+    // Granted scopes are evidence about ONE connection — reset so a
+    // reconnect can never serve the previous connection's stale set
+    // (review #2).
+    this.grantedScopesValue = null
     const token = this.opts.token()
     const role = this.opts.role ?? 'operator'
     const auth: Record<string, unknown> = token ? { token } : {}
@@ -227,7 +285,7 @@ export class OpenClawGatewayRpcClient {
         mode: this.opts.clientMode,
       },
       role,
-      scopes: this.opts.scopes,
+      scopes: this.requestScopes(),
       caps: GATEWAY_CLIENT_CAPS,
     }
 
@@ -241,7 +299,9 @@ export class OpenClawGatewayRpcClient {
           clientId: this.opts.clientId,
           clientMode: this.opts.clientMode,
           role,
-          scopes: this.opts.scopes,
+          // Must match params.scopes exactly — the scope list is field 6 of
+          // the signed v3 device payload.
+          scopes: this.requestScopes(),
           nonce: this.connectNonce,
           platform: process.platform,
           gatewayToken: token,
@@ -266,6 +326,18 @@ export class OpenClawGatewayRpcClient {
           this.ws?.close()
           return
         }
+        // The ACK's auth.scopes is the gateway's AUTHORITATIVE granted set
+        // (#880) — capabilities like per-turn model overrides key off it.
+        // A gateway that predates scope reporting (no auth.scopes in the
+        // ACK) doesn't gate on scopes either: acceptance of the connect IS
+        // the grant of the requested set. Recording it keeps hasScope()/
+        // grantedScopes() verified instead of optimistic-forever
+        // (review #2: a standing 'unverified' advisory could never clear).
+        const auth = (payload as { auth?: { scopes?: unknown } } | null)?.auth
+        this.grantedScopesValue = auth && Array.isArray(auth.scopes)
+          ? auth.scopes.filter((s): s is string => typeof s === 'string')
+          : this.requestScopes()
+        this.connectionEpochValue += 1
         const state = this.connectState
         if (!state) return
         clearTimeout(state.timeout)
@@ -274,9 +346,51 @@ export class OpenClawGatewayRpcClient {
         state.resolve()
       })
       .catch((err) => {
+        // #880 graceful downgrade: a connect refused over a pairing
+        // scope-upgrade (optional scopes like operator.admin on a topology
+        // that won't auto-approve them) retries the handshake once without
+        // the optional set instead of failing the connection outright.
+        if (this.shouldDowngradeOptionalScopes(err)) {
+          const optional = (this.opts.optionalScopes ?? []).join(', ')
+          this.opts.logger.warn(`${this.label()} connect refused over scope upgrade — retrying without optional scopes (${optional})`)
+          this.optionalScopesDropped = true
+          this.retryingConnect = true
+          this.ws?.close()
+          return
+        }
         this.failConnect(err instanceof Error ? err : new Error(String(err)))
         this.ws?.close()
       })
+  }
+
+  /**
+   * Adapter-side interpretation (sanctioned here): downgrade ONLY when the
+   * refusal is provably about the OPTIONAL scopes — the paired device's
+   * approvedScopes cover the base set but not the optional one. A BASE
+   * pairing failure (fresh unpaired install: no approvedScopes evidence)
+   * must NOT drop the optional set, or the operator pairs the device WITH
+   * admin later and Bakin never re-requests it until a restart
+   * (review finding).
+   */
+  private shouldDowngradeOptionalScopes(err: unknown): boolean {
+    if (this.optionalScopesDropped) return false
+    const optional = this.opts.optionalScopes ?? []
+    if (optional.length === 0) return false
+    const message = err instanceof Error ? err.message : String(err)
+    if (!/\bNOT_PAIRED\b/.test(message)) return false
+    const detailsMatch = /details=(\{.*\})/.exec(message)
+    if (!detailsMatch) return false
+    try {
+      const details = JSON.parse(detailsMatch[1]!) as { approvedScopes?: unknown }
+      if (!Array.isArray(details.approvedScopes)) return false
+      const approved = new Set(details.approvedScopes.filter((s): s is string => typeof s === 'string'))
+      // Scope-upgrade refusal: base scopes are already approved, at least
+      // one optional scope is not.
+      return this.opts.scopes.every((scope) => approved.has(scope))
+        && optional.some((scope) => !approved.has(scope))
+    } catch {
+      return false // unparseable evidence — never downgrade on a guess
+    }
   }
 
   private sendRequest(
@@ -404,6 +518,21 @@ export class OpenClawGatewayRpcClient {
   private handleClose(): void {
     this.connected = false
     this.connectSent = false
+    // #880 downgrade retry: keep the pending connectState but re-arm its
+    // timer with a fresh handshake budget — a slow scope-refusal handshake
+    // must not starve the second attempt (review #2).
+    if (this.retryingConnect && this.connectState) {
+      this.retryingConnect = false
+      this.connectNonce = null
+      clearTimeout(this.connectState.timeout)
+      this.connectState.timeout = setTimeout(() => {
+        this.failConnect(new RuntimeError(`${this.label()} connect timed out`, { kind: 'transport' }))
+        this.ws?.close()
+      }, CONNECT_TIMEOUT_MS)
+      this.dialSocket()
+      return
+    }
+    this.retryingConnect = false
     this.rejectPending(new RuntimeError(`${this.label()} disconnected`, { kind: 'transport' }))
     if (this.connectState) {
       clearTimeout(this.connectState.timeout)
@@ -486,7 +615,9 @@ function protocolFloorError(payload: unknown, label: string): RuntimeError | nul
 function formatGatewayErrorDetails(details: unknown): string | null {
   if (!isRecord(details)) return null
   const safeDetails: Record<string, unknown> = {}
-  for (const key of ['expectedProtocol', 'minProtocol', 'maxProtocol', 'reason', 'requestId']) {
+  // Scope evidence (#880) rides through so classification/diagnostics can
+  // see WHY a connect or send was refused.
+  for (const key of ['expectedProtocol', 'minProtocol', 'maxProtocol', 'reason', 'requestId', 'missingScope', 'requiredScopes', 'requestedScopes', 'approvedScopes']) {
     if (key in details) safeDetails[key] = details[key]
   }
   if (Object.keys(safeDetails).length === 0) return null

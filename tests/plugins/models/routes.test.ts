@@ -192,6 +192,7 @@ beforeAll(async () => {
     defaultSubagentModel: true,
     aliases: true,
     perAgentSubagentModel: true,
+    perTurnModel: true,
     supportedThinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'],
   })
 })

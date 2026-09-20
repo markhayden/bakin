@@ -124,6 +124,7 @@ export async function createAppServices(): Promise<AppServices> {
   for (const check of createRuntimeAdapterHealthChecks(
     settings.runtime.adapter,
     () => getSettings().runtime.settings,
+    runtime,
   )) {
     registerAdapterHealthCheck(runtime.name, runtimeLabel, check)
   }

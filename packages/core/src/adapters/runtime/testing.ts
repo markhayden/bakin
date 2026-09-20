@@ -420,7 +420,9 @@ export function createMockRuntimeAdapter(
     },
 
     models: {
-      listAvailable: async () => [],
+      // One catalog row so capability probes (perTurnModel honesty, #880)
+      // have a model id to send; the mock accepts any model.
+      listAvailable: async () => [{ id: 'mock/conformance-model', name: 'Mock Conformance Model', available: true }],
       routingSupport: () => ({
         defaultModel: true,
         fallbackModels: true,
@@ -428,6 +430,7 @@ export function createMockRuntimeAdapter(
         aliases: true,
         perAgentSubagentModel: true,
         supportedThinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'],
+        perTurnModel: true,
       }),
       routingPolicy: async () => ({ ...mockRoutingPolicy }),
       setRoutingPolicy: async (patch, _reason) => {

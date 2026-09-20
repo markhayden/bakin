@@ -438,8 +438,8 @@ export async function resolveDispatchRouting(task: DispatchTask, isRecovery: boo
       isRecovery,
       config,
     })
-    const { applyThinkingCapability } = await import('./system-route')
-    return await applyThinkingCapability(resolved, classifyDispatchWorkClass(task, isRecovery))
+    const { applyRoutingCapabilities } = await import('./system-route')
+    return await applyRoutingCapabilities(resolved, classifyDispatchWorkClass(task, isRecovery))
   } catch (err) {
     log.error('Routing resolve failed; using agent default', err, { id: task.id })
     return { source: 'inherit' }
@@ -656,10 +656,13 @@ export function fireDispatchTurn(opts: {
           throw err
         }
       }
-      if (routing.model || routing.thinking || routing.thinkingClamp) {
+      if (routing.model || routing.thinking || routing.thinkingClamp || routing.modelClamp) {
         appendAudit(opts.contentDir, 'task.routed', opts.targetAgent, {
           source: routing.source,
           ...(routing.thinkingClamp ? { requestedThinking: routing.thinkingClamp.requested, clamped: true } : {}),
+          // #880: the routed model was dropped because the runtime refuses
+          // per-turn overrides — the turn ran on the agent default.
+          ...(routing.modelClamp ? { requestedModel: routing.modelClamp.requested, modelClamped: true } : {}),
           id: opts.task.id,
           ...(routing.model ? { model: routing.model } : {}),
           ...(routing.thinking ? { thinking: routing.thinking } : {}),

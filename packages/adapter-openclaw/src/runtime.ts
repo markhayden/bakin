@@ -83,7 +83,7 @@ import {
   parseJsonObject, readJsonFile, truncate, slug,
   metadataValue, metadataFiles,
 } from './runtime-utils'
-import { OpenClawCommandError, isPluginAllowlistOpenFailure } from './errors'
+import { OpenClawCommandError, isModelOverrideRejection, isPluginAllowlistOpenFailure } from './errors'
 import type { OpenClawCronStoreJob } from './cron-store'
 import {
   defaultOpenClawImageOutputPath, normalizeOpenClawOutputFormat, openClawImageModelArg,
@@ -214,6 +214,9 @@ interface OpenClawAgentTurnOptions {
 interface OpenClawTurnResult {
   content: string
   usage?: MessageUsage
+  /** #880 race receipt: the gateway refused the routed model mid-session and
+   *  the turn was retried once on the agent default. */
+  modelOverrideDenied?: { requested: string }
 }
 
 interface OpenClawModelListJson {
@@ -246,6 +249,27 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   private approvalResolveWarningLogged = false
   private approvalGatewayClient: OpenClawApprovalGatewayClient | null = null
   private chatGatewayClient: OpenClawGatewayRpcClient | null = null
+  /** #880: connection epoch on which the gateway rejected a per-turn model
+   *  override at admission — routingSupport().perTurnModel flips false so
+   *  core clamps pre-send. Scoped to the epoch (review #2): a later
+   *  reconnect whose ACK grants operator.admin is FRESH evidence that
+   *  supersedes the denial; only a denial on the CURRENT connection holds. */
+  private modelOverridesDeniedEpoch: number | null = null
+
+  private modelOverridesDenied(): boolean {
+    return this.modelOverridesDeniedEpoch != null
+      && this.modelOverridesDeniedEpoch === (this.chatGatewayClient?.connectionEpoch() ?? this.modelOverridesDeniedEpoch)
+  }
+
+  /**
+   * Whether override authorization is VERIFIED evidence (#880): true once a
+   * connect ACK reported granted scopes or an admission verdict landed.
+   * False = perTurnModel is still the optimistic pre-connect assumption —
+   * health surfaces must report unknown, never healthy, on it.
+   */
+  gatewayScopesVerified(): boolean {
+    return this.modelOverridesDenied() || this.chatGatewayClient?.grantedScopes() != null
+  }
   private emittedApprovalResponseKeys: string[] = []
   private emittedApprovalResponseKeySet = new Set<string>()
   private preResolvedApprovalIdList: string[] = []
@@ -537,7 +561,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
               args.onActivity?.(chunk)
             }
           : undefined
-        const { content, usage } = await this.chatCompletion({
+        const { content, usage, modelOverrideDenied } = await this.chatCompletion({
           agentId: args.agentId,
           messages: [{ role: 'user', content: args.content }],
           sessionKey: args.threadId,
@@ -558,8 +582,15 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
           id: `msg-${Date.now()}`,
           content,
           ...(usage ? { usage } : {}),
-          ...(sessionId || adapterTurnId
-            ? { metadata: { ...(sessionId ? { sessionId } : {}), ...(adapterTurnId ? { adapterTurnId } : {}) } }
+          ...(sessionId || adapterTurnId || modelOverrideDenied
+            ? {
+                metadata: {
+                  ...(sessionId ? { sessionId } : {}),
+                  ...(adapterTurnId ? { adapterTurnId } : {}),
+                  // #880 race receipt: the turn ran on the agent default.
+                  ...(modelOverrideDenied ? { modelOverrideDenied } : {}),
+                },
+              }
             : {}),
         }
         lifecycle.finish({ status: 'completed', resultId: result.id, usage: result.usage })
@@ -1066,6 +1097,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       perAgentSubagentModel: true,
       // Gateway forwards every per-turn thinking level as-is.
       supportedThinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'],
+      // 2026.9.5 gates per-turn model overrides behind operator.admin
+      // (#880). DYNAMIC: granted-scope truth from the gateway connection
+      // (optimistic true before first connect — the loopback self-pairing
+      // path grants requested scopes), AND the mid-session denial (an
+      // admission rejection is authoritative even if the ACK claimed
+      // admin — but only for its own connection epoch).
+      perTurnModel: !this.modelOverridesDenied() && (this.chatGatewayClient?.hasScope('operator.admin') ?? true),
     }),
     routingPolicy: async (): Promise<RuntimeRoutingPolicy> => readRoutingPolicy(),
     setRoutingPolicy: async (patch: Partial<RuntimeRoutingPolicy>, reason: string): Promise<void> => {
@@ -1953,6 +1991,29 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       if (opts.signal?.aborted) {
         throw new RuntimeError('OpenClaw agent turn aborted by caller', { kind: 'aborted', cause: err })
       }
+      // #880 mid-session race: the gateway's admission gate refused the
+      // per-turn model override (policy/scope changed after connect). The
+      // rejection happens BEFORE any run starts or bills, so retrying the
+      // same turn once WITHOUT the override is safe and the turn SUCCEEDS
+      // with a receipt instead of failing. Recording the denial's
+      // connection epoch flips routingSupport().perTurnModel so every later
+      // turn on THIS connection clamps pre-send in core; a reconnect that
+      // re-grants admin supersedes it. (Adapter-side message
+      // interpretation — sanctioned here.)
+      if (opts.model && isModelOverrideRejection(err)) {
+        this.modelOverridesDeniedEpoch = this.chatGatewayClient?.connectionEpoch() ?? 0
+        this.logger.warn('Gateway refused the per-turn model override — retrying once on the agent default (#880)', {
+          agentId: opts.agentId,
+          requestedModel: opts.model,
+        })
+        const { model: _deniedModel, ...rest } = opts
+        // Fresh idempotency key: the gateway dedupes on the key for ~5
+        // minutes, and if the rejected admission registered it, the clamped
+        // retry would replay the rejection (review finding). The rejected
+        // attempt never ran, so there is nothing to double-send.
+        const retried = await this.runOpenClawAgentGateway({ ...rest, idempotencyKey: `${idempotencyKey}-clamped` })
+        return { ...retried, modelOverrideDenied: { requested: opts.model } }
+      }
       if (err instanceof TrajectoryRecoveredTurn) {
         // The run succeeded on disk but the gateway frame never arrived
         // within the grace window — surface the recovered content as a
@@ -2060,6 +2121,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       displayName: 'Bakin',
       clientMode: 'backend',
       scopes: ['operator.read', 'operator.write'],
+      // 2026.9.5 gates per-turn model overrides behind operator.admin
+      // (#880). Optional: loopback backend clients get it via the
+      // self-pairing bypass; a topology that refuses triggers ONE
+      // downgrade reconnect and routing clamps to agent defaults.
+      optionalScopes: ['operator.admin'],
       useDeviceAuth: true,
       label: 'OpenClaw chat gateway',
       // Long-lived adapter client: per-turn tap/stream subscriptions must

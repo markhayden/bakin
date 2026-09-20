@@ -102,7 +102,10 @@ describe('OpenClaw runtime Gateway chat', () => {
         mode: 'backend',
       },
       role: 'operator',
-      scopes: ['operator.read', 'operator.write'],
+      // operator.admin is the #880 optional scope: per-turn model overrides
+      // need it on OpenClaw 2026.9.5; a refusing gateway triggers the
+      // downgrade reconnect instead of an outage.
+      scopes: ['operator.read', 'operator.write', 'operator.admin'],
       auth: { token: 'test-token' },
     })
     expect(agentRequest?.params).toMatchObject({
@@ -162,6 +165,56 @@ describe('OpenClaw runtime Gateway chat', () => {
       const d = data as { toolsAllow?: number; toolsDeny?: number } | undefined
       return d?.toolsAllow === 1 && d?.toolsDeny === 1
     })).toBe(true)
+  })
+
+  it('mid-session override rejection: retries once on the agent default with a receipt and flips perTurnModel (#880)', async () => {
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      if (frame.params.model) {
+        ws.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'provider/model overrides are not authorized for this caller.', code: 'INVALID_REQUEST' } })
+        return
+      }
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('clamped ok') })
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    expect(runtime.models.routingSupport().perTurnModel).toBe(true)
+
+    const result = await runtime.messaging.send({
+      agentId: 'pixel',
+      content: 'Say ok.',
+      threadId: 'task:t-880:d1',
+      model: 'openai/gpt-5.5',
+    })
+
+    // The turn SUCCEEDS on the agent default, carrying the race receipt.
+    expect(result.content).toBe('clamped ok')
+    expect(result.metadata?.modelOverrideDenied).toEqual({ requested: 'openai/gpt-5.5' })
+    // Exactly two agent frames: rejected override, then the clamped retry.
+    const ws = FakeWebSocket.instances[0]!
+    const agentFrames = ws.sentFrames.filter((f) => f.method === 'agent')
+    expect(agentFrames).toHaveLength(2)
+    expect(agentFrames[0]!.params.model).toBe('openai/gpt-5.5')
+    expect(agentFrames[1]!.params.model).toBeUndefined()
+    // The retry carries a FRESH idempotency key (review R3): reusing the
+    // rejected turn's key risks a gateway dedupe replay of the rejection.
+    expect(agentFrames[1]!.params.idempotencyKey).not.toBe(agentFrames[0]!.params.idempotencyKey)
+    expect(String(agentFrames[1]!.params.idempotencyKey)).toBe(`${String(agentFrames[0]!.params.idempotencyKey)}-clamped`)
+    // Capability flip for THIS connection: every later turn clamps pre-send in core.
+    expect(runtime.models.routingSupport().perTurnModel).toBe(false)
+
+    // Review #2: the denial is epoch-scoped, not process-permanent. A
+    // reconnect whose ACK re-grants operator.admin supersedes it — the
+    // operator fixing authorization must not require a server restart.
+    ws.close()
+    FakeWebSocket.onRequest = (frame, fws) => {
+      if (frame.method !== 'agent') return
+      fws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('reconnected ok') })
+    }
+    const after = await runtime.messaging.send({ agentId: 'pixel', content: 'Say ok.', threadId: 'task:t-880:d2' })
+    expect(after.content).toBe('reconnected ok')
+    expect(runtime.models.routingSupport().perTurnModel).toBe(true)
   })
 
   it('surfaces token usage on a successful turn from the trajectory', async () => {

@@ -535,6 +535,17 @@ export interface RuntimeRoutingSupport {
    * declares and declare every level it honors (conformance-pinned).
    */
   supportedThinkingLevels: readonly string[]
+  /**
+   * Whether messaging.send/stream turns may carry a per-turn `model`
+   * override (#880: OpenClaw 2026.9.5 gates this behind operator.admin
+   * scope). MAY BE DYNAMIC — OpenClaw derives it from the gateway
+   * connection's GRANTED scopes (optimistic true before first connect;
+   * flips false after a scope downgrade or an admission rejection). Bakin's
+   * routing layer clamps routed models to the agent default (with a
+   * modelClamp receipt + audit) when false — same posture as thinking
+   * levels: declare only what the runtime will honor (conformance-pinned).
+   */
+  perTurnModel: boolean
 }
 
 export interface RuntimeAvailableModel {

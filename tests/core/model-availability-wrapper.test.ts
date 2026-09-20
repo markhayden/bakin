@@ -153,6 +153,27 @@ describe('success edge', () => {
     for await (const _ of wrapped.messaging.stream({ agentId: 'a', content: 'x', model: 'p/stream-alive' })) { /* drain */ }
     expect(openRow('p/stream-alive')).toBeUndefined()
   })
+
+  test('override-DENIED send success resolves nothing — the turn ran on the agent default, not args.model (#880)', async () => {
+    recordModelRejection({ model: 'p/denied-model', at: 1 })
+    const wrapped = withModelAvailabilityObservation(fakeAdapter({
+      send: async () => ({ id: '1', content: 'ok', metadata: { modelOverrideDenied: { requested: 'p/denied-model' } } }),
+    }))
+    await wrapped.messaging.send({ agentId: 'a', content: 'x', model: 'p/denied-model' })
+    expect(openRow('p/denied-model')).toBeDefined() // NOT resolved: no evidence it ran
+  })
+
+  test('override-DENIED stream done resolves nothing (#880)', async () => {
+    recordModelRejection({ model: 'p/denied-stream', at: 1 })
+    const wrapped = withModelAvailabilityObservation(fakeAdapter({
+      streamChunks: [
+        { type: 'text', content: 'ok' },
+        { type: 'done', data: { modelOverrideDenied: { requested: 'p/denied-stream' } } } as ChatChunk,
+      ],
+    }))
+    for await (const _ of wrapped.messaging.stream({ agentId: 'a', content: 'x', model: 'p/denied-stream' })) { /* drain */ }
+    expect(openRow('p/denied-stream')).toBeDefined()
+  })
 })
 
 describe('noteProbeOutcome — probes ride the same evidence pipeline (#852 D5)', () => {

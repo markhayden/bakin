@@ -154,6 +154,8 @@ export function createModelsSurface(): AgentRuntimeAdapter['models'] {
       // Pi sessions honor a bounded thinking ladder; 'adaptive'/'max' have
       // no Pi semantics — Bakin clamps before the send (never silent).
       supportedThinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+      // In-process runtime: per-turn model refs are always honored (#880).
+      perTurnModel: true,
     }),
 
     async routingPolicy(): Promise<RuntimeRoutingPolicy> {

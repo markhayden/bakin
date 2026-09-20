@@ -448,6 +448,42 @@ export const runtimeConformanceChecks = {
   },
 
   /**
+   * Per-turn model honesty (#880): a runtime declaring
+   * routingSupport().perTurnModel === true must accept a turn carrying an
+   * explicit `model` (Bakin's routing layer clamps BEFORE the send when
+   * false, so a declared-but-refused override fails real routed turns —
+   * the OpenClaw 2026.9.5 operator.admin incident). perTurnModel === false
+   * is a VALID honest state (e.g. an install without admin scope) and is
+   * skipped, not failed.
+   */
+  async perTurnModelHonesty(target: RuntimeConformanceTarget): Promise<void> {
+    const support = target.runtime.models.routingSupport()
+    if (typeof support.perTurnModel !== 'boolean') {
+      fail('routingSupport() must declare perTurnModel (#880) — true when per-turn model overrides are honored')
+    }
+    if (support.perTurnModel === false) return // honest denial — clamping covers it
+    const agent = await target.runtime.agents.get(target.agentId)
+    const policy = await target.runtime.models.routingPolicy().catch(() => null)
+    const catalog = await target.runtime.models.listAvailable().catch(() => [])
+    const model = [agent?.model, policy?.defaultModel, catalog[0]?.id]
+      .find((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0)
+    if (!model) {
+      fail('perTurnModel=true but no model id is resolvable (agent, default, or catalog) to probe with')
+    }
+    await target.prepareOkTurn?.()
+    try {
+      await target.runtime.messaging.send({
+        agentId: target.agentId,
+        content: 'conformance: per-turn model override',
+        threadId: target.newThreadId(),
+        model,
+      })
+    } catch (err) {
+      fail(`declared perTurnModel=true but a turn carrying model '${model}' failed (${String(err)}) — honor per-turn overrides or report perTurnModel=false`)
+    }
+  },
+
+  /**
    * Usage parity (work-class attribution): a runtime whose send() results
    * carry token usage must attach the same accounting to the stream's
    * terminal `done` chunk — otherwise streamed turns (chat) are unmeterable
@@ -839,6 +875,10 @@ export function runRuntimeConformanceSuite(
 
     it('declared thinking levels are honored (thinking honesty)', async () => {
       await runtimeConformanceChecks.thinkingLevelHonesty(getTarget())
+    })
+
+    it('declared per-turn model support is honored (#880 model honesty)', async () => {
+      await runtimeConformanceChecks.perTurnModelHonesty(getTarget())
     })
 
     it('tool turns stream classified, structured chunks', async () => {

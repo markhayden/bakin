@@ -52,10 +52,17 @@ class FakeWebSocket {
   /** hello-ok payload the fake returns for connect; tests override per case. */
   static connectPayload: Record<string, unknown> = { type: 'hello-ok', protocol: 4, auth: { scopes: [] } }
 
+  /** Per-test connect override (e.g. NOT_PAIRED refusals); null = default hello-ok. */
+  static connectResponder: ((frame: Frame, ws: FakeWebSocket) => void) | null = null
+
   send(raw: string): void {
     const frame = JSON.parse(raw) as Frame
     this.sentFrames.push(frame)
     if (frame.method === 'connect') {
+      if (FakeWebSocket.connectResponder) {
+        FakeWebSocket.connectResponder(frame, this)
+        return
+      }
       this.emitMessage({ type: 'res', id: frame.id, ok: true, payload: FakeWebSocket.connectPayload })
     }
     // Other methods: never answered — tests control resolution manually.
@@ -83,6 +90,7 @@ beforeEach(() => {
   globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
   FakeWebSocket.instances.length = 0
   FakeWebSocket.connectPayload = { type: 'hello-ok', protocol: 4, auth: { scopes: [] } }
+  FakeWebSocket.connectResponder = null
   client = new OpenClawGatewayRpcClient({
     url: 'ws://127.0.0.1:1',
     token: () => null,
@@ -275,5 +283,133 @@ describe('accepted-ack surfacing', () => {
 
     ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { status: 'ok' } })
     await request
+  })
+})
+
+describe('optional scopes + granted-scope truth (#880)', () => {
+  function makeClient(opts: { optionalScopes?: string[] } = {}): OpenClawGatewayRpcClient {
+    return new OpenClawGatewayRpcClient({
+      url: 'ws://127.0.0.1:1',
+      token: () => null,
+      logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
+      clientId: 'test-client',
+      displayName: 'Test',
+      clientMode: 'backend',
+      scopes: ['operator.read', 'operator.write'],
+      ...(opts.optionalScopes ? { optionalScopes: opts.optionalScopes } : {}),
+      label: 'Test gateway',
+    })
+  }
+
+  it('requests base + optional scopes on connect and parses the granted set from the ACK', async () => {
+    FakeWebSocket.connectPayload = {
+      type: 'hello-ok', protocol: 4,
+      auth: { scopes: ['operator.read', 'operator.write', 'operator.admin'] },
+    }
+    const c = makeClient({ optionalScopes: ['operator.admin'] })
+    // Optimistic before connect: requested = assumed granted.
+    expect(c.hasScope('operator.admin')).toBe(true)
+    const request = c.request('agent', {}, { timeoutMs: 1000 })
+    await waitUntil(() => FakeWebSocket.instances.length === 1 && FakeWebSocket.instances[0]!.sentFrames.length >= 2, { label: 'connect + agent frames' })
+    const connectFrame = FakeWebSocket.instances[0]!.sentFrames.find((f) => f.method === 'connect')!
+    expect(connectFrame.params.scopes).toEqual(['operator.read', 'operator.write', 'operator.admin'])
+    // Authoritative after the ACK.
+    expect(c.grantedScopes()).toEqual(['operator.read', 'operator.write', 'operator.admin'])
+    expect(c.hasScope('operator.admin')).toBe(true)
+    const ws = FakeWebSocket.instances[0]!
+    const agentFrame = ws.sentFrames.find((f) => f.method === 'agent')!
+    ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { status: 'ok' } })
+    await request
+    c.close()
+  })
+
+  it('an ACK WITHOUT auth.scopes (pre-scope-reporting gateway) verifies the requested set — never optimistic-forever', async () => {
+    // Review #2: a gateway that never reports scopes doesn't gate on them
+    // either; leaving grantedScopes() null would pin the health check's
+    // "unverified" advisory permanently with no way to clear it.
+    FakeWebSocket.connectPayload = { type: 'hello-ok', protocol: 4 }
+    const c = makeClient({ optionalScopes: ['operator.admin'] })
+    const request = c.request('agent', {}, { timeoutMs: 1000 })
+    await waitUntil(() => FakeWebSocket.instances.length === 1 && FakeWebSocket.instances[0]!.sentFrames.length >= 2, { label: 'connect + agent frames' })
+    expect(c.grantedScopes()).toEqual(['operator.read', 'operator.write', 'operator.admin'])
+    expect(c.connectionEpoch()).toBe(1)
+    const ws = FakeWebSocket.instances[0]!
+    const agentFrame = ws.sentFrames.find((f) => f.method === 'agent')!
+    ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { status: 'ok' } })
+    await request
+    c.close()
+  })
+
+  it('a NOT_PAIRED connect refusal downgrades ONCE: retries without optional scopes, sticky, and reports the loss', async () => {
+    let connectAttempt = 0
+    FakeWebSocket.connectResponder = (frame, ws) => {
+      connectAttempt += 1
+      if ((frame.params.scopes as string[]).includes('operator.admin')) {
+        ws.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'pairing required', code: 'NOT_PAIRED', details: { requestedScopes: frame.params.scopes, approvedScopes: ['operator.read', 'operator.write'] } } })
+        return
+      }
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { type: 'hello-ok', protocol: 4, auth: { scopes: ['operator.read', 'operator.write'] } } })
+    }
+    const c = makeClient({ optionalScopes: ['operator.admin'] })
+    const request = c.request('agent', {}, { timeoutMs: 2000 })
+    await waitUntil(() => FakeWebSocket.instances.length === 2, { label: 'downgrade re-dial' })
+    const second = FakeWebSocket.instances[1]!
+    await waitUntil(() => second.sentFrames.some((f) => f.method === 'connect'), { label: 'second connect frame' })
+    const secondConnect = second.sentFrames.find((f) => f.method === 'connect')!
+    expect(secondConnect.params.scopes).toEqual(['operator.read', 'operator.write'])
+    expect(connectAttempt).toBe(2)
+    // The ORIGINAL request survives the downgrade and completes.
+    await waitUntil(() => second.sentFrames.some((f) => f.method === 'agent'), { label: 'agent frame after downgrade' })
+    const agentFrame = second.sentFrames.find((f) => f.method === 'agent')!
+    second.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { status: 'ok' } })
+    await request
+    expect(c.hasScope('operator.admin')).toBe(false)
+    expect(c.grantedScopes()).toEqual(['operator.read', 'operator.write'])
+    c.close()
+  })
+
+  it('a NOT_PAIRED refusal WITHOUT optional scopes fails the connect (no retry loop)', async () => {
+    FakeWebSocket.connectResponder = (frame, ws) => {
+      ws.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'pairing required', code: 'NOT_PAIRED' } })
+    }
+    const c = makeClient()
+    await expect(c.request('agent', {}, { timeoutMs: 1000 })).rejects.toThrow(/NOT_PAIRED/)
+    expect(FakeWebSocket.instances.length).toBe(1)
+    c.close()
+  })
+
+  it('a BASE pairing failure (no approvedScopes evidence) never drops the optional set (review regression)', async () => {
+    // Fresh unpaired install: the device has no record at all. Dropping
+    // admin here would mean pairing WITH admin later never gets requested
+    // until a restart.
+    FakeWebSocket.connectResponder = (frame, ws) => {
+      ws.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'device is not paired', code: 'NOT_PAIRED' } })
+    }
+    const c = makeClient({ optionalScopes: ['operator.admin'] })
+    await expect(c.request('agent', {}, { timeoutMs: 1000 })).rejects.toThrow(/NOT_PAIRED/)
+    // No downgrade re-dial — one socket, and admin stays requested next time.
+    expect(FakeWebSocket.instances.length).toBe(1)
+    expect(c.hasScope('operator.admin')).toBe(true) // still optimistic-requested
+    c.close()
+  })
+
+  it('isModelOverrideRejection requires the response-frame code marker — free text quoting the phrase never qualifies (review #2)', async () => {
+    const { isModelOverrideRejection } = await import('../../packages/adapter-openclaw/src/errors')
+    // A real admission rejection carries the adapter-appended code marker.
+    expect(isModelOverrideRejection(new Error('provider/model overrides are not authorized for this caller.; code=INVALID_REQUEST'))).toBe(true)
+    // A trajectory post-mortem / wrapped output QUOTING the phrase does not
+    // — a false match re-sends the turn and flips perTurnModel process-wide.
+    expect(isModelOverrideRejection(new Error('agent said: "provider/model overrides are not authorized" in its reply'))).toBe(false)
+    expect(isModelOverrideRejection(new Error('some other failure; code=INVALID_REQUEST'))).toBe(false)
+  })
+
+  it('a scope-upgrade refusal whose approvedScopes do NOT cover the base set never drops the optional set', async () => {
+    FakeWebSocket.connectResponder = (frame, ws) => {
+      ws.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'pairing required', code: 'NOT_PAIRED', details: { approvedScopes: ['operator.read'] } } })
+    }
+    const c = makeClient({ optionalScopes: ['operator.admin'] })
+    await expect(c.request('agent', {}, { timeoutMs: 1000 })).rejects.toThrow(/NOT_PAIRED/)
+    expect(FakeWebSocket.instances.length).toBe(1)
+    c.close()
   })
 })

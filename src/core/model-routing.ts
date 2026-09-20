@@ -107,6 +107,10 @@ export interface ResolvedTurn {
   source: RouteSource
   /** Present when the requested thinking level was clamped to the runtime's declared support. */
   thinkingClamp?: { requested: ThinkingLevel; applied: ThinkingLevel | undefined }
+  /** Present when the routed model was dropped because the runtime refuses
+   *  per-turn model overrides (#880) — the turn proceeds on the agent
+   *  default with this receipt (clamp-and-warn, never a silent drop). */
+  modelClamp?: { requested: string; reason: 'override_denied' }
 }
 
 /**

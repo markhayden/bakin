@@ -37,6 +37,9 @@ export interface RoutingHealthDeps {
    *  entries for runtime-private families like openai-codex. */
   listAvailableModels(): Promise<Array<{ id: string; tier?: string }>>
   supportedThinkingLevels(): readonly string[]
+  /** Whether the runtime honors per-turn model overrides (#880) — false ⇒
+   *  every configured model route is a standing clamp to agent defaults. */
+  supportsPerTurnModel(): boolean
   /** run_costs rows for the premium-on-cheap scan window. */
   listRecentRunCosts(sinceMs: number): RunCostSpendRow[]
   /** Open account rejections (#852) — sharpens route-model-missing evidence
@@ -164,6 +167,30 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
     }))
   }
 
+  // 1b. Standing model clamps (#880) — the runtime refuses per-turn model
+  //     overrides, so every configured model route runs on agent defaults.
+  //     One finding for the whole config (the per-turn receipts carry the
+  //     per-turn story); same family as thinking clamps.
+  const modelRoutes = config.routes.filter((r) => r.model)
+  // Tag overrides with models clamp exactly the same way at send time —
+  // counting only routes under-reported real standing clamps (review finding).
+  const modelTagOverrides = config.tagOverrides.filter((t) => t.model)
+  if ((modelRoutes.length > 0 || modelTagOverrides.length > 0) && !deps.supportsPerTurnModel()) {
+    observations.push(healthWarning({
+      key: 'routes-model-clamped',
+      summary: `The active runtime refuses per-turn model overrides — ${modelRoutes.length + modelTagOverrides.length} model route(s)/override(s) are clamped to agent defaults.`,
+      evidence: { workClasses: modelRoutes.map((r) => r.workClass), tags: modelTagOverrides.map((t) => t.tag), perTurnModel: false },
+      incident: {
+        key: 'routes-model-clamped',
+        title: 'Work-class model routes are clamped by the runtime',
+        impact: 'Routed turns run on each agent\'s default model (with clamp receipts) — spend and quality follow defaults, not your routes.',
+        disposition: 'watch',
+        resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
+        resolution: { key: 'authorize-overrides', type: 'navigate', label: 'Review routing', href: '/models?tab=routing' },
+      },
+    }))
+  }
+
   // 2. Standing clamps — a route asks for a thinking level this runtime clamps.
   const clamping = config.routes.filter((r) => r.thinking && r.thinking !== 'inherit' && !supported.includes(r.thinking))
   for (const r of clamping) {
@@ -271,7 +298,7 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
 /** Build the live deps from a plugin context — index.ts wiring + the recommend route share it. */
 export function buildRoutingHealthDeps(ctx: {
   getSettings<T>(): T
-  runtime: { models: { routingSupport(): { supportedThinkingLevels: readonly string[] } } }
+  runtime: { models: { routingSupport(): { supportedThinkingLevels: readonly string[]; perTurnModel?: boolean } } }
 }, helpers: {
   readRoutingConfig(): RoutingConfig
   listAvailableModels(): Promise<Array<{ id: string; available?: boolean; tier?: string }>>
@@ -283,6 +310,7 @@ export function buildRoutingHealthDeps(ctx: {
       .filter((m) => m.available !== false)
       .map((m) => ({ id: m.id, ...(m.tier ? { tier: m.tier } : {}) })),
     supportedThinkingLevels: () => ctx.runtime.models.routingSupport().supportedThinkingLevels,
+    supportsPerTurnModel: () => ctx.runtime.models.routingSupport().perTurnModel !== false,
     listRecentRunCosts: (sinceMs) => {
       try {
         return helpers.listRunCostsSince(sinceMs)

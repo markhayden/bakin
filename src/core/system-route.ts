@@ -15,26 +15,70 @@ import { clampThinkingLevel, resolveWorkClassRoute, type ResolvedTurn, type Rout
 const log = createLogger('system-route')
 
 /**
- * Clamp a resolved route's thinking level to what the active runtime declares
- * it honors (clamp-and-warn — never silent, never a failed turn). Shared by
- * dispatch and system-send resolution. Fail-open: if the capability read
- * fails, the route passes through unchanged (the adapter's own guard is the
- * backstop).
+ * Audit-dedupe for a STANDING override denial (#880): route.model_clamped is
+ * a state-transition receipt, not a per-turn one — without this, every
+ * enrichment/auto-title/relay of a denied connection appends an identical
+ * audit row (review #2: unbounded duplicate growth telling one story). The
+ * per-turn story rides task.routed / run_costs; clears when overrides pass
+ * again so a NEW denial audits fresh.
  */
-export async function applyThinkingCapability(route: ResolvedTurn, workClass: WorkClass): Promise<ResolvedTurn> {
-  if (!route.thinking) return route
+const auditedClampClasses = new Set<WorkClass>()
+
+/**
+ * Clamp a resolved route to what the active runtime declares it honors —
+ * BOTH knobs: thinking levels (supportedThinkingLevels) and per-turn model
+ * overrides (perTurnModel, #880). Clamp-and-warn with receipts — never
+ * silent, never a failed turn. Shared by dispatch and system-send
+ * resolution (the ONLY capability gate: a route that skips this function
+ * skips the #880 clamp). Fail-open: if the capability read fails, the route
+ * passes through unchanged (the adapter's own guard is the backstop).
+ */
+export async function applyRoutingCapabilities(route: ResolvedTurn, workClass: WorkClass): Promise<ResolvedTurn> {
+  if (!route.thinking && !route.model) return route
   try {
     // Leaf accessor (app-services-store), NOT the composition root — a
     // ./app-services import here closes the exec-tool/dispatch cycle back
     // to app-services (caught by check:cycles in CI).
     const { getAppServices } = await import('./app-services-store')
-    const supported = getAppServices().runtime.models.routingSupport().supportedThinkingLevels
-    const { applied, clamped } = clampThinkingLevel(route.thinking, supported)
-    if (!clamped) return route
-    log.warn('Thinking level clamped to runtime support', { workClass, requested: route.thinking, applied: applied ?? 'inherit' })
-    const next: ResolvedTurn = { ...route, thinkingClamp: { requested: route.thinking, applied } }
-    if (applied) next.thinking = applied
-    else delete next.thinking
+    const support = getAppServices().runtime.models.routingSupport()
+    let next = route
+
+    // Model overrides the runtime refuses (#880: OpenClaw 2026.9.5 gates
+    // them behind operator.admin) — drop the model with a receipt so the
+    // turn proceeds on the agent default instead of failing at admission.
+    if (next.model && support.perTurnModel === false) {
+      const requested = next.model
+      log.warn('Model route clamped: runtime refuses per-turn overrides', { workClass, requested })
+      next = { ...next, modelClamp: { requested, reason: 'override_denied' } }
+      delete next.model
+      // Durable receipt at the state TRANSITION (once per work class per
+      // standing denial) — system sends have no task.routed audit of their
+      // own, but a standing denial must not grow audit.jsonl per turn.
+      if (!auditedClampClasses.has(workClass)) {
+        auditedClampClasses.add(workClass)
+        try {
+          const { appendAudit } = await import('./audit')
+          const { getContentDir } = await import('./content-dir')
+          appendAudit(getContentDir(), 'route.model_clamped', 'system', { workClass, requested, reason: 'override_denied' })
+        } catch (auditErr) {
+          log.warn('Model-clamp audit not recorded', { workClass, error: String(auditErr) })
+        }
+      }
+    } else if (next.model) {
+      // Overrides are passing again — the denial ended; a future denial is a
+      // new transition and audits fresh.
+      auditedClampClasses.clear()
+    }
+
+    if (next.thinking) {
+      const { applied, clamped } = clampThinkingLevel(next.thinking, support.supportedThinkingLevels)
+      if (clamped) {
+        log.warn('Thinking level clamped to runtime support', { workClass, requested: next.thinking, applied: applied ?? 'inherit' })
+        next = { ...next, thinkingClamp: { requested: next.thinking, applied } }
+        if (applied) next.thinking = applied
+        else delete next.thinking
+      }
+    }
     return next
   } catch {
     return route
@@ -46,7 +90,7 @@ export async function resolveSystemRoute(workClass: WorkClass): Promise<Resolved
     const { getHookRegistry } = await import('@bakin/core/hooks/hook-registry-singleton')
     const config = await getHookRegistry().invoke<RoutingConfig>('models.getRoutingConfig', {})
     if (!config) return { source: 'inherit' }
-    return await applyThinkingCapability(resolveWorkClassRoute(config, workClass), workClass)
+    return await applyRoutingCapabilities(resolveWorkClassRoute(config, workClass), workClass)
   } catch (err) {
     log.error('System route resolve failed; using agent default', err, { workClass })
     return { source: 'inherit' }
