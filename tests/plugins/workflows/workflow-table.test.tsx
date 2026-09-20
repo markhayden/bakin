@@ -16,6 +16,27 @@ import { WorkflowTable } from '../../../plugins/workflows/components/workflow-ta
 afterEach(cleanup)
 
 describe('WorkflowTable', () => {
+  it('shows one soft count and no preview control when there are no steps', () => {
+    render(
+      <WorkflowTable
+        label="Workflows"
+        onOpen={() => {}}
+        templates={[{
+          filename: 'empty-flow',
+          name: 'Empty flow',
+          description: '',
+          stepCount: 0,
+          definition: { name: 'Empty flow', description: '', version: 1, steps: [] },
+        }]}
+      />,
+    )
+
+    const cell = screen.getByTestId('workflow-row-meta')
+    expect(within(cell).getAllByText('0 steps')).toHaveLength(1)
+    expect(within(cell).getByText('0 steps').getAttribute('data-variant')).toBe('soft')
+    expect(within(cell).queryByRole('button')).toBeNull()
+  })
+
   it('keeps scan signals on the row and reveals the complete sequence from a dedicated info control', async () => {
     const user = userEvent.setup()
     render(

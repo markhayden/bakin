@@ -93,20 +93,12 @@ function WorkflowStepPreview({
 }) {
   const stepLabel = `${stepCount} ${stepCount === 1 ? 'step' : 'steps'}`
 
-  if (steps.length === 0) {
-    return (
-      <Badge tone="neutral" variant="soft" size="xs">
-        {stepLabel}
-      </Badge>
-    )
-  }
-
   return (
     <>
       <Badge tone="neutral" variant="soft" size="xs">
         {stepLabel}
       </Badge>
-      <TooltipProvider delay={0}>
+      {steps.length > 0 && <TooltipProvider delay={0}>
         <Tooltip>
           <TooltipTrigger
             render={(
@@ -151,7 +143,7 @@ function WorkflowStepPreview({
             </div>
           </TooltipContent>
         </Tooltip>
-      </TooltipProvider>
+      </TooltipProvider>}
     </>
   )
 }
