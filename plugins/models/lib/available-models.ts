@@ -13,6 +13,7 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
 
 import type { AvailableModel } from '../types'
+import { listModelRejections } from '../../../src/core/execution-ledger'
 import {
   readPersistedCache,
   writePersistedCache,
@@ -125,6 +126,38 @@ function withFreshTiers(models: AvailableModel[]): AvailableModel[] {
   return models.map((m) => ({ ...m, tier: getKnownModel(m.id)?.tier ?? tierFromId(m.id) }))
 }
 
+let lastOverlayWarning = 0
+const OVERLAY_WARNING_TTL = 60_000
+
+/**
+ * Overlay open account rejections (#852) on every read — same posture as
+ * withFreshTiers: ledger state is code-external truth the cache must never
+ * pin, in either direction. Flip, not filter: the row stays listed with
+ * `available: false` + typed rejection info so UIs can show WHY.
+ * Ledger unavailable ⇒ FAIL OPEN (nothing marked unavailable on missing
+ * evidence — a DB glitch must not starve routing).
+ */
+export function applyRejectionOverlay(models: AvailableModel[]): AvailableModel[] {
+  try {
+    const open = listModelRejections({ openOnly: true })
+    if (open.length === 0) return models
+    const byId = new Map(open.map((r) => [r.model, r]))
+    return models.map((m) => {
+      const r = byId.get(m.id)
+      return r
+        ? { ...m, available: false, rejection: { lastSeenAt: r.lastSeenAt, occurrences: r.occurrences } }
+        : m
+    })
+  } catch (err) {
+    const now = Date.now()
+    if (now - lastOverlayWarning >= OVERLAY_WARNING_TTL) {
+      lastOverlayWarning = now
+      console.warn(`Model-rejection overlay skipped (ledger unavailable?): ${err instanceof Error ? err.message : String(err)}`)
+    }
+    return models
+  }
+}
+
 export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: boolean }): Promise<FetchResult> {
   // force: skip both caches and fetch live — the repair path for stale/
   // missing pricing (a health repair must refresh deterministically, not
@@ -133,7 +166,7 @@ export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: 
     // 1. Hot read — in-memory cache (fresh by TTL)
     const memCached = getModelsCache()
     if (memCached && Date.now() - memCached.fetchedAt < CACHE_TTL) {
-      return { models: withFreshTiers(memCached.models), cached: true, cachedAt: memCached.fetchedAt, stale: false }
+      return { models: applyRejectionOverlay(withFreshTiers(memCached.models)), cached: true, cachedAt: memCached.fetchedAt, stale: false }
     }
 
     // 2. Persistent cache hydration — survives server restart even when
@@ -143,7 +176,7 @@ export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: 
     if (diskCached) {
       setModelsCache({ models: diskCached.models, fetchedAt: diskCached.fetchedAt })
       const stale = Date.now() - diskCached.fetchedAt >= CACHE_TTL
-      return { models: withFreshTiers(diskCached.models), cached: true, cachedAt: diskCached.fetchedAt, stale }
+      return { models: applyRejectionOverlay(withFreshTiers(diskCached.models)), cached: true, cachedAt: diskCached.fetchedAt, stale }
     }
   }
 
@@ -155,9 +188,11 @@ export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: 
     try {
       const models = await loadConfiguredModelsFromRuntime(ctx as unknown as PluginContext)
       const now = Date.now()
+      // Caches persist the RAW runtime snapshot; only the response is
+      // overlaid — rejection truth lives in the ledger alone.
       setModelsCache({ models, fetchedAt: now })
       writePersistedCache({ models, fetchedAt: now, source: 'runtime' })
-      return { models, cached: false, cachedAt: now, stale: false }
+      return { models: applyRejectionOverlay(models), cached: false, cachedAt: now, stale: false }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       warnRuntimeModelFetchFailed(message)

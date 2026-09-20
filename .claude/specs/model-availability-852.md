@@ -120,9 +120,11 @@ In `plugins/models/lib/available-models.ts` (`fetchAvailableModels` /
 `loadConfiguredModelsFromRuntime`), on **every read including cache-served reads**
 (exactly the `withFreshTiers` precedent):
 
-- Overlay open rejections: set `available: false` and stamp rejection info
-  (reason/last-seen/occurrences) into the row's existing free-form `metadata` — **no new
-  SDK `AvailableModel` field, no public-api churn**.
+- Overlay open rejections: set `available: false` and stamp a typed optional
+  `rejection?: { lastSeenAt, occurrences }` on the row. (Build-time correction: the
+  merged `AvailableModel` type has NO free-form `metadata` field, so the original
+  "ride metadata" plan was impossible — one additive optional field on the SDK type is
+  the minimal honest alternative.)
 - **Flip, not filter:** consumers already gate on `available !== false`; the row stays
   visible so the UI can badge "rejected by account on <date>" and
   `includeUnavailable` consumers still see it.

@@ -95,6 +95,11 @@ mock.module('../../../src/core/execution-ledger', () => ({
   resolveBudgetIncident: mock((input: unknown) => { incidentResolves.push(input as Record<string, unknown>); return true }),
   resolveExpiredBudgetIncidents: mock(() => 0),
   findOpenCapIncident: mock(() => null),
+  // Model-availability evidence (#852) — inert here; covered by
+  // tests/plugins/models/rejection-overlay*.test.ts.
+  recordModelRejection: mock(() => ({ opened: false, id: 0 })),
+  resolveModelRejection: mock(() => false),
+  listModelRejections: mock(() => []),
   // dispatch-turns (dynamic import in /budget/status) needs the dispatch verbs at load.
   claimNextRun: mock(() => ({ claimed: false })),
   settleRun: mock(() => true),

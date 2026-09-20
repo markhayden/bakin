@@ -32,6 +32,7 @@ import {
 } from './config-io'
 import { normalizeModelId } from './model-id'
 import {
+  applyRejectionOverlay,
   fetchAvailableModels,
   loadConfiguredModelsFromRuntime,
   setModelsCache,
@@ -81,9 +82,11 @@ export const modelsRoutes = [
       try {
         const models = await loadConfiguredModelsFromRuntime(ctx as unknown as PluginContext)
         const now = Date.now()
+        // Caches persist the raw runtime snapshot; the response is overlaid
+        // with live rejection state (#852) — never the other way around.
         setModelsCache({ models, fetchedAt: now })
         writePersistedCache({ models, fetchedAt: now, source: 'runtime' })
-        return Response.json({ ok: true, models, cached: false, cachedAt: now, stale: false })
+        return Response.json({ ok: true, models: applyRejectionOverlay(models), cached: false, cachedAt: now, stale: false })
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         const fallbackCache = readPersistedCache()
@@ -91,7 +94,7 @@ export const modelsRoutes = [
           return Response.json({
             ok: false,
             error: message,
-            models: fallbackCache.models,
+            models: applyRejectionOverlay(fallbackCache.models),
             cached: true,
             cachedAt: fallbackCache.fetchedAt,
             stale: true,
