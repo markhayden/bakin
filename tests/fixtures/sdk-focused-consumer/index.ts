@@ -19,6 +19,7 @@ import { Button } from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 import { Slot, registerSlot } from '@makinbakin/sdk/slots'
 import { defineHookContract } from '@makinbakin/sdk/metadata'
+import { useHorizontalResize } from '@makinbakin/sdk/hooks'
 
 // Each rejected import guards the emitted declarations. Restoring an export
 // makes its @ts-expect-error unused, failing the external-consumer typecheck.
@@ -36,6 +37,16 @@ export { PageHeaderOverflowMenu } from '@makinbakin/sdk/patterns'
 export type { PageHeaderOverflowMenuProps } from '@makinbakin/sdk/patterns'
 // @ts-expect-error Assigned selection is owned by AgentSelect.
 export { ASSIGNED_AGENT_VALUE } from '@makinbakin/sdk/patterns'
+// @ts-expect-error Use the navigation dirty-exit contract instead.
+export { useFormGuard } from '@makinbakin/sdk/hooks'
+// @ts-expect-error The unused file-drop hook was removed.
+export { useFileDrop } from '@makinbakin/sdk/hooks'
+// @ts-expect-error The removed file-drop hook has no public options type.
+export type { UseFileDropOptions } from '@makinbakin/sdk/hooks'
+// @ts-expect-error The removed file-drop hook has no public result type.
+export type { UseFileDropResult } from '@makinbakin/sdk/hooks'
+// @ts-expect-error The unused vertical resize wrapper was removed.
+export { useVerticalResize } from '@makinbakin/sdk/hooks'
 
 export interface FocusedSdkConsumer {
   charts: typeof Charts
@@ -69,6 +80,7 @@ export const focusedSdkValues = {
   AgentDot,
   AgentStatus,
   ColorPicker,
+  useHorizontalResize,
 }
 
 /** Representative props prove consumers need no private implementation types. */

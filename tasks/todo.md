@@ -18,10 +18,10 @@ Plan: [implementation and rollback](plan.md).
 - [x] T5: facade and exact public API/coverage contraction.
 - [x] T6: package contract, public guidance, story evidence.
 - [x] Checkpoint B passes; commit C2 (this checkpoint).
-- [ ] T7: hook removal guards and implementation deletion.
-- [ ] T8: comments/guidance and package declaration checks.
-- [ ] T9: documentation reconciliation and Bits follow-up record.
-- [ ] Checkpoint C passes; commit C3.
+- [x] T7: hook removal guards and implementation deletion.
+- [x] T8: comments/guidance and package declaration checks.
+- [x] T9: documentation reconciliation and Bits follow-up record.
+- [x] Checkpoint C passes; commit C3 (this checkpoint).
 - [ ] T10: full conformance and scoped code review.
 - [ ] Record evidence and handoff; commit C4 if evidence changes.
 
@@ -57,6 +57,13 @@ Quick conformance, lint (same five warnings), and docs validation pass. Six publ
 Storybook files / 16 Chromium interaction tests pass; report:
 `test-results/ui-stories/junit.xml`. API delta is exactly two values and one type;
 kit-coverage allowance tightens from 28 to 27. No story visual or behavior change.
+
+C2: `b1f67757f`. Phase C: 9 pass / 6 intended failures (exports plus files)
+before deletion. After removal: 166 focused/package tests pass, 679 assertions.
+Quick conformance, docs validation, and lint pass (same five existing warnings).
+Only the three approved unused hook implementations were deleted; Git history
+retains them. Existing navigation, shared resize code, and internal helpers remain.
+SDK README and root README have no affected public-import recommendations.
 
 ## Separate follow-ups
 

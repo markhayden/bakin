@@ -102,10 +102,8 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | Hook | Description |
 | --- | --- |
 | `useDebug` | Read/toggle the global debug (X-Ray) flag. |
-| `useFormGuard` | Guard a form against unmounting while submission is in flight. |
 | `toast` | Fire a toast notification (success/error/info). |
 | `useToastStore` | Subscribe to the toast store for custom toast UIs. |
-| `useVerticalResize` | Imperatively resize a vertical pane via mouse drag handle. |
 
 ### Runtime
 
@@ -132,9 +130,6 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | `usePluginEvent` | Subscribe to a server-pushed plugin event over the shell's single connection. |
 | `emitPluginEvent` | Subscribe to a server-pushed plugin event over the shell's single connection. |
 | `PluginEventPayload` | Subscribe to a server-pushed plugin event over the shell's single connection. |
-| `useFileDrop` | Headless drag-drop file intake (drag-over state + handlers + accept filter) — style your own zone. |
-| `UseFileDropOptions` | — |
-| `UseFileDropResult` | — |
 | `useHistoryBack` | — |
 | `useHorizontalResize` | Resize a side-by-side split pane by dragging the divider between columns. |
 | `useAvailableModels` | The available-models catalog (cached, read-only); empty until loaded. |

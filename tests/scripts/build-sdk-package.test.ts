@@ -122,6 +122,11 @@ describe('buildSdkPackage', () => {
     expect(patterns.ColorPicker).toBeFunction()
     expect(Object.hasOwn(patterns, 'PageHeaderOverflowMenu')).toBe(false)
     expect(Object.hasOwn(patterns, 'ASSIGNED_AGENT_VALUE')).toBe(false)
+    const hooks = await import(pathToFileURL(join(outDir, 'hooks/index.js')).href)
+    expect(hooks.useHorizontalResize).toBeFunction()
+    for (const name of ['useFormGuard', 'useFileDrop', 'useVerticalResize']) {
+      expect(Object.hasOwn(hooks, name)).toBe(false)
+    }
 
     const consumerDir = join(repoRoot, `.tmp-sdk-focused-consumer-${Date.now()}`)
     try {

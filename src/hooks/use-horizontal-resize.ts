@@ -19,9 +19,8 @@ interface Return {
 /**
  * Resize a right-anchored panel by dragging its left edge. The handle lives at
  * the left of the element; dragging left grows the panel, dragging right
- * shrinks it. Keyboard: ArrowLeft/ArrowRight (Shift for a larger step). The
- * companion to {@link useVerticalResize} for side-by-side split panes; both are
- * thin wrappers over {@link useResizablePane}.
+ * shrinks it. Keyboard: ArrowLeft/ArrowRight (Shift for a larger step).
+ * Thin wrapper over {@link useResizablePane} for side-by-side split panes.
  */
 export function useHorizontalResize({ defaultWidth, minWidth, maxWidth, storageKey }: Options): Return {
   const { size, setSize, handleProps } = useResizablePane({
