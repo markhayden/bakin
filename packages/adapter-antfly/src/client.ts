@@ -326,7 +326,7 @@ export class AntflySearchClient implements SearchAdapter {
     }
     // rc.18 totals and aggregation buckets are corpus-true on every
     // response — the old page-scoped-totals count twin is gone.
-    const result = mapQueryResponse(main, table)
+    const result = mapQueryResponse(main, table, { reranked: request.reranker !== undefined })
     if (degraded) {
       result.diagnostics = {
         ...(result.diagnostics ?? { strategy: 'fts' }),

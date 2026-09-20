@@ -256,7 +256,7 @@ function normalizeTotal(total: number | { value: number; relation?: string } | u
   return typeof total === 'number' ? total : total.value
 }
 
-export function mapQueryResponse(envelope: WireQueryEnvelope | null, _table: string): QueryResult {
+export function mapQueryResponse(envelope: WireQueryEnvelope | null, _table: string, opts?: { reranked?: boolean }): QueryResult {
   const response = envelope?.responses?.[0]
   if (!response) {
     return { hits: [], total: 0, diagnostics: { strategy: 'none' } }
@@ -265,7 +265,12 @@ export function mapQueryResponse(envelope: WireQueryEnvelope | null, _table: str
     key: hit._id,
     document: hit._source ?? {},
     score: hit._score,
-    ...(hit._index_scores ? { scoreBreakdown: hit._index_scores } : {}),
+    // Reranked responses replace _score with the cross-encoder score and
+    // emit NO 'rerank' breakdown key (0.2.x, verified live) — surface it
+    // explicitly so rerankScore reaches the debug overlay (#846).
+    ...(hit._index_scores || opts?.reranked
+      ? { scoreBreakdown: { ...(hit._index_scores ?? {}), ...(opts?.reranked ? { rerank: hit._score } : {}) } }
+      : {}),
   }))
   const facets: Record<string, Array<{ value: string | number | boolean; count: number }>> = {}
   for (const [name, agg] of Object.entries(response.aggregations ?? {})) {

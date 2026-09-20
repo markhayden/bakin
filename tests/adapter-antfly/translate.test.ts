@@ -429,3 +429,27 @@ describe('mapIndexStatuses', () => {
     ])
   })
 })
+
+describe('mapQueryResponse rerank surfacing (#846)', () => {
+  const envelope = {
+    responses: [{
+      took: 3,
+      hits: { total: { value: 2, relation: 'exact' }, hits: [
+        { _id: 'a', _score: 0.98, _source: { title: 't' }, _index_scores: { embeddings: 0.6 } },
+        { _id: 'b', _score: 0.01, _source: { title: 'u' } },
+      ] },
+    }],
+  } as never
+
+  it('reranked responses surface _score as scoreBreakdown.rerank (0.2.x emits no rerank key)', () => {
+    const result = mapQueryResponse(envelope, 't', { reranked: true })
+    expect(result.hits[0]!.scoreBreakdown).toEqual({ embeddings: 0.6, rerank: 0.98 })
+    expect(result.hits[1]!.scoreBreakdown).toEqual({ rerank: 0.01 })
+  })
+
+  it('unreranked responses are byte-identical to before', () => {
+    const result = mapQueryResponse(envelope, 't')
+    expect(result.hits[0]!.scoreBreakdown).toEqual({ embeddings: 0.6 })
+    expect(result.hits[1]!.scoreBreakdown).toBeUndefined()
+  })
+})
