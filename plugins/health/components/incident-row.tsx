@@ -128,16 +128,16 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
           <div className="flex flex-wrap items-center gap-bakin-2">
             <StatusBadge tone={status.tone} variant="solid">{status.label}</StatusBadge>
             {incident.class && (
-              <StatusBadge tone="neutral" variant="outline">{CLASS_LABEL[incident.class]}</StatusBadge>
+              <StatusBadge tone="neutral" variant="soft">{CLASS_LABEL[incident.class]}</StatusBadge>
             )}
             {incident.effectiveDisposition !== incident.disposition && (
-              <StatusBadge tone="neutral" variant="outline">
+              <StatusBadge tone="neutral" variant="soft">
                 {`Calmed from ${DISPOSITION_LABEL[incident.disposition]}`}
               </StatusBadge>
             )}
-            {item.freshness === 'stale' && <StatusBadge tone="neutral" variant="outline">Last known</StatusBadge>}
+            {item.freshness === 'stale' && <StatusBadge tone="neutral" variant="soft">Last known</StatusBadge>}
             {incident.ackState && (
-              <StatusBadge tone="neutral" variant="outline">
+              <StatusBadge tone="neutral" variant="soft">
                 {incident.ackState === 'acked' ? 'Acknowledged' : 'Snoozed'}
               </StatusBadge>
             )}

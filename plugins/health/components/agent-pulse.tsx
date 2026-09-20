@@ -87,21 +87,21 @@ function Metric({ label, children }: { label: string; children: ReactNode }) {
 
 function ReviewStatus({ row, checking }: { row: AgentPulseRow; checking: boolean }) {
   if (checking) {
-    return <StatusBadge tone="neutral" variant="solid">Checking review</StatusBadge>
+    return <StatusBadge tone="neutral" variant="solid" size="xs">Checking review</StatusBadge>
   }
   if (row.reviewState === 'review') {
-    return <StatusBadge tone="attention" variant="solid">Review</StatusBadge>
+    return <StatusBadge tone="attention" variant="solid" size="xs">Review</StatusBadge>
   }
   if (row.reviewState === 'clear') {
-    return <StatusBadge tone="success" variant="solid">No review flags</StatusBadge>
+    return <StatusBadge tone="success" variant="solid" size="xs">No review flags</StatusBadge>
   }
   if (row.effort && !hasCurrentAgentEffortCoverage(row.effort)) {
-    return <StatusBadge tone="neutral" variant="solid">Coverage unavailable</StatusBadge>
+    return <StatusBadge tone="neutral" variant="solid" size="xs">Coverage unavailable</StatusBadge>
   }
   if (row.effort && row.effort.runs > 0 && row.effort.windowTokens === null) {
-    return <StatusBadge tone="neutral" variant="solid">Metering incomplete</StatusBadge>
+    return <StatusBadge tone="neutral" variant="solid" size="xs">Metering incomplete</StatusBadge>
   }
-  return <StatusBadge tone="neutral" variant="solid">Coverage unavailable</StatusBadge>
+  return <StatusBadge tone="neutral" variant="solid" size="xs">Coverage unavailable</StatusBadge>
 }
 
 function UsageMetric({ row, pending }: { row: AgentPulseRow; pending: AgentPulsePending }) {
@@ -287,14 +287,14 @@ function AgentPulseRowView({ row, expanded, pending, unavailable, liveNowStale, 
           <ReviewStatus row={row} checking={pending.effort} />
           {row.liveRun
             ? liveNowStale
-              ? <StatusBadge tone="neutral">Last seen working</StatusBadge>
-              : <StatusBadge tone="accent">Working</StatusBadge>
+              ? <StatusBadge tone="neutral" size="xs">Last seen working</StatusBadge>
+              : <StatusBadge tone="accent" size="xs">Working</StatusBadge>
             : pending.liveNow
-              ? <StatusBadge tone="neutral">Checking live state</StatusBadge>
+              ? <StatusBadge tone="neutral" size="xs">Checking live state</StatusBadge>
               : unavailable.liveNow
-                ? <StatusBadge tone="neutral">Live state unavailable</StatusBadge>
+                ? <StatusBadge tone="neutral" size="xs">Live state unavailable</StatusBadge>
                 : liveNowStale
-                  ? <StatusBadge tone="neutral">Live state stale</StatusBadge>
+                  ? <StatusBadge tone="neutral" size="xs">Live state stale</StatusBadge>
               : null}
         </div>
         <p

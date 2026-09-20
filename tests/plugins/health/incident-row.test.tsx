@@ -52,6 +52,18 @@ function item(overrides: Partial<HealthIncident> = {}): OverviewIncident {
 }
 
 describe('IncidentRow (#690)', () => {
+  it.each(['acked', 'snoozed'] as const)('keeps %s incident metadata soft beside the solid primary status', (ackState) => {
+    const incident = item({ class: 'cleanup_backlog', effectiveDisposition: 'advisory', ackState })
+    incident.freshness = 'stale'
+    render(<IncidentRow item={incident} />)
+    expect(screen.getByText('Advisory').closest('[data-status-badge]')?.getAttribute('data-variant')).toBe('solid')
+    for (const label of ['Housekeeping', 'Calmed from watch', 'Last known', ackState === 'acked' ? 'Acknowledged' : 'Snoozed']) {
+      const badge = screen.getByText(label).closest('[data-status-badge]')
+      expect(badge?.getAttribute('data-variant')).toBe('soft')
+      expect(badge?.getAttribute('data-tone')).toBe('neutral')
+    }
+  })
+
   it('renders the plain-language category chip for a classified incident', () => {
     render(<IncidentRow item={item({ class: 'policy_denial' })} />)
     expect(screen.getByText('Guardrail worked')).toBeTruthy()

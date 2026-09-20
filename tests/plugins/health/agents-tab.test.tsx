@@ -716,6 +716,7 @@ describe('AgentsTab', () => {
 
     const row = agentRow(agentSurface(), 'partial-metering')
     expect(row.textContent).toContain('Metering incomplete')
+    expect(within(row).getByText('Metering incomplete').closest('[data-status-badge]')?.getAttribute('data-size')).toBe('xs')
     expect(row.textContent).toContain('3 tracked runs')
     expect(row.textContent).toContain('Token totals unavailable · 1 of 2 token-bearing calls metered')
     expect(row.textContent).toContain('1 task completion · cost 1 of 3 runs priced')
@@ -848,6 +849,10 @@ describe('AgentsTab', () => {
     const enrich = agentRow(surface, 'enrich')
 
     expect(main.textContent).toContain('No review flags')
+    for (const badge of surface.querySelectorAll('[data-status-badge]')) {
+      expect(badge.getAttribute('data-size')).toBe('xs')
+      expect(badge.getAttribute('data-variant')).toBe('solid')
+    }
     expect(enrich.textContent).toContain('Coverage unavailable')
     expect(surface.textContent).not.toContain('No issues')
   })

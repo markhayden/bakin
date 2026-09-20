@@ -155,14 +155,14 @@ export function OverviewInteractions({
                   to="/health?tab=activity&activity_window=1h#activity-needs-attention"
                   className="mt-bakin-1 inline-flex rounded-bakin-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring"
                 >
-                  <StatusBadge tone="danger" variant="outline">
+                  <StatusBadge tone="danger" variant="soft">
                     {`${data.totals.errors.toLocaleString()} failed${data.totals.unverified > 0 ? ` · ${unverifiedLabel(data.totals.unverified)}` : ''}`}
                   </StatusBadge>
                 </PluginLink>
               ) : (
                 <StatusBadge
                   tone={data.totals.unverified > 0 ? 'attention' : 'success'}
-                  variant="outline"
+                  variant="soft"
                   className="mt-bakin-1"
                 >
                   {data.totals.unverified > 0 ? unverifiedLabel(data.totals.unverified) : '0 failed'}

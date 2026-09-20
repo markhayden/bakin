@@ -71,6 +71,12 @@ never sit at rest in a card — surface on hover or behind the detail view.
   shown, available items, agents, members, and step counts are supporting
   metadata. Keep semantic status labels separate; do not restyle every badge
   inside `PageHeader` with a descendant selector.
+- **Health chip hierarchy:** Overview interaction and Activity pulse summaries use soft status badges;
+  Recent events and Agents row statuses use `size="xs"` with solid treatment.
+  System service, search, plugin, and check states use solid badges, including
+  unknown or stale evidence states. Ordinary inventory totals remain soft.
+  Incident categories and secondary qualifiers (acknowledgement, stale evidence,
+  or sensitivity adjustments) use neutral soft beside the primary solid status.
 - Use `Banner`, `Alert`, and canonical danger patterns for attention and danger
   surfaces; do not restyle status colors locally.
 
