@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.30] - 2026-09-20
+
+A routing-recovery patch: work-class model routing works again on OpenClaw 2026.9.5, with honest receipts and health findings whenever a gateway refuses per-turn overrides — plus the collection UI foundation for rows, cards, and comparison tables.
+
+### Added
+
+- **OpenClaw override-authorization health check (#880, #882).** The adapter's first canonical health check verifies the gateway connection may carry per-turn model overrides whenever work-class model routes are configured. An unauthorized connection with routes raises an action-required incident with exact remediation (pair the device with `operator.admin`, or clear the routes); before the connection reports its granted scopes the check says "unknown", never a guessed healthy. The models plugin adds a matching `routes-model-clamped` warning so the routing config side tells the same story.
+- **Collection recipes and section headers (#879).** Three documented collection families — divider-separated rows for text-first browsing, preview cards, and comparison tables — with optional record menus, compact disclosure actions, and an approved section-header treatment on `ListRowGroup` (opt-in styling, neutral rail default, accessible heading level). Existing row defaults and plain group headings are unchanged; this is the Storybook-contract foundation the fleet migrates onto (refs #806).
+
+### Fixed
+
+- **Work-class model routing on OpenClaw 2026.9.5 (#880, #882).** 2026.9.5 gates per-turn provider/model overrides behind the `operator.admin` scope, and Bakin connected with read+write only — so every routed turn (enrichment, auto-titles, relays, routed dispatch) failed instantly with `INVALID_REQUEST`, which on one production box silently starved asset enrichment and degraded asset search to keyword-only. The adapter now requests admin as an optional connect scope (loopback self-pairing grants it for free; a refusing topology downgrades gracefully exactly once, only on evidence that the refusal was about the optional scope), derives the `perTurnModel` capability from the connection's actual granted scopes, and Bakin clamps routed models pre-send when the gateway won't honor them — turns proceed on the agent's default model with clamp receipts (`task.routed`, a `route.model_clamped` audit per standing denial, and spend never attributed to a model that didn't run) instead of failing. A mid-session revocation retries the affected turn once on the agent default with a receipt, and re-granting admin takes effect on reconnect without a restart.
+
+### Upgrade notes
+
+- If you cleared your work-class model routes to work around #880, restore them after installing this release, then confirm the `openclaw.override-authorization` health check reads healthy.
+
 ## [0.0.1-rc.29] - 2026-09-20
 
 A compatibility and trust patch: the OpenClaw adapter speaks the 2026.9.5 agent registry, and model availability now reflects what your account can actually call instead of what a provider catalog claims.
@@ -534,5 +551,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.28]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.28
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.29...HEAD
 [0.0.1-rc.29]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.29
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.30...HEAD
+[0.0.1-rc.30]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.30
