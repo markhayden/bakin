@@ -69,7 +69,7 @@ function ActivityEventRow({ entry }: { entry: UsageEntry }) {
       title={<span>{label}</span>}
       meta={(
         <>
-          <StatusBadge tone={state.tone} variant="solid">{state.label}</StatusBadge>
+          <StatusBadge tone={state.tone} variant="solid" size="xs">{state.label}</StatusBadge>
           <Text size="meta" tone="muted" className="min-w-0 truncate">
             {sourceLabel} · {entry.agent ? `Agent: ${entry.agent}` : activityOwner(entry)}
           </Text>

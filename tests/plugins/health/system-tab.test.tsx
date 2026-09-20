@@ -228,6 +228,9 @@ describe('SystemTabView', () => {
     expect(searchPipeline.querySelector('[data-slot="grid"]')?.getAttribute('data-layout')).toBe('quarters')
     expect(searchPipeline.querySelectorAll('[data-stat-tile][data-variant="plain"]')).toHaveLength(4)
     expect((screen.getByTestId('search-technical-details') as HTMLDetailsElement).open).toBe(false)
+    const statuses = [...container.querySelectorAll('[data-status-badge]')]
+    expect(statuses.length).toBeGreaterThan(4)
+    for (const badge of statuses) expect(badge.getAttribute('data-variant')).toBe('solid')
   })
 
   it('caps the watch list at three findings and reveals the remaining evidence on demand', () => {

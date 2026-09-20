@@ -196,7 +196,7 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
           title="Chat"
           description="Talk with any agent, revisit recent conversations, and keep tool activity and attachments with the thread."
           meta={loading ? undefined : (
-            <Badge size="xs" variant="outline">{visibleChats.length} shown</Badge>
+            <Badge size="xs" tone="neutral" variant="soft">{visibleChats.length} shown</Badge>
           )}
           controlsLabel="Chat search"
           controls={(

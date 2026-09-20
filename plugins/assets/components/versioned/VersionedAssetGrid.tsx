@@ -493,7 +493,7 @@ export function VersionedAssetGrid() {
         description="Keep images, documents, and other deliverables searchable, versioned, and ready to reuse."
         // Every tab carries the count so the header never bounces.
         meta={loading || (view === 'import' && importCount === null) ? undefined : (
-          <Badge size="xs" variant="outline">
+          <Badge size="xs" tone="neutral" variant="soft">
             {view === 'trash' ? trash.length : view === 'tags' ? folderCount : view === 'import' ? importCount : displayed.length} shown
           </Badge>
         )}

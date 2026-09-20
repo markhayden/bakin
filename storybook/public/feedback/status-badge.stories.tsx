@@ -197,6 +197,31 @@ export const StatusVocabulary = {
           <StatusBadge tone="attention" variant="solid" size="xs">In production</StatusBadge>
         </StoryCluster>
       </StorySection>
+      <StorySection title="Health summaries and compact rows" description="Use soft for interaction summaries, xs solid badges in Recent events and Agents rows, and solid badges for System states. Incident metadata stays neutral soft beside its primary solid status.">
+        <Stack align="start">
+          <StoryCluster>
+            <StatusBadge tone="danger" variant="soft">Hiccups</StatusBadge>
+            <StatusBadge tone="danger" variant="soft">7 failed</StatusBadge>
+            <StatusBadge tone="success" variant="soft">0 failed</StatusBadge>
+            <StatusBadge tone="attention" variant="soft">1 result not observed</StatusBadge>
+          </StoryCluster>
+          <StoryCluster>
+            <StatusBadge tone="success" variant="solid" size="xs">Succeeded</StatusBadge>
+            <StatusBadge tone="danger" variant="solid" size="xs">Failed</StatusBadge>
+            <StatusBadge tone="neutral" variant="solid" size="xs">Metering incomplete</StatusBadge>
+            <StatusBadge tone="success" variant="solid" size="xs">No review flags</StatusBadge>
+          </StoryCluster>
+          <StoryCluster>
+            <StatusBadge tone="success" variant="solid">Healthy</StatusBadge>
+            <StatusBadge tone="neutral" variant="solid">Refresh needed</StatusBadge>
+          </StoryCluster>
+          <StoryCluster>
+            <StatusBadge tone="danger" variant="solid">Critical</StatusBadge>
+            <StatusBadge tone="neutral" variant="soft">Service issue</StatusBadge>
+            <StatusBadge tone="neutral" variant="soft">Acknowledged</StatusBadge>
+          </StoryCluster>
+        </Stack>
+      </StorySection>
     </StoryStage>
   ),
   play: async ({ canvas }) => {
@@ -210,5 +235,18 @@ export const StatusVocabulary = {
     await expect(canvas.getByText('Active').closest('[data-status-badge]')).toHaveAttribute('data-tone', 'success')
     await expect(canvas.getByText('Archived').closest('[data-status-badge]')).toHaveAttribute('data-tone', 'neutral')
     await expect(canvas.getByText('Accepted').closest('[data-status-badge]')).toHaveAttribute('data-variant', 'solid')
+    await expect(canvas.getByText('Hiccups').closest('[data-status-badge]')).toHaveAttribute('data-variant', 'soft')
+    for (const label of ['7 failed', '0 failed', '1 result not observed', 'Service issue', 'Acknowledged']) {
+      await expect(canvas.getByText(label).closest('[data-status-badge]')).toHaveAttribute('data-variant', 'soft')
+    }
+    await expect(canvas.getByText('Critical').closest('[data-status-badge]')).toHaveAttribute('data-variant', 'solid')
+    for (const label of ['Succeeded', 'Failed', 'Metering incomplete', 'No review flags']) {
+      const badge = canvas.getByText(label).closest('[data-status-badge]')
+      await expect(badge).toHaveAttribute('data-size', 'xs')
+      await expect(badge).toHaveAttribute('data-variant', 'solid')
+    }
+    for (const label of ['Healthy', 'Refresh needed']) {
+      await expect(canvas.getByText(label).closest('[data-status-badge]')).toHaveAttribute('data-variant', 'solid')
+    }
   },
 } satisfies Story

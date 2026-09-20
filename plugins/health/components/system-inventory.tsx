@@ -178,7 +178,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
       cell: (plugin) => (
         <div className="flex flex-wrap items-center gap-bakin-2">
           <StatusBadge
-            variant="outline"
+            variant="solid"
             tone={!pluginInventoryCurrent ? 'neutral' : plugin.status === 'failed' ? 'danger' : plugin.status === 'unknown' ? 'neutral' : plugin.upgradeAvailable ? 'accent' : 'success'}
           >
             {!pluginInventoryCurrent
@@ -367,7 +367,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
         summaryMeta={(
           <>
             {report && checksToReview > 0 && (
-              <StatusBadge tone="attention" variant="outline">{checksToReview} to review</StatusBadge>
+              <StatusBadge tone="attention" variant="solid">{checksToReview} to review</StatusBadge>
             )}
             <Badge tone="neutral" variant="soft">{report ? `${report.checks.length} checks` : 'Unavailable'}</Badge>
           </>
@@ -396,7 +396,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                     summary={group.label}
                     summaryMeta={(
                       <span className="flex items-center gap-bakin-2">
-                        {concerning > 0 && <StatusBadge tone={concernTone} variant="outline">{concerning} to review</StatusBadge>}
+                        {concerning > 0 && <StatusBadge tone={concernTone} variant="solid">{concerning} to review</StatusBadge>}
                         <Badge tone="neutral" variant="soft">{group.checks.length}</Badge>
                       </span>
                     )}
@@ -416,7 +416,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-bakin-2">
                               <h3 className="font-bakin-typography-weight-medium">{check.checkName}</h3>
-                              <StatusBadge variant="outline" tone={presentation.tone}>{presentation.label}</StatusBadge>
+                              <StatusBadge variant="solid" tone={presentation.tone}>{presentation.label}</StatusBadge>
                             </div>
                             <Text size="meta" tone="muted" as="p" className="mt-bakin-1">{check.description}</Text>
                             <Text size="meta" as="p" className="mt-bakin-1">{presentation.detail}</Text>

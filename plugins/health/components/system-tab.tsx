@@ -198,7 +198,7 @@ export function SystemTabView({
                   value={(
                     <span className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-2">
                       <span>{summary.headline}</span>
-                      <StatusBadge variant="outline" tone={tone}>{summary.statusLabel}</StatusBadge>
+                      <StatusBadge variant="solid" tone={tone}>{summary.statusLabel}</StatusBadge>
                     </span>
                   )}
                   sub={(

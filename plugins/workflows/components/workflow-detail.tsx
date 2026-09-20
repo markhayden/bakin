@@ -437,7 +437,7 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
             <Badge tone={isManagedSource ? 'accent' : 'neutral'} variant="solid" size="xs">
               {isManagedSource ? 'Managed' : 'Custom'}
             </Badge>
-            <Badge tone="neutral" variant="solid" size="xs">
+            <Badge tone="neutral" variant="soft" size="xs">
               {definition.steps.length} {definition.steps.length === 1 ? 'step' : 'steps'}
             </Badge>
             <code className="font-bakin-typography-family-mono">{workflowId}</code>

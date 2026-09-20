@@ -368,8 +368,8 @@ export function TaskCardContent({
               />
             ) : null}
             {task.team ? (
-              <Badge size="xs" tone="accent" variant="outline">
-                <Users />
+              <Badge size="sm" tone="neutral" variant="soft">
+                <Users aria-hidden="true" />
                 {task.team}
               </Badge>
             ) : null}

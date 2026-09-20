@@ -339,7 +339,7 @@ export function TeamGrid() {
           <PageHeader
             title="Team"
             description={TEAM_PAGE_DESCRIPTION}
-            meta={<Badge size="xs" variant="outline">{agentsWithStatus.length} agents</Badge>}
+            meta={<Badge size="xs" tone="neutral" variant="soft">{agentsWithStatus.length} agents</Badge>}
             actions={(
               <>
                 <Button variant="outline" onClick={() => setShowTeams(true)}>

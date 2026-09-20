@@ -305,6 +305,7 @@ describe('ActivityTab', () => {
 
     const tab = screen.getByTestId('health-activity-tab')
     const pulse = within(tab).getByRole('region', { name: 'Activity pulse' })
+    expect(within(pulse).getByText('Hiccups').closest('[data-status-badge]')?.getAttribute('data-variant')).toBe('soft')
     const needsAttention = within(tab).getByRole('region', { name: 'Hiccups' })
     expect(pulse.compareDocumentPosition(needsAttention) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(within(tab).queryByText('Needs attention')).toBeNull()
@@ -1344,6 +1345,12 @@ describe('ActivityTab', () => {
     expect(within(eventList).getAllByText('Succeeded')).toHaveLength(3)
     expect(within(eventList).getAllByText('Canceled')).toHaveLength(1)
     expect(within(eventList).getAllByText('Result not observed')).toHaveLength(1)
+    const outcomeBadges = [...eventList.querySelectorAll('[data-status-badge]')]
+    expect(outcomeBadges).toHaveLength(9)
+    for (const badge of outcomeBadges) {
+      expect(badge.getAttribute('data-variant')).toBe('solid')
+      expect(badge.getAttribute('data-size')).toBe('xs')
+    }
     expect(within(eventList).getByRole('button', {
       name: /Dispatch.*Failed.*Agents · Agent: patch/,
     })).toBeDefined()

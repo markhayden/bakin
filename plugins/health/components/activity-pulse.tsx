@@ -115,14 +115,14 @@ export function ActivityPulse({
               >
                 <StatusBadge
                   tone={hasFailures ? 'danger' : 'attention'}
-                  variant="outline"
+                  variant="soft"
                   className="cursor-pointer"
                 >
                   {hasFailures ? 'Hiccups' : `Verify ${data.outcomes.unverified === 1 ? 'result' : 'results'}`}
                 </StatusBadge>
               </a>
             ) : (
-              <StatusBadge tone="success" variant="outline">No failures</StatusBadge>
+              <StatusBadge tone="success" variant="soft">No failures</StatusBadge>
             )}
           </div>
 

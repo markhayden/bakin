@@ -311,6 +311,7 @@ describe('OverviewTabView', () => {
 
     const interactions = screen.getByTestId('overview-interactions')
     const failedBadge = within(interactions).getByText('2 failed').closest('[data-status-badge]')
+    expect(failedBadge?.getAttribute('data-variant')).toBe('soft')
     expect(failedBadge?.closest('a')?.getAttribute('href'))
       .toBe('/health?tab=activity&activity_window=1h#activity-needs-attention')
   })
@@ -352,6 +353,7 @@ describe('OverviewTabView', () => {
 
     const badge = within(screen.getByTestId('overview-interactions')).getByText('1 result not observed')
     expect(badge.closest('[data-status-badge]')?.getAttribute('data-status-badge')).toBe('attention')
+    expect(badge.closest('[data-status-badge]')?.getAttribute('data-variant')).toBe('soft')
   })
 
   it('keeps result-observation gaps visible when failures take badge priority', () => {
@@ -362,6 +364,17 @@ describe('OverviewTabView', () => {
 
     const badge = within(screen.getByTestId('overview-interactions')).getByText('2 failed · 1 result not observed')
     expect(badge.closest('[data-status-badge]')?.getAttribute('data-status-badge')).toBe('danger')
+    expect(badge.closest('[data-status-badge]')?.getAttribute('data-variant')).toBe('soft')
+  })
+
+  it('keeps a zero-failure interaction summary soft and successful', () => {
+    const telemetry = dashboardTelemetry()
+    telemetry.interactions.data!.totals.errors = 0
+    telemetry.interactions.data!.totals.unverified = 0
+    render(<OverviewTabView model={buildHealthOverviewViewModel({ report: report(), now: NOW })} telemetry={telemetry} />)
+    const badge = within(screen.getByTestId('overview-interactions')).getByText('0 failed').closest('[data-status-badge]')
+    expect(badge?.getAttribute('data-variant')).toBe('soft')
+    expect(badge?.getAttribute('data-tone')).toBe('success')
   })
 
   it('uses recorded meaningful wording for an empty interaction window', () => {

@@ -88,7 +88,7 @@ export const FullBleedWorkspace = {
         <PageHeader
           title="Conversation workspace"
           description="The header keeps the normal page rhythm while the persistent workspace below reaches every available edge."
-          meta={<Badge size="xs" variant="outline">3 shown</Badge>}
+          meta={<Badge size="xs" tone="neutral" variant="soft">3 shown</Badge>}
           actions={<Button>Start a chat</Button>}
         />
       </WorkspacePageHeader>

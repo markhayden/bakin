@@ -200,6 +200,12 @@ containers, the whole toolbar stacks at the documented container breakpoint.
 Put broader facets, sorting, pagination,
 and clear-all actions in `PageControls` instead of crowding the header.
 
+Use `Badge tone="neutral" variant="soft"` for counts and descriptive metadata
+in `PageHeader meta`, such as results shown, available items, team members,
+and workflow steps. These labels support the title without competing with it.
+Actual state labels such as Draft, Published, or Managed retain their semantic
+tone and appropriate emphasis; do not apply a blanket badge override to headers.
+
 Production filters, search, sorting, pagination, selected tabs, and open overlays continue to use the existing query-state hooks. `useQueryState` uses replace semantics for routine view changes and batches multiple setters from one interaction; do not add local history wrappers or rebuild query strings in the recipe. Paths still identify pages. Use the existing `PluginLink` for deliberate cross-page navigation. Detail-page back actions use `useHistoryBack(fallback)` with a circular icon-only button so they return to the actual prior context:
 
 ```tsx

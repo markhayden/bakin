@@ -58,7 +58,7 @@ const STATUS_SEGMENT: Record<SearchStageStatus, string> = {
 
 function SearchStageBadge({ status }: { status: SearchStageStatus }) {
   return (
-    <StatusBadge variant="outline" tone={STATUS_TONE[status]}>
+    <StatusBadge variant="solid" tone={STATUS_TONE[status]}>
       {STATUS_LABEL[status]}
     </StatusBadge>
   )
@@ -147,7 +147,7 @@ export function SystemSearchSection({
           : table.healthy && erroredLegs.length === 0 ? 'success' : 'danger'
         return (
           <>
-            <StatusBadge variant="outline" tone={stateTone}>{stateLabel}</StatusBadge>
+            <StatusBadge variant="solid" tone={stateTone}>{stateLabel}</StatusBadge>
             {erroredLegs.map((leg) => (
               <Alert key={leg.name} tone="danger" className="mt-bakin-1 max-w-48">
                 <AlertDescription>{leg.name}: {leg.error}</AlertDescription>

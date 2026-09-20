@@ -92,7 +92,7 @@ export function SystemWatchList({
                     <div className="min-w-0">
                       <Inline gap="dense">
                         <h3 className="text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{finding.title}</h3>
-                        <StatusBadge tone={tone} variant="outline">{finding.label}</StatusBadge>
+                        <StatusBadge tone={tone} variant="solid">{finding.label}</StatusBadge>
                         <Overline>{finding.category}</Overline>
                       </Inline>
                       <Text size="meta" tone="muted" as="p" className="mt-bakin-1 line-clamp-2 leading-relaxed">{finding.detail}</Text>
