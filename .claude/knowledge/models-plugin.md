@@ -20,6 +20,41 @@ Path: `plugins/models/data/known-models.ts`. Bakin-maintained lookup of ~22 popu
 
 Merged into each runtime-sourced `AvailableModel` server-side via `getKnownModel()` / `getKnownProvider()`. Unknown models render plain — **no fabrication**.
 
+## Layer 3: Account-rejection overlay (#852)
+
+The runtime catalog LIES about callability (Pi stamps `available` from
+provider-level OAuth over a static SDK catalog — a retired model stayed
+"available" for 10 days while four subsystems failed). Truth comes from
+observing real calls:
+
+- **Signal:** adapters classify the provider's model-verdict as the typed
+  `RuntimeErrorKind 'model_not_supported'` (Pi: `errors.ts` ladder; stream
+  terminal error chunks carry `data: { kind, model }`).
+- **Evidence:** the runtime facade wrapper (`src/core/model-availability.ts`,
+  installed once in `createRuntimeAdapter()` — every consumer inherits it)
+  records rejections into the ledger's `model_rejections` table and
+  auto-resolves them on the next explicit-model success (audits
+  `model.rejected` / `model.rejection_resolved`).
+- **Overlay:** `applyRejectionOverlay` runs on EVERY read of the model list
+  (cache-served included — the `withFreshTiers` posture): open rejections flip
+  `available: false` + a typed `rejection { lastSeenAt, occurrences }` on the
+  SDK row. Flip-not-filter (the row stays visible; the UI badges "Rejected by
+  account"). NEVER persisted into `available.json` — the ledger is the sole
+  rejection truth. Ledger down ⇒ fail open (nothing marked unavailable).
+- **Consequences for free:** the recommender can't propose a rejected model
+  (pool gates on `available !== false`), and `route-model-missing-*` fires
+  with account-rejected evidence (see health below).
+- **Probe (opt-in, manual-only):** `POST /refresh?probe=1` fires the
+  runtime's OPTIONAL `models.probe(modelId)` per fetched model (concurrency
+  3) and reports per-model verdicts `verified | rejected | skipped` (a
+  transport failure proves nothing — honest skip, never a fake verdict).
+  Outcomes ride the same evidence pipeline (probe success resolves an open
+  rejection). The default refresh, the stale auto-refresh, and the
+  `models.refreshAvailableModels` hook are provably probe-free; there is NO
+  scheduled probing — passive rejection detection is the always-on layer,
+  probing answers "is this model I'm *not* using still callable?" on demand
+  (UI: "Verify availability" on the Available Models tab).
+
 ## Brand icons
 
 `<BrandIcon>` inlines SVG paths from simple-icons.org (CC0) for the 5 brands we have logos for. Unknown slugs render a first-letter chip in the provider's brand color.
@@ -50,7 +85,7 @@ Routing key = the turn's **work class** (`WorkClass`): 5 dispatch classes (`sche
 
 `ResolvedTurn` carries `source: 'tag:<name>'|'class'|'inherit'` — stamped as `route_source` on the `run_costs` row and on the `task.routed` audit, so the dimension that routes IS the dimension spend reports on. Thinking clamps to the runtime's declared support (`clampThinkingLevel` / `applyThinkingCapability` against `runtime.models.routingSupport().supportedThinkingLevels`): unsupported ordinal levels clamp DOWN the ladder (`'max'`→`'xhigh'`→…), `'adaptive'` clamps to inherit — clamp-and-warn, never a silent drop or failed turn. The **Routing** tab renders dispatch + system sections from `WORK_CLASSES`, filters thinking dropdowns to supported levels, and offers "Apply recommended routes" behind a ConfirmDialog diff preview.
 
-**Recommendations + health** (`plugins/models/lib/health-checks.ts`, check id `models.routing`): ONE recommendation engine (`recommendRoutes` — cheapest available model by catalog pricing; `cheap-vision` intersects the authoritative `VISION_MODELS`, which MOVED to `packages/core/src/llm/vision-models.ts` — the enrichment providers module re-exports it; no candidate = skip-with-reason) behind three surfaces: the doctor check's warn evidence, `POST /routing/recommend` (the Routing tab's diff), and the `apply-recommended-routes` repair action. The check warns on unrouted recommended system classes (with per-class 7d spend evidence), errors on routes pointing at unavailable models, warns on standing thinking clamps and on premium-tier models observed on cheap-recommended classes (7d) — misrouting is detected, not discovered on the bill.
+**Recommendations + health** (`plugins/models/lib/health-checks.ts`, check id `models.routing`): ONE recommendation engine (`recommendRoutes` — cheapest available model by catalog pricing; `cheap-vision` intersects the authoritative `VISION_MODELS`, which MOVED to `packages/core/src/llm/vision-models.ts` — the enrichment providers module re-exports it; no candidate = skip-with-reason) behind three surfaces: the doctor check's warn evidence, `POST /routing/recommend` (the Routing tab's diff), and the `apply-recommended-routes` repair action. The check warns on unrouted recommended system classes (with per-class 7d spend evidence), errors on routes pointing at unavailable models — since #852 firing on EITHER signal (absent from catalog OR an open `model_rejections` row) with evidence that says which: "rejected by your account (N failures, last <ts>)" vs the not-in-catalog wording (`RoutingHealthDeps.listOpenModelRejections`, empty on ledger failure) — warns on standing thinking clamps and on premium-tier models observed on cheap-recommended classes (7d) — misrouting is detected, not discovered on the bill.
 
 **Migration** (`plugins/models/lib/routing-migration.ts`): one-shot at plugin activation folds the retired origin-shaped config (`{policies:[{origin,…}]}`) into work-class routes 1:1 (unknown origins dropped, never guessed), plus a migrate-on-READ guard (mirrors budget-migration — a restored legacy settings file must never make dispatch silently ignore routes the operator believes exist). (The team plugin's legacy-settings seed migration and its `models.seedWorkClassRoute` hook are deleted — the migration ran; team routing now rides the runtime with no plugin-local model settings.)
 

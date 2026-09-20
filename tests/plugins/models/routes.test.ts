@@ -95,6 +95,11 @@ mock.module('../../../src/core/execution-ledger', () => ({
   resolveBudgetIncident: mock((input: unknown) => { incidentResolves.push(input as Record<string, unknown>); return true }),
   resolveExpiredBudgetIncidents: mock(() => 0),
   findOpenCapIncident: mock(() => null),
+  // Model-availability evidence (#852) — inert here; covered by
+  // tests/plugins/models/rejection-overlay*.test.ts.
+  recordModelRejection: mock(() => ({ opened: false, id: 0 })),
+  resolveModelRejection: mock(() => false),
+  listModelRejections: mock(() => []),
   // dispatch-turns (dynamic import in /budget/status) needs the dispatch verbs at load.
   claimNextRun: mock(() => ({ claimed: false })),
   settleRun: mock(() => true),
@@ -550,6 +555,54 @@ describe('POST /refresh', () => {
     expect(body.stale).toBe(false)
     expect(Array.isArray(body.models)).toBe(true)
     expect((body.models as unknown[]).length).toBeGreaterThan(0)
+  })
+
+  it('default refresh NEVER probes — probing is explicit-request-only (#852)', async () => {
+    const probeSpy = mock(async () => {})
+    activated.ctx.runtime.models.probe = probeSpy
+    try {
+      const route = findRoute(activated.routes, 'POST', '/refresh')!
+      const { body } = await callRoute(route, activated.ctx)
+      expect(probeSpy).toHaveBeenCalledTimes(0)
+      expect(body.probe).toBeUndefined()
+    } finally {
+      delete activated.ctx.runtime.models.probe
+    }
+  })
+
+  it('?probe=1 probes every fetched model and reports per-model verdicts (#852)', async () => {
+    const probeSpy = mock(async (modelId: string) => {
+      if (modelId === 'google/gemini-2.5-pro') {
+        throw Object.assign(new Error("The 'gemini-2.5-pro' model is not supported"), { kind: 'model_not_supported' })
+      }
+    })
+    activated.ctx.runtime.models.probe = probeSpy
+    try {
+      const route = findRoute(activated.routes, 'POST', '/refresh')!
+      const { status, body } = await callRoute(route, activated.ctx, { searchParams: { probe: '1' } })
+      expect(status).toBe(200)
+      const probe = body.probe as { supported: boolean; verdicts: Array<{ model: string; status: string }> }
+      expect(probe.supported).toBe(true)
+      // Every fetched (available) model gets a verdict — one per row.
+      expect(probe.verdicts).toHaveLength((body.models as unknown[]).length)
+      expect(probeSpy).toHaveBeenCalledTimes(probe.verdicts.length)
+      const byModel = new Map(probe.verdicts.map((v) => [v.model, v.status]))
+      expect(byModel.get('google/gemini-2.5-pro')).toBe('rejected')
+      expect(byModel.get('google/gemini-2.5-flash')).toBe('verified')
+      // The runtime-unavailable model was never fetched, so never probed.
+      expect(byModel.has('xai/grok-4')).toBe(false)
+    } finally {
+      delete activated.ctx.runtime.models.probe
+    }
+  })
+
+  it('?probe=1 on a runtime without probe support reports honest skipped verdicts', async () => {
+    const route = findRoute(activated.routes, 'POST', '/refresh')!
+    const { body } = await callRoute(route, activated.ctx, { searchParams: { probe: '1' } })
+    const probe = body.probe as { supported: boolean; verdicts: Array<{ status: string }> }
+    expect(probe.supported).toBe(false)
+    expect(probe.verdicts.length).toBeGreaterThan(0)
+    expect(probe.verdicts.every((v) => v.status === 'skipped')).toBe(true)
   })
 })
 

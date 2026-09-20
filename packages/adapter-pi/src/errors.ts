@@ -75,6 +75,26 @@ export function toRuntimeError(err: unknown, ctx: PiErrorContext = {}): RuntimeE
     })
   }
 
+  // The provider's verdict on the MODEL ID itself (#852: retired/unentitled
+  // model — deterministic, never fixed by waiting). Narrow shapes only:
+  // ambiguous 400s must stay runtime_failed so a request bug can never mark
+  // a live model unavailable. Rate-limit/auth branches above win on order.
+  if (
+    code === 'model_not_found'
+    || /\bmodel\b.{0,40}\bis not supported\b/i.test(message)
+    || /\bmodel\b.{0,80}\bdoes not exist or you do not have access\b/i.test(message)
+  ) {
+    const slash = ctx.model?.indexOf('/') ?? -1
+    return new RuntimeError(`Pi model rejected by account: ${message}`, {
+      kind: 'model_not_supported',
+      cause: err,
+      providerInfo: {
+        model: ctx.model,
+        ...(slash > 0 ? { provider: ctx.model!.slice(0, slash) } : {}),
+      },
+    })
+  }
+
   if (status === 408 || code === 'ETIMEDOUT' || /\btimed?\s?out\b|ETIMEDOUT/i.test(message)) {
     return new RuntimeError(`Pi turn timeout: ${message}`, { kind: 'timeout', cause: err })
   }

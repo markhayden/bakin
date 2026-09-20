@@ -11,7 +11,11 @@ import { ModelRegistry, ModelRuntime } from '@earendil-works/pi-coding-agent'
 import type { AgentRuntimeAdapter, RuntimeAvailableModel, RuntimeCapabilities, RuntimeRoutingPolicy, RuntimeRoutingSupport } from '@bakin/core/adapters/runtime'
 import { RuntimeError } from '@bakin/core/adapters/runtime'
 import { readRoutingDefaultModel, writeRoutingDefaultModel } from './config'
+import { toRuntimeError } from './errors'
 import { getPiPath } from './home'
+
+/** Probe hard ceiling — a probe is a verdict, never a hang. */
+const PROBE_TIMEOUT_MS = 20_000
 
 interface PiModelHandle {
   registry: ModelRegistry
@@ -96,6 +100,45 @@ export function createModelsSurface(): AgentRuntimeAdapter['models'] {
         tags: m.reasoning ? ['reasoning'] : [],
         metadata: { maxTokens: m.maxTokens, api: String(m.api) },
       }))
+    },
+
+    /**
+     * Account-callability probe (#852): a minimal direct completion via
+     * ModelRuntime.completeSimple — no agent session, no workspace, no
+     * history. The SDK resolves provider failures into the message
+     * (stopReason 'error' + errorMessage) instead of throwing, so both
+     * shapes funnel through toRuntimeError for the typed verdict.
+     */
+    async probe(modelId: string, opts?: { signal?: AbortSignal }): Promise<void> {
+      const { runtime } = await getModelRegistry()
+      const model = findPiModel(modelId)
+      if (!model) {
+        throw new RuntimeError(`adapter-pi: model '${modelId}' is not in the runtime catalog — nothing to probe`, {
+          kind: 'runtime_failed',
+        })
+      }
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS)
+      const onCallerAbort = () => controller.abort()
+      opts?.signal?.addEventListener('abort', onCallerAbort, { once: true })
+      try {
+        const message = await runtime.completeSimple(
+          model,
+          { messages: [{ role: 'user', content: 'Reply with OK.', timestamp: Date.now() }] },
+          { signal: controller.signal, maxTokens: 8 },
+        )
+        if (message.stopReason === 'error' || message.stopReason === 'aborted') {
+          throw toRuntimeError(
+            new Error(message.errorMessage ?? `probe ${message.stopReason} without detail`),
+            { model: modelId, aborted: message.stopReason === 'aborted' },
+          )
+        }
+      } catch (err) {
+        throw toRuntimeError(err, { model: modelId, aborted: opts?.signal?.aborted })
+      } finally {
+        clearTimeout(timer)
+        opts?.signal?.removeEventListener('abort', onCallerAbort)
+      }
     },
 
     // Routing policy (P2.3): Pi honors defaultModel only (session build falls

@@ -142,6 +142,73 @@ describe('codex-native images (primary route)', () => {
     }
   })
 
+  test('a rejected configured carrier falls back to the default carrier — billed call succeeds (#852)', async () => {
+    codexCalls.length = 0
+    let call = 0
+    const surface = createImagesSurface({
+      carrierModel: 'gpt-dead',
+      fetchImpl: async (url, init) => {
+        codexCalls.push({ url, init })
+        call += 1
+        if (call === 1) {
+          return new NativeResponse(
+            JSON.stringify({ error: { message: "The 'gpt-dead' model is not supported when using Codex with a ChatGPT account" } }),
+            { status: 400 },
+          )
+        }
+        return sseImageResponse()
+      },
+    })
+    const result = await surface.generate({ prompt: 'x' })
+    expect(codexCalls).toHaveLength(2)
+    expect(JSON.parse(codexCalls[0]!.init.body as string).model).toBe('gpt-dead')
+    expect(JSON.parse(codexCalls[1]!.init.body as string).model).toBe('gpt-5.6-luna')
+    // Truthful receipt: which carrier ran + which was rejected on the way.
+    expect(result.metadata).toMatchObject({ carrierModel: 'gpt-5.6-luna' })
+    expect(result.metadata?.rejectedCarriers).toEqual(['openai-codex/gpt-dead'])
+  })
+
+  test('the ladder NEVER falls through on non-rejection failures (429 = one call, cooldown)', async () => {
+    let calls = 0
+    const surface = createImagesSurface({
+      carrierModel: 'gpt-dead',
+      fetchImpl: async () => {
+        calls += 1
+        return new NativeResponse('{"error":"rate limited"}', { status: 429 })
+      },
+    })
+    try {
+      await surface.generate({ prompt: 'x' })
+      throw new Error('expected reject')
+    } catch (err) {
+      expect((err as RuntimeError).kind).toBe('provider_cooldown')
+      expect(calls).toBe(1)
+    }
+  })
+
+  test('both rungs rejected → typed failure naming the last carrier, two calls, no third guess', async () => {
+    let calls = 0
+    const surface = createImagesSurface({
+      carrierModel: 'gpt-dead',
+      fetchImpl: async (url, init) => {
+        calls += 1
+        const model = JSON.parse((init as { body: string }).body).model as string
+        return new NativeResponse(
+          JSON.stringify({ error: { message: `The '${model}' model is not supported when using Codex with a ChatGPT account` } }),
+          { status: 400 },
+        )
+      },
+    })
+    try {
+      await surface.generate({ prompt: 'x' })
+      throw new Error('expected reject')
+    } catch (err) {
+      expect((err as RuntimeError).kind).toBe('model_not_supported')
+      expect((err as RuntimeError).providerInfo?.model).toBe('openai-codex/gpt-5.6-luna')
+      expect(calls).toBe(2)
+    }
+  })
+
   test('carrier model is overridable via settings (burn control)', async () => {
     codexCalls.length = 0
     const surface = createImagesSurface({ fetchImpl: fakeFetch, carrierModel: 'gpt-5.4' })

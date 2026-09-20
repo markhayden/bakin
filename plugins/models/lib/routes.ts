@@ -20,6 +20,7 @@ import {
   clearPersistedCache,
 } from './models-cache'
 import { listRunCostsSince, listBudgetIncidents, resolveBudgetIncident, LedgerUnavailableError } from '../../../src/core/execution-ledger'
+import { probeModels } from './probe'
 import { buildSpendTimeline, rollupSpend } from './spend-rollup'
 import { assembleBudgetSpend, paceProjection, dayEndMs, monthEndMs } from '../../../src/core/budget-spend'
 import { budgetStatusRoutes } from './budget-routes'
@@ -32,6 +33,7 @@ import {
 } from './config-io'
 import { normalizeModelId } from './model-id'
 import {
+  applyRejectionOverlay,
   fetchAvailableModels,
   loadConfiguredModelsFromRuntime,
   setModelsCache,
@@ -74,16 +76,32 @@ export const modelsRoutes = [
     path: '/refresh',
     method: 'POST',
     summary: 'Refresh model list (bypass cache)',
-    description: 'Forces a fresh fetch from the runtime adapter, bypassing both cache layers. Falls back to last-known-good cache on failure.',
+    description: 'Forces a fresh fetch from the runtime adapter, bypassing both cache layers. Falls back to last-known-good cache on failure. `?probe=1` additionally fires a per-model account-callability probe (#852) — explicit requests only; the background auto-refresh path never probes.',
     body: { contentType: 'none' },
     responses: { 200: passthrough, 502: passthrough },
-    handler: async (_req, ctx) => {
+    handler: async (req, ctx) => {
       try {
         const models = await loadConfiguredModelsFromRuntime(ctx as unknown as PluginContext)
         const now = Date.now()
+        // Caches persist the raw runtime snapshot; the response is overlaid
+        // with live rejection state (#852) — never the other way around.
         setModelsCache({ models, fetchedAt: now })
         writePersistedCache({ models, fetchedAt: now, source: 'runtime' })
-        return Response.json({ ok: true, models, cached: false, cachedAt: now, stale: false })
+        // Probe AFTER the cache write and BEFORE the overlay, so probe
+        // outcomes (resolve/open in the ledger) are reflected in this very
+        // response's availability.
+        const probeParam = new URL(req.url).searchParams.get('probe')
+        const probeResult = probeParam === '1' || probeParam === 'true'
+          ? await probeModels(ctx as unknown as PluginContext, models)
+          : null
+        return Response.json({
+          ok: true,
+          models: applyRejectionOverlay(models),
+          cached: false,
+          cachedAt: now,
+          stale: false,
+          ...(probeResult ? { probe: probeResult } : {}),
+        })
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         const fallbackCache = readPersistedCache()
@@ -91,7 +109,7 @@ export const modelsRoutes = [
           return Response.json({
             ok: false,
             error: message,
-            models: fallbackCache.models,
+            models: applyRejectionOverlay(fallbackCache.models),
             cached: true,
             cachedAt: fallbackCache.fetchedAt,
             stale: true,

@@ -2,6 +2,7 @@ import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import type { HealthCheckRegistrationInput } from '@bakin/core/plugin-types'
 import { createOpenClawRuntimeAdapter } from '@bakin/adapter-openclaw'
 import { createPiHealthChecks, createPiRuntimeAdapter } from '@bakin/adapter-pi'
+import { withModelAvailabilityObservation } from './model-availability'
 import type { RuntimeAdapterName } from './settings'
 
 export interface RuntimeAdapterSupportInfo {
@@ -21,11 +22,15 @@ const RUNTIME_ADAPTER_SUPPORT: Record<RuntimeAdapterName, RuntimeAdapterSupportI
 }
 
 export function createRuntimeAdapter(name: RuntimeAdapterName): AgentRuntimeAdapter {
+  // Every adapter is observed at this single composition point (#852):
+  // model rejections/successes become durable availability evidence for
+  // ALL consumers — AppServices.runtime and every plugin ctx.runtime bind
+  // the same wrapped instance.
   switch (name) {
     case 'openclaw':
-      return createOpenClawRuntimeAdapter()
+      return withModelAvailabilityObservation(createOpenClawRuntimeAdapter())
     case 'pi':
-      return createPiRuntimeAdapter()
+      return withModelAvailabilityObservation(createPiRuntimeAdapter())
     default:
       throw new Error(`Unknown runtime adapter: ${name}`)
   }

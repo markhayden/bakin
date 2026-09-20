@@ -446,6 +446,19 @@ describe('messaging.send', () => {
     }
   }, 30_000)
 
+  test('provider model rejection maps to model_not_supported with the qualified model id (#852)', async () => {
+    seedProvider([
+      { status: 400, errorBody: { error: { message: "The 'gpt-test' model is not supported when using Codex with a ChatGPT account" } } },
+    ])
+    try {
+      await adapter.messaging.send({ agentId: 'main', content: 'hi', model: 'openai-codex/gpt-test' })
+      throw new Error('expected send to reject')
+    } catch (err) {
+      expect((err as RuntimeError).kind).toBe('model_not_supported')
+      expect((err as RuntimeError).providerInfo?.model).toBe('openai-codex/gpt-test')
+    }
+  }, 30_000)
+
   test('abort mid-turn settles kind aborted', async () => {
     seedProvider([
       { steps: [{ text: 'slow ' }, { delayMs: 3_000, text: 'never delivered' }] },
@@ -465,6 +478,35 @@ describe('messaging.send', () => {
     try {
       await adapter.messaging.send({ agentId: 'ghost', content: 'hi' })
       throw new Error('expected send to reject')
+    } catch (err) {
+      expect((err as RuntimeError).kind).toBe('runtime_failed')
+    }
+  })
+})
+
+describe('models.probe (#852)', () => {
+  test('probe of a callable model resolves', async () => {
+    seedProvider([{ steps: [{ text: 'OK' }] }])
+    await adapter.models.probe!('fakeai/fake-model')
+  }, 30_000)
+
+  test('probe of an account-rejected model throws typed model_not_supported naming the model', async () => {
+    seedProvider([
+      { status: 400, errorBody: { error: { message: "The 'fake-model' model is not supported when using Codex with a ChatGPT account" } } },
+    ])
+    try {
+      await adapter.models.probe!('fakeai/fake-model')
+      throw new Error('expected probe to reject')
+    } catch (err) {
+      expect((err as RuntimeError).kind).toBe('model_not_supported')
+      expect((err as RuntimeError).providerInfo?.model).toBe('fakeai/fake-model')
+    }
+  }, 30_000)
+
+  test('probe of a model missing from the catalog is a typed runtime_failed, never a hang', async () => {
+    try {
+      await adapter.models.probe!('fakeai/no-such-model')
+      throw new Error('expected probe to reject')
     } catch (err) {
       expect((err as RuntimeError).kind).toBe('runtime_failed')
     }
@@ -568,6 +610,23 @@ describe('messaging.stream', () => {
     expect(kind!.length).toBeGreaterThan(0)
     // No done after a terminal error.
     expect(chunks.filter((c) => c.type === 'done')).toHaveLength(0)
+  }, 30_000)
+
+  test('model rejection error chunk carries data.model so core can attribute the rejection (#852)', async () => {
+    seedProvider([
+      { status: 400, errorBody: { error: { message: "The 'gpt-test' model is not supported when using Codex with a ChatGPT account" } } },
+    ])
+    const chunks: ChatChunk[] = []
+    for await (const chunk of adapter.messaging.stream({ agentId: 'main', content: 'go', model: 'openai-codex/gpt-test' })) {
+      chunks.push(chunk)
+    }
+    const last = chunks.at(-1)
+    expect(last?.type).toBe('error')
+    const data = last?.data as { kind?: string; model?: string } | undefined
+    expect(data?.kind).toBe('model_not_supported')
+    // Streams surface failures as chunks, not throws — providerInfo never
+    // crosses the boundary, so the chunk itself must name the model.
+    expect(data?.model).toBe('openai-codex/gpt-test')
   }, 30_000)
 
   test('deliberate abort ends the stream with a clean done, never an error chunk', async () => {

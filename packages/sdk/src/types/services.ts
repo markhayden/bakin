@@ -526,6 +526,11 @@ export interface AvailableModel {
   contextWindow?: number
   local?: boolean
   available?: boolean
+  /** Present when the account's provider deterministically rejected this
+   *  model (#852) — the row stays listed with `available: false` so UIs can
+   *  show WHY instead of the model silently vanishing. Overlaid live from
+   *  the rejection ledger on every read; never persisted in the cache. */
+  rejection?: { lastSeenAt: number; occurrences: number }
   tags?: string[]
   configured?: boolean
   isDefault?: boolean

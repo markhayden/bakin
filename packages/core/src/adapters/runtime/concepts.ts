@@ -236,7 +236,9 @@ export type ChatChunk =
    *  parity with `send()`: a runtime whose send results carry usage must
    *  attach it here too (conformance-pinned), so streamed turns are meterable. */
   | { type: 'done'; content?: string; data?: RuntimeMetadata; usage?: MessageUsage }
-  /** Terminal failure — `data.kind` carries the RuntimeError kind when known. */
+  /** Terminal failure — `data.kind` carries the RuntimeError kind when known;
+   *  `data.model` names the qualified model id when the failure was the
+   *  provider rejecting that model (kind 'model_not_supported', #852). */
   | { type: 'error'; content?: string; data?: RuntimeMetadata }
 
 // Channel/delivery types live in ./channels (a leaf module shared with the
@@ -865,6 +867,16 @@ export interface AgentRuntimeAdapter {
 
   models: {
     listAvailable(opts?: { includeUnavailable?: boolean }): Promise<RuntimeAvailableModel[]>
+    /**
+     * OPTIONAL capability (#852): verify the ACCOUNT can actually call this
+     * model by firing a minimal (~1-token) completion. Resolves on success;
+     * rejects with a typed RuntimeError — `model_not_supported` when the
+     * provider rejected the model id itself. Adapters without a cheap probe
+     * transport OMIT the member; callers feature-detect (`models.probe?.`).
+     * Billed (~pennies) and user-triggered only — never called on a
+     * schedule or from background refresh paths.
+     */
+    probe?(modelId: string, opts?: { signal?: AbortSignal }): Promise<void>
     /** Static declaration of which routing-policy fields this runtime honors. */
     routingSupport(): RuntimeRoutingSupport
     /** The runtime's current routing policy (unsupported fields empty). */

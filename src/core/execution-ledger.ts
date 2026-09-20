@@ -42,6 +42,9 @@ export {
   listBudgetIncidents,
   resolveExpiredBudgetIncidents,
   findOpenCapIncident,
+  recordModelRejection,
+  resolveModelRejection,
+  listModelRejections,
   LedgerUnavailableError,
 } from '../../packages/core/src/execution/ledger'
 export type {
@@ -66,6 +69,8 @@ export type {
   BudgetIncidentKind,
   BudgetIncidentStatus,
   BudgetIncidentResolution,
+  ModelRejectionRow,
+  ModelRejectionResolution,
   RunWithCostRow,
   AgentTokenRollup,
 } from '../../packages/core/src/execution/ledger'

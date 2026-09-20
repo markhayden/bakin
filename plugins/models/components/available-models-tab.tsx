@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, ShieldCheck } from 'lucide-react'
 import {
   DataTable,
   FacetFilter,
@@ -112,6 +112,9 @@ export function AvailableModelsTab({
     availableProviders,
     effectiveDefaultModel,
     handleRefresh,
+    handleVerify,
+    verifying,
+    probeVerdicts,
     modelOptions,
     modelsCached,
     modelsCachedAt,
@@ -257,6 +260,19 @@ export function AvailableModelsTab({
         const isDefault = model.isDefault || model.id === effectiveDefaultModel
         return (
           <span className="flex flex-wrap items-center gap-bakin-1">
+            {model.available === false && model.rejection ? (
+              // #852: the account's provider rejected this model (retired/
+              // unentitled). Flip-not-filter keeps the row visible; the badge
+              // says why, with the evidence in plain words on hover.
+              <Badge
+                tone="danger"
+                variant="solid"
+                size="xs"
+                title={`Rejected ${model.rejection.occurrences}× — last ${formatRelativeTime(model.rejection.lastSeenAt)}. Reroute or verify availability after the account regains access.`}
+              >
+                Rejected by account
+              </Badge>
+            ) : null}
             {isDefault ? (
               <Badge tone="success" variant="solid" size="xs">Default</Badge>
             ) : model.configured ? (
@@ -347,6 +363,17 @@ export function AvailableModelsTab({
               <RefreshCw />
               {refreshing ? 'Refreshing…' : 'Refresh'}
             </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleVerify}
+              busy={verifying}
+              title="Fire a tiny billed probe per model to confirm your account can actually call it (#852). Explicit only — never runs on a schedule."
+            >
+              <ShieldCheck />
+              {verifying ? 'Verifying…' : 'Verify availability'}
+            </Button>
           </>
         )}
       >
@@ -358,6 +385,12 @@ export function AvailableModelsTab({
           counts={providerCounts}
         />
       </PageControls>
+
+      {probeVerdicts ? (
+        <Text size="meta" tone="muted">
+          {`Availability verified: ${probeVerdicts.filter((v) => v.status === 'verified').length} callable · ${probeVerdicts.filter((v) => v.status === 'rejected').length} rejected · ${probeVerdicts.filter((v) => v.status === 'skipped').length} skipped`}
+        </Text>
+      ) : null}
 
       {/* Comparable catalog records read as a table (the tasks-Log ruling):
           columns, alignment, and sortable identity/provider/tier/context. The

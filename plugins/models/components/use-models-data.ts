@@ -26,6 +26,9 @@ const LOAD_TIMEOUT_MS = 10_000
 const LEDGER_TIMEOUT_MS = 20_000
 /** Provider round-trip: slower than a local read, still bounded. */
 const REFRESH_TIMEOUT_MS = 30_000
+// Verify = refresh + N bounded probes (concurrency 3, 20s adapter ceiling
+// each) — the budget covers the worst honest case without hanging the button.
+const VERIFY_TIMEOUT_MS = 90_000
 
 function isAbortError(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { name?: string }).name === 'AbortError'
@@ -45,6 +48,13 @@ interface AvailableModelsPayload {
   cachedAt?: number | null
   stale?: boolean
   error?: string | null
+}
+
+/** Per-model probe verdict from POST /refresh?probe=1 (#852). */
+export interface ProbeVerdictWire {
+  model: string
+  status: 'verified' | 'rejected' | 'skipped'
+  detail?: string
 }
 
 /** The message a failed mutation should show: the server's reason, or the status. */
@@ -263,6 +273,8 @@ export function useModelsData() {
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [modelsLoaded, setModelsLoaded] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [probeVerdicts, setProbeVerdicts] = useState<ProbeVerdictWire[] | null>(null)
   const [aliases, setAliases] = useState<Record<string, string>>({})
   const [pendingOwn, setPendingOwn] = useState<Record<string, string>>({})
   const [pendingSub, setPendingSub] = useState<Record<string, string>>({})
@@ -375,6 +387,34 @@ export function useModelsData() {
       setRefreshing(false)
     }
   }, [refreshing])
+
+  const handleVerify = useCallback(async () => {
+    // Probing is billed (~pennies) and EXPLICIT (#852): only this action ever
+    // passes probe=1 — handleRefresh and the stale auto-refresh never do.
+    if (verifying || refreshing) return
+    setVerifying(true)
+    try {
+      const data = await fetchPluginJson<AvailableModelsPayload & { probe?: { supported: boolean; verdicts: ProbeVerdictWire[] } }>(
+        'refresh?probe=1',
+        'Verify availability',
+        VERIFY_TIMEOUT_MS,
+        undefined,
+        { method: 'POST' },
+      )
+      if (Array.isArray(data.models)) {
+        setAvailableModels(data.models)
+      }
+      setModelsCached(!!data.cached)
+      setModelsCachedAt(data.cachedAt ?? null)
+      setModelsStale(!!data.stale)
+      setModelsError(data.error ?? null)
+      setProbeVerdicts(data.probe?.verdicts ?? null)
+    } catch (err) {
+      setModelsError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setVerifying(false)
+    }
+  }, [verifying, refreshing])
 
   const fetchAliases = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -889,6 +929,7 @@ export function useModelsData() {
     availableModels, modelOptions, modelsReady, availableProviders,
     modelsCached, modelsCachedAt, modelsStale, modelsError, modelsLoaded, refreshing,
     handleRefresh,
+    verifying, probeVerdicts, handleVerify,
     // aliases
     aliases, newAliasName, setNewAliasName, newAliasTarget, setNewAliasTarget,
     addAlias, deleteAlias, prepopulateAliases,

@@ -18,14 +18,14 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 | `messaging.ts` | send/stream: session assembly, event→ChatChunk mapping, usage delta, abort, terminal-failure detection, Pi extension policy (#626) |
 | `tool-bridge.ts` | Exec-tool seam descriptors → Pi `defineTool()` (native tools); per-turn policy + agent allowlist filtering |
 | `system-prompt.ts` | Canonical workspace files (SOUL/IDENTITY/TOOLS/…) → `appendSystemPrompt` sections; AGENTS.md rides Pi's native cwd discovery |
-| `errors.ts` | THE classification point → `RuntimeError` kinds + stream-death diagnoses with salvage |
+| `errors.ts` | THE classification point → `RuntimeError` kinds + stream-death diagnoses with salvage. #852: narrow model-rejection shapes (the Codex retirement message, `code: model_not_found`, the OpenAI no-access shape) → `model_not_supported` with qualified `providerInfo.model` + derived provider; ambiguous 400s stay `runtime_failed` — a request bug must never mark a live model dead. Stream terminal error chunks carry `data: { kind, model }` (streams never throw, so providerInfo can't cross otherwise) |
 | `memory.ts` | Tiers: `pi-session-jsonl` (`sourceKind: 'session_jsonl'`) + `pi-durable` (workspace files) |
 | `models.ts` | Pi `ModelRegistry` → `provider/id` catalog; `capabilities()` from model input modalities |
 | `config.ts` | `<pi-home>/agent/settings.json` + onboarding raw-key synthesis (authProfiles presence-only, `channels` → `{}`) |
 | `skills.ts` | Pi-native skill dirs: global `agent/skills/` + per-agent `<workspace>/.pi/skills/` |
 | `images.ts` | route: codex-native primary; explicit keyed routes (openai/google) ride the shared shim with full generate/edit/multi-ref support (WS3) |
 | `extensions.ts` | INERT extension discovery (dir entries + settings.json packages) statused by the SAME policy the loader applies; the trust surface behind `runtime.extensions` (WS4) |
-| `codex-images.ts` | the codex image wire: OAuth token via Pi's ModelRegistry (refresh SDK-owned), account-id from the JWT claim, SSE `image_generation_call` → temp file; carrier model gpt-5.5 (settings-overridable via images.carrierModel) |
+| `codex-images.ts` | the codex image wire: OAuth token via Pi's ModelRegistry (refresh SDK-owned), account-id from the JWT claim, SSE `image_generation_call` → temp file; two-rung carrier ladder (#852): configured `images.carrierModel` → `DEFAULT_CARRIER_MODEL` (gpt-5.6-luna), falling through ONLY on typed `model_not_supported` (never 429/401/5xx — double-bill risk); `metadata.carrierModel` = the rung that ran, `metadata.rejectedCarriers` = the rung(s) that died (core records them as availability evidence); failures attribute to the CARRIER (qualified), not gpt-image-2 |
 | `health-checks.ts` | Doctor: pi home/registry, agents-root writable, auth providers, models available |
 
 ## Load-bearing SDK facts (0.80.3, probed — do not trust docs over these)
@@ -63,7 +63,7 @@ Fast-follows on record: Discord bridge SHIPPED (#669 Phase A — `.claude/knowle
 
 The codex image path bills against the **ChatGPT subscription's rolling usage window**, and image turns burn it **~3-5x faster than chat turns**. Controls in place:
 
-- **Cheap carrier by default.** Each image call is a carrier chat turn that only EMITS the `image_generation` tool call — the backend's gpt-image-2 does the rendering, so carrier quality is irrelevant to the image. Default carrier is `gpt-5.4-mini` (cheapest the ChatGPT account accepts; `gpt-5.3-codex-spark` is rejected for image calls). Override: `settings.runtime.settings.images.carrierModel`.
+- **Cheap carrier by default, with a rejection ladder (#852).** Each image call is a carrier chat turn that only EMITS the `image_generation` tool call — the backend's gpt-image-2 does the rendering, so carrier quality is irrelevant to the image. Default carrier is `gpt-5.6-luna` (cheapest the ChatGPT account accepts after the ~2026-09-08 gpt-5.4-family retirement; probed 2026-09-18). Override: `settings.runtime.settings.images.carrierModel`. A rejected configured carrier (typed `model_not_supported`) silently falls back to the default with a truthful receipt (`metadata.carrierModel` / `metadata.rejectedCarriers`); both rungs dying fails typed and loudly — that's an SDK-repin event.
 - **No double-bill.** The images plugin wraps every generate/edit in `runBilledImageCall` (execution-ledger dedup, first-write-wins, no TTL) ABOVE the adapter — a client timeout/retry with the same call key never re-bills, on any runtime.
 - **Tight request.** `parallel_tool_calls: false`, `tool_choice: auto`, `text.verbosity: low`, no reasoning effort, instructions pinning "call the tool exactly once" — the carrier does no extra work.
 - **No failed-retry loops.** Image exec tools ship a `surface` zod enum (valid ids in the schema) so the model can't guess a bad surface and retry; codex-primary routing removes the old keyless "no key" bounce.
