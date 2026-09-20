@@ -1,7 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { useState } from 'react'
 import { expect } from 'storybook/test'
 
 import {
+  AgentFilter,
   Page,
   PageAside,
   PageBody,
@@ -254,10 +256,14 @@ export const BodyReplacedState = {
 } satisfies Story
 
 export const ControlModes = {
-  render: () => (
+  parameters: { docs: { description: { story: 'Use variant="filters" for a filter region: PageControls owns one decorative leading icon, even with AgentFilter children. Filter controls wrap together beside that icon at narrow widths. Generic sections and command toolbars stay icon-free; filtering and URL state remain consumer-owned.' } } },
+  render: function Render() {
+    const [agent, setAgent] = useState('all')
+    return (
     <Page data-testid="controls-page">
       <PageHeader title="Tasks" />
-      <PageControls label="Task filters" actions={<Button variant="ghost">Clear filters</Button>}>
+      <PageControls variant="filters" label="Task filters" actions={<Button variant="ghost" onClick={() => setAgent('all')}>Clear filters</Button>}>
+        <AgentFilter options={[{ value: 'patch', label: 'Patch' }]} value={agent} onValueChange={setAgent} />
         <Button variant="outline">Needs attention</Button>
         <Button variant="outline">Running</Button>
       </PageControls>
@@ -269,11 +275,21 @@ export const ControlModes = {
         <p>Section controls name a filter region; toolbar controls take the ARIA toolbar contract.</p>
       </PageBody>
     </Page>
-  ),
-  play: async ({ canvas }) => {
+    )
+  },
+  play: async ({ canvas, userEvent }) => {
     const section = canvas.getByRole('region', { name: 'Task filters' })
     await expect(section.tagName).toBe('SECTION')
     await expect(section).toHaveAttribute('data-divider', 'false')
+    const indicators = section.querySelectorAll('[data-slot="filter-indicator"]')
+    await expect(indicators).toHaveLength(1)
+    await expect(indicators[0]).toHaveAttribute('aria-hidden', 'true')
+    const all = canvas.getByRole('radio', { name: 'All' })
+    all.focus()
+    await userEvent.keyboard('{ArrowRight}')
+    await expect(canvas.getByRole('radio', { name: 'Patch' })).toHaveAttribute('aria-checked', 'true')
+    await userEvent.click(canvas.getByRole('button', { name: 'Clear filters' }))
+    await expect(all).toHaveAttribute('aria-checked', 'true')
     await expect(section.querySelector('[data-slot="page-controls-actions"]')?.textContent).toBe(
       'Clear filters',
     )
@@ -282,5 +298,6 @@ export const ControlModes = {
     await expect(toolbar.tagName).toBe('DIV')
     await expect(toolbar).toHaveAttribute('data-as', 'toolbar')
     await expect(toolbar).toHaveAttribute('data-divider', 'false')
+    await expect(toolbar.querySelector('[data-slot="filter-indicator"]')).toBeNull()
   },
 } satisfies Story

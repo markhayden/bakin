@@ -185,6 +185,7 @@ function ListIndexExample() {
       />
 
       <PageControls
+        variant="filters"
         label="Task filters"
         actions={filtered ? <Button variant="ghost" onClick={clear}>Clear all</Button> : undefined}
       >
@@ -386,6 +387,7 @@ export const ListNoResults = {
         )}
       />
       <PageControls
+        variant="filters"
         label="Task filters"
         actions={<Button variant="ghost">Clear all</Button>}
       >

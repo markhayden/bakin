@@ -283,7 +283,7 @@ export const ListRowLabels = forwardRef<HTMLLIElement, ListRowLabelsProps>(
 export interface ListRowGroupProps extends ComponentPropsWithoutRef<'div'> {
   /** Group heading rendered above the group's rows. */
   label: ReactNode
-  /** Compact rail label (default), or a flush, filled collection section heading. */
+  /** Compact rail label (default), or a flush, filled heading with extra spacing between adjacent section groups. */
   headerVariant?: 'plain' | 'section'
   /** Section heading rail color; neutral by default. Does not color the rows. */
   headerTone?: 'neutral' | 'accent' | 'success' | 'attention' | 'danger' | 'info'
@@ -334,7 +334,13 @@ export function ListRowGroup({
       {...props}
       data-slot="list-row-group"
       data-header-variant={headerVariant}
-      className={cn('grid min-w-0', section ? 'gap-bakin-3' : 'gap-bakin-1', className)}
+      className={cn(
+        'grid min-w-0',
+        section
+          ? 'gap-bakin-3 [&+[data-slot=list-row-group][data-header-variant=section]]:mt-bakin-3'
+          : 'gap-bakin-1',
+        className,
+      )}
     >
       <Label
         id={labelId}

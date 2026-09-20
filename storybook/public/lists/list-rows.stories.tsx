@@ -252,6 +252,8 @@ export const Grouped = {
     await expect(label!.textContent).toBe('Pinned')
     // The heading labels the list; it is not itself a list item.
     await expect(within(group as HTMLElement).getAllByRole('listitem')).toHaveLength(1)
+    await expect(getComputedStyle(group as HTMLElement).marginTop).toBe('0px')
+    await expect(getComputedStyle(today.closest('[data-slot=list-row-group]')!).marginTop).toBe('0px')
   },
 } satisfies Story
 
@@ -263,7 +265,7 @@ interface SectionGroupsArgs {
 export const SectionGroups = {
   parameters: {
     layout: 'padded',
-    docs: { description: { story: 'Collection sections use a flush, subtly filled heading with a neutral left rail. Set headerTone only when the grouping has semantic meaning; headingLevel follows the surrounding document. Plain headings remain available for compact rails.' } },
+    docs: { description: { story: 'Collection sections use a flush, subtly filled heading with a neutral left rail. Adjacent section groups get one additional item-spacing step before the next header; the first section and plain compact groups gain no margin. Set headerTone for an intentional section accent; headingLevel follows the surrounding document.' } },
   },
   args: { headerTone: 'neutral', headingLevel: 3 },
   argTypes: {
@@ -295,6 +297,10 @@ export const SectionGroups = {
       await expect(heading.getBoundingClientRect().right).toBe(list.getBoundingClientRect().right)
     }
     await expect(canvas.getAllByRole('listitem')).toHaveLength(3)
+    const first = canvas.getByRole('heading', { name: 'Planning projects' }).parentElement!
+    const second = canvas.getByRole('heading', { name: 'Completed projects' }).parentElement!
+    await expect(getComputedStyle(first).marginTop).toBe('0px')
+    await expect(getComputedStyle(second).marginTop).toBe(getComputedStyle(first).rowGap)
   },
 } satisfies StoryObj<SectionGroupsArgs>
 

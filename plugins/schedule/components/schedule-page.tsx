@@ -458,7 +458,7 @@ export function SchedulePage() {
             />
           </div>
 
-          <PageControls label="Schedule filters" divider className="px-bakin-4 @md/page-shell:px-bakin-6">
+          <PageControls variant="filters" label="Schedule filters" divider className="px-bakin-4 @md/page-shell:px-bakin-6">
             <AgentFilter
               options={agentOptions}
               value={agentFilter}

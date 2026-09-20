@@ -4,6 +4,7 @@ import * as React from 'react'
 
 import { cn } from '../utils'
 import { horizontalSelectionIndex, type HorizontalSelectionKey } from '../behaviors/selection-navigation'
+import { FilterIndicator, FilterIndicatorContext } from './filter-indicator'
 
 export interface AgentFilterOption {
   value: string
@@ -19,17 +20,10 @@ export interface AgentFilterProps {
   ariaLabel?: string
   allLabel?: string
   allValue?: string
+  /** Show the standalone indicator (default true). A parent filter region owns it instead when present. */
   showIcon?: boolean
   compact?: boolean
   className?: string
-}
-
-function FilterIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-4 shrink-0 fill-none stroke-current stroke-[1.6] text-bakin-text-muted">
-      <path d="M2.5 3.5h11M4.5 8h7m-5 4.5h3" strokeLinecap="round" />
-    </svg>
-  )
 }
 
 /** Presentation-only single-agent filter. App-aware adapters supply agent metadata and visuals. */
@@ -44,6 +38,7 @@ export function AgentFilter({
   compact = false,
   className,
 }: AgentFilterProps) {
+  const parentOwnsIndicator = React.useContext(FilterIndicatorContext)
   const itemRefs = React.useRef<Array<HTMLButtonElement | null>>([])
   const items = React.useMemo<AgentFilterOption[]>(
     () => [{ value: allValue, label: allLabel }, ...options],
@@ -62,7 +57,7 @@ export function AgentFilter({
 
   return (
     <div data-agent-filter="" className={cn('flex min-w-0 items-center gap-bakin-2 font-bakin-typography-family-ui', className)}>
-      {showIcon ? <FilterIcon /> : null}
+      {showIcon && !parentOwnsIndicator ? <FilterIndicator /> : null}
       <div
         role="radiogroup"
         aria-label={ariaLabel}

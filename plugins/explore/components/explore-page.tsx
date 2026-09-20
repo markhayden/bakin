@@ -391,6 +391,7 @@ function ExplorePageInner() {
       </Tabs>
 
       <PageControls
+        variant={categoryOptions.length > 0 ? 'filters' : 'default'}
         label="Catalog filters and maintenance"
         actions={maintenanceActions}
       >

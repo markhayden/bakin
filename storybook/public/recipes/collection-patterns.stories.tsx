@@ -56,6 +56,10 @@ export const RowBehaviors = {
   play: async ({ canvas, args }) => {
     const list = canvas.getByRole('list', { name: 'Planning projects' })
     const completed = canvas.getByRole('list', { name: 'Completed projects' })
+    const firstGroup = list.closest('[data-slot=list-row-group]')!
+    const nextGroup = completed.closest('[data-slot=list-row-group]')!
+    await expect(getComputedStyle(firstGroup).marginTop).toBe('0px')
+    await expect(getComputedStyle(nextGroup).marginTop).toBe(getComputedStyle(firstGroup).rowGap)
     for (const name of ['Planning projects', 'Completed projects']) {
       const heading = canvas.getByRole('heading', { level: 3, name })
       const groupList = canvas.getByRole('list', { name })

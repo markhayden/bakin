@@ -428,6 +428,9 @@ export async function keyboardFocusFindings(
   viewport: 'desktop' | 'mobile',
 ): Promise<PluginUiConformanceFinding[]> {
   const targets = await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    document.body.tabIndex = -1
+    document.body.focus()
     const selector = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [contenteditable="true"], [tabindex]:not([tabindex="-1"])'
     const visibleElements = [...document.querySelectorAll<HTMLElement>(selector)].filter((element) => {
       const style = getComputedStyle(element)
@@ -456,10 +459,20 @@ export async function keyboardFocusFindings(
       const id = String(index)
       element.setAttribute('data-bakin-ui-test-focus-id', id)
       const style = getComputedStyle(element)
+      // The kit's editable InputGroup controls delegate their ring to the
+      // nearest group. Addon buttons still need their own focus indicator.
+      const group = element.matches('[data-slot="input-group-control"]')
+        ? element.closest('[data-slot="input-group"]') : null
+      const groupStyle = group ? getComputedStyle(group) : null
       return {
         id,
         label: (element.getAttribute('aria-label') || element.textContent?.trim() || element.tagName.toLowerCase()).slice(0, 80),
         resting: {
+          groupOutline: groupStyle ? {
+            style: groupStyle.outlineStyle,
+            width: groupStyle.outlineWidth,
+            color: groupStyle.outlineColor,
+          } : null,
           backgroundColor: style.backgroundColor,
           borderColor: style.borderColor,
           boxShadow: style.boxShadow,
@@ -472,9 +485,6 @@ export async function keyboardFocusFindings(
         },
       }
     })
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
-    document.body.tabIndex = -1
-    document.body.focus()
     return targets
   })
   if (targets.length === 0) return []
@@ -521,10 +531,23 @@ export async function keyboardFocusFindings(
         'transform',
       ].some((property) => focused[property as keyof typeof focused] !== resting[property as keyof typeof focused])
       const focusVisible = element.matches(':focus-visible')
+      const group = element.matches('[data-slot="input-group-control"]')
+        ? element.closest('[data-slot="input-group"]') : null
+      const groupStyle = group ? getComputedStyle(group) : null
+      const groupResting = resting?.groupOutline
+      const groupRingChanged = Boolean(groupStyle && groupResting
+        && groupStyle.outlineStyle !== 'none' && groupStyle.outlineStyle !== 'hidden'
+        && Number.parseFloat(groupStyle.outlineWidth) > 0
+        && groupStyle.outlineColor !== 'transparent'
+        // Legacy computed colors use a comma before alpha; CSS Color 4 uses a slash.
+        && !/(?:^rgba\(.+,|\/)\s*0(?:\.0+)?%?\s*\)$/.test(groupStyle.outlineColor)
+        && (groupStyle.outlineStyle !== groupResting.style
+          || groupStyle.outlineWidth !== groupResting.width
+          || groupStyle.outlineColor !== groupResting.color))
       const label = element.getAttribute('aria-label') || element.textContent?.trim() || element.tagName.toLowerCase()
       return {
         reached: Boolean(id),
-        visible: focusVisible && ((visibleOutline && outlineChanged) || shadowChanged || surfaceChanged),
+        visible: focusVisible && ((visibleOutline && outlineChanged) || shadowChanged || surfaceChanged || groupRingChanged),
         id,
         label: label.slice(0, 80),
         diagnostic: `focus-visible=${focusVisible}; outline=${style.outlineStyle} ${style.outlineWidth}; shadow=${style.boxShadow}`,

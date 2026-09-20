@@ -1,6 +1,7 @@
 import * as React from 'react'
 
 import { cn } from '../utils'
+import { FilterIndicator, FilterIndicatorContext } from './filter-indicator'
 
 export type PageControlsAs = 'section' | 'toolbar'
 
@@ -22,6 +23,8 @@ export type PageControlsProps = NativeControlsProps & AccessibleRegionName & {
    * such as graph tools.
    */
   as?: PageControlsAs
+  /** Filters own one leading indicator; nested AgentFilters omit theirs. Generic controls stay unchanged. */
+  variant?: 'default' | 'filters'
   /** Search, filters, view controls, and commands supplied by the consumer. */
   children: React.ReactNode
   /**
@@ -36,6 +39,7 @@ export type PageControlsProps = NativeControlsProps & AccessibleRegionName & {
 export function PageControls({
   actions,
   as = 'section',
+  variant = 'default',
   children,
   className,
   divider,
@@ -46,6 +50,13 @@ export function PageControls({
   const isToolbar = as === 'toolbar'
   const showDivider = divider ?? isToolbar
   const Component = isToolbar ? 'div' : 'section'
+  const parentOwnsIndicator = React.useContext(FilterIndicatorContext)
+  const ownsIndicator = variant === 'filters' && !parentOwnsIndicator
+  const controls = (
+    <div data-slot="page-controls-set" className="flex min-w-0 flex-1 flex-wrap items-center gap-bakin-3">
+      {children}
+    </div>
+  )
 
   return (
     <Component
@@ -54,6 +65,7 @@ export function PageControls({
       aria-label={label}
       aria-labelledby={labelledBy}
       data-as={as}
+      data-variant={variant}
       data-divider={showDivider ? 'true' : 'false'}
       data-slot="page-controls"
       className={cn(
@@ -67,23 +79,27 @@ export function PageControls({
         className,
       )}
     >
-      <div
-        data-slot="page-controls-set"
-        className="flex min-w-0 flex-1 flex-wrap items-center gap-bakin-3"
-      >
-        {children}
-      </div>
-      {actions ? (
-        <div
-          data-slot="page-controls-actions"
-          className={cn(
-            'flex min-w-0 flex-wrap items-center gap-bakin-2',
-            isToolbar ? 'ml-auto' : '@lg/page-shell:ml-auto',
-          )}
-        >
-          {actions}
-        </div>
-      ) : null}
+      <FilterIndicatorContext.Provider value={parentOwnsIndicator || ownsIndicator}>
+        {ownsIndicator ? (
+          <div data-slot="page-controls-filters" className="flex min-w-0 flex-1 items-start gap-bakin-3">
+            <span className="inline-flex h-[var(--bakin-layout-size-control)] shrink-0 items-center">
+              <FilterIndicator />
+            </span>
+            {controls}
+          </div>
+        ) : controls}
+        {actions ? (
+          <div
+            data-slot="page-controls-actions"
+            className={cn(
+              'flex min-w-0 flex-wrap items-center gap-bakin-2',
+              isToolbar ? 'ml-auto' : '@lg/page-shell:ml-auto',
+            )}
+          >
+            {actions}
+          </div>
+        ) : null}
+      </FilterIndicatorContext.Provider>
     </Component>
   )
 }

@@ -28,7 +28,7 @@ export function ValidListRecipe() {
         )}
         actions={<Button>New task</Button>}
       />
-      <PageControls label="Task filters">
+      <PageControls variant="filters" label="Task filters">
         <Button aria-pressed={status === 'open'} onClick={() => setStatus(status === 'open' ? 'all' : 'open')}>
           Toggle open tasks
         </Button>

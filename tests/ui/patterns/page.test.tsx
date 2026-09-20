@@ -4,6 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 
 import {
+  AgentFilter,
   Page,
   PageAside,
   PageBody,
@@ -213,6 +214,31 @@ describe('page body content slot', () => {
 })
 
 describe('page controls', () => {
+  it('owns exactly one decorative icon for filter controls, including nested agent filters', () => {
+    render(
+      <PageControls variant="filters" label="Task filters">
+        <Button>Brand</Button>
+        <AgentFilter options={[]} value="all" onValueChange={() => {}} />
+        <PageControls variant="filters" label="Secondary filters">
+          <AgentFilter options={[]} value="all" onValueChange={() => {}} ariaLabel="Second agent" showIcon />
+        </PageControls>
+      </PageControls>,
+    )
+    const region = screen.getByRole('region', { name: 'Task filters' })
+    const icons = region.querySelectorAll('[data-slot="filter-indicator"]')
+    expect(icons).toHaveLength(1)
+    expect(icons[0].getAttribute('aria-hidden')).toBe('true')
+    expect(region.getAttribute('data-variant')).toBe('filters')
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(2)
+  })
+
+  it('retains the standalone agent indicator and supports hiding it explicitly', () => {
+    const { container, rerender } = render(<AgentFilter options={[]} value="all" onValueChange={() => {}} />)
+    expect(container.querySelectorAll('[data-slot="filter-indicator"]')).toHaveLength(1)
+    rerender(<AgentFilter options={[]} value="all" onValueChange={() => {}} showIcon={false} />)
+    expect(container.querySelector('[data-slot="filter-indicator"]')).toBeNull()
+  })
+
   it('names a borderless wrapping section region by default', () => {
     render(
       <PageControls label="Task filters" actions={<Button>Clear filters</Button>}>
@@ -224,6 +250,7 @@ describe('page controls', () => {
     const controls = screen.getByRole('region', { name: 'Task filters' })
     expect(controls.tagName).toBe('SECTION')
     expect(controls.getAttribute('data-as')).toBe('section')
+    expect(controls.querySelector('[data-slot="filter-indicator"]')).toBeNull()
     expect(controls.getAttribute('data-divider')).toBe('false')
     expect(controls.className).not.toContain('border-t')
     expect(controls.className).toContain('@lg/page-shell:flex-row')
@@ -253,6 +280,7 @@ describe('page controls', () => {
 
     const toolbar = screen.getByRole('toolbar', { name: 'Graph tools' })
     expect(toolbar.tagName).toBe('DIV')
+    expect(toolbar.querySelector('[data-slot="filter-indicator"]')).toBeNull()
     expect(toolbar.getAttribute('data-as')).toBe('toolbar')
     expect(toolbar.getAttribute('data-divider')).toBe('true')
     expect(toolbar.className).toContain('border-b')

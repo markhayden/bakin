@@ -24,7 +24,7 @@ export function InputGroup({ className, ...props }: InputGroupProps) {
           'rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default text-bakin-text-primary',
           'transition-[background-color,border-color,color] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard outline-none',
           'has-[[data-slot=input-group-control]:disabled]:pointer-events-none has-[[data-slot=input-group-control]:disabled]:opacity-[var(--bakin-state-opacity-disabled)]',
-          'has-[[data-slot=input-group-control]:focus-visible]:outline-2 has-[[data-slot=input-group-control]:focus-visible]:outline-offset-2 has-[[data-slot=input-group-control]:focus-visible]:outline-bakin-focus-ring',
+          'has-[[data-slot=input-group-control]:focus-visible]:outline-solid has-[[data-slot=input-group-control]:focus-visible]:outline-2 has-[[data-slot=input-group-control]:focus-visible]:outline-offset-2 has-[[data-slot=input-group-control]:focus-visible]:outline-bakin-focus-ring',
           'has-[[data-slot=input-group-control][aria-invalid=true]]:border-bakin-signal-danger',
           'has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:min-h-[var(--bakin-layout-size-control)] has-[>[data-align=block-end]]:flex-col',
           'has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:min-h-[var(--bakin-layout-size-control)] has-[>[data-align=block-start]]:flex-col',
