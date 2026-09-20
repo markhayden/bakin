@@ -40,6 +40,20 @@ export function extractOpenClawProviderInfo(message: string): RuntimeProviderInf
  * transport/timeout failures are constructed directly at their source with
  * the right kind and never pass through string interpretation.
  */
+/**
+ * #880: OpenClaw 2026.9.5's admission gate refusing a per-turn
+ * provider/model override (`operator.admin` scope required). Detected here
+ * — the adapter's sanctioned provider-string interpretation site — so the
+ * runtime can flip its perTurnModel capability and retry the turn once on
+ * the agent default. NEVER map this to model_not_supported: the model is
+ * healthy; the CALLER lacked authorization (a model_not_supported mapping
+ * would write false rows into the #852 rejection ledger).
+ */
+export function isModelOverrideRejection(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err)
+  return message.includes('provider/model overrides are not authorized')
+}
+
 export function openClawRuntimeErrorFromMessage(message: string, cause?: unknown): RuntimeError {
   const lower = message.toLowerCase()
 

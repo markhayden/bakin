@@ -167,6 +167,40 @@ describe('OpenClaw runtime Gateway chat', () => {
     })).toBe(true)
   })
 
+  it('mid-session override rejection: retries once on the agent default with a receipt and flips perTurnModel (#880)', async () => {
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      if (frame.params.model) {
+        ws.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'provider/model overrides are not authorized for this caller.', code: 'INVALID_REQUEST' } })
+        return
+      }
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('clamped ok') })
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    expect(runtime.models.routingSupport().perTurnModel).toBe(true)
+
+    const result = await runtime.messaging.send({
+      agentId: 'pixel',
+      content: 'Say ok.',
+      threadId: 'task:t-880:d1',
+      model: 'openai/gpt-5.5',
+    })
+
+    // The turn SUCCEEDS on the agent default, carrying the race receipt.
+    expect(result.content).toBe('clamped ok')
+    expect(result.metadata?.modelOverrideDenied).toEqual({ requested: 'openai/gpt-5.5' })
+    // Exactly two agent frames: rejected override, then the clamped retry.
+    const ws = FakeWebSocket.instances[0]!
+    const agentFrames = ws.sentFrames.filter((f) => f.method === 'agent')
+    expect(agentFrames).toHaveLength(2)
+    expect(agentFrames[0]!.params.model).toBe('openai/gpt-5.5')
+    expect(agentFrames[1]!.params.model).toBeUndefined()
+    // Sticky capability flip: every later turn clamps pre-send in core.
+    expect(runtime.models.routingSupport().perTurnModel).toBe(false)
+  })
+
   it('surfaces token usage on a successful turn from the trajectory', async () => {
     FakeWebSocket.onRequest = (frame, ws) => {
       if (frame.method !== 'agent') return
