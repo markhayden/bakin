@@ -233,14 +233,23 @@ connect scope on top of read+write:
 - Loopback backend clients get requested scopes UNCHECKED (the self-pairing
   bypass) — Bakin's default topology pays zero cost.
 - A refusing topology (`NOT_PAIRED` scope-upgrade) triggers exactly ONE
-  in-handshake downgrade re-dial without the optional set (sticky; the
-  caller's first request still succeeds) — an elevated request must never
-  turn a working connection into an outage.
+  in-handshake downgrade re-dial without the optional set (sticky for the
+  client's lifetime; the caller's first request still succeeds; the re-dial
+  re-arms a fresh handshake timeout) — an elevated request must never turn
+  a working connection into an outage. Downgrade requires EVIDENCE: the
+  refusal's `approvedScopes` must cover the base set but not the optional
+  one; a base pairing failure (fresh unpaired install, no approvedScopes)
+  never drops the optional request.
 - The hello-ok ACK's `auth.scopes` is the authoritative granted set
-  (`grantedScopes()`/`hasScope()`); `routingSupport().perTurnModel` derives
-  from it, and core clamps routed models pre-send when false (modelClamp
-  receipt). A mid-session admission rejection retries the turn once on the
-  agent default (admission = pre-billing, safe) and flips the capability.
+  (`grantedScopes()`/`hasScope()`), reset per connection; an ACK WITHOUT
+  `auth.scopes` (pre-scope-reporting gateway) verifies the requested set —
+  never optimistic/"unverified" forever. `routingSupport().perTurnModel`
+  derives from it, and core clamps routed models pre-send when false
+  (modelClamp receipt + once-per-class `route.model_clamped` audit). A
+  mid-session admission rejection retries the turn once on the agent
+  default (admission = pre-billing, safe; fresh `-clamped` idempotency key)
+  and flips the capability FOR THAT CONNECTION EPOCH — a reconnect that
+  re-grants admin supersedes the denial without a restart.
 - NEVER map "provider/model overrides are not authorized" to
   `model_not_supported` — that would write false rows into the #852
   model_rejections ledger for a healthy model. Detection lives in
