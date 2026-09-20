@@ -50,14 +50,32 @@ import { resetPiHome } from '../../packages/adapter-pi/src/home'
 import { resetModelRegistry } from '../../packages/adapter-pi/src/models'
 
 /** Deterministic tree snapshot: sorted relative paths + content hashes. */
-function snapshotTree(root: string): string {
+/**
+ * The OpenClaw CLI self-manages sqlite state + tmp lock files inside its
+ * home on ANY invocation — including the read-only roster/credential
+ * commands a dry run legitimately shells — and WAL checkpointing churns
+ * those bytes on some CLI versions (reproduced locally on 2026.8.1; the
+ * nested `.openclaw/` segment comes from the CLI's HOME-style
+ * OPENCLAW_HOME resolution). That is CLI-owned housekeeping, not a Bakin
+ * write: the zero-writes pin covers Bakin-authored surfaces (config,
+ * agents, workspaces, auth), so the CLI's own runtime-state dirs are
+ * excluded from the byte snapshot.
+ */
+const OPENCLAW_CLI_STATE_RE = /(^|\/)(\.openclaw\/)?(state|tmp)\//
+
+function snapshotTree(root: string, ignore?: RegExp): string {
   if (!existsSync(root)) return '<absent>'
   const lines: string[] = []
   const walk = (dir: string, rel: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const relPath = rel ? `${rel}/${entry.name}` : entry.name
-      if (entry.isDirectory()) walk(pathJoin(dir, entry.name), relPath)
-      else lines.push(`${relPath} ${createHash('sha256').update(readFileSync(pathJoin(dir, entry.name))).digest('hex')}`)
+      if (entry.isDirectory()) {
+        if (ignore?.test(`${relPath}/`)) continue
+        walk(pathJoin(dir, entry.name), relPath)
+      } else {
+        if (ignore?.test(relPath)) continue
+        lines.push(`${relPath} ${createHash('sha256').update(readFileSync(pathJoin(dir, entry.name))).digest('hex')}`)
+      }
     }
   }
   walk(root, '')
@@ -122,12 +140,12 @@ afterAll(() => {
 describe('switchRuntime — dry run is a full preview with ZERO writes', () => {
   it('reports roster + workspace + can\'t-carry + credentials while every home stays byte-identical', async () => {
     const settingsBefore = readFileSync(pathJoin(testDir, 'settings.json'), 'utf-8')
-    const openclawBefore = snapshotTree(pathJoin(testDir, 'openclaw'))
+    const openclawBefore = snapshotTree(pathJoin(testDir, 'openclaw'), OPENCLAW_CLI_STATE_RE)
     const piBefore = snapshotTree(pathJoin(testDir, 'pi'))
     // The whole home too — a stray write to plugin-settings/, bakin.db, or
     // any other corner of BAKIN_HOME must fail this test, not just the
     // adapter homes.
-    const homeBefore = snapshotTree(testDir)
+    const homeBefore = snapshotTree(testDir, OPENCLAW_CLI_STATE_RE)
 
     const phases: string[] = []
     const result = await switchRuntime('pi', {
@@ -160,9 +178,9 @@ describe('switchRuntime — dry run is a full preview with ZERO writes', () => {
     expect(readFileSync(pathJoin(testDir, 'settings.json'), 'utf-8')).toBe(settingsBefore)
     expect(existsSync(pathJoin(testDir, '.backups'))).toBe(false)
     expect(existsSync(pathJoin(testDir, 'audit.jsonl'))).toBe(false)
-    expect(snapshotTree(pathJoin(testDir, 'openclaw'))).toBe(openclawBefore)
+    expect(snapshotTree(pathJoin(testDir, 'openclaw'), OPENCLAW_CLI_STATE_RE)).toBe(openclawBefore)
     expect(snapshotTree(pathJoin(testDir, 'pi'))).toBe(piBefore)
-    expect(snapshotTree(testDir)).toBe(homeBefore)
+    expect(snapshotTree(testDir, OPENCLAW_CLI_STATE_RE)).toBe(homeBefore)
     expect(existsSync(pathJoin(testDir, 'pi', 'agent', 'bakin-agents.json'))).toBe(false)
   })
 
