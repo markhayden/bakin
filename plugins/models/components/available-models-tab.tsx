@@ -257,6 +257,19 @@ export function AvailableModelsTab({
         const isDefault = model.isDefault || model.id === effectiveDefaultModel
         return (
           <span className="flex flex-wrap items-center gap-bakin-1">
+            {model.available === false && model.rejection ? (
+              // #852: the account's provider rejected this model (retired/
+              // unentitled). Flip-not-filter keeps the row visible; the badge
+              // says why, with the evidence in plain words on hover.
+              <Badge
+                tone="danger"
+                variant="solid"
+                size="xs"
+                title={`Rejected ${model.rejection.occurrences}× — last ${formatRelativeTime(model.rejection.lastSeenAt)}. Reroute or verify availability after the account regains access.`}
+              >
+                Rejected by account
+              </Badge>
+            ) : null}
             {isDefault ? (
               <Badge tone="success" variant="solid" size="xs">Default</Badge>
             ) : model.configured ? (
