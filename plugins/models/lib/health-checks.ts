@@ -19,7 +19,7 @@ import {
 import type { HealthObservationInput } from '@makinbakin/sdk/types'
 
 import { ROUTABLE_WORK_CLASSES, WORK_CLASSES, type RoutingConfig, type WorkClass, type WorkClassRoute } from '../../../src/core/model-routing'
-import type { RunCostSpendRow } from '../../../src/core/execution-ledger'
+import { listModelRejections, type RunCostSpendRow } from '../../../src/core/execution-ledger'
 import { VISION_MODELS } from '@bakin/core/llm/vision-models'
 import { getKnownModel } from '../data/known-models'
 import { workClassKey } from './spend-rollup'
@@ -39,6 +39,10 @@ export interface RoutingHealthDeps {
   supportedThinkingLevels(): readonly string[]
   /** run_costs rows for the premium-on-cheap scan window. */
   listRecentRunCosts(sinceMs: number): RunCostSpendRow[]
+  /** Open account rejections (#852) — sharpens route-model-missing evidence
+   *  ("rejected by your account" vs "not in the catalog"). Empty on ledger
+   *  failure: evidence-only, never a gate. */
+  listOpenModelRejections(): Array<{ model: string; lastSeenAt: number; occurrences: number }>
   now?(): number
 }
 
@@ -126,17 +130,33 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
   const supported = deps.supportedThinkingLevels()
   const now = deps.now?.() ?? Date.now()
 
-  // 1. Routes pointing at models the active runtime doesn't have — errors.
-  const missingModels = config.routes.filter((r) => r.model && !available.has(r.model))
+  // 1. Routes pointing at models the account cannot call — errors. Two
+  //    distinguishable causes (#852): the model is account-REJECTED (durable
+  //    ledger evidence — say exactly that, with counts) vs simply absent
+  //    from the runtime catalog. Either signal alone fires the finding.
+  const rejections = new Map(deps.listOpenModelRejections().map((r) => [r.model, r]))
+  const missingModels = config.routes.filter((r) => r.model && (!available.has(r.model) || rejections.has(r.model)))
   for (const r of missingModels) {
+    const rejection = r.model ? rejections.get(r.model) : undefined
     observations.push(healthError({
       key: `route-model-missing-${r.workClass}`,
-      summary: `Route '${r.workClass}' targets '${r.model}', which is not available on the active runtime.`,
-      evidence: { workClass: r.workClass, model: r.model ?? null },
+      summary: rejection
+        ? `Route '${r.workClass}' targets '${r.model}', which was rejected by your account (${rejection.occurrences} failure${rejection.occurrences === 1 ? '' : 's'}, last ${new Date(rejection.lastSeenAt).toISOString()}).`
+        : `Route '${r.workClass}' targets '${r.model}', which is not available on the active runtime.`,
+      evidence: {
+        workClass: r.workClass,
+        model: r.model ?? null,
+        rejected: Boolean(rejection),
+        ...(rejection ? { occurrences: rejection.occurrences, lastSeenAt: rejection.lastSeenAt } : {}),
+      },
       incident: {
         key: `route-model-missing-${r.workClass}`,
-        title: `Routing targets an unavailable model (${r.workClass})`,
-        impact: 'Turns for this class will fail or silently fall back at the provider.',
+        title: rejection
+          ? `Routing targets a model your account cannot call (${r.workClass})`
+          : `Routing targets an unavailable model (${r.workClass})`,
+        impact: rejection
+          ? 'Every turn for this class fails at the provider — the model is retired or unentitled for this account.'
+          : 'Turns for this class will fail or silently fall back at the provider.',
         disposition: 'action_required',
         resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
         resolution: { key: 'fix-route', type: 'navigate', label: 'Fix route', href: '/models?tab=routing' },
@@ -268,6 +288,17 @@ export function buildRoutingHealthDeps(ctx: {
         return helpers.listRunCostsSince(sinceMs)
       } catch {
         return [] // ledger down — the check degrades to config-only findings
+      }
+    },
+    listOpenModelRejections: () => {
+      try {
+        return listModelRejections({ openOnly: true }).map((r) => ({
+          model: r.model,
+          lastSeenAt: r.lastSeenAt,
+          occurrences: r.occurrences,
+        }))
+      } catch {
+        return [] // ledger down — fail open, evidence-only (#852)
       }
     },
   }
