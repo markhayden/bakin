@@ -6,6 +6,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.29] - 2026-09-20
+
+A compatibility and trust patch: the OpenClaw adapter speaks the 2026.9.5 agent registry, and model availability now reflects what your account can actually call instead of what a provider catalog claims.
+
+### Added
+
+- **Model availability is account-verified (#852, #872).** When a provider deterministically rejects a model id (a retired or unentitled model), the failure is recorded as durable evidence: the model flips to unavailable everywhere with a "Rejected by account" badge, the routing recommender stops proposing it, and the `models.routing` health check says exactly what happened ("rejected by your account, N failures, last seen …") with an action-required finding for any route still pointing at it. A later successful call or probe clears the record automatically. Previously a retired model stayed "available" for ten days while four subsystems failed against it.
+- **Verify availability on demand (#852, #872).** The Available Models tab gains an explicit "Verify availability" action that fires a tiny billed probe per configured-provider model and reports per-model verdicts (verified / rejected / skipped). Probing is strictly manual — background refreshes and schedules never probe.
+
+### Changed
+
+- **OpenClaw 2026.9.5 agent registry support (#873, #876).** The adapter reads the keyed `agents.entries` registry natively, restoring the full roster in the Team UI, agent APIs, MCP provisioning, and package adopt/sync (previously a migrated config collapsed to a single synthesized Main, and reinstalls failed with contradictory missing/already-exists errors). Writes always land on `entries` — Bakin never authors the legacy `agents.list` again — and an older list-shaped config still reads correctly, upgrading one-way on its first edit. An explicitly empty or `ownership: "explicit"` registry now renders honestly empty instead of fabricating a Main agent. Boxes where Bakin edits agents should run OpenClaw ≥ 2026.9.5.
+- **SDK surface cleanup (#804, #875) — breaking for plugin authors.** Nine unused public exports (three hooks and six helper re-exports) are removed from the focused SDK entrypoints; no entrypoint subpath is removed. Regression coverage now validates the built SDK's export surface directly.
+- **Dispatch stops retrying models the account cannot call (#852, #872).** A model-rejection failure blocks the task immediately with routing remediation instead of grinding half-hour retry cooldowns against a deterministic error, and the failed attempt's evidence names the exact model.
+
+### Fixed
+
+- **Billed image generation survives a retired carrier model (#852, #872).** If the configured Codex carrier is rejected by the account, generation falls back to the maintained default carrier and completes, recording the rejected rung as availability evidence; the result metadata reports which carrier actually ran. Fallback only triggers on model rejection — never on rate limits or auth errors, which could double-bill.
+- **A corrupt `openclaw.json` is never overwritten (#873, #876).** The agent-creation fallback previously replaced an unparseable config with a near-empty file, losing the gateway token and channel settings; every config mutator now refuses to write over a corrupt file.
+- **Release pipeline smoke-tests the published SDK (#871).** The publish job validates the current package's exports before release instead of trusting the previous version's surface.
+
 ## [0.0.1-rc.28] - 2026-09-20
 
 A search-focused release with faster indexing, relevance reranking, and more accurate health reporting, alongside shareable workspace views and a calmer badge hierarchy.
@@ -511,5 +532,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.27]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.27
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.28...HEAD
 [0.0.1-rc.28]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.28
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.29...HEAD
+[0.0.1-rc.29]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.29
