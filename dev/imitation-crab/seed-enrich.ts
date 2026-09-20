@@ -35,11 +35,23 @@ export function seedEnrichAgent(mockHome: string): void {
   // 1. Roster entry — mirrors the installer's runtime-agent creation.
   const configPath = join(mockHome, 'openclaw.json')
   const config = JSON.parse(readFileSync(configPath, 'utf-8')) as {
-    agents?: { entries?: Record<string, unknown> }
+    agents?: { entries?: Record<string, unknown>; list?: Array<{ id?: string }> }
   }
   // 2026.9.5 keyed registry (#873) — the fixture ships entries; upsert there.
+  // A pre-#873 mock home may still be list-shaped: migrate it first, or
+  // writing entries beside the old list would hide the 5 seeded agents
+  // (entries is read-truth on a hybrid file).
   config.agents ??= {}
+  if (config.agents.entries === undefined && Array.isArray(config.agents.list)) {
+    config.agents.entries = {}
+    for (const legacy of config.agents.list) {
+      if (!legacy?.id) continue
+      const { id, ...entry } = legacy
+      config.agents.entries[id] = entry
+    }
+  }
   config.agents.entries ??= {}
+  delete config.agents.list
   if (!config.agents.entries[agentId]) {
     config.agents.entries[agentId] = {
       identity: manifest.agent.identity,

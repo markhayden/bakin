@@ -19,12 +19,11 @@
 import type { RuntimeRoutingPolicy } from '@bakin/core/adapters/runtime'
 
 import {
-  findAgentIn,
+  existingAgentForWrite,
   materializeImplicitMainAgent,
   readOpenClawConfig,
   readOpenClawConfigForMutation,
   resetOpenClawConfigCache,
-  upsertAgentIn,
   type OpenClawConfig,
 } from './config'
 import { writeOpenClawConfig } from './agent-config'
@@ -128,7 +127,7 @@ export function setAgentModels(
   // and null inside an authoritative registry — never invented, #873 D2).
   const agent = agentId === 'main'
     ? materializeImplicitMainAgent(config)
-    : findAgentIn(config, agentId) && upsertAgentIn(config, agentId)
+    : existingAgentForWrite(config, agentId)
   if (!agent) throw new Error(`Agent not found in runtime config: ${agentId}`)
 
   if (patch.model !== undefined) {

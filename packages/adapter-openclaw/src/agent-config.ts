@@ -17,7 +17,7 @@ import {
   findAgentById,
   findAgentIn,
   upsertAgentIn,
-  deleteAgentIn,
+  existingAgentForWrite,
   ensureAgentEntries,
   agentListFrom,
   configuredWorkspaceFor,
@@ -66,6 +66,14 @@ export function upsertOpenClawAgentConfig(input: {
       }
     : existing?.identity
 
+  // Creating the first agent on a virgin config makes the registry
+  // authoritative — materialize implicit main FIRST or it silently
+  // vanishes from the roster (review finding; the legacy writer's
+  // `list.push({id:'main'})` guard, rebuilt on D2's rules: on an already-
+  // authoritative registry without main this is a null no-op, never an
+  // invention).
+  if (input.id !== 'main') materializeImplicitMainAgent(config)
+
   // Patch the LIVE entry (#873): unknown fields round-trip via the object
   // itself, never a reconstruction. Legacy configs upgrade to entries here.
   const entry = upsertAgentIn(config, input.id)
@@ -102,7 +110,7 @@ export function updateAgentAllowlist(agentId: string, updater: (current: string[
   const config = readOpenClawConfigForMutation()
   const agent = agentId === 'main'
     ? materializeImplicitMainAgent(config)
-    : findAgentIn(config, agentId) && upsertAgentIn(config, agentId)
+    : existingAgentForWrite(config, agentId)
   if (!agent) throw new RuntimeError(`Agent not found: ${agentId}`, { kind: 'not_found' })
   agent.subagents ??= {}
   agent.subagents.allowAgents = updater(agent.subagents.allowAgents ?? [])
@@ -113,21 +121,22 @@ export function removeOpenClawAgentConfig(agentId: string): void {
   const config = readOpenClawConfigForMutation()
   if (!config.agents) return
 
-  // Decide BEFORE upgrading so an unknown-agent no-op never rewrites the file.
+  // Decide BEFORE upgrading so an unknown-agent no-op never rewrites the
+  // file. Past this guard something always changes, so the write below is
+  // unconditional (review finding: the old `changed` bookkeeping was dead).
   const hadAgent = Boolean(findAgentIn(config, agentId))
   const needsScrub = agentListFrom(config).some((agent) => agent.subagents?.allowAgents?.includes(agentId))
   if (!hadAgent && !needsScrub) return
 
   const entries = ensureAgentEntries(config)
-  let changed = deleteAgentIn(config, agentId)
+  delete entries[agentId]
   for (const entry of Object.values(entries)) {
     const allowAgents = entry.subagents?.allowAgents
     if (!allowAgents?.includes(agentId)) continue
     entry.subagents!.allowAgents = allowAgents.filter((id) => id !== agentId)
-    changed = true
   }
 
-  if (changed) writeOpenClawConfig(config as unknown as Record<string, unknown>)
+  writeOpenClawConfig(config as unknown as Record<string, unknown>)
 }
 
 export function removeOpenClawAgentArtifacts(agentId: string, workspace: string): void {

@@ -106,6 +106,11 @@ export function readOpenClawConfig(): OpenClawConfig | null {
  * an UNPARSEABLE file THROWS — writers previously coalesced both to `{}` and
  * a single torn read let automatic provisioning replace the user's entire
  * runtime config (credentials included) with just Bakin's entries.
+ *
+ * Returns a DEEP CLONE, never the cached object (#873 review): mutators
+ * apply shape upgrades (ensureAgentEntries) before writing, and a throw
+ * between mutation and write must not leave the process-wide cache
+ * diverged from disk. The eventual writeOpenClawConfig resets the cache.
  */
 export function readOpenClawConfigForMutation(): OpenClawConfig {
   const state = readConfigState()
@@ -114,7 +119,7 @@ export function readOpenClawConfigForMutation(): OpenClawConfig {
       'openclaw.json exists but is not valid JSON — refusing to modify it. Fix or restore the file, then retry.',
     )
   }
-  return state.kind === 'ok' ? state.config : {}
+  return state.kind === 'ok' ? structuredClone(state.config) : {}
 }
 
 /**
@@ -124,14 +129,17 @@ export function readOpenClawConfigForMutation(): OpenClawConfig {
  * An existing `entries` map (even empty) or `ownership: 'explicit'` is
  * authoritative: an empty roster renders honestly empty — a real install
  * always has main, so fabricating one would make a broken OpenClaw look
- * healthy (#873). Decoded objects are COPIES for entries configs; write
- * paths go through the accessors below, never through this list.
+ * healthy (#873). Entries-decoded objects are DEEP copies (detached from
+ * the process-wide config cache — mutating one is a no-op, not cache
+ * corruption); write paths go through the accessors below, never through
+ * this list. The legacy-list path returns the parsed rows as-is
+ * (pre-#873 behavior, read-only by convention).
  */
 export function agentListFrom(config: OpenClawConfig | null): OpenClawAgent[] {
   if (!config) return []
   const agents = config.agents
   if (agents?.entries) {
-    return Object.entries(agents.entries).map(([id, entry]) => ({ ...entry, id }))
+    return Object.entries(agents.entries).map(([id, entry]) => ({ ...structuredClone(entry), id }))
   }
   if (Array.isArray(agents?.list) && agents.list.length > 0) return agents.list
   if (agents?.ownership === 'explicit') return []
@@ -174,21 +182,26 @@ function isVirginRoster(config: OpenClawConfig): boolean {
 }
 
 /**
- * Canonicalize the registry for a WRITE: guarantees `agents.entries` exists,
- * merging any legacy `agents.list` rows in (entries wins on id collision —
- * entries is read-truth on a hybrid file) and deleting `list` — the one-way
- * upgrade (#873 D1). Returns the LIVE entries map; mutate its values in
- * place so unknown fields round-trip.
+ * Canonicalize the registry for a WRITE: guarantees `agents.entries` exists
+ * and deletes `list` — the one-way upgrade (#873 D1). Legacy `list` rows are
+ * merged in ONLY when there was no entries map (a pure pre-9.5 config): on a
+ * hybrid file entries is already read-truth and the roster never showed the
+ * stale list rows, so merging them back would resurrect agents no read ever
+ * reported (review finding — write-truth must equal read-truth). Returns the
+ * LIVE entries map; mutate its values in place so unknown fields round-trip.
  */
 export function ensureAgentEntries(config: OpenClawConfig): Record<string, OpenClawAgentEntry> {
   config.agents ??= {}
   const agents = config.agents
+  const hadEntries = agents.entries !== undefined
   agents.entries ??= {}
   if (Array.isArray(agents.list)) {
-    for (const legacy of agents.list) {
-      if (!legacy?.id || agents.entries[legacy.id]) continue
-      const { id: _id, ...entry } = legacy
-      agents.entries[legacy.id] = entry
+    if (!hadEntries) {
+      for (const legacy of agents.list) {
+        if (!legacy?.id || agents.entries[legacy.id]) continue
+        const { id: _id, ...entry } = legacy
+        agents.entries[legacy.id] = entry
+      }
     }
     delete agents.list
   }
@@ -209,12 +222,14 @@ export function upsertAgentIn(config: OpenClawConfig, id: string): OpenClawAgent
   return entries[id]
 }
 
-/** Delete the entry for `id` (upgrades legacy configs first). True when something was removed. */
-export function deleteAgentIn(config: OpenClawConfig, id: string): boolean {
-  const entries = ensureAgentEntries(config)
-  if (!(id in entries)) return false
-  delete entries[id]
-  return true
+/**
+ * The live entry for a write, ONLY when the agent already exists — the
+ * edit-not-create idiom every field mutator needs (identity, allowlist,
+ * models). Null = caller throws not_found; a missing agent is never
+ * silently created (#873 D2).
+ */
+export function existingAgentForWrite(config: OpenClawConfig, id: string): OpenClawAgentEntry | null {
+  return findAgentIn(config, id) ? upsertAgentIn(config, id) : null
 }
 
 /**

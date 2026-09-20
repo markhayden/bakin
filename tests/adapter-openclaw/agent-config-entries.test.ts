@@ -33,7 +33,7 @@ import {
   removeOpenClawAgentConfig,
   getWorkspacePath,
 } from '../../packages/adapter-openclaw/src/agent-config'
-import { resetOpenClawConfigCache } from '../../packages/adapter-openclaw/src/config'
+import { getAgentList, resetOpenClawConfigCache } from '../../packages/adapter-openclaw/src/config'
 
 const configPath = () => join(testHome, 'openclaw.json')
 
@@ -179,6 +179,60 @@ describe('upsert (creation fallback path)', () => {
     expect(() => upsertOpenClawAgentConfig({ id: 'pixel', name: 'Pixel', workspace: join(testHome, 'ws') }))
       .toThrow('refusing to modify')
     expect(readFileSync(configPath(), 'utf-8')).toContain('SECRET')
+  })
+
+  it('creating the FIRST agent on a virgin config preserves implicit main (review regression)', () => {
+    // Without this, entries={pixel} becomes authoritative and main vanishes
+    // from the roster — the legacy writer's main-preservation guard, on D2 rules.
+    writeConfig({ agents: { defaults: { workspace: join(testHome, 'workspace'), model: { primary: 'openai/gpt-5.5' } } } })
+    upsertOpenClawAgentConfig({ id: 'pixel', name: 'Pixel', workspace: join(testHome, 'workspaces', 'pixel') })
+    const agents = agentsOf(readConfigFile())
+    expect(Object.keys(agents.entries).sort()).toEqual(['main', 'pixel'])
+    expect((agents.entries.main!.model as { primary?: string })?.primary).toBe('openai/gpt-5.5')
+  })
+
+  it('creating an agent inside an authoritative registry without main does NOT invent main', () => {
+    writeConfig({ agents: { ownership: 'explicit', entries: { pixel: {} } } })
+    upsertOpenClawAgentConfig({ id: 'rolo', name: 'Rolo', workspace: join(testHome, 'workspaces', 'rolo') })
+    const agents = agentsOf(readConfigFile())
+    expect(Object.keys(agents.entries).sort()).toEqual(['pixel', 'rolo'])
+  })
+})
+
+describe('hybrid files + cache integrity (review regressions)', () => {
+  it('a mutation on a hybrid file DROPS stale list rows instead of resurrecting them', () => {
+    // Read-truth = write-truth: the roster never showed stale-a, so no
+    // write may bring it back.
+    writeConfig({
+      agents: {
+        entries: { main: {}, pixel: { identity: { name: 'Pixel' } } },
+        list: [{ id: 'stale-a', subagents: { allowAgents: ['pixel'] } }],
+      },
+    })
+    updateOpenClawAgentIdentity('pixel', { name: 'Pixel Prime' })
+    const agents = agentsOf(readConfigFile())
+    expect(agents.list).toBeUndefined()
+    expect(Object.keys(agents.entries).sort()).toEqual(['main', 'pixel'])
+  })
+
+  it('decoded entries agents are DETACHED from the config cache', () => {
+    writeConfig(entriesConfig())
+    const decoded = getAgentList().find((a) => a.id === 'main')!
+    decoded.subagents!.allowAgents!.push('intruder')
+    decoded.identity!.name = 'Corrupted'
+    const reread = getAgentList().find((a) => a.id === 'main')!
+    expect(reread.subagents?.allowAgents).toEqual(['pixel'])
+    expect(reread.identity?.name).toBe('Roscoe')
+  })
+
+  it('a mutation that throws mid-flight never poisons the cache with an unpersisted shape upgrade', () => {
+    writeConfig({ agents: { list: [{ id: 'main' }, { id: 'pixel', subagents: { allowAgents: [] } }] } })
+    expect(() => updateAgentAllowlist('pixel', () => { throw new Error('updater exploded') })).toThrow('updater exploded')
+    // Cache still serves the on-disk legacy shape — the aborted in-memory
+    // upgrade (list→entries) never leaked.
+    const roster = getAgentList().map((a) => a.id).sort()
+    expect(roster).toEqual(['main', 'pixel'])
+    expect(JSON.parse(readFileSync(configPath(), 'utf-8')).agents.list).toHaveLength(2)
   })
 })
 
