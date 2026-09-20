@@ -121,11 +121,13 @@ describe('setAgentModels', () => {
     expect((agent.subagents as Record<string, unknown>).model).toBeUndefined()
   })
 
-  it('preserves other model-object fields when updating primary', () => {
+  it('preserves other model-object fields when updating primary (and upgrades legacy list → entries, #873)', () => {
     writeConfig({ agents: { list: [{ id: 'main', model: { primary: 'a/b', temperature: 0.2 } }] } })
     setAgentModels('main', { model: 'c/d' })
-    const agent = (readConfigFile().agents as { list: Array<Record<string, unknown>> }).list[0]
-    expect(agent.model).toEqual({ primary: 'c/d', temperature: 0.2 })
+    const agents = readConfigFile().agents as { list?: unknown; entries: Record<string, Record<string, unknown>> }
+    // One-way upgrade: the legacy array is gone, main lives under entries.
+    expect(agents.list).toBeUndefined()
+    expect(agents.entries.main!.model).toEqual({ primary: 'c/d', temperature: 0.2 })
   })
 
   it('throws for an unknown agent', () => {
@@ -144,12 +146,12 @@ describe('config-safety regressions (branch review)', () => {
     expect(readFileSync(configPath(), 'utf-8')).toContain('SECRET')
   })
 
-  it('setAgentModels materializes the implicit main on a minimal config', () => {
+  it('setAgentModels materializes the implicit main on a minimal config — into entries (#873)', () => {
     writeConfig({ agents: { defaults: { model: { primary: 'gpt-5.5' } } } })
     setAgentModels('main', { model: 'gpt-6' })
-    const config = readConfigFile() as { agents?: { list?: Array<{ id: string; model?: { primary?: string } }> } }
-    const main = config.agents?.list?.find((a) => a.id === 'main')
-    expect(main?.model?.primary).toBe('gpt-6')
+    const config = readConfigFile() as { agents?: { list?: unknown; entries?: Record<string, { model?: { primary?: string } }> } }
+    expect(config.agents?.list).toBeUndefined()
+    expect(config.agents?.entries?.main?.model?.primary).toBe('gpt-6')
   })
 
   it('alias writes preserve non-alias model entries and their extra properties', () => {

@@ -143,7 +143,7 @@ describe('openclaw-config', () => {
       }))
     })
 
-    it('materializes implicit main for write paths without losing defaults', () => {
+    it('materializes implicit main into ENTRIES for write paths without losing defaults (#873)', () => {
       const config: import('../../packages/adapter-openclaw/src/config').OpenClawConfig = {
         agents: {
           defaults: {
@@ -155,13 +155,35 @@ describe('openclaw-config', () => {
 
       const agent = materializeImplicitMainAgent(config)
 
-      expect(agent.id).toBe('main')
-      expect(config.agents!.list).toEqual([expect.objectContaining({
-        id: 'main',
+      expect(agent).not.toBeNull()
+      // Lands in the canonical keyed registry — never the legacy list.
+      expect(config.agents!.list).toBeUndefined()
+      expect(config.agents!.entries!.main).toEqual(expect.objectContaining({
         workspace: '/tmp/openclaw/workspace',
         model: { primary: 'openai-codex/gpt-5.5' },
-      })])
+      }))
       expect(config.agents!.defaults!.workspace).toBe('/tmp/openclaw/workspace')
+      // The returned object is the LIVE entry — mutations round-trip.
+      agent!.identity = { name: 'Roscoe' }
+      expect(config.agents!.entries!.main!.identity?.name).toBe('Roscoe')
+    })
+
+    it('materialize refuses to invent main inside an authoritative registry (#873 D2)', () => {
+      const config: import('../../packages/adapter-openclaw/src/config').OpenClawConfig = {
+        agents: { entries: { pixel: { workspace: '/w' } } },
+      }
+      expect(materializeImplicitMainAgent(config)).toBeNull()
+      expect(config.agents!.entries!.main).toBeUndefined()
+    })
+
+    it('materialize on a legacy list config upgrades it to entries and returns live main', () => {
+      const config: import('../../packages/adapter-openclaw/src/config').OpenClawConfig = {
+        agents: { list: [{ id: 'main', workspace: '/mw' }, { id: 'pixel', workspace: '/pw' }] },
+      }
+      const agent = materializeImplicitMainAgent(config)
+      expect(agent?.workspace).toBe('/mw')
+      expect(config.agents!.list).toBeUndefined()
+      expect(Object.keys(config.agents!.entries!).sort()).toEqual(['main', 'pixel'])
     })
 
     it('shares a cache across helper calls — only one parse', () => {

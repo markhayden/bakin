@@ -1,15 +1,24 @@
 /**
  * OpenClaw runtime config reader.
  *
- * Provider config parsing belongs to the OpenClaw adapter package. Bakin core
- * sees this through AgentRuntimeAdapter.config instead of importing this file.
+ * Provider config parsing belongs to the OpenClaw adapter package — nothing
+ * outside this adapter reads openclaw.json (adapter-boundary arch test).
+ *
+ * Agent registry shapes (#873): OpenClaw 2026.9.5 moved agents from the
+ * legacy `agents.list` ARRAY to the keyed `agents.entries` MAP (the key IS
+ * the id) with `agents.ownership` policy. Bakin is entries-canonical:
+ * `agentListFrom` is the SOLE shape decoder (entries → legacy list →
+ * synthesis rules), and every write lands on entries — a mutation against a
+ * list-shaped config upgrades it one-way via `ensureAgentEntries`. Bakin
+ * never authors `agents.list` or `ownership`.
  */
 import { readFileSync, statSync } from 'fs'
 
 import { getOpenClawPath } from './home'
 
-export interface OpenClawAgent {
-  id: string
+/** An agent as stored under `agents.entries[<id>]` — the id lives in the key. */
+export interface OpenClawAgentEntry {
+  id?: string
   name?: string
   workspace?: string
   agentDir?: string
@@ -18,12 +27,22 @@ export interface OpenClawAgent {
   subagents?: { allowAgents?: string[]; model?: string }
 }
 
+/** A DECODED agent: entry fields + the authoritative id (map key or list field). */
+export interface OpenClawAgent extends OpenClawAgentEntry {
+  id: string
+}
+
 export interface OpenClawConfig {
   agents?: {
+    /** OpenClaw's registry policy (2026.9.5+, e.g. 'explicit'). Bakin preserves, never authors. */
+    ownership?: string
     defaults?: {
       model?: { primary?: string }
       workspace?: string
     }
+    /** 2026.9.5+ keyed registry — the canonical shape Bakin reads and writes. */
+    entries?: Record<string, OpenClawAgentEntry>
+    /** Legacy pre-2026.9.5 array — read-tolerated, upgraded on first mutation, never written. */
     list?: OpenClawAgent[]
   }
   gateway?: {
@@ -99,15 +118,23 @@ export function readOpenClawConfigForMutation(): OpenClawConfig {
 }
 
 /**
- * Resolve the agent list from a config object, synthesizing an implicit `main`
- * agent when none is declared (a minimal OpenClaw config has only
- * `agents.defaults`). Pure — callers that already hold a config (e.g. the
- * runtime `config.get`) reuse this instead of consumers assuming `agents.list`.
+ * THE shape decoder — the only code allowed to know where agents live.
+ * Order: keyed `entries` (2026.9.5+, key wins over any embedded id) →
+ * legacy nonempty `list` → synthesis ONLY for a genuinely virgin config.
+ * An existing `entries` map (even empty) or `ownership: 'explicit'` is
+ * authoritative: an empty roster renders honestly empty — a real install
+ * always has main, so fabricating one would make a broken OpenClaw look
+ * healthy (#873). Decoded objects are COPIES for entries configs; write
+ * paths go through the accessors below, never through this list.
  */
 export function agentListFrom(config: OpenClawConfig | null): OpenClawAgent[] {
   if (!config) return []
-  const list = config.agents?.list
-  if (Array.isArray(list) && list.length > 0) return list
+  const agents = config.agents
+  if (agents?.entries) {
+    return Object.entries(agents.entries).map(([id, entry]) => ({ ...entry, id }))
+  }
+  if (Array.isArray(agents?.list) && agents.list.length > 0) return agents.list
+  if (agents?.ownership === 'explicit') return []
   return [implicitMainAgent(config)]
 }
 
@@ -138,12 +165,57 @@ function implicitMainAgent(config: OpenClawConfig): OpenClawAgent {
   }
 }
 
-export function materializeImplicitMainAgent(config: OpenClawConfig): OpenClawAgent {
-  const existing = config.agents?.list?.find((agent) => agent.id === 'main')
-  if (existing) return existing
+/** A config whose roster the decoder would SYNTHESIZE (fresh install) vs an authoritative registry. */
+function isVirginRoster(config: OpenClawConfig): boolean {
+  const agents = config.agents
+  if (agents?.entries) return false
+  if (agents?.ownership === 'explicit') return false
+  return !(Array.isArray(agents?.list) && agents.list.length > 0)
+}
+
+/**
+ * Canonicalize the registry for a WRITE: guarantees `agents.entries` exists,
+ * merging any legacy `agents.list` rows in (entries wins on id collision —
+ * entries is read-truth on a hybrid file) and deleting `list` — the one-way
+ * upgrade (#873 D1). Returns the LIVE entries map; mutate its values in
+ * place so unknown fields round-trip.
+ */
+export function ensureAgentEntries(config: OpenClawConfig): Record<string, OpenClawAgentEntry> {
   config.agents ??= {}
-  config.agents.list ??= []
-  const agent = implicitMainAgent(config)
-  config.agents.list.push(agent)
-  return agent
+  const agents = config.agents
+  agents.entries ??= {}
+  if (Array.isArray(agents.list)) {
+    for (const legacy of agents.list) {
+      if (!legacy?.id || agents.entries[legacy.id]) continue
+      const { id: _id, ...entry } = legacy
+      agents.entries[legacy.id] = entry
+    }
+    delete agents.list
+  }
+  return agents.entries
+}
+
+/** The live entry for `id`, or null. Write-path twin of the decoder's lookup. */
+export function findAgentIn(config: OpenClawConfig, id: string): OpenClawAgentEntry | null {
+  const entries = config.agents?.entries
+  if (entries) return entries[id] ?? null
+  return config.agents?.list?.find((agent) => agent.id === id) ?? null
+}
+
+/**
+ * Materialize `main` for a write path — ONLY when the roster would have
+ * synthesized it (virgin config, or main already present). An authoritative
+ * registry without main returns null (caller throws not_found): Bakin never
+ * invents agents inside an explicit registry (#873 D2).
+ */
+export function materializeImplicitMainAgent(config: OpenClawConfig): OpenClawAgentEntry | null {
+  const hasMain = agentListFrom(config).some((agent) => agent.id === 'main')
+  const virgin = isVirginRoster(config)
+  if (!hasMain && !virgin) return null
+  const entries = ensureAgentEntries(config)
+  if (!entries.main) {
+    const { id: _id, ...entry } = implicitMainAgent(config)
+    entries.main = entry
+  }
+  return entries.main
 }
