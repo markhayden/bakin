@@ -2,14 +2,14 @@
 
 Branch: `fix/880-override-scope` · Live rig: THIS box (adapter=openclaw on 3737)
 
-- [ ] T1: perTurnModel contract (core + pi + openclaw-static + mock) — commit 1
-- [ ] T2: core modelClamp in applyThinkingCapability + audit — commit 2
-- [ ] T3: gateway-rpc admin request + granted-scope parse + downgrade + details widening — commit 3
-- [ ] T4: dynamic perTurnModel + admission-rejection single retry — commit 4
-- [ ] CHECKPOINT A: full lint + suite
-- [ ] T5: adapter health check + models.routing standing-clamp finding — commit 5
-- [ ] T6: conformance perTurnModel honesty + teeth — commit 6
-- [ ] CHECKPOINT B: full suite + lint + check:cycles
-- [ ] T7: live verify on this box (admin granted; routed turn completes)
-- [ ] T8: docs + PR — commit 7
+- [x] T1: perTurnModel contract (core + pi + openclaw-static + mock) — commit 1
+- [x] T2: core modelClamp in applyThinkingCapability + audit — commit 2
+- [x] T3: gateway-rpc admin request + granted-scope parse + downgrade + details widening — commit 3
+- [x] T4: dynamic perTurnModel + admission-rejection single retry — commit 4
+- [x] CHECKPOINT A: full lint + suite
+- [x] T5: adapter health check + models.routing standing-clamp finding — commit 5
+- [x] T6: conformance perTurnModel honesty + teeth — commit 6
+- [x] CHECKPOINT B: full suite + lint + check:cycles
+- [x] T7: live verify on this box (admin granted; routed turn completes)
+- [x] T8: docs + PR — commit 7
 - [ ] T9: POST-MERGE: prod deploy + RESTORE prod routes + close #880

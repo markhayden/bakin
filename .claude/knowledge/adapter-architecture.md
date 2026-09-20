@@ -223,6 +223,29 @@ array to the keyed `agents.entries` map (the key IS the id) with an
   config.ts — that inline-bypass rot is exactly what turned the 2026.9.5
   schema change into a 6-file incident.
 
+### OpenClaw gateway scopes: optimistic-admin, downgrade, never an outage (#880)
+
+2026.9.5 gates per-turn provider/model overrides behind `operator.admin`
+(`write` no longer suffices; no scope implies admin; no wire-reachable config
+knob re-enables it). The chat gateway client requests admin as an OPTIONAL
+connect scope on top of read+write:
+
+- Loopback backend clients get requested scopes UNCHECKED (the self-pairing
+  bypass) — Bakin's default topology pays zero cost.
+- A refusing topology (`NOT_PAIRED` scope-upgrade) triggers exactly ONE
+  in-handshake downgrade re-dial without the optional set (sticky; the
+  caller's first request still succeeds) — an elevated request must never
+  turn a working connection into an outage.
+- The hello-ok ACK's `auth.scopes` is the authoritative granted set
+  (`grantedScopes()`/`hasScope()`); `routingSupport().perTurnModel` derives
+  from it, and core clamps routed models pre-send when false (modelClamp
+  receipt). A mid-session admission rejection retries the turn once on the
+  agent default (admission = pre-billing, safe) and flips the capability.
+- NEVER map "provider/model overrides are not authorized" to
+  `model_not_supported` — that would write false rows into the #852
+  model_rejections ledger for a healthy model. Detection lives in
+  `errors.ts::isModelOverrideRejection` (the sanctioned interpretation site).
+
 ## Task Metadata
 
 `~/.bakin/tasks/` is the source of truth for task metadata. Runtime execution
