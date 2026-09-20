@@ -16,6 +16,20 @@ import { PluginSettingsRenderer } from '@makinbakin/sdk/patterns'
 import { PluginUiFixtureHost, createPluginUiFixtureFetch } from '@makinbakin/sdk/testing/ui'
 import { definePluginUiConformance } from '@makinbakin/sdk/testing/ui/conformance'
 import { Button } from '@makinbakin/sdk/ui'
+import { pluginFetch } from '@makinbakin/sdk/utils'
+import { Slot, registerSlot } from '@makinbakin/sdk/slots'
+import { defineHookContract } from '@makinbakin/sdk/metadata'
+
+// Each rejected import guards the emitted declarations. Restoring an export
+// makes its @ts-expect-error unused, failing the external-consumer typecheck.
+// @ts-expect-error URL construction is private to pluginFetch.
+export { pluginApiUrl } from '@makinbakin/sdk/utils'
+// @ts-expect-error Clipboard behavior is private to the UI implementation.
+export { copyToClipboard } from '@makinbakin/sdk/utils'
+// @ts-expect-error Slot inspection is internal.
+export { getSlotEntries } from '@makinbakin/sdk/slots'
+// @ts-expect-error Plugin teardown owns slot cleanup.
+export { clearSlotsOwnedBy } from '@makinbakin/sdk/slots'
 
 export interface FocusedSdkConsumer {
   charts: typeof Charts
@@ -42,6 +56,10 @@ export const focusedSdkValues = {
   createPluginUiFixtureFetch,
   definePluginUiConformance,
   useUnsavedChangesGuard,
+  pluginFetch,
+  Slot,
+  registerSlot,
+  defineHookContract,
 }
 
 /** Representative props prove consumers need no private implementation types. */

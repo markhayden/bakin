@@ -41,8 +41,9 @@ mock.module('../../packages/core/src/content-dir', () => {
   }
 })
 
-import { Slot, registerSlot, getSlotEntries, clearSlotsOwnedBy } from '@makinbakin/sdk/slots'
+import { Slot, registerSlot } from '@makinbakin/sdk/slots'
 import { usePluginOwnership } from '@makinbakin/sdk/internal'
+import { getSlotEntries, clearSlotsOwnedBy } from '../../packages/sdk/src/slots/registry'
 
 const TEST_OWNER = '__test_slots'
 const SECOND_TEST_OWNER = '__test_slots_second'
@@ -231,7 +232,7 @@ describe('@makinbakin/sdk/slots — <Slot>', () => {
   })
 })
 
-describe('@makinbakin/sdk/slots — clearSlotsOwnedBy', () => {
+describe('internal slot registry — clearSlotsOwnedBy', () => {
   it('removes only entries owned by the given plugin', () => {
     registerSlot('test.caption', Caption, 50, 'plugin-a')
     registerSlot('test.caption', Alt, 60, 'plugin-b')

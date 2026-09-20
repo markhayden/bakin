@@ -46,7 +46,7 @@ import {
   getNavBadgesSnapshot,
   subscribeNavBadges,
 } from '@makinbakin/sdk/internal'
-import { getSlotEntries } from '@makinbakin/sdk/slots'
+import { getSlotEntries } from '../../packages/sdk/src/slots/registry'
 
 function NoopComp() { return null }
 

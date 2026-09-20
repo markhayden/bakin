@@ -38,6 +38,8 @@ describe('buildSdkPackage', () => {
   it('builds JS and declarations for every public SDK export', async () => {
     const outDir = join(testRoot, 'package')
     await buildSdkPackage({ version: '0.9.0-rc.1', outDir })
+    // Make peers available before the first import resolves this package tree.
+    symlinkSync(join(repoRoot, 'node_modules'), join(outDir, 'node_modules'), 'dir')
 
     const pkg = readJson<{
       name: string
@@ -100,6 +102,20 @@ describe('buildSdkPackage', () => {
     expect(runtime.registerPlugin).toBeFunction()
     expect(runtime.defineRoute).toBeFunction()
     expect(runtime.definePlugin).toBeFunction()
+
+    // Exercise the emitted JS, not the workspace aliases. Internal helpers may
+    // remain in shared chunks, but must not be named exports of public facades.
+    const utils = await import(pathToFileURL(join(outDir, 'utils/index.js')).href)
+    expect(utils.pluginFetch).toBeFunction()
+    expect(Object.hasOwn(utils, 'pluginApiUrl')).toBe(false)
+    expect(Object.hasOwn(utils, 'copyToClipboard')).toBe(false)
+    const slots = await import(pathToFileURL(join(outDir, 'slots/index.js')).href)
+    expect(slots.Slot).toBeFunction()
+    expect(slots.registerSlot).toBeFunction()
+    expect(Object.hasOwn(slots, 'getSlotEntries')).toBe(false)
+    expect(Object.hasOwn(slots, 'clearSlotsOwnedBy')).toBe(false)
+    const metadata = await import(pathToFileURL(join(outDir, 'metadata/index.js')).href)
+    expect(metadata.defineHookContract).toBeFunction()
 
     const consumerDir = join(repoRoot, `.tmp-sdk-focused-consumer-${Date.now()}`)
     try {
