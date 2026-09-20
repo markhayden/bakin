@@ -52,6 +52,10 @@ mock.module('../../../src/core/execution-ledger', () => ({
     const run = liveRuns.get(taskId)
     return run ? { runId: run.runId, taskId, agent: run.agent, startedAt: run.startedAt, status: 'running' } : null
   },
+  // Model-availability evidence (#852) — inert here.
+  recordModelRejection: () => ({ opened: false, id: 0 }),
+  resolveModelRejection: () => false,
+  listModelRejections: () => [],
 }))
 
 const sendMessageToAgent = mock(async () => ({ ok: true, reply: 'delivered' }))

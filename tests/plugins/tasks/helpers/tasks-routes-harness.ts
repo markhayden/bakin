@@ -39,6 +39,11 @@ export const ledgerMock = () => ({
   },
   bumpHeartbeatByTask: () => {},
   listRunsByTask: (taskId: string, limit = 50) => (mockTaskRuns[taskId] ?? []).slice(0, limit),
+  // Model-availability evidence (#852) — inert here; covered by
+  // tests/core/model-rejections-ledger.test.ts + model-availability-wrapper.test.ts.
+  recordModelRejection: () => ({ opened: false, id: 0 }),
+  resolveModelRejection: () => false,
+  listModelRejections: () => [],
 })
 
 // Mock taskboard functions
