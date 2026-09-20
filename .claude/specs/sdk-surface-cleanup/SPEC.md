@@ -1,6 +1,6 @@
 # SDK surface cleanup — #804
 
-Status: spec and detailed plan approved by the user; implementation in progress.
+Status: implemented and verified; spec and detailed plan approved by the user.
 Plan: `tasks/plan.md`; checklist: `tasks/todo.md`.
 
 ## Objective and agreed decisions
@@ -179,4 +179,6 @@ reset to discard unrelated work. Implementation requires plan approval too.
 
 The user approved this specification with "approve" after agreeing to preserve
 the three story-backed components and keep #805 separate. No scope questions
-remain. Approval of the implementation plan is the next gate.
+remain. The user then approved the implementation plan with "do it". Execution
+and verification evidence is recorded in `tasks/todo.md`; no release or deployment
+was performed.

@@ -1,6 +1,6 @@
 # Implementation plan: SDK surface cleanup (#804)
 
-Status: approved by the user ("do it"); implementation in progress.
+Status: approved by the user ("do it"); implementation and verification complete.
 
 Spec: [.claude/specs/sdk-surface-cleanup/SPEC.md](../.claude/specs/sdk-surface-cleanup/SPEC.md)
 Checklist: [todo.md](todo.md).
@@ -259,9 +259,10 @@ focused and quick checks after reverting; run full before shipping a rollback.
 Keep C0 as decision history and annotate the evidence if work is reverted. Never
 hard-reset, discard unrelated changes, or alter published release tags.
 
-## Approval needed
+## Approval and completion record
 
-Approve this plan to begin implementation and its local checkpoint commits.
-Public API changes are limited to the already-approved spec. No additional
-product or visual decisions are required unless implementation finds conflicting
-evidence. #805 and #806 remain separate follow-up work.
+The user approved implementation and local checkpoint commits with "do it".
+Public API changes stayed within the approved spec; no product or visual
+exceptions were needed. Verification evidence is in `tasks/todo.md`.
+#805 and #806 remain separate follow-up work. No PR, release, or deployment
+was performed as part of this implementation.

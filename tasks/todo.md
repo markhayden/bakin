@@ -22,8 +22,8 @@ Plan: [implementation and rollback](plan.md).
 - [x] T8: comments/guidance and package declaration checks.
 - [x] T9: documentation reconciliation and Bits follow-up record.
 - [x] Checkpoint C passes; commit C3 (this checkpoint).
-- [ ] T10: full conformance and scoped code review.
-- [ ] Record evidence and handoff; commit C4 if evidence changes.
+- [x] T10: full conformance and scoped code review.
+- [x] Record evidence and handoff; commit C4 (final verification record).
 
 ## Execution evidence
 
@@ -64,6 +64,46 @@ Quick conformance, docs validation, and lint pass (same five existing warnings).
 Only the three approved unused hook implementations were deleted; Git history
 retains them. Existing navigation, shared resize code, and internal helpers remain.
 SDK README and root README have no affected public-import recommendations.
+
+C3: `2e4a4936e`. Independent read-only review: no actionable findings; reviewer
+also ran 59 focused SDK tests successfully and rechecked first-party imports.
+Full conformance passed quick/typecheck/lint, CSS build, all repository tests
+(9,412 pass, 15 existing skips, zero failures), and vendor/core-plugin/host builds.
+The first payload check stopped because the pinned Bits archive lacked its
+dependencies. Installed its frozen lockfile in that temporary copy, then resumed
+the unchanged full-conformance command list at the payload checkpoint.
+Docker Desktop was installed but stopped; started it for canonical container
+visual/browser checks. No visual baseline or performance ceiling was changed.
+
+Resumed full checks: payload ratchet passed (15 plugin clients, 37 vendor chunks,
+one system stylesheet). Consecutive public Storybook builds were deterministic.
+All 331 Storybook tests passed (112 files; five files skipped by existing suite
+configuration). Canonical Linux Chromium desktop/mobile visuals: 274 passed,
+unchanged baselines; report `playwright-report/ui/index.html`.
+
+Canonical Linux cross-browser behavior: 93 passed across Chromium, Firefox, and
+WebKit; report `playwright-report/ui-browser/index.html`. Plugin UI conformance
+teeth passed. Published docs validation, route checks, site build, and public
+Storybook integration passed (443 public stories published to local docs output).
+All configured full-conformance steps completed successfully across the initial
+run and the documented resume. No new skips, suppressions, baseline changes,
+allowance increases, or budget increases were introduced.
+
+Raw local logs: `/tmp/bakin-804-full.log` and
+`/tmp/bakin-804-full-resume.log`. Unrelated generated-doc refreshes were restored
+after verification; the SDK reference and intended author guidance remain updated.
+No release, deployment, remote push, PR, or GitHub ticket mutation was performed.
+
+### UI conformance
+
+- Patterns: existing public agent-avatar, agent-status, agent-select, color-picker,
+  workspace-page, and copy-button stories listed in the spec.
+- Contracts: narrowed SDK `/patterns`, `/hooks`, `/utils`, `/slots`; existing
+  `/navigation` dirty-exit and all package subpaths preserved.
+- Guidance: current UI overview, SDK reference, and knowledge recommendations updated.
+- Deviation: none; internal UI implementations and visual baselines unchanged.
+- Verification: focused tests, real packaged JS/declarations, quick and full
+  conformance, independent review; see counts and report paths above.
 
 ## Separate follow-ups
 
