@@ -173,6 +173,13 @@ describe('upsert (creation fallback path)', () => {
     expect(agents.entries.main!.workspace).toBe('/mw')
   })
 
+  it('REFUSES a corrupt openclaw.json instead of replacing it (wipe regression, #873 fold-in)', () => {
+    writeFileSync(configPath(), '{ "gateway": { "auth": { "token": "SECRET" }')
+    resetOpenClawConfigCache()
+    expect(() => upsertOpenClawAgentConfig({ id: 'pixel', name: 'Pixel', workspace: join(testHome, 'ws') }))
+      .toThrow('refusing to modify')
+    expect(readFileSync(configPath(), 'utf-8')).toContain('SECRET')
+  })
 })
 
 describe('workspace resolution', () => {

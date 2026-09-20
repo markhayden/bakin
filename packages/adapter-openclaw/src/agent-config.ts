@@ -51,7 +51,11 @@ export function upsertOpenClawAgentConfig(input: {
   model?: string
   emoji?: string
 }): void {
-  const config: OpenClawConfig = readOpenClawConfig() ?? {}
+  // Strict read (#873 fold-in): the lenient `readOpenClawConfig() ?? {}`
+  // meant a CORRUPT openclaw.json was silently replaced by a near-empty
+  // file on the next agent upsert — wiping gateway token + channels. Same
+  // refusal posture as every other mutator.
+  const config: OpenClawConfig = readOpenClawConfigForMutation()
   const existing = findAgentIn(config, input.id)
   const agentDir = getOpenClawPath('agents', input.id, 'agent')
   const identity = input.name || input.emoji
