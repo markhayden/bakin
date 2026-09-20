@@ -173,9 +173,13 @@ export async function generateViaCodex(
 
   if (!response.ok) {
     const detail = (await response.text().catch(() => '')).slice(0, 300)
+    // Attribute the failure to the CARRIER — the model named in the request
+    // body and the one a model-not-supported verdict is about (#852; the
+    // rendered image model gpt-image-2 never appears in the request's
+    // `model` field).
     throw toRuntimeError(
       Object.assign(new Error(`codex image backend ${response.status}: ${detail}`), { status: response.status }),
-      { model: CODEX_IMAGE_MODEL },
+      { model: `${CODEX_IMAGE_PROVIDER}/${carrierModel}` },
     )
   }
 

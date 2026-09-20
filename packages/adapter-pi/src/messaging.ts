@@ -767,8 +767,17 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
           push({ type: 'done', ...(streamUsage ? { usage: streamUsage } : {}) })
         } else {
           // Contract: the terminal error chunk carries the typed kind so
-          // consumers classify without parsing message text.
-          push({ type: 'error', content: err.message, data: { kind: err.kind } })
+          // consumers classify without parsing message text. Streams never
+          // throw, so providerInfo can't cross the boundary — the chunk also
+          // names the model when the adapter attributed one (#852).
+          push({
+            type: 'error',
+            content: err.message,
+            data: {
+              kind: err.kind,
+              ...(err.providerInfo?.model ? { model: err.providerInfo.model } : {}),
+            },
+          })
         }
         finish()
       })

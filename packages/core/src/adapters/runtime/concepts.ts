@@ -236,7 +236,9 @@ export type ChatChunk =
    *  parity with `send()`: a runtime whose send results carry usage must
    *  attach it here too (conformance-pinned), so streamed turns are meterable. */
   | { type: 'done'; content?: string; data?: RuntimeMetadata; usage?: MessageUsage }
-  /** Terminal failure — `data.kind` carries the RuntimeError kind when known. */
+  /** Terminal failure — `data.kind` carries the RuntimeError kind when known;
+   *  `data.model` names the qualified model id when the failure was the
+   *  provider rejecting that model (kind 'model_not_supported', #852). */
   | { type: 'error'; content?: string; data?: RuntimeMetadata }
 
 // Channel/delivery types live in ./channels (a leaf module shared with the
