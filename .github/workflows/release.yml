@@ -580,9 +580,11 @@ jobs:
           bun init -y
           bun add react@^19 react-dom@^19 "@makinbakin/sdk@${VERSION}"
           bun -e "const m = await import('@makinbakin/sdk'); if (typeof m.registerPlugin !== 'function') throw new Error('missing registerPlugin')"
-          for subpath in ui hooks components slots types utils metadata routing testing internal; do
+          # Keep this list aligned with packages/sdk/package.json (architecture-test guarded).
+          for subpath in ui layout patterns charts conversation content hooks slots types utils metadata routing navigation testing testing/ui testing/ui/conformance internal; do
             bun -e "await import('@makinbakin/sdk/${subpath}')"
           done
+          bun -e "Bun.resolveSync('@makinbakin/sdk/styles.css', process.cwd())"
 
   smoke-homebrew:
     name: Smoke Homebrew install
