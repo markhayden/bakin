@@ -283,6 +283,21 @@ export const ListRowLabels = forwardRef<HTMLLIElement, ListRowLabelsProps>(
 export interface ListRowGroupProps extends ComponentPropsWithoutRef<'div'> {
   /** Group heading rendered above the group's rows. */
   label: ReactNode
+  /** Compact rail label (default), or a flush, filled collection section heading. */
+  headerVariant?: 'plain' | 'section'
+  /** Section heading rail color; neutral by default. Does not color the rows. */
+  headerTone?: 'neutral' | 'accent' | 'success' | 'attention' | 'danger' | 'info'
+  /** Semantic heading level for section headers. Defaults to 3. */
+  headingLevel?: 2 | 3 | 4 | 5 | 6
+}
+
+const groupHeaderToneClasses: Record<NonNullable<ListRowGroupProps['headerTone']>, string> = {
+  neutral: 'border-bakin-border-subtle',
+  accent: 'border-bakin-signal-accent',
+  success: 'border-bakin-action-primary-background',
+  attention: 'border-bakin-signal-highlight',
+  danger: 'border-bakin-signal-danger',
+  info: 'border-bakin-signal-info',
 }
 
 /**
@@ -302,17 +317,38 @@ export interface ListRowGroupProps extends ComponentPropsWithoutRef<'div'> {
  * list, 4 items"), whereas grouping roles inside lists have uneven AT support
  * and a single flat list would either miscount headings as items or lose them.
  */
-export function ListRowGroup({ label, className, children, ...props }: ListRowGroupProps) {
+export function ListRowGroup({
+  label,
+  headerVariant = 'plain',
+  headerTone = 'neutral',
+  headingLevel = 3,
+  className,
+  children,
+  ...props
+}: ListRowGroupProps) {
   const labelId = useId()
+  const section = headerVariant === 'section'
+  const Label = section ? (`h${headingLevel}` as const) : 'div'
   return (
-    <div {...props} data-slot="list-row-group" className={cn('grid min-w-0 gap-bakin-1', className)}>
-      <div
+    <div
+      {...props}
+      data-slot="list-row-group"
+      data-header-variant={headerVariant}
+      className={cn('grid min-w-0', section ? 'gap-bakin-3' : 'gap-bakin-1', className)}
+    >
+      <Label
         id={labelId}
         data-slot="list-row-group-label"
-        className="min-w-0 px-bakin-3 text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold uppercase tracking-[.12em] text-bakin-text-muted"
+        data-header-tone={section ? headerTone : undefined}
+        className={cn(
+          'min-w-0 px-bakin-3 text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold uppercase tracking-[.12em]',
+          section
+            ? ['m-0 border-l-2 bg-bakin-surface-default py-bakin-2 text-bakin-text-primary', groupHeaderToneClasses[headerTone]]
+            : 'text-bakin-text-muted',
+        )}
       >
         {label}
-      </div>
+      </Label>
       <ListRowGroupLabelContext.Provider value={labelId}>
         {children}
       </ListRowGroupLabelContext.Provider>

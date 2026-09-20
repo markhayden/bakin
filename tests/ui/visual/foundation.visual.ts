@@ -1,5 +1,40 @@
 import { expect, test } from 'playwright/test'
 
+// Capture/accept baselines only after the collection proposal's visual approval.
+const COLLECTION_SCENARIOS = [
+  { path: '/iframe.html?id=recipes-collection-patterns--same-records&viewMode=story', title: 'One collection, three presentations', screenshot: 'collection-same-records.png' },
+  { path: '/iframe.html?id=recipes-collection-patterns--row-behaviors&viewMode=story', title: 'One row pattern, different situations', screenshot: 'collection-row-behaviors.png' },
+  { path: '/iframe.html?id=recipes-collection-patterns--preview-cards&viewMode=story', title: 'Keep cards when the preview matters', screenshot: 'collection-preview-cards.png' },
+] as const
+
+for (const scenario of COLLECTION_SCENARIOS) {
+  test(`collection proposal: ${scenario.title}`, async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.goto(scenario.path, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('heading', { name: scenario.title, exact: true })).toBeVisible()
+    await page.evaluate(async () => document.fonts.ready)
+    if (scenario.screenshot === 'collection-row-behaviors.png') {
+      const viewport = page.viewportSize()!
+      await page.setViewportSize({ width: 320, height: 900 })
+      await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+      // Mobile layout viewports can expand around overflow. Compare actual row
+      // bounds, including the wider Pinned state left by the story play.
+      await expect(page.getByRole('button', { name: 'Unpin Spring menu launch' })).toBeVisible()
+      const escapedActions = await page.locator('[data-slot="list-row"]').evaluateAll((rows) => rows.flatMap((row) =>
+        [...row.querySelectorAll('button')].filter((button) => button.getBoundingClientRect().right > row.getBoundingClientRect().right).map((button) => button.textContent),
+      ))
+      expect(escapedActions).toEqual([])
+      await page.evaluate(() => { document.documentElement.style.fontSize = '' })
+      await page.setViewportSize(viewport)
+      await page.evaluate(() => window.scrollTo(0, 0))
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    expect(errors).toEqual([])
+    await expect(page).toHaveScreenshot(scenario.screenshot, { fullPage: true, animations: 'disabled', caret: 'hide' })
+  })
+}
+
 test('public Button visual baseline', async ({ page }, testInfo) => {
   const browserErrors: string[] = []
   page.on('console', (message) => {

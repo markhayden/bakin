@@ -95,6 +95,17 @@ never sit at rest in a card — surface on hover or behind the detail view.
   choose `rounded-*` or shadow utilities ad hoc.
 - Repeated rows use separators or a restrained surface shift. Explicit dense
   data rows use the canonical dense gap/height without changing typography.
+- Collection families: divider-separated `ListRows` for text-first browsing,
+  `Card`/`Grid` for meaningful previews, `DataTable` for column-wise comparison.
+  Set `variant="separated"` explicitly while the runtime default remains
+  `bordered` for compatibility. Compact navigation may retain plain rows.
+  Public reference: `Recipes/Collection patterns`.
+- Collection group headings use `ListRowGroup headerVariant="section"`: flush
+  edges, subtle fill, neutral left rail, modest spacing. Set `headerTone` only
+  for meaningful semantic color and `headingLevel` to match the document.
+  Pass label content rather than custom heading markup; compact rail headings
+  keep `headerVariant="plain"`. Reference: `Components/Lists/ListRows`,
+  `SectionGroups`. Do not rebuild the heading with negative margins or page CSS.
 - Kanban lanes are low-chrome structure with a named header, quiet divider,
   and task stack. The lane is never a bordered card around bordered cards;
   only the bounded records inside it use the canonical Card surface. Inside a
