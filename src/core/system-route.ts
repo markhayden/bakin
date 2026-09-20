@@ -22,19 +22,33 @@ const log = createLogger('system-route')
  * backstop).
  */
 export async function applyThinkingCapability(route: ResolvedTurn, workClass: WorkClass): Promise<ResolvedTurn> {
-  if (!route.thinking) return route
+  if (!route.thinking && !route.model) return route
   try {
     // Leaf accessor (app-services-store), NOT the composition root — a
     // ./app-services import here closes the exec-tool/dispatch cycle back
     // to app-services (caught by check:cycles in CI).
     const { getAppServices } = await import('./app-services-store')
-    const supported = getAppServices().runtime.models.routingSupport().supportedThinkingLevels
-    const { applied, clamped } = clampThinkingLevel(route.thinking, supported)
-    if (!clamped) return route
-    log.warn('Thinking level clamped to runtime support', { workClass, requested: route.thinking, applied: applied ?? 'inherit' })
-    const next: ResolvedTurn = { ...route, thinkingClamp: { requested: route.thinking, applied } }
-    if (applied) next.thinking = applied
-    else delete next.thinking
+    const support = getAppServices().runtime.models.routingSupport()
+    let next = route
+
+    // Model overrides the runtime refuses (#880: OpenClaw 2026.9.5 gates
+    // them behind operator.admin) — drop the model with a receipt so the
+    // turn proceeds on the agent default instead of failing at admission.
+    if (next.model && support.perTurnModel === false) {
+      log.warn('Model route clamped: runtime refuses per-turn overrides', { workClass, requested: next.model })
+      next = { ...next, modelClamp: { requested: next.model, reason: 'override_denied' } }
+      delete next.model
+    }
+
+    if (next.thinking) {
+      const { applied, clamped } = clampThinkingLevel(next.thinking, support.supportedThinkingLevels)
+      if (clamped) {
+        log.warn('Thinking level clamped to runtime support', { workClass, requested: next.thinking, applied: applied ?? 'inherit' })
+        next = { ...next, thinkingClamp: { requested: next.thinking, applied } }
+        if (applied) next.thinking = applied
+        else delete next.thinking
+      }
+    }
     return next
   } catch {
     return route

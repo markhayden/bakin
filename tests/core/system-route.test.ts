@@ -25,7 +25,17 @@ mock.module('../../packages/core/src/hooks/hook-registry-singleton', () => ({
   }),
 }))
 
-import { resolveSystemRoute, routeSendArgs } from '../../src/core/system-route'
+// Controlled runtime capability for the clamp paths (#880). null = app
+// services unavailable → applyThinkingCapability fails open.
+let routingSupport: { supportedThinkingLevels: readonly string[]; perTurnModel: boolean } | null = null
+mock.module('../../src/core/app-services-store', () => ({
+  getAppServices: () => {
+    if (!routingSupport) throw new Error('app services not initialized')
+    return { runtime: { models: { routingSupport: () => routingSupport } } }
+  },
+}))
+
+import { applyThinkingCapability, resolveSystemRoute, routeSendArgs } from '../../src/core/system-route'
 
 describe('resolveSystemRoute', () => {
   it('resolves a matching class route', async () => {
@@ -56,5 +66,39 @@ describe('routeSendArgs', () => {
     expect(routeSendArgs({ source: 'inherit' })).toEqual({})
     expect(routeSendArgs({ model: 'm', source: 'class' })).toEqual({ model: 'm' })
     expect(routeSendArgs({ model: 'm', thinking: 'low', source: 'class' })).toEqual({ model: 'm', thinking: 'low' })
+  })
+})
+
+describe('model clamp — runtime refuses per-turn overrides (#880)', () => {
+  it('perTurnModel=false strips the routed model with a modelClamp receipt (system route)', async () => {
+    routingSupport = { supportedThinkingLevels: ['off', 'low'], perTurnModel: false }
+    hookResult = { routes: [{ workClass: 'relay', model: 'openai/gpt-5.5' }], tagOverrides: [] }
+    const route = await resolveSystemRoute('relay')
+    expect(route.model).toBeUndefined()
+    expect(route.modelClamp).toEqual({ requested: 'openai/gpt-5.5', reason: 'override_denied' })
+    // The send carries NO model — the turn proceeds on the agent default.
+    expect(routeSendArgs(route)).toEqual({})
+    routingSupport = null
+  })
+
+  it('perTurnModel=true leaves the route byte-identical', async () => {
+    routingSupport = { supportedThinkingLevels: ['off', 'low'], perTurnModel: true }
+    hookResult = { routes: [{ workClass: 'relay', model: 'openai/gpt-5.5' }], tagOverrides: [] }
+    expect(await resolveSystemRoute('relay')).toEqual({ model: 'openai/gpt-5.5', source: 'class' })
+    routingSupport = null
+  })
+
+  it('applies to dispatch classes through the same capability gate', async () => {
+    routingSupport = { supportedThinkingLevels: ['off'], perTurnModel: false }
+    const route = await applyThinkingCapability({ model: 'openai/gpt-5.5', source: 'class' }, 'adhoc')
+    expect(route.model).toBeUndefined()
+    expect(route.modelClamp?.requested).toBe('openai/gpt-5.5')
+    routingSupport = null
+  })
+
+  it('fails open when app services are unavailable — never blocks a send', async () => {
+    routingSupport = null
+    hookResult = { routes: [{ workClass: 'relay', model: 'openai/gpt-5.5' }], tagOverrides: [] }
+    expect(await resolveSystemRoute('relay')).toEqual({ model: 'openai/gpt-5.5', source: 'class' })
   })
 })
