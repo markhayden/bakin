@@ -49,6 +49,41 @@ describe('OpenClaw runtime binary resolution', () => {
     expect(readFileSync(callsFile, 'utf-8')).toContain('gateway restart')
   })
 
+  it('create on an agent already in the keyed registry fails typed WITHOUT shelling agents add (#873 adoption regression)', async () => {
+    // The #873 installer contradiction: the lying roster said pixel "does
+    // not exist" (blocking --adopt) while `openclaw agents add` said it
+    // "already exists". With entries decoded, the duplicate guard and the
+    // CLI agree again.
+    const binDir = join(testDir, 'bin')
+    const callsFile = join(testDir, 'calls-dup.txt')
+    const openClawHome = join(testDir, 'openclaw-dup')
+    mkdirSync(binDir, { recursive: true })
+    mkdirSync(openClawHome, { recursive: true })
+    const shim = join(binDir, 'openclaw')
+    writeFileSync(shim, `#!/bin/sh\necho "$@" >> "${callsFile}"\necho "{}"\n`, 'utf-8')
+    chmodSync(shim, 0o755)
+    process.env.OPENCLAW_HOME = openClawHome
+    writeFileSync(join(openClawHome, 'openclaw.json'), JSON.stringify({
+      agents: {
+        ownership: 'explicit',
+        entries: { main: {}, pixel: { identity: { name: 'Pixel' } } },
+      },
+    }))
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const { resetOpenClawConfigCache } = await import('../../packages/adapter-openclaw/src/config')
+    resetOpenClawConfigCache()
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: shim } })
+    await runtime.initialize({ contentDir: testDir })
+
+    // The roster SEES the entries agents (what makes package --adopt work)…
+    const roster = await runtime.agents.list()
+    expect(roster.map((a) => a.id).sort()).toEqual(['main', 'pixel'])
+    // …and a duplicate create fails typed instead of double-creating.
+    await expect(runtime.agents.create({ id: 'pixel', name: 'Pixel' })).rejects.toThrow('Agent already exists')
+    expect(existsSync(callsFile) ? readFileSync(callsFile, 'utf-8') : '').not.toContain('agents add')
+  })
+
   it('writes agent config directly when OpenClaw blocks agent add on plugin allow warning', async () => {
     const binDir = join(testDir, 'bin')
     const callsFile = join(testDir, 'calls.txt')
