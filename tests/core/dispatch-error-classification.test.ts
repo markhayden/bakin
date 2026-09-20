@@ -100,6 +100,35 @@ describe('classifyDispatchFailureDetail (kind → reasonCode mapping)', () => {
   })
 })
 
+describe('model_not_supported (#852: account rejected the model id)', () => {
+  const rejection = () => new RuntimeError("The 'gpt-5.4-mini' model is not supported when using Codex with a ChatGPT account", {
+    kind: 'model_not_supported',
+    providerInfo: { provider: 'openai-codex', model: 'openai-codex/gpt-5.4-mini' },
+  })
+
+  it('classifies structural (long cooldown, never the transient path)', () => {
+    expect(classifyDispatchError(rejection())).toBe('structural')
+  })
+
+  it('detail: model_not_supported reason code, provider-unavailable category, NOT retryable, names the model', () => {
+    const detail = classifyDispatchFailureDetail(rejection())
+    expect(detail.reasonCode).toBe('model_not_supported')
+    expect(detail.category).toBe('model_provider_unavailable')
+    expect(detail.retryable).toBe(false)
+    expect(detail.provider).toBe('openai-codex')
+    expect(detail.model).toBe('openai-codex/gpt-5.4-mini')
+    expect(detail.specificReason).toContain('openai-codex/gpt-5.4-mini')
+  })
+
+  it('sanitized failure names the model id but never raw provider text', () => {
+    const sanitized = formatSanitizedRuntimeFailure(rejection())
+    expect(sanitized).toContain('openai-codex/gpt-5.4-mini')
+    expect(sanitized).not.toContain('ChatGPT account')
+    expect(formatSanitizedRuntimeFailure(new RuntimeError('x', { kind: 'model_not_supported' })))
+      .toBe('model not callable by this account')
+  })
+})
+
 describe('formatSanitizedRuntimeFailure', () => {
   it('uses kinds and diagnosis details, never raw provider text', () => {
     expect(formatSanitizedRuntimeFailure(new RuntimeError('OpenClaw chat gateway request timed out: agent', { kind: 'timeout' })))

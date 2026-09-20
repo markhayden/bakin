@@ -16,7 +16,7 @@ import { createLogger } from './logger'
 import { appendAudit } from './audit'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { currentSeq } from './execution-ledger'
-import { RuntimeTurnError } from '@bakin/core/adapters/runtime'
+import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { blockTask as blockStoredTask, moveTask as moveStoredTask } from './task-store'
 import { formatSanitizedRuntimeFailure, classifyDispatchError, classifyDispatchFailureDetail } from './dispatch-failures'
 import { BoundRepoError } from './repo-binding'
@@ -271,6 +271,31 @@ export async function reconcileRejectedDispatch(input: {
       id: input.task.id,
       title: input.task.title,
       error: input.err.message,
+    })
+    return
+  }
+
+  // Model rejections are deterministic like repo-binding failures: the
+  // account cannot call the routed model, so retry cooldowns just burn time
+  // (#852: a retired model ground retries for 10 days). Block immediately
+  // with remediation; the availability layer records the rejection evidence.
+  if (input.err instanceof RuntimeError && input.err.kind === 'model_not_supported') {
+    const summary = formatSanitizedRuntimeFailure(input.err)
+    delete input.state.failedDispatches?.[input.task.id]
+    try {
+      await blockStoredTask(input.task.id, `${summary} — update work-class routing or the agent's model, then move the task back to Todo.`)
+    } catch (blockErr) {
+      log.error('Failed to block task on model rejection', blockErr, { id: input.task.id })
+    }
+    await tryAddTaskLog(input.task.id, 'system', `Dispatch failed: ${summary}. Task blocked — fix routing (Models → Routing) before retrying.`, {
+      dispatchFailure: classifyDispatchFailureDetail(input.err),
+    })
+    appendAudit(input.contentDir, 'task.model_not_supported_blocked', input.targetAgent, {
+      id: input.task.id,
+      title: input.task.title,
+      error: summary,
+      ...(input.err.providerInfo?.model ? { model: input.err.providerInfo.model } : {}),
+      ...(input.err.providerInfo?.provider ? { provider: input.err.providerInfo.provider } : {}),
     })
     return
   }

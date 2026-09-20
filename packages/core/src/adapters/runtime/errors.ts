@@ -20,6 +20,13 @@ export type RuntimeErrorKind =
   /** Structured runtime failure (HTTP-status class, CLI exit, protocol). */
   | 'runtime_failed'
   /**
+   * The provider deterministically rejected the MODEL ID for this account
+   * (retired/unentitled model — the #852 class). Not a cooldown: waiting
+   * never fixes it, so it is never retried. `providerInfo.model` carries the
+   * qualified rejected id; core records it as availability evidence.
+   */
+  | 'model_not_supported'
+  /**
    * The caller intentionally cancelled the turn (MessageArgs.signal) —
    * terminal: never retried, never diagnosed, never enters the recovery
    * ladder.

@@ -19,6 +19,7 @@ export type DispatchFailureKind = 'transient' | 'structural'
 export type DispatchFailureReasonCode =
   | 'provider_cooldown'
   | 'auth_profile_unavailable'
+  | 'model_not_supported'
   | 'dispatch_timeout'
   | 'transport_failure'
   | 'runtime_adapter_failure'
@@ -84,6 +85,21 @@ export function classifyDispatchFailureDetail(err: unknown): DispatchFailureDeta
           ...(info.provider ? { provider: info.provider } : {}),
           ...(info.model ? { model: info.model } : {}),
           ...(info.cooldownReason ? { cooldownReason: info.cooldownReason } : {}),
+          rawError,
+        }
+      }
+      case 'model_not_supported': {
+        const info = err.providerInfo ?? {}
+        return {
+          category: 'model_provider_unavailable',
+          reasonCode: 'model_not_supported',
+          summary: 'Dispatch failed: model not callable by this account',
+          specificReason: info.model
+            ? `Model ${info.model} is not callable by this account`
+            : 'Model is not callable by this account',
+          retryable: false,
+          ...(info.provider ? { provider: info.provider } : {}),
+          ...(info.model ? { model: info.model } : {}),
           rawError,
         }
       }
@@ -158,6 +174,9 @@ export function formatSanitizedRuntimeFailure(err: unknown): string {
       case 'timeout': return 'runtime gateway request timed out'
       case 'transport': return 'runtime transport failure'
       case 'provider_cooldown': return 'model provider unavailable'
+      case 'model_not_supported': return err.providerInfo?.model
+        ? `model ${err.providerInfo.model} not callable by this account`
+        : 'model not callable by this account'
       case 'session_death': return err.message
       case 'runtime_failed': return 'runtime adapter failure'
     }
