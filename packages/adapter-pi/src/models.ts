@@ -124,7 +124,7 @@ export function createModelsSurface(): AgentRuntimeAdapter['models'] {
       try {
         const message = await runtime.completeSimple(
           model,
-          { messages: [{ role: 'user', content: 'Reply with OK.' }] },
+          { messages: [{ role: 'user', content: 'Reply with OK.', timestamp: Date.now() }] },
           { signal: controller.signal, maxTokens: 8 },
         )
         if (message.stopReason === 'error' || message.stopReason === 'aborted') {

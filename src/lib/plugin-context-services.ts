@@ -300,6 +300,9 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
     },
     models: {
       listAvailable: runtime.models.listAvailable.bind(runtime.models),
+      // OPTIONAL probe (#852) — forwarded only when the adapter has one, so
+      // plugin feature-detection (`models.probe?.`) stays honest.
+      ...(runtime.models.probe ? { probe: runtime.models.probe.bind(runtime.models) } : {}),
       // Routing policy (P2.3): the models plugin manages the runtime's
       // routing knobs through this neutral surface.
       routingSupport: runtime.models.routingSupport.bind(runtime.models),
