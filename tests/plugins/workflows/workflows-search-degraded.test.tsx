@@ -83,12 +83,6 @@ mock.module('@/hooks/use-query-state', () => ({
   },
 }))
 
-mock.module('@bakin/workflows/components/workflow-card', () => ({
-  WorkflowCard: ({ template }: { template: { filename: string; name: string } }) => (
-    <div data-testid={`card-${template.filename}`}>{template.name}</div>
-  ),
-}))
-
 // Import AFTER mocks. useSearch stays REAL — engine states arrive via fetch.
 import { WorkflowsPage } from '../../../plugins/workflows/components/workflows-page'
 
@@ -117,7 +111,7 @@ function stubSearchFetch(searchImpl: () => Response) {
 async function renderAndSearch(query: string) {
   render(<WorkflowsPage />)
   await waitFor(() => {
-    expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
+    expect(screen.getByTestId('row-content-pipeline')).toBeDefined()
   })
   fireEvent.change(screen.getByRole('searchbox', { name: 'Workflow search' }), { target: { value: query } })
 }
@@ -152,8 +146,8 @@ describe('WorkflowsPage — search signals', () => {
     expect(document.querySelector('[data-slot="search-input-progress"]')).toBeNull()
 
     // …while basic text matching keeps the list usable.
-    expect(screen.getByTestId('card-onboarding')).toBeDefined()
-    expect(screen.queryAllByTestId('card-content-pipeline').length).toBe(0)
+    expect(screen.getByTestId('row-onboarding')).toBeDefined()
+    expect(screen.queryAllByTestId('row-content-pipeline').length).toBe(0)
   })
 
   it('shows the SearchPartialChip when the response is partial', async () => {
@@ -176,7 +170,7 @@ describe('WorkflowsPage — search signals', () => {
       expect(screen.getByTestId('search-partial-chip')).toBeDefined()
     }, { timeout: 3000 })
     expect(screen.queryAllByTestId('workflows-search-degraded').length).toBe(0)
-    expect(screen.getByTestId('card-onboarding')).toBeDefined()
+    expect(screen.getByTestId('row-onboarding')).toBeDefined()
   })
 
   it('renders no signal row for a healthy complete search', async () => {
@@ -189,7 +183,7 @@ describe('WorkflowsPage — search signals', () => {
     await renderAndSearch('onboard')
 
     await waitFor(() => {
-      expect(screen.getByTestId('card-onboarding')).toBeDefined()
+      expect(screen.getByTestId('row-onboarding')).toBeDefined()
       expect(screen.getByRole('searchbox', { name: 'Workflow search' }).getAttribute('aria-busy')).toBeNull()
       expect(document.querySelector('[data-slot="search-input-progress"]')).toBeNull()
     }, { timeout: 3000 })

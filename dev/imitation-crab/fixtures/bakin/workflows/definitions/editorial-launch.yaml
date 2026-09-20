@@ -1,0 +1,18 @@
+id: editorial-launch
+name: Seasonal editorial launch with cross-team review and publication approval
+description: Coordinate copy, photography, and channel-specific production, then pause for owner review before publishing the launch package.
+version: 1
+
+steps:
+  - id: draft
+    type: agent
+    label: Draft the campaign brief
+    agent: jessica
+  - id: images
+    type: workflow
+    label: Prepare campaign images
+    workflow_id: image-generation
+  - id: review
+    type: gate
+    label: Review the complete campaign
+    approval_required: true

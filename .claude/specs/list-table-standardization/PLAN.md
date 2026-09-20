@@ -2,7 +2,14 @@
 
 Status: kit foundation reviewed and verified, including six new recipe baselines
 and two separately approved caption-baseline updates. Workflows is the first planned consumer proof after the
-kit checkpoint, not part of this foundation slice.
+kit checkpoint, not part of this foundation slice. The foundation landed in #879;
+the Workflows proof is now implemented on `refactor/workflow-list-806` for local
+review in Imitation Crab. After reviewing rows and grouped tables, the user
+approved one sortable DataTable with a Source column/filter, unified search,
+and 20-row pagination. The shared search focus-ring repair was explicitly
+approved and the plugin fixture now passes. The user approved the real-app
+presentation and the four subsequent kit baseline updates. Full verification
+remains before declaring this migration merge-ready.
 Scope: [SPEC.md](SPEC.md). Evidence: [AUDIT.md](AUDIT.md).
 
 ## Delivery shape
