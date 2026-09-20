@@ -68,11 +68,13 @@ describe('imitation-crab onboarding contract', () => {
   it('reports a broken runtime check when the seeded roster loses main', async () => {
     const { env } = await openHarness()
     const config = readRuntimeConfig(env.home) as {
-      agents?: { list?: Array<{ id?: string }> }
+      agents?: { entries?: Record<string, unknown> }
     }
-    const main = config.agents?.list?.find((agent) => agent.id === 'main')
-    if (!main) throw new Error('Fixture invariant failed: main agent is missing')
-    main.id = 'crab'
+    const entries = config.agents?.entries
+    if (!entries?.main) throw new Error('Fixture invariant failed: main agent is missing')
+    // Rename the key — the keyed-registry equivalent of mutating list[].id.
+    entries.crab = entries.main
+    delete entries.main
     writeRuntimeConfig(env.home, config as Record<string, unknown>)
 
     const result = await runtimeComponent.check()

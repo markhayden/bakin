@@ -37,6 +37,31 @@ describe('normalizeAgentPaths', () => {
     expect(config.agents.list[0]!.agentDir).toBe(`${HOST_HOME}/agents/main/agent`)
   })
 
+  it('rewrites per-agent paths under the 2026.9.5 keyed entries registry (#873)', () => {
+    const config = {
+      agents: {
+        ownership: 'explicit',
+        defaults: { workspace: `${HOST_HOME}/workspace` },
+        entries: {
+          main: { workspace: `${HOST_HOME}/workspace` },
+          pixel: { workspace: `${HOST_HOME}/workspaces/pixel`, agentDir: `${HOST_HOME}/agents/pixel/agent` },
+        },
+      },
+    }
+    const result = normalizeAgentPaths(config, HOST_HOME)
+    expect(result.changed).toBe(true)
+    const agents = result.config.agents as {
+      ownership: string
+      defaults: { workspace: string }
+      entries: Record<string, { workspace?: string; agentDir?: string }>
+    }
+    expect(agents.defaults.workspace).toBe(`${CONTAINER_OPENCLAW_HOME}/workspace`)
+    expect(agents.entries.main!.workspace).toBe(`${CONTAINER_OPENCLAW_HOME}/workspace`)
+    expect(agents.entries.pixel!.workspace).toBe(`${CONTAINER_OPENCLAW_HOME}/workspaces/pixel`)
+    expect(agents.entries.pixel!.agentDir).toBe(`${CONTAINER_OPENCLAW_HOME}/agents/pixel/agent`)
+    expect(agents.ownership).toBe('explicit')
+  })
+
   it('no-ops on container-form paths', () => {
     const config = {
       agents: {

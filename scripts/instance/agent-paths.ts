@@ -46,17 +46,21 @@ export function normalizeAgentPaths(
     }
   }
 
-  const list = agents.list
-  if (Array.isArray(list)) {
-    for (const entry of list) {
-      if (!entry || typeof entry !== 'object') continue
-      const agent = entry as JsonObject
-      for (const key of ['workspace', 'agentDir'] as const) {
-        const result = translate(agent[key], hostOpenclawHome)
-        if (result.changed) {
-          agent[key] = result.value
-          changed = true
-        }
+  // Both registry shapes: 2026.9.5 keyed entries (#873) and the legacy list
+  // array — the rig can host either depending on the container's OpenClaw.
+  const entries = agents.entries
+  const agentRecords: unknown[] = [
+    ...(entries && typeof entries === 'object' ? Object.values(entries) : []),
+    ...(Array.isArray(agents.list) ? agents.list : []),
+  ]
+  for (const record of agentRecords) {
+    if (!record || typeof record !== 'object') continue
+    const agent = record as JsonObject
+    for (const key of ['workspace', 'agentDir'] as const) {
+      const result = translate(agent[key], hostOpenclawHome)
+      if (result.changed) {
+        agent[key] = result.value
+        changed = true
       }
     }
   }
