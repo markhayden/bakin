@@ -30,15 +30,24 @@ Final code review found no actionable issues; the focused suite passes 17 tests
 with 88 assertions. Non-blocking follow-up: commit browser automation for
 cancel/success focus restoration, currently verified by local intercepted checks
 rather than the lightweight unit/fixture harness.
-The full shared sweep has passed unit, Storybook and 280 visual checks; its
-remaining stages must finish before declaring the combined checkpoint merge-ready.
+The full shared sweep has completed successfully: 9,550 unit tests, 335
+Storybook tests, 280 visual checks, 93 cross-browser checks, plugin-conformance
+checks and docs publication. Messaging's later consumer-only delta has separate
+focused, full Bits and real-SDK fixture evidence below.
 The combined host/SDK + Bits rollout remains; no release has been cut.
 
-Next bounded candidate: Messaging's Plans index (`plan-list.tsx`), using
-separated rows and the kit's date-group headers, with a soft shown count.
-Preserve agent/status/search URL state, target-date grouping, review priority,
-agent identity and opening behavior. Calendar, plan workspace, and brainstorm
-collections remain separate follow-ups; #759 still owns mobile filter/sort work.
+Messaging's Plans index (`plan-list.tsx`) is now implemented locally using
+separated rows and the kit's accent date-group headers, with a soft shown count
+and wrapping titles. Agent/status/search URL state, target-date grouping, review
+priority, agent identity and opening behavior are preserved. The existing hook's
+load error is now surfaced with Retry instead of being shown as an empty list.
+Focused tests cover ordering, search/group recovery, loading/empty and error/retry.
+The full Bits suite passes 576 tests (8 skipped), plus typecheck, lint and build.
+The real-SDK index fixture and intercepted local-app checks pass at
+320/768/1024/1440px; fixture evidence is under Messaging's `test-results/bakin-ui`.
+Human visual approval and the combined rollout remain. Calendar, plan workspace,
+and brainstorm collections remain separate follow-ups; #759 still owns mobile
+filter/sort work.
 Scope: [SPEC.md](SPEC.md). Evidence: [AUDIT.md](AUDIT.md).
 
 ## Delivery shape
