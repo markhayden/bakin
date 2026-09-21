@@ -6,7 +6,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
-## [0.0.1-rc.34] - 2026-09-21
+## [0.0.1-rc.35] - 2026-09-21
+
+Everything v0.0.1-rc.34 promised, actually shipped: rc.34's tag failed macOS signing (see Fixed below) and was never published, so its full contents land here.
+
+### Added
+
+- **Live install progress (#895, #902).** Package and agent-package installs run as jobs: the dialog shows completed stages, the current stage, a byte-level progress bar ("470 MB of 940 MB"), and elapsed time — over SSE with a status-poll net (`GET /api/install-jobs/:id`). Also removes a hidden 120-second client timeout that could report failure while the server-side install kept running. Every download leg (capability binaries, model files) reports real bytes.
+- **Managed Bun runtime (#901).** Bakin now finds Bun in the well-known install locations daemon PATHs miss (`~/.bun/bin`, both Homebrew prefixes) — the actual cause of "bun not found" on a box that plainly had it — and when no Bun exists anywhere, installs its own sha256-pinned copy into `~/.bakin/bin`. No customer is ever told to install a dev toolchain.
+
+### Fixed
+
+- **Signed macOS binaries refused sharp's native module (#900).** The notarized binary's hardened runtime enables library validation, blocking any library not signed with our Team ID — rc.33's media store install correctly refused to commit at `different Team IDs`. Releases now sign with the standard library-validation entitlement (the Electron/VS Code posture), and the installer names the real remediation for this failure class.
+- **The rc.34 signing failure itself (#905).** The new entitlements plist's comment contained a double hyphen — illegal inside an XML comment, rejected by Apple's AMFI parser at codesign even though `plutil -lint` passes it. Comment rewritten; the signing-plan test now bans the sequence outright.
+
+### Upgrade notes
+
+- macOS binary installs: after upgrading, the `media.sharp` health repair (or `bakin install media`) should complete in about a minute with visible progress — this is the release where image processing actually lands on signed builds.
+- Packs with npm payloads (e.g. Browser Tools) now install on boxes where Bun lives in `~/.bun/bin` or nowhere at all.
+
+## [0.0.1-rc.34] - 2026-09-21 [YANKED — tag never published; macOS signing failed (#905). All changes shipped in 0.0.1-rc.35.]
 
 The second install-reliability patch from the production field test: signed macOS binaries can finally load the media store, Bakin finds (or brings its own) Bun on toolchain-free boxes, and anything that installs shows live staged progress instead of a spinner.
 
@@ -624,5 +643,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.33]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.33
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.34...HEAD
 [0.0.1-rc.34]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.34
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.35...HEAD
+[0.0.1-rc.35]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.35
