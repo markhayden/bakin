@@ -9,6 +9,9 @@
  */
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
+// Side effect: registers the SDK's bundler-opaque modules (OAuth flows,
+// bedrock provider) so compiled binaries don't die on dynamic imports.
+import './bun-static-modules'
 import { PiRuntimeAdapter, type PiRuntimeAdapterOptions } from './runtime'
 
 export { createPiHealthChecks } from './health-checks'

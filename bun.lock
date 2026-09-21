@@ -115,6 +115,7 @@
       "name": "@bakin/adapter-pi",
       "version": "0.0.0-workspace",
       "dependencies": {
+        "@earendil-works/pi-ai": "^0.85.1",
         "@earendil-works/pi-coding-agent": "0.85.1",
       },
       "peerDependencies": {
