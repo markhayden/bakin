@@ -19,57 +19,22 @@
  * rename — a broken download or a future sharp layout change can never
  * shadow a working store. Install-time only: request paths never download.
  */
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { getBakinPaths } from '../content-dir'
 import { createLogger } from '../logger'
 import { downloadToFile, extractTarball } from '../net/download'
 import { SHARP_PIN, mediaPlatformKey, pinnedTarballsFor, type MediaPlatformKey } from './pin'
+import { resetSharpModuleCache } from './sharp-loader'
+import { MEDIA_RECEIPT_SCHEMA, mediaStoreDir, readMediaReceipt, mediaStoreEntry, type MediaReceipt } from './store'
+
+// Store locations + receipt live in ./store (shared with the loader);
+// re-exported here so install surfaces keep ONE import.
+export { MEDIA_RECEIPT_SCHEMA, mediaReceiptPath, mediaStoreDir, mediaStoreEntry, readMediaReceipt, type MediaReceipt } from './store'
 
 const log = createLogger('media-installer')
 
 const DOWNLOAD_TIMEOUT_MS = 120_000
-export const MEDIA_RECEIPT_SCHEMA = 1
-
-export interface MediaReceipt {
-  schema: number
-  sharpVersion: string
-  platform: MediaPlatformKey
-  /** Store-relative path of the bundled sharp entry. */
-  entry: string
-  installedAt: string
-  tarballs: { name: string; version: string; sha256: string }[]
-}
-
-/** `<bakin-home>/media/sharp/<pinned version>/` — the live store dir. */
-export function mediaStoreDir(): string {
-  return join(getBakinPaths().media, 'sharp', SHARP_PIN.version)
-}
-
-export function mediaReceiptPath(): string {
-  return join(mediaStoreDir(), 'receipt.json')
-}
-
-/** The bundled sharp entry the loader imports, or null without a valid receipt. */
-export function mediaStoreEntry(): string | null {
-  const receipt = readMediaReceipt()
-  if (!receipt) return null
-  const entry = join(mediaStoreDir(), receipt.entry)
-  return existsSync(entry) ? entry : null
-}
-
-export function readMediaReceipt(): MediaReceipt | null {
-  try {
-    const raw = readFileSync(mediaReceiptPath(), 'utf-8')
-    const parsed = JSON.parse(raw) as MediaReceipt
-    if (parsed.schema !== MEDIA_RECEIPT_SCHEMA || parsed.sharpVersion !== SHARP_PIN.version) return null
-    return parsed
-  } catch {
-    // Missing or unreadable receipt — the store is not installed. (No log:
-    // this is the NORMAL state on dev trees and fresh installs.)
-    return null
-  }
-}
 
 export type MediaStoreStatus =
   | { status: 'ok'; receipt: MediaReceipt }
@@ -182,6 +147,9 @@ export async function installMediaStore(options: MediaInstallOptions = {}): Prom
     rmSync(storeDir, { recursive: true, force: true })
     renameSync(staging, storeDir)
     sweepOldStores(sharpRoot)
+    // An in-process loader that already cached "sharp unavailable" must see
+    // the fresh store without a restart (doctor repair path).
+    resetSharpModuleCache()
     log.info(`media store installed: sharp ${SHARP_PIN.version} (${platform}) → ${storeDir}`)
     return { storeDir, skipped: false }
   } catch (err) {
