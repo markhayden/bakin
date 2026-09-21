@@ -13,8 +13,10 @@
     (margo, v0.0.1-rc.33, 2026-09-21). Standard posture for apps that load
     third-party native modules; notarization accepts it. Locally compiled
     dev binaries are unsigned, so ONLY the signed release artifact exhibits
-    the failure — test coverage cannot catch a regression here, keep this
-    file and the --entitlements flag paired.
+    the failure. Keep this file and codesign's entitlements flag paired.
+    NOTE: a double hyphen may never appear inside this comment — Apple's
+    AMFI XML parser rejects it even though plutil -lint passes (it killed
+    the v0.0.1-rc.34 signing job).
   -->
   <key>com.apple.security.cs.disable-library-validation</key>
   <true/>

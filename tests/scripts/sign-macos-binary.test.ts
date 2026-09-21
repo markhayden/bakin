@@ -79,7 +79,13 @@ describe('buildSigningPlan', () => {
     // The checked-in plist and the flag are load-bearing as a PAIR.
     const { readFileSync, existsSync } = require('node:fs') as typeof import('node:fs')
     expect(existsSync(plistPath)).toBe(true)
-    expect(readFileSync(plistPath, 'utf-8')).toContain('com.apple.security.cs.disable-library-validation')
+    const plist = readFileSync(plistPath, 'utf-8')
+    expect(plist).toContain('com.apple.security.cs.disable-library-validation')
+    // Apple's AMFI XML parser rejects a double hyphen ANYWHERE inside a
+    // comment (plutil -lint does NOT — it silently passed the plist that
+    // killed the v0.0.1-rc.34 signing job). Strip the delimiters and ban
+    // the sequence outright.
+    expect(plist.replace(/<!--|-->/g, '')).not.toContain('--')
   })
 
   it('prints a dry-run plan without leaking secrets', () => {
