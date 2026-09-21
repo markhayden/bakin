@@ -5,6 +5,8 @@
  * node_modules in reach). If this ever prints BUNDLED IMPORT OK, bun learned
  * to embed sharp's natives — the whole media store machinery is obsolete.
  */
+export {} // top-level await needs module context under tsc
+
 try {
   const mod = (await import('sharp')) as { default?: unknown }
   const sharp = (mod.default ?? mod) as (input: Buffer) => { metadata(): Promise<{ width?: number }> }
