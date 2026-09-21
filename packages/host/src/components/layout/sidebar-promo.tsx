@@ -27,7 +27,7 @@ export function SidebarPromo({ collapsed, pathname, onNavigate }: SidebarPromoPr
         <Text as="span" size="meta" tone="muted" className="mt-bakin-1 block">
           Do more with Bakin—discover agent kits, plugins &amp; more.
         </Text>
-        <Badge tone="accent" variant="outline" size="sm" className="mt-2.5">
+        <Badge tone="accent" variant="link" size="sm" className="mt-2.5">
           Browse add-ons
           <ArrowUpRight aria-hidden="true" />
         </Badge>
