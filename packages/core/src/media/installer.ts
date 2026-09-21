@@ -93,6 +93,10 @@ export async function installMediaStore(options: MediaInstallOptions = {}): Prom
   }
 
   const sharpRoot = join(getBakinPaths().media, 'sharp')
+  // Crashed/killed installers strand their staging dirs forever (margo
+  // 2026-09-21: three orphans from one afternoon) — sweep the dead before
+  // staging anew, and again post-commit.
+  sweepDeadStaging(sharpRoot)
   const staging = join(sharpRoot, `.staging-${SHARP_PIN.version}-${process.pid}`)
   rmSync(staging, { recursive: true, force: true })
   mkdirSync(staging, { recursive: true })
@@ -104,14 +108,20 @@ export async function installMediaStore(options: MediaInstallOptions = {}): Prom
       await options.stage(nodeModules)
     } else {
       const tarballDir = join(staging, '.tarballs')
-      for (const tarball of pinnedTarballsFor(platform)) {
+      const tarballs = pinnedTarballsFor(platform)
+      for (const [index, tarball] of tarballs.entries()) {
         const tarPath = join(tarballDir, `${tarball.name.replace('/', '+')}.tgz`)
-        await downloadToFile(tarball.url, tarPath, {
+        // Progress lands in the server log — "applying and verifying" must
+        // never again mean minutes of total silence.
+        log.info(`media store: downloading ${tarball.name}@${tarball.version} (${index + 1}/${tarballs.length})`)
+        const started = Date.now()
+        const downloaded = await downloadToFile(tarball.url, tarPath, {
           sha256: tarball.sha256,
           timeoutMs: DOWNLOAD_TIMEOUT_MS,
           fetchImpl: options.fetchImpl,
           label: `Media tarball "${tarball.name}"`,
         })
+        log.info(`media store: downloaded ${tarball.name} — ${downloaded.bytes} bytes in ${Date.now() - started}ms`)
         await extractTarball(tarPath, join(nodeModules, tarball.name), {
           stripComponents: 1,
           label: `Media tarball "${tarball.name}"`,
@@ -251,5 +261,43 @@ function sweepOldStores(sharpRoot: string): void {
     } catch (err) {
       log.warn(`media store: failed to sweep ${entry}`, { error: err instanceof Error ? err.message : String(err) })
     }
+  }
+  sweepDeadStaging(sharpRoot)
+}
+
+/**
+ * Remove `.staging-<version>-<pid>` dirs whose owning process is gone (a
+ * killed installer never reaches its own cleanup). A LIVE pid's staging is
+ * always left alone — concurrent installers race benignly (idempotent
+ * content, last rename wins).
+ */
+function sweepDeadStaging(sharpRoot: string): void {
+  let entries: string[]
+  try {
+    entries = readdirSync(sharpRoot)
+  } catch {
+    return
+  }
+  for (const entry of entries) {
+    if (!entry.startsWith('.staging-')) continue
+    const pid = Number(entry.slice(entry.lastIndexOf('-') + 1))
+    if (Number.isFinite(pid) && pid > 0 && pid !== process.pid && processAlive(pid)) continue
+    if (Number.isFinite(pid) && pid === process.pid) continue // our own — lifecycle-managed
+    try {
+      rmSync(join(sharpRoot, entry), { recursive: true, force: true })
+      log.info(`media store: swept dead staging dir ${entry}`)
+    } catch (err) {
+      log.warn(`media store: failed to sweep staging ${entry}`, { error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    // EPERM = exists but not ours (alive); ESRCH = gone.
+    return (err as NodeJS.ErrnoException).code === 'EPERM'
   }
 }

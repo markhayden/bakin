@@ -53,6 +53,28 @@ beforeAll(() => {
         await new Promise((resolve) => setTimeout(resolve, 2_000))
         return new NativeResponse(PAYLOAD)
       }
+      if (path === '/stall') {
+        // 64KB then silence with a big declared length — a stalled transfer.
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(new Uint8Array(64 * 1024))
+            // never closes, never enqueues again
+          },
+        })
+        return new NativeResponse(stream, { headers: { 'content-length': String(8_000_000) } })
+      }
+      if (path === '/flaky-then-good') {
+        // First request stalls; the retry (fresh request) serves fully.
+        if ((hits[path] ?? 0) <= 1) {
+          const stream = new ReadableStream({
+            start(controller) {
+              controller.enqueue(new Uint8Array(1024))
+            },
+          })
+          return new NativeResponse(stream, { headers: { 'content-length': String(Buffer.byteLength(PAYLOAD)) } })
+        }
+        return new NativeResponse(PAYLOAD)
+      }
       return new NativeResponse('?', { status: 500 })
     },
   })
@@ -123,6 +145,53 @@ describe('downloadToFile', () => {
     await expect(downloadToFile(url('/slow'), dest, { timeoutMs: 50, fetchImpl: abortingFetch }))
       .rejects.toThrow(/timed out/)
     expect(existsSync(dest)).toBe(false)
+  })
+})
+
+describe('downloadToFile stall hardening (margo 2026-09-21: installers hung forever on a wedged body stream)', () => {
+  it('a stalled body rejects within the stall window and deletes the partial file', async () => {
+    const dest = join(testDir, 'stalled.bin')
+    const started = Date.now()
+    await expect(downloadToFile(url('/stall'), dest, {
+      fetchImpl: nativeFetch, stallTimeoutMs: 400, retries: 0,
+    })).rejects.toThrow(/stalled/i)
+    expect(Date.now() - started).toBeLessThan(5_000)
+    expect(existsSync(dest)).toBe(false)
+  })
+
+  it('the overall deadline caps a crawling transfer even when chunks keep arriving', async () => {
+    const dest = join(testDir, 'capped.bin')
+    await expect(downloadToFile(url('/stall'), dest, {
+      fetchImpl: nativeFetch, timeoutMs: 500, stallTimeoutMs: 10_000, retries: 0,
+    })).rejects.toThrow(/deadline|stalled|timed out/i)
+    expect(existsSync(dest)).toBe(false)
+  })
+
+  it('retries once on a stall and succeeds on the fresh attempt', async () => {
+    const dest = join(testDir, 'flaky.txt')
+    const result = await downloadToFile(url('/flaky-then-good'), dest, {
+      fetchImpl: nativeFetch, stallTimeoutMs: 400, retries: 1, sha256: sha256(PAYLOAD),
+    })
+    expect(result.sha256).toBe(sha256(PAYLOAD))
+    expect(hits['/flaky-then-good']).toBe(2)
+    expect(readFileSync(dest, 'utf-8')).toBe(PAYLOAD)
+  })
+
+  it('does NOT retry a checksum mismatch (deterministic pin error)', async () => {
+    await expect(downloadToFile(url('/payload'), join(testDir, 'pin-retry.txt'), {
+      fetchImpl: nativeFetch, sha256: sha256('other'), retries: 3,
+    })).rejects.toThrow(/checksum/i)
+    expect(hits['/payload']).toBe(1)
+  })
+
+  it('reports progress with received bytes and the declared total', async () => {
+    const seen: Array<[number, number | null]> = []
+    await downloadToFile(url('/payload'), join(testDir, 'progress.txt'), {
+      fetchImpl: nativeFetch, onProgress: (received, total) => seen.push([received, total]),
+    })
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen.at(-1)![0]).toBe(Buffer.byteLength(PAYLOAD))
+    expect(seen.at(-1)![1]).toBe(Buffer.byteLength(PAYLOAD))
   })
 })
 

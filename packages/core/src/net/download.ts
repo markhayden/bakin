@@ -14,7 +14,7 @@
  */
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { createReadStream, chmodSync, existsSync, mkdirSync, renameSync, rmSync } from 'fs'
+import { createReadStream, createWriteStream, chmodSync, existsSync, mkdirSync, renameSync, rmSync } from 'fs'
 import { createHash } from 'crypto'
 import { dirname, join } from 'path'
 import { createLogger } from '../logger'
@@ -36,8 +36,23 @@ export async function sha256File(path: string): Promise<string> {
 export interface DownloadToFileOptions {
   /** Lowercase hex sha256 pin. Mismatch deletes the file and throws. */
   sha256?: string
-  /** Wall-clock abort for the whole download. Default 120s. */
+  /** Wall-clock deadline for one whole attempt (headers + body). Default 120s. */
   timeoutMs?: number
+  /**
+   * No-bytes window: an attempt whose body delivers NOTHING for this long is
+   * a stalled transfer and fails (margo 2026-09-21: a wedged registry stream
+   * hung every installer forever — `Bun.write(dest, res)` never honors the
+   * fetch abort signal once body streaming starts, so the deadline MUST be
+   * enforced by hand around each read). Default 30s.
+   */
+  stallTimeoutMs?: number
+  /**
+   * Extra attempts after a failed one — each retry is a FRESH request (a
+   * stalled keep-alive connection is the observed production failure mode;
+   * a fresh attempt typically succeeds). Checksum mismatches never retry:
+   * a wrong pin is deterministic. Default 1.
+   */
+  retries?: number
   /**
    * Fetch implementation. Defaults to Bun's NATIVE fetch — the test
    * preload's happy-dom fetch cannot drive real sockets (CLAUDE.md).
@@ -45,6 +60,8 @@ export interface DownloadToFileOptions {
   fetchImpl?: typeof fetch
   /** Human prefix for error messages, e.g. `Binary "ripgrep"`. */
   label?: string
+  /** Called after each chunk with received bytes and the declared total (null when unknown). */
+  onProgress?: (receivedBytes: number, totalBytes: number | null) => void
 }
 
 export interface DownloadResult {
@@ -53,38 +70,122 @@ export interface DownloadResult {
   bytes: number
 }
 
-/**
- * Stream a URL to `destPath` (parent dirs created), then sha256-verify
- * against the pin. Any failure deletes the partial file and throws.
- */
-export async function downloadToFile(url: string, destPath: string, options: DownloadToFileOptions = {}): Promise<DownloadResult> {
+const DEFAULT_STALL_TIMEOUT_MS = 30_000
+
+class ChecksumMismatchError extends Error {}
+
+/** Reject when a body read outlives its stall window or the attempt deadline. */
+async function readWithDeadlines<T>(
+  read: Promise<T>,
+  stallTimeoutMs: number,
+  deadlineAt: number,
+  label: string,
+): Promise<T> {
+  const remaining = deadlineAt - Date.now()
+  if (remaining <= 0) throw new Error(`${label} download failed: attempt deadline exceeded mid-transfer`)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const guard = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(
+        remaining <= stallTimeoutMs
+          ? `${label} download failed: attempt deadline exceeded mid-transfer`
+          : `${label} download stalled: no data for ${Math.round(stallTimeoutMs / 1000)}s — transfer abandoned`,
+      ))
+    }, Math.min(stallTimeoutMs, remaining))
+  })
+  try {
+    return await Promise.race([read, guard])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function downloadAttempt(url: string, destPath: string, options: DownloadToFileOptions): Promise<DownloadResult> {
   const label = options.label ?? 'Download'
   const timeoutMs = options.timeoutMs ?? DEFAULT_DOWNLOAD_TIMEOUT_MS
+  const stallTimeoutMs = options.stallTimeoutMs ?? DEFAULT_STALL_TIMEOUT_MS
   const fetchImpl = options.fetchImpl
     ?? (Bun as unknown as { fetch?: typeof fetch }).fetch
     ?? fetch
+  const deadlineAt = Date.now() + timeoutMs
 
-  mkdirSync(dirname(destPath), { recursive: true })
+  const res = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) })
+  if (!res.ok) {
+    throw new Error(`${label} download failed: ${res.status} ${res.statusText} (${url})`)
+  }
+  if (!res.body) {
+    throw new Error(`${label} download failed: response carried no body (${url})`)
+  }
+  const declaredLength = Number(res.headers.get('content-length'))
+  const totalBytes = Number.isFinite(declaredLength) && declaredLength > 0 ? declaredLength : null
+
+  // Manual chunk loop — never `Bun.write(dest, res)`: it ignores the abort
+  // signal during body streaming, so a wedged connection hangs forever.
+  const reader = (res.body as ReadableStream<Uint8Array>).getReader()
+  const sink = createWriteStream(destPath)
+  const sinkDone = new Promise<void>((resolve, reject) => {
+    sink.once('close', resolve)
+    sink.once('error', reject)
+  })
+  let received = 0
   try {
-    const res = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) })
-    if (!res.ok) {
-      throw new Error(`${label} download failed: ${res.status} ${res.statusText} (${url})`)
+    for (;;) {
+      const chunk = await readWithDeadlines(reader.read(), stallTimeoutMs, deadlineAt, label)
+      if (chunk.done) break
+      if (!sink.write(chunk.value)) {
+        await new Promise<void>((resolve, reject) => {
+          sink.once('drain', resolve)
+          sink.once('error', reject)
+        })
+      }
+      received += chunk.value.byteLength
+      options.onProgress?.(received, totalBytes)
     }
-    // Streams — never buffers the file in memory. The repo's hand-rolled Bun
-    // namespace types don't declare the Response overload; runtime supports it.
-    const bytes = await (Bun.write as unknown as (dest: string, input: Response) => Promise<number>)(destPath, res)
-
-    const actual = await sha256File(destPath)
-    if (options.sha256 && actual !== options.sha256.toLowerCase()) {
-      throw new Error(
-        `${label} checksum mismatch: expected ${options.sha256.toLowerCase()}, got ${actual} — refusing to install (${url})`,
-      )
-    }
-    return { sha256: actual, bytes }
+    sink.end()
+    await sinkDone
   } catch (err) {
-    try { rmSync(destPath, { force: true }) } catch { log.warn(`partial download cleanup failed for ${destPath}`) }
+    void reader.cancel().catch(() => { /* already broken */ })
+    sink.destroy()
     throw err
   }
+
+  const actual = await sha256File(destPath)
+  if (options.sha256 && actual !== options.sha256.toLowerCase()) {
+    throw new ChecksumMismatchError(
+      `${label} checksum mismatch: expected ${options.sha256.toLowerCase()}, got ${actual} — refusing to install (${url})`,
+    )
+  }
+  return { sha256: actual, bytes: received }
+}
+
+/**
+ * Stream a URL to `destPath` (parent dirs created), then sha256-verify
+ * against the pin. Stall-proof by construction: every body read races the
+ * stall window and the attempt deadline, transient failures get fresh-
+ * request retries, and any failure deletes the partial file and throws.
+ */
+export async function downloadToFile(url: string, destPath: string, options: DownloadToFileOptions = {}): Promise<DownloadResult> {
+  const label = options.label ?? 'Download'
+  const attempts = 1 + Math.max(0, options.retries ?? 1)
+  mkdirSync(dirname(destPath), { recursive: true })
+
+  let lastError: unknown
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await downloadAttempt(url, destPath, options)
+    } catch (err) {
+      try { rmSync(destPath, { force: true }) } catch { log.warn(`partial download cleanup failed for ${destPath}`) }
+      if (err instanceof ChecksumMismatchError) throw err
+      lastError = err
+      if (attempt < attempts) {
+        log.warn(`${label} download attempt ${attempt}/${attempts} failed — retrying with a fresh request`, {
+          url,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+  }
+  throw lastError
 }
 
 export interface ExtractTarMemberOptions {
