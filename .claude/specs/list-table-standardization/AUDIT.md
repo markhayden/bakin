@@ -592,3 +592,20 @@ merge-ready claim. The user requested local commits after approving the result.
 - Unrelated generated documentation churn from verification was discarded;
   the pre-existing embedded-assets manifest edit remains untouched and excluded.
   Projects remains a separate follow-up after shipment, not part of these PRs.
+
+### PR #885 visual-test synchronization follow-up
+
+CI run `35546549323` passed every lane except the desktop RowBehaviors visual
+test (279 of 280 visuals passed). The trace shows the menu still open after
+Escape and the story's focus-return assertion aborting before Pin. The visual
+test also resized the viewport and doubled text while the play was still in
+flight; network idle and a visible heading were not interaction readiness.
+
+The story now waits for menu focus before Escape, then menu removal and trigger
+focus. It publishes the existing `data-story-ready` convention only after the
+entire play succeeds; the visual test waits for that before resizing and captures
+console errors as well as page errors. No product UI, timeout, retry, screenshot
+tolerance or baseline changed. The readiness regression failed against the old
+story; all 18 canonical collection visual repeats (three runs, desktop/mobile,
+CI parallelism, retries disabled), three story interactions, quick conformance
+and focused lint passed. Evidence: `/private/tmp/bakin-885-{red,green,stories,quick,lint}.log`.

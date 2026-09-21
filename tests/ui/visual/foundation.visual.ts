@@ -11,10 +11,16 @@ for (const scenario of COLLECTION_SCENARIOS) {
   test(`collection proposal: ${scenario.title}`, async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
+    page.on('console', (message) => {
+      if (message.type() === 'error') errors.push(message.text())
+    })
     await page.goto(scenario.path, { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: scenario.title, exact: true })).toBeVisible()
     await page.evaluate(async () => document.fonts.ready)
     if (scenario.screenshot === 'collection-row-behaviors.png') {
+      // The heading/network idle do not mean the asynchronous play has finished.
+      // Resizing during menu interaction can interrupt focus and abort the play.
+      await expect(page.locator('#storybook-root')).toHaveAttribute('data-story-ready', 'true')
       const viewport = page.viewportSize()!
       await page.setViewportSize({ width: 320, height: 900 })
       await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
