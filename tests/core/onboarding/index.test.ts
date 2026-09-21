@@ -25,7 +25,7 @@ interface ScriptedComponent {
   installCalls: number
 }
 
-const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'openclaw-integration', 'plugin-assets', 'agent-sync', 'llm', 'budget', 'channels', 'recommended-plugins', 'recommended-agents', 'capabilities'] as const
+const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'media', 'openclaw-integration', 'plugin-assets', 'agent-sync', 'llm', 'budget', 'channels', 'recommended-plugins', 'recommended-agents', 'capabilities'] as const
 
 let scripts: Record<(typeof COMPONENT_NAMES)[number], ScriptedComponent>
 
@@ -65,6 +65,7 @@ mock.module('../../../src/core/onboarding/runtime', () => ({
 }))
 mock.module('../../../src/core/onboarding/search', () => ({ searchComponent: makeMock('search') }))
 mock.module('../../../src/core/onboarding/search-models', () => ({ searchModelsComponent: makeMock('search-models') }))
+mock.module('../../../src/core/onboarding/media', () => ({ mediaComponent: makeMock('media') }))
 mock.module('../../../src/core/onboarding/openclaw-integration', () => ({ openClawIntegrationComponent: makeMock('openclaw-integration') }))
 mock.module('../../../src/core/onboarding/plugin-assets', () => ({ pluginAssetsComponent: makeMock('plugin-assets') }))
 mock.module('../../../src/core/onboarding/agent-sync', () => ({ agentSyncComponent: makeMock('agent-sync') }))
@@ -244,13 +245,14 @@ describe('runOnboard orchestrator', () => {
   // ---------------------------------------------------------------------------
 
   describe('COMPONENT_ORDER', () => {
-    it('contains exactly the 15 expected components in the spec order', () => {
+    it('contains exactly the expected components in the spec order', () => {
       expect(COMPONENT_ORDER.map((c) => c.name)).toEqual([
         'mkdir',
         'settings',
         'runtime',
         'search',
         'search-models',
+        'media',
         'openclaw-integration',
         'plugin-assets',
         'agent-sync',
@@ -291,6 +293,7 @@ describe('runOnboard orchestrator', () => {
         runtime: 'ok',
         search: 'ok',
         'search-models': 'ok',
+        media: 'ok',
         'openclaw-integration': 'ok',
         'plugin-assets': 'ok',
         'agent-sync': 'ok',

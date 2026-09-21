@@ -250,7 +250,7 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     if (url.pathname === '/api/runtime/onboarding/install' && req.method === 'POST') {
       handleJsonPost(req, res, async (body) => {
         const name = (body as { component?: string } | null)?.component
-        const FIXABLE = new Set(['mkdir', 'settings', 'search', 'search-models', 'plugin-assets', 'agent-sync'])
+        const FIXABLE = new Set(['mkdir', 'settings', 'search', 'search-models', 'media', 'plugin-assets', 'agent-sync'])
         if (!name || !FIXABLE.has(name)) {
           throw new Error(`component must be one of: ${[...FIXABLE].join(', ')}`)
         }
