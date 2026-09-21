@@ -19,7 +19,7 @@ Branch: `feat/889-media-zero-install` (main checkout — 3737 serves it)
 - [x] T8  Onboarding component media (order 16, version 4, allowlists, FIXABLE) (C8)
 - [x] T9  Doctor media.sharp + one-click repair (C9)
 - [x] T10 Remediation-aware error messages (C10)
-- [ ] CP-C full suite + lint + typecheck green
+- [x] CP-C full suite green (9605 pass; initial 4 buildSdkPackage fails were parallel-load flake — pass isolated AND on rerun) + lint + typecheck + check:cycles
 
 ## Phase 4 — Docs + ship
 - [x] T11 media-pipeline.md + stale-doc sweep + antfly-refit follow-up issue (C11)
