@@ -48,13 +48,41 @@ Agent/status/search filters, agent identity, campaign/brief/source context, soli
 status chips, soft shown count, and opening behavior remain. The existing hook's
 load error is surfaced with Retry instead of an empty list. Focused tests cover
 ordering, unknown dates, header/selector parity, search recovery, loading/empty
-and error/retry. The full Bits suite passes 580 tests (8 skipped), plus
+and error/retry. The full Bits suite passes 586 tests (8 skipped), plus
 typecheck, lint and build.
 The real-SDK index fixture and intercepted local-app checks pass at
 320/768/1024/1440px; fixture evidence is under Messaging's `test-results/bakin-ui`.
-Human visual approval and the combined rollout remain. Calendar, plan workspace,
-and brainstorm collections remain separate follow-ups; #759 still owns mobile
-filter/sort work.
+The user approved the table visually and requested workspace action parity:
+desktop/mobile rows now have a trailing ⋯ Delete menu. Index and workspace share
+the named confirmation, linked-task cleanup, ten-second timeout, busy guard and
+error/retry flow. Tests cover exact target/scope and stale-refresh invalidation;
+intercepted browser checks at all four widths verify cancellation/success focus,
+busy dismissal, failure/retry, row removal, count, overflow and console output.
+Focus after deletion explicitly discards the removed row's trigger before React
+detaches it, returning to the persistent Sort selector. No real plans were deleted.
+The combined rollout remains. Calendar, plan workspace layout and brainstorm
+collections remain separate follow-ups; #759 still owns mobile filter/sort work.
+The latest full conformance attempt passes quick checks, lint, stylesheet build,
+9,550 shared tests (16 skipped), vendors, plugins and host build, then stops at
+the cumulative plugin payload gate: Messaging 698,147 → 704,390 bytes and
+Projects 100,107 → 105,330 bytes. No ceilings were changed; explicit approval
+or payload reduction is required before this checkpoint is merge-ready. Later
+Storybook/visual/browser/docs stages were not reached in this attempt. The prior
+full sweep above is historical evidence, not a pass for this final delta.
+On 2026-09-21 the user explicitly approved those two measured payload increases
+(“approve yes”). Only the Messaging and Projects byte entries were updated;
+the shared 2,048-byte review threshold and all other ceilings remain unchanged.
+The increases cover the accumulated collection migrations and confirmed row
+actions. Removing those approved behaviors to stay under the old measurements
+was not chosen; no dependency or public SDK expansion is introduced here.
+The full gate now passes against these approved limits: quick contracts,
+typecheck/lint/builds, 9,550 shared tests (16 skipped), 335 Storybook tests,
+280 unchanged visual baselines, 93 cross-browser checks, plugin conformance
+teeth and docs publication (448 stories). Log:
+`/private/tmp/bakin-plan-menu-approved-full.log`. The final Bits suite passes
+586 tests (8 skipped); its isolated Projects timeout also passes in the clean
+rerun. Plans menu behavior is saved locally as Bits commit `6d7288f`. No push,
+release or real-data deletion was performed.
 Scope: [SPEC.md](SPEC.md). Evidence: [AUDIT.md](AUDIT.md).
 
 ## Delivery shape
