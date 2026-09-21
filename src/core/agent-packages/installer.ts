@@ -81,6 +81,8 @@ const log = createLogger('agent-pkg:install')
 export interface InstallOptions {
   /** Source spec — local path or `github:user/repo[@ref][#subpath]`. */
   source: string
+  /** Staged progress reporter (#895) — install jobs surface these lines live. */
+  onProgress?: import('./install-progress').InstallProgressFn
   /**
    * Force adoption of an existing runtime agent rather than creating a
    * fresh one. Only valid for kind:"agent" packages where the agent id
@@ -324,13 +326,16 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
 
   try {
     // ─── 1. Fetch top-level source (or adopt a pre-verified staging dir) ────
+    const progress = options.onProgress ?? (() => {})
     if (options.prefetched) {
       log.info('Installing pre-fetched (consent-verified) source', { source: options.source })
       topFetched = options.prefetched
     } else {
       log.info('Fetching package source', { source: options.source })
+      progress({ stage: 'fetch-source', message: `Fetching ${options.source}…` })
       topFetched = await fetchSourceAsync(options.source)
     }
+    progress({ stage: 'validate', message: 'Validating package manifest…' })
 
     // ─── 2. Parse + validate manifest ──────────────────────────────────────
     const manifestPath = join(topFetched.stagingDir, 'bakin-package.json')
@@ -408,6 +413,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     }
 
     // ─── 4. Resolve dependencies ───────────────────────────────────────────
+    progress({ stage: 'dependencies', message: 'Resolving package dependencies…' })
     const resolved = await resolveDependenciesAsync(manifest)
     for (const r of resolved) depFetched.push(r.fetched)
     for (const r of resolved) {
@@ -431,8 +437,9 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     }
 
     // ─── 6. Project dependencies first (leaves-first) ─────────────────────
-    for (const dep of resolved) {
+    for (const [depIndex, dep] of resolved.entries()) {
       log.info('Projecting dependency', { dep: dep.resolvedId, pulledBy: dep.pulledBy })
+      progress({ stage: 'project', message: `Installing dependency ${dep.resolvedId} (${depIndex + 1}/${resolved.length})…`, item: dep.resolvedId, current: depIndex + 1, total: resolved.length })
       const result = await projectPackage({
         manifest: dep.manifest,
         stagingDir: dep.fetched.stagingDir,
@@ -459,11 +466,13 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
           installedAt: new Date().toISOString(),
         },
         result,
+        progress,
       })
     }
 
     // ─── 7. Project the parent package ─────────────────────────────────────
     log.info('Projecting parent package', { id: resolvedTopId, kind: manifest.kind, mode })
+    progress({ stage: 'project', message: `Installing ${resolvedTopId}…`, item: resolvedTopId })
     const parentResult = await projectPackage({
       manifest,
       stagingDir: topFetched.stagingDir,
@@ -490,10 +499,12 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
         installedAt: new Date().toISOString(),
       },
       result: parentResult,
+      progress,
     })
 
     // ─── 8. Create runtime agent for kind:"agent" + fresh ────────────────
     if (manifest.kind === 'agent' && mode === 'fresh') {
+      progress({ stage: 'agent', message: `Creating runtime agent ${manifest.id}…` })
       const input = manifestToCreateAgent(manifest)
       await createRuntimeAgent(input)
       createdAgent = true
@@ -506,6 +517,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     }
 
     // ─── 9. Update lockfile ────────────────────────────────────────────────
+    progress({ stage: 'finalize', message: 'Recording install and verifying…' })
     let nextLock = lock
     const installedAt = new Date().toISOString()
 

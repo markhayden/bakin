@@ -55,6 +55,8 @@ export interface BinInstallOptions {
    * global fetch cannot drive real sockets.
    */
   fetchImpl?: typeof fetch
+  /** Byte progress for the download leg (#895). */
+  onProgress?: (receivedBytes: number, totalBytes: number | null) => void
 }
 
 export async function installBinRequirement(
@@ -106,7 +108,7 @@ export async function installBinRequirement(
       try {
         const tarPath = join(extractDir, 'archive.tar.gz')
         await downloadToFile(download.url, tarPath, {
-          sha256: pin, timeoutMs: DOWNLOAD_TIMEOUT_MS, fetchImpl: options.fetchImpl, label,
+          sha256: pin, timeoutMs: DOWNLOAD_TIMEOUT_MS, fetchImpl: options.fetchImpl, label, onProgress: options.onProgress,
         })
         const memberPath = await extractTarMember(tarPath, download.archive.member, extractDir, {
           timeoutMs: VERIFY_TIMEOUT_MS, label: `${label} archive`,
@@ -117,7 +119,7 @@ export async function installBinRequirement(
       }
     } else {
       await downloadToFile(download.url, tmp, {
-        sha256: pin, timeoutMs: DOWNLOAD_TIMEOUT_MS, fetchImpl: options.fetchImpl, label,
+        sha256: pin, timeoutMs: DOWNLOAD_TIMEOUT_MS, fetchImpl: options.fetchImpl, label, onProgress: options.onProgress,
       })
     }
 
@@ -164,10 +166,19 @@ export async function installManifestBins(
   manifest: Manifest,
   installedBy: Omit<InstalledByMarker, 'sha256'>,
   result: Pick<ProjectorResult, 'projections'>,
+  options: { progress?: import('./install-progress').InstallProgressFn } = {},
 ): Promise<void> {
   if (manifest.kind !== 'skill-pack' || !manifest.requires?.bins?.length) return
-  for (const bin of manifest.requires.bins) {
-    const installed = await installBinRequirement(bin, installedBy)
+  const progress = options.progress ?? (() => {})
+  const bins = manifest.requires.bins
+  for (const [index, bin] of bins.entries()) {
+    progress({ stage: 'bins', message: `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`, item: bin.name, current: index + 1, total: bins.length })
+    const installed = await installBinRequirement(bin, installedBy, {
+      onProgress: (receivedBytes, totalBytes) => progress({
+        stage: 'bins', message: `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`,
+        item: bin.name, current: index + 1, total: bins.length, receivedBytes, totalBytes,
+      }),
+    })
     result.projections.push({ kind: 'bin', target: installed.target, sha256: installed.sha256 })
   }
 }

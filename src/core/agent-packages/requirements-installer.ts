@@ -163,6 +163,8 @@ export interface ModelInstallResult {
 export interface ModelInstallOptions {
   /** Tests pass Bun.fetch — happy-dom's global fetch can't drive real sockets. */
   fetchImpl?: typeof fetch
+  /** Byte progress for the download leg (#895). */
+  onProgress?: (receivedBytes: number, totalBytes: number | null) => void
 }
 
 /**
@@ -206,6 +208,7 @@ export async function installModelRequirement(
     timeoutMs: MODEL_DOWNLOAD_TIMEOUT_MS,
     fetchImpl: options.fetchImpl,
     label: `Model "${req.name}"`,
+    onProgress: options.onProgress,
   })
   await commitFileAtomic(tmp, target, {
     verify: async () => {
@@ -222,6 +225,8 @@ export async function installModelRequirement(
 
 export interface ManifestRequirementsInput {
   manifest: Manifest
+  /** Staged progress reporter (#895) — bins/models/npm legs report live. */
+  progress?: import('./install-progress').InstallProgressFn
   /** Lockfile pack id WITHOUT version (payload dirs are keyed by it). */
   packId: string
   /** The pack source dir npm payload scripts are copied from (staging or installed source). */
@@ -254,12 +259,23 @@ export async function installManifestRequirements(input: ManifestRequirementsInp
   // Leg order matters for fail-fast: bins and models are atomic + idempotent
   // (tmp + rename; unchanged pins skip); the npm payload swap mutates live
   // state LAST, after every downloadable leg has already succeeded.
-  await installManifestBins(manifest, installedBy, result)
-  for (const req of manifest.requires?.models ?? []) {
-    const installed = await installModelRequirement(req, installedBy, input.modelOptions)
+  const progress = input.progress ?? (() => {})
+  await installManifestBins(manifest, installedBy, result, { progress })
+  const models = manifest.requires?.models ?? []
+  for (const [index, req] of models.entries()) {
+    progress({ stage: 'models', message: `Downloading model ${req.name} (${index + 1}/${models.length})…`, item: req.name, current: index + 1, total: models.length })
+    const installed = await installModelRequirement(req, installedBy, {
+      ...input.modelOptions,
+      onProgress: (receivedBytes, totalBytes) => progress({
+        stage: 'models', message: `Downloading model ${req.name} (${index + 1}/${models.length})…`,
+        item: req.name, current: index + 1, total: models.length, receivedBytes, totalBytes,
+      }),
+    })
     result.projections.push({ kind: 'model', target: installed.target, sha256: installed.sha256 })
   }
-  for (const req of manifest.requires?.npm ?? []) {
+  const npmReqs = manifest.requires?.npm ?? []
+  for (const [index, req] of npmReqs.entries()) {
+    progress({ stage: 'npm', message: `Installing npm payload ${req.name} (${index + 1}/${npmReqs.length}) — resolving bun runtime…`, item: req.name, current: index + 1, total: npmReqs.length })
     const installed = await installNpmRequirement(req, packId, sourceDir, installedBy)
     result.projections.push({ kind: 'npm-payload', target: installed.target })
   }

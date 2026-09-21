@@ -13,6 +13,7 @@
  * avoid collision with the runtime agent surface.
  */
 import { z } from 'zod'
+import { startInstallJob, type InstallProgressFn } from '@/core/agent-packages/install-progress'
 import { installPackage } from '@/core/agent-packages/installer'
 import { createLogger } from '@/core/logger'
 
@@ -26,7 +27,7 @@ const InstallBodySchema = z.object({
   installAs: z.string().regex(/^[a-z0-9][a-z0-9-_]{0,39}$/i, { message: 'installAs must be a package id (no slashes)' }).optional(),
 })
 
-export async function post(req: Request, _url: URL): Promise<Response> {
+export async function post(req: Request, url: URL): Promise<Response> {
   let raw: unknown
   try {
     raw = await req.json()
@@ -42,17 +43,39 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     )
   }
 
+  // Async job mode (#895): 202 + job handle; progress on the SSE bus; the
+  // final body waits at /api/install-jobs/:id. Blocking mode stays default.
+  if (url.searchParams.get('async') === '1') {
+    const job = startInstallJob({
+      kind: 'agent-package',
+      title: parsed.data.source,
+      run: async (progress) => {
+        const outcome = await runAgentPackageInstall(parsed.data, progress)
+        return { body: await outcome.json(), status: outcome.status }
+      },
+    })
+    return Response.json({ ok: true, jobId: job.id }, { status: 202 })
+  }
+
+  return runAgentPackageInstall(parsed.data, undefined)
+}
+
+async function runAgentPackageInstall(
+  data: { source: string; adopt?: unknown; replace?: boolean; installAs?: string },
+  onProgress: InstallProgressFn | undefined,
+): Promise<Response> {
   try {
     const result = await installPackage({
-      source: parsed.data.source,
-      adopt: !!parsed.data.adopt,
-      replace: parsed.data.replace,
-      installAs: parsed.data.installAs,
+      source: data.source,
+      adopt: !!data.adopt,
+      replace: data.replace,
+      installAs: data.installAs,
+      onProgress,
     })
     return Response.json({ ok: true, result })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    log.error('agents/install failed', err as Error, { source: parsed.data.source })
+    log.error('agents/install failed', err as Error, { source: data.source })
     // 409 for "already managed" / collisions; 500 otherwise. Cheap heuristic.
     const isConflict = /already managed|exists in runtime|collision/i.test(message)
     return Response.json({ ok: false, error: message }, { status: isConflict ? 409 : 500 })
