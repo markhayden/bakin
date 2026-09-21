@@ -11,17 +11,39 @@ mock.module('../../../plugins/workflows/components/workflow-agent-identity', () 
   ),
 }))
 
-import { WorkflowCard } from '../../../plugins/workflows/components/workflow-card'
+import { WorkflowTable } from '../../../plugins/workflows/components/workflow-table'
 
 afterEach(cleanup)
 
-describe('WorkflowCard', () => {
-  it('keeps scan signals on the card and reveals the complete sequence from a dedicated info control', async () => {
+describe('WorkflowTable', () => {
+  it('shows one soft count and no preview control when there are no steps', () => {
+    render(
+      <WorkflowTable
+        label="Workflows"
+        onOpen={() => {}}
+        templates={[{
+          filename: 'empty-flow',
+          name: 'Empty flow',
+          description: '',
+          stepCount: 0,
+          definition: { name: 'Empty flow', description: '', version: 1, steps: [] },
+        }]}
+      />,
+    )
+
+    const cell = screen.getByTestId('workflow-row-meta')
+    expect(within(cell).getAllByText('0 steps')).toHaveLength(1)
+    expect(within(cell).getByText('0 steps').getAttribute('data-variant')).toBe('soft')
+    expect(within(cell).queryByRole('button')).toBeNull()
+  })
+
+  it('keeps scan signals on the row and reveals the complete sequence from a dedicated info control', async () => {
     const user = userEvent.setup()
     render(
-      <WorkflowCard
-        onClick={() => {}}
-        template={{
+      <WorkflowTable
+        label="Workflows"
+        onOpen={() => {}}
+        templates={[{
           filename: 'approval-flow',
           name: 'Approval flow',
           description: 'Draft, review, and publish.',
@@ -43,7 +65,7 @@ describe('WorkflowCard', () => {
               { id: 'publish', type: 'output', label: 'Publish', agent: 'pixel' },
             ],
           },
-        }}
+        }]}
       />,
     )
 
@@ -55,6 +77,7 @@ describe('WorkflowCard', () => {
     expect(screen.queryByText(/Gate · Review/i)).toBeNull()
 
     expect(screen.getByText('4 steps')).toBeDefined()
+    expect(screen.getByText('4 steps').getAttribute('data-variant')).toBe('soft')
     const stepInfo = screen.getByRole('button', {
       name: 'Show 4 workflow steps',
     })
@@ -74,9 +97,10 @@ describe('WorkflowCard', () => {
   it('keeps opening the workflow separate from the step info trigger', () => {
     const onClick = mock(() => {})
     render(
-      <WorkflowCard
-        onClick={onClick}
-        template={{
+      <WorkflowTable
+        label="Workflows"
+        onOpen={onClick}
+        templates={[{
           filename: 'approval-flow',
           name: 'Approval flow',
           description: 'Draft, review, and publish.',
@@ -91,7 +115,7 @@ describe('WorkflowCard', () => {
               { id: 'review', type: 'gate', label: 'Review' },
             ],
           },
-        }}
+        }]}
       />,
     )
 
@@ -100,17 +124,21 @@ describe('WorkflowCard', () => {
     }))
     expect(onClick).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('button', {
+    fireEvent.click(screen.getByRole('row', {
       name: 'Open Approval flow',
     }))
     expect(onClick).toHaveBeenCalledTimes(1)
+    expect(onClick).toHaveBeenCalledWith('approval-flow')
+    fireEvent.keyDown(screen.getByRole('row', { name: 'Open Approval flow' }), { key: 'Enter' })
+    expect(onClick).toHaveBeenCalledTimes(2)
   })
 
-  it('shows managed workflow provenance as an icon before the step count', () => {
+  it('shows managed workflow provenance in Source, separate from the step count', () => {
     render(
-      <WorkflowCard
-        onClick={() => {}}
-        template={{
+      <WorkflowTable
+        label="Workflows"
+        onOpen={() => {}}
+        templates={[{
           filename: 'managed-flow',
           name: 'Managed flow',
           description: 'Managed by the workflows plugin.',
@@ -125,14 +153,16 @@ describe('WorkflowCard', () => {
               { id: 'draft', type: 'agent', label: 'Draft', agent: '$assigned' },
             ],
           },
-        }}
+        }]}
       />,
     )
 
-    const footer = screen.getByTestId('workflow-card-footer-meta')
-    const managedIcon = within(footer).getByLabelText(
+    const footer = screen.getByTestId('workflow-row-meta')
+    const managedIcon = screen.getByLabelText(
       'Managed by workflows plugin; read-only',
     )
+    expect(managedIcon.closest('td')).not.toBe(footer.closest('td'))
+    expect(within(managedIcon.closest('td')!).getByText('Managed').getAttribute('data-variant')).toBe('soft')
     const stepCount = within(footer).getByText('1 step')
     const stepInfo = within(footer).getByRole('button', {
       name: 'Show 1 workflow step',

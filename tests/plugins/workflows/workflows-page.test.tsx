@@ -5,13 +5,14 @@
  *
  * Verifies:
  *  1. Renders loading state initially.
- *  2. After fetch resolves, renders workflow cards.
+ *  2. After fetch resolves, renders workflow rows.
  *  3. Search input filters via the mocked useSearch hook.
  *  4. Falls back to local substring filter when useSearch.results is empty.
- *  5. Clicking a card triggers router.push.
+ *  5. Clicking a row triggers router.push.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -67,7 +68,7 @@ mock.module('@/core/task-store', () => ({
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
 const routerPush = mock()
-mock.module('@makinbakin/sdk/hooks', () => {
+mock.module('@makinbakin/sdk/navigation', () => {
   const React = require('react') as typeof import('react')
   return {
     useRouter: () => ({
@@ -213,6 +214,28 @@ afterEach(() => {
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 describe('WorkflowsPage', () => {
+  it('renders one comparison table with source classifications and sortable headings', async () => {
+    await act(async () => { render(<WorkflowsPage />) })
+    const filters = screen.getByRole('region', { name: 'Workflow filters' })
+    expect(filters.querySelectorAll('[data-slot="filter-indicator"]')).toHaveLength(1)
+    expect(screen.getAllByRole('table')).toHaveLength(1)
+    expect(screen.queryByRole('heading', { level: 2 })).toBeNull()
+    const table = screen.getByRole('table', { name: 'Workflows' })
+    expect(within(table).getAllByRole('columnheader').map(head => head.textContent)).toEqual([
+      'Workflow', 'Source', 'Steps', 'Features', 'Assignment',
+    ])
+    expect(table.querySelectorAll('tbody > tr')).toHaveLength(3)
+    expect(table.querySelector('[data-slot="card"]')).toBeNull()
+    for (const head of within(table).getAllByRole('columnheader')) {
+      expect(within(head).getByRole('button')).toBeDefined()
+    }
+    expect(within(table).getByText('Custom').getAttribute('data-variant')).toBe('soft')
+    expect(within(table).getAllByText('Managed')).toHaveLength(2)
+    expect(screen.getByText('disabled')).toBeDefined()
+    await act(async () => { fireEvent.click(screen.getByRole('row', { name: 'Open release' })) })
+    expect(routerPush).toHaveBeenCalledWith('/workflows/release')
+  })
+
   it('renders the loading state initially', async () => {
     // Pin fetch to a never-resolving promise so we stay in loading.
     vi.stubGlobal('fetch', mock(() => new Promise(() => {})))
@@ -220,37 +243,99 @@ describe('WorkflowsPage', () => {
     const { container } = render(<WorkflowsPage />)
 
     expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0)
+    expect(screen.getByRole('table', { name: 'Loading workflows' }).getAttribute('aria-busy')).toBe('true')
   })
 
-  it('renders workflow cards after fetch resolves', async () => {
+  it('paginates the whole collection and sorts before slicing, preserving show-all', async () => {
+    const templates = [TEMPLATES[1], ...Array.from({ length: 20 }, (_, i) => ({
+      ...TEMPLATES[0], filename: `managed-${i}`, name: `Managed ${i}`,
+    }))]
+    vi.stubGlobal('fetch', mock(async () => new Response(JSON.stringify({ templates }))))
+    await act(async () => { render(<WorkflowsPage />) })
+    const managed = () => screen.getByRole('table', { name: 'Workflows' })
+    expect(managed().querySelectorAll('tbody > tr')).toHaveLength(20)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Next' })) })
+    expect(managed().querySelectorAll('tbody > tr')).toHaveLength(1)
+    expect(within(managed()).getByText('Managed 19')).toBeDefined()
+    expect(screen.queryByRole('row', { name: 'Open onboarding' })).toBeNull()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Workflow' })) })
+    expect(managed().querySelectorAll('tbody > tr')).toHaveLength(20)
+    expect(within(managed()).getByRole('columnheader', { name: 'Workflow' }).getAttribute('aria-sort')).toBe('ascending')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Workflow' })) })
+    expect(managed().querySelector('tbody > tr')?.textContent).toContain('onboarding')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /show all/i })) })
+    expect(managed().querySelectorAll('tbody > tr')).toHaveLength(21)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Source' })) })
+    expect(managed().querySelectorAll('tbody > tr')).toHaveLength(21)
+  })
+
+  it('combines source with search and features, with one empty state and clear recovery', async () => {
+    const user = userEvent.setup()
+    await act(async () => { render(<WorkflowsPage />) })
+    await user.click(screen.getByRole('combobox', { name: 'Workflow source' }))
+    await user.click(await screen.findByRole('option', { name: 'Custom' }))
+    await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(2))
+    expect(screen.getByTestId('row-onboarding')).toBeDefined()
+    await user.click(screen.getByRole('button', { name: 'Features, 0 selected' }))
+    await user.click(await screen.findByRole('option', { name: /Approval gates/ }))
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.getByText('No workflows match this view')).toBeDefined())
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }))
+    await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(4))
+    expect(screen.getByRole('combobox', { name: 'Workflow source' }).textContent).toContain('All sources')
+    await user.click(screen.getByRole('combobox', { name: 'Workflow source' }))
+    await user.click(await screen.findByRole('option', { name: 'Managed' }))
+    await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(3))
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Workflow search' }), { target: { value: 'onboarding' } })
+    await waitFor(() => expect(screen.getByText('No workflows match this view')).toBeDefined())
+    expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it('keeps no-results recovery distinct from an initially empty collection', async () => {
+    await act(async () => { render(<WorkflowsPage />) })
+    await act(async () => {
+      fireEvent.change(screen.getByRole('searchbox', { name: 'Workflow search' }), { target: { value: 'no-match' } })
+    })
+    expect(screen.getByText('No workflows match this view')).toBeDefined()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Clear filters' })) })
+    expect(screen.getByRole('table', { name: 'Workflows' })).toBeDefined()
+  })
+
+  it('shows the create action instead of empty groups when no definitions exist', async () => {
+    vi.stubGlobal('fetch', mock(async () => new Response(JSON.stringify({ templates: [] }))))
+    await act(async () => { render(<WorkflowsPage />) })
+    expect(screen.getByText('No workflows yet')).toBeDefined()
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(screen.getAllByRole('button', { name: /New workflow/i })).toHaveLength(2)
+  })
+
+  it('renders workflow rows after fetch resolves', async () => {
     await act(async () => {
       render(<WorkflowsPage />)
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
+      expect(screen.getByTestId('row-content-pipeline')).toBeDefined()
     })
-    const customHeading = screen.getByText('Custom workflows')
-    const managedHeading = screen.getByText('Managed workflows')
-    expect(customHeading.compareDocumentPosition(managedHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(screen.getByTestId('card-onboarding')).toBeDefined()
-    expect(screen.getByTestId('card-release')).toBeDefined()
+    expect(screen.getAllByRole('table')).toHaveLength(1)
+    expect(screen.getByTestId('row-onboarding')).toBeDefined()
+    expect(screen.getByTestId('row-release')).toBeDefined()
   })
 
   it('filters workflows by reusable workflow features', async () => {
     render(<WorkflowsPage />)
 
     await waitFor(() => {
-      expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
+      expect(screen.getByTestId('row-content-pipeline')).toBeDefined()
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'Features, 0 selected' }))
     fireEvent.click(within(document.body).getByRole('option', { name: /Approval gates 1/i }))
 
     await waitFor(() => {
-      expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
-      expect(screen.queryByTestId('card-onboarding')).toBeNull()
-      expect(screen.queryByTestId('card-release')).toBeNull()
+      expect(screen.getByTestId('row-content-pipeline')).toBeDefined()
+      expect(screen.queryByTestId('row-onboarding')).toBeNull()
+      expect(screen.queryByTestId('row-release')).toBeNull()
     })
   })
 
@@ -260,7 +345,7 @@ describe('WorkflowsPage', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
+      expect(screen.getByTestId('row-content-pipeline')).toBeDefined()
     })
 
     // Seed useSearch to only match "content-pipeline".
@@ -282,11 +367,11 @@ describe('WorkflowsPage', () => {
       expect(searchState.search).toHaveBeenCalledWith('pipeline')
     })
 
-    // Only the matched card remains.
+    // Only the matched row remains.
     await waitFor(() => {
-      expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
-      expect(screen.queryByTestId('card-onboarding')).toBeNull()
-      expect(screen.queryByTestId('card-release')).toBeNull()
+      expect(screen.getByTestId('row-content-pipeline')).toBeDefined()
+      expect(screen.queryByTestId('row-onboarding')).toBeNull()
+      expect(screen.queryByTestId('row-release')).toBeNull()
     })
   })
 
@@ -296,7 +381,7 @@ describe('WorkflowsPage', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
+      expect(screen.getByTestId('row-content-pipeline')).toBeDefined()
     })
 
     searchState.results = [
@@ -312,9 +397,9 @@ describe('WorkflowsPage', () => {
     await act(async () => { fireEvent.change(input, { target: { value: 'onboard' } }) })
 
     await waitFor(() => {
-      expect(screen.getByTestId('card-onboarding')).toBeDefined()
-      expect(screen.queryByTestId('card-content-pipeline')).toBeNull()
-      expect(screen.queryByTestId('card-release')).toBeNull()
+      expect(screen.getByTestId('row-onboarding')).toBeDefined()
+      expect(screen.queryByTestId('row-content-pipeline')).toBeNull()
+      expect(screen.queryByTestId('row-release')).toBeNull()
     })
   })
 
@@ -324,7 +409,7 @@ describe('WorkflowsPage', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
+      expect(screen.getByTestId('row-content-pipeline')).toBeDefined()
     })
 
     // useSearch returns no results — the page must use the local substring filter.
@@ -334,9 +419,9 @@ describe('WorkflowsPage', () => {
     await act(async () => { fireEvent.change(input, { target: { value: 'onboard' } }) })
 
     await waitFor(() => {
-      expect(screen.queryByTestId('card-content-pipeline')).toBeNull()
-      expect(screen.getByTestId('card-onboarding')).toBeDefined()
-      expect(screen.queryByTestId('card-release')).toBeNull()
+      expect(screen.queryByTestId('row-content-pipeline')).toBeNull()
+      expect(screen.getByTestId('row-onboarding')).toBeDefined()
+      expect(screen.queryByTestId('row-release')).toBeNull()
     })
   })
 
@@ -346,7 +431,7 @@ describe('WorkflowsPage', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
+      expect(screen.getByTestId('row-content-pipeline')).toBeDefined()
     })
 
     searchState.results = [
@@ -363,21 +448,21 @@ describe('WorkflowsPage', () => {
     await act(async () => { fireEvent.change(input, { target: { value: 'onboard' } }) })
 
     await waitFor(() => {
-      expect(screen.getByTestId('card-onboarding')).toBeDefined()
-      expect(screen.queryByTestId('card-content-pipeline')).toBeNull()
+      expect(screen.getByTestId('row-onboarding')).toBeDefined()
+      expect(screen.queryByTestId('row-content-pipeline')).toBeNull()
     })
   })
 
-  it('navigates via router.push when a card is clicked', async () => {
+  it('navigates via router.push when a row is clicked', async () => {
     await act(async () => {
       render(<WorkflowsPage />)
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('card-onboarding')).toBeDefined()
+      expect(screen.getByTestId('row-onboarding')).toBeDefined()
     })
 
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Open onboarding/i })) })
+    await act(async () => { fireEvent.click(screen.getByRole('row', { name: /Open onboarding/i })) })
 
     expect(routerPush).toHaveBeenCalledWith('/workflows/onboarding')
   })
@@ -406,7 +491,7 @@ describe('WorkflowsPage', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('card-onboarding')).toBeDefined()
+      expect(screen.getByTestId('row-onboarding')).toBeDefined()
     })
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /new workflow/i })) })
@@ -458,7 +543,7 @@ describe('WorkflowsPage', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('card-onboarding')).toBeDefined()
+      expect(screen.getByTestId('row-onboarding')).toBeDefined()
     })
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /new workflow/i })) })
@@ -504,7 +589,7 @@ describe('WorkflowsPage', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('card-onboarding')).toBeDefined()
+      expect(screen.getByTestId('row-onboarding')).toBeDefined()
     })
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /new workflow/i })) })

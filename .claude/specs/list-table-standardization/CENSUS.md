@@ -76,7 +76,7 @@ finding; aliases are not counted as separate collection implementations.
 | `plugin-slot:team:page:/team/[id]` | Rows + specialized | Member/lesson lists use standard rows; retain diagnostics timeline and active-context transcript semantics. |
 | `plugin-slot:team:page:/team/teams/[teamId]` | Rows + specialized | Member/lesson lists use standard rows; retain diagnostics timeline and active-context transcript semantics. |
 | `plugin-slot:workflows:nav-badge-providers` | No collection | Badge provider; counts/attention, not a result-list presentation. |
-| `plugin-slot:workflows:page:/workflows` | Rows candidate | Top-level workflow cards → separated rows, preserving summaries/assignments. |
+| `plugin-slot:workflows:page:/workflows` | Unified table — PR #885 | User approved one DataTable with Source classification/filter, five sortable headings, unified 20-row pagination and search. Preserves summaries/assignments; full local conformance passed. Awaiting CI/review/merge. |
 | `plugin-slot:workflows:page:/workflows/[id]` | Specialized | Workflow graph/editor and node palette; do not flatten into generic result rows. |
 | `plugin-slot:workflows:page:/workflows/[id]/edit` | Specialized | Workflow graph/editor and node palette; do not flatten into generic result rows. |
 | `plugin-slot:workflows:page:/workflows/new` | Specialized | Workflow graph/editor and node palette; do not flatten into generic result rows. |

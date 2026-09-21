@@ -2,7 +2,16 @@
 
 Status: kit foundation reviewed and verified, including six new recipe baselines
 and two separately approved caption-baseline updates. Workflows is the first planned consumer proof after the
-kit checkpoint, not part of this foundation slice.
+kit checkpoint, not part of this foundation slice. The foundation landed in #879;
+the Workflows proof is now implemented on `refactor/workflow-list-806` for local
+review in Imitation Crab. After reviewing rows and grouped tables, the user
+approved one sortable DataTable with a Source column/filter, unified search,
+and 20-row pagination. The shared search focus-ring repair was explicitly
+approved and the plugin fixture now passes. The user approved the real-app
+presentation and the four subsequent kit baseline updates. Full conformance
+passed on 2026-09-20; the implementation is submitted in Bakin #885, with
+host-dependent filter consumers in Bits #106. CI and human review remain before
+merge. Projects is the next proposed bounded collection migration after shipment.
 Scope: [SPEC.md](SPEC.md). Evidence: [AUDIT.md](AUDIT.md).
 
 ## Delivery shape
@@ -116,9 +125,10 @@ in the spec. Do not couple unrelated table slot naming (#810) to this work.
 
 - Candidate: Workflows' top-level collection, subject to checkpoint A/B.
   Keep Assets and Branding galleries intact; do not migrate all core pages yet.
-- Acceptance: use approved standard-row composition; preserve search, grouping,
-  pagination, assignments, step/feature information, URL state and opening
-  behavior. Update the relevant mock/fixture to show realistic long content.
+- Acceptance: use the user-approved unified DataTable with Source classification
+  and filtering instead of separate groups; preserve search, pagination,
+  assignments, step/feature information, URL state and opening behavior. Update
+  the relevant mock/fixture to show realistic long content.
 - Verification: focused workflow tests, client-bearing plugin UI fixture,
   keyboard/touch/wide/narrow review, quick/full conformance as appropriate for
   a merge-ready migration. Record any reduced style debt without broadening it.

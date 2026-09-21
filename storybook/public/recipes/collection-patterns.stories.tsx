@@ -53,9 +53,14 @@ export const SameRecords = {
 
 export const RowBehaviors = {
   render: (args) => <CollectionRowBehaviors {...args} />,
-  play: async ({ canvas, args }) => {
+  play: async ({ canvas, canvasElement, args }) => {
+    delete canvasElement.dataset.storyReady
     const list = canvas.getByRole('list', { name: 'Planning projects' })
     const completed = canvas.getByRole('list', { name: 'Completed projects' })
+    const firstGroup = list.closest('[data-slot=list-row-group]')!
+    const nextGroup = completed.closest('[data-slot=list-row-group]')!
+    await expect(getComputedStyle(firstGroup).marginTop).toBe('0px')
+    await expect(getComputedStyle(nextGroup).marginTop).toBe(getComputedStyle(firstGroup).rowGap)
     for (const name of ['Planning projects', 'Completed projects']) {
       const heading = canvas.getByRole('heading', { level: 3, name })
       const groupList = canvas.getByRole('list', { name })
@@ -75,8 +80,12 @@ export const RowBehaviors = {
     if (args.showActions) {
       const trigger = within(list).getByRole('button', { name: 'More actions for Spring menu launch' })
       await userEvent.click(trigger)
+      const menu = await within(document.body).findByRole('menu', { name: 'More actions for Spring menu launch' })
+      // Pointer opening transfers focus asynchronously; Escape must target the menu.
+      await waitFor(() => expect(menu.contains(document.activeElement)).toBe(true))
       await expect(row).not.toHaveAttribute('data-selected')
       await userEvent.keyboard('{Escape}')
+      await waitFor(() => expect(menu).not.toBeInTheDocument())
       await waitFor(() => expect(trigger).toHaveFocus())
     }
     for (const action of within(row as HTMLElement).getAllByRole('button')) {
@@ -105,6 +114,7 @@ export const RowBehaviors = {
     await expect(details.querySelector('.lucide-chevron-down')).toBeVisible()
     await expect(canvas.getByRole('list', { name: 'Completed projects' })).toBeVisible()
     await expect(canvas.getByRole('button', { name: 'Refreshing…' })).toBeDisabled()
+    canvasElement.dataset.storyReady = 'true'
   },
 } satisfies Story
 

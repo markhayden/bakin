@@ -10,6 +10,16 @@ export const WORKFLOW_FEATURES = [
 
 export type WorkflowFeature = (typeof WORKFLOW_FEATURES)[number]['value']
 
+/** Counts shown in the compact Features cell (also used for sorting). */
+export function getWorkflowScanCounts(steps: WorkflowStep[]) {
+  return {
+    gateCount: steps.filter(step => step.type === 'gate').length,
+    nestedCount: steps.filter(step => step.type === 'workflow'
+      || step.type === 'map_workflow'
+      || (step.type === 'createTask' && Boolean(step.workflowId))).length,
+  }
+}
+
 export interface WorkflowAssignments {
   agentIds: string[]
   inheritsTaskAgent: boolean

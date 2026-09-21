@@ -200,6 +200,15 @@ containers, the whole toolbar stacks at the documented container breakpoint.
 Put broader facets, sorting, pagination,
 and clear-all actions in `PageControls` instead of crowding the header.
 
+Use `PageControls variant="filters"` for every page-level filter region, including
+a single facet. The kit owns one decorative leading filter indicator and keeps
+wrapping controls together beside it on narrow screens. Nested `AgentFilter`
+controls automatically omit their own icon, even through intermediate wrappers;
+standalone agent filters keep their existing `showIcon` behavior. Generic search
+or view-only sections and command toolbars use the default variant. For mixed
+view/filter bars, select `filters` only while filter controls are present. Do not
+add page-local filter icons. See **Components/Pages/Page — ControlModes**.
+
 Use `Badge tone="neutral" variant="soft"` for counts and descriptive metadata
 in `PageHeader meta`, such as results shown, available items, team members,
 and workflow steps. These labels support the title without competing with it.
@@ -269,6 +278,11 @@ left rail, spacing, and accessible list name. The rail defaults to neutral gray;
 when color communicates meaning. `headingLevel` defaults to `3`; match the owning
 page hierarchy and pass label content, not a nested heading element. Existing
 compact groups keep the default `headerVariant="plain"` and their appearance.
+Adjacent section groups add one item-spacing step before the next group, on top
+of the parent's gap. Compose them as siblings in `Stack gap="item"` for section
+separation; do not add per-page top margins. The first group and plain compact
+groups receive no extra margin. Use `headerTone="accent"` for the pink left rail
+without changing the neutral default or coloring the heading text.
 See **Components/Lists/ListRows — SectionGroups** for controls.
 
 Keep optional overflow actions in `ListRowActions`, `CardAction`, or a table
@@ -715,6 +729,10 @@ export function RepositoryField() {
 ```
 
 These are deliberately low-level controls. Preserve `required`, `readOnly`, `disabled`, and `aria-invalid` as real attributes, and associate descriptions and error messages through `aria-describedby`. Use `type`, `inputMode`, and `autoComplete` deliberately so browsers can supply the correct validation, autofill, and mobile keyboard behavior. InputGroup adornments provide context; they do not replace a visible label or recovery message.
+
+`InputGroupInput` and `InputGroupTextarea` share the group's visible keyboard-focus
+outline; addon buttons retain their own focus indicators. Keep that group boundary
+intact instead of adding a second ring to the editable control.
 
 A raw native input or textarea is an exception path, not a styling shortcut. Use one only when an unusual domain interface cannot retain its behavior through the SDK primitive. The exception must record that reason in review, use semantic Bakin tokens, remain under the plugin's scoped root, preserve the same accessible names and states, and include focused story or browser coverage. Routine forms and cosmetic variations do not qualify.
 

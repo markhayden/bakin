@@ -17,3 +17,25 @@ browserTest('focus checks include aria-disabled controls that remain in the tab 
     expect(await page.evaluate(() => document.activeElement?.textContent)).toBe('After')
   } finally { await browser.close() }
 }, 15000)
+
+browserTest('focus checks recognize only a changing visible ring on the canonical input group', async () => {
+  const { chromium } = await import('playwright')
+  const browser = await chromium.launch({ headless: true })
+  const page = await browser.newPage()
+  try {
+    for (const scenario of [
+      { name: 'group ring', css: '[data-slot=input-group]:has(input:focus-visible) { outline: 2px solid green; }', control: '<input data-slot="input-group-control" aria-label="Search">', passes: true },
+      { name: 'missing style', css: '[data-slot=input-group]:has(input:focus-visible) { outline-width: 2px; outline-color: green; }', control: '<input data-slot="input-group-control" aria-label="Search">', passes: false },
+      { name: 'static outline', css: '[data-slot=input-group] { outline: 2px solid green; }', control: '<input data-slot="input-group-control" aria-label="Search">', passes: false },
+      { name: 'transparent ring', css: '[data-slot=input-group]:has(input:focus-visible) { outline: 2px solid transparent; }', control: '<input data-slot="input-group-control" aria-label="Search">', passes: false },
+      { name: 'transparent modern color', css: '[data-slot=input-group]:has(input:focus-visible) { outline: 2px solid color(srgb 0 1 0 / 0); }', control: '<input data-slot="input-group-control" aria-label="Search">', passes: false },
+      { name: 'unrelated ancestor', css: 'section:focus-within { outline: 2px solid green; }', control: '<input data-slot="input-group-control" aria-label="Search">', passes: false },
+      { name: 'addon must own its ring', css: '[data-slot=input-group]:focus-within { outline: 2px solid green; }', control: '<button>Addon action</button>', passes: false },
+      { name: 'control ring still counts', css: 'input:focus-visible { outline: 2px solid green; }', control: '<input data-slot="input-group-control" aria-label="Search">', passes: true },
+    ]) {
+      await page.setContent(`<style>input, button, [data-slot=input-group] { outline: none; } ${scenario.css}</style><section><div data-slot="input-group">${scenario.control}</div></section>`)
+      const findings = await keyboardFocusFindings(page, 'desktop')
+      expect(findings.length, scenario.name).toBe(scenario.passes ? 0 : 1)
+    }
+  } finally { await browser.close() }
+}, 15000)

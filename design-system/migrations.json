@@ -20,11 +20,11 @@
     "private-import"
   ],
   "summary": {
-    "paths": 167,
+    "paths": 165,
     "totals": {
       "raw-palette": 4,
       "arbitrary-size": 81,
-      "raw-scale": 450,
+      "raw-scale": 446,
       "raw-control": 18,
       "inline-style": 33,
       "generic-token": 72,
@@ -2545,22 +2545,6 @@
       }
     },
     {
-      "path": "plugins/workflows/components/workflow-card.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "workflows"
-      },
-      "censusEntryId": "plugin-slot:workflows:page:/workflows",
-      "migrationTask": "T65-T66",
-      "archetype": "workflow-action",
-      "target": "workflow pages/canvas archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 3
-      }
-    },
-    {
       "path": "plugins/workflows/components/workflow-detail.tsx",
       "owner": {
         "repository": "bakin",
@@ -2578,22 +2562,6 @@
     },
     {
       "path": "plugins/workflows/components/workflow-details-drawer.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "workflows"
-      },
-      "censusEntryId": "plugin-slot:workflows:page:/workflows",
-      "migrationTask": "T65-T66",
-      "archetype": "workflow-action",
-      "target": "workflow pages/canvas archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 1
-      }
-    },
-    {
-      "path": "plugins/workflows/components/workflows-page.tsx",
       "owner": {
         "repository": "bakin",
         "area": "plugin",

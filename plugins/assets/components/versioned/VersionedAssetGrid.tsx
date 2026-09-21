@@ -46,7 +46,7 @@ import {
   type FileInputHandle,
 } from '@makinbakin/sdk/ui'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
-import { Upload, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Tags, ArrowLeft, Inbox, Sparkles } from 'lucide-react'
+import { Upload, LayoutGrid, List, Trash2, RotateCcw, X, FolderOpen, Pencil, Tags, ArrowLeft, Inbox, Sparkles } from 'lucide-react'
 import { ASSET_TYPES } from '../../lib/constants'
 import { createSseRefetchScheduler } from './sse-refetch'
 import { AssetEditDrawer } from './AssetEditDrawer'
@@ -519,7 +519,7 @@ export function VersionedAssetGrid() {
       />
 
 
-      <PageControls label="Asset views and filters" data-testid="asset-filters">
+      <PageControls variant={view !== 'trash' && view !== 'tags' ? 'filters' : 'default'} label="Asset views and filters" data-testid="asset-filters">
         <SegmentedControl
           ariaLabel="Asset view"
           options={viewOptions}
@@ -530,7 +530,6 @@ export function VersionedAssetGrid() {
         />
         {view !== 'trash' && view !== 'tags' ? (
           <>
-          <ListFilter className="size-bakin-3 shrink-0 text-bakin-text-muted" />
           <FacetFilter label="Type" options={TYPE_OPTIONS} selected={typeFilter} onChange={setTypeFilter} counts={typeCounts} />
           <FacetFilter label="Tags" options={tagOptions} selected={tagFilter} onChange={setTagFilter} counts={tagCounts} />
           </>

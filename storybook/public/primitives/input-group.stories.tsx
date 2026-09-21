@@ -51,10 +51,17 @@ export const CanonicalUsage = {
       <InputGroup aria-label="Repository address" {...args} />
     </div>
   ),
-  play: async ({ canvas }) => {
+  play: async ({ canvas, userEvent }) => {
     const input = canvas.getByRole('textbox', { name: 'Repository path' })
     await expect(input).toBeVisible()
     await expect(input).toHaveValue('makinbakin/reference-plugin')
+    const group = canvas.getByRole('group', { name: 'Repository address' })
+    await userEvent.tab()
+    await expect(input).toHaveFocus()
+    await expect(getComputedStyle(group).outlineStyle).toBe('solid')
+    await expect(parseFloat(getComputedStyle(group).outlineWidth)).toBeGreaterThan(0)
+    input.blur()
+    await expect(getComputedStyle(group).outlineStyle).toBe('none')
   },
 } satisfies Story
 
@@ -91,11 +98,20 @@ export const Adornments = {
       </StorySection>
     </StoryStage>
   ),
-  play: async ({ canvas }) => {
+  play: async ({ canvas, userEvent }) => {
     await expect(canvas.getByRole('textbox', { name: 'Repository path' })).toHaveValue('makinbakin/reference-plugin')
     const prompt = canvas.getByRole('textbox', { name: 'Execution prompt' })
     await expect(prompt).toHaveAttribute('aria-invalid', 'true')
     await expect(prompt).toHaveAccessibleDescription('Replace the unknown variable before saving.')
+    const path = canvas.getByRole('textbox', { name: 'Repository path' })
+    path.focus()
+    await userEvent.tab()
+    await expect(canvas.getByRole('button', { name: 'Copy' })).toHaveFocus()
+    await expect(getComputedStyle(canvas.getByRole('group', { name: 'Repository address' })).outlineStyle).toBe('none')
+    await userEvent.tab()
+    await expect(prompt).toHaveFocus()
+    await expect(getComputedStyle(canvas.getByRole('group', { name: 'Execution prompt editor' })).outlineStyle).toBe('solid')
+    prompt.blur()
   },
 } satisfies Story
 

@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useRouter } from '@makinbakin/sdk/hooks'
-import { Grid } from "@makinbakin/sdk/layout"
+import { useRouter, useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
+import { Stack } from "@makinbakin/sdk/layout"
 import {
   FacetFilter,
+  DataTable,
   Page,
   PageBody,
   PageControls,
@@ -14,12 +15,10 @@ import {
   SearchInput,
   SearchPartialChip,
 } from "@makinbakin/sdk/patterns"
-import { Badge, Button, Skeleton, SystemState } from "@makinbakin/sdk/ui"
+import { Badge, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, SystemState } from "@makinbakin/sdk/ui"
 import { Plus } from 'lucide-react'
-import { useQueryArrayState, useQueryState } from "@makinbakin/sdk/hooks"
-import { useSearch } from "@makinbakin/sdk/hooks"
-import { useDebug } from "@makinbakin/sdk/hooks"
-import { WorkflowCard } from './workflow-card'
+import { useSearch, useDebug, useAgentList, useAgentStore } from "@makinbakin/sdk/hooks"
+import { WorkflowTable } from './workflow-table'
 import { ManagedWorkflowCopyDialog } from './managed-workflow-copy-dialog'
 import {
   clearWorkflowDialogFieldError,
@@ -35,69 +34,15 @@ import {
   workflowMatchesFeatures,
 } from '../lib/workflow-presentation'
 import { Inline } from '@makinbakin/sdk/layout'
+import { getWorkflowSource, parseWorkflowSort, sortWorkflows, type WorkflowSortField } from '../lib/workflow-sort'
 
 interface ScoreInfo {
   score: number
   indexScores?: Record<string, number>
 }
 
-const MANAGED_PAGE_SIZE = 9
-
-/**
- * One titled section of the workflow grid. Module-scope on purpose: defined
- * inside the page it would get a fresh component identity every render and
- * remount its children on each keystroke.
- */
-function WorkflowSection({
-  title,
-  workflows,
-  empty,
-  total = workflows.length,
-  pagination,
-  scoreMap,
-  showDebugScores,
-  onOpen,
-}: {
-  title: string
-  workflows: WorkflowTemplate[]
-  empty: string
-  total?: number
-  pagination?: React.ReactNode
-  scoreMap: Map<string, ScoreInfo>
-  showDebugScores: boolean
-  onOpen: (filename: string) => void
-}) {
-  return (
-    <section className="flex min-w-0 flex-col gap-bakin-3">
-      <Inline gap="dense" wrap={false}>
-        <h2>
-          {title}
-        </h2>
-        <Badge size="xs" variant="outline">{total}</Badge>
-      </Inline>
-      {workflows.length === 0 ? (
-        <SystemState
-          kind="initial-empty"
-          scope="inline"
-          title={empty}
-          description="This section will update when a matching workflow is available."
-        />
-      ) : (
-        <Grid layout="thirds" gap="item">
-          {workflows.map((t) => (
-            <WorkflowCard
-              key={t.filename}
-              template={t}
-              onClick={() => onOpen(t.filename)}
-              scoreInfo={showDebugScores ? scoreMap.get(t.filename) : undefined}
-            />
-          ))}
-        </Grid>
-      )}
-      {pagination}
-    </section>
-  )
-}
+const PAGE_SIZE = 20
+const SOURCE_OPTIONS = { all: 'All sources', custom: 'Custom', managed: 'Managed' }
 
 function slugify(name: string): string {
   return name
@@ -115,7 +60,17 @@ export function WorkflowsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useQueryState('q', '')
   const [features, setFeatures] = useQueryArrayState('features')
-  const [managedPageParam, setManagedPageParam] = useQueryState('page', '1')
+  const [pageParam, setPageParam] = useQueryState('page', '1')
+  const [sourceParam, setSourceParam] = useQueryState('source', 'all')
+  const source = sourceParam === 'custom' || sourceParam === 'managed' ? sourceParam : 'all'
+  const [sortField, setSortField] = useQueryState('sort', '')
+  const [sortDir, setSortDir] = useQueryState('dir', 'asc')
+  const sort = useMemo(() => parseWorkflowSort(sortField, sortDir), [sortField, sortDir])
+  const agents = useAgentList()
+  const displaySettings = useAgentStore(state => state.displaySettings)
+  const agentNames = useMemo(() => new Map(agents.map(agent => [
+    agent.id, displaySettings[agent.id]?.displayName ?? agent.name,
+  ])), [agents, displaySettings])
   const [debug] = useDebug()
   const [createOpen, setCreateOpen] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -182,45 +137,50 @@ export function WorkflowsPage() {
     )
   }, [templates, normalizedSearch, scoreMap])
 
+  const sourceFiltered = useMemo(() => searchFiltered.filter(template => (
+    source === 'all' || getWorkflowSource(template) === source
+  )), [searchFiltered, source])
+
   const featureCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const feature of WORKFLOW_FEATURES) counts[feature.value] = 0
-    for (const template of searchFiltered) {
+    for (const template of sourceFiltered) {
       for (const feature of getWorkflowFeatures(template.definition.steps)) {
         counts[feature] += 1
       }
     }
     return counts
-  }, [searchFiltered])
+  }, [sourceFiltered])
 
   const filtered = useMemo(
-    () => searchFiltered.filter((template) => (
+    () => sourceFiltered.filter((template) => (
       workflowMatchesFeatures(template.definition.steps, features)
     )),
-    [features, searchFiltered],
+    [features, sourceFiltered],
   )
 
-  const isManagedWorkflow = (template: WorkflowTemplate) => template.source === 'plugin' || template.source === 'agent-package'
-  const managedWorkflows = filtered.filter(isManagedWorkflow)
-  const customWorkflows = filtered.filter(t => !isManagedWorkflow(t))
-  const showAllManaged = managedPageParam === 'all'
-  const managedPage = showAllManaged
-    ? 1
-    : Math.max(1, Number.parseInt(managedPageParam, 10) || 1)
-  const managedPageCount = Math.max(1, Math.ceil(managedWorkflows.length / MANAGED_PAGE_SIZE))
-  const safeManagedPage = Math.min(managedPage, managedPageCount)
-  const visibleManagedWorkflows = showAllManaged
-    ? managedWorkflows
-    : managedWorkflows.slice(
-      (safeManagedPage - 1) * MANAGED_PAGE_SIZE,
-      safeManagedPage * MANAGED_PAGE_SIZE,
-    )
+  const sorted = useMemo(() => sortWorkflows(filtered, sort, agentNames), [filtered, sort, agentNames])
+  const showAll = pageParam === 'all'
+  const page = showAll ? 1 : Math.max(1, Number.parseInt(pageParam, 10) || 1)
+  const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
+  const safePage = Math.min(page, pageCount)
+  const visibleWorkflows = showAll ? sorted : sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
   useEffect(() => {
-    if (!showAllManaged && managedPage !== safeManagedPage) {
-      setManagedPageParam(String(safeManagedPage))
+    if (!loading && !showAll && page !== safePage) {
+      setPageParam(String(safePage))
     }
-  }, [managedPage, safeManagedPage, setManagedPageParam, showAllManaged])
+  }, [loading, page, safePage, setPageParam, showAll])
+
+  function resetPage() {
+    if (!showAll) setPageParam('1')
+  }
+
+  function handleSort(field: WorkflowSortField) {
+    setSortField(field)
+    setSortDir(sort?.field === field && sort.dir === 'asc' ? 'desc' : 'asc')
+    resetPage()
+  }
 
   function openCreateWorkflowDialog() {
     setCreateError(null)
@@ -286,24 +246,33 @@ export function WorkflowsPage() {
   ) : undefined
 
   const resultState = loading ? (
-    <Grid layout="thirds" gap="item">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <Skeleton key={i} className="h-40 w-full" />
-      ))}
-    </Grid>
+    <DataTable
+      label="Loading workflows"
+      tableProps={{ className: 'min-w-3xl table-fixed', 'aria-busy': true }}
+      columns={['Workflow', 'Source', 'Steps', 'Features', 'Assignment'].map((header, index) => ({
+        key: header,
+        header,
+        headClassName: index === 0 ? 'w-5/12' : index < 3 ? 'w-1/8' : 'w-1/6',
+        cell: () => <Skeleton className="h-bakin-4 w-full" />,
+      }))}
+      rows={Array.from({ length: 6 }, (_, i) => i)}
+      rowKey={i => String(i)}
+    />
   ) : filtered.length === 0 ? (
-    normalizedSearch || features.length > 0 ? (
+    normalizedSearch || features.length > 0 || source !== 'all' ? (
       <SystemState
         kind="no-results"
         scope="page"
         title="No workflows match this view"
-        description="Clear the current search and feature filters to return to every workflow."
+        description="Clear the current search and filters to return to every workflow."
         action={(
           <Button
             variant="outline"
             onClick={() => {
               setSearch('')
               setFeatures([])
+              setSourceParam('all')
+              resetPage()
             }}
           >
             Clear filters
@@ -336,7 +305,7 @@ export function WorkflowsPage() {
             value={search}
             onValueChange={(value) => {
               setSearch(value)
-              setManagedPageParam('1')
+              resetPage()
             }}
             placeholder="Search workflows…"
             busy={searchHook.status === 'loading'}
@@ -347,7 +316,17 @@ export function WorkflowsPage() {
         actions={<Button onClick={openCreateWorkflowDialog}><Plus /> New workflow</Button>}
       />
 
-      <PageControls label="Workflow filters">
+      <PageControls variant="filters" label="Workflow filters">
+        <Select items={SOURCE_OPTIONS} value={source} onValueChange={value => {
+          if (value === null) return
+          setSourceParam(value)
+          resetPage()
+        }}>
+          <SelectTrigger aria-label="Workflow source"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {Object.entries(SOURCE_OPTIONS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <FacetFilter
           label="Features"
           options={WORKFLOW_FEATURES}
@@ -355,7 +334,7 @@ export function WorkflowsPage() {
           counts={featureCounts}
           onChange={(nextFeatures) => {
             setFeatures(nextFeatures)
-            setManagedPageParam('1')
+            resetPage()
           }}
         />
       </PageControls>
@@ -366,36 +345,25 @@ export function WorkflowsPage() {
         feedback={searchFeedback}
         state={resultState}
       >
-          <div className="flex min-w-0 flex-col gap-bakin-6">
-            <WorkflowSection
-              title="Custom workflows"
-              workflows={customWorkflows}
-              empty="No custom workflows yet."
-              scoreMap={scoreMap}
-              showDebugScores={Boolean(debug && normalizedSearch)}
+          <Stack gap="item">
+            <WorkflowTable
+              label="Workflows"
+              templates={visibleWorkflows}
+              sort={sort}
+              onSortChange={handleSort}
+              scoreMap={debug && normalizedSearch ? scoreMap : undefined}
               onOpen={(filename) => router.push(`/workflows/${filename}`)}
             />
-            <WorkflowSection
-              title="Managed workflows"
-              workflows={visibleManagedWorkflows}
-              total={managedWorkflows.length}
-              empty="No managed workflows match this view."
-              scoreMap={scoreMap}
-              showDebugScores={Boolean(debug && normalizedSearch)}
-              onOpen={(filename) => router.push(`/workflows/${filename}`)}
-              pagination={(
-                <Pagination
-                  ariaLabel="Managed workflows pagination"
-                  page={safeManagedPage}
-                  pageSize={MANAGED_PAGE_SIZE}
-                  showAll={showAllManaged}
-                  total={managedWorkflows.length}
-                  onPageChange={(page) => setManagedPageParam(String(page))}
-                  onShowAllChange={(showAll) => setManagedPageParam(showAll ? 'all' : '1')}
-                />
-              )}
+            <Pagination
+              ariaLabel="Workflows pagination"
+              page={safePage}
+              pageSize={PAGE_SIZE}
+              showAll={showAll}
+              total={sorted.length}
+              onPageChange={(nextPage) => setPageParam(String(nextPage))}
+              onShowAllChange={(nextShowAll) => setPageParam(nextShowAll ? 'all' : '1')}
             />
-          </div>
+          </Stack>
       </PageBody>
       </Page>
 

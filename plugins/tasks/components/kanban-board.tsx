@@ -670,7 +670,7 @@ export function KanbanBoard() {
             <TaskMetrics columns={columns} timestamp={timestamp} />
           </WorkspacePageMetrics>
 
-          <PageControls label="Task filters" divider className="px-bakin-4 @md/page-shell:px-bakin-6">
+          <PageControls variant="filters" label="Task filters" divider className="px-bakin-4 @md/page-shell:px-bakin-6">
             <TaskFilters
               agentFilter={agentFilter}
               onAgentChange={setAgentFilter}

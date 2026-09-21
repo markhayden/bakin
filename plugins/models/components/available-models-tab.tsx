@@ -343,6 +343,7 @@ export function AvailableModelsTab({
   return (
     <>
       <PageControls
+        variant="filters"
         label="Available model controls"
         actions={(
           <>

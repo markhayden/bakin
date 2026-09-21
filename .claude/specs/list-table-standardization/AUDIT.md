@@ -71,7 +71,7 @@ must not be treated as already approved merely because its path is in that ledge
 | Kit `packages/ui/src/patterns/list-rows.tsx` | Default bordered; `separated` has outer top/bottom borders plus internal dividers; row content/layout remains authored by consumers | Review one standard anatomy and density recipe; decide default/compatibility changes explicitly |
 | Kit `packages/ui/src/patterns/data-table.tsx` | Sorting controls are inside the wide header; narrow render provides no replacement control | Reusable interaction gap: propose a shared composition/contract before fixing each consumer independently |
 | Bits Projects `plugins/projects/components/{project-grid,project-card}.tsx` | Auto-fit cards; title, status, progress, item count, updated time; no media preview | Strong standard-row candidate using existing patterns; preserve progress and unread/streaming signals |
-| Workflows `plugins/workflows/components/{workflows-page,workflow-card}.tsx` | Thirds grid of workflow cards with text, assignments and step/feature summaries | Standard-row candidate; preserve assignment and meaningful workflow signals; exact information priority needs visual review |
+| Workflows `plugins/workflows/components/{workflows-page,workflow-table}.tsx` | User-approved unified DataTable after reviewing rows and grouped tables (originally a thirds card grid) | Source column/filter replaces sections; sorting and pagination apply to the complete results. Preserves text, assignments and step/feature summaries. Visual checkpoint pending. |
 | Assets `plugins/assets/components/versioned/{VersionedAssetGrid,TagFolderGrid}.tsx` | Auto-fill preview/folder cards; asset and trash tables also present | Keep preview cards as default browsing treatment; retain deliberate table view; don't convert every asset-related list to cards |
 | Assets `plugins/assets/components/task-assets.tsx` | Bordered attachment rows | Candidate for compact separated rows, despite belonging to Assets |
 | Branding `plugins/brands/components/{brands-page,brand-card}.tsx` | Split-grid cards with logo/monogram cover, palette strip, description and completeness | Strong candidate to keep cards: the visual identity preview earns its space; confirm in browser before the final ruling |
@@ -340,3 +340,272 @@ evidence, not current approval blockers. Remaining fleet audit work is still ope
   stories, and tests are byte-for-byte unchanged by the rebase. Fresh quick
   conformance and all 11 focused public story tests passed; the rebased full
   repository suite passed 9,497 tests with 15 existing skips and zero failures.
+
+## Workflows proof — local review, 2026-09-20
+
+- Branch: `refactor/workflow-list-806`, based on merged foundation #879.
+- Composition: `Recipes/Collection patterns — SameRecords / RowBehaviors`;
+  `ListRows variant="separated"`, neutral `ListRowGroup` section headings at
+  level 2, wrapping identity/description/facts, independent step-info control.
+  Step counts and section counts are soft metadata; disabled/stale-skill chips
+  remain solid states. Navigation uses the existing focused `/navigation` API.
+- Replaced the private WorkflowCard with WorkflowRow (no remaining runtime
+  consumers of the card). Search relevance, features, assignments, opening
+  disabled definitions, custom/managed grouping and pagination are preserved.
+  Canvas/detail/editor surfaces and mobile filter/sort redesign are untouched.
+- Added a long-content `editorial-launch.yaml` to Imitation Crab fixtures and
+  added that one definition to the already-running local mock using its API.
+  No full reseed, existing data replacement, production data writes, or workflow
+  dispatch. Local review: `http://localhost:3737/workflows`.
+- Live Playwright proof passed at 1440/768/320px: group counts, managed paging,
+  show-all and URL state, feature filters, no-results recovery, keyboard opening,
+  independent step tooltips, and no document overflow/page errors. Captures:
+  `/private/tmp/bakin-workflows-{1440,768,320}.png`; execution log:
+  `/private/tmp/bakin-workflows-local.log`. A separate 320px/200%-text check
+  confirmed the long title, description, and controls remain bounded; capture:
+  `/private/tmp/bakin-workflows-320-text200.png`.
+- 592 focused workflow tests passed. Quick conformance passed using the existing
+  pinned Bits checkout; lint passed with five existing warnings. Four raw-scale
+  allowances were retired from the two migrated components (no increased debt).
+  Rebuilt the canonical SDK stylesheet to remove the now-unused card spacing
+  utilities; no token definitions changed.
+- Full repository suite: 9,501 passed, 15 existing skips, zero failures
+  (`/private/tmp/bakin-workflows-all-tests-unsandboxed.log`). The initial
+  sandboxed run could not bind isolated fixture servers and found the stale
+  pre-rebuild stylesheet; the fresh permitted run after rebuilding passed.
+- New Workflows `bun run test:ui` fixture exercises the real collection page
+  with long content, a disabled managed definition, and a long team assignment.
+  Report: `plugins/workflows/test-results/bakin-ui/index.html`. The fixture
+  initially failed only its two desktop/mobile search keyboard-focus checks.
+  Diagnosis: the shared InputGroup sets focus outline width/color but retains
+  `outline-style: none`; the harness also inspects only the focused control,
+  not the group's intended ring. The user explicitly approved the focused kit
+  repair. InputGroup now sets a solid focus outline; the checker recognizes
+  only the canonical editable control's changing group outline, not arbitrary
+  ancestor decoration or an addon button's surrounding group. No suppression,
+  exception, public API/token change, or baseline update was added.
+  The new input/textarea Storybook assertions failed before the repair and now
+  pass (seven InputGroup/SearchInput stories). Checker regression cases cover
+  real group/control rings plus missing, static, transparent, unrelated, and
+  addon-only decoration (two browser tests pass). The Workflows fixture now
+  passes both viewports with no findings, and live Imitation Crab keyboard
+  checks confirm the ring appears and clears at 1440/320px. Focus captures:
+  `/private/tmp/bakin-workflow-focus-{1440,320}.png`.
+- Independent review of the focused kit/checker repair caught and resolved a
+  transparent CSS Color 4 outline bypass. Its new failing-first test now passes;
+  the reviewer reran the browser tests (two tests, ten assertions) and reported
+  no remaining findings. Public author guidance documents group-owned focus.
+- Post-fix full conformance has passed quick gates, lint, the repository suite
+  (9,501 pass, 16 skips, zero failures), vendor/plugin/host builds, browser payload
+  ratchet, and deterministic public Storybook build. The additional plain-suite
+  skip is the new browser-only regression, explicitly run and passing above.
+  Story, canonical visual/cross-browser, plugin teeth, and docs stages are still
+  in progress in `/private/tmp/bakin-workflows-full-conformance.log`.
+- Existing definition-fetch errors are still swallowed by the page and display
+  the initial-empty state; this predates the row migration and remains separate
+  state-handling debt, not evidence of error-state coverage in this proof.
+- User visual approval, code review, and full conformance remain required before
+  this migration is merge-ready. Full conformance is running after the kit fix.
+
+### User-requested table comparison trial
+
+After the rows proof, the user requested a local DataTable alternative before
+choosing the presentation. The current Workflows page now uses `WorkflowTable`:
+Workflow (name, description, status), Steps (soft count and preview), Features,
+and Assignment. Custom/Managed headings, URL filters, relevance order, managed
+pagination, provenance and disabled-definition inspection remain intact. Loading
+uses a matching table skeleton. Columns do not introduce slice-only sorting.
+
+- Pattern: `storybook/public/lists/data-table.stories.tsx` — `CanonicalUsage`
+  and `ActivatableRows`; `recipes/collection-patterns.stories.tsx` — `SameRecords`.
+- Contract: SDK `/patterns`, `/ui`, `/layout`, `/navigation`; no system extension,
+  new public props, exception, or baseline updates. This trial deliberately keeps
+  the table at narrow widths with an explicit minimum width and local scrolling.
+- First test failed for missing table semantics before implementation; final
+  focused run: 21 tests, 113 assertions, zero failures. Quick conformance and
+  focused lint pass. Workflows plugin browser fixture/report has no blockers or
+  conformance findings.
+- Live Imitation Crab checks pass at 1440, 1024, 768 and 320px: row keyboard open,
+  separate step preview, pagination/show-all, feature filters, search recovery,
+  and no document overflow or page errors. Captures:
+  `/private/tmp/bakin-workflows-table-{1440,1024,768,320}.png`.
+- Logs: `/private/tmp/bakin-workflows-table-{tests,quick,fixture,browser,lint}.log`.
+- The pre-existing full-conformance run began before this trial; it is not full
+  verification of the table change. Final presentation choice, review and full
+  verification remain pending. No commit or PR was made for the trial.
+
+### Section-header refinement and filter-treatment audit
+
+The user requested pink Workflows section rails and more separation owned by
+the kit. Workflows now opts into existing `headerTone="accent"`; the neutral
+default remains. Adjacent section-mode `ListRowGroup` siblings get one extra
+12px item-spacing step, producing a 24px gap inside `Stack gap="item"`. The first
+section and compact plain groups are unchanged. `SectionGroups` browser coverage
+failed before the spacing fix; all 11 ListRows/collection story tests and 27
+focused unit tests now pass, as do quick conformance and the Workflows fixture.
+Live 1440/320px checks confirm the margin, total gap and accent tone after rebuilding
+the vendor bundles. Captures: `/private/tmp/bakin-workflows-pink-sections-{1440,320}.png`.
+No baseline was updated; the earlier full run predates this shared-kit change.
+
+The user's follow-up filter consistency audit found the leading icon belongs to
+`AgentFilter`, not `PageControls`. Tasks/Schedule inherit it; Memory places it
+after Tier; Assets supplies a separate icon; Workflows/Models/Explore and Bits
+Projects omit it. Bits Messaging inherits it through AgentFilter. A shared
+filter-mode contract is proposed, not yet implemented; generic command/view
+controls must remain distinct and agent filters must not duplicate the icon.
+
+### Approved shared filter mode
+
+The user approved the shared-kit extension and core/Bits rollout. Public contract:
+`PageControls variant="filters"` owns one decorative indicator before its wrapping
+controls set. A private React context suppresses nested AgentFilter indicators
+(including through wrappers and nested PageControls); standalone `showIcon`
+behavior and default command/search/view bars remain unchanged. Assets and Explore
+select the filter variant only when actual facets are present.
+
+- Story: `storybook/public/pages/page.stories.tsx` — `ControlModes`; existing
+  `AgentFiltering` verifies standalone keyboard behavior. List/detail recipes and
+  public author guidance now use the filter mode. Public API inventory reviewed:
+  no new export or entrypoint; the additive prop is part of existing PageControlsProps.
+- Core: Workflows, Tasks, Schedule, Memory, Assets, Models and Explore.
+- Bits branch `refactor/shared-filter-controls`: Projects plus Messaging Plans,
+  Calendar and Brainstorm; matching ambient prop, test stub and author/release-order
+  guidance updated. Host support must ship first; no version bump/tag/release made.
+- Two new unit tests failed before implementation. Focused core run: 623 pass,
+  zero failures. Storybook Page/AgentSelect: 11 pass. Quick conformance and the
+  Workflows plugin browser fixture pass. Other changed core/Bits packages remain
+  explicitly migration-pending in fixture enrollment; this change does not claim
+  to graduate their entire UI surface.
+- All seven core filter bars and all four Bits filter bars pass live-browser checks
+  at 1440/320px: one icon, no duplicate agent icons, no document overflow/page errors.
+  Bits checks intercepted only their candidate client bundles inside the isolated
+  test browser against Imitation Crab; installed plugins/server data were untouched.
+- Bits: 561 tests pass, 8 existing browser skips, zero failures; typecheck, lint,
+  build and updated Projects regression pass. No dependency/lockfile changes.
+- Independent multi-model review: no actionable findings; reviewer independently
+  ran 19 PageControls tests and 6 Bits Projects tests successfully.
+- Evidence: `/private/tmp/bakin-filter-{core-tests,stories,quick,browser}.log`,
+  `/private/tmp/bakin-bits-filter-{tests,types,lint,build,browser}.log`, plus
+  `/private/tmp/bakin-filter-workflows-fixture.log`. Desktop/mobile region captures
+  are `/private/tmp/bakin-filter-*.png` and `/private/tmp/bakin-bits-filter-*.png`.
+- Fresh full conformance is running in `/private/tmp/bakin-filter-full-conformance.log`.
+  The earlier full suite passed but predates the table/section/filter refinements.
+  No baseline updates, commits or PRs were made; visual review remains required.
+
+### Unified Workflows table and sorting
+
+The user approved replacing Custom/Managed sections with one table: Workflow,
+Source, Steps, Features, Assignment. Source uses neutral soft xs classifications;
+managed provenance (plugin or agent package) has a separate keyboard-accessible
+lock tooltip in that cell. Custom overrides remain Custom. The shared section
+header improvements remain in the kit, but this page no longer needs headings.
+
+- Existing patterns: `lists/data-table.stories.tsx` — `SortedPagedDualRender`
+  (controlled sorting before pagination), `primitives/select.stories.tsx` —
+  `CanonicalUsage`, and `pages/page.stories.tsx` — `ControlModes`.
+- Focused SDK `/patterns`, `/ui`, `/layout`, `/navigation`, `/hooks`; no public
+  API changes, new system contract, deviations, or baseline updates.
+- One All sources/Custom/Managed selector combines with search and Features.
+  One paginator covers all results; one no-results state clears all filters.
+  `source`, `sort`, `dir`, and `page` are URL-backed. Unknown source/sort values
+  fall back safely; loading does not prematurely clamp a deep-linked page.
+- No explicit sort preserves the incoming/search relevance order. Header clicks
+  toggle direction and reset the page, preserving Show all. Names sort naturally,
+  steps numerically, features by visible approval count then nested count, and
+  assignments by displayed agent names/team IDs/Task agent. Empty feature and
+  assignment cells stay last in either direction; ties retain incoming order.
+- Failure-first regression coverage; all 600 Workflows tests pass (1839 assertions),
+  focused lint and quick conformance pass. The Workflows browser fixture reports
+  no package blockers or conformance findings.
+- Independent multi-model review found no actionable issues and independently
+  reran all 16 page tests (80 assertions) successfully.
+- Live Imitation Crab checks pass at 1440/768/320px: all sortable headings,
+  pagination and Show all, URL reload/back, combined source/features/search,
+  single empty-state recovery, provenance tooltip, row keyboard navigation,
+  bounded table scrolling, and no document overflow/page errors.
+  Captures: `/private/tmp/bakin-workflows-unified-{1440,768,320}.png`;
+  logs: `/private/tmp/bakin-workflows-unified-{all-tests,quick,fixture,browser,lint}.log`.
+- The earlier filter full run stopped on `Row Behaviors` menu focus-return
+  coverage (334 story tests passed, one failed). The unchanged collection story
+  passes on focused rerun (all 3 tests); the intermittent full-run failure remains
+  a merge-checkpoint concern, not a passing full-suite claim. No full run yet
+  covers this latest unified-table change. Changes remain uncommitted for review.
+
+### Approved baseline refresh and 20-row Workflows default
+
+The user explicitly approved updating the screenshots after the review identified
+the section-spacing and filter-bar differences. Regenerated only
+`collection-row-behaviors.png` and `foundation-list-page.png` in both
+`chromium-desktop` and `chromium-mobile`, using the pinned Linux/x64 Playwright
+1.60.0 Noble container. Inspected the desktop/mobile differences; no unrelated
+baselines or tolerances changed. All four selected visual tests pass again with
+snapshot updates disabled. Logs: `/private/tmp/bakin-approved-baselines-{update,verify}.log`.
+
+The user also requested 20 Workflows rows per page. Changed the page-owned size
+from 9 to 20; the shared Pagination default and other pages are untouched.
+The regression first failed at 9 vs 20, then passed with a 21-record collection,
+sorting before pagination, page reset and Show all. All 26 focused table/page/sort
+tests pass, as do quick conformance and the Workflows browser fixture.
+Live desktop/mobile verification shows all 16 mock definitions together; an
+isolated browser-only 21-record response verifies 20+1 paging, reload, sort reset,
+and Show all without modifying mock-server data. Evidence:
+`/private/tmp/bakin-workflows-page20-{red,tests,quick,fixture,browser}.log` and
+`/private/tmp/bakin-workflows-page20-{1440,320}.png`.
+
+The broad visual comparison started before the refresh finished with 275 passes
+and five failures (`/private/tmp/bakin-review-visual.log`). Four were the approved
+targets, all compared before regeneration began and subsequently passing the
+separate focused verification. The fifth is a 49-pixel difference in the
+unrelated mobile `lists-calendar-grid.png` baseline; it is untouched and needs
+triage before the merge checkpoint. This is not a new full-conformance pass or a
+merge-ready claim. The user requested local commits after approving the result.
+
+### Final verification and PR checkpoint — 2026-09-20
+
+- The unrelated mobile calendar discrepancy did not reproduce in three isolated
+  canonical repeats or the subsequent full visual run. Its baseline and the
+  screenshot tolerance remain unchanged. The earlier row-menu focus-return
+  failure also passed in the fresh full story run.
+- The payload gate initially measured Workflows at 615,320 bytes against the
+  613,240-byte baseline plus its existing 2,048-byte allowance. Consolidating
+  duplicated step-badge markup reduced it to 615,249 bytes (71 bytes smaller),
+  with no budget increase or UI behavior change. An empty-step characterization
+  test passes before and after; the final 27 page/table/sort tests pass, and
+  independent review found no actionable issues.
+- `bun run ui:conformance --full` passed with the compatibility-pinned Bits
+  source archive: quick governance/architecture/typecheck, lint, 9,512 repository
+  tests (16 skips), production builds, payload ratchet, deterministic Storybook,
+  335 story interaction tests, 280 canonical desktop/mobile visual comparisons,
+  93 Chromium/Firefox/WebKit behavior checks, plugin conformance, and docs/catalog.
+  Log: `/private/tmp/bakin-workflows-final-conformance-3.log`.
+- The Workflows-specific `bun run test:ui` fixture also passed after the payload
+  cleanup; its HTML report has no package blockers or conformance findings.
+  Log: `/private/tmp/bakin-workflow-payload-fixture.log`.
+- Bits verification passed again: 561 tests, 8 existing browser-only skips,
+  typecheck, lint and build. Logs: `/private/tmp/bakin-bits-final-*.log`.
+- Bakin PR: https://github.com/markhayden/bakin/pull/885. Companion Bits PR:
+  https://github.com/markhayden/bakin-bits-official/pull/106, held in draft until
+  the host/SDK support is available. No version, tag, release or dependency bump.
+  Bakin's draft CI ran completeness despite skipping test shards, so its initial
+  missing-report failure is not a code-test failure; ready-for-review triggers
+  the normal CI run. No CI workflow changes are included.
+- Unrelated generated documentation churn from verification was discarded;
+  the pre-existing embedded-assets manifest edit remains untouched and excluded.
+  Projects remains a separate follow-up after shipment, not part of these PRs.
+
+### PR #885 visual-test synchronization follow-up
+
+CI run `35546549323` passed every lane except the desktop RowBehaviors visual
+test (279 of 280 visuals passed). The trace shows the menu still open after
+Escape and the story's focus-return assertion aborting before Pin. The visual
+test also resized the viewport and doubled text while the play was still in
+flight; network idle and a visible heading were not interaction readiness.
+
+The story now waits for menu focus before Escape, then menu removal and trigger
+focus. It publishes the existing `data-story-ready` convention only after the
+entire play succeeds; the visual test waits for that before resizing and captures
+console errors as well as page errors. No product UI, timeout, retry, screenshot
+tolerance or baseline changed. The readiness regression failed against the old
+story; all 18 canonical collection visual repeats (three runs, desktop/mobile,
+CI parallelism, retries disabled), three story interactions, quick conformance
+and focused lint passed. Evidence: `/private/tmp/bakin-885-{red,green,stories,quick,lint}.log`.

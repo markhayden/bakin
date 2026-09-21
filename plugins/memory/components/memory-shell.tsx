@@ -437,6 +437,7 @@ function MemoryShellInner() {
           <TierOverviewCards includeSystemLogs={debug} />
 
           <PageControls
+            variant="filters"
             label="Memory filters"
             actions={(
               <Field orientation="horizontal" name="systemLogs" className="h-bakin-8 px-bakin-2">
