@@ -169,12 +169,22 @@ mock.module('../../src/core/plugin-registry', () => ({
     register: mock(),
   }),
 }))
+// The workflow-timeout sweep reads instances through this hook; tests set
+// `hookInvokeImpl` to feed it instance lists (default: undefined = no-op).
+let hookInvokeImpl: (name: string, data?: unknown) => Promise<unknown> = async () => undefined
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: mock().mockReturnValue({
-    invoke: mock().mockResolvedValue(undefined),
+    invoke: (name: string, data?: unknown) => hookInvokeImpl(name, data),
     has: mock().mockReturnValue(false),
     register: mock(),
   }),
+}))
+
+// Budget gate probe (Fix: budget-held steps must not log TIMEOUT spam).
+let budgetGateDecision: { action: string } = { action: 'allow' }
+const budgetGateSpy = mock(async (..._args: unknown[]) => budgetGateDecision)
+mock.module('../../src/core/dispatch-turns', () => ({
+  budgetGate: (...args: unknown[]) => budgetGateSpy(...args),
 }))
 
 mock.module('../../src/lib/format', () => ({
@@ -201,6 +211,9 @@ describe('watchdog', () => {
     turnsSnapshot = []
     snapshotThrows = false
     forceReleaseSpy.mockReturnValue(true)
+    hookInvokeImpl = async () => undefined
+    budgetGateDecision = { action: 'allow' }
+    mockStoreAddTaskLog.mockImplementation(async (..._args: unknown[]) => undefined)
   })
 
   afterEach(() => {
@@ -561,6 +574,83 @@ describe('watchdog', () => {
       const second = recordCompletion('zombie-task', { runId: 'task:zombie-task:d2', agent: 'pixel', channel: 'mcp' })
       expect(second.recorded).toBe(false)
       if (!second.recorded) expect(second.existing.runId).toBe('task:zombie-task:d1')
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Workflow step timeout vs budget hold
+  // -------------------------------------------------------------------------
+
+  describe('workflow step timeout under budget hold', () => {
+    const STEP_STARTED = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() // 2h > 60min timeout
+
+    function wfInstance(over: Record<string, unknown> = {}) {
+      return {
+        taskId: 'wf-task-1',
+        workflowId: 'image-generation',
+        currentStepId: 'develop-prompt',
+        status: 'in_progress',
+        resolvedAgent: 'pixel',
+        stepStates: { 'develop-prompt': { status: 'in_progress', startedAt: STEP_STARTED } },
+        history: [] as Array<{ stepId: string; rejectionReason?: string }>,
+        ...over,
+      }
+    }
+
+    function armTimeoutSweep(instance: Record<string, unknown>) {
+      // Task must be on the board (any column) for the sweep to consider it.
+      setWatchdogColumns({ review: [{ id: 'wf-task-1', title: 'Taco image', agent: 'pixel', workflowId: 'image-generation', log: [] }] })
+      hookInvokeImpl = async (name: string) =>
+        name === 'workflows.instances.list' ? [instance] : undefined
+      // Mirror the real store: log writes land on the task so the dedupe
+      // read (getTask().log) sees them on the next tick.
+      mockStoreAddTaskLog.mockImplementation(async (...args: unknown[]) => {
+        const [id, author, message] = args as [string, string, string]
+        const t = lookupWatchdogTask(id)
+        if (t) (t.log ??= []).push({ message, timestamp: new Date().toISOString(), author } as never)
+        return undefined
+      })
+    }
+
+    it('a budget-held step logs ONE BUDGET HOLD note instead of TIMEOUT spam', async () => {
+      armTimeoutSweep(wfInstance())
+      budgetGateDecision = { action: 'defer' }
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(3500) // three ticks
+
+      const messages = mockStoreAddTaskLog.mock.calls.map((c) => String(c[2]))
+      expect(messages.filter((m) => m.startsWith('BUDGET HOLD:'))).toHaveLength(1)
+      expect(messages.some((m) => m.startsWith('TIMEOUT:'))).toBe(false)
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+    })
+
+    it('escalation to blocked is suppressed while the hold lasts', async () => {
+      armTimeoutSweep(wfInstance({
+        history: [
+          { stepId: 'develop-prompt', rejectionReason: 'TIMEOUT: 1' },
+          { stepId: 'develop-prompt', rejectionReason: 'TIMEOUT: 2' },
+          { stepId: 'develop-prompt', rejectionReason: 'TIMEOUT: 3' },
+        ],
+      }))
+      budgetGateDecision = { action: 'defer' }
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+    })
+
+    it('TIMEOUT logging resumes when the budget gate allows', async () => {
+      armTimeoutSweep(wfInstance())
+      budgetGateDecision = { action: 'allow' }
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      const messages = mockStoreAddTaskLog.mock.calls.map((c) => String(c[2]))
+      expect(messages.some((m) => m.startsWith('TIMEOUT:'))).toBe(true)
+      expect(messages.some((m) => m.startsWith('BUDGET HOLD:'))).toBe(false)
     })
   })
 

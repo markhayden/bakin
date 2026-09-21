@@ -22,6 +22,7 @@ import {
   moveTask,
   readTaskboard,
 } from './task-store'
+import { budgetGate } from './dispatch-turns'
 import { getLiveRun, loseRun, supersedeStaleRun } from './execution-ledger'
 import {
   abortTurnsByRunIds,
@@ -400,7 +401,7 @@ export function start(contentDir: string): void {
       // ─── Workflow step timeout detection ─────────────────────────────
       try {
         const wfSettings = settings.workflow
-        const activeInstances = await hooks().invoke<Array<{ taskId: string; currentStepId: string; workflowId: string; status: string; stepStates: Record<string, { status: string; startedAt?: string; output?: unknown }>; history: Array<{ stepId: string; rejectionReason?: string }> }>>('workflows.instances.list', { statusFilter: 'in_progress' }) ?? []
+        const activeInstances = await hooks().invoke<Array<{ taskId: string; currentStepId: string; workflowId: string; status: string; resolvedAgent?: string; stepStates: Record<string, { status: string; startedAt?: string; output?: unknown }>; history: Array<{ stepId: string; rejectionReason?: string }> }>>('workflows.instances.list', { statusFilter: 'in_progress' }) ?? []
 
         // Build set of task IDs on the board for orphan detection
         const boardTaskIds = new Set<string>()
@@ -420,6 +421,33 @@ export function start(contentDir: string): void {
 
           const minutesStuck = Math.round(stepAge / 60000)
           const taskId = instance.taskId
+
+          // Budget-held steps are WAITING, not stuck: the re-dispatch is
+          // deferred pre-claim by the spend ceiling, so TIMEOUT logging (or
+          // escalation to blocked) would blame the agent for a hold the
+          // operator configured — and spam the task log every cycle (81
+          // entries in one overnight incident). One honest note per hold;
+          // the timeout path resumes when the budget lifts. Probes the ONE
+          // budget engine dispatch itself gates on — never parallel math.
+          try {
+            const boardTask = getTask(taskId) as { agent?: string; log?: Array<{ author?: string; message?: string }> } | null
+            const agentId = boardTask?.agent ?? instance.resolvedAgent
+            if (agentId) {
+              const decision = await budgetGate(agentId, contentDir)
+              if (decision.action === 'defer') {
+                const lastWatchdogNote = [...(boardTask?.log ?? [])].reverse().find(entry => entry.author === 'watchdog')
+                if (!lastWatchdogNote?.message?.startsWith('BUDGET HOLD:')) {
+                  await addTaskLog(taskId, 'watchdog', `BUDGET HOLD: workflow step "${instance.currentStepId}" is waiting for a spend cap to lift (${minutesStuck} min so far) — dispatch is deferred by the budget gate; the agent is not stuck.`)
+                  appendAudit(contentDir, 'workflow.step_budget_hold', 'watchdog', { taskId, stepId: instance.currentStepId, minutesStuck })
+                  log.info('Workflow step under budget hold — timeout handling suppressed', { taskId, stepId: instance.currentStepId, minutesStuck })
+                }
+                continue
+              }
+            }
+          } catch (err) {
+            // Probe failure must never hide a REAL timeout — fall through.
+            log.warn('Budget-hold probe failed; continuing with timeout handling', { taskId, err: err instanceof Error ? err.message : String(err) })
+          }
 
           // Count how many times we've already timed-out this step
           const timeoutLogs = instance.history.filter(
