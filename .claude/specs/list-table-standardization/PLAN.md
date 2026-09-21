@@ -18,8 +18,27 @@ Projects is implemented locally on Bits `refactor/projects-list-806`, stacked on
 row-shaped loading, and the existing progress/search/navigation/brainstorm
 behavior. No demo-only pin/details actions were added. The real index fixture and
 Imitation Crab browser-only bundle preview pass at 1440px and 320px. See the
-Projects README for the composition and fixture scope. Human visual review and
-the combined host/SDK + Bits rollout remain; no release has been cut.
+Projects README for the composition and fixture scope. Human visual review is
+approved, including the follow-up three-dot delete menu. The menu uses the
+existing ConfirmDialog contract and existing DELETE endpoint, keeps linked board
+tasks/assets, and guards against stale background refreshes restoring a deleted
+row. Local Bits commits are `aa47b0b` (rows) and `b223571` (confirmed deletion).
+572 Bits tests pass (8 skipped), along with typecheck, lint, build, quick
+conformance, the real-SDK index fixture, and intercepted deletion browser checks
+at 320/768/1024/1440px. No real projects were deleted during verification.
+Final code review found no actionable issues; the focused suite passes 17 tests
+with 88 assertions. Non-blocking follow-up: commit browser automation for
+cancel/success focus restoration, currently verified by local intercepted checks
+rather than the lightweight unit/fixture harness.
+The full shared sweep has passed unit, Storybook and 280 visual checks; its
+remaining stages must finish before declaring the combined checkpoint merge-ready.
+The combined host/SDK + Bits rollout remains; no release has been cut.
+
+Next bounded candidate: Messaging's Plans index (`plan-list.tsx`), using
+separated rows and the kit's date-group headers, with a soft shown count.
+Preserve agent/status/search URL state, target-date grouping, review priority,
+agent identity and opening behavior. Calendar, plan workspace, and brainstorm
+collections remain separate follow-ups; #759 still owns mobile filter/sort work.
 Scope: [SPEC.md](SPEC.md). Evidence: [AUDIT.md](AUDIT.md).
 
 ## Delivery shape
