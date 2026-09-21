@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.31] - 2026-09-21
+
+A single-fix patch: the Pi runtime works on compiled-binary installs.
+
+### Fixed
+
+- **Pi runtime was dead on compiled binaries (#886, #887).** The pi SDK loads its per-provider OAuth modules (and the bedrock provider) through deliberately bundler-opaque dynamic imports, which cannot resolve inside a `bun build --compile` binary — so on a binary install, switching to the Pi runtime failed every turn instantly with `OAuth auth derivation failed for openai-codex: Cannot find module './openai-codex.js'`. The adapter now registers statically imported modules at startup, the same way the SDK's own standalone binary does. Source installs (`bun run dev`) were never affected. Regression coverage compiles real binaries both with and without the registration, so this class of only-breaks-in-the-binary failure is now caught before release.
+
 ## [0.0.1-rc.30] - 2026-09-20
 
 A routing-recovery patch: work-class model routing works again on OpenClaw 2026.9.5, with honest receipts and health findings whenever a gateway refuses per-turn overrides — plus the collection UI foundation for rows, cards, and comparison tables.
@@ -553,5 +561,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.29]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.29
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.30...HEAD
 [0.0.1-rc.30]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.30
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.31...HEAD
+[0.0.1-rc.31]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.31
