@@ -6,6 +6,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.34] - 2026-09-21
+
+The second install-reliability patch from the production field test: signed macOS binaries can finally load the media store, Bakin finds (or brings its own) Bun on toolchain-free boxes, and anything that installs shows live staged progress instead of a spinner.
+
+### Added
+
+- **Live install progress (#895, #902).** Package and agent-package installs now run as jobs: the dialog gets a job handle immediately and renders completed stages, the current stage, a byte-level progress bar ("470 MB of 940 MB"), and elapsed time — driven by `packages.install_*` events over the shared SSE bus with a status poll as the net (`GET /api/install-jobs/:id`). This also removes a hidden 120-second client timeout that could report failure while the server-side install kept running and later succeeded. Every download leg (capability binaries, model files) reports real bytes through the one shared downloader.
+- **Managed Bun runtime (#901).** Capability packs with npm payloads need a `bun` executable the compiled binary cannot provide. Bakin now finds Bun in the well-known install locations that daemon PATHs miss (`~/.bun/bin`, both Homebrew prefixes) — the actual cause of "bun not found" on a box that plainly had it — and when no Bun exists anywhere, installs its own sha256-pinned copy into `~/.bakin/bin` from Bun's official npm tarballs. No customer is ever told to install a dev toolchain.
+
+### Fixed
+
+- **Signed macOS binaries refused sharp's native module (#900).** The notarized binary's hardened runtime enables library validation, which blocks loading any library not signed with our Team ID — so rc.33's media store install downloaded, bundled, and then correctly refused to commit when the probe hit `different Team IDs` at dlopen. Releases are now signed with the standard library-validation entitlement (the same posture Electron and VS Code ship), and the installer translates this failure class into "upgrade to an entitled build" instead of sharp's npm advice. No test can catch regressions here — locally compiled binaries are unsigned — so the entitlements file and codesign flag are pinned as a pair by the signing-plan test.
+
+### Upgrade notes
+
+- macOS binary installs: after upgrading, the `media.sharp` health repair (or `bakin install media`) should now complete in about a minute with visible per-tarball progress in the server log — this is the release where image processing actually lands on signed builds.
+- Packs with npm payloads (e.g. Browser Tools) now install on boxes where Bun lives in `~/.bun/bin` or nowhere at all.
+
 ## [0.0.1-rc.33] - 2026-09-21
 
 An install-reliability patch, driven by a production incident: downloads can no longer hang forever, health reporting can no longer be fooled by a forged receipt, and delegated repair agents now carry explicit integrity rules.
@@ -604,5 +622,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.32]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.32
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.33...HEAD
 [0.0.1-rc.33]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.33
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.34...HEAD
+[0.0.1-rc.34]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.34
