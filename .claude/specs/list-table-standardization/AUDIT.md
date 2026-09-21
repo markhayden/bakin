@@ -559,3 +559,36 @@ separate focused verification. The fifth is a 49-pixel difference in the
 unrelated mobile `lists-calendar-grid.png` baseline; it is untouched and needs
 triage before the merge checkpoint. This is not a new full-conformance pass or a
 merge-ready claim. The user requested local commits after approving the result.
+
+### Final verification and PR checkpoint — 2026-09-20
+
+- The unrelated mobile calendar discrepancy did not reproduce in three isolated
+  canonical repeats or the subsequent full visual run. Its baseline and the
+  screenshot tolerance remain unchanged. The earlier row-menu focus-return
+  failure also passed in the fresh full story run.
+- The payload gate initially measured Workflows at 615,320 bytes against the
+  613,240-byte baseline plus its existing 2,048-byte allowance. Consolidating
+  duplicated step-badge markup reduced it to 615,249 bytes (71 bytes smaller),
+  with no budget increase or UI behavior change. An empty-step characterization
+  test passes before and after; the final 27 page/table/sort tests pass, and
+  independent review found no actionable issues.
+- `bun run ui:conformance --full` passed with the compatibility-pinned Bits
+  source archive: quick governance/architecture/typecheck, lint, 9,512 repository
+  tests (16 skips), production builds, payload ratchet, deterministic Storybook,
+  335 story interaction tests, 280 canonical desktop/mobile visual comparisons,
+  93 Chromium/Firefox/WebKit behavior checks, plugin conformance, and docs/catalog.
+  Log: `/private/tmp/bakin-workflows-final-conformance-3.log`.
+- The Workflows-specific `bun run test:ui` fixture also passed after the payload
+  cleanup; its HTML report has no package blockers or conformance findings.
+  Log: `/private/tmp/bakin-workflow-payload-fixture.log`.
+- Bits verification passed again: 561 tests, 8 existing browser-only skips,
+  typecheck, lint and build. Logs: `/private/tmp/bakin-bits-final-*.log`.
+- Bakin PR: https://github.com/markhayden/bakin/pull/885. Companion Bits PR:
+  https://github.com/markhayden/bakin-bits-official/pull/106, held in draft until
+  the host/SDK support is available. No version, tag, release or dependency bump.
+  Bakin's draft CI ran completeness despite skipping test shards, so its initial
+  missing-report failure is not a code-test failure; ready-for-review triggers
+  the normal CI run. No CI workflow changes are included.
+- Unrelated generated documentation churn from verification was discarded;
+  the pre-existing embedded-assets manifest edit remains untouched and excluded.
+  Projects remains a separate follow-up after shipment, not part of these PRs.
