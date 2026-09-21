@@ -53,6 +53,7 @@ import {
   type HealthCheckDef,
 } from '../../src/core/health-check-registry'
 import { checkContentDir } from './lib/system-checks/content-dir'
+import { checkMediaSharp, mediaStoreRepair } from './lib/system-checks/media'
 import { checkCapabilities } from './lib/system-checks/capabilities'
 import { checkGithubReadiness } from './lib/system-checks/github-readiness'
 import { checkService } from './lib/system-checks/service'
@@ -919,6 +920,14 @@ const healthPlugin: BakinPlugin = definePlugin({
       run: () => checkContentDir(),
     })
     ctx.registerHealthCheck({
+      id: 'media.sharp',
+      name: 'Image processing (sharp)',
+      description: 'Confirms sharp is usable — bundled on dev trees, via the media store on compiled binaries (#889).',
+      group: systemGroup,
+      maxAgeMs: 900_000,
+      run: () => checkMediaSharp(),
+    })
+    ctx.registerHealthCheck({
       id: 'capabilities',
       name: 'Capability-pack readiness',
       description: 'Checks that installed capability packs have their required content and tools.',
@@ -1105,6 +1114,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       run: () => checkPluginRegistry(),
     })
 
+    ctx.registerHealthRepairAction(mediaStoreRepair())
     ctx.registerHealthRepairAction(searchOutboxRepair())
     ctx.registerHealthRepairAction(searchConsistencyRepair())
     ctx.registerHealthRepairAction(searchSpinRepair())
