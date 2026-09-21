@@ -16,6 +16,9 @@
  *   - capped stdout/stderr capture — a log-spamming build can't balloon memory
  */
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { WhiskitBuildError, type WhiskitCommandResult } from './types'
 
 export const DEFAULT_BUILD_TIMEOUT_MS = 120_000
@@ -46,18 +49,35 @@ const ENV_ALLOWLIST = [
 ] as const
 
 /**
- * Locate the system `bun` executable. `BAKIN_BUN_PATH` overrides for odd
- * setups (CI containers, hermetic builds); otherwise PATH lookup.
+ * Install locations a launchd/systemd-spawned server's minimal PATH never
+ * includes (margo, 2026-09-21: bun lived at ~/.bun/bin while the daemon's
+ * PATH was /usr/bin:/bin — "bun not found" on a box that plainly had it).
  */
-export function findSystemBun(): string {
+export function wellKnownBunLocations(home = homedir()): string[] {
+  return [
+    join(home, '.bun', 'bin', 'bun'), // bun installer default
+    '/opt/homebrew/bin/bun', // Homebrew (Apple Silicon)
+    '/usr/local/bin/bun', // Homebrew (Intel) / manual installs
+    join(process.env.BAKIN_HOME?.trim() || join(home, '.bakin'), 'bin', 'bun'), // managed bun
+  ]
+}
+
+/**
+ * Locate the system `bun` executable. `BAKIN_BUN_PATH` overrides for odd
+ * setups (CI containers, hermetic builds); then PATH lookup; then the
+ * well-known install locations daemons' minimal PATH misses.
+ */
+export function findSystemBun(candidates: string[] = wellKnownBunLocations()): string {
   const override = process.env.BAKIN_BUN_PATH
   if (override && override.trim().length > 0) return override
   // Bun.which exists at runtime; the repo's bun-types snapshot predates it.
   const found = (Bun as unknown as { which: (bin: string) => string | null }).which('bun')
+    ?? candidates.find((candidate) => existsSync(candidate))
+    ?? null
   if (!found) {
     throw new WhiskitBuildError(
       'resolve-bun',
-      'System `bun` not found on PATH. Plugin builds require Bun (https://bun.sh) — install it or set BAKIN_BUN_PATH.',
+      'System `bun` not found on PATH or in known install locations (~/.bun/bin, /opt/homebrew/bin, /usr/local/bin). Plugin builds require Bun (https://bun.sh) — install it or set BAKIN_BUN_PATH.',
     )
   }
   return found
@@ -78,6 +98,11 @@ export interface RunSystemBunOptions {
   timeoutMs?: number
   /** Extra env vars layered over the allowlist (e.g. NODE_ENV). */
   extraEnv?: Record<string, string>
+  /**
+   * Explicit bun executable (e.g. the managed bun ensureBunAvailable
+   * installed) — skips PATH resolution so a box with no system bun works.
+   */
+  bunPath?: string
 }
 
 class CappedCollector {
@@ -110,7 +135,7 @@ class CappedCollector {
  * process cannot be spawned at all.
  */
 export function runSystemBun(args: string[], options: RunSystemBunOptions): Promise<WhiskitCommandResult> {
-  const bun = findSystemBun()
+  const bun = options.bunPath ?? findSystemBun()
   const timeoutMs = options.timeoutMs ?? DEFAULT_BUILD_TIMEOUT_MS
   const startedAt = Date.now()
 
