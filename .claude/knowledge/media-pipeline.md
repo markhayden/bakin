@@ -138,6 +138,21 @@ report honestly as unsupported (component warn + advisory incident).
 - `tests/core/net/download.test.ts` — the shared primitive.
 - `tests/core/onboarding/media.test.ts`, `tests/plugins/health/media-check.test.ts`.
 
+## Download resilience (margo incident, 2026-09-21)
+
+Production installs hung FOREVER on a wedged registry connection: Bun's
+fetch body stalled mid-transfer (ESTABLISHED socket, no bytes) on the 7.6MB
+libvips tarball while curl pulled the same file in 2s — and
+`Bun.write(dest, Response)` NEVER honors the fetch abort signal once body
+streaming starts (locally reproduced; `arrayBuffer()` DOES honor it).
+`downloadToFile` is therefore stall-proof by construction: manual chunk
+loop, per-read stall window (default 30s) + overall attempt deadline, one
+fresh-request retry on transient failures (never on checksum mismatch),
+partial cleanup per attempt, `onProgress` hook. The installer logs
+per-tarball start/done lines and sweeps dead installers' `.staging-*` dirs
+(pid-liveness check). Never reintroduce `Bun.write(dest, res)` for network
+bodies. Follow-ups: #895 (UI progress), #896 (cross-process single-flight).
+
 ## Sharp edges
 
 - `getBakinPaths()` mocks in tests SHOULD include the `media` key (same class

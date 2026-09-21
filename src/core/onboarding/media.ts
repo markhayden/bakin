@@ -11,6 +11,7 @@
 import { checkMediaStore, installMediaStore } from '../../../packages/core/src/media/installer'
 import { SHARP_PIN } from '../../../packages/core/src/media/pin'
 import { importBundledSharp } from '../../../packages/core/src/media/sharp-import'
+import { loadSharp } from '../../../packages/core/src/media/sharp-loader'
 import { askYesNo } from './prompts'
 import type { CheckResult, OnboardingComponent, OnboardingOptions } from './types'
 
@@ -31,6 +32,16 @@ async function check(): Promise<CheckResult> {
   }
   const store = checkMediaStore()
   if (store.status === 'ok') {
+    // Receipts are claims; prove the bundle loads (a fabricated/corrupt
+    // store otherwise bricks the idempotent install path — margo 2026-09-21).
+    if ((await loadSharp()) === null) {
+      return {
+        name: 'media',
+        status: 'broken',
+        message: `media store receipt present (sharp ${store.receipt.sharpVersion}) but the bundle does not load — reinstall required`,
+        remediation: REMEDIATION,
+      }
+    }
     return { name: 'media', status: 'ok', message: `media store installed (sharp ${store.receipt.sharpVersion}, ${store.receipt.platform})` }
   }
   if (store.status === 'unsupported') {
@@ -70,7 +81,7 @@ async function install(opts: OnboardingOptions): Promise<InstallOutcome> {
   }
 
   try {
-    const result = await installMediaStore()
+    const result = await installMediaStore({ force: current.status === 'broken' })
     return {
       name: 'media',
       status: 'installed',

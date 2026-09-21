@@ -200,6 +200,22 @@ describe('installMediaStore', () => {
     }
   })
 
+  it('sweeps DEAD staging dirs (killed installers) before staging anew', async () => {
+    // margo 2026-09-21: three orphaned .staging-* dirs from killed installs.
+    const deadStaging = join(testDir, 'media', 'sharp', '.staging-0.0.1-fixture-999999')
+    mkdirSync(deadStaging, { recursive: true })
+    writeFileSync(join(deadStaging, 'partial.tgz'), 'x')
+    // pid 1 is always alive (launchd/init) — a LIVE installer's staging survives.
+    const liveStaging = join(testDir, 'media', 'sharp', '.staging-0.0.1-fixture-1')
+    mkdirSync(liveStaging, { recursive: true })
+
+    await installMediaStore({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })
+
+    expect(existsSync(deadStaging)).toBe(false)
+    expect(existsSync(liveStaging)).toBe(true)
+    rmSync(liveStaging, { recursive: true, force: true })
+  })
+
   it('sweeps older version dirs after a successful commit', async () => {
     const oldDir = join(testDir, 'media', 'sharp', '0.0.0-old')
     mkdirSync(oldDir, { recursive: true })

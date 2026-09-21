@@ -60,4 +60,18 @@ describe('structured Health delegation', () => {
     expect(dispatchSingleTask).toHaveBeenCalledWith('task-doctor-repair', testDir, 3737, 'kick')
     expect(listDoctorRepairRequests(testDir)).toHaveLength(1)
   })
+
+  it('the repair brief carries integrity guardrails and each incident\'s sanctioned fix (margo forgery, 2026-09-21)', async () => {
+    await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    const call = (createTaskWithEffects.mock.calls.at(-1) as unknown as [{ description: string }])[0]
+    const brief = call.description
+
+    // Sanctioned fix surfaced per incident (this one is a one-click repair).
+    expect(brief).toContain('Sanctioned fix: one-click repair "Restart"')
+    // The non-negotiables that make fabrication out of bounds.
+    expect(brief).toContain('INTEGRITY RULES')
+    expect(brief).toContain('NEVER create, edit, or fabricate Bakin-internal state by hand')
+    expect(brief).toContain('A clearly reported failure is a SUCCESS outcome')
+    expect(brief).toContain('Never edit anything to make a check pass')
+  })
 })
