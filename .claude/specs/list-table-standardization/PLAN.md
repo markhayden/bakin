@@ -36,13 +36,20 @@ checks and docs publication. Messaging's later consumer-only delta has separate
 focused, full Bits and real-SDK fixture evidence below.
 The combined host/SDK + Bits rollout remains; no release has been cut.
 
-Messaging's Plans index (`plan-list.tsx`) is now implemented locally using
-separated rows and the kit's accent date-group headers, with a soft shown count
-and wrapping titles. Agent/status/search URL state, target-date grouping, review
-priority, agent identity and opening behavior are preserved. The existing hook's
-load error is now surfaced with Retry instead of being shown as an empty list.
-Focused tests cover ordering, search/group recovery, loading/empty and error/retry.
-The full Bits suite passes 576 tests (8 skipped), plus typecheck, lint and build.
+Messaging's Plans index was first implemented as grouped rows, then the user
+approved replacing it with one DataTable: Plan, Target date, Status, Agent,
+Channels. Default sort is target date ascending, with review-needed priority and
+newest updates within each date; unknown dates stay last. Headers and a persistent
+Sort selector share URL state so the kit's narrow separated-row render keeps
+sorting available without a second data pipeline. Dates remain visibly labelled
+on mobile. This composes the existing DataTable, Select and filter patterns;
+no shared API or mobile-filter redesign is introduced.
+Agent/status/search filters, agent identity, campaign/brief/source context, solid
+status chips, soft shown count, and opening behavior remain. The existing hook's
+load error is surfaced with Retry instead of an empty list. Focused tests cover
+ordering, unknown dates, header/selector parity, search recovery, loading/empty
+and error/retry. The full Bits suite passes 580 tests (8 skipped), plus
+typecheck, lint and build.
 The real-SDK index fixture and intercepted local-app checks pass at
 320/768/1024/1440px; fixture evidence is under Messaging's `test-results/bakin-ui`.
 Human visual approval and the combined rollout remain. Calendar, plan workspace,
