@@ -51,7 +51,7 @@
     "projects": {
       "repository": "bakin-bits-official",
       "role": "official-plugin",
-      "version": "0.10.4",
+      "version": "0.10.5",
       "bakinRange": ">=0.0.1-rc.1",
       "routes": {
         "total": 4,

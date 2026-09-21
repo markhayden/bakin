@@ -24,7 +24,7 @@
     "totals": {
       "raw-palette": 4,
       "arbitrary-size": 81,
-      "raw-scale": 446,
+      "raw-scale": 445,
       "raw-control": 18,
       "inline-style": 33,
       "generic-token": 72,
@@ -185,7 +185,7 @@
       }
     },
     {
-      "path": "bakin-bits-official/plugins/projects/components/project-grid.tsx",
+      "path": "bakin-bits-official/plugins/projects/components/project-list.tsx",
       "owner": {
         "repository": "bakin-bits-official",
         "area": "plugin",
@@ -197,8 +197,7 @@
       "target": "official Projects list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 1,
-        "raw-scale": 1
+        "arbitrary-size": 1
       }
     },
     {

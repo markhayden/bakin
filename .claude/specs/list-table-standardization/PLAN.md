@@ -9,9 +9,17 @@ approved one sortable DataTable with a Source column/filter, unified search,
 and 20-row pagination. The shared search focus-ring repair was explicitly
 approved and the plugin fixture now passes. The user approved the real-app
 presentation and the four subsequent kit baseline updates. Full conformance
-passed on 2026-09-20; the implementation is submitted in Bakin #885, with
-host-dependent filter consumers in Bits #106. CI and human review remain before
-merge. Projects is the next proposed bounded collection migration after shipment.
+passed on 2026-09-20; Bakin #885 is merged. Host-dependent filter consumers remain
+in draft Bits #106. The user approved continuing Projects locally before a
+combined release, rather than releasing the host/SDK immediately.
+
+Projects is implemented locally on Bits `refactor/projects-list-806`, stacked on
+#106: one separated `ListRows` collection, solid status chips, soft shown count,
+row-shaped loading, and the existing progress/search/navigation/brainstorm
+behavior. No demo-only pin/details actions were added. The real index fixture and
+Imitation Crab browser-only bundle preview pass at 1440px and 320px. See the
+Projects README for the composition and fixture scope. Human visual review and
+the combined host/SDK + Bits rollout remain; no release has been cut.
 Scope: [SPEC.md](SPEC.md). Evidence: [AUDIT.md](AUDIT.md).
 
 ## Delivery shape
