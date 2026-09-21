@@ -21,6 +21,8 @@ import { CopyButton } from '@bakin/ui/patterns/copy-button'
 
 const MARKER_PAIR = /<!--\s*bakin:([^\s]+?):start\s*-->([\s\S]*?)<!--\s*bakin:\1:end\s*-->/g
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v)(\?.*)?$/i
+// Raw or percent-encoded angle brackets: a template placeholder, not a URL.
+const PLACEHOLDER_URL = /%3C|%3E|[<>]/i
 
 type Segment =
   | { kind: 'normal'; text: string }
@@ -98,6 +100,18 @@ function FencedCode({ children }: { children?: ReactNode }) {
 function MediaImage({ src, alt }: { src?: string | Blob; alt?: string }) {
   const url = typeof src === 'string' ? src : ''
   if (!url) return null
+  // Agent-authored markdown often carries template placeholders like
+  // ![Taco](/api/assets/<assetId>). Angle brackets — raw or percent-encoded
+  // by the markdown URL transform — are never valid in a real URL, so the
+  // request is doomed (404 + console noise). Keep the reference legible as
+  // text instead of firing it.
+  if (PLACEHOLDER_URL.test(url)) {
+    let display = url
+    try {
+      display = decodeURIComponent(url)
+    } catch { /* undecodable — show the raw src */ }
+    return <code>{alt?.trim() || 'Image'} — {display}</code>
+  }
   if (VIDEO_EXT.test(url)) {
     return <video src={url} controls className="my-bakin-3 max-h-96 max-w-full rounded-bakin-surface border border-bakin-border-subtle" />
   }
