@@ -22,7 +22,7 @@ const log = createLogger('onboarding:state')
  * contract changes such that an existing marker no longer proves the
  * machine is ready.
  */
-export const ONBOARDING_VERSION = 3
+export const ONBOARDING_VERSION = 4
 
 export type ComponentStatus = 'ok' | 'warn' | 'skipped' | 'error'
 

@@ -233,7 +233,7 @@ There are 40 direct first-party plugin registration sites after the two approved
 - Schedule: 2
 - Assets, Brands, Git, Images, Models: 1 each
 
-Health's local IDs are `content-dir`, `capabilities`, `github-readiness`, `service`, `runtime`, `session-store`, `channel-approvals`, `channel-aliases`, `restart-recovery`, `execution-safety`, `context.startup-size`, `budget`, `usage.agent-burn`, `search`, `search-consistency`, `search-spin`, `search-canary`, `search-engine-burn`, `skill`, `plugin-assets`, `plugin-artifacts`, and `plugin-registry`.
+Health's local IDs are `content-dir`, `media.sharp` (#889 — image processing; one-click store install repair `media-install-store`), `capabilities`, `github-readiness`, `service`, `runtime`, `session-store`, `channel-approvals`, `channel-aliases`, `restart-recovery`, `execution-safety`, `context.startup-size`, `budget`, `usage.agent-burn`, `search`, `search-consistency`, `search-spin`, `search-canary`, `search-engine-burn`, `skill`, `plugin-assets`, `plugin-artifacts`, and `plugin-registry`.
 
 Health registers six local repair actions: journal revival, consistency rebuild, spin rebuild, canary restart, engine-burn restart, and runtime skill sync. Other plugin owners register their own actions beside their checks.
 

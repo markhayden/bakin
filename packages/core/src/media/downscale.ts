@@ -33,7 +33,8 @@ export async function prepareImageAttachment(path: string, mimeType: string): Pr
   const sharp = await loadSharp()
   if (!sharp) {
     throw new Error(
-      `attachment ${path}: ${size} bytes exceeds the ${INLINE_ATTACHMENT_LIMIT_BYTES}-byte inline limit and sharp is unavailable to downscale it — larger images silently degrade upstream (the model never sees the pixels).`,
+      `attachment ${path}: ${size} bytes exceeds the ${INLINE_ATTACHMENT_LIMIT_BYTES}-byte inline limit and sharp is unavailable to downscale it — larger images silently degrade upstream (the model never sees the pixels). `
+      + 'Fix: run `bakin install media` (or Health → "Install image processing") — retrying without it can never succeed.',
     )
   }
   const outDir = mkdtempSync(join(tmpdir(), 'bakin-downscale-'))

@@ -298,7 +298,12 @@ export async function addExport(assetId: string, input: AssetExportInput): Promi
     if (prior && prior.file !== file) removeFileQuietly(join(dirAbs, prior.file))
 
     const sharp = await loadSharp()
-    if (!sharp) throw new Error('Image export requires sharp, but the native sharp package is unavailable for this runtime')
+    if (!sharp) {
+      throw new Error(
+        'Image export requires sharp, but no image processing is available on this install — '
+        + 'run `bakin install media` (or Health → "Install image processing") and retry.',
+      )
+    }
     const resizeOpts = input.fit === 'inside'
       ? { fit: 'inside' as const, withoutEnlargement: true }
       : { fit: 'cover' as const }

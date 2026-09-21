@@ -122,13 +122,14 @@ export async function cmdOnboardingSettingsInit(options: { json?: boolean } = {}
 }
 
 async function cmdOnboardingCheckSingle(
-  target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-sync' | 'recommended-plugins' | 'recommended-agents' | 'capabilities',
+  target: 'runtime' | 'search' | 'search-models' | 'media' | 'llm' | 'channels' | 'plugin-assets' | 'agent-sync' | 'recommended-plugins' | 'recommended-agents' | 'capabilities',
   options: { verbose?: boolean } = {},
 ): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../../core/onboarding/types').CheckResult> }>> = {
     runtime: async () => (await import('../../core/onboarding/runtime')).runtimeComponent,
     search: async () => (await import('../../core/onboarding/search')).searchComponent,
     'search-models': async () => (await import('../../core/onboarding/search-models')).searchModelsComponent,
+    media: async () => (await import('../../core/onboarding/media')).mediaComponent,
     llm: async () => (await import('../../core/onboarding/credentials')).llmComponent,
     channels: async () => (await import('../../core/onboarding/credentials')).channelsComponent,
     'plugin-assets': async () => (await import('../../core/onboarding/plugin-assets')).pluginAssetsComponent,
@@ -175,6 +176,7 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
   const componentMap: Record<string, () => Promise<import('../../core/onboarding/types').OnboardingComponent>> = {
     search: async () => (await import('../../core/onboarding/search')).searchComponent,
     'search-models': async () => (await import('../../core/onboarding/search-models')).searchModelsComponent,
+    media: async () => (await import('../../core/onboarding/media')).mediaComponent,
     'plugin-assets': async () => (await import('../../core/onboarding/plugin-assets')).pluginAssetsComponent,
     'agent-sync': async () => (await import('../../core/onboarding/agent-sync')).agentSyncComponent,
     'recommended-plugins': async () => (await import('../../core/onboarding/recommended-plugins')).recommendedPluginsComponent,
@@ -359,18 +361,18 @@ export async function run(args: string[]): Promise<void> {
   } else if (cmd === 'mkdir') {
     await cmdOnboardingMkdir({ json: args.includes('--json') })
   } else if (cmd === 'check') {
-    if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents' || sub === 'capabilities') {
+    if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'media' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents' || sub === 'capabilities') {
       await cmdOnboardingCheckSingle(sub, { verbose: args.includes('--verbose') })
     } else if (sub === 'all') {
       await cmdOnboardingCheckAll({ verbose: args.includes('--verbose') })
     } else {
-      await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'llm', 'channels', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents', 'capabilities', 'all'])
+      await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'media', 'llm', 'channels', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents', 'capabilities', 'all'])
     }
   } else if (cmd === 'install') {
-    if (sub === 'search' || sub === 'search-models' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents' || sub === 'capabilities') {
+    if (sub === 'search' || sub === 'search-models' || sub === 'media' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents' || sub === 'capabilities') {
       await cmdOnboardingInstallSingle(sub, args)
     } else {
-      await exitUnknownSubcommand('install', sub, ['search', 'search-models', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents'])
+      await exitUnknownSubcommand('install', sub, ['search', 'search-models', 'media', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents'])
     }
   } else {
     await cmdOnboard(args)

@@ -52,6 +52,16 @@ const TARGETS: Target[] = [
  */
 const EXTERNAL_BROWSER_AUTOMATION = ['playwright', 'playwright-core', 'chromium-bidi']
 
+/**
+ * sharp cannot ride the compiled binary either: its native prebuilds
+ * (`@img/sharp-<platform>`) never survive `--compile`, so bundling the JS
+ * only produces a runtime dead end. Keeping it external makes the binary's
+ * `import('sharp')` fail FAST and deterministically, which is exactly what
+ * the media loader's store fallback keys on (#889 — the store is installed
+ * by `bakin install media` / onboarding / doctor repair).
+ */
+const EXTERNAL_NATIVE_MEDIA = ['sharp']
+
 async function regenerateEmbeddedManifest(): Promise<void> {
   const proc = Bun.spawn(['bun', 'run', join(REPO_ROOT, 'scripts/generate-embedded-assets.ts')], {
     cwd: REPO_ROOT,
@@ -70,7 +80,7 @@ async function compile(target: Target): Promise<void> {
     '--compile',
     `--target=${target.triple}`,
     `--outfile=${outfile}`,
-    ...EXTERNAL_BROWSER_AUTOMATION.flatMap((pkg) => ['--external', pkg]),
+    ...[...EXTERNAL_BROWSER_AUTOMATION, ...EXTERNAL_NATIVE_MEDIA].flatMap((pkg) => ['--external', pkg]),
     join(REPO_ROOT, 'server.ts'),
   ], {
     cwd: REPO_ROOT,

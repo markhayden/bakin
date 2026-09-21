@@ -120,6 +120,8 @@ export interface BakinPaths {
   db: string
   /** Bakin-owned bin dir for capability-pack binaries; prepended to PATH at server boot. */
   bin: string
+  /** Media prebuild store (sharp for compiled binaries, #889) — versioned dirs + receipt. */
+  media: string
 }
 
 export function getBakinPaths(): BakinPaths {
@@ -147,6 +149,7 @@ export function getBakinPaths(): BakinPaths {
     antfly: join(home, 'antfly'),
     db: join(home, 'bakin.db'),
     bin: join(home, 'bin'),
+    media: join(home, 'media'),
   }
 }
 

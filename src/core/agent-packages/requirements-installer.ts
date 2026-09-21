@@ -16,10 +16,11 @@
  * removal like bins). Downloads stream to disk — never buffered in memory.
  */
 import { createHash } from 'crypto'
-import { createReadStream, cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
-import { dirname, join } from 'path'
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
+import { join } from 'path'
 import type { Manifest, NpmRequirement, ModelRequirement } from '../../../packages/core/src/agent-packages/manifest'
 import { readInstalledBy, writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
+import { commitFileAtomic, downloadToFile } from '../../../packages/core/src/net/download'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { runSystemBun } from '../whiskit/command'
@@ -47,13 +48,6 @@ export function npmPayloadDir(packId: string, name: string): string {
 /** `<bakin-home>/models/<dest>` */
 export function modelDest(dest: string): string {
   return join(getContentDir(), 'models', dest)
-}
-
-async function sha256File(path: string): Promise<string> {
-  const hash = createHash('sha256')
-  const stream = createReadStream(path)
-  for await (const chunk of stream) hash.update(chunk as Buffer)
-  return hash.digest('hex')
 }
 
 export interface NpmInstallResult {
@@ -197,33 +191,23 @@ export async function installModelRequirement(
     }
   }
 
-  mkdirSync(dirname(target), { recursive: true })
-  const fetchImpl = options.fetchImpl
-    ?? (Bun as unknown as { fetch?: typeof fetch }).fetch
-    ?? fetch
-  const res = await fetchImpl(req.url, { signal: AbortSignal.timeout(MODEL_DOWNLOAD_TIMEOUT_MS) })
-  if (!res.ok) {
-    throw new Error(`Model "${req.name}" download failed: ${res.status} ${res.statusText} (${req.url})`)
-  }
-
+  // Download + commit ride the shared primitive (streams to disk, sha256
+  // pin verified, partial file deleted on failure); the size check stays a
+  // verify-then-commit hook so a wrong-length file never reaches the target.
   const tmp = `${target}.tmp-${process.pid}`
-  try {
-    // Streams — never buffers the file in memory. The repo's hand-rolled Bun
-    // namespace types don't declare the Response overload; runtime supports it.
-    await (Bun.write as unknown as (dest: string, input: Response) => Promise<number>)(tmp, res)
-    const actual = await sha256File(tmp)
-    if (actual !== pin) {
-      throw new Error(`Model "${req.name}" checksum mismatch: expected ${pin}, got ${actual} — refusing to install`)
-    }
-    const size = statSync(tmp).size
-    if (size !== req.bytes) {
-      throw new Error(`Model "${req.name}" size mismatch: declared ${req.bytes} bytes, downloaded ${size}`)
-    }
-    renameSync(tmp, target)
-  } catch (err) {
-    try { rmSync(tmp, { force: true }) } catch { /* best-effort tmp cleanup */ }
-    throw err
-  }
+  const downloaded = await downloadToFile(req.url, tmp, {
+    sha256: pin,
+    timeoutMs: MODEL_DOWNLOAD_TIMEOUT_MS,
+    fetchImpl: options.fetchImpl,
+    label: `Model "${req.name}"`,
+  })
+  await commitFileAtomic(tmp, target, {
+    verify: async () => {
+      if (downloaded.bytes !== req.bytes) {
+        throw new Error(`Model "${req.name}" size mismatch: declared ${req.bytes} bytes, downloaded ${downloaded.bytes}`)
+      }
+    },
+  })
 
   writeInstalledBy(target, { ...installedBy, sha256: pin })
   log.info(`Installed model "${req.name}" → ${target}`)

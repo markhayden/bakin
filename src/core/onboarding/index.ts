@@ -45,6 +45,7 @@ import { mkdirComponent } from './mkdir'
 import { settingsComponent } from './settings'
 import { runtimeComponent } from './runtime'
 import { searchComponent } from './search'
+import { mediaComponent } from './media'
 import { searchModelsComponent } from './search-models'
 import { openClawIntegrationComponent } from './openclaw-integration'
 import { pluginAssetsComponent } from './plugin-assets'
@@ -89,6 +90,7 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   runtimeComponent,
   searchComponent,
   searchModelsComponent,
+  mediaComponent,
   openClawIntegrationComponent,
   pluginAssetsComponent,
   agentSyncComponent,

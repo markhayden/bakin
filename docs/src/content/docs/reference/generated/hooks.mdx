@@ -95,12 +95,35 @@ const result = await ctx.hooks.invoke(
 </HookCard>
 </div>
 
+## Git
+
+<p class="hook-section-description">Hooks discovered from source registration audit.</p>
+
+<div class="hook-card-list">
+<HookCard id="git-preparesessionworktree" name="git.prepareSessionWorktree" label="Prepared git worktree" source="plugins/git/index.ts:709">
+```ts frame="terminal"
+const result = await ctx.hooks.invoke(
+  'git.prepareSessionWorktree',
+  {},
+)
+```
+</HookCard>
+<HookCard id="git-releasesessionworktree" name="git.releaseSessionWorktree" label="Prepared git worktree" source="plugins/git/index.ts:713">
+```ts frame="terminal"
+const result = await ctx.hooks.invoke(
+  'git.releaseSessionWorktree',
+  {},
+)
+```
+</HookCard>
+</div>
+
 ## Health
 
 <p class="hook-section-description">Health hooks expose registered readiness and diagnostic checks so other surfaces can list or inspect them.</p>
 
 <div class="hook-card-list">
-<HookCard id="health-getcheck" name="health.getCheck" label="Get a health check." summary="Returns canonical metadata for one registered Health check by stable id without executing it." source="plugins/health/index.ts:847" badges={["rpc"]}>
+<HookCard id="health-getcheck" name="health.getCheck" label="Get a health check." summary="Returns canonical metadata for one registered Health check by stable id without executing it." source="plugins/health/index.ts:848" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'health.getCheck',
@@ -110,7 +133,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="health-list" name="health.list" label="List health checks." summary="Returns canonical metadata for registered Health checks without executing them." source="plugins/health/index.ts:846" badges={["rpc"]}>
+<HookCard id="health-list" name="health.list" label="List health checks." summary="Returns canonical metadata for registered Health checks without executing them." source="plugins/health/index.ts:847" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'health.list',
@@ -273,6 +296,18 @@ const next = await ctx.hooks.call(
 <HookCard id="tasks-statuschanged" name="tasks.statusChanged" label="Sync project task state." summary="Updates linked project checklist items when a task moves into a completed state. Use it to keep project progress in sync with task lifecycle events." source="bakin-bits-official/plugins/projects/index.ts:305" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
+  'tasks.statusChanged',
+  {
+    taskId: 'task-123',
+    from: 'doing',
+    to: 'done'
+  },
+)
+```
+</HookCard>
+<HookCard id="tasks-statuschanged" name="tasks.statusChanged" label="tasks.statusChanged" source="bakin-bits-official/plugins/terminal/index.ts:110">
+```ts frame="terminal"
+const result = await ctx.hooks.invoke(
   'tasks.statusChanged',
   {
     taskId: 'task-123',
@@ -633,5 +668,5 @@ const result = await ctx.hooks.invoke(
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Aug 6, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Sep 20, 2026 · Bakin 0.0.0-dev</span>
 </aside>
