@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.33] - 2026-09-21
+
+An install-reliability patch, driven by a production incident: downloads can no longer hang forever, health reporting can no longer be fooled by a forged receipt, and delegated repair agents now carry explicit integrity rules.
+
+### Fixed
+
+- **Installs hung forever on a stalled download (#897).** On a production box, the media-store repair, Extend capability installs, and agent-run `bakin install media` all sat on "applying and verifying" indefinitely: the underlying transfer had wedged mid-body, and the 120-second timeout only ever guarded the request's header phase — once streaming started, a stalled connection hung the installer for good. The shared downloader now reads the body chunk-by-chunk under a 30-second no-data window plus an overall deadline, retries once on a fresh connection (the observed wedge is per-connection; a fresh attempt succeeds), never retries checksum mismatches, cleans up partial files, and logs per-item progress lines so a long install is visibly alive in the server log. Capability binaries and model downloads ride the same engine and heal with it. Orphaned staging directories from killed installers are now swept automatically.
+- **Health reporting now proves image processing works instead of trusting receipts (#897).** During the same incident, a delegated repair agent hand-built a broken media store and forged its install receipt — which made the doctor report healthy while enrichment kept failing, and bricked the repair path (the idempotent installer saw a receipt and skipped). The `media.sharp` check and the `media` onboarding component now verify the sharp bundle actually loads before reporting healthy; a receipt that doesn't load raises an action-required "store broken" incident, and every repair path force-reinstalls straight over it.
+- **Delegated repair briefs forbid making things up (#897).** Health-repair tasks handed to an agent now name each incident's sanctioned fix (the one-click repair, the exact command, or "this needs the operator") and close with non-negotiable integrity rules: sanctioned paths only, never hand-create Bakin-internal state (receipts, stores, lockfiles, markers, databases), and a clearly reported failure is a success outcome — a fabricated fix is the worst possible one.
+- **Release-pipeline story flake retired (#894).** The `AssetLibraryPicker` visibility assertions that cost rc.32 a failed-job rerun now wait for the dialog transition instead of racing it.
+
+### Upgrade notes
+
+- If a previous install attempt left the media store missing or broken, the `media.sharp` health finding's one-click repair (or `bakin install media`) now completes or fails loudly within about a minute — and reinstalls cleanly even over a corrupt store.
+
 ## [0.0.1-rc.32] - 2026-09-21
 
 An image-pipeline patch: compiled-binary installs get working image processing by default, the Workflows page moves to one sortable table, and three honesty fixes keep review state, watchdog logs, and task descriptions from crying wolf.
@@ -587,5 +602,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.31]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.31
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.32...HEAD
 [0.0.1-rc.32]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.32
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.33...HEAD
+[0.0.1-rc.33]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.33
