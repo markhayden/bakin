@@ -15,12 +15,13 @@
  */
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs'
 import { createHash } from 'crypto'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { BinPlatformKey, BinRequirement, Manifest } from '../../../packages/core/src/agent-packages/manifest'
 import { readInstalledBy, writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
+import { commitFileAtomic, downloadToFile, extractTarMember, sha256File } from '../../../packages/core/src/net/download'
 import type { ProjectorResult } from './projector'
 import { getBakinPaths } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
@@ -92,66 +93,50 @@ export async function installBinRequirement(
     }
   }
 
-  // Default to Bun's NATIVE fetch: the server always runs under Bun, and the
-  // test preload's happy-dom fetch cannot drive real sockets (CLAUDE.md).
-  const fetchImpl = options.fetchImpl
-    ?? (Bun as unknown as { fetch?: typeof fetch }).fetch
-    ?? fetch
-  const res = await fetchImpl(download.url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) })
-  if (!res.ok) {
-    throw new Error(`Binary "${bin.name}" download failed: ${res.status} ${res.statusText} (${download.url})`)
-  }
-  let bytes = new Uint8Array(await res.arrayBuffer())
-
-  const actual = createHash('sha256').update(bytes).digest('hex')
-  if (actual !== pin) {
-    throw new Error(
-      `Binary "${bin.name}" checksum mismatch: expected ${pin}, got ${actual} — refusing to install (${download.url})`,
-    )
-  }
-
-  // Archive download: the verified bytes are a tarball — extract the member
-  // and continue the pipeline with ITS bytes.
-  if (download.archive) {
-    const extractDir = mkdtempSync(join(tmpdir(), `bakin-bin-${bin.name}-`))
-    const tarPath = join(extractDir, 'archive.tar.gz')
-    try {
-      writeFileSync(tarPath, bytes)
-      // '--' terminates option parsing — a member name can never be read as
-      // a tar option (argument-injection hardening; schema also bans '-').
-      await execFileAsync('tar', ['-xzf', tarPath, '-C', extractDir, '--', download.archive.member], { timeout: VERIFY_TIMEOUT_MS })
-      const memberPath = join(extractDir, download.archive.member)
-      if (!existsSync(memberPath)) {
-        throw new Error(`member "${download.archive.member}" not found in archive`)
-      }
-      bytes = new Uint8Array(readFileSync(memberPath))
-    } catch (err) {
-      throw new Error(
-        `Binary "${bin.name}" archive extraction failed: ${err instanceof Error ? err.message : String(err)}`,
-      )
-    } finally {
-      rmSync(extractDir, { recursive: true, force: true })
-    }
-  }
-
+  // Download → (extract) → verify-then-commit all ride the shared primitive
+  // (packages/core/src/net/download.ts); this installer keeps only the
+  // domain pieces — marker fast path, verify command, lockfile projection.
+  const label = `Binary "${bin.name}"`
   const tmp = `${target}.tmp-${process.pid}`
   try {
-    writeFileSync(tmp, bytes, { mode: 0o755 })
-    chmodSync(tmp, 0o755)
+    if (download.archive) {
+      // Archive download: the pin names the TARBALL — verify it, extract the
+      // member, and continue the pipeline with ITS bytes.
+      const extractDir = mkdtempSync(join(tmpdir(), `bakin-bin-${bin.name}-`))
+      try {
+        const tarPath = join(extractDir, 'archive.tar.gz')
+        await downloadToFile(download.url, tarPath, {
+          sha256: pin, timeoutMs: DOWNLOAD_TIMEOUT_MS, fetchImpl: options.fetchImpl, label,
+        })
+        const memberPath = await extractTarMember(tarPath, download.archive.member, extractDir, {
+          timeoutMs: VERIFY_TIMEOUT_MS, label: `${label} archive`,
+        })
+        copyFileSync(memberPath, tmp)
+      } finally {
+        rmSync(extractDir, { recursive: true, force: true })
+      }
+    } else {
+      await downloadToFile(download.url, tmp, {
+        sha256: pin, timeoutMs: DOWNLOAD_TIMEOUT_MS, fetchImpl: options.fetchImpl, label,
+      })
+    }
 
     // Verify-then-commit: the binary must actually run BEFORE it lands under
     // its real name (a broken download must never shadow a working install).
-    if (bin.verifyArgs) {
-      try {
-        await execFileAsync(tmp, bin.verifyArgs, { timeout: VERIFY_TIMEOUT_MS })
-      } catch (err) {
-        throw new Error(
-          `Binary "${bin.name}" verify run failed (${bin.verifyArgs.join(' ')}): ${err instanceof Error ? err.message : String(err)}`,
-        )
-      }
-    }
-
-    renameSync(tmp, target)
+    await commitFileAtomic(tmp, target, {
+      mode: 0o755,
+      verify: bin.verifyArgs
+        ? async (tmpPath) => {
+          try {
+            await execFileAsync(tmpPath, bin.verifyArgs, { timeout: VERIFY_TIMEOUT_MS })
+          } catch (err) {
+            throw new Error(
+              `${label} verify run failed (${bin.verifyArgs!.join(' ')}): ${err instanceof Error ? err.message : String(err)}`,
+            )
+          }
+        }
+        : undefined,
+    })
   } catch (err) {
     try { rmSync(tmp, { force: true }) } catch { /* best-effort tmp cleanup */ }
     throw err
@@ -160,7 +145,7 @@ export async function installBinRequirement(
   writeInstalledBy(target, {
     ...installedBy,
     sha256: pin,
-    ...(download.archive ? { extractedSha256: createHash('sha256').update(bytes).digest('hex') } : {}),
+    ...(download.archive ? { extractedSha256: await sha256File(target) } : {}),
   })
   log.info(`Installed binary "${bin.name}" ${bin.version} → ${target}`)
   return { target, sha256: pin, skipped: false }
