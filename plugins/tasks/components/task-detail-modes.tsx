@@ -41,7 +41,7 @@ import { COLUMN_CONFIG } from '../constants'
 import type { Task, ColumnId } from '../types'
 import { TaskRunHistory } from './task-run-history'
 import { TaskNotesSection } from './task-notes-section'
-import { GateApprovalPanel, WorkflowProgressPanel, WorkflowPreview, MapChildrenPanel } from './task-workflow-panels'
+import { GateApprovalPanel, WorkflowProgressPanel, WorkflowPreview, MapChildrenPanel, WorkflowStateUnavailableNotice } from './task-workflow-panels'
 import type { TaskDetail } from './use-task-detail'
 
 const COLUMN_IDS: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived']
@@ -275,6 +275,7 @@ export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit 
 
         {/* Workflow preview box */}
         <WorkflowPreview m={m} />
+        <WorkflowStateUnavailableNotice m={m} />
         <GateApprovalPanel m={m} />
         <MapChildrenPanel m={m} />
 
@@ -383,6 +384,7 @@ export function TaskDetailView({ m, task, columnId, open, onClose, onEdit, onDel
           </Button>
         </div>
 
+        <WorkflowStateUnavailableNotice m={m} />
         <GateApprovalPanel m={m} />
 
         <WorkflowProgressPanel m={m} />

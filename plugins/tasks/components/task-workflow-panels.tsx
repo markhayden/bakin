@@ -227,6 +227,32 @@ export function MapChildrenPanel({ m }: { m: TaskDetail }) {
   )
 }
 
+/**
+ * Honest fallback when the workflow instance cannot be loaded: a workflow
+ * task (worst case: sitting in Review) must never silently render NO
+ * approval surface — that reads as a broken approvals feature (2026-09-21
+ * scare). 404/no-instance never shows this; only real load failures do.
+ */
+export function WorkflowStateUnavailableNotice({ m }: { m: TaskDetail }) {
+  const { wfStateUnavailable, activeWorkflowId, handleRetryWorkflowState } = m
+  if (!wfStateUnavailable || !activeWorkflowId) return null
+
+  return (
+    <Alert tone="danger">
+      <AlertTriangle aria-hidden="true" />
+      <AlertTitle>Workflow state unavailable</AlertTitle>
+      <AlertDescription>
+        <Inline gap="dense">
+          <span>Review and approval controls can&apos;t load right now — the workflow service didn&apos;t answer.</span>
+          <Button type="button" variant="link" size="xs" onClick={handleRetryWorkflowState}>
+            <RefreshCw aria-hidden="true" /> Retry
+          </Button>
+        </Inline>
+      </AlertDescription>
+    </Alert>
+  )
+}
+
 /** Approval-gate decision panel, including the prior step's normalized output. */
 export function GateApprovalPanel({ m }: { m: TaskDetail }) {
   const {
