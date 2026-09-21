@@ -118,6 +118,33 @@ export async function extractTarMember(
   }
 }
 
+export interface ExtractTarballOptions {
+  /** Leading path components to strip (npm tarballs nest under `package/`). */
+  stripComponents?: number
+  timeoutMs?: number
+  label?: string
+}
+
+/**
+ * Extract a WHOLE tar.gz into `destDir` (created if missing). npm registry
+ * tarballs pass `stripComponents: 1` to drop their `package/` root.
+ */
+export async function extractTarball(
+  archivePath: string,
+  destDir: string,
+  options: ExtractTarballOptions = {},
+): Promise<void> {
+  const label = options.label ?? 'Archive'
+  try {
+    mkdirSync(destDir, { recursive: true })
+    const args = ['-xzf', archivePath, '-C', destDir]
+    if (options.stripComponents) args.push(`--strip-components=${options.stripComponents}`)
+    await execFileAsync('tar', args, { timeout: options.timeoutMs ?? EXTRACT_TIMEOUT_MS })
+  } catch (err) {
+    throw new Error(`${label} extraction failed: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
 export interface CommitFileAtomicOptions {
   /** chmod applied to the temp file before verify/rename (e.g. 0o755). */
   mode?: number

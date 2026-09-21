@@ -25,7 +25,7 @@ mock.module('../../../packages/core/src/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 
-import { commitFileAtomic, downloadToFile, extractTarMember, sha256File } from '../../../packages/core/src/net/download'
+import { commitFileAtomic, downloadToFile, extractTarMember, extractTarball, sha256File } from '../../../packages/core/src/net/download'
 
 const sha256 = (s: string | Buffer) => createHash('sha256').update(s).digest('hex')
 
@@ -159,6 +159,29 @@ describe('extractTarMember', () => {
     const outDir = join(testDir, 'extract-out2')
     mkdirSync(outDir, { recursive: true })
     await expect(extractTarMember(tarPath, 'absent.txt', outDir)).rejects.toThrow(/extract|not found/i)
+  })
+})
+
+describe('extractTarball', () => {
+  it('extracts a whole archive, stripping the npm package/ root', async () => {
+    const src = join(testDir, 'pkg-src', 'package')
+    mkdirSync(join(src, 'lib'), { recursive: true })
+    writeFileSync(join(src, 'package.json'), '{"name":"fixture"}')
+    writeFileSync(join(src, 'lib', 'index.js'), 'module.exports = 1\n')
+    const tarPath = join(testDir, 'pkg.tgz')
+    execSync(`tar -czf ${JSON.stringify(tarPath)} -C ${JSON.stringify(join(testDir, 'pkg-src'))} package`)
+
+    const outDir = join(testDir, 'pkg-out')
+    await extractTarball(tarPath, outDir, { stripComponents: 1 })
+    expect(readFileSync(join(outDir, 'package.json'), 'utf-8')).toBe('{"name":"fixture"}')
+    expect(readFileSync(join(outDir, 'lib', 'index.js'), 'utf-8')).toBe('module.exports = 1\n')
+  })
+
+  it('throws a labeled error on a corrupt archive', async () => {
+    const tarPath = join(testDir, 'corrupt.tgz')
+    writeFileSync(tarPath, 'not a tarball')
+    await expect(extractTarball(tarPath, join(testDir, 'corrupt-out'), { label: 'Tarball "sharp"' }))
+      .rejects.toThrow(/Tarball "sharp" extraction failed/)
   })
 })
 
