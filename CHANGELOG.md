@@ -6,6 +6,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.32] - 2026-09-21
+
+An image-pipeline patch: compiled-binary installs get working image processing by default, the Workflows page moves to one sortable table, and three honesty fixes keep review state, watchdog logs, and task descriptions from crying wolf.
+
+### Added
+
+- **Zero-install image processing on compiled binaries (#889, #891).** `bun build --compile` can never carry sharp's native prebuilds, so every binary install silently ran without image support: enriching any image over 2 MB failed with a retry that could never succeed, asset exports threw, thumbnails degraded, and visual search lost its thumbs. Binary installs now provision a probe-verified media store (`~/.bakin/media/`, ~8 MB of sha256-pinned prebuilds bundled by the binary itself) automatically during onboarding — with `bakin install media`, a `media.sharp` health check, and a one-click repair that takes effect without a server restart for existing installs. Source installs are unchanged. A compile-and-run regression pins the whole chain on both macOS and Linux, including a tripwire that fires if bun ever learns to embed sharp natively.
+
+### Changed
+
+- **Workflows in one sortable, source-filtered table (#885).** The separate card sections are replaced by a single SDK DataTable with URL-backed source and sort controls and 20-row pagination, preserving workflow summaries, provenance, assignments, and step previews. Page filter bars across the fleet share one indicator treatment, and the InputGroup keyboard focus ring is restored.
+
+### Fixed
+
+- **The task drawer says so when workflow state can't load (#892).** A workflow task whose instance fetch failed (server mid-restart, 5xx) rendered no review surface at all — a Review-column task with silently absent approval controls reads as a broken approvals feature. The drawer now shows an explicit "Workflow state unavailable" alert with a retry; a workflow that simply hasn't started stays silent as before.
+- **Budget-held workflow steps no longer masquerade as hung (#892).** A step whose dispatch was deferred by a spend cap collected a misleading watchdog `TIMEOUT` log entry every five minutes (81 in one overnight run) and could even escalate to blocked. The watchdog now probes the same budget gate dispatch defers on and writes a single `BUDGET HOLD` note per hold; timeout handling resumes the moment the cap lifts.
+- **Template-placeholder image URLs render as text (#892).** Agent-authored markdown like `![Taco](/api/assets/<assetId>)` fired a guaranteed-404 image request with console noise; the reference now stays legible as inline code.
+
+### Upgrade notes
+
+- Compiled-binary installs: the doctor will raise a `media.sharp` action-required finding after upgrading — use its one-click repair (or `bakin install media`) to provision image processing; no restart needed. The onboarding version also bumped, so `bakin onboard --yes` re-runs cleanly on existing installs.
+
 ## [0.0.1-rc.31] - 2026-09-21
 
 A single-fix patch: the Pi runtime works on compiled-binary installs.
@@ -563,5 +585,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.30]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.30
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.31...HEAD
 [0.0.1-rc.31]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.31
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.32...HEAD
+[0.0.1-rc.32]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.32
