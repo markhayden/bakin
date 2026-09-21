@@ -122,13 +122,14 @@ export async function cmdOnboardingSettingsInit(options: { json?: boolean } = {}
 }
 
 async function cmdOnboardingCheckSingle(
-  target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-sync' | 'recommended-plugins' | 'recommended-agents' | 'capabilities',
+  target: 'runtime' | 'search' | 'search-models' | 'media' | 'llm' | 'channels' | 'plugin-assets' | 'agent-sync' | 'recommended-plugins' | 'recommended-agents' | 'capabilities',
   options: { verbose?: boolean } = {},
 ): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../../core/onboarding/types').CheckResult> }>> = {
     runtime: async () => (await import('../../core/onboarding/runtime')).runtimeComponent,
     search: async () => (await import('../../core/onboarding/search')).searchComponent,
     'search-models': async () => (await import('../../core/onboarding/search-models')).searchModelsComponent,
+    media: async () => (await import('../../core/onboarding/media')).mediaComponent,
     llm: async () => (await import('../../core/onboarding/credentials')).llmComponent,
     channels: async () => (await import('../../core/onboarding/credentials')).channelsComponent,
     'plugin-assets': async () => (await import('../../core/onboarding/plugin-assets')).pluginAssetsComponent,
@@ -175,6 +176,7 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
   const componentMap: Record<string, () => Promise<import('../../core/onboarding/types').OnboardingComponent>> = {
     search: async () => (await import('../../core/onboarding/search')).searchComponent,
     'search-models': async () => (await import('../../core/onboarding/search-models')).searchModelsComponent,
+    media: async () => (await import('../../core/onboarding/media')).mediaComponent,
     'plugin-assets': async () => (await import('../../core/onboarding/plugin-assets')).pluginAssetsComponent,
     'agent-sync': async () => (await import('../../core/onboarding/agent-sync')).agentSyncComponent,
     'recommended-plugins': async () => (await import('../../core/onboarding/recommended-plugins')).recommendedPluginsComponent,
