@@ -39,14 +39,21 @@ type StoreStatus =
 let storeStatus: StoreStatus = { status: 'missing' }
 let installCalls = 0
 let installShouldFail = false
+let lastInstallForce: boolean | undefined
 mock.module('../../../packages/core/src/media/installer', () => ({
   checkMediaStore: () => storeStatus,
-  installMediaStore: async () => {
+  installMediaStore: async (opts?: { force?: boolean }) => {
     installCalls += 1
+    lastInstallForce = opts?.force
     if (installShouldFail) throw new Error('download failed (fixture)')
     storeStatus = { status: 'ok', receipt: { sharpVersion: '0.34.5', platform: 'darwin-arm64' } }
     return { storeDir: join(testDir, 'media', 'sharp', '0.34.5'), skipped: false }
   },
+}))
+let loaderLoads = false
+mock.module('../../../packages/core/src/media/sharp-loader', () => ({
+  loadSharp: async () => (loaderLoads ? ((() => ({})) as unknown) : null),
+  resetSharpModuleCache: () => {},
 }))
 
 import { mediaComponent } from '../../../src/core/onboarding/media'
@@ -65,6 +72,8 @@ beforeEach(() => {
   storeStatus = { status: 'missing' }
   installCalls = 0
   installShouldFail = false
+  lastInstallForce = undefined
+  loaderLoads = false
 })
 
 describe('mediaComponent.check', () => {
@@ -75,11 +84,20 @@ describe('mediaComponent.check', () => {
     expect(result.message).toContain('node_modules')
   })
 
-  it('ok when the media store is installed', async () => {
+  it('ok when the media store is installed AND loads', async () => {
     storeStatus = { status: 'ok', receipt: { sharpVersion: '0.34.5', platform: 'darwin-arm64' } }
+    loaderLoads = true
     const result = await mediaComponent.check()
     expect(result.status).toBe('ok')
     expect(result.message).toContain('media store')
+  })
+
+  it('BROKEN when a receipt is present but the bundle does not load (fabricated store)', async () => {
+    storeStatus = { status: 'ok', receipt: { sharpVersion: '0.34.5', platform: 'darwin-arm64' } }
+    loaderLoads = false
+    const result = await mediaComponent.check()
+    expect(result.status).toBe('broken')
+    expect(result.message).toContain('does not load')
   })
 
   it('warn on an unsupported platform', async () => {
@@ -115,6 +133,15 @@ describe('mediaComponent.install', () => {
     const result = await mediaComponent.install(opts())
     expect(result.status).toBe('installed')
     expect(installCalls).toBe(1)
+    expect(lastInstallForce).toBe(false)
+  })
+
+  it('a broken store reinstalls WITH force (past the fabricated receipt)', async () => {
+    storeStatus = { status: 'ok', receipt: { sharpVersion: '0.34.5', platform: 'darwin-arm64' } }
+    loaderLoads = false
+    const result = await mediaComponent.install(opts())
+    expect(result.status).toBe('installed')
+    expect(lastInstallForce).toBe(true)
   })
 
   it('installs when the component is in approvedComponents', async () => {
