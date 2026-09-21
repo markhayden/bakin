@@ -153,6 +153,23 @@ per-tarball start/done lines and sweeps dead installers' `.staging-*` dirs
 (pid-liveness check). Never reintroduce `Bun.write(dest, res)` for network
 bodies. Follow-ups: #895 (UI progress), #896 (cross-process single-flight).
 
+## macOS code signing (rc.33 lesson)
+
+The RELEASE binary is signed with `--options runtime` (hardened runtime,
+required for notarization), which enables **library validation**: the
+process may only dlopen libraries signed with our Team ID or by Apple.
+sharp's npm prebuild is signed by the sharp project → the signed binary
+refused it at dlopen ("different Team IDs", margo rc.33) even though every
+test passed — locally compiled binaries are UNSIGNED, so no test can catch
+this class; only the signed artifact exhibits it. Fix:
+`scripts/release/bakin.entitlements` (disable-library-validation) passed
+via `--entitlements` in `scripts/sign-macos-binary.ts` — the pair is pinned
+by tests/scripts/sign-macos-binary.test.ts. Capability-pack BINARIES are
+unaffected (separate processes — library validation only polices in-process
+loads); any future in-process napi module rides this same entitlement. The
+installer translates the dlopen signature error into "upgrade to an
+entitled build" instead of sharp's npm advice.
+
 ## Sharp edges
 
 - `getBakinPaths()` mocks in tests SHOULD include the `media` key (same class

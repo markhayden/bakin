@@ -174,6 +174,18 @@ describe('installMediaStore', () => {
     expect(again.skipped).toBe(false)
   })
 
+  it('a library-validation dlopen failure names the REAL fix (signed-binary entitlement), not npm advice', async () => {
+    await expect(installMediaStore({
+      fetchImpl: nativeFetch,
+      bundle: fakeBundle,
+      probe: async () => {
+        // Real dlopen shape from margo rc.33.
+        throw new Error('media store probe failed — refusing to commit: Could not load the "sharp" module using the darwin-arm64 runtime ERR_DLOPEN_FAILED: dlopen(...sharp-darwin-arm64.node, 0x0001): tried: ... (code signature in <43BC947D> ... not valid for use in process: mapping process and mapped file (non-platform) have different Team IDs)')
+      },
+    })).rejects.toThrow(/blocks third-party native libraries[^]*library-validation entitlement/)
+    expect(existsSync(mediaStoreDir())).toBe(false)
+  })
+
   it('a failed probe leaves NO store dir and surfaces the sharp error', async () => {
     await expect(installMediaStore({
       fetchImpl: nativeFetch,
