@@ -222,6 +222,12 @@ export function buildSigningPlan(opts: SignMacosOptions): SigningPlan {
           arg('--force'),
           arg('--options'),
           arg('runtime'),
+          // Library validation must stay OFF: the media store dlopens
+          // sharp's npm-signed native prebuild, which the hardened runtime
+          // otherwise refuses ("different Team IDs" — margo, rc.33). See
+          // the entitlements file for the full rationale.
+          arg('--entitlements'),
+          arg(join(REPO_ROOT, 'scripts', 'release', 'bakin.entitlements')),
           arg('--timestamp'),
           arg('--sign'),
           arg(envValue(env, 'APPLE_DEVELOPER_IDENTITY')),

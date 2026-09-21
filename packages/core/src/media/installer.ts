@@ -140,7 +140,23 @@ export async function installMediaStore(options: MediaInstallOptions = {}): Prom
     // 4. Probe-verify: a REAL resize against the staged bundle. This is the
     //    tripwire for sharp changing its candidate paths on a future bump.
     const probe = options.probe ?? probeSharpBundle
-    await probe(join(staging, 'dist', 'index.js'))
+    try {
+      await probe(join(staging, 'dist', 'index.js'))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      // macOS library validation: a signed+hardened binary WITHOUT the
+      // disable-library-validation entitlement refuses third-party-signed
+      // natives at dlopen (margo, rc.33). Name the real cause and the real
+      // fix instead of parroting sharp's npm installation advice.
+      if (/different Team IDs|code signature.*not valid for use in process/i.test(message)) {
+        throw new Error(
+          'media store probe failed — refusing to commit: this Bakin build blocks third-party native libraries '
+          + '(macOS library validation is enabled in its code signature). Upgrade to a Bakin release signed with the '
+          + `library-validation entitlement — reinstalling sharp cannot fix this. Underlying error: ${message}`,
+        )
+      }
+      throw err
+    }
 
     // 5. Prune build inputs; commit atomically; sweep older versions.
     rmSync(nodeModules, { recursive: true, force: true })

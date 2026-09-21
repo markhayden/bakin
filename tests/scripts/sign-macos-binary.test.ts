@@ -64,6 +64,24 @@ describe('buildSigningPlan', () => {
     expect(commandNames).toContain('xcrun')
   })
 
+  it('signs with the library-validation entitlements (margo rc.33: hardened runtime refused sharp\'s native)', () => {
+    const plan = buildSigningPlan({
+      binary: 'dist/bakin-darwin-arm64',
+      dryRun: true,
+      env: fakeEnv,
+      tempDir: '/tmp/bakin-signing',
+    })
+    const signStep = plan.steps.find((step) => step.kind === 'command' && step.label === 'Sign macOS binary') as { args: Array<{ value: string }> }
+    const argValues = signStep.args.map((a) => a.value)
+    expect(argValues).toContain('--entitlements')
+    const plistPath = argValues[argValues.indexOf('--entitlements') + 1]!
+    expect(plistPath.endsWith('scripts/release/bakin.entitlements')).toBe(true)
+    // The checked-in plist and the flag are load-bearing as a PAIR.
+    const { readFileSync, existsSync } = require('node:fs') as typeof import('node:fs')
+    expect(existsSync(plistPath)).toBe(true)
+    expect(readFileSync(plistPath, 'utf-8')).toContain('com.apple.security.cs.disable-library-validation')
+  })
+
   it('prints a dry-run plan without leaking secrets', () => {
     const plan = buildSigningPlan({
       binary: 'dist/bakin-darwin-arm64',
