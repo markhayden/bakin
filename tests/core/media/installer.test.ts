@@ -54,6 +54,14 @@ mock.module('../../../packages/core/src/media/pin', () => ({
   pinnedTarballsFor: (key: keyof typeof pinData.platform) => [...pinData.shared, ...pinData.platform[key]],
 }))
 
+// The no-restart guarantee: the installer must reset the loader cache after
+// a successful commit (doctor-repair path). Spied here; behavior of the
+// reset itself is covered in sharp-loader.test.ts.
+let loaderResets = 0
+mock.module('../../../packages/core/src/media/sharp-loader', () => ({
+  resetSharpModuleCache: () => { loaderResets += 1 },
+}))
+
 import { checkMediaStore, installMediaStore, mediaStoreDir, mediaStoreEntry, readMediaReceipt } from '../../../packages/core/src/media/installer'
 import { mediaPlatformKey } from '../../../packages/core/src/media/pin'
 
@@ -115,6 +123,7 @@ afterAll(() => {
 
 beforeEach(() => {
   rmSync(join(testDir, 'media'), { recursive: true, force: true })
+  loaderResets = 0
 })
 
 const fakeBundle = async (_entry: string, outDir: string): Promise<void> => {
@@ -142,6 +151,8 @@ describe('installMediaStore', () => {
     expect(receipt?.platform).toBe(platform)
     expect(mediaStoreEntry()).toBe(join(result.storeDir, 'dist', 'index.js'))
     expect(checkMediaStore().status).toBe('ok')
+    // No-restart guarantee: a cached loader failure must be reset post-commit.
+    expect(loaderResets).toBe(1)
   })
 
   it('is idempotent: a receipt at the pin skips all work', async () => {
@@ -154,6 +165,7 @@ describe('installMediaStore', () => {
     })
     expect(again.skipped).toBe(true)
     expect(bundled).toBe(0)
+    expect(loaderResets).toBe(1) // only the initial install reset the loader
   })
 
   it('force re-installs over a matching receipt', async () => {
