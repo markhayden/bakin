@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import {
   Alert,
@@ -23,8 +23,14 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Progress,
+  ProgressLabel,
+  ProgressValue,
+  Spinner,
   SubmitButton,
+  Text,
 } from '@makinbakin/sdk/ui'
+import { usePluginEvent } from '@makinbakin/sdk/hooks'
 import { ConsentDialog, type ConsentRequest } from './consent-dialog'
 import { sourceWithRef } from '../lib/package-source'
 import type { ExploreCatalogEntry } from '../types'
@@ -48,6 +54,40 @@ type InstallKind = 'agent' | 'plugin' | 'skill-pack' | 'workflow-pack' | 'lesson
  */
 const INSTALL_TIMEOUT_MS = 120_000
 const SECRET_TIMEOUT_MS = 15_000
+/** Async-job poll cadence — the SSE stream is primary, this is the net. */
+const JOB_POLL_MS = 4_000
+
+interface InstallProgressUpdate {
+  jobId?: string
+  stage?: string
+  message?: string
+  item?: string
+  current?: number
+  total?: number
+  receivedBytes?: number
+  totalBytes?: number | null
+}
+
+interface ActiveInstallJob {
+  id: string
+  startedAt: number
+  /** Distinct completed stage messages, oldest first. */
+  history: string[]
+  current: InstallProgressUpdate | null
+}
+
+function applyUpdate(prev: ActiveInstallJob, update: InstallProgressUpdate): ActiveInstallJob {
+  const history = update.message && prev.current?.message && update.message !== prev.current.message
+    ? [...prev.history.filter((line) => line !== prev.current?.message), prev.current.message].slice(-4)
+    : prev.history
+  return { ...prev, history, current: update }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`
+  if (bytes >= 1_000_000) return `${Math.round(bytes / 1_000_000)} MB`
+  return `${Math.max(1, Math.round(bytes / 1_000))} KB`
+}
 
 /** Deadline rejections arrive as DOMExceptions — surface them as a real error. */
 
@@ -96,6 +136,47 @@ function endpointFor(kind: InstallKind): string {
   return '/api/packages/install'
 }
 
+/**
+ * Live install progress (#895): staged lines + a byte-level bar for the
+ * active download, driven by packages.install_* SSE with a status poll as
+ * the net. Composes Feedback/Progress (CanonicalUsage) — a busy button
+ * alone is banned for anything that can outlive a few seconds.
+ */
+function InstallProgressPanel({ job }: { job: ActiveInstallJob }) {
+  const current = job.current
+  const elapsedS = Math.max(0, Math.round((Date.now() - job.startedAt) / 1000))
+  const elapsed = elapsedS >= 60 ? `${Math.floor(elapsedS / 60)}m ${elapsedS % 60}s` : `${elapsedS}s`
+  const bytes = current?.receivedBytes !== undefined
+  const pct = bytes && current?.totalBytes
+    ? Math.min(100, Math.round((current.receivedBytes! / current.totalBytes) * 100))
+    : undefined
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="grid gap-bakin-2 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-3"
+    >
+      {job.history.map((line) => (
+        <Text key={line} size="meta" tone="muted">✓ {line}</Text>
+      ))}
+      <span className="inline-flex items-center gap-bakin-2">
+        <Spinner size="sm" />
+        <Text size="body">{current?.message ?? 'Starting install…'}</Text>
+      </span>
+      {bytes ? (
+        <Progress value={pct ?? null}>
+          <ProgressLabel>{current?.item ?? 'Downloading'}</ProgressLabel>
+          <ProgressValue>
+            {() => `${formatBytes(current!.receivedBytes!)}${current?.totalBytes ? ` of ${formatBytes(current.totalBytes)}` : ''}`}
+          </ProgressValue>
+        </Progress>
+      ) : null}
+      <Text size="meta" tone="muted">Elapsed {elapsed} — installs keep running on the server if you close this dialog.</Text>
+    </div>
+  )
+}
+
 export function InstallDialog({
   open,
   onOpenChange,
@@ -119,6 +200,9 @@ export function InstallDialog({
   const [consent, setConsent] = useState<ConsentRequest | null>(null)
   const [keyStep, setKeyStep] = useState<CapabilityKeyStep | null>(null)
   const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({})
+  const [job, setJob] = useState<ActiveInstallJob | null>(null)
+  // A job settles exactly once, whether SSE or the poll gets there first.
+  const settledJobRef = useRef<string | null>(null)
 
   // Curated entries carry a ref pin — honor it exactly like onboarding does
   // (agent/pack specs embed @ref into the source; plugin installs send ref).
@@ -133,6 +217,7 @@ export function InstallDialog({
       setSubmitting(false)
       setKeyStep(null)
       setKeyDrafts({})
+      setJob(null)
     }
     onOpenChange(nextOpen)
   }
@@ -168,9 +253,88 @@ export function InstallDialog({
     return base
   }
 
+  type InstallResponseBody = {
+    ok?: boolean
+    error?: string
+    awaitingConsent?: boolean
+    manifestChanged?: boolean
+    id?: string
+    version?: string
+    permissions?: string[]
+    consentToken?: string
+    capability?: Parameters<typeof keyStepFrom>[0]['capability']
+  }
+
+  /** Shared terminal handling for sync responses AND finished async jobs. */
+  const handleInstallOutcome = (responseBody: InstallResponseBody, httpOk: boolean, status: number) => {
+    if (responseBody.awaitingConsent && responseBody.consentToken) {
+      setConsent({
+        id: responseBody.id ?? source,
+        version: responseBody.version ?? '?',
+        permissions: responseBody.permissions ?? [],
+        consentToken: responseBody.consentToken,
+        manifestChanged: responseBody.manifestChanged === true,
+      })
+      return
+    }
+    if (!httpOk || responseBody.ok === false) {
+      setError(responseBody.error ?? `HTTP ${status}`)
+      return
+    }
+    // Capability packs with missing store-backable keys get the guided
+    // key step (story 2) — the install itself already succeeded.
+    const needs = keyStepFrom(responseBody)
+    if (needs) {
+      onInstalled()
+      setKeyStep(needs)
+      return
+    }
+    finishSuccess()
+  }
+
+  const settleJob = (jobId: string, apply: () => void) => {
+    if (settledJobRef.current === jobId) return
+    settledJobRef.current = jobId
+    setJob(null)
+    setSubmitting(false)
+    apply()
+  }
+
   const postInstall = async (body: Record<string, unknown>) => {
     setSubmitting(true)
     setError(null)
+
+    // Packages/agents run as install JOBS (#895): the POST returns a job
+    // handle immediately, staged progress rides the SSE bus (poll as the
+    // net), and the terminal body comes from the status endpoint. Plugins
+    // keep the blocking path — their consent flow is a two-phase POST.
+    if (kind !== 'plugin') {
+      try {
+        const res = await fetch(`${endpointFor(kind)}?async=1`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(SECRET_TIMEOUT_MS),
+        })
+        const started = (await res.json()) as { ok?: boolean; jobId?: string; error?: string }
+        if (res.status === 202 && started.jobId) {
+          settledJobRef.current = null
+          setJob({ id: started.jobId, startedAt: Date.now(), history: [], current: null })
+          // Immediate status check: fast installs settle in one round trip
+          // instead of waiting for the first SSE event or poll tick.
+          void resolveJob(started.jobId)
+          return // submitting stays true until the job settles
+        }
+        setError(started.error ?? `HTTP ${res.status}`)
+        setSubmitting(false)
+        return
+      } catch (err) {
+        setError(describeRequestError(err))
+        setSubmitting(false)
+        return
+      }
+    }
+
     try {
       const res = await fetch(endpointFor(kind), {
         method: 'POST',
@@ -178,46 +342,64 @@ export function InstallDialog({
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(INSTALL_TIMEOUT_MS),
       })
-      const responseBody = (await res.json()) as {
-        ok?: boolean
-        error?: string
-        awaitingConsent?: boolean
-        manifestChanged?: boolean
-        id?: string
-        version?: string
-        permissions?: string[]
-        consentToken?: string
-        capability?: Parameters<typeof keyStepFrom>[0]['capability']
-      }
-      if (responseBody.awaitingConsent && responseBody.consentToken) {
-        setConsent({
-          id: responseBody.id ?? source,
-          version: responseBody.version ?? '?',
-          permissions: responseBody.permissions ?? [],
-          consentToken: responseBody.consentToken,
-          manifestChanged: responseBody.manifestChanged === true,
-        })
-        return
-      }
-      if (!res.ok || responseBody.ok === false) {
-        setError(responseBody.error ?? `HTTP ${res.status}`)
-        return
-      }
-      // Capability packs with missing store-backable keys get the guided
-      // key step (story 2) — the install itself already succeeded.
-      const needs = keyStepFrom(responseBody)
-      if (needs) {
-        onInstalled()
-        setKeyStep(needs)
-        return
-      }
-      finishSuccess()
+      const responseBody = (await res.json()) as InstallResponseBody
+      handleInstallOutcome(responseBody, res.ok, res.status)
     } catch (err) {
       setError(describeRequestError(err))
     } finally {
-      setSubmitting(false)
+      if (kind === 'plugin') setSubmitting(false)
     }
   }
+
+  /** Resolve a finished job through the status endpoint (single source of truth). */
+  const resolveJob = async (jobId: string) => {
+    try {
+      const res = await fetch(`/api/install-jobs/${jobId}`, { signal: AbortSignal.timeout(SECRET_TIMEOUT_MS) })
+      const data = (await res.json()) as { ok?: boolean; error?: string; job?: { status: string; error?: string; result?: InstallResponseBody; resultStatus?: number; lastUpdate?: InstallProgressUpdate } }
+      if (!res.ok || !data.job) {
+        settleJob(jobId, () => setError(data.error ?? 'Install outcome unknown — the server may have restarted. Refresh and check the installed list.'))
+        return
+      }
+      const remote = data.job
+      if (remote.status === 'done') {
+        const status = remote.resultStatus ?? 200
+        settleJob(jobId, () => handleInstallOutcome(remote.result ?? {}, status < 400, status))
+      } else if (remote.status === 'failed') {
+        settleJob(jobId, () => setError(remote.error ?? 'Install failed'))
+      } else {
+        const update = remote.lastUpdate
+        setJob((prev) => {
+          if (!prev || prev.id !== jobId) return prev
+          return update ? applyUpdate(prev, update) : { ...prev }
+        })
+      }
+    } catch {
+      // Poll miss — the next tick or an SSE event will catch up.
+    }
+  }
+
+  // Live progress via the shared SSE bus.
+  usePluginEvent('packages.install_progress', (payload) => {
+    const update = payload as InstallProgressUpdate
+    setJob((prev) => (prev && update.jobId === prev.id ? applyUpdate(prev, update) : prev))
+  })
+  usePluginEvent('packages.install_done', (payload) => {
+    const { jobId } = payload as { jobId?: string }
+    if (jobId && job?.id === jobId) void resolveJob(jobId)
+  })
+  usePluginEvent('packages.install_failed', (payload) => {
+    const { jobId, error: jobError } = payload as { jobId?: string; error?: string }
+    if (jobId && job?.id === jobId) settleJob(jobId, () => setError(jobError ?? 'Install failed'))
+  })
+
+  // Poll net while a job is active — it also refreshes the elapsed display
+  // during silent stages (no 1s ticker: renders ride events and polls).
+  useEffect(() => {
+    if (!job) return
+    const poll = setInterval(() => { void resolveJob(job.id) }, JOB_POLL_MS)
+    return () => clearInterval(poll)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resolveJob identity is render-scoped by design
+  }, [job?.id])
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -454,6 +636,8 @@ export function InstallDialog({
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             ) : null}
+
+            {job ? <InstallProgressPanel job={job} /> : null}
 
             <FormActions>
               <Button type="button" variant="outline" onClick={() => close(false)} disabled={submitting}>

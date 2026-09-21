@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
 
@@ -60,8 +60,18 @@ mock.module('@makinbakin/sdk/ui', () => ({
     busyLabel: _busyLabel,
     ...props
   }: ButtonHTMLAttributes<HTMLButtonElement> & { busyLabel?: ReactNode }) => <button type="submit" {...props}>{children}</button>,
+  Progress: ({ children, value }: { children?: ReactNode; value?: number | null }) => (
+    <div role="progressbar" aria-valuenow={value ?? undefined}>{children}</div>
+  ),
+  ProgressLabel: ({ children }: { children?: ReactNode }) => <span>{children}</span>,
+  ProgressValue: ({ children }: { children?: ReactNode | (() => ReactNode) }) => (
+    <span>{typeof children === 'function' ? children() : children}</span>
+  ),
+  Spinner: () => <span data-testid="spinner" />,
+  Text: ({ children }: { children?: ReactNode }) => <span>{children}</span>,
 }))
 
+import { emitPluginEvent } from '../../../src/hooks/use-plugin-event'
 import { InstallDialog, inferSourceType } from '../../../plugins/explore/components/install-dialog'
 import type { ExploreCatalogEntry } from '../../../plugins/explore/types'
 
@@ -109,8 +119,29 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
+/**
+ * Job-aware stub (#895): non-plugin installs POST ?async=1 → 202 + jobId,
+ * then read the terminal body from /api/install-jobs/:id. `finalBody` is
+ * what the blocking endpoint would have returned.
+ */
+function jobAwareFetch(finalBody: unknown = { ok: true }, finalStatus = 200): ReturnType<typeof mock> {
+  return mock((url: string) => {
+    const u = String(url)
+    if (u.includes('async=1')) return Promise.resolve(jsonResponse({ ok: true, jobId: 'job-1' }, 202))
+    if (u.startsWith('/api/install-jobs/')) {
+      return Promise.resolve(jsonResponse({ ok: true, job: { status: finalStatus < 400 ? 'done' : 'done', resultStatus: finalStatus, result: finalBody } }))
+    }
+    return Promise.resolve(jsonResponse(finalBody, finalStatus))
+  })
+}
+
+function installPost(): { url: string; body: Record<string, unknown> } {
+  const call = fetchMock.mock.calls.find((c) => String((c as [string])[0]).includes('/install')) as [string, RequestInit]
+  return { url: String(call[0]), body: JSON.parse(String(call[1].body)) }
+}
+
 beforeEach(() => {
-  fetchMock = mock(() => Promise.resolve(jsonResponse({ ok: true })))
+  fetchMock = jobAwareFetch()
   globalThis.fetch = fetchMock as unknown as typeof fetch
 })
 
@@ -139,8 +170,8 @@ describe('InstallDialog', () => {
     render(<InstallDialog open onOpenChange={mock()} entry={agentEntry} onInstalled={onInstalled} />)
     fireEvent.click(screen.getByTestId('install-submit'))
     await waitFor(() => expect(onInstalled).toHaveBeenCalled())
-    const { url, body } = lastCall()
-    expect(url).toBe('/api/agent-packages/install')
+    const { url, body } = installPost()
+    expect(url).toBe('/api/agent-packages/install?async=1')
     expect(body.source).toBe(agentEntry.source)
     expect(body.adopt).toBeUndefined()
   })
@@ -150,7 +181,7 @@ describe('InstallDialog', () => {
     render(<InstallDialog open onOpenChange={mock()} entry={packEntry} onInstalled={onInstalled} />)
     fireEvent.click(screen.getByTestId('install-submit'))
     await waitFor(() => expect(onInstalled).toHaveBeenCalled())
-    expect(lastCall().url).toBe('/api/packages/install')
+    expect(installPost().url).toBe('/api/packages/install?async=1')
   })
 
   it('renders server errors human-readable and does not close', async () => {
@@ -263,7 +294,59 @@ describe('InstallDialog', () => {
     render(<InstallDialog open onOpenChange={mock()} entry={{ ...agentEntry, ref: 'v1.2.0' }} onInstalled={onInstalled} />)
     fireEvent.click(screen.getByTestId('install-submit'))
     await waitFor(() => expect(onInstalled).toHaveBeenCalled())
-    expect(lastCall().body.source).toBe('github:markhayden/bakin-bits-official@v1.2.0#agents/pixel')
+    expect(installPost().body.source).toBe('github:markhayden/bakin-bits-official@v1.2.0#agents/pixel')
+  })
+
+  it('a running job renders live staged progress with byte-level detail (#895)', async () => {
+    // Job stays RUNNING so the panel persists; progress arrives over the bus.
+    fetchMock = mock((url: string) => {
+      if (String(url).includes('async=1')) return Promise.resolve(jsonResponse({ ok: true, jobId: 'job-live' }, 202))
+      if (String(url).startsWith('/api/install-jobs/')) {
+        return Promise.resolve(jsonResponse({ ok: true, job: { status: 'running' } }))
+      }
+      return Promise.resolve(jsonResponse({ ok: true }))
+    })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    render(<InstallDialog open onOpenChange={mock()} entry={packEntry} onInstalled={mock()} />)
+    fireEvent.click(screen.getByTestId('install-submit'))
+    await waitFor(() => expect(screen.getByRole('status')).toBeTruthy())
+
+    await act(async () => {
+      emitPluginEvent({
+        event: 'packages.install_progress', jobId: 'job-live', stage: 'models',
+        message: 'Downloading model tdt-0.6b (1/1)…', item: 'tdt-0.6b',
+        receivedBytes: 470_000_000, totalBytes: 940_000_000,
+      })
+    })
+
+    expect(screen.getByText('Downloading model tdt-0.6b (1/1)…')).toBeTruthy()
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('50')
+    expect(screen.getByText(/470 MB of 940 MB/)).toBeTruthy()
+  })
+
+  it('a failed job surfaces the error and re-enables the form (#895)', async () => {
+    fetchMock = mock((url: string) => {
+      if (String(url).includes('async=1')) return Promise.resolve(jsonResponse({ ok: true, jobId: 'job-dead' }, 202))
+      if (String(url).startsWith('/api/install-jobs/')) {
+        return Promise.resolve(jsonResponse({ ok: true, job: { status: 'running' } }))
+      }
+      return Promise.resolve(jsonResponse({ ok: true }))
+    })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const onInstalled = mock()
+    render(<InstallDialog open onOpenChange={mock()} entry={packEntry} onInstalled={onInstalled} />)
+    fireEvent.click(screen.getByTestId('install-submit'))
+    await waitFor(() => expect(screen.getByRole('status')).toBeTruthy())
+
+    await act(async () => {
+      emitPluginEvent({ event: 'packages.install_failed', jobId: 'job-dead', error: 'Media tarball download stalled' })
+    })
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Media tarball download stalled'))
+    expect(onInstalled).not.toHaveBeenCalled()
+    expect(screen.queryByRole('status')).toBeNull()
   })
 
   it('curated plugin installs carry the ref pin on preflight AND consent commit', async () => {
@@ -297,8 +380,8 @@ describe('InstallDialog', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Adopt existing agent' }))
     fireEvent.click(screen.getByTestId('install-submit'))
     await waitFor(() => expect(onInstalled).toHaveBeenCalled())
-    const { url, body } = lastCall()
-    expect(url).toBe('/api/agent-packages/install')
+    const { url, body } = installPost()
+    expect(url).toBe('/api/agent-packages/install?async=1')
     expect(body.adopt).toBe('foo-two')
     expect(body.installAs).toBe('foo-two')
   })
@@ -312,19 +395,23 @@ describe('InstallDialog', () => {
       capability: 'web-search',
       source: 'github:markhayden/bakin-bits-official#packs/web-search-brave',
     }
+    const capabilityBody = {
+      ok: true,
+      result: { packageId: 'web-search-brave' },
+      capability: {
+        capability: 'web-search',
+        name: 'Web Search (Brave)',
+        ready: false,
+        missing: ['BRAVE_SEARCH_API_KEY is not configured'],
+        secrets: [{ name: 'BRAVE_SEARCH_API_KEY', secretSlot: 'brave.apiKey', help: 'https://api-dashboard.search.brave.com', status: 'missing', required: true }],
+      },
+    }
     fetchMock = mock((url: string) => {
-      if (url === '/api/packages/install') {
-        return Promise.resolve(jsonResponse({
-          ok: true,
-          result: { packageId: 'web-search-brave' },
-          capability: {
-            capability: 'web-search',
-            name: 'Web Search (Brave)',
-            ready: false,
-            missing: ['BRAVE_SEARCH_API_KEY is not configured'],
-            secrets: [{ name: 'BRAVE_SEARCH_API_KEY', secretSlot: 'brave.apiKey', help: 'https://api-dashboard.search.brave.com', status: 'missing', required: true }],
-          },
-        }))
+      if (String(url).includes('/api/packages/install')) {
+        return Promise.resolve(jsonResponse({ ok: true, jobId: 'job-cap' }, 202))
+      }
+      if (String(url).startsWith('/api/install-jobs/')) {
+        return Promise.resolve(jsonResponse({ ok: true, job: { status: 'done', resultStatus: 200, result: capabilityBody } }))
       }
       return Promise.resolve(jsonResponse({ ok: true }))
     })
@@ -361,14 +448,18 @@ describe('InstallDialog', () => {
     }
     fetchMock = mock((url: string) => {
       if (url === '/api/secrets') return Promise.reject(new Error('Failed to fetch'))
-      return Promise.resolve(jsonResponse({
+      if (String(url).includes('async=1')) return Promise.resolve(jsonResponse({ ok: true, jobId: 'job-net' }, 202))
+      if (String(url).startsWith('/api/install-jobs/')) {
+        return Promise.resolve(jsonResponse({ ok: true, job: { status: 'done', resultStatus: 200, result: {
         ok: true,
         result: { packageId: 'web-search-brave' },
         capability: {
           capability: 'web-search', name: 'Web Search (Brave)', ready: false, missing: ['key'],
           secrets: [{ name: 'BRAVE_SEARCH_API_KEY', secretSlot: 'brave.apiKey', status: 'missing', required: true }],
         },
-      }))
+      } } }))
+      }
+      return Promise.resolve(jsonResponse({ ok: true }))
     })
     globalThis.fetch = fetchMock as unknown as typeof fetch
 
@@ -391,14 +482,14 @@ describe('InstallDialog', () => {
       ...agentEntry, id: 'web-search-brave', kind: 'skill-pack', name: 'Web Search (Brave)',
       capability: 'web-search', source: 'github:x/y#packs/web-search-brave',
     }
-    fetchMock = mock(() => Promise.resolve(jsonResponse({
+    fetchMock = jobAwareFetch({
       ok: true,
       result: { packageId: 'web-search-brave' },
       capability: {
         capability: 'web-search', name: 'Web Search (Brave)', ready: false, missing: ['key'],
         secrets: [{ name: 'BRAVE_SEARCH_API_KEY', secretSlot: 'brave.apiKey', status: 'missing', required: true }],
       },
-    })))
+    })
     globalThis.fetch = fetchMock as unknown as typeof fetch
 
     const onOpenChange = mock()

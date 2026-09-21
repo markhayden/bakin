@@ -12,6 +12,7 @@
  * pack's readiness (`capability`) so clients can run the guided key step.
  */
 import { z } from 'zod'
+import { startInstallJob, type InstallProgressFn } from '@/core/agent-packages/install-progress'
 import { installPackage } from '@/core/agent-packages/installer'
 import { listCapabilities, type CapabilityReadiness } from '@/core/agent-packages/capability-readiness'
 import { loadUnifiedCatalog } from '@/core/curated-catalog/load'
@@ -43,7 +44,7 @@ async function resolveCatalogSource(name: string): Promise<{ source: string } | 
   return { source: sourceWithRef(entry.source, entry.ref) }
 }
 
-export async function post(req: Request, _url: URL): Promise<Response> {
+export async function post(req: Request, url: URL): Promise<Response> {
   let raw: unknown
   try {
     raw = await req.json()
@@ -69,11 +70,35 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     source = resolved.source
   }
 
+  // Async job mode (#895): return a job handle immediately; progress rides
+  // the SSE bus and the final body waits at /api/install-jobs/:id. The
+  // blocking mode stays for the CLI and existing consumers.
+  if (url.searchParams.get('async') === '1') {
+    const job = startInstallJob({
+      kind: 'package',
+      title: source,
+      run: async (progress) => {
+        const outcome = await runPackageInstall(source, parsed.data, progress)
+        return { body: await outcome.json(), status: outcome.status }
+      },
+    })
+    return Response.json({ ok: true, jobId: job.id }, { status: 202 })
+  }
+
+  return runPackageInstall(source, parsed.data, undefined)
+}
+
+async function runPackageInstall(
+  source: string,
+  data: { replace?: boolean; installAs?: string },
+  onProgress: InstallProgressFn | undefined,
+): Promise<Response> {
   try {
     const result = await installPackage({
       source,
-      replace: parsed.data.replace,
-      installAs: parsed.data.installAs,
+      replace: data.replace,
+      installAs: data.installAs,
+      onProgress,
     })
     if (result.kind === 'agent') {
       // Agent packages must go through /api/agents/install — the surfaces

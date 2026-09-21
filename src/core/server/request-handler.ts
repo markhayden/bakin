@@ -51,6 +51,7 @@ import * as agentPackagesDynamicRoute from '../../../packages/host/src/api/agent
 import * as contextReportRoute from '../../../packages/host/src/api/context-report/index'
 import * as execToolsRoute from '../../../packages/host/src/api/exec-tools/[toolName]'
 import * as packagesListRoute from '../../../packages/host/src/api/packages/list'
+import * as installJobsRoute from '../../../packages/host/src/api/install-jobs'
 import * as packagesInstallRoute from '../../../packages/host/src/api/packages/install'
 import * as skillsRoute from '../../../packages/host/src/api/skills'
 import * as packagesDynamicRoute from '../../../packages/host/src/api/packages/dynamic'
@@ -496,6 +497,10 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     }
     if (url.pathname === '/api/packages/install' && req.method === 'POST') {
       dispatchWebHandler(req, res, packagesInstallRoute.post)
+      return
+    }
+    if (url.pathname.startsWith('/api/install-jobs/') && req.method === 'GET') {
+      dispatchWebHandler(req, res, installJobsRoute.get)
       return
     }
     if (url.pathname === '/api/packages/capabilities' && req.method === 'GET') {
