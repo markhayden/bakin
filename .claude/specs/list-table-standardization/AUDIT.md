@@ -1,6 +1,99 @@
 # List/table audit — working evidence for #806
 
+## Remaining Messaging collections — 2026-09-21 local batch
+
+- Existing patterns: `storybook/public/recipes/collection-patterns.stories.tsx`
+  (`SameRecords`, `RowBehaviors`), `storybook/public/lists/data-table.stories.tsx`
+  (`NarrowRoles`, `SortedPagedDualRender`), and the established Plans Sort selector
+  composition. Focused SDK boundaries: `/ui`, `/patterns`, `/layout`, `/navigation`.
+  No public system extension or baseline update.
+- Brainstorm sessions and plan channel/content lists now use separated rows,
+  wrapping titles and soft count/metadata chips. Existing independent actions,
+  session navigation and specialized conversations remain. Calendar list mode
+  uses labelled narrow roles and shared URL-backed heading/selector sort state;
+  month/week/day ordering remains chronological. Calendar and Brainstorm load
+  failures now show Retry rather than empty success.
+- Added deterministic real-SDK Calendar, Brainstorm and workspace fixtures to
+  the existing Plans fixture command. All four pass with no package blockers
+  or conformance findings. HTML and screenshot evidence:
+  `/private/tmp/bakin-plans-ui.Ag2Vaz/plugin/test-results/bakin-ui{,-calendar,-brainstorm,-workspace}`;
+  final log: `/private/tmp/bakin-messaging-collections-final-fixture.log`.
+- Browser review found an existing inner-main landmark and tab panels without
+  visible focus; the consumer now uses a div and existing Tabs focus tokens.
+  Height-contained 320px host review additionally caught the content column
+  shrinking below its children and the Details rail intercepting channel actions.
+  Narrow `flex-none`, returning to desktop `flex-1`, fixes that overlap without
+  changing the desktop resizer/scroll model. Regression evidence:
+  `/private/tmp/bakin-messaging-workspace-overlap-red.log`; final focused test passes.
+- 592 Bits tests pass, 8 existing skips, 3,559 assertions; typecheck, lint and
+  build pass. Final unit log: `/private/tmp/bakin-messaging-final-bits-tests.log`.
+  Intercepted local-app checks at 320/768/1024/1440px verify sort after
+  reload, filter/no-results recovery, load retries, keyboard session navigation,
+  channel confirmation/cancel, no document overflow and no page errors. Log:
+  `/private/tmp/bakin-messaging-collection-browser-fixed.log`; screenshots:
+  `/private/tmp/bakin-messaging-{calendar,brainstorm,workspace}-{width}.png`.
+  API writes were intercepted; no real plans/channels/content were deleted.
+- User explicitly approved Messaging's measured 704,390 → 709,343-byte baseline
+  (4,953-byte delta). Sorting and retry states account for the increase; other
+  limits and the shared 2,048-byte allowance remain unchanged. Subsequent focus
+  and layout corrections fit within that unchanged allowance. Payload check:
+  `/private/tmp/bakin-messaging-batch-performance-final.log`.
+- Full shared checkpoint passed in
+  `/private/tmp/bakin-messaging-collections-full-permitted.log`: quick contracts,
+  lint/typecheck/builds, 9,550 shared tests (16 skips), approved payload ratchet,
+  335 Storybook interactions, 280 unchanged visuals, 93 cross-browser checks,
+  plugin conformance and docs publication (448 stories). The earlier
+  sandbox-limited attempt was stopped because local browser ports/build output
+  need test permissions; it is not passing evidence. No release, push or
+  dependency change. Unrelated generated docs are preserved in a scoped stash;
+  the pre-existing embedded-assets manifest is excluded from the commit.
+- Independent five-axis review found no required changes. At intermediate wide
+  widths Calendar retains its existing bounded horizontal table scroll; moving
+  the narrow-render breakpoint earlier is optional follow-up, not a new
+  regression. Both retry-test suites reinstall fetch in `beforeEach`, preventing
+  a failed assertion from carrying the temporary error response into later cases.
+
 ## Scope and evidence status
+
+### Next simple-row slice: source recheck (2026-09-21)
+
+These are pending recommendations, not completed migrations:
+
+| Consumer | Remaining change | Preserve / verify |
+| --- | --- | --- |
+| Chat `launcher.tsx` recent chats | Explicit separated rows and wrapping titles | Six-item limit, unread state, open action; agent cards and compact rail stay specialized |
+| Team `team-manager.tsx`, `lesson-toggle-list.tsx` | Separated rows and long-label wrapping | Global team identity, exact delete target, independently labelled lesson switch, pending lock and rollback, deep-link highlight |
+| Models `aliases-tab.tsx` | Separated rows; kit density instead of local px/py | Alias → provider/model mapping, missing-catalog fallback, pagination and named delete confirmation; not the repeated routing/settings forms |
+| Assets `task-assets.tsx` | Compact separated rows and persistent independent unlink action | Thumbnails/version facts, read-only behavior, unlink-not-delete scope; current silent load/unlink errors need honest feedback in that slice |
+| Branding `brand-builder.tsx` attached materials | Compact separated rows; retire outdated bordered-resource rationale | File names/sizes, remove action, three-file cap and input constraints; no gallery changes |
+| Branding `brand-detail.tsx` document/lesson lists | Separated rows with mobile content/actions wrapping | Edit route, context/active switches, delete confirmation, staged save semantics; the current shrink-0 filename/action groups need narrow testing |
+
+Do not treat removing an outline as the entire migration: an available menu,
+honest load state and readable narrow identity are part of each acceptance test.
+
+### Next table slice: mobile parity recheck (2026-09-21)
+
+Read-only review against DataTable `NarrowRoles`/`SortedPagedDualRender` confirms:
+
+- **Schedule first:** `plugins/schedule/components/job-list.tsx` supplies a
+  private narrow row without the desktop `JobActionsMenu`, and sortable headings
+  disappear with no persistent selector in `schedule-page.tsx`. Actions remain
+  available through `job-drawer.tsx` (pause/resume, run, delete, edit, duplicate,
+  adopt, restore, skip), so this is direct-action parity, not lost capability.
+  Add persistent sorting and reuse the same menu on narrow rows.
+- **Tasks next:** `plugins/tasks/components/task-log-table.tsx` already uses
+  labelled narrow roles and row activation. Its headings are the only sort
+  controls and disappear when narrow. Preserve those roles; add a shared sort
+  control rather than another row implementation.
+- **Health afterward:** `system-inventory.tsx` and `system-search-section.tsx`
+  retain wide-only, 760px-minimum tables inside bounded scroll. Update/Reindex
+  actions can be offscreen. Their `renderRow={() => null}` is dormant because
+  no collapse breakpoint is set. Introduce explicit supported narrow roles and
+  preserve action scope and sorting. ChartDataTable remains a separate exact-data
+  chart view, not automatically part of this migration.
+
+These findings are source-based and require targeted browser tests in their
+own slices; they do not expand the current Messaging implementation.
 
 Source snapshot: Bakin `de3d183321c9faca5c21705d08564f1f63d12cd5`;
 official Bits `4ff49426de9f88a87298754c515fef30aa866576` (both local main).

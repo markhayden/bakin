@@ -85,6 +85,52 @@ rerun. Plans menu behavior is saved locally as Bits commit `6d7288f`. No push,
 release or real-data deletion was performed.
 Scope: [SPEC.md](SPEC.md). Evidence: [AUDIT.md](AUDIT.md).
 
+### Remaining Messaging collections — 2026-09-21
+
+The user authorized continuing the remaining collection audit in small batches
+(“do what you think just keep trucking”). First batch: Calendar list mode,
+Brainstorm session index, and plan-workspace channel/content lists. Reuse the
+existing DataTable narrow-role and separated-row contracts, preserve domain
+actions and calendar/conversation behavior, and add real-SDK fixtures per view.
+No new public API, dependency, baseline or mobile-filter redesign is included.
+
+Calendar now has one URL-backed sort pipeline for headings and the persistent
+Sort selector, including labelled narrow fields and error/Retry states.
+Brainstorm and workspace collections use separated rows, wrapping titles and
+soft metadata counts. Browser review also found and repaired nested main
+landmarks, missing tab-panel focus indication, and the narrow workspace column
+shrinking underneath its details rail. These use existing composition/classes;
+the broader specialized workspace remains a follow-up.
+
+The user explicitly approved the measured Messaging client increase from
+704,390 to 709,343 bytes (4,953 bytes), mainly persistent Calendar sorting and
+retryable load states. Only that baseline entry changes; all other budgets and
+the existing 2,048-byte allowance are unchanged. The payload ratchet passes.
+Final focused evidence: 592 Bits tests pass (8 existing skips), typecheck, lint,
+build, four real-SDK fixtures and intercepted local-app checks at
+320/768/1024/1440px. The final full checkpoint also passes: 9,550 shared tests
+(16 skips), 335 Storybook interactions, 280 unchanged visuals, 93 cross-browser
+checks, plugin conformance and docs publication (448 stories). Full log:
+`/private/tmp/bakin-messaging-collections-full-permitted.log`. This is a local
+verified checkpoint, not a release or completion of the remaining fleet audit.
+Messaging implementation is saved locally as Bits commit `0391624`.
+
+Next bounded core slices, confirmed by current source inspection:
+
+1. Chat recent sessions (`launcher.tsx`) and Team manager/lesson rows. Replace
+   bordered/default-bordered treatment only for those record lists; preserve
+   Chat's compact rail/agent picker and Team's org canvas. Keep lesson toggles
+   and destructive actions independent, with long-label and narrow checks.
+2. Models alias records, task-linked asset rows, and Branding attached
+   materials/document lists. Remove per-row spacing overrides where the kit
+   owns density. Preserve model settings forms, asset/brand preview galleries,
+   labelled controls and existing independent actions.
+3. Reference bookmark cards are text-first row candidates; keep its creation
+   form and single-link widget. Then audit Health expansions and existing
+   tables for sorting/action parity before specialized gallery/calendar/rail
+   follow-ups. Each slice needs focused tests and a real-SDK/browser proof;
+   no automatic global ListRows default change or cross-fleet bulk replacement.
+
 ## Delivery shape
 
 Finish the audit before declaring the ruling complete. Then establish the

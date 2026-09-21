@@ -9,6 +9,11 @@ state coverage remain in [AUDIT.md](AUDIT.md). “Candidate” means recommended
 not an approved consumer migration. Delegated routes share their implementation
 finding; aliases are not counted as separate collection implementations.
 
+2026-09-21 status update: “Local” records current consumer work, not a release
+or complete state coverage. Workflows shipped through #885; Projects and the
+Messaging slices remain local pending the combined rollout. See PLAN/AUDIT for
+the per-slice verification boundaries and specialized follow-ups.
+
 | Census ID | Disposition | Collection decision / follow-up |
 | --- | --- | --- |
 | `host-route:__root` | Shell | Navigation and live activity; see shared-component findings. |
@@ -39,11 +44,11 @@ finding; aliases are not counted as separate collection implementations.
 | `host-route:workflows.new` | Delegate | Host route delegates to matching core plugin page; do not count it as another list. |
 | `plugin-route:_template:/_template` | No result collection | Status/form or single widget; section-card guidance is separate from collection migration. |
 | `plugin-route:messaging:/messaging` | Alias | Delegate to destination; no independent collection. |
-| `plugin-route:messaging:/messaging/brainstorm` | Rows + specialized | Session list → separated rows; retain conversation/picker interaction. |
-| `plugin-route:messaging:/messaging/calendar` | Specialized + table | Keep calendar; review collapsing list-mode table and mobile sorting. |
-| `plugin-route:messaging:/messaging/plans` | Rows candidate | Plan/channel/content lists → separated rows; preserve grouping and task timeline. |
-| `plugin-route:messaging:/messaging/plans/[id]` | Rows candidate | Plan/channel/content lists → separated rows; preserve grouping and task timeline. |
-| `plugin-route:projects:/projects` | Rows candidate | Text-first project cards → rows; preserve progress/status/unread signals. |
+| `plugin-route:messaging:/messaging/brainstorm` | Local rows + specialized | Session index migrated to separated rows, wrapping titles and retryable load states. Conversation/picker branches remain specialized; not a full workspace audit. |
+| `plugin-route:messaging:/messaging/calendar` | Local table + specialized | List mode uses shared narrow roles and persistent URL sorting. Real calendar layouts stay specialized; list fixture covered, not all calendar interactions. |
+| `plugin-route:messaging:/messaging/plans` | Local table — approved | Date-sorted DataTable with labelled narrow rows, filters, retry and independent confirmed Delete; user visually approved. |
+| `plugin-route:messaging:/messaging/plans/[id]` | Local rows + specialized | Channel/content-piece lists migrated to separated rows with existing delete/open actions; shared plan deletion, no nested main, visible panel focus. Editor/conversation/timeline remain specialized. |
+| `plugin-route:projects:/projects` | Local rows — approved | Separated project rows preserve progress/status/unread signals, independent confirmed Delete and linked tasks/assets. User visually approved; combined rollout pending. |
 | `plugin-route:projects:/projects/[id]` | Keep rows + specialized | Keep separated tasks/attachments; preserve editor, conversation and form controls. |
 | `plugin-route:projects:/projects/[id]/edit` | Keep rows + specialized | Keep separated tasks/attachments; preserve editor, conversation and form controls. |
 | `plugin-route:projects:/projects/new` | Alias | Delegate to destination; no independent collection. |
@@ -76,7 +81,7 @@ finding; aliases are not counted as separate collection implementations.
 | `plugin-slot:team:page:/team/[id]` | Rows + specialized | Member/lesson lists use standard rows; retain diagnostics timeline and active-context transcript semantics. |
 | `plugin-slot:team:page:/team/teams/[teamId]` | Rows + specialized | Member/lesson lists use standard rows; retain diagnostics timeline and active-context transcript semantics. |
 | `plugin-slot:workflows:nav-badge-providers` | No collection | Badge provider; counts/attention, not a result-list presentation. |
-| `plugin-slot:workflows:page:/workflows` | Unified table — PR #885 | User approved one DataTable with Source classification/filter, five sortable headings, unified 20-row pagination and search. Preserves summaries/assignments; full local conformance passed. Awaiting CI/review/merge. |
+| `plugin-slot:workflows:page:/workflows` | Migrated — #885 merged | User approved one DataTable with Source classification/filter, five sortable headings, unified 20-row pagination and search. Preserves summaries/assignments; full local conformance passed. |
 | `plugin-slot:workflows:page:/workflows/[id]` | Specialized | Workflow graph/editor and node palette; do not flatten into generic result rows. |
 | `plugin-slot:workflows:page:/workflows/[id]/edit` | Specialized | Workflow graph/editor and node palette; do not flatten into generic result rows. |
 | `plugin-slot:workflows:page:/workflows/new` | Specialized | Workflow graph/editor and node palette; do not flatten into generic result rows. |
