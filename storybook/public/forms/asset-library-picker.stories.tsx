@@ -136,8 +136,10 @@ export const LibraryStates = {
     const page = within(document.body)
     await userEvent.click(canvas.getByRole('button', { name: 'Library unreachable' }))
     await page.findByText("Couldn't load your assets")
-    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Upload new' })).toBeVisible()
+    // waitFor: the dialog can still be mid open-transition when the text
+    // lands — a one-shot toBeVisible here raced it (rc.32 release flake).
+    await waitFor(() => expect(page.getByRole('button', { name: 'Try again' })).toBeVisible())
+    await waitFor(() => expect(page.getByRole('button', { name: 'Upload new' })).toBeVisible())
     await userEvent.keyboard('{Escape}')
     await waitFor(() => expect(page.queryByRole('dialog')).not.toBeInTheDocument())
     await userEvent.click(canvas.getByRole('button', { name: 'Empty library' }))
