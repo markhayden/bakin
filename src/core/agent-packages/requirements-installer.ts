@@ -24,6 +24,7 @@ import { commitFileAtomic, downloadToFile } from '../../../packages/core/src/net
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { runSystemBun } from '../whiskit/command'
+import { ensureBunAvailable } from '../whiskit/managed-bun'
 import { binPlatformKey, installManifestBins } from './bin-installer'
 import type { ProjectorResult } from './projector'
 
@@ -115,10 +116,15 @@ export async function installNpmRequirement(
       }
     } else if (hasDeps) {
       skipped = false
+      // Customer binary installs have no dev toolchain — a missing system
+      // bun installs the pinned managed bun instead of failing with
+      // "install Bun" advice (margo, 2026-09-21). Install-time only.
+      const bunPath = await ensureBunAvailable()
       const run = await runSystemBun(['install', '--ignore-scripts'], {
         cwd: staging,
         timeoutMs: NPM_INSTALL_TIMEOUT_MS,
         extraEnv: req.env,
+        bunPath,
       })
       if (run.exitCode !== 0) {
         throw new Error(
