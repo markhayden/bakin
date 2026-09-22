@@ -451,7 +451,6 @@ describe('ModelsPage component', () => {
     availableRequest = availableDeferred.promise
 
     render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Model catalog'))
     const catalog = within(await screen.findByTestId('model-catalog'))
 
     expect(await catalog.findByText('Loading available models')).toBeTruthy()
@@ -469,7 +468,6 @@ describe('ModelsPage component', () => {
     }
 
     render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Model catalog'))
 
     expect(await screen.findByText('Models could not be loaded')).toBeTruthy()
     expect(screen.getByText('runtime unavailable')).toBeTruthy()
@@ -501,7 +499,6 @@ describe('ModelsPage component', () => {
     refreshRequest = refreshDeferred.promise
 
     render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Model catalog'))
     const catalog = within(await screen.findByTestId('model-catalog'))
 
     await catalog.findByText('Claude Sonnet 4.6')
@@ -527,7 +524,6 @@ describe('ModelsPage component', () => {
       ],
     }
     render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Model catalog'))
     const catalog = within(await screen.findByTestId('model-catalog'))
     expect(await catalog.findByText('gpt-5.4-mini')).toBeTruthy()
     const rejected = catalog.getByText('Rejected by account')
@@ -545,7 +541,6 @@ describe('ModelsPage component', () => {
     }
 
     render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Model catalog'))
 
     expect(await screen.findByText(/Refreshed just now/)).toBeTruthy()
   })
@@ -581,7 +576,6 @@ describe('ModelsPage component', () => {
     }
 
     render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Model catalog'))
 
     expect(await screen.findByText('Best frontier coding model for long-running work.')).toBeTruthy()
     expect(screen.getByText('Best for: Complex coding')).toBeTruthy()
@@ -596,7 +590,6 @@ describe('ModelsPage component', () => {
 
   it('uses the shared search pattern inside the catalog panel and strongly identifies the default model', async () => {
     render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Model catalog'))
     const catalog = within(await screen.findByTestId('model-catalog'))
 
     const search = await catalog.findByRole('searchbox', { name: 'Search the model catalog' })
@@ -849,7 +842,6 @@ describe('ModelsPage component', () => {
     }
 
     render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Model catalog'))
 
     expect(await screen.findByText('Showing 1–8 of 11')).toBeTruthy()
     expect(screen.getByText('Model 01')).toBeTruthy()

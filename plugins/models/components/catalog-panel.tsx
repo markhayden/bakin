@@ -1,15 +1,15 @@
 'use client'
 
 /**
- * The model catalog — a DisclosurePanel at the foot of the Models page
- * (spec §3.4): every model the runtime lists with its eligibility verdict,
+ * The model catalog — the section at the foot of the Models page (spec
+ * §3.4): every model the runtime lists with its eligibility verdict,
  * provider facets, search, sort, pagination, refresh and the explicit
  * (billed) availability probe. Read-only: model choices are made in the
  * lanes above, never from the catalog.
  */
 import { useMemo, useState } from 'react'
 import { RefreshCw, ShieldCheck } from 'lucide-react'
-import { DisclosurePanel } from '@makinbakin/sdk/layout'
+import { Section } from '@makinbakin/sdk/layout'
 import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
 import {
   DataTable,
@@ -339,11 +339,14 @@ export function CatalogPanel({ catalog, defaultModel }: CatalogPanelProps) {
   ) : undefined
 
   return (
-    <DisclosurePanel
-      summary="Model catalog"
-      summaryMeta={modelsLoaded ? `${modelOptions.length} model${modelOptions.length === 1 ? '' : 's'}` : undefined}
-      data-testid="model-catalog"
-    >
+    <Section spacing="compact" divider="top" aria-labelledby="model-catalog-heading" data-testid="model-catalog">
+      <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+        <h2 id="model-catalog-heading" className="m-0">Model catalog</h2>
+        {modelsLoaded ? <Badge tone="neutral" variant="soft" size="xs">{modelOptions.length} model{modelOptions.length === 1 ? '' : 's'}</Badge> : null}
+      </div>
+      <Text as="p" size="meta" tone="muted" className="max-w-prose leading-relaxed">
+        Every model your runtime reports, with whether it can run here. Choices are made in the lanes above — this list is for looking things up.
+      </Text>
       <PageControls
         variant="filters"
         label="Model catalog controls"
@@ -434,6 +437,6 @@ export function CatalogPanel({ catalog, defaultModel }: CatalogPanelProps) {
           }}
         />
       )}
-    </DisclosurePanel>
+    </Section>
   )
 }

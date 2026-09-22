@@ -220,7 +220,7 @@ plan's revision.
 
 ## The Models page — Simple / Advanced (spec §3.4, D4/D24; PR 3 of the overhaul)
 
-`/models` is one page, no tabs (`plugins/models/components/models-page.tsx`,
+`/models` is one page (`plugins/models/components/models-page.tsx`,
 enrolled **conformant**: `bakin.ui-test.ts` + `tests/ui.fixture.tsx`). Two
 reads (`GET /selections` — states + revision + eligibility + proposals +
 pending + `support`; `GET /plan`) and ONE write (`POST /selections`) sit
@@ -291,6 +291,9 @@ probe) behind `use-catalog.ts`.
   eligibility detail and, when the server proposed a repair, one "Use
   <model>" that STAGES it; `unknown` is information only; a ref the user
   already changed hides its callout.
+- The **Model catalog** (`catalog-panel.tsx`) is an always-visible read-only
+  section at the foot of the page (both modes): search, provider facets,
+  sort, pagination, Refresh, Verify availability.
 - Every catalog-changing route emits `models.catalog_changed`; the SDK
   `useAvailableModels` (Team's pickers) refetches on it and never caches
   across mounts.

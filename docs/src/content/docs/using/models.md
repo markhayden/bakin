@@ -44,7 +44,7 @@ If your runtime hasn't confirmed a write yet, the field carries a *saving…* ch
 
 ## Model catalog
 
-The read-only catalog sits under the lanes: every model your runtime reports, merged with a curated metadata layer (tier, best-for, cost summary, context window), with provider filters, search and sort. *Refresh* re-reads the runtime; *Verify availability* fires a tiny billed probe per model to confirm your account can call it — explicit only, never on a schedule.
+The read-only catalog sits at the foot of the page in both views: every model your runtime reports, merged with a curated metadata layer (tier, best-for, cost summary, context window), with provider filters, search and sort. *Refresh* re-reads the runtime; *Verify availability* fires a tiny billed probe per model to confirm your account can call it — explicit only, never on a schedule.
 
 <div class="table-light-fit table-label">
 
