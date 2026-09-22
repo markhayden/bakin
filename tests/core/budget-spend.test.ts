@@ -78,7 +78,7 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   }),
 }))
 
-import { assembleBudgetSpend, paceProjection } from '../../src/core/budget-spend'
+import { assembleBudgetSpend, assembleSpendForDays, paceProjection } from '../../src/core/budget-spend'
 import { dayStartMs, monthStartMs } from '../../src/core/budget'
 
 // NOW: mid-month, mid-day, local — 2026-07-15 12:00.
@@ -561,6 +561,69 @@ describe('assembleBudgetSpend', () => {
     expect(s.observedUsageEvidence).toEqual({ status: 'unavailable', reason: 'usage_store_unavailable' })
     expect(s.daily.global.meteredUsdMicros).toBe(2_000_000)
     expect(s.daily.global.unattributed.meteredUsdMicros).toBe(0)
+  })
+})
+
+describe('assembleSpendForDays — the day-set variant of the ONE engine (D32)', () => {
+  const LAST_MONTH = new Date(2026, 5, 20, 9, 0, 0).getTime()
+
+  it('the same $10 present in both run_costs and usage.db counts ONCE, and the day-set total equals the cap-window figure for those days', async () => {
+    // Attributed $10 today; the transcript scan observed the same $10 (plus 200 tokens outside Bakin).
+    costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', usageKind: 'tokens', totalTokens: 1000, costUsdMicros: 10_000_000, occurredAt: TODAY })
+    usageCells.push(usage('pixel', TODAY, 'google/gemini-3-flash', 1200, 10_000_000))
+    // An earlier day this month, only observed.
+    usageCells.push(usage('pixel', EARLIER_THIS_MONTH, 'google/gemini-3-flash', 100, 500_000))
+
+    const today = localDayKey(TODAY)
+    const earlier = localDayKey(EARLIER_THIS_MONTH)
+    const facets = await assembleBudgetSpend(NOW)
+    const daySet = await assembleSpendForDays([today], NOW)
+    const total = (w: { global: { meteredUsdMicros: number; unattributed: { meteredUsdMicros: number } } }) => w.global.meteredUsdMicros + w.global.unattributed.meteredUsdMicros
+    expect(total(daySet.window)).toBe(10_000_000)
+    expect(total(daySet.window)).toBe(total(facets.daily))
+    expect(daySet.window.global.unattributed.meteredTokens).toBe(200)
+
+    const both = await assembleSpendForDays([today, earlier, today], NOW)
+    expect(both.days).toEqual([earlier, today])
+    expect(total(both.window)).toBe(10_500_000)
+    expect(total(both.window)).toBe(total(facets.monthly))
+  })
+
+  it('days outside the set contribute nothing — attributed rows, observed cells and evidence gaps alike', async () => {
+    costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', usageKind: 'tokens', totalTokens: 10, costUsdMicros: 1_000_000, occurredAt: TODAY })
+    // Unpriced metered row on the excluded day: an evidence gap only if the day is selected.
+    costRows.push({ runId: 'r2', agent: 'pixel', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', usageKind: 'tokens', totalTokens: 10, costUsdMicros: null, occurredAt: EARLIER_THIS_MONTH })
+    usageCells.push(usage('rolo', EARLIER_THIS_MONTH, 'google/gemini-3-flash', 100, 100_000))
+
+    const onlyToday = await assembleSpendForDays([localDayKey(TODAY)], NOW)
+    expect(onlyToday.window.global.meteredUsdMicros).toBe(1_000_000)
+    expect(onlyToday.window.byAgent.rolo).toBeUndefined()
+    expect(onlyToday.spendEvidence.gaps).toEqual([])
+
+    const onlyEarlier = await assembleSpendForDays([localDayKey(EARLIER_THIS_MONTH)], NOW)
+    expect(onlyEarlier.window.global.meteredUsdMicros).toBe(0)
+    expect(onlyEarlier.window.byAgent.rolo?.unattributed.meteredUsdMicros).toBe(100_000)
+    expect(onlyEarlier.spendEvidence.gaps.length).toBeGreaterThan(0)
+  })
+
+  it('reaches back before the current month and an empty set never reads', async () => {
+    costRows.push({ runId: 'old', agent: 'pixel', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', usageKind: 'tokens', totalTokens: 10, costUsdMicros: 3_000_000, occurredAt: LAST_MONTH })
+    const lastMonth = await assembleSpendForDays([localDayKey(LAST_MONTH)], NOW)
+    expect(lastMonth.window.global.meteredUsdMicros).toBe(3_000_000)
+    expect(lastMonth.window.startMs).toBe(new Date(2026, 5, 20).getTime())
+
+    const empty = await assembleSpendForDays([], NOW)
+    expect(empty.days).toEqual([])
+    expect(empty.window.global.meteredUsdMicros).toBe(0)
+    expect(empty.observedUsageEvidence).toEqual({ status: 'available' })
+  })
+
+  it('reports the usage store unavailable without discarding attributed spend (same posture as the cap windows)', async () => {
+    costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', usageKind: 'tokens', totalTokens: 10, costUsdMicros: 1_000_000, occurredAt: TODAY })
+    usageReadFails = true
+    const s = await assembleSpendForDays([localDayKey(TODAY)], NOW)
+    expect(s.observedUsageEvidence).toEqual({ status: 'unavailable', reason: 'usage_store_unavailable' })
+    expect(s.window.global.meteredUsdMicros).toBe(1_000_000)
   })
 })
 
