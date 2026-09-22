@@ -30,6 +30,9 @@ Sizes: S = 1–2 files, M = 3–5, L = 6–8 (an L is listed with its sub-steps;
 
 ---
 
+## Delivery: GitHub NATIVE stacked PRs (decided 2026-09-22)
+The three PRs ship as one native GitHub stack (public preview since 2026-07-30; `gh extension install github/gh-stack`), NOT base-branch naming: `gh stack init feat/907-model-trust feat/spend-plugin feat/models-plan-page` → `gh stack submit` (PR #909 already exists — `gh stack link` folds it in). Nothing merges until Mark live-tests the full stack on 3737; then the stack merges bottom-up through GitHub's stack merge (server-side rebase/retarget of the layers above).
+
 ## Dependency graph (edges = "must land before")
 
 ```

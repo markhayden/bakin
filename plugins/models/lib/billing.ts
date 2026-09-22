@@ -20,7 +20,7 @@ import type { BillingLane } from '@bakin/core/execution/ledger'
 import type { RuntimeCredentialStatus } from '@bakin/core/adapters/runtime'
 
 import { createLogger } from '../../../src/core/logger'
-import { normalizeModelId, providerFromId } from './model-id'
+import { normalizeModelId, providerFromId } from '@bakin/core/llm/model-id'
 import type { BillingOverride, ModelsPluginSettings } from '../types'
 
 const log = createLogger('models:billing')

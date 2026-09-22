@@ -23,7 +23,7 @@ import {
   writePersistedCache,
 } from './models-cache'
 import { getKnownModel, getKnownProvider, formatCostRange } from '@bakin/core/llm/model-catalog'
-import { normalizeModelId, providerFromId, tierFromId } from './model-id'
+import { normalizeModelId, providerFromId, tierFromId } from '@bakin/core/llm/model-id'
 
 // ---------------------------------------------------------------------------
 // Available models cache (globalThis-backed so every reach into this module

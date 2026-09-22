@@ -16,7 +16,7 @@ import { resolveAgents } from './config-io'
 import { resetModelsCache } from './available-models'
 import { resolveBilling } from './billing'
 import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
-import { normalizeModelId } from './model-id'
+import { normalizeModelId } from '@bakin/core/llm/model-id'
 import { fetchAvailableModels } from './available-models'
 import { toLocalDayKey } from '@bakin/core/usage-history/store'
 

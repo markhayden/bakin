@@ -1,11 +1,9 @@
 /**
- * Pure model-id helpers.
- *
- * Extracted from index.ts. String-derived classification and normalization —
+ * Pure model-id helpers — string-derived classification and normalization,
  * no I/O, no ctx. `normalizeModelId` is the shared spelling rule (bare
- * `claude-*` ids get the `anthropic/` prefix) used by config reads, alias
- * resolution, routes, and hooks alike, so it lives in its own leaf module to
- * keep config-io ↔ available-models acyclic.
+ * `claude-*` ids get the `anthropic/` prefix) used by the models plugin
+ * (config reads, alias resolution, routes) AND the spend plugin (billing
+ * attribution) alike, so it lives in core where neither imports the other.
  */
 
 export function tierFromId(id: string): 'budget' | 'standard' | 'premium' {

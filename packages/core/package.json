@@ -24,6 +24,8 @@
     "./media": "./src/media/index.ts",
     "./media/image-format": "./src/media/image-format.ts",
     "./llm/provider-keys": "./src/llm/provider-keys.ts",
+    "./llm/model-id": "./src/llm/model-id.ts",
+    "./llm/model-catalog": "./src/llm/model-catalog.ts",
     "./llm/direct-text-provider": "./src/llm/direct-text-provider.ts",
     "./adapters/search": "./src/adapters/search/index.ts",
     "./adapters/search/concepts": "./src/adapters/search/concepts.ts",

@@ -16,7 +16,7 @@ import { z } from 'zod'
 
 import type { ModelsPluginSettings } from '../types'
 import { resolveBilling } from './billing'
-import { normalizeModelId } from './model-id'
+import { normalizeModelId } from '@bakin/core/llm/model-id'
 import { resolveAgents } from './config-io'
 import {
   listBudgetIncidents,

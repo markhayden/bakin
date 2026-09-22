@@ -31,7 +31,7 @@ import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
 import { resolveAgents } from './config-io'
 import { clearPendingRestart, describeRestart, notePendingChange, recordRestartFailure } from '../../../src/core/pending-restart'
 import type { RuntimeConfigChangeKind } from '@bakin/core/adapters/runtime'
-import { normalizeModelId } from './model-id'
+import { normalizeModelId } from '@bakin/core/llm/model-id'
 import {
   applyEligibilityOverlay,
   fetchAvailableModels,
