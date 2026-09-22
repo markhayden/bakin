@@ -77,7 +77,6 @@ export function RoutingTab({ m }: { m: ModelsData }) {
       // A proposal pass prices every routable class; without a deadline a wedged
       // server leaves the dialog empty and the operator with no explanation.
       const res = await pluginFetch('models', 'routing/recommend', {
-        method: 'POST',
         signal: AbortSignal.timeout(RECOMMEND_TIMEOUT_MS),
       })
       const data = await res.json() as RecommendPayload & { error?: string }

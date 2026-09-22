@@ -19,6 +19,7 @@ import { serveAvatar, detectImageExtension } from '@bakin/core/agents/avatar'
 import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
 import { getRuntimeMainAgentId, RuntimeError } from '@bakin/core/adapters/runtime'
 
+import { getModelEligibility } from '../../../../src/core/model-eligibility'
 import { createLogger } from '../../../../src/core/logger'
 import { readHeartbeats } from '../../../../src/lib/content-files'
 import { getBakinPaths } from '../../../../packages/core/src/content-dir'
@@ -152,6 +153,17 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
         // via get() is the contract's honest existence probe).
         if (await ctx.runtime.agents.get(id)) {
           return Response.json({ error: `Agent already exists: ${id}` }, { status: 409 })
+        }
+
+        // A new agent must never be born on a model this install cannot run
+        // (#907): same verdict the models pickers and /selections apply.
+        const requestedModel = typeof body.model === 'string' && body.model.length > 0 ? body.model : undefined
+        if (requestedModel) {
+          const report = await getModelEligibility(ctx.runtime, { extraIds: [requestedModel] })
+          const verdict = report.byModel.get(requestedModel)?.eligibility
+          if (verdict?.status === 'ineligible') {
+            return Response.json({ error: 'model_not_eligible', message: `${requestedModel} cannot run here: ${verdict.detail}`, reason: verdict.reason }, { status: 400 })
+          }
         }
 
         await createRuntimeAgent(ctx.runtime, {

@@ -15,6 +15,7 @@ import { ModelSelect, StatGroup, StatTile } from '@makinbakin/sdk/patterns'
 import {
   Field,
   FieldDescription,
+  FieldError,
   FieldLabel,
   Select,
   SelectContent,
@@ -37,6 +38,8 @@ export interface OverviewTabProps {
   availableModels: AvailableModel[]
   onModelChange: (modelId: string) => Promise<void> | void
   savingModel: boolean
+  /** Refusal from the selections write path (dead model, stale revision …). */
+  modelError?: string | null
 }
 
 interface LessonsMeta {
@@ -62,6 +65,7 @@ export function OverviewTab({
   availableModels,
   onModelChange,
   savingModel,
+  modelError,
 }: OverviewTabProps) {
   const teams = useAgentStore((state) => state.teams)
   const displaySettings = useAgentStore((state) => state.displaySettings)
@@ -171,7 +175,9 @@ export function OverviewTab({
                 defaultLabel="Use default"
                 disabled={savingModel}
                 ariaLabel="Agent model"
+                aria-invalid={modelError ? true : undefined}
               />
+              {modelError ? <FieldError>{modelError}</FieldError> : null}
             </Field>
 
             {teams.length > 0 ? (

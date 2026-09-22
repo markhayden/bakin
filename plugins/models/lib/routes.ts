@@ -42,10 +42,6 @@ import {
 } from './available-models'
 import { DEFAULT_ALIASES, readAliases } from './aliases'
 import {
-  ConfigUpdateSchema,
-  DefaultsUpdateSchema,
-  AliasActionSchema,
-  RoutingConfigSchema,
   BudgetPolicySchema,
   okResponse,
   errorResponse,
@@ -157,6 +153,16 @@ export const modelsRoutes = [
     handler: async (_req, ctx, { body }) => {
       try {
         const result = await getSelectionMutator(ctx as unknown as PluginContext).mutate(body)
+        if (result.applied.length > 0 || result.pending.length > 0) {
+          // Same post-write side effects the retired per-surface routes had:
+          // the runtime-sync banner (until restartAdvice replaces it, T1.12),
+          // the catalog's default/fallback flags, and the config-changed hook.
+          markConfigDirty()
+          setModelsCache(null)
+          if (result.applied.some((ref) => ref.startsWith('agent:'))) {
+            await ctx.hooks.invoke('models.configChanged', { refs: result.applied })
+          }
+        }
         return Response.json(result)
       } catch (err) {
         if (err instanceof MutationRefused) return Response.json(err.toBody(), { status: err.status })
@@ -193,87 +199,6 @@ export const modelsRoutes = [
   }),
 
   defineRoute({
-    path: '/config',
-    method: 'POST',
-    summary: 'Update agent model config',
-    body: ConfigUpdateSchema,
-    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
-    handler: async (_req, ctx, { body }) => {
-      try {
-        const { agentId } = body
-        const agentsBefore = await resolveAgents(ctx as unknown as PluginContext)
-        const before = agentsBefore.find((a) => a.agentId === agentId)
-        if (!before) throw new Error(`Agent "${agentId}" not found`)
-        const oldModel = before?.effectiveModel ?? null
-
-        // Per-agent assignments are runtime-owned (P2.3): write through
-        // agents.update — empty string clears (null), never a config edit.
-        await ctx.runtime.agents.update(agentId, {
-          ...(body.ownModel !== undefined
-            ? { model: body.ownModel ? normalizeModelId(body.ownModel) : null }
-            : {}),
-          ...(body.subagentModel !== undefined
-            ? { subagentModel: body.subagentModel ? normalizeModelId(body.subagentModel) : null }
-            : {}),
-        })
-
-        const agentsAfter = await resolveAgents(ctx as unknown as PluginContext)
-        const after = agentsAfter.find((a) => a.agentId === agentId)
-        const newModel = after?.effectiveModel ?? null
-
-        markConfigDirty()
-        setModelsCache(null)
-        ctx.activity.audit('config.updated', 'system', { agentId, ownModel: body.ownModel, subagentModel: body.subagentModel })
-        ctx.activity.log('system', `Updated model config for ${agentId}`, { category: 'models' })
-
-        if (oldModel !== newModel) {
-          try { await ctx.hooks.invoke('models.configChanged', { agentId, oldModel, newModel }) } catch { /* no subscribers */ }
-        }
-
-        return Response.json({ ok: true })
-      } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-      }
-    },
-  }),
-
-  defineRoute({
-    path: '/defaults',
-    method: 'POST',
-    summary: 'Update default models',
-    body: DefaultsUpdateSchema,
-    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
-    handler: async (_req, ctx, { body }) => {
-      try {
-        // Routing policy is runtime-owned (P2.3): merge through the neutral
-        // surface; the adapter maps to its native store (and rejects fields
-        // it declares unsupported).
-        const currentPolicy = await ctx.runtime.models.routingPolicy()
-        const nextDefault = body.defaultModel
-          ? normalizeModelId(body.defaultModel)
-          : normalizeModelId(currentPolicy.defaultModel)
-        await ctx.runtime.models.setRoutingPolicy({
-          ...(body.defaultModel ? { defaultModel: normalizeModelId(body.defaultModel) } : {}),
-          ...(body.fallbackModels
-            ? { fallbackModels: [...new Set(body.fallbackModels.map(normalizeModelId).filter((id) => id !== nextDefault))] }
-            : {}),
-          ...(body.defaultSubagentModel !== undefined
-            ? { defaultSubagentModel: body.defaultSubagentModel || null }
-            : {}),
-        }, 'models.update-defaults')
-
-        markConfigDirty()
-        setModelsCache(null)
-        ctx.activity.audit('defaults.updated', 'system', { defaultModel: body.defaultModel, defaultSubagentModel: body.defaultSubagentModel, fallbackModels: body.fallbackModels })
-        ctx.activity.log('system', `Updated model defaults${body.defaultModel ? ` to ${body.defaultModel}` : ''}`, { category: 'models' })
-        return Response.json({ ok: true })
-      } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-      }
-    },
-  }),
-
-  defineRoute({
     path: '/aliases',
     method: 'GET',
     summary: 'List model aliases',
@@ -289,42 +214,12 @@ export const modelsRoutes = [
   }),
 
   defineRoute({
-    path: '/aliases',
-    method: 'POST',
-    summary: 'Add/delete/prepopulate model aliases',
-    body: AliasActionSchema,
-    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
-    handler: async (_req, ctx, { body }) => {
-      try {
-        // Aliases are runtime-owned policy (P2.3): compute the next full map
-        // from the current one, write through the neutral surface.
-        const currentAliases = readAliases((await ctx.runtime.models.routingPolicy()).aliases)
-        let nextAliases: Record<string, string> = { ...currentAliases }
-        if ('aliases' in body) {
-          nextAliases = Object.fromEntries(
-            Object.entries(body.aliases).map(([alias, target]) => [alias, normalizeModelId(target)]),
-          )
-        } else if ('action' in body) {
-          if (body.action === 'add') {
-            nextAliases[body.name] = normalizeModelId(body.target)
-          } else if (body.action === 'delete') {
-            delete nextAliases[body.name]
-          } else if (body.action === 'prepopulate') {
-            for (const [alias, target] of Object.entries(DEFAULT_ALIASES)) {
-              if (!(alias in nextAliases)) nextAliases[alias] = target
-            }
-          }
-        }
-        await ctx.runtime.models.setRoutingPolicy({ aliases: nextAliases }, 'models.update-aliases')
-
-        setModelsCache(null)
-        ctx.activity.audit('aliases.updated', 'system')
-        ctx.activity.log('system', 'Updated model aliases', { category: 'models' })
-        return Response.json({ ok: true })
-      } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-      }
-    },
+    path: '/aliases/recommended',
+    method: 'GET',
+    summary: 'Recommended alias set (data for the one write path)',
+    description: 'The curated DEFAULT_ALIASES map. Read-only: the client merges it with the current aliases and writes through POST /selections.',
+    responses: { 200: passthrough },
+    handler: async () => Response.json({ aliases: DEFAULT_ALIASES }),
   }),
 
   defineRoute({
@@ -347,7 +242,7 @@ export const modelsRoutes = [
 
   defineRoute({
     path: '/routing/recommend',
-    method: 'POST',
+    method: 'GET',
     summary: 'Compute recommended cheap-model routes for unrouted system classes',
     description: 'Proposal list only — nothing is written. The UI shows the diff in a ConfirmDialog; confirming PUTs the routes.',
     responses: { 200: passthrough, 500: errorResponse },
@@ -364,24 +259,6 @@ export const modelsRoutes = [
           listRunCostsSince: (sinceMs) => listRunCostsSince(sinceMs),
         })
         return Response.json(await recommendRoutes(deps))
-      } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-      }
-    },
-  }),
-
-  defineRoute({
-    path: '/routing',
-    method: 'PUT',
-    summary: 'Replace the routing policy',
-    body: RoutingConfigSchema,
-    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
-    handler: async (_req, ctx, { body }) => {
-      try {
-        (ctx as unknown as PluginContext).updateSettings({ routing: body })
-        ctx.activity.audit('routing.updated', 'system', { routes: body.routes.length, tagOverrides: body.tagOverrides.length })
-        ctx.activity.log('system', `Updated routing policy (${body.routes.length} work classes, ${body.tagOverrides.length} tag overrides)`, { category: 'models' })
-        return Response.json({ ok: true })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }

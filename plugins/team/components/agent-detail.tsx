@@ -100,6 +100,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const avatarInputRef = useRef<FileInputHandle>(null)
   const availableModels = useAvailableModels()
   const [savingModel, setSavingModel] = useState(false)
+  const [modelError, setModelError] = useState<string | null>(null)
   const runtimeStatus = useRuntimeStatus()
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -117,17 +118,23 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const handleModelChange = async (modelId: string) => {
     if (!profile) return
     setSavingModel(true)
+    setModelError(null)
     try {
       const ownModel = modelId === '__default__' ? null : modelId
-      const response = await fetch('/api/plugins/models/config', {
+      // The ONE model write path (#907): revision-checked selection ops.
+      const current = await fetch('/api/plugins/models/selections').then((r) => r.json()) as { revision: string }
+      const response = await fetch('/api/plugins/models/selections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId, ownModel }),
+        body: JSON.stringify({ revision: current.revision, ops: [{ ref: `agent:${agentId}:model`, set: { model: ownModel } }] }),
       })
       if (response.ok) {
         runtimeStatus.markDirty()
         const updated = await fetch(`/api/plugins/team/${agentId}`).then((result) => result.json())
         setProfile(updated)
+      } else {
+        const body = await response.json().catch(() => ({})) as { message?: string; error?: string }
+        setModelError(body.message ?? body.error ?? `Save failed (${response.status})`)
       }
     } finally {
       setSavingModel(false)
@@ -330,6 +337,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
                 availableModels={availableModels}
                 onModelChange={handleModelChange}
                 savingModel={savingModel}
+                modelError={modelError}
               />
             ) : null}
             {activeTab === 'diagnostics' ? <DiagnosticsTab agentId={agentId} /> : null}

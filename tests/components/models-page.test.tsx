@@ -81,6 +81,7 @@ function createDeferred<T>(): Deferred<T> {
 describe('ModelsPage component', () => {
   let fetchCalls: FetchCall[]
   let availableFetchCount: number
+  let selectionsRevision = 0
   let availableResponse: AvailableModelsPayload
   let refreshResponse: AvailableModelsPayload
   let availableRequest: Promise<Response> | null
@@ -107,6 +108,7 @@ describe('ModelsPage component', () => {
     runtimeState.markDirty.mockReset()
     fetchCalls = []
     availableFetchCount = 0
+    selectionsRevision = 0
     configState = {
       agents: [
         {
@@ -255,13 +257,6 @@ describe('ModelsPage component', () => {
       if (url === '/api/plugins/models/routing' && method === 'GET') {
         return jsonResponse(routingState)
       }
-      if (url === '/api/plugins/models/routing' && method === 'PUT') {
-        routingState = {
-          routes: (body?.routes as typeof routingState.routes) ?? [],
-          tagOverrides: (body?.tagOverrides as typeof routingState.tagOverrides) ?? [],
-        }
-        return jsonResponse({ ok: true })
-      }
       if (url === '/api/plugins/models/budget' && method === 'GET') {
         return jsonResponse({ rules: budgetRulesState })
       }
@@ -289,43 +284,49 @@ describe('ModelsPage component', () => {
         }
         return jsonResponse({ ok: true })
       }
-      if (url === '/api/plugins/models/defaults' && method === 'POST') {
-        configState = {
-          ...configState,
-          defaultModel: String(body?.defaultModel ?? configState.defaultModel),
-          defaultSubagentModel: body?.defaultSubagentModel === null ? null : String(body?.defaultSubagentModel ?? configState.defaultSubagentModel),
-          fallbackModels: (body?.fallbackModels as string[]) ?? configState.fallbackModels,
-          agents: configState.agents.map((agent) => ({
-            ...agent,
-            defaultModel: String(body?.defaultModel ?? configState.defaultModel),
-            defaultSubagentModel: body?.defaultSubagentModel === null ? null : String(body?.defaultSubagentModel ?? configState.defaultSubagentModel),
-            effectiveModel: agent.ownModel ?? String(body?.defaultModel ?? configState.defaultModel),
-          })),
-        }
-        return jsonResponse({ ok: true })
+      // The ONE write path (#907): every save arrives as selection ops.
+      if (url === '/api/plugins/models/selections' && method === 'GET') {
+        return jsonResponse({ revision: `rev-${selectionsRevision}`, states: [], proposals: [], pending: [], evidence: {} })
       }
-      if (url === '/api/plugins/models/config' && method === 'POST') {
-        configState = {
-          ...configState,
-          agents: configState.agents.map((agent) => agent.agentId === body?.agentId
-            ? {
-                ...agent,
-                ownModel: body?.ownModel ?? null,
-                subagentModel: body?.subagentModel ?? agent.subagentModel,
-                effectiveModel: body?.ownModel ?? configState.defaultModel,
-              }
-            : agent),
+      if (url === '/api/plugins/models/selections' && method === 'POST') {
+        const ops = (body?.ops as Array<{ ref: string; set: { model?: string | null; thinking?: string | null } }>) ?? []
+        for (const op of ops) {
+          const [kind, a, b] = op.ref.split(':')
+          if (kind === 'policy' && a === 'defaultModel' && typeof op.set.model === 'string') {
+            const next = op.set.model
+            configState = { ...configState, defaultModel: next, agents: configState.agents.map((agent) => ({ ...agent, defaultModel: next, effectiveModel: agent.ownModel ?? next })) }
+          } else if (kind === 'policy' && a === 'defaultSubagentModel') {
+            configState = { ...configState, defaultSubagentModel: op.set.model ?? null }
+          } else if (kind === 'policy' && a === 'fallback') {
+            const n = Number(b)
+            const fallbacks = [...configState.fallbackModels]
+            if (op.set.model === null) fallbacks.splice(n, 1); else fallbacks[n] = String(op.set.model)
+            configState = { ...configState, fallbackModels: fallbacks }
+          } else if (kind === 'policy' && a === 'alias' && b) {
+            if (op.set.model === null) delete aliasesState[b]; else aliasesState[b] = String(op.set.model)
+          } else if (kind === 'agent' && a && b === 'model') {
+            configState = { ...configState, agents: configState.agents.map((agent) => agent.agentId === a ? { ...agent, ownModel: op.set.model ?? null, effectiveModel: op.set.model ?? configState.defaultModel } : agent) }
+          } else if (kind === 'agent' && a && b === 'subagentModel') {
+            configState = { ...configState, agents: configState.agents.map((agent) => agent.agentId === a ? { ...agent, subagentModel: op.set.model ?? null } : agent) }
+          } else if (kind === 'route' && a) {
+            const routes = routingState.routes.filter((r) => r.workClass !== a)
+            const existing = routingState.routes.find((r) => r.workClass === a) ?? { workClass: a }
+            const next = { ...existing } as { workClass: string; model?: string; thinking?: string }
+            if (op.set.model !== undefined) { if (op.set.model) next.model = op.set.model; else delete next.model }
+            if (op.set.thinking !== undefined) { if (op.set.thinking) next.thinking = op.set.thinking; else delete next.thinking }
+            if (next.model || next.thinking) routes.push(next as typeof routingState.routes[number])
+            routingState = { ...routingState, routes }
+          } else if (kind === 'tag' && a) {
+            const tagOverrides = routingState.tagOverrides.filter((t) => t.tag !== a)
+            if (op.set.model || op.set.thinking) tagOverrides.push({ tag: a, ...(op.set.model ? { model: op.set.model } : {}), ...(op.set.thinking ? { thinking: op.set.thinking } : {}) } as typeof routingState.tagOverrides[number])
+            routingState = { ...routingState, tagOverrides }
+          }
         }
-        return jsonResponse({ ok: true })
+        selectionsRevision += 1
+        return jsonResponse({ applied: ops.map((o) => o.ref), failed: [], pending: [], warnings: [], revision: `rev-${selectionsRevision}` })
       }
-      if (url === '/api/plugins/models/aliases' && method === 'POST') {
-        if (body?.action === 'add') {
-          aliasesState[String(body.name)] = String(body.target)
-        }
-        if (body?.action === 'delete') {
-          delete aliasesState[String(body.name)]
-        }
-        return jsonResponse({ ok: true })
+      if (url === '/api/plugins/models/aliases/recommended' && method === 'GET') {
+        return jsonResponse({ aliases: { opus: 'anthropic/claude-opus-4-6' } })
       }
 
       throw new Error(`Unhandled fetch: ${method} ${url}`)
@@ -358,13 +359,10 @@ describe('ModelsPage component', () => {
     fireEvent.click(screen.getByText('Save Defaults'))
 
     await waitFor(() => {
-      const defaultCall = fetchCalls.find((call) => call.method === 'POST' && call.url === '/api/plugins/models/defaults')
-      expect(defaultCall).toBeTruthy()
-      expect(defaultCall?.body).toEqual({
-        defaultModel: 'openai-codex/gpt-5.4',
-        defaultSubagentModel: 'anthropic/claude-haiku-4-5',
-        fallbackModels: ['anthropic/claude-opus-4-6'],
-      })
+      const call = fetchCalls.find((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+      expect(call).toBeTruthy()
+      // Only the changed ref rides the write (D24): the default model.
+      expect(call?.body?.ops).toEqual([{ ref: 'policy:defaultModel', set: { model: 'openai-codex/gpt-5.4' } }])
       expect(availableFetchCount).toBe(2)
     })
   })
@@ -382,11 +380,8 @@ describe('ModelsPage component', () => {
     fireEvent.click(within(row as HTMLElement).getByText('Save'))
 
     await waitFor(() => {
-      const configCall = fetchCalls.find((call) => call.method === 'POST' && call.url === '/api/plugins/models/config')
-      expect(configCall?.body).toEqual({
-        agentId: 'patch',
-        ownModel: 'google/gemini-2.5-pro',
-      })
+      const call = fetchCalls.find((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+      expect(call?.body?.ops).toEqual([{ ref: 'agent:patch:model', set: { model: 'google/gemini-2.5-pro' } }])
       expect(runtimeState.markDirty).toHaveBeenCalled()
     })
   })
@@ -404,12 +399,8 @@ describe('ModelsPage component', () => {
     await user.click(screen.getByRole('button', { name: 'Add alias' }))
 
     await waitFor(() => {
-      const aliasCall = fetchCalls.find((call) => call.method === 'POST' && call.url === '/api/plugins/models/aliases')
-      expect(aliasCall?.body).toEqual({
-        action: 'add',
-        name: 'fast',
-        target: 'google/gemini-2.5-pro',
-      })
+      const call = fetchCalls.find((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+      expect(call?.body?.ops).toEqual([{ ref: 'policy:alias:fast', set: { model: 'google/gemini-2.5-pro' } }])
       expect(availableFetchCount).toBe(2)
     })
   })
@@ -450,7 +441,8 @@ describe('ModelsPage component', () => {
     const dialog = screen.getByRole('dialog', { name: 'Delete “sonnet” alias?' })
     expect(within(dialog).getByText(/currently points to anthropic\/claude-sonnet-4-6/)).toBeTruthy()
     expect(within(dialog).getByText(/may stop resolving/)).toBeTruthy()
-    expect(fetchCalls.some((call) => call.body?.action === 'delete')).toBe(false)
+    const isAliasClear = (call: { body?: Record<string, unknown> }) => ((call.body?.ops as Array<{ ref: string; set: { model?: string | null } }> | undefined) ?? []).some((op) => op.ref === 'policy:alias:sonnet' && op.set.model === null)
+    expect(fetchCalls.some(isAliasClear)).toBe(false)
 
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('dialog', { name: 'Delete “sonnet” alias?' })).toBeNull()
@@ -462,7 +454,7 @@ describe('ModelsPage component', () => {
     ).getByRole('button', { name: 'Delete alias' }))
 
     await waitFor(() => {
-      expect(fetchCalls.some((call) => call.body?.action === 'delete')).toBe(true)
+      expect(fetchCalls.some(isAliasClear)).toBe(true)
       expect(screen.queryByText('sonnet')).toBeNull()
     })
   })
@@ -613,12 +605,9 @@ describe('ModelsPage component', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save routing' }))
 
     await waitFor(() => {
-      const saveCall = fetchCalls.find((call) => call.method === 'PUT' && call.url === '/api/plugins/models/routing')
-      expect(saveCall?.body?.routes).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          workClass: 'scheduled',
-          model: 'anthropic/claude-haiku-4-5',
-        }),
+      const call = fetchCalls.find((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+      expect(call?.body?.ops).toEqual(expect.arrayContaining([
+        { ref: 'route:scheduled', set: { model: 'anthropic/claude-haiku-4-5' } },
       ]))
     })
     expect(screen.queryByText('Unsaved routing changes')).toBeNull()

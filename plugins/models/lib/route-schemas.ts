@@ -7,29 +7,6 @@
  */
 import { z } from 'zod'
 
-import { ROUTABLE_WORK_CLASSES } from '../../../src/core/model-routing'
-
-// ---------------------------------------------------------------------------
-// Zod schemas for request validation
-// ---------------------------------------------------------------------------
-export const ConfigUpdateSchema = z.object({
-  agentId: z.string().min(1, 'agentId required'),
-  ownModel: z.string().nullable().optional(),
-  subagentModel: z.string().nullable().optional(),
-})
-
-export const DefaultsUpdateSchema = z.object({
-  defaultModel: z.string().optional(),
-  defaultSubagentModel: z.string().nullable().optional(),
-  fallbackModels: z.array(z.string()).optional(),
-})
-
-export const AliasActionSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('add'), name: z.string().min(1), target: z.string().min(1) }),
-  z.object({ action: z.literal('delete'), name: z.string().min(1) }),
-  z.object({ action: z.literal('prepopulate') }),
-]).or(z.object({ aliases: z.record(z.string(), z.string()) }))
-
 
 // ---------------------------------------------------------------------------
 // Response shapes
@@ -39,22 +16,6 @@ export const errorResponse = z.object({ error: z.string() }).passthrough()
 export const passthrough = z.object({}).passthrough()
 
 const ThinkingSettingSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max', 'inherit'])
-// Routes may target any routable work class ('chat' is metered-only and
-// rejected by construction).
-const WorkClassRouteSchema = z.object({
-  workClass: z.enum(ROUTABLE_WORK_CLASSES as unknown as [string, ...string[]]),
-  model: z.string().optional(),
-  thinking: ThinkingSettingSchema.optional(),
-})
-const TagOverrideSchema = z.object({
-  tag: z.string().min(1),
-  model: z.string().optional(),
-  thinking: ThinkingSettingSchema.optional(),
-})
-export const RoutingConfigSchema = z.object({
-  routes: z.array(WorkClassRouteSchema),
-  tagOverrides: z.array(TagOverrideSchema),
-})
 
 // The ONE model-selection write (#907, D25): ops per selection ref under a
 // revision. `model: null` clears; `thinking: null` clears; `ui:mode` takes

@@ -211,26 +211,23 @@ describe('Models Plugin Activation', () => {
     const routePaths = activated.routes.map((r) => `${r.method} ${r.path}`).sort()
     expect(routePaths).toEqual([
       'GET /aliases',
+      'GET /aliases/recommended',
       'GET /available',
       'GET /budget',
       'GET /budget/incidents',
       'GET /budget/status',
       'GET /config',
       'GET /routing',
+      'GET /routing/recommend',
       'GET /runtime/status',
       'GET /selections',
       'GET /spend',
-      'POST /aliases',
       'POST /budget/incidents/:id/resolve',
-      'POST /config',
-      'POST /defaults',
       'POST /refresh',
-      'POST /routing/recommend',
       'POST /runtime/restart',
       'POST /selections',
       'PUT /billing/overrides',
       'PUT /budget',
-      'PUT /routing',
     ])
     expect(activated.routes.find((route) => route.path === '/budget/status')?.activityClass).toBe('routine')
   })
@@ -413,90 +410,6 @@ describe('GET/POST /selections — the ONE write path (#907)', () => {
     expect(refused.status).toBe(400)
     expect(refused.body.error).toBe('model_not_eligible')
     expect(runtimeAgents.find((a) => a.id === 'pixel')!.model).not.toBe('xai/grok-4')
-  })
-})
-
-describe('POST /config', () => {
-  it('rejects missing agentId', async () => {
-    const route = findRoute(activated.routes, 'POST', '/config')!
-    const { status } = await callRoute(route, activated.ctx, { body: { ownModel: 'claude-haiku-4-5' } })
-    expect(status).toBe(400)
-  })
-
-  it('updates agent own model', async () => {
-    writeRuntimeConfig() // reset
-    const route = findRoute(activated.routes, 'POST', '/config')!
-    const { body: data } = await callRoute(route, activated.ctx, {
-      body: { agentId: 'patch', ownModel: 'anthropic/claude-opus-4-6' },
-    })
-    expect(data.ok).toBe(true)
-
-    // Verify the change persisted
-    const getRoute = findRoute(activated.routes, 'GET', '/config')!
-    const { body } = await callRoute(getRoute, activated.ctx)
-    const patch = (body.agents as Array<Record<string, unknown>>).find((a) => a.agentId === 'patch')!
-    expect(patch.ownModel).toBe('anthropic/claude-opus-4-6')
-    expect(patch.effectiveModel).toBe('anthropic/claude-opus-4-6')
-
-    // Activity logged
-    expect(activated.ctx.activity.audit).toHaveBeenCalledWith(
-      'config.updated',
-      'system',
-      expect.objectContaining({ agentId: 'patch' })
-    )
-    expect(activated.ctx.activity.log).toHaveBeenCalled()
-
-    writeRuntimeConfig() // reset for other tests
-  })
-
-  it('clears agent model when set to null', async () => {
-    // First set a model
-    const route = findRoute(activated.routes, 'POST', '/config')!
-    await callRoute(route, activated.ctx, {
-      body: { agentId: 'patch', ownModel: 'test-model' },
-    })
-    // Now clear it
-    await callRoute(route, activated.ctx, {
-      body: { agentId: 'patch', ownModel: null },
-    })
-
-    const getRoute = findRoute(activated.routes, 'GET', '/config')!
-    const { body } = await callRoute(getRoute, activated.ctx)
-    const patch = (body.agents as Array<Record<string, unknown>>).find((a) => a.agentId === 'patch')!
-    expect(patch.ownModel).toBeNull()
-
-    writeRuntimeConfig() // reset
-  })
-})
-
-describe('POST /defaults', () => {
-  it('updates default model', async () => {
-    const route = findRoute(activated.routes, 'POST', '/defaults')!
-    const { body: data } = await callRoute(route, activated.ctx, {
-      body: { defaultModel: 'anthropic/claude-opus-4-6' },
-    })
-    expect(data.ok).toBe(true)
-    expect(activated.ctx.activity.audit).toHaveBeenCalledWith(
-      'defaults.updated',
-      'system',
-      expect.anything()
-    )
-
-    writeRuntimeConfig() // reset
-  })
-
-  it('updates fallback models', async () => {
-    const route = findRoute(activated.routes, 'POST', '/defaults')!
-    const { body: data } = await callRoute(route, activated.ctx, {
-      body: { fallbackModels: ['anthropic/claude-opus-4-6', 'anthropic/claude-haiku-4-5'] },
-    })
-    expect(data.ok).toBe(true)
-
-    const getRoute = findRoute(activated.routes, 'GET', '/config')!
-    const { body } = await callRoute(getRoute, activated.ctx)
-    expect(body.fallbackModels).toEqual(['anthropic/claude-opus-4-6', 'anthropic/claude-haiku-4-5'])
-
-    writeRuntimeConfig() // reset
   })
 })
 
@@ -725,85 +638,12 @@ describe('GET /aliases', () => {
   })
 })
 
-describe('POST /aliases', () => {
-  it('adds a new alias', async () => {
-    writeRuntimeConfig()
-    const route = findRoute(activated.routes, 'POST', '/aliases')!
-    const { body: data } = await callRoute(route, activated.ctx, {
-      body: { action: 'add', name: 'fast', target: 'claude-haiku-4-5' },
-    })
-    expect(data.ok).toBe(true)
-
-    // Verify it persisted
-    const getRoute = findRoute(activated.routes, 'GET', '/aliases')!
-    const { body } = await callRoute(getRoute, activated.ctx)
-    expect((body.aliases as Record<string, string>).fast).toBe('anthropic/claude-haiku-4-5')
-
-    writeRuntimeConfig() // reset
-  })
-
-  it('deletes an alias', async () => {
-    writeRuntimeConfig()
-    const route = findRoute(activated.routes, 'POST', '/aliases')!
-    const { body: data } = await callRoute(route, activated.ctx, {
-      body: { action: 'delete', name: 'haiku' },
-    })
-    expect(data.ok).toBe(true)
-
-    const getRoute = findRoute(activated.routes, 'GET', '/aliases')!
-    const { body } = await callRoute(getRoute, activated.ctx)
-    expect((body.aliases as Record<string, string>).haiku).toBeUndefined()
-
-    writeRuntimeConfig() // reset
-  })
-
-  it('prepopulates default aliases', async () => {
-    // Start with an empty alias map
-    writeRuntimeConfig({ aliases: {} })
-
-    const route = findRoute(activated.routes, 'POST', '/aliases')!
-    const { body: data } = await callRoute(route, activated.ctx, {
-      body: { action: 'prepopulate' },
-    })
-    expect(data.ok).toBe(true)
-
-    const getRoute = findRoute(activated.routes, 'GET', '/aliases')!
-    const { body } = await callRoute(getRoute, activated.ctx)
-    const aliases = body.aliases as Record<string, string>
-    expect(aliases.haiku).toBeDefined()
-    expect(aliases.sonnet).toBeDefined()
-    expect(aliases.opus).toBeDefined()
-
-    writeRuntimeConfig() // reset
-  })
-})
-
 describe('routing config', () => {
   it('GET /routing returns an empty config by default', async () => {
     const route = findRoute(activated.routes, 'GET', '/routing')!
     const { status, body } = await callRoute(route, activated.ctx)
     expect(status).toBe(200)
     expect(body).toEqual({ routes: [], tagOverrides: [] })
-  })
-
-  it('PUT /routing validates and persists routes + tag overrides', async () => {
-    const route = findRoute(activated.routes, 'PUT', '/routing')!
-    const config = {
-      routes: [{ workClass: 'scheduled', model: 'anthropic/claude-haiku-4-5', thinking: 'low' }],
-      tagOverrides: [{ tag: 'heavy', model: 'anthropic/claude-opus-4-6' }],
-    }
-    const { status, body } = await callRoute(route, activated.ctx, { body: config })
-    expect(status).toBe(200)
-    expect(body.ok).toBe(true)
-    expect(activated.ctx.updateSettings).toHaveBeenCalledWith({ routing: config })
-  })
-
-  it('PUT /routing rejects an unknown work class', async () => {
-    const route = findRoute(activated.routes, 'PUT', '/routing')!
-    const { status } = await callRoute(route, activated.ctx, {
-      body: { routes: [{ workClass: 'bogus', model: 'm' }], tagOverrides: [] },
-    })
-    expect(status).toBe(400)
   })
 
 })
@@ -1066,12 +906,15 @@ describe('GET /runtime/status', () => {
   })
 
   it('returns restartNeeded=true after config change', async () => {
-    // Trigger a config change
+    // Trigger a config change through the ONE write path.
     writeRuntimeConfig()
-    const configRoute = findRoute(activated.routes, 'POST', '/config')!
-    await callRoute(configRoute, activated.ctx, {
-      body: { agentId: 'patch', ownModel: 'test-model' },
+    const get = findRoute(activated.routes, 'GET', '/selections')!
+    const { body: current } = await callRoute(get, activated.ctx)
+    const post = findRoute(activated.routes, 'POST', '/selections')!
+    const res = await callRoute(post, activated.ctx, {
+      body: { revision: current.revision, ops: [{ ref: 'agent:patch:model', set: { model: 'anthropic/claude-haiku-4-5' } }] },
     })
+    expect(res.status).toBe(200)
 
     const statusRoute = findRoute(activated.routes, 'GET', '/runtime/status')!
     const { body } = await callRoute(statusRoute, activated.ctx)
