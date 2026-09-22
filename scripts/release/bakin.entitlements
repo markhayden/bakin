@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    The hardened runtime (required for notarization) enables library
+    validation: the process may only dlopen libraries signed with OUR Team
+    ID or by Apple. Bakin's media store loads sharp's npm-published native
+    prebuild (signed by the sharp project), so without this entitlement the
+    signed release binary refuses it at dlopen:
+      "code signature ... not valid for use in process: mapping process and
+       mapped file (non-platform) have different Team IDs"
+    (margo, v0.0.1-rc.33, 2026-09-21). Standard posture for apps that load
+    third-party native modules; notarization accepts it. Locally compiled
+    dev binaries are unsigned, so ONLY the signed release artifact exhibits
+    the failure. Keep this file and codesign's entitlements flag paired.
+    NOTE: a double hyphen may never appear inside this comment — Apple's
+    AMFI XML parser rejects it even though plutil -lint passes (it killed
+    the v0.0.1-rc.34 signing job).
+  -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>

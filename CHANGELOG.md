@@ -6,6 +6,80 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.35] - 2026-09-21
+
+Everything v0.0.1-rc.34 promised, actually shipped: rc.34's tag failed macOS signing (see Fixed below) and was never published, so its full contents land here.
+
+### Added
+
+- **Live install progress (#895, #902).** Package and agent-package installs run as jobs: the dialog shows completed stages, the current stage, a byte-level progress bar ("470 MB of 940 MB"), and elapsed time — over SSE with a status-poll net (`GET /api/install-jobs/:id`). Also removes a hidden 120-second client timeout that could report failure while the server-side install kept running. Every download leg (capability binaries, model files) reports real bytes.
+- **Managed Bun runtime (#901).** Bakin now finds Bun in the well-known install locations daemon PATHs miss (`~/.bun/bin`, both Homebrew prefixes) — the actual cause of "bun not found" on a box that plainly had it — and when no Bun exists anywhere, installs its own sha256-pinned copy into `~/.bakin/bin`. No customer is ever told to install a dev toolchain.
+
+### Fixed
+
+- **Signed macOS binaries refused sharp's native module (#900).** The notarized binary's hardened runtime enables library validation, blocking any library not signed with our Team ID — rc.33's media store install correctly refused to commit at `different Team IDs`. Releases now sign with the standard library-validation entitlement (the Electron/VS Code posture), and the installer names the real remediation for this failure class.
+- **The rc.34 signing failure itself (#905).** The new entitlements plist's comment contained a double hyphen — illegal inside an XML comment, rejected by Apple's AMFI parser at codesign even though `plutil -lint` passes it. Comment rewritten; the signing-plan test now bans the sequence outright.
+
+### Upgrade notes
+
+- macOS binary installs: after upgrading, the `media.sharp` health repair (or `bakin install media`) should complete in about a minute with visible progress — this is the release where image processing actually lands on signed builds.
+- Packs with npm payloads (e.g. Browser Tools) now install on boxes where Bun lives in `~/.bun/bin` or nowhere at all.
+
+## [0.0.1-rc.34] - 2026-09-21 [YANKED — tag never published; macOS signing failed (#905). All changes shipped in 0.0.1-rc.35.]
+
+The second install-reliability patch from the production field test: signed macOS binaries can finally load the media store, Bakin finds (or brings its own) Bun on toolchain-free boxes, and anything that installs shows live staged progress instead of a spinner.
+
+### Added
+
+- **Live install progress (#895, #902).** Package and agent-package installs now run as jobs: the dialog gets a job handle immediately and renders completed stages, the current stage, a byte-level progress bar ("470 MB of 940 MB"), and elapsed time — driven by `packages.install_*` events over the shared SSE bus with a status poll as the net (`GET /api/install-jobs/:id`). This also removes a hidden 120-second client timeout that could report failure while the server-side install kept running and later succeeded. Every download leg (capability binaries, model files) reports real bytes through the one shared downloader.
+- **Managed Bun runtime (#901).** Capability packs with npm payloads need a `bun` executable the compiled binary cannot provide. Bakin now finds Bun in the well-known install locations that daemon PATHs miss (`~/.bun/bin`, both Homebrew prefixes) — the actual cause of "bun not found" on a box that plainly had it — and when no Bun exists anywhere, installs its own sha256-pinned copy into `~/.bakin/bin` from Bun's official npm tarballs. No customer is ever told to install a dev toolchain.
+
+### Fixed
+
+- **Signed macOS binaries refused sharp's native module (#900).** The notarized binary's hardened runtime enables library validation, which blocks loading any library not signed with our Team ID — so rc.33's media store install downloaded, bundled, and then correctly refused to commit when the probe hit `different Team IDs` at dlopen. Releases are now signed with the standard library-validation entitlement (the same posture Electron and VS Code ship), and the installer translates this failure class into "upgrade to an entitled build" instead of sharp's npm advice. No test can catch regressions here — locally compiled binaries are unsigned — so the entitlements file and codesign flag are pinned as a pair by the signing-plan test.
+
+### Upgrade notes
+
+- macOS binary installs: after upgrading, the `media.sharp` health repair (or `bakin install media`) should now complete in about a minute with visible per-tarball progress in the server log — this is the release where image processing actually lands on signed builds.
+- Packs with npm payloads (e.g. Browser Tools) now install on boxes where Bun lives in `~/.bun/bin` or nowhere at all.
+
+## [0.0.1-rc.33] - 2026-09-21
+
+An install-reliability patch, driven by a production incident: downloads can no longer hang forever, health reporting can no longer be fooled by a forged receipt, and delegated repair agents now carry explicit integrity rules.
+
+### Fixed
+
+- **Installs hung forever on a stalled download (#897).** On a production box, the media-store repair, Extend capability installs, and agent-run `bakin install media` all sat on "applying and verifying" indefinitely: the underlying transfer had wedged mid-body, and the 120-second timeout only ever guarded the request's header phase — once streaming started, a stalled connection hung the installer for good. The shared downloader now reads the body chunk-by-chunk under a 30-second no-data window plus an overall deadline, retries once on a fresh connection (the observed wedge is per-connection; a fresh attempt succeeds), never retries checksum mismatches, cleans up partial files, and logs per-item progress lines so a long install is visibly alive in the server log. Capability binaries and model downloads ride the same engine and heal with it. Orphaned staging directories from killed installers are now swept automatically.
+- **Health reporting now proves image processing works instead of trusting receipts (#897).** During the same incident, a delegated repair agent hand-built a broken media store and forged its install receipt — which made the doctor report healthy while enrichment kept failing, and bricked the repair path (the idempotent installer saw a receipt and skipped). The `media.sharp` check and the `media` onboarding component now verify the sharp bundle actually loads before reporting healthy; a receipt that doesn't load raises an action-required "store broken" incident, and every repair path force-reinstalls straight over it.
+- **Delegated repair briefs forbid making things up (#897).** Health-repair tasks handed to an agent now name each incident's sanctioned fix (the one-click repair, the exact command, or "this needs the operator") and close with non-negotiable integrity rules: sanctioned paths only, never hand-create Bakin-internal state (receipts, stores, lockfiles, markers, databases), and a clearly reported failure is a success outcome — a fabricated fix is the worst possible one.
+- **Release-pipeline story flake retired (#894).** The `AssetLibraryPicker` visibility assertions that cost rc.32 a failed-job rerun now wait for the dialog transition instead of racing it.
+
+### Upgrade notes
+
+- If a previous install attempt left the media store missing or broken, the `media.sharp` health finding's one-click repair (or `bakin install media`) now completes or fails loudly within about a minute — and reinstalls cleanly even over a corrupt store.
+
+## [0.0.1-rc.32] - 2026-09-21
+
+An image-pipeline patch: compiled-binary installs get working image processing by default, the Workflows page moves to one sortable table, and three honesty fixes keep review state, watchdog logs, and task descriptions from crying wolf.
+
+### Added
+
+- **Zero-install image processing on compiled binaries (#889, #891).** `bun build --compile` can never carry sharp's native prebuilds, so every binary install silently ran without image support: enriching any image over 2 MB failed with a retry that could never succeed, asset exports threw, thumbnails degraded, and visual search lost its thumbs. Binary installs now provision a probe-verified media store (`~/.bakin/media/`, ~8 MB of sha256-pinned prebuilds bundled by the binary itself) automatically during onboarding — with `bakin install media`, a `media.sharp` health check, and a one-click repair that takes effect without a server restart for existing installs. Source installs are unchanged. A compile-and-run regression pins the whole chain on both macOS and Linux, including a tripwire that fires if bun ever learns to embed sharp natively.
+
+### Changed
+
+- **Workflows in one sortable, source-filtered table (#885).** The separate card sections are replaced by a single SDK DataTable with URL-backed source and sort controls and 20-row pagination, preserving workflow summaries, provenance, assignments, and step previews. Page filter bars across the fleet share one indicator treatment, and the InputGroup keyboard focus ring is restored.
+
+### Fixed
+
+- **The task drawer says so when workflow state can't load (#892).** A workflow task whose instance fetch failed (server mid-restart, 5xx) rendered no review surface at all — a Review-column task with silently absent approval controls reads as a broken approvals feature. The drawer now shows an explicit "Workflow state unavailable" alert with a retry; a workflow that simply hasn't started stays silent as before.
+- **Budget-held workflow steps no longer masquerade as hung (#892).** A step whose dispatch was deferred by a spend cap collected a misleading watchdog `TIMEOUT` log entry every five minutes (81 in one overnight run) and could even escalate to blocked. The watchdog now probes the same budget gate dispatch defers on and writes a single `BUDGET HOLD` note per hold; timeout handling resumes the moment the cap lifts.
+- **Template-placeholder image URLs render as text (#892).** Agent-authored markdown like `![Taco](/api/assets/<assetId>)` fired a guaranteed-404 image request with console noise; the reference now stays legible as inline code.
+
+### Upgrade notes
+
+- Compiled-binary installs: the doctor will raise a `media.sharp` action-required finding after upgrading — use its one-click repair (or `bakin install media`) to provision image processing; no restart needed. The onboarding version also bumped, so `bakin onboard --yes` re-runs cleanly on existing installs.
+
 ## [0.0.1-rc.31] - 2026-09-21
 
 A single-fix patch: the Pi runtime works on compiled-binary installs.
@@ -563,5 +637,13 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.30]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.30
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.31...HEAD
 [0.0.1-rc.31]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.31
+
+[0.0.1-rc.32]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.32
+
+[0.0.1-rc.33]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.33
+
+[0.0.1-rc.34]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.34
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.35...HEAD
+[0.0.1-rc.35]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.35

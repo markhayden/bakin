@@ -154,6 +154,38 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
+## Git
+
+### git.prepareSessionWorktree
+
+Label: Prepared git worktree
+Kind: rpc
+Source: plugins/git/index.ts:709
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'git.prepareSessionWorktree',
+  {},
+)
+```
+
+### git.releaseSessionWorktree
+
+Label: Prepared git worktree
+Kind: rpc
+Source: plugins/git/index.ts:713
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'git.releaseSessionWorktree',
+  {},
+)
+```
+
 ## Health
 
 Health hooks expose registered readiness and diagnostic checks so other surfaces can list or inspect them.
@@ -163,7 +195,7 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 Label: Get a health check.
 Purpose: Returns canonical metadata for one registered Health check by stable id without executing it.
 Kind: rpc
-Source: plugins/health/index.ts:847
+Source: plugins/health/index.ts:848
 
 Example:
 
@@ -181,7 +213,7 @@ const result = await ctx.hooks.invoke(
 Label: List health checks.
 Purpose: Returns canonical metadata for registered Health checks without executing them.
 Kind: rpc
-Source: plugins/health/index.ts:846
+Source: plugins/health/index.ts:847
 
 Example:
 
@@ -464,6 +496,25 @@ Example:
 
 ```ts
 await ctx.hooks.callAll(
+  'tasks.statusChanged',
+  {
+    taskId: 'task-123',
+    from: 'doing',
+    to: 'done'
+  },
+)
+```
+
+### tasks.statusChanged
+
+Label: tasks.statusChanged
+Kind: rpc
+Source: bakin-bits-official/plugins/terminal/index.ts:110
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
   'tasks.statusChanged',
   {
     taskId: 'task-123',

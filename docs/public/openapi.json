@@ -28365,7 +28365,7 @@
         "tags": [
           "Models"
         ],
-        "description": "Forces a fresh fetch from the runtime adapter, bypassing both cache layers. Falls back to last-known-good cache on failure.",
+        "description": "Forces a fresh fetch from the runtime adapter, bypassing both cache layers. Falls back to last-known-good cache on failure. `?probe=1` additionally fires a per-model account-callability probe (#852) — explicit requests only; the background auto-refresh path never probes.",
         "x-bakin-full-path": "/api/plugins/models/refresh"
       }
     },

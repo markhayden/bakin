@@ -16,7 +16,7 @@ lib/
   asset-lock.ts              — per-assetId async mutex
   asset-core.ts / asset-mutations.ts / asset-upsert.ts / asset-trash.ts — service layer
   asset-service.ts           — barrel
-  asset-media.ts             — sharp/ffmpeg thumbnails, dimensions
+  asset-media.ts             — sharp/ffmpeg thumbnails, dimensions (sharp via THE one loader — media-pipeline.md)
   asset-url.ts               — file:// URL builder (media_url for the visual/audio leg)
   content-extractor.ts       — text extraction for search docs; PDFs delegate
                                to the core engine (src/core/pdf/engine.ts —

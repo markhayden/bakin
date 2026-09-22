@@ -54,6 +54,19 @@ describe('focused markdown content', () => {
     expect(getByRole('dialog', { name: 'Release chart preview' })).not.toBeNull()
     expect(getByRole('button', { name: 'Close image preview' })).not.toBeNull()
   })
+
+  it('renders template-placeholder image URLs as text, never as doomed requests', () => {
+    // Agent-authored markdown carries placeholders like <assetId>; angle
+    // brackets are never valid in a URL and the request 404s with console
+    // noise (2026-09-21 finding). The reference stays legible as code.
+    const { container, queryByRole, getByText } = render(
+      <MarkdownContent content="![Taco](/api/assets/<assetId>)" />,
+    )
+
+    expect(container.querySelector('img')).toBeNull()
+    expect(queryByRole('button', { name: /preview/i })).toBeNull()
+    expect(getByText(/<assetId>/)).not.toBeNull()
+  })
 })
 
 describe('focused markdown editor', () => {

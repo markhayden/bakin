@@ -240,17 +240,17 @@ bakin_exec_get_step {
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="git-prepare-worktree" name="bakin_exec_git_prepare_worktree" label="Prepared git worktree" description="Create or reuse an isolated git worktree for a task. Call this before editing code for a Bakin task." source="plugins/git/index.ts:656">
+<McpToolCard id="git-prepare-worktree" name="bakin_exec_git_prepare_worktree" label="Prepared git worktree" description="Create or reuse an isolated git worktree for a task. Call this before editing code for a Bakin task." source="plugins/git/index.ts:718">
 ```sh frame="terminal"
 bakin_exec_git_prepare_worktree
 ```
 </McpToolCard>
-<McpToolCard id="git-release-worktree" name="bakin_exec_git_release_worktree" label="Released git worktree" description="Release a tracked git worktree. Refuses dirty removal unless force=true." source="plugins/git/index.ts:671">
+<McpToolCard id="git-release-worktree" name="bakin_exec_git_release_worktree" label="Released git worktree" description="Release a tracked git worktree. Refuses dirty removal unless force=true." source="plugins/git/index.ts:733">
 ```sh frame="terminal"
 bakin_exec_git_release_worktree
 ```
 </McpToolCard>
-<McpToolCard id="git-status" name="bakin_exec_git_status" label="Checked git worktrees" description="List Bakin-tracked git worktrees and their dirty state." source="plugins/git/index.ts:664">
+<McpToolCard id="git-status" name="bakin_exec_git_status" label="Checked git worktrees" description="List Bakin-tracked git worktrees and their dirty state." source="plugins/git/index.ts:726">
 ```sh frame="terminal"
 bakin_exec_git_status
 ```
@@ -262,14 +262,14 @@ bakin_exec_git_status
 <p class="mcp-section-description">Health tools let agents check whether Bakin is running correctly before or during work.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="health-doctor" name="bakin_exec_health_doctor" label="Ran diagnostics" description="Return the canonical Health report. Use fresh=true to join or start a full diagnostic sweep first." source="plugins/health/index.ts:885" parameters={[{"name":"fresh","type":"boolean","required":false,"description":"Force fresh diagnostics instead of cached results"}]}>
+<McpToolCard id="health-doctor" name="bakin_exec_health_doctor" label="Ran diagnostics" description="Return the canonical Health report. Use fresh=true to join or start a full diagnostic sweep first." source="plugins/health/index.ts:886" parameters={[{"name":"fresh","type":"boolean","required":false,"description":"Force fresh diagnostics instead of cached results"}]}>
 ```sh frame="terminal"
 bakin_exec_health_doctor {
   "fresh": true
 }
 ```
 </McpToolCard>
-<McpToolCard id="health-status" name="bakin_exec_health_status" label="Checked system health" description="Get a quick canonical system health summary with uptime, memory, connected session count, activity failures, and incident counts." source="plugins/health/index.ts:855">
+<McpToolCard id="health-status" name="bakin_exec_health_status" label="Checked system health" description="Get a quick canonical system health summary with uptime, memory, connected session count, activity failures, and incident counts." source="plugins/health/index.ts:856">
 ```sh frame="terminal"
 bakin_exec_health_status
 ```
@@ -1253,6 +1253,35 @@ bakin_exec_team_update_identity {
 </McpToolCard>
 </div>
 
+## Terminal
+
+<p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
+
+<div class="mcp-tool-list">
+<McpToolCard id="terminal-session" name="bakin_exec_terminal_session" label="Terminal Session." source="bakin-bits-official/plugins/terminal/index.ts:115" parameters={[{"name":"operation","type":"choice","required":true,"description":"list: your sessions. create: start one. screen: read the visible pane (start here). output: read raw output after a cursor. write: type input. interrupt: send Ctrl-C. resize: set cols/rows. complete: finish an exited session. terminate: stop a running process then finish."},{"name":"input","type":"object","required":true},{"name":"id","type":"string","required":false,"description":"Session id. Required for screen, output, write, resize, interrupt, complete, terminate."},{"name":"title","type":"string","required":false,"description":"create: a short human-readable name for the session."},{"name":"cwd","type":"string","required":false,"description":"create: absolute working directory."},{"name":"program","type":"choice","required":false,"description":"create: program to launch (default shell)."},{"name":"checkout","type":"choice","required":false,"description":"create (coding programs): new isolated git worktree (default) or the existing checkout at cwd."},{"name":"taskId","type":"string","required":false,"description":"create: link the session to a Bakin task id."},{"name":"generation","type":"number","required":false,"description":"write, resize, interrupt: the `generation` from your latest response for this session."},{"name":"sequence","type":"number","required":false,"description":"write: the latest `inputSequence` + 1. Consumed once — never reuse or guess it."},{"name":"data","type":"string","required":false,"description":"write: the exact keystrokes to send. End a command with a carriage return \"\\\\r\" to run it."},{"name":"cursor","type":"number","required":false,"description":"output: return output produced after this cursor (0 for all retained output)."},{"name":"cols","type":"number","required":false,"description":"resize: terminal columns."},{"name":"rows","type":"number","required":false,"description":"resize: terminal rows."}]}>
+```sh frame="terminal"
+bakin_exec_terminal_session {
+  "operation": "value",
+  "input": {
+    "key": "value"
+  },
+  "id": "value",
+  "title": "value",
+  "cwd": "value",
+  "program": "value",
+  "checkout": "value",
+  "taskId": "value",
+  "generation": 20,
+  "sequence": 20,
+  "data": "value",
+  "cursor": 20,
+  "cols": 20,
+  "rows": 20
+}
+```
+</McpToolCard>
+</div>
+
 ## Workflows
 
 <p class="mcp-section-description">Workflow tools expose workflow definitions, active instances, current steps, and step completion.</p>
@@ -1332,5 +1361,5 @@ bakin_exec_workflows_start {
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Aug 6, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Sep 20, 2026 · Bakin 0.0.0-dev</span>
 </aside>

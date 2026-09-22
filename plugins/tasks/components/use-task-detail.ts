@@ -92,6 +92,32 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
   // Workflow instance state for gate approval
   const [wfInstance, setWfInstance] = useState<WorkflowInstance | null>(null)
   const [wfDefinition, setWfDefinition] = useState<WorkflowDefinition | null>(null)
+  // Honest failure state: a workflow task whose instance CANNOT be loaded
+  // (server restarting, 5xx) must say so instead of silently rendering no
+  // review surface — a Review-column task with a blank panel reads as a
+  // broken approvals feature. 404 is NOT a failure (workflow not started).
+  const [wfStateUnavailable, setWfStateUnavailable] = useState(false)
+
+  // ONE instance-load path for the open effect, out-of-band event refreshes,
+  // and the user-facing Retry: ok → adopt + clear the failure flag; 404 →
+  // legitimately no instance (workflow not started), never a failure; other
+  // statuses and network errors → honest unavailable state.
+  const refreshWfInstance = useCallback(async (taskId: string) => {
+    try {
+      const res = await fetch(`/api/plugins/workflows/instances/${taskId}`)
+      if (res.ok) {
+        const d = await res.json()
+        if (d?.instance) setWfInstance(d.instance)
+        setWfStateUnavailable(false)
+      } else if (res.status === 404) {
+        setWfStateUnavailable(false)
+      } else {
+        setWfStateUnavailable(true)
+      }
+    } catch {
+      setWfStateUnavailable(true)
+    }
+  }, [])
   const [rejectReason, setRejectReason] = useState('')
   const [showRejectInput, setShowRejectInput] = useState(false)
   const [gateLoading, setGateLoading] = useState(false)
@@ -157,12 +183,10 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
       setRejectReason('')
       setWfInstance(null)
       setWfDefinition(null)
+      setWfStateUnavailable(false)
 
       if (task.workflowId) {
-        fetch(`/api/plugins/workflows/instances/${task.id}`)
-          .then(r => r.ok ? r.json() : null)
-          .then(d => { if (d?.instance) setWfInstance(d.instance) })
-          .catch(() => {})
+        void refreshWfInstance(task.id)
 
         fetch(`/api/plugins/workflows/definitions/${task.workflowId}`)
           .then(r => r.ok ? r.json() : null)
@@ -170,6 +194,7 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
           .catch(() => {})
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshWfInstance is a stable useCallback
   }, [open, editing, task, columnId])
 
   // Fetch workflow definition when workflowId changes (covers create + switching workflows in edit)
@@ -201,10 +226,7 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
     return null
   }, [wfInstance])
 
-  const refreshWfInstance = useCallback(async (taskId: string) => {
-    const d = await fetch(`/api/plugins/workflows/instances/${taskId}`).then(r => r.ok ? r.json() : null).catch(() => null)
-    if (d?.instance) setWfInstance(d.instance)
-  }, [])
+  // (declared above the drawer-open effect, which shares it)
 
   // Out-of-band gate decisions (Discord bridge buttons, the fallback page,
   // another tab) change the instance with NO local action to piggyback on —
@@ -587,6 +609,9 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
 
   // Derived render inputs
   const gateStep = wfDefinition?.steps.find(s => s.id === wfInstance?.currentStepId)
+  function handleRetryWorkflowState() {
+    if (task?.id) void refreshWfInstance(task.id)
+  }
   const activeWorkflowId = task?.workflowId || workflowId
 
   // Hero card agent metadata (used in both modes for existing tasks) — kept LAST
@@ -602,6 +627,7 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
     // workflow / gate
     wfInstance, wfDefinition, rejectReason, setRejectReason, showRejectInput, setShowRejectInput,
     gateLoading, isGatePending, gateStep, activeWorkflowId,
+    wfStateUnavailable, handleRetryWorkflowState,
     priorStepOutput, outputLoading, outputUnavailable, fetchPriorOutput,
     // map fan-out
     mapStepId, mapChildren, mapActionLoading, handleMapChildAction,
