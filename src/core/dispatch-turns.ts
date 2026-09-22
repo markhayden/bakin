@@ -20,7 +20,8 @@ import { getAppServices } from './app-services-store'
 import { RuntimeError, RuntimeTurnError, type ChatChunk, type MessageResult } from '@bakin/core/adapters/runtime'
 import { claimNextRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, findOpenCapIncident, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'
-import { classifyDispatchWorkClass, resolveTurnModel, type DispatchWorkClass, type ResolvedTurn, type RoutingConfig } from './model-routing'
+import { classifyDispatchWorkClass, resolveTurnModel, type DispatchWorkClass, type ResolvedTurn, type RouteSource, type RoutingConfig } from './model-routing'
+import { getModelEligibility, type EligibilityReport } from './model-eligibility'
 import { evaluateBudget, ruleMatchesTurn, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetDecision, type TurnBillingContext } from './budget'
 import { assembleBudgetSpend, type BudgetSpendFacets } from './budget-spend'
 import { notifyBudgetIncidentOpened } from './budget-notify'
@@ -409,18 +410,106 @@ function recordBudgetBreach(
   }
 }
 
+/** Why a turn was held before the claim (D31). */
+export type PreDispatchHold =
+  | { reason: 'kill_switch' }
+  | { reason: 'budget'; decision: BudgetDecision }
+  | { reason: 'model_not_eligible'; ref: string; model: string; detail: string }
+
+export interface PreDispatchProspect {
+  /** The routed per-turn model, when a route/tag applies (undefined = inherit). */
+  model?: string
+  /** Where the routed model came from — decides which selection ref a hold names. */
+  routeSource?: RouteSource
+  /** The dispatch class the route was resolved for (ref `route:<class>` when source is 'class'). */
+  workClass?: DispatchWorkClass
+  /** For the audit row; holds are audited once per (task, model). */
+  taskId?: string
+}
+
+const ELIGIBILITY_MEMO_MS = 15_000
+const eligibilityMemo = new Map<string, { at: number; report: Promise<EligibilityReport> }>()
+const modelHoldAudits = new Set<string>()
+
+/** Test-only: drop the per-agent eligibility memo. */
+export function _resetModelHoldMemo(): void {
+  eligibilityMemo.clear()
+  modelHoldAudits.clear()
+}
+
 /**
- * True when the turn must not fire: the kill switch is on, or budget says
- * defer — the shared shape all three dispatch paths use.
+ * The EFFECTIVE model a turn would run on — route/tag → agent pin → runtime
+ * default — evaluated for eligibility in the agent's credential context
+ * (#907, S15). Returns the hold naming the selection ref that is dead, or
+ * null. Missing evidence (unknown) is never a hold; an engine failure is
+ * logged and fails OPEN — this gate refuses what is known-dead, nothing else.
  */
-export async function deferForBudget(
+export async function modelHoldFor(agentId: string, prospect: PreDispatchProspect = {}): Promise<PreDispatchHold | null> {
+  try {
+    const runtime = getAppServices().runtime
+    let model = prospect.model
+    let ref: string
+    if (model) {
+      ref = prospect.routeSource?.startsWith('tag:')
+        ? prospect.routeSource
+        : `route:${prospect.workClass ?? 'adhoc'}`
+    } else {
+      const agent = await runtime.agents.get(agentId)
+      if (agent?.model) {
+        model = agent.model
+        ref = `agent:${agentId}:model`
+      } else {
+        model = (await runtime.models.routingPolicy()).defaultModel || undefined
+        ref = 'policy:defaultModel'
+      }
+    }
+    if (!model) return null
+
+    const now = Date.now()
+    const hit = eligibilityMemo.get(agentId)
+    const report = hit && now - hit.at < ELIGIBILITY_MEMO_MS
+      ? await hit.report
+      : await (() => {
+          const report = getModelEligibility(runtime, { agentId })
+          eligibilityMemo.set(agentId, { at: now, report })
+          return report
+        })()
+    const entry = report.byModel.get(model)
+    const verdict = entry?.eligibility
+      ?? (report.evidence.catalog === 'ok'
+        ? { status: 'ineligible' as const, reason: 'not_in_catalog' as const, detail: `${model} is not in the runtime's model catalog` }
+        : { status: 'unknown' as const, detail: 'catalog unavailable' })
+    if (verdict.status !== 'ineligible') return null
+    return { reason: 'model_not_eligible', ref, model, detail: verdict.detail }
+  } catch (err) {
+    log.warn('Model eligibility gate unavailable; not holding', { agentId, error: String(err) })
+    return null
+  }
+}
+
+/**
+ * The pre-claim gate every dispatch path runs: kill switch → effective-model
+ * eligibility → budget. Returns the hold (or null) so callers can log, badge
+ * and audit the REASON rather than a bare boolean.
+ */
+export async function preDispatchGate(
   agentId: string,
   contentDir: string,
   spendMemo?: BudgetSpendMemo,
-  prospect?: { model?: string },
-): Promise<boolean> {
-  if (dispatchPaused(contentDir)) return true
-  return (await budgetGate(agentId, contentDir, spendMemo, prospect)).action === 'defer'
+  prospect: PreDispatchProspect = {},
+): Promise<PreDispatchHold | null> {
+  if (dispatchPaused(contentDir)) return { reason: 'kill_switch' }
+  const modelHold = await modelHoldFor(agentId, prospect)
+  if (modelHold && modelHold.reason === 'model_not_eligible') {
+    const key = `${prospect.taskId ?? agentId}:${modelHold.model}`
+    if (prospect.taskId && !modelHoldAudits.has(key)) {
+      modelHoldAudits.add(key)
+      appendAudit(contentDir, 'task.deferred', agentId, { taskId: prospect.taskId, reason: 'model_not_eligible', ref: modelHold.ref, model: modelHold.model, detail: modelHold.detail })
+    }
+    return modelHold
+  }
+  const decision = await budgetGate(agentId, contentDir, spendMemo, prospect.model ? { model: prospect.model } : undefined)
+  return decision.action === 'defer' ? { reason: 'budget', decision } : null
 }
 
 /**
@@ -439,7 +528,8 @@ export async function resolveDispatchRouting(task: DispatchTask, isRecovery: boo
       config,
     })
     const { applyRoutingCapabilities } = await import('./system-route')
-    return await applyRoutingCapabilities(resolved, classifyDispatchWorkClass(task, isRecovery))
+    const workClass = classifyDispatchWorkClass(task, isRecovery)
+    return { ...(await applyRoutingCapabilities(resolved, workClass)), workClass }
   } catch (err) {
     log.error('Routing resolve failed; using agent default', err, { id: task.id })
     return { source: 'inherit' }

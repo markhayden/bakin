@@ -16,7 +16,7 @@ import { getFailureRecord } from './dispatch-state'
 import { findDispatchTaskSnapshot } from './dispatch-board'
 import { buildDispatchLessonBlock, buildDispatchAssetBlock, buildDispatchBrandBlock, BrandUnavailableError } from './dispatch-context-blocks'
 import { toolHelpers, sharedExecutionToolDocs, outputDisciplineSection, buildCorrectiveSection, type PromptSection } from './dispatch-prompts'
-import { concurrencyGate, deferForBudget, claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn, getSameAgentTurnsMode, resolveDispatchRouting } from './dispatch-turns'
+import { concurrencyGate, preDispatchGate, claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn, getSameAgentTurnsMode, resolveDispatchRouting } from './dispatch-turns'
 import { isTeamStepToken, teamIdFromToken } from '@bakin/core/workflows/team-token'
 import { resolveTeamAssignmentForStep } from './dispatch-team'
 
@@ -158,8 +158,9 @@ export async function dispatchWorkflowTask(
     const routing = await resolveDispatchRouting(task, false)
 
     // Spend ceiling — defer the step when a budget cap is hit.
-    if (await deferForBudget(targetAgent, contentDir, undefined, { model: routing.model })) {
-      log.debug('Workflow step dispatch deferred by budget gate', { taskId: task.id, stepId, agent: targetAgent })
+    const hold = await preDispatchGate(targetAgent, contentDir, undefined, { model: routing.model, routeSource: routing.source, workClass: routing.workClass, taskId: task.id })
+    if (hold) {
+      log.debug('Workflow step dispatch held before claim', { taskId: task.id, stepId, agent: targetAgent, reason: hold.reason })
       continue
     }
 

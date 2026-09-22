@@ -111,6 +111,8 @@ export interface ResolvedTurn {
    *  per-turn model overrides (#880) — the turn proceeds on the agent
    *  default with this receipt (clamp-and-warn, never a silent drop). */
   modelClamp?: { requested: string; reason: 'override_denied' }
+  /** The dispatch class the route was resolved for (set by resolveDispatchRouting). */
+  workClass?: DispatchWorkClass
 }
 
 /**

@@ -156,7 +156,7 @@ export function __resetBrandBlockNotifications(): void {
 }
 
 /**
- * Pre-claim brand gate (#419, spec §5.3) — mirrors deferForBudget: a task
+ * Pre-claim brand gate (#419, spec §5.3) — mirrors preDispatchGate: a task
  * whose effective brand doesn't resolve to a published brand stays in todo
  * and is skipped WITHOUT claiming a run, resuming automatically the cycle
  * the brand exists again. First skip per incident audits

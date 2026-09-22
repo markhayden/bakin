@@ -23,7 +23,7 @@ import {
   trimDispatched,
 } from './dispatch-state'
 import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInProgress, tryAddTaskLog } from './dispatch-board'
-import { auditConcurrencyClampIfNeeded, concurrencyGate, deferForBudget, fireDispatchTurn, getSameAgentTurnsMode, resolveDispatchRouting, type BudgetSpendMemo } from './dispatch-turns'
+import { auditConcurrencyClampIfNeeded, concurrencyGate, preDispatchGate, fireDispatchTurn, getSameAgentTurnsMode, resolveDispatchRouting, type BudgetSpendMemo } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
 import { deferForMissingBrand } from './dispatch-context-blocks'
 import { dispatchWorkflowTask } from './dispatch-workflow'
@@ -235,8 +235,9 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       // Spend ceiling: defer (leave in todo) when a budget cap is hit. Runs
       // before the claim so we don't reserve a run we won't fire. The
       // per-cycle cache collapses the redundant global spend reads.
-      if (await deferForBudget(targetAgent, contentDir, budgetSpendCache, { model: routing.model })) {
-        log.debug('Dispatch deferred by budget gate', { id: task.id, agent: targetAgent })
+      const hold = await preDispatchGate(targetAgent, contentDir, budgetSpendCache, { model: routing.model, routeSource: routing.source, workClass: routing.workClass, taskId: task.id })
+      if (hold) {
+        log.debug('Dispatch held before claim', { id: task.id, agent: targetAgent, reason: hold.reason })
         continue
       }
 
