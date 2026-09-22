@@ -23,6 +23,10 @@ The page starts from the public Storybook recipes, not local styling:
 
 - `Recipes/List and detail pages` owns page identity, list rhythm, and the
   replaceable result region.
+- `Components/Lists/DataTable` is the default for saved records: sortable
+  Bookmark/Saved columns, a URL-backed sort selector, separated narrow rows,
+  and independent outbound-link/Delete actions. Cards remain for the form,
+  not for text-only bookmark records.
 - `Forms/Field and form composition` owns labels, descriptions, validation,
   actions, and busy state.
 - `States/System feedback` distinguishes initial loading, empty, recoverable
