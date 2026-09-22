@@ -40,12 +40,24 @@ const lane = { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0, unp
 const scope = { ...lane, unattributed: { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0 } }
 const window = { startMs: 0, global: { ...scope, meteredUsdMicros: 12_500_000, meteredTokens: 1_000 }, byAgent: {}, byProvider: {}, byModel: {} }
 
-const routes: Record<string, unknown> = {
-  'spend?window=24h': {
-    window: '24h', estimated: true, totalUsdMicros: 4_250_000,
-    byAgent: [{ agent: 'main', costUsdMicros: 4_250_000, runs: 3 }], byModel: [], timeline: [],
-    facets: { computedAt: 1, daily: window, monthly: window },
+const spendFixture = {
+  window: '24h', estimated: true, totalUsdMicros: 4_250_000,
+  byAgent: [{ agent: 'main', costUsdMicros: 4_250_000, runs: 3 }, { agent: 'pixel', costUsdMicros: 1_000_000, runs: 5 }],
+  byModel: [{ model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 1_780_000, runs: 9 }],
+  byWorkClass: [{ workClass: 'workflow', runs: 8, totalTokens: 48_000, costUsdMicros: 1_480_000, subscriptionTokens: 0, avgCostUsdMicros: 185_000 }],
+  timeline: [
+    { startMs: Date.now() - 8 * 60 * 60 * 1000, endMs: Date.now() - 4 * 60 * 60 * 1000, costUsdMicros: 980_000, subscriptionTokens: 8_000, unpricedMeteredTokens: 0 },
+    { startMs: Date.now() - 4 * 60 * 60 * 1000, endMs: Date.now(), costUsdMicros: 1_500_000, subscriptionTokens: 16_000, unpricedMeteredTokens: 0 },
+  ],
+  facets: { computedAt: 1, daily: window, monthly: window },
+  pace: {
+    daily: { meteredUsdMicros: 3_100_000, subscriptionTokens: 30_000, endsMs: Date.now() + 43_200_000 },
+    monthly: { meteredUsdMicros: 12_000_000, subscriptionTokens: 180_000, endsMs: Date.now() + 604_800_000 },
   },
+}
+
+const routes: Record<string, unknown> = {
+  'spend?window=24h': spendFixture,
   budget: { rules: [{ scope: 'global', lane: 'metered', dailyCap: 20, atCap: 'defer' }] },
   'budget/incidents': {
     incidents: [{
@@ -102,10 +114,34 @@ describe('SpendPage', () => {
       await waitFor(() => expect(screen.getByText('Spend data is unavailable')).toBeTruthy())
       expect(screen.getByRole('tab', { name: 'Limits' })).toBeTruthy()
     } finally {
-      routes['spend?window=24h'] = {
-        window: '24h', estimated: true, totalUsdMicros: 4_250_000, byAgent: [], byModel: [], timeline: [],
-        facets: { computedAt: 1, daily: window, monthly: window },
-      }
+      routes['spend?window=24h'] = spendFixture
     }
+  })
+
+  it('composes Overview and Limits from shared summary, selection, pagination, and form patterns', async () => {
+    const { container } = render(<SpendPage />)
+    expect(await screen.findByRole('region', { name: 'Spending overview' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Spend breakdown' })).toBeTruthy()
+    expect(screen.getByRole('group', { name: 'Estimated spend over time' })).toBeTruthy()
+    expect(screen.getByRole('group', { name: 'Top agent spend' })).toBeTruthy()
+    expect(container.querySelectorAll('select')).toHaveLength(0)
+    // The window selector lives in the page header's controls slot.
+    const windowControl = screen.getByRole('tablist', { name: 'Spend window' })
+    expect(windowControl.closest('[data-slot="page-header-controls"]')).toBeTruthy()
+    // The ranked chart's exact-data table adds one occurrence beyond the breakdown rows.
+    expect(screen.getAllByText('pixel')).toHaveLength(3)
+
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Models' })) })
+    expect(await screen.findAllByText('anthropic/claude-sonnet-4-6')).toHaveLength(3)
+    expect(screen.getByRole('group', { name: 'Top model spend' })).toBeTruthy()
+
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Limits' })) })
+    expect(await screen.findByRole('region', { name: 'Budget rules' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Billing lanes' })).toBeTruthy()
+    expect(screen.queryByRole('tablist', { name: 'Spend window' })).toBeNull()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Add budget rule' })) })
+    expect(await screen.findByText('Unsaved budget rules')).toBeTruthy()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Discard changes' })) })
+    expect(screen.queryByText('Unsaved budget rules')).toBeNull()
   })
 })
