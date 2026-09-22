@@ -25,7 +25,6 @@ import { getModelEligibility, resolveCatalogId, type EligibilityReport, type Ine
 import { mapModelToCatalog } from './model-selections'
 import { evaluateBudget, ruleMatchesTurn, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetDecision, type TurnBillingContext } from './budget'
 import { assembleBudgetSpend, type BudgetSpendFacets } from './budget-spend'
-import { notifyBudgetIncidentOpened } from './budget-notify'
 import { getBootId } from './boot-id'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { moveTask as moveStoredTask } from './task-store'
@@ -365,7 +364,11 @@ function recordSpendEvidenceDeferral(
 /**
  * Open (idempotently) the durable cap incident for a breach and audit it
  * exactly once per (rule identity, window) — the budget_incidents UNIQUE is
- * the restart-safe debounce. Never throws into the gate.
+ * the restart-safe debounce. Delivery is NOT done here: the row lands with
+ * notified_at NULL and the one delivery worker (spend-observer
+ * deliverPending) sends it, so a crash between open and send is recovered
+ * and the observer's own open of the same incident cannot double-alert.
+ * Never throws into the gate.
  */
 function recordBudgetBreach(
   contentDir: string,
@@ -399,19 +402,10 @@ function recordBudgetBreach(
       spentValue: decision.spentValue,
       capValue: decision.capValue,
     })
-    // Proactive fan-out (SSE/browser + main-agent relay) — fresh opens only.
-    notifyBudgetIncidentOpened({
-      incidentId: incident.id,
-      kind: 'cap',
-      scope: decision.rule.scope,
-      ...(decision.rule.scopeId ? { scopeId: decision.rule.scopeId } : {}),
-      lane: decision.rule.lane,
-      window: decision.window,
-      unit: decision.unit,
-      capValue: decision.capValue,
-      spentValue: decision.spentValue,
-      atCap: decision.rule.atCap ?? 'defer',
-    }, () => getAppServices().runtime)
+    // Deliver now rather than at the next tick — detached, from durable rows.
+    void import('./spend-observer').then((m) => m.deliverPending()).catch((err: unknown) => {
+      log.error('Budget incident delivery kick failed', err, { incidentId: incident.id })
+    })
   } catch (err) {
     log.error('Failed to record budget breach incident', err, { agentId })
   }

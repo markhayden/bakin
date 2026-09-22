@@ -10,6 +10,7 @@
  * Never throws — a metering failure must not fail the turn that succeeded.
  */
 import { randomUUID } from 'crypto'
+import { emitSpendRecorded } from './spend-events'
 
 import { createLogger } from './logger'
 import type { MessageResult } from '@bakin/core/adapters/runtime'
@@ -82,6 +83,9 @@ async function recordSpend(e: {
       routeSource: e.routeSource ?? null,
       occurredAt: Date.now(),
     })
+    // Spend moved: the observer (subscribed at boot) invalidates its memo and
+    // runs a pass — detached, never failing or slowing the turn that happened.
+    emitSpendRecorded()
     recordUsage({
       kind: 'agent',
       activityClass: e.activityClass,

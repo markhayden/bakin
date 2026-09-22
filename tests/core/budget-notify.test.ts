@@ -32,6 +32,8 @@ import { waitUntil } from '../helpers/wait'
 
 const INCIDENT = {
   incidentId: 7,
+  eventId: 'evt-7-1',
+  episode: 1,
   kind: 'cap' as const,
   scope: 'provider',
   scopeId: 'google',

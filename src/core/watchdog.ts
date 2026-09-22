@@ -169,6 +169,15 @@ export function start(contentDir: string): void {
       log.error('Orphan turn sweep failed', err)
     }
 
+    // Spend ladder tick: the observer's memo makes an unchanged day free; the
+    // delivery worker inside it recovers anything a crash left undelivered.
+    try {
+      const { observeSpend } = await import('./spend-observer')
+      await observeSpend()
+    } catch (err) {
+      log.error('Spend observer tick failed', err)
+    }
+
     try {
       type WdTask = { id: string; title: string; agent?: string; workflowId?: string; updatedAt?: number; log?: Array<{ message: string; timestamp: string }> }
       const board = readTaskboard() as unknown as { columns: Record<string, WdTask[]> }

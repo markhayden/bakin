@@ -57,6 +57,17 @@ export async function runStartupRecovery(contentDir: string, port: number): Prom
     watchdog.start(contentDir)
   }
 
+  // Spend ladder: a crash at ANY delivery boundary (milestone insert →
+  // incident insert → send → mark) is recovered here from durable rows;
+  // nothing already marked re-fires.
+  try {
+    const { observeSpend, startSpendObserver } = await import('../spend-observer')
+    startSpendObserver()
+    await observeSpend()
+  } catch (err) {
+    log.error('Spend observer boot pass failed', err)
+  }
+
   try {
     if (recovered > 0) {
       await dispatch.dispatchTasks(contentDir, port)

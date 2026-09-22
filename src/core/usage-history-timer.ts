@@ -64,6 +64,10 @@ export function runUsageHistoryScan(
       if (report.scanned > 0 || report.failed > 0) {
         log.info('usage history scan', { ...report })
       }
+      // Observed usage moved: the ladder re-evaluates against post-scan totals.
+      void import('./spend-observer').then((m) => { m.bumpSpendGeneration(); return m.observeSpend() }).catch((err: unknown) => {
+        log.error('Spend observer pass after a usage scan failed', err)
+      })
     } catch (err) {
       g.__bakinUsageHistoryLastScan = {
         at: Date.now(),

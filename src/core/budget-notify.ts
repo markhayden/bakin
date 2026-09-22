@@ -1,7 +1,8 @@
 /**
- * Budget incident notifications (cost-control v2, #464) — triggered on FRESH
- * incident opens only (the budget_incidents UNIQUE upstream guarantees
- * once-per-(rule, window, kind), restart-safe), never by polling:
+ * Budget incident notifications (cost-control v2, #464) — sent by the ONE
+ * delivery worker (`src/core/spend-observer.ts` deliverPending) from durable
+ * budget_incidents rows whose episode has not been delivered, never by
+ * polling and never twice for the same (id, event_id):
  *
  *  1. SSE plugin-event `budget.incident_opened` — the client shell fires a
  *     browser notification (same bell toggle as workflow gates) and
@@ -22,6 +23,9 @@ const log = createLogger('budget-notify')
 
 export interface BudgetIncidentNotification {
   incidentId: number
+  /** The episode being delivered — consumers de-duplicate on it (D22). */
+  eventId: string
+  episode: number
   kind: BudgetIncidentKind
   scope: string
   scopeId?: string
@@ -87,7 +91,7 @@ async function relayToMainAgent(n: BudgetIncidentNotification, message: string, 
       agentId: mainAgentId,
       activityClass: 'system',
       ...routeSendArgs(route),
-      content: `${message}\n\nReview and resolve: Spend (or \`bakin budget incidents\`). Relay this to the operator if they are not watching the dashboard.`,
+      content: `${message}\n\nReview and resolve: Spend (or \`bakin budget incidents\`). Relay this to the operator if they are not watching the dashboard. [event ${n.eventId}]`,
     })
     await meterAgentTurn({ agent: mainAgentId, activityClass: 'system', result, workClass: 'relay', routeSource: route.source, resolvedModel: route.model, name: 'budget-alert' })
   } catch (err) {
