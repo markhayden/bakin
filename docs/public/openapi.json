@@ -29185,11 +29185,6 @@
                           "type": "number",
                           "exclusiveMinimum": 0
                         },
-                        "warnPct": {
-                          "type": "number",
-                          "exclusiveMinimum": 0,
-                          "maximum": 1
-                        },
                         "atCap": {
                           "type": "string",
                           "enum": [

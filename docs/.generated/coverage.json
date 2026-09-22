@@ -39,7 +39,7 @@
     },
     "corePlugins": {
       "status": "active",
-      "count": 13,
+      "count": 14,
       "source": "plugins/*/bakin-plugin.json"
     },
     "settings": {

@@ -352,8 +352,8 @@ function recordSpendEvidenceDeferral(
 }
 
 /**
- * Open (idempotently) the durable incident for a breach and audit it exactly
- * once per (rule identity, window, kind) — the budget_incidents UNIQUE is
+ * Open (idempotently) the durable cap incident for a breach and audit it
+ * exactly once per (rule identity, window) — the budget_incidents UNIQUE is
  * the restart-safe debounce. Never throws into the gate.
  */
 function recordBudgetBreach(
@@ -370,18 +370,15 @@ function recordBudgetBreach(
       lane: decision.rule.lane,
       window: decision.window,
       windowStartMs: windowStart,
-      kind: decision.action === 'defer' ? 'cap' : 'warn',
+      kind: 'cap',
       unit: decision.unit,
       capValue: decision.capValue,
       spentValue: decision.spentValue,
-      // Warn incidents never block — they must always rollover-sweep, even
-      // on pause-mode rules (only CAP incidents inherit the pause hold).
-      atCap: decision.action === 'defer' ? decision.rule.atCap ?? 'defer' : 'defer',
+      atCap: decision.rule.atCap ?? 'defer',
       openedAt: Date.now(),
     })
     if (!incident.opened) return
-    const event = decision.action === 'defer' ? 'budget.deferred' : 'budget.warn'
-    appendAudit(contentDir, event, agentId, {
+    appendAudit(contentDir, 'budget.deferred', agentId, {
       incidentId: incident.id,
       scope: decision.rule.scope,
       ...(decision.rule.scopeId ? { scopeId: decision.rule.scopeId } : {}),
@@ -394,7 +391,7 @@ function recordBudgetBreach(
     // Proactive fan-out (SSE/browser + main-agent relay) — fresh opens only.
     notifyBudgetIncidentOpened({
       incidentId: incident.id,
-      kind: decision.action === 'defer' ? 'cap' : 'warn',
+      kind: 'cap',
       scope: decision.rule.scope,
       ...(decision.rule.scopeId ? { scopeId: decision.rule.scopeId } : {}),
       lane: decision.rule.lane,
@@ -402,9 +399,7 @@ function recordBudgetBreach(
       unit: decision.unit,
       capValue: decision.capValue,
       spentValue: decision.spentValue,
-      // Warn incidents never block — they must always rollover-sweep, even
-      // on pause-mode rules (only CAP incidents inherit the pause hold).
-      atCap: decision.action === 'defer' ? decision.rule.atCap ?? 'defer' : 'defer',
+      atCap: decision.rule.atCap ?? 'defer',
     }, () => getAppServices().runtime)
   } catch (err) {
     log.error('Failed to record budget breach incident', err, { agentId })

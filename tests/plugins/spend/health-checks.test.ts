@@ -461,10 +461,10 @@ describe('budget health check', () => {
     })
   })
 
-  it('reports unknown when incomplete evidence coexists with a warning threshold', async () => {
+  it('reports unknown when incomplete evidence coexists with an approaching cap', async () => {
     budgetPolicy = {
       rules: [
-        { scope: 'global', lane: 'metered', dailyCap: 10 },
+        { id: 'rule-global', scope: 'global', lane: 'metered', dailyCap: 10 },
         { scope: 'agent', scopeId: 'pixel', lane: 'subscription', dailyCap: 10_000 },
       ],
     }
@@ -485,16 +485,27 @@ describe('budget health check', () => {
 
     expect(spend?.status).toBe('unknown')
     expect(spend?.evidence).toMatchObject({
-      rules: [expect.objectContaining({ action: 'warn' })],
+      rules: [],
       incompleteSpendRules: [expect.objectContaining({ cause: 'spend_evidence_incomplete' })],
     })
   })
 
-  it('warns as spend approaches the cap (>= warnPct)', async () => {
-    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
-    seedSpend(8_500_000) // $8.50 of $10 = 85%
+  it('warns at the 90% milestone — the ladder tier the yellow bar uses, never a private threshold', async () => {
+    budgetPolicy = { rules: [{ id: 'rule-global', scope: 'global', lane: 'metered', dailyCap: 10 }] }
+    seedSpend(8_500_000) // $8.50 of $10 = 85%: below the bar
+    expect(observed(await checkBudget())[0].status).toBe('healthy')
+    seedSpend(600_000) // → $9.10 = 91%
     const [r] = observed(await checkBudget())
     expect(r.status).toBe('warning')
+    expect(r.incident?.key).toBe('approaching-cap')
+  })
+
+  it('a rule that never got an id cannot report approach (milestones key on the id) but still reports a breach', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
+    seedSpend(9_500_000)
+    expect(observed(await checkBudget())[0].status).toBe('healthy')
+    seedSpend(600_000)
+    expect(observed(await checkBudget())[0].status).toBe('error')
   })
 
   it('errors at/over the cap (dispatch blocked)', async () => {

@@ -6,7 +6,7 @@ import { usePluginEvent } from '@makinbakin/sdk/hooks'
 export interface BudgetGateStatus {
   paused: boolean
   configured: boolean
-  perAgent: Record<string, 'ok' | 'warn' | 'deferred'>
+  perAgent: Record<string, 'ok' | 'deferred'>
   /** Per-todo-task holds computed server-side with the gate's own routing
    *  resolution (covers tag/origin-routed and unassigned tasks). */
   perTask: Record<string, 'deferred'>

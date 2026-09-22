@@ -164,23 +164,6 @@ function BudgetRuleRow({
         onChange={(monthlyCap) => edit({ monthlyCap })}
       />
 
-      <Field name={`budget-rule-${index}-warning`}>
-        <FieldLabel>Warn at</FieldLabel>
-        <Input
-          type="number"
-          min="1"
-          max="100"
-          aria-label={`Budget rule ${index + 1} warning percent`}
-          placeholder="80"
-          value={rule.warnPct !== undefined ? Math.round(rule.warnPct * 100) : ''}
-          onChange={(event) => edit({
-            warnPct: event.currentTarget.value
-              ? Number(event.currentTarget.value) / 100
-              : undefined,
-          })}
-        />
-      </Field>
-
       <Field name={`budget-rule-${index}-cap-action`}>
         <FieldLabel>At cap</FieldLabel>
         <RuleSelect
@@ -226,7 +209,7 @@ export function BudgetRulesSection({ m }: { m: SpendData }) {
           className="w-full shrink-0 @2xl/budget-rules:w-auto"
           onClick={() => m.setPendingRules([
             ...rules,
-            { scope: 'global', lane: 'metered', warnPct: 0.8, atCap: 'defer' },
+            { scope: 'global', lane: 'metered', atCap: 'defer' },
           ])}
         >
           <Plus />
@@ -246,7 +229,7 @@ export function BudgetRulesSection({ m }: { m: SpendData }) {
               variant="outline"
               size="sm"
               onClick={() => m.setPendingRules([
-                { scope: 'global', lane: 'metered', warnPct: 0.8, atCap: 'defer' },
+                { scope: 'global', lane: 'metered', atCap: 'defer' },
               ])}
             >
               Add budget rule
@@ -261,7 +244,7 @@ export function BudgetRulesSection({ m }: { m: SpendData }) {
           <ListRows
             aria-label="Budget rules"
             variant="separated"
-            columns="minmax(9rem,.7fr) minmax(10rem,1fr) minmax(9rem,.7fr) minmax(8rem,.7fr) minmax(8rem,.7fr) minmax(7rem,.5fr) minmax(8rem,.6fr) auto"
+            columns="minmax(9rem,.7fr) minmax(10rem,1fr) minmax(9rem,.7fr) minmax(8rem,.7fr) minmax(8rem,.7fr) minmax(8rem,.6fr) auto"
             columnsAt="5xl"
             columnsAlign="end"
           >

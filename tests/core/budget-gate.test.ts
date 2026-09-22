@@ -551,7 +551,7 @@ describe('budgetGate', () => {
     }
   })
 
-  it('MEDIA GATE: warn does not block; kill switch does', async () => {
+  it('MEDIA GATE: approaching a cap does not block; kill switch does', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
     costRows.push({ runId: 'img-2', agent: 'pixel', model: 'google/nanobanana', provider: 'google', lane: 'metered', totalTokens: 0, costUsdMicros: 8_500_000, occurredAt: Date.now() })
     expect((await gateBilledMediaCall({ agent: 'pixel', model: 'google/nanobanana' })).allowed).toBe(true)
@@ -562,20 +562,19 @@ describe('budgetGate', () => {
     if (!refused.allowed) expect(refused.refusal.code).toBe('dispatch_paused')
   })
 
-  it('a warn threshold opens a warn incident and audits budget.warn once', async () => {
+  it('approaching a cap opens NO incident and audits nothing — the milestone ladder owns approach (v10)', async () => {
     budgetPolicy = GLOBAL_10
     costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 100, costUsdMicros: 8_500_000, occurredAt: Date.now() })
-    expect((await budgetGate('pixel', dir)).action).toBe('warn')
-    expect((await budgetGate('pixel', dir)).action).toBe('warn')
-    expect(incidentOpens).toHaveLength(1)
-    expect(incidentOpens[0]).toMatchObject({ kind: 'warn' })
-    expect(auditCalls.filter((c) => c[1] === 'budget.warn')).toHaveLength(1)
+    expect(await budgetGate('pixel', dir)).toEqual({ action: 'allow' })
+    expect(await budgetGate('pixel', dir)).toEqual({ action: 'allow' })
+    expect(incidentOpens).toHaveLength(0)
+    expect(auditCalls.filter((c) => c[1] === 'budget.warn')).toHaveLength(0)
   })
 
-  it('a WARN on a pause-mode rule opens a sweepable (defer) incident — warnings never hold past rollover', async () => {
+  it('a breach on a pause-mode rule opens a cap incident carrying the pause reaction', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10, atCap: 'pause' }] }
-    costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 100, costUsdMicros: 8_500_000, occurredAt: Date.now() })
-    expect((await budgetGate('pixel', dir)).action).toBe('warn')
-    expect(incidentOpens[0]).toMatchObject({ kind: 'warn', atCap: 'defer' })
+    costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 100, costUsdMicros: 10_500_000, occurredAt: Date.now() })
+    expect((await budgetGate('pixel', dir)).action).toBe('defer')
+    expect(incidentOpens[0]).toMatchObject({ kind: 'cap', atCap: 'pause' })
   })
 })

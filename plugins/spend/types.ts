@@ -13,7 +13,6 @@ export interface BudgetRuleWire {
   lane: 'metered' | 'subscription'
   dailyCap?: number
   monthlyCap?: number
-  warnPct?: number
   atCap?: 'defer' | 'pause'
 }
 /** One durable breach record (wire shape of a budget_incidents row). */
@@ -24,7 +23,7 @@ export interface BudgetIncidentWire {
   lane: 'metered' | 'subscription'
   window: 'daily' | 'monthly'
   windowStartMs: number
-  kind: 'warn' | 'cap'
+  kind: 'cap'
   unit: 'usd_micros' | 'tokens'
   capValue: number
   spentValue: number
@@ -38,7 +37,7 @@ export interface BillingOverrideWire { agentId?: string; provider?: string; lane
 export interface BudgetStatusWire {
   paused: boolean
   configured: boolean
-  perAgent: Record<string, 'ok' | 'warn' | 'deferred'>
+  perAgent: Record<string, 'ok' | 'deferred'>
   perTask: Record<string, 'deferred'>
   billing: Record<string, { provider: string; lane: 'metered' | 'subscription'; model: string | null }>
   overrides: BillingOverrideWire[]

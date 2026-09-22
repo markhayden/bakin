@@ -22,14 +22,13 @@ function IncidentBanner({
 }) {
   const [raiseValue, setRaiseValue] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const isCap = incident.kind === 'cap'
 
   return (
     <div className="flex min-w-0 flex-col gap-bakin-2">
       <Banner
-        tone={isCap ? 'danger' : 'attention'}
+        tone="danger"
         announce={incident.status === 'open' ? 'assertive' : 'off'}
-        title={isCap ? 'Budget cap reached' : 'Budget warning'}
+        title="Budget cap reached"
         description={(
           <span>
             {incident.scopeId ? `${incident.scope} “${incident.scopeId}”` : 'Global'} · {incident.window} · {incident.lane} at{' '}
@@ -39,22 +38,20 @@ function IncidentBanner({
         )}
         action={(
           <>
-            {isCap ? (
-              <Button
-                type="button"
-                size="sm"
-                onClick={async () => {
-                  const cap = parseCapInput(raiseValue)
-                  if (cap === undefined) {
-                    setError('Enter a valid cap first. Token caps accept k or M suffixes.')
-                    return
-                  }
-                  setError(await resolveIncident(incident.id, 'raise', cap))
-                }}
-              >
-                Raise and resume
-              </Button>
-            ) : null}
+            <Button
+              type="button"
+              size="sm"
+              onClick={async () => {
+                const cap = parseCapInput(raiseValue)
+                if (cap === undefined) {
+                  setError('Enter a valid cap first. Token caps accept k or M suffixes.')
+                  return
+                }
+                setError(await resolveIncident(incident.id, 'raise', cap))
+              }}
+            >
+              Raise and resume
+            </Button>
             {incident.status === 'open' ? (
               <Button
                 type="button"
@@ -71,25 +68,21 @@ function IncidentBanner({
               size="sm"
               onClick={async () => setError(await resolveIncident(incident.id, 'resume'))}
             >
-              {incident.atCap === 'pause' && isCap ? 'Resume as-is' : 'Dismiss'}
+              {incident.atCap === 'pause' ? 'Resume as-is' : 'Dismiss'}
             </Button>
           </>
         )}
       />
-      {isCap || error ? (
-        <Field name={`budget-incident-${incident.id}-cap`} invalid={Boolean(error)}>
-          {isCap ? (
-            <Input
-              aria-label={`New cap for incident ${incident.id}`}
-              className="w-36"
-              placeholder={incident.lane === 'metered' ? 'New dollar cap' : 'New token cap'}
-              value={raiseValue}
-              onChange={(event) => setRaiseValue(event.currentTarget.value)}
-            />
-          ) : null}
-          {error ? <FieldError match>{error}</FieldError> : null}
-        </Field>
-      ) : null}
+      <Field name={`budget-incident-${incident.id}-cap`} invalid={Boolean(error)}>
+        <Input
+          aria-label={`New cap for incident ${incident.id}`}
+          className="w-36"
+          placeholder={incident.lane === 'metered' ? 'New dollar cap' : 'New token cap'}
+          value={raiseValue}
+          onChange={(event) => setRaiseValue(event.currentTarget.value)}
+        />
+        {error ? <FieldError match>{error}</FieldError> : null}
+      </Field>
     </div>
   )
 }

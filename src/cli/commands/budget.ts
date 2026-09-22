@@ -18,7 +18,6 @@ interface RuleWire {
   lane: 'metered' | 'subscription'
   dailyCap?: number
   monthlyCap?: number
-  warnPct?: number
   atCap?: 'defer' | 'pause'
 }
 interface LaneSums { meteredUsdMicros: number; meteredTokens: number; subscriptionTokens: number; unpricedMeteredTokens: number }
@@ -203,12 +202,11 @@ async function cmdBudgetShow(json: boolean): Promise<void> {
     lane: r.lane,
     daily: r.dailyCap !== undefined ? unitValue(r.lane, r.dailyCap, false) : '—',
     monthly: r.monthlyCap !== undefined ? unitValue(r.lane, r.monthlyCap, false) : '—',
-    'warn %': Math.round((r.warnPct ?? 0.8) * 100),
     'at cap': r.atCap ?? 'defer',
   })))
 }
 
-const SET_USAGE = 'bakin budget set --scope global|agent|provider|model [--id <scopeId>] --lane metered|subscription [--daily N] [--monthly N] [--warn-pct N] [--at-cap defer|pause] — caps are whole USD (metered) or tokens (subscription; k/M suffixes ok, e.g. 5M)'
+const SET_USAGE = 'bakin budget set --scope global|agent|provider|model [--id <scopeId>] --lane metered|subscription [--daily N] [--monthly N] [--at-cap defer|pause] — caps are whole USD (metered) or tokens (subscription; k/M suffixes ok, e.g. 5M)'
 
 async function cmdBudgetSet(args: string[]): Promise<void> {
   const scope = flag(args, '--scope') as RuleWire['scope'] | undefined
@@ -220,7 +218,6 @@ async function cmdBudgetSet(args: string[]): Promise<void> {
   if (lane !== 'metered' && lane !== 'subscription') await exitUsage(SET_USAGE, `Unknown lane '${lane}'.`)
   const daily = parseCap(flag(args, '--daily'))
   const monthly = parseCap(flag(args, '--monthly'))
-  const warnPct = flag(args, '--warn-pct')
   const atCap = flag(args, '--at-cap') as RuleWire['atCap'] | undefined
 
   const rules = await fetchRules()
@@ -231,7 +228,6 @@ async function cmdBudgetSet(args: string[]): Promise<void> {
     lane: lane!,
     ...(daily !== undefined ? { dailyCap: daily } : {}),
     ...(monthly !== undefined ? { monthlyCap: monthly } : {}),
-    ...(warnPct ? { warnPct: Number(warnPct) / 100 } : {}),
     ...(atCap ? { atCap } : {}),
   }
   if (!rule.dailyCap && !rule.monthlyCap) {

@@ -107,18 +107,46 @@ budget_incidents  one durable row per cap-rule breach per window
               lane, win, window_start_ms, kind) IS the alert debounce —
               restart-safe, replaced the in-memory audited-windows set.
               scope_id stores '' (never NULL — SQLite treats NULLs as
-              distinct in UNIQUE). Columns: kind warn|cap, unit
-              usd_micros|tokens + cap_value/spent_value (unit-per-lane),
-              at_cap defer|pause (captured at open — rollover auto-resolves
-              defer rows only; pause rows hold until a human resolves),
-              status open|acknowledged|resolved, resolution
-              raised|acknowledged|window_rollover|killswitch_cleared|rule_removed.
+              distinct in UNIQUE). Columns: kind (only 'cap' since v10 —
+              warn rows were dropped by the migration; approach rides
+              budget_milestones), unit usd_micros|tokens + cap_value/
+              spent_value (unit-per-lane), at_cap defer|pause (captured at
+              open/reopen — rollover auto-resolves defer rows only; pause
+              rows hold until a human resolves), status
+              open|acknowledged|resolved, resolution
+              raised|acknowledged|window_rollover|killswitch_cleared|rule_removed,
+              and (v10, spend plan D28) episode INTEGER (bumps on every
+              reopen), event_id TEXT (minted per episode — the (id,
+              event_id) pair identifies ONE alert; the row id alone never
+              does), notified_at (NULL = this episode not yet delivered).
               Verbs: openBudgetIncident (idempotent; reopens a
-              raised/window_rollover-resolved identity on a new breach —
-              that IS a new alertable event; an 'acknowledged'-resolved row
-              stays suppressed for its window — the operator dismissed it), resolveBudgetIncident, listBudgetIncidents,
-              resolveExpiredBudgetIncidents (gate-time rollover sweep),
-              findOpenCapIncident (pause-mode gate probe).
+              raised/window_rollover/rule_removed-resolved identity on a
+              new breach — episode+1, fresh event_id, notified_at NULL,
+              at_cap updated to the CURRENT rule's reaction, so a deleted-
+              and-recreated pause rule alerts again and holds (S14); an
+              'acknowledged'-resolved row stays suppressed for its window —
+              the operator dismissed it), resolveBudgetIncident,
+              listBudgetIncidents, resolveExpiredBudgetIncidents
+              (gate-time rollover sweep), findOpenCapIncident (pause-mode
+              gate probe), listUnnotifiedIncidents + markIncidentNotified(id,
+              eventId) (delivery marks name the exact event — a slow
+              episode-1 delivery completing after a reopen changes 0 rows).
+budget_milestones  one durable row per (rule_id, win, window_start_ms,
+              milestone ∈ 50|75|90|100) — the notification ladder's source
+              of truth (spend plan D19/D22, migration v10). Keyed by
+              BudgetRule.id (uuid) so a recreated rule starts fresh.
+              covered_by = a higher milestone reached in the same pass that
+              speaks for this one (recorded already-notified); event_id
+              UNIQUE per row; notified_at NULL = pending delivery;
+              acknowledged_at = "dismiss for this window" (the 90% bar).
+              Verbs: recordMilestoneCrossings (UNIQUE makes repeats no-ops;
+              returns only NEW rows), listMilestones, listUnnotifiedMilestones
+              (< 100 only — the 100 row's alert IS the cap incident),
+              markMilestoneNotified(id, eventId), acknowledgeMilestone.
+              Crossings are computed by the pure `milestoneCrossings(policy,
+              facets)` in src/core/budget.ts (same scope/lane/unattributed
+              extraction as the gate); the spend observer (T2.10) records
+              and delivers them.
 model_rejections  one durable row per model the account's provider
               deterministically rejected (#852, migration v9; typed
               model_not_supported). UNIQUE(model) IS the debounce:

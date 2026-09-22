@@ -117,6 +117,12 @@ export interface BudgetSpendFacets {
 
 
 export interface BudgetRule {
+  /**
+   * Stable identity (uuid) — what milestone rows key on, so a deleted and
+   * recreated rule starts its ladder fresh. Assigned by the spend plugin's
+   * settings upgrade; absent only for a rule that has not been through it.
+   */
+  id?: string
   scope: BudgetScope
   /** Agent id / provider id / model id; absent for global. */
   scopeId?: string
@@ -126,8 +132,6 @@ export interface BudgetRule {
   dailyCap?: number
   /** Cap per local calendar month, same unit. */
   monthlyCap?: number
-  /** Warn threshold as a fraction of the cap (default 0.8). */
-  warnPct?: number
   /** At 100%: 'defer' (resumes at window rollover) or 'pause' (holds until resolved). */
   atCap?: 'defer' | 'pause'
 }
@@ -159,7 +163,7 @@ export interface TurnBillingContext {
 export type BudgetDecision =
   | { action: 'allow' }
   | {
-      action: 'warn' | 'defer'
+      action: 'defer'
       cause: 'threshold'
       rule: BudgetRule
       window: BudgetWindow
@@ -198,7 +202,9 @@ export type BudgetDecision =
       capValue: number
     }
 
-export const DEFAULT_WARN_PCT = 0.8
+/** The fixed ladder every limit notifies on (D19) — never configurable. */
+export const MILESTONES = [50, 75, 90, 100] as const
+export type BudgetMilestone = (typeof MILESTONES)[number]
 
 /** Local calendar-day start (midnight) at or before `now` (ms). */
 export function dayStartMs(now: number): number {
@@ -305,9 +311,10 @@ const WINDOWS: BudgetWindow[] = ['daily', 'monthly']
 
 /**
  * Decide whether a turn may proceed. Every matching rule is checked across
- * both windows; defer (any cap met or exceeded) beats warn (any cap at/over
- * its warn threshold) beats allow. The returned breach identifies the rule,
- * for the incident/audit. No rules → always allow.
+ * both windows; defer (any cap met or exceeded, or evidence too thin to
+ * know) beats allow. The returned breach identifies the rule, for the
+ * incident/audit. No rules → always allow. Approaching a cap is NOT the
+ * gate's concern — see `milestoneCrossings`.
  */
 export function evaluateBudget(input: {
   policy: BudgetPolicy
@@ -315,7 +322,6 @@ export function evaluateBudget(input: {
   facets: BudgetSpendFacets
 }): BudgetDecision {
   const rules = input.policy.rules ?? []
-  let worstWarn: BudgetDecision | null = null
   let incompleteEvidence: Extract<BudgetDecision, { cause: 'spend_evidence_incomplete' }> | null = null
   let unavailableEvidence: Extract<BudgetDecision, { cause: 'spend_evidence_unavailable' }> | null = null
   for (const rule of rules) {
@@ -353,13 +359,55 @@ export function evaluateBudget(input: {
           capValue,
           unknownEvidenceCount,
         }
-        continue
-      }
-      const warnPct = rule.warnPct ?? DEFAULT_WARN_PCT
-      if (!worstWarn && spentValue >= capValue * warnPct) {
-        worstWarn = { action: 'warn', cause: 'threshold', rule, window, unit, spentValue, capValue }
       }
     }
   }
-  return unavailableEvidence ?? incompleteEvidence ?? worstWarn ?? { action: 'allow' }
+  return unavailableEvidence ?? incompleteEvidence ?? { action: 'allow' }
+}
+
+/** One rule × window whose spend has reached at least the 50% milestone. */
+export interface MilestoneCrossing {
+  ruleId: string
+  rule: BudgetRule
+  window: BudgetWindow
+  windowStartMs: number
+  unit: BudgetUnit
+  spentValue: number
+  capValue: number
+  /** Every fixed milestone at or below the reached fraction, ascending. */
+  reached: BudgetMilestone[]
+}
+
+/**
+ * The ladder input: for every identified rule and capped window, which of
+ * the fixed milestones the window's spend has reached. Pure — the same
+ * scope/lane/unattributed extraction the gate uses, no turn involved. The
+ * spend observer records these durably (`budget_milestones`) and delivers
+ * the new ones; rules without an id (never upgraded) contribute nothing,
+ * because milestone rows key on the id.
+ */
+export function milestoneCrossings(policy: BudgetPolicy, facets: BudgetSpendFacets): MilestoneCrossing[] {
+  const crossings: MilestoneCrossing[] = []
+  for (const rule of policy.rules ?? []) {
+    if (!rule.id) continue
+    for (const window of WINDOWS) {
+      const capValue = ruleCapValue(rule, window)
+      if (capValue === null) continue
+      const w = window === 'daily' ? facets.daily : facets.monthly
+      const spentValue = ruleSpentValue(rule, w)
+      const reached = MILESTONES.filter((m) => spentValue >= capValue * (m / 100))
+      if (reached.length === 0) continue
+      crossings.push({
+        ruleId: rule.id,
+        rule,
+        window,
+        windowStartMs: w.startMs,
+        unit: rule.lane === 'metered' ? 'usd_micros' : 'tokens',
+        spentValue,
+        capValue,
+        reached,
+      })
+    }
+  }
+  return crossings
 }

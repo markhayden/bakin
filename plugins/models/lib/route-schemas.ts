@@ -48,7 +48,6 @@ export const BudgetRuleSchema = z
     lane: z.enum(['metered', 'subscription']),
     dailyCap: z.number().positive().optional(),
     monthlyCap: z.number().positive().optional(),
-    warnPct: z.number().gt(0).lte(1).optional(),
     atCap: z.enum(['defer', 'pause']).optional(),
   })
   .refine((r) => r.scope === 'global' || typeof r.scopeId === 'string', {

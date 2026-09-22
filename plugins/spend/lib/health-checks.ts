@@ -16,7 +16,7 @@ import { queryAuditEvents } from '../../../src/core/audit'
 import { getContentDir } from '../../../src/core/content-dir'
 import { LedgerUnavailableError, listBudgetIncidents } from '../../../src/core/execution-ledger'
 import { assembleBudgetSpend } from '../../../src/core/budget-spend'
-import { evaluateBudget, type BudgetPolicy, type BudgetRule, type SpendEvidenceGap, type TurnBillingContext } from '../../../src/core/budget'
+import { evaluateBudget, milestoneCrossings, type BudgetPolicy, type BudgetRule, type SpendEvidenceGap, type TurnBillingContext } from '../../../src/core/budget'
 import { getSettings } from '../../../src/core/settings'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
@@ -352,8 +352,13 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
   const deferNote = deferred ? ` ${deferred} run(s) deferred in the last 24h.` : ''
 
   // Probe each rule with a synthetic matching turn — same evaluator, same
-  // facets as the gate. Worst breach drives the row status.
-  const breaches: Array<{ rule: BudgetRule; action: 'warn' | 'defer'; window: string; unit: 'usd_micros' | 'tokens'; spentValue: number; capValue: number }> = []
+  // facets as the gate. Any breach drives the row status; "approaching" is
+  // the ladder's 90% milestone (the same derivation the observer records),
+  // so the doctor and the yellow bar never disagree.
+  const breaches: Array<{ rule: BudgetRule; action: 'defer'; window: string; unit: 'usd_micros' | 'tokens'; spentValue: number; capValue: number }> = []
+  const approaching = milestoneCrossings(policy, facets)
+    .filter((c) => c.reached.includes(90) && !c.reached.includes(100))
+    .sort((a, b) => (b.spentValue / b.capValue) - (a.spentValue / a.capValue))[0] ?? null
   const incompleteSpendRules: Array<{
     rule: BudgetRule
     window: string
@@ -449,9 +454,8 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
     } : {}),
   }
 
-  const worst = breaches.find((b) => b.action === 'defer') ?? breaches[0]
-  if (worst?.action === 'defer') {
-    const capped = breaches.filter((b) => b.action === 'defer')
+  if (breaches.length > 0) {
+    const capped = breaches
     const detail = capped
       .map((b) => `${ruleLabel(b.rule)} ${b.window} ${b.rule.lane} ${fmtValue(b.unit, b.spentValue)}/${fmtValue(b.unit, b.capValue)}`)
       .join('; ')
@@ -561,8 +565,8 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
               },
       },
     }))
-  } else if (worst) {
-    const detail = ` ${ruleLabel(worst.rule)} ${worst.window} ${worst.rule.lane} at ${Math.round((worst.spentValue / worst.capValue) * 100)}% of ${fmtValue(worst.unit, worst.capValue)}.`
+  } else if (approaching) {
+    const detail = ` ${ruleLabel(approaching.rule)} ${approaching.window} ${approaching.rule.lane} at ${Math.round((approaching.spentValue / approaching.capValue) * 100)}% of ${fmtValue(approaching.unit, approaching.capValue)}.`
     observations.push(healthWarning({
       key: 'spend',
       summary: 'Spend is approaching a budget limit.',

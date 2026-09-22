@@ -20,6 +20,7 @@
  * back to an unguarded path.
  */
 import { existsSync, readFileSync } from 'fs'
+import { randomUUID } from 'crypto'
 import { join } from 'path'
 import { createLogger } from '../logger'
 import { getBakinPaths } from '../content-dir'
@@ -326,6 +327,47 @@ const MIGRATIONS = [
          )`,
       )
       db.exec("CREATE INDEX model_rejections_live ON model_rejections(status) WHERE status = 'open'")
+    },
+  },
+  {
+    // Spend milestones + incident episodes (spend plan D19/D22/D28). The
+    // row id alone never identifies an alert: every open/reopen of a cap
+    // incident bumps `episode` and mints a fresh `event_id`, and delivery
+    // marks name the exact (id, event_id) they delivered. `budget_milestones`
+    // holds one durable row per rule × window × fixed milestone (50/75/90/
+    // 100), keyed by the rule's id so a deleted-and-recreated rule gets
+    // fresh rows. Existing rows are backfilled with episode 1 + an event id
+    // so an already-open incident is deliverable; legacy 'warn' rows (a
+    // kind the evaluator no longer produces) are dropped rather than left
+    // to linger as stale banners. UNIQUE untouched. Coordination facts only.
+    version: 10,
+    up: (db: Db) => {
+      db.exec("ALTER TABLE budget_incidents ADD COLUMN episode INTEGER NOT NULL DEFAULT 1")
+      db.exec('ALTER TABLE budget_incidents ADD COLUMN event_id TEXT')
+      db.exec('ALTER TABLE budget_incidents ADD COLUMN notified_at INTEGER')
+      db.exec("DELETE FROM budget_incidents WHERE kind = 'warn'")
+      const ids = db.prepare<{ id: number }, []>('SELECT id FROM budget_incidents WHERE event_id IS NULL').all()
+      const stamp = db.prepare('UPDATE budget_incidents SET event_id = ? WHERE id = ?')
+      for (const { id } of ids) stamp.run(randomUUID(), id)
+      db.exec(
+        `CREATE TABLE budget_milestones (
+           id              INTEGER PRIMARY KEY AUTOINCREMENT,
+           rule_id         TEXT NOT NULL,
+           win             TEXT NOT NULL,
+           window_start_ms INTEGER NOT NULL,
+           milestone       INTEGER NOT NULL,
+           spent_value     INTEGER NOT NULL,
+           cap_value       INTEGER NOT NULL,
+           unit            TEXT NOT NULL,
+           crossed_at      INTEGER NOT NULL,
+           covered_by      INTEGER,
+           event_id        TEXT NOT NULL UNIQUE,
+           notified_at     INTEGER,
+           acknowledged_at INTEGER,
+           UNIQUE(rule_id, win, window_start_ms, milestone)
+         )`,
+      )
+      db.exec('CREATE INDEX budget_milestones_pending ON budget_milestones(notified_at) WHERE notified_at IS NULL')
     },
   },
 ]
@@ -1168,7 +1210,8 @@ export function listRunCostsByPrefix(prefix: string): RunCostByPrefixRow[] {
 // budget incidents (durable breach records — cost-control v2)
 // ---------------------------------------------------------------------------
 
-export type BudgetIncidentKind = 'warn' | 'cap'
+/** Only cap incidents exist since v10 — approach rides budget_milestones. */
+export type BudgetIncidentKind = 'cap'
 export type BudgetIncidentStatus = 'open' | 'acknowledged' | 'resolved'
 export type BudgetIncidentResolution = 'raised' | 'acknowledged' | 'window_rollover' | 'killswitch_cleared' | 'rule_removed'
 
@@ -1204,6 +1247,11 @@ export interface BudgetIncidentRow {
   status: BudgetIncidentStatus
   resolvedAt: number | null
   resolution: BudgetIncidentResolution | null
+  /** Bumps on every reopen; the (id, eventId) pair identifies one alert. */
+  episode: number
+  eventId: string
+  /** When THIS episode was delivered; null = pending delivery. */
+  notifiedAt: number | null
 }
 
 interface RawIncidentRow {
@@ -1211,6 +1259,7 @@ interface RawIncidentRow {
   window_start_ms: number; kind: string; unit: string; cap_value: number
   spent_value: number; at_cap: string; opened_at: number; status: string
   resolved_at: number | null; resolution: string | null
+  episode: number; event_id: string; notified_at: number | null
 }
 
 function toIncidentRow(r: RawIncidentRow): BudgetIncidentRow {
@@ -1230,17 +1279,24 @@ function toIncidentRow(r: RawIncidentRow): BudgetIncidentRow {
     status: r.status as BudgetIncidentStatus,
     resolvedAt: r.resolved_at,
     resolution: r.resolution as BudgetIncidentResolution | null,
+    episode: r.episode,
+    eventId: r.event_id,
+    notifiedAt: r.notified_at,
   }
 }
 
-const INCIDENT_COLUMNS = 'id, scope, scope_id, lane, win, window_start_ms, kind, unit, cap_value, spent_value, at_cap, opened_at, status, resolved_at, resolution'
+const INCIDENT_COLUMNS = 'id, scope, scope_id, lane, win, window_start_ms, kind, unit, cap_value, spent_value, at_cap, opened_at, status, resolved_at, resolution, episode, event_id, notified_at'
+
+/** Resolutions after which a fresh breach is a NEW alertable episode (D28). */
+const REOPENABLE_RESOLUTIONS: ReadonlySet<BudgetIncidentResolution> = new Set(['raised', 'window_rollover', 'rule_removed'])
 
 /**
  * Open (or find) the incident for a breach. Idempotent per (rule identity,
  * window, kind) via the UNIQUE — `opened: true` means this call created a NEW
- * alertable event (fresh insert, or the reopen of a raise-resolved incident
- * that breached again). live (open/acknowledged) → `opened: false`, no
- * re-alert.
+ * alertable episode (fresh insert = episode 1, or the reopen of a
+ * raised / rolled-over / rule-removed incident that breached again = next
+ * episode with a fresh event_id, delivery pending, and the CURRENT rule's
+ * reaction). live (open/acknowledged) → `opened: false`, no re-alert.
  */
 export function openBudgetIncident(input: BudgetIncidentInput): { opened: boolean; id: number } {
   return guard('openBudgetIncident', () => {
@@ -1248,31 +1304,60 @@ export function openBudgetIncident(input: BudgetIncidentInput): { opened: boolea
     return db.transaction(() => {
       const inserted = db
         .prepare(
-          `INSERT INTO budget_incidents (scope, scope_id, lane, win, window_start_ms, kind, unit, cap_value, spent_value, at_cap, opened_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `INSERT INTO budget_incidents (scope, scope_id, lane, win, window_start_ms, kind, unit, cap_value, spent_value, at_cap, opened_at, episode, event_id, notified_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL)
            ON CONFLICT(scope, scope_id, lane, win, window_start_ms, kind) DO NOTHING`,
         )
-        .run(input.scope, input.scopeId ?? '', input.lane, input.window, input.windowStartMs, input.kind, input.unit, input.capValue, input.spentValue, input.atCap, input.openedAt)
+        .run(input.scope, input.scopeId ?? '', input.lane, input.window, input.windowStartMs, input.kind, input.unit, input.capValue, input.spentValue, input.atCap, input.openedAt, randomUUID())
       const existing = db
         .prepare<RawIncidentRow, (string | number)[]>(
           `SELECT ${INCIDENT_COLUMNS} FROM budget_incidents WHERE scope = ? AND scope_id = ? AND lane = ? AND win = ? AND window_start_ms = ? AND kind = ?`,
         )
         .get(input.scope, input.scopeId ?? '', input.lane, input.window, input.windowStartMs, input.kind)!
       if (inserted.changes > 0) return { opened: true, id: existing.id }
-      if (existing.status === 'resolved' && (existing.resolution === 'raised' || existing.resolution === 'window_rollover')) {
-        // A breach after a raise (or a fresh breach whose stale row rolled
-        // over) is a NEW alertable event. An 'acknowledged'-resolved row
-        // (operator dismissed/resumed THIS window's breach) stays suppressed
-        // — reopening it would just re-alert the human who explicitly
-        // dismissed it (spend-based deferral still applies silently).
+      if (existing.status === 'resolved' && existing.resolution !== null && REOPENABLE_RESOLUTIONS.has(existing.resolution as BudgetIncidentResolution)) {
+        // A breach after a raise, after a rollover-swept stale row, or after
+        // the rule was deleted and recreated (S14) is a NEW alertable
+        // episode. An 'acknowledged'-resolved row (operator dismissed/resumed
+        // THIS window's breach) stays suppressed — reopening it would just
+        // re-alert the human who explicitly dismissed it (spend-based
+        // deferral still applies silently).
         db.prepare(
-          `UPDATE budget_incidents SET status = 'open', spent_value = ?, cap_value = ?, at_cap = ?, opened_at = ?, resolved_at = NULL, resolution = NULL WHERE id = ?`,
-        ).run(input.spentValue, input.capValue, input.atCap, input.openedAt, existing.id)
+          `UPDATE budget_incidents
+              SET status = 'open', spent_value = ?, cap_value = ?, at_cap = ?, opened_at = ?, resolved_at = NULL, resolution = NULL,
+                  episode = episode + 1, event_id = ?, notified_at = NULL
+            WHERE id = ?`,
+        ).run(input.spentValue, input.capValue, input.atCap, input.openedAt, randomUUID(), existing.id)
         return { opened: true, id: existing.id }
       }
       return { opened: false, id: existing.id }
     })()
   })
+}
+
+/** Live incidents whose current episode has not been delivered (oldest first). */
+export function listUnnotifiedIncidents(): BudgetIncidentRow[] {
+  return guard('listUnnotifiedIncidents', () =>
+    ledger()
+      .prepare<RawIncidentRow, []>(
+        `SELECT ${INCIDENT_COLUMNS} FROM budget_incidents WHERE status IN ('open','acknowledged') AND notified_at IS NULL ORDER BY opened_at ASC, id ASC`,
+      )
+      .all()
+      .map(toIncidentRow),
+  )
+}
+
+/**
+ * Mark ONE delivered episode. The event id names exactly what was sent, so
+ * a slow delivery completing after a reopen changes zero rows and the new
+ * episode stays pending. Returns the changed-row count.
+ */
+export function markIncidentNotified(id: number, eventId: string, notifiedAt: number = Date.now()): number {
+  return guard('markIncidentNotified', () =>
+    ledger()
+      .prepare('UPDATE budget_incidents SET notified_at = ? WHERE id = ? AND event_id = ? AND notified_at IS NULL')
+      .run(notifiedAt, id, eventId).changes,
+  )
 }
 
 /** Move an incident to acknowledged (still live) or resolved (cleared). */
@@ -1328,6 +1413,144 @@ export function resolveExpiredBudgetIncidents(input: {
       .run(input.now, input.dailyWindowStartMs, input.monthlyWindowStartMs)
     return res.changes
   })
+}
+
+// ---------------------------------------------------------------------------
+// Budget milestones (spend plan D19/D22): durable "spend reached N% of this
+// rule's cap in this window" rows — the ladder's source of truth.
+// ---------------------------------------------------------------------------
+
+export type BudgetMilestone = 50 | 75 | 90 | 100
+
+export interface MilestoneCrossingInput {
+  ruleId: string
+  window: 'daily' | 'monthly'
+  windowStartMs: number
+  milestone: BudgetMilestone
+  spentValue: number
+  capValue: number
+  unit: 'usd_micros' | 'tokens'
+  crossedAt: number
+  /** A higher milestone reached in the same pass that speaks for this one. */
+  coveredBy?: BudgetMilestone
+  /** Set together with `coveredBy`: a covered row never needs delivery. */
+  notifiedAt?: number
+}
+
+export interface BudgetMilestoneRow {
+  id: number
+  ruleId: string
+  window: 'daily' | 'monthly'
+  windowStartMs: number
+  milestone: BudgetMilestone
+  spentValue: number
+  capValue: number
+  unit: 'usd_micros' | 'tokens'
+  crossedAt: number
+  coveredBy: BudgetMilestone | null
+  eventId: string
+  notifiedAt: number | null
+  acknowledgedAt: number | null
+}
+
+interface RawMilestoneRow {
+  id: number; rule_id: string; win: string; window_start_ms: number; milestone: number
+  spent_value: number; cap_value: number; unit: string; crossed_at: number
+  covered_by: number | null; event_id: string; notified_at: number | null; acknowledged_at: number | null
+}
+
+const MILESTONE_COLUMNS = 'id, rule_id, win, window_start_ms, milestone, spent_value, cap_value, unit, crossed_at, covered_by, event_id, notified_at, acknowledged_at'
+
+function toMilestoneRow(r: RawMilestoneRow): BudgetMilestoneRow {
+  return {
+    id: r.id,
+    ruleId: r.rule_id,
+    window: r.win as 'daily' | 'monthly',
+    windowStartMs: r.window_start_ms,
+    milestone: r.milestone as BudgetMilestone,
+    spentValue: r.spent_value,
+    capValue: r.cap_value,
+    unit: r.unit as 'usd_micros' | 'tokens',
+    crossedAt: r.crossed_at,
+    coveredBy: r.covered_by as BudgetMilestone | null,
+    eventId: r.event_id,
+    notifiedAt: r.notified_at,
+    acknowledgedAt: r.acknowledged_at,
+  }
+}
+
+/**
+ * Record the crossings that are not yet on disk. UNIQUE(rule, window,
+ * window start, milestone) makes a repeat pass a no-op; the rows actually
+ * inserted come back (in input order) so the caller can deliver them.
+ */
+export function recordMilestoneCrossings(inputs: MilestoneCrossingInput[]): BudgetMilestoneRow[] {
+  if (inputs.length === 0) return []
+  return guard('recordMilestoneCrossings', () => {
+    const db = ledger()
+    return db.transaction(() => {
+      const insert = db.prepare(
+        `INSERT INTO budget_milestones (rule_id, win, window_start_ms, milestone, spent_value, cap_value, unit, crossed_at, covered_by, event_id, notified_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(rule_id, win, window_start_ms, milestone) DO NOTHING`,
+      )
+      const select = db.prepare<RawMilestoneRow, [number]>(`SELECT ${MILESTONE_COLUMNS} FROM budget_milestones WHERE id = ?`)
+      const rows: BudgetMilestoneRow[] = []
+      for (const input of inputs) {
+        const res = insert.run(
+          input.ruleId, input.window, input.windowStartMs, input.milestone, input.spentValue, input.capValue,
+          input.unit, input.crossedAt, input.coveredBy ?? null, randomUUID(), input.notifiedAt ?? null,
+        )
+        if (res.changes > 0) rows.push(toMilestoneRow(select.get(Number(res.lastInsertRowid))!))
+      }
+      return rows
+    })()
+  })
+}
+
+/** Milestone rows, filtered by rule and/or window start, oldest crossing first. */
+export function listMilestones(opts: { ruleId?: string; windowStartMs?: number; sinceMs?: number } = {}): BudgetMilestoneRow[] {
+  return guard('listMilestones', () => {
+    const clauses: string[] = []
+    const params: (string | number)[] = []
+    if (opts.ruleId !== undefined) { clauses.push('rule_id = ?'); params.push(opts.ruleId) }
+    if (opts.windowStartMs !== undefined) { clauses.push('window_start_ms = ?'); params.push(opts.windowStartMs) }
+    if (opts.sinceMs !== undefined) { clauses.push('crossed_at >= ?'); params.push(opts.sinceMs) }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
+    return ledger()
+      .prepare<RawMilestoneRow, (string | number)[]>(`SELECT ${MILESTONE_COLUMNS} FROM budget_milestones ${where} ORDER BY crossed_at ASC, milestone ASC, id ASC`)
+      .all(...params)
+      .map(toMilestoneRow)
+  })
+}
+
+/**
+ * Undelivered milestone rows BELOW 100 (the 100 row's alert IS the cap
+ * incident), oldest first.
+ */
+export function listUnnotifiedMilestones(): BudgetMilestoneRow[] {
+  return guard('listUnnotifiedMilestones', () =>
+    ledger()
+      .prepare<RawMilestoneRow, []>(`SELECT ${MILESTONE_COLUMNS} FROM budget_milestones WHERE notified_at IS NULL AND milestone < 100 ORDER BY crossed_at ASC, id ASC`)
+      .all()
+      .map(toMilestoneRow),
+  )
+}
+
+/** Mark one delivered milestone by its exact event id; returns the changed-row count. */
+export function markMilestoneNotified(id: number, eventId: string, notifiedAt: number = Date.now()): number {
+  return guard('markMilestoneNotified', () =>
+    ledger()
+      .prepare('UPDATE budget_milestones SET notified_at = ? WHERE id = ? AND event_id = ? AND notified_at IS NULL')
+      .run(notifiedAt, id, eventId).changes,
+  )
+}
+
+/** "Dismiss for this window" on a milestone row (the 90% bar). */
+export function acknowledgeMilestone(id: number, acknowledgedAt: number = Date.now()): boolean {
+  return guard('acknowledgeMilestone', () =>
+    ledger().prepare('UPDATE budget_milestones SET acknowledged_at = ? WHERE id = ? AND acknowledged_at IS NULL').run(acknowledgedAt, id).changes > 0,
+  )
 }
 
 export type ModelRejectionResolution = 'model_succeeded' | 'probe_succeeded' | 'manual'

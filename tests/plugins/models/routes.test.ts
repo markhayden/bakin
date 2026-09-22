@@ -766,7 +766,7 @@ describe('budget policy', () => {
     const route = findRoute(activated.routes, 'PUT', '/budget')!
     const policy = {
       rules: [
-        { scope: 'global', lane: 'metered', dailyCap: 25, monthlyCap: 500, warnPct: 0.8 },
+        { scope: 'global', lane: 'metered', dailyCap: 25, monthlyCap: 500 },
         { scope: 'agent', scopeId: 'pixel', lane: 'metered', dailyCap: 5 },
         { scope: 'provider', scopeId: 'google', lane: 'metered', dailyCap: 5, atCap: 'pause' },
         { scope: 'agent', scopeId: 'main', lane: 'subscription', dailyCap: 5_000_000 },

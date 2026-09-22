@@ -97,6 +97,13 @@ description: Generated catalog of official plugins supported by Bakin.
       <td><code>tasks</code></td>
     </tr>
     <tr>
+      <td>Spend<br/><span>What your agents spend — observed and projected per billing lane — and the opt-in spending limits that notify at 50/75/90/100% and stop matching work at the line</span></td>
+      <td><code>spend</code></td>
+      <td>Core</td>
+      <td><code>0.1.0</code></td>
+      <td>none</td>
+    </tr>
+    <tr>
       <td>Tasks<br/><span>Kanban task management with Bakin task-store persistence, agent assignment, and dependency tracking</span></td>
       <td><code>tasks</code></td>
       <td>Core</td>

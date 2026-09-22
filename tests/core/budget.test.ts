@@ -4,7 +4,9 @@
  * metered | subscription lane); a rule gates a turn when its scope matches
  * the turn's billing context AND its lane matches the turn's lane.
  * Unit-per-lane: metered rules cap estimated USD, subscription rules cap
- * tokens. defer beats warn beats allow; no rules → always allow.
+ * tokens. defer beats allow; no rules → always allow. Approach is not the
+ * gate's business: milestone crossings (50/75/90/100) are a separate pure
+ * derivation the spend observer records durably.
  */
 import { describe, it, expect, mock } from 'bun:test'
 import { join } from 'path'
@@ -14,7 +16,7 @@ const testDir = join(tmpdir(), 'bakin-test-budget')
 mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 
-import { evaluateBudget, dayStartMs, monthStartMs, type BudgetPolicy } from '../../src/core/budget'
+import { evaluateBudget, milestoneCrossings, MILESTONES, dayStartMs, monthStartMs, type BudgetPolicy } from '../../src/core/budget'
 import type { BudgetSpendFacets, ScopeSpend, LaneSums, WindowSpend } from '../../src/core/budget-spend'
 
 // ---- facet fixture helpers -------------------------------------------------
@@ -64,18 +66,13 @@ describe('evaluateBudget — rule matching and units', () => {
     expect(evaluateBudget({ policy: { rules: [] }, turn: TURN, facets: facets() })).toEqual({ action: 'allow' })
   })
 
-  it('global metered rule: warns at 80%, defers at 100% (USD micros)', () => {
+  it('global metered rule: allows below the cap (approach is not a gate concern), defers at 100% (USD micros)', () => {
     const policy: BudgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
     const under = evaluateBudget({ policy, turn: TURN, facets: facets({ global: scope({ meteredUsdMicros: 5_000_000 }) }) })
     expect(under).toEqual({ action: 'allow' })
 
-    const warn = evaluateBudget({ policy, turn: TURN, facets: facets({ global: scope({ meteredUsdMicros: 8_500_000 }) }) })
-    expect(warn.action).toBe('warn')
-    if (warn.action !== 'allow') {
-      expect(warn.unit).toBe('usd_micros')
-      expect(warn.window).toBe('daily')
-      expect(warn.capValue).toBe(10_000_000)
-    }
+    const near = evaluateBudget({ policy, turn: TURN, facets: facets({ global: scope({ meteredUsdMicros: 9_900_000 }) }) })
+    expect(near).toEqual({ action: 'allow' })
 
     const defer = evaluateBudget({ policy, turn: TURN, facets: facets({ global: scope({ meteredUsdMicros: 10_000_000 }) }) })
     expect(defer.action).toBe('defer')
@@ -536,10 +533,10 @@ describe('evaluateBudget — rule matching and units', () => {
     expect(evaluateBudget({ policy, turn: { agent: 'pixel', model: 'google/gemini-3-flash' }, facets: f }).action).toBe('defer')
   })
 
-  it('defer on any rule beats warn on another; the breaching rule is returned', () => {
+  it('a breach on any rule defers; the breaching rule is returned', () => {
     const policy: BudgetPolicy = {
       rules: [
-        { scope: 'global', lane: 'metered', dailyCap: 100 },                     // at 85% → warn
+        { scope: 'global', lane: 'metered', dailyCap: 100 },                     // at 85% → allow
         { scope: 'agent', scopeId: 'pixel', lane: 'metered', dailyCap: 5 },      // at 100% → defer
       ],
     }
@@ -547,12 +544,6 @@ describe('evaluateBudget — rule matching and units', () => {
     const r = evaluateBudget({ policy, turn: { agent: 'pixel' }, facets: f })
     expect(r.action).toBe('defer')
     if (r.action !== 'allow') expect(r.rule.scope).toBe('agent')
-  })
-
-  it('respects a per-rule warnPct', () => {
-    const policy: BudgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10, warnPct: 0.5 }] }
-    const r = evaluateBudget({ policy, turn: TURN, facets: facets({ global: scope({ meteredUsdMicros: 6_000_000 }) }) })
-    expect(r.action).toBe('warn')
   })
 
   it('monthly window evaluates against monthly facets', () => {
@@ -563,5 +554,41 @@ describe('evaluateBudget — rule matching and units', () => {
     })
     expect(r.action).toBe('defer')
     if (r.action !== 'allow') expect(r.window).toBe('monthly')
+  })
+})
+
+describe('milestoneCrossings — the durable ladder input (D19)', () => {
+  const RULE = { id: 'rule-1', scope: 'global' as const, lane: 'metered' as const, monthlyCap: 100 }
+
+  it('lists every fixed milestone at or below the reached fraction, per rule and window, with the rule id', () => {
+    expect(MILESTONES).toEqual([50, 75, 90, 100])
+    const f = facets({}, { startMs: 1_700_000_000_000, global: scope({ meteredUsdMicros: 76_000_000 }) })
+    const crossings = milestoneCrossings({ rules: [RULE] }, f)
+    expect(crossings).toEqual([{
+      ruleId: 'rule-1', rule: RULE, window: 'monthly', windowStartMs: 1_700_000_000_000,
+      unit: 'usd_micros', spentValue: 76_000_000, capValue: 100_000_000, reached: [50, 75],
+    }])
+  })
+
+  it('49% → 101% in one pass reaches all four (the observer marks the lower three covered by 100)', () => {
+    const f = facets({}, { global: scope({ meteredUsdMicros: 101_000_000 }) })
+    expect(milestoneCrossings({ rules: [RULE] }, f)[0].reached).toEqual([50, 75, 90, 100])
+  })
+
+  it('counts the unattributed delta like the gate, uses the lane unit, and skips windows with no cap or nothing reached', () => {
+    const rule = { id: 'r-sub', scope: 'agent' as const, scopeId: 'pixel', lane: 'subscription' as const, dailyCap: 1_000, monthlyCap: 10_000 }
+    const f = facets(
+      { byAgent: { pixel: scope({ subscriptionTokens: 400 }, { subscriptionTokens: 150 }) } },
+      { byAgent: { pixel: scope({ subscriptionTokens: 1_000 }) } },
+    )
+    const crossings = milestoneCrossings({ rules: [rule] }, f)
+    expect(crossings).toEqual([{
+      ruleId: 'r-sub', rule, window: 'daily', windowStartMs: 0, unit: 'tokens', spentValue: 550, capValue: 1_000, reached: [50],
+    }])
+  })
+
+  it('a rule without an id contributes nothing — milestones key on the id the upgrade assigns', () => {
+    const f = facets({}, { global: scope({ meteredUsdMicros: 90_000_000 }) })
+    expect(milestoneCrossings({ rules: [{ scope: 'global', lane: 'metered', monthlyCap: 100 }] }, f)).toEqual([])
   })
 })

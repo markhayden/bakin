@@ -40,12 +40,9 @@ function fmtValue(unit: 'usd_micros' | 'tokens', value: number): string {
 /** Human line shared by the SSE payload, the agent message, and (via SSE) the browser notification body. */
 export function describeBudgetIncident(n: BudgetIncidentNotification): string {
   const scopeLabel = n.scopeId ? `${n.scope} '${n.scopeId}'` : 'global'
-  const state =
-    n.kind === 'cap'
-      ? n.atCap === 'pause'
-        ? 'cap reached — dispatch is PAUSED until you resolve the incident'
-        : 'cap reached — dispatch defers until the window resets or the cap is raised'
-      : 'approaching its cap'
+  const state = n.atCap === 'pause'
+    ? 'cap reached — dispatch is PAUSED until you resolve the incident'
+    : 'cap reached — dispatch defers until the window resets or the cap is raised'
   return `Budget alert: ${scopeLabel} ${n.window} ${n.lane} spend ${fmtValue(n.unit, n.spentValue)} of ${fmtValue(n.unit, n.capValue)} — ${state}.`
 }
 

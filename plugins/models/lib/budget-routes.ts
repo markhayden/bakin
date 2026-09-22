@@ -38,7 +38,7 @@ const passthrough = z.record(z.string(), z.unknown())
 const errorResponse = z.object({ error: z.string() })
 const okResponse = z.object({ ok: z.boolean() })
 
-export type AgentBudgetStatus = 'ok' | 'warn' | 'deferred'
+export type AgentBudgetStatus = 'ok' | 'deferred'
 
 function rulesOf(ctx: { getSettings<T>(): T }): BudgetRule[] {
   return (ctx.getSettings<ModelsPluginSettings>().budget as BudgetPolicy | undefined)?.rules ?? []
@@ -71,7 +71,7 @@ async function gateStatusFor(
     turn: { agent: agentId, provider: billing.provider, model: resolvedModel, lane: billing.lane },
     facets,
   })
-  return decision.action === 'defer' ? 'deferred' : decision.action === 'warn' ? 'warn' : 'ok'
+  return decision.action === 'defer' ? 'deferred' : 'ok'
 }
 
 /** The rule's current spend in its unit — same extraction the evaluator uses. */
