@@ -22,7 +22,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
 // composed into the href, so deep links are assertable).
 mock.module('@tanstack/react-router', () => require('../shims/tanstack-router'))
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '../rtl-settle'
 import { settleReact } from '../rtl-settle'
 
@@ -75,14 +75,17 @@ describe('OverviewTab', () => {
     expect(screen.getByText('pi')).toBeTruthy()
     expect(screen.getByText(/anthropic · subscription/)).toBeTruthy()
     // Honest unavailable copy for delivery on pi — never a bare enum
-    expect(screen.getByText(/Alerts and approvals appear in the app/)).toBeTruthy()
-    expect(screen.getByText('Not available')).toBeTruthy()
+    const capabilities = within(screen.getByRole('table', { name: 'Runtime capabilities' }))
+    expect(capabilities.getByText(/Alerts and approvals appear in the app/)).toBeTruthy()
+    expect(capabilities.getByText('Not available')).toBeTruthy()
+    expect(screen.getByRole('list', { name: 'Runtime capabilities' }).getAttribute('data-variant')).toBe('separated')
+    expect(screen.getByRole('combobox', { name: 'Sort runtime capabilities' })).toBeTruthy()
     // Legend present
     expect(screen.getByText(/Via Bakin — Bakin fills the gap itself/)).toBeTruthy()
     // Setup rows carry remediation for non-ok. It is a labelled table column
     // now, so the hand-rolled "→ " marker is gone with the divide-y card.
     expect(screen.getByRole('columnheader', { name: 'Remediation' })).toBeTruthy()
-    expect(screen.getByText('Set one in Settings')).toBeTruthy()
+    expect(within(screen.getByRole('table', { name: 'Setup checks' })).getByText('Set one in Settings')).toBeTruthy()
     // budget is not headless-fixable — no Fix button; fixable components get one
     expect(screen.queryByTestId('setup-fix-budget')).toBeNull()
   })
@@ -108,7 +111,7 @@ describe('OverviewTab', () => {
       )
     })
     useToastStore.setState({ toasts: [] })
-    await act(async () => { fireEvent.click(screen.getByTestId('setup-fix-agent-sync')) })
+    await act(async () => { fireEvent.click(within(screen.getByRole('list', { name: 'Setup checks' })).getByTestId('setup-fix-agent-sync')) })
     await settleReact()
     // Confirmation first — nothing posted yet.
     expect(posts).toEqual([])
@@ -139,7 +142,7 @@ describe('OverviewTab', () => {
         />,
       )
     })
-    await act(async () => { fireEvent.click(screen.getByTestId('setup-fix-plugin-assets')) })
+    await act(async () => { fireEvent.click(within(screen.getByRole('table', { name: 'Setup checks' })).getByTestId('setup-fix-plugin-assets')) })
     await settleReact()
     // Flush the repair fetch inside act instead of polling for it: leaning on
     // waitFor's default budget made this the first test to starve under CI
@@ -173,16 +176,17 @@ describe('CapabilitiesTab', () => {
     }), { status: 200 })) as unknown as typeof fetch
 
     await act(async () => { render(<CapabilitiesTab />) })
-    await waitFor(() => screen.getByText('Web Search (Brave)'))
-    expect(screen.getByText(/Give your agents real web search/)).toBeTruthy()
-    expect(screen.getByText('Needs attention')).toBeTruthy()
-    expect(screen.getByText(/BRAVE_SEARCH_API_KEY not set/)).toBeTruthy()
-    expect(screen.getByText(/dependencies scripts missing/)).toBeTruthy()
-    expect(screen.getByText(/model parakeet missing \(897 MB\)/)).toBeTruthy()
-    expect(screen.getByText(/Google Chrome not installed/)).toBeTruthy()
-    expect(screen.getByText('Add the key in Settings')).toBeTruthy()
+    const table = within(await screen.findByRole('table', { name: 'Installed capabilities' }))
+    expect(table.getByText('Web Search (Brave)')).toBeTruthy()
+    expect(table.getByText(/Give your agents real web search/)).toBeTruthy()
+    expect(table.getByText('Needs attention')).toBeTruthy()
+    expect(table.getByText(/BRAVE_SEARCH_API_KEY not set/)).toBeTruthy()
+    expect(table.getByText(/dependencies scripts missing/)).toBeTruthy()
+    expect(table.getByText(/model parakeet missing \(897 MB\)/)).toBeTruthy()
+    expect(table.getByText(/Google Chrome not installed/)).toBeTruthy()
+    expect(table.getByText('Add the key in Settings')).toBeTruthy()
     // Deep link straight to Integrations & Keys, not the settings landing tab.
-    expect(screen.getByText('Add the key in Settings').closest('a')?.getAttribute('href')).toBe('/settings?tab=integrations')
+    expect(table.getByText('Add the key in Settings').closest('a')?.getAttribute('href')).toBe('/settings?tab=integrations')
   })
 
   it('empty state invites the user to Explore', async () => {
@@ -230,7 +234,7 @@ describe('RuntimesTab', () => {
       render(<RuntimesTab report={report} onSwitched={() => {}} />)
     })
     // Clicking a runtime card opens the dialog — options + preview live THERE.
-    await act(async () => { fireEvent.click(screen.getByTestId('switch-target-openclaw')) })
+    await act(async () => { fireEvent.click(within(screen.getByRole('list', { name: 'Available runtimes' })).getByTestId('switch-target-openclaw')) })
     await settleReact()
     await act(async () => { fireEvent.click(screen.getByTestId('switch-adopt-cron')) })
     await act(async () => { fireEvent.click(screen.getByTestId('switch-preview')) })
@@ -254,16 +258,17 @@ describe('RuntimesTab', () => {
     await act(async () => {
       render(<RuntimesTab report={report} onSwitched={() => {}} />)
     })
-    expect(screen.getByText('Active')).toBeTruthy()
-    expect((screen.getByTestId('switch-target-pi') as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByTestId('switch-target-openclaw') as HTMLButtonElement).disabled).toBe(false)
+    expect(within(screen.getByRole('table', { name: 'Available runtimes' })).getByText('Active')).toBeTruthy()
+    const table = within(screen.getByRole('table', { name: 'Available runtimes' }))
+    expect((table.getByTestId('switch-target-pi') as HTMLButtonElement).disabled).toBe(true)
+    expect((table.getByTestId('switch-target-openclaw') as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('the real switch is gated behind a TYPED confirm dialog', async () => {
     await act(async () => {
       render(<RuntimesTab report={report} onSwitched={() => {}} />)
     })
-    await act(async () => { fireEvent.click(screen.getByTestId('switch-target-openclaw')) })
+    await act(async () => { fireEvent.click(within(screen.getByRole('table', { name: 'Available runtimes' })).getByTestId('switch-target-openclaw')) })
     await settleReact()
 
     // Consequences live in the dialog; nothing posted; confirm stays
@@ -321,10 +326,10 @@ describe('ExtensionsSection', () => {
     // Flush the mount fetch — its resolution otherwise lands outside act
     // and leaves React work in flight when the test ends.
     await act(async () => { render(<ExtensionsSection />) })
-    await waitFor(() => screen.getByTestId('ext-allow-npm:pi-image-gen'))
-    expect(screen.getByText('Awaiting approval')).toBeTruthy()
+    const narrow = within(await screen.findByRole('list', { name: 'Runtime extensions' }))
+    expect(narrow.getByText('Awaiting approval')).toBeTruthy()
 
-    await act(async () => { fireEvent.click(screen.getByTestId('ext-allow-npm:pi-image-gen')) })
+    await act(async () => { fireEvent.click(narrow.getByTestId('ext-allow-npm:pi-image-gen')) })
     await settleReact()
     // Nothing posted before confirm; disclosure present in the dialog.
     expect(posts).toEqual([])
@@ -332,7 +337,7 @@ describe('ExtensionsSection', () => {
     expect(screen.getByText(/OUTSIDE Bakin's budget caps/i)).toBeTruthy()
 
     await act(async () => { fireEvent.click(screen.getByTestId('ext-confirm')) })
-    await waitFor(() => screen.getByText('Allowed'))
+    await waitFor(() => narrow.getByText('Allowed'))
     expect(posts).toEqual([{ url: expect.stringContaining('/api/runtime/extensions/allow'), body: { id: EXT_PATH } }])
     // Approval triggers a follow-up re-fetch; drain it so nothing is left in
     // flight when the test ends (that residue is what stalls the settle hook).

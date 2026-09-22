@@ -18,13 +18,13 @@
     ]
   },
   "summary": {
-    "total": 102,
+    "total": 103,
     "byKind": {
       "host-route": 26,
       "plugin-route": 12,
       "plugin-slot": 31,
       "plugin-template": 2,
-      "shared-component": 31,
+      "shared-component": 32,
       "sdk-ui-export": 0
     },
     "nonVisualAliases": 3
@@ -2354,6 +2354,30 @@
       ]
     },
     {
+      "id": "shared-component:packages/host/src/components/runtime/runtime-table",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/runtime/runtime-table"
+      },
+      "sourcePath": "packages/host/src/components/runtime/runtime-table.tsx",
+      "symbols": [
+        "RuntimeTable"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/runtime/runtime-table.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
       "id": "shared-component:packages/host/src/components/runtime/runtimes-tab",
       "kind": "shared-component",
       "owner": {
@@ -2390,7 +2414,6 @@
       "sourcePath": "packages/host/src/components/runtime/shared.tsx",
       "symbols": [
         "CheckStatusBadge",
-        "EntityCardBody",
         "MODE_LEGEND",
         "ModeBadge",
         "capabilityStateCopy"
