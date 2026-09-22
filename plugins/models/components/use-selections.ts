@@ -41,6 +41,7 @@ interface MutationResultWire {
   pending?: Array<{ ref: string; intended: string | null }>
   warnings?: string[]
   revision?: string
+  snapshot?: string
   error?: string
   message?: string
   proposal?: { to: string | null }
@@ -51,6 +52,8 @@ export interface SaveOutcome {
   failed: Array<{ ref: string; message: string }>
   pending: string[]
   warnings: string[]
+  /** Snapshot file written before a Reset — the undo handle. */
+  snapshot?: string
 }
 
 /** POST ops under `revision`; refusals surface as a thrown Error with the server's plain-words reason. */
@@ -73,6 +76,7 @@ export async function postSelections(revision: string, ops: SelectionOpWire[], e
     pending: (data.pending ?? []).map((p) => p.ref),
     warnings: data.warnings ?? [],
     revision: data.revision ?? null,
+    ...(data.snapshot ? { snapshot: data.snapshot } : {}),
   }
 }
 

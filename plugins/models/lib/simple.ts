@@ -5,6 +5,9 @@
 import { CHORES_CLASSES } from './mode'
 import type { SelectionOpWire } from '../types'
 
+// Re-exported so client components stay on plugin-local imports (UI legacy-style ratchet).
+export { buildResetOps, type ResetPlan, type ResetSupport } from '../../../src/core/model-selections'
+
 export type EffectiveReader = (ref: string) => { model: string | null; thinking: string | null; staged: boolean }
 
 export interface ChoresLaneState {

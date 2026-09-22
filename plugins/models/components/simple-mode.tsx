@@ -17,6 +17,7 @@ import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitl
 
 import { CHORES_CLASSES } from '../lib/mode'
 import { choresLane, setAllChoresOps } from '../lib/simple'
+import { ResetToPlan } from './reset-dialog'
 import type { SelectionsData } from './use-selections'
 
 export interface SimpleModeProps {
@@ -157,6 +158,8 @@ export function SimpleMode({ sel, modelOptions, onAdvanced }: SimpleModeProps) {
           <Button type="button" variant="link" size="xs" onClick={onAdvanced}>View in Advanced</Button>
         </Text>
       ) : null}
+
+      <ResetToPlan sel={sel} />
 
       <ConfirmDialog
         open={planOpen}

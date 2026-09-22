@@ -105,6 +105,7 @@ describe('ModelsPage component', () => {
   let aliasesState: Record<string, string>
   let uiModeState: string | null
   let pendingState: Array<Record<string, unknown>>
+  let supportState: Record<string, unknown>
   let evidenceState: Record<string, string>
   let routingState: {
     routes: Array<{ workClass: string; model?: string; thinking?: string }>
@@ -155,6 +156,7 @@ describe('ModelsPage component', () => {
     }
     uiModeState = null
     pendingState = []
+    supportState = { defaultModel: true, fallbackModels: true, defaultSubagentModel: true, aliases: true, perAgentSubagentModel: true, supportedThinkingLevels: ['off', 'low', 'medium', 'high'], perTurnModel: true }
     evidenceState = { catalog: 'ok', runtimeAvailability: 'ok', credentials: 'ok', rejections: 'ok' }
     for (const key of Object.keys(queryOverrides)) delete queryOverrides[key]
     routingState = {
@@ -212,8 +214,7 @@ describe('ModelsPage component', () => {
           ...routingState.tagOverrides.map((t) => ({ ref: `tag:${t.tag}`, model: t.model ?? null, ...(t.thinking ? { thinking: t.thinking } : {}), document: 'routing', label: t.tag })),
           { ref: 'ui:mode', model: uiModeState, document: 'routing', label: 'Models page mode' },
         ]
-        const support = { defaultModel: true, fallbackModels: true, defaultSubagentModel: true, aliases: true, perAgentSubagentModel: true, supportedThinkingLevels: ['off', 'low', 'medium', 'high'], perTurnModel: true }
-        return jsonResponse({ revision: `rev-${selectionsRevision}`, support, states, proposals: [], pending: pendingState, evidence: evidenceState })
+        return jsonResponse({ revision: `rev-${selectionsRevision}`, support: supportState, states, proposals: [], pending: pendingState, evidence: evidenceState })
       }
       if (url === '/api/plugins/models/plan' && method === 'GET') {
         const agent = configState.defaultModel
@@ -274,7 +275,7 @@ describe('ModelsPage component', () => {
           }
         }
         selectionsRevision += 1
-        return jsonResponse({ applied: ops.map((o) => o.ref), failed: [], pending: [], warnings: [], revision: `rev-${selectionsRevision}` })
+        return jsonResponse({ applied: ops.map((o) => o.ref), failed: [], pending: [], warnings: [], revision: `rev-${selectionsRevision}`, ...(body?.snapshot === 'reset' ? { snapshot: '/tmp/snapshots/2026-09-22.json' } : {}) })
       }
       if (url === '/api/plugins/models/aliases/recommended' && method === 'GET') {
         return jsonResponse({ aliases: { opus: 'anthropic/claude-opus-4-6' } })
@@ -743,6 +744,54 @@ describe('ModelsPage component', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Stage changes' }))
       expect((await screen.findByTestId('draft-summary')).textContent).toContain('5 changes staged')
       expect(configWrite()).toBeUndefined()
+    })
+  })
+
+  describe('Reset to this plan (S6)', () => {
+    it('lists the clears, needs typed confirmation, posts once with snapshot:reset, and reports the undo handle', async () => {
+      uiModeState = 'simple'
+      render(<ModelsPage />)
+      fireEvent.click(await screen.findByRole('button', { name: 'Reset to this plan…' }))
+      const dialog = await screen.findByRole('dialog')
+      // The fixture's customizations: subagent default, fallback, alias, workflow route (model + thinking).
+      expect(within(dialog).getByText('policy:fallback:0')).toBeTruthy()
+      expect(within(dialog).getByText('route:workflow')).toBeTruthy()
+      const confirm = within(dialog).getByRole('button', { name: 'Reset' })
+      expect(confirm.getAttribute('aria-disabled') === 'true' || (confirm as HTMLButtonElement).disabled).toBe(true)
+      fireEvent.change(within(dialog).getByPlaceholderText('reset'), { target: { value: 'reset' } })
+      await waitFor(() => expect((within(dialog).getByRole('button', { name: 'Reset' }) as HTMLButtonElement).disabled).toBe(false))
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Reset' }))
+      await waitFor(() => expect(configWrite()).toBeTruthy())
+      expect(configWrite()?.body?.snapshot).toBe('reset')
+      const refs = (configWrite()?.body?.ops as Array<{ ref: string }>).map((op) => op.ref).sort()
+      expect(refs).toEqual(['policy:alias:sonnet', 'policy:defaultSubagentModel', 'policy:fallback:0', 'route:workflow'])
+      // After the reset nothing is customized: the button is gone, the undo handle stays, Simple has no customizations line.
+      expect((await screen.findByRole('status')).textContent).toContain('bakin models restore /tmp/snapshots/2026-09-22.json')
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Reset to this plan…' })).toBeNull())
+      expect(screen.queryByTestId('customizations-line')).toBeNull()
+    })
+
+    it('is refused while the page holds an unsaved draft', async () => {
+      uiModeState = 'simple'
+      const user = userEvent.setup()
+      render(<ModelsPage />)
+      const lane = within(await screen.findByTestId('lane-agent'))
+      await user.click(lane.getByRole('combobox', { name: 'Model' }))
+      await user.click(await screen.findByRole('option', { name: 'GPT-5.4' }))
+      await screen.findByTestId('draft-summary')
+      const reset = screen.getByRole('button', { name: 'Reset to this plan…' }) as HTMLButtonElement
+      expect(reset.disabled || reset.getAttribute('aria-disabled') === 'true').toBe(true)
+      expect(screen.getByTestId('reset-blocked')).toBeTruthy()
+    })
+
+    it('discloses the clears a runtime cannot do instead of attempting them', async () => {
+      uiModeState = 'simple'
+      supportState = { ...supportState, fallbackModels: false, aliases: false, defaultSubagentModel: false, perAgentSubagentModel: false }
+      render(<ModelsPage />)
+      fireEvent.click(await screen.findByRole('button', { name: 'Reset to this plan…' }))
+      const dialog = await screen.findByRole('dialog')
+      expect(within(dialog).getByText('Kept policy:fallback:0')).toBeTruthy()
+      expect(within(dialog).getByText('Kept policy:alias:sonnet')).toBeTruthy()
     })
   })
 

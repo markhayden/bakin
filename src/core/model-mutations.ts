@@ -63,6 +63,8 @@ export interface MutateResult {
   warnings: string[]
   /** Revision computed from POST-write state (pending writes count as their previous value). */
   revision: string
+  /** The full-state snapshot written before a Reset (`bakin models restore <file>` undoes it). */
+  snapshot?: string
 }
 
 export type PendingState = 'unsettled' | 'failed' | 'conflict'
@@ -437,12 +439,13 @@ export function createSelectionMutator(deps: MutationDeps) {
     }
 
     const { writes, warnings } = await plan(request.ops, states, revision)
+    let snapshot: string | undefined
     if (request.snapshot === 'reset') {
-      const file = writeSnapshot(deps.stateDir, revision, states)
-      deps.audit?.('models.snapshot_written', { file, reason: 'reset' })
+      snapshot = writeSnapshot(deps.stateDir, revision, states)
+      deps.audit?.('models.snapshot_written', { file: snapshot, reason: 'reset' })
     }
 
-    const result: MutateResult = { applied: [], failed: [], pending: [], warnings, revision }
+    const result: MutateResult = { applied: [], failed: [], pending: [], warnings, revision, ...(snapshot ? { snapshot } : {}) }
     // A retried document whose earlier record FAILED is being replaced now.
     // Every write to the pending file below re-reads it first — including
     // this one: `records` was read BEFORE the asynchronous plan() above, and
