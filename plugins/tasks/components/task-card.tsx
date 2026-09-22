@@ -8,6 +8,7 @@ import {
   Ban,
   CalendarClock,
   CircleDollarSign,
+  Cpu,
   Clock3,
   FolderKanban,
   GitBranch,
@@ -267,13 +268,13 @@ export function TaskCardContent({
 
           {budgetHold ? (
             <PluginLink
-              to="/models?tab=spend"
+              to={budgetHold.href}
               onClick={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
               className="block min-w-0"
-              aria-label="Open Models spend"
+              aria-label={budgetHold.kind === 'model' ? 'Open Models selection' : 'Open Models spend'}
             >
-              <KanbanCardSignal tone="danger" label={budgetHold.label} icon={CircleDollarSign}>
+              <KanbanCardSignal tone="danger" label={budgetHold.label} icon={budgetHold.kind === 'model' ? Cpu : CircleDollarSign}>
                 {budgetHold.detail}
               </KanbanCardSignal>
             </PluginLink>

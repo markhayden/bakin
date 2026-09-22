@@ -52,18 +52,37 @@ export function useBudgetStatus(): BudgetGateStatus {
   return status
 }
 
+/** A pre-claim hold on a todo task, whatever gate raised it. */
 export interface BudgetHold {
-  /** Bold badge label — distinguishes the kill switch from a cap hold. */
-  label: 'Dispatch paused' | 'Budget-deferred'
+  /** Bold badge label — distinguishes the kill switch, a cap hold, and a dead model. */
+  label: 'Dispatch paused' | 'Budget-deferred' | "Model can't run"
   /** One-line reason + where to fix it. */
   detail: string
+  /** Where the badge links: the gate that owns the fix. */
+  href: string
+  kind: 'budget' | 'model'
 }
 
 /** Why a todo task isn't dispatching right now, or null when it would. */
 export function budgetHoldReason(status: BudgetGateStatus, task: { id: string; agent?: string }): BudgetHold | null {
-  if (status.paused) return { label: 'Dispatch paused', detail: 'kill switch — resume in the header banner or `bakin budget resume`' }
+  if (status.paused) return { label: 'Dispatch paused', detail: 'kill switch — resume in the header banner or `bakin budget resume`', href: '/models?tab=spend', kind: 'budget' }
   if (status.perTask[task.id] === 'deferred' || (task.agent && status.perAgent[task.agent] === 'deferred')) {
-    return { label: 'Budget-deferred', detail: 'cap reached — resolve in Models → Spend' }
+    return { label: 'Budget-deferred', detail: 'cap reached — resolve in Models → Spend', href: '/models?tab=spend', kind: 'budget' }
   }
   return null
+}
+
+/**
+ * The ONE hold a todo card shows: the kill switch outranks everything; a dead
+ * model outranks a cap (repairing the model is what unblocks the task).
+ */
+export function pickTaskHold(status: BudgetGateStatus, modelHold: { ref: string; model: string; detail: string } | undefined, task: { id: string; agent?: string }): BudgetHold | null {
+  if (status.paused) return budgetHoldReason(status, task)
+  return modelHoldReason(modelHold) ?? budgetHoldReason(status, task)
+}
+
+/** A dead effective model (#907) — links to the exact selection on the Models page. */
+export function modelHoldReason(hold: { ref: string; model: string; detail: string } | undefined): BudgetHold | null {
+  if (!hold) return null
+  return { label: "Model can't run", detail: `${hold.model} — ${hold.detail}`, href: `/models?ref=${encodeURIComponent(hold.ref)}`, kind: 'model' }
 }

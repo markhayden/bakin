@@ -148,7 +148,9 @@ mock.module('../../../plugins/tasks/hooks/use-gate-status', () => ({
 mock.module('../../../plugins/tasks/hooks/use-budget-status', () => ({
   useBudgetStatus: () => null,
   budgetHoldReason: () => null,
+  pickTaskHold: () => null,
 }))
+mock.module('../../../plugins/tasks/hooks/use-model-holds', () => ({ useModelHolds: () => ({}) }))
 mock.module('../../../plugins/tasks/hooks/use-brand-status', () => ({
   useBrandStatus: () => null,
   brandHoldReason: () => null,

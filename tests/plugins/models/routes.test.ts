@@ -217,6 +217,7 @@ describe('Models Plugin Activation', () => {
       'GET /budget/incidents',
       'GET /budget/status',
       'GET /config',
+      'GET /holds',
       'GET /routing',
       'GET /routing/recommend',
       'GET /runtime/status',
@@ -367,6 +368,32 @@ describe('GET /config', () => {
     const agents = body.agents as Array<Record<string, unknown>>
     expect(agents[0].name).toBe('Main Operator')
     expect(agents[0].emoji).toBe('🐾')
+  })
+})
+
+describe('GET /holds — todo tasks whose effective model cannot run (#907)', () => {
+  it('holds a todo task when its agent inherits a dead runtime default, and clears when the default is fixed', async () => {
+    const route = findRoute(activated.routes, 'GET', '/holds')!
+    // The board fixture has one unassigned todo task ⇒ main agent ⇒ runtime default.
+    const before = await callRoute(route, activated.ctx)
+    expect(before.status).toBe(200)
+    expect(before.body.perTask).toEqual({})
+
+    // Point the runtime default at the runtime-unavailable model (no auth).
+    const saved = routingPolicy.defaultModel
+    routingPolicy.defaultModel = 'xai/grok-4'
+    const { _resetModelHoldMemo } = await import('../../../src/core/dispatch-turns')
+    _resetModelHoldMemo()
+    try {
+      const held = await callRoute(route, activated.ctx)
+      const holds = held.body.perTask as Record<string, { ref: string; model: string; detail: string }>
+      const [hold] = Object.values(holds)
+      expect(hold).toMatchObject({ model: 'xai/grok-4' })
+      expect(['policy:defaultModel', 'agent:main:model']).toContain(hold!.ref)
+    } finally {
+      routingPolicy.defaultModel = saved
+      _resetModelHoldMemo()
+    }
   })
 })
 

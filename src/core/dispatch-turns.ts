@@ -17,7 +17,7 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { getAppServices } from './app-services-store'
-import { RuntimeError, RuntimeTurnError, type ChatChunk, type MessageResult } from '@bakin/core/adapters/runtime'
+import { RuntimeError, RuntimeTurnError, type AgentRuntimeAdapter, type ChatChunk, type MessageResult } from '@bakin/core/adapters/runtime'
 import { claimNextRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, findOpenCapIncident, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'
 import { classifyDispatchWorkClass, resolveTurnModel, type DispatchWorkClass, type ResolvedTurn, type RouteSource, type RoutingConfig } from './model-routing'
@@ -444,9 +444,12 @@ export function _resetModelHoldMemo(): void {
  * null. Missing evidence (unknown) is never a hold; an engine failure is
  * logged and fails OPEN — this gate refuses what is known-dead, nothing else.
  */
-export async function modelHoldFor(agentId: string, prospect: PreDispatchProspect = {}): Promise<PreDispatchHold | null> {
+export async function modelHoldFor(
+  agentId: string,
+  prospect: PreDispatchProspect = {},
+  runtime: AgentRuntimeAdapter = getAppServices().runtime,
+): Promise<PreDispatchHold | null> {
   try {
-    const runtime = getAppServices().runtime
     let model = prospect.model
     let ref: string
     if (model) {

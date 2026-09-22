@@ -172,6 +172,44 @@ export const modelsRoutes = [
   }),
 
   defineRoute({
+    path: '/holds',
+    method: 'GET',
+    summary: 'Todo tasks held because their effective model cannot run (#907)',
+    description: 'Per-task holds computed with the SAME routing resolution + eligibility check the dispatch gate runs (route/tag → agent pin → runtime default). Independent of budget status so it works on installs with zero limits.',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async (_req, ctx) => {
+      const perTask: Record<string, { ref: string; model: string; detail: string }> = {}
+      try {
+        const [{ resolveDispatchRouting, modelHoldFor }, { readTaskboard }, { getRuntimeMainAgentId }, { loadDispatchState, getFailureRecord }, { getContentDir }] = await Promise.all([
+          import('../../../src/core/dispatch-turns'),
+          import('../../../src/core/task-store'),
+          import('@bakin/core/adapters/runtime'),
+          import('../../../src/core/dispatch-state'),
+          import('../../../src/core/content-dir'),
+        ])
+        const mainAgentId = await getRuntimeMainAgentId((ctx as unknown as PluginContext).runtime)
+        const { columns } = readTaskboard()
+        let failedDispatches: Record<string, unknown> = {}
+        try {
+          failedDispatches = loadDispatchState(getContentDir()).failedDispatches ?? {}
+        } catch (err) {
+          void err
+        }
+        for (const task of columns.todo ?? []) {
+          const agentId = task.agent ?? mainAgentId
+          const isRecovery = Boolean(getFailureRecord(failedDispatches[task.id] as never)?.sessionDeath)
+          const routing = await resolveDispatchRouting(task as never, isRecovery)
+          const hold = await modelHoldFor(agentId, { model: routing.model, routeSource: routing.source, workClass: routing.workClass }, (ctx as unknown as PluginContext).runtime)
+          if (hold && hold.reason === 'model_not_eligible') perTask[task.id] = { ref: hold.ref, model: hold.model, detail: hold.detail }
+        }
+        return Response.json({ perTask })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err), perTask }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
     path: '/config',
     method: 'GET',
     summary: 'Get model config',
