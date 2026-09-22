@@ -7,6 +7,42 @@ import { keyboardFocusFindings } from '../../../packages/sdk/src/testing/ui/conf
 // every test in the file is skipped.
 const browserTest = process.env.BAKIN_UI_BROWSER_TEST === '1' ? test : test.skip
 
+browserTest('focus checks traverse open and closed native disclosure headers and their visible controls', async () => {
+  const { chromium } = await import('playwright')
+  const browser = await chromium.launch({ headless: true })
+  const page = await browser.newPage()
+  try {
+    await page.setContent(`
+      <details open>
+        <summary>Installed features</summary>
+        <button>Check for updates</button>
+        <details><summary>Technical identity</summary><button>Hidden action</button></details>
+      </details>
+      <details><summary>All health checks</summary><button>Hidden repair</button></details>
+      <button>After disclosures</button>
+    `)
+    for (const viewport of ['desktop', 'mobile'] as const) {
+      await page.setViewportSize({ width: viewport === 'desktop' ? 1440 : 320, height: 900 })
+      expect(await keyboardFocusFindings(page, viewport)).toEqual([])
+      expect(await page.evaluate(() => document.activeElement?.textContent)).toBe('After disclosures')
+    }
+  } finally { await browser.close() }
+}, 15000)
+
+browserTest('focus checks report a native disclosure header with no visible focus indicator', async () => {
+  const { chromium } = await import('playwright')
+  const browser = await chromium.launch({ headless: true })
+  const page = await browser.newPage()
+  try {
+    await page.setContent('<style>summary { outline: none; }</style><details><summary>Missing disclosure ring</summary></details>')
+    const findings = await keyboardFocusFindings(page, 'desktop')
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.rule).toBe('keyboard-focus')
+    expect(findings[0]?.message).toContain('Missing disclosure ring')
+    expect(findings[0]?.message).toContain('focus indicator')
+  } finally { await browser.close() }
+}, 15000)
+
 browserTest('focus checks include aria-disabled controls that remain in the tab order', async () => {
   const { chromium } = await import('playwright')
   const browser = await chromium.launch({ headless: true })
