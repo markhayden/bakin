@@ -231,11 +231,11 @@ There are 40 direct first-party plugin registration sites after the two approved
 - Tasks: 4
 - Workflows: 3
 - Schedule: 2
-- Assets, Brands, Git, Images, Models: 1 each
+- Assets, Brands, Git, Images, Models, Spend: 1 each (Spend's `spend.budget` moved out of Health in the spend ownership series; Health gained `spend.policy-available`, which names the gate's fail-closed state when the spend plugin is not answering — a plugin cannot report its own activation failure)
 
-Health's local IDs are `content-dir`, `media.sharp` (#889 — image processing; one-click store install repair `media-install-store`), `capabilities`, `github-readiness`, `service`, `runtime`, `session-store`, `channel-approvals`, `channel-aliases`, `restart-recovery`, `execution-safety`, `context.startup-size`, `budget`, `usage.agent-burn`, `search`, `search-consistency`, `search-spin`, `search-canary`, `search-engine-burn`, `skill`, `plugin-assets`, `plugin-artifacts`, and `plugin-registry`.
+Health's local IDs are `content-dir`, `media.sharp` (#889 — image processing; one-click store install repair `media-install-store`), `capabilities`, `github-readiness`, `service`, `runtime`, `session-store`, `channel-approvals`, `channel-aliases`, `restart-recovery`, `execution-safety`, `context.startup-size`, `spend.policy-available`, `usage.agent-burn`, `search`, `search-consistency`, `search-spin`, `search-canary`, `search-engine-burn`, `skill`, `plugin-assets`, `plugin-artifacts`, and `plugin-registry`.
 
-Health registers six local repair actions: journal revival, consistency rebuild, spin rebuild, canary restart, engine-burn restart, and runtime skill sync. Other plugin owners register their own actions beside their checks.
+Health registers six local repair actions: journal revival, consistency rebuild, spin rebuild, canary restart, engine-burn restart, and runtime skill sync. Other plugin owners register their own actions beside their checks — the spend plugin owns `spend-evidence-refresh-pricing` and `accept-unattributed-history` next to its `budget` check (whose "no limits" state is healthy, never a nag — spec S8).
 
 The Brands `integrity` check uses the same `plugins/brands/lib/integrity.ts` scan as the brand integrity route. It reports unreadable manifests, dangling assets, tasks blocked by missing/draft brands, and stale drafts as structured observations and incidents; no consumer parses its summary text.
 

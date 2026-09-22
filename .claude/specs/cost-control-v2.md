@@ -1,6 +1,6 @@
 # Spec — Cost Control v2: End-User Budget Safety & Visibility (#464 close-out)
 
-**Status:** IMPLEMENTED on `feat/464-cost-control-v2` — all phases per `tasks/plan-cost-control-v2.md`; see §13 As-Built Addendum for deviations. Retained as the design record.
+**Status:** IMPLEMENTED on `feat/464-cost-control-v2` — all phases per `tasks/plan-cost-control-v2.md`; see §13 As-Built Addendum for deviations. Retained as the design record. **Superseded in part (2026-09-22) by `.claude/specs/models-and-spend-overhaul.md` PR 2:** ownership moved to the `spend` core plugin (`spend.json`, `spend.*` hooks, `/api/plugins/spend/*`), the `warn` decision/`warnPct` and the `policy-missing` nag are gone (limits are opt-in; the fixed 50/75/90/100 milestone ladder with durable `budget_milestones` + incident episodes replaces them), and delivery is at-least-once from durable rows via one worker. Current reference: `.claude/knowledge/spend-plugin.md`.
 **Origin:** Issue #464, round 2. PR #500 shipped the core (metering → `run_costs`, origin routing, `budgetGate` defer-at-cap). This round closes the **end-user experience gaps** so cost cannot spin out of control *unknowingly*, then closes #464.
 **Related:** `.claude/specs/models-cost-optimization.md` (+`-plan.md`), `.claude/knowledge/{models-plugin,execution-ledger,usage-recording,dispatch,doctor-and-health-checks,agent-health-diagnostics}.md`.
 **Branch:** `feat/464-cost-control-v2`, PR to `main`.
