@@ -1,6 +1,7 @@
 'use client'
 
-import { Badge, Button, Card, Text } from '@makinbakin/sdk/ui'
+import { Badge, Button, Text } from '@makinbakin/sdk/ui'
+import { ListRow, ListRowActions } from '@makinbakin/sdk/patterns'
 import { formatAge } from '@makinbakin/sdk/utils'
 import { Star, Trash2 } from 'lucide-react'
 import { AssetThumb, ProvenanceChips } from './atoms'
@@ -20,12 +21,7 @@ export function VersionRow({ assetId, assetType, version, isCurrent, isSelected,
   onDelete: (version: number) => void
 }) {
   return (
-    // Card (not ListRow): the parent stacks rows in a plain div, and a
-    // ListRow's <li> needs a ListRows parent. The whole-surface activation
-    // rides the kit interactive contract; `render` carries aria-pressed so
-    // the preview stays a real toggle button.
-    <Card
-      size="sm"
+    <ListRow
       selected={isSelected}
       interactive={{
         label: `Preview version ${version.version}`,
@@ -37,29 +33,15 @@ export function VersionRow({ assetId, assetType, version, isCurrent, isSelected,
           />
         ),
       }}
-      className="flex-row px-bakin-2"
+      className="flex min-w-0 items-start gap-bakin-3"
       data-testid={`version-row-${version.version}`}
       data-selected={isSelected || undefined}
     >
-      {canDelete && (
-        <Button
-          type="button"
-          size="icon-xs"
-          variant="ghost"
-          onClick={() => onDelete(version.version)}
-          className="absolute right-bakin-2 top-bakin-2 text-bakin-signal-danger"
-          aria-label={`Delete version ${version.version}`}
-          data-testid={`delete-version-${version.version}`}
-        >
-          <Trash2 />
-        </Button>
-      )}
-
       <div className="size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control bg-bakin-surface-default">
         <AssetThumb assetId={assetId} type={assetType} version={version.version} hasThumb={version.thumb !== null} />
       </div>
 
-      <div className="flex min-w-0 flex-col gap-bakin-2 pr-bakin-8">
+      <div className="flex min-w-0 flex-1 flex-col gap-bakin-2">
         <Inline gap="dense">
           <Text size="body" weight="semibold" mono>
             v{version.version}
@@ -93,6 +75,21 @@ export function VersionRow({ assetId, assetType, version, isCurrent, isSelected,
           </div>
         )}
       </div>
-    </Card>
+      {canDelete && (
+        <ListRowActions>
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            onClick={() => onDelete(version.version)}
+            className="text-bakin-signal-danger"
+            aria-label={`Delete version ${version.version}`}
+            data-testid={`delete-version-${version.version}`}
+          >
+            <Trash2 />
+          </Button>
+        </ListRowActions>
+      )}
+    </ListRow>
   )
 }

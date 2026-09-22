@@ -12,6 +12,8 @@ import { usePluginEvent } from '@makinbakin/sdk/hooks'
 import {
   ConfirmDialog,
   KeyValue,
+  ListRow,
+  ListRows,
   Page,
   PageAside,
   PageBody,
@@ -363,12 +365,12 @@ export function VersionedAssetDetail() {
               >
                 References
               </h2>
-              <div className="flex min-w-0 flex-col gap-bakin-2" data-testid="references">
+              <ListRows variant="separated" size="sm" aria-label="Asset references" data-testid="references">
                 {previewVer.generation.references.map(ref => (
-                  <PluginLink
+                  <ListRow
                     key={`${ref.assetId}@${ref.version}`}
-                    to={`/assets/${encodeURIComponent(ref.assetId)}`}
-                    className="flex min-w-0 items-center gap-bakin-2 rounded-bakin-control px-bakin-2 py-bakin-1 text-bakin-typography-size-meta text-bakin-text-primary hover:bg-bakin-surface-default"
+                    interactive={{ label: `${ref.assetId} v${ref.version}`, render: <PluginLink to={`/assets/${encodeURIComponent(ref.assetId)}`} /> }}
+                    className="flex min-w-0 items-center gap-bakin-2"
                   >
                     <span className="size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control">
                       <AssetThumb assetId={ref.assetId} type="images" version={ref.version} className="h-full w-full object-cover" />
@@ -376,9 +378,9 @@ export function VersionedAssetDetail() {
                     <span className="min-w-0 break-all">
                       {ref.assetId} <span className="text-bakin-text-muted">v{ref.version}</span>
                     </span>
-                  </PluginLink>
+                  </ListRow>
                 ))}
-              </div>
+              </ListRows>
             </Section>
           ) : null}
 
@@ -389,20 +391,19 @@ export function VersionedAssetDetail() {
               >
                 Downloads
               </h2>
-              <div className="flex min-w-0 flex-col gap-bakin-2" data-testid="exports">
+              <ListRows variant="separated" size="sm" aria-label="Asset downloads" data-testid="exports">
                 {manifest.exports.map(exp => (
-                  <a
+                  <ListRow
                     key={exp.name}
-                    href={assetExportUrl(manifest.assetId, exp.name)}
-                    download
-                    className="flex min-w-0 items-center gap-bakin-2 rounded-bakin-control px-bakin-2 py-bakin-2 text-bakin-typography-size-meta text-bakin-text-primary hover:bg-bakin-surface-default"
+                    interactive={{ label: `${exp.name}.${exp.format} v${exp.fromVersion}`, render: <a href={assetExportUrl(manifest.assetId, exp.name)} download /> }}
+                    className="flex min-w-0 items-center gap-bakin-2"
                   >
                     <Download className="size-bakin-3 shrink-0 text-bakin-signal-accent" />
                     <span className="min-w-0 break-all">{exp.name}.{exp.format}</span>
                     <span className="ml-auto shrink-0 text-bakin-text-muted">v{exp.fromVersion}</span>
-                  </a>
+                  </ListRow>
                 ))}
-              </div>
+              </ListRows>
             </Section>
           ) : null}
 
@@ -417,7 +418,7 @@ export function VersionedAssetDetail() {
                 Select a version to preview it. Promoting a version does not remove newer history.
               </Text>
             </Stack>
-            <div className="flex flex-col gap-bakin-2" data-testid="version-timeline">
+            <ListRows variant="separated" size="sm" aria-label="Version history" data-testid="version-timeline">
               {versions.map(v => (
                 <VersionRow
                   key={v.version}
@@ -432,7 +433,7 @@ export function VersionedAssetDetail() {
                   onDelete={deleteVersion}
                 />
               ))}
-            </div>
+            </ListRows>
           </Section>
         </PageAside>
       </PageBody>
