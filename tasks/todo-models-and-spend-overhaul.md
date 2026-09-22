@@ -54,7 +54,7 @@ Plan: `tasks/plan-models-and-spend-overhaul.md` (v2) · Spec: `.claude/specs/mod
 - [x] T3.7 Reset to this plan — `buildResetOps` in core (support-gated clears, skipped + disclosed), `reset-dialog.tsx` (ConfirmDialog with typed confirmation + diff, immediate `snapshot:'reset'`, refused while dirty, undo handle shown; MutateResult now carries `snapshot`)
 - [x] T3.8 Advanced view — `advanced-mode.tsx` (Defaults with support-gated fallbacks/aliases/subagent default + one muted line for hidden knobs; Agents ListRows with override + gated subagent column; Work routing DataTables Agent work / Background chores + thinking selects + tag overrides + "Use recommended routes" dialog; perTurnModel=false ⇒ Alert + read-only), `lib/advanced.ts` draft readers; old tabs unmounted (deleted in T3.11)
 - [x] T3.9 selection callouts — `selection-callout.tsx` (`SelectionCallout`: dead ⇒ reason + "Use <proposal>" that STAGES; unknown ⇒ info only; hidden once staged; `PendingChip` per ref) wired into both lanes, defaults, fallbacks, aliases, agent rows, routing rows, tag rows
-- [ ] T3.10 Team shared options hook + models.catalog_changed
+- [x] T3.10 shared model-options hook — `src/hooks/use-available-models.ts` module cache deleted, refetch on `models.catalog_changed` (emitted by POST /refresh, POST /selections, POST /runtime/restart); Team's agent form/detail already ride the hook
 - [ ] T3.11 delete tabs, dead Settings field, stale hooks  **[PoNR]**
 - [ ] T3.12 docs: models-plugin, onboarding, CLI, CLAUDE.md routing paragraph, README
 - [ ] CHECKPOINT C: gates + ui:conformance --full + ui:test:conformance (models) + /verify S4 S5 S6 S7 S10 S11 + live test → merge

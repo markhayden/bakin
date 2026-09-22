@@ -82,6 +82,9 @@ export const modelsRoutes = [
           // too (#907) — probing them would bill a call that cannot succeed.
           ? await probeModels(ctx as unknown as PluginContext, models.filter((m) => m.available !== false))
           : null
+        // Every catalog-changing path announces itself so pickers everywhere
+        // (Team's model options, the Models page) refetch instead of caching.
+        ctx.events.emit('models.catalog_changed', { reason: probeResult ? 'probe' : 'refresh' })
         return Response.json({
           ok: true,
           models: await applyEligibilityOverlay(ctx as unknown as PluginContext, models),
@@ -152,6 +155,7 @@ export const modelsRoutes = [
           }
           notePendingChange((ctx as unknown as PluginContext).runtime, [...kinds])
           setModelsCache(null)
+          ctx.events.emit('models.catalog_changed', { reason: 'selections', refs: touched })
           if (result.applied.some((ref) => ref.startsWith('agent:'))) {
             await ctx.hooks.invoke('models.configChanged', { refs: result.applied })
           }
@@ -345,6 +349,7 @@ export const modelsRoutes = [
         await (ctx as unknown as PluginContext).runtime.restart()
         clearPendingRestart()
         resetModelsCache()
+        ctx.events.emit('models.catalog_changed', { reason: 'restart' })
         ctx.activity.audit('runtime.restarted', 'system')
         ctx.activity.log('system', 'Runtime restarted', { category: 'models' })
         return Response.json({ ok: true, message: 'Restart initiated' })
