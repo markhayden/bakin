@@ -33,9 +33,9 @@ Plan: `tasks/plan-models-and-spend-overhaul.md` (v2) · Spec: `.claude/specs/mod
 - [x] T2.5 spend ownership series (4 commits: core hoists → health check to spend → legacy budget-migration deleted → Spend UI to /spend with use-spend-data); billing.ts/budget-routes.ts/hooks stay in Models until T2.7 (plugin-boundary rule)
 - [x] T2.6 ledger v10: budget_milestones + incident episode/event_id/notified_at + reopen set incl. rule_removed; mark verbs take (id, eventId); evaluateBudget.crossed; warn incidents removed; consumers updated (S14 test; stale-eventId mark changes 0 rows)
 - [x] T2.7 CUTOVER (XL exception, one commit): upgrade+backup, spend.* hooks, fail-closed budget_policy_unavailable, health-owned spend.policy-available, PUT/GET /limits + Limits list, delete Models budget surface, repoint every caller + CLI endpoints, regen docs  **[PoNR]**
-- [ ] T2.9a scan_days receipts (complete-coverage only, 90-day prune)
-- [ ] T2.9b assembleSpendForDays — day-set variant of the ONE spend engine (behaviour-neutral refactor of assembleBudgetSpend)
-- [ ] T2.9c coverage summary via the engine + limit dialog + normalized suggestion (tests: unavailable roster, partial, zero-use covered day, backfill excluded, 14d@$10 ⇒ ~$450, prune, same-$10-in-both-stores counts once, suggestion == Overview)
+- [x] T2.9a scan_days receipts (complete-coverage only, 90-day prune)
+- [x] T2.9b assembleSpendForDays — day-set variant of the ONE spend engine (behaviour-neutral refactor of assembleBudgetSpend)
+- [x] T2.9c coverage summary via the engine + limit dialog + normalized suggestion (tests: unavailable roster, partial, zero-use covered day, backfill excluded, 14d@$10 ⇒ ~$450, prune, same-$10-in-both-stores counts once, suggestion == Overview)
 - [ ] T2.8 Overview tab live (lane-honest tiles, pace line with observed-days basis) — after T2.9
 - [ ] T2.10 spend observer (coalesced, generation-keyed memo) + incident at 100 + single-worker deliverPending marking (id, event_id) + hook points (recordSpend, scan, watchdog, boot); tests incl. reopen-during-in-flight-delivery and concurrent boot+watchdog callers
 - [ ] T2.11 ladder: badge provider (eager), header banners with computed offsets (90 yellow ack / 100 red actions), status milestones, Resume 409 still_over_limit
