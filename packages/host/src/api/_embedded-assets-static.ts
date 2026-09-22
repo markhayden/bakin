@@ -38,10 +38,10 @@ import asset_vendor_sdk_shared_0pfnm8sn_js from '../../public/vendor/sdk-shared-
 import asset_vendor_sdk_shared_pwtrcm3r_js from '../../public/vendor/sdk-shared-pwtrcm3r.js' with { type: 'file' }
 import asset_vendor_sdk_shared_7wdkv94z_js from '../../public/vendor/sdk-shared-7wdkv94z.js' with { type: 'file' }
 import asset_vendor_sdk_shared_sky48pgw_js from '../../public/vendor/sdk-shared-sky48pgw.js' with { type: 'file' }
-import asset_vendor_sdk_shared_y3j43eww_js from '../../public/vendor/sdk-shared-y3j43eww.js' with { type: 'file' }
 import asset_vendor_sdk_shared_rqd21pxb_js from '../../public/vendor/sdk-shared-rqd21pxb.js' with { type: 'file' }
 import asset_vendor_react_dom_js from '../../public/vendor/react-dom.js' with { type: 'file' }
 import asset_vendor_sdk_shared_9s1twpqb_js from '../../public/vendor/sdk-shared-9s1twpqb.js' with { type: 'file' }
+import asset_vendor_sdk_shared_2f4g2e6p_js from '../../public/vendor/sdk-shared-2f4g2e6p.js' with { type: 'file' }
 import asset_vendor_sdk_charts_js from '../../public/vendor/sdk-charts.js' with { type: 'file' }
 import asset_vendor_sdk_index_js from '../../public/vendor/sdk-index.js' with { type: 'file' }
 import asset_vendor_sdk_layout_js from '../../public/vendor/sdk-layout.js' with { type: 'file' }
@@ -100,10 +100,10 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/vendor/sdk-shared-pwtrcm3r.js', asset_vendor_sdk_shared_pwtrcm3r_js],
   ['/vendor/sdk-shared-7wdkv94z.js', asset_vendor_sdk_shared_7wdkv94z_js],
   ['/vendor/sdk-shared-sky48pgw.js', asset_vendor_sdk_shared_sky48pgw_js],
-  ['/vendor/sdk-shared-y3j43eww.js', asset_vendor_sdk_shared_y3j43eww_js],
   ['/vendor/sdk-shared-rqd21pxb.js', asset_vendor_sdk_shared_rqd21pxb_js],
   ['/vendor/react-dom.js', asset_vendor_react_dom_js],
   ['/vendor/sdk-shared-9s1twpqb.js', asset_vendor_sdk_shared_9s1twpqb_js],
+  ['/vendor/sdk-shared-2f4g2e6p.js', asset_vendor_sdk_shared_2f4g2e6p_js],
   ['/vendor/sdk-charts.js', asset_vendor_sdk_charts_js],
   ['/vendor/sdk-index.js', asset_vendor_sdk_index_js],
   ['/vendor/sdk-layout.js', asset_vendor_sdk_layout_js],

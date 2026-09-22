@@ -42,7 +42,7 @@ Plan: `tasks/plan-models-and-spend-overhaul.md` (v2) · Spec: `.claude/specs/mod
 - [x] T2.12 remove nags; CLI --at-cap wait|pause, no --warn, milestones, pace basis; onboarding budget → note; ONBOARDING_VERSION bump
 - [x] T2.13 spend UI fixture → conformant (inspect test-results/bakin-ui/index.html)
 - [x] T2.14 docs: spend-plugin.md (new, behaviour table), models-plugin, execution-ledger, doctor, cost-control-v2 status, CLAUDE.md (14 plugins, spend.json, pending files)
-- [ ] CHECKPOINT B: gates + ui:conformance --full + ui:test:conformance + /verify S8 S9 S12 S13 S14 + upgrade crash matrix + live test → merge
+- [~] CHECKPOINT B (2026-09-22): gates green; ui:conformance --full green except the pre-existing #904 `ModelSelect › Grouped Catalog` story flake (Base UI focus-guard aria-hidden-focus; fails identically without this branch's changes); ui:test:conformance green (spend graduated); /verify on an isolated boot with a seeded legacy models.json: upgrade at activation (ids, no warnPct, backup, keys stripped) → boot pass recorded 50 (covered by 75) + 75 delivered → cap crossed ⇒ 90 covered by 100 + cap incident episode 1 delivered once → resume refused 409 still_over_limit (S12) → raise-through-incident updated the rule in place (same id) + resolved `raised` → `bakin budget show` milestones + `bakin spend` pace basis → doctor `health.spend.policy-available` healthy, `spend.budget` under spend ownership; unit suites cover S8/S9/S13/S14 + the upgrade crash matrix. REMAINING: Mark's live test on 3737 (needs a server restart) — then the stack merges bottom-up.
 
 ## PR 3 — feat/models-plan-page
 - [ ] T3.1 D23 approval → sdk contract + DisabledWithReason story + public-api (or record fallback)
