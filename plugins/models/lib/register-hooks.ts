@@ -13,6 +13,7 @@ import type { PluginContext } from '@bakin/core/plugin-types'
 import type { ModelsPluginSettings } from '../types'
 import { getKnownModel, computeCostUsdMicros, computeImageCostUsdMicros } from '../data/known-models'
 import { resolveAgents } from './config-io'
+import { resetModelsCache } from './available-models'
 import { resolveBilling } from './billing'
 import { isLegacyBudget, migrateLegacyBudget } from './budget-migration'
 import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
@@ -63,6 +64,7 @@ export function registerModelsHooks(ctx: PluginContext): void {
     return { ok: true }
   }, { label: 'Update budget policy.', summary: 'Applies a narrow budget-policy patch — currently the accept-unattributed-history cutoff written by the Health repair. Money policy never changes without an explicit, validated write.', hookKind: 'rpc' })
 
+  ctx.hooks.register('models.resetCatalogCache', () => { resetModelsCache() }, { label: 'Reset the model catalog cache.', summary: 'Drops every catalog cache layer (hot, disk, in-flight) and bumps the runtime epoch so a stale fetch cannot publish. Invoked by the runtime switch.', hookKind: 'event' })
   ctx.hooks.register('models.refreshAvailableModels', async () => {
     const result = await fetchAvailableModels(ctx, { force: true })
     return { count: result.models.length, live: !result.cached, error: result.error ?? null }

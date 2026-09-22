@@ -87,6 +87,9 @@ function ResultCards({ result, onProceed, busy = false }: { result: SwitchResult
     attention.push(`${p.agentId}: subagent model '${p.sourceModel}' preserved — restored when you switch back`)
   }
   for (const f of result.roster?.failed ?? []) attention.push(`${f.agentId}: ${f.error}`)
+  for (const d of result.deadSelections?.dead ?? []) {
+    attention.push(`${d.label} (${d.ref}) uses '${d.model}' — ${d.detail}${d.proposal.to ? `; proposed: ${d.proposal.to}` : ''}. Nothing was changed — review in Models.`)
+  }
   for (const f of result.workspaces?.failed ?? []) attention.push(`${f.agentId} (${f.path}): ${f.error}`)
   for (const f of result.cron?.failed ?? []) attention.push(`cron ${f.jobId}: ${f.error}`)
   if (result.credentials && result.credentials.llmProviders.length === 0) {

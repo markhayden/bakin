@@ -15,6 +15,7 @@ import type { PluginContext } from '@bakin/core/plugin-types'
 import type { AvailableModel } from '../types'
 import { getModelEligibility } from '../../../src/core/model-eligibility'
 import {
+  clearPersistedCache,
   readPersistedCache,
   writePersistedCache,
 } from './models-cache'
@@ -104,6 +105,22 @@ export interface FetchResult {
 // the first's result.
 let inflightFetch: Promise<FetchResult> | null = null
 let lastRuntimeModelFetchWarning: { message: string; at: number } | null = null
+
+// Runtime epoch (#907, D29): bumped whenever the runtime behind the catalog
+// changes (a switch). A fetch captures the epoch when it starts and PUBLISHES
+// to the hot/disk caches only if it is unchanged when it completes — nulling
+// `inflightFetch` alone would let the old promise repopulate the caches with
+// the previous runtime's models.
+let catalogEpoch = 0
+export function currentCatalogEpoch(): number { return catalogEpoch }
+
+/** Drop every catalog cache layer and invalidate any fetch still in flight. */
+export function resetModelsCache(): void {
+  catalogEpoch++
+  setModelsCache(null)
+  clearPersistedCache()
+  inflightFetch = null
+}
 const MODEL_FETCH_WARNING_TTL = 60_000
 
 function warnRuntimeModelFetchFailed(message: string): void {
@@ -197,10 +214,17 @@ export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: 
   //    in-flight promise. On success: write both caches. On failure:
   //    honest empty state — no fake data.
   if (inflightFetch) return inflightFetch
-  inflightFetch = (async (): Promise<FetchResult> => {
+  const startedEpoch = catalogEpoch
+  let self: Promise<FetchResult> | null = null
+  const fetch = (async (): Promise<FetchResult> => {
     try {
       const models = await loadConfiguredModelsFromRuntime(ctx as unknown as PluginContext)
       const now = Date.now()
+      if (catalogEpoch !== startedEpoch) {
+        // The runtime changed underneath this fetch: serve nothing stale and
+        // publish nothing — the next caller fetches from the new runtime.
+        return { models: [], cached: false, cachedAt: null, stale: true, error: 'runtime changed during fetch' }
+      }
       // Caches persist the RAW runtime snapshot; only the response is
       // overlaid — rejection truth lives in the ledger alone.
       setModelsCache({ models, fetchedAt: now })
@@ -211,8 +235,10 @@ export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: 
       warnRuntimeModelFetchFailed(message)
       return { models: [], cached: false, cachedAt: null, stale: false, error: message }
     } finally {
-      inflightFetch = null
+      if (inflightFetch === self) inflightFetch = null
     }
   })()
-  return inflightFetch
+  self = fetch
+  inflightFetch = fetch
+  return fetch
 }

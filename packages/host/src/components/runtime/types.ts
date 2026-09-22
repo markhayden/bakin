@@ -65,6 +65,8 @@ export interface SwitchResultPayload {
     failed: Array<{ agentId: string; path: string; error: string }>
   } | null
   cron: { adopted: string[]; skipped: string[]; failed: Array<{ jobId: string; error: string }> } | null
+  /** Persisted model selections the target cannot run (#907) — report only, never rewritten by a switch. */
+  deadSelections?: { dead: Array<{ ref: string; label: string; model: string; detail: string; proposal: { to: string | null } }> } | null
   cantCarry: Array<{ concern: string; detail: string; count?: number }> | null
   credentials: { llmProviders: string[] } | null
   sync: { drifted: boolean; findings: number; syncedAgents: number } | null

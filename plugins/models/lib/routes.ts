@@ -17,7 +17,6 @@ import { KNOWN_PROVIDERS } from '../data/known-models'
 import {
   readPersistedCache,
   writePersistedCache,
-  clearPersistedCache,
 } from './models-cache'
 import { listRunCostsSince, listBudgetIncidents, resolveBudgetIncident, LedgerUnavailableError } from '../../../src/core/execution-ledger'
 import { probeModels } from './probe'
@@ -35,6 +34,7 @@ import {
   applyEligibilityOverlay,
   fetchAvailableModels,
   loadConfiguredModelsFromRuntime,
+  resetModelsCache,
   setModelsCache,
 } from './available-models'
 import { DEFAULT_ALIASES, readAliases } from './aliases'
@@ -445,8 +445,7 @@ export const modelsRoutes = [
       try {
         await (ctx as unknown as PluginContext).runtime.restart()
         clearPendingRestart()
-        setModelsCache(null)
-        clearPersistedCache()
+        resetModelsCache()
         ctx.activity.audit('runtime.restarted', 'system')
         ctx.activity.log('system', 'Runtime restarted', { category: 'models' })
         return Response.json({ ok: true, message: 'Restart initiated' })

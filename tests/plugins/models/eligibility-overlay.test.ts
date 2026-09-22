@@ -26,7 +26,7 @@ mock.module('../../../src/core/logger', () => ({
 import type { PluginContext } from '@bakin/core/plugin-types'
 import { closeDb } from '../../../packages/core/src/storage/db'
 import { recordModelRejection, resolveModelRejection } from '../../../src/core/execution-ledger'
-import { fetchAvailableModels, setModelsCache } from '../../../plugins/models/lib/available-models'
+import { fetchAvailableModels, getModelsCache, resetModelsCache, setModelsCache } from '../../../plugins/models/lib/available-models'
 import { clearPersistedCache } from '../../../plugins/models/lib/models-cache'
 import { resetEligibilityMemo } from '../../../src/core/model-eligibility'
 import { toModelSelectOptions } from '../../../src/hooks/use-available-models'
@@ -114,5 +114,34 @@ describe('toModelSelectOptions — pickers cannot select a dead model', () => {
     expect(options.find((o) => o.id === LIVE)).toEqual({ id: LIVE, name: 'GPT-5.5', provider: 'openai-codex', disabled: false })
     expect(options.find((o) => o.id === NO_AUTH)).toEqual({ id: NO_AUTH, name: 'GPT-5.6 Luna — no credentials for openai', provider: 'openai', disabled: true })
     expect(options.find((o) => o.id === 'x/unverified')!.disabled).toBe(false)
+  })
+})
+
+describe('resetModelsCache — epoch-guarded (D29)', () => {
+  test('a fetch that started BEFORE the reset completes afterwards and publishes nothing', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    const slowCtx = {
+      runtime: {
+        models: {
+          listAvailable: async () => { await gate; return runtimeRows },
+          routingPolicy: async () => ({ defaultModel: LIVE, fallbackModels: [] }),
+        },
+        credentials: completeInventory,
+      },
+    } as unknown as PluginContext
+
+    const inflight = fetchAvailableModels(slowCtx) // old runtime's catalog, still loading
+    resetModelsCache() // the runtime switched underneath it
+    release()
+    const stale = await inflight
+    expect(stale.models).toEqual([])
+    expect(stale.error).toMatch(/runtime changed/)
+    // Nothing from the old runtime reached the caches.
+    expect(getModelsCache()).toBeNull()
+    // The next caller fetches fresh.
+    const fresh = await fetchAvailableModels(ctxWith(completeInventory))
+    expect(fresh.models.map((m) => m.id).sort()).toEqual([NO_AUTH, LIVE].sort())
+    expect(getModelsCache()).not.toBeNull()
   })
 })
