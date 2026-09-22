@@ -40,7 +40,7 @@ async function checkBudget(): Promise<CheckResult> {
       name: 'budget',
       status: 'warn',
       message: 'No spending budget is set — agent spend is uncapped.',
-      remediation: 'Set a budget in Models → Spend, or run `bakin budget set --scope global --lane metered --daily <usd>`.',
+      remediation: 'Set a budget in Spend, or run `bakin budget set --scope global --lane metered --daily <usd>`.',
     }
   } catch (err) {
     log.warn('Budget check failed', err)
@@ -48,7 +48,7 @@ async function checkBudget(): Promise<CheckResult> {
       name: 'budget',
       status: 'warn',
       message: `Could not read the budget policy: ${err instanceof Error ? err.message : String(err)}`,
-      remediation: 'Set a budget in Models → Spend once the server is up.',
+      remediation: 'Set a budget in Spend once the server is up.',
     }
   }
 }
@@ -71,13 +71,13 @@ async function installBudget(opts: OnboardingOptions): Promise<InstallResult> {
   }
   if (!opts.interactive || opts.autoApprove) {
     // --yes / non-TTY: never invent a cap. Loud, explicit skip.
-    console.log('  ⚠ No spending budget set — agent spend is UNCAPPED until you set one (Models → Spend or `bakin budget set`).')
+    console.log('  ⚠ No spending budget set — agent spend is UNCAPPED until you set one (Spend or `bakin budget set`).')
     return { name: 'budget', status: 'skipped', message: 'Skipped (non-interactive) — spend is uncapped until a budget is set.', durationMs: Date.now() - start }
   }
 
   const wantsBudget = await askYesNo('Set a spending budget now? (protects against runaway agent spend)', true)
   if (!wantsBudget) {
-    console.log('  ⚠ Skipping — spend is UNCAPPED until you set a budget (Models → Spend).')
+    console.log('  ⚠ Skipping — spend is UNCAPPED until you set a budget (Spend).')
     return { name: 'budget', status: 'skipped', message: 'Declined — spend is uncapped until a budget is set.', durationMs: Date.now() - start }
   }
 

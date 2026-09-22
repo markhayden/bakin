@@ -1,41 +1,14 @@
 'use client'
 
-import { useState } from 'react'
 import { AreaChart, type ChartDatum } from '@makinbakin/sdk/charts'
 import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
 import { SegmentedControl, StatTile } from '@makinbakin/sdk/patterns'
-import {
-  Banner,
-  Button,
-  Field,
-  FieldError,
-  Input,
-  Skeleton,
-  SystemState,
-  Text,
-} from '@makinbakin/sdk/ui'
+import { Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 
-import { BillingLanesSection, BudgetRulesSection } from './spend-budget-controls'
-import {
-  SpendBreakdown,
-  type SpendBreakdownDimension,
-} from './spend-breakdown'
-import {
-  budgetRuleLabel,
-  budgetRuleSpend,
-  formatRuleUnit,
-  formatTokens,
-  formatUsd,
-  parseCapInput,
-} from './spend-utils'
-import type {
-  BudgetIncidentWire,
-  BudgetRuleWire,
-  ModelsData,
-  SpendResponse,
-} from './use-models-data'
-
-export { parseCapInput } from './spend-utils'
+import { SpendBreakdown, type SpendBreakdownDimension } from './spend-breakdown'
+import { budgetRuleLabel, budgetRuleSpend, formatRuleUnit, formatTokens, formatUsd } from './spend-utils'
+import type { BudgetRuleWire, SpendResponse } from '../types'
+import type { SpendData } from './use-spend-data'
 
 function utilizationTone(percent: number): 'success' | 'attention' | 'danger' {
   if (percent >= 100) return 'danger'
@@ -89,116 +62,6 @@ function UtilizationTiles({
         />
       ))}
     </Grid>
-  )
-}
-
-/**
- * One incident: the Banner's action slot stays a button row (its contract),
- * while the cap input and its rejection message live below the banner inside a
- * Field. A rejected raise is announced — FieldError carries `role="alert"`, so
- * the message reaches assistive tech instead of only being painted red.
- */
-function IncidentBanner({
-  incident,
-  resolveIncident,
-}: {
-  incident: BudgetIncidentWire
-  resolveIncident: ModelsData['resolveIncident']
-}) {
-  const [raiseValue, setRaiseValue] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const isCap = incident.kind === 'cap'
-
-  return (
-    <div className="flex min-w-0 flex-col gap-bakin-2">
-      <Banner
-        tone={isCap ? 'danger' : 'attention'}
-        announce={incident.status === 'open' ? 'assertive' : 'off'}
-        title={isCap ? 'Budget cap reached' : 'Budget warning'}
-        description={(
-          <span>
-            {incident.scopeId ? `${incident.scope} “${incident.scopeId}”` : 'Global'} · {incident.window} · {incident.lane} at{' '}
-            {formatRuleUnit(incident.lane, incident.spentValue, incident.unit === 'usd_micros')} of{' '}
-            {formatRuleUnit(incident.lane, incident.capValue, incident.unit === 'usd_micros')}.
-          </span>
-        )}
-        action={(
-          <>
-            {isCap ? (
-              <Button
-                type="button"
-                size="sm"
-                onClick={async () => {
-                  const cap = parseCapInput(raiseValue)
-                  if (cap === undefined) {
-                    setError('Enter a valid cap first. Token caps accept k or M suffixes.')
-                    return
-                  }
-                  setError(await resolveIncident(incident.id, 'raise', cap))
-                }}
-              >
-                Raise and resume
-              </Button>
-            ) : null}
-            {incident.status === 'open' ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={async () => setError(await resolveIncident(incident.id, 'ack'))}
-              >
-                Acknowledge
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={async () => setError(await resolveIncident(incident.id, 'resume'))}
-            >
-              {incident.atCap === 'pause' && isCap ? 'Resume as-is' : 'Dismiss'}
-            </Button>
-          </>
-        )}
-      />
-      {isCap || error ? (
-        <Field name={`budget-incident-${incident.id}-cap`} invalid={Boolean(error)}>
-          {isCap ? (
-            <Input
-              aria-label={`New cap for incident ${incident.id}`}
-              className="w-36"
-              placeholder={incident.lane === 'metered' ? 'New dollar cap' : 'New token cap'}
-              value={raiseValue}
-              onChange={(event) => setRaiseValue(event.currentTarget.value)}
-            />
-          ) : null}
-          {error ? <FieldError match>{error}</FieldError> : null}
-        </Field>
-      ) : null}
-    </div>
-  )
-}
-
-function IncidentBanners({
-  incidents,
-  resolveIncident,
-}: {
-  incidents: BudgetIncidentWire[]
-  resolveIncident: ModelsData['resolveIncident']
-}) {
-  const live = incidents.filter((incident) => incident.status !== 'resolved')
-  if (live.length === 0) return null
-
-  return (
-    <div className="flex min-w-0 flex-col gap-bakin-3">
-      {live.map((incident) => (
-        <IncidentBanner
-          key={incident.id}
-          incident={incident}
-          resolveIncident={resolveIncident}
-        />
-      ))}
-    </div>
   )
 }
 
@@ -346,7 +209,7 @@ function SpendOverview({
   )
 }
 
-export function SpendTab({
+export function OverviewTab({
   m,
   breakdown,
   metric,
@@ -357,7 +220,7 @@ export function SpendTab({
   onPageChange,
   onShowAllChange,
 }: {
-  m: ModelsData
+  m: SpendData
   breakdown: SpendBreakdownDimension
   metric: 'cost' | 'tokens'
   pageValue: string
@@ -367,65 +230,35 @@ export function SpendTab({
   onPageChange: (page: string) => void
   onShowAllChange: (showAll: string) => void
 }) {
+  if (m.spendLoading && !m.spend) return <Skeleton className="h-56 w-full" />
+  if (!m.spend) {
+    return (
+      <SystemState
+        kind="error"
+        scope="page"
+        recovery="unavailable"
+        title="Spend data is unavailable"
+        description="The execution ledger could not provide spend records. Limits remain editable in the other tab."
+      />
+    )
+  }
   return (
     <div className="@container/spend flex min-w-0 flex-col gap-bakin-8">
-      {m.budgetStatus?.paused ? (
-        <Banner
-          tone="danger"
-          announce="assertive"
-          title="All task dispatch is paused"
-          description="No new billed work will start until an operator resumes dispatch."
-        />
-      ) : null}
-      {m.budgetError ? (
-        <Banner
-          tone="danger"
-          announce="assertive"
-          title="Budget information could not be loaded or updated"
-          description={m.budgetError}
-        />
-      ) : null}
-      {m.budgetWarnings.map((warning) => (
-        <Banner
-          key={warning}
-          tone="attention"
-          title="Budget rule needs review"
-          description={warning}
-        />
-      ))}
-      <IncidentBanners incidents={m.incidents} resolveIncident={m.resolveIncident} />
-
-      {m.spendLoading && !m.spend ? (
-        <Skeleton className="h-56 w-full" />
-      ) : !m.spend ? (
-        <SystemState
-          kind="error"
-          scope="page"
-          recovery="unavailable"
-          title="Spend data is unavailable"
-          description="The execution ledger could not provide spend records. Model configuration remains available in the other tabs."
-        />
-      ) : (
-        <>
-          <SpendOverview
-            spend={m.spend}
-            rules={m.budgetRules}
-            metric={metric}
-            onMetricChange={onMetricChange}
-          />
-          <BudgetRulesSection m={m} />
-          <BillingLanesSection m={m} />
-          <SpendBreakdown
-            spend={m.spend}
-            dimension={breakdown}
-            pageValue={pageValue}
-            showAllValue={showAllValue}
-            onDimensionChange={onBreakdownChange}
-            onPageChange={onPageChange}
-            onShowAllChange={onShowAllChange}
-          />
-        </>
-      )}
+      <SpendOverview
+        spend={m.spend}
+        rules={m.budgetRules}
+        metric={metric}
+        onMetricChange={onMetricChange}
+      />
+      <SpendBreakdown
+        spend={m.spend}
+        dimension={breakdown}
+        pageValue={pageValue}
+        showAllValue={showAllValue}
+        onDimensionChange={onBreakdownChange}
+        onPageChange={onPageChange}
+        onShowAllChange={onShowAllChange}
+      />
     </div>
   )
 }

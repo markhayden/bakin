@@ -362,7 +362,7 @@ describe('AgentsTab', () => {
     expect(usageCost!.textContent).toContain('Today is still being counted')
     expect(screen.queryByText('Bakin-attributed estimate')).toBeNull()
     expect(screen.queryByText('fixed 24h scope · used by budget caps')).toBeNull()
-    expect(within(usageCost!).getByRole('link', { name: 'View budgets in Models' }).getAttribute('href')).toBe('/models?tab=spend')
+    expect(within(usageCost!).getByRole('link', { name: 'View limits in Spend' }).getAttribute('href')).toBe('/spend')
   })
 
   it('totals only explicitly complete agents when transcript coverage is partial', async () => {
@@ -1206,8 +1206,8 @@ describe('AgentsTab', () => {
     expect(usageCost.textContent).toContain('No runtime-reported cost is available in this window.')
     expect(usageCost.textContent).toContain('none included runtime-reported cost')
     expect(usageCost.textContent).not.toContain('$0.00')
-    expect(within(usageCost).getByRole('link', { name: 'View budgets in Models' }).getAttribute('href'))
-      .toBe('/models?tab=spend')
+    expect(within(usageCost).getByRole('link', { name: 'View limits in Spend' }).getAttribute('href'))
+      .toBe('/spend')
   })
 })
 

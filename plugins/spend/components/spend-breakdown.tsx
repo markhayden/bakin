@@ -11,7 +11,7 @@ import {
 } from '@makinbakin/sdk/patterns'
 import { Overline, SystemState, Text } from '@makinbakin/sdk/ui'
 
-import type { SpendResponse } from './use-models-data'
+import type { SpendResponse } from '../types'
 import { formatTokens, formatUsd } from './spend-utils'
 
 export type SpendBreakdownDimension = 'agents' | 'providers' | 'models' | 'work'

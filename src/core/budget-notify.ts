@@ -90,7 +90,7 @@ async function relayToMainAgent(n: BudgetIncidentNotification, message: string, 
       agentId: mainAgentId,
       activityClass: 'system',
       ...routeSendArgs(route),
-      content: `${message}\n\nReview and resolve: Models → Spend (or \`bakin budget incidents\`). Relay this to the operator if they are not watching the dashboard.`,
+      content: `${message}\n\nReview and resolve: Spend (or \`bakin budget incidents\`). Relay this to the operator if they are not watching the dashboard.`,
     })
     await meterAgentTurn({ agent: mainAgentId, activityClass: 'system', result, workClass: 'relay', routeSource: route.source, resolvedModel: route.model, name: 'budget-alert' })
   } catch (err) {

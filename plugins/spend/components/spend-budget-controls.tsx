@@ -19,7 +19,8 @@ import {
   Text,
 } from '@makinbakin/sdk/ui'
 
-import type { BudgetRuleWire, ModelsData } from './use-models-data'
+import type { BudgetRuleWire } from '../types'
+import type { SpendData } from './use-spend-data'
 import { parseCapInput } from './spend-utils'
 
 const SCOPES = ['global', 'agent', 'provider', 'model'] as const
@@ -85,7 +86,7 @@ function BudgetRuleRow({
 }: {
   index: number
   rule: BudgetRuleWire
-  m: ModelsData
+  m: SpendData
 }) {
   const rules = m.pendingRules ?? m.budgetRules
   const edit = (patch: Partial<BudgetRuleWire>) => {
@@ -97,7 +98,7 @@ function BudgetRuleRow({
     ? m.agents.map((agent) => agent.agentId)
     : rule.scope === 'provider'
       ? m.availableProviders
-      : m.modelOptions.map((model) => model.id)
+      : m.modelIds
 
   return (
     <ListRow className="px-bakin-4 py-bakin-4">
@@ -206,7 +207,7 @@ function BudgetRuleRow({
   )
 }
 
-export function BudgetRulesSection({ m }: { m: ModelsData }) {
+export function BudgetRulesSection({ m }: { m: SpendData }) {
   const rules = m.pendingRules ?? m.budgetRules
 
   return (
@@ -279,7 +280,7 @@ export function BudgetRulesSection({ m }: { m: ModelsData }) {
   )
 }
 
-export function BillingLanesSection({ m }: { m: ModelsData }) {
+export function BillingLanesSection({ m }: { m: SpendData }) {
   const billing = Object.entries(m.budgetStatus?.billing ?? {})
   const overrides = m.budgetStatus?.overrides ?? []
   const agentOverrides = new Map(

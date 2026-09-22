@@ -3,7 +3,7 @@ import type {
   LaneSumsWire,
   ScopeSpendWire,
   WindowSpendWire,
-} from './use-models-data'
+} from '../types'
 
 export function formatUsd(micros: number | null, unpricedTokens = 0): string {
   if (micros == null || (micros === 0 && unpricedTokens > 0)) return '$ unavailable'

@@ -208,7 +208,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
           key: 'open-spend-settings',
           type: 'navigate',
           label: 'Set a spending budget',
-          href: '/models?tab=spend',
+          href: '/spend',
         },
       },
     }))
@@ -252,7 +252,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
           key: 'open-spend-settings',
           type: 'navigate' as const,
           label: 'Resolve budget incidents',
-          href: '/models?tab=spend',
+          href: '/spend',
         },
       }
       observations.push(pausing.length > 0
@@ -475,7 +475,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
           key: 'open-spend-settings',
           type: 'navigate',
           label: 'Review spending caps',
-          href: '/models?tab=spend',
+          href: '/spend',
         },
       },
     }))
@@ -579,7 +579,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
           key: 'open-spend-settings',
           type: 'navigate',
           label: 'Review spending',
-          href: '/models?tab=spend',
+          href: '/spend',
         },
       },
     }))
@@ -600,7 +600,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
           key: 'open-spend-settings',
           type: 'navigate',
           label: 'Review spending',
-          href: '/models?tab=spend',
+          href: '/spend',
         },
       },
     }))

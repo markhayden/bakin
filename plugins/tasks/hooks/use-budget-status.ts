@@ -65,9 +65,9 @@ export interface BudgetHold {
 
 /** Why a todo task isn't dispatching right now, or null when it would. */
 export function budgetHoldReason(status: BudgetGateStatus, task: { id: string; agent?: string }): BudgetHold | null {
-  if (status.paused) return { label: 'Dispatch paused', detail: 'kill switch — resume in the header banner or `bakin budget resume`', href: '/models?tab=spend', kind: 'budget' }
+  if (status.paused) return { label: 'Dispatch paused', detail: 'kill switch — resume in the header banner or `bakin budget resume`', href: '/spend', kind: 'budget' }
   if (status.perTask[task.id] === 'deferred' || (task.agent && status.perAgent[task.agent] === 'deferred')) {
-    return { label: 'Budget-deferred', detail: 'cap reached — resolve in Models → Spend', href: '/models?tab=spend', kind: 'budget' }
+    return { label: 'Budget-deferred', detail: 'cap reached — resolve in Spend', href: '/spend', kind: 'budget' }
   }
   return null
 }

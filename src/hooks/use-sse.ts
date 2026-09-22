@@ -156,7 +156,7 @@ export function useSSE() {
             sendBrowserNotification(
               'Budget alert',
               data.message || 'A budget cap was reached — dispatch may be deferred',
-              '/models?tab=spend',
+              '/spend',
             )
             appendActivityEvent({
               id: `${data.timestamp || new Date().toISOString()}-budget-incident-${data.incidentId}`,

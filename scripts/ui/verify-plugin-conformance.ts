@@ -40,7 +40,7 @@ export const CORE_PLUGIN_UI_ENROLLMENT: readonly OfficialPluginUiEnrollment[] = 
   { id: 'images', root: 'plugins/images', status: 'server-only', reason: 'No browser client entrypoint.' },
   { id: 'memory', root: 'plugins/memory', status: 'migration-pending', migrationTask: 'T51-T52' },
   { id: 'models', root: 'plugins/models', status: 'migration-pending', migrationTask: 'T49-T50' },
-  { id: 'spend', root: 'plugins/spend', status: 'migration-pending', migrationTask: 'PR2-T2.13' },
+  { id: 'spend', root: 'plugins/spend', status: 'migration-pending', migrationTask: 'T71a' },
   { id: 'schedule', root: 'plugins/schedule', status: 'migration-pending', migrationTask: 'T47-T48' },
   { id: 'tasks', root: 'plugins/tasks', status: 'migration-pending', migrationTask: 'T45' },
   { id: 'team', root: 'plugins/team', status: 'migration-pending', migrationTask: 'T61-T62' },

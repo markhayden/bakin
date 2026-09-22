@@ -20,7 +20,7 @@
     "private-import"
   ],
   "summary": {
-    "paths": 165,
+    "paths": 166,
     "totals": {
       "raw-palette": 4,
       "arbitrary-size": 77,
@@ -2108,39 +2108,6 @@
       }
     },
     {
-      "path": "plugins/models/components/spend-breakdown.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "models"
-      },
-      "censusEntryId": "plugin-slot:models:page:/models",
-      "migrationTask": "T60",
-      "archetype": "list-index",
-      "target": "catalog/settings archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1,
-        "raw-scale": 1
-      }
-    },
-    {
-      "path": "plugins/models/components/spend-tab.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "models"
-      },
-      "censusEntryId": "plugin-slot:models:page:/models",
-      "migrationTask": "T60",
-      "archetype": "list-index",
-      "target": "catalog/settings archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 2
-      }
-    },
-    {
       "path": "plugins/schedule/components/job-form.tsx",
       "owner": {
         "repository": "bakin",
@@ -2217,6 +2184,55 @@
       "target": "schedule list/calendar/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "plugins/spend/components/incident-banners.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "spend"
+      },
+      "censusEntryId": "plugin-slot:spend:page:/spend",
+      "migrationTask": "T71a",
+      "archetype": "plugin-contract",
+      "target": "audited plugin contribution using supported SDK UI",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "plugins/spend/components/overview-tab.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "spend"
+      },
+      "censusEntryId": "plugin-slot:spend:page:/spend",
+      "migrationTask": "T71a",
+      "archetype": "plugin-contract",
+      "target": "audited plugin contribution using supported SDK UI",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1
+      }
+    },
+    {
+      "path": "plugins/spend/components/spend-breakdown.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "spend"
+      },
+      "censusEntryId": "plugin-slot:spend:page:/spend",
+      "migrationTask": "T71a",
+      "archetype": "plugin-contract",
+      "target": "audited plugin contribution using supported SDK UI",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1,
         "raw-scale": 1
       }
     },
