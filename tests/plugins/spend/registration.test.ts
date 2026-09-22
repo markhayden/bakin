@@ -1,6 +1,6 @@
 /**
  * Spend plugin activation: it owns the budget health check and its two
- * repairs, the five spend.* hooks, and the spend/limits/status/incidents/
+ * repairs, the six spend.* hooks, and the spend/limits/status/incidents/
  * billing routes (the ownership cutover). A fresh install gets an empty,
  * valid spend.json at activation.
  */
@@ -33,14 +33,14 @@ import { readPluginSettings } from '../../../packages/core/src/plugins/settings-
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
 describe('spend plugin registration', () => {
-  it('owns the budget check, both spend repairs, the five spend.* hooks and its routes; initializes spend.json', async () => {
+  it('owns the budget check, both spend repairs, the six spend.* hooks and its routes; initializes spend.json', async () => {
     const { ctx, routes } = await activatePlugin(spendPlugin, testDir)
     const checks = (ctx.registerHealthCheck as ReturnType<typeof mock>).mock.calls.map((c) => (c[0] as { id: string }).id)
     const repairs = (ctx.registerHealthRepairAction as ReturnType<typeof mock>).mock.calls.map((c) => (c[0] as { id: string }).id)
     expect(checks).toEqual(['budget'])
     expect(repairs.sort()).toEqual(['accept-unattributed-history', 'spend-evidence-refresh-pricing'])
     const hooks = (ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map((c) => c[0] as string)
-    expect(hooks.sort()).toEqual(['spend.getBudgetPolicy', 'spend.priceImage', 'spend.priceTurn', 'spend.resolveBilling', 'spend.updateBudgetPolicy'])
+    expect(hooks.sort()).toEqual(['spend.getBudgetPolicy', 'spend.listBillingOverrides', 'spend.priceImage', 'spend.priceTurn', 'spend.resolveBilling', 'spend.updateBudgetPolicy'])
     expect(routes.map((r) => `${r.method} ${r.path}`).sort()).toEqual([
       'GET /coverage', 'GET /incidents', 'GET /limits', 'GET /spend', 'GET /status',
       'POST /incidents/:id/resolve', 'POST /milestones/:id/ack', 'PUT /billing/overrides', 'PUT /limits',

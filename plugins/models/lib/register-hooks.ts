@@ -10,7 +10,7 @@ import type { PluginContext } from '@bakin/core/plugin-types'
 import type { ModelsPluginSettings } from '../types'
 import { resolveAgents } from './config-io'
 import { resetModelsCache } from './available-models'
-import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
+import { isLegacyRouting, migrateLegacyRouting } from '../../../src/core/routing-migration'
 import { fetchAvailableModels } from './available-models'
 
 export function registerModelsHooks(ctx: PluginContext): void {

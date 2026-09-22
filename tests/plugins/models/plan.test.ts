@@ -2,10 +2,10 @@
  * Plugin-side composition of the model plan (spec §3.4): the candidate list
  * is built from the eligibility-overlaid catalog (ineligible rows never
  * enter it), vision resolves runtime `input` modalities → curated list →
- * unknown, the billing lane comes from the spend plugin's hook (metered when
- * the hook is absent), enrichment-on comes from the assets hook (on when
- * absent), and route proposals derive from the plan for UNROUTED chores
- * classes only.
+ * unknown, the billing lane comes from the runtime's credential shapes with
+ * the spend plugin's overrides on top (metered when the hook is absent),
+ * enrichment-on comes from the assets hook (on when absent), and route
+ * proposals derive from the plan for UNROUTED chores classes only.
  */
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { join } from 'path'
@@ -29,7 +29,8 @@ import type { PluginContext } from '@bakin/core/plugin-types'
 import { closeDb } from '../../../packages/core/src/storage/db'
 import { setModelsCache } from '../../../plugins/models/lib/available-models'
 import { clearPersistedCache } from '../../../plugins/models/lib/models-cache'
-import { buildPlanInput, routeProposals, visionOf } from '../../../plugins/models/lib/plan'
+import { buildPlanInput, routeProposals } from '../../../plugins/models/lib/plan'
+import { recommendForRef, visionOf } from '../../../src/core/model-plan-input'
 import { recommendPlan } from '../../../src/core/model-plan'
 import type { AvailableModel } from '../../../plugins/models/types'
 
@@ -56,6 +57,7 @@ interface FakeCtxOpts {
   hooks?: Record<string, (data: Record<string, unknown>) => unknown>
   routing?: { routes: Array<{ workClass: string; model?: string | null }>; tagOverrides: unknown[] }
   defaultModel?: string
+  credentials?: Array<{ provider: string; kind: 'oauth' | 'api-key' }>
 }
 
 function fakeCtx(opts: FakeCtxOpts = {}): PluginContext {
@@ -74,6 +76,7 @@ function fakeCtx(opts: FakeCtxOpts = {}): PluginContext {
         listAvailable: async () => catalog().map((m) => ({ id: m.id, name: m.name, available: m.available, ...(m.input ? { input: m.input } : {}) })),
         routingPolicy: async () => ({ defaultModel: opts.defaultModel ?? LUNA, fallbackModels: [], aliases: {} }),
       },
+      credentialStatus: async () => ({ llmProviders: [], channels: [], llmCredentials: opts.credentials ?? [{ provider: 'openai-codex', kind: 'oauth' }, { provider: 'anthropic', kind: 'api-key' }] }),
       agents: { list: async () => [] },
     },
   } as unknown as PluginContext
@@ -94,14 +97,8 @@ describe('visionOf', () => {
 })
 
 describe('buildPlanInput', () => {
-  it('candidates = eligible rows only, with tier, lane from the spend hook, vision, context and catalog price', async () => {
-    const seen: string[] = []
-    const input = await buildPlanInput(fakeCtx({
-      hooks: {
-        'spend.resolveBilling': (d) => { seen.push(String(d.model)); return { lane: String(d.model).startsWith('openai-codex/') ? 'subscription' : 'metered', provider: 'p' } },
-        'assets.enrichmentEnabled': () => false,
-      },
-    }))
+  it('candidates = eligible rows only, with tier, lane from credentials, vision, context and catalog price', async () => {
+    const input = await buildPlanInput(fakeCtx({ hooks: { 'assets.enrichmentEnabled': () => false } }))
     expect(input.candidates.map((c) => c.id).sort()).toEqual([HAIKU, MINI, LUNA].sort())
     const luna = input.candidates.find((c) => c.id === LUNA)!
     expect(luna).toMatchObject({ tier: 'premium', lane: 'subscription', vision: true, contextWindow: 400_000 })
@@ -111,26 +108,46 @@ describe('buildPlanInput', () => {
     expect(haiku.pricePer1M).toBeGreaterThan(0)
     expect(input.currentDefaultModel).toBe(LUNA)
     expect(input.enrichmentEnabled).toBe(false)
-    // One billing resolution per PROVIDER, never per model.
-    expect(seen.length).toBe(2)
   })
 
-  it('missing hooks: lane reads metered, enrichment reads enabled — never a throw', async () => {
-    const input = await buildPlanInput(fakeCtx())
-    expect(input.candidates.every((c) => c.lane === 'metered')).toBe(true)
-    expect(input.enrichmentEnabled).toBe(true)
+  it('a spend override beats detection; missing hooks read metered/enabled and never throw', async () => {
+    const overridden = await buildPlanInput(fakeCtx({ hooks: { 'spend.listBillingOverrides': () => [{ provider: 'anthropic', lane: 'subscription' }] } }))
+    expect(overridden.candidates.find((c) => c.id === HAIKU)!.lane).toBe('subscription')
+    const bare = await buildPlanInput(fakeCtx({ credentials: [] }))
+    expect(bare.candidates.every((c) => c.lane === 'metered')).toBe(true)
+    expect(bare.enrichmentEnabled).toBe(true)
   })
 
   it('feeds the recommender: Codex-only style input yields the chores lane from the same catalog', async () => {
-    const input = await buildPlanInput(fakeCtx({
-      hooks: { 'spend.resolveBilling': (d) => ({ lane: String(d.model).startsWith('openai-codex/') ? 'subscription' : 'metered', provider: 'p' }) },
-    }))
+    const input = await buildPlanInput(fakeCtx())
     const plan = recommendPlan(input)
     expect(plan.agent.model).toBe(LUNA)
     // mini is blind (runtime says text-only), so the lightest model that can see — haiku — takes the chores.
     expect(plan.chores.model).toBe(HAIKU)
     expect(plan.enrichment).toBe('chores')
     expect(plan.ops.some((op) => op.ref === 'policy:defaultModel')).toBe(false)
+  })
+})
+
+describe('recommendForRef', () => {
+  it('chores routes get the plan route (or the chores model through inherit); everything else the agent model; unset enrichment has no answer', () => {
+    const plan = recommendPlan({
+      candidates: [
+        { id: LUNA, tier: 'premium', lane: 'subscription', vision: true },
+        { id: MINI, tier: 'budget', lane: 'subscription', vision: false },
+      ],
+      currentDefaultModel: LUNA,
+      routing: { routes: [], tagOverrides: [] },
+      enrichmentEnabled: true,
+    })
+    expect(recommendForRef(plan, 'route:relay')).toBe(MINI)
+    expect(recommendForRef(plan, 'route:enrichment')).toBe(LUNA)
+    expect(recommendForRef(plan, 'policy:defaultModel')).toBe(LUNA)
+    expect(recommendForRef(plan, 'agent:pixel:model')).toBe(LUNA)
+    expect(recommendForRef(plan, 'route:adhoc')).toBe(LUNA)
+    const blind = recommendPlan({ ...plan, candidates: [{ id: LUNA, tier: 'premium', lane: 'subscription', vision: false }], currentDefaultModel: LUNA, routing: { routes: [], tagOverrides: [] }, enrichmentEnabled: true } as never)
+    expect(recommendForRef(blind, 'route:enrichment')).toBeNull()
+    expect(recommendForRef(blind, 'route:relay')).toBe(LUNA)
   })
 })
 

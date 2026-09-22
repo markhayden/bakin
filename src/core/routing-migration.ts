@@ -3,11 +3,11 @@
  * [{origin,…}]}) into work-class routes ({routes: [{workClass,…}]}). Runs
  * once at plugin activation: a legacy-shaped `routing` setting is mapped,
  * written back, and the old key is gone. Origin names map 1:1 onto the five
- * dispatch work classes. Like the budget migration, a read-guard also
- * migrates on READ (a settings file restored after the one-shot ran must
+ * dispatch work classes. Core-owned (onboarding reads routing without the
+ * models plugin loaded). A read-guard also migrates on READ (a settings file restored after the one-shot ran must
  * never make dispatch silently ignore routes the operator believes exist).
  */
-import { DISPATCH_WORK_CLASSES, type DispatchWorkClass, type RoutingConfig, type TagOverride, type ThinkingSetting } from '../../../src/core/model-routing'
+import { DISPATCH_WORK_CLASSES, type DispatchWorkClass, type RoutingConfig, type TagOverride, type ThinkingSetting } from './model-routing'
 
 interface LegacyRoutingPolicy {
   origin: string
