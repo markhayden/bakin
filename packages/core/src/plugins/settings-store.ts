@@ -9,7 +9,7 @@
  * mechanics; change-notification policy stays with each caller (the ctx fires
  * the plugin's onSettingsChange; the REST route notifies the registry + SSE).
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '../content-dir'
 
@@ -31,11 +31,19 @@ export function readPluginSettings<T = Record<string, unknown>>(pluginId: string
   return {} as T
 }
 
-/** Write a plugin's settings (full replace), creating the dir if needed. */
+/**
+ * Write a plugin's settings (full replace), creating the dir if needed.
+ * Atomic: the document lands in a temp file and is renamed over the target,
+ * so a crash mid-write can never leave a truncated settings file and a
+ * reader never sees a half-written one.
+ */
 export function writePluginSettings(pluginId: string, value: unknown): void {
   const dir = settingsDir()
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(pluginSettingsPath(pluginId), JSON.stringify(value, null, 2))
+  const file = pluginSettingsPath(pluginId)
+  const tmp = `${file}.tmp`
+  writeFileSync(tmp, JSON.stringify(value, null, 2))
+  renameSync(tmp, file)
 }
 
 /** Read, shallow-merge the patch, persist, and return the merged result. */
