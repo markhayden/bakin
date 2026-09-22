@@ -7,6 +7,9 @@ import { SystemInventory, type SystemInventoryHandle } from '../components/syste
 import { SystemSearchSection } from '../components/system-search-section'
 import type { SystemRegistryData, SystemPluginManifestData } from '../hooks/use-system-data'
 import type { SearchHealthData } from '../types'
+import { collectionReport } from './collection-report'
+import { OverviewAlerts } from '../components/overview-alerts'
+import { buildHealthOverviewViewModel } from '../lib/health-view-model'
 
 const registry: SystemRegistryData = { plugins: [
   { id: 'assets', name: 'Assets', version: '1.2.0', source: 'built-in', status: 'active', routes: 12, description: 'Asset management' },
@@ -25,10 +28,11 @@ const idle = { status: 'idle' as const, message: null, target: null }
 function SystemFixture() {
   const inventory = useRef<SystemInventoryHandle>(null)
   const [query, setQuery] = useState('')
-  useEffect(() => { inventory.current?.revealPlugins() }, [])
+  useEffect(() => { inventory.current?.revealPlugins(); inventory.current?.revealChecks() }, [])
   return <Page><PageHeader title="Health" description="System inventories" /><PageBody>
+    <OverviewAlerts model={buildHealthOverviewViewModel({ report: collectionReport })} onRerun={() => {}} />
     <SystemSearchSection readiness={null} status={search} telemetry={null} mutation={idle} onReindex={() => {}} technicalDetailsOpen />
-    <SystemInventory ref={inventory} report={null} live={null} registry={registry} manifest={manifest}
+    <SystemInventory ref={inventory} report={collectionReport} live={null} registry={registry} manifest={manifest}
       pluginInventoryCurrent pluginMutation={idle} pluginSearch={query} onPluginSearchChange={setQuery}
       onCheckUpdates={() => {}} onUpgrade={() => {}} />
   </PageBody></Page>

@@ -4,8 +4,8 @@ import { useId, useState } from 'react'
 import type { HealthIncident } from '@makinbakin/sdk/types'
 import { Panel } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
-import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
-import { Button, Card, Popover, PopoverContent, PopoverTrigger, buttonVariants } from '@makinbakin/sdk/ui'
+import { ListRow, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { Button, Popover, PopoverContent, PopoverTrigger, buttonVariants } from '@makinbakin/sdk/ui'
 import { AlertTriangle, BellOff, ChevronRight, CircleHelp, Wrench } from 'lucide-react'
 import type { OverviewIncident } from '../lib/health-view-model'
 
@@ -108,9 +108,8 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
   }
 
   return (
-    <Card
-      tone={status.tone}
-      className="h-full gap-0 p-bakin-4"
+    <ListRow
+      className="grid min-w-0 gap-bakin-3"
       data-incident-id={incident.id}
     >
       <div className="flex min-w-0 items-start gap-bakin-3">
@@ -177,7 +176,7 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
         </Panel>
       )}
 
-      <div className="mt-auto flex items-center justify-end gap-bakin-2 pt-bakin-4">
+      <div className="flex flex-wrap items-center justify-end gap-bakin-2">
         {onAck && (incident.ackState ? (
           <Button size="sm" variant="ghost" onClick={() => onAck(incident, 'clear')}>
             Un-ack
@@ -211,6 +210,6 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
         ))}
         {action}
       </div>
-    </Card>
+    </ListRow>
   )
 }

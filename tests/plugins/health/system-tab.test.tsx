@@ -356,6 +356,22 @@ describe('SystemTabView', () => {
     expect(document.activeElement?.getAttribute('data-check-id')).toBe('search.probe')
   })
 
+  it('reveals the visible narrow check instead of focusing its hidden table copy', () => {
+    render(<SystemTabView data={systemData()} />)
+    const checks = [...document.querySelectorAll<HTMLElement>('[data-check-id="search.probe"]')]
+    expect(checks).toHaveLength(2)
+    const narrow = checks.find((check) => !check.closest('table'))!
+    const wide = checks.find((check) => check.closest('table'))!
+    wide.getClientRects = () => [] as unknown as DOMRectList
+    narrow.getClientRects = () => [new DOMRect(0, 0, 300, 60)] as unknown as DOMRectList
+    const scroll = mock()
+    narrow.scrollIntoView = scroll
+    fireEvent.click(screen.getByRole('button', { name: 'View evidence for Search verification probe' }))
+    expect(document.activeElement).toBe(narrow)
+    expect(scroll).toHaveBeenCalled()
+    expect((screen.getByTestId('all-health-checks-details') as HTMLDetailsElement).open).toBe(true)
+  })
+
   it('lets every pulse card reveal its corresponding evidence without navigating away', () => {
     render(<SystemTabView data={systemData()} />)
 
@@ -701,8 +717,9 @@ describe('SystemTabView', () => {
     if (!inventory.open) fireEvent.click(inventory.querySelector('summary')!)
 
     expect(screen.getAllByText('Healthy').length).toBeGreaterThan(0)
-    expect(screen.getByText('Not applicable')).toBeDefined()
-    expect(screen.getByText('Cloud sync is not configured.')).toBeDefined()
+    expect(inventory.querySelector('table')).not.toBeNull()
+    expect(screen.getAllByText('Not applicable')).toHaveLength(2)
+    expect(screen.getAllByText('Cloud sync is not configured.')).toHaveLength(2)
     expect(inventory.querySelectorAll('[data-list-rows][data-variant="separated"]').length).toBeGreaterThan(0)
     const groups = [...inventory.querySelectorAll<HTMLDetailsElement>(':scope > div > div > details')]
     const healthyGroup = groups.find((group) => group.querySelector('summary')?.textContent?.includes('Runtime checks'))
