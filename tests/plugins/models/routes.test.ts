@@ -887,19 +887,6 @@ describe('budget status + incidents routes (cost-control v2)', () => {
     }
   })
 
-  it('models.getBudgetPolicy migrates a legacy shape ON READ (runtime-restored settings file)', async () => {
-    const call = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.find((c: unknown[]) => c[0] === 'models.getBudgetPolicy')!
-    const handler = call[1] as () => { rules?: unknown[] }
-    const originalGetSettings = activated.ctx.getSettings
-    activated.ctx.getSettings = (() => ({ budget: { global: { dailyUsd: 10 } } })) as typeof activated.ctx.getSettings
-    try {
-      const policy = handler()
-      expect(policy.rules).toEqual([{ scope: 'global', lane: 'metered', dailyCap: 10 }])
-    } finally {
-      activated.ctx.getSettings = originalGetSettings
-    }
-  })
-
   it('GET /budget/status?lite=1 returns only the kill-switch bit', async () => {
     const route = findRoute(activated.routes, 'GET', '/budget/status')!
     const { status, body } = await callRoute(route, activated.ctx, { searchParams: { lite: '1' } })

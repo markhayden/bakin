@@ -17,7 +17,6 @@ import { z } from 'zod'
 import type { ModelsPluginSettings } from '../types'
 import { resolveBilling } from './billing'
 import { normalizeModelId } from './model-id'
-import { isLegacyBudget, migrateLegacyBudget } from './budget-migration'
 import { resolveAgents } from './config-io'
 import {
   listBudgetIncidents,
@@ -42,11 +41,7 @@ const okResponse = z.object({ ok: z.boolean() })
 export type AgentBudgetStatus = 'ok' | 'warn' | 'deferred'
 
 function rulesOf(ctx: { getSettings<T>(): T }): BudgetRule[] {
-  // Same migrate-on-read the getBudgetPolicy hook does — a legacy-shaped
-  // settings file must read consistently on EVERY surface, not just the gate.
-  const budget = ctx.getSettings<ModelsPluginSettings>().budget
-  if (isLegacyBudget(budget)) return migrateLegacyBudget(budget).rules ?? []
-  return (budget as BudgetPolicy | undefined)?.rules ?? []
+  return (ctx.getSettings<ModelsPluginSettings>().budget as BudgetPolicy | undefined)?.rules ?? []
 }
 
 /** Worst decision for an (agent, prospective model) across both lanes — the

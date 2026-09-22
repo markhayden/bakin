@@ -15,7 +15,6 @@ import { getKnownModel, computeCostUsdMicros, computeImageCostUsdMicros } from '
 import { resolveAgents } from './config-io'
 import { resetModelsCache } from './available-models'
 import { resolveBilling } from './billing'
-import { isLegacyBudget, migrateLegacyBudget } from './budget-migration'
 import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
 import { normalizeModelId } from './model-id'
 import { fetchAvailableModels } from './available-models'
@@ -160,13 +159,8 @@ export function registerModelsHooks(ctx: PluginContext): void {
   }, { label: 'Get routing config.', summary: 'Returns the per-turn model/thinking routing policy (work classes + tag overrides) applied before each routable agent turn. Use it to read the current routing rules.', hookKind: 'rpc' })
 
   // Expose the budget policy to core dispatch, which consults it before
-  // claiming a run. Empty when none is set → no gating. A legacy-shaped
-  // policy (a settings file restored/rewritten AFTER the one-shot activation
-  // migration ran) migrates on READ too — the gate must never see a shape it
-  // silently ignores while the operator believes caps are enforced.
+  // claiming a run. Empty when none is set → no gating.
   ctx.hooks.register('models.getBudgetPolicy', () => {
-    const budget = ctx.getSettings<ModelsPluginSettings>().budget
-    if (isLegacyBudget(budget)) return migrateLegacyBudget(budget)
-    return budget ?? {}
-  }, { label: 'Get budget policy.', summary: 'Returns the spend-cap rule list that dispatch consults before each turn (legacy shapes migrate on read). Use it to read the current budget limits.', hookKind: 'rpc' })
+    return ctx.getSettings<ModelsPluginSettings>().budget ?? {}
+  }, { label: 'Get budget policy.', summary: 'Returns the spend-cap rule list that dispatch consults before each turn. Use it to read the current budget limits.', hookKind: 'rpc' })
 }
