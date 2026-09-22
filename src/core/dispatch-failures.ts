@@ -35,6 +35,8 @@ export interface DispatchFailureDetail {
   provider?: string
   model?: string
   cooldownReason?: string
+  /** The dead persisted selection behind the failure (#907), when the turn's effective model cannot run. */
+  selectionRef?: string
   rawError: string
 }
 

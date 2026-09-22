@@ -58,6 +58,7 @@ const runtime = {
     listAvailable: async () => [
       { id: LIVE, available: true },
       { id: DEAD, available: false, unavailableReason: 'no_credentials' as const },
+      { id: 'openai-codex/gpt-5.6-luna', available: true },
     ],
     routingPolicy: async () => ({ defaultModel, fallbackModels: [], defaultSubagentModel: null, aliases: {} }),
   },
@@ -65,7 +66,8 @@ const runtime = {
 mock.module('../../src/core/app-services-store', () => ({ getAppServices: () => ({ runtime }) }))
 mock.module('@/core/app-services-store', () => ({ getAppServices: () => ({ runtime }) }))
 
-import { preDispatchGate, _resetModelHoldMemo } from '../../src/core/dispatch-turns'
+import { explainDeadSelectionFailure, preDispatchGate, _resetModelHoldMemo } from '../../src/core/dispatch-turns'
+import { RuntimeError } from '../../packages/core/src/adapters/runtime'
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 beforeEach(() => { _resetModelHoldMemo(); auditCalls.length = 0; defaultModel = LIVE })
@@ -78,7 +80,7 @@ describe('preDispatchGate — effective-model hold', () => {
 
   it('inherited dead agent pin ⇒ hold naming agent:<id>:model, audited once per task', async () => {
     const hold = await preDispatchGate('enrich', dir, undefined, { taskId: 't2' })
-    expect(hold).toEqual({ reason: 'model_not_eligible', ref: 'agent:enrich:model', model: DEAD, detail: 'no credentials for openai' })
+    expect(hold).toEqual({ reason: 'model_not_eligible', ref: 'agent:enrich:model', model: DEAD, code: 'no_credentials', detail: 'no credentials for openai', proposal: 'openai-codex/gpt-5.6-luna' })
     await preDispatchGate('enrich', dir, undefined, { taskId: 't2' })
     const audits = auditCalls.filter((a) => a[1] === 'task.deferred')
     expect(audits).toHaveLength(1)
@@ -112,5 +114,31 @@ describe('preDispatchGate — effective-model hold', () => {
     } finally {
       runtime.models.listAvailable = listAvailable
     }
+  })
+})
+
+describe('explainDeadSelectionFailure — the true remediation (S2)', () => {
+  it("translates Pi's auth-unavailable cooldown on a dead pin into the #907 message with the same-id proposal", async () => {
+    const err = new RuntimeError('Pi provider auth unavailable: No API key found for openai. Use /login to log into a provider', {
+      kind: 'provider_cooldown',
+      providerInfo: { model: DEAD, authProfileUnavailable: true },
+    })
+    const explained = await explainDeadSelectionFailure(err, 'enrich', runtime)
+    expect(explained).toEqual({
+      message: "The 'enrich' agent uses openai/gpt-5.6-luna, but this install has no credentials for openai. Use openai-codex/gpt-5.6-luna instead? Fix in Models.",
+      ref: 'agent:enrich:model',
+      model: DEAD,
+      proposal: 'openai-codex/gpt-5.6-luna',
+      href: '/models?ref=agent%3Aenrich%3Amodel',
+    })
+  })
+
+  it('leaves unrelated failures and healthy selections alone (classification by kind, never message text)', async () => {
+    agents.set('pixel', { model: LIVE })
+    const cooldownOnHealthy = new RuntimeError('No API key found for openai. Use /login', { kind: 'provider_cooldown', providerInfo: { authProfileUnavailable: true } })
+    expect(await explainDeadSelectionFailure(cooldownOnHealthy, 'pixel', runtime)).toBeNull()
+    const transport = new RuntimeError('No API key found for openai. Use /login', { kind: 'transport' })
+    expect(await explainDeadSelectionFailure(transport, 'enrich', runtime)).toBeNull()
+    expect(await explainDeadSelectionFailure(new Error('plain'), 'enrich', runtime)).toBeNull()
   })
 })

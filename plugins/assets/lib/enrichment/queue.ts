@@ -75,6 +75,20 @@ function actingAgent(modelId: string): string {
   return modelId.startsWith('runtime:') ? modelId.slice('runtime:'.length) : 'system'
 }
 
+/** Runtime engines only: translate a dead-selection provider failure into the real fix (#907). */
+async function explainEnrichmentFailure(err: unknown, engineModelId: string): Promise<{ message: string; ref: string; href: string } | null> {
+  if (!engineModelId.startsWith('runtime:')) return null
+  const runtime = readRuntime()
+  if (!runtime) return null
+  try {
+    const { explainDeadSelectionFailure } = await import('../../../../src/core/dispatch-turns')
+    return await explainDeadSelectionFailure(err, actingAgent(engineModelId), runtime)
+  } catch (explainErr) {
+    log.debug('dead-selection explanation unavailable', { err: explainErr instanceof Error ? explainErr.message : String(explainErr) })
+    return null
+  }
+}
+
 export function initEnrichmentQueue(
   settingsReader: SettingsReader,
   deps: { getRuntime?: RuntimeReader; onActivity?: ActivityNotifier } = {},
@@ -258,7 +272,10 @@ async function processJob(job: EnrichmentJob): Promise<void> {
     // Record the failure BEFORE counting it: if the asset vanished mid-flight
     // this throws AssetGoneError and the outer handler books a skip instead —
     // a job must never inflate both counters.
-    const failMessage = lastError instanceof Error ? lastError.message : String(lastError)
+    // A provider failure caused by a DEAD selection (#907) is reported with
+    // the true remediation — the provider's "/login" text points the wrong way.
+    const explained = await explainEnrichmentFailure(lastError, engine.modelId)
+    const failMessage = explained?.message ?? (lastError instanceof Error ? lastError.message : String(lastError))
     await markEnrichmentFailed(job.assetId, failMessage)
     status = 'failed'
     counters.failed++
@@ -267,6 +284,7 @@ async function processJob(job: EnrichmentJob): Promise<void> {
       assetId: job.assetId,
       engine: engine.modelId,
       error: failMessage.slice(0, 160),
+      ...(explained ? { selectionRef: explained.ref, fixHref: explained.href } : {}),
     })
   } catch (err) {
     if (err instanceof AssetGoneError) {

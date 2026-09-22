@@ -21,7 +21,8 @@ import { RuntimeError, RuntimeTurnError, type AgentRuntimeAdapter, type ChatChun
 import { claimNextRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, findOpenCapIncident, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'
 import { classifyDispatchWorkClass, resolveTurnModel, type DispatchWorkClass, type ResolvedTurn, type RouteSource, type RoutingConfig } from './model-routing'
-import { getModelEligibility, type EligibilityReport } from './model-eligibility'
+import { getModelEligibility, type EligibilityReport, type IneligibleReason } from './model-eligibility'
+import { mapModelToCatalog } from './model-selections'
 import { evaluateBudget, ruleMatchesTurn, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetDecision, type TurnBillingContext } from './budget'
 import { assembleBudgetSpend, type BudgetSpendFacets } from './budget-spend'
 import { notifyBudgetIncidentOpened } from './budget-notify'
@@ -414,7 +415,7 @@ function recordBudgetBreach(
 export type PreDispatchHold =
   | { reason: 'kill_switch' }
   | { reason: 'budget'; decision: BudgetDecision }
-  | { reason: 'model_not_eligible'; ref: string; model: string; detail: string }
+  | { reason: 'model_not_eligible'; ref: string; model: string; code: IneligibleReason; detail: string; /** Same model id under a credentialed provider, when one exists (the #907 fix). */ proposal: string | null }
 
 export interface PreDispatchProspect {
   /** The routed per-turn model, when a route/tag applies (undefined = inherit). */
@@ -483,11 +484,44 @@ export async function modelHoldFor(
         ? { status: 'ineligible' as const, reason: 'not_in_catalog' as const, detail: `${model} is not in the runtime's model catalog` }
         : { status: 'unknown' as const, detail: 'catalog unavailable' })
     if (verdict.status !== 'ineligible') return null
-    return { reason: 'model_not_eligible', ref, model, detail: verdict.detail }
+    const eligibleIds = [...report.byModel.entries()].filter(([, e]) => e.eligibility.status === 'eligible').map(([id]) => id)
+    const sameId = mapModelToCatalog(model, eligibleIds)
+    return { reason: 'model_not_eligible', ref, model, code: verdict.reason, detail: verdict.detail, proposal: sameId && sameId !== model ? sameId : null }
   } catch (err) {
     log.warn('Model eligibility gate unavailable; not holding', { agentId, error: String(err) })
     return null
   }
+}
+
+/**
+ * Translate a provider failure into the TRUE remediation when the turn's
+ * effective selection is dead (#907): Pi's "No API key found for openai.
+ * Use /login…" sends the operator to add a key they do not need; the real
+ * fix is that the selection points at a provider this install has no
+ * credentials for. Classification by structured fields only. Returns null
+ * for any other failure — callers keep their existing message.
+ */
+export async function explainDeadSelectionFailure(
+  err: unknown,
+  agentId: string,
+  runtime: AgentRuntimeAdapter = getAppServices().runtime,
+): Promise<{ message: string; ref: string; model: string; proposal: string | null; href: string } | null> {
+  if (!(err instanceof RuntimeError)) return null
+  const authless = err.kind === 'provider_cooldown' && err.providerInfo?.authProfileUnavailable === true
+  if (!authless && err.kind !== 'model_not_supported') return null
+  const hold = await modelHoldFor(agentId, {}, runtime)
+  if (!hold || hold.reason !== 'model_not_eligible') return null
+  const href = `/models?ref=${encodeURIComponent(hold.ref)}`
+  const label = hold.ref.startsWith('agent:') ? `The '${agentId}' agent` : hold.ref.startsWith('route:') || hold.ref.startsWith('tag:') ? `The '${hold.ref}' route` : 'The default model'
+  const because = hold.code === 'no_credentials'
+    ? `this install has ${hold.detail}`
+    : hold.code === 'account_rejected'
+      ? `it was ${hold.detail}`
+      : hold.code === 'not_in_catalog'
+        ? 'it is not in the runtime\'s model catalog'
+        : hold.detail
+  const message = `${label} uses ${hold.model}, but ${because}.${hold.proposal ? ` Use ${hold.proposal} instead?` : ''} Fix in Models.`
+  return { message, ref: hold.ref, model: hold.model, proposal: hold.proposal, href }
 }
 
 /**
