@@ -23,8 +23,8 @@
     "paths": 165,
     "totals": {
       "raw-palette": 4,
-      "arbitrary-size": 78,
-      "raw-scale": 441,
+      "arbitrary-size": 77,
+      "raw-scale": 440,
       "raw-control": 18,
       "inline-style": 33,
       "generic-token": 72,
@@ -1716,7 +1716,7 @@
       "target": "brand list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 20
+        "raw-scale": 19
       }
     },
     {
@@ -1991,7 +1991,6 @@
       "target": "diagnostic dashboard archetypes and semantic data visualization",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 1,
         "raw-scale": 1
       }
     },
