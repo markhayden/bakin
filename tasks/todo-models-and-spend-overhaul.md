@@ -23,7 +23,7 @@ Plan: `tasks/plan-models-and-spend-overhaul.md` (v2) · Spec: `.claude/specs/mod
 - [x] T1.12 pending-restart.json + restartAdvice banner + delete dirty markers — see git log
 - [x] T1.13 runtime-switch reconcile-selections + epoch-guarded resetModelsCache — see git log
 - [x] T1.14 docs — see git log (README unaffected)
-- [ ] CHECKPOINT A: gates + ui:conformance --full + /verify S1(fixture-written) S2 S3 S10(late-settle) S15 S16 + live test → merge
+- [~] CHECKPOINT A: gates green; /verify S1/S2/S10/S15/S16 passed on an isolated Pi boot (three findings fixed, 59853649f); OPEN: payload-ratchet raise needs Mark's approval (models +3.9 KB, tasks +2.5 KB); `ModelSelect › Grouped Catalog` story flake is pre-existing (#904 class); live test on 3737 by Mark → merge
 
 ## PR 2 — feat/spend-plugin
 - [ ] T2.1 bits grep gate
