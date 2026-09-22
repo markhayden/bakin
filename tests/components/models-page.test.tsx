@@ -92,7 +92,6 @@ describe('ModelsPage component', () => {
   let availableFetchCount: number
   let selectionsRevision = 0
   let availableResponse: AvailableModelsPayload
-  let agentScopedResponses: Record<string, AvailableModelsPayload>
   let refreshResponse: AvailableModelsPayload
   let availableRequest: Promise<Response> | null
   let refreshRequest: Promise<Response> | null
@@ -106,6 +105,7 @@ describe('ModelsPage component', () => {
   let uiModeState: string | null
   let pendingState: Array<Record<string, unknown>>
   let supportState: Record<string, unknown>
+  let routeProposalsState: { proposals: Array<Record<string, unknown>>; skipped: Array<Record<string, unknown>> }
   let evidenceState: Record<string, string>
   let routingState: {
     routes: Array<{ workClass: string; model?: string; thinking?: string }>
@@ -148,7 +148,6 @@ describe('ModelsPage component', () => {
       cachedAt: null,
     }
     refreshResponse = availableResponse
-    agentScopedResponses = {}
     availableRequest = null
     refreshRequest = null
     aliasesState = {
@@ -156,6 +155,7 @@ describe('ModelsPage component', () => {
     }
     uiModeState = null
     pendingState = []
+    routeProposalsState = { proposals: [], skipped: [] }
     supportState = { defaultModel: true, fallbackModels: true, defaultSubagentModel: true, aliases: true, perAgentSubagentModel: true, supportedThinkingLevels: ['off', 'low', 'medium', 'high'], perTurnModel: true }
     evidenceState = { catalog: 'ok', runtimeAvailability: 'ok', credentials: 'ok', rejections: 'ok' }
     for (const key of Object.keys(queryOverrides)) delete queryOverrides[key]
@@ -183,11 +183,6 @@ describe('ModelsPage component', () => {
       if (url === '/api/plugins/models/available' && method === 'GET') {
         availableFetchCount += 1
         return availableRequest ?? jsonResponse(availableResponse)
-      }
-      // Agent-scoped catalog reads (#907 review): verdicts under THAT agent's credentials.
-      if (url.startsWith('/api/plugins/models/available?agentId=') && method === 'GET') {
-        const agentId = decodeURIComponent(url.slice('/api/plugins/models/available?agentId='.length))
-        return jsonResponse(agentScopedResponses[agentId] ?? availableResponse)
       }
       if (url === '/api/plugins/models/refresh' && method === 'POST') {
         return refreshRequest ?? jsonResponse(refreshResponse)
@@ -229,16 +224,11 @@ describe('ModelsPage component', () => {
             ops: ['auto-title', 'enrichment', 'relay', 'team-routing', 'skill-mapping'].map((workClass) => ({ ref: `route:${workClass}`, set: { model: 'anthropic/claude-haiku-4-5' } })),
             notes: [],
           },
-          routeProposals: { proposals: [], skipped: [] },
+          routeProposals: routeProposalsState,
           candidates: 4,
         })
       }
       if (url === '/api/plugins/models/selections' && method === 'POST') {
-        // Revision-checked like the real mutator: a write under a revision
-        // the page did not load from is refused, never applied.
-        if (body?.revision !== `rev-${selectionsRevision}`) {
-          return jsonResponse({ error: 'stale_revision', message: 'the configuration changed since this change was planned', current: `rev-${selectionsRevision}` }, 409)
-        }
         const ops = (body?.ops as Array<{ ref: string; set: { model?: string | null; thinking?: string | null } }>) ?? []
         for (const op of ops) {
           const [kind, a, b] = op.ref.split(':')
@@ -289,193 +279,110 @@ describe('ModelsPage component', () => {
     vi.unstubAllGlobals()
   })
 
-  it('renders OpenClaw-backed defaults and agent config', async () => {
-    const { container } = render(<ModelsPage />)
-
-    expect(await screen.findByText('Models')).toBeTruthy()
-    expect(await screen.findByText('Patch')).toBeTruthy()
-    expect(screen.getByText('Global Defaults')).toBeTruthy()
-    expect(container.querySelector('[data-archetype="page"]')).toBeTruthy()
-    expect(screen.getByRole('tabpanel', { name: 'Advanced' })).toBeTruthy()
-    expect(availableFetchCount).toBe(1)
-  })
-
-  it('saves global defaults and refreshes available models', async () => {
-    const user = userEvent.setup()
-    render(<ModelsPage />)
-    await screen.findByText('Patch')
-
-    await user.click(screen.getByRole('combobox', { name: 'Default Model' }))
-    await user.click(await screen.findByRole('option', { name: 'GPT-5.4' }))
-
-    fireEvent.click(screen.getByText('Save Defaults'))
-
-    await waitFor(() => {
-      const call = configWrite()
-      expect(call).toBeTruthy()
-      // Only the changed ref rides the write (D24): the default model.
-      expect(call?.body?.ops).toEqual([{ ref: 'policy:defaultModel', set: { model: 'openai-codex/gpt-5.4' } }])
-      expect(availableFetchCount).toBe(2)
+  describe('Advanced view (S4, support-gated)', () => {
+    it('Defaults: changing the default model stages one policy op; the subagent default renders when supported', async () => {
+      const user = userEvent.setup()
+      render(<ModelsPage />)
+      await user.click(await screen.findByRole('combobox', { name: 'Default model' }))
+      await user.click(await screen.findByRole('option', { name: 'GPT-5.4' }))
+      expect((await screen.findByTestId('draft-summary')).textContent).toContain('1 change staged')
+      expect(screen.getByRole('combobox', { name: 'Default subagent model' })).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(configWrite()).toBeTruthy())
+      expect(configWrite()?.body?.ops).toEqual([{ ref: 'policy:defaultModel', set: { model: 'openai-codex/gpt-5.4' } }])
     })
-  })
 
-  it('a save whose editor snapshot is behind the server is REFUSED, reloaded and explained — never re-posted against the moved state (positional fallback refs)', async () => {
-    const user = userEvent.setup()
-    render(<ModelsPage />)
-    await screen.findByText('Patch')
-    await waitFor(() => expect(fetchCalls.some((c) => c.method === 'GET' && c.url === '/api/plugins/models/selections')).toBe(true))
-    // Another editor saved after this page loaded.
-    selectionsRevision += 1
-    const configLoads = () => fetchCalls.filter((c) => c.method === 'GET' && c.url === '/api/plugins/models/config').length
-    const loadsBefore = configLoads()
-
-    await user.click(screen.getByRole('combobox', { name: 'Default Model' }))
-    await user.click(await screen.findByRole('option', { name: 'GPT-5.4' }))
-    fireEvent.click(screen.getByText('Save Defaults'))
-
-    const posts = () => fetchCalls.filter((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
-    await waitFor(() => expect(posts()).toHaveLength(1))
-    expect(posts()[0]!.body?.revision).toBe('rev-0')
-    expect(await screen.findByText(/changed since this page loaded/)).toBeTruthy()
-    await waitFor(() => expect(configLoads()).toBeGreaterThan(loadsBefore))
-    // No second POST with the same ops under the fresher revision.
-    expect(posts()).toHaveLength(1)
-  })
-
-  it('a Routing-tab visit never refreshes the revision behind the defaults snapshot — a positional fallback edit staged against the old list is refused, not authorized', async () => {
-    const user = userEvent.setup()
-    render(<ModelsPage />)
-    await screen.findByText('Patch')
-    await waitFor(() => expect(fetchCalls.some((c) => c.method === 'GET' && c.url === '/api/plugins/models/selections')).toBe(true))
-    // Another editor moved the configuration after this page loaded its defaults…
-    selectionsRevision += 1
-    // …then the operator visits Routing (its own snapshot + a fresher server revision) and comes back.
-    fireEvent.click(screen.getByRole('tab', { name: 'Routing' }))
-    await screen.findByRole('region', { name: 'Task dispatch routes' })
-    fireEvent.click(screen.getByRole('tab', { name: 'Agent Config' }))
-    await screen.findByText('Global Defaults')
-
-    // Remove fallback #1 — a POSITIONAL op built from the defaults snapshot loaded under rev-0.
-    await user.click(screen.getByRole('button', { name: 'Remove fallback 1' }))
-    fireEvent.click(screen.getByText('Save Defaults'))
-
-    const posts = () => fetchCalls.filter((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
-    await waitFor(() => expect(posts()).toHaveLength(1))
-    expect(posts()[0]!.body?.revision).toBe('rev-0')
-    expect((posts()[0]!.body?.ops as Array<{ ref: string }>)[0]!.ref).toBe('policy:fallback:0')
-    expect(await screen.findByText(/changed since this page loaded/)).toBeTruthy()
-    expect(posts()).toHaveLength(1)
-  })
-
-  it("an agent row's pickers are scoped to THAT agent's credentials: a model dead for Patch is disabled in Patch's Own Model picker while the install-wide Default Model picker still offers it", async () => {
-    agentScopedResponses.patch = {
-      ...availableResponse,
-      models: availableResponse.models!.map((m) => m.id === 'openai-codex/gpt-5.4'
-        ? { ...m, available: false, eligibility: { status: 'ineligible', reason: 'no_credentials', detail: 'no credentials for openai-codex' } }
-        : m),
-    } as AvailableModelsPayload
-    const user = userEvent.setup()
-    render(<ModelsPage />)
-    const row = (await screen.findByText('Patch')).closest('[data-agent-model-row]') as HTMLElement
-    await waitFor(() => expect(fetchCalls.some((c) => c.url === '/api/plugins/models/available?agentId=patch')).toBe(true))
-
-    await user.click(within(row).getByRole('combobox', { name: 'Own Model' }))
-    const dead = await screen.findByRole('option', { name: 'GPT-5.4 — no credentials for openai-codex' })
-    expect(dead.getAttribute('aria-disabled')).toBe('true')
-    await user.keyboard('{Escape}')
-
-    await user.click(screen.getByRole('combobox', { name: 'Default Model' }))
-    expect(await screen.findByRole('option', { name: 'GPT-5.4' })).toBeTruthy()
-  })
-
-  it('saves agent-specific model overrides', async () => {
-    const user = userEvent.setup()
-    render(<ModelsPage />)
-    const patchCell = await screen.findByText('Patch')
-    const row = patchCell.closest('[data-agent-model-row]')
-    expect(row).toBeTruthy()
-
-    await user.click(within(row as HTMLElement).getByRole('combobox', { name: 'Own Model' }))
-    await user.click(await screen.findByRole('option', { name: 'Gemini 2.5 Pro' }))
-
-    fireEvent.click(within(row as HTMLElement).getByText('Save'))
-
-    await waitFor(() => {
-      const call = configWrite()
-      expect(call?.body?.ops).toEqual([{ ref: 'agent:patch:model', set: { model: 'google/gemini-2.5-pro' } }])
-      expect(runtimeState.refresh).toHaveBeenCalled()
+    it('knobs the runtime cannot persist are hidden behind one muted line (Pi shape)', async () => {
+      supportState = { ...supportState, fallbackModels: false, aliases: false, defaultSubagentModel: false, perAgentSubagentModel: false }
+      render(<ModelsPage />)
+      await screen.findByRole('combobox', { name: 'Default model' })
+      expect(screen.queryByRole('combobox', { name: 'Default subagent model' })).toBeNull()
+      expect(screen.queryByText('Fallback models')).toBeNull()
+      expect(screen.queryByText('Aliases')).toBeNull()
+      expect(screen.getByTestId('unsupported-knobs').textContent).toContain("doesn't support fallbacks, aliases, a default subagent model")
+      expect(screen.queryByRole('combobox', { name: 'Subagents' })).toBeNull()
     })
-  })
 
-  it('adds aliases and refreshes model availability metadata', async () => {
-    const user = userEvent.setup()
-    render(<ModelsPage />)
-    await screen.findByText('Patch')
-
-    await user.click(screen.getByText('Aliases'))
-    fireEvent.change(screen.getByPlaceholderText('e.g. opus'), { target: { value: 'fast' } })
-
-    await user.click(screen.getByRole('combobox', { name: 'Target model' }))
-    await user.click(screen.getByRole('option', { name: 'Gemini 2.5 Pro' }))
-    await user.click(screen.getByRole('button', { name: 'Add alias' }))
-
-    await waitFor(() => {
-      const call = configWrite()
-      expect(call?.body?.ops).toEqual([{ ref: 'policy:alias:fast', set: { model: 'google/gemini-2.5-pro' } }])
-      expect(availableFetchCount).toBe(2)
+    it('Fallbacks: removing the only fallback stages a clear of its index; adding stages the next index', async () => {
+      render(<ModelsPage />)
+      fireEvent.click(await screen.findByRole('button', { name: 'Remove fallback 1' }))
+      expect((await screen.findByTestId('draft-summary')).textContent).toContain('1 change staged')
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(configWrite()).toBeTruthy())
+      expect(configWrite()?.body?.ops).toEqual([{ ref: 'policy:fallback:0', set: { model: null } }])
     })
-  })
 
-  it('uses shared alias search, paginated rows, and form composition', async () => {
-    aliasesState = Object.fromEntries(Array.from({ length: 10 }, (_, index) => [
-      `alias-${String(index + 1).padStart(2, '0')}`,
-      index % 2 === 0 ? 'anthropic/claude-sonnet-4-6' : 'google/gemini-2.5-pro',
-    ]))
+    it('Aliases: adding stages a set op, removing stages a clear', async () => {
+      const user = userEvent.setup()
+      render(<ModelsPage />)
+      fireEvent.change(await screen.findByRole('textbox', { name: 'New alias' }), { target: { value: 'fast' } })
+      await user.click(screen.getByRole('combobox', { name: 'Target model' }))
+      await user.click(await screen.findByRole('option', { name: 'Claude Haiku 4.5' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Add alias' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Remove alias sonnet' }))
+      expect((await screen.findByTestId('draft-summary')).textContent).toContain('2 changes staged')
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(configWrite()).toBeTruthy())
+      expect(configWrite()?.body?.ops).toEqual([
+        { ref: 'policy:alias:fast', set: { model: 'anthropic/claude-haiku-4-5' } },
+        { ref: 'policy:alias:sonnet', set: { model: null } },
+      ])
+    })
 
-    const { container } = render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Aliases'))
+    it('Agents: an override stages the agent ref; the row shows the effective model', async () => {
+      const user = userEvent.setup()
+      render(<ModelsPage />)
+      const row = within((await screen.findByText('Patch')).closest('[data-agent-model-row]') as HTMLElement)
+      expect(row.getByText('anthropic/claude-sonnet-4-6')).toBeTruthy()
+      await user.click(row.getByRole('combobox', { name: 'Override' }))
+      await user.click(await screen.findByRole('option', { name: 'Claude Opus 4.6' }))
+      expect((await screen.findByTestId('draft-summary')).textContent).toContain('1 change staged')
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(configWrite()).toBeTruthy())
+      expect(configWrite()?.body?.ops).toEqual([{ ref: 'agent:patch:model', set: { model: 'anthropic/claude-opus-4-6' } }])
+    })
 
-    const search = await screen.findByRole('searchbox', { name: 'Search aliases' })
-    expect(container.querySelector('[data-slot="form"]')).toBeTruthy()
-    expect(screen.getByRole('combobox', { name: 'Target model' })).toBeTruthy()
-    expect(screen.getByText('Showing 1–8 of 10')).toBeTruthy()
-    expect(container.querySelectorAll('[data-alias-row]')).toHaveLength(8)
+    it('Work routing: 11 classes in two groups; a model change stages a route op; a new tag override needs a model', async () => {
+      const user = userEvent.setup()
+      const { container } = render(<ModelsPage />)
+      expect(await screen.findByRole('region', { name: 'Agent work routes' })).toBeTruthy()
+      expect(screen.getByRole('region', { name: 'Background chores routes' })).toBeTruthy()
+      expect(container.querySelectorAll('[data-routing-row]')).toHaveLength(11)
+      await user.click(screen.getByRole('combobox', { name: /Scheduled model/i }))
+      await user.click(await screen.findByRole('option', { name: 'Claude Haiku 4.5' }))
+      const addOverride = screen.getByRole('button', { name: 'Add override' }) as HTMLButtonElement
+      fireEvent.change(screen.getByRole('textbox', { name: 'Task tag' }), { target: { value: 'heavy' } })
+      expect(addOverride.disabled).toBe(true)
+      await user.click(screen.getByRole('combobox', { name: 'Model' }))
+      await user.click(await screen.findByRole('option', { name: 'Claude Opus 4.6' }))
+      fireEvent.click(addOverride)
+      expect((await screen.findByTestId('draft-summary')).textContent).toContain('2 changes staged')
+      expect(screen.getByRole('button', { name: 'Remove tag override heavy' })).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(configWrite()).toBeTruthy())
+      expect(configWrite()?.body?.ops).toEqual([
+        { ref: 'route:scheduled', set: { model: 'anthropic/claude-haiku-4-5' } },
+        { ref: 'tag:heavy', set: { model: 'anthropic/claude-opus-4-6' } },
+      ])
+    })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
-    expect(await screen.findByText('Showing 9–10 of 10')).toBeTruthy()
-    expect(container.querySelectorAll('[data-alias-row]')).toHaveLength(2)
+    it('"Use recommended routes" stages the route proposals from the plan', async () => {
+      routeProposalsState = { proposals: [{ workClass: 'relay', model: 'anthropic/claude-haiku-4-5', reason: 'cheapest' }], skipped: [{ workClass: 'enrichment', reason: 'no vision model' }] }
+      render(<ModelsPage />)
+      fireEvent.click(await screen.findByRole('button', { name: 'Use recommended routes' }))
+      const dialog = await screen.findByRole('dialog')
+      expect(within(dialog).getByText('Skipped enrichment')).toBeTruthy()
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Stage 1 route' }))
+      expect((await screen.findByTestId('draft-summary')).textContent).toContain('1 change staged')
+    })
 
-    fireEvent.change(search, { target: { value: 'alias-10' } })
-    expect(await screen.findByText('alias-10')).toBeTruthy()
-    expect(screen.queryByText('alias-09')).toBeNull()
-  })
-
-  it('confirms alias deletion with the alias name and current target', async () => {
-    const user = userEvent.setup()
-    render(<ModelsPage />)
-    await user.click(await screen.findByText('Aliases'))
-
-    const deleteButton = await screen.findByRole('button', { name: 'Delete sonnet alias' })
-    await user.click(deleteButton)
-
-    const dialog = screen.getByRole('dialog', { name: 'Delete “sonnet” alias?' })
-    expect(within(dialog).getByText(/currently points to anthropic\/claude-sonnet-4-6/)).toBeTruthy()
-    expect(within(dialog).getByText(/may stop resolving/)).toBeTruthy()
-    const isAliasClear = (call: { body?: Record<string, unknown> }) => ((call.body?.ops as Array<{ ref: string; set: { model?: string | null } }> | undefined) ?? []).some((op) => op.ref === 'policy:alias:sonnet' && op.set.model === null)
-    expect(fetchCalls.some(isAliasClear)).toBe(false)
-
-    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
-    expect(screen.queryByRole('dialog', { name: 'Delete “sonnet” alias?' })).toBeNull()
-    expect(screen.getByText('sonnet')).toBeTruthy()
-
-    await user.click(deleteButton)
-    await user.click(within(
-      screen.getByRole('dialog', { name: 'Delete “sonnet” alias?' }),
-    ).getByRole('button', { name: 'Delete alias' }))
-
-    await waitFor(() => {
-      expect(fetchCalls.some(isAliasClear)).toBe(true)
-      expect(screen.queryByText('sonnet')).toBeNull()
+    it('a runtime that refuses per-turn overrides shows the notice and makes routing read-only', async () => {
+      supportState = { ...supportState, perTurnModel: false }
+      render(<ModelsPage />)
+      expect(await screen.findByTestId('per-turn-clamped')).toBeTruthy()
+      const scheduled = screen.getByRole('combobox', { name: /Scheduled model/i })
+      expect(scheduled.getAttribute('aria-disabled') === 'true' || (scheduled as HTMLButtonElement).disabled).toBe(true)
+      expect((screen.getByRole('button', { name: 'Use recommended routes' }) as HTMLButtonElement).disabled).toBe(true)
     })
   })
 
@@ -793,30 +700,6 @@ describe('ModelsPage component', () => {
       expect(within(dialog).getByText('Kept policy:fallback:0')).toBeTruthy()
       expect(within(dialog).getByText('Kept policy:alias:sonnet')).toBeTruthy()
     })
-  })
-
-  it('uses the settings form composition for routing while preserving staged saves', async () => {
-    const { container } = render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Routing'))
-
-    expect(await screen.findByRole('region', { name: 'Task dispatch routes' })).toBeTruthy()
-    expect(screen.getByRole('region', { name: 'System work routes' })).toBeTruthy()
-    expect(container.querySelectorAll('select')).toHaveLength(0)
-
-    const scheduledModel = screen.getByRole('combobox', { name: /Scheduled model/i })
-    await userEvent.click(scheduledModel)
-    await userEvent.click(await screen.findByRole('option', { name: 'Claude Haiku 4.5' }))
-
-    expect(await screen.findByText('Unsaved routing changes')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Save routing' }))
-
-    await waitFor(() => {
-      const call = configWrite()
-      expect(call?.body?.ops).toEqual(expect.arrayContaining([
-        { ref: 'route:scheduled', set: { model: 'anthropic/claude-haiku-4-5' } },
-      ]))
-    })
-    expect(screen.queryByText('Unsaved routing changes')).toBeNull()
   })
 
   it('paginates the model catalog and resets to filtered search results', async () => {

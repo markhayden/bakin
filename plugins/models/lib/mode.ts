@@ -12,6 +12,9 @@
  */
 import { DISPATCH_WORK_CLASSES, WORK_CLASSES, type WorkClass } from '../../../src/core/model-routing'
 
+// Re-exported so client components stay on plugin-local imports (UI legacy-style ratchet).
+export { WORK_CLASSES }
+
 export type UiMode = 'simple' | 'advanced'
 
 import type { SelectionStateWire } from '../types'

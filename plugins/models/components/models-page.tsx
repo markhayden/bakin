@@ -8,30 +8,22 @@
  * deep-links a selection: the owning view highlights it and, when it lives
  * in a layer Simple cannot show, the VIEW flips to Advanced without writing.
  */
-import { useQueryState, useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
-import { Page, PageBody, PageHeader, SaveBar, SearchInput, SegmentedControl } from '@makinbakin/sdk/patterns'
-import { Badge, Banner, Button, SystemState, Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
+import { useRuntimeStatus } from '@makinbakin/sdk/hooks'
+import { useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
+import { Page, PageBody, PageHeader, SaveBar, SegmentedControl } from '@makinbakin/sdk/patterns'
+import { Badge, Banner, Button, SystemState } from '@makinbakin/sdk/ui'
 
 import type { UiMode } from '../lib/mode'
-import { AgentsTab } from './agents-tab'
-import { AliasesTab } from './aliases-tab'
+import { AdvancedMode } from './advanced-mode'
 import { CatalogPanel } from './catalog-panel'
-import { RoutingTab } from './routing-tab'
 import { SimpleMode } from './simple-mode'
-import { useModelsData } from './use-models-data'
+import { useCatalog } from './use-catalog'
 import { useSelections, type SelectionsData } from './use-selections'
 
 const MODE_OPTIONS = [
   { value: 'simple', label: 'Simple' },
   { value: 'advanced', label: 'Advanced' },
 ] as const satisfies ReadonlyArray<{ value: UiMode; label: string }>
-
-/** Advanced sections, mounted behind the shell until the sectioned rewrite replaces them. */
-const ADVANCED_TABS = [
-  { id: 'agents', label: 'Agent Config' },
-  { id: 'aliases', label: 'Aliases' },
-  { id: 'routing', label: 'Routing' },
-] as const
 
 function PendingSummary({ sel }: { sel: SelectionsData }) {
   const count = sel.pendingRefs.size
@@ -48,13 +40,8 @@ function PendingSummary({ sel }: { sel: SelectionsData }) {
 
 export function ModelsPage() {
   const sel = useSelections()
-  // The Advanced sections still read through the previous data layer.
-  const m = useModelsData()
-  const [tab, setTab] = useQueryState('tab', 'agents')
-  const [aliasQuery, setAliasQuery] = useQueryState('aliasQuery', '')
-  const [aliasPage, setAliasPage] = useQueryState('aliasPage', '1')
-  const [aliasShowAll, setAliasShowAll] = useQueryState('aliasAll', 'false')
-  const { runtimeStatus } = m
+  const catalog = useCatalog()
+  const runtimeStatus = useRuntimeStatus()
   const defaultModel = sel.selections?.states.find((s) => s.ref === 'policy:defaultModel')?.model ?? null
   const evidence = sel.selections?.evidence
 
@@ -130,16 +117,6 @@ export function ModelsPage() {
         />
       ) : null}
 
-      {m.error ? (
-        <Banner
-          tone="danger"
-          announce="assertive"
-          title="Part of the model configuration could not be loaded"
-          description={m.error}
-          action={<Button variant="outline" size="sm" onClick={m.fetchConfig}>Retry</Button>}
-        />
-      ) : null}
-
       {sel.view === 'simple' ? (
         <PageBody
           id="models-mode-panel-simple"
@@ -147,7 +124,7 @@ export function ModelsPage() {
           labelledBy="models-mode-tab-simple"
           state={shellState}
         >
-          <SimpleMode sel={sel} modelOptions={m.modelSelectOptions} onAdvanced={() => sel.setView('advanced')} />
+          <SimpleMode sel={sel} modelOptions={catalog.modelSelectOptions} onAdvanced={() => sel.setView('advanced')} />
         </PageBody>
       ) : (
         <PageBody
@@ -155,60 +132,12 @@ export function ModelsPage() {
           role="tabpanel"
           labelledBy="models-mode-tab-advanced"
           state={shellState}
-          feedback={tab === 'routing' && m.pendingRouting ? (
-            <Banner
-              tone="attention"
-              announce="polite"
-              headingLevel={2}
-              title="Unsaved routing changes"
-              description="Save these routes before leaving, or discard them to return to the current runtime configuration."
-              action={(
-                <>
-                  <Button type="button" variant="outline" size="sm" disabled={m.saving === 'routing'} onClick={() => m.setPendingRouting(null)}>
-                    Discard changes
-                  </Button>
-                  <Button type="button" size="sm" disabled={m.saving === 'routing'} onClick={() => void m.saveRouting()}>
-                    {m.saving === 'routing' ? 'Saving…' : 'Save routing'}
-                  </Button>
-                </>
-              )}
-            />
-          ) : undefined}
         >
-          <Tabs value={tab} onValueChange={(id) => setTab(id)}>
-            <TabsList variant="underline" activateOnFocus aria-label="Advanced model settings">
-              {ADVANCED_TABS.map((item) => (
-                <TabsTrigger key={item.id} value={item.id} id={`models-tab-${item.id}`}>
-                  {item.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-          {tab === 'agents' && <AgentsTab m={m} />}
-          {tab === 'aliases' && (
-            <SearchInput
-              label="Search aliases"
-              value={aliasQuery}
-              onValueChange={(query) => { setAliasQuery(query); setAliasPage('1'); setAliasShowAll('false') }}
-              placeholder="Search aliases…"
-            />
-          )}
-          {tab === 'aliases' && (
-            <AliasesTab
-              m={m}
-              query={aliasQuery}
-              pageValue={aliasPage}
-              showAllValue={aliasShowAll}
-              onQueryChange={(query) => { setAliasQuery(query); setAliasPage('1'); setAliasShowAll('false') }}
-              onPageChange={setAliasPage}
-              onShowAllChange={(showAll) => { setAliasShowAll(showAll); setAliasPage('1') }}
-            />
-          )}
-          {tab === 'routing' && <RoutingTab m={m} />}
+          <AdvancedMode sel={sel} modelOptions={catalog.modelSelectOptions} />
         </PageBody>
       )}
 
-      <CatalogPanel catalog={m} defaultModel={defaultModel} />
+      <CatalogPanel catalog={catalog} defaultModel={defaultModel} />
 
       {sel.dirty || sel.saveError || pendingFromSave.length > 0 ? (
         <SaveBar

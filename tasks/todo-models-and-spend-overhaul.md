@@ -52,7 +52,7 @@ Plan: `tasks/plan-models-and-spend-overhaul.md` (v2) · Spec: `.claude/specs/mod
 - [x] T3.5 draft/op model (`lib/draft.ts` pure: stage/unstage/matchesPersisted/retainFailed) + `useSelections` save (revision, one stale retry, failed refs retained) + one `SaveBar` + `useUnsavedChangesGuard`; consumers land in T3.6/T3.8
 - [x] T3.6 Simple view — `simple-mode.tsx` (two lane cards with ModelSelect, Mixed + "Set all to…", customizations line → Advanced, recommended-plan ConfirmDialog staging ops), `lib/simple.ts` pure lane rules, `simple-save-minimality.test.ts` (200-seed property test); perTurnModel notice rides T3.8
 - [x] T3.7 Reset to this plan — `buildResetOps` in core (support-gated clears, skipped + disclosed), `reset-dialog.tsx` (ConfirmDialog with typed confirmation + diff, immediate `snapshot:'reset'`, refused while dirty, undo handle shown; MutateResult now carries `snapshot`)
-- [ ] T3.8 Advanced sections support-gated
+- [x] T3.8 Advanced view — `advanced-mode.tsx` (Defaults with support-gated fallbacks/aliases/subagent default + one muted line for hidden knobs; Agents ListRows with override + gated subagent column; Work routing DataTables Agent work / Background chores + thinking selects + tag overrides + "Use recommended routes" dialog; perTurnModel=false ⇒ Alert + read-only), `lib/advanced.ts` draft readers; old tabs unmounted (deleted in T3.11)
 - [ ] T3.9 selection callouts (stage-into-draft)
 - [ ] T3.10 Team shared options hook + models.catalog_changed
 - [ ] T3.11 delete tabs, dead Settings field, stale hooks  **[PoNR]**
