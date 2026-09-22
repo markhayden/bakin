@@ -6,8 +6,10 @@
  *   GET  /limits                   the limits policy (rules with ids)
  *   PUT  /limits                   replace the rule list (ids server-assigned)
  *   GET  /status[?lite=1]          live gate status — the poll behind badges/banner
+ *                                  (lite = kill switch + ladder rows only, no facets)
  *   GET  /incidents[?all=1]        durable breach records
- *   POST /incidents/:id/resolve    raise | ack | resume
+ *   POST /incidents/:id/resolve    raise | ack | resume (resume ⇒ 409 still_over_limit while over)
+ *   POST /milestones/:id/ack       dismiss a milestone bar for its window
  *   PUT  /billing/overrides        manual lane assignments
  *
  * Every read that touches the ledger degrades honestly (503 when the ledger
@@ -21,13 +23,16 @@ import { normalizeModelId } from '@bakin/core/llm/model-id'
 import { KNOWN_PROVIDERS } from '@bakin/core/llm/model-catalog'
 
 import {
+  acknowledgeMilestone,
   findOpenCapIncident,
   listBudgetIncidents,
+  listMilestones,
   listRunCostsSince,
   resolveBudgetIncident,
   resolveExpiredBudgetIncidents,
   LedgerUnavailableError,
   type BudgetIncidentRow,
+  type BudgetMilestoneRow,
 } from '../../../src/core/execution-ledger'
 import { assembleBudgetSpend, paceProjection, dayEndMs, monthEndMs, type BudgetSpendFacets, type LaneSums, type ScopeSpend } from '../../../src/core/budget-spend'
 import { evaluateBudget, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetRule } from '../../../src/core/budget'
@@ -132,6 +137,19 @@ function sweepRollover(): void {
   } catch (err) {
     log.warn('incident rollover sweep failed on read', { err: err instanceof Error ? err.message : String(err) })
   }
+}
+
+/**
+ * The ladder rows the header/badge render: milestone rows for the CURRENT
+ * daily and monthly windows of rules that still exist (a deleted rule's
+ * rows are history, not attention), below 100 (the incident speaks for
+ * 100), oldest crossing first.
+ */
+function liveMilestones(policy: BudgetPolicy, now: number): BudgetMilestoneRow[] {
+  const ruleIds = new Set((policy.rules ?? []).map((r) => r.id).filter((id): id is string => typeof id === 'string'))
+  const windowStarts = { daily: dayStartMs(now), monthly: monthStartMs(now) }
+  return listMilestones({ sinceMs: windowStarts.monthly })
+    .filter((row) => ruleIds.has(row.ruleId) && row.milestone < 100 && row.windowStartMs === windowStarts[row.window])
 }
 
 function writeLimits(ctx: PluginContext, limits: z.infer<typeof LimitsSchema>): void {
@@ -337,13 +355,18 @@ export const spendRoutes = [
     handler: async (req, ctx) => {
       try {
         const paused = getSystemSettings().dispatch.paused
+        const policy = readLimits(ctx)
+        // ?lite=1 — the header's poll wants the kill switch and the ladder
+        // rows (milestones + open incidents — cheap ledger reads); skip the
+        // facets/agents/per-task work entirely.
         if (new URL(req.url).searchParams.get('lite') === '1') {
-          return Response.json({ paused })
+          sweepRollover()
+          return Response.json({ paused, milestones: liveMilestones(policy, Date.now()), openIncidents: listBudgetIncidents({ openOnly: true }) })
         }
         sweepRollover()
-        const policy = readLimits(ctx)
         const overrides = readOverrides(ctx)
         const openIncidents = listBudgetIncidents({ openOnly: true })
+        const milestones = liveMilestones(policy, Date.now())
         const agents = await listAgentModels(ctx as unknown as PluginContext)
         const billing: Record<string, { provider: string; lane: 'metered' | 'subscription'; model: string | null }> = {}
         for (const agent of agents) {
@@ -351,7 +374,7 @@ export const spendRoutes = [
           billing[agent.agentId] = { ...agentBilling, model: agent.effectiveModel }
         }
         if (!policy.rules?.length) {
-          return Response.json({ paused, configured: false, perAgent: {}, perTask: {}, billing, overrides, deferredProviders: [], openIncidents })
+          return Response.json({ paused, configured: false, perAgent: {}, perTask: {}, billing, overrides, deferredProviders: [], openIncidents, milestones })
         }
         const facets = await assembleBudgetSpend(Date.now())
         const perAgent: Record<string, AgentBudgetStatus> = {}
@@ -414,7 +437,7 @@ export const spendRoutes = [
           // Taskboard/dispatch graph unreadable — badges degrade to perAgent.
           log.warn('perTask hold computation failed', { err: err instanceof Error ? err.message : String(err) })
         }
-        return Response.json({ paused, configured: true, perAgent, perTask, billing, overrides, deferredProviders: [...new Set(deferredProviders)], openIncidents })
+        return Response.json({ paused, configured: true, perAgent, perTask, billing, overrides, deferredProviders: [...new Set(deferredProviders)], openIncidents, milestones })
       } catch (err) {
         const status = err instanceof LedgerUnavailableError ? 503 : 500
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status })
@@ -446,7 +469,7 @@ export const spendRoutes = [
     description: "raise: set a new cap (must exceed current spend in the rule's unit) on the breached rule and resume. ack: stop alerting, keep deferring until the window rolls. resume: clear (e.g. unblock a pause-mode hold) without raising.",
     params: z.object({ id: z.string().regex(/^\d+$/) }),
     body: ResolveIncidentSchema,
-    responses: { 200: okResponse, 400: errorResponse, 404: errorResponse, 500: errorResponse },
+    responses: { 200: okResponse, 400: errorResponse, 404: errorResponse, 409: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
       try {
         const id = Number(params.id)
@@ -461,6 +484,18 @@ export const spendRoutes = [
         }
 
         if (body.action === 'resume') {
+          // S12: resuming while spend is still at/over the cap would just
+          // re-breach on the next turn (and, on a defer rule, re-alert). Say
+          // so — the honest way out is a raise.
+          const rule = (readLimits(ctx).rules ?? []).find((r) => ruleMatchesIncident(r, incident))
+          if (rule) {
+            const facets = await assembleBudgetSpend(Date.now())
+            const capValue = incident.window === 'daily' ? rule.dailyCap : rule.monthlyCap
+            const capInUnit = capValue === undefined ? null : rule.lane === 'metered' ? Math.round(capValue * 1_000_000) : Math.round(capValue)
+            if (capInUnit !== null && ruleSpend(rule, facets, incident.window) >= capInUnit) {
+              return Response.json({ error: 'still_over_limit', message: 'Spend is still at or over this limit — raise the limit to resume.' }, { status: 409 })
+            }
+          }
           resolveBudgetIncident({ id, status: 'resolved', resolution: 'acknowledged' })
           emitBudgetIncidentResolved({ incidentId: id, resolution: 'acknowledged' })
           ctx.activity.audit('budget.incident_resolved', 'system', { incidentId: id, action: 'resume' })
@@ -495,6 +530,27 @@ export const spendRoutes = [
         // "Raise & resume" must RESUME — kick a dispatch cycle so deferred
         // tasks move now, not at the next interval.
         void import('../../../src/core/dispatch-cycle').then((m) => m.requestImmediateDispatch(`budget incident ${id} raised`)).catch(() => {})
+        return Response.json({ ok: true })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/milestones/:id/ack',
+    method: 'POST',
+    summary: 'Dismiss a milestone bar for its window',
+    description: 'Marks the milestone row acknowledged; the header bar for it goes away until the next window. Never changes what is enforced.',
+    params: z.object({ id: z.string().regex(/^\d+$/) }),
+    body: { contentType: 'none' },
+    responses: { 200: okResponse, 404: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { params }) => {
+      try {
+        const id = Number(params.id)
+        const ok = acknowledgeMilestone(id)
+        if (!ok) return Response.json({ error: `No unacknowledged milestone ${id}` }, { status: 404 })
+        ctx.activity.audit('budget.milestone_acknowledged', 'system', { milestoneId: id })
         return Response.json({ ok: true })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })

@@ -43,7 +43,7 @@ describe('spend plugin registration', () => {
     expect(hooks.sort()).toEqual(['spend.getBudgetPolicy', 'spend.priceImage', 'spend.priceTurn', 'spend.resolveBilling', 'spend.updateBudgetPolicy'])
     expect(routes.map((r) => `${r.method} ${r.path}`).sort()).toEqual([
       'GET /coverage', 'GET /incidents', 'GET /limits', 'GET /spend', 'GET /status',
-      'POST /incidents/:id/resolve', 'PUT /billing/overrides', 'PUT /limits',
+      'POST /incidents/:id/resolve', 'POST /milestones/:id/ack', 'PUT /billing/overrides', 'PUT /limits',
     ])
     expect(readPluginSettings<Record<string, unknown>>('spend')).toEqual({ limits: { rules: [] }, billing: { overrides: [] } })
   })

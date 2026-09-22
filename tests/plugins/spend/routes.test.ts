@@ -29,7 +29,21 @@ mock.module('../../../packages/core/src/logger', loggerMock)
 class FakeLedgerUnavailable extends Error {}
 let incidentsList: unknown[] = []
 const incidentResolves: Array<Record<string, unknown>> = []
+// In-memory milestone rows (the real verbs are pinned in tests/core/budget-milestones-ledger.test.ts).
+const milestoneRows: Array<Record<string, unknown> & { id: number; acknowledgedAt: number | null }> = []
 mock.module('../../../src/core/execution-ledger', () => ({
+  recordMilestoneCrossings: (inputs: Array<Record<string, unknown>>) => inputs.map((input) => {
+    const row = { ...input, id: milestoneRows.length + 1, eventId: `evt-${milestoneRows.length + 1}`, coveredBy: null, notifiedAt: null, acknowledgedAt: null }
+    milestoneRows.push(row)
+    return row
+  }),
+  listMilestones: () => milestoneRows,
+  acknowledgeMilestone: (id: number) => {
+    const row = milestoneRows.find((r) => r.id === id)
+    if (!row || row.acknowledgedAt !== null) return false
+    row.acknowledgedAt = Date.now()
+    return true
+  },
   listRunCostsSince: mock(() => [
     { runId: 'r1', agent: 'pixel', model: 'anthropic/claude-sonnet-4-6', provider: 'anthropic', lane: 'metered', usageKind: 'tokens', totalTokens: 100, costUsdMicros: 150_000, workClass: 'scheduled', routeSource: 'class', occurredAt: Date.now() },
     { runId: 'r2', agent: 'patch', model: '', provider: null, lane: null, usageKind: 'tokens', totalTokens: 40, costUsdMicros: null, workClass: null, routeSource: null, occurredAt: Date.now() },
@@ -114,7 +128,7 @@ describe('activation', () => {
     expect(hookNames.sort()).toEqual(['spend.getBudgetPolicy', 'spend.priceImage', 'spend.priceTurn', 'spend.resolveBilling', 'spend.updateBudgetPolicy'])
     expect(activated.routes.map((r) => `${r.method} ${r.path}`).sort()).toEqual([
       'GET /coverage', 'GET /incidents', 'GET /limits', 'GET /spend', 'GET /status',
-      'POST /incidents/:id/resolve', 'PUT /billing/overrides', 'PUT /limits',
+      'POST /incidents/:id/resolve', 'POST /milestones/:id/ack', 'PUT /billing/overrides', 'PUT /limits',
     ])
     expect(activated.routes.find((route) => route.path === '/status')?.activityClass).toBe('routine')
   })
@@ -254,10 +268,10 @@ describe('GET /status', () => {
     }
   })
 
-  it('?lite=1 returns only the kill-switch bit', async () => {
+  it('?lite=1 returns the kill switch + ladder rows (milestones, open incidents) and nothing that needs facets', async () => {
     const { status, body } = await callRoute(findRoute(activated.routes, 'GET', '/status')!, activated.ctx, { searchParams: { lite: '1' } })
     expect(status).toBe(200)
-    expect(Object.keys(body)).toEqual(['paused'])
+    expect(Object.keys(body).sort()).toEqual(['milestones', 'openIncidents', 'paused'])
   })
 })
 
@@ -294,6 +308,26 @@ describe('incidents', () => {
       expect(ok.status).toBe(200)
       expect(readPluginSettings<{ limits: { rules: Array<Record<string, unknown>> } }>('spend').limits.rules).toEqual([{ id: 'g', scope: 'global', lane: 'metered', dailyCap: 5 }])
       expect(incidentResolves.at(-1)).toMatchObject({ id: 9, status: 'resolved', resolution: 'raised' })
+    } finally {
+      incidentsList = []
+    }
+  })
+
+  it('S12: resume is refused with 409 still_over_limit while spend is still at/over the cap; raise is the way out', async () => {
+    // $0.10 daily cap; the mocked ledger has $0.15 attributed → still over.
+    writePluginSettings('spend', { limits: { rules: [{ id: 'g', scope: 'global', lane: 'metered', dailyCap: 0.1, atCap: 'pause' }] }, billing: { overrides: [] } })
+    incidentsList = [{ id: 21, scope: 'global', scopeId: '', lane: 'metered', window: 'daily', kind: 'cap', status: 'open', atCap: 'pause' }]
+    const route = findRoute(activated.routes, 'POST', '/incidents/:id/resolve')!
+    try {
+      const refused = await callRoute(route, activated.ctx, { searchParams: { id: '21' }, body: { action: 'resume' } })
+      expect(refused.status).toBe(409)
+      expect(refused.body.error).toBe('still_over_limit')
+      expect(incidentResolves.some((r) => r.id === 21)).toBe(false)
+      // Under the cap (rule raised meanwhile) ⇒ resume clears it.
+      writePluginSettings('spend', { limits: { rules: [{ id: 'g', scope: 'global', lane: 'metered', dailyCap: 5, atCap: 'pause' }] }, billing: { overrides: [] } })
+      const ok = await callRoute(route, activated.ctx, { searchParams: { id: '21' }, body: { action: 'resume' } })
+      expect(ok.status).toBe(200)
+      expect(incidentResolves.at(-1)).toMatchObject({ id: 21, status: 'resolved', resolution: 'acknowledged' })
     } finally {
       incidentsList = []
     }
@@ -363,5 +397,16 @@ describe('GET /coverage', () => {
     expect(body.suggestion).toEqual({ status: 'insufficient_history', coveredDays: 0, daysNeeded: 14 })
     // Spend recorded on unobserved days is reported, never blended into a rate.
     expect((body.uncovered as { window: { global: { meteredUsdMicros: number } } }).window.global.meteredUsdMicros).toBe(150_000)
+  })
+})
+
+describe('POST /milestones/:id/ack', () => {
+  it('acknowledges a live row once; a second ack (or an unknown id) is 404', async () => {
+    const { recordMilestoneCrossings } = await import('../../../src/core/execution-ledger')
+    const [row] = recordMilestoneCrossings([{ ruleId: 'g', window: 'daily', windowStartMs: 0, milestone: 90, spentValue: 9, capValue: 10, unit: 'usd_micros', crossedAt: 1 }])
+    const route = findRoute(activated.routes, 'POST', '/milestones/:id/ack')!
+    expect((await callRoute(route, activated.ctx, { searchParams: { id: String(row!.id) } })).status).toBe(200)
+    expect((await callRoute(route, activated.ctx, { searchParams: { id: String(row!.id) } })).status).toBe(404)
+    expect((await callRoute(route, activated.ctx, { searchParams: { id: '999999' } })).status).toBe(404)
   })
 })

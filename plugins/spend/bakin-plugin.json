@@ -52,6 +52,11 @@
         "method": "PUT",
         "path": "/billing/overrides",
         "summary": "Replace manual billing-lane overrides"
+      },
+      {
+        "method": "POST",
+        "path": "/milestones/:id/ack",
+        "summary": "Dismiss a milestone bar for its window"
       }
     ],
     "nav": [
@@ -65,7 +70,9 @@
       }
     ],
     "slots": [
-      "page:/spend"
-    ]
+      "page:/spend",
+      "nav-badge-providers"
+    ],
+    "eager": true
   }
 }

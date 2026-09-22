@@ -22,7 +22,7 @@
     "byKind": {
       "host-route": 27,
       "plugin-route": 12,
-      "plugin-slot": 32,
+      "plugin-slot": 33,
       "plugin-template": 2,
       "shared-component": 32,
       "sdk-ui-export": 0
@@ -1678,6 +1678,36 @@
           "type": "client-registration",
           "path": "plugins/schedule/client.tsx",
           "detail": "registerPlugin slots \"page:/schedule\" -> SchedulePage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:spend:nav-badge-providers",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "spend"
+      },
+      "identity": {
+        "slot": "nav-badge-providers"
+      },
+      "sourcePath": "plugins/spend/client.tsx",
+      "symbols": [
+        "SpendBadgeProvider"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "embedded-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/spend/bakin-plugin.json",
+          "detail": "contributes.slots[1]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/spend/client.tsx",
+          "detail": "registerPlugin slots \"nav-badge-providers\" -> SpendBadgeProvider"
         }
       ]
     },
