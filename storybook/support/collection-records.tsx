@@ -55,10 +55,10 @@ export function CollectionComparison({ showActions = true, onAction }: Collectio
     <StoryStage
       eyebrow="Collection review / #806"
       title="One collection, three presentations"
-      description="Start with standard rows. Choose cards for meaningful previews, or a table when comparing columns is the job. Each supports an optional action menu; demo actions are logged in Storybook only."
+      description="Start with a data table. Choose cards for meaningful previews, or separated rows for compact supporting lists. Each supports an optional action menu; demo actions are logged in Storybook only."
       width="wide"
     >
-      <StorySection title="Standard rows — the default" description="Quiet dividers, one clear identity, and supporting facts that wrap on narrow screens.">
+      <StorySection title="Standard rows — supporting lists" description="Quiet dividers, one clear identity, and supporting facts that wrap on narrow screens.">
         <ListRows variant="separated" aria-label="Projects as standard rows">
           {collectionProjects.map((project) => (
             <ListRow key={project.id}>
@@ -80,7 +80,7 @@ export function CollectionComparison({ showActions = true, onAction }: Collectio
           ))}
         </ListRows>
       </StorySection>
-      <StorySection title="Cards — compare the cost" description="The same text-first records take separate boxes. Nothing here needs a visual preview, so rows are the recommended choice.">
+      <StorySection title="Cards — compare the cost" description="The same text-first records take separate boxes. Nothing here needs a visual preview, so a data table is the recommended choice.">
         <Grid as="ul" layout="cards" gap="item" aria-label="Projects as cards" className="m-0 list-none p-0">
           {collectionProjects.map((project) => (
             <li key={project.id} className="min-w-0">
@@ -104,7 +104,7 @@ export function CollectionComparison({ showActions = true, onAction }: Collectio
           ))}
         </Grid>
       </StorySection>
-      <StorySection title="Table — compare attributes" description="Aligned columns help compare ownership, item counts, and progress. This example deliberately stays a table on narrow screens; scroll its bounded region when needed.">
+      <StorySection title="Data table — the default" description="Aligned columns help browse records and compare ownership, item counts, and progress. This example deliberately stays a table on narrow screens; scroll its bounded region when needed.">
         <DataTable
           label="Projects as a comparison table"
           rows={collectionProjects}

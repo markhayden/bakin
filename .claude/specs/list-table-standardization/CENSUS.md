@@ -14,6 +14,11 @@ or complete state coverage. Workflows shipped through #885; Projects and the
 Messaging slices remain local pending the combined rollout. See PLAN/AUDIT for
 the per-slice verification boundaries and specialized follow-ups.
 
+The subsequent table-first ruling supersedes unimplemented rows-first index
+recommendations in this matrix. Re-evaluate each record index against DataTable
+before migration; compact supporting rows and specialized interfaces are not
+automatically tables. Brainstorm is the first local correction below.
+
 | Census ID | Disposition | Collection decision / follow-up |
 | --- | --- | --- |
 | `host-route:__root` | Shell | Navigation and live activity; see shared-component findings. |
@@ -44,7 +49,7 @@ the per-slice verification boundaries and specialized follow-ups.
 | `host-route:workflows.new` | Delegate | Host route delegates to matching core plugin page; do not count it as another list. |
 | `plugin-route:_template:/_template` | No result collection | Status/form or single widget; section-card guidance is separate from collection migration. |
 | `plugin-route:messaging:/messaging` | Alias | Delegate to destination; no independent collection. |
-| `plugin-route:messaging:/messaging/brainstorm` | Local rows + specialized | Session index migrated to separated rows, wrapping titles and retryable load states. Conversation/picker branches remain specialized; not a full workspace audit. |
+| `plugin-route:messaging:/messaging/brainstorm` | Local table + specialized | Session index corrected to table-first with shared URL sorting and narrow roles. Conversation/picker branches remain specialized; not a full workspace audit. |
 | `plugin-route:messaging:/messaging/calendar` | Local table + specialized | List mode uses shared narrow roles and persistent URL sorting. Real calendar layouts stay specialized; list fixture covered, not all calendar interactions. |
 | `plugin-route:messaging:/messaging/plans` | Local table — approved | Date-sorted DataTable with labelled narrow rows, filters, retry and independent confirmed Delete; user visually approved. |
 | `plugin-route:messaging:/messaging/plans/[id]` | Local rows + specialized | Channel/content-piece lists migrated to separated rows with existing delete/open actions; shared plan deletion, no nested main, visible panel focus. Editor/conversation/timeline remain specialized. |

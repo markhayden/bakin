@@ -1,5 +1,54 @@
 # Execution plan — list/table standardization (#806)
 
+## Current ruling correction — table-first (2026-09-21)
+
+The user clarified that Brainstorm should be a DataTable and that DataTable is
+the default when cards are not warranted. This supersedes the earlier rows-first
+selection rule and pending index-page row recommendations below. Cards still
+need meaningful previews; simple rows need a compact/supporting or specific
+interaction reason. Runtime prop defaults and specialized interfaces do not change.
+
+Current local iteration: convert only the Brainstorm index to the existing
+DataTable `NarrowRoles`/`SortedPagedDualRender` patterns. Columns are Brainstorm,
+Agent, Status, Proposals, Accepted and Updated, newest first. Preserve search,
+agent filtering, unread/working signals, opening and existing detail actions.
+Use one URL-backed sort state across headings and the persistent mobile control.
+Update its real-SDK fixture, the written ruling and public comparison captions.
+Do not silently convert Projects or other surfaces in this same change.
+
+Before the next consumer migration, revisit Projects and other top-level record
+indexes against the table-first ruling. The embedded channel/content lists,
+navigation, pickers, conversations, calendars and org canvas require their own
+purpose-based decisions, not a global component replacement.
+
+This iteration passed its own full checkpoint; the prior full checkpoint below
+is historical evidence only. The user explicitly approved Messaging's exact
+713,362-byte measurement (+4,019) and only the two existing desktop/mobile
+`collection-same-records.png` caption baselines. Those scoped updates are applied;
+the payload check passes and both canonical caption snapshots were regenerated.
+All other performance limits and visual baselines remain unchanged. The user
+also approved Messaging's local appearance ("messaging looks good") and the
+two additional ListRows caption baselines identified during review.
+Full conformance passed for this delta: 9,550 repository tests, 335 Storybook
+interactions, 280 visuals, 93 cross-browser checks, plugin conformance and docs.
+Bits passed 596 tests (8 skipped), typecheck and lint. Independent review found
+no remaining blocking issue. Local Bits commits: `64cd4c8` (test synchronization)
+and `4f0a01f` (Brainstorm table). No push, release or deployment has been performed.
+
+### Next bounded slice — Projects table-first correction
+
+Source review confirms the index has comparable Project, Status, Owner, Items,
+Progress and Updated fields; it does not need a visual preview. Reuse DataTable
+`NarrowRoles` and the existing persistent sorting composition. Preserve solid
+states, progress, unread/working markers, search relevance/debug evidence,
+status filtering, creation and independent confirmed Delete (including linked
+task/asset preservation and final-focus behavior). Decide explicit sorting vs
+search relevance without silently changing search semantics. Add an honest
+load-error/Retry state: the current fetch path silently treats non-OK responses
+as empty and does not catch network rejection. Keep detail-page embedded rows,
+editors and conversations out of scope. This is a next-slice plan, not completed
+work or new visual approval.
+
 Status: kit foundation reviewed and verified, including six new recipe baselines
 and two separately approved caption-baseline updates. Workflows is the first planned consumer proof after the
 kit checkpoint, not part of this foundation slice. The foundation landed in #879;
@@ -115,7 +164,7 @@ checks, plugin conformance and docs publication (448 stories). Full log:
 verified checkpoint, not a release or completion of the remaining fleet audit.
 Messaging implementation is saved locally as Bits commit `0391624`.
 
-Next bounded core slices, confirmed by current source inspection:
+Earlier row-first slice proposals (re-evaluate under the current ruling above):
 
 1. Chat recent sessions (`launcher.tsx`) and Team manager/lesson rows. Replace
    bordered/default-bordered treatment only for those record lists; preserve

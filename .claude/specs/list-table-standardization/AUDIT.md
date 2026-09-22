@@ -1,5 +1,53 @@
 # List/table audit — working evidence for #806
 
+## Brainstorm table-first correction — 2026-09-21 local review
+
+The user's table-first ruling supersedes the earlier row-first recommendations
+for record indexes below. DataTable is the default; cards require meaningful
+previews, while separated rows remain appropriate for compact supporting lists.
+This iteration changes only Brainstorm's index, not other indexes or kit prop defaults.
+
+- Pattern: `storybook/public/lists/data-table.stories.tsx` — `NarrowRoles`
+  and `SortedPagedDualRender`; existing focused SDK entrypoints only.
+- Six sortable columns: Brainstorm, Agent, Status, Proposals, Accepted, Updated.
+  Newest-first default; URL-backed sort selector remains available on narrow screens.
+- Search, agent filtering, working/unread markers, session opening, and retry
+  behavior are preserved. Existing conversation/detail actions remain unchanged.
+- Verification: 16 focused tests / 73 assertions; Bits suite 596 passed,
+  8 skipped / 3,591 assertions; typecheck, lint, build, and quick conformance passed.
+  Four real-SDK fixtures passed. Browser checks passed at 320/768/1024/1440px,
+  including persisted sorting, filtering, retry, keyboard opening, and overflow.
+- User explicitly approved Messaging's measured payload 709,343 → 713,362 bytes
+  (+4,019) and the two existing desktop/mobile `collection-same-records.png`
+  baselines for table-first captions. Updates are limited to that byte entry
+  and those two goldens; all other limits and baselines remain unchanged.
+- Applied both approvals: performance ratchet passes and the two canonical
+  caption baselines regenerated successfully. User visually approved Messaging
+  ("messaging looks good").
+- Checkpoint review found and corrected conflicting table-selection guidance
+  in the ListRows public story. Its two `lists-list-rows.png` caption baselines
+  are separate from the comparison goldens; the user subsequently explicitly
+  approved exactly those two additional ListRows caption baselines.
+  Both were regenerated canonically and then passed with updates disabled.
+- A Bits checkpoint rerun exposed a Projects test-only synchronization timeout
+  when deleting all three fixtures. Awaiting each asynchronous delete inside
+  React `act` preserves every assertion and the original timeout; the focused
+  17-test file passes and the formerly failing case drops from ~5s to 19ms.
+  Product behavior is unchanged.
+- Independent review found no remaining blocking code issue after those fixes.
+  Bits checkpoint rerun: 596 passed, 8 skipped; typecheck and lint passed.
+- Full conformance passed for this delta, logged at
+  `/private/tmp/bakin-brainstorm-table-full.log`: repository tests (9,550 passed,
+  16 skipped), builds, payload, deterministic Storybook, 335 Storybook interaction
+  tests, 280 visuals, 93 cross-browser checks, plugin conformance and docs
+  publication (448 stories). Only the four explicitly approved caption goldens
+  changed; all others remained unchanged.
+- Local Bits commits: `64cd4c8` (test synchronization) and `4f0a01f` (Brainstorm
+  table). Generated docs-only churn was preserved separately in the named
+  `preserve generated docs from Brainstorm table conformance` stash. The
+  pre-existing embedded-assets change is excluded from this checkpoint.
+  Nothing has been pushed, released or deployed.
+
 ## Remaining Messaging collections — 2026-09-21 local batch
 
 - Existing patterns: `storybook/public/recipes/collection-patterns.stories.tsx`

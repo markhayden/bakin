@@ -264,10 +264,13 @@ The host owns the page's `main` landmark and vertical scroll. These recipes ther
 
 ### Collection families and group headings
 
-Use divider-separated `ListRows` for text-first browsing, `Card` with `Grid` when
-a meaningful preview is central (for example assets or branding), and `DataTable`
-for column-wise comparison. These are three collection families, not three new
-components. See **Recipes/Collection patterns** for the same records in each.
+Use `DataTable` by default for record collections, including browsing and opening
+records—not only column-wise comparison. Choose `Card` with `Grid` when meaningful
+previews are central (for example assets or branding). Divider-separated `ListRows`
+remain useful for compact supporting lists or an explicit interaction need, not
+as the default alternative to cards. The table's narrow roles keep one column
+model across widths; retain sort controls and actions when headers collapse.
+See **Recipes/Collection patterns** for the same records in each treatment.
 Set `variant="separated"` explicitly: the existing runtime default is still
 `bordered` for compatibility; compact navigation can retain `plain` rows.
 

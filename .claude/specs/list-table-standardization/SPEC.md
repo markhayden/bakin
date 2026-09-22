@@ -20,11 +20,16 @@ themselves justify a timeline.
 
 ## Agreed direction
 
-- **Standard list:** divider-separated rows are the default for most collections.
+- **Data table (2026-09-21 ruling):** `DataTable` is the default for record
+  collections when meaningful visual previews do not justify cards. It is not
+  limited to comparison-only screens. Wide and narrow views use one column
+  model, with sorting and actions available at both widths.
 - **Card list:** a deliberate choice when visual previews or richer content
   materially help browsing. Assets are a strong default-card case; branding is
   a candidate to review. Neither makes every embedded list in that plugin a card list.
-- **Data table:** use when comparing aligned attributes is important.
+- **Standard rows:** divider-separated rows are a deliberate choice for compact
+  supporting/embedded lists or a specific interaction need, not the default
+  alternative to cards. This supersedes the earlier rows-first ruling.
 - Card stack versus card grid is layout, not another generic component family.
 - Keep calendars, kanban, timelines, navigation, and pickers as specialized
   interactions. Do not flatten them into the generic list API.
