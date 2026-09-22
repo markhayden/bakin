@@ -1,7 +1,7 @@
 {
   "id": "models",
   "name": "Models",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "bakin": ">=1.0.0",
   "description": "Agent model configuration — per-agent models, aliases, available models, per-turn model/thinking routing, and spend/budget tracking",
   "contentFiles": [],
@@ -36,11 +36,6 @@
         "summary": "List model aliases"
       },
       {
-        "method": "POST",
-        "path": "/aliases",
-        "summary": "Create or update a model alias"
-      },
-      {
         "method": "GET",
         "path": "/available",
         "summary": "Bypass cache and fetch the model list fresh from the runtime adapter"
@@ -51,24 +46,9 @@
         "summary": "Get effective agent model configuration"
       },
       {
-        "method": "POST",
-        "path": "/config",
-        "summary": "Update agent model configuration"
-      },
-      {
-        "method": "POST",
-        "path": "/defaults",
-        "summary": "Update default model selections"
-      },
-      {
         "method": "GET",
         "path": "/routing",
         "summary": "Get the per-turn model/thinking routing policy"
-      },
-      {
-        "method": "PUT",
-        "path": "/routing",
-        "summary": "Replace the per-turn routing policy"
       },
       {
         "method": "GET",
@@ -99,6 +79,31 @@
         "method": "GET",
         "path": "/runtime/status",
         "summary": "Check if runtime config is out of sync (needs restart)"
+      },
+      {
+        "method": "GET",
+        "path": "/aliases/recommended",
+        "summary": "Recommended alias set (data for the one write path)"
+      },
+      {
+        "method": "GET",
+        "path": "/selections",
+        "summary": "Every persisted model selection with eligibility, proposals and pending writes"
+      },
+      {
+        "method": "POST",
+        "path": "/selections",
+        "summary": "Apply model-selection changes (the ONE write path)"
+      },
+      {
+        "method": "GET",
+        "path": "/holds",
+        "summary": "Todo tasks held because their effective model cannot run"
+      },
+      {
+        "method": "GET",
+        "path": "/routing/recommend",
+        "summary": "Proposal-only recommended routes for unrouted system classes"
       }
     ],
     "execTools": [

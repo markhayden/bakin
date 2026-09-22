@@ -79,7 +79,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Models<br/><span>Agent model configuration — per-agent models, aliases, available models, per-turn model/thinking routing, and spend/budget tracking</span></td>
       <td><code>models</code></td>
       <td>Core</td>
-      <td><code>2.1.1</code></td>
+      <td><code>2.2.0</code></td>
       <td><code>team</code></td>
     </tr>
     <tr>
