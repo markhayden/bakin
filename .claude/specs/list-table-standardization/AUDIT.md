@@ -1,5 +1,85 @@
 # List/table audit — working evidence for #806
 
+## Schedule and Tasks table parity — 2026-09-21 local review
+
+Projects remains as visually approved; this slice does not reopen it.
+
+### Task action-menu follow-up
+
+The user approved Schedule and reaffirmed Projects, and requested Edit,
+Duplicate and Delete directly on Task log rows. Current tasks now use one
+shared `TaskActionsMenu` in the detail drawer and both DataTable renders.
+The existing edit drawer, duplication payload/refresh and named delete
+confirmation are reused. Audit-only historical entries remain read-only;
+they may no longer have a task record to mutate.
+
+The matching kit contracts are DataTable `ActivatableRows` and `NarrowRoles`
+in `storybook/public/lists/data-table.stories.tsx`. Focused tests exercise all
+three actions in both renders without activating the row. Intercepted live-app
+checks at 320/768/1024/1440px verify keyboard menu access, the edit form and URL
+target, duplicate payload and refresh, delete cancellation and exact confirmed
+target, overflow and page errors. No real API writes occurred. Evidence:
+`/private/tmp/bakin-task-actions-browser.log` and
+`/private/tmp/bakin-task-actions-{width}.png`. Quick conformance passes;
+independent review found no blockers. No story/API extension is needed.
+
+The accumulated Tasks client measures 199,344 bytes versus the recorded
+196,889 (+2,455), exceeding the unchanged 2,048-byte growth allowance by 407.
+Sharing the menu reduced the increase without dropping behavior or adding a
+dependency. The user explicitly approved exactly 199,344 bytes. Only Tasks'
+recorded measurement is updated; all other measurements and the shared growth
+allowance remain unchanged. This follow-up still requires full conformance
+before a merge-ready checkpoint (subsequently passed below).
+
+### Approved checkpoint — full verification
+
+Full conformance passed for the final Schedule/Tasks delta, including the shared
+task action menu and exactly approved Tasks measurement. Log:
+`/private/tmp/bakin-schedule-tasks-approved-full.log`. Results: quick contracts,
+typecheck/lint/builds, 9,555 repository tests (16 existing skips), 335 Storybook
+interactions, 280 unchanged visual comparisons, 93 cross-browser checks,
+plugin conformance and docs publication (448 stories). Both page fixtures and
+the four-width intercepted action/sort checks also pass; independent review
+found no blockers. No canonical screenshots or other limits were updated.
+
+Generated reference-doc churn from the full run is preserved separately in
+`preserve generated docs from Schedule Tasks conformance`; the pre-existing
+embedded-assets manifest change stays outside the commit. This is a verified
+local checkpoint, not a push, release or completion of the remaining fleet audit.
+
+### Initial table-parity slice evidence (before the action-menu follow-up)
+
+- Pattern: `storybook/public/lists/data-table.stories.tsx` — `NarrowRoles`
+  and `SortedPagedDualRender`. Existing `/patterns`, `/ui`, `/layout` and
+  `/navigation` contracts only; no public API, dependency or design exception.
+- Schedule now uses the same column model and action menu at both widths,
+  with separated narrow rows. A persistent Sort selector shares URL state with
+  the headings, sorts before pagination and resets the current page. Default
+  order retains search relevance. Job identity, source, missing-tool warnings,
+  timezone, next run, status and existing action permissions remain intact.
+- Task log has persistent URL-backed sorting, wrapping titles, labelled narrow
+  dates and explicit dashes for missing dates. Date sorting compares instants
+  and leaves unknown values last in either direction. Search preserves ranked
+  current matches, excludes unrelated audit history and hides manual sorting.
+- Browser checks also caught Schedule's duplicate compact switcher referencing
+  nonexistent panels and its crowded header splitting the title with the activity
+  rail open. Removed only the invalid duplicate linkage and delayed the existing
+  header control group's inline layout to its wider container breakpoint.
+- Focused regression tests, quick conformance/typecheck, plugin build and the
+  unchanged payload ratchet pass. Both real-SDK fixtures pass with no findings;
+  run `bun run test:ui` in `plugins/schedule` or `plugins/tasks`. Reports and
+  desktop/mobile screenshots are in each plugin's `test-results/bakin-ui/`.
+- Intercepted Imitation Crab checks pass at 320/768/1024/1440px: sort persists
+  after reload, Schedule sorts the whole collection and resets pagination,
+  the Delete menu opens the named confirmation without opening the row,
+  cancellation preserves the collection, and no document overflow/page errors.
+  Log: `/private/tmp/bakin-schedule-tasks-browser.log`. All API writes were
+  intercepted; no real jobs or tasks were changed. Independent review is clear.
+- This is a local review slice, not a merge-ready checkpoint. Full conformance
+  remains required before saving the next migration checkpoint. No canonical
+  screenshot baselines or performance limits were updated. Calendar, Kanban,
+  task detail interactions and the rest of the fleet remain outside this slice.
+
 ## Brainstorm table-first correction — 2026-09-21 local review
 
 The user's table-first ruling supersedes the earlier row-first recommendations
@@ -119,7 +199,7 @@ These are pending recommendations, not completed migrations:
 Do not treat removing an outline as the entire migration: an available menu,
 honest load state and readable narrow identity are part of each acceptance test.
 
-### Next table slice: mobile parity recheck (2026-09-21)
+### Table parity source findings (2026-09-21; Schedule/Tasks addressed above)
 
 Read-only review against DataTable `NarrowRoles`/`SortedPagedDualRender` confirms:
 
@@ -140,8 +220,8 @@ Read-only review against DataTable `NarrowRoles`/`SortedPagedDualRender` confirm
   preserve action scope and sorting. ChartDataTable remains a separate exact-data
   chart view, not automatically part of this migration.
 
-These findings are source-based and require targeted browser tests in their
-own slices; they do not expand the current Messaging implementation.
+Schedule and Task log now have local implementation/browser evidence above.
+Health remains a source-based follow-up requiring its own focused slice.
 
 Source snapshot: Bakin `de3d183321c9faca5c21705d08564f1f63d12cd5`;
 official Bits `4ff49426de9f88a87298754c515fef30aa866576` (both local main).

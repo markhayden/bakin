@@ -472,6 +472,24 @@ export function KanbanBoard() {
     setDetailTask(null)
     setEditing(false)
   }, [setTaskIdParam])
+  const editTask = useCallback((task: Task, columnId: ColumnId) => {
+    setDetailTask({ task, columnId })
+    setEditing(true)
+    pushTaskId(task.id)
+  }, [pushTaskId])
+  const duplicateTask = useCallback(async (task: Task, columnId: ColumnId) => {
+    const ok = await apiFetch('/api/plugins/tasks/', {
+      title: `${task.title} (copy)`,
+      description: task.description || undefined,
+      column: columnId,
+      assignee: task.agent || undefined,
+      workflowId: task.workflowId || undefined,
+    })
+    if (ok) {
+      toast(`Duplicated "${task.title}"`, 'success')
+      await refreshTaskboard()
+    }
+  }, [refreshTaskboard])
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
 
   const confirmDelete = useCallback(async () => {
@@ -742,6 +760,9 @@ export function KanbanBoard() {
                 isSearching={Boolean(search)}
                 scoreMap={scoreMap}
                 onTaskOpen={openTask}
+                onTaskEdit={editTask}
+                onTaskDuplicate={duplicateTask}
+                onTaskDelete={setDeleteTarget}
               />
             </div>
           )}
@@ -761,19 +782,7 @@ export function KanbanBoard() {
           closeTask()
           setDeleteTarget({ id: task.id, title: task.title })
         }}
-        onDuplicate={async (task) => {
-          const ok = await apiFetch('/api/plugins/tasks/', {
-            title: `${task.title} (copy)`,
-            description: task.description || undefined,
-            column: drawerTask?.columnId || 'todo',
-            assignee: task.agent || undefined,
-            workflowId: task.workflowId || undefined,
-          })
-          if (ok) {
-            toast(`Duplicated "${task.title}"`, 'success')
-            await refreshTaskboard()
-          }
-        }}
+        onDuplicate={(task) => duplicateTask(task, drawerTask?.columnId ?? 'todo')}
       />
 
       <DeleteTaskDialog

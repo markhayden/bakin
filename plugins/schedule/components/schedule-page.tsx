@@ -18,7 +18,6 @@ import {
   WorkspacePageCompactHeader,
   WorkspacePageHeader,
   type SegmentedControlOption,
-  type DataTableSort,
 } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -29,6 +28,8 @@ import {
   Drawer,
   Button,
   SystemState,
+  Text,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@makinbakin/sdk/ui'
 import {
   useAgentIds,
@@ -39,7 +40,7 @@ import {
   type ScheduleJob,
 } from '@makinbakin/sdk/hooks'
 import { List, CalendarDays, CalendarRange, Clock, Plus } from 'lucide-react'
-import { JobList, sortJobs, type JobSortField } from './job-list'
+import { JobList, sortJobs, parseJobSort, JOB_SORT_LABELS, type JobSortField } from './job-list'
 import { JobDrawer } from './job-drawer'
 import { JobForm, type JobFormData } from './job-form'
 import { DeleteScheduleDialog } from './delete-schedule-dialog'
@@ -70,6 +71,7 @@ export function SchedulePage() {
   const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
   const [search, setSearch] = useQueryState('q', '')
   const [pageParam, setPageParam] = useQueryState('page', '1')
+  const [sortParam, setSortParam] = useQueryState('sort', 'default')
   const [jobIdParam, setJobIdParam, pushJobId] = useQueryState('jobId', '')
   const [mode, setMode, pushMode] = useQueryState('mode', '')
 
@@ -147,14 +149,11 @@ export function SchedulePage() {
 
   // Header sort applies to the WHOLE filtered list, then the page slices —
   // the table only ever sees ten rows, so it cannot own this itself.
-  const [listSort, setListSort] = useState<DataTableSort<JobSortField> | undefined>(undefined)
+  const listSort = useMemo(() => parseJobSort(sortParam), [sortParam])
   const toggleListSort = useCallback((field: JobSortField) => {
-    setListSort(current => (
-      current?.field === field
-        ? { field, dir: current.dir === 'asc' ? 'desc' : 'asc' }
-        : { field, dir: 'asc' }
-    ))
-  }, [])
+    setSortParam(`${field}:${listSort?.field === field && listSort.dir === 'asc' ? 'desc' : 'asc'}`)
+    if (pageParam !== 'all') setPageParam('1')
+  }, [listSort, pageParam, setPageParam, setSortParam])
   const sortedJobs = useMemo(() => sortJobs(filtered, listSort), [filtered, listSort])
 
   const showAllJobs = pageParam === 'all'
@@ -391,7 +390,7 @@ export function SchedulePage() {
             )}
             controlsLabel="Schedule search, view, and actions"
             controls={(
-              <div className="grid w-full min-w-0 gap-bakin-2 @3xl/page-header:flex @3xl/page-header:items-start">
+              <div className="grid w-full min-w-0 gap-bakin-2 @5xl/page-header:flex @5xl/page-header:items-start">
                 <SearchInput
                   align="end"
                   label="Schedule search"
@@ -401,7 +400,7 @@ export function SchedulePage() {
                   busy={searchHook.status === 'loading'}
                   mobileFullWidth
                 />
-                <div className="flex min-w-0 flex-wrap items-center gap-bakin-2 @3xl/page-header:shrink-0 @3xl/page-header:flex-nowrap">
+                <div className="flex min-w-0 flex-wrap items-center gap-bakin-2 @5xl/page-header:shrink-0 @5xl/page-header:flex-nowrap">
                   <SegmentedControl
                     options={VIEWS}
                     value={view as ViewMode}
@@ -411,7 +410,7 @@ export function SchedulePage() {
                     size="md"
                     className="shrink-0"
                   />
-                  <Button className="min-w-28 flex-1 @3xl/page-header:flex-none" onClick={openCreate}>
+                  <Button className="min-w-28 flex-1 @5xl/page-header:flex-none" onClick={openCreate}>
                     <Plus />
                     New Job
                   </Button>
@@ -430,7 +429,6 @@ export function SchedulePage() {
                 value={view as ViewMode}
                 onValueChange={setView}
                 ariaLabel="Schedule view"
-                idPrefix="schedule-view-compact"
                 size="sm"
                 className="shrink-0"
               />
@@ -465,6 +463,21 @@ export function SchedulePage() {
               onValueChange={setAgentFilter}
               compact
             />
+            {view === 'list' && (
+              <Inline gap="dense">
+                <Text size="meta" tone="muted">Sort</Text>
+                <Select items={JOB_SORT_LABELS} value={listSort ? `${listSort.field}:${listSort.dir}` : 'default'} onValueChange={value => {
+                  if (!value) return
+                  setSortParam(value)
+                  if (pageParam !== 'all') setPageParam('1')
+                }}>
+                  <SelectTrigger aria-label="Sort scheduled jobs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(JOB_SORT_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </Inline>
+            )}
           </PageControls>
 
           <PageBody

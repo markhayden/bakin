@@ -79,9 +79,9 @@ automatically tables. Brainstorm is the first local correction below.
 | `plugin-slot:messaging:nav-badge-providers` | No collection | Badge provider; counts/attention, not a result-list presentation. |
 | `plugin-slot:models:page:/models` | Mixed | Keep comparison tables and labelled form rows; aliases → separated; no forced table for editable fields. |
 | `plugin-slot:projects:nav-badge-providers` | No collection | Badge provider; counts/attention, not a result-list presentation. |
-| `plugin-slot:schedule:page:/schedule` | Specialized + table | Calendar remains specialized; job table narrow rows need sort/action parity. |
+| `plugin-slot:schedule:page:/schedule` | Verified table parity | One column model, persistent URL sort and visible actions at both widths; fixtures/browser/full checks pass. Calendar unchanged; rollout pending. |
 | `plugin-slot:tasks:nav-badge-providers` | No collection | Badge provider; counts/attention, not a result-list presentation. |
-| `plugin-slot:tasks:page:/tasks` | Specialized + table/rows | Kanban stays; retain task-log dual layout and separated notes/history; verify narrow sorting. |
+| `plugin-slot:tasks:page:/tasks` | Verified table parity + specialized | Task log has persistent URL sort, labelled dates, search-relevance isolation and shared current-task actions; fixtures/browser/full checks pass. Kanban/notes/history unchanged; rollout pending. |
 | `plugin-slot:team:page:/team` | Specialized | ReactFlow org canvas, not a generic card grid; TeamManager overlay → separated candidate. |
 | `plugin-slot:team:page:/team/[id]` | Rows + specialized | Member/lesson lists use standard rows; retain diagnostics timeline and active-context transcript semantics. |
 | `plugin-slot:team:page:/team/teams/[teamId]` | Rows + specialized | Member/lesson lists use standard rows; retain diagnostics timeline and active-context transcript semantics. |

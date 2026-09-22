@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, SystemState, Text } from '@makinbakin/sdk/ui'
+import { Button, SystemState, Text, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@makinbakin/sdk/ui'
+import { useQueryState } from '@makinbakin/sdk/navigation'
 import {
   AgentAvatar,
   DataTable,
@@ -18,6 +19,7 @@ import type { FlatTask } from '../hooks/use-task-filters'
 import type { TaskScoreInfo } from './task-card'
 import type { ColumnId, Task } from '../types'
 import { Inline } from '@makinbakin/sdk/layout'
+import { TaskActionsMenu } from './task-actions-menu'
 
 interface AuditEntry {
   type: string
@@ -76,8 +78,16 @@ function getCompletedAt(t: TaskRow): string | undefined {
 
 type SortField = 'title' | 'agent' | 'status' | 'createdAt' | 'completedAt'
 
+const SORT_LABELS = {
+  'title:asc': 'Title: A–Z', 'title:desc': 'Title: Z–A',
+  'agent:asc': 'Agent: A–Z', 'agent:desc': 'Agent: Z–A',
+  'status:asc': 'Status: A–Z', 'status:desc': 'Status: Z–A',
+  'createdAt:asc': 'Created: oldest first', 'createdAt:desc': 'Created: newest first',
+  'completedAt:asc': 'Completed: oldest first', 'completedAt:desc': 'Completed: newest first',
+}
+
 function formatDate(d?: string) {
-  return d ? formatDateTime(d) : '—'
+  return d && Number.isFinite(Date.parse(d)) ? formatDateTime(d) : '—'
 }
 
 function taskDuration(created?: string, completed?: string) {
@@ -98,13 +108,17 @@ interface TaskLogTableProps {
   scoreMap?: Map<string, TaskScoreInfo>
   /** Opens the canonical task detail drawer for current and historical rows. */
   onTaskOpen: (task: Task, columnId: ColumnId) => void
+  onTaskEdit?: (task: Task, columnId: ColumnId) => void
+  onTaskDuplicate?: (task: Task, columnId: ColumnId) => void
+  onTaskDelete?: (task: Task) => void
 }
 
-export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap, onTaskOpen }: TaskLogTableProps) {
+export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap, onTaskOpen, onTaskEdit, onTaskDuplicate, onTaskDelete }: TaskLogTableProps) {
   const [auditTasks, setAuditTasks] = useState<HistoricalTask[]>([])
   const [loading, setLoading] = useState(true)
-  const [sortField, setSortField] = useState<SortField>('completedAt')
-  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [sortQuery, setSortQuery] = useQueryState('logSort', 'completedAt:desc')
+  const sortValue = Object.hasOwn(SORT_LABELS, sortQuery) ? sortQuery : 'completedAt:desc'
+  const [sortField, sortDir] = sortValue.split(':') as [SortField, SortDir]
 
   useEffect(() => {
     async function fetchAudit() {
@@ -155,11 +169,14 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
 
   // Merge current board tasks with audit history (current takes priority)
   const allTasks = useMemo(() => {
+    // The parent supplies ranked search matches. Unfiltered audit history
+    // must not introduce unrelated rows or reorder those matches.
+    if (isSearching) return currentTasks
     const merged = new Map<string, FlatTask | HistoricalTask>()
     for (const t of auditTasks) merged.set(t.id, t)
     for (const t of currentTasks) merged.set(t.id, t)
     return Array.from(merged.values())
-  }, [currentTasks, auditTasks])
+  }, [currentTasks, auditTasks, isSearching])
 
   // Status filter from parent facet
   const filtered = useMemo(() => {
@@ -171,25 +188,26 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
   const sorted = useMemo(() => {
     if (isSearching) return filtered
     return [...filtered].sort((a, b) => {
+      if (sortField === 'createdAt' || sortField === 'completedAt') {
+        const date = sortField === 'createdAt' ? getCreatedAt : getCompletedAt
+        const left = Date.parse(date(a) ?? '')
+        const right = Date.parse(date(b) ?? '')
+        if (Number.isNaN(left) !== Number.isNaN(right)) return Number.isNaN(left) ? 1 : -1
+        const compared = Number.isNaN(left) ? 0 : left - right
+        return sortDir === 'asc' ? compared : -compared
+      }
       let aVal = '', bVal = ''
       if (sortField === 'title') { aVal = a.title; bVal = b.title }
       else if (sortField === 'agent') { aVal = a.agent ?? ''; bVal = b.agent ?? '' }
       else if (sortField === 'status') { aVal = a.status; bVal = b.status }
-      else if (sortField === 'createdAt') { aVal = getCreatedAt(a) ?? ''; bVal = getCreatedAt(b) ?? '' }
-      else if (sortField === 'completedAt') { aVal = getCompletedAt(a) ?? ''; bVal = getCompletedAt(b) ?? '' }
       const cmp = aVal.localeCompare(bVal)
       return sortDir === 'asc' ? cmp : -cmp
     })
   }, [filtered, sortField, sortDir, isSearching])
 
   const toggleSort = useCallback((field: SortField) => {
-    if (sortField === field) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortField(field)
-      setSortDir('desc')
-    }
-  }, [sortField])
+    setSortQuery(`${field}:${sortField === field && sortDir === 'desc' ? 'asc' : 'desc'}`)
+  }, [sortField, sortDir, setSortQuery])
 
   const columns = useMemo((): ReadonlyArray<DataTableColumn<TaskRow, SortField>> => [
     {
@@ -221,7 +239,7 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
                 onTaskOpen(drawerTask, task.status)
               }}
             >
-              <span className="truncate">{task.title}</span>
+              <span className="whitespace-normal break-words text-left">{task.title}</span>
             </Button>
             {scoreInfo && <ScoreOverlay info={scoreInfo} className="shrink-0" />}
           </Inline>
@@ -251,19 +269,17 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
       key: 'createdAt',
       header: 'Created',
       sortable: true,
-      narrow: 'meta',
+      narrow: 'label',
       cellClassName: 'text-bakin-typography-size-meta text-bakin-text-muted',
       cell: (task) => formatDate(getCreatedAt(task)),
-      narrowCell: (task) => getCreatedAt(task) ? formatDate(getCreatedAt(task)) : null,
     },
     {
       key: 'completedAt',
       header: 'Completed',
       sortable: true,
-      narrow: 'meta',
+      narrow: 'label',
       cellClassName: 'text-bakin-typography-size-meta text-bakin-text-muted',
       cell: (task) => formatDate(getCompletedAt(task)),
-      narrowCell: (task) => getCompletedAt(task) ? formatDate(getCompletedAt(task)) : null,
     },
     {
       key: 'duration',
@@ -276,10 +292,35 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
         return duration === '—' ? null : duration
       },
     },
-  ], [scoreMap, onTaskOpen])
+    {
+      key: 'actions',
+      header: 'Actions',
+      hideLabel: true,
+      narrow: 'trailing',
+      cell: (task) => {
+        // Audit-only rows may refer to deleted records, not editable tasks.
+        if (!('checked' in task) || !(onTaskEdit || onTaskDuplicate || onTaskDelete)) return null
+        return <TaskActionsMenu label={`Actions for ${task.title}`}
+          onEdit={onTaskEdit && (() => onTaskEdit(task, task.status))}
+          onDuplicate={onTaskDuplicate && (() => onTaskDuplicate(task, task.status))}
+          onDelete={onTaskDelete && (() => onTaskDelete(task))} />
+      },
+    },
+  ], [scoreMap, onTaskOpen, onTaskEdit, onTaskDuplicate, onTaskDelete])
 
   return (
     <div className="min-w-0" data-task-log="">
+      <Inline gap="dense" className="mb-bakin-3">
+        {isSearching ? <Text size="meta" tone="muted">Sorted by search relevance</Text> : <>
+          <Text size="meta" tone="muted">Sort</Text>
+          <Select items={SORT_LABELS} value={sortValue} onValueChange={value => { if (value) setSortQuery(value) }}>
+            <SelectTrigger aria-label="Sort task log"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(SORT_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </>}
+      </Inline>
       <div className="min-w-0">
         {loading ? (
           <SystemState
@@ -304,8 +345,9 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
             columns={columns}
             rows={sorted}
             rowKey={(task) => task.id}
-            sort={{ field: sortField, dir: sortDir }}
-            onSortChange={toggleSort}
+            listVariant="separated"
+            sort={isSearching ? undefined : { field: sortField, dir: sortDir }}
+            onSortChange={isSearching ? undefined : toggleSort}
             onRowActivate={(task) => onTaskOpen(taskForDrawer(task), task.status)}
             rowActivateLabel={(task) => `Open ${task.title || task.id}`}
             rowProps={() => ({ 'data-task-log-row': '' })}

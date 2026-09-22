@@ -35,7 +35,44 @@ Bits passed 596 tests (8 skipped), typecheck and lint. Independent review found
 no remaining blocking issue. Local Bits commits: `64cd4c8` (test synchronization)
 and `4f0a01f` (Brainstorm table). No push, release or deployment has been performed.
 
-### Next bounded slice — Projects table-first correction
+### Current slice — Schedule and Tasks table/mobile parity
+
+The user explicitly chose to retain the already approved Projects presentation
+and move on to untouched surfaces. Do not reopen Projects in this slice.
+Use `DataTable` `NarrowRoles`/`SortedPagedDualRender` and existing Select controls.
+Schedule: remove the bespoke mobile renderer in favor of column roles, separated
+rows, and the same existing actions menu at both widths. Share a URL-backed sort
+between headers and a persistent selector; sort before pagination, retain default
+search relevance unless explicitly sorted. Tasks log: expose persistent URL sort,
+label mobile dates, use separated rows, and disable misleading header sorting
+when search relevance owns the order. Calendars, Kanban and detail actions stay
+unchanged. Verify focused tests, plugin fixtures, real browser widths and quick
+conformance for local review; run full conformance at the next saved checkpoint.
+
+Implemented locally with passing focused/quick, real-SDK fixture and intercepted
+browser checks at 320/768/1024/1440px. Independent review found no blockers.
+See AUDIT.md for search-history isolation and the small Schedule accessibility/
+header corrections found during verification. No goldens or budgets changed.
+Health's system inventory/search tables are the next untouched table candidates;
+Projects remains approved and is not queued for automatic rework.
+
+The user subsequently approved Schedule and reaffirmed Projects. Task log's
+requested Edit/Duplicate/Delete menu is implemented through one shared menu
+with the detail drawer and the existing handlers/confirmation. Current tasks
+have actions at both widths; audit-only entries stay read-only. Focused and
+four-width intercepted browser checks pass. The user explicitly approved the
+exact Tasks measurement of 199,344 bytes (196,889 → 199,344, +2,455). Only that
+plugin measurement is updated; all other limits and the shared growth allowance
+remain unchanged. Full conformance remains required before the next checkpoint.
+
+That checkpoint has now passed for the final approved delta: 9,555 repository
+tests (16 skips), 335 Storybook interactions, 280 unchanged visuals, 93 browser
+checks, plugin conformance and docs publication (448 stories). Log:
+`/private/tmp/bakin-schedule-tasks-approved-full.log`. Independent review and both
+page fixtures pass. Save this local Schedule/Tasks checkpoint; do not push or
+release yet. Next untouched table candidates remain Health inventory/search.
+
+### Deferred — Projects table-first correction (not current work)
 
 Source review confirms the index has comparable Project, Status, Owner, Items,
 Progress and Updated fields; it does not need a visual preview. Reuse DataTable

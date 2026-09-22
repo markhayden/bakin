@@ -4,11 +4,6 @@ import {
   Button,
   Drawer,
   DrawerSection,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
   Field,
   FieldControl,
   FieldDescription,
@@ -36,13 +31,14 @@ import {
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import { Panel } from '@makinbakin/sdk/layout'
 import { Slot } from '@makinbakin/sdk/slots'
-import { Copy, MoreHorizontal, Pencil, Trash2, Workflow } from 'lucide-react'
+import { Pencil, Workflow } from 'lucide-react'
 import { COLUMN_CONFIG } from '../constants'
 import type { Task, ColumnId } from '../types'
 import { TaskRunHistory } from './task-run-history'
 import { TaskNotesSection } from './task-notes-section'
 import { GateApprovalPanel, WorkflowProgressPanel, WorkflowPreview, MapChildrenPanel } from './task-workflow-panels'
 import type { TaskDetail } from './use-task-detail'
+import { TaskActionsMenu } from './task-actions-menu'
 
 const COLUMN_IDS: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived']
 
@@ -339,32 +335,9 @@ export function TaskDetailView({ m, task, columnId, open, onClose, onEdit, onDel
       title={task.title}
       storageKey="tasks-detail"
       actions={
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={(
-              <Button variant="ghost" size="icon-sm" aria-label="Task actions">
-                <MoreHorizontal aria-hidden="true" />
-              </Button>
-            )}
-          >
-            <span className="sr-only">Task actions</span>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onEdit}>
-              <Pencil aria-hidden="true" />
-              Edit
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => onDuplicate?.(task)}>
-              <Copy aria-hidden="true" />
-              Duplicate
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onDelete?.(task)} variant="danger">
-              <Trash2 aria-hidden="true" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <TaskActionsMenu onEdit={onEdit}
+          onDuplicate={onDuplicate && (() => onDuplicate(task))}
+          onDelete={onDelete && (() => onDelete(task))} />
       }
     >
       <div className="flex min-w-0 flex-col gap-bakin-6">
