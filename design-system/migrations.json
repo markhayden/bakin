@@ -23,8 +23,8 @@
     "paths": 165,
     "totals": {
       "raw-palette": 4,
-      "arbitrary-size": 81,
-      "raw-scale": 445,
+      "arbitrary-size": 78,
+      "raw-scale": 441,
       "raw-control": 18,
       "inline-style": 33,
       "generic-token": 72,
@@ -1844,7 +1844,6 @@
       "target": "diagnostic dashboard archetypes and semantic data visualization",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 1,
         "raw-scale": 2
       }
     },
@@ -1992,7 +1991,7 @@
       "target": "diagnostic dashboard archetypes and semantic data visualization",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 2,
+        "arbitrary-size": 1,
         "raw-scale": 1
       }
     },
@@ -2009,7 +2008,6 @@
       "target": "diagnostic dashboard archetypes and semantic data visualization",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 1,
         "raw-scale": 2
       }
     },
@@ -2043,7 +2041,7 @@
       "target": "search/list/detail archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 3
+        "raw-scale": 1
       }
     },
     {
@@ -2602,7 +2600,7 @@
       "target": "focused SDK primitive/pattern and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 11
+        "raw-scale": 9
       }
     },
     {

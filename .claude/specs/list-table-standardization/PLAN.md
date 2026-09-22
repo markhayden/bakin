@@ -1,5 +1,120 @@
 # Execution plan — list/table standardization (#806)
 
+## Final fleet sweep — approved 2026-09-22
+
+User approved all remaining work in one pass. Models is excluded; previously
+approved indices are not reopened. No release/remote write is implied.
+
+- [ ] Checkpoint approved Health/Memory/Settings/Explore changes after validation.
+- [ ] Runtime capabilities: DataTable; overview/extensions: narrow metadata and
+  action/sort parity. Preserve trust confirmation and readiness evidence.
+- [ ] Health check registry and overview incidents: table where comparative;
+  preserve attention ordering, disclosure evidence and exact repair actions.
+- [ ] Chat recent conversations, Team management/lessons, Assets attachments,
+  Branding materials/documents: separated supporting rows, readable identities,
+  reachable actions and honest errors. Keep galleries/canvas/forms specialized.
+- [ ] Review Asset versions/exports/references and Terminal; migrate concrete
+  table/row gaps and document retained specialized compositions.
+- [ ] Reference bookmark example follows table-first guidance; reconcile census
+  dispositions with current source rather than historical recommendations.
+- [ ] Focused regressions and local wide/narrow browser checks per slice; one
+  final quick/build/payload/full gate, code review, docs and local commits.
+
+Existing patterns: `lists/data-table` — `NarrowRoles`, `SortedPagedDualRender`;
+`lists/list-rows` — `CanonicalUsage` (explicit separated);
+`pages/page` — `ControlModes`. No new public contract or budget is preapproved.
+
+## Memory, Settings and Extend — combined batch (2026-09-22)
+
+User requested these together, explicitly excluding Models (another branch).
+Treat Extend as Explore/add-ons. Keep existing Health work intact and do not
+expand Health while this batch runs. Reuse DataTable `NarrowRoles`,
+`SortedPagedDualRender` and `ActivatableRows`; Settings retains the NavList and
+`Recipes/Settings and dashboard pages` form contract. No new kit API planned.
+
+1. Memory: one column model at both widths, persistent recent-feed sorting,
+   relevance-owned search ordering, labelled narrow metadata and unchanged
+   record drawer/filter/debug/cleanup semantics. Verify focused tests and fixture.
+2. Explore: text-first catalog records become one sortable table per existing
+   tab with independent Details/Install actions; preserve compatibility gates,
+   install consent, URL selection/search/categories and installed hub actions.
+   Verify focused tests and real-SDK fixture.
+3. Settings: audit category navigation and editable rows against public patterns;
+   fix concrete parity issues without flattening forms into tables. Verify saves,
+   URL state and narrow layout. No Models changes.
+
+Run a combined quick/build/payload/browser review and one full checkpoint after
+these slices. Do not update goldens, budgets or exceptions without exact approval.
+
+All three slices are implemented and independently reviewed. 54 focused tests,
+quick/typecheck/lint, unchanged payload gate, Memory/Explore desktop/mobile
+fixtures and the combined four-width real-page browser proof pass. The one full
+checkpoint is running (`/private/tmp/bakin-collections-batch-full.log`), including
+the accumulated Health delta. See AUDIT for exact scope, evidence and remaining
+specialized compositions. Models remains excluded.
+
+Explore review refinement: Installed is soft success so the primary Install
+action wins emphasis; Built in and Update available keep their existing solid
+treatments (`Primitives/Badge` — `Treatments`). Category and catalog sorting now
+share one `PageControls` region below the intro (`Pages/page` — `ControlModes`),
+including empty results. Header and selector sorting share `catalogSort` URL
+state. No public API, baseline or style-guide change is needed.
+
+## Health Agent pulse — implemented locally (2026-09-22)
+
+System is visually approved. The user accepted the recommendation to move
+Agent pulse's inline latest-session detail into the existing kit Drawer.
+Compose DataTable `NarrowRoles` / `SortedPagedDualRender` and Drawer
+`CanonicalUsage` (`storybook/public/{lists/data-table,overlays/drawer}.stories.tsx`).
+Keep the canonical review/live/usage ranking by default; share explicit sorting
+between headings and a persistent narrow control. Use URL state for sort and
+the selected agent. Preserve every unknown/partial/stale qualifier, latest-session
+breakdown, diagnostics link, loading/error/retry state and surrounding charts.
+Verify focused tests, a real-SDK Agent pulse fixture, intercepted four-width
+browser checks (including drawer close/focus and URL reload), quick and payload.
+No new kit API or visual baseline is planned; full conformance belongs to the
+combined Health checkpoint after local review.
+
+Implemented with sortable agent/review/usage/work/context columns, a persistent
+sort selector and URL-selected Drawer. Default order preserves the canonical
+review/live/usage ranking. Focused tests (44), quick conformance, both real-SDK
+Health fixtures and four-width intercepted browser checks pass. Browser proof
+covers sorting/reload, drawer reload, Escape, return focus, exact diagnostics
+destination and long names. Screenshot review caught a squeezed mobile header
+and clipped diagnostics label; counts now follow the description and the link
+uses a compact visible label with an agent-specific accessible name.
+Independent review found no blocker. The user approved exactly 502,173 bytes
+for Health's recorded client measurement; no other performance limit changed.
+The final mobile-label correction measures 502,208 (+35), within the unchanged
+2,048-byte growth allowance. Full conformance remains for the combined checkpoint.
+Next untouched Health candidates: complete check registry and overview incidents.
+
+## Health overhaul — current local slice (2026-09-22)
+
+The user approved continuing into Health. Start with System's installed-plugin
+and search-index inventories: existing DataTable `NarrowRoles` and
+`SortedPagedDualRender`, separated mobile rows, persistent URL-backed sorting,
+and reachable per-record actions. Preserve canonical evidence, mutation locks,
+permission confirmation and deep-link/finding focus. Keep metric grids and
+chronological event streams specialized. Review incident/agent collections and
+the complete check registry separately after this System proof; do not change
+diagnostic calculations or repair endpoints during presentation migration.
+
+Verify focused tests, the real-SDK System fixture, quick conformance and local
+browser widths for review. Full conformance is required at the saved checkpoint,
+not repeatedly during visual iteration. New kit APIs, goldens or budget changes
+still need their own explicit approval.
+
+System proof is implemented locally: 34 focused tests, quick conformance, lint,
+build, unchanged payload gate and four-width intercepted browser checks pass.
+Independent review found no blocker. The user approved the focused native-summary
+harness correction; it is implemented with failing-first browser regressions and
+a real SDK disclosure in the shared clean fixture. Health's desktop/mobile
+fixture and the shared conformance harness suite now pass without findings or
+weakened gates. Fixture screenshots/report were inspected. See AUDIT for exact
+evidence and the remaining agent/check/incident candidates. Health is not yet
+complete or merge-ready.
+
 ## Current ruling correction — table-first (2026-09-21)
 
 The user clarified that Brainstorm should be a DataTable and that DataTable is

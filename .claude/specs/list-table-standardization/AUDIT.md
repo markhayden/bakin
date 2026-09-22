@@ -1,5 +1,151 @@
 # List/table audit — working evidence for #806
 
+## Memory, Settings and Extend — combined batch (2026-09-22)
+
+User asked to handle these together and explicitly excluded Models, which is
+being refactored on another branch. Extend is the existing Explore/add-ons
+surface. No Models source was changed and no further Health surface was added.
+
+| Surface | Implemented / retained | Protected behavior |
+| --- | --- | --- |
+| Memory Browse | DataTable column-derived separated narrow rows; persistent `memorySort` selector shared with headings, sorted before pagination | Search retains server relevance even with a stored browse sort; missing dates stay last; debug/tier/agent filters, record URL/reload and drawer remain intact |
+| Memory Browse/Scrub navigation | Actual consumer-owned tab panels for the existing SegmentedControl | Both `aria-controls` targets exist; inactive content does not fetch; URL mode retained |
+| Memory Scrub and tier summary | Keep specialized grouped cleanup/selection workflow and stat tiles | Exact cleanup dispatch/verification and indexed tier facts, not a generic index replacement |
+| Settings category navigation / schema forms | Keep existing NavList master-detail and labelled fields | Category and highlighted-field URLs, save rejection and per-category values remain covered |
+| Settings Integrations & Keys | Separated provider settings; Integration / Secret / Remove DataTable with narrow roles; responsive labelled add form | Write-only values; exact named-secret deletion; runtime/env overrides; all mutations locked together; rejected writes retain drafts; failed reads block editing and offer retry; missing optional images provider endpoint does not block unrelated secrets |
+| Explore catalog | Replace text-first cards with sortable Name / Category / Status / Version / Runtime table and matching loading rows | `catalogSort` URL parity, existing tabs/search/categories/selection; independent Details/Install; compatibility, built-in/installed gating, consent and install flow unchanged |
+| Explore installed capabilities / detail | Compact separated supporting management list; retain preview gallery and warnings in detail/consent | Existing named remove confirmation, source provenance, risk/permission and runtime conditions preserved |
+
+Patterns: `storybook/public/lists/data-table.stories.tsx` — `NarrowRoles`,
+`SortedPagedDualRender`, `ActivatableRows`; `lists/list-rows.stories.tsx` —
+`CanonicalUsage`; `navigation/segmented-control.stories.tsx` (consumer-owned
+panels); `navigation/nav-list.stories.tsx` — `SelectionAndKeyboard`;
+`recipes/settings-dashboard-pages.stories.tsx` — `SettingsCategories`;
+`forms/form-composition.stories.tsx` — `CanonicalUsage`. Focused SDK `/patterns`,
+`/ui`, `/layout`, `/navigation` compositions only. No public API/story extension,
+golden update or new performance approval is needed for this batch.
+
+Focused verification: 54 tests, 177 assertions, zero failures across six files;
+five existing Settings route/schema suites also passed during review (45 tests).
+The added real-SDK Memory and Explore desktop/mobile fixtures pass; both HTML
+reports and screenshots were inspected. Fixture review reproduced an existing
+Memory tab-to-missing-panel defect and verified the consumer wiring fix. New
+Settings tests reproduced failed-read/failed-draft behavior and optional-provider
+absence before their fixes; deferred-write coverage confirms global mutation
+locking and draft retention. Independent review found one prose-wrapping issue
+in catalog cells; explicit wrapping fixed it before browser verification.
+
+Intercepted real-app browser proof passes at 320/768/1024/1440px: Memory shared
+sort/reload, relevance order, record drawer/reload and Browse/Scrub panels;
+Explore sort/reload, incompatible install absence, keyboard Details and return
+focus, independent Install dialog and no-results recovery; Settings table/narrow
+rows, exact synthetic secret removal and failed-read retry. No real writes,
+horizontal page overflow or page errors. Settings snapshots show the narrow
+render even on a wide viewport when the navigation/activity panes constrain the
+content container, as intended by DataTable's container-query contract.
+
+Logs: `/private/tmp/bakin-collections-batch-{tests,lint,quick,performance,browser,full}.log`;
+fixture logs `/private/tmp/bakin-{memory,explore}-batch-fixture.log`;
+screenshots `/private/tmp/bakin-{memory,settings,explore}-batch-{width}.png`.
+Both fixtures live under their plugin's `tests/ui.fixture.tsx` and run via
+`bun run test:ui`. The batch retires one scoped raw-control exception and four
+raw-scale migration allowances; no allowance was expanded. The one combined full
+checkpoint is running; do not treat these local results as its completion.
+
+## Health Agent pulse — table and details drawer (2026-09-22, local)
+
+The user accepted the existing kit Drawer recommendation. Agent pulse now uses
+DataTable `NarrowRoles` / `SortedPagedDualRender` and Drawer `CanonicalUsage`
+(`storybook/public/lists/data-table.stories.tsx` and
+`storybook/public/overlays/drawer.stories.tsx`), through the focused SDK
+`/patterns`, `/ui`, `/layout`, `/navigation` and `/charts` contracts.
+Columns compare Agent, Review, Usage & cost, Tracked work and Startup context;
+Details is an independent trailing action. The default review sort preserves
+canonical live/usage/name ties. Numeric sorts keep missing evidence last;
+headings and the persistent narrow selector share `agent_sort` URL state.
+`healthAgent` selects the drawer and survives reload. Latest-session breakdown,
+partial/unknown costs, missing/stale evidence and the exact Team diagnostics
+destination remain intact; diagnostic calculations and APIs are unchanged.
+
+Verification: 44 focused tests (240 assertions), quick conformance, lint, plugin
+build and both real-SDK Health fixtures pass. Independent review found no blocker.
+Intercepted real-app checks pass at 320/768/1024/1440px for default and explicit
+sorting, missing evidence, URL reload, keyboard Details, named drawer, partial
+cost/cache evidence, diagnostics destination, Escape and focus restoration,
+drawer reload, close-query cleanup, overflow and page errors. No API writes
+occurred. Screenshot review also corrected mobile header count placement and
+a clipped long-agent diagnostics label; its compact visible label retains an
+agent-specific accessible name. Evidence:
+`/private/tmp/bakin-health-agents-{tests,quick,lint,build,fixtures,browser,performance}.log`,
+`/private/tmp/bakin-health-agents-{width}.png` and
+`/private/tmp/bakin-health-agent-details-{width}.png`.
+Fixtures/reports: `plugins/health/tests/agent-pulse.fixture*.ts*` and
+`plugins/health/test-results/bakin-ui-agents/` (alongside the System report).
+
+The user explicitly approved Health's exact 502,173-byte recorded measurement
+(previously 500,046); only that record changes. The final mobile-label correction
+measures 502,208, 35 bytes above the approved record and within the unchanged
+2,048-byte allowance. No dependency, golden, public API or exception was added.
+The removed arbitrary details-grid size further reduces the migration ledger
+(combined Health arbitrary-size summary: 81 → 78). Full conformance is still
+required at the combined Health checkpoint; this is not a merge-ready handoff.
+
+## Health overhaul — System proof (2026-09-22, local)
+
+System's installed-plugin and search-index inventories now compose DataTable
+`NarrowRoles` / `SortedPagedDualRender` from
+`storybook/public/lists/data-table.stories.tsx`: separated column-derived narrow
+rows, a 2xl collapse breakpoint, and persistent URL-backed sorting shared with
+the wide headings. Numeric fields sort numerically; missing evidence stays last
+in either direction. Update is its own trailing action instead of part of Status.
+Reindex also honors an explicitly unreachable engine, matching Reindex all.
+Plugin findings reveal the visible desktop/mobile record, clearing an excluding
+filter first; the programmatic focus target leaves normal tab order unchanged.
+No diagnostic calculation, permission flow or repair endpoint was replaced.
+
+Verification: 34 focused tests (201 assertions), quick conformance, lint, build
+and the unchanged payload gate pass. Independent review found no blocking issue.
+Intercepted real-app checks pass at 320/768/1024/1440px for URL sort persistence,
+header/select parity, numeric/null order, filtered finding reveal and visible
+focus, exact Update target and explicit permission approval, exact Reindex
+target, ambiguous-confirmation and engine-offline locks, native disclosure
+keyboard behavior, overflow and page errors. All API writes were intercepted.
+Evidence: `/private/tmp/bakin-health-system-{focused,quick,lint,browser}.log`,
+`/private/tmp/bakin-health-{build,performance}.log`, and
+`/private/tmp/bakin-health-system-{width}.png`.
+
+New real-SDK fixture: `plugins/health/tests/ui.fixture.tsx`, with long identities,
+failed activation, unavailable evidence, migration errors and trailing actions.
+Desktop/mobile images and HTML report were inspected under
+`plugins/health/test-results/bakin-ui/`. The fixture now **passes** with no
+findings after the explicitly approved native-disclosure harness correction.
+Both interactive collectors recognize `details > summary:first-of-type` and
+exclude contents hidden by closed disclosures. Two new browser regressions
+failed before the fix: nested open/closed disclosures stopped tab traversal,
+and a summary with no focus ring was not inspected. Both now pass, alongside
+the two existing focus tests. The shared clean fixture includes the real SDK
+DisclosurePanel (`storybook/public/layout/disclosure-panel.stories.tsx` —
+`CanonicalUsage`, `/layout`); `ui:test:conformance` passes and deliberately
+broken fixtures still trigger their expected rules. Logs:
+`/private/tmp/bakin-summary-harness-{red,green,conformance,quick,lint}.log`.
+Independent focused review found no blocker. No component API/style change
+or public story update is needed for this test-harness correction.
+No accessibility suppression, golden update, new public API or budget increase
+was made. Two removed arbitrary-size usages reduced matching ledger counts;
+all other allowances remain unchanged. Full conformance is not yet run for this
+Health slice; this is local review evidence, not a merge-ready checkpoint.
+
+Health collection disposition (Agent pulse subsequently implemented above):
+
+| Surface | Recommended next treatment | Preserve |
+| --- | --- | --- |
+| Agent pulse (`agent-pulse.tsx`) | Implemented locally: sortable DataTable plus URL-selected kit Drawer | Live vs selected-period evidence, unknown/partial values, independent detail action; see current evidence above |
+| Complete check registry (`system-inventory.tsx`) | DataTable for check/group/status/owner/completed evidence | Canonical status precedence, unavailable/stale evidence, finding-to-check focus and descriptions |
+| Overview incidents (`overview-alerts.tsx`) | Review current incident cards as an actionable findings surface, not a preview-card default | Consequence, repair/delegation, acknowledgment, snooze, sensitivity/provenance and expandable resolution detail |
+| System watch list | Keep compact separated supporting rows | Capped summary, expansion, exact evidence target |
+| Activity event stream | Keep chronological Timeline | Status, source, reason and technical details |
+| Charts, readiness stages and metrics | Keep specialized charts/stat compositions | Exact chart data, units, unknown evidence and consistent series mapping |
+
 ## Schedule and Tasks table parity — 2026-09-21 local review
 
 Projects remains as visually approved; this slice does not reopen it.
@@ -221,7 +367,8 @@ Read-only review against DataTable `NarrowRoles`/`SortedPagedDualRender` confirm
   chart view, not automatically part of this migration.
 
 Schedule and Task log now have local implementation/browser evidence above.
-Health remains a source-based follow-up requiring its own focused slice.
+Health's subsequent local System proof is recorded above; other Health
+collections remain follow-ups, not completed migrations.
 
 Source snapshot: Bakin `de3d183321c9faca5c21705d08564f1f63d12cd5`;
 official Bits `4ff49426de9f88a87298754c515fef30aa866576` (both local main).

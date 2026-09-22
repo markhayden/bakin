@@ -38,7 +38,7 @@ automatically tables. Brainstorm is the first local correction below.
 | `host-route:plugin-catchall` | Delegate | Resolve installed plugin route; use each official plugin finding below. |
 | `host-route:runtime` | Mixed | Runtime tables, capability cards, switch timeline; see runtime shared components. |
 | `host-route:schedule` | Delegate | Host route delegates to matching core plugin page; do not count it as another list. |
-| `host-route:settings` | Specialized + review | Keep NavList/form semantics; repeated provider settings need standardization review. |
+| `host-route:settings` | Reviewed forms + local table | NavList/schema form semantics retained and route/save tests pass. Integrations uses separated provider fields, a named-secret table and responsive add form; retry/locking/write-only behavior verified. See combined checkpoint in AUDIT. |
 | `host-route:tasks` | Delegate | Host route delegates to matching core plugin page; do not count it as another list. |
 | `host-route:team.$id` | Delegate | Host route delegates to matching core plugin page; do not count it as another list. |
 | `host-route:team.index` | Delegate | Host route delegates to matching core plugin page; do not count it as another list. |
@@ -72,10 +72,10 @@ automatically tables. Brainstorm is the first local correction below.
 | `plugin-slot:chat:page:/chat` | Rows + specialized | Recent chats → separated; retain compact rail and conversation semantics. |
 | `plugin-slot:chat:page:/chat/[chatId]` | Rows + specialized | Recent chats → separated; retain compact rail and conversation semantics. |
 | `plugin-slot:chat:page:/chat/new` | Rows + specialized | Recent chats → separated; retain compact rail and conversation semantics. |
-| `plugin-slot:explore:page:/explore` | Review cards/rows | Text-first catalog → row candidate; media previews and pickers judged separately. |
+| `plugin-slot:explore:page:/explore` | Local table + supporting rows | Catalog is a sortable, URL-backed DataTable with independent Details/Install and compatibility gates; installed capabilities use compact separated management rows. Preserve preview galleries and consent/pickers. Fixtures and four-width browser checks pass; see AUDIT for combined checkpoint. |
 | `plugin-slot:health:nav-badge-providers` | No collection | Badge provider; counts/attention, not a result-list presentation. |
-| `plugin-slot:health:page:/health` | Mixed | Findings/agent rows → separated candidates; keep comparison tables and real timelines; metric grids are not lists. |
-| `plugin-slot:memory:page:/memory` | Table candidate | Search results: preserve relevance/navigation; narrow purpose review pending. |
+| `plugin-slot:health:page:/health` | Local / mixed | System plugin/index tables and Agent pulse now have persistent sorting, separated narrow rows and action/focus parity; Agent pulse uses the existing URL-selected Drawer. Four-width browser proof and both desktop/mobile fixtures pass after the approved native-summary harness fix (see AUDIT). Full check registry and overview incidents remain to review; full Health conformance is pending. Keep compact findings, real timelines and metric grids specialized. |
+| `plugin-slot:memory:page:/memory` | Local table parity + specialized | Browse uses column-derived separated narrow rows and persistent sorting; search keeps relevance. Record URL/reload, filters and tab-panel wiring verified. Keep Scrub's grouped selection/cleanup and tier stat tiles specialized. Fixtures/four-width browser pass; combined checkpoint in AUDIT. |
 | `plugin-slot:messaging:nav-badge-providers` | No collection | Badge provider; counts/attention, not a result-list presentation. |
 | `plugin-slot:models:page:/models` | Mixed | Keep comparison tables and labelled form rows; aliases → separated; no forced table for editable fields. |
 | `plugin-slot:projects:nav-badge-providers` | No collection | Badge provider; counts/attention, not a result-list presentation. |
@@ -114,7 +114,7 @@ automatically tables. Brainstorm is the first local correction below.
 | `shared-component:src/components/conversation/use-conversation-attention` | No collection | Primitive, feedback, overlay, identity or single-control composition; retain parent-specific collection decisions. |
 | `shared-component:src/components/drawer` | No collection | Primitive, feedback, overlay, identity or single-control composition; retain parent-specific collection decisions. |
 | `shared-component:src/components/plugin-settings-renderer` | Specialized | Schema form renderer; repeated inputs/agent toggles are forms, not ordinary result rows. |
-| `shared-component:src/components/provider-keys-tab` | Repeated form candidate | Hand-built bordered provider/secret groups; keep field labels, busy state and security semantics. |
+| `shared-component:src/components/provider-keys-tab` | Local forms + table | Separated provider forms and Integration/Secret/Remove DataTable. Visible add-field labels, global mutation lock, failed-write draft retention and read-error retry; four-width browser proof uses synthetic secrets only. |
 | `shared-component:src/components/tasks/activity-feed` | Keep rows | Compact separated live activity with disclosures; source omitted by initial three-root scan. |
 | `shared-component:src/components/ui/badge` | No collection | Primitive, feedback, overlay, identity or single-control composition; retain parent-specific collection decisions. |
 | `shared-component:src/components/ui/button` | No collection | Primitive, feedback, overlay, identity or single-control composition; retain parent-specific collection decisions. |
