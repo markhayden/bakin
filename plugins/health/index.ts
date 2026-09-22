@@ -66,7 +66,6 @@ import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
 import { checkExecutionSafety } from './lib/system-checks/execution-safety'
 import { checkRunDirs, runDirsSweepRepair } from './lib/system-checks/run-dirs'
 import { checkStartupContextSize } from './lib/system-checks/context-report'
-import { acceptUnattributedHistoryRepair, checkBudget, spendEvidenceRepair } from './lib/system-checks/budget'
 import { checkAgentBurn } from './lib/system-checks/agent-burn'
 import { checkSearchAdapter, searchScarRepair } from './lib/system-checks/search'
 import { searchOutboxRepair } from './lib/system-checks/search-outbox'
@@ -1025,14 +1024,6 @@ const healthPlugin: BakinPlugin = definePlugin({
       run: () => checkStartupContextSize(ctx.runtime),
     })
     ctx.registerHealthCheck({
-      id: 'budget',
-      name: 'Spend vs budget caps',
-      description: 'Evaluates spending policy, open holds, and current usage against every budget rule.',
-      group: workGroup,
-      maxAgeMs: 120_000,
-      run: () => checkBudget(),
-    })
-    ctx.registerHealthCheck({
       id: 'usage.agent-burn',
       name: 'Agent token burn (effort, spikes, usage buckets)',
       description: 'Flags unusually high or spiking token use, interactive-session usage, unexplained usage, and possible runaway autonomous activity.',
@@ -1122,8 +1113,6 @@ const healthPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthRepairAction(searchCanaryRepair())
     ctx.registerHealthRepairAction(searchEngineBurnRepair())
     ctx.registerHealthRepairAction(searchConsistencyRestartRepair())
-    ctx.registerHealthRepairAction(spendEvidenceRepair())
-    ctx.registerHealthRepairAction(acceptUnattributedHistoryRepair())
     ctx.registerHealthRepairAction(syncSkillRepair(process.cwd(), ctx.runtime))
   },
 

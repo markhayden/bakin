@@ -1,5 +1,7 @@
 /**
- * System check — spend vs budget cap rules (rule-aware, cost-control v2).
+ * Spend plugin health check — spend vs budget cap rules (rule-aware,
+ * cost-control v2) plus its two repairs. Registered by the spend plugin's
+ * activate (check id `spend.budget`).
  *
  * Evaluates EVERY cap rule against the shared spend engine (the same
  * arithmetic the dispatch gate enforces — evaluateBudget over
@@ -10,13 +12,13 @@
  * error (gating fails closed without it); the kill switch surfaces as its
  * own warn row.
  */
-import { queryAuditEvents } from '../../../../src/core/audit'
-import { getContentDir } from '../../../../src/core/content-dir'
-import { LedgerUnavailableError, listBudgetIncidents } from '../../../../src/core/execution-ledger'
-import { assembleBudgetSpend } from '../../../../src/core/budget-spend'
-import { evaluateBudget, type BudgetPolicy, type BudgetRule, type SpendEvidenceGap, type TurnBillingContext } from '../../../../src/core/budget'
-import { getSettings } from '../../../../src/core/settings'
-import { getHookRegistry } from '../../../../packages/core/src/hooks/hook-registry-singleton'
+import { queryAuditEvents } from '../../../src/core/audit'
+import { getContentDir } from '../../../src/core/content-dir'
+import { LedgerUnavailableError, listBudgetIncidents } from '../../../src/core/execution-ledger'
+import { assembleBudgetSpend } from '../../../src/core/budget-spend'
+import { evaluateBudget, type BudgetPolicy, type BudgetRule, type SpendEvidenceGap, type TurnBillingContext } from '../../../src/core/budget'
+import { getSettings } from '../../../src/core/settings'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type {
   HealthCheckRunInput,
@@ -31,7 +33,7 @@ import {
   getUsageHistoryScanState,
   getUsageHistoryScanStaleAfterMs,
   type UsageHistoryScanStateSnapshot,
-} from '../../../../src/core/usage-history-timer'
+} from '../../../src/core/usage-history-timer'
 
 const WINDOW_MS = 24 * 60 * 60 * 1000
 
@@ -651,7 +653,7 @@ export function spendEvidenceRepair(): HealthRepairActionDefinition {
         actionId: item.actionId,
         status,
         message,
-        affectedCheckIds: ['budget'],
+        affectedCheckIds: ['spend.budget'],
         changes: item.changes,
       }))
       if (items.length === 0) return []
@@ -714,7 +716,7 @@ export function acceptUnattributedHistoryRepair(): HealthRepairActionDefinition 
         actionId: item.actionId,
         status,
         message,
-        affectedCheckIds: ['budget'],
+        affectedCheckIds: ['spend.budget'],
         changes: item.changes,
       }))
       if (items.length === 0) return []

@@ -63,7 +63,9 @@
       "@bakin/team": ["./plugins/team"],
       "@bakin/team/*": ["./plugins/team/*"],
       "@bakin/explore": ["./plugins/explore"],
-      "@bakin/explore/*": ["./plugins/explore/*"]
+      "@bakin/explore/*": ["./plugins/explore/*"],
+      "@bakin/spend": ["./plugins/spend"],
+      "@bakin/spend/*": ["./plugins/spend/*"]
     }
   },
   "include": [

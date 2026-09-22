@@ -47,7 +47,7 @@ const hookRegistryMock = () => ({
 mock.module('@bakin/core/hooks/hook-registry-singleton', hookRegistryMock)
 mock.module('../../../src/core/plugin-registry', hookRegistryMock)
 
-import { acceptUnattributedHistoryRepair, checkBudget, spendEvidenceRepair } from '@bakin/health/lib/system-checks/budget'
+import { acceptUnattributedHistoryRepair, checkBudget, spendEvidenceRepair } from '@bakin/spend/lib/health-checks'
 import { recordRunCost } from '../../../src/core/execution-ledger'
 import { closeAllDbs, closeDb } from '../../../packages/core/src/storage/db'
 import { replaceSessionUsage, toLocalDayKey } from '../../../packages/core/src/usage-history/store'
@@ -632,7 +632,7 @@ describe('spend evidence repair (spend-evidence-refresh-pricing)', () => {
     const repair = spendEvidenceRepair()
     const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
     expect(outcomes).toEqual([
-      expect.objectContaining({ status: 'applied', affectedCheckIds: ['budget'] }),
+      expect.objectContaining({ status: 'applied', affectedCheckIds: ['spend.budget'] }),
     ])
     expect(outcomes[0]!.message).toContain('3 models')
   })
