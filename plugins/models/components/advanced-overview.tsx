@@ -12,7 +12,7 @@ import { Plus, Sparkles, X } from 'lucide-react'
 import { CompositionBar } from '@makinbakin/sdk/charts'
 import { DisclosurePanel, Grid, Stack } from '@makinbakin/sdk/layout'
 import { ConfirmDialog, DEFAULT_MODEL_VALUE, KeyValue, ListRow, ListRows, ModelSelect, StatGroup, StatTile, type KeyValueItem, type ModelSelectOption } from '@makinbakin/sdk/patterns'
-import { Badge, Button, Card, CardContent, CardHeader, Field, FieldDescription, FieldLabel, Input, Text } from '@makinbakin/sdk/ui'
+import { Badge, Button, Card, CardContent, CardFooter, CardHeader, Field, FieldDescription, FieldLabel, Input, Text } from '@makinbakin/sdk/ui'
 
 import { agentRows, effectiveAliases, effectiveFallbacks, effectiveTagOverrides } from '../lib/advanced'
 import { WORK_CLASSES } from '../lib/mode'
@@ -62,6 +62,20 @@ export function AdvancedOverview({ sel, modelOptions }: AdvancedOverviewProps) {
   const routesSet = ROUTABLE.filter((c) => sel.effective(`route:${c.id}`).model || sel.effective(`route:${c.id}`).thinking).length
   const recommendedOps = plan?.recommended.ops ?? []
   const onPlan = plan !== null && recommendedOps.length === 0
+  // What the recommendation would change, in one sentence — the agent lane
+  // (keep vs switch) and the chores lane (same model vs a lighter one).
+  const planSentence = (() => {
+    if (!plan) return 'The recommendation loads with the page.'
+    if (onPlan) return 'You are on the recommended plan: your agents run on a model that can run here, and the background chores use the lightest model that can do them.'
+    const rec = plan.recommended
+    const agentPart = rec.agent.model === agent.model
+      ? `keep ${shortModel(rec.agent.model)} for your agents`
+      : `switch your agents to ${shortModel(rec.agent.model)}`
+    const choresPart = rec.chores.model === rec.agent.model
+      ? 'run the background chores on it too'
+      : `move the background chores to ${shortModel(rec.chores.model)} — ${rec.chores.why}`
+    return `Bakin would ${agentPart} and ${choresPart}.`
+  })()
 
   const planItems: KeyValueItem[] = plan
     ? [
@@ -125,31 +139,27 @@ export function AdvancedOverview({ sel, modelOptions }: AdvancedOverviewProps) {
             </span>
             <div className="min-w-0">
               <h2 id="overview-plan-heading" className="m-0">Recommended plan</h2>
-              <Text as="p" size="meta" tone="muted" className="mt-bakin-1 max-w-prose leading-relaxed">
-                {plan
-                  ? onPlan
-                    ? 'You are on the recommended plan: your agents run on a model that can run here, and the background chores use the lightest model that can do them.'
-                    : `Bakin would keep ${shortModel(plan.recommended.agent.model)} for your agents and move the background chores to ${shortModel(plan.recommended.chores.model)} — ${plan.recommended.chores.why}.`
-                  : 'The recommendation loads with the page.'}
-              </Text>
+              <Text as="p" size="meta" tone="muted" className="mt-bakin-1 max-w-prose leading-relaxed">{planSentence}</Text>
             </div>
           </div>
           </CardHeader>
-          <CardContent className="flex min-w-0 flex-col gap-bakin-3">
+          {plan?.recommended.notes.length ? (
+            <CardContent className="flex min-w-0 flex-col gap-bakin-2">
+              {plan.recommended.notes.map((note) => (
+                <Text key={note} size="meta" tone="muted" className="leading-relaxed">{note}</Text>
+              ))}
+            </CardContent>
+          ) : null}
           {plan ? (
-            <div className="flex flex-wrap items-center gap-bakin-2">
+            <CardFooter className="mt-auto flex flex-wrap items-center justify-between gap-bakin-3">
+              <Text size="meta" tone="muted">{plan.candidates} model{plan.candidates === 1 ? '' : 's'} can run here</Text>
               {onPlan ? (
                 <Badge tone="success" variant="soft">On the recommended plan</Badge>
               ) : (
                 <Button type="button" size="sm" onClick={() => setPlanOpen(true)}>Use recommended plan</Button>
               )}
-              <Text size="meta" tone="muted">{plan.candidates} model{plan.candidates === 1 ? '' : 's'} can run here</Text>
-            </div>
+            </CardFooter>
           ) : null}
-          {plan?.recommended.notes.map((note) => (
-            <Text key={note} size="meta" tone="muted" className="leading-relaxed">{note}</Text>
-          ))}
-          </CardContent>
         </Card>
       </Grid>
 
@@ -167,11 +177,20 @@ export function AdvancedOverview({ sel, modelOptions }: AdvancedOverviewProps) {
           <StatTile variant="surface" label="Tag overrides" value={`${tagRows.length}`} sub={tagRows.length > 0 ? 'take priority over routes' : 'none'} />
         </StatGroup>
         {agents.length > 0 ? (
-          <CompositionBar
-            label="Agents by model"
-            data={[...byModel.entries()].map(([model, count]) => ({ key: model, label: shortModel(model), value: count }))}
-            formatValue={(v) => `${v} agent${v === 1 ? '' : 's'}`}
-          />
+          <Card data-testid="overview-agents-by-model">
+            <CardHeader>
+              <h3 className="m-0">Agents by model</h3>
+              <Text as="p" size="meta" tone="muted" className="mt-bakin-1">Which model each of your {agents.length} agent{agents.length === 1 ? ' runs' : 's run'} on, counting overrides.</Text>
+            </CardHeader>
+            <CardContent>
+              <CompositionBar
+                size="large"
+                label="Agents by model"
+                data={[...byModel.entries()].map(([model, count]) => ({ key: model, label: shortModel(model), value: count }))}
+                formatValue={(v) => `${v} agent${v === 1 ? '' : 's'}`}
+              />
+            </CardContent>
+          </Card>
         ) : null}
       </Stack>
 

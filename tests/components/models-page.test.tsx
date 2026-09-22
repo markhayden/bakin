@@ -526,11 +526,11 @@ describe('ModelsPage component', () => {
     render(<ModelsPage />)
     const catalog = within(await screen.findByTestId('model-catalog'))
     expect(await catalog.findByText('gpt-5.4-mini')).toBeTruthy()
-    const rejected = catalog.getByText('Rejected by account')
+    const rejected = catalog.getByText('Not available to your account')
     expect(rejected.closest('[title]')?.getAttribute('title')).toContain('14')
     expect(catalog.getByText('No credentials').closest('[title]')?.getAttribute('title')).toContain('no credentials for openai')
     const healthy = catalog.getByText('gpt-5.6-luna').closest('[data-model-row]')!
-    expect(within(healthy as HTMLElement).queryByText('Rejected by account')).toBeNull()
+    expect(within(healthy as HTMLElement).queryByText('Not available to your account')).toBeNull()
   })
 
   it('renders cached refresh age when available models come from cache', async () => {

@@ -28,7 +28,7 @@ import type { CatalogData } from './use-catalog'
 /** Plain-words badge per eligibility reason (#907). */
 const INELIGIBLE_LABEL: Record<NonNullable<Extract<AvailableModel['eligibility'], { status: 'ineligible' }>>['reason'], string> = {
   no_credentials: 'No credentials',
-  account_rejected: 'Rejected by account',
+  account_rejected: 'Not available to your account',
   runtime_unavailable: 'Unavailable',
   not_in_catalog: 'Not in catalog',
 }
@@ -279,7 +279,7 @@ export function CatalogPanel({ catalog, defaultModel }: CatalogPanelProps) {
                 variant="solid"
                 size="xs"
                 title={model.rejection
-                  ? `Rejected ${model.rejection.occurrences}× — last ${formatRelativeTime(model.rejection.lastSeenAt)}. Reroute or verify availability after the account regains access.`
+                  ? `The provider refused this model for your credentials ${model.rejection.occurrences}× (last ${formatRelativeTime(model.rejection.lastSeenAt)}) — usually a plan or key that doesn't include it. Nothing to fix here: it clears on its own the next time a call succeeds, and Verify availability re-checks it now.`
                   : model.eligibility.detail}
               >
                 {INELIGIBLE_LABEL[model.eligibility.reason]}
@@ -383,18 +383,19 @@ export function CatalogPanel({ catalog, defaultModel }: CatalogPanelProps) {
           </>
         )}
       >
-        <SearchInput
-          label="Search the model catalog"
-          value={query}
-          onValueChange={onQueryChange}
-          placeholder="Search models…"
-        />
         <FacetFilter
           label="Provider"
           options={providerOptions}
           selected={providers}
           onChange={setProviderFilters}
           counts={providerCounts}
+        />
+        <SearchInput
+          align="end"
+          label="Search the model catalog"
+          value={query}
+          onValueChange={onQueryChange}
+          placeholder="Search models…"
         />
       </PageControls>
 
