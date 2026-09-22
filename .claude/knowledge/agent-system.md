@@ -43,8 +43,7 @@ Teams are a Bakin concept for grouping agents (e.g. "Builders", "Creators"). Sto
 Agent models are changed via the models plugin API, not direct provider writes:
 - **Agent detail page** (`/team/:id`): `ModelSelect` dropdown in the header saves via `POST /api/plugins/models/config` with `{ agentId, ownModel }`
 - **Agent creation** (`agent-form.tsx`): fetches dynamic model list from `GET /api/plugins/models/available`, which is derived from `ctx.runtime.models.listAvailable({ includeUnavailable: true })` filtered to `available === true`
-- **Models page** (`/models`): manages `agents.defaults.model.primary`, `agents.defaults.model.fallbacks`, per-agent `model.primary`, and default/per-agent subagent model settings
-- The models plugin writes via `ctx.runtime.config.replace()` and fires the `models.configChanged` hook when agent effective model changes
+- **Models page** (`/models`): Simple (agent model + background chores) or Advanced (defaults, per-agent overrides + subagent pins, work routing) — every edit is a selection op through the ONE write path `POST /selections`, which reaches the runtime via `models.setRoutingPolicy` / `agents.update` and emits `models.catalog_changed`
 
 ### Agent IDs
 Bakin uses runtime canonical agent ids verbatim — no translation layer. With the current OpenClaw runtime adapter, the orchestrator id is the literal string `"main"` on **every** install; there is no detection heuristic, no settings override, no fallback. Subagents keep whatever ids the runtime assigns. Display names come from the runtime profile at render time and never leak into storage keys.

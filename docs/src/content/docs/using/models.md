@@ -1,34 +1,50 @@
 ---
 title: Models
-description: "Pick the right model for each agent and each role. Live catalog from every provider, tier-based profiles, aliases, and subagent overrides."
+description: "One model for your agents, a lighter one for the background chores — and every per-agent and per-job control when you want it."
 ---
 
-Right model for the right job. Premium where the work earns it, budget where it doesn't. A heartbeat ping shouldn't run on GPT-5; a real strategy doc shouldn't run on Haiku. This is where you make sure each agent and each kind of work lands on a model that fits.
+Most people want to pick one model and get on with it. The Models page starts there: an **agent model** for chat, direct messages and every task your agents run, and a **background-chores model** for the small jobs Bakin does on its own (chat titles, asset enrichment, notifications, team routing, skill mapping). Advanced opens every per-agent and per-job control on the same page. Nothing is written until you save, and the page never picks a model you didn't approve.
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-models--overview.webp" alt="The models view: agent config on top, with tabs for the available catalog, aliases, and task profiles." loading="lazy">
+  <img src="/docs/media/screenshots/using-models--overview.webp" alt="The Models page in Simple view: an agent-model lane and a background-chores lane, with the recommended plan below." loading="lazy">
 </figure>
 
-## Agent Config
+## Simple
 
-One row per agent. Pick a concrete model, an alias, or a task profile. The dropdown shows the merged catalog (concrete ids, aliases, profiles) so you can route by capability or by name.
-
-Two slots per agent:
+Two lanes, one save.
 
 <div class="table-light-full table-label-wrap">
 
-| Slot | What it does |
+| Lane | What it controls |
 | --- | --- |
-| **Primary** | The model the agent itself runs on. |
-| **Subagent** | The model used when this agent dispatches work to others. Set the orchestrator to premium and its helpers to budget here, instead of upgrading every agent. |
+| **Agent model** | The runtime's default model — chat, direct messages, and every task your agents run. |
+| **Background chores** | The five background jobs (titles, enrichment, relay notifications, team routing, skill mapping). Shows one value when all five use the same model; otherwise **Mixed (N models)** with a *Set all to…* picker that brings them back together without touching any thinking levels. |
 
 </div>
 
-Defaults apply to anyone without an override. Fallback models cover provider outages: when the primary doesn't respond, the runtime walks the fallback list in order.
+Below the lanes, **Recommended plan** shows what Bakin would pick and why — the plain-words reason sits next to each pick ("included in your plan · lightest tier that can do these jobs", or "~$6 per 1M tokens vs ~$90 for …"). *Use recommended plan* opens the exact list of changes; confirming stages them into your draft, and the save bar writes them. Bakin never applies the recommendation on its own.
 
-## Available Models
+If anything is set that Simple can't show — an agent pinned to its own model, a per-job route, a tag override, fallbacks, aliases — a **customizations line** says so and links into Advanced. **Reset to this plan** clears all of it back to the two lanes: the dialog lists every change (and anything your runtime can't clear), asks you to type `reset`, saves a snapshot first, and tells you the `bakin models restore <file>` command that undoes it.
 
-The catalog from every configured provider, merged with a curated metadata layer that adds what the APIs don't return: tier (budget / standard / premium), best-for hint, cost summary, context window. Refresh from the provider anytime; results cache to disk so the page loads instantly.
+## Advanced
+
+The same selections, every control, still one draft and one save bar:
+
+- **Defaults** — the default model, plus the default subagent model, fallbacks and aliases when your runtime supports them (Pi doesn't; the page says so in one line instead of showing disabled fields).
+- **Agents** — one row per agent: the model it effectively uses, an *Override* picker that defaults to "Use default model", and a subagents column where the runtime supports it.
+- **Work routing** — a model and thinking level per kind of work, grouped into *Agent work* (scheduled, workflow, ad-hoc, recovery, decomposition, direct send) and *Background chores* (the five chores). Blank routes use the agent model; **tag overrides** take priority over routes; *Use recommended routes* fills in the unrouted chores from the plan. Thinking dropdowns offer only the levels your runtime honors; a saved level it doesn't support shows as "unsupported by this runtime" rather than disappearing.
+
+Switching between Simple and Advanced never changes anything — it's a view. Bakin opens Advanced on its own when customizations exist, and remembers where you left off.
+
+## When a model can't run
+
+Every persisted selection is checked against what can actually run here: does the provider have credentials, has your account rejected the model, is it still in the catalog. A selection that fails shows a red callout with the reason and, where Bakin has a safe replacement, one *Use <model>* button that stages it. Pickers list such models disabled with the reason, so you can't pick a dead model by accident. Tasks whose model can't run wait on the board with a "Model can't run" badge that links straight to the offending selection (`/models?ref=…`), and the doctor's `models.dead-selections` check offers the same repair. Missing evidence (the runtime couldn't say) is shown as *unverified*, never treated as broken.
+
+If your runtime hasn't confirmed a write yet, the field carries a *saving…* chip until it settles; a write the runtime refused stays in your draft with a *Retry*.
+
+## Model catalog
+
+The read-only catalog sits under the lanes: every model your runtime reports, merged with a curated metadata layer (tier, best-for, cost summary, context window), with provider filters, search and sort. *Refresh* re-reads the runtime; *Verify availability* fires a tiny billed probe per model to confirm your account can call it — explicit only, never on a schedule.
 
 <div class="table-light-fit table-label">
 
@@ -40,42 +56,22 @@ The catalog from every configured provider, merged with a curated metadata layer
 
 </div>
 
-Configure provider keys in [Settings](/docs/using/settings/) and they show up here automatically.
+## From the terminal and at first run
 
-## Aliases
-
-Custom names mapped to model ids. Define `daily-driver` → `claude-sonnet-4-6` once, point your agents at `daily-driver`, swap the underlying id later in one place. Useful when the provider ships a new generation and you want to roll the team forward without touching every agent.
-
-## Task Profiles
-
-<figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-models--task-profiles.webp" alt="Task profiles map a name to a concrete model, so agents can be configured by purpose instead of vendor id." loading="lazy">
-</figure>
-
-Named presets that abstract away vendor naming entirely. `budget`, `standard`, `premium` ship by default; add your own from the Task Profiles tab. Configure an agent with a profile name and Bakin resolves it at dispatch time. Lets you reason about cost vs capability instead of model ids.
+`bakin models plan` prints the current lanes, the recommended plan with its reasons, and the changes that would reach it; `bakin models plan --apply` applies them (the only way the CLI ever changes a model, and only on that flag). `bakin models restore <snapshot.json>` undoes a Reset. `bakin onboard` shows the recommended plan on a fresh install and applies it only when you confirm (or pass `--yes`); it never changes a plan you already have — a dead lane on an existing install becomes a warning that points you back here.
 
 ## Where it lives
 
 ```
 ~/.bakin/plugin-settings/
   models/
-    available.json        # cached catalog from provider APIs
-  models.json             # per-agent config, aliases, task profiles
+    available.json        # cached catalog from the runtime
+    pending-writes.json   # adapter writes not yet confirmed
+    snapshots/            # full-state snapshots written before each Reset
+  models.json             # work routing (routes + tag overrides), page mode
 ```
 
-The runtime owns the actual model assignment (it's what gets sent to the gateway on dispatch). Bakin reads and writes through the runtime adapter, never copies state.
-
-## Settings
-
-<!-- docs:settings models -->
-<div class="settings-table">
-
-| Setting | Type | Default | What it does |
-| --- | --- | --- | --- |
-| Default model | `select` | `openai-codex/gpt-5.4` | Default model for new agents |
-
-</div>
-<!-- /docs:settings -->
+The runtime owns the actual model assignments (default, fallbacks, aliases, per-agent pins) in its native store; Bakin reads and writes them through the runtime adapter and never copies state.
 
 HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#models).
 
@@ -98,4 +94,4 @@ Full schemas in the [Exec tools reference](/docs/reference/generated/exec-tools/
 
 - [Team](/docs/using/team/): per-agent model assignment is read here
 - [Settings](/docs/using/settings/): provider keys, allowlists, and blocklists
-- [Health](/docs/using/health/): dispatch usage broken down by model and agent
+- [Health](/docs/using/health/): dead selections and routing checks

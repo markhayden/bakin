@@ -30,7 +30,7 @@ import type { ModelsPluginSettings } from './types'
 const modelsPlugin: BakinPlugin = definePlugin({
   id: 'models',
   name: 'Models',
-  version: '2.3.0',
+  version: '3.0.0',
   routes: modelsRoutes,
 
   // Nav items registered in client.tsx (order: 70) — no server-side duplication

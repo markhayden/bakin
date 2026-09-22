@@ -56,7 +56,7 @@ Plan: `tasks/plan-models-and-spend-overhaul.md` (v2) · Spec: `.claude/specs/mod
 - [x] T3.9 selection callouts — `selection-callout.tsx` (`SelectionCallout`: dead ⇒ reason + "Use <proposal>" that STAGES; unknown ⇒ info only; hidden once staged; `PendingChip` per ref) wired into both lanes, defaults, fallbacks, aliases, agent rows, routing rows, tag rows
 - [x] T3.10 shared model-options hook — `src/hooks/use-available-models.ts` module cache deleted, refetch on `models.catalog_changed` (emitted by POST /refresh, POST /selections, POST /runtime/restart); Team's agent form/detail already ride the hook
 - [x] T3.11 deletions [PoNR] — tabs (agents/aliases/routing/available-models), `use-models-data.ts`, `lib/selection-ops.ts`, Settings `defaultModel` field + `ModelsPluginSettings.defaultModel`, `models.configChanged` (no listeners), `?tab=` deep links → `?ref=`, routing-tab exception + two migration allowances retired (debt −2 raw-scale), stylesheet rebuilt
-- [ ] T3.12 docs: models-plugin, onboarding, CLI, CLAUDE.md routing paragraph, README
+- [x] T3.12 docs — models-plugin.md (Models page section: mode, draft, Simple, Reset, Advanced, callouts, catalog_changed), doctor/plugin-system/agent-system/CLAUDE.md updates, user docs `using/models.md` rewritten, tasks.md link, models plugin 3.0.0 + manifest description, generated refs
 - [ ] CHECKPOINT C: gates + ui:conformance --full + ui:test:conformance (models) + /verify S4 S5 S6 S7 S10 S11 + live test → merge
 
 ## Close-out
