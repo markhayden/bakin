@@ -11,9 +11,10 @@
  * All edits go through the masked /api/secrets surface; values are never
  * rendered back.
  */
-import { useCallback, useEffect, useState } from 'react'
-import { StatusBadge, type StatusBadgeVariant, type StatusTone } from '@makinbakin/sdk/patterns'
-import { Alert, AlertDescription, Badge, Button, Field, FieldLabel, Input, Skeleton } from '@makinbakin/sdk/ui'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { DataTable, ListRow, ListRows, StatusBadge, type DataTableColumn, type StatusBadgeVariant, type StatusTone } from '@makinbakin/sdk/patterns'
+import { Grid, Inline } from '@makinbakin/sdk/layout'
+import { Alert, AlertDescription, Button, Field, FieldLabel, Form, FormActions, Input, Skeleton, SystemState } from '@makinbakin/sdk/ui'
 
 export const PROVIDER_KEYS_TAB_ID = 'integrations'
 
@@ -27,8 +28,8 @@ interface ReadinessRow {
 
 function badgeFor(servedBy: ReadinessRow['servedBy']): { label: string; tone: StatusTone; variant: StatusBadgeVariant } {
   if (servedBy === 'runtime') return { label: 'Runtime', tone: 'success', variant: 'solid' }
-  if (servedBy === 'shim') return { label: 'Bakin key', tone: 'neutral', variant: 'soft' }
-  return { label: 'Not set', tone: 'neutral', variant: 'outline' }
+  if (servedBy === 'shim') return { label: 'Bakin key', tone: 'neutral', variant: 'solid' }
+  return { label: 'Not set', tone: 'neutral', variant: 'solid' }
 }
 
 export function ProviderKeysTab() {
@@ -41,21 +42,33 @@ export function ProviderKeysTab() {
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const mutationPending = useRef(false)
   // Adapter identity from the providers payload — copy never hardcodes one.
   const runtimeLabel = runtimeName ? `the runtime (${runtimeName})` : 'the runtime'
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
+      const read = async (url: string) => {
+        const response = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+        // Image providers are contributed by an optional Bits plugin. Its
+        // absence must not prevent managing unrelated integration secrets.
+        if (response.status === 404 && url === '/api/plugins/images/providers') return { readiness: [] }
+        if (!response.ok) throw new Error(`Settings could not be loaded (${response.status}).`)
+        return response.json()
+      }
       const [providers, secrets] = await Promise.all([
-        fetch('/api/plugins/images/providers').then(r => r.json()).catch(() => ({})),
-        fetch('/api/secrets').then(r => r.json()).catch(() => ({ stored: [] })),
+        read('/api/plugins/images/providers'),
+        read('/api/secrets'),
       ])
       setRows(Array.isArray(providers?.readiness) ? providers.readiness : [])
       setRuntimeName(typeof providers?.runtimeName === 'string' ? providers.runtimeName : null)
       setStored(Array.isArray(secrets?.stored) ? secrets.stored : [])
       setSecretNames(secrets?.secrets && typeof secrets.secrets === 'object' ? secrets.secrets : {})
-      setError(null)
+      setLoadError(null)
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Settings could not be loaded.')
     } finally {
       setLoading(false)
     }
@@ -64,7 +77,9 @@ export function ProviderKeysTab() {
   useEffect(() => { void load() }, [load])
 
   // Surface a failed write instead of silently reloading to a stale row.
-  async function mutate(id: string, run: () => Promise<Response>): Promise<void> {
+  async function mutate(id: string, run: () => Promise<Response>): Promise<boolean> {
+    if (mutationPending.current || loading || loadError) return false
+    mutationPending.current = true
     setBusy(id)
     setError(null)
     try {
@@ -72,12 +87,15 @@ export function ProviderKeysTab() {
       if (!res.ok) {
         const body = await res.json().catch(() => null) as { error?: string } | null
         setError(body?.error ? `${id}: ${body.error}` : `${id}: request failed (${res.status})`)
-        return
+        return false
       }
       await load()
+      return true
     } catch (err) {
       setError(`${id}: ${err instanceof Error ? err.message : String(err)}`)
+      return false
     } finally {
+      mutationPending.current = false
       setBusy(null)
     }
   }
@@ -85,12 +103,12 @@ export function ProviderKeysTab() {
   const save = async (id: string) => {
     const apiKey = (drafts[id] ?? '').trim()
     if (!apiKey) return
-    await mutate(id, () => fetch('/api/secrets', {
+    const saved = await mutate(id, () => fetch('/api/secrets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ provider: id, apiKey }),
     }))
-    setDrafts(d => ({ ...d, [id]: '' }))
+    if (saved) setDrafts(d => ({ ...d, [id]: '' }))
   }
 
   const clear = (id: string) =>
@@ -105,12 +123,12 @@ export function ProviderKeysTab() {
     const name = addDraft.name.trim()
     const value = addDraft.value.trim()
     if (!provider || !name || !value) return
-    await mutate(`${provider}.${name}`, () => fetch('/api/secrets', {
+    const saved = await mutate(`${provider}.${name}`, () => fetch('/api/secrets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ provider, name, value }),
     }))
-    setAddDraft({ provider: '', name: '', value: '' })
+    if (saved) setAddDraft({ provider: '', name: '', value: '' })
   }
 
   if (loading) {
@@ -121,6 +139,20 @@ export function ProviderKeysTab() {
       </div>
     )
   }
+
+  if (loadError) return <SystemState kind="error" scope="section" title="Integrations could not be loaded"
+    description={loadError} action={<Button variant="outline" onClick={() => void load()}>Try again</Button>} />
+
+  const secrets = Object.entries(secretNames).sort(([a], [b]) => a.localeCompare(b))
+    .flatMap(([provider, names]) => [...names].sort().map(name => ({ provider, name })))
+  const columns: ReadonlyArray<DataTableColumn<{ provider: string; name: string }>> = [
+    { key: 'provider', header: 'Integration', narrow: 'meta', cellClassName: 'whitespace-normal break-all', cell: row => row.provider },
+    { key: 'name', header: 'Secret', narrow: 'primary', cellClassName: 'whitespace-normal break-all', cell: row => row.name },
+    { key: 'actions', header: 'Actions', narrow: 'trailing', align: 'end', cell: row => (
+      <Button variant="ghost" size="xs" aria-label={`Remove ${row.provider} ${row.name}`} disabled={busy !== null}
+        onClick={() => void removeSecret(row.provider, row.name)}>Remove</Button>
+    ) },
+  ]
 
   return (
     <div className="space-y-bakin-3 max-w-2xl">
@@ -136,6 +168,7 @@ export function ProviderKeysTab() {
       {rows.length === 0 && (
         <p className="text-sm text-bakin-text-muted">No image providers are available yet.</p>
       )}
+      <ListRows aria-label="Image provider settings" variant="separated">
       {rows.map(row => {
         const storeable = (row.source ?? '').startsWith('native')
         const envSet = (row.configuredEnvVars?.length ?? 0) > 0
@@ -151,36 +184,38 @@ export function ProviderKeysTab() {
                 ? 'No key configured.'
                 : `Managed by the runtime — configure it in ${runtimeLabel}.`
         return (
-          <div key={row.id} className="flex flex-col gap-bakin-2 rounded-md border p-bakin-3">
-            <div className="flex items-center justify-between">
+          <ListRow key={row.id}>
+            <Inline align="center" justify="between">
               <span className="text-sm font-bakin-typography-weight-medium">{row.label}</span>
-              <StatusBadge tone={badge.tone} variant={badge.variant}>{badge.label}</StatusBadge>
-            </div>
+              <StatusBadge size="xs" tone={badge.tone} variant={badge.variant}>{badge.label}</StatusBadge>
+            </Inline>
             <p className="text-xs text-bakin-text-muted">{detail}</p>
             {storeable && !envSet && (
-              <div className="flex items-center gap-bakin-2">
+              <Inline>
                 <Field name={`${row.id}-api-key`} className="min-w-0 flex-1">
                   <FieldLabel className="sr-only">{row.label} API key</FieldLabel>
                   <Input
                     type="password"
+                    disabled={busy !== null}
                     placeholder={isStored ? 'Replace stored key…' : 'Enter API key…'}
                     value={drafts[row.id] ?? ''}
                     onChange={e => setDrafts(d => ({ ...d, [row.id]: e.target.value }))}
                   />
                 </Field>
-                <Button size="sm" disabled={busy === row.id || !(drafts[row.id] ?? '').trim()} onClick={() => save(row.id)}>
+                <Button size="sm" disabled={busy !== null || !(drafts[row.id] ?? '').trim()} onClick={() => save(row.id)}>
                   Save
                 </Button>
                 {isStored && (
-                  <Button size="sm" variant="outline" disabled={busy === row.id} onClick={() => clear(row.id)}>
+                  <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => clear(row.id)}>
                     Clear
                   </Button>
                 )}
-              </div>
+              </Inline>
             )}
-          </div>
+          </ListRow>
         )
       })}
+      </ListRows>
 
       <div className="pt-bakin-4 space-y-bakin-2">
         <h3 className="text-sm font-bakin-typography-weight-medium">Integration secrets</h3>
@@ -189,61 +224,49 @@ export function ProviderKeysTab() {
           token). Values are write-only — they never leave the server. An environment variable with the
           matching name always overrides a stored value.
         </p>
-        {Object.entries(secretNames).sort(([a], [b]) => a.localeCompare(b)).map(([provider, names]) => (
-          <div key={provider} className="flex flex-col gap-bakin-2 rounded-md border p-bakin-3">
-            <span className="text-sm font-bakin-typography-weight-medium">{provider}</span>
-            <div className="flex flex-wrap items-center gap-bakin-2">
-              {names.map(name => (
-                <Badge key={name} tone="neutral" variant="outline" className="gap-bakin-1 pr-bakin-1">
-                  {name}
-                  <button
-                    type="button"
-                    aria-label={`Remove ${provider} ${name}`}
-                    className="text-bakin-text-muted hover:text-bakin-signal-danger"
-                    disabled={busy === `${provider}.${name}`}
-                    onClick={() => removeSecret(provider, name)}
-                  >
-                    ×
-                  </button>
-                </Badge>
-              ))}
-            </div>
-          </div>
-        ))}
-        <div className="flex items-center gap-bakin-2">
+        {secrets.length > 0 ? <DataTable label="Integration secrets" columns={columns} rows={secrets}
+          rowKey={row => JSON.stringify([row.provider, row.name])} collapseBelow="xl" listVariant="separated" />
+          : <p className="text-sm text-bakin-text-muted">No named secrets stored.</p>}
+        <Form aria-label="Add integration secret" onSubmit={event => { event.preventDefault(); void addSecret() }}>
+        <Grid layout="thirds" gap="item">
           <Field name="secret-provider" className="min-w-0 flex-1">
-            <FieldLabel className="sr-only">Integration</FieldLabel>
+            <FieldLabel>Integration</FieldLabel>
             <Input
+              disabled={busy !== null}
               placeholder="integration (e.g. brave)"
               value={addDraft.provider}
               onChange={e => setAddDraft(d => ({ ...d, provider: e.target.value }))}
             />
           </Field>
           <Field name="secret-name" className="min-w-0 flex-1">
-            <FieldLabel className="sr-only">Secret name</FieldLabel>
+            <FieldLabel>Secret name</FieldLabel>
             <Input
+              disabled={busy !== null}
               placeholder="secret name (e.g. apiKey)"
               value={addDraft.name}
               onChange={e => setAddDraft(d => ({ ...d, name: e.target.value }))}
             />
           </Field>
           <Field name="secret-value" className="min-w-0 flex-1">
-            <FieldLabel className="sr-only">Value</FieldLabel>
+            <FieldLabel>Value</FieldLabel>
             <Input
+              disabled={busy !== null}
               type="password"
               placeholder="value"
               value={addDraft.value}
               onChange={e => setAddDraft(d => ({ ...d, value: e.target.value }))}
             />
           </Field>
-          <Button
+        </Grid>
+        <FormActions>
+          <Button type="submit"
             size="sm"
-            disabled={!addDraft.provider.trim() || !addDraft.name.trim() || !addDraft.value.trim()}
-            onClick={() => void addSecret()}
+            disabled={busy !== null || !addDraft.provider.trim() || !addDraft.name.trim() || !addDraft.value.trim()}
           >
             Add secret
           </Button>
-        </div>
+        </FormActions>
+        </Form>
       </div>
     </div>
   )

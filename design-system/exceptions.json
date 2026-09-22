@@ -151,7 +151,6 @@
       "scope": [
         "src/components/conversation/reply-toast.tsx",
         "packages/sdk/src/slots/index.tsx",
-        "src/components/provider-keys-tab.tsx",
         "packages/host/src/components/layout/sidebar-nav-item.tsx",
         "packages/host/src/components/runtime/runtimes-tab.tsx",
         "plugins/workflows/components/workflow-canvas-editor.tsx"
@@ -161,9 +160,6 @@
           "raw-control": 1
         },
         "packages/sdk/src/slots/index.tsx": {
-          "raw-control": 1
-        },
-        "src/components/provider-keys-tab.tsx": {
           "raw-control": 1
         },
         "packages/host/src/components/layout/sidebar-nav-item.tsx": {
