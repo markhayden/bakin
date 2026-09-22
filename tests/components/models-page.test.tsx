@@ -640,9 +640,11 @@ describe('ModelsPage component', () => {
       render(<ModelsPage />)
       expect((await screen.findByRole('tab', { name: 'Simple' })).getAttribute('aria-selected')).toBe('true')
       const panel = within(screen.getByRole('tabpanel', { name: 'Simple' }))
-      expect(await panel.findByText('Agent model')).toBeTruthy()
-      // Both lanes read the default: agent = the default, chores inherit it.
-      expect(panel.getAllByText('anthropic/claude-sonnet-4-6')).toHaveLength(2)
+      const agentLane = within(await panel.findByTestId('lane-agent'))
+      expect(agentLane.getByRole('combobox', { name: 'Model' }).textContent).toContain('Claude Sonnet 4.6')
+      // Chores inherit the agent model — the picker says so in plain words.
+      const choresLane = within(panel.getByTestId('lane-chores'))
+      expect(choresLane.getByRole('combobox', { name: 'Model' }).textContent).toContain('Same as the agent model')
       expect(screen.queryByTestId('customizations-line')).toBeNull()
     })
 
@@ -679,6 +681,68 @@ describe('ModelsPage component', () => {
       evidenceState = { catalog: 'ok', runtimeAvailability: 'ok', credentials: 'partial', rejections: 'ok' }
       render(<ModelsPage />)
       expect(await screen.findByText('Some availability facts could not be verified')).toBeTruthy()
+    })
+  })
+
+  describe('Simple view (S4/S5/S11)', () => {
+    const plain = () => {
+      configState = { ...configState, defaultSubagentModel: null, fallbackModels: [] }
+      aliasesState = {}
+      routingState = { routes: [], tagOverrides: [] }
+    }
+    const CHORES = ['auto-title', 'enrichment', 'relay', 'skill-mapping', 'team-routing']
+
+    it('picking a chores model stages five route ops; Save posts exactly those and nothing else', async () => {
+      plain()
+      const user = userEvent.setup()
+      render(<ModelsPage />)
+      const lane = within(await screen.findByTestId('lane-chores'))
+      await user.click(lane.getByRole('combobox', { name: 'Model' }))
+      await user.click(await screen.findByRole('option', { name: 'Claude Haiku 4.5' }))
+      expect((await screen.findByTestId('draft-summary')).textContent).toContain('5 changes staged')
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(configWrite()).toBeTruthy())
+      expect(configWrite()?.body?.ops).toEqual(CHORES.map((workClass) => ({ ref: `route:${workClass}`, set: { model: 'anthropic/claude-haiku-4-5' } })))
+      await waitFor(() => expect(screen.queryByTestId('draft-summary')).toBeNull())
+    })
+
+    it('changing the agent model stages exactly one policy op; discarding clears the draft', async () => {
+      plain()
+      const user = userEvent.setup()
+      render(<ModelsPage />)
+      const lane = within(await screen.findByTestId('lane-agent'))
+      await user.click(lane.getByRole('combobox', { name: 'Model' }))
+      await user.click(await screen.findByRole('option', { name: 'GPT-5.4' }))
+      expect((await screen.findByTestId('draft-summary')).textContent).toContain('1 change staged')
+      expect(lane.getByText('Model (unsaved)')).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: 'Discard' }))
+      await waitFor(() => expect(screen.queryByTestId('draft-summary')).toBeNull())
+      expect(configWrite()).toBeUndefined()
+    })
+
+    it('chores on different models read as Mixed; "Set all to…" stages the five routes', async () => {
+      plain()
+      routingState = { routes: [{ workClass: 'relay', model: 'anthropic/claude-haiku-4-5' }], tagOverrides: [] }
+      const user = userEvent.setup()
+      render(<ModelsPage />)
+      const lane = within(await screen.findByTestId('lane-chores'))
+      expect((await lane.findByTestId('chores-mixed')).textContent).toContain('Mixed (2 models)')
+      await user.click(lane.getByRole('combobox', { name: 'Set all to' }))
+      await user.click(await screen.findByRole('option', { name: 'Claude Haiku 4.5' }))
+      // relay already IS haiku — only the other four ride the draft (S5).
+      expect((await screen.findByTestId('draft-summary')).textContent).toContain('4 changes staged')
+      expect(lane.queryByTestId('chores-mixed')).toBeNull()
+    })
+
+    it('"Use recommended plan" shows the diff in a dialog and stages the plan ops on confirm', async () => {
+      plain()
+      render(<ModelsPage />)
+      fireEvent.click(await screen.findByRole('button', { name: 'Use recommended plan' }))
+      const dialog = await screen.findByRole('dialog')
+      expect(within(dialog).getByText('Background chores')).toBeTruthy()
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Stage changes' }))
+      expect((await screen.findByTestId('draft-summary')).textContent).toContain('5 changes staged')
+      expect(configWrite()).toBeUndefined()
     })
   })
 

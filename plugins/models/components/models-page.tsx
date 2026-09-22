@@ -9,14 +9,15 @@
  * in a layer Simple cannot show, the VIEW flips to Advanced without writing.
  */
 import { useQueryState, useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
-import { KeyValue, Page, PageBody, PageHeader, SaveBar, SearchInput, SegmentedControl, type KeyValueItem } from '@makinbakin/sdk/patterns'
-import { Badge, Banner, Button, SystemState, Tabs, TabsList, TabsTrigger, Text } from '@makinbakin/sdk/ui'
+import { Page, PageBody, PageHeader, SaveBar, SearchInput, SegmentedControl } from '@makinbakin/sdk/patterns'
+import { Badge, Banner, Button, SystemState, Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
 
 import type { UiMode } from '../lib/mode'
 import { AgentsTab } from './agents-tab'
 import { AliasesTab } from './aliases-tab'
 import { CatalogPanel } from './catalog-panel'
 import { RoutingTab } from './routing-tab'
+import { SimpleMode } from './simple-mode'
 import { useModelsData } from './use-models-data'
 import { useSelections, type SelectionsData } from './use-selections'
 
@@ -42,30 +43,6 @@ function PendingSummary({ sel }: { sel: SelectionsData }) {
         ? `${failed} write${failed === 1 ? '' : 's'} not confirmed`
         : `${count} write${count === 1 ? '' : 's'} pending runtime confirmation`}
     </Badge>
-  )
-}
-
-/** Read-only two-lane summary — the Simple view's shell until its lanes land. */
-function SimpleSummary({ sel, onAdvanced }: { sel: SelectionsData; onAdvanced: () => void }) {
-  const plan = sel.plan
-  if (!plan) return null
-  const chores = plan.current.chores.mixed
-    ? `Mixed (${plan.current.chores.models.length} models)`
-    : plan.current.chores.model ?? 'Inherits the agent model'
-  const items: KeyValueItem[] = [
-    { label: 'Agent model', value: plan.current.agent ?? 'Not set', mono: true },
-    { label: 'Background chores', value: chores, mono: !plan.current.chores.mixed },
-  ]
-  return (
-    <>
-      <KeyValue aria-label="Model plan" layout="rows" items={items} />
-      {sel.customizations.length > 0 ? (
-        <Text size="meta" tone="muted" data-testid="customizations-line">
-          {sel.customizations.length} customization{sel.customizations.length === 1 ? '' : 's'} active ({sel.customizations.map((c) => c.detail).join('; ')}).{' '}
-          <Button type="button" variant="link" size="xs" onClick={onAdvanced}>View in Advanced</Button>
-        </Text>
-      ) : null}
-    </>
   )
 }
 
@@ -170,7 +147,7 @@ export function ModelsPage() {
           labelledBy="models-mode-tab-simple"
           state={shellState}
         >
-          <SimpleSummary sel={sel} onAdvanced={() => sel.setView('advanced')} />
+          <SimpleMode sel={sel} modelOptions={m.modelSelectOptions} onAdvanced={() => sel.setView('advanced')} />
         </PageBody>
       ) : (
         <PageBody
