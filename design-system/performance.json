@@ -19,7 +19,7 @@
   },
   "hostInitialJs": {
     "path": "packages/host/dist/main.js",
-    "bytes": 231963
+    "bytes": 234532
   },
   "sdkUiBundles": [
     {
@@ -226,19 +226,19 @@
       "repository": "bakin-bits-official",
       "pluginId": "messaging",
       "path": "bakin-bits-official/plugins/messaging/dist/client.js",
-      "bytes": 698147
+      "bytes": 713362
     },
     {
       "repository": "bakin-bits-official",
       "pluginId": "projects",
       "path": "bakin-bits-official/plugins/projects/dist/client.js",
-      "bytes": 100107
+      "bytes": 105330
     },
     {
       "repository": "bakin-bits-official",
       "pluginId": "terminal",
       "path": "bakin-bits-official/plugins/terminal/dist/client.js",
-      "bytes": 511838
+      "bytes": 514331
     },
     {
       "repository": "bakin",
@@ -268,7 +268,7 @@
       "repository": "bakin",
       "pluginId": "health",
       "path": "plugins/health/dist/client.js",
-      "bytes": 500046
+      "bytes": 502173
     },
     {
       "repository": "bakin",
@@ -292,7 +292,7 @@
       "repository": "bakin",
       "pluginId": "tasks",
       "path": "plugins/tasks/dist/client.js",
-      "bytes": 196889
+      "bytes": 199344
     },
     {
       "repository": "bakin",

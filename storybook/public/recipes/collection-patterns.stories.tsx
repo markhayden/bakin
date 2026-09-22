@@ -13,7 +13,7 @@ const meta = {
   argTypes: { showActions: { control: 'boolean' }, onAction: { control: false } },
   parameters: {
     layout: 'fullscreen',
-    docs: { description: { component: 'Review collection intent using the same records: separated standard rows for browsing, cards when a preview earns the space, and tables for comparison. This composition proposal does not change kit defaults or app consumers.' } },
+    docs: { description: { component: 'DataTable is the default for record collections, with one column model for wide and narrow layouts. Choose cards when meaningful previews earn the space; use separated rows for compact supporting lists or a specific interaction need. These examples compare existing patterns without changing their runtime prop defaults.' } },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'keyboard', 'non-color'],
   },
 } satisfies Meta<typeof CollectionComparison>

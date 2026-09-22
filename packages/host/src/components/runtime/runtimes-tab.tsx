@@ -1,7 +1,6 @@
 /**
- * Runtime hub — Runtimes: the runtime roster (shared EntityCardBody anatomy:
- * icon tile + title row + badge + description) with the guided switch flow.
- * Clicking a runtime opens the ConfirmDialog, which owns the WHOLE flow —
+ * Runtime hub — Runtimes: a sortable, responsive roster with a guided switch flow.
+ * Preview switch opens the ConfirmDialog, which owns the WHOLE flow —
  * options, consequences, preview trigger, typed confirm; nothing actionable
  * lives inline on the page (repair-button precedent). Preview is a dry run
  * (zero writes) whose grouped result cards render on the page as read-only
@@ -9,8 +8,7 @@
  * stream.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Cpu } from 'lucide-react'
-import { DisclosurePanel, Grid, Inline, Stack } from '@makinbakin/sdk/layout'
+import { DisclosurePanel, Inline, Stack } from '@makinbakin/sdk/layout'
 import {
   ConfirmDialog,
   CopyButton,
@@ -40,10 +38,9 @@ import {
 } from '@makinbakin/sdk/ui'
 import { reduceSwitchProgress, SWITCH_PHASE_LABELS, type SwitchStepRow } from '../../lib/runtime-report'
 import { ExtensionsSection } from './extensions-section'
-import { EntityCardBody } from './shared'
+import { RuntimeTable } from './runtime-table'
 import { describeRequestError, responseError } from '../../lib/request-error'
 import type { CapabilityReport, SwitchResultPayload } from './types'
-import { cn } from '@makinbakin/sdk/utils'
 
 const STEP_TONE: Record<SwitchStepRow['status'], StatusTone> = {
   ok: 'success',
@@ -321,32 +318,17 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
         The runtime is the engine that runs your agents. Switching is a real migration, not a toggle —
         agents start fresh sessions on the target and runtime-owned state stays behind. Preview first.
       </Text>
-      <Grid layout="split" gap="item">
-        {roster.map((name) => {
-          const isActive = name === report.adapter
-          return (
-            <button
-              key={name}
-              type="button"
-              disabled={isActive || running !== null}
-              data-testid={`switch-target-${name}`}
-              onClick={() => { setTarget(name); setResult(null); setSteps([]); setConfirming(true) }}
-              className={cn('rounded-bakin-surface border bg-bakin-surface-default p-bakin-4 text-left text-bakin-text-primary shadow transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring', isActive
-                  ? 'cursor-default border-bakin-action-primary-background/40 bg-bakin-action-primary-background/5 ring-1 ring-bakin-action-primary-background/40'
-                  : 'border-bakin-border-subtle hover:bg-bakin-canvas-default/40')}
-            >
-              <EntityCardBody
-                icon={Cpu}
-                tone={isActive ? 'active' : 'neutral'}
-                title={RUNTIME_LABELS[name] ?? name}
-                badge={isActive ? <StatusBadge tone="success" variant="soft">Active</StatusBadge> : undefined}
-                meta={isActive ? `${report.runtime.name}@${report.runtime.version}` : name}
-                blurb={RUNTIME_BLURBS[name] ?? 'Runtime adapter.'}
-              />
-            </button>
-          )
-        })}
-      </Grid>
+      <RuntimeTable label="Available runtimes" queryKey="runtimesSort" rows={roster} rowKey={name => name} columns={[
+        { key: 'name', header: 'Runtime', narrow: 'primary', sortable: true, sortValue: name => RUNTIME_LABELS[name] ?? name,
+          cell: name => <Text weight="semibold">{RUNTIME_LABELS[name] ?? name}</Text> },
+        { key: 'description', header: 'Description', narrow: 'meta', cellClassName: 'whitespace-normal', cell: name => RUNTIME_BLURBS[name] ?? 'Runtime adapter.' },
+        { key: 'status', header: 'Status', narrow: 'meta', cell: name => name === report.adapter ? <StatusBadge tone="success" variant="solid" size="xs">Active</StatusBadge> : <Text size="meta" tone="muted">Available</Text> },
+        { key: 'version', header: 'Version', narrow: 'label', cell: name => name === report.adapter ? `${report.runtime.name}@${report.runtime.version}` : '—' },
+        { key: 'action', header: 'Action', narrow: 'trailing', hideLabel: true, cell: name => <Button size="xs" variant="outline"
+          disabled={name === report.adapter || running !== null} data-testid={`switch-target-${name}`}
+          aria-label={`Preview switch to ${RUNTIME_LABELS[name] ?? name}`}
+          onClick={() => { setTarget(name); setResult(null); setSteps([]); setConfirming(true) }}>Preview switch</Button> },
+      ]} />
 
       <ExtensionsSection />
 

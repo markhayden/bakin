@@ -1168,33 +1168,32 @@ function DocsEditor({
           <SectionEmpty>No {copy.title.toLowerCase()} yet — create one and the editor opens on a fresh page.</SectionEmpty>
         )}
         {docs.length > 0 && (
-        <ListRows variant="bordered" aria-label={copy.title}>
+        <ListRows variant="separated" aria-label={copy.title}>
         {docs.map((d) => (
-          // Each row is a distinct tile — flat hover-only rows blended into one block.
           // Benched lessons read as benched.
           <ListRow
             key={d.name}
             // Disabled lessons de-emphasize via muted text — never an
             // opacity fade that drops text below contrast.
             className={cn(
-              'flex items-center gap-bakin-3',
+              'flex min-w-0 flex-wrap items-center gap-bakin-3',
               kind === 'lessons' && (brand.disabledLessons ?? []).includes(d.name) && '[&_span]:text-bakin-text-muted',
             )}
             data-doc-row={d.name}
           >
-            {/* The filename is the identity — it never yields space to the description. */}
+            {/* Keep the full filename available on narrow screens. */}
             <Button
               type="button"
               variant="ghost"
               size="inline"
-              className="max-w-72 shrink-0 gap-bakin-1 font-bakin-typography-weight-regular hover:bg-transparent"
+              className="h-auto min-w-0 max-w-full gap-bakin-1 whitespace-normal text-left font-bakin-typography-weight-regular hover:bg-transparent"
               onClick={() => onEditDoc(kind, d.name)}
             >
               <FileText className="size-bakin-3 shrink-0 text-bakin-text-muted" />
-              <span className="truncate font-bakin-typography-family-mono text-bakin-typography-size-body">{d.name}</span>
+              <span className="min-w-0 break-all font-bakin-typography-family-mono text-bakin-typography-size-body">{d.name}</span>
             </Button>
-            {d.description && <Text size="meta" tone="muted" className="min-w-0 flex-1 truncate">{d.description}</Text>}
-            <div className="ml-auto flex shrink-0 items-center gap-bakin-3">
+            {d.description && <Text size="meta" tone="muted" className="min-w-0 flex-1 break-words">{d.description}</Text>}
+            <div className="ml-auto flex max-w-full flex-wrap items-center gap-bakin-3">
               {kind === 'guidelines' && (
                 <TooltipProvider delay={200}>
                   <Tooltip>

@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import '../../rtl-settle'
 import { VersionRow } from '../../../plugins/assets/components/versioned/VersionRow'
+import { ListRows } from '@makinbakin/sdk/patterns'
 
 afterEach(cleanup)
 
@@ -32,7 +33,7 @@ describe('VersionRow', () => {
     const onDelete = mock()
 
     render(
-      <VersionRow
+      <ListRows variant="separated"><VersionRow
         assetId="asset-popcorn"
         assetType="images"
         version={version}
@@ -42,7 +43,7 @@ describe('VersionRow', () => {
         onSelect={onSelect}
         onPromote={onPromote}
         onDelete={onDelete}
-      />,
+      /></ListRows>,
     )
 
     const preview = screen.getByRole('button', { name: 'Preview version 2' })

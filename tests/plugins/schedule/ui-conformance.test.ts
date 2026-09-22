@@ -35,16 +35,16 @@ describe('Schedule UI conformance', () => {
     expect(contents).not.toContain('@makinbakin/sdk/components')
     expect(contents).not.toContain('<EmptyState')
     expect(contents).toContain('<DataTable')
-    expect(contents).toContain('renderRow=')
     // Wide-row activation is the kit DataTable contract — never a hand-rolled
     // interactive TableRow through the renderTableRow escape.
     expect(contents).not.toContain('renderTableRow=')
     expect(contents).toContain('onRowActivate=')
     expect(contents).toContain('rowActivateLabel=')
-    expect(contents).toContain('<ListRow')
-    // Whole-row activation rides the ListRow interactive contract, never a
-    // ghost Button stretched across the row.
-    expect(contents).toContain('interactive={{')
+    // Both widths use the same column model and kit-owned activation.
+    expect(contents).not.toContain('MobileJobRow')
+    expect(contents).not.toContain('renderRow=')
+    expect(contents).toContain("narrow: 'trailing'")
+    expect(contents).toContain('listVariant="separated"')
     expect(contents).not.toMatch(/\b(?:w|min-w|max-w)-\[[^\]]+\]/)
     // The dual render is container-query driven inside DataTable — no viewport branches.
     expect(contents).not.toContain('md:hidden')

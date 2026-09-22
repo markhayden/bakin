@@ -4,7 +4,7 @@ import { Grid } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { Drawer, DrawerSection, Text } from '@makinbakin/sdk/ui'
 import { KeyValue, ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
-import { EntryVisual } from './catalog-card'
+import { EntryVisual } from './catalog-entry'
 import type { ExploreCatalogEntry } from '../types'
 
 const KIND_LABELS: Record<ExploreCatalogEntry['kind'], string> = {

@@ -1,4 +1,3 @@
-:where([data-bakin-plugin="reference-bookmarks"]) .reference-bookmarks__list,
 :where([data-bakin-plugin="reference-bookmarks"]) .reference-bookmarks__tags {
   list-style: none;
   margin: 0;

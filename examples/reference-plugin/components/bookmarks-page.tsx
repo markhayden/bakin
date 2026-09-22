@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { TurnOutputView } from '@makinbakin/sdk/conversation'
 import { Grid, Inline, Stack } from '@makinbakin/sdk/layout'
-import { Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
+import { DataTable, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
+import { useQueryState } from '@makinbakin/sdk/navigation'
 import {
   Alert,
   AlertDescription,
@@ -9,7 +10,6 @@ import {
   Badge,
   Button,
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -24,6 +24,7 @@ import {
   FormActions,
   Input,
   SubmitButton,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Text,
   SystemState,
   buttonVariants,
 } from '@makinbakin/sdk/ui'
@@ -54,15 +55,11 @@ async function responseError(response: Response, fallback: string): Promise<stri
   return body?.error ?? `${fallback} (${response.status})`
 }
 
-function BookmarkCard({ bookmark, deleting, onRemove }: {
+function BookmarkIdentity({ bookmark }: {
   bookmark: Bookmark
-  deleting: boolean
-  onRemove: (id: string) => void
 }) {
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>
+    <Stack gap="dense">
           <a
             aria-label={`${bookmark.title} (opens in a new tab)`}
             className={buttonVariants({
@@ -76,38 +73,22 @@ function BookmarkCard({ bookmark, deleting, onRemove }: {
           >
             {bookmark.title}
           </a>
-        </CardTitle>
-        <CardDescription className="reference-bookmarks__bookmark-url">
+        <Text size="meta" tone="muted" className="reference-bookmarks__bookmark-url">
           {bookmark.url}
-        </CardDescription>
-        <CardAction>
-          <Button
-            aria-label={`Delete ${bookmark.title}`}
-            disabled={deleting}
-            size="xs"
-            type="button"
-            variant="danger"
-            onClick={() => onRemove(bookmark.id)}
-          >
-            {deleting ? 'Deleting…' : 'Delete'}
-          </Button>
-        </CardAction>
-      </CardHeader>
+        </Text>
       {bookmark.note || bookmark.tags.length > 0 ? (
-        <CardContent>
           <Stack gap="dense">
             {bookmark.note ? <p>{bookmark.note}</p> : null}
             {bookmark.tags.length > 0 ? (
               <Inline as="ul" aria-label={`Tags for ${bookmark.title}`} className="reference-bookmarks__tags" gap="dense">
                 {bookmark.tags.map((tag) => (
-                  <li key={tag}><Badge size="xs" variant="outline">{tag}</Badge></li>
+                  <li key={tag}><Badge size="xs" variant="soft">{tag}</Badge></li>
                 ))}
               </Inline>
             ) : null}
           </Stack>
-        </CardContent>
       ) : null}
-    </Card>
+    </Stack>
   )
 }
 
@@ -120,6 +101,14 @@ export function BookmarksPage() {
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const bookmarks = data?.bookmarks ?? []
+  const [sortQuery, setSortQuery] = useQueryState('sort', 'createdAt:desc')
+  const sortItems = { 'title:asc': 'Title: A–Z', 'title:desc': 'Title: Z–A', 'createdAt:desc': 'Newest first', 'createdAt:asc': 'Oldest first' }
+  const sortValue = Object.hasOwn(sortItems, sortQuery) ? sortQuery : 'createdAt:desc'
+  const [field, dir] = sortValue.split(':') as ['title' | 'createdAt', 'asc' | 'desc']
+  const sorted = [...bookmarks].sort((a, b) => {
+    const compared = a[field].localeCompare(b[field], undefined, { numeric: true, sensitivity: 'base' })
+    return dir === 'asc' ? compared : -compared
+  })
 
   async function add(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -187,7 +176,7 @@ export function BookmarksPage() {
       <PageHeader
         description="Save useful links for people and agents through one shared plugin data path."
         eyebrow="Reference plugin / saved links"
-        meta={<Badge size="xs" variant="outline">{bookmarks.length} saved</Badge>}
+        meta={<Badge size="xs" variant="soft">{bookmarks.length} saved</Badge>}
         title="Bookmarks"
       />
 
@@ -245,17 +234,20 @@ export function BookmarksPage() {
         label="Saved bookmarks"
         state={replacementState}
       >
-        <Grid as="ul" aria-label="Saved bookmarks" className="reference-bookmarks__list" gap="item" layout="cards">
-          {bookmarks.map((bookmark) => (
-            <li key={bookmark.id}>
-              <BookmarkCard
-                bookmark={bookmark}
-                deleting={deletingId === bookmark.id}
-                onRemove={(id) => void remove(id)}
-              />
-            </li>
-          ))}
-        </Grid>
+        <Select items={sortItems} value={sortValue} onValueChange={next => { if (next && Object.hasOwn(sortItems, next)) setSortQuery(next) }}>
+          <SelectTrigger aria-label="Sort bookmarks"><SelectValue /></SelectTrigger>
+          <SelectContent>{Object.entries(sortItems).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+        </Select>
+        <DataTable label="Saved bookmarks" rows={sorted} rowKey={bookmark => bookmark.id}
+          collapseBelow="2xl" listVariant="separated" sort={{ field, dir }}
+          onSortChange={key => setSortQuery(`${key}:${field === key && dir === 'asc' ? 'desc' : 'asc'}`)}
+          columns={[
+            { key: 'title', header: 'Bookmark', sortable: true, narrow: 'primary', cellClassName: 'whitespace-normal', cell: bookmark => <BookmarkIdentity bookmark={bookmark} /> },
+            { key: 'createdAt', header: 'Saved', sortable: true, narrow: 'label', cell: bookmark => <time dateTime={bookmark.createdAt}>{bookmark.createdAt.slice(0, 10)}</time> },
+            { key: 'actions', header: 'Actions', narrow: 'trailing', hideLabel: true, align: 'end', cell: bookmark => <Button
+              aria-label={`Delete ${bookmark.title}`} disabled={deletingId !== null} size="xs" type="button" variant="ghost"
+              onClick={() => void remove(bookmark.id)}>{deletingId === bookmark.id ? 'Deleting…' : 'Delete'}</Button> },
+          ]} />
       </PageBody>
 
       <Collapsible>

@@ -7,7 +7,8 @@ import { useRef, useState } from 'react'
 import { Wrench } from 'lucide-react'
 import { toast } from '@makinbakin/sdk/hooks'
 import { Section, Stack } from '@makinbakin/sdk/layout'
-import { ConfirmDialog, DataTable, StatGroup, StatTile, type DataTableColumn } from '@makinbakin/sdk/patterns'
+import { ConfirmDialog, StatGroup, StatTile, type DataTableColumn } from '@makinbakin/sdk/patterns'
+import { RuntimeTable } from './runtime-table'
 import { Badge, Button, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { capabilityRows } from '../../lib/runtime-report'
 import { ModeBadge, MODE_LEGEND, CheckStatusBadge, capabilityStateCopy, type CapabilityMode } from './shared'
@@ -86,6 +87,7 @@ function CapabilityGrid({ report }: { report: CapabilityReport }) {
   const columns: ReadonlyArray<DataTableColumn<CapabilityGridRow>> = [
     {
       key: 'label',
+      narrow: 'primary',
       header: 'Capability',
       sortable: true,
       sortValue: (row) => row.label,
@@ -93,6 +95,7 @@ function CapabilityGrid({ report }: { report: CapabilityReport }) {
     },
     {
       key: 'mode',
+      narrow: 'meta',
       header: 'Mode',
       sortable: true,
       sortValue: (row) => row.mode ?? null,
@@ -100,6 +103,7 @@ function CapabilityGrid({ report }: { report: CapabilityReport }) {
     },
     {
       key: 'meaning',
+      narrow: 'label',
       header: 'What it means',
       sortable: true,
       sortValue: (row) => row.meaning,
@@ -114,7 +118,8 @@ function CapabilityGrid({ report }: { report: CapabilityReport }) {
         <h2>What this runtime can do</h2>
         <Text size="meta" tone="muted" as="p">{MODE_LEGEND}</Text>
       </Stack>
-      <DataTable
+      <RuntimeTable
+        queryKey="runtimeCapabilitiesSort"
         label="Runtime capabilities"
         columns={columns}
         rows={rows}
@@ -167,6 +172,8 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
   const columns: ReadonlyArray<DataTableColumn<OnboardingComponentStatus>> = [
     {
       key: 'name',
+      narrow: 'primary',
+      cellClassName: 'whitespace-normal break-words',
       header: 'Check',
       sortable: true,
       sortValue: (component) => component.name,
@@ -176,6 +183,7 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
       // A wrapping cell, not a truncated line with a native title tooltip:
       // the message IS the finding, so it has to stay readable for everyone.
       key: 'message',
+      narrow: 'meta',
       header: 'Detail',
       sortable: true,
       sortValue: (component) => component.message,
@@ -184,6 +192,7 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
     },
     {
       key: 'remediation',
+      narrow: 'label',
       header: 'Remediation',
       sortable: true,
       sortValue: (component) => (component.remediation && component.status !== 'ok' ? component.remediation : null),
@@ -194,6 +203,7 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
     },
     {
       key: 'status',
+      narrow: 'meta',
       header: 'Status',
       sortable: true,
       sortValue: (component) => component.status,
@@ -201,6 +211,8 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
     },
     {
       key: 'action',
+      narrow: 'trailing',
+      hideLabel: true,
       header: 'Action',
       align: 'end',
       cell: (component) => (component.status !== 'ok' && FIXABLE_COMPONENTS.has(component.name)
@@ -243,7 +255,8 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
         />
       )}
       {onboarding && (
-        <DataTable
+        <RuntimeTable
+          queryKey="setupSort"
           label="Setup checks"
           columns={columns}
           rows={onboarding}

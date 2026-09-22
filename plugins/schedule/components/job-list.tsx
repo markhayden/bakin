@@ -1,15 +1,27 @@
 'use client'
 
 import { useMemo } from 'react'
-import { ShieldAlert } from 'lucide-react'
-import { DataTable, ListRow, type DataTableColumn, type DataTableSort } from '@makinbakin/sdk/patterns'
-import { Overline, Text } from '@makinbakin/sdk/ui'
+import { DataTable, type DataTableColumn, type DataTableSort } from '@makinbakin/sdk/patterns'
 import { AgentBadge } from './agent-badge'
 import { JobActionsMenu, JobNameCell, JobScheduleCell, JobStatusBadge, type JobScoreInfo } from './job-row'
 
 import type { ScheduleJob } from "@makinbakin/sdk/hooks"
 
 export type JobSortField = 'name' | 'agent' | 'schedule' | 'status'
+
+export const JOB_SORT_LABELS = {
+  default: 'Default order',
+  'name:asc': 'Name: A–Z', 'name:desc': 'Name: Z–A',
+  'agent:asc': 'Agent: A–Z', 'agent:desc': 'Agent: Z–A',
+  'schedule:asc': 'Next run: earliest first', 'schedule:desc': 'Next run: latest first',
+  'status:asc': 'Status: A–Z', 'status:desc': 'Status: Z–A',
+}
+
+export function parseJobSort(value: string): DataTableSort<JobSortField> | undefined {
+  if (value === 'default' || !Object.hasOwn(JOB_SORT_LABELS, value)) return undefined
+  const [field, dir] = value.split(':')
+  return { field: field as JobSortField, dir: dir as 'asc' | 'desc' }
+}
 
 type JobSortValue = string | number | Date | null | undefined
 
@@ -61,81 +73,6 @@ function jobStatusKey(job: ScheduleJob): string {
   return 'active'
 }
 
-function MobileJobRow({
-  job,
-  onSelect,
-  scoreInfo,
-}: {
-  job: ScheduleJob
-  onSelect: () => void
-  scoreInfo?: JobScoreInfo
-}) {
-  const label = job.displayName || job.id
-  const source = job.source === 'adopted'
-    ? 'Adopted'
-    : job.isBakinJob
-      ? 'Bakin schedule'
-      : 'Runtime cron'
-
-  return (
-    <ListRow
-      interactive={{ label: `Open ${label}`, onActivate: onSelect }}
-      className="px-bakin-3 py-bakin-4"
-    >
-        <span className="flex w-full min-w-0 flex-col gap-y-bakin-2">
-          <span className="flex min-w-0 items-start gap-x-bakin-3">
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-bakin-typography-weight-semibold text-bakin-text-primary">
-                {label}
-              </span>
-              <Overline className="mt-bakin-1 block">
-                {source}
-              </Overline>
-            </span>
-            <JobStatusBadge job={job} />
-          </span>
-
-          <span className="flex min-w-0 items-center gap-bakin-3">
-            <AgentBadge agentId={job.agentId} size="sm" showName={false} />
-            <span className="min-w-0 flex-1">
-              <Text size="body" tone="muted" className="block truncate">
-                {job.humanSchedule}
-                {job.tz ? (
-                  <Text as="span" size="meta" tone="muted" className="ml-bakin-1">
-                    {job.tz.replace(/^.*\//, '')}
-                  </Text>
-                ) : null}
-              </Text>
-              {job.nextRun && !job.paused ? (
-                <Text size="meta" tone="muted" className="mt-bakin-1 block">
-                  Next {new Date(job.nextRun).toLocaleString([], {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })}
-                </Text>
-              ) : null}
-            </span>
-          </span>
-
-          {job.toolsAllowMissing ? (
-            <span className="inline-flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-signal-highlight">
-              <ShieldAlert className="size-bakin-3" aria-hidden="true" />
-              Missing cron tools
-            </span>
-          ) : null}
-
-          {scoreInfo ? (
-            <span className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-data-series-1">
-              RRF {scoreInfo.score.toFixed(3)}
-            </span>
-          ) : null}
-        </span>
-    </ListRow>
-  )
-}
-
 export function JobList({
   jobs,
   onSelect,
@@ -174,6 +111,7 @@ export function JobList({
     {
       key: 'name',
       header: 'Name',
+      narrow: 'primary',
       sortable: true,
       sortValue: JOB_SORT_VALUE.name,
       headClassName: 'min-w-64',
@@ -182,6 +120,7 @@ export function JobList({
     {
       key: 'agent',
       header: 'Agent',
+      narrow: 'label',
       sortable: true,
       sortValue: JOB_SORT_VALUE.agent,
       headClassName: 'min-w-36',
@@ -190,6 +129,7 @@ export function JobList({
     {
       key: 'schedule',
       header: 'Schedule',
+      narrow: 'label',
       sortable: true,
       sortValue: JOB_SORT_VALUE.schedule,
       headClassName: 'min-w-48',
@@ -198,6 +138,7 @@ export function JobList({
     {
       key: 'status',
       header: 'Status',
+      narrow: 'meta',
       sortable: true,
       sortValue: JOB_SORT_VALUE.status,
       headClassName: 'min-w-28',
@@ -206,6 +147,7 @@ export function JobList({
     {
       key: 'actions',
       header: 'Actions',
+      narrow: 'trailing',
       hideLabel: true,
       headClassName: 'w-12',
       cell: job => (
@@ -236,20 +178,10 @@ export function JobList({
       rowKey={job => job.id}
       sort={sort}
       onSortChange={onSortChange}
-      listVariant="bordered"
+      listVariant="separated"
       tableProps={{ 'data-testid': 'job-list', className: 'min-w-max' }}
       onRowActivate={onSelect}
       rowActivateLabel={job => `Open ${job.displayName || job.id}`}
-      // `group` feeds the actions menu's hover reveal on the wide render.
-      rowProps={() => ({ className: 'group' })}
-      renderRow={job => (
-        <MobileJobRow
-          key={job.id}
-          job={job}
-          onSelect={() => onSelect(job)}
-          scoreInfo={showScores ? scoreMap?.get(job.id) : undefined}
-        />
-      )}
     />
   )
 }

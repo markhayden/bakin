@@ -6,16 +6,8 @@
  * this" / "not available — here's what happens instead"), never as a bare
  * enum. Keep every mode → word mapping HERE so the three tabs can't drift.
  *
- * It also owns the one card anatomy the Capabilities and Runtimes tabs share
- * (icon tile + title row + status badge + trailing meta + blurb). Both tabs
- * had hand-rolled it separately and had already drifted; one component is the
- * only thing that keeps them honest.
  */
-import type { ComponentType, ReactNode } from 'react'
-import { Inline, Stack } from '@makinbakin/sdk/layout'
 import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
-import { cn } from '@makinbakin/sdk/utils'
-import { Text } from '@makinbakin/sdk/ui'
 
 export type CapabilityMode = 'native' | 'shimmed' | 'unavailable' | string
 
@@ -83,59 +75,4 @@ export function CheckStatusBadge({ status }: { status: string }) {
       ? 'attention'
       : 'danger'
   return <StatusBadge tone={tone} variant="soft" className="shrink-0">{status}</StatusBadge>
-}
-
-export type EntityCardTone = 'neutral' | 'active'
-
-export interface EntityCardBodyProps {
-  icon: ComponentType<{ className?: string }>
-  /** `active` tints the icon tile — the current runtime, never a status. */
-  tone?: EntityCardTone
-  title: ReactNode
-  /** The tab renders the card at section level; nested surfaces pass 3. */
-  headingLevel?: 2 | 3
-  /** Status badge beside the title. */
-  badge?: ReactNode
-  /** Trailing identity line (package@version, adapter id). */
-  meta?: ReactNode
-  blurb?: ReactNode
-  children?: ReactNode
-}
-
-/**
- * The shared card interior for the Capabilities and Runtimes rosters. The
- * container is the caller's (a Card, or the roster's approved raw button), so
- * this owns only what both must agree on.
- */
-export function EntityCardBody({
-  icon: Icon,
-  tone = 'neutral',
-  title,
-  headingLevel = 2,
-  badge,
-  meta,
-  blurb,
-  children,
-}: EntityCardBodyProps) {
-  const Heading = headingLevel === 3 ? 'h3' : 'h2'
-  const active = tone === 'active'
-  return (
-    <Inline align="start" gap="item" wrap={false}>
-      <span
-        aria-hidden="true"
-        className={cn('flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control', active ? 'bg-bakin-action-primary-background/10' : 'bg-bakin-canvas-default')}
-      >
-        <Icon className={cn('size-bakin-4', active ? 'text-bakin-action-primary-background' : 'text-bakin-text-muted')} />
-      </span>
-      <Stack gap="dense" className="flex-1">
-        <Inline gap="dense" align="center">
-          <Heading>{title}</Heading>
-          {badge}
-          {meta ? <Text size="meta" tone="muted" className="ml-auto">{meta}</Text> : null}
-        </Inline>
-        {blurb ? <p className="m-0 leading-relaxed text-bakin-text-muted">{blurb}</p> : null}
-        {children}
-      </Stack>
-    </Inline>
-  )
 }

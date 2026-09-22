@@ -15,7 +15,7 @@
  * exercises production markup.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '../../rtl-settle'
 import { rmSync } from 'fs'
 import { join } from 'path'
@@ -78,9 +78,11 @@ const queryStateRefs: Record<string, string> = {}
 
 mock.module('@/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) => {
+    const { useState } = require('react') as typeof import('react')
     if (!(key in queryStateRefs)) queryStateRefs[key] = defaultValue
-    const setter = (v: string) => { queryStateRefs[key] = v }
-    return [queryStateRefs[key], setter, setter] as const
+    const [value, setValue] = useState(queryStateRefs[key])
+    const setter = (v: string) => { queryStateRefs[key] = v; setValue(v) }
+    return [value, setter, setter] as const
   },
   useQueryArrayState: (_key: string) => {
     return [[], () => {}] as const
@@ -147,6 +149,35 @@ afterEach(() => {
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe('MemoryShell — engine down', () => {
+  const sortableHits = [
+    { id: 'z', table: 'bakin_memory', score: 0.9, fields: { title: 'Zulu', tier: 'durable', updated_at: 200 } },
+    { id: 'a', table: 'bakin_memory', score: 0.5, fields: { title: 'Alpha', tier: 'durable', updated_at: 100 } },
+  ]
+
+  it('restores browse sorting from the URL and shares it with headings', async () => {
+    queryStateRefs.memorySort = 'title:asc'
+    vi.stubGlobal('fetch', mock(async () => json({ results: sortableHits })))
+    render(<MemoryShell />)
+    const table = await screen.findByRole('table', { name: 'Memory results' })
+    const browse = screen.getByRole('tab', { name: 'Browse' })
+    expect(document.getElementById(browse.getAttribute('aria-controls')!)?.getAttribute('role')).toBe('tabpanel')
+    expect(within(table).getAllByRole('row')[1].textContent).toContain('Alpha')
+    expect(screen.getByRole('combobox', { name: 'Sort memory' }).textContent).toContain('Title: A–Z')
+    fireEvent.click(within(table).getByRole('button', { name: 'Title' }))
+    await waitFor(() => expect(queryStateRefs.memorySort).toBe('title:desc'))
+    expect(within(table).getAllByRole('row')[1].textContent).toContain('Zulu')
+  })
+
+  it('keeps relevance order during search despite a stored browse sort', async () => {
+    queryStateRefs.q = 'notes'
+    queryStateRefs.memorySort = 'title:asc'
+    vi.stubGlobal('fetch', mock(async () => json({ results: sortableHits, aggregations: {}, meta: { query: 'notes', total: 2, took_ms: 1, source: 'search' } })))
+    render(<MemoryShell />)
+    const table = await screen.findByRole('table', { name: 'Memory results' })
+    expect(within(table).getAllByRole('row')[1].textContent).toContain('Zulu')
+    expect(within(table).queryByRole('button', { name: 'Title' })).toBeNull()
+    expect(screen.getByRole('combobox', { name: 'Sort memory' }).hasAttribute('disabled')).toBe(true)
+  })
   it('shows a loading state, then the SearchUnavailable panel on 503 search_unavailable', async () => {
     vi.stubGlobal('fetch', engineDownFetch())
     queryStateRefs.q = 'beef stew'
@@ -197,7 +228,7 @@ describe('MemoryShell — engine down', () => {
 
     await waitFor(() => {
       expect(screen.queryAllByTestId('search-unavailable').length).toBe(0)
-      expect(screen.getByText('Beef stew notes')).toBeDefined()
+      expect(screen.getAllByText('Beef stew notes').length).toBeGreaterThan(0)
     }, { timeout: 3000 })
   })
 })

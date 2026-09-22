@@ -361,6 +361,7 @@ async function inspectBrowserPage(page: import('playwright').Page): Promise<Brow
       'input',
       'select',
       'textarea',
+      'details > summary:first-of-type',
       '[contenteditable="true"]',
       '[tabindex]',
     ].join(',')
@@ -368,6 +369,8 @@ async function inspectBrowserPage(page: import('playwright').Page): Promise<Brow
       const style = getComputedStyle(element)
       const rect = element.getBoundingClientRect()
       return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0
+        // Collapsed native details can retain layout boxes for their hidden contents.
+        && !element.closest('details:not([open]) > :not(summary:first-of-type)')
     }
     const label = (element: HTMLElement) => {
       const id = element.id ? `#${element.id}` : ''
@@ -431,7 +434,7 @@ export async function keyboardFocusFindings(
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
     document.body.tabIndex = -1
     document.body.focus()
-    const selector = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [contenteditable="true"], [tabindex]:not([tabindex="-1"])'
+    const selector = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), details > summary:first-of-type, [contenteditable="true"], [tabindex]:not([tabindex="-1"])'
     const visibleElements = [...document.querySelectorAll<HTMLElement>(selector)].filter((element) => {
       const style = getComputedStyle(element)
       const rect = element.getBoundingClientRect()
@@ -439,6 +442,7 @@ export async function keyboardFocusFindings(
         && style.visibility !== 'hidden'
         && rect.width > 0
         && rect.height > 0
+        && !element.closest('details:not([open]) > :not(summary:first-of-type)')
         && !element.matches(':disabled')
         // Kit buttons may stay focusable while disabled so their tooltip can explain why.
         && element.tabIndex >= 0

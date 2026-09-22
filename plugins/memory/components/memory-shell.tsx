@@ -17,7 +17,7 @@
  * All state (query, tiers, agents, debug) is URL-backed so the page is
  * bookmarkable and browser back/forward round-trip the view.
  */
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   ClipboardList,
   MessagesSquare,
@@ -57,7 +57,7 @@ import {
   type SegmentedControlOption,
 } from '@makinbakin/sdk/patterns'
 import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
-import { Badge, Banner, Button, Field, FieldLabel, Switch } from '@makinbakin/sdk/ui'
+import { Badge, Banner, Button, Field, FieldLabel, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch } from '@makinbakin/sdk/ui'
 import {
   useAgentList,
   usePluginJsonFetch,
@@ -78,6 +78,14 @@ import { MemoryCleanup } from './memory-cleanup'
 // Debug View — turns are 12k+ per-message rows, audits are operational
 // event logs; both swamp the "what's in memory" signal for everyday use.
 const DEBUG_ONLY_TIERS = new Set(['turn', 'audit'])
+
+const MEMORY_SORT_ITEMS: Record<string, string> = {
+  default: 'Most recent',
+  'title:asc': 'Title: A–Z', 'title:desc': 'Title: Z–A',
+  'tier:asc': 'Tier: A–Z', 'tier:desc': 'Tier: Z–A',
+  'agent:asc': 'Agent: A–Z', 'agent:desc': 'Agent: Z–A',
+  'updated:desc': 'Updated: newest', 'updated:asc': 'Updated: oldest',
+}
 
 const ALL_TIER_OPTIONS: FacetOption[] = [
   { value: 'session', label: 'Sessions', icon: <MessagesSquare className="size-bakin-4" /> },
@@ -251,7 +259,14 @@ function MemoryShellInner() {
 
   // Sort lives here, above the page slice: sorting inside the results table
   // would reorder only the visible page while announcing a global sort.
-  const [sort, setSort] = useState<DataTableSort<MemorySortField> | null>(null)
+  const [sortParam, setSortParam] = useQueryState('memorySort', 'default')
+  const sortValue = Object.hasOwn(MEMORY_SORT_ITEMS, sortParam) ? sortParam : 'default'
+  const sort = useMemo<DataTableSort<MemorySortField> | null>(() => {
+    // Search order belongs to the relevance engine, never to a stale browse sort.
+    if (searchActive || sortValue === 'default') return null
+    const [field, dir] = sortValue.split(':') as [MemorySortField, 'asc' | 'desc']
+    return { field, dir }
+  }, [searchActive, sortValue])
   const sorted = useMemo(() => {
     if (!sort) return filtered
     const { field, dir } = sort
@@ -267,10 +282,11 @@ function MemoryShellInner() {
   }, [filtered, sort])
 
   const handleSortChange = useCallback((field: MemorySortField) => {
-    setSort((prev) => prev?.field === field
-      ? { field, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
-      : { field, dir: field === 'updated' ? 'desc' : 'asc' })
-  }, [])
+    if (searchActive) return
+    const dir = sort?.field === field ? (sort.dir === 'asc' ? 'desc' : 'asc') : (field === 'updated' ? 'desc' : 'asc')
+    setSortParam(`${field}:${dir}`)
+    setPageParam('1')
+  }, [searchActive, sort, setSortParam, setPageParam])
 
   // Memory rows are dense one-liners; 8 forced paging almost immediately.
   const pageSize = 25
@@ -428,11 +444,16 @@ function MemoryShellInner() {
         )}
       />
 
-      {scrubMode ? (
+      <div id="memory-view-panel-scrub" role="tabpanel" aria-labelledby="memory-view-tab-scrub" hidden={!scrubMode}>
+      {scrubMode && (
         <PageBody label="Memory scrub">
           <MemoryCleanup />
         </PageBody>
-      ) : (
+      )}
+      </div>
+      <div id="memory-view-panel-browse" role="tabpanel" aria-labelledby="memory-view-tab-browse" hidden={scrubMode}
+        className={scrubMode ? undefined : 'grid gap-bakin-6'}>
+      {!scrubMode && (
         <>
           <TierOverviewCards includeSystemLogs={debug} />
 
@@ -485,6 +506,21 @@ function MemoryShellInner() {
             feedback={recordFeedback}
             state={searchUnavailable ? <SearchUnavailable retry={retry} scope="page" /> : undefined}
           >
+            <Select
+              items={searchActive ? { relevance: 'Search relevance' } : MEMORY_SORT_ITEMS}
+              value={searchActive ? 'relevance' : sortValue}
+              disabled={searchActive}
+              onValueChange={(next) => {
+                if (!next || !Object.hasOwn(MEMORY_SORT_ITEMS, next)) return
+                setSortParam(next)
+                setPageParam('1')
+              }}
+            >
+              <SelectTrigger aria-label="Sort memory"><SelectValue /></SelectTrigger>
+              <SelectContent>{Object.entries(searchActive ? { relevance: 'Search relevance' } : MEMORY_SORT_ITEMS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}</SelectContent>
+            </Select>
             <MemorySearchResults
               results={visibleResults}
               agents={resultAgents}
@@ -496,7 +532,7 @@ function MemoryShellInner() {
               onClear={() => setQuery('')}
               onSelect={record.open}
               sort={sort}
-              onSortChange={handleSortChange}
+              onSortChange={searchActive ? undefined : handleSortChange}
             />
             <Pagination
               ariaLabel="Memory results pagination"
@@ -517,6 +553,7 @@ function MemoryShellInner() {
           />
         </>
       )}
+      </div>
     </Page>
   )
 }

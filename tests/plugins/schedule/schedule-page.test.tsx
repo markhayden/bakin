@@ -271,6 +271,20 @@ beforeEach(() => {
 })
 
 describe('SchedulePage smoke', () => {
+  it('restores table sorting from URL state and exposes a persistent sort control', () => {
+    queryStateRefs.view = 'list'
+    queryStateRefs.sort = 'name:desc'
+    scheduleState.jobs = [makeJob({ id: 'a', displayName: 'Alpha' }), makeJob({ id: 'z', displayName: 'Zebra' })]
+    render(<SchedulePage />)
+    expect(screen.getByRole('combobox', { name: 'Sort scheduled jobs' })).toBeDefined()
+    const list = screen.getByTestId('job-list')
+    expect(list.textContent!.indexOf('Zebra')).toBeLessThan(list.textContent!.indexOf('Alpha'))
+    for (const tab of screen.getAllByRole('tab', { selected: true })) {
+      const target = tab.getAttribute('aria-controls')
+      if (target) expect(document.getElementById(target)).not.toBeNull()
+    }
+  })
+
   it('renders a loading state while jobs are loading', () => {
     scheduleState.loading = true
     queryStateRefs.view = 'list'

@@ -131,7 +131,7 @@ export function TeamManager() {
             />
           ) : null}
 
-          <ListRows variant="bordered" aria-label="Teams">
+          <ListRows variant="separated" aria-label="Teams">
             <ListRow className="flex min-w-0 items-center gap-bakin-3">
               <Avatar size="md">
                 <AvatarFallback>
@@ -167,12 +167,12 @@ export function TeamManager() {
                     type="button"
                     variant="link"
                     size="xs"
-                    className="justify-start text-bakin-text-primary"
+                    className="h-auto max-w-full justify-start whitespace-normal break-words text-left text-bakin-text-primary"
                     onClick={() => router.push(`/team/teams/${encodeURIComponent(team.id)}`)}
                   >
                     {team.label}
                   </Button>
-                  <Text size="meta" tone="muted" mono as="code" className="block">
+                  <Text size="meta" tone="muted" mono as="code" className="block break-all">
                     {team.id}
                   </Text>
                 </div>

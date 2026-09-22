@@ -1,28 +1,27 @@
 'use client'
 
-import { useId, useMemo, useState, type ReactNode } from 'react'
+import { useMemo } from 'react'
 import type { AgentUsage } from '@makinbakin/sdk/types'
 import { CompositionBar } from '@makinbakin/sdk/charts'
-import { PluginLink } from '@makinbakin/sdk/navigation'
-import { KeyValue, ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
+import { PluginLink, useQueryState } from '@makinbakin/sdk/navigation'
+import { Grid } from '@makinbakin/sdk/layout'
+import { DataTable, KeyValue, StatusBadge, type DataTableColumn } from '@makinbakin/sdk/patterns'
 import {
   Button,
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-  Overline,
+  Drawer,
+  DrawerSection,
   Progress,
   Skeleton,
   SystemState,
   Text,
 } from '@makinbakin/sdk/ui'
-import { Activity, ArrowUpRight, Bot, ChevronDown } from 'lucide-react'
+import { Activity, ArrowUpRight, Bot, ChevronRight } from 'lucide-react'
+import { HealthTableSort, useHealthTableSort } from './health-table-sort'
 import type {
   AgentEffortData,
   ContextSummaryData,
@@ -76,15 +75,6 @@ function latestSessionCostLabel(session: AgentUsage): string | null {
   return `${cost} reported cost`
 }
 
-function Metric({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <Overline as="p">{label}</Overline>
-      <div className="mt-bakin-1">{children}</div>
-    </div>
-  )
-}
-
 function ReviewStatus({ row, checking }: { row: AgentPulseRow; checking: boolean }) {
   if (checking) {
     return <StatusBadge tone="neutral" variant="solid" size="xs">Checking review</StatusBadge>
@@ -121,7 +111,7 @@ function UsageMetric({ row, pending }: { row: AgentPulseRow; pending: AgentPulse
     && (pending.history || pending.effort)
 
   return (
-    <Metric label="Usage & cost">
+    <div className="min-w-0">
       <p className="font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">
         {checkingUsage
           ? 'Checking usage…'
@@ -152,14 +142,14 @@ function UsageMetric({ row, pending }: { row: AgentPulseRow; pending: AgentPulse
               ? 'Checking cost…'
               : 'Cost unavailable'}
       </Text>
-    </Metric>
+    </div>
   )
 }
 
 function ContextMetric({ row, checking }: { row: AgentPulseRow; checking: boolean }) {
   const percent = row.startupContextPercent
   return (
-    <Metric label="Startup context">
+    <div className="min-w-0">
       {checking ? (
         <Text size="body" tone="muted" as="p">Checking…</Text>
       ) : percent === null ? (
@@ -179,30 +169,24 @@ function ContextMetric({ row, checking }: { row: AgentPulseRow; checking: boolea
           />
         </>
       )}
-    </Metric>
+    </div>
   )
 }
 
-function LatestSessionDetails({ row, id, checking, unavailable }: {
+function LatestSessionDetails({ row, checking, unavailable }: {
   row: AgentPulseRow
-  id: string
   checking: boolean
   unavailable: boolean
 }) {
   const session = row.latestSession
   const costLabel = session ? latestSessionCostLabel(session) : null
   return (
-    <CollapsibleContent
-      id={id}
-      role="region"
-      aria-label={`${row.agent} details`}
-      className="col-span-full border-t border-bakin-border-subtle pb-0 pt-bakin-3 text-bakin-text-primary"
-    >
+    <DrawerSection title="Latest session">
       {session ? (
         <div>
-          <div className="grid gap-bakin-3 @[36rem]/agent-pulse:grid-cols-[minmax(11rem,1.5fr)_minmax(0,2fr)] @[36rem]/agent-pulse:items-start">
+          <Grid layout="split" gap="dense">
             <div className="min-w-0">
-              <p className="truncate font-bakin-typography-weight-medium text-bakin-text-primary">{session.model}</p>
+              <Text weight="medium" className="break-words">{session.model}</Text>
               <Text size="meta" tone="muted" as="p">
                 {plural(session.messages, 'message')} · {formatTokenCount(session.tokens.total)} tokens
               </Text>
@@ -217,7 +201,7 @@ function LatestSessionDetails({ row, id, checking, unavailable }: {
                 { label: 'Cache write', value: formatTokenCount(session.tokens.cacheWrite), numeric: true },
               ]}
             />
-          </div>
+          </Grid>
           {costLabel && (
             <Text size="meta" tone="muted" as="p" className="mt-bakin-2">{costLabel}</Text>
           )}
@@ -229,27 +213,16 @@ function LatestSessionDetails({ row, id, checking, unavailable }: {
       ) : (
         <Text size="body" tone="muted" as="p">No latest-session token breakdown is available.</Text>
       )}
-      <PluginLink
-        to={`/team/${encodeURIComponent(row.agent)}?tab=diagnostics`}
-        className="mt-bakin-3 inline-flex items-center gap-bakin-1 rounded-bakin-control text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-signal-accent underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring"
-      >
-        Open {row.agent} diagnostics <ArrowUpRight className="size-bakin-3" aria-hidden="true" />
-      </PluginLink>
-    </CollapsibleContent>
+      <Button variant="link" size="sm" className="mt-bakin-3"
+        aria-label={`Open diagnostics for ${row.agent}`}
+        render={<PluginLink to={`/team/${encodeURIComponent(row.agent)}?tab=diagnostics`} />}>
+        Open diagnostics <ArrowUpRight className="size-bakin-3" aria-hidden="true" />
+      </Button>
+    </DrawerSection>
   )
 }
 
-function AgentPulseRowView({ row, expanded, pending, unavailable, liveNowStale, onToggle }: {
-  row: AgentPulseRow
-  expanded: boolean
-  pending: AgentPulsePending
-  unavailable: AgentPulsePending
-  liveNowStale: boolean
-  onToggle: () => void
-}) {
-  const detailsId = useId()
-  const headingId = useId()
-  const flag = row.effort?.flags[0]
+function TrackedWork({ row, checking }: { row: AgentPulseRow; checking: boolean }) {
   const tokenCoverage = !row.effort || !hasCurrentAgentEffortCoverage(row.effort)
     ? 'coverage unavailable'
     : row.effort.tokenAggregateRepresentable === false
@@ -264,6 +237,31 @@ function AgentPulseRowView({ row, expanded, pending, unavailable, liveNowStale, 
       : row.effort.costedRuns !== row.effort.runs
         ? `${row.effort.costedRuns} of ${row.effort.runs} runs priced`
         : null
+  return checking ? (
+    <Text size="body" tone="muted" as="p">Checking…</Text>
+  ) : row.effort ? (
+    <div className="min-w-0">
+      <p className="font-bakin-typography-weight-medium text-bakin-text-primary">{plural(row.effort.runs, 'tracked run')}</p>
+      <Text size="meta" tone="muted" as="p">
+        {row.effort.windowTokens === null
+          ? `Token totals unavailable${tokenCoverage ? ` · ${tokenCoverage}` : ''}`
+          : `${formatTokenCount(row.effort.windowTokens)} tracked tokens`}
+      </Text>
+      <Text size="meta" tone="muted" as="p">
+        {plural(row.effort.completions, 'task completion')}
+        {costCoverage ? ` · cost ${costCoverage}` : ''}
+      </Text>
+    </div>
+  ) : <Text size="body" tone="muted" as="p">Work evidence unavailable</Text>
+}
+
+function AgentIdentity({ row, pending, unavailable, liveNowStale }: {
+  row: AgentPulseRow
+  pending: AgentPulsePending
+  unavailable: AgentPulsePending
+  liveNowStale: boolean
+}) {
+  const flag = row.effort?.flags[0]
   const activitySummary = row.liveRun
     ? row.liveRun.taskTitle ?? 'Active task title unavailable'
     : flag?.message
@@ -275,16 +273,9 @@ function AgentPulseRowView({ row, expanded, pending, unavailable, liveNowStale, 
           ? 'Live state is stale'
           : 'No active task reported')
   return (
-    <Collapsible
-      open={expanded}
-      onOpenChange={onToggle}
-      className="border-y-0 p-bakin-4"
-      render={<ListRow aria-labelledby={headingId} data-agent-pulse-row />}
-    >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-bakin-2">
-          <h4 id={headingId}>{row.agent}</h4>
-          <ReviewStatus row={row} checking={pending.effort} />
+          <Text weight="semibold">{row.agent}</Text>
           {row.liveRun
             ? liveNowStale
               ? <StatusBadge tone="neutral" size="xs">Last seen working</StatusBadge>
@@ -308,43 +299,6 @@ function AgentPulseRowView({ row, expanded, pending, unavailable, liveNowStale, 
           <p className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-signal-accent">{plural(row.liveRunCount, 'concurrent run')}</p>
         )}
       </div>
-      <UsageMetric row={row} pending={pending} />
-      <Metric label="Tracked work">
-        {pending.effort ? (
-          <Text size="body" tone="muted" as="p">Checking…</Text>
-        ) : row.effort ? (
-          <>
-            <p className="font-bakin-typography-weight-medium text-bakin-text-primary">{plural(row.effort.runs, 'tracked run')}</p>
-            <Text size="meta" tone="muted" as="p">
-              {row.effort.windowTokens === null
-                ? `Token totals unavailable${tokenCoverage ? ` · ${tokenCoverage}` : ''}`
-                : `${formatTokenCount(row.effort.windowTokens)} tracked tokens`}
-            </Text>
-            <Text size="meta" tone="muted" as="p">
-              {plural(row.effort.completions, 'task completion')}
-              {costCoverage ? ` · cost ${costCoverage}` : ''}
-            </Text>
-          </>
-        ) : (
-          <Text size="body" tone="muted" as="p">Work evidence unavailable</Text>
-        )}
-      </Metric>
-      <ContextMetric row={row} checking={pending.context || pending.settings} />
-      <CollapsibleTrigger
-        className="min-h-0 w-auto justify-self-start py-0 text-bakin-typography-size-meta @3xl/list-rows:justify-self-end"
-        aria-label={`View ${row.agent} details`}
-        aria-controls={detailsId}
-      >
-        Details
-        <ChevronDown className="transition-transform group-data-[panel-open]/collapsible:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
-      </CollapsibleTrigger>
-      <LatestSessionDetails
-        row={row}
-        id={detailsId}
-        checking={pending.latestSessions}
-        unavailable={unavailable.latestSessions}
-      />
-    </Collapsible>
   )
 }
 
@@ -363,7 +317,7 @@ export function AgentPulse({
   liveNowStale = false,
   onRetry,
 }: AgentPulseProps) {
-  const [expandedAgent, setExpandedAgent] = useState<string | null>(null)
+  const [selectedAgent, setSelectedAgent] = useQueryState('healthAgent', '')
   const rows = useMemo(() => buildAgentPulseRows({
     effort,
     history,
@@ -378,6 +332,28 @@ export function AgentPulse({
   const loading = Object.values(pending).some(Boolean)
   const error = errors.length > 0 ? errors.join('; ') : null
   const failedLatestSessions = new Set(latestSessionFailedAgents)
+  const selectedRow = rows.find(row => row.agent === selectedAgent)
+  const columns: ReadonlyArray<DataTableColumn<AgentPulseRow>> = [
+    { key: 'agent', header: 'Agent', narrow: 'primary', sortable: true, sortValue: row => row.agent,
+      cellClassName: 'whitespace-normal align-top',
+      cell: row => <AgentIdentity row={row} pending={pending} unavailable={unavailable} liveNowStale={liveNowStale} /> },
+    { key: 'review', header: 'Review', narrow: 'meta', sortable: true,
+      // Stable ties retain the canonical live/usage ordering from the view model.
+      sortValue: row => Number(row.reviewState !== 'review'),
+      cellClassName: 'whitespace-normal align-top',
+      cell: row => <ReviewStatus row={row} checking={pending.effort} /> },
+    { key: 'usage', header: 'Usage & cost', narrow: 'label', sortable: true, sortValue: row => row.observedTokens,
+      cellClassName: 'whitespace-normal align-top', cell: row => <UsageMetric row={row} pending={pending} /> },
+    { key: 'work', header: 'Tracked work', narrow: 'label', sortable: true, sortValue: row => pending.effort ? null : row.effort?.runs,
+      cellClassName: 'whitespace-normal align-top', cell: row => <TrackedWork row={row} checking={pending.effort} /> },
+    { key: 'context', header: 'Startup context', narrow: 'label', sortable: true,
+      sortValue: row => pending.context || pending.settings ? null : row.startupContextPercent,
+      cellClassName: 'whitespace-normal align-top', cell: row => <ContextMetric row={row} checking={pending.context || pending.settings} /> },
+    { key: 'actions', header: 'Actions', narrow: 'trailing', hideLabel: true, align: 'end', cellClassName: 'align-top',
+      cell: row => <Button size="xs" variant="ghost" aria-label={`View ${row.agent} details`} aria-haspopup="dialog"
+        onClick={() => setSelectedAgent(row.agent)}>Details <ChevronRight aria-hidden="true" /></Button> },
+  ]
+  const ordering = useHealthTableSort(rows, columns, 'agent_sort', 'review')
 
   return (
     <Card className="min-w-0" data-section-card>
@@ -390,7 +366,6 @@ export function AgentPulse({
           Selected-period usage and tracked work, alongside live state, latest-session detail, and startup context.
         </CardDescription>
         {rows.length > 0 && (
-          <CardAction>
             <Text size="meta" tone="muted" as="p" className="tabular-nums">
               {pending.liveNow
                 ? 'Checking live activity'
@@ -404,11 +379,10 @@ export function AgentPulse({
               {' · '}
               {pending.effort ? 'Checking review flags' : plural(review, 'to review', 'to review')}
             </Text>
-          </CardAction>
         )}
       </CardHeader>
       <CardContent>
-      <div className="@container/agent-pulse space-y-bakin-3">
+      <div className="space-y-bakin-3">
         {loading && rows.length === 0 ? (
           <div role="status" aria-label="Loading agent pulse" className="space-y-bakin-2">
             <Skeleton className="h-28 w-full" />
@@ -432,27 +406,11 @@ export function AgentPulse({
             description="Choose a longer window if you expected recent activity."
           />
         ) : (
-          <ListRows
-            variant="bordered"
-            aria-label="Agent pulse"
-            columns="minmax(8rem,1.2fr) minmax(9rem,1fr) minmax(8rem,.8fr) minmax(7rem,.7fr) auto"
-            columnsAt="3xl"
-            columnsAlign="center"
-          >
-            {rows.map((row) => (
-              <AgentPulseRowView
-                key={row.agent}
-                row={row}
-                expanded={expandedAgent === row.agent}
-                pending={pending}
-                unavailable={failedLatestSessions.has(row.agent)
-                  ? { ...unavailable, latestSessions: true }
-                  : unavailable}
-                liveNowStale={liveNowStale}
-                onToggle={() => setExpandedAgent((current) => current === row.agent ? null : row.agent)}
-              />
-            ))}
-          </ListRows>
+          <>
+            <HealthTableSort label="Sort agent pulse" {...ordering} />
+            <DataTable label="Agent pulse" rows={ordering.rows} columns={columns} rowKey={row => row.agent}
+              sort={ordering.sort} onSortChange={ordering.onSortChange} collapseBelow="3xl" listVariant="separated" />
+          </>
         )}
         {mixedEvidence && (
           <Text size="meta" tone="muted" as="p">
@@ -466,6 +424,12 @@ export function AgentPulse({
         )}
       </div>
       </CardContent>
+      <Drawer open={Boolean(selectedAgent)} onOpenChange={open => { if (!open) setSelectedAgent('') }}
+        title={`${selectedAgent} details`} description="Latest-session evidence and agent diagnostics" storageKey="health-agent">
+        {selectedRow ? <LatestSessionDetails row={selectedRow} checking={pending.latestSessions}
+          unavailable={unavailable.latestSessions || failedLatestSessions.has(selectedRow.agent)} />
+          : <Text tone="muted">{loading ? 'Loading agent evidence…' : 'This agent has no evidence in the selected period.'}</Text>}
+      </Drawer>
     </Card>
   )
 }

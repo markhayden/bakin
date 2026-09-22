@@ -1,6 +1,464 @@
 # List/table audit — working evidence for #806
 
+## Final fleet sweep — 2026-09-22
+
+This section supersedes the historical pending recommendations below. The user
+approved finishing all remaining collection work in one batch; Models is
+explicitly excluded because it is being refactored separately. Previously
+approved Projects, Messaging, Tasks, Schedule and Workflows are not redesigned.
+
+| Surface | Final disposition | Protected behavior |
+| --- | --- | --- |
+| Runtime capability/setup/runtime/extension inventories | Responsive DataTables with a host-local composition of the existing Select and DataTable | URL-backed heading/selector sorting; numeric and null-last ordering; full path/SHA and readiness facts; independent trust, repair and switch confirmations |
+| Health check registry | Grouped disclosures containing sortable DataTables | Healthy/not-applicable/failed evidence retained; concerning groups initially open; revealing evidence focuses the visible narrow or wide copy without adding permanent tab stops |
+| Health overview incidents/notices | Separated supporting rows, not independently sorted tables | Canonical attention priority, capped preview/disclosure, exact acknowledgement/snooze/resolution actions retained |
+| Chat recent conversations | Separated supporting rows with wrapping identities | Six-item preview, unread/open behavior and conversation/agent starters retained |
+| Team management and lessons | Separated supporting rows | Reporting fields, confirmed deletion, lesson switches, pending locks and URL highlighting retained; org canvas untouched |
+| Assets attachments/history/references/downloads | Separated supporting rows | Preview/promote/delete and outbound/download actions remain independent; unlink errors/retry, read-only behavior, pending lock and stale-response protection covered |
+| Branding materials/documents/lessons | Separated supporting rows | File names wrap; existing editing, staged saves, toggles and delete actions retained; logo/palette/media galleries unchanged |
+| Terminal index (Bits) | Responsive sortable DataTable | Persistent sorting, full working directory, named independent session menu and existing operation/confirmation ownership semantics; terminal workspace unchanged |
+| Reference bookmark plugin | Table-first author example | Shared heading/selector sorting, narrow roles, outbound links and independent deletion; creation form/conversation example retained |
+
+Retained specialized interfaces are intentional, not unfinished card-to-table
+work: media/brand galleries, org/workflow canvases, calendars, boards, timelines,
+conversation streams, pickers/navigation and labelled repeated form controls.
+The census now annotates all 103 IDs, including the new host-local RuntimeTable.
+No public SDK entrypoint, prop or interaction pattern was added. Mobile filter
+takeover remains the separate #759 design-system workstream.
+
+Patterns: `lists/data-table.stories.tsx` — `NarrowRoles`,
+`SortedPagedDualRender`; `lists/list-rows.stories.tsx` — `CanonicalUsage`,
+`InteractiveRows`, `DenseRows`; `pages/page.stories.tsx` — `ControlModes`.
+Focused SDK `/patterns`, `/ui`, `/layout`, `/navigation` only for the collection
+compositions. Reference-plugin README documents the table-first example.
+
+Verification so far: 937 embedded Chat/Team/Assets/Brands tests pass; focused
+Runtime/Health and new Asset locking/failure regressions pass. New real-SDK
+Chat/Team/Assets/Brands fixtures and expanded Health fixtures pass at desktop
+and 320px; reports and mobile images were reviewed. Asset screenshot review
+caught an inherited absolute delete position, corrected with ListRowActions.
+Bits Terminal tests pass (22, with 8 environment-gated skips), as do its build and
+typecheck. Final full-suite and isolated browser evidence is recorded below
+when complete. No screenshot baselines or suppressions were changed.
+
+The user explicitly approved only the host initial-JS measurement of 234,532
+bytes and Terminal measurement of 514,331 bytes. Growth allowances and every
+other budget are unchanged. Removed one obsolete Runtime raw-control exception
+and reduced existing style-migration allowances; none were broadened.
+
+Approved earlier batch saved locally: Health `90e34a822`, Memory `75253a09b`,
+Explore `76e399298`, Settings `f33f91d8e`, checkpoint notes `487cbb142`.
+The earlier combined full run passed (`bakin-collections-batch-full.log`).
+The final sweep's first full run exposed stale generated CSS after removal of
+the old card helper; rebuilding the canonical artifact fixed all six packaging
+tests. The local live host on port 3737 stopped answering during final browser
+checks; it was not restarted or mutated. An isolated real-SDK fixture is used
+for remaining collection behavior, not claimed as a live-host integration test.
+
+Final isolated browser proof passes at 1440/320px for Runtime, Terminal and
+reference bookmarks: shared header/selector sort, valid-query reconstruction,
+invalid-query fallback, numeric/null-last ordering, full paths/SHA, named switch
+and session confirmation, independent outbound links and rejected deletion
+retaining records. No overflow or page errors. This fixture explicitly resolves
+Bits imports to the actual SDK and shared React, not its unit-test shim.
+RuntimeTable also has focused ordering/query-input regression tests (2 pass).
+Independent final reviews of embedded/reference, Runtime/Health and Terminal
+found no remaining blockers.
+
+Evidence: `/private/tmp/bakin-final-isolated-browser.log`,
+`/private/tmp/bakin-final-{runtime-capabilities,runtime-roster,terminal,reference}-{1440,320}.png`,
+`/private/tmp/bakin-final-runtime-sort-tests.log`,
+`/private/tmp/bakin-final-regressions.log`,
+`/private/tmp/bakin-final-{chat,team,assets,brands,health,reference}-fixture.log`.
+Package reports are `plugins/<id>/test-results/bakin-ui/index.html` and
+`examples/reference-plugin/test-results/bakin-ui/index.html`.
+
+Final product commits: Runtime `92096eed7`, Health registry/incidents
+`4900329e8`, Assets `96f8ea3af`, Chat/Team/Branding `792d76ed0`, reference
+example `5ffd7ff77`; companion Bits Terminal `fd90256`. No remote push, PR,
+release, dependency change or compatibility-pin update is included.
+
+Final verification: `bun run ui:conformance --full` **passed**. This includes
+quick governance/typecheck, lint (zero errors, six existing warnings), 9,559
+repository tests (18 existing skips), production builds, payload ratchet,
+deterministic Storybook, 335 interaction tests, 280 unchanged canonical visual
+comparisons, 93 Chromium/Firefox/WebKit checks, plugin conformance harness and
+published docs/catalog. Log: `/private/tmp/bakin-final-fleet-full.log`.
+Late Runtime sort tests and the final Asset action-slot/Health focus checks were
+also rerun separately (34 tests), followed by a passing quick and lint run.
+No screenshot baseline, tolerance, dependency or compatibility pin changed.
+The list/table migration checkpoint is complete locally; PRs and coordinated
+release remain separate authorized actions. Models and #759 remain separate.
+
+## Memory, Settings and Extend — combined batch (2026-09-22)
+
+User asked to handle these together and explicitly excluded Models, which is
+being refactored on another branch. Extend is the existing Explore/add-ons
+surface. No Models source was changed and no further Health surface was added.
+
+| Surface | Implemented / retained | Protected behavior |
+| --- | --- | --- |
+| Memory Browse | DataTable column-derived separated narrow rows; persistent `memorySort` selector shared with headings, sorted before pagination | Search retains server relevance even with a stored browse sort; missing dates stay last; debug/tier/agent filters, record URL/reload and drawer remain intact |
+| Memory Browse/Scrub navigation | Actual consumer-owned tab panels for the existing SegmentedControl | Both `aria-controls` targets exist; inactive content does not fetch; URL mode retained |
+| Memory Scrub and tier summary | Keep specialized grouped cleanup/selection workflow and stat tiles | Exact cleanup dispatch/verification and indexed tier facts, not a generic index replacement |
+| Settings category navigation / schema forms | Keep existing NavList master-detail and labelled fields | Category and highlighted-field URLs, save rejection and per-category values remain covered |
+| Settings Integrations & Keys | Separated provider settings; Integration / Secret / Remove DataTable with narrow roles; responsive labelled add form | Write-only values; exact named-secret deletion; runtime/env overrides; all mutations locked together; rejected writes retain drafts; failed reads block editing and offer retry; missing optional images provider endpoint does not block unrelated secrets |
+| Explore catalog | Replace text-first cards with sortable Name / Category / Status / Version / Runtime table and matching loading rows | `catalogSort` URL parity, existing tabs/search/categories/selection; independent Details/Install; compatibility, built-in/installed gating, consent and install flow unchanged |
+| Explore installed capabilities / detail | Compact separated supporting management list; retain preview gallery and warnings in detail/consent | Existing named remove confirmation, source provenance, risk/permission and runtime conditions preserved |
+
+Patterns: `storybook/public/lists/data-table.stories.tsx` — `NarrowRoles`,
+`SortedPagedDualRender`, `ActivatableRows`; `lists/list-rows.stories.tsx` —
+`CanonicalUsage`; `navigation/segmented-control.stories.tsx` (consumer-owned
+panels); `navigation/nav-list.stories.tsx` — `SelectionAndKeyboard`;
+`recipes/settings-dashboard-pages.stories.tsx` — `SettingsCategories`;
+`forms/form-composition.stories.tsx` — `CanonicalUsage`. Focused SDK `/patterns`,
+`/ui`, `/layout`, `/navigation` compositions only. No public API/story extension,
+golden update or new performance approval is needed for this batch.
+
+Focused verification: 54 tests, 177 assertions, zero failures across six files;
+five existing Settings route/schema suites also passed during review (45 tests).
+The added real-SDK Memory and Explore desktop/mobile fixtures pass; both HTML
+reports and screenshots were inspected. Fixture review reproduced an existing
+Memory tab-to-missing-panel defect and verified the consumer wiring fix. New
+Settings tests reproduced failed-read/failed-draft behavior and optional-provider
+absence before their fixes; deferred-write coverage confirms global mutation
+locking and draft retention. Independent review found one prose-wrapping issue
+in catalog cells; explicit wrapping fixed it before browser verification.
+
+Intercepted real-app browser proof passes at 320/768/1024/1440px: Memory shared
+sort/reload, relevance order, record drawer/reload and Browse/Scrub panels;
+Explore sort/reload, incompatible install absence, keyboard Details and return
+focus, independent Install dialog and no-results recovery; Settings table/narrow
+rows, exact synthetic secret removal and failed-read retry. No real writes,
+horizontal page overflow or page errors. Settings snapshots show the narrow
+render even on a wide viewport when the navigation/activity panes constrain the
+content container, as intended by DataTable's container-query contract.
+
+Logs: `/private/tmp/bakin-collections-batch-{tests,lint,quick,performance,browser,full}.log`;
+fixture logs `/private/tmp/bakin-{memory,explore}-batch-fixture.log`;
+screenshots `/private/tmp/bakin-{memory,settings,explore}-batch-{width}.png`.
+Both fixtures live under their plugin's `tests/ui.fixture.tsx` and run via
+`bun run test:ui`. The batch retires one scoped raw-control exception and four
+raw-scale migration allowances; no allowance was expanded. The one combined full
+checkpoint is running; do not treat these local results as its completion.
+
+## Health Agent pulse — table and details drawer (2026-09-22, local)
+
+The user accepted the existing kit Drawer recommendation. Agent pulse now uses
+DataTable `NarrowRoles` / `SortedPagedDualRender` and Drawer `CanonicalUsage`
+(`storybook/public/lists/data-table.stories.tsx` and
+`storybook/public/overlays/drawer.stories.tsx`), through the focused SDK
+`/patterns`, `/ui`, `/layout`, `/navigation` and `/charts` contracts.
+Columns compare Agent, Review, Usage & cost, Tracked work and Startup context;
+Details is an independent trailing action. The default review sort preserves
+canonical live/usage/name ties. Numeric sorts keep missing evidence last;
+headings and the persistent narrow selector share `agent_sort` URL state.
+`healthAgent` selects the drawer and survives reload. Latest-session breakdown,
+partial/unknown costs, missing/stale evidence and the exact Team diagnostics
+destination remain intact; diagnostic calculations and APIs are unchanged.
+
+Verification: 44 focused tests (240 assertions), quick conformance, lint, plugin
+build and both real-SDK Health fixtures pass. Independent review found no blocker.
+Intercepted real-app checks pass at 320/768/1024/1440px for default and explicit
+sorting, missing evidence, URL reload, keyboard Details, named drawer, partial
+cost/cache evidence, diagnostics destination, Escape and focus restoration,
+drawer reload, close-query cleanup, overflow and page errors. No API writes
+occurred. Screenshot review also corrected mobile header count placement and
+a clipped long-agent diagnostics label; its compact visible label retains an
+agent-specific accessible name. Evidence:
+`/private/tmp/bakin-health-agents-{tests,quick,lint,build,fixtures,browser,performance}.log`,
+`/private/tmp/bakin-health-agents-{width}.png` and
+`/private/tmp/bakin-health-agent-details-{width}.png`.
+Fixtures/reports: `plugins/health/tests/agent-pulse.fixture*.ts*` and
+`plugins/health/test-results/bakin-ui-agents/` (alongside the System report).
+
+The user explicitly approved Health's exact 502,173-byte recorded measurement
+(previously 500,046); only that record changes. The final mobile-label correction
+measures 502,208, 35 bytes above the approved record and within the unchanged
+2,048-byte allowance. No dependency, golden, public API or exception was added.
+The removed arbitrary details-grid size further reduces the migration ledger
+(combined Health arbitrary-size summary: 81 → 78). Full conformance is still
+required at the combined Health checkpoint; this is not a merge-ready handoff.
+
+## Health overhaul — System proof (2026-09-22, local)
+
+System's installed-plugin and search-index inventories now compose DataTable
+`NarrowRoles` / `SortedPagedDualRender` from
+`storybook/public/lists/data-table.stories.tsx`: separated column-derived narrow
+rows, a 2xl collapse breakpoint, and persistent URL-backed sorting shared with
+the wide headings. Numeric fields sort numerically; missing evidence stays last
+in either direction. Update is its own trailing action instead of part of Status.
+Reindex also honors an explicitly unreachable engine, matching Reindex all.
+Plugin findings reveal the visible desktop/mobile record, clearing an excluding
+filter first; the programmatic focus target leaves normal tab order unchanged.
+No diagnostic calculation, permission flow or repair endpoint was replaced.
+
+Verification: 34 focused tests (201 assertions), quick conformance, lint, build
+and the unchanged payload gate pass. Independent review found no blocking issue.
+Intercepted real-app checks pass at 320/768/1024/1440px for URL sort persistence,
+header/select parity, numeric/null order, filtered finding reveal and visible
+focus, exact Update target and explicit permission approval, exact Reindex
+target, ambiguous-confirmation and engine-offline locks, native disclosure
+keyboard behavior, overflow and page errors. All API writes were intercepted.
+Evidence: `/private/tmp/bakin-health-system-{focused,quick,lint,browser}.log`,
+`/private/tmp/bakin-health-{build,performance}.log`, and
+`/private/tmp/bakin-health-system-{width}.png`.
+
+New real-SDK fixture: `plugins/health/tests/ui.fixture.tsx`, with long identities,
+failed activation, unavailable evidence, migration errors and trailing actions.
+Desktop/mobile images and HTML report were inspected under
+`plugins/health/test-results/bakin-ui/`. The fixture now **passes** with no
+findings after the explicitly approved native-disclosure harness correction.
+Both interactive collectors recognize `details > summary:first-of-type` and
+exclude contents hidden by closed disclosures. Two new browser regressions
+failed before the fix: nested open/closed disclosures stopped tab traversal,
+and a summary with no focus ring was not inspected. Both now pass, alongside
+the two existing focus tests. The shared clean fixture includes the real SDK
+DisclosurePanel (`storybook/public/layout/disclosure-panel.stories.tsx` —
+`CanonicalUsage`, `/layout`); `ui:test:conformance` passes and deliberately
+broken fixtures still trigger their expected rules. Logs:
+`/private/tmp/bakin-summary-harness-{red,green,conformance,quick,lint}.log`.
+Independent focused review found no blocker. No component API/style change
+or public story update is needed for this test-harness correction.
+No accessibility suppression, golden update, new public API or budget increase
+was made. Two removed arbitrary-size usages reduced matching ledger counts;
+all other allowances remain unchanged. Full conformance is not yet run for this
+Health slice; this is local review evidence, not a merge-ready checkpoint.
+
+Health collection disposition (Agent pulse subsequently implemented above):
+
+| Surface | Recommended next treatment | Preserve |
+| --- | --- | --- |
+| Agent pulse (`agent-pulse.tsx`) | Implemented locally: sortable DataTable plus URL-selected kit Drawer | Live vs selected-period evidence, unknown/partial values, independent detail action; see current evidence above |
+| Complete check registry (`system-inventory.tsx`) | DataTable for check/group/status/owner/completed evidence | Canonical status precedence, unavailable/stale evidence, finding-to-check focus and descriptions |
+| Overview incidents (`overview-alerts.tsx`) | Review current incident cards as an actionable findings surface, not a preview-card default | Consequence, repair/delegation, acknowledgment, snooze, sensitivity/provenance and expandable resolution detail |
+| System watch list | Keep compact separated supporting rows | Capped summary, expansion, exact evidence target |
+| Activity event stream | Keep chronological Timeline | Status, source, reason and technical details |
+| Charts, readiness stages and metrics | Keep specialized charts/stat compositions | Exact chart data, units, unknown evidence and consistent series mapping |
+
+## Schedule and Tasks table parity — 2026-09-21 local review
+
+Projects remains as visually approved; this slice does not reopen it.
+
+### Task action-menu follow-up
+
+The user approved Schedule and reaffirmed Projects, and requested Edit,
+Duplicate and Delete directly on Task log rows. Current tasks now use one
+shared `TaskActionsMenu` in the detail drawer and both DataTable renders.
+The existing edit drawer, duplication payload/refresh and named delete
+confirmation are reused. Audit-only historical entries remain read-only;
+they may no longer have a task record to mutate.
+
+The matching kit contracts are DataTable `ActivatableRows` and `NarrowRoles`
+in `storybook/public/lists/data-table.stories.tsx`. Focused tests exercise all
+three actions in both renders without activating the row. Intercepted live-app
+checks at 320/768/1024/1440px verify keyboard menu access, the edit form and URL
+target, duplicate payload and refresh, delete cancellation and exact confirmed
+target, overflow and page errors. No real API writes occurred. Evidence:
+`/private/tmp/bakin-task-actions-browser.log` and
+`/private/tmp/bakin-task-actions-{width}.png`. Quick conformance passes;
+independent review found no blockers. No story/API extension is needed.
+
+The accumulated Tasks client measures 199,344 bytes versus the recorded
+196,889 (+2,455), exceeding the unchanged 2,048-byte growth allowance by 407.
+Sharing the menu reduced the increase without dropping behavior or adding a
+dependency. The user explicitly approved exactly 199,344 bytes. Only Tasks'
+recorded measurement is updated; all other measurements and the shared growth
+allowance remain unchanged. This follow-up still requires full conformance
+before a merge-ready checkpoint (subsequently passed below).
+
+### Approved checkpoint — full verification
+
+Full conformance passed for the final Schedule/Tasks delta, including the shared
+task action menu and exactly approved Tasks measurement. Log:
+`/private/tmp/bakin-schedule-tasks-approved-full.log`. Results: quick contracts,
+typecheck/lint/builds, 9,555 repository tests (16 existing skips), 335 Storybook
+interactions, 280 unchanged visual comparisons, 93 cross-browser checks,
+plugin conformance and docs publication (448 stories). Both page fixtures and
+the four-width intercepted action/sort checks also pass; independent review
+found no blockers. No canonical screenshots or other limits were updated.
+
+Generated reference-doc churn from the full run is preserved separately in
+`preserve generated docs from Schedule Tasks conformance`; the pre-existing
+embedded-assets manifest change stays outside the commit. This is a verified
+local checkpoint, not a push, release or completion of the remaining fleet audit.
+
+### Initial table-parity slice evidence (before the action-menu follow-up)
+
+- Pattern: `storybook/public/lists/data-table.stories.tsx` — `NarrowRoles`
+  and `SortedPagedDualRender`. Existing `/patterns`, `/ui`, `/layout` and
+  `/navigation` contracts only; no public API, dependency or design exception.
+- Schedule now uses the same column model and action menu at both widths,
+  with separated narrow rows. A persistent Sort selector shares URL state with
+  the headings, sorts before pagination and resets the current page. Default
+  order retains search relevance. Job identity, source, missing-tool warnings,
+  timezone, next run, status and existing action permissions remain intact.
+- Task log has persistent URL-backed sorting, wrapping titles, labelled narrow
+  dates and explicit dashes for missing dates. Date sorting compares instants
+  and leaves unknown values last in either direction. Search preserves ranked
+  current matches, excludes unrelated audit history and hides manual sorting.
+- Browser checks also caught Schedule's duplicate compact switcher referencing
+  nonexistent panels and its crowded header splitting the title with the activity
+  rail open. Removed only the invalid duplicate linkage and delayed the existing
+  header control group's inline layout to its wider container breakpoint.
+- Focused regression tests, quick conformance/typecheck, plugin build and the
+  unchanged payload ratchet pass. Both real-SDK fixtures pass with no findings;
+  run `bun run test:ui` in `plugins/schedule` or `plugins/tasks`. Reports and
+  desktop/mobile screenshots are in each plugin's `test-results/bakin-ui/`.
+- Intercepted Imitation Crab checks pass at 320/768/1024/1440px: sort persists
+  after reload, Schedule sorts the whole collection and resets pagination,
+  the Delete menu opens the named confirmation without opening the row,
+  cancellation preserves the collection, and no document overflow/page errors.
+  Log: `/private/tmp/bakin-schedule-tasks-browser.log`. All API writes were
+  intercepted; no real jobs or tasks were changed. Independent review is clear.
+- This is a local review slice, not a merge-ready checkpoint. Full conformance
+  remains required before saving the next migration checkpoint. No canonical
+  screenshot baselines or performance limits were updated. Calendar, Kanban,
+  task detail interactions and the rest of the fleet remain outside this slice.
+
+## Brainstorm table-first correction — 2026-09-21 local review
+
+The user's table-first ruling supersedes the earlier row-first recommendations
+for record indexes below. DataTable is the default; cards require meaningful
+previews, while separated rows remain appropriate for compact supporting lists.
+This iteration changes only Brainstorm's index, not other indexes or kit prop defaults.
+
+- Pattern: `storybook/public/lists/data-table.stories.tsx` — `NarrowRoles`
+  and `SortedPagedDualRender`; existing focused SDK entrypoints only.
+- Six sortable columns: Brainstorm, Agent, Status, Proposals, Accepted, Updated.
+  Newest-first default; URL-backed sort selector remains available on narrow screens.
+- Search, agent filtering, working/unread markers, session opening, and retry
+  behavior are preserved. Existing conversation/detail actions remain unchanged.
+- Verification: 16 focused tests / 73 assertions; Bits suite 596 passed,
+  8 skipped / 3,591 assertions; typecheck, lint, build, and quick conformance passed.
+  Four real-SDK fixtures passed. Browser checks passed at 320/768/1024/1440px,
+  including persisted sorting, filtering, retry, keyboard opening, and overflow.
+- User explicitly approved Messaging's measured payload 709,343 → 713,362 bytes
+  (+4,019) and the two existing desktop/mobile `collection-same-records.png`
+  baselines for table-first captions. Updates are limited to that byte entry
+  and those two goldens; all other limits and baselines remain unchanged.
+- Applied both approvals: performance ratchet passes and the two canonical
+  caption baselines regenerated successfully. User visually approved Messaging
+  ("messaging looks good").
+- Checkpoint review found and corrected conflicting table-selection guidance
+  in the ListRows public story. Its two `lists-list-rows.png` caption baselines
+  are separate from the comparison goldens; the user subsequently explicitly
+  approved exactly those two additional ListRows caption baselines.
+  Both were regenerated canonically and then passed with updates disabled.
+- A Bits checkpoint rerun exposed a Projects test-only synchronization timeout
+  when deleting all three fixtures. Awaiting each asynchronous delete inside
+  React `act` preserves every assertion and the original timeout; the focused
+  17-test file passes and the formerly failing case drops from ~5s to 19ms.
+  Product behavior is unchanged.
+- Independent review found no remaining blocking code issue after those fixes.
+  Bits checkpoint rerun: 596 passed, 8 skipped; typecheck and lint passed.
+- Full conformance passed for this delta, logged at
+  `/private/tmp/bakin-brainstorm-table-full.log`: repository tests (9,550 passed,
+  16 skipped), builds, payload, deterministic Storybook, 335 Storybook interaction
+  tests, 280 visuals, 93 cross-browser checks, plugin conformance and docs
+  publication (448 stories). Only the four explicitly approved caption goldens
+  changed; all others remained unchanged.
+- Local Bits commits: `64cd4c8` (test synchronization) and `4f0a01f` (Brainstorm
+  table). Generated docs-only churn was preserved separately in the named
+  `preserve generated docs from Brainstorm table conformance` stash. The
+  pre-existing embedded-assets change is excluded from this checkpoint.
+  Nothing has been pushed, released or deployed.
+
+## Remaining Messaging collections — 2026-09-21 local batch
+
+- Existing patterns: `storybook/public/recipes/collection-patterns.stories.tsx`
+  (`SameRecords`, `RowBehaviors`), `storybook/public/lists/data-table.stories.tsx`
+  (`NarrowRoles`, `SortedPagedDualRender`), and the established Plans Sort selector
+  composition. Focused SDK boundaries: `/ui`, `/patterns`, `/layout`, `/navigation`.
+  No public system extension or baseline update.
+- Brainstorm sessions and plan channel/content lists now use separated rows,
+  wrapping titles and soft count/metadata chips. Existing independent actions,
+  session navigation and specialized conversations remain. Calendar list mode
+  uses labelled narrow roles and shared URL-backed heading/selector sort state;
+  month/week/day ordering remains chronological. Calendar and Brainstorm load
+  failures now show Retry rather than empty success.
+- Added deterministic real-SDK Calendar, Brainstorm and workspace fixtures to
+  the existing Plans fixture command. All four pass with no package blockers
+  or conformance findings. HTML and screenshot evidence:
+  `/private/tmp/bakin-plans-ui.Ag2Vaz/plugin/test-results/bakin-ui{,-calendar,-brainstorm,-workspace}`;
+  final log: `/private/tmp/bakin-messaging-collections-final-fixture.log`.
+- Browser review found an existing inner-main landmark and tab panels without
+  visible focus; the consumer now uses a div and existing Tabs focus tokens.
+  Height-contained 320px host review additionally caught the content column
+  shrinking below its children and the Details rail intercepting channel actions.
+  Narrow `flex-none`, returning to desktop `flex-1`, fixes that overlap without
+  changing the desktop resizer/scroll model. Regression evidence:
+  `/private/tmp/bakin-messaging-workspace-overlap-red.log`; final focused test passes.
+- 592 Bits tests pass, 8 existing skips, 3,559 assertions; typecheck, lint and
+  build pass. Final unit log: `/private/tmp/bakin-messaging-final-bits-tests.log`.
+  Intercepted local-app checks at 320/768/1024/1440px verify sort after
+  reload, filter/no-results recovery, load retries, keyboard session navigation,
+  channel confirmation/cancel, no document overflow and no page errors. Log:
+  `/private/tmp/bakin-messaging-collection-browser-fixed.log`; screenshots:
+  `/private/tmp/bakin-messaging-{calendar,brainstorm,workspace}-{width}.png`.
+  API writes were intercepted; no real plans/channels/content were deleted.
+- User explicitly approved Messaging's measured 704,390 → 709,343-byte baseline
+  (4,953-byte delta). Sorting and retry states account for the increase; other
+  limits and the shared 2,048-byte allowance remain unchanged. Subsequent focus
+  and layout corrections fit within that unchanged allowance. Payload check:
+  `/private/tmp/bakin-messaging-batch-performance-final.log`.
+- Full shared checkpoint passed in
+  `/private/tmp/bakin-messaging-collections-full-permitted.log`: quick contracts,
+  lint/typecheck/builds, 9,550 shared tests (16 skips), approved payload ratchet,
+  335 Storybook interactions, 280 unchanged visuals, 93 cross-browser checks,
+  plugin conformance and docs publication (448 stories). The earlier
+  sandbox-limited attempt was stopped because local browser ports/build output
+  need test permissions; it is not passing evidence. No release, push or
+  dependency change. Unrelated generated docs are preserved in a scoped stash;
+  the pre-existing embedded-assets manifest is excluded from the commit.
+- Independent five-axis review found no required changes. At intermediate wide
+  widths Calendar retains its existing bounded horizontal table scroll; moving
+  the narrow-render breakpoint earlier is optional follow-up, not a new
+  regression. Both retry-test suites reinstall fetch in `beforeEach`, preventing
+  a failed assertion from carrying the temporary error response into later cases.
+
 ## Scope and evidence status
+
+### Next simple-row slice: source recheck (2026-09-21)
+
+These are pending recommendations, not completed migrations:
+
+| Consumer | Remaining change | Preserve / verify |
+| --- | --- | --- |
+| Chat `launcher.tsx` recent chats | Explicit separated rows and wrapping titles | Six-item limit, unread state, open action; agent cards and compact rail stay specialized |
+| Team `team-manager.tsx`, `lesson-toggle-list.tsx` | Separated rows and long-label wrapping | Global team identity, exact delete target, independently labelled lesson switch, pending lock and rollback, deep-link highlight |
+| Models `aliases-tab.tsx` | Separated rows; kit density instead of local px/py | Alias → provider/model mapping, missing-catalog fallback, pagination and named delete confirmation; not the repeated routing/settings forms |
+| Assets `task-assets.tsx` | Compact separated rows and persistent independent unlink action | Thumbnails/version facts, read-only behavior, unlink-not-delete scope; current silent load/unlink errors need honest feedback in that slice |
+| Branding `brand-builder.tsx` attached materials | Compact separated rows; retire outdated bordered-resource rationale | File names/sizes, remove action, three-file cap and input constraints; no gallery changes |
+| Branding `brand-detail.tsx` document/lesson lists | Separated rows with mobile content/actions wrapping | Edit route, context/active switches, delete confirmation, staged save semantics; the current shrink-0 filename/action groups need narrow testing |
+
+Do not treat removing an outline as the entire migration: an available menu,
+honest load state and readable narrow identity are part of each acceptance test.
+
+### Table parity source findings (2026-09-21; Schedule/Tasks addressed above)
+
+Read-only review against DataTable `NarrowRoles`/`SortedPagedDualRender` confirms:
+
+- **Schedule first:** `plugins/schedule/components/job-list.tsx` supplies a
+  private narrow row without the desktop `JobActionsMenu`, and sortable headings
+  disappear with no persistent selector in `schedule-page.tsx`. Actions remain
+  available through `job-drawer.tsx` (pause/resume, run, delete, edit, duplicate,
+  adopt, restore, skip), so this is direct-action parity, not lost capability.
+  Add persistent sorting and reuse the same menu on narrow rows.
+- **Tasks next:** `plugins/tasks/components/task-log-table.tsx` already uses
+  labelled narrow roles and row activation. Its headings are the only sort
+  controls and disappear when narrow. Preserve those roles; add a shared sort
+  control rather than another row implementation.
+- **Health afterward:** `system-inventory.tsx` and `system-search-section.tsx`
+  retain wide-only, 760px-minimum tables inside bounded scroll. Update/Reindex
+  actions can be offscreen. Their `renderRow={() => null}` is dormant because
+  no collapse breakpoint is set. Introduce explicit supported narrow roles and
+  preserve action scope and sorting. ChartDataTable remains a separate exact-data
+  chart view, not automatically part of this migration.
+
+Schedule and Task log now have local implementation/browser evidence above.
+Health's subsequent local System proof is recorded above; other Health
+collections remain follow-ups, not completed migrations.
 
 Source snapshot: Bakin `de3d183321c9faca5c21705d08564f1f63d12cd5`;
 official Bits `4ff49426de9f88a87298754c515fef30aa866576` (both local main).

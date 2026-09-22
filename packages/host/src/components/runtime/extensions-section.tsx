@@ -9,7 +9,8 @@ import { useState } from 'react'
 import { useJsonFetch } from '@makinbakin/sdk/hooks'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import { Section, Stack } from '@makinbakin/sdk/layout'
-import { ConfirmDialog, CopyButton, DataTable, StatusBadge, type DataTableColumn } from '@makinbakin/sdk/patterns'
+import { ConfirmDialog, CopyButton, StatusBadge, type DataTableColumn } from '@makinbakin/sdk/patterns'
+import { RuntimeTable } from './runtime-table'
 import { Banner, Button, Text } from '@makinbakin/sdk/ui'
 import { describeRequestError, responseError } from '../../lib/request-error'
 
@@ -94,6 +95,8 @@ export function ExtensionsSection() {
   const columns: ReadonlyArray<DataTableColumn<ExtensionRow>> = [
     {
       key: 'label',
+      narrow: 'primary',
+      cellClassName: 'whitespace-normal break-words',
       header: 'Extension',
       sortable: true,
       sortValue: (ext) => ext.label,
@@ -101,6 +104,8 @@ export function ExtensionsSection() {
     },
     {
       key: 'source',
+      narrow: 'meta',
+      cellClassName: 'whitespace-normal break-words',
       header: 'Source',
       sortable: true,
       sortValue: (ext) => ext.source,
@@ -110,6 +115,7 @@ export function ExtensionsSection() {
       // The path IS the trust identity — it wraps in full rather than
       // truncating behind a native tooltip nobody can reach on touch.
       key: 'path',
+      narrow: 'label',
       header: 'Path',
       sortable: true,
       sortValue: (ext) => ext.path,
@@ -120,6 +126,7 @@ export function ExtensionsSection() {
       // Declared on the row and never rendered until now, on the one panel
       // whose entire job is trust identity.
       key: 'sha256',
+      narrow: 'label',
       header: 'SHA256',
       cellClassName: 'whitespace-normal',
       cell: (ext) => (
@@ -131,6 +138,7 @@ export function ExtensionsSection() {
     },
     {
       key: 'status',
+      narrow: 'meta',
       header: 'Status',
       sortable: true,
       sortValue: (ext) => ext.status,
@@ -144,6 +152,8 @@ export function ExtensionsSection() {
     },
     {
       key: 'action',
+      narrow: 'trailing',
+      hideLabel: true,
       header: 'Action',
       align: 'end',
       cell: (ext) => (
@@ -173,12 +183,12 @@ export function ExtensionsSection() {
         </Text>
         <CodeBlock code="pi install" label="extension install command" />
       </Stack>
-      <DataTable
+      <RuntimeTable
+        queryKey="extensionsSort"
         label="Runtime extensions"
         columns={columns}
         rows={report.extensions}
         rowKey={(ext) => ext.path}
-        defaultSort={{ field: 'label', dir: 'asc' }}
       />
 
       <ConfirmDialog

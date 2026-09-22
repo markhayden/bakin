@@ -23,8 +23,8 @@
     "paths": 165,
     "totals": {
       "raw-palette": 4,
-      "arbitrary-size": 81,
-      "raw-scale": 446,
+      "arbitrary-size": 77,
+      "raw-scale": 440,
       "raw-control": 18,
       "inline-style": 33,
       "generic-token": 72,
@@ -185,7 +185,7 @@
       }
     },
     {
-      "path": "bakin-bits-official/plugins/projects/components/project-grid.tsx",
+      "path": "bakin-bits-official/plugins/projects/components/project-list.tsx",
       "owner": {
         "repository": "bakin-bits-official",
         "area": "plugin",
@@ -197,8 +197,7 @@
       "target": "official Projects list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 1,
-        "raw-scale": 1
+        "arbitrary-size": 1
       }
     },
     {
@@ -1717,7 +1716,7 @@
       "target": "brand list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 20
+        "raw-scale": 19
       }
     },
     {
@@ -1845,7 +1844,6 @@
       "target": "diagnostic dashboard archetypes and semantic data visualization",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 1,
         "raw-scale": 2
       }
     },
@@ -1993,7 +1991,6 @@
       "target": "diagnostic dashboard archetypes and semantic data visualization",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 2,
         "raw-scale": 1
       }
     },
@@ -2010,7 +2007,6 @@
       "target": "diagnostic dashboard archetypes and semantic data visualization",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 1,
         "raw-scale": 2
       }
     },
@@ -2044,7 +2040,7 @@
       "target": "search/list/detail archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 3
+        "raw-scale": 1
       }
     },
     {
@@ -2603,7 +2599,7 @@
       "target": "focused SDK primitive/pattern and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 11
+        "raw-scale": 9
       }
     },
     {

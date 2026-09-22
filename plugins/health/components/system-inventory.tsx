@@ -28,6 +28,28 @@ import {
   type InventoryPlugin,
 } from '../lib/system-view-model'
 import { focusSystemElement } from './system-navigation'
+import { HealthTableSort, useHealthTableSort } from './health-table-sort'
+
+function CheckTable({ checks, label, groupKey }: { checks: HealthCheckState[]; label: string; groupKey: string }) {
+  const columns: ReadonlyArray<DataTableColumn<HealthCheckState>> = [
+    { key: 'name', header: 'Check', narrow: 'primary', sortable: true, sortValue: check => check.checkName, cellClassName: 'whitespace-normal', cell: check => <div data-check-id={check.checkId} className="rounded-bakin-control focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-bakin-focus-ring">
+      <Text weight="semibold" className="break-words">{check.checkName}</Text>
+      <Text size="meta" tone="muted" as="p" className="break-words">{check.description}</Text>
+    </div> },
+    { key: 'status', header: 'Status', narrow: 'meta', sortable: true, sortValue: check => presentSystemCheck(check).label,
+      cell: check => { const status = presentSystemCheck(check); return <StatusBadge variant="solid" size="xs" tone={status.tone}>{status.label}</StatusBadge> } },
+    { key: 'detail', header: 'Detail', narrow: 'label', cellClassName: 'whitespace-normal', cell: check => <Text size="meta" className="break-words">{presentSystemCheck(check).detail}</Text> },
+    { key: 'owner', header: 'Owner', narrow: 'label', sortable: true, sortValue: check => check.owner.label, cellClassName: 'whitespace-normal', cell: check => check.owner.label },
+    { key: 'checked', header: 'Last checked', narrow: 'label', sortable: true, sortValue: check => check.latestExecution.completedAt,
+      cell: check => formatAge(check.latestExecution.completedAt) },
+  ]
+  const sorting = useHealthTableSort(checks, columns, `check_sort_${groupKey}`, 'name')
+  return <div className="grid min-w-0 gap-bakin-3">
+    <HealthTableSort label={`Sort ${label} checks`} {...sorting} />
+    <DataTable label={`${label} checks`} columns={columns} rows={sorting.rows} sort={sorting.sort} onSortChange={sorting.onSortChange}
+      collapseBelow="3xl" listVariant="separated" rowKey={check => check.checkId} />
+  </div>
+}
 
 export interface SystemInventoryProps {
   report: HealthReport | null
@@ -88,7 +110,6 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
   const hostDisclosureRef = useRef<HTMLDetailsElement>(null)
   const checksDisclosureRef = useRef<HTMLDetailsElement>(null)
   const pluginTableRef = useRef<HTMLDivElement>(null)
-  const checkRowRefs = useRef(new Map<string, HTMLElement>())
   const checkGroupRefs = useRef(new Map<string, HTMLDetailsElement>())
   const plugins = useMemo(() => mergeSystemPlugins(registry, manifest), [manifest, registry])
   const filteredPlugins = useMemo(() => {
@@ -123,11 +144,12 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
     {
       key: 'plugin',
       header: 'Plugin',
+      narrow: 'primary',
       sortable: true,
       sortValue: (plugin) => plugin.name,
       cellClassName: 'whitespace-normal',
       cell: (plugin) => (
-        <>
+        <div data-plugin-id={plugin.id} className="min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring">
           <p className="font-bakin-typography-weight-medium text-bakin-text-primary">{plugin.name}</p>
           <Text mono size="meta" tone="muted" as="p">{plugin.id}</Text>
           {(plugin.status === 'failed' || plugin.activationConflict) && (
@@ -141,12 +163,13 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
               )}
             </Text>
           )}
-        </>
+        </div>
       ),
     },
     {
       key: 'version',
       header: 'Version',
+      narrow: 'label',
       sortable: true,
       sortValue: (plugin) => plugin.version,
       cell: (plugin) => <span className="font-bakin-typography-family-mono text-bakin-text-muted">{plugin.version}</span>,
@@ -154,6 +177,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
     {
       key: 'source',
       header: 'Source',
+      narrow: 'label',
       sortable: true,
       sortValue: (plugin) => plugin.source,
       cell: (plugin) => <span className="text-bakin-text-muted">{plugin.source}</span>,
@@ -161,6 +185,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
     {
       key: 'routes',
       header: 'Routes',
+      narrow: 'label',
       align: 'end',
       sortable: true,
       sortValue: (plugin) => plugin.routes,
@@ -169,6 +194,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
     {
       key: 'status',
       header: 'Status',
+      narrow: 'meta',
       sortable: true,
       // Mirrors the badge's precedence: failed → unknown → update available → active.
       sortValue: (plugin) => (plugin.status === 'failed'
@@ -185,7 +211,15 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
               ? `Last loaded · ${plugin.status === 'failed' ? 'Failed' : plugin.status === 'unknown' ? 'Unknown' : plugin.upgradeAvailable ? 'Update available' : 'Active'}`
               : plugin.status === 'failed' ? 'Failed' : plugin.status === 'unknown' ? 'Activation unknown' : plugin.upgradeAvailable ? 'Update available' : 'Active'}
           </StatusBadge>
-          {plugin.upgradeAvailable && plugin.status === 'active' && (
+        </div>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      hideLabel: true,
+      narrow: 'trailing',
+      cell: (plugin) => plugin.upgradeAvailable && plugin.status === 'active' ? (
             <Button
               size="xs"
               variant="info"
@@ -196,23 +230,27 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
             >
               {pluginMutation.status === 'pending' && pluginMutation.target === plugin.id ? 'Updating…' : 'Update'}
             </Button>
-          )}
-        </div>
-      ),
+      ) : null,
     },
   ]
+  const pluginSort = useHealthTableSort(filteredPlugins, pluginColumns, 'system_plugin_sort', 'plugin')
 
   useImperativeHandle(ref, () => ({
     revealHost: () => revealDisclosure(hostDisclosureRef.current),
     revealPlugins: () => revealDisclosure(pluginsDisclosureRef.current),
     revealPlugin: (pluginId) => {
+      if (pluginsDisclosureRef.current) pluginsDisclosureRef.current.open = true
       const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(pluginId) : pluginId
-      const target = pluginTableRef.current?.querySelector<HTMLElement>(`[data-plugin-id="${escaped}"]`) ?? null
+      const targets = [...(pluginTableRef.current?.querySelectorAll<HTMLElement>(`[data-plugin-id="${escaped}"]`) ?? [])]
+      const target = targets.find(element => element.getClientRects().length > 0) ?? targets[0]
       if (!target) {
         revealDisclosure(pluginsDisclosureRef.current)
         return false
       }
-      if (pluginsDisclosureRef.current) pluginsDisclosureRef.current.open = true
+      // Evidence is not a user-operated control. Make it focusable only for
+      // this reveal, then restore the normal tab order when focus leaves.
+      target.tabIndex = -1
+      target.addEventListener('blur', () => target.removeAttribute('tabindex'), { once: true })
       focusSystemElement(target, { block: 'center' })
       return true
     },
@@ -222,12 +260,17 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
       const groupId = checkGroupById.get(checkId)
       const group = groupId ? checkGroupRefs.current.get(groupId) : null
       if (group) group.open = true
-      const target = checkRowRefs.current.get(checkId)
+      const targets = [...(checksDisclosureRef.current?.querySelectorAll<HTMLElement>('[data-check-id]') ?? [])]
+        .filter(element => element.dataset.checkId === checkId)
+      const target = targets.find(element => element.getClientRects().length > 0) ?? targets[0]
       if (!target) {
         const summary = checksDisclosureRef.current?.querySelector<HTMLElement>('summary')
         if (summary) focusSystemElement(summary)
         return false
       }
+      // Evidence is a programmatic destination, not another tab stop.
+      target.tabIndex = -1
+      target.addEventListener('blur', () => target.removeAttribute('tabindex'), { once: true })
       focusSystemElement(target, { block: 'center' })
       return true
     },
@@ -296,6 +339,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
             onValueChange={onPluginSearchChange}
             placeholder="Name, id, or description"
           />
+          <HealthTableSort label="Sort installed plugins" {...pluginSort} />
           {loading && plugins.length === 0 ? (
             <Text size="body" tone="muted" as="p">Loading installed plugins…</Text>
           ) : filteredPlugins.length === 0 ? (
@@ -304,17 +348,12 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
             <Panel ref={pluginTableRef} scroll aria-label="Installed plugins" data-testid="installed-plugin-table-scroll" padding="compact" className="max-h-80">
               <DataTable<InventoryPlugin>
                 label="Installed plugins"
-                rows={filteredPlugins}
+                rows={pluginSort.rows}
                 rowKey={(plugin) => plugin.id}
-                renderRow={() => null}
-                // mergeSystemPlugins already orders by name; the first render keeps it.
-                defaultSort={{ field: 'plugin', dir: 'asc' }}
-                tableProps={{ className: 'min-w-[760px]' }}
-                rowProps={(plugin) => ({
-                  'data-plugin-id': plugin.id,
-                  tabIndex: -1,
-                  className: 'outline-none focus-visible:bg-bakin-signal-accent/10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-bakin-focus-ring',
-                })}
+                collapseBelow="2xl"
+                listVariant="separated"
+                sort={pluginSort.sort}
+                onSortChange={pluginSort.onSortChange}
                 columns={pluginColumns}
               />
             </Panel>
@@ -401,33 +440,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                       </span>
                     )}
                   >
-                    <ListRows variant="separated">
-                      {presentations.map(({ check, presentation }) => (
-                        <ListRow
-                          key={check.checkId}
-                          ref={(element) => {
-                            if (element) checkRowRefs.current.set(check.checkId, element)
-                            else checkRowRefs.current.delete(check.checkId)
-                          }}
-                          data-check-id={check.checkId}
-                          tabIndex={-1}
-                          className="grid gap-bakin-2 outline-none focus-visible:bg-bakin-signal-accent/10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-bakin-focus-ring @[40rem]/health-system:grid-cols-[minmax(0,1fr)_auto]"
-                        >
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-bakin-2">
-                              <h3 className="font-bakin-typography-weight-medium">{check.checkName}</h3>
-                              <StatusBadge variant="solid" tone={presentation.tone}>{presentation.label}</StatusBadge>
-                            </div>
-                            <Text size="meta" tone="muted" as="p" className="mt-bakin-1">{check.description}</Text>
-                            <Text size="meta" as="p" className="mt-bakin-1">{presentation.detail}</Text>
-                          </div>
-                          <Text size="meta" tone="muted" as="div" className="text-left @[40rem]/health-system:text-right">
-                            <p>{check.owner.label}</p>
-                            <p>{formatAge(check.latestExecution.completedAt)}</p>
-                          </Text>
-                        </ListRow>
-                      ))}
-                    </ListRows>
+                    <CheckTable checks={group.checks} label={group.label} groupKey={group.key} />
                   </DisclosurePanel>
                 )
               })}

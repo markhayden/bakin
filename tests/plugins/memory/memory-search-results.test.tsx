@@ -10,7 +10,7 @@
  * but the callback fires with the full SearchResult when provided.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import '../../rtl-settle'
 
 // Defensive isolation per CLAUDE.md — this component never reads from disk,
@@ -65,7 +65,21 @@ function row(overrides: Partial<SearchResult> & { tier?: string; agent?: string;
 
 afterEach(() => cleanup())
 
+// Assert wide cells here; the dedicated narrow test exercises the second render.
+const cells = () => within(screen.getByRole('table', { name: 'Memory results' }))
+
 describe('MemorySearchResults', () => {
+  it('uses separated narrow rows with labelled metadata and the same record activation', () => {
+    const target = row({ id: 'session:mobile', title: 'Mobile record' })
+    const onSelect = mock()
+    render(<MemorySearchResults results={[target]} loading={false} error={null} query="" onSelect={onSelect} />)
+    const list = screen.getByRole('list', { name: 'Memory results' })
+    expect(list.getAttribute('data-variant')).toBe('separated')
+    expect(list.textContent).toContain('Updated')
+    expect(list.textContent).toContain('Agent')
+    fireEvent.click(within(list).getByRole('button', { name: 'Open Mobile record' }))
+    expect(onSelect).toHaveBeenCalledWith(target)
+  })
   it('renders nothing special when query is empty', () => {
     const { container } = render(
       <MemorySearchResults results={[]} loading={false} error={null} query="" />,
@@ -110,26 +124,26 @@ describe('MemorySearchResults', () => {
         query="q"
       />,
     )
-    expect(document.querySelectorAll('[data-memory-result]').length).toBe(3)
-    expect(document.querySelectorAll('[data-status-badge]').length).toBe(3)
-    expect(screen.getByText('Session A')).toBeDefined()
-    expect(screen.getByText('Daily B')).toBeDefined()
-    expect(screen.getByText('Audit C')).toBeDefined()
+    expect(screen.getByRole('table').querySelectorAll('[data-memory-result]').length).toBe(3)
+    expect(screen.getByRole('table').querySelectorAll('[data-status-badge]').length).toBe(3)
+    expect(cells().getByText('Session A')).toBeDefined()
+    expect(cells().getByText('Daily B')).toBeDefined()
+    expect(cells().getByText('Audit C')).toBeDefined()
     // Tier labels — the component formats daily_note → "Daily Note".
     expect(screen.getAllByText(/session/i).length).toBeGreaterThan(0)
-    expect(screen.getByText(/daily note/i)).toBeDefined()
+    expect(cells().getByText(/daily note/i)).toBeDefined()
     expect(screen.getAllByText(/audit/i).length).toBeGreaterThan(0)
     // Agents surface somewhere in the output.
     expect(screen.getAllByText('Explorer').length).toBeGreaterThan(0)
-    expect(screen.getByText('Chef')).toBeDefined()
-    expect(document.querySelectorAll('[data-agent-avatar]').length).toBe(3)
-    expect(document.querySelectorAll('[data-agent-id="explorer"]').length).toBe(2)
+    expect(cells().getByText('Chef')).toBeDefined()
+    expect(screen.getByRole('table').querySelectorAll('[data-agent-avatar]').length).toBe(3)
+    expect(screen.getByRole('table').querySelectorAll('[data-agent-id="explorer"]').length).toBe(2)
 
     // Tier identity rides the badge TEXT on a neutral StatusBadge — the raw
     // per-tier color families were retired in the storybook refit (T6.5).
-    expect(screen.getByText('Session').closest('[data-status-badge]')?.getAttribute('data-tone')).toBe('neutral')
-    expect(screen.getByText('Daily Note').closest('[data-status-badge]')?.getAttribute('data-tone')).toBe('neutral')
-    expect(screen.getByText('Audit').closest('[data-status-badge]')?.getAttribute('data-tone')).toBe('neutral')
+    expect(cells().getByText('Session').closest('[data-status-badge]')?.getAttribute('data-tone')).toBe('neutral')
+    expect(cells().getByText('Daily Note').closest('[data-status-badge]')?.getAttribute('data-tone')).toBe('neutral')
+    expect(cells().getByText('Audit').closest('[data-status-badge]')?.getAttribute('data-tone')).toBe('neutral')
   })
 
   it('uses the shared small-card row treatment to separate adjacent results', () => {
@@ -168,7 +182,7 @@ describe('MemorySearchResults', () => {
         query="q"
       />,
     )
-    expect(screen.getByText(/unique-snippet-phrase/)).toBeDefined()
+    expect(cells().getByText(/unique-snippet-phrase/)).toBeDefined()
   })
 
   it('turns markdown-heavy source content into a quiet one-line summary', () => {
@@ -191,7 +205,7 @@ describe('MemorySearchResults', () => {
       />,
     )
 
-    expect(screen.getByText('Always use the approved prompt. internal-only')).toBeDefined()
+    expect(cells().getByText('Always use the approved prompt. internal-only')).toBeDefined()
     expect(document.querySelector('[data-memory-summary]')?.className).toContain('line-clamp-1')
   })
 
@@ -208,7 +222,7 @@ describe('MemorySearchResults', () => {
       />,
     )
     // DataTable puts the activation affordance on the row itself.
-    const resultRow = screen.getByLabelText(/open clickable/i)
+    const resultRow = cells().getByLabelText(/open clickable/i)
     fireEvent.click(resultRow)
     expect(onSelect).toHaveBeenCalledTimes(1)
     expect(onSelect).toHaveBeenCalledWith(target)
@@ -245,6 +259,6 @@ describe('MemorySearchResults', () => {
     )
     // Should still render without throwing; tier badge still there.
     expect(document.querySelectorAll('[data-memory-result]').length).toBe(1)
-    expect(screen.getByText(/durable/i)).toBeDefined()
+    expect(cells().getByText(/durable/i)).toBeDefined()
   })
 })

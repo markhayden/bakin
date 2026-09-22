@@ -95,8 +95,10 @@ never sit at rest in a card — surface on hover or behind the detail view.
   choose `rounded-*` or shadow utilities ad hoc.
 - Repeated rows use separators or a restrained surface shift. Explicit dense
   data rows use the canonical dense gap/height without changing typography.
-- Collection families: divider-separated `ListRows` for text-first browsing,
-  `Card`/`Grid` for meaningful previews, `DataTable` for column-wise comparison.
+- Collection families: `DataTable` is the default for record collections when
+  meaningful previews do not justify `Card`/`Grid`. It supports browsing and
+  opening records as well as column-wise comparison. Use divider-separated
+  `ListRows` for compact supporting lists or an explicit interaction need.
   Set `variant="separated"` explicitly while the runtime default remains
   `bordered` for compatibility. Compact navigation may retain plain rows.
   Public reference: `Recipes/Collection patterns`.

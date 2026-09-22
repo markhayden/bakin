@@ -15,7 +15,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'Prefer separated rows for text-first collection browsing. Cards serve meaningful previews; tables serve column-wise comparison (see Recipes/Collection patterns). Bordered rows remain supported for compatibility and bounded nested details; plain rows fit compact rails with existing hierarchy. The current ListRows runtime default remains bordered, so new collection compositions set variant="separated" explicitly. Consumers own content and actions; the pattern owns semantics, spacing, and boundaries.',
+        component: 'DataTable is the default for record collections; cards serve meaningful previews (see Recipes/Collection patterns). Use separated rows for compact supporting lists or a specific interaction need. Bordered rows remain supported for compatibility and bounded nested details; plain rows fit compact rails with existing hierarchy. The current ListRows runtime default remains bordered, so separated-row compositions set variant="separated" explicitly. Consumers own content and actions; the pattern owns semantics, spacing, and boundaries.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'keyboard', 'dense-data', 'non-color'],
@@ -89,7 +89,7 @@ function ListVarietiesExample() {
 
           <ListPattern
             title="Bordered"
-            description="Supported for compatibility and bounded nested details. New text-first collections prefer separated rows; the runtime default remains bordered during migration."
+            description="Supported for compatibility and bounded nested details. Compact supporting lists prefer separated rows; the runtime default remains bordered during migration."
           >
             <ListRows aria-label="Bordered lesson rows">
               <ListRow className="bakin-lists-story__row">
@@ -151,7 +151,7 @@ function ListVarietiesExample() {
 
           <ListPattern
             title="Plain"
-            description="For supporting facts or compact navigation where surrounding hierarchy establishes the relationship. Interactive controls remain available; text-first collection pages prefer separated rows."
+            description="For supporting facts or compact navigation where surrounding hierarchy establishes the relationship. Interactive controls remain available; record collection pages default to DataTable."
           >
             <ListRows aria-label="Plain supporting facts" variant="plain">
               <ListRow className="bakin-lists-story__fact">

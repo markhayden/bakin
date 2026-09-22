@@ -179,7 +179,7 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
           ) : null}
         </div>
 
-        <ListRows aria-label="Agent lessons">
+        <ListRows variant="separated" aria-label="Agent lessons">
           {lessons.map((lesson) => {
             const highlighted = highlightId !== '' && lesson.lessonId === highlightId
             const switchId = `lesson-${agentId}-${lesson.lessonId}`
@@ -198,13 +198,13 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
                   <FileText aria-hidden="true" className="mt-bakin-1 size-bakin-4 shrink-0 text-bakin-text-muted" />
                   <span className="min-w-0">
                     <span
-                      className={`block truncate font-bakin-typography-family-mono text-bakin-typography-size-body ${
+                      className={`block break-words font-bakin-typography-family-mono text-bakin-typography-size-body ${
                         lesson.enabled ? 'text-bakin-text-primary' : 'text-bakin-text-muted'
                       }`}
                     >
                       {lesson.lessonId}
                     </span>
-                    <span className="mt-bakin-1 block truncate text-bakin-typography-size-meta font-normal text-bakin-text-muted">
+                    <span className="mt-bakin-1 block break-words text-bakin-typography-size-meta font-normal text-bakin-text-muted">
                       {lesson.title}
                       {lesson.tags.length > 0 ? ` · ${lesson.tags.join(', ')}` : ''}
                     </span>

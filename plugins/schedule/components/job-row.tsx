@@ -118,7 +118,7 @@ export function JobActionsMenu({
             variant="ghost"
             size="icon-xs"
             aria-label={`Actions for ${label}`}
-            className="text-bakin-text-muted md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+            className="text-bakin-text-muted"
           />
         )}
         onClick={(e) => e.stopPropagation()}

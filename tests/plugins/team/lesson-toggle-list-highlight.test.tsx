@@ -64,7 +64,7 @@ describe('LessonToggleList ?lessonId= highlight', () => {
     const highlighted = document.querySelectorAll('[data-highlighted="true"]')
     expect(highlighted.length).toBe(1)
     expect(highlighted[0]!.textContent).toContain('Tone of voice')
-    expect(screen.getByRole('list', { name: 'Agent lessons' }).getAttribute('data-variant')).toBe('bordered')
+    expect(screen.getByRole('list', { name: 'Agent lessons' }).getAttribute('data-variant')).toBe('separated')
     expect(highlighted[0]!.getAttribute('data-slot')).toBe('list-row')
   })
 

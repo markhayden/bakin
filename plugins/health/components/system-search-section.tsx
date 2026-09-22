@@ -14,6 +14,7 @@ import { Alert, AlertDescription, Badge, Banner, Button, Text, type BannerTone }
 import { Activity, ListRestart, WandSparkles } from 'lucide-react'
 import type { SearchHealthData, SearchTelemetryData } from '../types'
 import type { SystemMutationState } from '../hooks/use-system-data'
+import { HealthTableSort, useHealthTableSort } from './health-table-sort'
 
 export interface SystemSearchSectionProps {
   readiness: SearchReadiness | null
@@ -114,6 +115,7 @@ export function SystemSearchSection({
     {
       key: 'index',
       header: 'Index',
+      narrow: 'primary',
       sortable: true,
       sortValue: (table) => table.logical,
       cellClassName: 'whitespace-normal align-top',
@@ -131,6 +133,7 @@ export function SystemSearchSection({
     {
       key: 'state',
       header: 'State',
+      narrow: 'meta',
       sortable: true,
       // Same precedence as the badge: migrating → active → needs attention.
       sortValue: (table) => (table.state === 'migrating'
@@ -160,6 +163,7 @@ export function SystemSearchSection({
     {
       key: 'documents',
       header: 'Documents',
+      narrow: 'label',
       align: 'end',
       sortable: true,
       sortValue: (table) => table.docCount ?? null,
@@ -169,6 +173,7 @@ export function SystemSearchSection({
     {
       key: 'lastIndexed',
       header: 'Last indexed',
+      narrow: 'label',
       sortable: true,
       sortValue: (table) => table.lastIndexedAt ?? null,
       cellClassName: 'align-top',
@@ -177,6 +182,7 @@ export function SystemSearchSection({
     {
       key: 'backlog',
       header: 'Backlog',
+      narrow: 'label',
       sortable: true,
       sortValue: (table) => table.journalPending + legBacklog(table.legs),
       cellClassName: 'align-top',
@@ -191,6 +197,8 @@ export function SystemSearchSection({
     {
       key: 'action',
       header: 'Action',
+      narrow: 'trailing',
+      hideLabel: true,
       align: 'end',
       cellClassName: 'align-top',
       cell: (table) => {
@@ -200,7 +208,7 @@ export function SystemSearchSection({
           <Button
             size="xs"
             variant="outline"
-            disabled={mutationLocked}
+            disabled={mutationLocked || status?.engineReachable === false}
             onClick={() => void onReindex(table.logical)}
             aria-label={`Reindex ${table.logical}`}
           >
@@ -210,6 +218,7 @@ export function SystemSearchSection({
       },
     },
   ]
+  const indexSort = useHealthTableSort(status?.tables ?? [], indexColumns, 'system_index_sort', 'index')
 
   return (
     <Panel as="section" aria-labelledby="search-system-title">
@@ -328,7 +337,7 @@ export function SystemSearchSection({
               <Text size="meta" tone="muted" className="block">Physical indexes, migrations, backlogs, and reindex controls.</Text>
             </span>
           )}
-          summaryMeta={<Badge variant="secondary">{status ? `${status.tables.length} tables` : 'Unavailable'}</Badge>}
+          summaryMeta={<Badge variant="soft" tone="neutral">{status ? `${status.tables.length} tables` : 'Unavailable'}</Badge>}
         >
           <div className="space-y-bakin-3">
             <div className="flex flex-wrap items-end justify-between gap-bakin-3">
@@ -354,6 +363,7 @@ export function SystemSearchSection({
                 </AlertDescription>
               </Alert>
             ) : null}
+            <HealthTableSort label="Sort search indexes" {...indexSort} />
 
             {!status?.enabled ? (
               <Alert tone="neutral">
@@ -369,12 +379,13 @@ export function SystemSearchSection({
               <Panel scroll aria-label="Search indexes" data-testid="search-index-table-scroll" padding="compact" className="max-h-96">
                 <DataTable<SearchIndexTable>
                   label="Search indexes"
-                  rows={status.tables}
+                  rows={indexSort.rows}
                   rowKey={(table) => table.logical}
                   columns={indexColumns}
-                  defaultSort={{ field: 'index', dir: 'asc' }}
-                  renderRow={() => null}
-                  tableProps={{ className: 'min-w-[760px]' }}
+                  sort={indexSort.sort}
+                  onSortChange={indexSort.onSortChange}
+                  collapseBelow="2xl"
+                  listVariant="separated"
                 />
               </Panel>
             )}

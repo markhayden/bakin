@@ -3,7 +3,7 @@
 import type { HealthIncident } from '@makinbakin/sdk/types'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { DisclosurePanel, Inline, Section, Stack } from '@makinbakin/sdk/layout'
-import { StatusBadge } from '@makinbakin/sdk/patterns'
+import { ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
 import { Banner, Popover, PopoverContent, PopoverTrigger, Text } from '@makinbakin/sdk/ui'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { HealthOverviewViewModel, OverviewIncident } from '../lib/health-view-model'
@@ -66,22 +66,14 @@ function AlertGrid({
   onRerun?: (incident: HealthIncident) => void
   onAck?: (incident: HealthIncident, action: 'ack' | 'snooze' | 'clear', window?: '24h' | '7d') => void
 }) {
-  const columnClasses = [
-    incidents.length > 1 && '@[36rem]/health:grid-cols-2',
-    incidents.length > 2 && '@[48rem]/health:grid-cols-3',
-  ].filter(Boolean).join(' ')
-
   return (
-    <ul
+    <ListRows variant="separated" aria-label="Health findings"
       data-testid={testId}
-      className={`grid gap-bakin-3 ${columnClasses}`}
     >
       {incidents.map((item) => (
-        <li key={item.incident.id} className="min-w-0">
-          <IncidentRow item={item} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
-        </li>
+          <IncidentRow key={item.incident.id} item={item} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
       ))}
-    </ul>
+    </ListRows>
   )
 }
 
@@ -102,17 +94,17 @@ function Notices({ incidents }: { incidents: OverviewIncident[] }) {
         <ChevronDown className="size-bakin-3 transition-transform duration-[var(--bakin-motion-duration-transition)] group-data-[popup-open]:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[min(24rem,calc(100vw-2rem))] p-bakin-2">
-        <ul className="max-h-72 space-y-bakin-1 overflow-auto">
+        <ListRows variant="separated" size="sm" aria-label="Health notices" className="max-h-72 overflow-auto">
           {incidents.map((item) => {
             const badge = noticeBadge(item)
             return (
-              <li key={item.incident.id} className="flex items-start gap-bakin-2 rounded-bakin-control px-bakin-2 py-bakin-2 text-bakin-typography-size-meta">
-                <StatusBadge tone={badge.tone} variant="outline">{badge.label}</StatusBadge>
+              <ListRow key={item.incident.id} className="flex min-w-0 items-start gap-bakin-2">
+                <StatusBadge tone={badge.tone} variant="soft" size="xs">{badge.label}</StatusBadge>
                 <span className="min-w-0 leading-snug text-bakin-text-primary">{item.incident.title}</span>
-              </li>
+              </ListRow>
             )
           })}
-        </ul>
+        </ListRows>
         <PluginLink
           to="/health?tab=system"
           className="mt-bakin-1 flex items-center justify-end gap-bakin-1 rounded-bakin-control px-bakin-2 py-bakin-2 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-signal-accent hover:bg-bakin-surface-default focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
