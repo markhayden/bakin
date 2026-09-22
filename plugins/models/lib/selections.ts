@@ -10,24 +10,16 @@ import { createLogger } from '../../../src/core/logger'
 import { getContentDir } from '../../../src/core/content-dir'
 import { getBootId } from '../../../src/core/boot-id'
 import { createSelectionMutator, type SelectionMutator } from '../../../src/core/model-mutations'
-import { evaluateSelections, proposeRepairs, type UiMode } from '../../../src/core/model-selections'
+import { evaluateSelections, proposeRepairs } from '../../../src/core/model-selections'
 import { recommendForRef } from '../../../src/core/model-plan-input'
-import type { RoutingConfig } from '../../../src/core/model-routing'
-import type { ModelsPluginSettings } from '../types'
-import { isLegacyRouting, migrateLegacyRouting } from '../../../src/core/routing-migration'
+import { readRoutingSettings } from './routing-settings'
 import { currentPlan, lastPlan } from './plan'
+
+export { readRoutingSettings }
 
 const log = createLogger('models:selections')
 
 const holder = globalThis as typeof globalThis & { __bakinSelectionMutator?: SelectionMutator }
-
-export function readRoutingSettings(ctx: PluginContext): { routing: RoutingConfig; uiMode: UiMode | null } {
-  const settings = ctx.getSettings<ModelsPluginSettings>()
-  const stored = settings.routing
-  const routing = isLegacyRouting(stored) ? migrateLegacyRouting(stored) : (stored ?? { routes: [], tagOverrides: [] })
-  const uiMode = settings.ui?.mode === 'simple' || settings.ui?.mode === 'advanced' ? settings.ui.mode : null
-  return { routing, uiMode }
-}
 
 export function modelsStateDir(): string {
   return join(getContentDir(), 'plugin-settings', 'models')

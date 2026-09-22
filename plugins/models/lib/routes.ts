@@ -319,7 +319,8 @@ export const modelsRoutes = [
     handler: async (_req, ctx) => {
       try {
         const { describePlan } = await import('./plan')
-        return Response.json(await describePlan(ctx as unknown as PluginContext))
+        const { revision } = await getSelectionMutator(ctx as unknown as PluginContext).reconcile()
+        return Response.json(await describePlan(ctx as unknown as PluginContext, revision))
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }

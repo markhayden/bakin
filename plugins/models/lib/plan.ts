@@ -18,7 +18,7 @@ import {
 } from '../../../src/core/model-plan'
 import type { RoutingConfig, WorkClass } from '../../../src/core/model-routing'
 import { fetchAvailableModels } from './available-models'
-import { getSelectionMutator, readRoutingSettings } from './selections'
+import { readRoutingSettings } from './routing-settings'
 
 /** Cross-plugin reads with honest defaults: absent hook or a throw never blocks a plan. */
 async function hookOr<T>(ctx: PluginContext, name: string, fallback: T): Promise<T> {
@@ -88,12 +88,11 @@ export async function currentPlan(ctx: PluginContext): Promise<PlanRecommendatio
   return plan
 }
 
-/** GET /plan payload: current state, the recommendation, and the revision an apply must carry. */
-export async function describePlan(ctx: PluginContext) {
+/** GET /plan payload: current state, the recommendation, and the revision an apply must carry (the caller reads it off the mutator). */
+export async function describePlan(ctx: PluginContext, revision: string) {
   const input = await buildPlanInput(ctx)
   const recommended = recommendPlan(input)
   holder.__bakinLastModelPlan = recommended
-  const { revision } = await getSelectionMutator(ctx).reconcile()
   return {
     revision,
     current: {
