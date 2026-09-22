@@ -128,10 +128,11 @@ function observed(run: HealthCheckRunInput) {
 }
 
 describe('budget health check', () => {
-  it('WARNS (standing nag) when no caps are configured — spend is uncapped', async () => {
+  it('no limits is HEALTHY and plainly stated — never a nag (S8)', async () => {
     const [r] = observed(await checkBudget())
-    expect(r.status).toBe('warning')
-    expect(r.summary).toContain('uncapped')
+    expect(r.status).toBe('healthy')
+    expect(r.summary).toContain('No spending limits set')
+    expect(r.incident).toBeUndefined()
   })
 
   it('is ok when spend is well under the cap', async () => {

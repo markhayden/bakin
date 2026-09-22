@@ -979,7 +979,7 @@ bakin models restore <snapshot.json> [--json]
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="spend" name="spend" summary="Estimated agent spend + budget utilization." description="Lane-split spend (metered dollars vs subscription tokens — plan quota carries no dollar figure), per-rule budget utilization, on-pace projections, unattributed share, per-agent/per-model rollups, and the kill-switch state. Same engine the dispatch gate enforces, so the numbers match the Spend tab.">
+<CliCommandCard id="spend" name="spend" summary="Estimated agent spend + budget utilization." description="Lane-split spend (metered dollars vs subscription tokens — plan quota carries no dollar figure), per-rule budget utilization, on-pace projections with their observed-days basis, unattributed share, per-agent/per-model rollups, and the kill-switch state. Same engine the dispatch gate enforces, so the numbers match the Spend page.">
 ```sh frame="terminal"
 bakin spend [--window 24h|7d|30d|all] [--json]
 ```
@@ -991,19 +991,22 @@ bakin spend [--window 24h|7d|30d|all] [--json]
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="budget" name="budget" summary="Manage spending caps + the dispatch kill switch." description="Shows or edits cap rules (scope global|agent|provider × lane metered|subscription; metered caps are whole USD, subscription caps are tokens), pauses/resumes ALL dispatch (kill switch), and lists/resolves budget incidents (raise a cap &amp; resume, acknowledge, or resume a pause-mode hold).">
+<CliCommandCard id="budget" name="budget" summary="Manage opt-in spend limits + the dispatch kill switch." description="Shows or edits spend limits (scope global|agent|provider × lane metered|subscription; metered limits are whole USD, subscription limits are tokens; every limit notifies at 50/75/90% and when reached — at the line, work waits for the next period or pauses until you raise/resume), shows milestone state, pauses/resumes ALL dispatch (kill switch), and lists/resolves budget incidents (raise a limit &amp; resume, acknowledge, or resume a pause-mode hold — refused while still over).">
 ```sh frame="terminal"
-bakin budget [show|set|rm|pause|resume|incidents] ... (set: --scope global|agent|provider|model --lane metered|subscription; token caps accept k/M suffixes)
+bakin budget [show|set|rm|pause|resume|incidents] ... (set: --monthly N [--daily N] [--at-cap wait|pause] [--scope global|agent|provider|model --id <scopeId>] [--lane metered|subscription]; token caps accept k/M suffixes)
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>[value]</code><span class="cli-command__choices"><span>show</span><span>set</span><span>rm</span><span>pause</span><span>resume</span><span>incidents</span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
       <tr><td><code>(set:</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
-      <tr><td><code>--scope</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
-      <tr><td><code>value</code><span class="cli-command__choices"><span>global</span><span>agent</span><span>provider</span><span>model</span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
-      <tr><td><code>--lane</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
-      <tr><td><code>value</code><span class="cli-command__choices"><span>metered</span><span>subscription;</span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>--monthly</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>N</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>[--daily N]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[value]</code><span class="cli-command__choices"><span>--at-cap wait</span><span>pause</span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>[value]</code><span class="cli-command__choices"><span>--scope global</span><span>agent</span><span>provider</span><span>model --id &lt;scopeId&gt;</span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>[value]</code><span class="cli-command__choices"><span>--lane metered</span><span>subscription</span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>;</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
       <tr><td><code>token</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
       <tr><td><code>caps</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
       <tr><td><code>accept</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>

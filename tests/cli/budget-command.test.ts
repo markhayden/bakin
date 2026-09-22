@@ -20,6 +20,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
 }))
 
 let rules: Array<Record<string, unknown>> = []
+let spendPayloadExtras: Record<string, unknown> = {}
 const apiCalls: Array<{ path: string; init?: RequestInit }> = []
 const apiPostSpy = mock(async (path: string, body?: unknown) => {
   apiCalls.push({ path })
@@ -40,6 +41,7 @@ mock.module('../../src/cli/http', () => ({
           { workClass: 'auto-title', runs: 3, totalTokens: 900, costUsdMicros: 6000, subscriptionTokens: 0, avgCostUsdMicros: 2000 },
           { workClass: 'unclassified', runs: 1, totalTokens: 10, costUsdMicros: null, subscriptionTokens: 0, avgCostUsdMicros: null },
         ],
+        ...spendPayloadExtras,
       }
     }
     return {}
@@ -86,6 +88,27 @@ describe('bakin budget set', () => {
     await expect(run(['budget', 'set', '--scope', 'global', '--lane', 'metered'])).rejects.toThrow(ExitCalled)
   })
 
+  it('the simple form: --monthly alone is a global metered limit; --at-cap wait persists defer (D21)', async () => {
+    await run(['budget', 'set', '--monthly', '100', '--at-cap', 'wait'])
+    const put = apiCalls.find((c) => c.init?.method === 'PUT')
+    const body = JSON.parse(String(put!.init!.body)) as { rules: Array<Record<string, unknown>> }
+    expect(body.rules).toEqual([{ scope: 'global', lane: 'metered', monthlyCap: 100, atCap: 'defer' }])
+  })
+
+  it('editing an existing identity keeps its id (the milestone ladder keys on it)', async () => {
+    rules = [{ id: 'keep', scope: 'global', lane: 'metered', monthlyCap: 50 }]
+    await run(['budget', 'set', '--monthly', '120'])
+    const put = apiCalls.find((c) => c.init?.method === 'PUT')
+    const body = JSON.parse(String(put!.init!.body)) as { rules: Array<Record<string, unknown>> }
+    expect(body.rules).toEqual([{ id: 'keep', scope: 'global', lane: 'metered', monthlyCap: 120 }])
+  })
+
+  it('there is no warn threshold to set, and --at-cap takes only wait|pause', async () => {
+    await expect(run(['budget', 'set', '--monthly', '100', '--warn-pct', '80'])).rejects.toThrow(ExitCalled)
+    await expect(run(['budget', 'set', '--monthly', '100', '--at-cap', 'defer'])).rejects.toThrow(ExitCalled)
+    expect(apiCalls.some((c) => c.init?.method === 'PUT')).toBe(false)
+  })
+
   it('subscription rules carry token caps verbatim, with k/M suffixes parsed', async () => {
     await run(['budget', 'set', '--scope', 'agent', '--id', 'main', '--lane', 'subscription', '--daily', '5M'])
     const put = apiCalls.find((c) => c.init?.method === 'PUT')
@@ -118,9 +141,32 @@ describe('bakin budget incidents --resolve', () => {
 })
 
 describe('bakin spend', () => {
-  it('renders without error and warns when no rules exist', async () => {
-    await run(['spend'])
+  it('renders without error and states "no limits" as a fact — never a warning (S8)', async () => {
+    const lines: string[] = []
+    const original = console.log
+    console.log = (...args: unknown[]) => { lines.push(args.map(String).join(' ')) }
+    try {
+      await run(['spend'])
+    } finally {
+      console.log = original
+    }
     expect(apiCalls.some((c) => c.path.startsWith('/api/plugins/spend/spend'))).toBe(true)
+    expect(lines.some((l) => l.includes('No spend limits set'))).toBe(true)
+    expect(lines.some((l) => l.includes('uncapped') || l.includes('⚠ No'))).toBe(false)
+  })
+
+  it('prints the pace line with its observed-days basis (D27)', async () => {
+    const lines: string[] = []
+    const original = console.log
+    console.log = (...args: unknown[]) => { lines.push(args.map(String).join(' ')) }
+    spendPayloadExtras = { pace: { daily: { meteredUsdMicros: null }, monthly: { meteredUsdMicros: 30_000_000 } }, observedDays: { month: 9, daysIntoMonth: 22 } }
+    try {
+      await run(['spend'])
+    } finally {
+      console.log = original
+      spendPayloadExtras = {}
+    }
+    expect(lines.find((l) => l.startsWith('On pace:'))).toBe('On pace: ~$30.00 this month (based on 9 observed days of 22)')
   })
 
   it('renders the by-work-class block NULL-honestly', async () => {

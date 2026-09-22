@@ -7,10 +7,10 @@
  * arithmetic the dispatch gate enforces — evaluateBudget over
  * assembleBudgetSpend facets, so the doctor can't drift from dispatch).
  * Structured findings ride `data` (rules + per-agent attribution for the
- * Attention chips) — UIs never parse message text. A missing policy is a
- * standing warn (spend is uncapped — spec V2); an unreachable ledger is an
- * error (gating fails closed without it); the kill switch surfaces as its
- * own warn row.
+ * Attention chips) — UIs never parse message text. No limits is a HEALTHY
+ * state stated plainly (spend limits are opt-in — spec S8, never a nag);
+ * an unreachable ledger is an error (gating fails closed without it); the
+ * kill switch surfaces as its own warn row.
  */
 import { queryAuditEvents } from '../../../src/core/audit'
 import { getContentDir } from '../../../src/core/content-dir'
@@ -190,27 +190,13 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
     return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
   }
   if (!policy?.rules?.length) {
-    // Standing nag (spec V2): a fresh install must not run uncapped
-    // UNKNOWINGLY. Warn is the visible tier (no notice level exists);
-    // setting any cap rule clears it.
-    observations.push(healthWarning({
+    // Limits are opt-in (S8): no rules is a healthy, plainly-stated fact,
+    // not a finding. Spend is still recorded; the Spend page offers a limit
+    // once there is history to base one on.
+    observations.push(healthHealthy({
       key: 'policy',
-      summary: 'Agent spend is uncapped.',
-      detail: 'No spending budget is configured.',
+      summary: 'No spending limits set — spend is recorded, nothing is capped.',
       evidence: { ruleCount: 0 },
-      incident: {
-        key: 'policy-missing',
-        title: 'No spending budget is set',
-        impact: 'Agents can accumulate unbounded metered spend without an operator knowingly accepting that risk.',
-        disposition: 'action_required',
-        resources: [{ kind: 'budget_rule', id: 'global', label: 'Global spending budget' }],
-        resolution: {
-          key: 'open-spend-settings',
-          type: 'navigate',
-          label: 'Set a spending budget',
-          href: '/spend',
-        },
-      },
     }))
     return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
   }

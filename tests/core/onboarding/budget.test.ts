@@ -1,8 +1,8 @@
 /**
- * Onboarding budget component (cost-control v2 T14): check() reflects
- * whether any cap rule exists; install() NEVER writes a silent default —
- * non-interactive/--yes skips loudly, interactive declines skip, and only
- * explicit positive input writes a global metered rule.
+ * Onboarding budget component: spend limits are OPT-IN (spec S8). check()
+ * is always ok and states the fact; install() prints one line, never
+ * prompts, never writes — the Spend page / `bakin budget set` is where a
+ * limit is chosen.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { join } from 'path'
@@ -37,7 +37,7 @@ mock.module('../../../src/core/onboarding/prompts', () => ({
 }))
 
 import { budgetComponent } from '../../../src/core/onboarding/budget'
-import { readPluginSettings } from '../../../packages/core/src/plugins/settings-store'
+import { readPluginSettings, writePluginSettings } from '../../../packages/core/src/plugins/settings-store'
 
 const INTERACTIVE = { interactive: true, autoApprove: false, json: false, checkOnly: false, force: false } as never
 const YES_MODE = { interactive: false, autoApprove: true, json: false, checkOnly: false, force: false } as never
@@ -53,51 +53,39 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-describe('budget onboarding component', () => {
-  it('check() warns with remediation when no rules exist', async () => {
+describe('budget onboarding component (limits are opt-in — S8)', () => {
+  it('check() is ok with no rules and states the fact — never a warning, never remediation', async () => {
     const r = await budgetComponent.check()
-    expect(r.status).toBe('warn')
-    expect(r.message).toContain('uncapped')
-    expect(r.remediation).toBeTruthy()
+    expect(r.status).toBe('ok')
+    expect(r.message).toContain('No spend limits set')
+    expect(r.message).not.toContain('uncapped')
+    expect(r.remediation).toBeUndefined()
   })
 
-  it('--yes skips LOUDLY and writes nothing', async () => {
-    const r = await budgetComponent.install(YES_MODE)
-    expect(r.status).toBe('skipped')
-    expect(readPluginSettings<{ limits?: { rules?: unknown[] } }>('spend').limits?.rules ?? []).toEqual([])
+  it('check() reports the rule count once limits exist', async () => {
+    writePluginSettings('spend', { limits: { rules: [{ id: 'g', scope: 'global', lane: 'metered', monthlyCap: 100 }] }, billing: { overrides: [] } })
+    const r = await budgetComponent.check()
+    expect(r.status).toBe('ok')
+    expect(r.message).toContain('1 rule')
   })
 
-  it('interactive decline skips and writes nothing', async () => {
-    yesNoAnswers = [false]
-    const r = await budgetComponent.install(INTERACTIVE)
-    expect(r.status).toBe('skipped')
-    expect(readPluginSettings<{ limits?: { rules?: unknown[] } }>('spend').limits?.rules ?? []).toEqual([])
-  })
-
-  it('interactive accept writes ONE global metered rule from the entered caps', async () => {
-    yesNoAnswers = [true]
+  it('install() never prompts and never writes: --yes and interactive alike leave spend.json untouched', async () => {
+    yesNoAnswers = [true] // must not be consumed — there is no prompt
     lineAnswers = ['25', '300']
-    const r = await budgetComponent.install(INTERACTIVE)
-    expect(r.status).toBe('installed')
-    const settings = readPluginSettings<{ limits?: { rules?: Array<Record<string, unknown>> } }>('spend')
-    expect(settings.limits?.rules).toEqual([{ id: expect.stringMatching(/^[0-9a-f-]{36}$/), scope: 'global', lane: 'metered', dailyCap: 25, monthlyCap: 300 }])
-    // check() clears once a rule exists.
-    expect((await budgetComponent.check()).status).toBe('ok')
-  })
-
-  it('accept with no caps entered still writes nothing', async () => {
-    yesNoAnswers = [true]
-    lineAnswers = ['', ''] // Enter twice
-    const r = await budgetComponent.install(INTERACTIVE)
-    expect(r.status).toBe('skipped')
+    for (const opts of [YES_MODE, INTERACTIVE]) {
+      const r = await budgetComponent.install(opts)
+      expect(r.status).toBe('noop')
+      expect(r.message).toContain('opt-in')
+    }
+    expect(yesNoAnswers).toEqual([true])
+    expect(lineAnswers).toEqual(['25', '300'])
     expect(readPluginSettings<{ limits?: { rules?: unknown[] } }>('spend').limits?.rules ?? []).toEqual([])
   })
 
-  it('noops when a budget already exists', async () => {
-    yesNoAnswers = [true]
-    lineAnswers = ['10', '']
-    await budgetComponent.install(INTERACTIVE)
+  it('install() is a noop once limits exist', async () => {
+    writePluginSettings('spend', { limits: { rules: [{ id: 'g', scope: 'global', lane: 'metered', monthlyCap: 100 }] }, billing: { overrides: [] } })
     const r = await budgetComponent.install(INTERACTIVE)
     expect(r.status).toBe('noop')
+    expect(r.message).toContain('already configured')
   })
 })
