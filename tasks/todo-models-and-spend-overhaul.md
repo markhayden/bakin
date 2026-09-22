@@ -40,7 +40,7 @@ Plan: `tasks/plan-models-and-spend-overhaul.md` (v2) · Spec: `.claude/specs/mod
 - [x] T2.10 spend observer (coalesced, generation-keyed memo) + incident at 100 + single-worker deliverPending marking (id, event_id) + hook points (recordSpend, scan, watchdog, boot); tests incl. reopen-during-in-flight-delivery and concurrent boot+watchdog callers
 - [x] T2.11 ladder: badge provider (eager), header banners with computed offsets (90 yellow ack / 100 red actions), status milestones, Resume 409 still_over_limit
 - [x] T2.12 remove nags; CLI --at-cap wait|pause, no --warn, milestones, pace basis; onboarding budget → note; ONBOARDING_VERSION bump
-- [ ] T2.13 spend UI fixture → conformant (inspect test-results/bakin-ui/index.html)
+- [x] T2.13 spend UI fixture → conformant (inspect test-results/bakin-ui/index.html)
 - [ ] T2.14 docs: spend-plugin.md (new, behaviour table), models-plugin, execution-ledger, doctor, cost-control-v2 status, CLAUDE.md (14 plugins, spend.json, pending files)
 - [ ] CHECKPOINT B: gates + ui:conformance --full + ui:test:conformance + /verify S8 S9 S12 S13 S14 + upgrade crash matrix + live test → merge
 
