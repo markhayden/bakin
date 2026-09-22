@@ -113,7 +113,7 @@ describe('activation', () => {
     const hookNames = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map((c: unknown[]) => c[0])
     expect(hookNames.sort()).toEqual(['spend.getBudgetPolicy', 'spend.priceImage', 'spend.priceTurn', 'spend.resolveBilling', 'spend.updateBudgetPolicy'])
     expect(activated.routes.map((r) => `${r.method} ${r.path}`).sort()).toEqual([
-      'GET /incidents', 'GET /limits', 'GET /spend', 'GET /status',
+      'GET /coverage', 'GET /incidents', 'GET /limits', 'GET /spend', 'GET /status',
       'POST /incidents/:id/resolve', 'PUT /billing/overrides', 'PUT /limits',
     ])
     expect(activated.routes.find((route) => route.path === '/status')?.activityClass).toBe('routine')
@@ -347,5 +347,18 @@ describe('GET /spend', () => {
   it('defaults to a 24h window when none is given', async () => {
     const { body } = await callRoute(findRoute(activated.routes, 'GET', '/spend')!, activated.ctx)
     expect(body.window).toBe('24h')
+  })
+})
+
+describe('GET /coverage', () => {
+  it('reports observed-days coverage and an honest no-suggestion state on a fresh install (no receipts yet)', async () => {
+    const { status, body } = await callRoute(findRoute(activated.routes, 'GET', '/coverage')!, activated.ctx)
+    expect(status).toBe(200)
+    expect(body.lookbackDays).toBe(30)
+    expect(body.coveredDays).toEqual([])
+    expect((body.uncoveredDays as string[]).length).toBe(30)
+    expect(body.suggestion).toEqual({ status: 'insufficient_history', coveredDays: 0, daysNeeded: 14 })
+    // Spend recorded on unobserved days is reported, never blended into a rate.
+    expect((body.uncovered as { window: { global: { meteredUsdMicros: number } } }).window.global.meteredUsdMicros).toBe(150_000)
   })
 })

@@ -42,7 +42,7 @@ describe('spend plugin registration', () => {
     const hooks = (ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map((c) => c[0] as string)
     expect(hooks.sort()).toEqual(['spend.getBudgetPolicy', 'spend.priceImage', 'spend.priceTurn', 'spend.resolveBilling', 'spend.updateBudgetPolicy'])
     expect(routes.map((r) => `${r.method} ${r.path}`).sort()).toEqual([
-      'GET /incidents', 'GET /limits', 'GET /spend', 'GET /status',
+      'GET /coverage', 'GET /incidents', 'GET /limits', 'GET /spend', 'GET /status',
       'POST /incidents/:id/resolve', 'PUT /billing/overrides', 'PUT /limits',
     ])
     expect(readPluginSettings<Record<string, unknown>>('spend')).toEqual({ limits: { rules: [] }, billing: { overrides: [] } })

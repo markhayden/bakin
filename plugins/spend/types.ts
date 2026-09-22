@@ -109,3 +109,19 @@ export interface SpendResponse {
   }
   pace?: { daily: PaceWire; monthly: PaceWire }
 }
+
+/** Wire shape of GET /coverage (D27): observed-days coverage + the limit suggestion. */
+export type LimitSuggestionWire =
+  | { status: 'ready'; monthlyUsd: number; basis: { coveredDays: number; coveredUsdMicros: number; dailyRateUsdMicros: number }; unobservedUsdMicros: number }
+  | { status: 'insufficient_history'; coveredDays: number; daysNeeded: number }
+  | { status: 'evidence_incomplete'; coveredDays: number }
+  | { status: 'no_metered_spend'; coveredDays: number; subscriptionTokens: number }
+export interface CoverageWire {
+  lookbackDays: number
+  computedAt: number
+  coveredDays: string[]
+  uncoveredDays: string[]
+  covered: { window: WindowSpendWire }
+  uncovered: { window: WindowSpendWire }
+  suggestion: LimitSuggestionWire
+}

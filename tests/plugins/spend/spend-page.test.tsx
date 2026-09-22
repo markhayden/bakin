@@ -6,7 +6,7 @@
  * and open incidents as banners on both.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import '../../rtl-settle'
 
@@ -67,14 +67,26 @@ const routes: Record<string, unknown> = {
   },
   status: { paused: false, configured: true, perAgent: {}, perTask: {}, billing: { main: { provider: 'openai-codex', lane: 'subscription', model: 'openai-codex/gpt-5.6-luna' } }, overrides: [], deferredProviders: [], openIncidents: [] },
   'models:available': { models: [{ id: 'openai-codex/gpt-5.6-luna', provider: 'openai-codex' }] },
+  coverage: {
+    lookbackDays: 30, computedAt: 1, coveredDays: Array.from({ length: 14 }, (_, i) => `2026-09-${String(8 + i).padStart(2, '0')}`), uncoveredDays: [],
+    covered: { window: { ...window, global: { ...scope, meteredUsdMicros: 140_000_000 } } },
+    uncovered: { window: { ...window, global: { ...scope, meteredUsdMicros: 5_000_000 } } },
+    suggestion: { status: 'ready', monthlyUsd: 450, basis: { coveredDays: 14, coveredUsdMicros: 140_000_000, dailyRateUsdMicros: 10_000_000 }, unobservedUsdMicros: 5_000_000 },
+  },
 }
+const putBodies: Array<Record<string, unknown>> = []
 
 beforeEach(() => {
   requested.length = 0
-  globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+  putBodies.length = 0
+  globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
     const path = url.startsWith('/api/plugins/models/') ? `models:${url.slice('/api/plugins/models/'.length)}` : url.replace('/api/plugins/spend/', '')
     requested.push(url)
+    if (init?.method === 'PUT' && path === 'limits') {
+      putBodies.push(JSON.parse(String(init.body)) as Record<string, unknown>)
+      return jsonResponse({ ok: true })
+    }
     const body = routes[path]
     return body === undefined ? jsonResponse({ error: 'not found' }, 404) : jsonResponse(body)
   }) as unknown as typeof fetch
@@ -139,9 +151,50 @@ describe('SpendPage', () => {
     expect(await screen.findByRole('region', { name: 'Budget rules' })).toBeTruthy()
     expect(screen.getByRole('region', { name: 'Billing lanes' })).toBeTruthy()
     expect(screen.queryByRole('tablist', { name: 'Spend window' })).toBeNull()
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Add budget rule' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Add a rule' })) })
     expect(await screen.findByText('Unsaved budget rules')).toBeTruthy()
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Discard changes' })) })
     expect(screen.queryByText('Unsaved budget rules')).toBeNull()
+  })
+
+  it('Add a limit: the dialog prefills the coverage suggestion, "Pause" maps to atCap pause, and saves through PUT /limits with existing rules intact', async () => {
+    querySeed.tab = 'limits'
+    render(<SpendPage />)
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Budget rules' })).toBeTruthy())
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Add a limit' })[0]!) })
+    const dialog = await screen.findByRole('dialog', { name: 'Add a spending limit' })
+    await waitFor(() => expect(within(dialog).getByText('$140.00')).toBeTruthy())
+    // Basis copy: observed days + rate; unobserved spend shown separately, not in the rate.
+    expect(within(dialog).getByText(/14 of 30 days watched/)).toBeTruthy()
+    expect(within(dialog).getByText('$5.00')).toBeTruthy()
+    const monthly = within(dialog).getByLabelText('Monthly limit (USD)') as HTMLInputElement
+    await waitFor(() => expect(monthly.value).toBe('450'))
+    expect(within(dialog).getByText(/Suggested \$450/)).toBeTruthy()
+    expect(within(dialog).getByText(/notified at 50%, 75%, 90%/)).toBeTruthy()
+
+    await act(async () => { fireEvent.click(within(dialog).getByRole('radio', { name: 'Pause matching work until I raise or resume' })) })
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Save limit' })) })
+    await waitFor(() => expect(putBodies).toHaveLength(1))
+    expect(putBodies[0]).toEqual({
+      rules: [
+        { id: 'g', scope: 'global', lane: 'metered', dailyCap: 20, atCap: 'defer' },
+        { scope: 'global', lane: 'metered', monthlyCap: 450, atCap: 'pause' },
+      ],
+    })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add a spending limit' })).toBeNull())
+  })
+
+  it('Add a limit: an invalid amount is rejected inside the dialog, nothing is sent', async () => {
+    querySeed.tab = 'limits'
+    render(<SpendPage />)
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Budget rules' })).toBeTruthy())
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Add a limit' })[0]!) })
+    const dialog = await screen.findByRole('dialog', { name: 'Add a spending limit' })
+    const monthly = within(dialog).getByLabelText('Monthly limit (USD)')
+    await waitFor(() => expect((monthly as HTMLInputElement).value).toBe('450'))
+    await act(async () => { fireEvent.change(monthly, { target: { value: 'lots' } }) })
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Save limit' })) })
+    expect(await within(dialog).findByText('Enter a monthly limit in whole dollars.')).toBeTruthy()
+    expect(putBodies).toHaveLength(0)
   })
 })

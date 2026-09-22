@@ -20,6 +20,11 @@
       },
       {
         "method": "GET",
+        "path": "/coverage",
+        "summary": "Observed-days coverage + the monthly limit suggestion with its basis"
+      },
+      {
+        "method": "GET",
         "path": "/limits",
         "summary": "The spend limits policy (rules with ids)"
       },

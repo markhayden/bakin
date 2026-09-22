@@ -30862,6 +30862,69 @@
         "x-bakin-full-path": "/api/plugins/spend/spend"
       }
     },
+    "/api/plugins/spend/coverage": {
+      "get": {
+        "operationId": "spend.get.coverage",
+        "summary": "Observed-days coverage and the limit suggestion",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Spend"
+        ],
+        "description": "Which of the last 30 local days Bakin actually watched (complete usage sweeps), spend on those days vs. on unobserved days (both from the one spend engine), and the monthly-limit suggestion with its basis — or the honest reason there is none yet.",
+        "x-bakin-full-path": "/api/plugins/spend/coverage"
+      }
+    },
     "/api/plugins/spend/limits": {
       "get": {
         "operationId": "spend.get.limits",

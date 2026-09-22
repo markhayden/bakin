@@ -206,6 +206,25 @@ export function useSpendData() {
     }
   }
 
+  /**
+   * Append ONE rule from the guided dialog through the same PUT /limits the
+   * editor uses — every existing rule round-trips untouched (ids included).
+   * Staged editor edits are discarded: the dialog is the explicit action.
+   */
+  const addLimit = async (draft: Pick<BudgetRuleWire, 'scope' | 'lane' | 'monthlyCap' | 'dailyCap' | 'atCap'>): Promise<{ ok: true } | { ok: false; error: string }> => {
+    try {
+      const res = await pluginFetch(PLUGIN_ID, 'limits', { method: 'PUT', body: { rules: [...budgetRules, draft] } })
+      const data = await res.json() as MutationResult & { warnings?: unknown }
+      if (!res.ok || !data.ok) return { ok: false, error: mutationError(data, res.status) }
+      setPendingRules(null)
+      setBudgetWarnings(Array.isArray(data.warnings) ? data.warnings : [])
+      await Promise.all([fetchBudget(), fetchBudgetStatus()])
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: errorMessage(err) }
+    }
+  }
+
   /** Toggle the dispatch kill switch. */
   const setDispatchPaused = async (paused: boolean): Promise<void> => {
     // Clear only THIS action's slot: a failed policy load must stay visible,
@@ -285,7 +304,7 @@ export function useSpendData() {
   return {
     spendWindow, setSpendWindow,
     spend, spendLoading,
-    budgetRules, pendingRules, setPendingRules, saveBudgetRules, saving, budgetError, budgetWarnings,
+    budgetRules, pendingRules, setPendingRules, saveBudgetRules, addLimit, saving, budgetError, budgetWarnings,
     incidents, resolveIncident,
     budgetStatus, setDispatchPaused, setAgentLaneOverride,
     agents, availableProviders, modelIds,

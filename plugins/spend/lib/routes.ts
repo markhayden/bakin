@@ -2,6 +2,7 @@
  * Spend plugin REST routes (declarative).
  *
  *   GET  /spend                    windowed rollups + cap-window facets + pace
+ *   GET  /coverage                 observed-days coverage + the limit suggestion (D27)
  *   GET  /limits                   the limits policy (rules with ids)
  *   PUT  /limits                   replace the rule list (ids server-assigned)
  *   GET  /status[?lite=1]          live gate status — the poll behind badges/banner
@@ -35,6 +36,7 @@ import { getSettings as getSystemSettings } from '../../../src/core/settings'
 import { emitBudgetIncidentResolved } from '../../../src/core/budget-notify'
 import { createLogger } from '../../../src/core/logger'
 import { resolveBilling } from './billing'
+import { coverageSummary, suggestMonthlyLimit } from './coverage'
 import { BillingOverridesSchema, LimitsSchema, readLimits, readOverrides, SpendSettingsSchema } from './settings'
 
 const log = createLogger('spend:routes')
@@ -212,6 +214,32 @@ export const spendRoutes = [
         if (err instanceof LedgerUnavailableError) {
           return Response.json({ error: 'Spend ledger unavailable' }, { status: 503 })
         }
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/coverage',
+    method: 'GET',
+    summary: 'Observed-days coverage and the limit suggestion',
+    description: 'Which of the last 30 local days Bakin actually watched (complete usage sweeps), spend on those days vs. on unobserved days (both from the one spend engine), and the monthly-limit suggestion with its basis — or the honest reason there is none yet.',
+    responses: { 200: passthrough, 503: errorResponse, 500: errorResponse },
+    handler: async () => {
+      try {
+        const summary = await coverageSummary()
+        const suggestion = await suggestMonthlyLimit(summary)
+        return Response.json({
+          lookbackDays: summary.lookbackDays,
+          computedAt: summary.computedAt,
+          coveredDays: summary.coveredDays,
+          uncoveredDays: summary.uncoveredDays,
+          covered: { window: summary.covered.window, evidence: summary.covered.spendEvidence, observedUsageEvidence: summary.covered.observedUsageEvidence },
+          uncovered: { window: summary.uncovered.window, evidence: summary.uncovered.spendEvidence, observedUsageEvidence: summary.uncovered.observedUsageEvidence },
+          suggestion,
+        })
+      } catch (err) {
+        if (err instanceof LedgerUnavailableError) return Response.json({ error: 'Spend ledger unavailable' }, { status: 503 })
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
     },

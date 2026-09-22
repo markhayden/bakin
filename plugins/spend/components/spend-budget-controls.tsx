@@ -190,7 +190,7 @@ function BudgetRuleRow({
   )
 }
 
-export function BudgetRulesSection({ m }: { m: SpendData }) {
+export function BudgetRulesSection({ m, onAddLimit }: { m: SpendData; onAddLimit: () => void }) {
   const rules = m.pendingRules ?? m.budgetRules
 
   return (
@@ -202,37 +202,35 @@ export function BudgetRulesSection({ m }: { m: SpendData }) {
             Cap estimated metered cost or subscription-token usage by day or month. At the cap, work can defer until reset or pause until an operator resumes it.
           </Text>
         </Stack>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="w-full shrink-0 @2xl/budget-rules:w-auto"
-          onClick={() => m.setPendingRules([
-            ...rules,
-            { scope: 'global', lane: 'metered', atCap: 'defer' },
-          ])}
-        >
-          <Plus />
-          Add budget rule
-        </Button>
+        <div className="flex w-full shrink-0 flex-col gap-bakin-2 @2xl/budget-rules:w-auto @2xl/budget-rules:flex-row">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => m.setPendingRules([
+              ...rules,
+              { scope: 'global', lane: 'metered', atCap: 'defer' },
+            ])}
+          >
+            Add a rule
+          </Button>
+          <Button type="button" size="sm" onClick={onAddLimit}>
+            <Plus />
+            Add a limit
+          </Button>
+        </div>
       </div>
 
       {rules.length === 0 ? (
         <SystemState
           kind="initial-empty"
           scope="section"
-          title="Spend is not capped"
-          description="Add a rule when this workspace needs a daily or monthly safety limit."
+          title="No spending limits"
+          description="Bakin records everything; set a limit once you know what normal looks like. You'll be told at 50, 75 and 90% on the way up."
           action={(
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => m.setPendingRules([
-                { scope: 'global', lane: 'metered', atCap: 'defer' },
-              ])}
-            >
-              Add budget rule
+            <Button type="button" size="sm" onClick={onAddLimit}>
+              <Plus />
+              Add a limit
             </Button>
           )}
         />
