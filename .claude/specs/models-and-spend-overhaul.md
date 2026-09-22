@@ -350,7 +350,7 @@ The gate is fail-closed until the spend hooks answer (S13), so a mid-upgrade cra
 ## 11. Open questions
 
 1. Pi "cached roster" (#907 item 5) — verify on rig before deleting the dirty-marker code.
-2. OpenClaw `restartAdvice('routing-policy')`: does the gateway need a restart for `agents.defaults.model.*` changes, or does its mtime-cached config suffice? Confirm in the adapter task.
+2. OpenClaw `restartAdvice` — **RESOLVED (T1.3):** the gateway hot-reloads `openclaw.json` (#878's incident log: `config hot reload applied (agents.entries.patch.model)`), so `model-config` and `routing-policy` ⇒ `needed:false`. `roster` ⇒ `needed:true` because each agent's Bakin MCP server attaches at gateway start (the reason Team restarts after create/delete today). If a live run ever shows `agents.defaults.model.*` NOT hot-reloading, flip `routing-policy` in the adapter — one line, no upstream change.
 3. **`scan_days` table in usage.db — APPROVED 2026-09-21** ("fine if strictly necessary"). Necessity: usage rows exist only when tokens were spent and scan state is per session, so no existing data distinguishes "zero usage that day" from "not observed that day"; a per-day receipt is required for an honest coverage basis, and a table in the DB the scanner already writes is the single-write-path form of it. Scope is fixed: `scan_days(day TEXT PRIMARY KEY, first_scan_at INTEGER, last_scan_at INTEGER)`, written only when `coverage.status === 'complete'`, pruned to 90 days.
 4. `ModelSelectOption` contract change — D23 checkpoint at PR 3 start.
 5. Bits consumers of `models/{spend,budget,billing}` — grep before the PR 2 cutover commit.
