@@ -1,6 +1,17 @@
 import { writeFileSync } from 'fs'
 import { join } from 'path'
-import type { AgentRuntimeAdapter, ChatChunk, CronJob, CronRun, MessageArgs, RuntimeAgent, RuntimeSession, RuntimeToolActivity } from './concepts'
+import type {
+  AgentRuntimeAdapter,
+  ChatChunk,
+  CronJob,
+  CronRun,
+  MessageArgs,
+  ProviderCredentialStatus,
+  RestartAdvice,
+  RuntimeAgent,
+  RuntimeSession,
+  RuntimeToolActivity,
+} from './concepts'
 import { RuntimeError } from './errors'
 
 /**
@@ -24,6 +35,40 @@ export function mockChannels(): NonNullable<AgentRuntimeAdapter['channels']> {
     resolveApproval: async () => {},
     subscribeApprovalResponses: () => () => {},
   }
+}
+
+/**
+ * Opt-in status-only credential inventory for the mock (#907 / #378 slice).
+ * `credentials` is an optional contract member, so the DEFAULT mock omits
+ * it — eligibility code must feature-detect and treat absence as
+ * "credential evidence unavailable" (models read `unknown`, never
+ * `ineligible`). Pass `evidence: 'partial'` to exercise the honest-partial
+ * branch (OpenClaw's CLI probe failing).
+ *
+ * Usage: `createMockRuntimeAdapter({ credentials: mockCredentials([{ providerId: 'mock', configured: true }]) })`
+ */
+export function mockCredentials(
+  providers: ProviderCredentialStatus[] = [],
+  evidence: 'complete' | 'partial' = 'complete',
+): NonNullable<AgentRuntimeAdapter['credentials']> {
+  return {
+    providers: async () => ({ providers: providers.map((p) => ({ ...p })), evidence }),
+  }
+}
+
+/**
+ * Opt-in restart advice for the mock (#878). Optional member; the default
+ * mock omits it so the Models banner's generic-fallback path is what mock
+ * consumers see unless they opt in. The same advice is returned for every
+ * change kind unless a per-kind map is given.
+ *
+ * Usage: `createMockRuntimeAdapter({ restartAdvice: mockRestartAdvice({ needed: false }) })`
+ */
+export function mockRestartAdvice(
+  advice: RestartAdvice | Partial<Record<'model-config' | 'roster' | 'routing-policy', RestartAdvice>>,
+): NonNullable<AgentRuntimeAdapter['restartAdvice']> {
+  const isSingle = typeof (advice as RestartAdvice).needed === 'boolean'
+  return (change) => (isSingle ? (advice as RestartAdvice) : (advice as Partial<Record<typeof change, RestartAdvice>>)[change])
 }
 
 /**

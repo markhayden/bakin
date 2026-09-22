@@ -555,8 +555,60 @@ export interface RuntimeAvailableModel {
   contextWindow?: number
   local?: boolean
   available?: boolean
+  /**
+   * WHY `available` is false, when the runtime knows (#907). Pi reports
+   * `no_credentials` for catalog models whose provider has no configured
+   * auth — the model exists, the account cannot reach it. Consumers never
+   * infer a reason the runtime did not give: absent ⇒ "runtime reports
+   * this model unavailable", never "retired".
+   */
+  unavailableReason?: 'no_credentials' | 'not_configured' | 'other'
   tags?: string[]
   metadata?: RuntimeMetadata
+}
+
+/**
+ * Status-only record for ONE LLM provider (#907 / the model slice of #378).
+ * `configured` is the runtime's own auth resolution (Pi: configured auth;
+ * OpenClaw: the merged auth-profiles + CLI probe) — never config-key
+ * presence. `authFree` marks providers that need no credential (local
+ * models). NEVER carries secret material — the declared field set is
+ * pinned by tests/architecture/provider-inventory-shape.test.ts and the
+ * runtime values by the conformance suite.
+ */
+export interface ProviderCredentialStatus {
+  providerId: string
+  configured: boolean
+  authFree?: boolean
+  source?: 'runtime' | 'env' | 'store'
+}
+
+/**
+ * The provider inventory `credentials.providers()` returns. `evidence` is
+ * HONEST: 'partial' whenever one of the adapter's credential sources failed
+ * (OpenClaw's CLI probe), so consumers treat providers absent from a partial
+ * inventory as UNKNOWN — never as credential-less.
+ */
+export interface ProviderCredentialInventory {
+  providers: ProviderCredentialStatus[]
+  evidence: 'complete' | 'partial'
+  detail?: string
+}
+
+/** Kinds of Bakin-initiated config change an adapter may need a restart to apply. */
+export type RuntimeConfigChangeKind = 'model-config' | 'roster' | 'routing-policy'
+
+/**
+ * What the runtime says about applying a config change (#878 Models half).
+ * The Models page renders this verbatim — title/body/action come from the
+ * adapter, never from adapter-id branching upstream. `needed: false` means
+ * the change is live already (Pi re-reads its stores per turn).
+ */
+export interface RestartAdvice {
+  needed: boolean
+  title?: string
+  body?: string
+  action?: { label: string; kind: 'restart-runtime' }
 }
 
 export type RuntimeImageOutputFormat = 'png' | 'jpeg' | 'jpg' | 'webp'
@@ -769,6 +821,15 @@ export interface AgentRuntimeAdapter {
    * writes and expect the next read to reflect them.
    */
   restart(): Promise<void>
+  /**
+   * OPTIONAL (#878): does a change of this kind need `restart()` before the
+   * runtime applies it, and how should the UI say so? SYNC + static, like
+   * describeToolAccess(). Adapters that omit the member get a conservative
+   * generic banner from the caller; absence is member omission, never a
+   * throwing stub (conformance-pinned). Callers feature-detect
+   * (`runtime.restartAdvice?.(kind)`).
+   */
+  restartAdvice?(change: RuntimeConfigChangeKind): RestartAdvice | undefined
 
   /**
    * CRUD error contract (R28): `get` returns `null` for a missing agent —
@@ -930,6 +991,20 @@ export interface AgentRuntimeAdapter {
    * main agent). Never returns secret material.
    */
   credentialStatus(opts?: { agentId?: string }): Promise<RuntimeCredentialStatus>
+
+  /**
+   * OPTIONAL (#907 / #378 model slice): the per-provider STATUS-ONLY
+   * credential inventory the model-eligibility engine reads. Derived from
+   * the adapter's real auth resolution (the same path `credentialStatus`
+   * uses), with honest `evidence` when a source failed. `opts.agentId`
+   * scopes it where the runtime keys credentials per agent. Absence is
+   * member omission (conformance-pinned); callers feature-detect
+   * (`runtime.credentials?.providers(...)`) and treat absence as
+   * "credential evidence unavailable".
+   */
+  credentials?: {
+    providers(opts?: { agentId?: string }): Promise<ProviderCredentialInventory>
+  }
 
   /**
    * Wire up this runtime so its agents can reach Bakin's exec tools.
