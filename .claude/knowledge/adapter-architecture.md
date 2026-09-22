@@ -188,6 +188,8 @@ Every former consumer crosses a neutral contract method instead:
 |---|---|
 | onboarding runtime integrity (`*`) | `agents.list()` roster + adapter-resolved `metadata.workspacePath` |
 | onboarding llm/channels checks | `credentialStatus()` — presence-only names, never secrets |
+| model eligibility (#907 / #378 model slice) | `credentials?.providers()` — OPTIONAL status-only per-provider inventory `{ providerId, configured, authFree?, source? }` + honest `evidence: 'complete' \| 'partial'`, derived from the adapter's real auth resolution (never config-key presence); secret-shaped fields banned by arch test + conformance. `RuntimeAvailableModel.unavailableReason` is the only per-model reason source |
+| restart-needed banner (#878) | `restartAdvice?(kind)` — OPTIONAL, sync: the adapter says whether a change kind needs `restart()` and in what words; core persists pending state (`src/core/pending-restart.ts`), the UI renders. No adapter-id branching upstream |
 | models plugin routing (defaults/fallbacks/aliases) | `models.routingPolicy()` / `setRoutingPolicy()` / `routingSupport()` |
 | per-agent model assignment | `agents.update({ model, subagentModel })` (null clears) |
 | OpenClaw MCP provisioning | `provisionToolAccess()` family (adapter-internal writes) |

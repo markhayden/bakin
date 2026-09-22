@@ -74,7 +74,7 @@ transient (the dispatch ladder bounds retries). The old
 vision enrichment.
 
 Gating: the pause/budget gates for the ROUTING CALL live at the
-dispatch-team callers (`routingCallGated` — kill switch + `deferForBudget`
+dispatch-team callers (`routingCallGated` — kill switch + `preDispatchGate`
 against the main agent with the route's model), OUTSIDE the failure ladder:
 a paused system or budget freeze defers quietly and can never escalate a
 team task to blocked.
