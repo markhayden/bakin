@@ -6,6 +6,7 @@ const config: BakinConfig = {
     { path: 'plugins/tasks' },
     { path: 'plugins/memory' },
     { path: 'plugins/models' },
+    { path: 'plugins/spend' },
     { path: 'plugins/assets' },
     { path: 'plugins/images' },
     { path: 'plugins/brands' },

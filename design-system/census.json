@@ -18,11 +18,11 @@
     ]
   },
   "summary": {
-    "total": 103,
+    "total": 105,
     "byKind": {
-      "host-route": 26,
+      "host-route": 27,
       "plugin-route": 12,
-      "plugin-slot": 31,
+      "plugin-slot": 32,
       "plugin-template": 2,
       "shared-component": 32,
       "sdk-ui-export": 0
@@ -459,6 +459,30 @@
           "type": "route-definition",
           "path": "packages/host/src/routes/settings.tsx",
           "detail": "createRoute path \"/settings\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:spend",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/spend"
+      },
+      "sourcePath": "packages/host/src/routes/spend.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/spend.tsx",
+          "detail": "createRoute path \"/spend\""
         }
       ]
     },
@@ -1654,6 +1678,37 @@
           "type": "client-registration",
           "path": "plugins/schedule/client.tsx",
           "detail": "registerPlugin slots \"page:/schedule\" -> SchedulePage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:spend:page:/spend",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "spend"
+      },
+      "identity": {
+        "slot": "page:/spend",
+        "route": "/spend"
+      },
+      "sourcePath": "plugins/spend/client.tsx",
+      "symbols": [
+        "SpendPage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/spend/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/spend/client.tsx",
+          "detail": "registerPlugin slots \"page:/spend\" -> SpendPage"
         }
       ]
     },

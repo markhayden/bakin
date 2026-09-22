@@ -29,7 +29,7 @@ const DEFINED_SECTIONS = new Set<NavSection>(['plan-and-automate', 'create', 'op
 const OFFICIAL_ORDER: Readonly<Record<NavSection, readonly string[]>> = {
   'plan-and-automate': ['projects', 'schedule', 'workflows'],
   create: ['brands', 'assets', 'messaging'],
-  operations: ['health', 'team', 'models', 'memory'],
+  operations: ['health', 'team', 'models', 'spend', 'memory'],
 }
 
 function compareText(a: string, b: string): number {

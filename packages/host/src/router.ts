@@ -30,6 +30,7 @@ import { Route as ExploreRoute } from './routes/explore'
 import { Route as HealthRoute } from './routes/health'
 import { Route as MemoryRoute } from './routes/memory'
 import { Route as ModelsRoute } from './routes/models'
+import { Route as SpendRoute } from './routes/spend'
 import { Route as ScheduleRoute } from './routes/schedule'
 import { Route as SettingsRoute } from './routes/settings'
 import { Route as RuntimeRoute } from './routes/runtime'
@@ -57,6 +58,7 @@ const routeTree = RootRoute.addChildren([
   HealthRoute,
   MemoryRoute,
   ModelsRoute,
+  SpendRoute,
   ScheduleRoute,
   SettingsRoute,
   RuntimeRoute,

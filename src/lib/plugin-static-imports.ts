@@ -18,6 +18,7 @@ import teamPlugin from '../../plugins/team'
 import tasksPlugin from '../../plugins/tasks'
 import memoryPlugin from '../../plugins/memory'
 import modelsPlugin from '../../plugins/models'
+import spendPlugin from '../../plugins/spend'
 import assetsPlugin from '../../plugins/assets'
 import imagesPlugin from '../../plugins/images'
 import brandsPlugin from '../../plugins/brands'
@@ -32,6 +33,7 @@ import teamManifestJson from '../../plugins/team/bakin-plugin.json'
 import tasksManifestJson from '../../plugins/tasks/bakin-plugin.json'
 import memoryManifestJson from '../../plugins/memory/bakin-plugin.json'
 import modelsManifestJson from '../../plugins/models/bakin-plugin.json'
+import spendManifestJson from '../../plugins/spend/bakin-plugin.json'
 import assetsManifestJson from '../../plugins/assets/bakin-plugin.json'
 import imagesManifestJson from '../../plugins/images/bakin-plugin.json'
 import brandsManifestJson from '../../plugins/brands/bakin-plugin.json'
@@ -58,6 +60,7 @@ export const CORE_PLUGIN_IMPORTS: Readonly<Record<string, CorePluginRegistration
   'plugins/tasks': corePlugin(tasksPlugin, tasksManifestJson),
   'plugins/memory': corePlugin(memoryPlugin, memoryManifestJson),
   'plugins/models': corePlugin(modelsPlugin, modelsManifestJson),
+  'plugins/spend': corePlugin(spendPlugin, spendManifestJson),
   'plugins/assets': corePlugin(assetsPlugin, assetsManifestJson),
   'plugins/images': corePlugin(imagesPlugin, imagesManifestJson),
   'plugins/brands': corePlugin(brandsPlugin, brandsManifestJson),

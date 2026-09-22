@@ -138,8 +138,8 @@ describe('the Bakin core census', () => {
     const census = scanCoreCensus(REPO_ROOT)
     const byKind = (kind: string) => census.entries.filter((entry) => entry.kind === kind)
 
-    expect(byKind('host-route')).toHaveLength(26)
-    expect(byKind('plugin-slot')).toHaveLength(28)
+    expect(byKind('host-route')).toHaveLength(27)
+    expect(byKind('plugin-slot')).toHaveLength(29)
     expect(byKind('plugin-template')).toContainEqual(expect.objectContaining({
       id: 'plugin-template:reference-plugin',
       owner: expect.objectContaining({ pluginId: 'reference-bookmarks' }),

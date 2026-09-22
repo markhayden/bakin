@@ -1,0 +1,30 @@
+{
+  "id": "spend",
+  "name": "Spend",
+  "version": "0.1.0",
+  "bakin": ">=1.0.0",
+  "description": "What your agents spend — observed and projected per billing lane — and the opt-in spending limits that notify at 50/75/90/100% and stop matching work at the line",
+  "contentFiles": [],
+  "secrets": [],
+  "dependencies": [],
+  "permissions": [
+    "storage.read",
+    "storage.write"
+  ],
+  "contributes": {
+    "apiRoutes": [],
+    "nav": [
+      {
+        "id": "spend",
+        "label": "Spend",
+        "icon": "CircleDollarSign",
+        "href": "/spend",
+        "order": 35,
+        "section": "operations"
+      }
+    ],
+    "slots": [
+      "page:/spend"
+    ]
+  }
+}

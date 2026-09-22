@@ -34,6 +34,7 @@ export const HOST_STATIC_ROUTE_PATHS = [
   '/health',
   '/memory',
   '/models',
+  '/spend',
   '/schedule',
   '/settings',
   '/runtime',
