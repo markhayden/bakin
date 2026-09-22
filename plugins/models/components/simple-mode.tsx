@@ -13,7 +13,7 @@
 import { useState, type ReactNode } from 'react'
 import { DEFAULT_MODEL_VALUE, ConfirmDialog, KeyValue, ModelSelect, type KeyValueItem, type ModelSelectOption } from '@makinbakin/sdk/patterns'
 import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, FieldDescription, FieldLabel, Text } from '@makinbakin/sdk/ui'
+import { Alert, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, FieldDescription, FieldLabel, Text } from '@makinbakin/sdk/ui'
 
 import { CHORES_CLASSES } from '../lib/mode'
 import { choresLane, setAllChoresOps } from '../lib/simple'
@@ -51,6 +51,9 @@ export function SimpleMode({ sel, modelOptions, onAdvanced }: SimpleModeProps) {
   const stagedAgentLabel = agent.staged ? ' (unsaved)' : ''
   const choresStaged = CHORES_CLASSES.some((c) => sel.effective(`route:${c}`).staged)
   const highlighted = sel.highlightRef
+  // The runtime refuses per-turn model overrides (#880): chores routes are
+  // saved here but every chore runs on the agent model until that changes.
+  const perTurnModel = sel.selections?.support.perTurnModel !== false
 
   const planItems: KeyValueItem[] = plan
     ? [
@@ -96,6 +99,11 @@ export function SimpleMode({ sel, modelOptions, onAdvanced }: SimpleModeProps) {
           staged={choresStaged}
           highlighted={highlighted !== null && highlighted.startsWith('route:') && (CHORES_CLASSES as readonly string[]).includes(highlighted.slice(6))}
         >
+          {!perTurnModel ? (
+            <Alert tone="attention" data-testid="chores-not-applied">
+              Saved here but not applied: the active runtime doesn&apos;t honor per-turn model overrides, so background chores run on the agent model.
+            </Alert>
+          ) : null}
           {chores.mixed ? (
             <Stack gap="dense">
               <div className="flex flex-wrap items-center gap-bakin-2">

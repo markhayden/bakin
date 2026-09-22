@@ -682,6 +682,13 @@ describe('ModelsPage component', () => {
       expect(lane.queryByTestId('chores-mixed')).toBeNull()
     })
 
+    it('perTurnModel === false ⇒ the chores lane says saved-but-not-applied (S11)', async () => {
+      plain()
+      supportState = { ...supportState, perTurnModel: false }
+      render(<ModelsPage />)
+      expect((await screen.findByTestId('chores-not-applied')).textContent).toContain('not applied')
+    })
+
     it('"Use recommended plan" shows the diff in a dialog and stages the plan ops on confirm', async () => {
       plain()
       render(<ModelsPage />)
