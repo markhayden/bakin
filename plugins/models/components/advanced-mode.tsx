@@ -106,8 +106,9 @@ export function AdvancedMode({ sel, modelOptions }: AdvancedModeProps) {
 
   const supportedThinking = support?.supportedThinkingLevels ?? [...ALL_THINKING_LEVELS]
   const thinkingLevels = ['inherit', ...supportedThinking]
+  const thinkingItems = Object.fromEntries([...thinkingLevels, ...ALL_THINKING_LEVELS].map((level) => [level, THINKING_LABELS[level] ?? level]))
   const thinkingSelect = (id: string, label: string, value: string | null, onChange: (v: string | null) => void) => (
-    <Select value={value ?? 'inherit'} onValueChange={(next) => onChange(!next || next === 'inherit' ? null : next)} disabled={!perTurnModel}>
+    <Select items={thinkingItems} value={value ?? 'inherit'} onValueChange={(next) => onChange(!next || next === 'inherit' ? null : next)} disabled={!perTurnModel}>
       <SelectTrigger id={id} size="sm" aria-label={label} className="w-full min-w-0">
         <SelectValue />
       </SelectTrigger>
