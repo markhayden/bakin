@@ -218,6 +218,7 @@ describe('Models Plugin Activation', () => {
       'GET /config',
       'GET /routing',
       'GET /runtime/status',
+      'GET /selections',
       'GET /spend',
       'POST /aliases',
       'POST /budget/incidents/:id/resolve',
@@ -226,6 +227,7 @@ describe('Models Plugin Activation', () => {
       'POST /refresh',
       'POST /routing/recommend',
       'POST /runtime/restart',
+      'POST /selections',
       'PUT /billing/overrides',
       'PUT /budget',
       'PUT /routing',
@@ -368,6 +370,49 @@ describe('GET /config', () => {
     const agents = body.agents as Array<Record<string, unknown>>
     expect(agents[0].name).toBe('Main Operator')
     expect(agents[0].emoji).toBe('🐾')
+  })
+})
+
+describe('GET/POST /selections — the ONE write path (#907)', () => {
+  it('GET lists every persisted ref with eligibility + a revision; POST applies an op and moves the revision', async () => {
+    const get = findRoute(activated.routes, 'GET', '/selections')!
+    const first = await callRoute(get, activated.ctx)
+    expect(first.status).toBe(200)
+    const states = first.body.states as Array<{ ref: string; model: string | null; eligibility?: { status: string } }>
+    expect(states.find((s) => s.ref === 'agent:main:model')).toMatchObject({ model: 'anthropic/claude-opus-4-6' })
+    expect(states.find((s) => s.ref === 'route:enrichment')).toBeDefined()
+    expect(states.find((s) => s.ref === 'ui:mode')).toBeDefined()
+    const revision = first.body.revision as string
+    expect(typeof revision).toBe('string')
+
+    const post = findRoute(activated.routes, 'POST', '/selections')!
+    const applied = await callRoute(post, activated.ctx, {
+      body: { revision, ops: [{ ref: 'agent:main:model', set: { model: 'anthropic/claude-haiku-4-5' } }] },
+    })
+    expect(applied.status).toBe(200)
+    expect(applied.body.applied).toEqual(['agent:main:model'])
+    expect(runtimeAgents.find((a) => a.id === 'main')!.model).toBe('anthropic/claude-haiku-4-5')
+    expect(applied.body.revision).not.toBe(revision)
+
+    // Replaying the old revision is refused with the current one attached.
+    const stale = await callRoute(post, activated.ctx, {
+      body: { revision, ops: [{ ref: 'agent:main:model', set: { model: 'anthropic/claude-opus-4-6' } }] },
+    })
+    expect(stale.status).toBe(409)
+    expect(stale.body.error).toBe('stale_revision')
+    expect(stale.body.current).toBe(applied.body.revision)
+  })
+
+  it('POST refuses an unavailable model with 400 model_not_eligible', async () => {
+    const get = findRoute(activated.routes, 'GET', '/selections')!
+    const { body } = await callRoute(get, activated.ctx)
+    const post = findRoute(activated.routes, 'POST', '/selections')!
+    const refused = await callRoute(post, activated.ctx, {
+      body: { revision: body.revision, ops: [{ ref: 'agent:pixel:model', set: { model: 'xai/grok-4' } }] },
+    })
+    expect(refused.status).toBe(400)
+    expect(refused.body.error).toBe('model_not_eligible')
+    expect(runtimeAgents.find((a) => a.id === 'pixel')!.model).not.toBe('xai/grok-4')
   })
 })
 

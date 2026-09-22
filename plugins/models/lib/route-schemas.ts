@@ -56,6 +56,22 @@ export const RoutingConfigSchema = z.object({
   tagOverrides: z.array(TagOverrideSchema),
 })
 
+// The ONE model-selection write (#907, D25): ops per selection ref under a
+// revision. `model: null` clears; `thinking: null` clears; `ui:mode` takes
+// 'simple' | 'advanced' as its model.
+export const MutationOpSchema = z.object({
+  ref: z.string().min(1),
+  set: z.object({
+    model: z.string().min(1).nullable().optional(),
+    thinking: ThinkingSettingSchema.nullable().optional(),
+  }).refine((s) => s.model !== undefined || s.thinking !== undefined, { message: 'an op must set model and/or thinking' }),
+})
+export const MutateSelectionsSchema = z.object({
+  revision: z.string().min(1),
+  ops: z.array(MutationOpSchema).min(1),
+  snapshot: z.literal('reset').optional(),
+})
+
 // Cap rules (cost-control v2): scope × lane; unit-per-lane — dailyCap /
 // monthlyCap are whole USD on metered rules, tokens on subscription rules.
 // 'model' scope is accepted today (evaluator handles it); the UI ships

@@ -24,6 +24,8 @@ import { probeModels } from './probe'
 import { buildSpendTimeline, rollupSpend } from './spend-rollup'
 import { assembleBudgetSpend, paceProjection, dayEndMs, monthEndMs } from '../../../src/core/budget-spend'
 import { budgetStatusRoutes } from './budget-routes'
+import { describeSelections, getSelectionMutator } from './selections'
+import { MutationRefused } from '../../../src/core/model-mutations'
 import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
 import {
   getRuntimeSync,
@@ -50,6 +52,7 @@ import {
   passthrough,
   SPEND_WINDOW_MS,
   parseSpendWindow,
+  MutateSelectionsSchema,
 } from './route-schemas'
 
 // ---------------------------------------------------------------------------
@@ -125,6 +128,39 @@ export const modelsRoutes = [
           cachedAt: null,
           stale: false,
         }, { status: 502 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/selections',
+    method: 'GET',
+    summary: 'Every persisted model selection with eligibility, proposals and pending writes',
+    description: 'The inventory behind the Models page and Health (#907): each ref (runtime policy, agent pins, work-class routes, tag overrides, page mode) with its eligibility verdict, one revision over all of it, repair proposals for dead selections, and any adapter writes still pending.',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async (_req, ctx) => {
+      try {
+        return Response.json(await describeSelections(ctx as unknown as PluginContext))
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/selections',
+    method: 'POST',
+    summary: 'Apply model-selection changes (the ONE write path)',
+    description: 'Serialized, revision-checked mutation of persisted model selections. Refuses stale revisions (409), documents with a pending write (409), ineligible models (400, with a proposal) and knobs the runtime cannot persist (400). Writes are tri-state: applied, failed, or pending when the adapter has not settled within the deadline.',
+    body: MutateSelectionsSchema,
+    responses: { 200: passthrough, 400: errorResponse, 409: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { body }) => {
+      try {
+        const result = await getSelectionMutator(ctx as unknown as PluginContext).mutate(body)
+        return Response.json(result)
+      } catch (err) {
+        if (err instanceof MutationRefused) return Response.json(err.toBody(), { status: err.status })
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
     },
   }),
