@@ -122,7 +122,7 @@ export async function cmdOnboardingSettingsInit(options: { json?: boolean } = {}
 }
 
 async function cmdOnboardingCheckSingle(
-  target: 'runtime' | 'search' | 'search-models' | 'media' | 'llm' | 'channels' | 'plugin-assets' | 'agent-sync' | 'recommended-plugins' | 'recommended-agents' | 'capabilities',
+  target: 'runtime' | 'search' | 'search-models' | 'media' | 'llm' | 'models' | 'channels' | 'plugin-assets' | 'agent-sync' | 'recommended-plugins' | 'recommended-agents' | 'capabilities',
   options: { verbose?: boolean } = {},
 ): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../../core/onboarding/types').CheckResult> }>> = {
@@ -131,6 +131,7 @@ async function cmdOnboardingCheckSingle(
     'search-models': async () => (await import('../../core/onboarding/search-models')).searchModelsComponent,
     media: async () => (await import('../../core/onboarding/media')).mediaComponent,
     llm: async () => (await import('../../core/onboarding/credentials')).llmComponent,
+    models: async () => (await import('../../core/onboarding/models')).modelsComponent,
     channels: async () => (await import('../../core/onboarding/credentials')).channelsComponent,
     'plugin-assets': async () => (await import('../../core/onboarding/plugin-assets')).pluginAssetsComponent,
     'agent-sync': async () => (await import('../../core/onboarding/agent-sync')).agentSyncComponent,
@@ -361,12 +362,12 @@ export async function run(args: string[]): Promise<void> {
   } else if (cmd === 'mkdir') {
     await cmdOnboardingMkdir({ json: args.includes('--json') })
   } else if (cmd === 'check') {
-    if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'media' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents' || sub === 'capabilities') {
+    if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'media' || sub === 'llm' || sub === 'models' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents' || sub === 'capabilities') {
       await cmdOnboardingCheckSingle(sub, { verbose: args.includes('--verbose') })
     } else if (sub === 'all') {
       await cmdOnboardingCheckAll({ verbose: args.includes('--verbose') })
     } else {
-      await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'media', 'llm', 'channels', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents', 'capabilities', 'all'])
+      await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'media', 'llm', 'models', 'channels', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents', 'capabilities', 'all'])
     }
   } else if (cmd === 'install') {
     if (sub === 'search' || sub === 'search-models' || sub === 'media' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents' || sub === 'capabilities') {
