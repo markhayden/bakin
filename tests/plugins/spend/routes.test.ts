@@ -342,6 +342,9 @@ describe('GET /spend', () => {
     expect(body.pace).toHaveProperty('daily')
     expect(body.pace).toHaveProperty('monthly')
     expect((body.timeline as unknown[]).length).toBe(6)
+    // Pace basis: no coverage receipts on a fresh install ⇒ 0 observed days, honestly.
+    expect(body.observedDays).toMatchObject({ month: 0 })
+    expect((body.observedDays as { daysIntoMonth: number }).daysIntoMonth).toBeGreaterThan(0)
   })
 
   it('defaults to a 24h window when none is given', async () => {

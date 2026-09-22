@@ -37,6 +37,7 @@ import { emitBudgetIncidentResolved } from '../../../src/core/budget-notify'
 import { createLogger } from '../../../src/core/logger'
 import { resolveBilling } from './billing'
 import { coverageSummary, suggestMonthlyLimit } from './coverage'
+import { coveredDaysSince } from '@bakin/core/usage-history/store'
 import { BillingOverridesSchema, LimitsSchema, readLimits, readOverrides, SpendSettingsSchema } from './settings'
 
 const log = createLogger('spend:routes')
@@ -199,6 +200,16 @@ export const spendRoutes = [
             endsMs: monthEndMs(now),
           },
         }
+        // Pace basis (D27): how many of this month's days Bakin actually
+        // watched — the Overview says "based on N observed days" instead of
+        // presenting a projection as if every day were counted.
+        const daysIntoMonth = Math.floor((now - facets.monthly.startMs) / 86_400_000) + 1
+        let observedDays: number | null = null
+        try {
+          observedDays = coveredDaysSince(daysIntoMonth, now).length
+        } catch (err) {
+          log.warn('coverage receipts unavailable for the pace basis', { err: err instanceof Error ? err.message : String(err) })
+        }
         return Response.json({
           window,
           estimated: true,
@@ -209,6 +220,7 @@ export const spendRoutes = [
           timeline,
           facets,
           pace,
+          observedDays: { month: observedDays, daysIntoMonth },
         })
       } catch (err) {
         if (err instanceof LedgerUnavailableError) {

@@ -2,7 +2,7 @@
 
 import { AreaChart, type ChartDatum } from '@makinbakin/sdk/charts'
 import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
-import { SegmentedControl, StatTile } from '@makinbakin/sdk/patterns'
+import { SegmentedControl, StatGroup, StatTile } from '@makinbakin/sdk/patterns'
 import { Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 
 import { SpendBreakdown, type SpendBreakdownDimension } from './spend-breakdown'
@@ -150,6 +150,28 @@ function SpendTrend({
   )
 }
 
+/** The month-to-date pace in plain words, with the basis it rests on (D27). */
+function paceLine(spend: SpendResponse): string {
+  const pace = spend.pace?.monthly
+  if (!pace) return 'Pace unavailable.'
+  const basis = spend.observedDays
+  const days = basis?.month ?? null
+  const basisCopy = days === null
+    ? 'observed days unknown'
+    : days === 0
+      ? 'no observed days yet'
+      : `based on ${days} observed day${days === 1 ? '' : 's'}${basis && days < basis.daysIntoMonth ? ` of ${basis.daysIntoMonth}` : ''}`
+  if (pace.meteredUsdMicros === null && pace.subscriptionTokens === null) {
+    return 'Not enough of the month has passed to project a pace.'
+  }
+  const parts: string[] = []
+  if (pace.meteredUsdMicros !== null) parts.push(`~${formatUsd(pace.meteredUsdMicros)} metered`)
+  if (pace.subscriptionTokens !== null && pace.subscriptionTokens > 0) parts.push(`~${formatTokens(pace.subscriptionTokens)} subscription tokens`)
+  return parts.length === 0
+    ? 'Not enough of the month has passed to project a pace.'
+    : `On pace for ${parts.join(' and ')} this month — ${basisCopy}.`
+}
+
 function SpendOverview({
   spend,
   rules,
@@ -163,12 +185,17 @@ function SpendOverview({
 }) {
   const month = spend.facets?.monthly.global
   const monthUnattributed = month?.unattributed
+  const monthlyMeteredTokens = (month?.meteredTokens ?? 0) + (monthUnattributed?.meteredTokens ?? 0)
   const monthlyMetered = month
     ? month.meteredUsdMicros + (monthUnattributed?.meteredUsdMicros ?? 0)
     : 0
   const monthlySubscription = month
     ? month.subscriptionTokens + (monthUnattributed?.subscriptionTokens ?? 0)
     : 0
+  // Lane-honest tiles: a lane with no rows at all reads "not metered" /
+  // "none", never "$ unavailable" (that state is reserved for unpriced rows).
+  const meteredLaneEmpty = monthlyMeteredTokens === 0 && monthlyMetered === 0 && (month?.unpricedMeteredTokens ?? 0) === 0
+  const subscriptionLaneEmpty = monthlySubscription === 0
 
   return (
     <Section spacing="compact" aria-label="Spending overview">
@@ -179,7 +206,7 @@ function SpendOverview({
         </Text>
       </Stack>
 
-      <Grid layout="thirds" gap="dense" role="group" aria-label="Spend summary">
+      <StatGroup label="Spend summary">
         <StatTile
           variant="surface"
           label={`${spend.window} estimated cost`}
@@ -192,16 +219,22 @@ function SpendOverview({
         <StatTile
           variant="surface"
           label="Month metered"
-          value={formatUsd(monthlyMetered, month?.unpricedMeteredTokens ?? 0)}
-          sub={`${formatTokens((month?.meteredTokens ?? 0) + (monthUnattributed?.meteredTokens ?? 0))} tokens`}
+          value={meteredLaneEmpty ? 'Not metered' : formatUsd(monthlyMetered, month?.unpricedMeteredTokens ?? 0)}
+          valueTone={meteredLaneEmpty ? 'neutral' : undefined}
+          sub={meteredLaneEmpty ? 'No pay-per-token usage this month' : `${formatTokens(monthlyMeteredTokens)} tokens`}
         />
         <StatTile
           variant="surface"
           label="Month subscription"
-          value={formatTokens(monthlySubscription)}
-          sub="Tokens included in subscription plans"
+          value={subscriptionLaneEmpty ? 'None' : formatTokens(monthlySubscription)}
+          valueTone={subscriptionLaneEmpty ? 'neutral' : undefined}
+          sub={subscriptionLaneEmpty ? 'No subscription-plan usage this month' : 'Tokens included in subscription plans'}
         />
-      </Grid>
+      </StatGroup>
+
+      <Text size="body" as="p" data-testid="spend-pace" className="max-w-prose leading-relaxed">
+        {paceLine(spend)}
+      </Text>
 
       <SpendTrend spend={spend} metric={metric} onMetricChange={onMetricChange} />
       <UtilizationTiles rules={rules} spend={spend} />

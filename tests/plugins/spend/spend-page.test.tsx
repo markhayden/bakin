@@ -54,6 +54,7 @@ const spendFixture = {
     daily: { meteredUsdMicros: 3_100_000, subscriptionTokens: 30_000, endsMs: Date.now() + 43_200_000 },
     monthly: { meteredUsdMicros: 12_000_000, subscriptionTokens: 180_000, endsMs: Date.now() + 604_800_000 },
   },
+  observedDays: { month: 9, daysIntoMonth: 22 },
 }
 
 const routes: Record<string, unknown> = {
@@ -196,5 +197,33 @@ describe('SpendPage', () => {
     await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Save limit' })) })
     expect(await within(dialog).findByText('Enter a monthly limit in whole dollars.')).toBeTruthy()
     expect(putBodies).toHaveLength(0)
+  })
+
+  it('Overview: the pace line states its observed-days basis; empty lanes read as "not metered" / "none", never "$ unavailable"', async () => {
+    routes['spend?window=24h'] = {
+      ...spendFixture,
+      facets: { computedAt: 1, daily: window, monthly: { ...window, global: { ...scope, subscriptionTokens: 0 } } },
+      pace: { daily: { meteredUsdMicros: null, subscriptionTokens: null, endsMs: 1 }, monthly: { meteredUsdMicros: 30_000_000, subscriptionTokens: 0, endsMs: 1 } },
+      observedDays: { month: 9, daysIntoMonth: 22 },
+    }
+    try {
+      render(<SpendPage />)
+      await waitFor(() => expect(screen.getByTestId('spend-pace').textContent).toBe('On pace for ~$30.00 metered this month — based on 9 observed days of 22.'))
+      expect(screen.getByText('Not metered')).toBeTruthy()
+      expect(screen.getByText('None')).toBeTruthy()
+      expect(screen.queryByText('$ unavailable')).toBeNull()
+    } finally {
+      routes['spend?window=24h'] = spendFixture
+    }
+  })
+
+  it('Overview: too little of the month ⇒ the pace line says so instead of projecting', async () => {
+    routes['spend?window=24h'] = { ...spendFixture, pace: { daily: { meteredUsdMicros: null, subscriptionTokens: null, endsMs: 1 }, monthly: { meteredUsdMicros: null, subscriptionTokens: null, endsMs: 1 } } }
+    try {
+      render(<SpendPage />)
+      await waitFor(() => expect(screen.getByTestId('spend-pace').textContent).toBe('Not enough of the month has passed to project a pace.'))
+    } finally {
+      routes['spend?window=24h'] = spendFixture
+    }
   })
 })

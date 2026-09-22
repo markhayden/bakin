@@ -108,6 +108,8 @@ export interface SpendResponse {
     monthly: WindowSpendWire
   }
   pace?: { daily: PaceWire; monthly: PaceWire }
+  /** Coverage basis for the pace line: days of this month with a complete sweep (null = receipts unreadable). */
+  observedDays?: { month: number | null; daysIntoMonth: number }
 }
 
 /** Wire shape of GET /coverage (D27): observed-days coverage + the limit suggestion. */
