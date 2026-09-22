@@ -141,6 +141,7 @@ mock.module('../../../packages/core/src/usage-history/store', () => ({
 // ---------------------------------------------------------------------------
 
 import { activatePlugin, findRoute, findTool, callRoute, callTool, makeRequest } from '../test-helpers'
+import { setModelsCache } from '../../../plugins/models/lib/available-models'
 const modelsPlugin = (await import('../../../plugins/models')).default as typeof import('../../../plugins/models').default
 
 // ---------------------------------------------------------------------------
@@ -440,19 +441,34 @@ describe('GET/POST /selections — the ONE write path (#907)', () => {
 })
 
 describe('GET /available', () => {
+  it('lists an UNAVAILABLE model when a persisted selection references it — disabled with the reason (#907)', async () => {
+    const saved = runtimeAgents.find((a) => a.id === 'patch')!.model
+    runtimeAgents.find((a) => a.id === 'patch')!.model = 'xai/grok-4'
+    setModelsCache(null)
+    try {
+      const route = findRoute(activated.routes, 'GET', '/available')!
+      const { body } = await callRoute(route, activated.ctx)
+      const grok = (body.models as Array<Record<string, unknown>>).find((m) => m.id === 'xai/grok-4')!
+      expect(grok).toBeDefined()
+      expect(grok.available).toBe(false)
+      expect((grok.eligibility as { status: string }).status).toBe('ineligible')
+    } finally {
+      runtimeAgents.find((a) => a.id === 'patch')!.model = saved
+      setModelsCache(null)
+    }
+  })
+
   it('returns models from API with tiers', async () => {
     const route = findRoute(activated.routes, 'GET', '/available')!
     const { status, body } = await callRoute(route, activated.ctx)
     expect(status).toBe(200)
 
     const models = body.models as Array<Record<string, unknown>>
-    // Seven runtime rows: six available + xai/grok-4 which the runtime
-    // marks unavailable — it stays LISTED (disabled, with a verdict) so
-    // pickers can show why (#907), never silently dropped.
-    expect(models.length).toBe(7)
-    const grok = models.find((m) => m.id === 'xai/grok-4')!
-    expect(grok.available).toBe(false)
-    expect((grok.eligibility as { status: string }).status).toBe('ineligible')
+    // Seven runtime rows: six available + xai/grok-4 which the runtime marks
+    // unavailable. Nothing references grok-4, so it is pruned (#907 lists
+    // unavailable rows only when a persisted selection points at them).
+    expect(models.length).toBe(6)
+    expect(models.find((m) => m.id === 'xai/grok-4')).toBeUndefined()
 
     const opus = models.find((m) => (m.id as string).includes('opus'))!
     expect(opus.tier).toBe('premium')
@@ -978,7 +994,7 @@ describe('Exec Tools', () => {
       const result = await callTool(tool, {})
       expect(result.ok).toBe(true)
       expect(Array.isArray(result.models)).toBe(true)
-      expect((result.models as unknown[]).length).toBe(7)
+      expect((result.models as unknown[]).length).toBe(6)
     })
 
     it('filters by tier', async () => {

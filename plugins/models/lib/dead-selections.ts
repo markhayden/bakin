@@ -127,7 +127,7 @@ export function deadSelectionRepair(deps: DeadSelectionDeps): HealthRepairAction
         const ref = refFromIncidentId(incidentId)
         const proposal = ref ? proposalByRef.get(ref) : undefined
         if (!ref || !proposal?.to) continue
-        planned.set(`apply-model-proposal:${ref}`, proposal)
+        planned.set(ref, proposal)
         items.push({
           id: `apply-model-proposal:${ref}`,
           actionId: DEAD_SELECTION_REPAIR_ID,
@@ -150,12 +150,16 @@ export function deadSelectionRepair(deps: DeadSelectionDeps): HealthRepairAction
     async apply(items) {
       const results = []
       for (const item of items) {
-        const ref = item.id.slice('apply-model-proposal:'.length)
+        // The registry namespaces item ids with the owning action id
+        // (`models.apply-model-proposal:apply-model-proposal:<ref>`), so the
+        // ref is whatever follows the LAST marker.
+        const marker = 'apply-model-proposal:'
+        const ref = item.id.slice(item.id.lastIndexOf(marker) + marker.length)
         try {
-          const proposal = planned.get(item.id)
+          const proposal = planned.get(ref)
           if (!proposal?.to) throw new Error(`the repair plan for ${ref} expired — run the check again`)
           const result = await deps.apply(proposal)
-          planned.delete(item.id)
+          planned.delete(ref)
           const ok = result.applied.includes(ref)
           const pending = result.pending.some((p) => p.ref === ref)
           results.push({

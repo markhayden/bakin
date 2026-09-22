@@ -17,6 +17,7 @@ mock.module('../../../src/core/logger', () => ({
 
 import { checkDeadSelections, deadSelectionRepair, type DeadSelectionDeps, type SelectionsDescription } from '../../../plugins/models/lib/dead-selections'
 import type { Proposal } from '../../../src/core/model-selections'
+import { parseHealthCheckRunInput, parseHealthRepairPlanOutput } from '../../../src/core/health-contract'
 
 const DEAD = 'openai/gpt-5.6-luna'
 const FIX = 'openai-codex/gpt-5.6-luna'
@@ -76,6 +77,16 @@ describe('checkDeadSelections', () => {
     expect(relay.incident?.resolution).toMatchObject({ type: 'navigate', href: '/models?ref=route%3Arelay' })
   })
 
+  it('its output passes the canonical health contract (the resource kind is a real enum member)', async () => {
+    // The isolated boot caught a zod refusal the injected-deps tests missed:
+    // the TS type had model_selection, the contract enum did not.
+    const result = await checkDeadSelections(deps(description()))
+    expect(() => parseHealthCheckRunInput(result)).not.toThrow()
+    const repair = deadSelectionRepair(deps(description()))
+    const items = await repair.plan({ type: 'incidents', reportId: 'r1', ids: ['models:models:dead-selection:agent:enrich:model'] })
+    expect(() => parseHealthRepairPlanOutput(items)).not.toThrow()
+  })
+
   it('healthy when nothing is dead', async () => {
     const desc = description({ states: [description().states[0]!], proposals: [] })
     const result = await checkDeadSelections(deps(desc))
@@ -111,7 +122,10 @@ describe('deadSelectionRepair', () => {
     expect(items[0]).toMatchObject({ actionId: 'apply-model-proposal', safety: 'safe', incidentIds: ['models:models:dead-selection:agent:enrich:model'] })
     expect(items[0]!.changes[0]!.description).toContain(FIX)
 
-    const results = await repair.apply(items)
+    // The registry NAMESPACES item ids with the action id before apply() —
+    // the isolated boot caught a lookup keyed on the raw id ("plan expired").
+    const namespaced = items.map((i) => ({ ...i, id: `models.apply-model-proposal:${i.id}` }))
+    const results = await repair.apply(namespaced)
     expect(results[0]).toMatchObject({ status: 'applied', affectedCheckIds: ['models.dead-selections'] })
     expect(applied).toEqual([{ ref: 'agent:enrich:model', from: DEAD, to: FIX, reason: 'no credentials for openai', source: 'same-id-credentialed-provider', revision: 'rev-1' }])
   })

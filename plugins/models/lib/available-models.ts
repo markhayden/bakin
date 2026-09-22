@@ -14,6 +14,9 @@ import type { PluginContext } from '@bakin/core/plugin-types'
 
 import type { AvailableModel } from '../types'
 import { getModelEligibility } from '../../../src/core/model-eligibility'
+import { enumerateSelections } from '../../../src/core/model-selections'
+import { createLogger } from '../../../src/core/logger'
+import { readRoutingSettings } from './selections'
 import {
   clearPersistedCache,
   readPersistedCache,
@@ -32,6 +35,7 @@ if (!mc.__bakinModelsCache) mc.__bakinModelsCache = null
 export function getModelsCache(): ModelsCache | null { return mc.__bakinModelsCache ?? null }
 export function setModelsCache(cache: ModelsCache | null) { mc.__bakinModelsCache = cache }
 const CACHE_TTL = 60 * 60 * 1000 // 1 hour
+const log = createLogger('models:available')
 
 function sortModels(a: AvailableModel, b: AvailableModel): number {
   if (a.provider !== b.provider) return a.provider.localeCompare(b.provider)
@@ -168,6 +172,11 @@ export async function applyEligibilityOverlay(ctx: PluginContext, models: Availa
       ...(m.local ? { local: true } : {}),
     })),
   })
+  // Runtime-unavailable rows are kept ONLY when a persisted selection points
+  // at them: a dead pin must stay visible (disabled, with its reason) in the
+  // picker that holds it, but Pi's full catalog has ~1,300 auth-less models
+  // that nobody selected — listing them would bury the ones that matter.
+  const referenced = await referencedModelIds(ctx)
   if (report.evidence.rejections === 'failed') {
     const now = Date.now()
     if (now - lastOverlayWarning >= OVERLAY_WARNING_TTL) {
@@ -175,17 +184,31 @@ export async function applyEligibilityOverlay(ctx: PluginContext, models: Availa
       console.warn('Model-rejection overlay skipped (ledger unavailable?): rejection evidence failed')
     }
   }
-  return models.map((m) => {
-    const entry = report.byModel.get(m.id)
-    if (!entry) return m
-    const { eligibility, rejection } = entry
-    return {
-      ...m,
-      available: eligibility.status !== 'ineligible' && m.available !== false,
-      eligibility,
-      ...(rejection ? { rejection: { lastSeenAt: rejection.lastSeenAt, occurrences: rejection.occurrences } } : {}),
-    }
-  })
+  return models
+    .filter((m) => m.available !== false || referenced.has(m.id))
+    .map((m) => {
+      const entry = report.byModel.get(m.id)
+      if (!entry) return m
+      const { eligibility, rejection } = entry
+      return {
+        ...m,
+        available: eligibility.status !== 'ineligible' && m.available !== false,
+        eligibility,
+        ...(rejection ? { rejection: { lastSeenAt: rejection.lastSeenAt, occurrences: rejection.occurrences } } : {}),
+      }
+    })
+}
+
+/** Model ids any persisted selection (policy, roster, routes, tags) points at. Empty on read failure — never blocks a listing. */
+async function referencedModelIds(ctx: PluginContext): Promise<Set<string>> {
+  try {
+    const { routing } = readRoutingSettings(ctx)
+    const states = await enumerateSelections(ctx.runtime, { routing })
+    return new Set(states.filter((s) => s.ref !== 'ui:mode').map((s) => s.model).filter((m): m is string => typeof m === 'string' && m.length > 0))
+  } catch (err) {
+    log.debug('referenced-model read failed; listing available rows only', { error: String(err) })
+    return new Set()
+  }
 }
 
 export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: boolean }): Promise<FetchResult> {

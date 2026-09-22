@@ -40,9 +40,11 @@ afterAll(() => {
 const LIVE = 'openai-codex/gpt-5.5'
 const NO_AUTH = 'openai/gpt-5.6-luna'
 
+const UNREFERENCED = 'anthropic/claude-opus-4-6'
 const runtimeRows = [
   { id: LIVE, name: 'GPT-5.5', available: true },
   { id: NO_AUTH, name: 'GPT-5.6 Luna', available: false, unavailableReason: 'no_credentials' as const },
+  { id: UNREFERENCED, name: 'Opus', available: false, unavailableReason: 'no_credentials' as const },
 ]
 
 function ctxWith(credentials?: { providers: () => Promise<unknown> }): PluginContext {
@@ -50,10 +52,13 @@ function ctxWith(credentials?: { providers: () => Promise<unknown> }): PluginCon
     runtime: {
       models: {
         listAvailable: async () => runtimeRows,
-        routingPolicy: async () => ({ defaultModel: LIVE, fallbackModels: [] }),
+        routingPolicy: async () => ({ defaultModel: LIVE, fallbackModels: [], defaultSubagentModel: null, aliases: {} }),
       },
+      // A persisted pin references the auth-less model — that row must stay listed.
+      agents: { list: async () => [{ id: 'enrich', name: 'enrich', model: NO_AUTH }] },
       ...(credentials ? { credentials } : {}),
     },
+    getSettings: () => ({}),
   } as unknown as PluginContext
 }
 
@@ -72,8 +77,9 @@ beforeEach(() => {
 })
 
 describe('/available eligibility overlay (#907)', () => {
-  test('unavailable rows stay LISTED with the runtime\'s reason; live rows are eligible', async () => {
+  test('a REFERENCED unavailable row stays listed with the runtime\'s reason; an unreferenced one is pruned; live rows are eligible', async () => {
     const { models } = await fetchAvailableModels(ctxWith(completeInventory))
+    expect(models.find((m) => m.id === UNREFERENCED)).toBeUndefined()
     const dead = models.find((m) => m.id === NO_AUTH)!
     expect(dead).toBeDefined()
     expect(dead.available).toBe(false)
@@ -125,10 +131,12 @@ describe('resetModelsCache — epoch-guarded (D29)', () => {
       runtime: {
         models: {
           listAvailable: async () => { await gate; return runtimeRows },
-          routingPolicy: async () => ({ defaultModel: LIVE, fallbackModels: [] }),
+          routingPolicy: async () => ({ defaultModel: LIVE, fallbackModels: [], defaultSubagentModel: null, aliases: {} }),
         },
+        agents: { list: async () => [{ id: 'enrich', name: 'enrich', model: NO_AUTH }] },
         credentials: completeInventory,
       },
+      getSettings: () => ({}),
     } as unknown as PluginContext
 
     const inflight = fetchAvailableModels(slowCtx) // old runtime's catalog, still loading
