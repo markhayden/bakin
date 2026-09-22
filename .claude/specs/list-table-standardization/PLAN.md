@@ -5,24 +5,33 @@
 User approved all remaining work in one pass. Models is excluded; previously
 approved indices are not reopened. No release/remote write is implied.
 
-- [ ] Checkpoint approved Health/Memory/Settings/Explore changes after validation.
-- [ ] Runtime capabilities: DataTable; overview/extensions: narrow metadata and
+- [x] Checkpoint approved Health/Memory/Settings/Explore changes after validation.
+- [x] Runtime capabilities: DataTable; overview/extensions: narrow metadata and
   action/sort parity. Preserve trust confirmation and readiness evidence.
-- [ ] Health check registry and overview incidents: table where comparative;
+- [x] Health check registry and overview incidents: table where comparative;
   preserve attention ordering, disclosure evidence and exact repair actions.
-- [ ] Chat recent conversations, Team management/lessons, Assets attachments,
+- [x] Chat recent conversations, Team management/lessons, Assets attachments,
   Branding materials/documents: separated supporting rows, readable identities,
   reachable actions and honest errors. Keep galleries/canvas/forms specialized.
-- [ ] Review Asset versions/exports/references and Terminal; migrate concrete
+- [x] Review Asset versions/exports/references and Terminal; migrate concrete
   table/row gaps and document retained specialized compositions.
-- [ ] Reference bookmark example follows table-first guidance; reconcile census
+- [x] Reference bookmark example follows table-first guidance; reconcile census
   dispositions with current source rather than historical recommendations.
-- [ ] Focused regressions and local wide/narrow browser checks per slice; one
+- [x] Focused regressions and local wide/narrow browser checks per slice; one
   final quick/build/payload/full gate, code review, docs and local commits.
 
 Existing patterns: `lists/data-table` — `NarrowRoles`, `SortedPagedDualRender`;
 `lists/list-rows` — `CanonicalUsage` (explicit separated);
 `pages/page` — `ControlModes`. No new public contract or budget is preapproved.
+
+Completed locally. Final full conformance passed (9,559 repository tests,
+335 story interactions, 280 unchanged visuals, 93 cross-browser checks), as did
+the per-plugin fixtures, isolated real-SDK browser proof and late focused
+regressions. Independent reviews found no remaining blockers. User approved
+exactly host JS 234,532 and Terminal 514,331 bytes; other limits unchanged.
+CENSUS covers all 103 IDs. Product changes are saved in focused local Bakin
+commits and Bits `fd90256`; see AUDIT for evidence and verification boundaries.
+No push/PR/release is included. Models remains excluded; #759 is follow-up.
 
 ## Memory, Settings and Extend — combined batch (2026-09-22)
 

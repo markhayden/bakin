@@ -1,8 +1,8 @@
 # Census-linked collection triage — #806
 
-Source census: `design-system/census.json` at Bakin `de3d183321c9faca5c21705d08564f1f63d12cd5`.
+Source census: current `design-system/census.json` (final local fleet sweep, 2026-09-22).
 
-This matrix annotates all 102 existing IDs without duplicating ownership/routes.
+This matrix annotates all 103 existing IDs without duplicating ownership/routes.
 It is a source-based disposition, not a claim that every state of every surface
 has passed browser verification. Detailed collection sources/findings and open
 state coverage remain in [AUDIT.md](AUDIT.md). “Candidate” means recommended,
@@ -36,7 +36,7 @@ automatically tables. Brainstorm is the first local correction below.
 | `host-route:memory` | Delegate | Host route delegates to matching core plugin page; do not count it as another list. |
 | `host-route:models` | Delegate | Host route delegates to matching core plugin page; do not count it as another list. |
 | `host-route:plugin-catchall` | Delegate | Resolve installed plugin route; use each official plugin finding below. |
-| `host-route:runtime` | Mixed | Runtime tables, capability cards, switch timeline; see runtime shared components. |
+| `host-route:runtime` | Local tables + specialized | Capability, setup, runtime and extension inventories use shared responsive sorting; switch progress/results remain specialized. |
 | `host-route:schedule` | Delegate | Host route delegates to matching core plugin page; do not count it as another list. |
 | `host-route:settings` | Reviewed forms + local table | NavList/schema form semantics retained and route/save tests pass. Integrations uses separated provider fields, a named-secret table and responsive add form; retry/locking/write-only behavior verified. See combined checkpoint in AUDIT. |
 | `host-route:tasks` | Delegate | Host route delegates to matching core plugin page; do not count it as another list. |
@@ -57,41 +57,41 @@ automatically tables. Brainstorm is the first local correction below.
 | `plugin-route:projects:/projects/[id]` | Keep rows + specialized | Keep separated tasks/attachments; preserve editor, conversation and form controls. |
 | `plugin-route:projects:/projects/[id]/edit` | Keep rows + specialized | Keep separated tasks/attachments; preserve editor, conversation and form controls. |
 | `plugin-route:projects:/projects/new` | Alias | Delegate to destination; no independent collection. |
-| `plugin-route:terminal:/terminal` | Table + specialized | Session index is tabular; terminal detail is an interactive workspace, not a card collection. |
-| `plugin-route:terminal:/terminal/[sessionId]` | Table + specialized | Session index is tabular; terminal detail is an interactive workspace, not a card collection. |
+| `plugin-route:terminal:/terminal` | Local table parity | Persistent sorting, labelled separated narrow rows, full working paths and independent session menus; terminal workspace unchanged. |
+| `plugin-route:terminal:/terminal/[sessionId]` | Specialized workspace | Interactive terminal, ownership controls, streaming output and keyboard capture retained; not a collection migration. |
 | `plugin-slot:_template:home-widget` | No result collection | Status/form or single widget; section-card guidance is separate from collection migration. |
 | `plugin-slot:assets:nav-badge-providers` | No collection | Badge provider; counts/attention, not a result-list presentation. |
 | `plugin-slot:assets:page:/assets` | Keep cards + table | Preview/folder browsing earns cards; import/trash/table views remain deliberate. |
-| `plugin-slot:assets:page:/assets/:assetId` | Review embedded lists | Version/export/reference renderers: separate history, download rows and media. |
-| `plugin-slot:assets:task-assets` | Rows candidate | Attached assets → compact separated rows. |
-| `plugin-slot:brands:page:/brands` | Keep cards candidate | Logo/monogram and palette earn gallery space; visually reviewed on dev instance. |
-| `plugin-slot:brands:page:/brands/:brandId` | Rows + specialized | Document/material lists → separated; preserve palette/media/editor compositions. |
+| `plugin-slot:assets:page:/assets/:assetId` | Local supporting rows + media | Version history, downloads and references use separated rows with independent preview/promote/delete actions; media preview/edit/export forms retained. |
+| `plugin-slot:assets:task-assets` | Local separated rows | Linked attachments preserve independent unlink, read-only state, retry, stale-response protection and pending mutation lock. |
+| `plugin-slot:brands:page:/brands` | Keep preview cards | Logo/monogram and palette earn gallery space; no text-index card conversion needed. |
+| `plugin-slot:brands:page:/brands/:brandId` | Local rows + specialized | Materials, documents and lessons use separated supporting rows with wrapping names and visible actions. Palette/media/editor compositions retained. |
 | `plugin-slot:brands:page:/brands/:brandId/docs` | Editor | Document editing, not a result collection. |
 | `plugin-slot:brands:task-brand` | Keep rows | Compact evidence list already separated. |
 | `plugin-slot:chat:nav-badge-providers` | No collection | Badge provider; counts/attention, not a result-list presentation. |
-| `plugin-slot:chat:page:/chat` | Rows + specialized | Recent chats → separated; retain compact rail and conversation semantics. |
-| `plugin-slot:chat:page:/chat/[chatId]` | Rows + specialized | Recent chats → separated; retain compact rail and conversation semantics. |
-| `plugin-slot:chat:page:/chat/new` | Rows + specialized | Recent chats → separated; retain compact rail and conversation semantics. |
+| `plugin-slot:chat:page:/chat` | Local rows + specialized | Recent conversations use separated supporting rows with wrapping titles; agent starters, navigation rail and conversation retained. |
+| `plugin-slot:chat:page:/chat/[chatId]` | Specialized conversation | Conversation transcript, attachments and compact navigation remain specialized; shared recent rows migrated. |
+| `plugin-slot:chat:page:/chat/new` | Specialized creation | Agent starters and composer remain specialized; shared recent rows migrated. |
 | `plugin-slot:explore:page:/explore` | Local table + supporting rows | Catalog is a sortable, URL-backed DataTable with independent Details/Install and compatibility gates; installed capabilities use compact separated management rows. Preserve preview galleries and consent/pickers. Fixtures and four-width browser checks pass; see AUDIT for combined checkpoint. |
 | `plugin-slot:health:nav-badge-providers` | No collection | Badge provider; counts/attention, not a result-list presentation. |
-| `plugin-slot:health:page:/health` | Local / mixed | System plugin/index tables and Agent pulse now have persistent sorting, separated narrow rows and action/focus parity; Agent pulse uses the existing URL-selected Drawer. Four-width browser proof and both desktop/mobile fixtures pass after the approved native-summary harness fix (see AUDIT). Full check registry and overview incidents remain to review; full Health conformance is pending. Keep compact findings, real timelines and metric grids specialized. |
+| `plugin-slot:health:page:/health` | Local tables + ordered rows | System plugin/index/check registries and Agent pulse use persistent sorting and separated narrow rows. Evidence focus targets the visible copy. Incidents/findings retain canonical priority order in separated rows; charts, timelines and disclosures retained. |
 | `plugin-slot:memory:page:/memory` | Local table parity + specialized | Browse uses column-derived separated narrow rows and persistent sorting; search keeps relevance. Record URL/reload, filters and tab-panel wiring verified. Keep Scrub's grouped selection/cleanup and tier stat tiles specialized. Fixtures/four-width browser pass; combined checkpoint in AUDIT. |
 | `plugin-slot:messaging:nav-badge-providers` | No collection | Badge provider; counts/attention, not a result-list presentation. |
-| `plugin-slot:models:page:/models` | Mixed | Keep comparison tables and labelled form rows; aliases → separated; no forced table for editable fields. |
+| `plugin-slot:models:page:/models` | Excluded by user | Refactoring on another branch; no changes or completion claim in this sweep. |
 | `plugin-slot:projects:nav-badge-providers` | No collection | Badge provider; counts/attention, not a result-list presentation. |
 | `plugin-slot:schedule:page:/schedule` | Verified table parity | One column model, persistent URL sort and visible actions at both widths; fixtures/browser/full checks pass. Calendar unchanged; rollout pending. |
 | `plugin-slot:tasks:nav-badge-providers` | No collection | Badge provider; counts/attention, not a result-list presentation. |
 | `plugin-slot:tasks:page:/tasks` | Verified table parity + specialized | Task log has persistent URL sort, labelled dates, search-relevance isolation and shared current-task actions; fixtures/browser/full checks pass. Kanban/notes/history unchanged; rollout pending. |
-| `plugin-slot:team:page:/team` | Specialized | ReactFlow org canvas, not a generic card grid; TeamManager overlay → separated candidate. |
-| `plugin-slot:team:page:/team/[id]` | Rows + specialized | Member/lesson lists use standard rows; retain diagnostics timeline and active-context transcript semantics. |
-| `plugin-slot:team:page:/team/teams/[teamId]` | Rows + specialized | Member/lesson lists use standard rows; retain diagnostics timeline and active-context transcript semantics. |
+| `plugin-slot:team:page:/team` | Local supporting rows + canvas | TeamManager and lessons use separated rows with readable identities and independent actions; ReactFlow org canvas retained. |
+| `plugin-slot:team:page:/team/[id]` | Local rows + specialized | Lessons use separated rows; member rows, diagnostics timeline and active-context transcript remain specialized. |
+| `plugin-slot:team:page:/team/teams/[teamId]` | Rows + specialized | Member navigation and forms retained; shared team/lesson supporting rows migrated. |
 | `plugin-slot:workflows:nav-badge-providers` | No collection | Badge provider; counts/attention, not a result-list presentation. |
 | `plugin-slot:workflows:page:/workflows` | Migrated — #885 merged | User approved one DataTable with Source classification/filter, five sortable headings, unified 20-row pagination and search. Preserves summaries/assignments; full local conformance passed. |
 | `plugin-slot:workflows:page:/workflows/[id]` | Specialized | Workflow graph/editor and node palette; do not flatten into generic result rows. |
 | `plugin-slot:workflows:page:/workflows/[id]/edit` | Specialized | Workflow graph/editor and node palette; do not flatten into generic result rows. |
 | `plugin-slot:workflows:page:/workflows/new` | Specialized | Workflow graph/editor and node palette; do not flatten into generic result rows. |
 | `plugin-template:_template` | No result collection | Template demonstrates status/form/widget composition; not a collection choice. |
-| `plugin-template:reference-plugin` | Rows candidate | Bookmark cards are text-first; migrate author example after row contract is approved. |
+| `plugin-template:reference-plugin` | Local DataTable | Bookmark example demonstrates table-first comparison, persistent sorting, separated narrow rows and independent outbound/Delete actions. |
 | `shared-component:packages/host/src/components/layout/app-sidebar` | Navigation | Keep route selection/navigation semantics. |
 | `shared-component:packages/host/src/components/layout/connection-dot` | No collection | Primitive, feedback, overlay, identity or single-control composition; retain parent-specific collection decisions. |
 | `shared-component:packages/host/src/components/layout/dispatch-timer` | No collection | Primitive, feedback, overlay, identity or single-control composition; retain parent-specific collection decisions. |
@@ -103,12 +103,13 @@ automatically tables. Brainstorm is the first local correction below.
 | `shared-component:packages/host/src/components/layout/sidebar-promo` | No collection | Primitive, feedback, overlay, identity or single-control composition; retain parent-specific collection decisions. |
 | `shared-component:packages/host/src/components/layout/toaster` | No collection | Primitive, feedback, overlay, identity or single-control composition; retain parent-specific collection decisions. |
 | `shared-component:packages/host/src/components/not-found` | No collection | Primitive, feedback, overlay, identity or single-control composition; retain parent-specific collection decisions. |
-| `shared-component:packages/host/src/components/runtime/capabilities-tab` | Rows candidate | Capability cards repeat labelled status/dependencies; compare separated composition. |
-| `shared-component:packages/host/src/components/runtime/extensions-section` | Keep tables | Aligned runtime facts/extensions; review narrow overflow/controls. |
-| `shared-component:packages/host/src/components/runtime/overview-tab` | Keep tables | Aligned runtime facts/extensions; review narrow overflow/controls. |
-| `shared-component:packages/host/src/components/runtime/runtimes-tab` | Specialized + review | Keep switch-progress timeline; inspect runtime-choice cards as selection, not generic browsing. |
-| `shared-component:packages/host/src/components/runtime/shared` | Supporting composition | Entity/status helpers; defer collection choice to parent. |
-| `shared-component:packages/host/src/components/search/global-search-overlay` | Specialized + review | Preserve command/search navigation; review local card layout against Grid and existing migration debt. |
+| `shared-component:packages/host/src/components/runtime/capabilities-tab` | Local DataTable | Installed capabilities compare readiness/package/dependencies with persistent sorting, narrow metadata and Settings actions. |
+| `shared-component:packages/host/src/components/runtime/extensions-section` | Local table parity | Full path/SHA retained; persistent sorting, separated narrow rows and exact trust confirmation. |
+| `shared-component:packages/host/src/components/runtime/overview-tab` | Local table parity | Runtime capabilities and setup checks share sorting/narrow roles; repair confirmation and evidence retained. |
+| `shared-component:packages/host/src/components/runtime/runtimes-tab` | Local table + specialized | Sortable runtime roster with independent Preview switch; guided switch confirmation/progress/results retained. |
+| `shared-component:packages/host/src/components/runtime/runtime-table` | Local shared composition | Host-only DataTable + Select composition; URL-backed header/selector sorting, null-last values and separated narrow rows. No new public API. |
+| `shared-component:packages/host/src/components/runtime/shared` | Supporting helpers | Status/capability language helpers retained; orphaned EntityCardBody removed. |
+| `shared-component:packages/host/src/components/search/global-search-overlay` | Keep specialized command search | CommandGroup/CommandItem own type grouping, active result and Enter navigation; not a generic record index. Optional preview-grid CSS remains existing style-migration debt, not a reason to replace command semantics with DataTable. |
 | `shared-component:src/components/agent-avatar` | No collection | Primitive, feedback, overlay, identity or single-control composition; retain parent-specific collection decisions. |
 | `shared-component:src/components/conversation/reply-toast` | No collection | Primitive, feedback, overlay, identity or single-control composition; retain parent-specific collection decisions. |
 | `shared-component:src/components/conversation/use-conversation-attention` | No collection | Primitive, feedback, overlay, identity or single-control composition; retain parent-specific collection decisions. |

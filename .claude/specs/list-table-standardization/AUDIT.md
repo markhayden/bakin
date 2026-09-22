@@ -1,5 +1,95 @@
 # List/table audit — working evidence for #806
 
+## Final fleet sweep — 2026-09-22
+
+This section supersedes the historical pending recommendations below. The user
+approved finishing all remaining collection work in one batch; Models is
+explicitly excluded because it is being refactored separately. Previously
+approved Projects, Messaging, Tasks, Schedule and Workflows are not redesigned.
+
+| Surface | Final disposition | Protected behavior |
+| --- | --- | --- |
+| Runtime capability/setup/runtime/extension inventories | Responsive DataTables with a host-local composition of the existing Select and DataTable | URL-backed heading/selector sorting; numeric and null-last ordering; full path/SHA and readiness facts; independent trust, repair and switch confirmations |
+| Health check registry | Grouped disclosures containing sortable DataTables | Healthy/not-applicable/failed evidence retained; concerning groups initially open; revealing evidence focuses the visible narrow or wide copy without adding permanent tab stops |
+| Health overview incidents/notices | Separated supporting rows, not independently sorted tables | Canonical attention priority, capped preview/disclosure, exact acknowledgement/snooze/resolution actions retained |
+| Chat recent conversations | Separated supporting rows with wrapping identities | Six-item preview, unread/open behavior and conversation/agent starters retained |
+| Team management and lessons | Separated supporting rows | Reporting fields, confirmed deletion, lesson switches, pending locks and URL highlighting retained; org canvas untouched |
+| Assets attachments/history/references/downloads | Separated supporting rows | Preview/promote/delete and outbound/download actions remain independent; unlink errors/retry, read-only behavior, pending lock and stale-response protection covered |
+| Branding materials/documents/lessons | Separated supporting rows | File names wrap; existing editing, staged saves, toggles and delete actions retained; logo/palette/media galleries unchanged |
+| Terminal index (Bits) | Responsive sortable DataTable | Persistent sorting, full working directory, named independent session menu and existing operation/confirmation ownership semantics; terminal workspace unchanged |
+| Reference bookmark plugin | Table-first author example | Shared heading/selector sorting, narrow roles, outbound links and independent deletion; creation form/conversation example retained |
+
+Retained specialized interfaces are intentional, not unfinished card-to-table
+work: media/brand galleries, org/workflow canvases, calendars, boards, timelines,
+conversation streams, pickers/navigation and labelled repeated form controls.
+The census now annotates all 103 IDs, including the new host-local RuntimeTable.
+No public SDK entrypoint, prop or interaction pattern was added. Mobile filter
+takeover remains the separate #759 design-system workstream.
+
+Patterns: `lists/data-table.stories.tsx` — `NarrowRoles`,
+`SortedPagedDualRender`; `lists/list-rows.stories.tsx` — `CanonicalUsage`,
+`InteractiveRows`, `DenseRows`; `pages/page.stories.tsx` — `ControlModes`.
+Focused SDK `/patterns`, `/ui`, `/layout`, `/navigation` only for the collection
+compositions. Reference-plugin README documents the table-first example.
+
+Verification so far: 937 embedded Chat/Team/Assets/Brands tests pass; focused
+Runtime/Health and new Asset locking/failure regressions pass. New real-SDK
+Chat/Team/Assets/Brands fixtures and expanded Health fixtures pass at desktop
+and 320px; reports and mobile images were reviewed. Asset screenshot review
+caught an inherited absolute delete position, corrected with ListRowActions.
+Bits Terminal tests pass (22, with 8 environment-gated skips), as do its build and
+typecheck. Final full-suite and isolated browser evidence is recorded below
+when complete. No screenshot baselines or suppressions were changed.
+
+The user explicitly approved only the host initial-JS measurement of 234,532
+bytes and Terminal measurement of 514,331 bytes. Growth allowances and every
+other budget are unchanged. Removed one obsolete Runtime raw-control exception
+and reduced existing style-migration allowances; none were broadened.
+
+Approved earlier batch saved locally: Health `90e34a822`, Memory `75253a09b`,
+Explore `76e399298`, Settings `f33f91d8e`, checkpoint notes `487cbb142`.
+The earlier combined full run passed (`bakin-collections-batch-full.log`).
+The final sweep's first full run exposed stale generated CSS after removal of
+the old card helper; rebuilding the canonical artifact fixed all six packaging
+tests. The local live host on port 3737 stopped answering during final browser
+checks; it was not restarted or mutated. An isolated real-SDK fixture is used
+for remaining collection behavior, not claimed as a live-host integration test.
+
+Final isolated browser proof passes at 1440/320px for Runtime, Terminal and
+reference bookmarks: shared header/selector sort, valid-query reconstruction,
+invalid-query fallback, numeric/null-last ordering, full paths/SHA, named switch
+and session confirmation, independent outbound links and rejected deletion
+retaining records. No overflow or page errors. This fixture explicitly resolves
+Bits imports to the actual SDK and shared React, not its unit-test shim.
+RuntimeTable also has focused ordering/query-input regression tests (2 pass).
+Independent final reviews of embedded/reference, Runtime/Health and Terminal
+found no remaining blockers.
+
+Evidence: `/private/tmp/bakin-final-isolated-browser.log`,
+`/private/tmp/bakin-final-{runtime-capabilities,runtime-roster,terminal,reference}-{1440,320}.png`,
+`/private/tmp/bakin-final-runtime-sort-tests.log`,
+`/private/tmp/bakin-final-regressions.log`,
+`/private/tmp/bakin-final-{chat,team,assets,brands,health,reference}-fixture.log`.
+Package reports are `plugins/<id>/test-results/bakin-ui/index.html` and
+`examples/reference-plugin/test-results/bakin-ui/index.html`.
+
+Final product commits: Runtime `92096eed7`, Health registry/incidents
+`4900329e8`, Assets `96f8ea3af`, Chat/Team/Branding `792d76ed0`, reference
+example `5ffd7ff77`; companion Bits Terminal `fd90256`. No remote push, PR,
+release, dependency change or compatibility-pin update is included.
+
+Final verification: `bun run ui:conformance --full` **passed**. This includes
+quick governance/typecheck, lint (zero errors, six existing warnings), 9,559
+repository tests (18 existing skips), production builds, payload ratchet,
+deterministic Storybook, 335 interaction tests, 280 unchanged canonical visual
+comparisons, 93 Chromium/Firefox/WebKit checks, plugin conformance harness and
+published docs/catalog. Log: `/private/tmp/bakin-final-fleet-full.log`.
+Late Runtime sort tests and the final Asset action-slot/Health focus checks were
+also rerun separately (34 tests), followed by a passing quick and lint run.
+No screenshot baseline, tolerance, dependency or compatibility pin changed.
+The list/table migration checkpoint is complete locally; PRs and coordinated
+release remain separate authorized actions. Models and #759 remain separate.
+
 ## Memory, Settings and Extend — combined batch (2026-09-22)
 
 User asked to handle these together and explicitly excluded Models, which is
