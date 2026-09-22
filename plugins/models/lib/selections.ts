@@ -76,6 +76,8 @@ export async function describeSelections(ctx: PluginContext) {
   const proposals = proposeRepairs(states.filter((s) => s.ref !== 'ui:mode'), evaluation.reportFor, { recommendFor: (ref) => (plan ? recommendForRef(plan, ref) : null), revision })
   return {
     revision,
+    // Which routing knobs the ACTIVE runtime honors — the page hides the rest.
+    support: ctx.runtime.models.routingSupport(),
     states: states.map((s) => ({
       ...s,
       eligibility: s.model && s.ref !== 'ui:mode' ? evaluation.eligibilityOf(s) ?? { status: 'unknown', detail: 'not evaluated' } : undefined,

@@ -11,6 +11,9 @@ import { pluginFetch, pluginFetchJson } from "@makinbakin/sdk/utils"
 import type { AgentModelConfig, AvailableModel, ModelsConfigResponse } from '../types'
 import type { RoutingConfig as RoutingConfigArg } from '../types'
 import { aliasOps, policyDefaultsOps, routingDiffOps, type MutationOp } from '../lib/selection-ops'
+import { useCatalog } from './use-catalog'
+
+export type { ProbeVerdictWire } from './use-catalog'
 
 /** This plugin's id — every own-route call goes through `pluginFetch(PLUGIN_ID, …)`. */
 const PLUGIN_ID = 'models'
@@ -21,11 +24,6 @@ const PLUGIN_ID = 'models'
  * that spins forever.
  */
 const LOAD_TIMEOUT_MS = 10_000
-/** Provider round-trip: slower than a local read, still bounded. */
-const REFRESH_TIMEOUT_MS = 30_000
-// Verify = refresh + N bounded probes (concurrency 3, 20s adapter ceiling
-// each) — the budget covers the worst honest case without hanging the button.
-const VERIFY_TIMEOUT_MS = 90_000
 
 function isAbortError(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { name?: string }).name === 'AbortError'
@@ -33,22 +31,6 @@ function isAbortError(err: unknown): boolean {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
-}
-
-/** Wire shape of GET /available (the cached runtime catalog + its cache facts). */
-interface AvailableModelsPayload {
-  models?: AvailableModel[]
-  cached?: boolean
-  cachedAt?: number | null
-  stale?: boolean
-  error?: string | null
-}
-
-/** Per-model probe verdict from POST /refresh?probe=1 (#852). */
-export interface ProbeVerdictWire {
-  model: string
-  status: 'verified' | 'rejected' | 'skipped'
-  detail?: string
 }
 
 /** Wire shape of POST /selections (the ONE write path, #907). */
@@ -167,27 +149,15 @@ export interface RoutingConfigShape { routes: WorkClassRouteRow[]; tagOverrides:
  * to the former inline hooks — same call order, same effects.
  */
 export function useModelsData() {
-  /**
-   * The selections revision the DEFAULTS snapshot (config: default /
-   * subagent / positional fallbacks) was loaded under — every save posts
-   * under it. Only `loadConfig` refreshes it: the alias and routing tabs
-   * load their own snapshots without touching the revision, because a
-   * fresher revision paired with a stale fallback snapshot would let the
-   * server accept positional fallback ops built against the wrong list.
-   * A save adopts the returned revision; a stale refusal reloads all three.
-   */
+  /** The selections revision the editor snapshots (config / aliases / routing) were loaded under — every save posts under it. */
   const revisionRef = useRef<string | null>(null)
   const [tab, setTab] = useQueryState('tab', 'agents')
   const [agents, setAgents] = useState<AgentModelConfig[]>([])
-  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
-  const [modelsCached, setModelsCached] = useState(false)
-  const [modelsCachedAt, setModelsCachedAt] = useState<number | null>(null)
-  const [modelsStale, setModelsStale] = useState(false)
-  const [modelsError, setModelsError] = useState<string | null>(null)
-  const [modelsLoaded, setModelsLoaded] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  const [verifying, setVerifying] = useState(false)
-  const [probeVerdicts, setProbeVerdicts] = useState<ProbeVerdictWire[] | null>(null)
+  const {
+    availableModels, modelsCached, modelsCachedAt, modelsStale, modelsError, modelsLoaded,
+    refreshing, verifying, probeVerdicts, handleRefresh, handleVerify, modelSelectOptions, availableProviders,
+    fetchAvailable,
+  } = useCatalog()
   const [aliases, setAliases] = useState<Record<string, string>>({})
   const [pendingOwn, setPendingOwn] = useState<Record<string, string>>({})
   const [pendingSub, setPendingSub] = useState<Record<string, string>>({})
@@ -240,86 +210,13 @@ export function useModelsData() {
    */
   const fetchConfig = useCallback(() => loadConfig(), [loadConfig])
 
-  const fetchAvailable = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const data = await fetchPluginJson<AvailableModelsPayload>('available', 'Models', LOAD_TIMEOUT_MS, signal)
-      if (signal?.aborted) return
-      setAvailableModels(data.models ?? [])
-      setModelsCached(!!data.cached)
-      setModelsCachedAt(data.cachedAt ?? null)
-      setModelsStale(!!data.stale)
-      setModelsError(data.error ?? null)
-    } catch (err) {
-      if (isAbortError(err) || signal?.aborted) return
-      // The Available tab renders `modelsError`; no console-only failure here.
-      setModelsError(errorMessage(err))
-    } finally {
-      if (!signal?.aborted) setModelsLoaded(true)
-    }
-  }, [])
-
-  const handleRefresh = useCallback(async () => {
-    if (refreshing) return
-    setRefreshing(true)
-    try {
-      // Bounded like every read path: this also AUTO-fires when the cache is
-      // stale, and `refreshing` gates the Refresh button's `disabled`, so an
-      // unbounded hang left the control permanently dead and spinning.
-      const data = await fetchPluginJson<AvailableModelsPayload>(
-        'refresh',
-        'Refresh',
-        REFRESH_TIMEOUT_MS,
-        undefined,
-        { method: 'POST' },
-      )
-      if (Array.isArray(data.models)) {
-        setAvailableModels(data.models)
-      }
-      setModelsCached(!!data.cached)
-      setModelsCachedAt(data.cachedAt ?? null)
-      setModelsStale(!!data.stale)
-      setModelsError(data.error ?? null)
-    } catch (err) {
-      setModelsError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setRefreshing(false)
-    }
-  }, [refreshing])
-
-  const handleVerify = useCallback(async () => {
-    // Probing is billed (~pennies) and EXPLICIT (#852): only this action ever
-    // passes probe=1 — handleRefresh and the stale auto-refresh never do.
-    if (verifying || refreshing) return
-    setVerifying(true)
-    try {
-      const data = await fetchPluginJson<AvailableModelsPayload & { probe?: { supported: boolean; verdicts: ProbeVerdictWire[] } }>(
-        'refresh?probe=1',
-        'Verify availability',
-        VERIFY_TIMEOUT_MS,
-        undefined,
-        { method: 'POST' },
-      )
-      if (Array.isArray(data.models)) {
-        setAvailableModels(data.models)
-      }
-      setModelsCached(!!data.cached)
-      setModelsCachedAt(data.cachedAt ?? null)
-      setModelsStale(!!data.stale)
-      setModelsError(data.error ?? null)
-      setProbeVerdicts(data.probe?.verdicts ?? null)
-    } catch (err) {
-      setModelsError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setVerifying(false)
-    }
-  }, [verifying, refreshing])
-
   const fetchAliases = useCallback(async (signal?: AbortSignal) => {
     try {
       const data = await fetchPluginJson<{ aliases?: Record<string, string> }>('aliases', 'Aliases', LOAD_TIMEOUT_MS, signal)
       if (signal?.aborted) return
       if (data.aliases) setAliases(data.aliases)
       clearError('aliases')
+      revisionRef.current = await readRevision()
     } catch (err) {
       if (isAbortError(err) || signal?.aborted) return
       reportError('aliases', `Failed to load model aliases: ${errorMessage(err)}`)
@@ -329,36 +226,9 @@ export function useModelsData() {
   useEffect(() => {
     const controller = new AbortController()
     loadConfig(controller.signal)
-    fetchAvailable(controller.signal)
     fetchAliases(controller.signal)
     return () => controller.abort()
-  }, [loadConfig, fetchAvailable, fetchAliases])
-
-  // Each agent row's picker is judged under THAT agent's credentials (#907
-  // review): the unscoped catalog answers "can this install run it", but an
-  // agent pin is validated by the write path under the agent's own keys, so
-  // the picker that stages it must disable by the same verdict. One scoped
-  // read per agent off the same cached catalog, re-run whenever the roster
-  // or the catalog changes; the unscoped list stands in until a row's read
-  // lands (or fails — never a blank picker).
-  const [agentCatalogs, setAgentCatalogs] = useState<Record<string, AvailableModel[]>>({})
-  useEffect(() => {
-    if (agents.length === 0 || !modelsLoaded) return
-    const controller = new AbortController()
-    void Promise.all(agents.map(async (agent) => {
-      try {
-        const data = await fetchPluginJson<AvailableModelsPayload>(`available?agentId=${encodeURIComponent(agent.agentId)}`, 'Models', LOAD_TIMEOUT_MS, controller.signal)
-        return [agent.agentId, data.models ?? []] as const
-      } catch (err) {
-        if (!isAbortError(err) && !controller.signal.aborted) console.warn(`Agent-scoped model catalog for ${agent.agentId} failed; using the unscoped catalog: ${errorMessage(err)}`)
-        return null
-      }
-    })).then((entries) => {
-      if (controller.signal.aborted) return
-      setAgentCatalogs(Object.fromEntries(entries.filter((e): e is readonly [string, AvailableModel[]] => e !== null)))
-    })
-    return () => controller.abort()
-  }, [agents, availableModels, modelsLoaded])
+  }, [loadConfig, fetchAliases])
 
   const fetchRouting = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -366,6 +236,7 @@ export function useModelsData() {
       if (signal?.aborted) return
       setRouting({ routes: data.routes ?? [], tagOverrides: data.tagOverrides ?? [] })
       clearError('routing')
+      revisionRef.current = await readRevision()
     } catch (err) {
       if (isAbortError(err) || signal?.aborted) return
       // Empty routing reads as "everything inherits the agent model" — a load
@@ -394,16 +265,6 @@ export function useModelsData() {
     return () => controller.abort()
   }, [tab, fetchRouting])
 
-  // Auto-refresh in the background when the served cache was stale.
-  // We surface the cached data immediately; the refresh swaps rows
-  // in place when it returns. handleRefresh guards against double-firing.
-  useEffect(() => {
-    if (modelsLoaded && modelsStale && !refreshing) {
-      handleRefresh()
-    }
-    // Only react to the stale signal changing after initial load.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelsLoaded, modelsStale])
 
   // -------------------------------------------------------------------------
   // Agent config actions
@@ -620,14 +481,6 @@ export function useModelsData() {
   // upstream of this derivation.
   const modelOptions: AvailableModel[] = availableModels
   const modelsReady = modelsLoaded && availableModels.length > 0
-  // Picker options: ineligible rows disabled with their reason (#907) — the
-  // ONE mapping every ModelSelect on this page uses. Agent rows take the
-  // agent-scoped verdicts (their own credentials), falling back to the
-  // unscoped catalog until the scoped read lands.
-  const modelSelectOptions = toModelSelectOptions(modelOptions)
-  const agentModelSelectOptions = (agentId: string) => toModelSelectOptions(agentCatalogs[agentId] ?? modelOptions)
-
-  const availableProviders = [...new Set(modelOptions.map((m) => m.provider))].sort((a, b) => a.localeCompare(b))
   const effectiveDefaultModel = pendingDefaultModel ?? defaultModel
   const effectiveDefaultSubagentModel = pendingDefaultSubagentModel === undefined
     ? (defaultSubagentModel || '__default__')
@@ -640,13 +493,13 @@ export function useModelsData() {
     // tab navigation
     tab, setTab,
     // config + agents
-    modelSelectOptions, agentModelSelectOptions, fallbackCandidateOptions,
+    modelSelectOptions, fallbackCandidateOptions,
     agents, loading, error, saving, runtimeStatus,
     fetchConfig,
     // available models
     availableModels, modelOptions, modelsReady, availableProviders,
     modelsCached, modelsCachedAt, modelsStale, modelsError, modelsLoaded, refreshing,
-    handleRefresh,
+    handleRefresh, fetchAvailable,
     verifying, probeVerdicts, handleVerify,
     // aliases
     aliases, newAliasName, setNewAliasName, newAliasTarget, setNewAliasTarget,

@@ -19,10 +19,12 @@ mock.module('@/hooks/use-query-state', () => ({
   },
 }))
 
+/** Initial URL state per key — a test sets `?ref=` here before rendering. */
+const queryOverrides: Record<string, string> = {}
 mock.module('@makinbakin/sdk/navigation', () => ({
-  useQueryState: (_key: string, defaultValue: string) => {
+  useQueryState: (key: string, defaultValue: string) => {
     const React = require('react') as typeof import('react')
-    return React.useState(defaultValue)
+    return React.useState(queryOverrides[key] ?? defaultValue)
   },
   useQueryArrayState: () => {
     const React = require('react') as typeof import('react')
@@ -82,6 +84,9 @@ function createDeferred<T>(): Deferred<T> {
 
 describe('ModelsPage component', () => {
   let fetchCalls: FetchCall[]
+  /** The first CONFIGURATION write — the page's own `ui:mode` view persist is not one. */
+  const configWrite = () => fetchCalls.find((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections'
+    && !((c.body?.ops as Array<{ ref: string }> | undefined) ?? []).every((op) => op.ref === 'ui:mode'))
   let availableFetchCount: number
   let selectionsRevision = 0
   let availableResponse: AvailableModelsPayload
@@ -96,6 +101,9 @@ describe('ModelsPage component', () => {
     fallbackModels: string[]
   }
   let aliasesState: Record<string, string>
+  let uiModeState: string | null
+  let pendingState: Array<Record<string, unknown>>
+  let evidenceState: Record<string, string>
   let routingState: {
     routes: Array<{ workClass: string; model?: string; thinking?: string }>
     tagOverrides: Array<{ tag: string; model?: string; thinking?: string }>
@@ -143,6 +151,10 @@ describe('ModelsPage component', () => {
     aliasesState = {
       sonnet: 'anthropic/claude-sonnet-4-6',
     }
+    uiModeState = null
+    pendingState = []
+    evidenceState = { catalog: 'ok', runtimeAvailability: 'ok', credentials: 'ok', rejections: 'ok' }
+    for (const key of Object.keys(queryOverrides)) delete queryOverrides[key]
     routingState = {
       routes: [
         { workClass: 'workflow', model: 'anthropic/claude-sonnet-4-6', thinking: 'medium' },
@@ -182,9 +194,41 @@ describe('ModelsPage component', () => {
       if (url === '/api/plugins/models/routing' && method === 'GET') {
         return jsonResponse(routingState)
       }
-      // The ONE write path (#907): every save arrives as selection ops.
+      // The ONE write path (#907): every save arrives as selection ops. The
+      // read mirrors the fake config so the page classifies its mode honestly.
       if (url === '/api/plugins/models/selections' && method === 'GET') {
-        return jsonResponse({ revision: `rev-${selectionsRevision}`, states: [], proposals: [], pending: [], evidence: {} })
+        const states = [
+          { ref: 'policy:defaultModel', model: configState.defaultModel, document: 'policy', label: 'Default model' },
+          { ref: 'policy:defaultSubagentModel', model: configState.defaultSubagentModel, document: 'policy', label: 'Default subagent model' },
+          ...configState.fallbackModels.map((model, n) => ({ ref: `policy:fallback:${n}`, model, document: 'policy', label: `Fallback ${n + 1}` })),
+          ...Object.entries(aliasesState).map(([name, model]) => ({ ref: `policy:alias:${name}`, model, document: 'policy', label: `Alias ${name}` })),
+          ...configState.agents.flatMap((agent) => [
+            { ref: `agent:${agent.agentId}:model`, model: agent.ownModel ?? null, document: `agent:${agent.agentId}`, label: String(agent.name) },
+            { ref: `agent:${agent.agentId}:subagentModel`, model: agent.subagentModel ?? null, document: `agent:${agent.agentId}`, label: `${agent.name} subagents` },
+          ]),
+          ...routingState.routes.map((r) => ({ ref: `route:${r.workClass}`, model: r.model ?? null, ...(r.thinking ? { thinking: r.thinking } : {}), document: 'routing', label: r.workClass })),
+          ...routingState.tagOverrides.map((t) => ({ ref: `tag:${t.tag}`, model: t.model ?? null, ...(t.thinking ? { thinking: t.thinking } : {}), document: 'routing', label: t.tag })),
+          { ref: 'ui:mode', model: uiModeState, document: 'routing', label: 'Models page mode' },
+        ]
+        const support = { defaultModel: true, fallbackModels: true, defaultSubagentModel: true, aliases: true, perAgentSubagentModel: true, supportedThinkingLevels: ['off', 'low', 'medium', 'high'], perTurnModel: true }
+        return jsonResponse({ revision: `rev-${selectionsRevision}`, support, states, proposals: [], pending: pendingState, evidence: evidenceState })
+      }
+      if (url === '/api/plugins/models/plan' && method === 'GET') {
+        const agent = configState.defaultModel
+        return jsonResponse({
+          revision: `rev-${selectionsRevision}`,
+          current: { agent, chores: { model: agent, models: [agent], mixed: false }, enrichmentEnabled: true },
+          recommended: {
+            agent: { model: agent, why: 'Your current default model — it can run here.', suitability: 'known' },
+            chores: { model: 'anthropic/claude-haiku-4-5', why: '~$6 per 1M tokens vs ~$18 for anthropic/claude-sonnet-4-6', suitability: 'known' },
+            routes: ['auto-title', 'enrichment', 'relay', 'team-routing', 'skill-mapping'].map((workClass) => ({ workClass, model: 'anthropic/claude-haiku-4-5', reason: 'cheapest' })),
+            enrichment: 'chores',
+            ops: ['auto-title', 'enrichment', 'relay', 'team-routing', 'skill-mapping'].map((workClass) => ({ ref: `route:${workClass}`, set: { model: 'anthropic/claude-haiku-4-5' } })),
+            notes: [],
+          },
+          routeProposals: { proposals: [], skipped: [] },
+          candidates: 4,
+        })
       }
       if (url === '/api/plugins/models/selections' && method === 'POST') {
         // Revision-checked like the real mutator: a write under a revision
@@ -219,6 +263,8 @@ describe('ModelsPage component', () => {
             if (op.set.thinking !== undefined) { if (op.set.thinking) next.thinking = op.set.thinking; else delete next.thinking }
             if (next.model || next.thinking) routes.push(next as typeof routingState.routes[number])
             routingState = { ...routingState, routes }
+          } else if (kind === 'ui' && a === 'mode') {
+            uiModeState = op.set.model ?? null
           } else if (kind === 'tag' && a) {
             const tagOverrides = routingState.tagOverrides.filter((t) => t.tag !== a)
             if (op.set.model || op.set.thinking) tagOverrides.push({ tag: a, ...(op.set.model ? { model: op.set.model } : {}), ...(op.set.thinking ? { thinking: op.set.thinking } : {}) } as typeof routingState.tagOverrides[number])
@@ -247,7 +293,7 @@ describe('ModelsPage component', () => {
     expect(await screen.findByText('Patch')).toBeTruthy()
     expect(screen.getByText('Global Defaults')).toBeTruthy()
     expect(container.querySelector('[data-archetype="page"]')).toBeTruthy()
-    expect(screen.getByRole('tabpanel', { name: 'Agent Config' })).toBeTruthy()
+    expect(screen.getByRole('tabpanel', { name: 'Advanced' })).toBeTruthy()
     expect(availableFetchCount).toBe(1)
   })
 
@@ -262,7 +308,7 @@ describe('ModelsPage component', () => {
     fireEvent.click(screen.getByText('Save Defaults'))
 
     await waitFor(() => {
-      const call = fetchCalls.find((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+      const call = configWrite()
       expect(call).toBeTruthy()
       // Only the changed ref rides the write (D24): the default model.
       expect(call?.body?.ops).toEqual([{ ref: 'policy:defaultModel', set: { model: 'openai-codex/gpt-5.4' } }])
@@ -352,7 +398,7 @@ describe('ModelsPage component', () => {
     fireEvent.click(within(row as HTMLElement).getByText('Save'))
 
     await waitFor(() => {
-      const call = fetchCalls.find((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+      const call = configWrite()
       expect(call?.body?.ops).toEqual([{ ref: 'agent:patch:model', set: { model: 'google/gemini-2.5-pro' } }])
       expect(runtimeState.refresh).toHaveBeenCalled()
     })
@@ -371,7 +417,7 @@ describe('ModelsPage component', () => {
     await user.click(screen.getByRole('button', { name: 'Add alias' }))
 
     await waitFor(() => {
-      const call = fetchCalls.find((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+      const call = configWrite()
       expect(call?.body?.ops).toEqual([{ ref: 'policy:alias:fast', set: { model: 'google/gemini-2.5-pro' } }])
       expect(availableFetchCount).toBe(2)
     })
@@ -387,7 +433,6 @@ describe('ModelsPage component', () => {
     fireEvent.click(await screen.findByText('Aliases'))
 
     const search = await screen.findByRole('searchbox', { name: 'Search aliases' })
-    expect(search.closest('[data-slot="page-header-controls"]')).toBeTruthy()
     expect(container.querySelector('[data-slot="form"]')).toBeTruthy()
     expect(screen.getByRole('combobox', { name: 'Target model' })).toBeTruthy()
     expect(screen.getByText('Showing 1–8 of 10')).toBeTruthy()
@@ -436,12 +481,13 @@ describe('ModelsPage component', () => {
     availableRequest = availableDeferred.promise
 
     render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Available Models'))
+    fireEvent.click(await screen.findByText('Model catalog'))
+    const catalog = within(await screen.findByTestId('model-catalog'))
 
-    expect(await screen.findByText('Loading available models')).toBeTruthy()
+    expect(await catalog.findByText('Loading available models')).toBeTruthy()
 
     availableDeferred.resolve(jsonResponse(availableResponse))
-    await screen.findByText('Claude Sonnet 4.6')
+    await catalog.findByText('Claude Sonnet 4.6')
   })
 
   it('renders the runtime models error state when no models are returned', async () => {
@@ -453,7 +499,7 @@ describe('ModelsPage component', () => {
     }
 
     render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Available Models'))
+    fireEvent.click(await screen.findByText('Model catalog'))
 
     expect(await screen.findByText('Models could not be loaded')).toBeTruthy()
     expect(screen.getByText('runtime unavailable')).toBeTruthy()
@@ -485,19 +531,20 @@ describe('ModelsPage component', () => {
     refreshRequest = refreshDeferred.promise
 
     render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Available Models'))
+    fireEvent.click(await screen.findByText('Model catalog'))
+    const catalog = within(await screen.findByTestId('model-catalog'))
 
-    await screen.findByText('Claude Sonnet 4.6')
-    fireEvent.click(screen.getByText('Refresh'))
+    await catalog.findByText('Claude Sonnet 4.6')
+    fireEvent.click(catalog.getByText('Refresh'))
 
     await waitFor(() => {
       // Busy contract: the control announces and goes inert without leaving the tab order.
-      expect(screen.getByText('Refreshing…').closest('button')?.getAttribute('aria-busy')).toBe('true')
-      expect(screen.getByText('Refreshing…').closest('button')?.getAttribute('aria-disabled')).toBe('true')
+      expect(catalog.getByText('Refreshing…').closest('button')?.getAttribute('aria-busy')).toBe('true')
+      expect(catalog.getByText('Refreshing…').closest('button')?.getAttribute('aria-disabled')).toBe('true')
     })
 
     refreshDeferred.resolve(jsonResponse(refreshResponse))
-    await screen.findByText('Refresh')
+    await catalog.findByText('Refresh')
   })
 
   it('renders cached refresh age when available models come from cache', async () => {
@@ -508,7 +555,7 @@ describe('ModelsPage component', () => {
     }
 
     render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Available Models'))
+    fireEvent.click(await screen.findByText('Model catalog'))
 
     expect(await screen.findByText(/Refreshed just now/)).toBeTruthy()
   })
@@ -544,7 +591,7 @@ describe('ModelsPage component', () => {
     }
 
     render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Available Models'))
+    fireEvent.click(await screen.findByText('Model catalog'))
 
     expect(await screen.findByText('Best frontier coding model for long-running work.')).toBeTruthy()
     expect(screen.getByText('Best for: Complex coding')).toBeTruthy()
@@ -557,18 +604,80 @@ describe('ModelsPage component', () => {
     expect(within(plainRow as HTMLElement).queryByText('High cost')).toBeNull()
   })
 
-  it('uses the shared header search pattern and strongly identifies the default model', async () => {
+  it('uses the shared search pattern inside the catalog panel and strongly identifies the default model', async () => {
     render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Available Models'))
+    fireEvent.click(await screen.findByText('Model catalog'))
+    const catalog = within(await screen.findByTestId('model-catalog'))
 
-    const search = await screen.findByRole('searchbox', { name: 'Search available models' })
-    expect(search.closest('[data-slot="page-header-controls"]')).toBeTruthy()
+    const search = await catalog.findByRole('searchbox', { name: 'Search the model catalog' })
+    expect(search.closest('[data-slot="page-controls"]')).toBeTruthy()
 
-    const defaultRow = screen.getByText('Claude Sonnet 4.6').closest('[data-model-row]')
+    const defaultRow = catalog.getByText('Claude Sonnet 4.6').closest('[data-model-row]')
     expect(defaultRow?.getAttribute('data-default')).toBe('true')
     // The catalog is a DataTable now, so the default model is identified by its
     // visible Status badge rather than the Card selection ring it used to carry.
     expect(defaultRow?.textContent).toContain('Default')
+  })
+
+  describe('page shell (Simple/Advanced, spec §3.4)', () => {
+    const modeWrites = () => fetchCalls.filter((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections'
+      && ((c.body?.ops as Array<{ ref: string; set: { model?: string | null } }> | undefined) ?? []).some((op) => op.ref === 'ui:mode'))
+
+    it('classifies an install with customizations as Advanced, persists that once, and shows the mode switch', async () => {
+      render(<ModelsPage />)
+      expect((await screen.findByRole('tab', { name: 'Advanced' })).getAttribute('aria-selected')).toBe('true')
+      expect(screen.getByRole('tabpanel', { name: 'Advanced' })).toBeTruthy()
+      await waitFor(() => expect(modeWrites()).toHaveLength(1))
+      expect(modeWrites()[0]!.body?.ops).toEqual([{ ref: 'ui:mode', set: { model: 'advanced' } }])
+    })
+
+    it('a plain two-lane install classifies as Simple and shows the lanes; no customizations line', async () => {
+      configState = { ...configState, defaultSubagentModel: null, fallbackModels: [] }
+      aliasesState = {}
+      routingState = { routes: [], tagOverrides: [] }
+      render(<ModelsPage />)
+      expect((await screen.findByRole('tab', { name: 'Simple' })).getAttribute('aria-selected')).toBe('true')
+      const panel = within(screen.getByRole('tabpanel', { name: 'Simple' }))
+      expect(await panel.findByText('Agent model')).toBeTruthy()
+      // Both lanes read the default: agent = the default, chores inherit it.
+      expect(panel.getAllByText('anthropic/claude-sonnet-4-6')).toHaveLength(2)
+      expect(screen.queryByTestId('customizations-line')).toBeNull()
+    })
+
+    it('a persisted mode wins over classification; switching writes ui:mode and flips the view', async () => {
+      uiModeState = 'simple'
+      render(<ModelsPage />)
+      expect((await screen.findByRole('tab', { name: 'Simple' })).getAttribute('aria-selected')).toBe('true')
+      // Customizations exist (fallback, alias, subagent default, workflow route) — Simple says so.
+      expect((await screen.findByTestId('customizations-line')).textContent).toContain('customizations active')
+      // No write on load: the mode was already persisted.
+      expect(modeWrites()).toHaveLength(0)
+      fireEvent.click(screen.getByRole('tab', { name: 'Advanced' }))
+      await waitFor(() => expect(modeWrites()).toHaveLength(1))
+      expect(modeWrites()[0]!.body?.ops).toEqual([{ ref: 'ui:mode', set: { model: 'advanced' } }])
+      expect(await screen.findByRole('tabpanel', { name: 'Advanced' })).toBeTruthy()
+    })
+
+    it('?ref= into an Advanced-only layer flips the VIEW without writing the mode', async () => {
+      uiModeState = 'simple'
+      queryOverrides.ref = 'agent:patch:model'
+      render(<ModelsPage />)
+      expect((await screen.findByRole('tab', { name: 'Advanced' })).getAttribute('aria-selected')).toBe('true')
+      await screen.findByText('Patch')
+      expect(modeWrites()).toHaveLength(0)
+    })
+
+    it('pending adapter writes are summarized in the header meta', async () => {
+      pendingState = [{ document: 'policy', refs: ['policy:defaultModel'], intended: { 'policy:defaultModel': 'openai-codex/gpt-5.4' }, state: 'unsettled', startedAt: Date.now() }]
+      render(<ModelsPage />)
+      expect((await screen.findByTestId('pending-writes')).textContent).toContain('1 write pending runtime confirmation')
+    })
+
+    it('partial credential evidence is disclosed in a banner', async () => {
+      evidenceState = { catalog: 'ok', runtimeAvailability: 'ok', credentials: 'partial', rejections: 'ok' }
+      render(<ModelsPage />)
+      expect(await screen.findByText('Some availability facts could not be verified')).toBeTruthy()
+    })
   })
 
   it('uses the settings form composition for routing while preserving staged saves', async () => {
@@ -587,7 +696,7 @@ describe('ModelsPage component', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save routing' }))
 
     await waitFor(() => {
-      const call = fetchCalls.find((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+      const call = configWrite()
       expect(call?.body?.ops).toEqual(expect.arrayContaining([
         { ref: 'route:scheduled', set: { model: 'anthropic/claude-haiku-4-5' } },
       ]))
@@ -611,7 +720,7 @@ describe('ModelsPage component', () => {
     }
 
     render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Available Models'))
+    fireEvent.click(await screen.findByText('Model catalog'))
 
     expect(await screen.findByText('Showing 1–8 of 11')).toBeTruthy()
     expect(screen.getByText('Model 01')).toBeTruthy()
@@ -621,7 +730,7 @@ describe('ModelsPage component', () => {
     expect(await screen.findByText('Showing 9–11 of 11')).toBeTruthy()
     expect(screen.getByText('Model 09')).toBeTruthy()
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search available models' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search the model catalog' }), {
       target: { value: 'Model 11' },
     })
 
