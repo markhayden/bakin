@@ -16,6 +16,22 @@ mock.module('../../../packages/core/src/content-dir', contentDirMock)
 
 let fixtureEntries: unknown[] = []
 
+// Page tests own search/tab/install orchestration; the real table has its own
+// dual-render/action/sorting tests and browser fixture.
+mock.module('../../../plugins/explore/components/catalog-table', () => ({
+  CatalogSortControl: () => <button aria-label="Sort catalog">Name: A–Z</button>,
+  CatalogTable: ({ entries, onSelect, onInstall }: {
+    entries: Array<{ id: string; kind: string; name: string; installed: boolean; builtin: boolean; updateAvailable?: boolean; installedVersion: string | null }>
+    onSelect: (entry: unknown) => void
+    onInstall: (entry: unknown) => void
+  }) => <div>{entries.map(entry => <div key={entry.id} data-testid={`catalog-card-${entry.kind}-${entry.id}`}>
+    <span>{entry.name}</span>
+    <span>{entry.builtin ? 'Built in' : entry.updateAvailable ? 'Update available' : entry.installed ? 'Installed' : 'Available'}</span>
+    <button onClick={() => onSelect(entry)} aria-label={`View ${entry.name} details`}>Details</button>
+    {!entry.installed && !entry.builtin && <button onClick={() => onInstall(entry)}>Install</button>}
+  </div>)}</div>,
+}))
+
 const toastMock = mock()
 
 let cachedData: unknown = null
@@ -96,8 +112,9 @@ mock.module('@makinbakin/sdk/ui', () => ({
     children,
     size,
     variant,
+    busy: _busy,
     ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement> & { size?: string; variant?: string }) => (
+  }: React.ButtonHTMLAttributes<HTMLButtonElement> & { size?: string; variant?: string; busy?: boolean }) => (
     <button data-size={size} data-variant={variant} {...props}>{children}</button>
   ),
   Banner: ({
@@ -216,7 +233,7 @@ mock.module('@makinbakin/sdk/patterns', () => ({
     />
   ),
   Page: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  PageControls: ({ children, actions }: { children: ReactNode; actions?: ReactNode }) => <div>{children}{actions}</div>,
+  PageControls: ({ children, actions, label }: { children: ReactNode; actions?: ReactNode; label: string }) => <section aria-label={label}>{children}{actions}</section>,
   PageBody: ({
     children,
     feedback,
@@ -265,6 +282,17 @@ const SKILL_PACK = { ...baseEntry, id: 'ops-skills', kind: 'skill-pack', name: '
 
 
 describe('ExplorePage', () => {
+  it('keeps category and sorting together, including when filters produce no results', () => {
+    fixtureEntries = [...AGENTS, ...PLUGINS]
+    render(<ExplorePage />)
+    const controls = screen.getByRole('region', { name: 'Catalog filters and sorting' })
+    expect(within(controls).getByTestId('facet-Creative')).toBeTruthy()
+    expect(within(controls).getByRole('button', { name: 'Sort catalog' })).toBeTruthy()
+    expect(screen.getByTestId('tab-intro').compareDocumentPosition(controls) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.change(screen.getByTestId('explore-search'), { target: { value: 'zebra' } })
+    expect(within(controls).getByRole('button', { name: 'Sort catalog' })).toBeTruthy()
+  })
+
   it('renders agent cards on the default tab only', () => {
     fixtureEntries = [...AGENTS, ...PLUGINS]
     render(<ExplorePage />)

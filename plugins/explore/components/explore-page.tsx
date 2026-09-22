@@ -1,9 +1,10 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Plus, RefreshCw, Sparkles } from 'lucide-react'
-import { Grid, Inline } from '@makinbakin/sdk/layout'
 import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
 import {
   FacetFilter,
+  ListRow,
+  ListRows,
   Page,
   PageBody,
   PageControls,
@@ -14,9 +15,6 @@ import {
   Badge,
   Banner,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
   Skeleton,
   SystemState,
   Tabs,
@@ -29,7 +27,7 @@ import {
 } from '@makinbakin/sdk/ui'
 import { toast, usePluginJsonFetch } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
-import { CatalogCard } from './catalog-card'
+import { CatalogSortControl, CatalogTable } from './catalog-table'
 import { DetailDrawer } from './detail-drawer'
 import { HubSkillsSection } from './hub-skills-section'
 import { InstallDialog } from './install-dialog'
@@ -297,22 +295,16 @@ function ExplorePageInner() {
       title="Loading the catalog"
       description="Official agents, plugins, lessons, and capabilities will appear here."
       preview={(
-        <Grid layout="cards" gap="item">
+        <ListRows variant="separated" aria-label="Loading catalog items">
           {Array.from({ length: 6 }, (_, index) => (
-            <Card key={index} size="sm">
-              <CardHeader>
-                <Inline wrap={false}>
-                  <Skeleton shape="circle" className="size-bakin-8" />
-                  <Skeleton shape="text" className="min-w-0 flex-1" />
-                </Inline>
-              </CardHeader>
-              <CardContent className="grid gap-bakin-2">
+            <ListRow key={index}>
+              <div className="grid flex-1 gap-bakin-2">
                 <Skeleton shape="text" />
                 <Skeleton shape="text" className="w-2/3" />
-              </CardContent>
-            </Card>
+              </div>
+            </ListRow>
           ))}
-        </Grid>
+        </ListRows>
       )}
     />
   ) : visible.length === 0 ? (
@@ -390,9 +382,18 @@ function ExplorePageInner() {
         </TabsList>
       </Tabs>
 
+      {TAB_INTROS[tab] ? (
+        <section data-testid="tab-intro" className="grid max-w-3xl gap-bakin-1">
+          <h2>{TAB_INTROS[tab].title}</h2>
+          <Text size="body" tone="muted" as="p" className="leading-relaxed">
+            {TAB_INTROS[tab].blurb}
+          </Text>
+        </section>
+      ) : null}
+
       <PageControls
         variant={categoryOptions.length > 0 ? 'filters' : 'default'}
-        label="Catalog filters and maintenance"
+        label="Catalog filters and sorting"
         actions={maintenanceActions}
       >
         {categoryOptions.length > 0 ? (
@@ -410,6 +411,7 @@ function ExplorePageInner() {
             No categories in this section
           </Text>
         )}
+        <CatalogSortControl />
       </PageControls>
 
       <PageBody
@@ -425,27 +427,13 @@ function ExplorePageInner() {
         ) : undefined}
         state={resultState}
       >
-        {TAB_INTROS[tab] ? (
-          <section data-testid="tab-intro" className="grid max-w-3xl gap-bakin-1">
-            <h2>
-              {TAB_INTROS[tab].title}
-            </h2>
-            <Text size="body" tone="muted" as="p" className="leading-relaxed">
-              {TAB_INTROS[tab].blurb}
-            </Text>
-          </section>
-        ) : null}
-
         {/* The ecosystem lane (#687) lives INSIDE Capabilities — one unified
             "teach your agents" surface: paste-a-link CTA + installed hub
             skills above the curated grid, never a separate tab. */}
         {tab === 'capabilities' && <HubSkillsSection />}
 
-        <Grid layout="cards" gap="item">
-          {visible.map((entry) => (
-            <CatalogCard
-              key={`${entry.kind}:${entry.id}`}
-              entry={entry}
+        <CatalogTable
+              entries={visible}
               activeAdapter={catalogState?.activeAdapter}
               onSelect={(selectedEntry) => setSelectedKey(`${selectedEntry.kind}:${selectedEntry.id}`)}
               onInstall={(installTarget) => {
@@ -453,8 +441,6 @@ function ExplorePageInner() {
                 setInstallOpen(true)
               }}
             />
-          ))}
-        </Grid>
       </PageBody>
 
       <DetailDrawer

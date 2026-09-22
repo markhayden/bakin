@@ -402,11 +402,11 @@ export function HubSkillsSection() {
       {installed.length > 0 && (
         <div className="grid gap-bakin-2">
           <h3>Installed</h3>
-          <ListRows variant="bordered" size="sm">
+          <ListRows variant="separated" size="sm" aria-label="Installed capabilities">
             {installed.map((row) => (
               <ListRow key={row.packageId + row.skillName}>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-bakin-2 text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">
+                  <div className="flex flex-wrap items-center gap-bakin-2 break-words text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">
                     {row.skillName} <Text size="meta" tone="muted">v{row.version}</Text>
                     <Badge tone="neutral" variant="soft" size="xs">{sourceChip(row.source, row.hub)}</Badge>
                   </div>
