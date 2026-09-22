@@ -202,18 +202,18 @@ describe('concurrent dispatch', () => {
       ],
     })
 
-    const cycleStart = Date.now()
     await dispatchTasks(tempDir, 3737) // returns without awaiting either turn
-    const cycleDuration = Date.now() - cycleStart
 
-    // Both sends fired in one cycle; the cycle didn't wait for any turn.
+    // Both sends fired and remain unresolved after the cycle returned. This
+    // proves nonblocking dispatch without timing unrelated CI setup/I/O.
     expect(sendCalls.map((c) => c.agentId).sort()).toEqual(['jessica', 'pixel'])
-    expect(cycleDuration).toBeLessThan(1000)
+    expect(pendingSends.get('jessica')).toHaveLength(1)
+    expect(pendingSends.get('pixel')).toHaveLength(1)
     expect(getInFlightTurnCount()).toBe(2)
 
     // pixel finishes while jessica is still mid-turn.
     releaseSend('pixel')
-    await tick()
+    await waitUntil(() => getInFlightTurnCount('pixel') === 0, { label: 'pixel turn to settle independently' })
     expect(getInFlightTurnCount('pixel')).toBe(0)
     expect(getInFlightTurnCount('jessica')).toBe(1)
 
