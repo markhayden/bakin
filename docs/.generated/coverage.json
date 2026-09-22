@@ -4,8 +4,8 @@
   "surfaces": {
     "cliCommands": {
       "status": "active",
-      "count": 81,
-      "examples": 98,
+      "count": 82,
+      "examples": 99,
       "source": "src/core/cli/registry.ts"
     },
     "httpRoutes": {
@@ -23,7 +23,7 @@
     },
     "hookRegistrations": {
       "status": "audited",
-      "count": 64,
+      "count": 63,
       "source": "source scan"
     },
     "slots": {

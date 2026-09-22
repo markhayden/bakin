@@ -28369,6 +28369,278 @@
         "x-bakin-full-path": "/api/plugins/models/refresh"
       }
     },
+    "/api/plugins/models/selections": {
+      "get": {
+        "operationId": "models.get.selections",
+        "summary": "Every persisted model selection with eligibility, proposals and pending writes",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Models"
+        ],
+        "description": "The inventory behind the Models page and Health (#907): each ref (runtime policy, agent pins, work-class routes, tag overrides, page mode) with its eligibility verdict, one revision over all of it, repair proposals for dead selections, and any adapter writes still pending.",
+        "x-bakin-full-path": "/api/plugins/models/selections"
+      },
+      "post": {
+        "operationId": "models.post.selections",
+        "summary": "Apply model-selection changes (the ONE write path)",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type — body content type does not match the declared content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Models"
+        ],
+        "description": "Serialized, revision-checked mutation of persisted model selections. Refuses stale revisions (409), documents with a pending write (409), ineligible models (400, with a proposal) and knobs the runtime cannot persist (400). Writes are tri-state: applied, failed, or pending when the adapter has not settled within the deadline.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "ops": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "set": {
+                          "type": "object",
+                          "properties": {
+                            "model": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "thinking": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "off",
+                                    "minimal",
+                                    "low",
+                                    "medium",
+                                    "high",
+                                    "xhigh",
+                                    "adaptive",
+                                    "max",
+                                    "inherit"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "ref",
+                        "set"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "snapshot": {
+                    "type": "string",
+                    "const": "reset"
+                  }
+                },
+                "required": [
+                  "revision",
+                  "ops"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-bakin-full-path": "/api/plugins/models/selections"
+      }
+    },
+    "/api/plugins/models/holds": {
+      "get": {
+        "operationId": "models.get.holds",
+        "summary": "Todo tasks held because their effective model cannot run (#907)",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Models"
+        ],
+        "description": "Per-task holds computed with the SAME routing resolution + eligibility check the dispatch gate runs (route/tag → agent pin → runtime default). Independent of budget status so it works on installs with zero limits.",
+        "x-bakin-full-path": "/api/plugins/models/holds"
+      }
+    },
     "/api/plugins/models/config": {
       "get": {
         "operationId": "models.get.config",
@@ -28410,262 +28682,6 @@
           "Models"
         ],
         "x-bakin-full-path": "/api/plugins/models/config"
-      },
-      "post": {
-        "operationId": "models.post.config",
-        "summary": "Update agent model config",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean",
-                      "const": true
-                    }
-                  },
-                  "required": [
-                    "ok"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Unsupported Media Type — body content type does not match the declared content type.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Models"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "agentId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "ownModel": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "subagentModel": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": [
-                  "agentId"
-                ],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "x-bakin-full-path": "/api/plugins/models/config"
-      }
-    },
-    "/api/plugins/models/defaults": {
-      "post": {
-        "operationId": "models.post.defaults",
-        "summary": "Update default models",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean",
-                      "const": true
-                    }
-                  },
-                  "required": [
-                    "ok"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Unsupported Media Type — body content type does not match the declared content type.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Models"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "defaultModel": {
-                    "type": "string"
-                  },
-                  "defaultSubagentModel": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "fallbackModels": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "x-bakin-full-path": "/api/plugins/models/defaults"
       }
     },
     "/api/plugins/models/aliases": {
@@ -28709,10 +28725,12 @@
           "Models"
         ],
         "x-bakin-full-path": "/api/plugins/models/aliases"
-      },
-      "post": {
-        "operationId": "models.post.aliases",
-        "summary": "Add/delete/prepopulate model aliases",
+      }
+    },
+    "/api/plugins/models/aliases/recommended": {
+      "get": {
+        "operationId": "models.get.aliases-recommended",
+        "summary": "Recommended alias set (data for the one write path)",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -28720,76 +28738,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean",
-                      "const": true
-                    }
-                  },
-                  "required": [
-                    "ok"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Unsupported Media Type — body content type does not match the declared content type.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
+                  "properties": {},
                   "additionalProperties": {}
                 }
               }
@@ -28799,91 +28748,8 @@
         "tags": [
           "Models"
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "anyOf": [
-                  {
-                    "oneOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "action": {
-                            "type": "string",
-                            "const": "add"
-                          },
-                          "name": {
-                            "type": "string",
-                            "minLength": 1
-                          },
-                          "target": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        },
-                        "required": [
-                          "action",
-                          "name",
-                          "target"
-                        ],
-                        "additionalProperties": false
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "action": {
-                            "type": "string",
-                            "const": "delete"
-                          },
-                          "name": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        },
-                        "required": [
-                          "action",
-                          "name"
-                        ],
-                        "additionalProperties": false
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "action": {
-                            "type": "string",
-                            "const": "prepopulate"
-                          }
-                        },
-                        "required": [
-                          "action"
-                        ],
-                        "additionalProperties": false
-                      }
-                    ]
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "aliases": {
-                        "type": "object",
-                        "additionalProperties": {
-                          "type": "string"
-                        }
-                      }
-                    },
-                    "required": [
-                      "aliases"
-                    ],
-                    "additionalProperties": false
-                  }
-                ]
-              }
-            }
-          }
-        },
-        "x-bakin-full-path": "/api/plugins/models/aliases"
+        "description": "The curated DEFAULT_ALIASES map. Read-only: the client merges it with the current aliases and writes through POST /selections.",
+        "x-bakin-full-path": "/api/plugins/models/aliases/recommended"
       }
     },
     "/api/plugins/models/routing": {
@@ -28927,197 +28793,11 @@
           "Models"
         ],
         "x-bakin-full-path": "/api/plugins/models/routing"
-      },
-      "put": {
-        "operationId": "models.put.routing",
-        "summary": "Replace the routing policy",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean",
-                      "const": true
-                    }
-                  },
-                  "required": [
-                    "ok"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Unsupported Media Type — body content type does not match the declared content type.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Models"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "routes": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "workClass": {
-                          "type": "string",
-                          "enum": [
-                            "scheduled",
-                            "workflow",
-                            "adhoc",
-                            "recovery",
-                            "decomposition",
-                            "auto-title",
-                            "enrichment",
-                            "relay",
-                            "team-routing",
-                            "send",
-                            "skill-mapping"
-                          ]
-                        },
-                        "model": {
-                          "type": "string"
-                        },
-                        "thinking": {
-                          "type": "string",
-                          "enum": [
-                            "off",
-                            "minimal",
-                            "low",
-                            "medium",
-                            "high",
-                            "xhigh",
-                            "adaptive",
-                            "max",
-                            "inherit"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "workClass"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "tagOverrides": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "tag": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "model": {
-                          "type": "string"
-                        },
-                        "thinking": {
-                          "type": "string",
-                          "enum": [
-                            "off",
-                            "minimal",
-                            "low",
-                            "medium",
-                            "high",
-                            "xhigh",
-                            "adaptive",
-                            "max",
-                            "inherit"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "tag"
-                      ],
-                      "additionalProperties": false
-                    }
-                  }
-                },
-                "required": [
-                  "routes",
-                  "tagOverrides"
-                ],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "x-bakin-full-path": "/api/plugins/models/routing"
       }
     },
     "/api/plugins/models/routing/recommend": {
-      "post": {
-        "operationId": "models.post.routing-recommend",
+      "get": {
+        "operationId": "models.get.routing-recommend",
         "summary": "Compute recommended cheap-model routes for unrouted system classes",
         "responses": {
           "200": {
@@ -29410,7 +29090,7 @@
     "/api/plugins/models/runtime/status": {
       "get": {
         "operationId": "models.get.runtime-status",
-        "summary": "Runtime config sync status",
+        "summary": "Pending runtime restart, in the adapter's words",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -29428,7 +29108,7 @@
         "tags": [
           "Models"
         ],
-        "description": "Reports whether the runtime config is out of sync with disk and needs a restart.",
+        "description": "Whether a config change is still waiting on a runtime restart (#878). The text and action come from the adapter's restartAdvice(); adapters without it get a generic fallback. Cleared only by a successful restart.",
         "x-bakin-full-path": "/api/plugins/models/runtime/status"
       }
     },
