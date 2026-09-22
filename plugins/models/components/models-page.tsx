@@ -30,7 +30,7 @@ function PendingSummary({ sel }: { sel: SelectionsData }) {
   if (count === 0) return null
   const failed = [...sel.pendingRefs.values()].filter((p) => p.state !== 'unsettled').length
   return (
-    <Badge tone={failed > 0 ? 'danger' : 'attention'} variant="outline" size="xs" data-testid="pending-writes">
+    <Badge tone={failed > 0 ? 'danger' : 'attention'} variant="soft" size="xs" data-testid="pending-writes">
       {failed > 0
         ? `${failed} write${failed === 1 ? '' : 's'} not confirmed`
         : `${count} write${count === 1 ? '' : 's'} pending runtime confirmation`}

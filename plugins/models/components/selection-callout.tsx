@@ -46,7 +46,7 @@ export function PendingChip({ sel, refName }: { sel: SelectionsData; refName: st
   if (!pending) return null
   const label = pending.state === 'unsettled' ? 'saving…' : pending.state === 'failed' ? 'not confirmed' : 'conflict'
   return (
-    <Badge tone={pending.state === 'unsettled' ? 'attention' : 'danger'} variant="outline" size="xs" title={pending.detail} data-testid={`pending-${refName}`}>
+    <Badge tone={pending.state === 'unsettled' ? 'attention' : 'danger'} variant="soft" size="xs" title={pending.detail} data-testid={`pending-${refName}`}>
       {label}
     </Badge>
   )

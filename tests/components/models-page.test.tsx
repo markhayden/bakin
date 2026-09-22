@@ -47,6 +47,15 @@ mock.module('@/hooks/use-runtime-status', () => ({
   useRuntimeStatus: () => runtimeState,
 }))
 
+/** Roster store (teams + team assignments) — the Agents tab groups by it. */
+let agentStoreState: { teams: Array<Record<string, unknown>>; displaySettings: Record<string, Record<string, unknown>> } = { teams: [], displaySettings: {} }
+mock.module('@bakin/team/hooks/use-agent-store', () => ({
+  useAgentStore: (selector: (s: Record<string, unknown>) => unknown) => selector({ ...agentStoreState, agentMap: {}, agents: [], load: async () => {} }),
+  useAgent: () => undefined,
+  useAgentColor: () => '#a1a1aa',
+  useAgentList: () => [],
+}))
+
 interface FetchCall {
   method: string
   url: string
@@ -156,6 +165,7 @@ describe('ModelsPage component', () => {
       sonnet: 'anthropic/claude-sonnet-4-6',
     }
     uiModeState = null
+    agentStoreState = { teams: [], displaySettings: {} }
     pendingState = []
     routeProposalsState = { proposals: [], skipped: [] }
     eligibilityState = {}
@@ -284,6 +294,8 @@ describe('ModelsPage component', () => {
     vi.unstubAllGlobals()
   })
 
+  const openTab = async (name: 'Agents' | 'Work routing') => fireEvent.click(await screen.findByRole('tab', { name }))
+
   describe('Advanced view (S4, support-gated)', () => {
     it('Defaults: changing the default model stages one policy op; the subagent default renders when supported', async () => {
       const user = userEvent.setup()
@@ -297,19 +309,41 @@ describe('ModelsPage component', () => {
       expect(configWrite()?.body?.ops).toEqual([{ ref: 'policy:defaultModel', set: { model: 'openai-codex/gpt-5.4' } }])
     })
 
+    it('Overview: default model, recommendation, in-use tiles and the extras disclosure; ?tab= picks a tab', async () => {
+      render(<ModelsPage />)
+      expect((await screen.findByRole('tab', { name: 'Overview' })).getAttribute('aria-selected')).toBe('true')
+      const stats = within(screen.getByTestId('overview-stats'))
+      expect(stats.getByText('Agents on the default')).toBeTruthy()
+      expect(stats.getByText('Tag overrides')).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Use recommended plan' })).toBeTruthy()
+      fireEvent.click(screen.getByText('More defaults'))
+      expect(await screen.findByRole('combobox', { name: 'Default subagent model' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Remove fallback 1' })).toBeTruthy()
+    })
+
+    it('Agents are grouped by team when the roster defines teams', async () => {
+      agentStoreState = { teams: [{ id: 'ops', label: 'Ops', color: '#f00', reportsTo: null }], displaySettings: { patch: { teamId: 'ops' } } }
+      render(<ModelsPage />)
+      await openTab('Agents')
+      expect(await screen.findByTestId('agents-group-ops')).toBeTruthy()
+      expect(within(screen.getByTestId('agents-group-ops')).getByText('Patch')).toBeTruthy()
+      expect(screen.queryByTestId('agents-group-__none')).toBeNull()
+    })
+
     it('knobs the runtime cannot persist are hidden behind one muted line (Pi shape)', async () => {
       supportState = { ...supportState, fallbackModels: false, aliases: false, defaultSubagentModel: false, perAgentSubagentModel: false }
       render(<ModelsPage />)
       await screen.findByRole('combobox', { name: 'Default model' })
-      expect(screen.queryByRole('combobox', { name: 'Default subagent model' })).toBeNull()
-      expect(screen.queryByText('Fallback models')).toBeNull()
-      expect(screen.queryByText('Aliases')).toBeNull()
+      expect(screen.queryByText('More defaults')).toBeNull()
       expect(screen.getByTestId('unsupported-knobs').textContent).toContain("doesn't support fallbacks, aliases, a default subagent model")
+      await openTab('Agents')
+      await screen.findByText('Patch')
       expect(screen.queryByRole('combobox', { name: 'Subagents' })).toBeNull()
     })
 
     it('Fallbacks: removing the only fallback stages a clear of its index; adding stages the next index', async () => {
       render(<ModelsPage />)
+      fireEvent.click(await screen.findByText('More defaults'))
       fireEvent.click(await screen.findByRole('button', { name: 'Remove fallback 1' }))
       expect((await screen.findByTestId('draft-summary')).textContent).toContain('1 change staged')
       fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -320,6 +354,7 @@ describe('ModelsPage component', () => {
     it('Aliases: adding stages a set op, removing stages a clear', async () => {
       const user = userEvent.setup()
       render(<ModelsPage />)
+      fireEvent.click(await screen.findByText('More defaults'))
       fireEvent.change(await screen.findByRole('textbox', { name: 'New alias' }), { target: { value: 'fast' } })
       await user.click(screen.getByRole('combobox', { name: 'Target model' }))
       await user.click(await screen.findByRole('option', { name: 'Claude Haiku 4.5' }))
@@ -334,11 +369,12 @@ describe('ModelsPage component', () => {
       ])
     })
 
-    it('Agents: an override stages the agent ref; the row shows the effective model', async () => {
+    it('Agents: an override stages the agent ref; the row says whether it runs on the default', async () => {
       const user = userEvent.setup()
       render(<ModelsPage />)
+      await openTab('Agents')
       const row = within((await screen.findByText('Patch')).closest('[data-agent-model-row]') as HTMLElement)
-      expect(row.getByText('anthropic/claude-sonnet-4-6')).toBeTruthy()
+      expect(row.getByText('default')).toBeTruthy()
       await user.click(row.getByRole('combobox', { name: 'Override' }))
       await user.click(await screen.findByRole('option', { name: 'Claude Opus 4.6' }))
       expect((await screen.findByTestId('draft-summary')).textContent).toContain('1 change staged')
@@ -350,8 +386,9 @@ describe('ModelsPage component', () => {
     it('Work routing: 11 classes in two groups; a model change stages a route op; a new tag override needs a model', async () => {
       const user = userEvent.setup()
       const { container } = render(<ModelsPage />)
-      expect(await screen.findByRole('region', { name: 'Agent work routes' })).toBeTruthy()
-      expect(screen.getByRole('region', { name: 'Background chores routes' })).toBeTruthy()
+      await openTab('Work routing')
+      expect(await screen.findByRole('region', { name: 'Agent work' })).toBeTruthy()
+      expect(screen.getByRole('region', { name: 'Background chores' })).toBeTruthy()
       expect(container.querySelectorAll('[data-routing-row]')).toHaveLength(11)
       await user.click(screen.getByRole('combobox', { name: /Scheduled model/i }))
       await user.click(await screen.findByRole('option', { name: 'Claude Haiku 4.5' }))
@@ -376,6 +413,7 @@ describe('ModelsPage component', () => {
       routingState = { routes: [{ workClass: 'relay', thinking: 'max' }], tagOverrides: [] }
       const user = userEvent.setup()
       render(<ModelsPage />)
+      await openTab('Work routing')
       await user.click(await screen.findByRole('combobox', { name: 'Scheduled thinking' }))
       const options = screen.getAllByRole('option').map((o) => o.textContent)
       expect(options).toContain('Extra high')
@@ -389,6 +427,7 @@ describe('ModelsPage component', () => {
     it('"Use recommended routes" stages the route proposals from the plan', async () => {
       routeProposalsState = { proposals: [{ workClass: 'relay', model: 'anthropic/claude-haiku-4-5', reason: 'cheapest' }], skipped: [{ workClass: 'enrichment', reason: 'no vision model' }] }
       render(<ModelsPage />)
+      await openTab('Work routing')
       fireEvent.click(await screen.findByRole('button', { name: 'Use recommended routes' }))
       const dialog = await screen.findByRole('dialog')
       expect(within(dialog).getByText('Skipped enrichment')).toBeTruthy()
@@ -399,6 +438,7 @@ describe('ModelsPage component', () => {
     it('a runtime that refuses per-turn overrides shows the notice and makes routing read-only', async () => {
       supportState = { ...supportState, perTurnModel: false }
       render(<ModelsPage />)
+      await openTab('Work routing')
       expect(await screen.findByTestId('per-turn-clamped')).toBeTruthy()
       const scheduled = screen.getByRole('combobox', { name: /Scheduled model/i })
       expect(scheduled.getAttribute('aria-disabled') === 'true' || (scheduled as HTMLButtonElement).disabled).toBe(true)
@@ -452,7 +492,7 @@ describe('ModelsPage component', () => {
   it('renders no banner when nothing is pending (Pi after a model save)', async () => {
     runtimeState.pending = false
     render(<ModelsPage />)
-    await screen.findByText('Patch')
+    await screen.findByTestId('overview-stats')
     expect(screen.queryByText(/Restart/)).toBeNull()
   })
 
@@ -731,6 +771,8 @@ describe('ModelsPage component', () => {
       configState = { ...configState, agents: [{ ...configState.agents[0]!, ownModel: 'openai/gpt-6-astra', effectiveModel: 'openai/gpt-6-astra' }] }
       eligibilityState = { 'openai/gpt-6-astra': { status: 'ineligible', reason: 'no_credentials', detail: 'no credentials for openai' } }
       proposalsState = [{ ref: 'agent:patch:model', from: 'openai/gpt-6-astra', to: null, reason: 'no credentials for openai', source: 'none', revision: 'rev-0' }]
+      // A deep link to the pin lands on the Agents tab on its own.
+      queryOverrides.ref = 'agent:patch:model'
       render(<ModelsPage />)
       const callout = await screen.findByTestId('callout-agent:patch:model')
       expect(callout.textContent).toContain('No eligible replacement')

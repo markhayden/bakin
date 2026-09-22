@@ -107,7 +107,7 @@ export function SimpleMode({ sel, modelOptions, onAdvanced }: SimpleModeProps) {
           {chores.mixed ? (
             <Stack gap="dense">
               <div className="flex flex-wrap items-center gap-bakin-2">
-                <Badge tone="attention" variant="outline" data-testid="chores-mixed">Mixed ({chores.models.length} model{chores.models.length === 1 ? '' : 's'}{chores.thinkingSet ? ', thinking set' : ''})</Badge>
+                <Badge tone="attention" variant="soft" data-testid="chores-mixed">Mixed ({chores.models.length} model{chores.models.length === 1 ? '' : 's'}{chores.thinkingSet ? ', thinking set' : ''})</Badge>
               </div>
               <Field name="lane-chores-set-all">
                 <FieldLabel htmlFor="lane-chores-set-all">Set all to</FieldLabel>

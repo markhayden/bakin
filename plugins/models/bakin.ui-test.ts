@@ -3,5 +3,5 @@ import { definePluginUiConformance } from '@makinbakin/sdk/testing/ui/conformanc
 export default definePluginUiConformance({
   pluginId: 'models',
   fixtureEntry: './tests/ui.fixture.tsx',
-  readySelector: '[data-routing-row="skill-mapping"]',
+  readySelector: '[data-testid="overview-stats"]',
 })

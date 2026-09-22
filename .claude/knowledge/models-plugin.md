@@ -261,17 +261,32 @@ probe) behind `use-catalog.ts`.
   `snapshot:'reset'`; refused while a draft is unsaved; the mutation result
   carries the snapshot path and the page shows `bakin models restore
   <file>` as the undo handle.
-- **Advanced** (`advanced-mode.tsx`, `lib/advanced.ts` draft readers): three
-  sections — Defaults (default model; default subagent model, fallbacks and
-  aliases ONLY when `support` persists them, else one muted "doesn't
-  support …" line — hidden, not disabled, D11), Agents (ListRows, effective
-  model badge, "Override" picker, subagent column when supported), Work
-  routing (two DataTables — Agent work: 5 dispatch + `send`; Background
-  chores: 5 — with model + thinking selects filtered to
-  `supportedThinkingLevels`, a persisted-unsupported level surfacing as
-  "· unsupported by this runtime"; tag overrides with an add form that
-  requires a model; "Use recommended routes" staging `routeProposals` from
-  `GET /plan`). `perTurnModel === false` ⇒ Alert + read-only routing.
+- **Advanced** (`advanced-mode.tsx` + `advanced-{overview,agents,routing}.tsx`,
+  `advanced-shared.tsx` for the `GuideCard`/`StagedMark`/`ThinkingSelect`,
+  `lib/advanced.ts` draft readers): three TABS on `?tab=overview|agents|routing`
+  (a `?ref=` deep link picks the owning tab; the panel is a hand-rendered
+  `role="tabpanel"` like Spend's — Base UI's `TabsContent` is a focusable
+  panel without a ring and fails the keyboard-focus gate). **Overview** =
+  two cards (Default model picker; Recommended plan with the why + "Use
+  recommended plan" / "On the recommended plan"), an "In use today"
+  `StatGroup` (agents on the default / with their own model / chores model
+  or Mixed / routes set / tag overrides) + a `CompositionBar` of agents by
+  model, and a "More defaults" `DisclosurePanel` for the runtime-gated
+  extras (default subagent model, fallbacks, aliases — ONLY when `support`
+  persists them, else one muted "doesn't support …" line; hidden, not
+  disabled, D11). This is where future recommendations / model news land.
+  **Agents** = a `GuideCard` (why most agents stay on the default; pin up for
+  hard work, down for volume; subagents are a separate dial) then ListRows
+  grouped by the roster's teams (`useAgentStore` teams + `displaySettings
+  [id].teamId`; "Not on a team" last), soft `default`/`own model` chips,
+  subagent column when supported. **Work routing** = a `GuideCard` (agent
+  work vs background chores, thinking, tags) then two DataTables — Agent
+  work: 5 dispatch + `send`; Background chores: 5 — with model + thinking
+  selects filtered to `supportedThinkingLevels` (a persisted-unsupported
+  level surfaces as "· unsupported by this runtime"), tag overrides with an
+  add form that requires a model, "Use recommended routes" staging
+  `routeProposals` from `GET /plan`. `perTurnModel === false` ⇒ Alert +
+  read-only routing. Chips everywhere are `variant="soft"`.
 - **Callouts** (`selection-callout.tsx`): a dead selection shows its
   eligibility detail and, when the server proposed a repair, one "Use
   <model>" that STAGES it; `unknown` is information only; a ref the user
