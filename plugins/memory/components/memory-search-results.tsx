@@ -131,7 +131,7 @@ export function MemorySearchResults({
         key: 'title',
         header: 'Title',
         sortable: true,
-        headClassName: 'min-w-48',
+        narrow: 'primary',
         cellClassName: 'whitespace-normal',
         cell: (result) => (
           <span className="min-w-0 [overflow-wrap:anywhere] font-bakin-typography-weight-semibold leading-snug text-bakin-text-primary">
@@ -142,7 +142,7 @@ export function MemorySearchResults({
       {
         key: 'snippet',
         header: 'Snippet',
-        headClassName: 'min-w-64',
+        narrow: 'meta',
         cellClassName: 'whitespace-normal',
         cell: (result) => {
           const snippet = summarizeSnippet(str(result.fields.snippet), titleOf(result))
@@ -161,6 +161,7 @@ export function MemorySearchResults({
         key: 'tier',
         header: 'Tier',
         sortable: true,
+        narrow: 'meta',
         cell: (result) => (
           <StatusBadge tone="neutral" variant="soft" size="xs">
             {tierDisplayName(str(result.fields.tier))}
@@ -171,6 +172,7 @@ export function MemorySearchResults({
         key: 'agent',
         header: 'Agent',
         sortable: true,
+        narrow: 'label',
         cell: (result) => {
           const agent = str(result.fields.agent)
           if (!agent) return null
@@ -189,6 +191,7 @@ export function MemorySearchResults({
         key: 'updated',
         header: 'Updated',
         sortable: true,
+        narrow: 'label',
         align: 'end',
         cell: (result) => (
           <Text size="meta" tone="muted" className="tabular-nums">
@@ -202,6 +205,7 @@ export function MemorySearchResults({
       base.push({
         key: 'score',
         header: 'Score',
+        narrow: 'label',
         align: 'end',
         cellClassName: 'whitespace-normal',
         cell: (result) => (
@@ -282,6 +286,8 @@ export function MemorySearchResults({
   return (
     <DataTable
       label="Memory results"
+      collapseBelow="2xl"
+      listVariant="separated"
       columns={columns}
       rows={results}
       rowKey={(result) => result.id}
