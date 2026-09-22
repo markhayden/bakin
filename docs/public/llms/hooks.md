@@ -23,7 +23,7 @@ Asset hooks expose file, sidecar, variant, and trash helpers for plugins that ne
 Label: Describe assets by id.
 Purpose: Batch {description, enrichment caption, type, exists} per assetId — lets brand asset groups (and any consumer) label members without direct imports.
 Kind: rpc
-Source: plugins/assets/lib/register-hooks.ts:49
+Source: plugins/assets/lib/register-hooks.ts:56
 
 Example:
 
@@ -34,12 +34,28 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
+### assets.enrichmentEnabled
+
+Label: Is vision enrichment on?
+Purpose: Returns whether asset enrichment (captions, OCR, tags) runs — the models plan needs a vision-capable chores model only when it does.
+Kind: rpc
+Source: plugins/assets/lib/register-hooks.ts:31
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'assets.enrichmentEnabled',
+  {},
+)
+```
+
 ### assets.enrichmentStats
 
 Label: Enrichment queue stats.
 Purpose: Returns the vision-enrichment queue depth and processed/failed/skipped counters for telemetry.
 Kind: rpc
-Source: plugins/assets/lib/register-hooks.ts:30
+Source: plugins/assets/lib/register-hooks.ts:37
 
 Example:
 
@@ -55,7 +71,7 @@ const result = await ctx.hooks.invoke(
 Label: List asset types.
 Purpose: Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories.
 Kind: rpc
-Source: plugins/assets/lib/register-hooks.ts:44
+Source: plugins/assets/lib/register-hooks.ts:51
 
 Example:
 
@@ -71,7 +87,7 @@ const result = await ctx.hooks.invoke(
 Label: List assets linked to a task.
 Purpose: Returns {assetId, description, type} for every versioned asset whose manifest taskId matches. Backed by an in-memory index — the sanctioned way for core (dispatch) to resolve a task’s attached assets without scanning plugin storage.
 Kind: rpc
-Source: plugins/assets/lib/register-hooks.ts:36
+Source: plugins/assets/lib/register-hooks.ts:43
 
 Example:
 
@@ -87,7 +103,7 @@ const result = await ctx.hooks.invoke(
 Label: Purge task clipboard assets.
 Purpose: Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized.
 Kind: rpc
-Source: plugins/assets/lib/register-hooks.ts:99
+Source: plugins/assets/lib/register-hooks.ts:106
 
 Example:
 
@@ -105,7 +121,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve versioned asset serve request.
 Purpose: Resolves an /api/assets/<assetId> path (current, /v/<n>, /thumb, /export/<name>) to a file on disk for serving.
 Kind: rpc
-Source: plugins/assets/lib/register-hooks.ts:67
+Source: plugins/assets/lib/register-hooks.ts:74
 
 Example:
 
@@ -126,7 +142,7 @@ const result = await ctx.hooks.invoke(
 Label: Save a file as a managed asset.
 Purpose: Upserts a file into the versioned asset store by source path (new asset, version bump, or no-op when unchanged). The sanctioned cross-plugin/core save path; mirrors bakin_exec_assets_save.
 Kind: rpc
-Source: plugins/assets/lib/register-hooks.ts:73
+Source: plugins/assets/lib/register-hooks.ts:80
 
 Example:
 

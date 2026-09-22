@@ -76,12 +76,12 @@ export function RoutingTab({ m }: { m: ModelsData }) {
     try {
       // A proposal pass prices every routable class; without a deadline a wedged
       // server leaves the dialog empty and the operator with no explanation.
-      const res = await pluginFetch('models', 'routing/recommend', {
+      const res = await pluginFetch('models', 'plan', {
         signal: AbortSignal.timeout(RECOMMEND_TIMEOUT_MS),
       })
-      const data = await res.json() as RecommendPayload & { error?: string }
+      const data = await res.json() as { routeProposals?: RecommendPayload; error?: string }
       if (!res.ok) throw new Error(data.error ?? `Recommend failed (${res.status})`)
-      setRecommend(data)
+      setRecommend(data.routeProposals ?? { proposals: [], skipped: [] })
     } catch (err) {
       setRecommend({ proposals: [], skipped: [] })
       setRecommendError(

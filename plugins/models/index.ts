@@ -17,7 +17,8 @@ import { isLegacyRouting, migrateLegacyRouting } from './lib/routing-migration'
 import { buildRoutingHealthDeps, checkModelRouting, recommendedRoutesRepair } from './lib/health-checks'
 import { checkDeadSelections, deadSelectionRepair } from './lib/dead-selections'
 import { describeSelections, getSelectionMutator } from './lib/selections'
-import { fetchAvailableModels } from './lib/available-models'
+import { buildPlanInput } from './lib/plan'
+import { recommendPlan } from '../../src/core/model-plan'
 import { listRunCostsSince } from '../../src/core/execution-ledger'
 import type { ModelsPluginSettings } from './types'
 
@@ -61,7 +62,7 @@ const modelsPlugin: BakinPlugin = definePlugin({
         if (isLegacyRouting(stored)) return migrateLegacyRouting(stored)
         return stored ?? { routes: [], tagOverrides: [] }
       },
-      listAvailableModels: async () => (await fetchAvailableModels(ctx)).models,
+      recommendPlan: async () => recommendPlan(await buildPlanInput(ctx)),
       listRunCostsSince: (sinceMs) => listRunCostsSince(sinceMs),
     })
     ctx.registerHealthRepairAction(recommendedRoutesRepair(routingDeps, async (newRoutes) => {

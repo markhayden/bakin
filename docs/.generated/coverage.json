@@ -5,7 +5,7 @@
     "cliCommands": {
       "status": "active",
       "count": 82,
-      "examples": 100,
+      "examples": 102,
       "source": "src/core/cli/registry.ts"
     },
     "httpRoutes": {
@@ -23,7 +23,7 @@
     },
     "hookRegistrations": {
       "status": "audited",
-      "count": 64,
+      "count": 65,
       "source": "source scan"
     },
     "slots": {

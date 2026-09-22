@@ -87,8 +87,8 @@
       },
       {
         "method": "GET",
-        "path": "/routing/recommend",
-        "summary": "Proposal-only recommended routes for unrouted system classes"
+        "path": "/plan",
+        "summary": "The recommended two-lane model plan (read-only)"
       }
     ],
     "execTools": [

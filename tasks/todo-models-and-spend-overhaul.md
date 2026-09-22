@@ -45,8 +45,8 @@ Plan: `tasks/plan-models-and-spend-overhaul.md` (v2) · Spec: `.claude/specs/mod
 - [~] CHECKPOINT B (2026-09-22): gates green; ui:conformance --full green except the pre-existing #904 `ModelSelect › Grouped Catalog` story flake (Base UI focus-guard aria-hidden-focus; fails identically without this branch's changes); ui:test:conformance green (spend graduated); /verify on an isolated boot with a seeded legacy models.json: upgrade at activation (ids, no warnPct, backup, keys stripped) → boot pass recorded 50 (covered by 75) + 75 delivered → cap crossed ⇒ 90 covered by 100 + cap incident episode 1 delivered once → resume refused 409 still_over_limit (S12) → raise-through-incident updated the rule in place (same id) + resolved `raised` → `bakin budget show` milestones + `bakin spend` pace basis → doctor `health.spend.policy-available` healthy, `spend.budget` under spend ownership; unit suites cover S8/S9/S13/S14 + the upgrade crash matrix. REMAINING: Mark's live test on 3737 (needs a server restart) — then the stack merges bottom-up.
 
 ## PR 3 — feat/models-plan-page
-- [ ] T3.1 D23 approval → sdk contract + DisabledWithReason story + public-api (or record fallback)
-- [ ] T3.2 recommender (absorbs recommendRoutes) + GET /plan + bakin models plan [--apply] (restore already shipped in PR 1)
+- [~] T3.1 D23 approval — PENDING Mark (recorded in spec D23); fallback (label-suffix composition) in force; lands as one add-on commit on a yes
+- [x] T3.2 recommender (absorbs recommendRoutes) + GET /plan + bakin models plan [--apply] (restore already shipped in PR 1) — `src/core/model-plan.ts` pure + `plugins/models/lib/plan.ts` composition; `/routing/recommend` deleted; `assets.enrichmentEnabled` hook; purity arch test
 - [ ] T3.3 onboarding models step + ONBOARDING_VERSION bump
 - [ ] T3.4 page shell: mode toggle, catalog panel, ?ref, classification, pending chips (old tabs still mounted)
 - [ ] T3.5 draft/op model + one SaveBar + partial-failure/pending UI + dirty-exit guard

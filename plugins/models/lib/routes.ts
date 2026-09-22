@@ -12,7 +12,6 @@ import {
   readPersistedCache,
   writePersistedCache,
 } from './models-cache'
-import { listRunCostsSince } from '../../../src/core/execution-ledger'
 import { probeModels } from './probe'
 import { describeSelections, getSelectionMutator } from './selections'
 import { MutationRefused } from '../../../src/core/model-mutations'
@@ -311,24 +310,15 @@ export const modelsRoutes = [
   }),
 
   defineRoute({
-    path: '/routing/recommend',
+    path: '/plan',
     method: 'GET',
-    summary: 'Compute recommended cheap-model routes for unrouted system classes',
-    description: 'Proposal list only — nothing is written. The UI shows the diff in a ConfirmDialog; confirming PUTs the routes.',
+    summary: 'The recommended two-lane model plan (agent model + background chores)',
+    description: 'Read-only: the current lanes, the recommendation with plain-words reasons, the ops that reach it (staged by the Models page, applied by `bakin models plan --apply` through POST /selections under the returned revision), and the route-only proposals for unrouted chores classes.',
     responses: { 200: passthrough, 500: errorResponse },
     handler: async (_req, ctx) => {
       try {
-        const { buildRoutingHealthDeps, recommendRoutes } = await import('./health-checks')
-        const deps = buildRoutingHealthDeps(ctx as unknown as PluginContext, {
-          readRoutingConfig: () => {
-            const stored = ctx.getSettings<ModelsPluginSettings>().routing
-            if (isLegacyRouting(stored)) return migrateLegacyRouting(stored)
-            return stored ?? { routes: [], tagOverrides: [] }
-          },
-          listAvailableModels: async () => (await fetchAvailableModels(ctx as unknown as PluginContext)).models,
-          listRunCostsSince: (sinceMs) => listRunCostsSince(sinceMs),
-        })
-        return Response.json(await recommendRoutes(deps))
+        const { describePlan } = await import('./plan')
+        return Response.json(await describePlan(ctx as unknown as PluginContext))
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
