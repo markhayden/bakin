@@ -8,8 +8,8 @@
  * deep-links a selection: the owning view highlights it and, when it lives
  * in a layer Simple cannot show, the VIEW flips to Advanced without writing.
  */
-import { useQueryState } from '@makinbakin/sdk/navigation'
-import { KeyValue, Page, PageBody, PageHeader, SearchInput, SegmentedControl, type KeyValueItem } from '@makinbakin/sdk/patterns'
+import { useQueryState, useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
+import { KeyValue, Page, PageBody, PageHeader, SaveBar, SearchInput, SegmentedControl, type KeyValueItem } from '@makinbakin/sdk/patterns'
 import { Badge, Banner, Button, SystemState, Tabs, TabsList, TabsTrigger, Text } from '@makinbakin/sdk/ui'
 
 import type { UiMode } from '../lib/mode'
@@ -80,6 +80,19 @@ export function ModelsPage() {
   const { runtimeStatus } = m
   const defaultModel = sel.selections?.states.find((s) => s.ref === 'policy:defaultModel')?.model ?? null
   const evidence = sel.selections?.evidence
+
+  // One draft, one bar, one write (S10): every lane/row edit stages an op;
+  // the bar saves the whole draft, keeps failed refs for Retry, and the
+  // navigation guard covers routes, anchors, and browser unload.
+  const guard = useUnsavedChangesGuard({
+    hasUnsavedChanges: sel.dirty,
+    saving: sel.saving,
+    onSaveAndExit: sel.save,
+    onDiscardAndExit: sel.discard,
+    error: sel.saveError,
+    description: 'Your model changes are not saved yet. Save them before leaving, discard them, or stay here.',
+  })
+  const pendingFromSave = sel.lastSave?.pending ?? []
 
   const shellState = sel.loading ? (
     <SystemState kind="loading" title="Loading model configuration" description="Reading every persisted model selection and the recommended plan." />
@@ -219,6 +232,22 @@ export function ModelsPage() {
       )}
 
       <CatalogPanel catalog={m} defaultModel={defaultModel} />
+
+      {sel.dirty || sel.saveError || pendingFromSave.length > 0 ? (
+        <SaveBar
+          dirty={sel.dirty}
+          saving={sel.saving}
+          error={sel.saveError ?? undefined}
+          onSave={() => void sel.save()}
+          onDiscard={sel.discard}
+        >
+          <span data-testid="draft-summary">
+            {sel.stagedCount > 0 ? `${sel.stagedCount} change${sel.stagedCount === 1 ? '' : 's'} staged` : null}
+            {pendingFromSave.length > 0 ? `${sel.stagedCount > 0 ? ' · ' : ''}${pendingFromSave.length} write${pendingFromSave.length === 1 ? '' : 's'} pending runtime confirmation` : null}
+          </span>
+        </SaveBar>
+      ) : null}
+      {guard.dialog}
     </Page>
   )
 }

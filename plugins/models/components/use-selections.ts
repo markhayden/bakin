@@ -20,6 +20,7 @@ import { pluginFetch, pluginFetchJson } from '@makinbakin/sdk/utils'
 
 import type { PlanResponse, SelectionOpWire, SelectionStateWire, SelectionsResponse } from '../types'
 import { classifyMode, listCustomizations, refLayer, type Customization, type UiMode } from '../lib/mode'
+import { draftOps, effectiveSelection, retainFailed, stageOp, unstageOp, type Draft, type DraftSet } from '../lib/draft'
 
 const PLUGIN_ID = 'models'
 /** Every read is bounded: a stalled endpoint renders as an error, never as a spinner forever. */
@@ -92,6 +93,25 @@ export interface SelectionsData {
   /** The `?ref=` deep link, if any — highlighted by whichever view owns it. */
   highlightRef: string | null
   pendingRefs: Map<string, { state: 'unsettled' | 'failed' | 'conflict'; detail?: string }>
+  // ── the draft (S5/S10) ────────────────────────────────────────────────
+  draft: Draft
+  dirty: boolean
+  /** Number of refs the next save will carry. */
+  stagedCount: number
+  stage: (ref: string, set: DraftSet) => void
+  /** Stage several ops at once (a recommended-plan diff, "Set all to…"). */
+  stageAll: (ops: SelectionOpWire[]) => void
+  unstage: (ref: string) => void
+  discard: () => void
+  /** The value a control renders for `ref`: staged when present, else persisted. */
+  effective: (ref: string) => { model: string | null; thinking: string | null; staged: boolean }
+  saving: boolean
+  /** A refusal or transport failure of the LAST save, in plain words (the bar's retryable error). */
+  saveError: string | null
+  /** Per-ref outcome of the last save — failed refs stay staged for Retry. */
+  lastSave: SaveOutcome | null
+  /** Post the draft under the loaded revision; resolves true when nothing was left failed. */
+  save: () => Promise<boolean>
 }
 
 export function useSelections(): SelectionsData {
@@ -101,6 +121,10 @@ export function useSelections(): SelectionsData {
   const [error, setError] = useState<string | null>(null)
   const [ref] = useQueryState('ref', '')
   const [viewOverride, setViewOverride] = useState<UiMode | null>(null)
+  const [draft, setDraft] = useState<Draft>(() => new Map())
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [lastSave, setLastSave] = useState<SaveOutcome | null>(null)
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -167,5 +191,62 @@ export function useSelections(): SelectionsData {
     return map
   }, [selections])
 
-  return { selections, plan, loading, error, reload, mode, view, setView, customizations, highlightRef, pendingRefs }
+  const stage = useCallback((target: string, set: DraftSet) => {
+    setDraft((prev) => stageOp(prev, states, target, set))
+  }, [states])
+  const stageAll = useCallback((ops: SelectionOpWire[]) => {
+    setDraft((prev) => ops.reduce((acc, op) => stageOp(acc, states, op.ref, op.set), prev))
+  }, [states])
+  const unstage = useCallback((target: string) => setDraft((prev) => unstageOp(prev, target)), [])
+  const discard = useCallback(() => {
+    setDraft(new Map())
+    setSaveError(null)
+    setLastSave(null)
+  }, [])
+  const effective = useCallback((target: string) => effectiveSelection(draft, states, target), [draft, states])
+
+  const save = useCallback(async (): Promise<boolean> => {
+    const ops = draftOps(draft)
+    if (ops.length === 0 || !selections) return true
+    setSaving(true)
+    setSaveError(null)
+    try {
+      let revision = selections.revision
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const outcome = await postSelections(revision, ops)
+          // Applied + pending refs leave the draft; failed ones stay for Retry.
+          setDraft((prev) => retainFailed(prev, outcome))
+          setLastSave(outcome)
+          if (outcome.failed.length > 0) {
+            setSaveError(`${outcome.failed.length} change${outcome.failed.length === 1 ? '' : 's'} could not be written: ${outcome.failed.map((f) => `${f.ref} — ${f.message}`).join('; ')}`)
+          }
+          await load()
+          return outcome.failed.length === 0
+        } catch (err) {
+          // Someone else saved in between: the ops are explicit intents, so
+          // re-posting them against the fresh revision is safe — once.
+          if ((err as { code?: string }).code === 'stale_revision' && attempt === 0) {
+            const fresh = await pluginFetchJson<SelectionsResponse>(PLUGIN_ID, 'selections', { label: 'Model selections', timeoutMs: LOAD_TIMEOUT_MS })
+            revision = fresh.revision
+            continue
+          }
+          throw err
+        }
+      }
+      setSaveError('The configuration kept changing while saving — review and try again.')
+      return false
+    } catch (err) {
+      setSaveError(errorMessage(err))
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }, [draft, selections, load])
+
+  return {
+    selections, plan, loading, error, reload, mode, view, setView, customizations, highlightRef, pendingRefs,
+    draft, dirty: draft.size > 0, stagedCount: draft.size, stage, stageAll, unstage, discard, effective,
+    saving, saveError, lastSave, save,
+  }
 }

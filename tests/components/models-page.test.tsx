@@ -30,6 +30,8 @@ mock.module('@makinbakin/sdk/navigation', () => ({
     const React = require('react') as typeof import('react')
     return React.useState<string[]>([])
   },
+  // The guard's own behavior is covered by its story; here it only needs to mount.
+  useUnsavedChangesGuard: () => ({ requestExit: () => {}, reset: () => {}, dialog: null }),
 }))
 
 const runtimeState = {

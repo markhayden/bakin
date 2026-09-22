@@ -49,7 +49,7 @@ Plan: `tasks/plan-models-and-spend-overhaul.md` (v2) · Spec: `.claude/specs/mod
 - [x] T3.2 recommender (absorbs recommendRoutes) + GET /plan + bakin models plan [--apply] (restore already shipped in PR 1) — `src/core/model-plan.ts` pure + `plugins/models/lib/plan.ts` composition; `/routing/recommend` deleted; `assets.enrichmentEnabled` hook; purity arch test
 - [x] T3.3 onboarding models step + ONBOARDING_VERSION bump (6) — `src/core/onboarding/models.ts` + TUI confirm step + `bakin check models`; plan-input assembly moved to core (`model-plan-input.ts`, `routing-migration.ts`, `@bakin/core/llm/billing-lane`) so onboarding runs the same recommender without plugins
 - [x] T3.4 page shell: mode toggle (SegmentedControl in PageHeader controls), catalog DisclosurePanel (`catalog-panel.tsx`, no Set default), `?ref=` view flip, classification (`lib/mode.ts`), pending summary badge, evidence banner; `use-selections.ts` (GET /selections + /plan, ui:mode op) + `use-catalog.ts` extracted; old tabs still mounted inside the Advanced panel
-- [ ] T3.5 draft/op model + one SaveBar + partial-failure/pending UI + dirty-exit guard
+- [x] T3.5 draft/op model (`lib/draft.ts` pure: stage/unstage/matchesPersisted/retainFailed) + `useSelections` save (revision, one stale retry, failed refs retained) + one `SaveBar` + `useUnsavedChangesGuard`; consumers land in T3.6/T3.8
 - [ ] T3.6 Simple view + save-minimality property test
 - [ ] T3.7 Reset: buildResetOps, dialog, snapshot, refused-with-dirty-draft
 - [ ] T3.8 Advanced sections support-gated
