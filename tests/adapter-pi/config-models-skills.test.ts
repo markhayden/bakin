@@ -72,6 +72,25 @@ describe('config surface', () => {
     expect(status.channels).toEqual([])
     expect(JSON.stringify(status)).not.toContain('sk-test-not-real')
   })
+
+  test('credentials.providers() is a complete, status-only inventory derived from configured auth (#907)', async () => {
+    const inventory = await adapter.credentials!.providers()
+    expect(inventory.evidence).toBe('complete')
+    const codex = inventory.providers.find((p) => p.providerId === 'openai-codex')
+    expect(codex).toEqual({ providerId: 'openai-codex', configured: true, source: 'runtime' })
+    // The SDK's built-in catalog carries providers this fixture never
+    // authenticated — they must be listed as NOT configured, not omitted,
+    // so the eligibility engine can say "no credentials for X" precisely.
+    const unconfigured = inventory.providers.filter((p) => !p.configured)
+    expect(unconfigured.length).toBeGreaterThan(0)
+    expect(JSON.stringify(inventory)).not.toMatch(/a-test-not-real|r-test/)
+  })
+
+  test('restartAdvice: Pi re-reads its stores per turn, so no change kind needs a restart (#878)', () => {
+    for (const kind of ['model-config', 'roster', 'routing-policy'] as const) {
+      expect(adapter.restartAdvice!(kind)).toEqual({ needed: false })
+    }
+  })
 })
 
 describe('routing policy (P2.3)', () => {
@@ -180,6 +199,16 @@ describe('models + capabilities', () => {
     expect(vision!.contextWindow).toBe(200000)
     expect(vision!.available).toBe(true)
     expect(vision!.tags).toContain('reasoning')
+  })
+
+  test('unavailable models carry the runtime reason: no_credentials, never an invented one (#907)', async () => {
+    const models = await adapter.models.listAvailable({ includeUnavailable: true })
+    const unavailable = models.filter((m) => m.available === false)
+    expect(unavailable.length).toBeGreaterThan(0)
+    for (const m of unavailable) expect(m.unavailableReason).toBe('no_credentials')
+    const configured = models.find((m) => m.id === 'openai-codex/gpt-test-vision')
+    expect(configured!.available).toBe(true)
+    expect(configured!.unavailableReason).toBeUndefined()
   })
 
   test('capabilities follow the agent model; unknown agent all-false', async () => {

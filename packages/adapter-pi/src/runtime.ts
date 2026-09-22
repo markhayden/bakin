@@ -10,14 +10,14 @@ import type {
   AdapterInitOpts,
 } from '@bakin/core/adapters/runtime'
 
-import type { CapabilityMode, CapabilitySet, RuntimeCapabilities, RuntimeCredentialStatus, RuntimeToolAccess, ToolAccessProvisioningStatus } from '@bakin/core/adapters/runtime'
+import type { CapabilityMode, CapabilitySet, RestartAdvice, RuntimeCapabilities, RuntimeConfigChangeKind, RuntimeCredentialStatus, RuntimeToolAccess, ToolAccessProvisioningStatus } from '@bakin/core/adapters/runtime'
 
 import { createAgentsSurface } from './agents'
 import { listAuthCredentials } from './config'
 import { MAIN_AGENT_ID, seedMainAgentIfEmpty } from './main-agent'
 import { createMemorySurface } from './memory'
 import { createMessagingSurface, enforcePiOffline } from './messaging'
-import { capabilitiesForModel, createModelsSurface, getModelRegistry, resetModelRegistry } from './models'
+import { capabilitiesForModel, createModelsSurface, getModelRegistry, listProviderCredentialStatus, resetModelRegistry } from './models'
 import { readRegistry } from './registry'
 import { createImagesSurface } from './images'
 import { createExtensionsSurface } from './extensions'
@@ -94,6 +94,14 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     this._images = null
   }
 
+  /**
+   * Pi re-reads the agent registry and routing default from disk on every
+   * turn and refreshes the model registry on every listAvailable, so no
+   * Bakin-initiated config change needs a restart to apply (#878). The
+   * Models banner stays silent on this runtime.
+   */
+  restartAdvice = (_change: RuntimeConfigChangeKind): RestartAdvice => ({ needed: false })
+
   /** Pi agents call Bakin exec tools natively (in-process tool bridge, filtered per turn). */
   describeToolAccess = (): RuntimeToolAccess => ({ style: 'in-process', perTurnExecToolFiltering: true })
 
@@ -109,6 +117,15 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
       llmCredentials,
       channels: [],
     }
+  }
+
+  /**
+   * Status-only per-provider inventory (#907): the same auth resolution
+   * that drives `listAvailable().available`, so "no credentials for X" in
+   * the eligibility engine is exactly what would fail at turn time.
+   */
+  credentials = {
+    providers: async (_opts?: { agentId?: string }) => listProviderCredentialStatus(),
   }
 
   /**

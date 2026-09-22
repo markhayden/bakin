@@ -8,9 +8,9 @@
  */
 import { ModelRegistry, ModelRuntime } from '@earendil-works/pi-coding-agent'
 
-import type { AgentRuntimeAdapter, RuntimeAvailableModel, RuntimeCapabilities, RuntimeRoutingPolicy, RuntimeRoutingSupport } from '@bakin/core/adapters/runtime'
+import type { AgentRuntimeAdapter, ProviderCredentialInventory, RuntimeAvailableModel, RuntimeCapabilities, RuntimeRoutingPolicy, RuntimeRoutingSupport } from '@bakin/core/adapters/runtime'
 import { RuntimeError } from '@bakin/core/adapters/runtime'
-import { readRoutingDefaultModel, writeRoutingDefaultModel } from './config'
+import { listAuthCredentials, readRoutingDefaultModel, writeRoutingDefaultModel } from './config'
 import { toRuntimeError } from './errors'
 import { getPiPath } from './home'
 
@@ -66,6 +66,33 @@ export function qualifiedModelId(provider: string, id: string): string {
   return `${provider}/${id}`
 }
 
+/**
+ * Status-only provider inventory (#907 / #378 slice): every provider the
+ * catalog knows, marked configured by the SAME auth resolution
+ * `listAvailable` uses (`hasConfiguredAuth` on any of its models), plus
+ * auth.json providers the catalog has no models for. Pi keys auth per
+ * install, so the inventory is complete by construction — there is no
+ * second source that can fail partially.
+ */
+export async function listProviderCredentialStatus(): Promise<ProviderCredentialInventory> {
+  const { registry } = await getModelRegistry()
+  await registry.refresh()
+  const configured = new Map<string, boolean>()
+  for (const m of registry.getAll()) {
+    const provider = String(m.provider)
+    configured.set(provider, (configured.get(provider) ?? false) || registry.hasConfiguredAuth(m))
+  }
+  for (const cred of listAuthCredentials()) {
+    if (!configured.has(cred.provider)) configured.set(cred.provider, true)
+  }
+  return {
+    providers: [...configured.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([providerId, isConfigured]) => ({ providerId, configured: isConfigured, source: 'runtime' as const })),
+    evidence: 'complete',
+  }
+}
+
 /** Find a Pi model by `provider/modelId` (or bare modelId as fallback).
  *  Sync snapshot read — undefined until the runtime handle has resolved
  *  (turn paths await getModelRegistry() first, so they always see it). */
@@ -90,16 +117,23 @@ export function createModelsSurface(): AgentRuntimeAdapter['models'] {
       // it or the synchronous reads below race the reload.
       await registry.refresh()
       const models = opts?.includeUnavailable ? registry.getAll() : registry.getAvailable()
-      return models.map((m) => ({
-        id: qualifiedModelId(String(m.provider), m.id),
-        name: m.name,
-        input: m.input.join(','),
-        contextWindow: m.contextWindow,
-        local: false,
-        available: registry.hasConfiguredAuth(m),
-        tags: m.reasoning ? ['reasoning'] : [],
-        metadata: { maxTokens: m.maxTokens, api: String(m.api) },
-      }))
+      return models.map((m) => {
+        // Pi's `available` IS auth presence for the model's provider — say
+        // so (#907), so the eligibility engine reports "no credentials for
+        // <provider>" instead of inventing a catalog/retirement story.
+        const available = registry.hasConfiguredAuth(m)
+        return {
+          id: qualifiedModelId(String(m.provider), m.id),
+          name: m.name,
+          input: m.input.join(','),
+          contextWindow: m.contextWindow,
+          local: false,
+          available,
+          ...(available ? {} : { unavailableReason: 'no_credentials' as const }),
+          tags: m.reasoning ? ['reasoning'] : [],
+          metadata: { maxTokens: m.maxTokens, api: String(m.api) },
+        }
+      })
     },
 
     /**
