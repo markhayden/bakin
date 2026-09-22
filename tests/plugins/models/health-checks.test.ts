@@ -103,47 +103,6 @@ describe('recommendRoutes', () => {
   })
 })
 
-describe('route-model-missing — account-rejected evidence (#852)', () => {
-  const DEAD = 'openai-codex/gpt-5.4-mini'
-  const routedToDead = () => deps({
-    getRoutingConfig: () => ({ routes: [{ workClass: 'relay', model: DEAD }], tagOverrides: [] }),
-  })
-
-  it('a route to an account-rejected model fires action_required with the rejection facts', async () => {
-    const result = await checkModelRouting({
-      ...routedToDead(),
-      listOpenModelRejections: () => [{ model: DEAD, lastSeenAt: NOW - 5_000, occurrences: 14 }],
-    })
-    if (result.outcome !== 'observed') throw new Error('expected observed')
-    const finding = result.observations.find((o) => o.key === 'route-model-missing-relay')!
-    expect(finding.status).toBe('error')
-    expect(finding.summary).toContain('rejected by your account')
-    expect(finding.summary).toContain(DEAD)
-    expect(finding.evidence).toMatchObject({ workClass: 'relay', model: DEAD, rejected: true, occurrences: 14, lastSeenAt: NOW - 5_000 })
-  })
-
-  it('a route to a model that simply is not in the catalog keeps the not-available wording', async () => {
-    const result = await checkModelRouting(routedToDead())
-    if (result.outcome !== 'observed') throw new Error('expected observed')
-    const finding = result.observations.find((o) => o.key === 'route-model-missing-relay')!
-    expect(finding.summary).toContain('not available on the active runtime')
-    expect(finding.summary).not.toContain('rejected')
-    expect(finding.evidence).toMatchObject({ rejected: false })
-  })
-
-  it('a rejected model that is still in the available list (overlay missed?) is caught by the rejection evidence alone', async () => {
-    // Defense in depth: the finding must fire when EITHER signal says dead.
-    const result = await checkModelRouting({
-      ...deps({
-        getRoutingConfig: () => ({ routes: [{ workClass: 'relay', model: 'anthropic/claude-haiku-4-5' }], tagOverrides: [] }),
-      }),
-      listOpenModelRejections: () => [{ model: 'anthropic/claude-haiku-4-5', lastSeenAt: NOW - 1_000, occurrences: 2 }],
-    })
-    if (result.outcome !== 'observed') throw new Error('expected observed')
-    expect(result.observations.find((o) => o.key === 'route-model-missing-relay')).toBeDefined()
-  })
-})
-
 describe('routes-model-clamped — runtime refuses per-turn overrides (#880)', () => {
   it('fires a watch finding when model routes exist and the runtime clamps them', async () => {
     const result = await checkModelRouting(deps({
@@ -195,12 +154,12 @@ describe('checkModelRouting', () => {
     expect(warn?.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'apply-recommended-routes' })
   })
 
-  it('errors when a route targets an unavailable model', async () => {
+  it('a route to a model that cannot run is NOT this check\'s finding (models.dead-selections owns it, #907)', async () => {
     const result = await checkModelRouting(deps({
       getRoutingConfig: () => ({ routes: [{ workClass: 'relay', model: 'gone/model' }], tagOverrides: [] }),
     }))
     if (result.outcome !== 'observed') throw new Error('expected observed')
-    expect(result.observations.find((o) => o.key === 'route-model-missing-relay')?.status).toBe('error')
+    expect(result.observations.some((o) => o.key.startsWith('route-model-missing'))).toBe(false)
   })
 
   it('warns on a standing clamp (route thinking unsupported on the active runtime)', async () => {
@@ -261,7 +220,7 @@ describe('checkModelRouting', () => {
 describe('recommendedRoutesRepair', () => {
   it('plans the proposal diff and applies it through the writer', async () => {
     const applied: WorkClassRoute[][] = []
-    const repair = recommendedRoutesRepair(deps(), (routes) => applied.push(routes))
+    const repair = recommendedRoutesRepair(deps(), (routes) => { applied.push(routes) })
     const plan = await repair.plan({ kind: 'check', checkId: 'models.routing' } as never)
     expect(plan).toHaveLength(1)
     expect(plan[0]?.changes.length).toBeGreaterThanOrEqual(4)
