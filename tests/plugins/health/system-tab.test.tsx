@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useState } from 'react'
+import userEvent from '@testing-library/user-event'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { HealthCheckState, HealthObservation, HealthReport } from '@makinbakin/sdk/types'
 import type { UseHealthResourceResult } from '../../../plugins/health/hooks/use-health-resource'
 import type {
@@ -20,6 +22,10 @@ import {
 const originalFetch = globalThis.fetch
 const OBSERVED_AT = '2026-07-13T11:55:00.000Z'
 const STALE_AT = '2099-07-13T12:00:00.000Z'
+
+mock.module('@makinbakin/sdk/navigation', () => ({
+  useQueryState: (_key: string, initial: string) => useState(initial),
+}))
 
 afterEach(() => {
   cleanup()
@@ -196,6 +202,28 @@ function makeSearchHealthy(data: UseSystemDataResult): void {
 }
 
 describe('SystemTabView', () => {
+  it('keeps plugin and index sorting and repair actions in separated narrow tables', async () => {
+    const data = systemData()
+    render(<SystemTabView data={data} section="search" />)
+    fireEvent.click(screen.getByTestId('installed-features-details').querySelector('summary')!)
+    const plugins = screen.getByRole('list', { name: 'Installed plugins' })
+    const indexes = screen.getByRole('list', { name: 'Search indexes' })
+    expect(plugins.getAttribute('data-variant')).toBe('separated')
+    expect(indexes.getAttribute('data-variant')).toBe('separated')
+    expect(within(plugins).getAllByText('Version')).toHaveLength(3)
+    expect(within(indexes).getByText('Last indexed')).toBeDefined()
+    expect(screen.getByRole('combobox', { name: 'Sort installed plugins' })).toBeDefined()
+    expect(screen.getByRole('combobox', { name: 'Sort search indexes' })).toBeDefined()
+    await act(async () => { fireEvent.click(within(plugins).getByRole('button', { name: 'Update Notes' })) })
+    expect(data.upgradePlugin).toHaveBeenCalledWith('notes')
+    await act(async () => { fireEvent.click(within(indexes).getByRole('button', { name: 'Reindex bakin_assets' })) })
+    expect(data.reindexSearch).toHaveBeenCalledWith('bakin_assets')
+    const table = screen.getByRole('table', { name: 'Installed plugins' })
+    await act(async () => { fireEvent.click(within(table).getByRole('button', { name: 'Plugin' })) })
+    expect(within(plugins).getAllByRole('listitem')[0]?.textContent).toContain('Notes')
+    expect(screen.getByRole('combobox', { name: 'Sort installed plugins' }).textContent).toContain('descending')
+  })
+
   it('leads with a stable visual platform pulse instead of a shifting status list', () => {
     const data = systemData()
     data.report.stale = true // An unrelated failed check must not overwrite fresh Search readiness.
@@ -231,6 +259,40 @@ describe('SystemTabView', () => {
     const statuses = [...container.querySelectorAll('[data-status-badge]')]
     expect(statuses.length).toBeGreaterThan(4)
     for (const badge of statuses) expect(badge.getAttribute('data-variant')).toBe('solid')
+  })
+
+  it('sorts document counts numerically and keeps missing evidence last from either control', async () => {
+    const user = userEvent.setup()
+    const data = systemData()
+    const index = data.searchStatus.data!.tables[0]!
+    data.searchStatus.data!.tables = [
+      { ...index, logical: 'ten', docCount: 10 },
+      { ...index, logical: 'two', docCount: 2 },
+      { ...index, logical: 'unknown', docCount: null },
+    ]
+    render(<SystemTabView data={data} section="search" />)
+    const table = screen.getByRole('table', { name: 'Search indexes' })
+    const list = screen.getByRole('list', { name: 'Search indexes' })
+    await act(async () => { fireEvent.click(within(table).getByRole('button', { name: 'Documents' })) })
+    expect(within(list).getAllByRole('listitem')[0]?.textContent).toContain('two')
+    expect(within(list).getAllByRole('listitem').at(-1)?.textContent).toContain('unknown')
+    await act(async () => { fireEvent.click(screen.getByRole('combobox', { name: 'Sort search indexes' })) })
+    const descending = await screen.findByRole('option', { name: 'Documents: descending' })
+    await act(async () => { await user.click(descending) })
+    expect(within(list).getAllByRole('listitem')[0]?.textContent).toContain('ten')
+    expect(within(list).getAllByRole('listitem').at(-1)?.textContent).toContain('unknown')
+    expect(within(table).getByRole('columnheader', { name: 'Documents' }).getAttribute('aria-sort')).toBe('descending')
+  })
+
+  it('disables per-index reindex at both widths when the search engine is unreachable', () => {
+    const data = systemData()
+    data.searchStatus.data!.engineReachable = false
+    render(<SystemTabView data={data} section="search" />)
+    for (const button of screen.getAllByRole('button', { name: 'Reindex bakin_assets' })) {
+      expect((button as HTMLButtonElement).disabled).toBe(true)
+    }
+    expect((screen.getByRole('button', { name: 'Reindex all' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(data.reindexSearch).not.toHaveBeenCalled()
   })
 
   it('caps the watch list at three findings and reveals the remaining evidence on demand', () => {
@@ -361,8 +423,8 @@ describe('SystemTabView', () => {
     fireEvent.click(screen.getByTestId('installed-features-details').querySelector('summary')!)
 
     expect((screen.getByRole('button', { name: 'Reindex all' }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole('button', { name: 'Reindex bakin_assets' }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole('button', { name: 'Update Notes' }) as HTMLButtonElement).disabled).toBe(true)
+    for (const button of screen.getAllByRole('button', { name: 'Reindex bakin_assets' })) expect((button as HTMLButtonElement).disabled).toBe(true)
+    for (const button of screen.getAllByRole('button', { name: 'Update Notes' })) expect((button as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByRole('button', { name: 'Refresh live data' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
@@ -380,12 +442,12 @@ describe('SystemTabView', () => {
     expect(technicalDetails.open).toBe(false)
     fireEvent.click(technicalDetails.querySelector('summary')!)
     expect(screen.getByRole('heading', { name: 'Indexes & migrations' })).toBeDefined()
-    expect(screen.getByText('Migrating · parked')).toBeDefined()
+    expect(within(screen.getByRole('table', { name: 'Search indexes' })).getByText('Migrating · parked')).toBeDefined()
     expect(screen.getByText('Journal backlog').closest('[data-stat-tile]')?.textContent).toContain('7')
     expect(screen.getByText('120/142')).toBeDefined()
     expect(screen.getByTestId('search-index-table-scroll').className).toContain('overflow-y-auto')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reindex bakin_assets' }))
+    fireEvent.click(within(screen.getByRole('table', { name: 'Search indexes' })).getByRole('button', { name: 'Reindex bakin_assets' }))
     expect(data.reindexSearch).toHaveBeenCalledWith('bakin_assets')
   })
 
@@ -422,8 +484,8 @@ describe('SystemTabView', () => {
     expect(allChecks.open).toBe(false)
 
     fireEvent.click(installedFeatures.querySelector('summary')!)
-    expect(screen.getByText('Missing dependencies: calendar-api')).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Update Notes' })).toBeDefined()
+    expect(within(screen.getByRole('table', { name: 'Installed plugins' })).getByText('Missing dependencies: calendar-api')).toBeDefined()
+    expect(within(screen.getByRole('table', { name: 'Installed plugins' })).getByRole('button', { name: 'Update Notes' })).toBeDefined()
     expect(screen.getByTestId('installed-plugin-table-scroll').className).toContain('overflow-y-auto')
 
     fireEvent.click(hostDetails.querySelector('summary')!)
@@ -528,7 +590,7 @@ describe('SystemTabView', () => {
 
     const inventory = screen.getByTestId('installed-features-details') as HTMLDetailsElement
     fireEvent.click(inventory.querySelector('summary')!)
-    expect(screen.getByText('Activation unknown')).toBeDefined()
+    expect(within(screen.getByRole('table', { name: 'Installed plugins' })).getByText('Activation unknown')).toBeDefined()
     expect(screen.queryByRole('button', { name: 'Update Notes' })).toBeNull()
   })
 
@@ -581,7 +643,7 @@ describe('SystemTabView', () => {
 
     const inventory = screen.getByTestId('installed-features-details') as HTMLDetailsElement
     fireEvent.click(inventory.querySelector('summary')!)
-    expect(screen.getByText('Last loaded · Failed')).toBeDefined()
+    expect(within(screen.getByRole('table', { name: 'Installed plugins' })).getByText('Last loaded · Failed')).toBeDefined()
   })
 
   it('does not call expired health-check evidence verified', () => {

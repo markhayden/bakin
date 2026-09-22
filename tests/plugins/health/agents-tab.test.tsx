@@ -24,6 +24,15 @@ mock.module('@makinbakin/sdk/hooks', () => ({
   },
 }))
 
+mock.module('@makinbakin/sdk/navigation', () => ({
+  useQueryState: (key: string, initial: string) => {
+    queryKeys.push(key)
+    const [value, setValue] = useState(querySeed[key] ?? initial)
+    const write = (next: string) => { queryWrites.push([key, next]); setValue(next) }
+    return [value, write, write]
+  },
+}))
+
 import { AgentsTab } from '../../../plugins/health/components/agents-tab'
 import { AgentPulse } from '../../../plugins/health/components/agent-pulse'
 import type { AgentEffortData, UsageHistoryData } from '../../../plugins/health/types'
@@ -288,9 +297,9 @@ function agentSurface(): HTMLElement {
 }
 
 function agentRow(surface: HTMLElement, agent: string): HTMLElement {
-  const row = within(surface)
+  const row = within(within(surface).getByRole('list', { name: 'Agent pulse' }))
     .getAllByText(agent, { exact: true })
-    .map((label) => label.closest<HTMLElement>('[data-agent-pulse-row], [data-agent-comparison-row], article, li'))
+    .map((label) => label.closest<HTMLElement>('li, tr'))
     .find((candidate): candidate is HTMLElement => candidate !== null)
   if (!row) throw new Error(`Could not find the ${agent} row`)
   return row
@@ -304,6 +313,26 @@ afterEach(() => {
 })
 
 describe('AgentsTab', () => {
+  it('shares sortable table and narrow rows, with independent agent details in a drawer', async () => {
+    stubAgentFetch()
+    render(<AgentsTab />)
+    const table = await screen.findByRole('table', { name: 'Agent pulse' })
+    const narrow = screen.getByRole('list', { name: 'Agent pulse' })
+    expect(narrow.getAttribute('data-variant')).toBe('separated')
+    expect(within(table).getAllByRole('row')[1]?.textContent).toContain('pixel')
+    expect(screen.getByRole('combobox', { name: 'Sort agent pulse' })).toBeDefined()
+    fireEvent.click(within(table).getByRole('button', { name: 'Agent' }))
+    expect(within(table).getAllByRole('row')[1]?.textContent).toContain('enrich')
+    expect(queryWrites).toContainEqual(['agent_sort', 'agent:asc'])
+    fireEvent.click(within(narrow).getByRole('button', { name: 'View pixel details' }))
+    const detail = await screen.findByRole('dialog', { name: 'pixel details' })
+    expect(detail.textContent).toContain('gpt-5.4')
+    expect(detail.textContent).toContain('Cache read')
+    expect(within(detail).getByRole('link', { name: 'Open diagnostics for pixel' }).getAttribute('href'))
+      .toBe('/team/pixel?tab=diagnostics')
+    expect(queryWrites).toContainEqual(['healthAgent', 'pixel'])
+  })
+
   it('keeps supporting trend and cost evidence together beneath the agent pulse', async () => {
     const { urls } = stubAgentFetch()
     render(<AgentsTab />)
@@ -442,7 +471,7 @@ describe('AgentsTab', () => {
 
     expect(pixel.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(scout.compareDocumentPosition(enrich) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(within(surface).getByRole('listitem', { name: 'pixel' })).toBe(pixel)
+    expect(within(within(surface).getByRole('list', { name: 'Agent pulse' })).getAllByRole('listitem')[0]).toBe(pixel)
   })
 
   it('labels independently pending agent evidence as checking instead of unavailable', async () => {
@@ -466,7 +495,7 @@ describe('AgentsTab', () => {
     expect(pixel.textContent).not.toContain('Work evidence unavailable')
 
     fireEvent.click(within(pixel).getByRole('button', { name: /pixel.*details/i }))
-    expect(pixel.textContent).toContain('Checking latest session')
+    expect(screen.getByRole('dialog', { name: 'pixel details' }).textContent).toContain('Checking latest session')
   })
 
   it('qualifies retained live evidence as last seen instead of claiming it is current', () => {
@@ -538,7 +567,7 @@ describe('AgentsTab', () => {
     expect(main.textContent).not.toContain('No active task reported')
 
     fireEvent.click(within(main).getByRole('button', { name: /main.*details/i }))
-    expect(main.textContent).toContain('Latest-session detail is unavailable')
+    expect(screen.getByRole('dialog', { name: 'main details' }).textContent).toContain('Latest-session detail is unavailable')
   })
 
   it('treats a successful unavailable-source envelope as unavailable evidence', async () => {
@@ -560,8 +589,8 @@ describe('AgentsTab', () => {
     expect(agentSurface().textContent).toContain('The runtime transcript source is unavailable.')
     const pixel = agentRow(agentSurface(), 'pixel')
     fireEvent.click(within(pixel).getByRole('button', { name: /pixel.*details/i }))
-    expect(pixel.textContent).toContain('Latest-session detail is unavailable')
-    expect(pixel.textContent).not.toContain('No latest-session token breakdown')
+    expect(screen.getByRole('dialog', { name: 'pixel details' }).textContent).toContain('Latest-session detail is unavailable')
+    expect(screen.getByRole('dialog', { name: 'pixel details' }).textContent).not.toContain('No latest-session token breakdown')
   })
 
   it('keeps partial session data while identifying the agents whose reads failed', async () => {
@@ -588,12 +617,13 @@ describe('AgentsTab', () => {
     await waitFor(() => expect(screen.getByText(/Latest-session evidence is partial for scout/)).toBeDefined())
     const scout = agentRow(agentSurface(), 'scout')
     fireEvent.click(within(scout).getByRole('button', { name: /scout.*details/i }))
-    expect(scout.textContent).toContain('Latest-session detail is unavailable')
+    expect(screen.getByRole('dialog', { name: 'scout details' }).textContent).toContain('Latest-session detail is unavailable')
+    fireEvent.click(screen.getByRole('button', { name: 'Close panel' }))
 
     const pixel = agentRow(agentSurface(), 'pixel')
     fireEvent.click(within(pixel).getByRole('button', { name: /pixel.*details/i }))
-    expect(pixel.textContent).toContain('600')
-    expect(pixel.textContent).not.toContain('Latest-session detail is unavailable')
+    expect(screen.getByRole('dialog', { name: 'pixel details' }).textContent).toContain('600')
+    expect(screen.getByRole('dialog', { name: 'pixel details' }).textContent).not.toContain('Latest-session detail is unavailable')
   })
 
   it('falls back to the legacy session array during a rolling server upgrade', async () => {
@@ -612,7 +642,7 @@ describe('AgentsTab', () => {
     expect(screen.getByText(/Latest-session coverage cannot be verified until Bakin is restarted/)).toBeDefined()
     const pixel = agentRow(agentSurface(), 'pixel')
     fireEvent.click(within(pixel).getByRole('button', { name: /pixel.*details/i }))
-    expect(pixel.textContent).toContain('600')
+    expect(screen.getByRole('dialog', { name: 'pixel details' }).textContent).toContain('600')
   })
 
   it('does not turn a stale empty live snapshot into a current zero', () => {
@@ -835,8 +865,8 @@ describe('AgentsTab', () => {
 
     const row = agentRow(agentSurface(), 'partial-cost')
     fireEvent.click(within(row).getByRole('button', { name: /partial-cost.*details/i }))
-    expect(row.textContent).toContain('$0.03+ reported cost')
-    expect(row.textContent).toContain('1 of 2 messages')
+    expect(screen.getByRole('dialog', { name: 'partial-cost details' }).textContent).toContain('$0.03+ reported cost')
+    expect(screen.getByRole('dialog', { name: 'partial-cost details' }).textContent).toContain('1 of 2 messages')
   })
 
   it('distinguishes clear review coverage from unavailable coverage without saying No issues', async () => {
@@ -899,16 +929,14 @@ describe('AgentsTab', () => {
     await waitFor(() => expect(agentRow(agentSurface(), 'pixel')).toBeDefined())
     const pixel = agentRow(agentSurface(), 'pixel')
     const details = within(pixel).getByRole('button', { name: /pixel.*details|details.*pixel/i })
-    const detailsId = details.getAttribute('aria-controls')
-
+    expect(details.getAttribute('aria-haspopup')).toBe('dialog')
     fireEvent.click(details)
-    expect(detailsId).not.toBeNull()
-    expect(document.getElementById(detailsId!)).not.toBeNull()
-    expect(pixel.textContent).toContain('gpt-5.4')
-    expect(pixel.textContent).toContain('8 messages')
-    expect(pixel.textContent).toContain('1.2k tokens')
-    expect(pixel.textContent).toMatch(/Cache read\s*400/i)
-    expect(within(pixel).getByRole('link', { name: /pixel.*diagnostics|diagnostics.*pixel/i }).getAttribute('href'))
+    const drawer = screen.getByRole('dialog', { name: 'pixel details' })
+    expect(drawer.textContent).toContain('gpt-5.4')
+    expect(drawer.textContent).toContain('8 messages')
+    expect(drawer.textContent).toContain('1.2k tokens')
+    expect(drawer.textContent).toMatch(/Cache read\s*400/i)
+    expect(within(drawer).getByRole('link', { name: /pixel.*diagnostics|diagnostics.*pixel/i }).getAttribute('href'))
       .toBe('/team/pixel?tab=diagnostics')
   })
 

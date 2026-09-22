@@ -268,7 +268,7 @@
       "repository": "bakin",
       "pluginId": "health",
       "path": "plugins/health/dist/client.js",
-      "bytes": 500046
+      "bytes": 502173
     },
     {
       "repository": "bakin",

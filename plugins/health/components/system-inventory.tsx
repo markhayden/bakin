@@ -28,6 +28,7 @@ import {
   type InventoryPlugin,
 } from '../lib/system-view-model'
 import { focusSystemElement } from './system-navigation'
+import { HealthTableSort, useHealthTableSort } from './health-table-sort'
 
 export interface SystemInventoryProps {
   report: HealthReport | null
@@ -123,11 +124,12 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
     {
       key: 'plugin',
       header: 'Plugin',
+      narrow: 'primary',
       sortable: true,
       sortValue: (plugin) => plugin.name,
       cellClassName: 'whitespace-normal',
       cell: (plugin) => (
-        <>
+        <div data-plugin-id={plugin.id} className="min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring">
           <p className="font-bakin-typography-weight-medium text-bakin-text-primary">{plugin.name}</p>
           <Text mono size="meta" tone="muted" as="p">{plugin.id}</Text>
           {(plugin.status === 'failed' || plugin.activationConflict) && (
@@ -141,12 +143,13 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
               )}
             </Text>
           )}
-        </>
+        </div>
       ),
     },
     {
       key: 'version',
       header: 'Version',
+      narrow: 'label',
       sortable: true,
       sortValue: (plugin) => plugin.version,
       cell: (plugin) => <span className="font-bakin-typography-family-mono text-bakin-text-muted">{plugin.version}</span>,
@@ -154,6 +157,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
     {
       key: 'source',
       header: 'Source',
+      narrow: 'label',
       sortable: true,
       sortValue: (plugin) => plugin.source,
       cell: (plugin) => <span className="text-bakin-text-muted">{plugin.source}</span>,
@@ -161,6 +165,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
     {
       key: 'routes',
       header: 'Routes',
+      narrow: 'label',
       align: 'end',
       sortable: true,
       sortValue: (plugin) => plugin.routes,
@@ -169,6 +174,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
     {
       key: 'status',
       header: 'Status',
+      narrow: 'meta',
       sortable: true,
       // Mirrors the badge's precedence: failed → unknown → update available → active.
       sortValue: (plugin) => (plugin.status === 'failed'
@@ -185,7 +191,15 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
               ? `Last loaded · ${plugin.status === 'failed' ? 'Failed' : plugin.status === 'unknown' ? 'Unknown' : plugin.upgradeAvailable ? 'Update available' : 'Active'}`
               : plugin.status === 'failed' ? 'Failed' : plugin.status === 'unknown' ? 'Activation unknown' : plugin.upgradeAvailable ? 'Update available' : 'Active'}
           </StatusBadge>
-          {plugin.upgradeAvailable && plugin.status === 'active' && (
+        </div>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      hideLabel: true,
+      narrow: 'trailing',
+      cell: (plugin) => plugin.upgradeAvailable && plugin.status === 'active' ? (
             <Button
               size="xs"
               variant="info"
@@ -196,23 +210,27 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
             >
               {pluginMutation.status === 'pending' && pluginMutation.target === plugin.id ? 'Updating…' : 'Update'}
             </Button>
-          )}
-        </div>
-      ),
+      ) : null,
     },
   ]
+  const pluginSort = useHealthTableSort(filteredPlugins, pluginColumns, 'system_plugin_sort', 'plugin')
 
   useImperativeHandle(ref, () => ({
     revealHost: () => revealDisclosure(hostDisclosureRef.current),
     revealPlugins: () => revealDisclosure(pluginsDisclosureRef.current),
     revealPlugin: (pluginId) => {
+      if (pluginsDisclosureRef.current) pluginsDisclosureRef.current.open = true
       const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(pluginId) : pluginId
-      const target = pluginTableRef.current?.querySelector<HTMLElement>(`[data-plugin-id="${escaped}"]`) ?? null
+      const targets = [...(pluginTableRef.current?.querySelectorAll<HTMLElement>(`[data-plugin-id="${escaped}"]`) ?? [])]
+      const target = targets.find(element => element.getClientRects().length > 0) ?? targets[0]
       if (!target) {
         revealDisclosure(pluginsDisclosureRef.current)
         return false
       }
-      if (pluginsDisclosureRef.current) pluginsDisclosureRef.current.open = true
+      // Evidence is not a user-operated control. Make it focusable only for
+      // this reveal, then restore the normal tab order when focus leaves.
+      target.tabIndex = -1
+      target.addEventListener('blur', () => target.removeAttribute('tabindex'), { once: true })
       focusSystemElement(target, { block: 'center' })
       return true
     },
@@ -296,6 +314,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
             onValueChange={onPluginSearchChange}
             placeholder="Name, id, or description"
           />
+          <HealthTableSort label="Sort installed plugins" {...pluginSort} />
           {loading && plugins.length === 0 ? (
             <Text size="body" tone="muted" as="p">Loading installed plugins…</Text>
           ) : filteredPlugins.length === 0 ? (
@@ -304,17 +323,12 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
             <Panel ref={pluginTableRef} scroll aria-label="Installed plugins" data-testid="installed-plugin-table-scroll" padding="compact" className="max-h-80">
               <DataTable<InventoryPlugin>
                 label="Installed plugins"
-                rows={filteredPlugins}
+                rows={pluginSort.rows}
                 rowKey={(plugin) => plugin.id}
-                renderRow={() => null}
-                // mergeSystemPlugins already orders by name; the first render keeps it.
-                defaultSort={{ field: 'plugin', dir: 'asc' }}
-                tableProps={{ className: 'min-w-[760px]' }}
-                rowProps={(plugin) => ({
-                  'data-plugin-id': plugin.id,
-                  tabIndex: -1,
-                  className: 'outline-none focus-visible:bg-bakin-signal-accent/10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-bakin-focus-ring',
-                })}
+                collapseBelow="2xl"
+                listVariant="separated"
+                sort={pluginSort.sort}
+                onSortChange={pluginSort.onSortChange}
                 columns={pluginColumns}
               />
             </Panel>
