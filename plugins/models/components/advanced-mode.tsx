@@ -45,6 +45,7 @@ import {
 
 import { agentRows, effectiveAliases, effectiveFallbacks, effectiveTagOverrides } from '../lib/advanced'
 import { WORK_CLASSES } from '../lib/mode'
+import { PendingChip, SelectionCallout } from './selection-callout'
 import type { SelectionsData } from './use-selections'
 
 // The full ordered ladder; the active runtime's declared support filters it.
@@ -141,8 +142,10 @@ export function AdvancedMode({ sel, modelOptions }: AdvancedModeProps) {
             <div className="flex flex-wrap items-center gap-bakin-2">
               <h3>{row.label}</h3>
               <StagedMark staged={eff.staged} />
+              <PendingChip sel={sel} refName={`route:${row.id}`} />
             </div>
             <Text as="p" size="meta" tone="muted" className="mt-bakin-1 leading-relaxed">{row.description}</Text>
+            <SelectionCallout sel={sel} refName={`route:${row.id}`} />
           </div>
         )
       },
@@ -211,7 +214,7 @@ export function AdvancedMode({ sel, modelOptions }: AdvancedModeProps) {
         </Stack>
         <div className="grid min-w-0 gap-bakin-4 @2xl/page-shell:grid-cols-2">
           <Field name="advanced-default-model" data-highlighted={highlight === 'policy:defaultModel' ? 'true' : undefined}>
-            <FieldLabel htmlFor="advanced-default-model">Default model <StagedMark staged={agent.staged} /></FieldLabel>
+            <FieldLabel htmlFor="advanced-default-model">Default model <StagedMark staged={agent.staged} /> <PendingChip sel={sel} refName="policy:defaultModel" /></FieldLabel>
             <ModelSelect
               id="advanced-default-model"
               value={agent.model ?? DEFAULT_MODEL_VALUE}
@@ -220,6 +223,7 @@ export function AdvancedMode({ sel, modelOptions }: AdvancedModeProps) {
               defaultLabel="Not set"
               className="w-full min-w-0"
             />
+            <SelectionCallout sel={sel} refName="policy:defaultModel" />
           </Field>
           {support?.defaultSubagentModel ? (
             <Field name="advanced-default-subagent" data-highlighted={highlight === 'policy:defaultSubagentModel' ? 'true' : undefined}>
@@ -232,6 +236,7 @@ export function AdvancedMode({ sel, modelOptions }: AdvancedModeProps) {
                 defaultLabel={`Use the default model${agent.model ? ` (${agent.model})` : ''}`}
                 className="w-full min-w-0"
               />
+              <SelectionCallout sel={sel} refName="policy:defaultSubagentModel" />
             </Field>
           ) : null}
         </div>
@@ -261,6 +266,7 @@ export function AdvancedMode({ sel, modelOptions }: AdvancedModeProps) {
                       className="w-full min-w-0"
                     />
                     <div className="flex gap-bakin-1">
+                      <PendingChip sel={sel} refName={`policy:fallback:${index}`} />
                       <Button type="button" variant="outline" size="icon-sm" aria-label={`Move fallback ${index + 1} up`} disabled={index === 0} onClick={() => { const next = [...fallbacks]; [next[index - 1], next[index]] = [next[index]!, next[index - 1]!]; setFallbacks(next) }}>↑</Button>
                       <Button type="button" variant="outline" size="icon-sm" aria-label={`Move fallback ${index + 1} down`} disabled={index === fallbacks.length - 1} onClick={() => { const next = [...fallbacks]; [next[index + 1], next[index]] = [next[index]!, next[index + 1]!]; setFallbacks(next) }}>↓</Button>
                       <Button type="button" variant="outline" size="icon-sm" aria-label={`Remove fallback ${index + 1}`} onClick={() => setFallbacks(fallbacks.filter((_, i) => i !== index))}>
@@ -293,6 +299,7 @@ export function AdvancedMode({ sel, modelOptions }: AdvancedModeProps) {
                       ariaLabel={`Alias ${name} target`}
                       className="w-full min-w-0"
                     />
+                    <SelectionCallout sel={sel} refName={`policy:alias:${name}`} />
                     <Button type="button" variant="outline" size="icon-sm" aria-label={`Remove alias ${name}`} onClick={() => sel.stage(`policy:alias:${name}`, { model: null })}>
                       <X className="size-bakin-3" />
                     </Button>
@@ -352,7 +359,7 @@ export function AdvancedMode({ sel, modelOptions }: AdvancedModeProps) {
                     {effectiveModel ? <Badge tone={own.model ? 'accent' : 'neutral'} variant="outline" size="xs" title={own.model ? 'Pinned' : 'Uses the default model'}>{effectiveModel}</Badge> : null}
                   </div>
                   <Field name={`agent-${row.agentId}-model`}>
-                    <FieldLabel htmlFor={`agent-${row.agentId}-model`}>Override <StagedMark staged={own.staged} /></FieldLabel>
+                    <FieldLabel htmlFor={`agent-${row.agentId}-model`}>Override <StagedMark staged={own.staged} /> <PendingChip sel={sel} refName={row.modelRef} /></FieldLabel>
                     <ModelSelect
                       id={`agent-${row.agentId}-model`}
                       value={own.model ?? DEFAULT_MODEL_VALUE}
@@ -361,6 +368,7 @@ export function AdvancedMode({ sel, modelOptions }: AdvancedModeProps) {
                       defaultLabel="Use default model"
                       className="w-full min-w-0"
                     />
+                    <SelectionCallout sel={sel} refName={row.modelRef} />
                   </Field>
                   {support?.perAgentSubagentModel ? (
                     <Field name={`agent-${row.agentId}-subagent`}>
@@ -373,6 +381,7 @@ export function AdvancedMode({ sel, modelOptions }: AdvancedModeProps) {
                         defaultLabel="Use default subagent model"
                         className="w-full min-w-0"
                       />
+                      <SelectionCallout sel={sel} refName={row.subagentRef} />
                     </Field>
                   ) : null}
                 </ListRow>
@@ -438,6 +447,8 @@ export function AdvancedMode({ sel, modelOptions }: AdvancedModeProps) {
                   <div className="flex flex-wrap items-center gap-bakin-2">
                     <span className="font-bakin-typography-family-mono text-bakin-text-primary">{row.tag}</span>
                     <StagedMark staged={row.staged} />
+                    <PendingChip sel={sel} refName={row.ref} />
+                    <SelectionCallout sel={sel} refName={row.ref} />
                   </div>
                   <ModelSelect
                     id={`tag-${row.tag}-model`}

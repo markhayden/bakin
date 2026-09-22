@@ -105,6 +105,8 @@ describe('ModelsPage component', () => {
   let uiModeState: string | null
   let pendingState: Array<Record<string, unknown>>
   let supportState: Record<string, unknown>
+  let eligibilityState: Record<string, Record<string, unknown>>
+  let proposalsState: Array<Record<string, unknown>>
   let routeProposalsState: { proposals: Array<Record<string, unknown>>; skipped: Array<Record<string, unknown>> }
   let evidenceState: Record<string, string>
   let routingState: {
@@ -156,6 +158,8 @@ describe('ModelsPage component', () => {
     uiModeState = null
     pendingState = []
     routeProposalsState = { proposals: [], skipped: [] }
+    eligibilityState = {}
+    proposalsState = []
     supportState = { defaultModel: true, fallbackModels: true, defaultSubagentModel: true, aliases: true, perAgentSubagentModel: true, supportedThinkingLevels: ['off', 'low', 'medium', 'high'], perTurnModel: true }
     evidenceState = { catalog: 'ok', runtimeAvailability: 'ok', credentials: 'ok', rejections: 'ok' }
     for (const key of Object.keys(queryOverrides)) delete queryOverrides[key]
@@ -209,7 +213,8 @@ describe('ModelsPage component', () => {
           ...routingState.tagOverrides.map((t) => ({ ref: `tag:${t.tag}`, model: t.model ?? null, ...(t.thinking ? { thinking: t.thinking } : {}), document: 'routing', label: t.tag })),
           { ref: 'ui:mode', model: uiModeState, document: 'routing', label: 'Models page mode' },
         ]
-        return jsonResponse({ revision: `rev-${selectionsRevision}`, support: supportState, states, proposals: [], pending: pendingState, evidence: evidenceState })
+        const withEligibility = states.map((st) => (typeof st.model === 'string' && st.ref !== 'ui:mode' ? { ...st, eligibility: eligibilityState[st.model] ?? { status: 'eligible', detail: 'ok' } } : st))
+        return jsonResponse({ revision: `rev-${selectionsRevision}`, support: supportState, states: withEligibility, proposals: proposalsState, pending: pendingState, evidence: evidenceState })
       }
       if (url === '/api/plugins/models/plan' && method === 'GET') {
         const agent = configState.defaultModel
@@ -651,6 +656,48 @@ describe('ModelsPage component', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Stage changes' }))
       expect((await screen.findByTestId('draft-summary')).textContent).toContain('5 changes staged')
       expect(configWrite()).toBeUndefined()
+    })
+  })
+
+  describe('selection callouts (#907)', () => {
+    it('a dead default shows the reason with one button that STAGES the proposal; saving posts it', async () => {
+      configState = { ...configState, defaultModel: 'openai/gpt-6-astra' }
+      eligibilityState = { 'openai/gpt-6-astra': { status: 'ineligible', reason: 'no_credentials', detail: 'no credentials for openai' } }
+      proposalsState = [{ ref: 'policy:defaultModel', from: 'openai/gpt-6-astra', to: 'anthropic/claude-sonnet-4-6', reason: 'no credentials for openai', source: 'recommender', revision: 'rev-0' }]
+      render(<ModelsPage />)
+      const callout = await screen.findByTestId('callout-policy:defaultModel')
+      expect(callout.getAttribute('data-callout')).toBe('ineligible')
+      expect(callout.textContent).toContain('no credentials for openai')
+      fireEvent.click(within(callout).getByRole('button', { name: 'Use anthropic/claude-sonnet-4-6' }))
+      expect((await screen.findByTestId('draft-summary')).textContent).toContain('1 change staged')
+      // Acted on ⇒ the callout is gone until saved.
+      expect(screen.queryByTestId('callout-policy:defaultModel')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(configWrite()).toBeTruthy())
+      expect(configWrite()?.body?.ops).toEqual([{ ref: 'policy:defaultModel', set: { model: 'anthropic/claude-sonnet-4-6' } }])
+    })
+
+    it('unknown eligibility is information only — no proposal button', async () => {
+      eligibilityState = { 'anthropic/claude-sonnet-4-6': { status: 'unknown', detail: 'credential evidence unavailable' } }
+      render(<ModelsPage />)
+      const callout = await screen.findByTestId('callout-policy:defaultModel')
+      expect(callout.getAttribute('data-callout')).toBe('unknown')
+      expect(within(callout).queryByRole('button')).toBeNull()
+    })
+
+    it('a dead agent pin in Simple surfaces through the customizations line; in Advanced the row carries the callout', async () => {
+      configState = { ...configState, agents: [{ ...configState.agents[0]!, ownModel: 'openai/gpt-6-astra', effectiveModel: 'openai/gpt-6-astra' }] }
+      eligibilityState = { 'openai/gpt-6-astra': { status: 'ineligible', reason: 'no_credentials', detail: 'no credentials for openai' } }
+      proposalsState = [{ ref: 'agent:patch:model', from: 'openai/gpt-6-astra', to: null, reason: 'no credentials for openai', source: 'none', revision: 'rev-0' }]
+      render(<ModelsPage />)
+      const callout = await screen.findByTestId('callout-agent:patch:model')
+      expect(callout.textContent).toContain('No eligible replacement')
+    })
+
+    it('a pending adapter write marks its ref with a chip', async () => {
+      pendingState = [{ document: 'policy', refs: ['policy:defaultModel'], intended: { 'policy:defaultModel': 'openai-codex/gpt-5.4' }, state: 'unsettled', startedAt: Date.now() }]
+      render(<ModelsPage />)
+      expect((await screen.findByTestId('pending-policy:defaultModel')).textContent).toBe('saving…')
     })
   })
 

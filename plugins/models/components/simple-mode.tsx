@@ -18,6 +18,7 @@ import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitl
 import { CHORES_CLASSES } from '../lib/mode'
 import { choresLane, setAllChoresOps } from '../lib/simple'
 import { ResetToPlan } from './reset-dialog'
+import { PendingChip, SelectionCallout } from './selection-callout'
 import type { SelectionsData } from './use-selections'
 
 export interface SimpleModeProps {
@@ -72,7 +73,7 @@ export function SimpleMode({ sel, modelOptions, onAdvanced }: SimpleModeProps) {
           highlighted={highlighted === 'policy:defaultModel'}
         >
           <Field name="lane-agent-model">
-            <FieldLabel htmlFor="lane-agent-model">Model{stagedAgentLabel}</FieldLabel>
+            <FieldLabel htmlFor="lane-agent-model">Model{stagedAgentLabel} <PendingChip sel={sel} refName="policy:defaultModel" /></FieldLabel>
             <ModelSelect
               id="lane-agent-model"
               value={agent.model ?? DEFAULT_MODEL_VALUE}
@@ -85,6 +86,7 @@ export function SimpleMode({ sel, modelOptions, onAdvanced }: SimpleModeProps) {
               <FieldDescription>Recommended: {plan.recommended.agent.model} — {plan.recommended.agent.why}</FieldDescription>
             ) : null}
           </Field>
+          <SelectionCallout sel={sel} refName="policy:defaultModel" />
         </PlanLane>
 
         <PlanLane
@@ -128,6 +130,9 @@ export function SimpleMode({ sel, modelOptions, onAdvanced }: SimpleModeProps) {
               ) : null}
             </Field>
           )}
+          {CHORES_CLASSES.map((workClass) => (
+            <SelectionCallout key={workClass} sel={sel} refName={`route:${workClass}`} />
+          ))}
         </PlanLane>
       </Grid>
 
