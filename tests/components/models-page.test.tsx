@@ -371,6 +371,21 @@ describe('ModelsPage component', () => {
       ])
     })
 
+    it('thinking dropdowns offer only runtime-supported levels; a persisted-but-unsupported level surfaces as clamping, never hidden', async () => {
+      supportState = { ...supportState, supportedThinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] }
+      routingState = { routes: [{ workClass: 'relay', thinking: 'max' }], tagOverrides: [] }
+      const user = userEvent.setup()
+      render(<ModelsPage />)
+      await user.click(await screen.findByRole('combobox', { name: 'Scheduled thinking' }))
+      const options = screen.getAllByRole('option').map((o) => o.textContent)
+      expect(options).toContain('Extra high')
+      expect(options).not.toContain('Adaptive')
+      expect(options).not.toContain('Maximum')
+      await user.keyboard('{Escape}')
+      await user.click(screen.getByRole('combobox', { name: 'Relay thinking' }))
+      expect(await screen.findByRole('option', { name: 'Maximum · unsupported by this runtime' })).toBeTruthy()
+    })
+
     it('"Use recommended routes" stages the route proposals from the plan', async () => {
       routeProposalsState = { proposals: [{ workClass: 'relay', model: 'anthropic/claude-haiku-4-5', reason: 'cheapest' }], skipped: [{ workClass: 'enrichment', reason: 'no vision model' }] }
       render(<ModelsPage />)
@@ -460,6 +475,26 @@ describe('ModelsPage component', () => {
 
     refreshDeferred.resolve(jsonResponse(refreshResponse))
     await catalog.findByText('Refresh')
+  })
+
+  it('the catalog keeps rejected and credential-less rows LISTED with a visible reason badge (#852/#907)', async () => {
+    availableResponse = {
+      ...availableResponse,
+      models: [
+        { id: 'openai-codex/gpt-5.4-mini', name: 'gpt-5.4-mini', tier: 'budget', provider: 'openai-codex', available: false, rejection: { lastSeenAt: Date.now() - 60_000, occurrences: 14 }, eligibility: { status: 'ineligible', reason: 'account_rejected', detail: 'rejected by your account (14 failures)' } },
+        { id: 'openai-codex/gpt-5.6-luna', name: 'gpt-5.6-luna', tier: 'premium', provider: 'openai-codex', available: true, eligibility: { status: 'eligible', detail: 'ok' } },
+        { id: 'openai/gpt-6-astra', name: 'gpt-6-astra', tier: 'premium', provider: 'openai', available: false, eligibility: { status: 'ineligible', reason: 'no_credentials', detail: 'no credentials for openai' } },
+      ],
+    }
+    render(<ModelsPage />)
+    fireEvent.click(await screen.findByText('Model catalog'))
+    const catalog = within(await screen.findByTestId('model-catalog'))
+    expect(await catalog.findByText('gpt-5.4-mini')).toBeTruthy()
+    const rejected = catalog.getByText('Rejected by account')
+    expect(rejected.closest('[title]')?.getAttribute('title')).toContain('14')
+    expect(catalog.getByText('No credentials').closest('[title]')?.getAttribute('title')).toContain('no credentials for openai')
+    const healthy = catalog.getByText('gpt-5.6-luna').closest('[data-model-row]')!
+    expect(within(healthy as HTMLElement).queryByText('Rejected by account')).toBeNull()
   })
 
   it('renders cached refresh age when available models come from cache', async () => {

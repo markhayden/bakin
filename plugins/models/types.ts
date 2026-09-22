@@ -50,7 +50,6 @@ export interface AliasesResponse {
 
 /** Shape of models plugin settings */
 export interface ModelsPluginSettings {
-  defaultModel?: string
   /** Models page presentation mode (#907, D4). A VIEW preference — never changes configuration. */
   ui?: { mode?: 'simple' | 'advanced' }
   /** Per-turn model/thinking routing policy (work classes + tag overrides). */

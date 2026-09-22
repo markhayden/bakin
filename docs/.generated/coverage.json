@@ -23,7 +23,7 @@
     },
     "hookRegistrations": {
       "status": "audited",
-      "count": 66,
+      "count": 65,
       "source": "source scan"
     },
     "slots": {

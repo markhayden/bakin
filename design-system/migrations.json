@@ -20,11 +20,11 @@
     "private-import"
   ],
   "summary": {
-    "paths": 166,
+    "paths": 164,
     "totals": {
       "raw-palette": 4,
-      "arbitrary-size": 77,
-      "raw-scale": 436,
+      "arbitrary-size": 81,
+      "raw-scale": 440,
       "raw-control": 18,
       "inline-style": 33,
       "generic-token": 72,
@@ -185,7 +185,7 @@
       }
     },
     {
-      "path": "bakin-bits-official/plugins/projects/components/project-list.tsx",
+      "path": "bakin-bits-official/plugins/projects/components/project-grid.tsx",
       "owner": {
         "repository": "bakin-bits-official",
         "area": "plugin",
@@ -197,7 +197,8 @@
       "target": "official Projects list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 1
+        "arbitrary-size": 1,
+        "raw-scale": 1
       }
     },
     {
@@ -1716,7 +1717,7 @@
       "target": "brand list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 19
+        "raw-scale": 20
       }
     },
     {
@@ -1844,6 +1845,7 @@
       "target": "diagnostic dashboard archetypes and semantic data visualization",
       "status": "legacy-allowed",
       "allowances": {
+        "arbitrary-size": 1,
         "raw-scale": 2
       }
     },
@@ -1991,6 +1993,7 @@
       "target": "diagnostic dashboard archetypes and semantic data visualization",
       "status": "legacy-allowed",
       "allowances": {
+        "arbitrary-size": 2,
         "raw-scale": 1
       }
     },
@@ -2007,6 +2010,7 @@
       "target": "diagnostic dashboard archetypes and semantic data visualization",
       "status": "legacy-allowed",
       "allowances": {
+        "arbitrary-size": 1,
         "raw-scale": 2
       }
     },
@@ -2040,7 +2044,7 @@
       "target": "search/list/detail archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 1
+        "raw-scale": 3
       }
     },
     {
@@ -2057,38 +2061,6 @@
       "status": "legacy-allowed",
       "allowances": {
         "raw-scale": 3
-      }
-    },
-    {
-      "path": "plugins/models/components/agents-tab.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "models"
-      },
-      "censusEntryId": "plugin-slot:models:page:/models",
-      "migrationTask": "T60",
-      "archetype": "list-index",
-      "target": "catalog/settings archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 1
-      }
-    },
-    {
-      "path": "plugins/models/components/available-models-tab.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "models"
-      },
-      "censusEntryId": "plugin-slot:models:page:/models",
-      "migrationTask": "T60",
-      "archetype": "list-index",
-      "target": "catalog/settings archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 1
       }
     },
     {
@@ -2615,7 +2587,7 @@
       "target": "focused SDK primitive/pattern and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 9
+        "raw-scale": 11
       }
     },
     {

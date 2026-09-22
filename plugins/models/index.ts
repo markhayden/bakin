@@ -1,6 +1,8 @@
 /**
  * Models plugin — server entry point.
- * API routes for model config, available models, aliases, and defaults.
+ * Routes for the model catalog, the ONE selections write path, the plan,
+ * and runtime restart; the health checks and repairs that keep every
+ * persisted model selection honest.
  *
  * Thin definePlugin shell: the route array lives in lib/routes.ts, the
  * cross-plugin hooks in lib/register-hooks.ts, the exec tools in
@@ -30,12 +32,6 @@ const modelsPlugin: BakinPlugin = definePlugin({
   name: 'Models',
   version: '2.3.0',
   routes: modelsRoutes,
-
-  settingsSchema: {
-    fields: [
-      { key: 'defaultModel', type: 'select', label: 'Default model', description: 'Default model for new agents', options: [{ value: 'openai-codex/gpt-5.4', label: 'GPT-5.4' }, { value: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6' }, { value: 'anthropic/claude-opus-4-6', label: 'Claude Opus 4.6' }], default: 'openai-codex/gpt-5.4' },
-    ],
-  },
 
   // Nav items registered in client.tsx (order: 70) — no server-side duplication
 

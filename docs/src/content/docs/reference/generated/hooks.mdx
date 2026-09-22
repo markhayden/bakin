@@ -156,19 +156,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Model hooks expose the effective model configuration and notify dependent surfaces when runtime model state changes.</p>
 
 <div class="hook-card-list">
-<HookCard id="models-configchanged" name="models.configChanged" label="Model config changed." summary="Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing." source="plugins/models/lib/register-hooks.ts:17" badges={["event"]}>
-```ts frame="terminal"
-await ctx.hooks.callAll(
-  'models.configChanged',
-  {
-    agentId: 'patch',
-    oldModel: 'gpt-5.4',
-    newModel: 'gpt-5.5'
-  },
-)
-```
-</HookCard>
-<HookCard id="models-getavailablemodels" name="models.getAvailableModels" label="List available models." summary="Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config." source="plugins/models/lib/register-hooks.ts:35" badges={["rpc"]}>
+<HookCard id="models-getavailablemodels" name="models.getAvailableModels" label="List available models." summary="Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config." source="plugins/models/lib/register-hooks.ts:31" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getAvailableModels',
@@ -176,7 +164,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-geteffectivemodel" name="models.getEffectiveModel" label="Get effective model." summary="Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent." source="plugins/models/lib/register-hooks.ts:21" badges={["rpc"]}>
+<HookCard id="models-geteffectivemodel" name="models.getEffectiveModel" label="Get effective model." summary="Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent." source="plugins/models/lib/register-hooks.ts:17" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getEffectiveModel',
@@ -186,7 +174,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-getroutingconfig" name="models.getRoutingConfig" label="Get routing config." summary="Returns the per-turn model/thinking routing policy (work classes + tag overrides) applied before each routable agent turn. Use it to read the current routing rules." source="plugins/models/lib/register-hooks.ts:49" badges={["rpc"]}>
+<HookCard id="models-getroutingconfig" name="models.getRoutingConfig" label="Get routing config." summary="Returns the per-turn model/thinking routing policy (work classes + tag overrides) applied before each routable agent turn. Use it to read the current routing rules." source="plugins/models/lib/register-hooks.ts:45" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getRoutingConfig',
@@ -194,7 +182,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-listagentmodels" name="models.listAgentModels" label="List agent models." summary="Returns every runtime agent with its own/subagent/default/effective model resolved (the roster the Models page shows). Use it when a plugin needs runtime-ready model information for the whole roster — the spend plugin's per-agent billing map reads it." source="plugins/models/lib/register-hooks.ts:29" badges={["rpc"]}>
+<HookCard id="models-listagentmodels" name="models.listAgentModels" label="List agent models." summary="Returns every runtime agent with its own/subagent/default/effective model resolved (the roster the Models page shows). Use it when a plugin needs runtime-ready model information for the whole roster — the spend plugin's per-agent billing map reads it." source="plugins/models/lib/register-hooks.ts:25" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.listAgentModels',
@@ -202,7 +190,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-refreshavailablemodels" name="models.refreshAvailableModels" label="Refresh the model catalog." summary="Bypasses caches and re-fetches the model catalog (with pricing) live from the configured providers. Use it when pricing is stale or missing — e.g. the spend-evidence repair — instead of waiting on the Models page to trigger a refresh." source="plugins/models/lib/register-hooks.ts:41" badges={["rpc"]}>
+<HookCard id="models-refreshavailablemodels" name="models.refreshAvailableModels" label="Refresh the model catalog." summary="Bypasses caches and re-fetches the model catalog (with pricing) live from the configured providers. Use it when pricing is stale or missing — e.g. the spend-evidence repair — instead of waiting on the Models page to trigger a refresh." source="plugins/models/lib/register-hooks.ts:37" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.refreshAvailableModels',
@@ -210,7 +198,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-resetcatalogcache" name="models.resetCatalogCache" label="Reset the model catalog cache." summary="Drops every catalog cache layer (hot, disk, in-flight) and bumps the runtime epoch so a stale fetch cannot publish. Invoked by the runtime switch." source="plugins/models/lib/register-hooks.ts:40" badges={["event"]}>
+<HookCard id="models-resetcatalogcache" name="models.resetCatalogCache" label="Reset the model catalog cache." summary="Drops every catalog cache layer (hot, disk, in-flight) and bumps the runtime epoch so a stale fetch cannot publish. Invoked by the runtime switch." source="plugins/models/lib/register-hooks.ts:36" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'models.resetCatalogCache',

@@ -237,13 +237,12 @@ describe('Models Plugin Activation', () => {
     ])
   })
 
-  it('registers 7 hooks — "which model" only; pricing/billing/limits are the spend plugin\'s', () => {
-    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(7)
+  it('registers 6 hooks — "which model" only; pricing/billing/limits are the spend plugin\'s', () => {
+    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(6)
     const hookNames = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map(
       (c: unknown[]) => c[0]
     )
     expect(hookNames.sort()).toEqual([
-      'models.configChanged',
       'models.getAvailableModels',
       'models.getEffectiveModel',
       'models.getRoutingConfig',
@@ -253,11 +252,8 @@ describe('Models Plugin Activation', () => {
     ])
   })
 
-  it('has valid settings schema', () => {
-    expect(modelsPlugin.settingsSchema).toBeDefined()
-    const fields = modelsPlugin.settingsSchema!.fields
-    expect(fields.length).toBe(1)
-    expect(fields.map((f) => f.key).sort()).toEqual(['defaultModel'])
+  it('declares no settings schema — the Models page is the ONE edit surface (the dead Settings defaultModel field is gone)', () => {
+    expect(modelsPlugin.settingsSchema).toBeUndefined()
   })
 })
 

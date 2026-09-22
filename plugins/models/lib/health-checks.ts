@@ -80,7 +80,7 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
         impact: 'Routed turns run on each agent\'s default model (with clamp receipts) — spend and quality follow defaults, not your routes.',
         disposition: 'watch',
         resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
-        resolution: { key: 'authorize-overrides', type: 'navigate', label: 'Review routing', href: '/models?tab=routing' },
+        resolution: { key: 'authorize-overrides', type: 'navigate', label: 'Review routing', href: '/models?ref=route:relay' },
       },
     }))
   }
@@ -98,7 +98,7 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
         impact: 'Turns run at a lower thinking level than configured (clamped with audit evidence).',
         disposition: 'watch',
         resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
-        resolution: { key: 'fix-thinking', type: 'navigate', label: 'Adjust level', href: '/models?tab=routing' },
+        resolution: { key: 'fix-thinking', type: 'navigate', label: 'Adjust level', href: '/models?ref=route:relay' },
       },
     }))
   }

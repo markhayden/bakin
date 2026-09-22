@@ -156,9 +156,6 @@ export const modelsRoutes = [
           notePendingChange((ctx as unknown as PluginContext).runtime, [...kinds])
           setModelsCache(null)
           ctx.events.emit('models.catalog_changed', { reason: 'selections', refs: touched })
-          if (result.applied.some((ref) => ref.startsWith('agent:'))) {
-            await ctx.hooks.invoke('models.configChanged', { refs: result.applied })
-          }
         }
         return Response.json(result)
       } catch (err) {

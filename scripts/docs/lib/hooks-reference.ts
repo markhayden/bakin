@@ -38,7 +38,6 @@ const hookExamplePayloads: Record<string, HookExamplePayload> = {
   'assets.purgeClipboardForTask': { taskId: 'task-123' },
   'health.list': {},
   'health.getCheck': { id: 'runtime' },
-  'models.configChanged': { agentId: 'patch', oldModel: 'gpt-5.4', newModel: 'gpt-5.5' },
   'models.getEffectiveModel': { agentId: 'patch' },
   'models.markConfigDirty': {},
   'models.markRuntimeRestarted': {},

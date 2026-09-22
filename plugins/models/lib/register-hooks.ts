@@ -14,10 +14,6 @@ import { isLegacyRouting, migrateLegacyRouting } from '../../../src/core/routing
 import { fetchAvailableModels } from './available-models'
 
 export function registerModelsHooks(ctx: PluginContext): void {
-  ctx.hooks.register('models.configChanged', () => {
-    // Notification hook — handlers subscribe externally
-  }, { label: 'Model config changed.', summary: 'Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing.', hookKind: 'event' })
-
   ctx.hooks.register('models.getEffectiveModel', async (data: Record<string, unknown>) => {
     const agentId = data.agentId as string
     if (!agentId) return null
