@@ -110,7 +110,7 @@ export function Launcher({
         {chats.length > 0 ? (
           <section className="space-y-bakin-2" aria-labelledby="chat-recents-heading">
             <h3 id="chat-recents-heading" className="text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-muted">Recent</h3>
-            <ListRows aria-label="Recent chats">
+            <ListRows variant="separated" aria-label="Recent chats">
               {chats.slice(0, MAX_RECENTS).map((chat) => (
                 <ListRow
                   key={chat.id}
@@ -128,7 +128,7 @@ export function Launcher({
                     />
                     <span className="min-w-0 flex-1">
                       <span
-                        className={`block truncate text-bakin-typography-size-body ${
+                        className={`block break-words text-bakin-typography-size-body ${
                           chat.unreadCount > 0 ? 'font-bakin-typography-weight-semibold' : ''
                         }`}
                       >

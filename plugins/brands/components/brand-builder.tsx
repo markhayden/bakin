@@ -386,12 +386,11 @@ function MaterialsDrop({ files, onChange }: { files: File[]; onChange: (files: F
   return (
     <div className="grid gap-bakin-2">
       {files.length > 0 && (
-        // Bordered, not separated: each file is a distinct removable resource
-        // (the variant's documented boundary), matching the prior per-file chip.
-        <ListRows variant="bordered" size="sm" aria-label="Attached brand materials">
+        // Compact supporting resources use the shared separated-row treatment.
+        <ListRows variant="separated" size="sm" aria-label="Attached brand materials">
           {files.map((f, i) => (
             <ListRow key={`${f.name}-${i}`} className="flex min-w-0 items-center gap-bakin-2">
-              <span className="min-w-0 truncate">{f.name}</span>
+              <span className="min-w-0 break-words">{f.name}</span>
               <Text mono size="meta" tone="muted" className="shrink-0">
                 {formatSize(f.size)}
               </Text>
