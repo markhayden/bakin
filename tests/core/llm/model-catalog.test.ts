@@ -42,7 +42,7 @@ import {
   formatCostRange,
   computeCostUsdMicros,
   computeImageCostUsdMicros,
-} from '../../../plugins/models/data/known-models'
+} from '../../../packages/core/src/llm/model-catalog'
 
 describe('known-models — seed shape', () => {
   it('has entries across all three kinds', () => {

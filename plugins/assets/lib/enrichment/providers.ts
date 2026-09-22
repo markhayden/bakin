@@ -2,7 +2,7 @@
  * Vision-enrichment model catalog + default resolution (spec D8).
  *
  * Model ids come from the models plugin's curated catalog
- * (plugins/models/data/known-models.ts) — real ids with real pricing,
+ * (packages/core/src/llm/model-catalog.ts) — real ids with real pricing,
  * never fabricated. Capability flags are conservative: `audioInput` is
  * true only where the transport verifiably accepts audio bytes (Gemini
  * inline_data); everything else records `skipped` rather than guessing.

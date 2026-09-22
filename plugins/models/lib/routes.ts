@@ -13,7 +13,7 @@ import type { PluginContext } from '@bakin/core/plugin-types'
 import { defineRoute } from '@bakin/core/routing'
 
 import type { ModelsPluginSettings } from '../types'
-import { KNOWN_PROVIDERS } from '../data/known-models'
+import { KNOWN_PROVIDERS } from '@bakin/core/llm/model-catalog'
 import {
   readPersistedCache,
   writePersistedCache,

@@ -3,7 +3,7 @@
  * transports verifiably accept image (and optionally audio) bytes. Shared by
  * the assets plugin's enrichment engine (direct-provider selection) and the
  * models plugin's cheap-vision route recommendations. Model ids come from
- * the curated catalog (plugins/models/data/known-models.ts) — real ids with
+ * the curated catalog (packages/core/src/llm/model-catalog.ts) — real ids with
  * real pricing, never fabricated; capability flags are conservative.
  */
 import type { DirectProviderId } from './provider-keys'

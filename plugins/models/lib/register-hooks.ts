@@ -11,7 +11,7 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
 
 import type { ModelsPluginSettings } from '../types'
-import { getKnownModel, computeCostUsdMicros, computeImageCostUsdMicros } from '../data/known-models'
+import { getKnownModel, computeCostUsdMicros, computeImageCostUsdMicros } from '@bakin/core/llm/model-catalog'
 import { resolveAgents } from './config-io'
 import { resetModelsCache } from './available-models'
 import { resolveBilling } from './billing'

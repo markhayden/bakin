@@ -16,7 +16,7 @@ Path: `~/.bakin/plugin-settings/models/available.json`. Owned by `plugins/models
 
 ## Layer 2: Curated catalog
 
-Path: `plugins/models/data/known-models.ts`. Bakin-maintained lookup of ~22 popular models — frontier + OSS, LLM + image + video — with descriptions, tier, cost range, and brand-icon slugs.
+Path: `packages/core/src/llm/model-catalog.ts` (moved from the models plugin so the spend plugin can price from the same data). Bakin-maintained lookup of ~22 popular models — frontier + OSS, LLM + image + video — with descriptions, tier, cost range, and brand-icon slugs.
 
 Merged into each runtime-sourced `AvailableModel` server-side via `getKnownModel()` / `getKnownProvider()`. Unknown models render plain — **no fabrication**.
 
