@@ -730,7 +730,7 @@ export function useModelsData() {
       if (outcome.ok) {
         setPendingOwn((prev) => { const n = { ...prev }; delete n[agentId]; return n })
         setPendingSub((prev) => { const n = { ...prev }; delete n[agentId]; return n })
-        runtimeStatus.markDirty()
+        await runtimeStatus.refresh()
         await fetchConfig()
       } else {
         // A rejected save leaves the pending edit staged; say so, never drop it
@@ -766,7 +766,7 @@ export function useModelsData() {
         { defaultModel: nextDefaultModel, defaultSubagentModel: nextDefaultSubagentModel ?? null, fallbackModels: nextFallbackModels },
       ))
       if (outcome.ok) {
-        runtimeStatus.markDirty()
+        await runtimeStatus.refresh()
         await fetchConfig()
         await fetchAvailable()
       } else {

@@ -241,8 +241,8 @@ describe('Models Plugin Activation', () => {
     ])
   })
 
-  it('registers 12 hooks', () => {
-    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(12)
+  it('registers 10 hooks', () => {
+    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(10)
     const hookNames = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map(
       (c: unknown[]) => c[0]
     )
@@ -252,8 +252,6 @@ describe('Models Plugin Activation', () => {
       'models.getBudgetPolicy',
       'models.getEffectiveModel',
       'models.getRoutingConfig',
-      'models.markConfigDirty',
-      'models.markRuntimeRestarted',
       'models.priceImage',
       'models.priceTurn',
       'models.refreshAvailableModels',
@@ -924,30 +922,47 @@ describe('GET /spend', () => {
   })
 })
 
-describe('GET /runtime/status', () => {
-  it('returns restartNeeded=false initially', async () => {
-    const route = findRoute(activated.routes, 'GET', '/runtime/status')!
-    const { status, body } = await callRoute(route, activated.ctx)
-    expect(status).toBe(200)
-    expect(typeof body.restartNeeded).toBe('boolean')
-  })
+describe('GET /runtime/status — adapter-advised pending restart (#878)', () => {
+  it('nothing pending initially; the mock adapter omits restartAdvice so a model save pends with the GENERIC advice', async () => {
+    const { clearPendingRestart } = await import('../../../src/core/pending-restart')
+    clearPendingRestart()
+    const status = findRoute(activated.routes, 'GET', '/runtime/status')!
+    const initial = await callRoute(status, activated.ctx)
+    expect(initial.body).toMatchObject({ pending: false, kinds: [] })
 
-  it('returns restartNeeded=true after config change', async () => {
-    // Trigger a config change through the ONE write path.
     writeRuntimeConfig()
     const get = findRoute(activated.routes, 'GET', '/selections')!
     const { body: current } = await callRoute(get, activated.ctx)
     const post = findRoute(activated.routes, 'POST', '/selections')!
-    const res = await callRoute(post, activated.ctx, {
-      body: { revision: current.revision, ops: [{ ref: 'agent:patch:model', set: { model: 'anthropic/claude-haiku-4-5' } }] },
-    })
-    expect(res.status).toBe(200)
+    await callRoute(post, activated.ctx, { body: { revision: current.revision, ops: [{ ref: 'agent:patch:model', set: { model: 'anthropic/claude-haiku-4-5' } }] } })
 
-    const statusRoute = findRoute(activated.routes, 'GET', '/runtime/status')!
-    const { body } = await callRoute(statusRoute, activated.ctx)
-    expect(body.restartNeeded).toBe(true)
+    const after = await callRoute(status, activated.ctx)
+    expect(after.body).toMatchObject({ pending: true, kinds: ['model-config'], generic: true })
+    expect((after.body.advice as { action?: { kind: string } }).action?.kind).toBe('restart-runtime')
 
-    writeRuntimeConfig() // reset
+    // A successful restart is the only thing that clears it.
+    const restart = findRoute(activated.routes, 'POST', '/runtime/restart')!
+    await callRoute(restart, activated.ctx)
+    expect((await callRoute(status, activated.ctx)).body).toMatchObject({ pending: false })
+    writeRuntimeConfig()
+  })
+
+  it('an adapter that says needed:false never pends (Pi)', async () => {
+    const { clearPendingRestart } = await import('../../../src/core/pending-restart')
+    clearPendingRestart()
+    activated.ctx.runtime.restartAdvice = () => ({ needed: false })
+    try {
+      writeRuntimeConfig()
+      const get = findRoute(activated.routes, 'GET', '/selections')!
+      const { body: current } = await callRoute(get, activated.ctx)
+      const post = findRoute(activated.routes, 'POST', '/selections')!
+      await callRoute(post, activated.ctx, { body: { revision: current.revision, ops: [{ ref: 'agent:patch:model', set: { model: 'anthropic/claude-haiku-4-5' } }] } })
+      const status = findRoute(activated.routes, 'GET', '/runtime/status')!
+      expect((await callRoute(status, activated.ctx)).body).toMatchObject({ pending: false })
+    } finally {
+      delete (activated.ctx.runtime as { restartAdvice?: unknown }).restartAdvice
+      writeRuntimeConfig()
+    }
   })
 })
 

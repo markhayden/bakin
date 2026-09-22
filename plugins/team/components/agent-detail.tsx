@@ -129,7 +129,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         body: JSON.stringify({ revision: current.revision, ops: [{ ref: `agent:${agentId}:model`, set: { model: ownModel } }] }),
       })
       if (response.ok) {
-        runtimeStatus.markDirty()
+        await runtimeStatus.refresh()
         const updated = await fetch(`/api/plugins/team/${agentId}`).then((result) => result.json())
         setProfile(updated)
       } else {
@@ -298,21 +298,26 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         onFiles={(files) => void handleAvatarUpload(files)}
       />
 
-      {runtimeStatus.restartNeeded ? (
+      {runtimeStatus.pending ? (
         <Alert tone="attention">
-          <AlertTitle>Runtime configuration is out of sync</AlertTitle>
-          <AlertDescription>Restart the runtime to apply this agent’s latest configuration.</AlertDescription>
-          <AlertAction>
-            <Button
-              type="button"
-              variant="warning"
-              size="sm"
-              onClick={runtimeStatus.restart}
-              disabled={runtimeStatus.restarting}
-            >
-              {runtimeStatus.restarting ? 'Restarting…' : 'Restart runtime'}
-            </Button>
-          </AlertAction>
+          <AlertTitle>{runtimeStatus.advice.title ?? 'Runtime config changed'}</AlertTitle>
+          <AlertDescription>
+            {runtimeStatus.advice.body}
+            {runtimeStatus.lastError ? ` The last restart failed: ${runtimeStatus.lastError}` : null}
+          </AlertDescription>
+          {runtimeStatus.advice.action ? (
+            <AlertAction>
+              <Button
+                type="button"
+                variant="warning"
+                size="sm"
+                onClick={runtimeStatus.restart}
+                disabled={runtimeStatus.restarting}
+              >
+                {runtimeStatus.restarting ? 'Restarting…' : runtimeStatus.advice.action.label}
+              </Button>
+            </AlertAction>
+          ) : null}
         </Alert>
       ) : null}
 

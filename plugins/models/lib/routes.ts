@@ -27,12 +27,9 @@ import { budgetStatusRoutes } from './budget-routes'
 import { describeSelections, getSelectionMutator } from './selections'
 import { MutationRefused } from '../../../src/core/model-mutations'
 import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
-import {
-  getRuntimeSync,
-  markConfigDirty,
-  markRuntimeRestarted,
-  resolveAgents,
-} from './config-io'
+import { resolveAgents } from './config-io'
+import { clearPendingRestart, describeRestart, notePendingChange, recordRestartFailure } from '../../../src/core/pending-restart'
+import type { RuntimeConfigChangeKind } from '@bakin/core/adapters/runtime'
 import { normalizeModelId } from './model-id'
 import {
   applyEligibilityOverlay,
@@ -154,10 +151,16 @@ export const modelsRoutes = [
       try {
         const result = await getSelectionMutator(ctx as unknown as PluginContext).mutate(body)
         if (result.applied.length > 0 || result.pending.length > 0) {
-          // Same post-write side effects the retired per-surface routes had:
-          // the runtime-sync banner (until restartAdvice replaces it, T1.12),
-          // the catalog's default/fallback flags, and the config-changed hook.
-          markConfigDirty()
+          // Post-write side effects: the adapter decides whether a restart is
+          // needed per change kind (#878); the catalog's default/fallback
+          // flags refresh; the config-changed hook fires for agent pins.
+          const touched = [...result.applied, ...result.pending.map((p) => p.ref)]
+          const kinds = new Set<RuntimeConfigChangeKind>()
+          for (const ref of touched) {
+            if (ref.startsWith('agent:')) kinds.add('model-config')
+            else if (ref.startsWith('policy:')) kinds.add('routing-policy')
+          }
+          notePendingChange((ctx as unknown as PluginContext).runtime, [...kinds])
           setModelsCache(null)
           if (result.applied.some((ref) => ref.startsWith('agent:'))) {
             await ctx.hooks.invoke('models.configChanged', { refs: result.applied })
@@ -426,15 +429,10 @@ export const modelsRoutes = [
   defineRoute({
     path: '/runtime/status',
     method: 'GET',
-    summary: 'Runtime config sync status',
-    description: 'Reports whether the runtime config is out of sync with disk and needs a restart.',
+    summary: 'Pending runtime restart, in the adapter\'s words',
+    description: 'Whether a config change is still waiting on a runtime restart (#878). The text and action come from the adapter\'s restartAdvice(); adapters without it get a generic fallback. Cleared only by a successful restart.',
     responses: { 200: passthrough },
-    handler: async () => {
-      const sync = getRuntimeSync()
-      const restartNeeded = sync.lastConfigChangeAt !== null &&
-        (sync.lastRestartAt === null || sync.lastConfigChangeAt > sync.lastRestartAt)
-      return Response.json({ restartNeeded, ...sync })
-    },
+    handler: async (_req, ctx) => Response.json(describeRestart((ctx as unknown as PluginContext).runtime)),
   }),
 
   defineRoute({
@@ -446,13 +444,15 @@ export const modelsRoutes = [
     handler: async (_req, ctx) => {
       try {
         await (ctx as unknown as PluginContext).runtime.restart()
-        markRuntimeRestarted()
+        clearPendingRestart()
         setModelsCache(null)
         clearPersistedCache()
         ctx.activity.audit('runtime.restarted', 'system')
         ctx.activity.log('system', 'Runtime restarted', { category: 'models' })
         return Response.json({ ok: true, message: 'Restart initiated' })
       } catch (err) {
+        // The banner stays (and says why) — a failed restart never clears it.
+        recordRestartFailure(err)
         return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
     },

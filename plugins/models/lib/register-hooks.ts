@@ -12,7 +12,7 @@ import type { PluginContext } from '@bakin/core/plugin-types'
 
 import type { ModelsPluginSettings } from '../types'
 import { getKnownModel, computeCostUsdMicros, computeImageCostUsdMicros } from '../data/known-models'
-import { markConfigDirty, markRuntimeRestarted, resolveAgents } from './config-io'
+import { resolveAgents } from './config-io'
 import { resolveBilling } from './billing'
 import { isLegacyBudget, migrateLegacyBudget } from './budget-migration'
 import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
@@ -33,9 +33,7 @@ export function registerModelsHooks(ctx: PluginContext): void {
     return agent?.effectiveModel ?? null
   }, { label: 'Get effective model.', summary: 'Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent.', hookKind: 'rpc' })
 
-  ctx.hooks.register('models.markConfigDirty', () => { markConfigDirty() }, { label: 'Mark config dirty.', summary: 'Marks model configuration as changed so the runtime knows a refresh is needed. Use it after writing model settings that should not be treated as live yet.', hookKind: 'event' })
 
-  ctx.hooks.register('models.markRuntimeRestarted', () => { markRuntimeRestarted() }, { label: 'Mark runtime refreshed.', summary: 'Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear.', hookKind: 'event' })
 
   ctx.hooks.register('models.getAvailableModels', async () => {
     const result = await fetchAvailableModels(ctx as unknown as PluginContext)

@@ -31,10 +31,12 @@ mock.module('@makinbakin/sdk/navigation', () => ({
 }))
 
 const runtimeState = {
-  restartNeeded: false,
+  pending: false,
+  advice: { needed: false } as { needed: boolean; title?: string; body?: string; action?: { label: string; kind: 'restart-runtime' } },
+  lastError: null as string | null,
+  refresh: mock(async () => {}),
   restarting: false,
   restart: mock(),
-  markDirty: mock(),
 }
 
 mock.module('@/hooks/use-runtime-status', () => ({
@@ -105,7 +107,7 @@ describe('ModelsPage component', () => {
   beforeEach(() => {
     cleanup()
     mock.restore()
-    runtimeState.markDirty.mockReset()
+    runtimeState.refresh.mockReset()
     fetchCalls = []
     availableFetchCount = 0
     selectionsRevision = 0
@@ -228,7 +230,9 @@ describe('ModelsPage component', () => {
       openIncidents: [],
     }
     incidentsState = []
-    runtimeState.restartNeeded = false
+    runtimeState.pending = false
+    runtimeState.advice = { needed: false }
+    runtimeState.lastError = null
     runtimeState.restarting = false
     runtimeState.restart.mockReset()
 
@@ -382,7 +386,7 @@ describe('ModelsPage component', () => {
     await waitFor(() => {
       const call = fetchCalls.find((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
       expect(call?.body?.ops).toEqual([{ ref: 'agent:patch:model', set: { model: 'google/gemini-2.5-pro' } }])
-      expect(runtimeState.markDirty).toHaveBeenCalled()
+      expect(runtimeState.refresh).toHaveBeenCalled()
     })
   })
 
@@ -487,15 +491,25 @@ describe('ModelsPage component', () => {
     expect(screen.getByText('runtime unavailable')).toBeTruthy()
   })
 
-  it('renders the runtime restart-needed banner and calls restart', async () => {
-    runtimeState.restartNeeded = true
+  it("renders the pending-restart banner in the ADAPTER's words and calls restart (#878)", async () => {
+    runtimeState.pending = true
+    runtimeState.advice = { needed: true, title: 'Restart the OpenClaw gateway', body: 'Agents attach at gateway start.', action: { label: 'Restart gateway', kind: 'restart-runtime' } }
+    runtimeState.lastError = 'gateway restart timed out'
 
     render(<ModelsPage />)
 
-    expect(await screen.findByText('Runtime config out of sync. Restart to apply changes.')).toBeTruthy()
-    fireEvent.click(screen.getByText('Restart Runtime'))
+    expect(await screen.findByText('Restart the OpenClaw gateway')).toBeTruthy()
+    expect(screen.getByText(/The last restart failed: gateway restart timed out/)).toBeTruthy()
+    fireEvent.click(screen.getByText('Restart gateway'))
 
     expect(runtimeState.restart).toHaveBeenCalled()
+  })
+
+  it('renders no banner when nothing is pending (Pi after a model save)', async () => {
+    runtimeState.pending = false
+    render(<ModelsPage />)
+    await screen.findByText('Patch')
+    expect(screen.queryByText(/Restart/)).toBeNull()
   })
 
   it('disables the refresh button while a refresh request is in flight', async () => {
