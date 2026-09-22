@@ -7,22 +7,22 @@ Plan: `tasks/plan-models-and-spend-overhaul.md` (v2) · Spec: `.claude/specs/mod
 - [ ] D23: `ModelSelectOption.description/tone` — checkpoint at T3.1
 
 ## PR 1 — feat/907-model-trust
-- [ ] T1.1 contract members (optional) + mocks + conformance pins (knobs 'absent') + teeth + arch secret-ban
-- [ ] T1.2 adapter-pi impl (runner → 'present')
-- [ ] T1.3 adapter-openclaw impl, partial-evidence honest (runner → 'present'); record Q2 answer
-- [ ] T1.4 eligibility engine + truth table (explicit runtime/agentId/epoch)
-- [ ] T1.5 /available eligibility + suffix-disabled options in models + team pickers
-- [ ] T1.6 selections, revision, proposals; same-id helper moved from roster-reconcile
-- [ ] T1.7 mutateSelections tri-state + per-DOCUMENT reservations (released only on settle / prior-boot classification) + GET/POST /selections (additive) + `bakin models restore` (full-state snapshot → diff → current revision); tests: timeout→GET→retry 409→settle with write spy, two refs one document, restart classification, restore after Reset and after an edit
-- [ ] T1.8 all writers → /selections; DELETE old write routes  **[PoNR]**
-- [ ] T1.9 models.dead-selections check + apply-model-proposal repair
-- [ ] T1.10a preDispatchGate + effective-selection model hold (5 callers)
-- [ ] T1.10b GET /holds + tasks use-model-holds + task-card "Model can't run" → /models?ref=
-- [ ] T1.10c error translation (dispatch-failures + enrichment)
-- [ ] T1.11 rig verify #907 item 5 (record in spec §11 Q1)
-- [ ] T1.12 pending-restart.json + restartAdvice banner + delete dirty markers (models + team)
-- [ ] T1.13 runtime-switch reconcile-selections + epoch-guarded resetModelsCache (+ stale-fetch test)
-- [ ] T1.14 docs (models-plugin, runtime-capabilities, doctor, adapter-architecture, dispatch, CLAUDE.md, README check)
+- [x] T1.1 contract members (optional) + mocks + conformance pins (knobs 'absent') + teeth + arch secret-ban — cbfa2d04e
+- [x] T1.2 adapter-pi impl — 4f69b258d
+- [x] T1.3 adapter-openclaw impl, partial-evidence honest; Q2 recorded — ec05d3212
+- [x] T1.4 eligibility engine + truth table — see git log
+- [x] T1.5 /available eligibility + suffix-disabled options in models + team pickers — see git log
+- [x] T1.6 selections, revision, proposals; same-id helper — see git log
+- [x] T1.7 mutateSelections tri-state + per-DOCUMENT reservations (released only on settle / prior-boot classification) + GET/POST /selections (additive) + `bakin models restore` (full-state snapshot → diff → current revision); tests: timeout→GET→retry 409→settle with write spy, two refs one document, restart classification, restore after Reset and after an edit
+- [x] T1.8 all writers → /selections; DELETE old write routes  **[PoNR]** — see git log
+- [x] T1.9 models.dead-selections check + apply-model-proposal repair — see git log
+- [x] T1.10a preDispatchGate + effective-selection model hold (5 callers) — see git log
+- [x] T1.10b GET /holds + tasks use-model-holds + task-card signal — see git log
+- [x] T1.10c error translation (dispatch-failures + enrichment) — see git log
+- [x] T1.11 #907 item 5 pinned in-process (no cache); live Pi-box confirmation at Checkpoint A — see git log
+- [x] T1.12 pending-restart.json + restartAdvice banner + delete dirty markers — see git log
+- [x] T1.13 runtime-switch reconcile-selections + epoch-guarded resetModelsCache — see git log
+- [x] T1.14 docs — see git log (README unaffected)
 - [ ] CHECKPOINT A: gates + ui:conformance --full + /verify S1(fixture-written) S2 S3 S10(late-settle) S15 S16 + live test → merge
 
 ## PR 2 — feat/spend-plugin
