@@ -12,7 +12,8 @@ const testDir = join(tmpdir(), 'bakin-test-model-reset')
 mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 
-import { buildResetOps, type SelectionState } from '../../src/core/model-selections'
+import { buildResetOps } from '../../src/core/model-reset'
+import type { SelectionState } from '../../src/core/model-selections'
 
 const LUNA = 'openai-codex/gpt-5.6-luna'
 const MINI = 'openai-codex/gpt-5.4-mini'
