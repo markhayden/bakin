@@ -24,7 +24,7 @@ import {
   SystemState,
   Text,
 } from '@makinbakin/sdk/ui'
-import { useAgentStore, useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
+import { toModelSelectOptions, useAgentStore, useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
 import type { AgentUsage, AvailableModel } from '@makinbakin/sdk/types'
 import { DiagnosticsChipsView, useAgentAttention } from './diagnostics-tab'
 import { PackageCardBody } from './package-card'
@@ -167,7 +167,7 @@ export function OverviewTab({
                 id="agent-overview-model"
                 value={resolvedModelId}
                 onValueChange={onModelChange}
-                models={availableModels}
+                models={toModelSelectOptions(availableModels)}
                 defaultLabel="Use default"
                 disabled={savingModel}
                 ariaLabel="Agent model"

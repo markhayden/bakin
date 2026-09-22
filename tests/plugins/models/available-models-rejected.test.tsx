@@ -41,8 +41,15 @@ const models: AvailableModel[] = [
   {
     id: 'openai-codex/gpt-5.4-mini', name: 'gpt-5.4-mini', tier: 'budget', provider: 'openai-codex',
     available: false, rejection: { lastSeenAt: Date.now() - 60_000, occurrences: 14 },
+    eligibility: { status: 'ineligible', reason: 'account_rejected', detail: 'rejected by your account (14 failures)' },
   },
-  { id: 'openai-codex/gpt-5.6-luna', name: 'gpt-5.6-luna', tier: 'premium', provider: 'openai-codex', available: true },
+  { id: 'openai-codex/gpt-5.6-luna', name: 'gpt-5.6-luna', tier: 'premium', provider: 'openai-codex', available: true, eligibility: { status: 'eligible' } },
+  // #907: an auth-less provider's model stays listed with the plain-words reason.
+  {
+    id: 'openai/gpt-5.6-luna', name: 'gpt-5.6-luna (openai)', tier: 'premium', provider: 'openai',
+    available: false, unavailableReason: 'no_credentials',
+    eligibility: { status: 'ineligible', reason: 'no_credentials', detail: 'no credentials for openai' },
+  },
 ]
 
 function makeData(): ModelsData {
@@ -93,5 +100,14 @@ describe('AvailableModelsTab — rejected rows (#852)', () => {
   it('healthy rows carry no rejected badge', () => {
     renderTab()
     expect(screen.getAllByText('Rejected by account')).toHaveLength(1)
+  })
+
+  it('a credential-less provider\'s model shows "No credentials" with the reason on hover, and cannot be set as default (#907)', () => {
+    renderTab()
+    const badge = screen.getByText('No credentials')
+    expect(badge.closest('[title]')?.getAttribute('title')).toContain('no credentials for openai')
+    const row = badge.closest('tr')!
+    const setDefault = row.querySelector('button')
+    expect(setDefault?.hasAttribute('disabled')).toBe(true)
   })
 })

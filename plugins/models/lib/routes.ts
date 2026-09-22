@@ -33,7 +33,7 @@ import {
 } from './config-io'
 import { normalizeModelId } from './model-id'
 import {
-  applyRejectionOverlay,
+  applyEligibilityOverlay,
   fetchAvailableModels,
   loadConfiguredModelsFromRuntime,
   setModelsCache,
@@ -92,11 +92,13 @@ export const modelsRoutes = [
         // response's availability.
         const probeParam = new URL(req.url).searchParams.get('probe')
         const probeResult = probeParam === '1' || probeParam === 'true'
-          ? await probeModels(ctx as unknown as PluginContext, models)
+          // Runtime-unavailable rows (no auth for the provider) are now listed
+          // too (#907) — probing them would bill a call that cannot succeed.
+          ? await probeModels(ctx as unknown as PluginContext, models.filter((m) => m.available !== false))
           : null
         return Response.json({
           ok: true,
-          models: applyRejectionOverlay(models),
+          models: await applyEligibilityOverlay(ctx as unknown as PluginContext, models),
           cached: false,
           cachedAt: now,
           stale: false,
@@ -109,7 +111,7 @@ export const modelsRoutes = [
           return Response.json({
             ok: false,
             error: message,
-            models: applyRejectionOverlay(fallbackCache.models),
+            models: await applyEligibilityOverlay(ctx as unknown as PluginContext, fallbackCache.models),
             cached: true,
             cachedAt: fallbackCache.fetchedAt,
             stale: true,

@@ -462,7 +462,13 @@ describe('GET /available', () => {
     expect(status).toBe(200)
 
     const models = body.models as Array<Record<string, unknown>>
-    expect(models.length).toBe(6)
+    // Seven runtime rows: six available + xai/grok-4 which the runtime
+    // marks unavailable — it stays LISTED (disabled, with a verdict) so
+    // pickers can show why (#907), never silently dropped.
+    expect(models.length).toBe(7)
+    const grok = models.find((m) => m.id === 'xai/grok-4')!
+    expect(grok.available).toBe(false)
+    expect((grok.eligibility as { status: string }).status).toBe('ineligible')
 
     const opus = models.find((m) => (m.id as string).includes('opus'))!
     expect(opus.tier).toBe('premium')
@@ -585,7 +591,9 @@ describe('POST /refresh', () => {
       const probe = body.probe as { supported: boolean; verdicts: Array<{ model: string; status: string }> }
       expect(probe.supported).toBe(true)
       // Every fetched (available) model gets a verdict — one per row.
-      expect(probe.verdicts).toHaveLength((body.models as unknown[]).length)
+      // Runtime-unavailable rows are listed but never probed (a billed call
+      // that cannot succeed) — verdicts cover the available rows only.
+      expect(probe.verdicts).toHaveLength((body.models as Array<{ available?: boolean }>).filter((m) => m.available !== false).length)
       expect(probeSpy).toHaveBeenCalledTimes(probe.verdicts.length)
       const byModel = new Map(probe.verdicts.map((v) => [v.model, v.status]))
       expect(byModel.get('google/gemini-2.5-pro')).toBe('rejected')
@@ -1039,7 +1047,7 @@ describe('Exec Tools', () => {
       const result = await callTool(tool, {})
       expect(result.ok).toBe(true)
       expect(Array.isArray(result.models)).toBe(true)
-      expect((result.models as unknown[]).length).toBe(6)
+      expect((result.models as unknown[]).length).toBe(7)
     })
 
     it('filters by tier', async () => {

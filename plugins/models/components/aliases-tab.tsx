@@ -60,6 +60,7 @@ export function AliasesTab({
   const {
     aliases,
     modelOptions,
+    modelSelectOptions,
     modelsReady,
     newAliasName,
     setNewAliasName,
@@ -152,7 +153,7 @@ export function AliasesTab({
                     required
                     value={newAliasTarget}
                     onValueChange={setNewAliasTarget}
-                    models={modelOptions}
+                    models={modelSelectOptions}
                     disabled={!modelsReady || aliasBusy}
                   />
                 </Field>

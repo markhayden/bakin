@@ -40,7 +40,7 @@ export type Eligibility =
 export type EvidenceStatus = 'ok' | 'partial' | 'failed'
 
 export interface EligibilityReport {
-  byModel: Map<string, { eligibility: Eligibility; facts: EligibilityFacts }>
+  byModel: Map<string, { eligibility: Eligibility; facts: EligibilityFacts; rejection?: OpenRejection }>
   evidence: { catalog: EvidenceStatus; runtimeAvailability: EvidenceStatus; credentials: EvidenceStatus; rejections: EvidenceStatus }
   /** Runtime epoch the report was computed under; consumers discard reports from an older epoch. */
   epoch: number
@@ -66,7 +66,48 @@ export interface EligibilityOptions {
   agentId?: string
   /** Persisted selections to evaluate even when the catalog does not list them (⇒ not_in_catalog). */
   extraIds?: string[]
+  /**
+   * A catalog snapshot the caller already holds (the models plugin's cached
+   * rows) — skips the live listAvailable call. Must be a COMPLETE snapshot
+   * (unavailable rows included) or absent ids will read not_in_catalog.
+   */
+  catalog?: RuntimeAvailableModel[]
   epoch?: number
+}
+
+/**
+ * The credential inventory is the one source that can cost a subprocess
+ * (OpenClaw shells its CLI). Memoised briefly per (runtime, agentId) — the
+ * same posture as the billing-lane cache — and dropped on epoch bumps
+ * (runtime switch) or explicit reset.
+ */
+const INVENTORY_MEMO_MS = 30_000
+const inventoryMemo = new WeakMap<object, Map<string, { at: number; value: Promise<Settled<ProviderCredentialInventory>> }>>()
+
+let memoEpoch = 0
+
+export function resetEligibilityMemo(): void {
+  // WeakMap has no clear(); bumping the epoch in the memo key invalidates entries.
+  memoEpoch++
+}
+
+function inventoryFor(runtime: AgentRuntimeAdapter, agentId: string | undefined): Promise<Settled<ProviderCredentialInventory>> {
+  const providersFn = runtime.credentials?.providers
+  if (!providersFn) {
+    return Promise.resolve({ ok: false, error: new Error('runtime omits credentials.providers()') })
+  }
+  const key = `${memoEpoch}:${agentId ?? ''}`
+  let perRuntime = inventoryMemo.get(runtime)
+  if (!perRuntime) {
+    perRuntime = new Map()
+    inventoryMemo.set(runtime, perRuntime)
+  }
+  const hit = perRuntime.get(key)
+  const now = Date.now()
+  if (hit && now - hit.at < INVENTORY_MEMO_MS) return hit.value
+  const value = settle(providersFn.call(runtime.credentials, agentId ? { agentId } : undefined))
+  perRuntime.set(key, { at: now, value })
+  return value
 }
 
 const KNOWN = (value: boolean): EligibilityFact => ({ known: true, value })
@@ -128,12 +169,11 @@ export async function getModelEligibility(
   opts: EligibilityOptions = {},
   deps: EligibilityDeps = defaultDeps,
 ): Promise<EligibilityReport> {
-  const providersFn = runtime.credentials?.providers
   const [catalog, credentials, rejections] = await Promise.all([
-    settle(runtime.models.listAvailable({ includeUnavailable: true })),
-    providersFn
-      ? settle(providersFn.call(runtime.credentials, opts.agentId ? { agentId: opts.agentId } : undefined))
-      : Promise.resolve<Settled<ProviderCredentialInventory>>({ ok: false, error: new Error('runtime omits credentials.providers()') }),
+    opts.catalog
+      ? Promise.resolve<Settled<RuntimeAvailableModel[]>>({ ok: true, value: opts.catalog })
+      : settle(runtime.models.listAvailable({ includeUnavailable: true })),
+    inventoryFor(runtime, opts.agentId),
     Promise.resolve(settleSync(() => deps.listOpenRejections())),
   ])
 
@@ -182,7 +222,12 @@ export async function getModelEligibility(
       notRejected,
       ...(row?.unavailableReason ? { runtimeReason: row.unavailableReason } : {}),
     }
-    byModel.set(id, { facts, eligibility: deriveEligibility(facts, { modelId: id, rejection: rejectionByModel.get(id) }) })
+    const rejection = rejectionByModel.get(id)
+    byModel.set(id, {
+      facts,
+      eligibility: deriveEligibility(facts, { modelId: id, rejection }),
+      ...(rejection ? { rejection } : {}),
+    })
   }
 
   return {

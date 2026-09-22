@@ -49,6 +49,34 @@ export function useAvailableModels(): AvailableModel[] {
   return models
 }
 
+/** The option shape `ModelSelect` consumes — kept structurally identical to `ModelSelectOption`. */
+export interface EligibleModelOption {
+  id: string
+  name: string
+  provider?: string
+  disabled: boolean
+}
+
+/**
+ * Map catalog rows to picker options so NO picker can select a dead model
+ * (#907): `ineligible` rows are disabled and carry the reason in their label
+ * (the documented label-suffix composition until the SDK option gains a
+ * description field); `unknown` rows stay selectable — missing evidence is
+ * never a refusal.
+ */
+export function toModelSelectOptions(models: readonly AvailableModel[]): EligibleModelOption[] {
+  return models.map((m) => {
+    const e = m.eligibility
+    const dead = e?.status === 'ineligible'
+    return {
+      id: m.id,
+      name: dead ? `${m.name} — ${e.detail}` : m.name,
+      provider: m.provider,
+      disabled: dead,
+    }
+  })
+}
+
 /** Test-only: reset the module-level cache so tests run with a clean slate. */
 export function __resetAvailableModelsCache(): void {
   if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) return

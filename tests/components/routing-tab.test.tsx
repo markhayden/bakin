@@ -32,7 +32,7 @@ function makeM(over: Partial<ModelsData> = {}): ModelsData {
     addTagOverride: () => {},
     updateTagOverride: () => {},
     removeTagOverride: () => {},
-    modelOptions: [{ id: 'anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5' }],
+    modelSelectOptions: [{ id: 'anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5', disabled: false }],
     ...over,
   } as unknown as ModelsData
 }

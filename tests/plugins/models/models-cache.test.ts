@@ -144,7 +144,7 @@ describe('fetchAvailableModels — cache-served tiers are recomputed', () => {
       fetchedAt: Date.now(),
       source: 'runtime',
     })
-    const result = await fetchAvailableModels({} as never)
+    const result = await fetchAvailableModels({ runtime: { models: {} } } as never)
     expect(result.cached).toBe(true)
     const byId = new Map(result.models.map((m) => [m.id, m]))
     expect(byId.get('openai-codex/gpt-5.4-mini')?.tier).toBe('budget') // recomputed, not the stale label

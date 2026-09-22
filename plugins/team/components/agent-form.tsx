@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import { ChevronRight, Upload, X } from 'lucide-react'
-import { useAvailableModels } from '@makinbakin/sdk/hooks'
+import { toModelSelectOptions, useAvailableModels } from '@makinbakin/sdk/hooks'
 import { AgentAvatar, ModelSelect } from '@makinbakin/sdk/patterns'
 import {
   Button,
@@ -199,7 +199,7 @@ export function AgentForm({
               id="agent-model"
               value={model}
               onValueChange={setModel}
-              models={availableModels}
+              models={toModelSelectOptions(availableModels)}
             />
           </Field>
         </div>

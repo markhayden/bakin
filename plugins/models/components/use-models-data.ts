@@ -3,7 +3,7 @@
 // React
 import { useCallback, useEffect, useRef, useState } from 'react'
 // SDK
-import { usePluginEvent, emitPluginEvent } from "@makinbakin/sdk/hooks"
+import { usePluginEvent, emitPluginEvent, toModelSelectOptions } from "@makinbakin/sdk/hooks"
 import { useRuntimeStatus } from "@makinbakin/sdk/hooks"
 import { useQueryState } from "@makinbakin/sdk/navigation"
 import { pluginFetch } from "@makinbakin/sdk/utils"
@@ -910,6 +910,9 @@ export function useModelsData() {
   // upstream of this derivation.
   const modelOptions: AvailableModel[] = availableModels
   const modelsReady = modelsLoaded && availableModels.length > 0
+  // Picker options: ineligible rows disabled with their reason (#907) — the
+  // ONE mapping every ModelSelect on this page uses.
+  const modelSelectOptions = toModelSelectOptions(modelOptions)
 
   const availableProviders = [...new Set(modelOptions.map((m) => m.provider))].sort((a, b) => a.localeCompare(b))
   const effectiveDefaultModel = pendingDefaultModel ?? defaultModel
@@ -918,11 +921,13 @@ export function useModelsData() {
     : (pendingDefaultSubagentModel || '__default__')
   const effectiveFallbackModels = pendingFallbackModels ?? fallbackModels
   const fallbackCandidates = modelOptions.filter((model) => model.id !== effectiveDefaultModel)
+  const fallbackCandidateOptions = toModelSelectOptions(fallbackCandidates)
 
   return {
     // tab + window navigation
     tab, setTab, spendWindow, setSpendWindow,
     // config + agents
+    modelSelectOptions, fallbackCandidateOptions,
     agents, loading, error, saving, runtimeStatus,
     fetchConfig,
     // available models

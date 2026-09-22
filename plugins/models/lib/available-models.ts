@@ -13,7 +13,7 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
 
 import type { AvailableModel } from '../types'
-import { listModelRejections } from '../../../src/core/execution-ledger'
+import { getModelEligibility } from '../../../src/core/model-eligibility'
 import {
   readPersistedCache,
   writePersistedCache,
@@ -41,13 +41,16 @@ function sortModels(a: AvailableModel, b: AvailableModel): number {
 }
 
 export async function loadConfiguredModelsFromRuntime(ctx: PluginContext): Promise<AvailableModel[]> {
-  const runtimeModels = await ctx.runtime.models.listAvailable()
+  // includeUnavailable: an auth-less model must stay LISTED (disabled, with
+  // its reason) so a picker can show why a persisted selection is dead
+  // instead of the row silently vanishing (#907).
+  const runtimeModels = await ctx.runtime.models.listAvailable({ includeUnavailable: true })
   const policy = await ctx.runtime.models.routingPolicy()
   const defaultModel = normalizeModelId(policy.defaultModel)
   const fallbackModels = policy.fallbackModels.map(normalizeModelId)
 
   return runtimeModels
-    .filter((model) => model.id && model.available !== false)
+    .filter((model) => Boolean(model.id))
     .map((model) => {
       const id = normalizeModelId(model.id)
       const tags = model.tags ?? []
@@ -64,6 +67,7 @@ export async function loadConfiguredModelsFromRuntime(ctx: PluginContext): Promi
         contextWindow: model.contextWindow,
         local: model.local,
         available: model.available ?? true,
+        ...(model.unavailableReason ? { unavailableReason: model.unavailableReason } : {}),
         tags,
         configured: tags.includes('configured'),
         isDefault: id === defaultModel,
@@ -130,32 +134,41 @@ let lastOverlayWarning = 0
 const OVERLAY_WARNING_TTL = 60_000
 
 /**
- * Overlay open account rejections (#852) on every read — same posture as
- * withFreshTiers: ledger state is code-external truth the cache must never
- * pin, in either direction. Flip, not filter: the row stays listed with
- * `available: false` + typed rejection info so UIs can show WHY.
- * Ledger unavailable ⇒ FAIL OPEN (nothing marked unavailable on missing
- * evidence — a DB glitch must not starve routing).
+ * Overlay ELIGIBILITY (#907; subsumes the #852 rejection overlay) on every
+ * read — same posture as withFreshTiers: ledger + credential state is
+ * code-external truth the cache must never pin, in either direction. Flip,
+ * not filter: a row stays listed with `available: false` + the verdict so
+ * pickers can disable it WITH the reason. The cached rows are the catalog
+ * snapshot the engine folds over (no second runtime round-trip); missing
+ * evidence reads `unknown` (FAIL OPEN — a DB glitch must not starve routing).
  */
-export function applyRejectionOverlay(models: AvailableModel[]): AvailableModel[] {
-  try {
-    const open = listModelRejections({ openOnly: true })
-    if (open.length === 0) return models
-    const byId = new Map(open.map((r) => [r.model, r]))
-    return models.map((m) => {
-      const r = byId.get(m.id)
-      return r
-        ? { ...m, available: false, rejection: { lastSeenAt: r.lastSeenAt, occurrences: r.occurrences } }
-        : m
-    })
-  } catch (err) {
+export async function applyEligibilityOverlay(ctx: PluginContext, models: AvailableModel[]): Promise<AvailableModel[]> {
+  const report = await getModelEligibility(ctx.runtime, {
+    catalog: models.map((m) => ({
+      id: m.id,
+      available: m.available,
+      ...(m.unavailableReason ? { unavailableReason: m.unavailableReason } : {}),
+      ...(m.local ? { local: true } : {}),
+    })),
+  })
+  if (report.evidence.rejections === 'failed') {
     const now = Date.now()
     if (now - lastOverlayWarning >= OVERLAY_WARNING_TTL) {
       lastOverlayWarning = now
-      console.warn(`Model-rejection overlay skipped (ledger unavailable?): ${err instanceof Error ? err.message : String(err)}`)
+      console.warn('Model-rejection overlay skipped (ledger unavailable?): rejection evidence failed')
     }
-    return models
   }
+  return models.map((m) => {
+    const entry = report.byModel.get(m.id)
+    if (!entry) return m
+    const { eligibility, rejection } = entry
+    return {
+      ...m,
+      available: eligibility.status !== 'ineligible' && m.available !== false,
+      eligibility,
+      ...(rejection ? { rejection: { lastSeenAt: rejection.lastSeenAt, occurrences: rejection.occurrences } } : {}),
+    }
+  })
 }
 
 export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: boolean }): Promise<FetchResult> {
@@ -166,7 +179,7 @@ export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: 
     // 1. Hot read — in-memory cache (fresh by TTL)
     const memCached = getModelsCache()
     if (memCached && Date.now() - memCached.fetchedAt < CACHE_TTL) {
-      return { models: applyRejectionOverlay(withFreshTiers(memCached.models)), cached: true, cachedAt: memCached.fetchedAt, stale: false }
+      return { models: await applyEligibilityOverlay(ctx, withFreshTiers(memCached.models)), cached: true, cachedAt: memCached.fetchedAt, stale: false }
     }
 
     // 2. Persistent cache hydration — survives server restart even when
@@ -176,7 +189,7 @@ export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: 
     if (diskCached) {
       setModelsCache({ models: diskCached.models, fetchedAt: diskCached.fetchedAt })
       const stale = Date.now() - diskCached.fetchedAt >= CACHE_TTL
-      return { models: applyRejectionOverlay(withFreshTiers(diskCached.models)), cached: true, cachedAt: diskCached.fetchedAt, stale }
+      return { models: await applyEligibilityOverlay(ctx, withFreshTiers(diskCached.models)), cached: true, cachedAt: diskCached.fetchedAt, stale }
     }
   }
 
@@ -192,7 +205,7 @@ export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: 
       // overlaid — rejection truth lives in the ledger alone.
       setModelsCache({ models, fetchedAt: now })
       writePersistedCache({ models, fetchedAt: now, source: 'runtime' })
-      return { models: applyRejectionOverlay(models), cached: false, cachedAt: now, stale: false }
+      return { models: await applyEligibilityOverlay(ctx, models), cached: false, cachedAt: now, stale: false }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       warnRuntimeModelFetchFailed(message)
