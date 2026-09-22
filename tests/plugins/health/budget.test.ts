@@ -55,7 +55,7 @@ import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import {
   isUsageHistoryScanInFlight,
   runUsageHistoryScan,
-} from '../../../plugins/health/lib/usage-history-timer'
+} from '../../../src/core/usage-history-timer'
 import type { HealthCheckRunInput } from '@makinbakin/sdk'
 import { parseHealthCheckRunInput } from '../../../src/core/health-contract'
 

@@ -1,6 +1,9 @@
 /**
- * Usage-history scan timer — drives src/core/usage-history's sweep on a
- * settings-configurable interval (#359).
+ * Usage-history scan timer — drives the usage-history sweep on a
+ * settings-configurable interval (#359). Core-owned: the health plugin
+ * starts/stops it from its settings, and every health check that reasons
+ * about usage evidence (agent-burn, the spend plugin's budget check) reads
+ * the scan state from here.
  *
  * The first scan runs one full interval after activation, NOT at boot —
  * boot stays side-effect free and the sweep is incremental forever after
@@ -9,10 +12,10 @@
  * the plugin's onShutdown.
  */
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
-import { createLogger } from '../../../src/core/logger'
-import { scanUsageHistory, type UsageScanReport } from '../../../src/core/usage-history'
+import { createLogger } from './logger'
+import { scanUsageHistory, type UsageScanReport } from './usage-history'
 
-const log = createLogger('health-usage-history')
+const log = createLogger('usage-history-timer')
 
 const g = globalThis as typeof globalThis & {
   __bakinUsageHistoryTimer?: ReturnType<typeof setInterval> | null

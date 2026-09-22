@@ -11,7 +11,7 @@ import { checkBakinRuntimeSkill, renderBakinRuntimeSkill } from '../../../../src
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { AgentRuntimeAdapter } from '../../../../packages/core/src/adapters/runtime'
 import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
-import { repairTargetSelection } from './repair-support'
+import { repairTargetSelection } from '@bakin/core/health/repair-support'
 
 export async function checkAndSyncSkill(
   projectRoot: string,

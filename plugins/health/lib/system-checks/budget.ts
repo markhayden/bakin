@@ -25,13 +25,13 @@ import type {
   HealthRepairPlanItem,
   JsonObject,
 } from '@makinbakin/sdk'
-import { repairTargetSelection } from './repair-support'
+import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { toLocalDayKey } from '@bakin/core/usage-history/store'
 import {
   getUsageHistoryScanState,
   getUsageHistoryScanStaleAfterMs,
   type UsageHistoryScanStateSnapshot,
-} from '../usage-history-timer'
+} from '../../../../src/core/usage-history-timer'
 
 const WINDOW_MS = 24 * 60 * 60 * 1000
 

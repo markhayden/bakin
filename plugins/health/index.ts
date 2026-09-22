@@ -25,7 +25,7 @@ import {
   isUsageHistoryScanInFlight,
   getUsageHistoryScanStaleAfterMs,
   DEFAULT_SCAN_MINUTES,
-} from './lib/usage-history-timer'
+} from '../../src/core/usage-history-timer'
 import { DoctorRepairRequestNotFoundError } from '../../src/core/doctor-repair-store'
 import { getContentDir } from '../../src/core/content-dir'
 import { applyDoctorRepair, planDoctorRepair } from '../../src/core/doctor-repair'

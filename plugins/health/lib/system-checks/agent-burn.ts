@@ -19,7 +19,7 @@ import {
   getLastUsageScan,
   getUsageHistoryScanStaleAfterMs,
   isUsageHistoryScanInFlight,
-} from '../usage-history-timer'
+} from '../../../../src/core/usage-history-timer'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
 import { stableKeyPart } from './key'
