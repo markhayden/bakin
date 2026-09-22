@@ -75,3 +75,25 @@ browserTest('focus checks recognize only a changing visible ring on the canonica
     }
   } finally { await browser.close() }
 }, 15000)
+
+browserTest('focus checks walk native <summary> and chart-point SVG focusables, and skip the content of a CLOSED <details>', async () => {
+  const { chromium } = await import('playwright')
+  const browser = await chromium.launch({ headless: true })
+  const page = await browser.newPage()
+  try {
+    // A kit chart point announces focus by pointing at its tooltip
+    // (aria-describedby), not by restyling itself; a closed disclosure's
+    // content keeps layout boxes in Chromium (content-visibility) yet is
+    // not tabbable — only its summary is.
+    await page.setContent(`
+      <style>button, summary, circle { outline: none } button:focus-visible, summary:focus-visible { outline: 2px solid green }</style>
+      <button>Before</button>
+      <svg width="40" height="40"><circle cx="20" cy="20" r="4" role="img" tabindex="0" aria-label="6 AM — $0.50" id="pt"></circle></svg>
+      <details><summary>View data</summary><div tabindex="0" aria-label="Data table">hidden region</div></details>
+      <button>After</button>
+      <script>document.getElementById('pt').addEventListener('focus', () => document.getElementById('pt').setAttribute('aria-describedby', 'tip'))</script>
+    `)
+    expect(await keyboardFocusFindings(page, 'desktop')).toEqual([])
+    expect(await page.evaluate(() => document.activeElement?.textContent)).toBe('After')
+  } finally { await browser.close() }
+}, 15000)
