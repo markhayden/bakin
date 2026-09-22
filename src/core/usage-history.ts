@@ -16,6 +16,7 @@ import type { AgentRuntimeAdapter, RuntimeMemoryEntryStat } from '@bakin/core/ad
 import {
   replaceSessionUsage,
   getScanState,
+  recordScanDay,
   toLocalDayKey,
   normalizeSessionOrigin,
   type SessionDayUsage,
@@ -260,6 +261,11 @@ export async function scanUsageHistory(runtime: AgentRuntimeAdapter): Promise<Us
       }
     }
   }
+
+  // Coverage receipt (D27): only a sweep that saw the WHOLE roster proves
+  // this day was observed — a partial or unavailable sweep leaves the day
+  // unobserved so no spend suggestion can mistake "not looked" for "$0".
+  if (report.coverage.status === 'complete') recordScanDay(toLocalDayKey(Date.now()))
 
   return report
 }

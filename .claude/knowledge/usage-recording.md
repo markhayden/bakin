@@ -74,6 +74,16 @@ Migrations are wipe-and-rescan (v3 precedent): v4 rebuilds
 `session_usage_days` and clears `session_scan_state` so every transcript
 rescans into the new shape on the next sweep.
 
+v5 adds **`scan_days` coverage receipts** (spend plan D27): one row per
+local day on which a sweep completed with FULL roster coverage
+(`day PRIMARY KEY, first_scan_at, last_scan_at`). The usage rows alone
+cannot tell "zero usage" from "not observed"; this table can, so the
+spend plugin's limit suggestion counts only observed days. Written by
+`scanUsageHistory` ONLY when `coverage.status === 'complete'` (partial or
+unavailable sweeps record nothing — conservative), upsert keeps the first
+scan time, and `recordScanDay` prunes rows older than 90 days. Read via
+`coveredDaysSince(days, now)`.
+
 Invariants:
 - **Absolute replace, never accumulate.** A rescan deletes the session's rows and inserts the fresh recompute in one transaction — retries, rescans, and rewritten/compacted transcripts structurally cannot double-count. There is no other write path.
 - **Day attribution is per message** (local calendar day of the message's own timestamp; session start as fallback), so long-lived main sessions don't dump weeks of tokens on one day.
