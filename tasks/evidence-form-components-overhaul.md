@@ -418,3 +418,20 @@ UI conformance
 - Story/style-guide update: complete, including borderless filled fields and deferred-family audit.
 - Deviation: none; component/token/payload/PNG extensions explicitly approved.
 - Verification: full conformance passed; final PR-head CI verified before handoff.
+
+## Final CI follow-up — grouped Combobox dismissal
+
+Run `35821770041` on evidence commit `522cdf621` caught `GroupedOptions`
+between Escape and popup removal. Axe reported `aria-input-field-name` on the
+still-mounted listbox. Base UI removes the input's `aria-controls` when it
+closes; axe recognizes the unnamed list as a Combobox popup only while that
+relationship exists. The story ended without awaiting the popup exit, unlike
+`CanonicalUsage` in the same file.
+
+The story now verifies the open input/list relationship, collapsed state after
+Escape, and eventual list removal before the automatic accessibility scan.
+There is no arbitrary delay, assertion weakening, accessibility suppression,
+component/style change, or baseline update. The focused nine Combobox stories
+and `bun run ui:conformance --quick` passed. Full Storybook and fresh PR-head CI
+are the remaining verification for this test-only follow-up; their final
+results are recorded in PR #914 before handoff.

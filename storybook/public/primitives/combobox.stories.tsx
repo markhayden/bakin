@@ -72,10 +72,16 @@ export const GroupedOptions = {
     </Combobox></Field>
   </StoryStage>,
   play: async ({ canvas, userEvent }) => {
-    await userEvent.type(canvas.getByRole('combobox', { name: 'Grouped runtime' }), 'Pi')
-    await expect(within(document.body).findByRole('option', { name: 'Pi' })).resolves.toBeVisible()
-    await expect(within(document.body).queryByRole('option', { name: 'OpenClaw' })).not.toBeInTheDocument()
+    const input = canvas.getByRole('combobox', { name: 'Grouped runtime' })
+    const page = within(document.body)
+    await userEvent.type(input, 'Pi')
+    await expect(page.findByRole('option', { name: 'Pi' })).resolves.toBeVisible()
+    await expect(page.queryByRole('option', { name: 'OpenClaw' })).not.toBeInTheDocument()
+    await expect(input).toHaveAttribute('aria-controls', page.getByRole('listbox').id)
     await userEvent.keyboard('{Escape}')
+    await expect(input).toHaveAttribute('aria-expanded', 'false')
+    // Let the popup's exit transition finish before Storybook's accessibility scan.
+    await waitFor(() => expect(page.queryByRole('listbox')).not.toBeInTheDocument())
   },
 } satisfies Story
 
