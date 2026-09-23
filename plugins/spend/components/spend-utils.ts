@@ -26,6 +26,18 @@ export function formatRuleUnit(
   return `${formatTokens(value)} tokens`
 }
 
+/** "resets in 4 h" — when a cap window ends, in the coarsest unit that is still honest. */
+export function formatResetsIn(endsMs: number, now: number = Date.now()): string {
+  const ms = endsMs - now
+  if (ms <= 0) return 'resets now'
+  const minutes = Math.round(ms / 60_000)
+  if (minutes < 1) return 'resets in under a minute'
+  if (minutes < 60) return `resets in ${minutes} min`
+  const hours = Math.round(ms / 3_600_000)
+  if (hours < 48) return `resets in ${hours} h`
+  return `resets in ${Math.round(ms / 86_400_000)} d`
+}
+
 export function parseCapInput(raw: string): number | undefined {
   const text = raw.trim()
   if (!text) return undefined

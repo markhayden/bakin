@@ -97,7 +97,16 @@ beforeEach(() => {
   routes.limits = { rules: [{ id: 'g', scope: 'global', lane: 'metered', dailyCap: 20, atCap: 'defer' }], revision: 'rev-1' }
   routes.incidents = { incidents: [globalIncident] }
   routes['spend?window=24h'] = spendFixture
-  routes.status = { paused: false, configured: true, perAgent: {}, perTask: {}, billing: { main: { provider: 'openai-codex', lane: 'subscription', model: 'openai-codex/gpt-5.6-luna' } }, overrides: [], deferredProviders: [], openIncidents: [] }
+  routes.status = {
+    paused: false, configured: true, perAgent: {}, perTask: {},
+    billing: { main: { provider: 'openai-codex', lane: 'subscription', model: 'openai-codex/gpt-5.6-luna' } },
+    overrides: [], deferredProviders: [], openIncidents: [],
+    // This period's ladder for rule g's daily window: 50 seen, 75 not yet.
+    milestones: [
+      { id: 1, ruleId: 'g', window: 'daily', milestone: 50, spentValue: 10_000_000, capValue: 20_000_000, unit: 'usd_micros', acknowledgedAt: 1 },
+      { id: 2, ruleId: 'g', window: 'daily', milestone: 75, spentValue: 15_000_000, capValue: 20_000_000, unit: 'usd_micros', acknowledgedAt: null },
+    ],
+  }
   globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
     const path = url.startsWith('/api/plugins/models/') ? `models:${url.slice('/api/plugins/models/'.length)}` : url.replace('/api/plugins/spend/', '')
@@ -180,6 +189,25 @@ describe('SpendPage', () => {
     expect(screen.getByLabelText('Scope')).toBeTruthy()
     expect(screen.getByText('Budget cap reached')).toBeTruthy()
     expect(screen.getAllByText('Main').length).toBeGreaterThan(0)
+  })
+
+  it('Limits: every saved rule shows its utilization with the next reset, and "This period\'s milestones" discloses what the ladder recorded (#911 review)', async () => {
+    render(<SpendPage />)
+    await waitFor(() => expect(screen.getAllByText('$4.25').length).toBeGreaterThan(0))
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Limits' })) })
+    const period = within(await screen.findByTestId('current-period'))
+    // $12.50 of the $20 daily cap on current spend, and the window's end from the pace line (~12 h out).
+    const tiles = period.getByRole('group', { name: 'Budget utilization' })
+    expect(tiles.textContent).toContain('Global · metered · daily')
+    expect(tiles.textContent).toContain('63%')
+    expect(tiles.textContent).toContain('$12.50 of $20.00 · resets in 12 h')
+    // The disclosure lists this period's rows: 50 seen, 75 new, and the open cap incident as 100.
+    const disclosure = period.getByTestId('period-milestones')
+    expect(disclosure.textContent).toContain('3 crossed')
+    await act(async () => { fireEvent.click(within(disclosure).getByText("This period's milestones")) })
+    expect(within(disclosure).getByText('50%')).toBeTruthy()
+    expect(within(disclosure).getByText('75% · new')).toBeTruthy()
+    expect(within(disclosure).getByText('100% · waiting')).toBeTruthy()
   })
 
   it('renders the honest unavailable state when /spend fails, with Limits still reachable', async () => {
