@@ -12,7 +12,7 @@ const testDir = join(tmpdir(), 'bakin-test-models-draft')
 mock.module('../../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 
-import { draftOps, dropFallbackOps, effectiveSelection, fallbackList, retainFailed, stageOp, unstageOp, withInFlight, type Draft } from '../../../plugins/models/lib/draft'
+import { applyFallbackOps, draftOps, dropFallbackOps, effectiveSelection, fallbackList, retainFailed, stageOp, unstageOp, withInFlight, type Draft } from '../../../plugins/models/lib/draft'
 import type { SelectionStateWire } from '../../../plugins/models/types'
 
 const LUNA = 'openai-codex/gpt-5.6-luna'
@@ -96,6 +96,16 @@ describe('fallback positions', () => {
     { ref: 'policy:fallback:1', model: MINI, document: 'policy', label: 'Fallback 2' },
     { ref: 'policy:fallback:0', model: LUNA, document: 'policy', label: 'Fallback 1' },
   ]
+  it("applies positional ops the server's way — assign each index, then compact — and withInFlight stages against that result", () => {
+    // Removing 1 and 2 of three: both slots empty, nothing shifts under the second op.
+    expect(applyFallbackOps(['a', 'b', 'c'], [{ ref: 'policy:fallback:1', set: { model: null } }, { ref: 'policy:fallback:2', set: { model: null } }])).toEqual(['a'])
+    expect(applyFallbackOps(['a'], [{ ref: 'policy:fallback:0', set: { model: 'z' } }, { ref: 'policy:fallback:1', set: { model: 'y' } }])).toEqual(['z', 'y'])
+    const submitted = stageOp(empty, withFallbacks, 'policy:fallback:1', { model: null })
+    expect(fallbackList(withInFlight(withFallbacks, submitted))).toEqual([LUNA])
+    // Removing what is left is a real change against the list the save leaves.
+    expect(draftOps(stageOp(submitted, withInFlight(withFallbacks, submitted), 'policy:fallback:0', { model: null }))).toContainEqual({ ref: 'policy:fallback:0', set: { model: null } })
+  })
+
   it('reads the persisted list in index order and drops only the positional ops', () => {
     expect(fallbackList(withFallbacks)).toEqual([LUNA, MINI])
     let draft = stageOp(empty, withFallbacks, 'policy:fallback:1', { model: null })

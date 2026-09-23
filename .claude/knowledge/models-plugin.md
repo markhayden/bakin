@@ -324,21 +324,33 @@ probe) behind `use-catalog.ts`.
   submitted)` — the states the save will leave — so an edit back to the
   pre-save value stays staged and re-picking the submitted one unstages.
   An edit made while its previous save ran is never silently lost.
-- **Positional fallback ops never survive a moved list — on ANY refresh.**
-  `adoptLoaded` is the ONE way fresh states enter the hook (first load,
-  every reload — mode switch, save, pending poll — and the stale-revision
-  re-read): it compares `fallbackList` (index order) of the held vs
-  incoming states and, when the list moved while the draft holds
-  `policy:fallback:<n>` ops, `dropFallbackOps` empties them (named ops stay)
-  and sets the explanation. A `stale_revision` with an UNCHANGED list
-  re-posts once like named ops. Never adopt states with a bare
-  `setSelections` — a reload that skipped the comparison let a later save
-  remove the wrong model without ever hitting the stale check. With
-  nothing staged the save bar cannot show the message (`SaveBar` returns
-  null when not dirty), so the page renders a `Banner` (`save-notice`,
-  Dismiss = `discard`) for a save error with an empty draft; the first
-  fresh edit onto an empty draft clears the old error so its Save is not a
-  "Retry".
+- **Positional fallback ops carry the list they are relative to.** The
+  draft is REF-authoritative (`updateDraft` writes `draftRef`
+  synchronously and mirrors to state — an async reload must never read a
+  render-time copy React has not re-rendered yet). `fallbackContextRef`
+  holds the fallback list the draft's `policy:fallback:<n>` ops were
+  compared against (set on the first positional stage, from the staging
+  base). `adoptLoaded` is the ONE way fresh states enter the hook (first
+  load, every reload — mode switch, save, pending poll — and the
+  stale-revision re-read): while the draft holds positional ops it accepts
+  an incoming list equal to that context, or — while a save is in flight —
+  the list the save was made for (`inFlight.context`) or the list it
+  leaves (`inFlight.expected` = `applyFallbackOps`, the server's
+  assign-then-compact rule); anything else is an external change ⇒
+  `dropPositional` (named ops stay, `FALLBACK_LIST_MOVED` shown). A save's
+  own reload is therefore never mistaken for a conflict, and an edit staged
+  during the save (against `withInFlight`, whose fallback states ARE the
+  expected list) survives it. `submit` captures the list a positional
+  request is made for at POST time and, on `stale_revision`, re-posts only
+  when the fresh list is THAT list — never the page's current one, which a
+  mid-save reload may already have moved. A failed positional write keeps
+  its ops relative to the pre-save list and drops any staged against the
+  expected list that never came to be. Never adopt states with a bare
+  `setSelections`. With nothing staged the save bar cannot show the
+  message (`SaveBar` returns null when not dirty), so the page renders a
+  `Banner` (`save-notice`, Dismiss = `discard`) for a save error with an
+  empty draft; the first fresh edit onto an empty draft clears the old
+  error so its Save is not a "Retry".
 - **Reset keeps the FIRST snapshot of THIS reset.** `ResetToPlan` stores
   the handle the first attempt returned; a retry after a partial reset
   posts WITHOUT `snapshot: 'reset'` (a second snapshot would capture the
