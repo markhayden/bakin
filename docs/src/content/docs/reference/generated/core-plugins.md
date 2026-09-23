@@ -72,7 +72,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Messaging<br/><span>Content messaging with scheduling, brainstorming, and multi-agent content pipeline</span></td>
       <td><code>messaging</code></td>
       <td>Official</td>
-      <td><code>0.11.4</code></td>
+      <td><code>0.11.5</code></td>
       <td><code>team</code> <code>workflows</code></td>
     </tr>
     <tr>
@@ -86,7 +86,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Projects<br/><span>Project management with specs, checklists, task linking, and agent access via MCP tools</span></td>
       <td><code>projects</code></td>
       <td>Official</td>
-      <td><code>0.10.4</code></td>
+      <td><code>0.10.6</code></td>
       <td><code>tasks</code> <code>assets</code> <code>team</code></td>
     </tr>
     <tr>
@@ -121,7 +121,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Terminal<br/><span>Persistent shared terminals with per-agent access and retained coding worktrees.</span></td>
       <td><code>terminal</code></td>
       <td>Official</td>
-      <td><code>0.1.0</code></td>
+      <td><code>0.1.1</code></td>
       <td><code>git</code></td>
     </tr>
     <tr>
