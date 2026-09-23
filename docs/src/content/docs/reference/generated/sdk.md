@@ -241,6 +241,7 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `SegmentedControl` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SortableHead` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `StatGroup` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `GuideCard` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `StatTile` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `StatusBadge` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `StatusMarker` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -389,6 +390,9 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `SortableHeadProps` | — |
 | `SortDir` | — |
 | `StatGroupProps` | — |
+| `GuideCardHeadingLevel` | — |
+| `GuideCardPoint` | — |
+| `GuideCardProps` | — |
 | `StatTileProgress` | — |
 | `StatTileProgressTone` | — |
 | `StatTileProps` | — |

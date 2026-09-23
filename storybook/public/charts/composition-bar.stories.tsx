@@ -21,7 +21,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'CompositionBar is the single-strip part-to-whole summary: one horizontal 100%-stacked bar showing how one whole divides — token mixes, outcome shares, category splits. Segments keep the fixed categorical palette order (never cycled), zero-value segments are omitted from the strip but stay in the accessible summary and the legend, and the strip carries a complete accessible name with exact values. At the default size each segment is keyboard-focusable with the shared tooltip and the list legend below carries exact values; there is no separate exact-data table because the legend IS the exact data at this scale. The inline size fits inside a metric row as a single labelled image — per-segment targets would be too small, so the accessible summary carries everything and the legend is forced off. Part-to-whole only: use StackedColumnChart to compare composition across buckets and RankedBarChart to rank absolute values.',
+        component: 'CompositionBar is the single-strip part-to-whole summary: one horizontal 100%-stacked bar showing how one whole divides — token mixes, outcome shares, category splits. Segments keep the fixed categorical palette order (never cycled), zero-value segments are omitted from the strip but stay in the accessible summary and the legend, and the strip carries a complete accessible name with exact values. At the default size each segment is keyboard-focusable with the shared tooltip and the list legend below carries exact values; there is no separate exact-data table because the legend IS the exact data at this scale. The inline size fits inside a metric row as a single labelled image — per-segment targets would be too small, so the accessible summary carries everything and the legend is forced off. The large size is the tall headline strip: each segment carries its own label and value inside it (clipped when too narrow), with the legend and accessible summary still complete. Part-to-whole only: use StackedColumnChart to compare composition across buckets and RankedBarChart to rank absolute values.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'empty', 'non-color', 'keyboard'],
@@ -38,7 +38,7 @@ export const CanonicalUsage = {
     legend: true,
   },
   argTypes: {
-    size: { control: 'select', options: ['default', 'inline'] },
+    size: { control: 'select', options: ['default', 'inline', 'large'] },
     legend: { control: 'boolean' },
     label: { control: 'text' },
     // Fixture segments and the status-tone mapping are the story's subject, not controls.
@@ -67,6 +67,31 @@ export const CanonicalUsage = {
     } else {
       await expect(legend).not.toBeInTheDocument()
     }
+  },
+} satisfies Story
+
+export const LargeStrip = {
+  args: { size: 'large' },
+  parameters: { layout: 'centered' },
+  render: (args) => (
+    <div style={{ width: 'min(90vw, 40rem)' }}>
+      <CompositionBar
+        {...args}
+        label="Agents by model"
+        formatValue={(value) => `${value} agent${value === 1 ? '' : 's'}`}
+        data={[
+          { key: 'luna', label: 'gpt-5.6-luna', value: 4 },
+          { key: 'sonnet', label: 'claude-sonnet-4-6', value: 2 },
+          { key: 'mini', label: 'gpt-5.4-mini', value: 1 },
+        ]}
+      />
+    </div>
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('img', { name: 'Agents by model: gpt-5.6-luna 4 agents (57%), claude-sonnet-4-6 2 agents (29%), gpt-5.4-mini 1 agent (14%)' })).toBeVisible()
+    // Segments stay keyboard-focusable and the legend still carries every exact value.
+    await expect(canvas.getByRole('img', { name: 'gpt-5.6-luna 4 agents (57%)' })).toBeVisible()
+    await expect(canvas.getByRole('list', { name: 'Agents by model legend' })).toHaveTextContent('gpt-5.4-mini')
   },
 } satisfies Story
 

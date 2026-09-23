@@ -52,6 +52,7 @@ import { pluginAssetsComponent } from './plugin-assets'
 import { agentSyncComponent } from './agent-sync'
 import { llmComponent, channelsComponent } from './credentials'
 import { budgetComponent } from './budget'
+import { modelsComponent } from './models'
 import { recommendedPluginsComponent } from './recommended-plugins'
 import { recommendedAgentsComponent } from './recommended-agents'
 import { recommendedCapabilitiesComponent } from './recommended-capabilities'
@@ -95,6 +96,7 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   pluginAssetsComponent,
   agentSyncComponent,
   llmComponent,
+  modelsComponent,
   budgetComponent,
   channelsComponent,
   recommendedPluginsComponent,

@@ -176,6 +176,8 @@ export type {
 
 export { StatGroup } from './stat-group'
 export type { StatGroupProps } from './stat-group'
+export { GuideCard } from './guide-card'
+export type { GuideCardHeadingLevel, GuideCardPoint, GuideCardProps } from './guide-card'
 
 export { DataTable } from './data-table'
 export type {

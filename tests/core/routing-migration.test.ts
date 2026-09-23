@@ -8,10 +8,10 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), 'bakin-test-routing-migration')
-mock.module('../../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
-mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
+mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
+mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 
-import { isLegacyRouting, migrateLegacyRouting } from '../../../plugins/models/lib/routing-migration'
+import { isLegacyRouting, migrateLegacyRouting } from '../../src/core/routing-migration'
 
 describe('isLegacyRouting', () => {
   it('recognizes the origin-shaped config', () => {
@@ -24,6 +24,10 @@ describe('isLegacyRouting', () => {
     expect(isLegacyRouting(null)).toBe(false)
     expect(isLegacyRouting('nope')).toBe(false)
     expect(isLegacyRouting({})).toBe(false)
+  })
+  it('a `policies` key that is not an array is junk, not legacy — the migration must never throw at activation', () => {
+    expect(isLegacyRouting({ policies: 'x' })).toBe(false)
+    expect(isLegacyRouting({ policies: null })).toBe(false)
   })
 })
 

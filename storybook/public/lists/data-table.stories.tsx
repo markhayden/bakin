@@ -447,3 +447,37 @@ export const SortedPagedDualRender = {
     }
   },
 } satisfies Story
+
+export const SelectedRow = {
+  render: () => (
+    <StoryStage
+      eyebrow="Lists / selected row"
+      title="One row stands out"
+      description="rowSelected marks the deep-linked or currently chosen record with the ListRow selected tint on BOTH renders and data-selected on the wide row. Consumers own the state; nothing here is interactive."
+    >
+      <StorySection title="Selected by key">
+        <DataTable
+          label="Agent models"
+          columns={[
+            { key: 'agent', header: 'Agent' },
+            { key: 'team', header: 'Team' },
+            { key: 'model', header: 'Model' },
+          ]}
+          rows={[
+            { id: 'main', agent: 'Main', team: '—', model: 'Default' },
+            { id: 'pixel', agent: 'Pixel', team: 'Content', model: 'claude-sonnet-4-6' },
+            { id: 'patch', agent: 'Patch', team: 'Ops', model: 'Default' },
+          ]}
+          rowKey={(row) => row.id}
+          rowSelected={(row) => row.id === 'pixel'}
+        />
+      </StorySection>
+    </StoryStage>
+  ),
+  play: async ({ canvas }) => {
+    const rows = canvas.getAllByRole('row')
+    const selected = rows.filter((row) => row.hasAttribute('data-selected'))
+    await expect(selected).toHaveLength(1)
+    await expect(selected[0]).toHaveTextContent('Pixel')
+  },
+} satisfies Story

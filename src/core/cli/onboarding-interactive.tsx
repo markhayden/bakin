@@ -17,6 +17,7 @@ import {
   OnboardingIntro,
 } from "./ui/onboarding";
 import { renderToString } from "./ui/render-to-string";
+import { modelsComponent } from "../onboarding/models";
 import { recommendedAgentsComponent } from "../onboarding/recommended-agents";
 import { recommendedPluginsComponent } from "../onboarding/recommended-plugins";
 import { runtimeComponent } from "../onboarding/runtime";
@@ -198,11 +199,19 @@ export async function collectOnboardingSelections(
 
   const searchCheck = await searchComponent.check();
   const searchModelsCheck = await searchModelsComponent.check();
+  // A gateway flap mid-wizard must skip the plan step, not abort onboarding
+  // (the orchestrator guards check() the same way).
+  const modelsCheck: CheckResult = await modelsComponent.check().catch((err: unknown) => ({
+    name: "models",
+    status: "error",
+    message: `check() threw: ${err instanceof Error ? err.message : String(err)}`,
+  }));
   const pluginCheck = await recommendedPluginsComponent.check();
   const agentCheck = await recommendedAgentsComponent.check();
   const hasWizardSteps = [
     searchCheck,
     searchModelsCheck,
+    modelsCheck,
     pluginCheck,
     agentCheck,
   ].some((check) => check.status === "missing" || check.status === "broken");
@@ -237,6 +246,20 @@ export async function collectOnboardingSelections(
     if (approved) approvedComponents.push("search-models");
   }
 
+
+  // The recommended model plan (spec S7): shown with its reasons, applied
+  // only on confirm — never behind the operator's back. `candidates: 0`
+  // means nothing can run yet; the component skips itself with the hint.
+  const planCandidates = typeof modelsCheck.details?.candidates === "number" ? modelsCheck.details.candidates : 0;
+  if (modelsCheck.status === "missing" && planCandidates > 0) {
+    const approved = await promptConfirm(
+      "Model plan",
+      `${modelsCheck.message} You can change it any time on the Models page.`,
+      "confirm",
+      { showBrand: false },
+    );
+    if (approved) approvedComponents.push("models");
+  }
 
   const selectedRecommendedPluginIds =
     pluginCheck.status === "missing"

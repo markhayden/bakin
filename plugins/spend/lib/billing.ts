@@ -1,49 +1,31 @@
 /**
- * Billing-lane detection + provider resolution (cost-control v2, #464).
- *
- * A turn's cost is only honest when we know HOW it bills: an `apiKey` on the
- * provider's auth-profile entry means metered pay-per-token dollars; only
- * OAuth fields (token/access/refresh) means a subscription login — plan
- * quota, where tokens are the unit and a dollar figure would be fiction.
- * Unknown always resolves to 'metered' (conservative: unknown auth reads as
- * real money, never silently uncapped-as-free).
- *
- * Resolution: manual override in spend.json (most specific first:
- * agent+provider → agent → provider) → per-agent detection → 'metered'. Detection reads the
- * runtime-neutral `credentialStatus()` contract (presence-only credential
- * KIND per provider) — credential shapes stay adapter-private, values never
- * cross the boundary.
+ * Billing attribution for turns (cost-control v2, #464): provider from the
+ * model id, lane from the operator's overrides in spend.json → per-agent
+ * credential-shape detection → metered. The lane rules themselves
+ * (`detectLanesFromCredentials`, `resolveLaneFor`) are core-owned in
+ * `@bakin/core/llm/billing-lane` so the model plan decides lanes the same
+ * way; this module adds the per-agent detection cache and the settings
+ * read. Detection reads the runtime-neutral `credentialStatus()` contract
+ * (presence-only credential KIND per provider) — credential shapes stay
+ * adapter-private, values never cross the boundary.
  */
 import type { PluginContext } from '@bakin/core/plugin-types'
-import type { BillingLane } from '@bakin/core/execution/ledger'
-
-import type { RuntimeCredentialStatus } from '@bakin/core/adapters/runtime'
+import {
+  detectLanesFromCredentials,
+  resolveLaneFor,
+  type BillingLane,
+  type BillingLaneSource,
+  type BillingOverride,
+} from '@bakin/core/llm/billing-lane'
 
 import { createLogger } from '../../../src/core/logger'
 import { normalizeModelId, providerFromId } from '@bakin/core/llm/model-id'
-import type { BillingOverride } from '../types'
 import { readOverrides } from './settings'
 
 const log = createLogger('spend:billing')
 
-export type { BillingLane }
-export type { BillingOverride } from '../types'
-
-/**
- * Provider → lane map from the runtime's presence-only credential report.
- * 'api-key' bills metered; 'oauth' is a subscription login. First entry per
- * provider wins (the adapters already dedupe).
- */
-export function detectLanesFromCredentials(
-  credentials: RuntimeCredentialStatus['llmCredentials'],
-): Record<string, BillingLane> {
-  const lanes: Record<string, BillingLane> = {}
-  for (const entry of credentials ?? []) {
-    if (lanes[entry.provider]) continue
-    lanes[entry.provider] = entry.kind === 'oauth' ? 'subscription' : 'metered'
-  }
-  return lanes
-}
+export { detectLanesFromCredentials, resolveLaneFor }
+export type { BillingLane, BillingLaneSource, BillingOverride }
 
 /**
  * Provider id for a model: `provider/model` prefix (after normalization,
@@ -54,34 +36,6 @@ export function resolveProviderForModel(modelId: string | null | undefined): str
   if (!modelId) return 'other'
   const normalized = normalizeModelId(modelId)
   return normalized.includes('/') ? providerFromId(normalized) : 'other'
-}
-
-/**
- * How a lane was decided — `override` is operator truth (manual
- * settings.billing.overrides), `detected` came from credential-shape
- * detection, `default` is the conservative metered fallback. Consumers that
- * refuse to trust guessed lanes (the spend engine's observed path, #689)
- * may still trust an explicit override.
- */
-export type BillingLaneSource = 'override' | 'detected' | 'default'
-
-/** Pure lane resolution: overrides (most specific first) → detection → metered. */
-export function resolveLaneFor(input: {
-  provider: string
-  agentId?: string
-  overrides: BillingOverride[]
-  detected: Partial<Record<string, BillingLane>>
-}): { lane: BillingLane; laneSource: BillingLaneSource } {
-  const { provider, agentId, overrides, detected } = input
-  const match = (pred: (o: BillingOverride) => boolean) => overrides.find(pred)?.lane
-  const overridden =
-    (agentId !== undefined ? match((o) => o.agentId === agentId && o.provider === provider) : undefined) ??
-    (agentId !== undefined ? match((o) => o.agentId === agentId && o.provider === undefined) : undefined) ??
-    match((o) => o.agentId === undefined && o.provider === provider)
-  if (overridden !== undefined) return { lane: overridden, laneSource: 'override' }
-  const detectedLane = detected[provider]
-  if (detectedLane !== undefined) return { lane: detectedLane, laneSource: 'detected' }
-  return { lane: 'metered', laneSource: 'default' }
 }
 
 // Per-agent profile detection cache. Lane flips require re-auth in the

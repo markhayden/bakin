@@ -373,7 +373,7 @@ The gate is fail-closed until the spend hooks answer (S13), so a mid-upgrade cra
 | D20 | `send` rides the agent lane. |
 | D21 | Persisted/ledger reaction enum stays `defer|pause`; "Wait" is UI/CLI vocabulary. |
 | D22 (revised) | Delivery is at-least-once from durable rows for BOTH milestones and incidents (`deliverPending`), stable `event_id`, consumer de-dupe; lower milestones `covered_by` at record time. |
-| D23 | `ModelSelectOption` contract change is an approval checkpoint at PR 3 start; PR 1 uses label-suffix composition. |
+| D23 | `ModelSelectOption` contract change is an approval checkpoint at PR 3 start; PR 1 uses label-suffix composition. **2026-09-22: presented to Mark at PR 3 start; PENDING his answer — the documented fallback (label-suffix composition, no SDK contract change) is what PR 3 ships until he says yes, at which point T3.1 lands as one add-on commit.** |
 | D24 | Simple save writes ONLY ops for controls the user changed; mixed chores render as "Mixed (N)". |
 | D25 | ONE write route (`POST /selections`, serialized, revision-checked, capability-checked). |
 | **D26 (new)** | PR 2 ownership cutover is ONE commit (upgrade + hooks + replacement edit surface + repoint + delete old writes); pure moves precede it. A health-owned `spend.policy-available` check reports Spend's own activation failure. |

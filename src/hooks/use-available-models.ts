@@ -1,75 +1,72 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { AvailableModel } from '@makinbakin/sdk/types'
 
+import { usePluginEvent } from './use-plugin-event'
+
 /**
- * Module-level cache + single-flight promise per SCOPE for the available-
- * models catalog (`GET /api/plugins/models/available[?agentId=]`). Two
- * pickers mounting in the same paint for the same scope share one
- * round-trip. Read-only and cached — the models management page owns the
- * live `/refresh` mutation flow and keeps its own state rather than using
- * this hook. Deliberately NOT `useJsonFetch` (per-component state, no
- * cross-mount dedupe). Lives in the SDK proper (not the models plugin) since
- * T34: the wire contract is just the stable catalog URL.
+ * The available-models catalog for pickers outside the Models page (Team's
+ * agent form and detail). Read-only: one bounded `GET /api/plugins/models/
+ * available[?agentId=]` per mount, shared across pickers mounting in the
+ * same paint for the same SCOPE through a single-flight promise — but NEVER
+ * cached across mounts: the catalog's eligibility overlay changes with
+ * credentials, rejections and saves, and a picker must never offer a model
+ * the server now knows is dead (#907). Every catalog-changing path on the
+ * server emits `models.catalog_changed`; subscribed pickers refetch on it.
  *
  * Scope (#907 review): a picker FOR one agent asks with that agent's id so
  * eligibility is judged under the agent's own credentials — the same scope
  * the write path validates an agent pin under. Unscoped = the install.
  */
-const cached = new Map<string, AvailableModel[]>()
 const inFlight = new Map<string, Promise<AvailableModel[]>>()
-
-function scopeKey(agentId?: string): string {
-  return agentId ?? ''
-}
 
 function catalogUrl(agentId?: string): string {
   return agentId ? `/api/plugins/models/available?agentId=${encodeURIComponent(agentId)}` : '/api/plugins/models/available'
 }
 
-function fetchAvailableModels(agentId?: string): Promise<AvailableModel[]> {
-  const key = scopeKey(agentId)
-  const hit = cached.get(key)
-  if (hit) return Promise.resolve(hit)
-  const pending = inFlight.get(key)
-  if (pending) return pending
-  const request = fetch(catalogUrl(agentId))
+function readCatalog(agentId?: string): Promise<AvailableModel[]> {
+  return fetch(catalogUrl(agentId))
     .then((r) => (r.ok ? r.json() : null))
-    .then((data: { models?: AvailableModel[] } | null) => {
-      const list = data && Array.isArray(data.models) ? data.models : []
-      cached.set(key, list)
-      return list
-    })
-    .catch(() => {
-      cached.set(key, [])
-      return [] as AvailableModel[]
-    })
-    .finally(() => { inFlight.delete(key) })
+    .then((data: { models?: AvailableModel[] } | null) => (data && Array.isArray(data.models) ? data.models : []))
+    .catch(() => [] as AvailableModel[])
+}
+
+/**
+ * Mount-time reads share the in-flight request of their scope; a `fresh`
+ * read (the server said the catalog changed) always issues its own request
+ * AFTER any in-flight one settles — the dedupe must never answer a refetch
+ * with pre-change rows.
+ */
+function fetchAvailableModels(agentId: string | undefined, fresh = false): Promise<AvailableModel[]> {
+  const key = agentId ?? ''
+  const pending = inFlight.get(key)
+  if (pending && !fresh) return pending
+  const read = () => readCatalog(agentId)
+  const request: Promise<AvailableModel[]> = (pending ?? Promise.resolve()).then(read, read)
   inFlight.set(key, request)
+  void request.finally(() => { if (inFlight.get(key) === request) inFlight.delete(key) })
   return request
 }
 
 /**
- * The available-models catalog (empty array until loaded / on failure).
- * Pass the agent a picker belongs to so its verdicts are that agent's.
+ * The available-models catalog (empty array until loaded / on failure);
+ * refetches when the server says it changed. Pass the agent a picker belongs
+ * to so its verdicts are that agent's.
  */
 export function useAvailableModels(agentId?: string): AvailableModel[] {
-  const key = scopeKey(agentId)
-  const [models, setModels] = useState<AvailableModel[]>(() => cached.get(key) ?? [])
+  const [models, setModels] = useState<AvailableModel[]>([])
 
-  useEffect(() => {
-    const hit = cached.get(key)
-    if (hit) {
-      setModels(hit)
-      return
-    }
+  const load = useCallback((fresh: boolean) => {
     let cancelled = false
-    fetchAvailableModels(agentId).then((list) => {
+    void fetchAvailableModels(agentId, fresh).then((list) => {
       if (!cancelled) setModels(list)
     })
     return () => { cancelled = true }
-  }, [key, agentId])
+  }, [agentId])
+
+  useEffect(() => load(false), [load])
+  usePluginEvent('models.catalog_changed', () => { load(true) })
 
   return models
 }
@@ -100,11 +97,4 @@ export function toModelSelectOptions(models: readonly AvailableModel[]): Eligibl
       disabled: dead,
     }
   })
-}
-
-/** Test-only: reset the module-level cache so tests run with a clean slate. */
-export function __resetAvailableModelsCache(): void {
-  if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) return
-  cached.clear()
-  inFlight.clear()
 }

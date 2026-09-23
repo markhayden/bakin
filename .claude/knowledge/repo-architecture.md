@@ -271,7 +271,7 @@ packages/host/
 |  | exec-tools/ (registry.ts + self-registering built-in tools under tools/) |
 |  | server/ (request-handler.ts router factory + startup-recovery.ts) |
 |  | plugin-scaffold.ts, self-update.ts |
-|  | onboarding/ (13 components in COMPONENT_ORDER) |
+|  | onboarding/ (16 components in COMPONENT_ORDER) |
 
 **Rule of thumb:** If a module has external side effects (writes files,
 opens connections, uses globalThis) it stays in `src/core/`. If it's a

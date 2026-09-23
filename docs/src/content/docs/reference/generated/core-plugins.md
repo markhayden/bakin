@@ -76,10 +76,10 @@ description: Generated catalog of official plugins supported by Bakin.
       <td><code>team</code> <code>workflows</code></td>
     </tr>
     <tr>
-      <td>Models<br/><span>Agent model configuration — per-agent models, aliases, available models, and per-turn model/thinking routing</span></td>
+      <td>Models<br/><span>Which model runs what — a Simple two-lane plan (agent model + background chores) or every per-agent and per-job control, one validated write path, and a recommender that proposes but never applies</span></td>
       <td><code>models</code></td>
       <td>Core</td>
-      <td><code>2.3.0</code></td>
+      <td><code>3.0.0</code></td>
       <td><code>team</code></td>
     </tr>
     <tr>

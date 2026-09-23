@@ -1,9 +1,9 @@
 {
   "id": "models",
   "name": "Models",
-  "version": "2.3.0",
+  "version": "3.0.0",
   "bakin": ">=1.0.0",
-  "description": "Agent model configuration — per-agent models, aliases, available models, and per-turn model/thinking routing",
+  "description": "Which model runs what \u2014 a Simple two-lane plan (agent model + background chores) or every per-agent and per-job control, one validated write path, and a recommender that proposes but never applies",
   "contentFiles": [],
   "secrets": [
     {
@@ -58,7 +58,7 @@
       {
         "method": "POST",
         "path": "/runtime/restart",
-        "summary": "List available AI models with tier classification (budget/standard/premium). Use this to discover what models are available for assignment."
+        "summary": "Restart the active runtime so pending model-config writes take effect (adapter-advised)"
       },
       {
         "method": "GET",
@@ -87,8 +87,8 @@
       },
       {
         "method": "GET",
-        "path": "/routing/recommend",
-        "summary": "Proposal-only recommended routes for unrouted system classes"
+        "path": "/plan",
+        "summary": "The recommended two-lane model plan (read-only)"
       }
     ],
     "execTools": [
