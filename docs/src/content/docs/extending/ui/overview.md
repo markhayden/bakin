@@ -1214,6 +1214,11 @@ export function OwnerField({
 
 Presence is always named in visible copy by `AgentStatus`; avatar badges add compact reinforcement and an accessible name. Use `decorative` on an avatar only when the same option, row, or control already names that agent. Team selections use the exported `team:` value helpers for compatibility, but consumers still translate that UI value into their own API contract before saving.
 
+`AgentSelect` shares the field contract: `size="sm" | "md" | "lg"` (32/36/44px,
+with room for enlarged text) and `variant="outlined" | "filled" | "ghost"`.
+Defaults are md/outlined. Filled has no resting border, including no bottom rule.
+Compact embedded tools can use sm/filled; form ownership remains explicit.
+
 ## Asset, Model, and Color Pickers
 
 Import `AssetPicker`, `ModelSelect`, and `ColorPicker` from `@makinbakin/sdk/patterns`. They are controlled presentation patterns: the consumer supplies presentation-ready options and exact state, then owns requests, persistence, and domain mutations.
@@ -1277,6 +1282,19 @@ Use `StatusBadge` for compact state language and `StatTile` for scan-friendly te
 ## Markdown and Search Trust Patterns
 
 Import `MarkdownContent` and `MarkdownEditor` from `@makinbakin/sdk/content`. The focused content entrypoint isolates its intentionally heavier parser from routine UI and application-pattern consumers. The renderer supports GFM tables and task lists, highlighted copyable code, bounded media previews, and visibly identified `bakin:*` managed sections. Raw HTML is not rendered. Wide tables and code own horizontal overflow inside the content boundary instead of widening the page.
+
+Pass complete source to `MarkdownContent`, including managed-section comments and
+reference definitions. Optional `compareTo` accepts the previous complete source:
+changed semantic blocks get a green edge and accessible text; pure deletions get
+positioned text markers. Lists, tables and code remain intact. Comparison stops at
+a bounded work limit and displays an explicit unavailable notice while retaining
+the current document. Keep exact line-by-line review in a separate Diff view.
+
+For embedded conversations, `ConversationPanel.composerHandleRef` forwards the
+existing `ComposerHandle` (`isEmpty`, `setText`, `focus`). Inspect it after mount
+instead of reading private draft storage. It is null when unmounted or read-only.
+Keep a panel mounted inside a preserving disclosure to retain draft and scroll
+state. Use distinct panel titles to name each keyboard-scrollable history region.
 
 Internal links must keep using the shipped routing contract. Supply `renderInternalLink` with `PluginLink`; do not rebuild history or route parsing inside a Markdown renderer:
 

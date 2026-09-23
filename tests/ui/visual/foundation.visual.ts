@@ -700,6 +700,8 @@ test('public product conversation composer visual baseline', async ({ page }) =>
   await expect(page.getByRole('heading', { level: 1, name: 'Ask a focused follow-up' })).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Message the release agent' })).toBeVisible()
   await expect(page.getByRole('separator', { name: 'Resize message input' })).toBeVisible()
+  await expect(page.getByRole('status')).toHaveText('Sent: Verify the public routing examples. Keep the exception visible.')
+  await expect(page.getByRole('textbox', { name: 'Message the release agent' })).toHaveValue('')
   await page.evaluate(async () => document.fonts.ready)
   await expect(page).toHaveScreenshot('foundation-conversation-composer.png', {
     animations: 'disabled',
@@ -724,7 +726,7 @@ test('public conversation composer attachment states visual baseline', async ({ 
 test('public embedded conversation panel visual baseline', async ({ page }) => {
   await page.goto('/iframe.html?id=components-conversation-panel-and-tool-detail--product-panel&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Coordinate an embedded release review' })).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Release review' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Release review', exact: true })).toBeVisible()
   await expect(page.getByRole('separator', { name: 'Resize conversation panel' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
   await expect(page).toHaveScreenshot('foundation-conversation-panel.png', {

@@ -1,5 +1,19 @@
 # Conversation Kit
 
+## Embedded draft and keyboard contract
+
+`ConversationPanel.composerHandleRef` forwards the existing `ComposerHandle`
+(`isEmpty`, `setText`, `focus`). It is null while read-only or unmounted. Use it
+after mounting to inspect restored draft text; storage keys stay private to the
+composer. `isEmpty` describes text, not consumer-owned attachments. Consumers
+must also consider their attachment state when deciding to collapse a panel.
+Hidden-but-preserved disclosures retain the panel mount and remove hidden controls
+from keyboard traversal. Give each panel a distinct title: contained history uses
+that title for its accessible region name. Standalone `Conversation` accepts
+`ariaLabel` for the same purpose. Document mode adds no internal scroll tab stop.
+The composer and contained scroller both show a token-colored keyboard outline.
+Story: `storybook/public/conversation/panel-and-drawer.stories.tsx` — DraftHandle.
+
 THE shared conversation UI **and turn engine** for every surface that talks to
 an agent. The private UI implementation lives in
 `packages/ui/src/conversation/` and is published through the focused

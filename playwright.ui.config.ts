@@ -8,6 +8,9 @@ export default defineConfig({
   testMatch: '**/*.visual.ts',
   outputDir: 'test-results/ui-visual',
   snapshotPathTemplate: 'tests/ui/snapshots/{projectName}/{testFilePath}/{arg}{ext}',
+  // Ordinary verification produces candidates only. Baselines are written by
+  // the explicit, approved update command (whose CLI flag overrides this).
+  updateSnapshots: 'none',
   // Snapshot captures are per-test-isolated pages; two CI workers halve the
   // wall clock without changing rendering. Local (including the canonical
   // update-snapshots run) stays serial so baseline generation keeps its

@@ -148,7 +148,7 @@ export function remarkComparison(previousSource: string | undefined) {
       if (comparison.changed.has(index)) {
         output.push({
           type: 'blockquote',
-          data: { hName: 'div', hProperties: { 'data-md-changed-block': '', className: 'my-bakin-3 min-w-0 border-l-2 border-bakin-signal-success pl-bakin-3' } },
+          data: { hName: 'div', hProperties: { 'data-md-changed-block': '', className: 'my-bakin-3 min-w-0 border-l-2 border-bakin-action-primary-background pl-bakin-3' } },
           children: [
             { type: 'paragraph', data: { hProperties: { className: 'sr-only', 'data-md-change-hint': '' } }, children: [{ type: 'text', value: 'Changed block' }] },
             node as BlockContent,

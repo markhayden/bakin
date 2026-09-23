@@ -23,13 +23,13 @@ evidence when checking an item; a written plan is not a passing test.
 - [x] T07: Correct contained conversation keyboard scrolling
 - [x] T07b: Forward the existing composer handle through ConversationPanel
 - [ ] T08: Publish shared contract evidence and docs
-- [ ] T09: Centralize detail requests and honest load states
-- [ ] T10: Propagate corrupt/unavailable history honestly
+- [x] T09: Centralize detail requests and honest load states
+- [x] T10: Propagate corrupt/unavailable history honestly
 - [ ] T11: Unify history loading and retry presentation
-- [ ] T12: Implement atomic expected-value project writes
-- [ ] T13: Persist replay-safe checklist add operations
-- [ ] T14: Recover promotion without duplicate board tasks
-- [ ] T15: Decouple lifecycle from checklist progress
+- [x] T12: Implement atomic expected-value project writes
+- [x] T13: Persist replay-safe checklist add operations
+- [x] T14: Recover promotion without duplicate board tasks
+- [x] T15: Decouple lifecycle from checklist progress
 - [ ] T16: Implement project draft state independently of rendering
 - [ ] T17: Connect the staged project form
 - [ ] T18: Compose explicit field conflict resolution
@@ -44,7 +44,7 @@ evidence when checking an item; a written plan is not a passing test.
 - [ ] T27: Finish docs and finding-by-finding closure
 - [ ] T28: Final review, conformance and PR handoff
 
-- [ ] Exact visual candidate updates approved where required.
+- [x] Exact 12 shared foundation visual candidates approved and verified; any later candidates require their own approval.
 - [ ] All audit findings closed with linked evidence.
 - [ ] Both PRs pass checks at their final heads.
 - [ ] Handoff includes Core host prerequisite, exact SDK pin and rollback order.

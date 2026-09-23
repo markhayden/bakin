@@ -89,3 +89,59 @@ the complete document remains visible with an explicit unavailable notice.
 Focused comparison/Markdown tests and five public stories pass. Desktop/320px
 browser checks pass for flow geometry, semantics, copy action and 200% text.
 Typecheck/lint pass. An initial Storybook dependency-cache reload required one rerun.
+
+## C6/C7a — Projects loading and history
+
+Bits `cd14c02`: three history regressions failed before the fix; 161 repository,
+route and service tests now pass. Missing history is empty; malformed data and
+storage failures are errors; failed reads/restores never rewrite corrupt history.
+Bits `2bffb47`: the typed detail hook rejects invalid payloads, aborts obsolete
+loads, enforces request generation/identity, and retains valid data on failed refresh.
+Canonical SystemState loading/error/retry composition is used. Four focused
+deferred-response tests plus all 220 Projects tests, types and lint pass.
+
+## Foundation integration in progress (T08)
+
+The owner-generated compatibility matrix now records actual Projects 0.10.7 and
+the tested repository refs; no census scope or allowance changed. Quick gates
+pass after enrolling the new visual file. Full verification reached 9,790 passing
+tests and four SDK packaging failures: declaration-only `mdast` must resolve to
+the explicitly declared `@types/mdast`. The package builder now handles that case;
+all six focused packaging tests (161 assertions) pass and a dry-run package built.
+All eight official plugin fixtures pass against `/private/tmp/projects-audit-sdk-package`.
+No SDK publication occurred. Canonical screenshots exposed a nonexistent inherited
+success token; comparison now uses the actual green action token, verified by
+computed-color browser assertions. The exact 12 images in `visual-review/manifest.json` were approved on 2026-09-23.
+SHA-256 verified before installation; all 12 canonical Linux desktop/mobile checks
+pass with snapshot writes disabled. Normal visual runs refuse baseline writes.
+
+
+## Atomic edits, lifecycle and checklist receipts (T12/T13/T15)
+
+Bits `03494af` implements atomic expected-field writes, structured conflicts and
+converged retries; `70ec65a` separates explicit project lifecycle from checklist
+progress. 144 focused service/route/sync tests pass with types and lint.
+Checklist creation now writes a durable receipt alongside its item, using stable
+item identity across deletion/display-ID reuse. Four regressions failed first;
+168 parser/service/route/recovery tests pass, as do typecheck and lint. Tests cover
+lost responses, concurrent retries, process reconstruction, write failure, deleted
+results, mismatched request content, corrupt metadata and retained receipt growth.
+Private operation records are excluded from detail responses. Host scoped storage
+propagates actual read failures (missing files alone return null).
+
+## Foundation verification update
+
+Second full unit run: 9,794 passed, 18 skipped, zero failures. Full conformance
+stops at measured payload increases, which still require a concrete ceiling review
+and separate approval. SDK package assembly and all eight official plugin fixtures
+pass; all 359 Storybook interactions pass (114 files, five internal specimen files skipped). No package was published.
+
+
+## Promotion recovery (T14)
+
+Bits `9378828`: seven recovery regressions cover concurrent requests, reentrant
+hooks, reservation/write failures, lost link writes across service reconstruction,
+downstream create failure, foreign task identity, deleted/reused checklist targets,
+and deleted projects/tasks. One reserved board-task ID and verified provenance
+survive retries; the global project lock is released for external task APIs.
+All 239 Projects tests pass. Typecheck/lint pass. Add receipts checkpoint: `0e2cd28`.
