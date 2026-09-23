@@ -63,6 +63,8 @@ export const CanonicalUsage = {
   ),
   play: async ({ canvas, userEvent }) => {
     const input = canvas.getByRole('textbox', { name: 'Message the agent' })
+    await userEvent.click(input)
+    await expect(input).toHaveFocus()
     await userEvent.clear(input)
     await userEvent.type(input, 'Check the release plan.')
     await userEvent.keyboard('{Enter}')

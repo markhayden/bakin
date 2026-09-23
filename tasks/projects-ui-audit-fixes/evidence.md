@@ -43,3 +43,11 @@ Browser verifies 32/36/44px geometry, avatar containment, borderless filled cont
 keyboard popup/escape and 320px layout at 200% text. Typecheck and focused lint pass.
 Quick conformance still reports the recorded pre-existing fleet census drift.
 Visual baselines remain untouched; aggregate contract docs and candidates follow in T08.
+
+## C4a — Composer focus (T06)
+
+Pattern: `storybook/public/conversation/composer.stories.tsx` — CanonicalUsage.
+The new desktop/mobile browser tests failed on the missing focus outline before
+the fix and pass with a token-colored inset outline. Existing composer behavior
+tests pass, including IME, attachments, drafts and queue mode. Screenshots/traces
+are under `/private/tmp/projects-audit-browser-results/`; baselines unchanged.

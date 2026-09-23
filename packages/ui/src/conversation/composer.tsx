@@ -459,7 +459,7 @@ export function Composer({
             className={cn(
               'block w-full min-w-0 resize-none border-0 bg-transparent px-bakin-3 pt-bakin-3',
               'font-bakin-typography-family-ui text-base leading-relaxed text-bakin-text-primary md:text-[length:var(--bakin-typography-size-body)]',
-              'outline-none placeholder:text-bakin-text-muted disabled:cursor-not-allowed disabled:opacity-[var(--bakin-state-opacity-disabled)]',
+              'outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring placeholder:text-bakin-text-muted disabled:cursor-not-allowed disabled:opacity-[var(--bakin-state-opacity-disabled)]',
             )}
           />
 

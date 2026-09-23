@@ -19,7 +19,7 @@ evidence when checking an item; a written plan is not a passing test.
 - [x] T03: Implement AgentSelect's approved appearance contract
 - [ ] T04: Preserve full Markdown context through managed sections
 - [ ] T05: Add bounded, accessible Markdown comparison
-- [ ] T06: Correct shared composer focus behavior
+- [x] T06: Correct shared composer focus behavior
 - [ ] T07: Correct contained conversation keyboard scrolling
 - [ ] T07b: Forward the existing composer handle through ConversationPanel
 - [ ] T08: Publish shared contract evidence and docs
