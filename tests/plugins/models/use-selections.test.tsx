@@ -228,6 +228,62 @@ describe('useSelections draft + save', () => {
     expect(posts).toEqual([{ revision: 'rev-2', ops: [{ ref: 'route:relay', set: { model: MINI } }] }])
   })
 
+  it('an in-flight positional request is judged against the list it was made for — a mid-save reload cannot launder it into a retry (review P2)', async () => {
+    fallbacks = [MINI, LUNA]
+    const { result } = await mount()
+    act(() => result.current.stage('policy:fallback:1', { model: null }))
+    let release!: () => void
+    holdPost = new Promise<void>((resolve) => { release = resolve })
+    postResponses = [{ status: 409, body: { error: 'stale_revision', message: 'stale' } }]
+    let saved: Promise<boolean>
+    act(() => { saved = result.current.save() })
+    await waitFor(() => expect(posts).toHaveLength(1))
+    // While the POST is out, another editor reorders the list and this page re-reads it.
+    revision = 'rev-2'
+    fallbacks = [LUNA, MINI]
+    await act(async () => { await result.current.reload() })
+    expect(result.current.dirty).toBe(false)
+    // The stale answer arrives: the request was made for [MINI, LUNA]; the fresh list is not that list.
+    release()
+    await act(async () => { await saved })
+    expect(posts).toHaveLength(1)
+    expect(result.current.saveError).toContain('fallback list changed')
+    expect(result.current.dirty).toBe(false)
+  })
+
+  it("a save's OWN result is not an external change: the reload after a successful fallback save keeps a newer edit and raises no error (review P2)", async () => {
+    fallbacks = [MINI]
+    const { result } = await mount()
+    act(() => result.current.stage('policy:fallback:0', { model: LUNA }))
+    let release!: () => void
+    holdPost = new Promise<void>((resolve) => { release = resolve })
+    let saved: Promise<boolean>
+    act(() => { saved = result.current.save() })
+    await waitFor(() => expect(posts).toHaveLength(1))
+    // Change of heart while waiting: back to MINI — relative to the list the save leaves ([LUNA]).
+    act(() => result.current.stage('policy:fallback:0', { model: MINI }))
+    expect(result.current.dirty).toBe(true)
+    fallbacks = [LUNA]
+    release()
+    await act(async () => { await saved })
+    expect(result.current.saveError).toBeNull()
+    expect(result.current.draft.get('policy:fallback:0')).toEqual({ model: MINI })
+    await act(async () => { await result.current.save() })
+    expect(posts.at(-1)!.ops).toEqual([{ ref: 'policy:fallback:0', set: { model: MINI } }])
+  })
+
+  it('a successful fallback save with no further edits ends clean — no spurious "discarded" error (review P2)', async () => {
+    fallbacks = [MINI]
+    const { result } = await mount()
+    act(() => result.current.stage('policy:fallback:0', { model: LUNA }))
+    fallbacks = [LUNA]
+    let ok = false
+    await act(async () => { ok = await result.current.save() })
+    expect(ok).toBe(true)
+    expect(result.current.saveError).toBeNull()
+    expect(result.current.dirty).toBe(false)
+  })
+
   it('a refresh with the SAME fallback list keeps positional ops staged', async () => {
     fallbacks = [MINI, LUNA]
     const { result } = await mount()
