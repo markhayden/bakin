@@ -1,7 +1,9 @@
 # Form components overhaul — audit
 
 Date: 2026-09-22. Baseline: `1ecbc0b90`.
-Status: source and existing-test audit; browser visual audit remains pending.
+Status: source audit reconciled with implemented contracts; final visual review pending.
+The inventory and findings below describe baseline `1ecbc0b90`; implementation
+resolution is recorded at the end of this document.
 Scope decision: audit all form controls; implement text and selection first.
 Application UI migration is a separate follow-up.
 
@@ -142,3 +144,62 @@ claims; a component styling extension alone does not currently require one.
 
 The detailed spec is in `form-components-overhaul.md`. Implementation planning
 follows resolution and review of the specification.
+
+
+## Implementation resolution (2026-09-22)
+
+| Requirement / finding | Final contract and evidence |
+| --- | --- |
+| Sizes, appearances, width and 44px alignment | Input, Select and Combobox SizesAndVariants; InputGroup SizesAndVariants; Button Sizes; form-controls.browser geometry checks |
+| Field versus shell ownership | FieldControl shares Input; InputGroup owns size/variant; grouped textarea association unit test and form-groups.browser at 320px/200% |
+| Textarea height and native behavior | Textarea BoundedGrowth/SizingFixture; native three rows; bounded measurement hook; three-engine growth/reset/width/text enlargement checks |
+| Clear, reveal, adornments, units, loading, count, copy and submit | InputGroup TextEntry/LocalSubmitAction and support/form-input-recipes; built-in CopyButton outcome; native maxLength; readonly/disabled action rules |
+| Select multiple, rich text and typeahead | Select MultipleSelection plus Behavior; primary label supplied separately from supporting description; repeated FormData values and explicit reset |
+| Search, chips, compact and object IDs | Combobox CanonicalUsage/MultipleSelection/CompactAndObjectValues; object identity unit test and form-selection.browser keyboard/serialization proof |
+| Async states and recovery | Combobox AsyncAndUnavailable/AsyncFixture; caller ignores stale completions, separates value from query, explicit unavailable state, retry outside listbox |
+| Validation and whole-form lifecycle | Field and form composition FoundationControls; failed save retains draft; native object IDs, controlled selection reset, uncontrolled textarea; IME browser proof |
+| Dialog/Drawer and plugin portals | Combobox OverlayFixture; Form in a drawer SearchableControls; portal-containment unit and three-engine focus/containment proofs |
+| Surfaces, focus, disabled/readonly/errors | Input SurfaceContexts and Combobox ControlStates; canonical visual candidates and forced-colors/reduced-motion browser coverage |
+| Performance | Six JavaScript ceiling adjustments explicitly approved in tasks/form-components-payload-review.md; shared focus CSS keeps the original CSS ceiling |
+
+Installed Base UI does not restore Combobox selection on native form reset.
+The public reset recipe therefore controls selection and restores it in onReset.
+Form onFormSubmit receives serialized object IDs, not catalog objects. These
+are documented composition contracts; no independent selection state engine
+or upstream compatibility shim was added.
+
+## Deferred implementation priorities
+
+1. **Next form phase:** Checkbox/RadioGroup/Switch complete submission/reset,
+   readonly versus disabled, required/error and group-description lifecycle
+   stories. Preserve current toggle semantics; do not apply text-field variants
+   to these controls without a separate reviewed contract.
+2. **Specialized inputs:** FileInput intake versus native multipart submission,
+   clear/reselect and upload failure; ColorInput textual validity and palette
+   keyboard behavior; date/time and numeric/currency constraints/locales.
+   Existing native Input types remain supported. Masks, a NumberField, calendar
+   widgets, user-created options and huge-list virtualization remain deferred.
+3. **Product adoption:** SearchInput, AgentSelect, ModelSelect, settings renderer
+   and domain pickers can adopt the approved controls in a separate migration.
+   Their current stories and snapshots remain regression consumers here.
+4. **Lifecycle composition:** build on existing SaveBar/UnsavedChangesDialog
+   for dirty navigation; do not duplicate routing or form-state systems.
+
+README and ui-patterns guidance were reviewed: no setup/command/product or
+archetype change requires an edit. Public UI overview, style guide, design-system
+knowledge and generated SDK API reference carry the author-facing changes.
+No product-page migration, dependency, token, exception, suppression or legacy
+allowance was added. See tasks/evidence-form-components-overhaul.md for receipts
+and the separate exact visual-baseline approval boundary.
+
+
+## Measured contrast finding requiring a separate decision
+
+Canonical Input/SurfaceContexts measurements: primary text 17.50–19.28:1,
+focus 8.46:1 and error boundaries 4.65–5.12:1. Reduced motion computes to no
+transition. Resting subtle borders measure only 1.90–2.10:1; the existing
+semantic token is explicitly intended for nonessential boundaries. Do not
+interpret passing text/error checks as a 3:1 resting-control-boundary pass.
+A concrete, narrowly scoped new control-border token proposal and canonical
+before/after previews are in `tasks/form-components-border-review.md`.
+Token approval is pending; no token or baseline change has been applied.

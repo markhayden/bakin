@@ -92,3 +92,74 @@ Starting commit: `1ecbc0b90`; branch: `codex/form-components-overhaul`.
   need the explicitly proposed adjustment in `tasks/form-components-payload-review.md`.
   Source/API checkpoint commits do not claim full conformance while this and
   exact PNG approvals remain outstanding.
+
+
+## Completion checks in progress
+
+- C6 committed `508bef215`. Payload review is now **approved and applied**:
+  checkpoint `73a72a4c1` changes the six documented JavaScript totals only.
+  Matched attribution is 47,109 bytes. Shared grouped-focus selectors reduce
+  generated CSS from 196,968 to 191,561 bytes, below its original 192,625 ceiling.
+  Vendors/plugins/host builds and the performance check passed.
+- C7/C8 are combined because the compact and async recipes share the story and
+  helper. Nine Combobox stories pass, including object identity, wrapping/compact
+  selection, explicit unavailable recovery and readonly/disabled states. The
+  replacement recovery check failed before its fix; replacement and clear now
+  both remove the old invalid state. No public source state machine was added.
+- Async stale-response and keyboard retry checks pass in Chromium, Firefox and
+  WebKit. Controlled browser clocks establish response ordering without real
+  timing races. Retry is outside the popup, reachable after Tab closes the list.
+- Mixed native FormData uses repeated Select IDs and serialized Combobox object
+  IDs. A genuine browser failure showed native reset does not restore upstream
+  Combobox state; the recipe now explicitly controls/restores selection. Native
+  Textarea remains uncontrolled. This behavior is documented, not shimmed.
+- Full repository suite after sandbox correction: 9,660 passed, 18 skipped,
+  one failure from an obsolete task-board CSS assertion. The corrected owner
+  assertion and Combobox tests passed (11/11); clean full rerun in progress.
+  Initial sandbox-only socket/temp failures are not counted as product defects.
+  Full test runs use a temporary OPENCLAW_MOCK_HOME, never the live mock home.
+- Docs check passed, including site build and 468 published public stories.
+  Generated unrelated dates/catalog versions were restored; SDK additions kept.
+  Public Storybook determinism check passed across consecutive builds.
+- Plugin conformance passed, including focus teeth. Inspected the reference
+  plugin HTML report: status passed, zero findings, desktop/mobile captures.
+- Final canonical comparisons run with `--update-snapshots=none`; no PNG
+  baseline has been created or replaced. Full visual/browser and final code
+  review receipts will be appended after completion.
+
+
+- C7+C8 committed `63d143732`, including a focused Combobox alignment repair:
+  a Field sharing a grid row with an error could stretch its shell to 48px.
+  The new ControlStates geometry assertion failed before adding self-start,
+  then all nine states retain 36px while multi-chip shells still grow.
+- Rich Select descriptions retain a separate primary label for selected display
+  and typeahead. Checkpoint `c52e1b6b0` also repairs two inherited search tests
+  to measure the actual shell, not its borderless inner input. No product code
+  changed. The list-header geometry story passes with the original tolerance.
+- Full repository rerun **PASS: 9,661 tests, 18 skipped, zero failures** across
+  1,016 files. Log: `/private/tmp/bakin-form-repaired-all-tests.log`.
+- Full Storybook run completed 354 checks: 348 passed; five retained trace
+  files collided with an overlapping focused runner, and one list-header check
+  still measured the inner input. Reran all affected files with only one runner:
+  **45/45 passed** in ten files, including the final form/selection recipes.
+  Logs: `/private/tmp/bakin-form-{all-stories,stories-repaired}.log`. Trace-only
+  collisions required no production or test-runner changes.
+- Quick conformance passed after the recipe additions. Generated CSS remains
+  191,561 bytes after the alignment fix (self-start already existed).
+
+
+- C9 committed `1f08814e2`. Final isolated canonical rerun **18/18 passed**:
+  mixed submit/reset/IME, Drawer retry, field/button heights, bounded Textarea
+  at 200% text, forced-color focus/error treatment, and inherited list/header
+  geometry in all three engines. Log: `/private/tmp/bakin-form-final-browser.log`.
+- Final 18 new visual candidates captured completely at desktop/320px. Their
+  only comparison failures are the intentionally absent, unapproved PNGs.
+  No story, overflow or pageerror assertions failed. Final capture source:
+  `/private/tmp/bakin-form-final-storybook`; artifacts `test-results/form-final-visual`.
+- Canonical contrast measurements are saved in `test-results/form-contrast.json`.
+  Text/focus/errors pass their targets; the existing subtle resting border is
+  1.90–2.10:1. A precise public-token proposal with untouched before/after
+  preview artifacts is pending in `tasks/form-components-border-review.md`.
+- Final production vendor/plugin/host builds, approved performance check and
+  lint passed (lint has six pre-existing warnings). Unrelated asset manifest
+  hash remains unchanged. No generated token, allowance or baseline changed.

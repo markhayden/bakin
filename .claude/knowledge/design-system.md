@@ -6,6 +6,12 @@ Form-control sizes are contextual choices within this one visual system:
 small 32px, medium 36px, large 44px, with large buttons sharing the 44px size.
 They are not separate density modes. Multiline controls use rows or bounded
 auto-growth; size only changes their insets and type treatment.
+Input, Textarea, Select and their grouped/searchable counterparts expose
+outlined, filled and ghost appearances. Put appearance on InputGroup or
+ComboboxControl when composing their children; Field/Form own association,
+validation and submission rather than inherited style defaults. Use Select
+for bounded choices and Combobox for editable search. Public Storybook defines
+multiple summaries, chips, async states and explicit controlled-selection reset.
 
 **Product Character** is the approved default for Bakin product UI and plugin
 chrome. It uses bundled Space Grotesk for interface copy and bundled JetBrains

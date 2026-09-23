@@ -598,3 +598,23 @@ component extensions; do not request them again.
 No design question remains open before plan review. Implementation feasibility
 checks may reveal a concrete issue; record it and resolve it without silently
 weakening the approved contract.
+
+
+## Execution refinements
+
+- T15/T16 share both the story file and support helper; C7+C8 are combined as
+  one coherent recipe checkpoint. Their separate acceptance checks remain.
+- Added a focused source repair (control-styles/InputGroup/Combobox), followed
+  by generated stylesheet verification: sharing the identical focus selector
+  removes duplicate CSS. The six separately approved payload adjustments form
+  the adjacent performance checkpoint `73a72a4c1`.
+- T17 uses a dedicated `form-composition.browser.pw.ts` instead of mixing whole
+  form and IME proofs into the prior geometry/selection files. The mixed recipe
+  explicitly resets controlled Combobox state because installed Base UI does
+  not restore it on a native form reset. Native Textarea reset remains covered.
+- Full-suite review exposed one stale task-board test that checked the inner
+  search input's height class. Its assertion now checks the md InputGroup owner;
+  canonical browser tests continue to measure actual control geometry.
+- T19 adds Input SurfaceContexts and browser checks for forced colors, reduced
+  motion and enlarged textarea text. These complete the already approved
+  appearance/accessibility matrix without a new public API or token.
