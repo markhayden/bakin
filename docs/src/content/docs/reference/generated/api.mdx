@@ -1534,6 +1534,16 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="models.post.selections-pending-acknowledge">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/models/selections/pending/acknowledge' \
+  -H 'Content-Type: application/json' \
+  --data '{"document":"value"}'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="models.get.spend">
 ```sh frame="terminal" showLineNumbers
 curl -sS \

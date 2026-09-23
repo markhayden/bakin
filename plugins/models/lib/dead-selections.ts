@@ -32,8 +32,13 @@ export interface SelectionsDescription {
 export interface DeadSelectionDeps {
   /** The same payload GET /selections serves. */
   describe(): Promise<SelectionsDescription>
-  /** Apply one proposal through the validated mutation path; throws MutationRefused on stale/pending. */
-  apply(proposal: Proposal): Promise<MutateResult>
+  /**
+   * Apply proposals through the validated mutation path in ONE call under
+   * their shared revision (every proposal of a plan carries the same one;
+   * applying them one by one would make the second stale). Throws
+   * MutationRefused on stale/pending.
+   */
+  apply(proposals: Proposal[]): Promise<MutateResult>
 }
 
 const EVIDENCE_LABEL: Record<keyof SelectionsDescription['evidence'], string> = {
@@ -148,41 +153,51 @@ export function deadSelectionRepair(deps: DeadSelectionDeps): HealthRepairAction
       return items
     },
     async apply(items) {
-      const results = []
+      // The registry namespaces item ids with the owning action id
+      // (`models.apply-model-proposal:apply-model-proposal:<ref>`), so the
+      // ref is whatever follows the LAST marker.
+      const marker = 'apply-model-proposal:'
+      const refOf = (item: HealthRepairPlanItem) => item.id.slice(item.id.lastIndexOf(marker) + marker.length)
+      const failure = (item: HealthRepairPlanItem, message: string) => ({
+        itemId: item.id, actionId: item.actionId, status: 'failed' as const, message, affectedCheckIds: [DEAD_SELECTIONS_CHECK_ID], changes: [],
+      })
+
+      // Every proposal of one plan carries the same revision; the first
+      // successful write moves it, so the batch goes out as ONE mutation
+      // under that shared revision — never one call per selection.
+      const live: Array<{ item: HealthRepairPlanItem; ref: string; proposal: Proposal }> = []
+      const results: Array<{ itemId: string; actionId: string; status: 'applied' | 'failed'; message: string; affectedCheckIds: string[]; changes: HealthRepairPlanItem['changes'] }> = []
       for (const item of items) {
-        // The registry namespaces item ids with the owning action id
-        // (`models.apply-model-proposal:apply-model-proposal:<ref>`), so the
-        // ref is whatever follows the LAST marker.
-        const marker = 'apply-model-proposal:'
-        const ref = item.id.slice(item.id.lastIndexOf(marker) + marker.length)
+        const ref = refOf(item)
+        const proposal = planned.get(ref)
+        if (!proposal?.to) results.push(failure(item, `the repair plan for ${ref} expired — run the check again`))
+        else live.push({ item, ref, proposal })
+      }
+      const byRevision = new Map<string, typeof live>()
+      for (const entry of live) byRevision.set(entry.proposal.revision, [...(byRevision.get(entry.proposal.revision) ?? []), entry])
+      for (const batch of byRevision.values()) {
         try {
-          const proposal = planned.get(ref)
-          if (!proposal?.to) throw new Error(`the repair plan for ${ref} expired — run the check again`)
-          const result = await deps.apply(proposal)
-          planned.delete(ref)
-          const ok = result.applied.includes(ref)
-          const pending = result.pending.some((p) => p.ref === ref)
-          results.push({
-            itemId: item.id,
-            actionId: item.actionId,
-            status: ok || pending ? 'applied' as const : 'failed' as const,
-            message: ok
-              ? `${ref} now uses ${proposal.to}.`
-              : pending
-                ? `${ref} → ${proposal.to} is pending — the runtime has not confirmed the write yet.`
-                : result.failed.find((f) => f.ref === ref)?.error.message ?? 'write did not apply',
-            affectedCheckIds: [DEAD_SELECTIONS_CHECK_ID],
-            changes: item.changes,
-          })
+          const result = await deps.apply(batch.map((b) => b.proposal))
+          for (const { item, ref, proposal } of batch) {
+            planned.delete(ref)
+            const ok = result.applied.includes(ref)
+            const pending = result.pending.some((p) => p.ref === ref)
+            results.push({
+              itemId: item.id,
+              actionId: item.actionId,
+              status: ok || pending ? 'applied' as const : 'failed' as const,
+              message: ok
+                ? `${ref} now uses ${proposal.to}.`
+                : pending
+                  ? `${ref} → ${proposal.to} is pending — the runtime has not confirmed the write yet.`
+                  : result.failed.find((f) => f.ref === ref)?.error.message ?? 'write did not apply',
+              affectedCheckIds: [DEAD_SELECTIONS_CHECK_ID],
+              changes: item.changes,
+            })
+          }
         } catch (error) {
-          results.push({
-            itemId: item.id,
-            actionId: item.actionId,
-            status: 'failed' as const,
-            message: error instanceof Error ? error.message : String(error),
-            affectedCheckIds: [DEAD_SELECTIONS_CHECK_ID],
-            changes: [],
-          })
+          const message = error instanceof Error ? error.message : String(error)
+          for (const { item } of batch) results.push(failure(item, message))
         }
       }
       return results

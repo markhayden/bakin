@@ -83,8 +83,9 @@ const modelsPlugin: BakinPlugin = definePlugin({
     // run, with a one-click repair applying EXACTLY the displayed proposal.
     const deadDeps = {
       describe: () => describeSelections(ctx),
-      apply: async (proposal: { ref: string; to: string | null; revision: string }) =>
-        getSelectionMutator(ctx).mutate({ revision: proposal.revision, ops: [{ ref: proposal.ref, set: { model: proposal.to } }] }),
+      // ONE mutation under the batch's shared revision (every proposal of a plan carries the same one).
+      apply: async (proposals: Array<{ ref: string; to: string | null; revision: string }>) =>
+        getSelectionMutator(ctx).mutate({ revision: proposals[0]!.revision, ops: proposals.map((p) => ({ ref: p.ref, set: { model: p.to } })) }),
     }
     ctx.registerHealthRepairAction(deadSelectionRepair(deadDeps))
     ctx.registerHealthCheck({

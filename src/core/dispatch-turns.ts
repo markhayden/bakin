@@ -20,7 +20,7 @@ import { getAppServices } from './app-services-store'
 import { RuntimeError, RuntimeTurnError, type AgentRuntimeAdapter, type ChatChunk, type MessageResult } from '@bakin/core/adapters/runtime'
 import { claimNextRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, findOpenCapIncident, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'
-import { classifyDispatchWorkClass, resolveTurnModel, type DispatchWorkClass, type ResolvedTurn, type RouteSource, type RoutingConfig } from './model-routing'
+import { classifyDispatchWorkClass, resolveTurnModel, type DispatchWorkClass, type ResolvedTurn, type RouteSource, type RoutingConfig, type WorkClass } from './model-routing'
 import { getModelEligibility, type EligibilityReport, type IneligibleReason } from './model-eligibility'
 import { mapModelToCatalog } from './model-selections'
 import { evaluateBudget, ruleMatchesTurn, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetDecision, type TurnBillingContext } from './budget'
@@ -422,8 +422,8 @@ export interface PreDispatchProspect {
   model?: string
   /** Where the routed model came from — decides which selection ref a hold names. */
   routeSource?: RouteSource
-  /** The dispatch class the route was resolved for (ref `route:<class>` when source is 'class'). */
-  workClass?: DispatchWorkClass
+  /** The work class the route was resolved for (ref `route:<class>` when source is 'class') — a dispatch class, or a system class such as `team-routing` whose turn the main agent fires. */
+  workClass?: WorkClass
   /** For the audit row; holds are audited once per (task, model). */
   taskId?: string
 }

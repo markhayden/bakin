@@ -32,6 +32,10 @@ export const MutateSelectionsSchema = z.object({
   ops: z.array(MutationOpSchema).min(1),
   snapshot: z.literal('reset').optional(),
 })
+/** Operator acknowledgement of a CONFLICTED pending write — frees its document (`policy` | `routing` | `agent:<id>`). */
+export const AcknowledgePendingSchema = z.object({
+  document: z.string().regex(/^(policy|routing|agent:[^:\s]+)$/, 'document must be policy, routing or agent:<id>'),
+})
 
 // Cap rules (cost-control v2): scope × lane; unit-per-lane — dailyCap /
 // monthlyCap are whole USD on metered rules, tokens on subscription rules.

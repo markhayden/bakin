@@ -25,6 +25,8 @@ import { assembleBudgetSpend, paceProjection, dayEndMs, monthEndMs } from '../..
 import { budgetStatusRoutes } from './budget-routes'
 import { describeSelections, getSelectionMutator } from './selections'
 import { MutationRefused } from '../../../src/core/model-mutations'
+import type { SelectionDocument } from '../../../src/core/model-selections'
+import { AcknowledgePendingSchema } from './route-schemas'
 import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
 import { resolveAgents } from './config-io'
 import { clearPendingRestart, describeRestart, notePendingChange, recordRestartFailure } from '../../../src/core/pending-restart'
@@ -183,14 +185,16 @@ export const modelsRoutes = [
     handler: async (_req, ctx) => {
       const perTask: Record<string, { ref: string; model: string; detail: string }> = {}
       try {
-        const [{ resolveDispatchRouting, modelHoldFor }, { readTaskboard }, { getRuntimeMainAgentId }, { loadDispatchState, getFailureRecord }, { getContentDir }] = await Promise.all([
+        const [{ resolveDispatchRouting, modelHoldFor }, { readTaskboard }, { getRuntimeMainAgentId }, { loadDispatchState, getFailureRecord }, { getContentDir }, { resolveSystemRoute }] = await Promise.all([
           import('../../../src/core/dispatch-turns'),
           import('../../../src/core/task-store'),
           import('@bakin/core/adapters/runtime'),
           import('../../../src/core/dispatch-state'),
           import('../../../src/core/content-dir'),
+          import('../../../src/core/system-route'),
         ])
-        const mainAgentId = await getRuntimeMainAgentId((ctx as unknown as PluginContext).runtime)
+        const runtime = (ctx as unknown as PluginContext).runtime
+        const mainAgentId = await getRuntimeMainAgentId(runtime)
         const { columns } = readTaskboard()
         let failedDispatches: Record<string, unknown> = {}
         try {
@@ -199,15 +203,51 @@ export const modelsRoutes = [
           void err
         }
         for (const task of columns.todo ?? []) {
+          // An UNRESOLVED team assignment is routed by the 'team-routing'
+          // model (fired by the main agent) BEFORE the task's own model is
+          // consulted — dispatch gates that first, so the board must too, or
+          // a dead team-routing model skips the task with no hold to explain it.
+          const { team, agent } = task as { team?: string; agent?: string }
+          if (team && !agent) {
+            const route = await resolveSystemRoute('team-routing')
+            const teamHold = await modelHoldFor(mainAgentId, route.model ? { model: route.model, routeSource: route.source, workClass: 'team-routing' } : {}, runtime)
+            if (teamHold && teamHold.reason === 'model_not_eligible') {
+              perTask[task.id] = { ref: teamHold.ref, model: teamHold.model, detail: teamHold.detail }
+              continue
+            }
+          }
           const agentId = task.agent ?? mainAgentId
           const isRecovery = Boolean(getFailureRecord(failedDispatches[task.id] as never)?.sessionDeath)
           const routing = await resolveDispatchRouting(task as never, isRecovery)
-          const hold = await modelHoldFor(agentId, { model: routing.model, routeSource: routing.source, workClass: routing.workClass }, (ctx as unknown as PluginContext).runtime)
+          const hold = await modelHoldFor(agentId, { model: routing.model, routeSource: routing.source, workClass: routing.workClass }, runtime)
           if (hold && hold.reason === 'model_not_eligible') perTask[task.id] = { ref: hold.ref, model: hold.model, detail: hold.detail }
         }
         return Response.json({ perTask })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err), perTask }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/selections/pending/acknowledge',
+    method: 'POST',
+    summary: 'Acknowledge a CONFLICTED pending write — frees its document',
+    description: 'A pending write whose prior-boot re-read matched neither its previous nor its intended value is a CONFLICT (the document changed outside Bakin) and keeps its document reserved until the operator acknowledges it. Acknowledging drops the record; the current on-disk value stands and the document accepts writes again. 404 when the document has no conflicted write.',
+    body: AcknowledgePendingSchema,
+    responses: { 200: passthrough, 404: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { body }) => {
+      try {
+        const mutator = getSelectionMutator(ctx as unknown as PluginContext)
+        const conflict = (await mutator.reconcile()).pending.find((p) => p.document === body.document && p.state === 'conflict')
+        if (!conflict) {
+          return Response.json({ error: 'no_conflict', message: `${body.document} has no conflicted pending write to acknowledge` }, { status: 404 })
+        }
+        mutator.acknowledgeConflict(body.document as SelectionDocument)
+        ctx.activity.audit('pending_write_acknowledged', 'system', { document: body.document, refs: conflict.refs })
+        return Response.json({ ok: true, document: body.document, refs: conflict.refs, pending: (await mutator.reconcile()).pending })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
     },
   }),

@@ -41,12 +41,13 @@ function description(over: Partial<SelectionsDescription> = {}): SelectionsDescr
   }
 }
 
-function deps(desc: SelectionsDescription, applied: Proposal[] = []): DeadSelectionDeps {
+function deps(desc: SelectionsDescription, applied: Proposal[] = [], calls: Proposal[][] = []): DeadSelectionDeps {
   return {
     describe: async () => desc,
-    apply: async (proposal) => {
-      applied.push(proposal)
-      return { applied: [proposal.ref], failed: [], pending: [], warnings: [], revision: 'rev-2' }
+    apply: async (proposals) => {
+      applied.push(...proposals)
+      calls.push(proposals)
+      return { applied: proposals.map((p) => p.ref), failed: [], pending: [], warnings: [], revision: 'rev-2' }
     },
   }
 }
@@ -128,6 +129,28 @@ describe('deadSelectionRepair', () => {
     const results = await repair.apply(namespaced)
     expect(results[0]).toMatchObject({ status: 'applied', affectedCheckIds: ['models.dead-selections'] })
     expect(applied).toEqual([{ ref: 'agent:enrich:model', from: DEAD, to: FIX, reason: 'no credentials for openai', source: 'same-id-credentialed-provider', revision: 'rev-1' }])
+  })
+
+  it('several selections repaired at once go out as ONE mutation under their shared revision — the first write must not make the second stale', async () => {
+    const applied: Proposal[] = []
+    const calls: Proposal[][] = []
+    const desc = description({
+      states: [
+        ...description().states,
+        { ref: 'agent:pixel:model', model: DEAD, document: 'agent:pixel', label: 'Pixel', eligibility: { status: 'ineligible', reason: 'no_credentials', detail: 'no credentials for openai' } },
+      ],
+      proposals: [
+        ...description().proposals,
+        { ref: 'agent:pixel:model', from: DEAD, to: FIX, reason: 'no credentials for openai', source: 'same-id-credentialed-provider', revision: 'rev-1' },
+      ],
+    })
+    const repair = deadSelectionRepair(deps(desc, applied, calls))
+    const items = await repair.plan({ type: 'incidents', reportId: 'r1', ids: ['models:models:dead-selection:agent:enrich:model', 'models:models:dead-selection:agent:pixel:model'] })
+    expect(items).toHaveLength(2)
+    const results = await repair.apply(items.map((i) => ({ ...i, id: `models.apply-model-proposal:${i.id}` })))
+    expect(results.map((r) => r.status)).toEqual(['applied', 'applied'])
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.map((p) => p.ref).sort()).toEqual(['agent:enrich:model', 'agent:pixel:model'])
   })
 
   it('reports failed when the mutation refuses (stale revision / write pending)', async () => {

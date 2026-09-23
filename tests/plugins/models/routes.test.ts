@@ -2,7 +2,7 @@
  * Tests for models plugin routes, exec tools, and hooks.
  */
 import { describe, it, expect, beforeAll, afterAll, mock, spyOn } from 'bun:test'
-import { mkdirSync, rmSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { ActivatedPlugin } from '../test-helpers'
@@ -116,11 +116,13 @@ mock.module('../../../src/core/app-services', () => ({ getAppServices: () => ({ 
 mock.module('@/core/app-services', () => ({ getAppServices: () => ({ runtime: { messaging: { send: async () => ({ id: 'm' }) }, agents: { list: async () => [{ id: 'main', name: 'Main' }] } } }) }))
 mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => testDir, getOpenClawPath: (s: string) => join(testDir, s), resetOpenClawHome: () => {} }))
 
-// Task board for the /budget/status perTask computation — one unassigned todo task.
+// Task board for the /budget/status + /holds perTask computation — one
+// unassigned todo task by default; tests swap the list.
+let todoTasks: Array<Record<string, unknown>> = [{ id: 't-unassigned', title: 'Badge me' }]
 mock.module('../../../src/core/task-store', () => ({
   // dispatch-turns (dynamically imported by /budget/status) needs the full
   // facade shape at load — partial mocks break on missing exports.
-  readTaskboard: () => ({ columns: { todo: [{ id: 't-unassigned', title: 'Badge me' }] } }),
+  readTaskboard: () => ({ columns: { todo: todoTasks } }),
   moveTask: async () => {},
   addTaskLog: async () => {},
   updateTask: async () => {},
@@ -228,6 +230,7 @@ describe('Models Plugin Activation', () => {
       'POST /refresh',
       'POST /runtime/restart',
       'POST /selections',
+      'POST /selections/pending/acknowledge',
       'PUT /billing/overrides',
       'PUT /budget',
     ])
@@ -393,6 +396,67 @@ describe('GET /holds — todo tasks whose effective model cannot run (#907)', ()
     } finally {
       routingPolicy.defaultModel = saved
       _resetModelHoldMemo()
+    }
+  })
+
+  it('an UNRESOLVED team task is held by a dead team-routing model — the gate dispatch checks first — even when its ordinary model is fine', async () => {
+    const route = findRoute(activated.routes, 'GET', '/holds')!
+    const { _resetModelHoldMemo } = await import('../../../src/core/dispatch-turns')
+    const { getHookRegistry } = await import('../../../packages/core/src/hooks/hook-registry-singleton')
+    // The harness keeps plugin hooks local; system-route resolution reads the global registry.
+    const off = getHookRegistry().register('models.getRoutingConfig', () => ({ routes: [{ workClass: 'team-routing', model: 'xai/grok-4' }], tagOverrides: [] }))
+    todoTasks = [{ id: 't-team', title: 'Route me', team: 'ops' }, { id: 't-plain', title: 'Plain' }]
+    _resetModelHoldMemo()
+    try {
+      const { body } = await callRoute(route, activated.ctx)
+      const holds = body.perTask as Record<string, { ref: string; model: string }>
+      expect(holds['t-team']).toMatchObject({ ref: 'route:team-routing', model: 'xai/grok-4' })
+      // The plain task runs on the (healthy) runtime default: no hold.
+      expect(holds['t-plain']).toBeUndefined()
+    } finally {
+      off()
+      todoTasks = [{ id: 't-unassigned', title: 'Badge me' }]
+      _resetModelHoldMemo()
+    }
+  })
+})
+
+describe('POST /selections/pending/acknowledge — conflict recovery', () => {
+  const pendingFile = () => join(contentDir, 'plugin-settings', 'models', 'pending-writes.json')
+
+  it('a conflicted pending write reserves its document until acknowledged; acknowledging frees it and is audited; nothing to acknowledge is 404', async () => {
+    const get = findRoute(activated.routes, 'GET', '/selections')!
+    const post = findRoute(activated.routes, 'POST', '/selections')!
+    const ack = findRoute(activated.routes, 'POST', '/selections/pending/acknowledge')!
+    mkdirSync(join(contentDir, 'plugin-settings', 'models'), { recursive: true })
+    // A record from another boot whose re-read matches neither side ⇒ conflict.
+    writeFileSync(pendingFile(), JSON.stringify({ writes: [{
+      document: 'agent:patch', refs: ['agent:patch:model'], previous: { 'agent:patch:model': 'x/old' }, intended: { 'agent:patch:model': 'x/new' },
+      startedAt: Date.now() - 60_000, revision: 'rev-old', bootId: 'another-boot',
+    }] }))
+    try {
+      const before = await callRoute(get, activated.ctx)
+      expect((before.body.pending as Array<{ document: string; state: string }>)).toEqual([expect.objectContaining({ document: 'agent:patch', state: 'conflict' })])
+      const blocked = await callRoute(post, activated.ctx, { body: { revision: before.body.revision, ops: [{ ref: 'agent:patch:model', set: { model: 'anthropic/claude-haiku-4-5' } }] } })
+      expect(blocked.status).toBe(409)
+      expect(blocked.body.error).toBe('write_pending')
+
+      const acked = await callRoute(ack, activated.ctx, { body: { document: 'agent:patch' } })
+      expect(acked.status).toBe(200)
+      expect(acked.body).toMatchObject({ ok: true, document: 'agent:patch', refs: ['agent:patch:model'], pending: [] })
+      expect((activated.ctx.activity.audit as unknown as { mock: { calls: unknown[][] } }).mock.calls.some((c) => c[0] === 'pending_write_acknowledged')).toBe(true)
+
+      const after = await callRoute(get, activated.ctx)
+      const written = await callRoute(post, activated.ctx, { body: { revision: after.body.revision, ops: [{ ref: 'agent:patch:model', set: { model: 'anthropic/claude-haiku-4-5' } }] } })
+      expect(written.status).toBe(200)
+      expect(written.body.applied).toEqual(['agent:patch:model'])
+
+      const again = await callRoute(ack, activated.ctx, { body: { document: 'agent:patch' } })
+      expect(again.status).toBe(404)
+      expect(again.body.error).toBe('no_conflict')
+    } finally {
+      rmSync(pendingFile(), { force: true })
+      writeRuntimeConfig()
     }
   })
 })

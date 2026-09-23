@@ -248,7 +248,7 @@ async function routingCallGated(contentDir: string): Promise<boolean> {
     const mainAgentId = await getRuntimeMainAgentId(getAppServices().runtime)
     const { resolveSystemRoute } = await import('./system-route')
     const route = await resolveSystemRoute('team-routing')
-    return (await preDispatchGate(mainAgentId, contentDir, undefined, route.model ? { model: route.model, routeSource: route.source } : {})) !== null
+    return (await preDispatchGate(mainAgentId, contentDir, undefined, route.model ? { model: route.model, routeSource: route.source, workClass: 'team-routing' } : {})) !== null
   } catch (err) {
     // A broken gate must not strand routing forever — proceed; the resolver's
     // own typed failure handling is the backstop.
