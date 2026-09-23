@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@makinbakin/sdk/ui'
 
+import { AsyncSelectionExample } from '../../support/combobox-examples'
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
@@ -156,5 +157,14 @@ export const EditFlow = {
     await waitFor(() => expect(page.queryByRole('dialog', { name: 'Edit agent' })).toBeNull())
     await waitFor(() => expect(canvas.getByText('Maya Q · copywriter')).toBeVisible())
     await expect(canvas.getByRole('status')).toHaveTextContent('Agent profile saved')
+  },
+} satisfies Story
+
+export const SearchableControls = {
+  render: function SearchableControlsStory() {
+    const [open, setOpen] = useState(false)
+    return <><Button onClick={() => setOpen(true)}>Configure selections</Button><Drawer open={open} onOpenChange={setOpen} title="Selection editor" description="Search and retry stay inside the editing overlay." storageKey="form-foundation-drawer">
+      <DrawerSection title="Runtime selection"><AsyncSelectionExample /></DrawerSection>
+    </Drawer></>
   },
 } satisfies Story
