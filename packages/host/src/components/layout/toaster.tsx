@@ -18,7 +18,9 @@ export function Toaster() {
         <Toast
           key={t.id}
           tone={t.type}
+          title={t.title}
           description={t.message}
+          action={t.action}
           onDismiss={() => dismiss(t.id)}
         />
       ))}

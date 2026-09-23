@@ -26,7 +26,6 @@ import {
   Spinner,
 } from '@makinbakin/sdk/ui'
 import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
-import { PluginLink } from '@makinbakin/sdk/navigation'
 import { cn } from '@makinbakin/sdk/utils'
 
 interface BakinUpdateStatus {
@@ -49,65 +48,25 @@ interface BakinUpdateStatus {
  * mechanism as the update banner — the banner must PUSH the header down,
  * never be painted over by it.
  */
-/** A 90% milestone row of a current window (yellow bar until dismissed). */
-interface SpendWarningRow {
-  id: number
-  window: 'daily' | 'monthly'
-  milestone: number
-  spentValue: number
-  capValue: number
-  unit: 'usd_micros' | 'tokens'
-  acknowledgedAt: number | null
-}
-
-/** An open cap incident (red bar with actions). */
-interface SpendCapRow {
-  id: number
-  eventId: string
-  episode: number
-  scope: string
-  scopeId: string
-  lane: 'metered' | 'subscription'
-  window: 'daily' | 'monthly'
-  unit: 'usd_micros' | 'tokens'
-  capValue: number
-  spentValue: number
-  atCap: 'defer' | 'pause'
-  status: 'open' | 'acknowledged' | 'resolved'
-}
-
-function formatSpendValue(unit: 'usd_micros' | 'tokens', value: number): string {
-  if (unit === 'usd_micros') return `$${(value / 1_000_000).toFixed(2)}`
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M tokens`
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k tokens`
-  return `${value} tokens`
-}
-
 function useSpendStatus(): {
   paused: boolean
   resuming: boolean
   resume: () => Promise<void>
-  warnings: SpendWarningRow[]
-  caps: SpendCapRow[]
   refresh: () => Promise<void>
 } {
   const [paused, setPaused] = useState(false)
   const [resuming, setResuming] = useState(false)
-  const [warnings, setWarnings] = useState<SpendWarningRow[]>([])
-  const [caps, setCaps] = useState<SpendCapRow[]>([])
 
   // Deliberately NOT `useJsonFetch`: 15s poll + SSE overlay + keep-prior-value
-  // on transient failure — a different lifecycle than the one-shot hook. The
-  // lite status carries the ladder rows too (cheap ledger reads, no facets),
-  // so the bars derive from durable rows on reload with no SSE at all.
+  // on transient failure — a different lifecycle than the one-shot hook. (The
+  // spend ladder's 90%/cap attention is the badge provider's: persistent
+  // toasts, not header rows — `plugins/spend/components/ladder-toasts.tsx`.)
   const refresh = async () => {
     try {
       const res = await fetch('/api/plugins/spend/status?lite=1')
       if (!res.ok) return
-      const body = (await res.json()) as { paused?: boolean; milestones?: SpendWarningRow[]; openIncidents?: SpendCapRow[] }
+      const body = (await res.json()) as { paused?: boolean }
       setPaused(body.paused === true)
-      setWarnings((body.milestones ?? []).filter((row) => row.milestone === 90 && row.acknowledgedAt === null))
-      setCaps((body.openIncidents ?? []).filter((row) => row.status === 'open'))
     } catch {
       // Status is a convenience poll — network blips just skip a beat.
     }
@@ -118,15 +77,10 @@ function useSpendStatus(): {
     check()
     const timer = setInterval(check, 15_000)
     return () => { cancelled = true; clearInterval(timer) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   usePluginEvent('budget.paused_changed', (payload) => {
     if (typeof payload.paused === 'boolean') setPaused(payload.paused)
   })
-  usePluginEvent('spend.milestone', () => { void refresh() })
-  usePluginEvent('budget.incident_opened', () => { void refresh() })
-  usePluginEvent('budget.incident_resolved', () => { void refresh() })
-
   const resume = async () => {
     setResuming(true)
     try {
@@ -140,7 +94,7 @@ function useSpendStatus(): {
       setResuming(false)
     }
   }
-  return { paused, resuming, resume, warnings, caps, refresh }
+  return { paused, resuming, resume, refresh }
 }
 
 /** Each banner row is --bakin-banner-height (globals.css); the stack shifts the header by count × that. */
@@ -190,106 +144,6 @@ function DispatchPausedBanner({ resuming, resume }: { resuming: boolean; resume:
   )
 }
 
-/** The server's plain-words reason for a refused action, when it sent one. */
-async function refusalMessage(res: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await res.json()) as { message?: unknown; error?: unknown }
-    if (typeof body.message === 'string' && body.message) return body.message
-    // A bare machine code (`still_over_limit`) is not a sentence — keep the fallback.
-    if (typeof body.error === 'string' && body.error && !/^[a-z0-9_]+$/.test(body.error)) return body.error
-  } catch {
-    // Non-JSON failure body — the fallback names the status.
-  }
-  return fallback
-}
-
-/** Yellow bar: 90% of a limit reached — dismissible for the window (row acknowledged). */
-function SpendWarningBanner({ row, onDismissed }: { row: SpendWarningRow; onDismissed: () => void }) {
-  const [busy, setBusy] = useState(false)
-  const [failure, setFailure] = useState<string | null>(null)
-  const dismiss = async () => {
-    setBusy(true)
-    setFailure(null)
-    try {
-      const res = await fetch(`/api/plugins/spend/milestones/${row.id}/ack`, { method: 'POST' })
-      // Only a confirmed ack clears the bar; a 404 (already dismissed or
-      // rolled over) or a 500 says so instead of pretending.
-      if (!res.ok) { setFailure(await refusalMessage(res, `Could not dismiss (${res.status}).`)); return }
-      emitPluginEvent({ event: 'spend.milestone_acknowledged', milestoneId: row.id })
-      onDismissed()
-    } catch (err) {
-      setFailure(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <HeaderBar tone="attention">
-      <span className="font-bakin-typography-weight-medium text-bakin-signal-attention">90% of your {row.window} limit</span>
-      <span className="min-w-0 truncate text-bakin-text-muted">
-        {formatSpendValue(row.unit, row.spentValue)} of {formatSpendValue(row.unit, row.capValue)} — work stops at the line.
-        {failure ? ` ${failure}` : ''}
-      </span>
-      <PluginLink to="/spend" className="ml-auto shrink-0 underline-offset-4 hover:underline">Review</PluginLink>
-      <Button type="button" size="xs" variant="outline" onClick={dismiss} disabled={busy}>
-        {busy ? 'Dismissing…' : 'Dismiss'}
-      </Button>
-    </HeaderBar>
-  )
-}
-
-/**
- * Red bar: a limit is reached. A "wait" rule (defer, the default) releases
- * itself at the next period, so its bar offers Acknowledge (silence, keep
- * waiting); a pause rule offers Resume as-is, which the server refuses
- * while spend is still over the cap — then only a raise gets work moving.
- */
-function SpendCapBanner({ row, onResolved }: { row: SpendCapRow; onResolved: () => void }) {
-  const [busy, setBusy] = useState(false)
-  const [stillOver, setStillOver] = useState(false)
-  const [failure, setFailure] = useState<string | null>(null)
-  const act = async (action: 'ack' | 'resume') => {
-    setBusy(true)
-    setFailure(null)
-    try {
-      const res = await fetch(`/api/plugins/spend/incidents/${row.id}/resolve`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }),
-      })
-      if (res.status === 409) { setStillOver(true); setFailure(await refusalMessage(res, 'Spend is still at or over this limit — raise the limit to resume.')); return }
-      if (!res.ok) { setFailure(await refusalMessage(res, `Could not update the incident (${res.status}).`)); return }
-      onResolved()
-    } catch (err) {
-      setFailure(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-  const scope = row.scopeId ? `${row.scope} “${row.scopeId}”` : 'Global'
-  return (
-    <HeaderBar tone="danger">
-      <span className="font-bakin-typography-weight-medium text-bakin-signal-danger">{row.window} limit reached</span>
-      <span className="min-w-0 truncate text-bakin-text-muted">
-        {scope} · {formatSpendValue(row.unit, row.spentValue)} of {formatSpendValue(row.unit, row.capValue)} {row.lane}
-        {row.atCap === 'pause' ? ' — matching work is paused until you act.' : ' — matching work waits for the next period.'}
-        {failure ? ` ${failure}` : ''}
-      </span>
-      <PluginLink to="/spend?tab=limits" className="ml-auto shrink-0 underline-offset-4 hover:underline">
-        {stillOver ? 'Raise limit to resume' : 'Raise limit'}
-      </PluginLink>
-      {row.atCap === 'pause' && !stillOver ? (
-        <Button type="button" size="xs" variant="danger" onClick={() => act('resume')} disabled={busy}>
-          {busy ? 'Resuming…' : 'Resume as-is'}
-        </Button>
-      ) : null}
-      {row.atCap === 'defer' ? (
-        <Button type="button" size="xs" variant="outline" onClick={() => act('ack')} disabled={busy}>
-          {busy ? 'Acknowledging…' : 'Acknowledge'}
-        </Button>
-      ) : null}
-    </HeaderBar>
-  )
-}
-
 function DebugToggle() {
   const [debug, toggleDebug] = useDebug()
   return (
@@ -319,7 +173,7 @@ export function Header() {
   const { open: activityOpen, toggle: toggleActivity } = useActivityContext()
   const displayUpdateStatus = updateStatus
   const showUpdateBanner = Boolean(updateStatus?.supported && updateStatus.updateAvailable)
-  const { paused: dispatchPaused, resuming, resume, warnings: spendWarnings, caps: spendCaps, refresh: refreshSpend } = useSpendStatus()
+  const { paused: dispatchPaused, resuming, resume } = useSpendStatus()
 
   useEffect(() => {
     fetch('/api/version').then(r => r.json()).then(d => setVersion(d.version)).catch(() => {})
@@ -338,9 +192,8 @@ export function Header() {
     const root = document.documentElement
     // Each active banner is h-9 (2.25rem); the header (h-14 = 3.5rem) and
     // the shell content shift down by the banner stack so a banner can never
-    // be painted over. Order (top → down): update, kill switch, cap bars,
-    // 90% bars — the most urgent first.
-    const banners = (showUpdateBanner ? 1 : 0) + (dispatchPaused ? 1 : 0) + spendCaps.length + spendWarnings.length
+    // be painted over. Order (top → down): update, kill switch.
+    const banners = (showUpdateBanner ? 1 : 0) + (dispatchPaused ? 1 : 0)
     if (banners > 0) {
       root.style.setProperty('--bakin-header-top', `${banners * BANNER_HEIGHT_REM}rem`)
       root.style.setProperty('--bakin-shell-top', `${banners * BANNER_HEIGHT_REM + 3.5}rem`)
@@ -351,7 +204,7 @@ export function Header() {
     }
     root.style.removeProperty('--bakin-header-top')
     root.style.removeProperty('--bakin-shell-top')
-  }, [showUpdateBanner, dispatchPaused, spendCaps.length, spendWarnings.length])
+  }, [showUpdateBanner, dispatchPaused])
 
   // The drawer is `md:hidden`, but a Sheet that is open while hidden would
   // still hold its focus trap and scroll lock — close it when the viewport
@@ -407,8 +260,8 @@ export function Header() {
   return (
     <>
       {/* The banner stack: source order IS stacking order (update, kill
-          switch, cap bars, 90% bars — most urgent first); the header and
-          shell shift down by the stack's height via --bakin-header-top. */}
+          switch); the header and shell shift down by the stack's height via
+          --bakin-header-top. */}
       <div className="fixed inset-x-0 top-0 z-50 flex flex-col" data-slot="header-banners">
       {showUpdateBanner && (
         <HeaderBar tone="info">
@@ -428,12 +281,6 @@ export function Header() {
         </HeaderBar>
       )}
       {dispatchPaused && <DispatchPausedBanner resuming={resuming} resume={resume} />}
-      {spendCaps.map((row) => (
-        <SpendCapBanner key={`cap-${row.id}-${row.eventId}`} row={row} onResolved={() => void refreshSpend()} />
-      ))}
-      {spendWarnings.map((row) => (
-        <SpendWarningBanner key={`warn-${row.id}`} row={row} onDismissed={() => void refreshSpend()} />
-      ))}
       </div>
 
       <header className="fixed top-(--bakin-header-top) left-0 right-0 z-50 h-14 border-b border-bakin-border-subtle/30 bg-bakin-canvas-default flex items-center px-bakin-4">

@@ -2,11 +2,13 @@
  * SpendBadgeProvider — the spend ladder rides the global attention system.
  * Mounted in the host's `nav-badge-providers` slot (outside the router,
  * eager so it is live on every page): keeps the Spend nav badge at the
- * number of bars needing attention (unacknowledged 90% rows + open cap
- * incidents) and fires toast + OS notification for the 50/75 heads-up
- * milestones (rules in attention.ts). Everything derives from durable
- * rows on reload; the SSE event is only the nudge, de-duplicated on its
- * eventId so an at-least-once delivery never toasts twice.
+ * number of rows needing attention (unacknowledged 90% rows + open cap
+ * incidents), keeps one persistent toast per such row (`useLadderToasts`
+ * — closing it acknowledges), and fires toast + OS notification for the
+ * 50/75 heads-up milestones (rules in attention.ts). Everything derives
+ * from durable rows on reload; the SSE event is only the nudge,
+ * de-duplicated on its eventId so an at-least-once delivery never toasts
+ * twice.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavBadge, usePluginEvent, useRouter, toast, useToastStore } from '@makinbakin/sdk/hooks'
@@ -22,6 +24,7 @@ import {
   type MilestoneEventPayload,
   type OpenIncidentRow,
 } from './attention'
+import { useLadderToasts } from './ladder-toasts'
 
 interface LiteStatus {
   paused?: boolean
@@ -89,6 +92,7 @@ export function SpendBadgeProvider() {
   usePluginEvent('spend.milestone_acknowledged', () => { void refresh() })
 
   useNavBadge('spend', 'spend', spendBadge(rows, incidents))
+  useLadderToasts(rows, incidents, refresh)
 
   return null
 }

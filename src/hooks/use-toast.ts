@@ -12,6 +12,16 @@ export interface Toast {
   message: ReactNode
   type: 'success' | 'error' | 'info'
   duration?: number
+  /** Optional heading above the message (the kit Toast's title slot). */
+  title?: ReactNode
+  /** Optional action row (the kit Toast's action slot). */
+  action?: ReactNode
+  /**
+   * Stays until dismissed — no timer. For attention the operator must act
+   * on (the spend ladder's 90% and cap toasts); a caller that needs to know
+   * WHEN it was closed subscribes to the store and watches its id go.
+   */
+  persistent?: boolean
 }
 
 interface ToastStore {
@@ -27,9 +37,11 @@ export const useToastStore = create<ToastStore>((set) => ({
   add: (toast) => {
     const id = String(++counter)
     set((s) => ({ toasts: [...s.toasts, { ...toast, id }] }))
-    setTimeout(() => {
-      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
-    }, toast.duration ?? DEFAULT_DURATION[toast.type])
+    if (!toast.persistent) {
+      setTimeout(() => {
+        set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
+      }, toast.duration ?? DEFAULT_DURATION[toast.type])
+    }
     return id
   },
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
