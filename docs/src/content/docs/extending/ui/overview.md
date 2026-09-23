@@ -1589,3 +1589,18 @@ bun run docs:check
 - [Plugin client UI](/docs/extending/plugins/client-ui/)
 - [Quality control](/docs/extending/quality-control/)
 - [SDK reference](/docs/reference/generated/sdk/)
+
+
+InputGroup owns `size` and `variant` for its shell and editable child. Set those
+props on the group; `InputGroupInput` and `InputGroupTextarea` omit them. Addon
+buttons retain explicit inset sizes (`xs`/`icon-xs` fit every field size;
+`sm`/`icon-sm` fit medium and large fields). Disable each mutating action when
+its field is disabled or readonly; a disabled action alone does not disable typing.
+Use `FieldControl render={<InputGroupTextarea … />}` for textarea association.
+
+`InputGroup/TextEntry` demonstrates clear with focus restoration, password reveal,
+decorative icons, described units, announced loading, readonly `CopyButton` from
+`/patterns`, bounded multiline counts, and duplicate-safe submission using Form
+and SubmitButton. Counts use UTF-16 code units to match native `maxLength`.
+Keep copy feedback tied to the actual clipboard result; never display optimistic
+success. Loading need not disable typing; readonly still permits copying.

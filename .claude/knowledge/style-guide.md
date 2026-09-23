@@ -347,3 +347,14 @@ and administrative surfaces during the full style-guide sweep:
   without it.
 - Use the exported `focusRing`/`focusRingInset` recipe for custom
   interactive elements; never hand-type the outline stack.
+
+
+### InputGroup ownership
+
+`InputGroup` owns the shared size and variant; its input and textarea omit those
+props. Match 24px inset actions to small fields; 32px inset actions fit medium
+and large fields. Preserve action focus outlines while the group outline follows
+the editable control. Disable mutating actions explicitly for disabled/readonly
+fields. Apply disabled opacity once at the shell. Use the public `TextEntry`
+story for clear/reveal/copy/count/loading/submit composition and `FieldControl`
+for textarea help/error association. Form/Field do not provide visual defaults.

@@ -118,7 +118,7 @@ export function FieldControl({ className, render, size = 'md', variant = 'outlin
     <FieldPrimitive.Control
       data-field-control=""
       render={render}
-      size={htmlSize}
+      {...(render == null ? { size: htmlSize } : {})}
       className={mergeClassName(render == null ? cn(controlStyles({ size, variant }), controlHeight[size], inputClasses) : '', className)}
       {...props}
     />

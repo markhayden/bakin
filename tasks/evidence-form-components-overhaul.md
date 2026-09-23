@@ -56,3 +56,12 @@ Starting commit: `1ecbc0b90`; branch: `codex/form-components-overhaul`.
   `/private/tmp/bakin-form-{text-tests,group-green,text-browser,quick}.log`.
   Generated CSS includes the current shared group selectors; it will be
   regenerated at the adjacent C4 checkpoint. No PNGs changed.
+
+- C3 committed `1f216bd3d`. C4 group presentation and recipes: **5/5**
+  Storybook tests, focused text/form/SearchInput tests, quick conformance and
+  **3/3 canonical addon containment checks** passed (320px and 200% text).
+  A new grouped-textarea association test exposed FieldControl forwarding an
+  undefined native size through custom render; it now forwards that attribute
+  only for the default input, and grouped children enforce their owner's size.
+  Logs: `/private/tmp/bakin-form-{group-form,group-browser,selection-stories}.log`.
+  C4 adds a dedicated group browser file to keep its rollback separate from C3.
