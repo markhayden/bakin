@@ -43,6 +43,7 @@ describe('focused conversation timeline', () => {
 
     expect(container.querySelector('[data-conv-timeline]')?.getAttribute('data-mode')).toBe('document')
     expect(container.querySelector('[data-conv-scroller]')?.className).not.toContain('overflow-y-auto')
+    expect(container.querySelector('[data-conv-scroller]')?.hasAttribute('tabindex')).toBe(false)
     expect(getByRole('article', { name: 'Release agent reply' })).not.toBeNull()
     expect(container.querySelectorAll('[data-conv-day]')).toHaveLength(2)
     expect(
@@ -58,6 +59,9 @@ describe('focused conversation timeline', () => {
       <Conversation turns={turns} mode="contained" agent={{ id: 'release', name: 'Release agent' }} />,
     )
     expect(container.querySelector('[data-conv-scroller]')?.className).toContain('overflow-y-auto')
+    expect(container.querySelector('[data-conv-scroller]')?.getAttribute('tabindex')).toBe('0')
+    expect(container.querySelector('[data-conv-scroller]')?.getAttribute('role')).toBe('region')
+    expect(container.querySelector('[data-conv-scroller]')?.getAttribute('aria-label')).toBe('Conversation history')
   })
 
   it('does not reuse the fallback avatar for a differently identified turn', () => {

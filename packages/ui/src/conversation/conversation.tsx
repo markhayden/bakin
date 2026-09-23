@@ -136,8 +136,11 @@ export function Conversation({
       <div
         ref={scrollRef}
         data-conv-scroller=""
+        role={contained ? 'region' : undefined}
+        aria-label={contained ? 'Conversation history' : undefined}
+        tabIndex={contained ? 0 : undefined}
         onScroll={contained ? handleScroll : undefined}
-        className={cn(contained && 'h-full overflow-y-auto overscroll-contain')}
+        className={cn(contained && 'h-full overflow-y-auto overscroll-contain outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring')}
       >
         {turns.length === 0 && emptyState ? (
           <div className={cn('flex items-center justify-center p-bakin-6', contained && 'min-h-full')}>

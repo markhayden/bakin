@@ -64,6 +64,7 @@ export const CanonicalUsage = {
   render: (args) => <ConversationPanel {...args} />,
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('region', { name: 'Release review' })).toBeVisible()
+    await expect(canvas.getByRole('region', { name: 'Conversation history' })).toHaveAttribute('tabindex', '0')
     await expect(canvas.getByRole('article', { name: 'Release agent reply' })).toBeVisible()
     await expect(canvas.getByRole('textbox', { name: 'Message the release agent' })).toBeVisible()
   },

@@ -1,6 +1,19 @@
 import { expect, test } from 'playwright/test'
 
 for (const width of [1280, 320]) {
+  test(`contained history supports keyboard scrolling at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/iframe.html?id=components-conversation-panel-and-tool-detail--canonical-usage&viewMode=story')
+    const history = page.getByRole('region', { name: 'Conversation history' })
+    await expect(history).toHaveAttribute('tabindex', '0')
+    await history.focus()
+    // Bound the real transcript so both viewports exercise actual overflow.
+    await history.evaluate(el => { el.style.height = '64px'; el.scrollTop = 0 })
+    await page.keyboard.press('PageDown')
+    await expect.poll(() => history.evaluate(el => el.scrollTop)).toBeGreaterThan(0)
+    await page.keyboard.press('Tab')
+    await expect(history).not.toBeFocused()
+  })
   test(`composer has visible keyboard focus at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/iframe.html?id=components-conversation-panel-and-tool-detail--canonical-usage&viewMode=story')

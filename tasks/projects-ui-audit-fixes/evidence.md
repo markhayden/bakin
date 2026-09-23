@@ -51,3 +51,12 @@ The new desktop/mobile browser tests failed on the missing focus outline before
 the fix and pass with a token-colored inset outline. Existing composer behavior
 tests pass, including IME, attachments, drafts and queue mode. Screenshots/traces
 are under `/private/tmp/projects-audit-browser-results/`; baselines unchanged.
+
+## C4b — Contained transcript scrolling (T07)
+
+Pattern: `storybook/public/conversation/panel-and-drawer.stories.tsx` — CanonicalUsage.
+The contained transcript has a named region, tab stop and inset focus outline;
+document mode keeps its parent-owned scrolling and gains no tab stop. Regression
+failed first; all conversation/composer unit tests and four desktop/mobile browser
+checks pass, including real Page Down scrolling and Tab exit. Projects heading and
+detail traversal findings still await consumer fixes; no suppressions added.
