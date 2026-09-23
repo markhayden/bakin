@@ -1,6 +1,6 @@
 # Form overhaul: proposed payload ceiling updates
 
-Status: awaiting explicit approval. No ceiling has been changed.
+Status: explicitly approved by the user; only the six documented measurements were updated.
 
 The approved public Combobox wraps the installed Base UI 1.4.1 implementation;
 there is no new dependency, duplicate React instance or second selection engine.

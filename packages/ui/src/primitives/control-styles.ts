@@ -32,3 +32,6 @@ export const controlHeight: Record<ControlSize, string> = {
   md: 'h-[var(--bakin-layout-size-control)] min-h-[calc(1lh+var(--bakin-layout-space-3))]',
   lg: 'h-[calc(var(--bakin-layout-size-control)+var(--bakin-layout-space-2))] min-h-[calc(1lh+var(--bakin-layout-space-4)+var(--bakin-layout-space-1))]',
 }
+
+/** Group focus follows the editable control; addon buttons keep their own ring. */
+export const controlGroupFocus = 'has-[:is(input,textarea):focus-visible]:outline-solid has-[:is(input,textarea):focus-visible]:outline-2 has-[:is(input,textarea):focus-visible]:outline-offset-2 has-[:is(input,textarea):focus-visible]:outline-bakin-focus-ring'

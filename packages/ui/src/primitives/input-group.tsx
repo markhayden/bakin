@@ -6,7 +6,7 @@ import { createContext, useContext, type ComponentProps } from 'react'
 import { cn, mergeClassName } from '../utils'
 import { Button } from './button'
 import type { ButtonProps, ButtonVariant, LegacyButtonVariant } from './button'
-import { controlStyles, controlHeight, type ControlSize, type ControlVariant } from './control-styles'
+import { controlGroupFocus, controlStyles, controlHeight, type ControlSize, type ControlVariant } from './control-styles'
 import { Input } from './input'
 import type { InputProps } from './input'
 import { Textarea } from './textarea'
@@ -30,7 +30,7 @@ export function InputGroup({ className, size = 'md', variant = 'outlined', ...pr
           'group/input-group relative flex w-full items-center p-0',
           'transition-[background-color,border-color,color] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard outline-none',
           'has-[[data-slot=input-group-control]:disabled]:pointer-events-none has-[[data-slot=input-group-control]:disabled]:opacity-[var(--bakin-state-opacity-disabled)]',
-          'has-[[data-slot=input-group-control]:focus-visible]:outline-solid has-[[data-slot=input-group-control]:focus-visible]:outline-2 has-[[data-slot=input-group-control]:focus-visible]:outline-offset-2 has-[[data-slot=input-group-control]:focus-visible]:outline-bakin-focus-ring',
+          controlGroupFocus,
           'has-[[data-slot=input-group-control][aria-invalid=true]]:border-bakin-signal-danger',
           'has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col',
           'has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col',

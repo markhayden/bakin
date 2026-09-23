@@ -3,7 +3,7 @@
 import { Combobox as ComboboxPrimitive } from '@base-ui/react/combobox'
 import { createContext, useContext } from 'react'
 import { cn, mergeClassName } from '../utils'
-import { controlStyles, type ControlSize, type ControlVariant } from './control-styles'
+import { controlGroupFocus, controlStyles, type ControlSize, type ControlVariant } from './control-styles'
 import { inputClasses } from './input'
 import { optionGroupClasses, optionGroupLabelClasses, optionItemClasses, optionListClasses, optionPopupClasses, anchoredPositionerClasses } from './option-list'
 import { PluginPortalBoundary } from './portal-ownership'
@@ -25,7 +25,7 @@ export function ComboboxControl({ size = 'md', variant = 'outlined', width = 'fu
   return <Appearance value={size}><ComboboxPrimitive.InputGroup data-slot="combobox-control" data-size={size} data-variant={variant} data-width={width}
     className={mergeClassName(cn(controlStyles({ size: null, variant }), minimumHeight[size],
       'group/combobox flex max-w-full items-center gap-bakin-1 p-0', width === 'full' ? 'w-full' : 'w-fit',
-      'has-[[data-slot=combobox-input]:focus-visible]:outline-solid has-[[data-slot=combobox-input]:focus-visible]:outline-2 has-[[data-slot=combobox-input]:focus-visible]:outline-offset-2 has-[[data-slot=combobox-input]:focus-visible]:outline-bakin-focus-ring',
+      controlGroupFocus,
       'data-invalid:border-bakin-signal-danger data-disabled:opacity-[var(--bakin-state-opacity-disabled)]',
       'data-readonly:[&_[data-slot=combobox-clear]]:hidden data-readonly:[&_[data-slot=combobox-chip-remove]]:hidden',
     ), className)} {...props} /></Appearance>
