@@ -1,27 +1,47 @@
-import type { ComponentProps } from 'react'
+'use client'
+
+import { useImperativeHandle, useRef, type ComponentProps } from 'react'
 
 import { cn } from '../utils'
+import { controlStyles, type ControlSize, type ControlVariant } from './control-styles'
+import { useTextareaAutosize } from './use-textarea-autosize'
 
-export type TextareaProps = ComponentProps<'textarea'>
+type TextareaHeight =
+  | { autoSize?: false; rows?: number; minRows?: never; maxRows?: never }
+  | { autoSize: true; rows?: never; minRows?: number; maxRows?: number }
 
-export function Textarea({ className, ...props }: TextareaProps) {
+export type TextareaProps = Omit<ComponentProps<'textarea'>, 'rows'> & TextareaHeight & {
+  size?: ControlSize
+  variant?: ControlVariant
+}
+
+export function Textarea({
+  className, size = 'md', variant = 'outlined', autoSize = false,
+  rows = 3, minRows = 3, maxRows = 10, ref, onInput, ...props
+}: TextareaProps) {
+  const control = useRef<HTMLTextAreaElement>(null)
+  useImperativeHandle(ref, () => control.current!, [])
+  const resize = useTextareaAutosize(control, autoSize, minRows, maxRows)
+  if (autoSize && (!Number.isInteger(minRows) || minRows < 1 || !Number.isInteger(maxRows) || maxRows < minRows)) {
+    throw new RangeError('Textarea autoSize requires positive integer minRows and maxRows >= minRows')
+  }
   return (
     <textarea
       data-slot="textarea"
+      {...props}
+      ref={control}
+      rows={autoSize ? minRows : rows}
+      data-size={size}
+      data-variant={variant}
+      data-auto-size={autoSize || undefined}
+      onInput={(event) => { onInput?.(event); resize() }}
       className={cn(
-        [
-          'field-sizing-content min-h-[calc(var(--bakin-layout-size-control)*2.5)] w-full min-w-0 resize-y',
-          'rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default px-bakin-3 py-bakin-2',
-          'font-bakin-typography-family-ui text-base leading-relaxed text-bakin-text-primary md:text-[length:var(--bakin-typography-size-body)]',
-          'transition-[background-color,border-color,color] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard outline-none',
-          'placeholder:text-bakin-text-muted focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
-          'disabled:cursor-not-allowed disabled:opacity-[var(--bakin-state-opacity-disabled)]',
-          'read-only:bg-bakin-surface-default read-only:text-bakin-text-muted aria-invalid:border-bakin-signal-danger',
-          'autofill:bg-bakin-canvas-default autofill:text-bakin-text-primary',
-        ].join(' '),
+        controlStyles({ size, variant }),
+        'w-full text-base leading-relaxed md:text-[length:var(--bakin-typography-size-body)]',
+        autoSize ? 'resize-none' : 'resize-y',
+        'autofill:bg-bakin-canvas-default autofill:text-bakin-text-primary',
         className,
       )}
-      {...props}
     />
   )
 }

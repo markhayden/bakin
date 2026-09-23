@@ -80,7 +80,7 @@ describe('Textarea public contract', () => {
     expect(textarea.required).toBe(true)
     expect(textarea.readOnly).toBe(true)
     expect(textarea.className).toContain('resize-y')
-    expect(textarea.className).toContain('read-only:text-bakin-text-muted')
+    expect(textarea.readOnly).toBe(true)
     expect(textarea.className).toContain('aria-invalid:border-bakin-signal-danger')
   })
 })

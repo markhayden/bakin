@@ -26,8 +26,8 @@ Starting commit: `1ecbc0b90`; branch: `codex/form-components-overhaul`.
   `mcr.microsoft.com/playwright:v1.60.0-noble`, amd64.
 - Canonical affected visual baseline: **10/10 passed**, desktop and mobile;
   no baseline files written. `/private/tmp/bakin-form-baseline-visual.log`.
-- The full three-engine browser baseline is still running against the frozen
-  baseline public Storybook build. `/private/tmp/bakin-form-baseline-browser.log`.
+- The full three-engine browser baseline passed: **93/93 tests** against the
+  frozen baseline public Storybook build. `/private/tmp/bakin-form-baseline-browser.log`.
 - Native textarea sizing probe results:
   `/private/tmp/bakin-form-textarea-probe.log`. The canonical engines determine
   whether auto mode needs the private measurement hook. Combobox overlay
@@ -41,3 +41,18 @@ Starting commit: `1ecbc0b90`; branch: `codex/form-components-overhaul`.
   sizing; explicit token-backed height plus a text-relative minimum fixes it
   while preserving enlargement. Shared typography keeps the existing mobile
   text-size utility at its current owner; no legacy allowance change.
+
+- C1 committed as `90f21c551`; C2 large button alignment as `f85615a79`.
+  C2 seven Storybook tests and existing button behavior tests passed. The
+  button browser geometry proof is committed alongside the C3 field tests.
+- C3: native `field-sizing: content` worked in canonical Chromium and WebKit,
+  but Firefox did not support it (height stayed 68px with overflowing text).
+  Chose a private row measurement hook with resize/reset/font cleanup.
+  Textarea manual defaults to 3 rows; auto defaults to 3–10, controlled values
+  grow/shrink and scroll after the cap. Readonly retains normal text contrast.
+- C3 focused text tests, four Textarea stories, quick conformance, and all
+  **6/6 canonical browser checks** passed (two checks in each engine: field/
+  button geometry and Textarea growth/reset/320px containment). Logs:
+  `/private/tmp/bakin-form-{text-tests,group-green,text-browser,quick}.log`.
+  Generated CSS includes the current shared group selectors; it will be
+  regenerated at the adjacent C4 checkpoint. No PNGs changed.

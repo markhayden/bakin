@@ -51,6 +51,10 @@ treatment for every appearance. Text enlargement may increase height.
 Form and Field do not supply inherited visual defaults. `Input.htmlSize`
 preserves the native numeric width hint; `size` always means presentation.
 
+Textarea defaults to three manually resizable rows. Opt into bounded growth
+with `autoSize`, `minRows` and `maxRows` (defaults 3 and 10); omit `rows` in
+that mode. Readonly values retain full text contrast, focus and copyability.
+
 | Tier | Treatment | Examples |
 |---|---|---|
 | Page identity | `PageHeader` title/eyebrow contract | one page `h1`, domain context |

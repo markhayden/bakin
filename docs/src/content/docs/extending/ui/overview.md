@@ -692,6 +692,13 @@ Collapsible is for supporting detail that can safely start hidden. Required deci
 Large buttons and icon buttons now align with large fields at 44px. Small and
 medium remain 32px and 36px.
 
+`Textarea` shares those size/variant props; size changes padding and type, not
+row count. It defaults to three manually resizable rows. Use `rows={5}` for a
+different initial height. For bounded growth use
+`<Textarea autoSize minRows={3} maxRows={10} />`; auto mode disables manual
+resizing and scrolls after its maximum. Do not pass `rows` in auto mode. Values,
+paste, reset, container changes and font loading recalculate its height.
+
 `Input` and the default-input `FieldControl` support `size="sm|md|lg"`
 (32/36/44px) and `variant="outlined|filled|ghost"`. Defaults are `md` and
 `outlined`. Set presentation on the control, not Form or Field. Use
