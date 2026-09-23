@@ -58,7 +58,7 @@ The read-only catalog sits at the foot of the page in both views: every model yo
 
 ## From the terminal and at first run
 
-`bakin models plan` prints the current lanes, the recommended plan with its reasons, and the changes that would reach it; `bakin models plan --apply` applies them (the only way the CLI ever changes a model, and only on that flag). `bakin models restore <snapshot.json>` undoes a Reset. `bakin onboard` shows the recommended plan on a fresh install and applies it only when you confirm (or pass `--yes`); it never changes a plan you already have — a dead lane on an existing install becomes a warning that points you back here.
+`bakin models plan` prints the current lanes, the recommended plan with its reasons, and the changes that would reach it; `bakin models plan --apply` applies them (the only way the CLI ever changes a model, and only on that flag). `bakin models restore <snapshot.json>` undoes a Reset. `bakin onboard` shows the recommended plan on a fresh install and applies it only when you confirm (or pass `--yes`); it never changes a plan you already have — a dead lane on an existing install becomes a warning that points you back here. `--yes` on its own also leaves a default model you already have alone, even a dead one (it sets the background-chores routes and tells you to review the default); confirming the plan in the wizard applies all of it.
 
 ## Where it lives
 

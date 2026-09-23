@@ -10,13 +10,13 @@
 import { Users } from 'lucide-react'
 import { useAgent, useAgentColor, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
 import { Stack } from '@makinbakin/sdk/layout'
-import { AgentAvatar, DEFAULT_MODEL_VALUE, DataTable, ModelSelect, type DataTableColumn, type ModelSelectOption } from '@makinbakin/sdk/patterns'
+import { AgentAvatar, DEFAULT_MODEL_VALUE, DataTable, GuideCard, ModelSelect, type DataTableColumn, type ModelSelectOption } from '@makinbakin/sdk/patterns'
 import { Badge, SystemState, Text } from '@makinbakin/sdk/ui'
 
 import { agentRows, type AgentRow } from '../lib/advanced'
-import { GuideCard } from '@makinbakin/sdk/patterns'
 import { StagedMark } from './advanced-shared'
 import { PendingChip, SelectionCallout } from './selection-callout'
+import { useDeepLinkFocus } from './use-deep-link-focus'
 import type { SelectionsData } from './use-selections'
 
 export interface AdvancedAgentsProps {
@@ -45,12 +45,13 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
   const displaySettings = useAgentStore((s) => s.displaySettings)
   const mainAgentId = useMainAgentId()
   const agent = sel.effective('policy:defaultModel')
-  // The main agent (the orchestrator) always leads: first row of the first group.
-  const rows = [...agentRows(states)].sort((a, b) => Number(b.agentId === mainAgentId) - Number(a.agentId === mainAgentId))
+  const rows = [...agentRows(states)]
   const highlight = sel.highlightRef
+  useDeepLinkFocus(highlight, rows.length > 0)
 
-  // Default order: the main agent, then the roster's team order, then name.
-  // Column sorts (Agent, Team) take over from here — the table self-sorts.
+  // Default order: the main agent (the orchestrator) first, then the
+  // roster's team order, then name. Column sorts (Agent, Team) take over
+  // from here — the table self-sorts.
   const teamRank = new Map([...teams].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.label.localeCompare(b.label)).map((t, i) => [t.id, i]))
   const teamOf = (row: AgentRow) => teams.find((t) => t.id === displaySettings[row.agentId]?.teamId) ?? null
   rows.sort((a, b) => {
@@ -78,7 +79,7 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
             <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
               <OverrideAgentAvatar agentId={row.agentId} name={row.name} />
               <span className="min-w-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{row.name}</span>
-              <Badge tone={own.model ? 'accent' : 'neutral'} variant="soft" size="xs" title={own.model ? 'Runs on its own model' : 'Runs on the default model'}>
+              <Badge tone={own.model ? 'accent' : 'neutral'} variant="soft" size="xs">
                 {own.model ? 'own model' : 'default'}
               </Badge>
               <StagedMark staged={own.staged} />
@@ -106,15 +107,17 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
       header: 'Model',
       cellClassName: 'align-top',
       cell: (row) => (
-        <ModelSelect
-          id={`agent-${row.agentId}-model`}
-          value={sel.effective(row.modelRef).model ?? DEFAULT_MODEL_VALUE}
-          onValueChange={(value) => sel.stage(row.modelRef, { model: value === DEFAULT_MODEL_VALUE ? null : value })}
-          models={modelOptions}
-          defaultLabel={`Use default model${agent.model ? ` (${agent.model})` : ''}`}
-          ariaLabel={`${row.name} model`}
-          className="w-full min-w-0"
-        />
+        <div className="min-w-0" data-selection-ref={row.modelRef}>
+          <ModelSelect
+            id={`agent-${row.agentId}-model`}
+            value={sel.effective(row.modelRef).model ?? DEFAULT_MODEL_VALUE}
+            onValueChange={(value) => sel.stage(row.modelRef, { model: value === DEFAULT_MODEL_VALUE ? null : value })}
+            models={modelOptions}
+            defaultLabel={`Use default model${agent.model ? ` (${agent.model})` : ''}`}
+            ariaLabel={`${row.name} model`}
+            className="w-full min-w-0"
+          />
+        </div>
       ),
     },
     ...(support?.perAgentSubagentModel
@@ -125,7 +128,7 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
           cell: (row: AgentRow) => {
             const sub = sel.effective(row.subagentRef)
             return (
-              <div className="min-w-0">
+              <div className="min-w-0" data-selection-ref={row.subagentRef}>
                 <ModelSelect
                   id={`agent-${row.agentId}-subagent`}
                   value={sub.model ?? DEFAULT_MODEL_VALUE}
@@ -164,7 +167,8 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
           columns={columns}
           rows={rows}
           rowKey={(row) => row.agentId}
-          rowProps={(row) => ({ 'data-agent-model-row': row.agentId, 'data-highlighted': highlight === row.modelRef || highlight === row.subagentRef ? 'true' : undefined })}
+          rowProps={(row) => ({ 'data-agent-model-row': row.agentId })}
+          rowSelected={(row) => highlight === row.modelRef || highlight === row.subagentRef}
         />
       )}
       {rows.length > 0 && !support?.perAgentSubagentModel ? (

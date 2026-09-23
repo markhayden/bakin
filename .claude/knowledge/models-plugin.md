@@ -234,18 +234,31 @@ probe) behind `use-catalog.ts`.
   thinking, tag overrides, fallbacks, aliases, chores routes naming
   different models. Persisted once on first visit through a `ui:mode` op
   (a VIEW preference, never configuration). The header `SegmentedControl`
-  switches + persists. `?ref=<selection ref>` highlights the owning control
-  and, when the ref lives in an Advanced-only layer (`refLayer`), flips the
-  VIEW without writing.
+  switches + persists. `?ref=<selection ref>` LANDS on the owning control:
+  the row takes the kit's selected tint (`DataTable rowSelected` /
+  `ListRow selected`) and focus moves to the control
+  (`use-deep-link-focus.ts` over `data-selection-ref`, called by every
+  view — only the owner finds a host); when the ref lives in an
+  Advanced-only layer (`refLayer(ref, states)` — a chores route carrying a
+  thinking level counts, so a clamp link never lands in Simple) the VIEW
+  flips without writing. A view the operator picks by hand is keyed to the
+  ref it was chosen under, so a NEW `?ref=` flips again.
 - **Draft** (`lib/draft.ts`, pure): every edit stages an op keyed by ref;
   staging the persisted value back unstages, so a save carries ONLY the
   refs the user changed (S5, pinned by the 200-seed property test
   `tests/plugins/models/simple-save-minimality.test.ts`). ONE `SaveBar`
-  posts the draft under the loaded revision (one stale-revision re-fetch +
-  re-post), keeps failed refs staged for Retry while applied + pending refs
-  leave, and renders refusals with the server's proposal; the SDK
-  `useUnsavedChangesGuard` covers routes/anchors/unload. Header meta
-  summarizes pending adapter writes; `PendingChip` marks each ref.
+  posts the draft through `submit` — the hook's ONE client write: the
+  revision the page holds (loaded, then ADOPTED from every write's answer —
+  the hash covers every ref, so the page's own first-visit `ui:mode`
+  persist moves it too), one stale-revision re-fetch + re-post, and the
+  view persist and Reset go through the same function. Failed refs stay
+  staged for Retry while applied + pending refs leave; refusals render with
+  the server's proposal; the SDK `useUnsavedChangesGuard` covers
+  routes/anchors/unload. The bar speaks for the DRAFT only (the kit's
+  clean-save state is a bare "Saved ✓"); writes the runtime has not
+  confirmed are the header badge's story (`PendingSummary` reads them back
+  after every load) and `PendingChip` marks each ref. A save re-reads the
+  catalog so its Default/Configured flags follow the new selection.
 - **Simple** (`simple-mode.tsx`, `lib/simple.ts`): the Agent-model lane
   (`policy:defaultModel`) and the Background-chores lane (the five chores
   routes). Chores show ONE value only when all five resolve to the same
@@ -255,14 +268,17 @@ probe) behind `use-catalog.ts`.
   lists what Simple cannot express and links into Advanced. **Reset to
   this plan** (`reset-dialog.tsx`, `buildResetOps` in
   `src/core/model-selections.ts`): consequence-first section → ConfirmDialog
-  gated on typing `reset` listing every change and every clear the runtime
-  cannot do (Pi: subagent pins / fallbacks / default subagent / aliases
-  are SKIPPED and disclosed) → immediate `POST /selections` with
-  `snapshot:'reset'`; refused while a draft is unsaved; the mutation result
+  gated on typing `reset` listing every change BY LABEL with its
+  before-value ("Fallback 1 — anthropic/claude-opus-4-6 → cleared", never a
+  ref) and every clear the runtime cannot do (Pi: subagent pins /
+  fallbacks / default subagent / aliases are SKIPPED and disclosed) →
+  immediate `submit(ops, { snapshot: 'reset' })`; refused while a draft is
+  unsaved; the mutation result
   carries the snapshot path and the page shows `bakin models restore
   <file>` as the undo handle.
 - **Advanced** (`advanced-mode.tsx` + `advanced-{overview,agents,routing}.tsx`,
-  `advanced-shared.tsx` for the `GuideCard`/`StagedMark`/`ThinkingSelect`,
+  `advanced-shared.tsx` for `StagedMark`/`ThinkingSelect` (the opener is
+  the SDK `GuideCard`),
   `lib/advanced.ts` draft readers): three TABS on `?tab=overview|agents|routing`
   (a `?ref=` deep link picks the owning tab; the panel is a hand-rendered
   `role="tabpanel"` like Spend's — Base UI's `TabsContent` is a focusable
@@ -309,8 +325,12 @@ OPTIONAL `restartAdvice(kind)` decides: Pi ⇒ `needed:false` for everything
 `tests/integration/pi/model-change-no-restart.test.ts`); OpenClaw ⇒ only
 `roster` (per-agent MCP servers attach at gateway start; model pins and
 `agents.defaults.*` hot-reload). Adapters without the member get generic
-advice. `POST /selections` notes `model-config` / `routing-policy` kinds;
-Team notes `roster` when a restart is skipped or fails. A successful
+advice. `applySelections` (`plugins/models/lib/selections.ts` — the ONE
+write behind `POST /selections` AND the dead-selections + recommended-routes
+repairs) notes `model-config` / `routing-policy` kinds, drops the catalog
+cache and emits `models.catalog_changed` for runtime-config refs only
+(`agent:*` / `policy:*`); route, tag and `ui:mode` writes are silent. Team
+notes `roster` when a restart is skipped or fails. A successful
 `restart()` is the ONLY thing that clears it; a failed attempt is recorded
 and shown. `GET /runtime/status` returns `{ pending, kinds, advice, generic,
 lastAttempt }` and `useRuntimeStatus` renders the adapter's words — the
@@ -344,9 +364,9 @@ Routing key = the turn's **work class** (`WorkClass`): 5 dispatch classes (`sche
 
 `ResolvedTurn` carries `source: 'tag:<name>'|'class'|'inherit'` — stamped as `route_source` on the `run_costs` row and on the `task.routed` audit, so the dimension that routes IS the dimension spend reports on. Thinking clamps to the runtime's declared support (`clampThinkingLevel` / `applyRoutingCapabilities` against `runtime.models.routingSupport().supportedThinkingLevels` — the same function also drops routed models when `perTurnModel` is false, #880): unsupported ordinal levels clamp DOWN the ladder (`'max'`→`'xhigh'`→…), `'adaptive'` clamps to inherit — clamp-and-warn, never a silent drop or failed turn. The Advanced view's **Work routing** section renders the two groups from `WORK_CLASSES`, filters thinking dropdowns to supported levels, and offers "Use recommended routes" behind a ConfirmDialog diff that stages ops.
 
-**The model plan** (`src/core/model-plan.ts`, spec §3.4 — the ONE recommender behind the Models page's "Use recommended plan", onboarding's `models` step, `bakin models plan`, and the routing health check): two lanes — the AGENT model (chat, `send`, the five dispatch classes = the runtime default) and the CHORES model (`auto-title`, `enrichment`, `relay`, `team-routing`, `skill-mapping`). PURE over a `PlanInput` the caller assembles (arch-pinned by `tests/architecture/model-plan-purity.test.ts`: no vision list, catalog, ledger or services import): `plugins/models/lib/plan.ts` (`buildPlanInput`) builds candidates from the eligibility-overlaid catalog (ineligible/rejected/image rows never enter), `tier` runtime-merged, `lane` per PROVIDER via `spend.resolveBilling` (metered when the hook is absent), `pricePer1M` from catalog pricing, `vision` from runtime `input` modalities (Pi) → curated `VISION_MODELS` (only ever says yes) → `null` = unknown, and `enrichmentEnabled` via the `assets.enrichmentEnabled` hook (on when absent). Ranking is within-lane (subscription sorts before metered): subscription tier asc → context desc → id; metered price asc (unknown price LAST) → tier → id. Agent pick = current default if eligible else strongest. Chores pick = lightest candidate LIGHTER than the agent model (the agent model itself only when nothing else is eligible ⇒ routes read `null` = inherit): known-capable first, unknown after and disclosed in `notes`, nothing lighter sees but the agent model does ⇒ `enrichment: 'agent'` (`route:enrichment → agentModel`), nobody sees ⇒ `'unset'` (route cleared, "enrichment will fail…"), enrichment off ⇒ `'disabled'`. The result carries `routes[]` (desired model-or-inherit per chores class with a reason) and the `ops` diff against the current state (`policy:defaultModel` + `route:*`) — NEVER applied by the recommender; `GET /plan` returns `{ revision, current, recommended, routeProposals, candidates }`, `bakin models plan [--apply] [--json]` posts the ops through `POST /selections` under that revision only on the explicit flag. **Onboarding** (`src/core/onboarding/models.ts`, after `llm`, `ONBOARDING_VERSION` 6) runs the same recommender WITHOUT plugins loaded — `listPlanCatalogRows` (runtime catalog folded through eligibility) + the models/spend/assets settings files + `createSelectionMutator` directly: `missing` (no persisted plan = no chores routes and no `ui.mode`) ⇒ the TUI shows the plan with reasons and applies on confirm / `--yes` (the ONE permitted auto-apply); `warn` when a persisted plan has a dead or blind lane (remediation → `bakin models plan`; never auto-applied); `ok` when the persisted lanes are eligible + suitable or the install already matches. `bakin check models` runs the check alone. `choresLaneState`/`setAllChoresOps` back Simple's chores lane ("Mixed (N models)" + "Set all to…").
+**The model plan** (`src/core/model-plan.ts`, spec §3.4 — the ONE recommender behind the Models page's "Use recommended plan", onboarding's `models` step, `bakin models plan`, and the routing health check): two lanes — the AGENT model (chat, `send`, the five dispatch classes = the runtime default) and the CHORES model (`auto-title`, `enrichment`, `relay`, `team-routing`, `skill-mapping`). PURE over a `PlanInput` the caller assembles (arch-pinned by `tests/architecture/model-plan-purity.test.ts`: no vision list, catalog, ledger or services import): `plugins/models/lib/plan.ts` (`buildPlanInput`) builds candidates from the eligibility-overlaid catalog (ineligible/rejected/image rows never enter), `tier` runtime-merged, `lane` per PROVIDER via `spend.resolveBilling` (metered when the hook is absent), `pricePer1M` from catalog pricing, `vision` from runtime `input` modalities (Pi) → curated `VISION_MODELS` (only ever says yes) → `null` = unknown, and `enrichmentEnabled` via the `assets.enrichmentEnabled` hook (on when absent). Ranking is within-lane (subscription sorts before metered): subscription tier asc → context desc → id; metered price asc (unknown price LAST) → tier → id. Agent pick = current default if eligible else strongest (`PlanCandidate.tier` is REQUIRED — the assembler always resolves one, so an unknown tier can never rank strongest). Chores pick = lightest candidate LIGHTER than the agent model — not heavier by tier AND ranked before it, so a paid same-tier model never displaces a free subscription agent model (nothing lighter ⇒ the agent model takes the chores and routes read `null` = inherit): known-capable first, unknown after and disclosed in `notes`, nothing lighter sees but the agent model does ⇒ `enrichment: 'agent'` (`route:enrichment → agentModel`), nobody sees ⇒ `'unset'` (route cleared, "enrichment will fail…"), enrichment off ⇒ `'disabled'`. The result carries `routes[]` (desired model-or-inherit per chores class with a reason) and the `ops` diff against the current state (`policy:defaultModel` + `route:*`) — NEVER applied by the recommender; `GET /plan` returns `{ revision, current, recommended, routeProposals, candidates }`, `bakin models plan [--apply] [--json]` posts the ops through `POST /selections` under that revision only on the explicit flag. **Onboarding** (`src/core/onboarding/models.ts`, after `llm`, `ONBOARDING_VERSION` 6) runs the same recommender WITHOUT plugins loaded — `listPlanCatalogRows` (runtime catalog folded through eligibility) + the models/spend/assets settings files + `createSelectionMutator` directly: `missing` (no persisted plan = no chores routes and no `ui.mode`) ⇒ the TUI shows the plan with reasons and applies on confirm / `--yes` (the ONE permitted auto-apply) — but `--yes` WITHOUT an explicit approval never rewrites a runtime default that already exists (an upgraded box re-onboards with no chores routes and looks fresh; the default is the runtime's own config and nobody saw the plan): the chores routes land, a dead default is reported for `bakin models plan`; explicit TUI approval applies the whole plan; every onboarding write is audited like the plugin path; a dead default is ONE problem, not one per inheriting chore. `warn` when a persisted plan has a dead or blind lane (remediation → `bakin models plan`; never auto-applied); `ok` when the persisted lanes are eligible + suitable or the install already matches. `bakin check models` runs the check alone. `choresLaneState` (core) and `choresLane`/`setAllChoresOps` (`plugins/models/lib/simple.ts`) back Simple's chores lane ("Mixed (N models)" + "Set all to…").
 
-**Routing health** (`plugins/models/lib/health-checks.ts`, check id `models.routing`): `recommendRoutes(deps)` is now a derivation — `routeProposals(plan, routing)` lists the plan's route for every UNROUTED chores class (routed classes are the operator's choice; the Simple view's "Use recommended plan" shows the full diff instead), skipping with the plan's reason when a class cannot be carried. The doctor check warns on unrouted chores classes (with per-class 7d spend evidence) and the `apply-recommended-routes` repair applies exactly those proposals through the selections mutator (never a direct settings write); the Advanced view's "Use recommended routes" dialog reads the same `routeProposals` off `GET /plan`. It also warns on standing thinking clamps and on premium-tier models observed on cheap-recommended classes (7d) — misrouting is detected, not discovered on the bill. (Routes pointing at models that cannot run are the `models.dead-selections` check's job.)
+**Routing health** (`plugins/models/lib/health-checks.ts`, check id `models.routing`): `recommendRoutes(deps)` is now a derivation — `routeProposals(plan, routing)` lists the plan's route for every UNROUTED chores class (routed classes are the operator's choice; the Simple view's "Use recommended plan" shows the full diff instead), skipping with the plan's reason when a class cannot be carried — and skipping a row that names the AGENT model (enrichment when only the agent model can see): unrouted already inherits it, and proposing it was a standing false "unrouted" finding whose repair routed background work to the premium model. The doctor check warns on unrouted chores classes (with per-class 7d spend evidence) and the `apply-recommended-routes` repair applies exactly those proposals through `applySelections` (the same mutate + post-write side effects as `POST /selections`; never a direct settings write); the Advanced view's "Use recommended routes" dialog reads the same `routeProposals` off `GET /plan`. It also warns on standing thinking clamps and on premium-tier models observed on cheap-recommended classes (7d) — misrouting is detected, not discovered on the bill. (Routes pointing at models that cannot run are the `models.dead-selections` check's job.)
 
 **Migration** (`src/core/routing-migration.ts`): one-shot at plugin activation folds the retired origin-shaped config (`{policies:[{origin,…}]}`) into work-class routes 1:1 (unknown origins dropped, never guessed), plus a migrate-on-READ guard (a restored legacy settings file must never make dispatch silently ignore routes the operator believes exist). (The team plugin's legacy-settings seed migration and its `models.seedWorkClassRoute` hook are deleted — the migration ran; team routing now rides the runtime with no plugin-local model settings.)
 

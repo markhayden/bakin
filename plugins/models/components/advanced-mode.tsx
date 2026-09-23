@@ -8,7 +8,7 @@
  * Every edit stages an op; the page's one SaveBar writes. The active tab
  * rides `?tab=` so a shared link opens the same section.
  */
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useQueryState } from '@makinbakin/sdk/navigation'
 import type { ModelSelectOption } from '@makinbakin/sdk/patterns'
 import { Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
@@ -43,16 +43,25 @@ function tabForRef(ref: string | null): TabId | null {
 export function AdvancedMode({ sel, modelOptions, overviewFooter }: AdvancedModeProps) {
   const [tabParam, setTab] = useQueryState('tab', 'overview')
   const requested = TABS.some((t) => t.id === tabParam) ? (tabParam as TabId) : 'overview'
-  const tab: TabId = tabForRef(sel.highlightRef) ?? requested
+  // A `?ref=` seeds the tab that owns it — once per ref. From the first
+  // click the tablist (and `?tab=`) takes over; a new ref seeds again.
+  const [seededFor, setSeededFor] = useState<string | null>(null)
+  const refTab = tabForRef(sel.highlightRef)
+  const tab: TabId = refTab && seededFor !== sel.highlightRef ? refTab : requested
+  const onTabChange = (next: string) => {
+    setSeededFor(sel.highlightRef)
+    setTab(next) // the default ('overview') is omitted from the URL by useQueryState
+  }
 
   return (
     // The panel is rendered by hand (like the Spend page) rather than with
     // Base UI's TabsContent, whose focusable panel carries no focus ring.
     <div className="flex min-w-0 flex-col gap-bakin-6">
-      <Tabs value={tab} onValueChange={(next) => setTab(next === 'overview' ? '' : next)}>
+      <Tabs value={tab} onValueChange={onTabChange}>
         <TabsList variant="underline" activateOnFocus aria-label="Advanced model settings">
           {TABS.map((item) => (
-            <TabsTrigger key={item.id} value={item.id} id={`models-advanced-tab-${item.id}`} aria-controls={`models-advanced-panel-${item.id}`}>{item.label}</TabsTrigger>
+            // Only the active panel is in the DOM — an inactive trigger must not point at an id that is not there.
+            <TabsTrigger key={item.id} value={item.id} id={`models-advanced-tab-${item.id}`} aria-controls={item.id === tab ? `models-advanced-panel-${item.id}` : undefined}>{item.label}</TabsTrigger>
           ))}
         </TabsList>
       </Tabs>

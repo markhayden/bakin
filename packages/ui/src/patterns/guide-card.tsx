@@ -3,7 +3,7 @@
 import type { ComponentType, ReactNode } from 'react'
 
 import { Overline, Text } from '../primitives/text'
-import { Card, CardContent, CardDescription } from '../primitives/card'
+import { Card, CardContent, CardDescription, CardTitle } from '../primitives/card'
 import { cn } from '../utils'
 
 export interface GuideCardPoint {
@@ -47,7 +47,6 @@ export function GuideCard({
   headingLevel = 2,
   className,
 }: GuideCardProps) {
-  const Heading: 'h2' | 'h3' = headingLevel === 3 ? 'h3' : 'h2'
   return (
     <Card data-slot="guide-card" className={cn('bg-bakin-surface-subtle', className)}>
       <CardContent className="flex min-w-0 items-start gap-bakin-3">
@@ -63,12 +62,7 @@ export function GuideCard({
         <div className="flex min-w-0 flex-1 flex-col gap-bakin-4">
           <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
             <div className="min-w-0">
-              <Heading
-                data-slot="card-title"
-                className="m-0 min-w-0 [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold leading-snug"
-              >
-                {title}
-              </Heading>
+              <CardTitle as={headingLevel === 3 ? 'h3' : 'h2'}>{title}</CardTitle>
               <CardDescription className="mt-bakin-1 max-w-prose leading-relaxed">{lead}</CardDescription>
             </div>
             {actions ? (

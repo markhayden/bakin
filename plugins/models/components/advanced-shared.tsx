@@ -9,7 +9,7 @@ import { Badge, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } 
 
 // The full ordered ladder; the active runtime's declared support filters it.
 export const ALL_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'] as const
-export const THINKING_LABELS: Record<string, string> = {
+const THINKING_LABELS: Record<string, string> = {
   inherit: 'Inherit agent setting',
   off: 'Off',
   minimal: 'Minimal',

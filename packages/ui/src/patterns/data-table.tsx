@@ -121,6 +121,12 @@ export interface DataTableProps<Row, F extends string = string> {
   /** Extra props merged onto each default `<tr>` (row click handlers, data attributes). */
   rowProps?: (row: Row) => WithDataAttributes<ComponentPropsWithoutRef<'tr'>>
   /**
+   * Kit-owned selected treatment for a row (the ListRow `selected` tint on
+   * both renders, `data-selected` on the wide `<tr>`): a deep-linked or
+   * currently chosen record. Consumers manage the state.
+   */
+  rowSelected?: (row: Row) => boolean
+  /**
    * Kit-owned whole-row activation: pointer click plus Enter/Space with a
    * real focus ring on the wide render, and the ListRow interactive overlay
    * on the narrow render. Pair with `rowActivateLabel` for the accessible
@@ -317,6 +323,7 @@ export function DataTable<Row, F extends string = string>({
   listVariant = 'separated',
   renderTableRow,
   rowProps,
+  rowSelected,
   renderRow,
   onRowActivate,
   rowActivateLabel,
@@ -424,10 +431,12 @@ export function DataTable<Row, F extends string = string>({
                     key={rowKey(row)}
                     data-slot="table-row"
                     data-activatable={onRowActivate ? '' : undefined}
+                    data-selected={rowSelected?.(row) ? '' : undefined}
                     {...activate}
                     {...extra}
                     className={cn(
                       'border-b border-bakin-border-subtle transition-colors hover:bg-bakin-surface-default',
+                      'data-[selected]:bg-bakin-action-primary-background/10',
                       activate.className,
                       extra?.className,
                     )}
@@ -468,16 +477,17 @@ export function DataTable<Row, F extends string = string>({
           const interactive = onRowActivate
             ? { interactive: { label: rowActivateLabel?.(row) ?? label, onActivate: () => onRowActivate(row) } }
             : {}
+          const selected = rowSelected?.(row) ?? false
           if (columns.some((column) => column.narrow)) {
             return (
-              <ListRow key={rowKey(row)} {...interactive}>
+              <ListRow key={rowKey(row)} selected={selected} {...interactive}>
                 <ComposedNarrowRow columns={columns} row={row} />
               </ListRow>
             )
           }
           const [primary, ...rest] = columns
           return (
-            <ListRow key={rowKey(row)} {...interactive}>
+            <ListRow key={rowKey(row)} selected={selected} {...interactive}>
               <div className="grid min-w-0 gap-bakin-1">
                 {primary ? (
                   <span className="min-w-0 break-words font-bakin-typography-weight-semibold text-bakin-text-primary">

@@ -7,7 +7,7 @@
  * ModelSelect on the Models page uses (ineligible rows disabled with their
  * reason, #907).
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { toModelSelectOptions } from '@makinbakin/sdk/hooks'
 import { pluginFetchJson } from '@makinbakin/sdk/utils'
@@ -137,9 +137,10 @@ export function useCatalog() {
   }, [modelsLoaded, modelsStale])
 
   // Picker options: ineligible rows disabled with their reason (#907) — the
-  // ONE mapping every ModelSelect on this page uses.
-  const modelSelectOptions = toModelSelectOptions(availableModels)
-  const availableProviders = [...new Set(availableModels.map((m) => m.provider))].sort((a, b) => a.localeCompare(b))
+  // ONE mapping every ModelSelect on this page uses. Memoized: a fresh array
+  // per render would re-render every picker and defeat the catalog's memos.
+  const modelSelectOptions = useMemo(() => toModelSelectOptions(availableModels), [availableModels])
+  const availableProviders = useMemo(() => [...new Set(availableModels.map((m) => m.provider))].sort((a, b) => a.localeCompare(b)), [availableModels])
 
   return {
     availableModels, modelsCached, modelsCachedAt, modelsStale, modelsError, modelsLoaded,

@@ -12,14 +12,7 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
-mock.module('@/hooks/use-query-state', () => ({
-  useQueryState: (key: string, defaultValue: string) => {
-    const React = require('react') as typeof import('react')
-    return React.useState(defaultValue)
-  },
-}))
-
-/** Initial URL state per key — a test sets `?ref=` here before rendering. */
+/** Initial URL state per key — a test sets `?ref=` / `?tab=` here before rendering. */
 const queryOverrides: Record<string, string> = {}
 mock.module('@makinbakin/sdk/navigation', () => ({
   useQueryState: (key: string, defaultValue: string) => {
@@ -101,6 +94,8 @@ describe('ModelsPage component', () => {
     && !((c.body?.ops as Array<{ ref: string }> | undefined) ?? []).every((op) => op.ref === 'ui:mode'))
   let availableFetchCount: number
   let selectionsRevision = 0
+  /** Per-test override of what a POST returns (partial failure, pending writes) — the fake applies the ops regardless. */
+  let mutationOverride: ((ops: Array<{ ref: string; set: { model?: string | null; thinking?: string | null } }>) => { applied?: string[]; failed?: Array<{ ref: string; error: { code: string; message: string } }>; pending?: Array<{ ref: string; intended: string | null }> }) | null
   let availableResponse: AvailableModelsPayload
   let refreshResponse: AvailableModelsPayload
   let availableRequest: Promise<Response> | null
@@ -131,18 +126,11 @@ describe('ModelsPage component', () => {
     fetchCalls = []
     availableFetchCount = 0
     selectionsRevision = 0
+    mutationOverride = null
     configState = {
       agents: [
-        {
-          agentId: 'patch',
-          name: 'Patch',
-          emoji: '⚙️',
-          ownModel: null,
-          subagentModel: null,
-          defaultModel: 'anthropic/claude-sonnet-4-6',
-          defaultSubagentModel: 'anthropic/claude-haiku-4-5',
-          effectiveModel: 'anthropic/claude-sonnet-4-6',
-        },
+        { agentId: 'patch', name: 'Patch', ownModel: null, subagentModel: null },
+        { agentId: 'main', name: 'Main', ownModel: null, subagentModel: null },
       ],
       defaultModel: 'anthropic/claude-sonnet-4-6',
       defaultSubagentModel: 'anthropic/claude-haiku-4-5',
@@ -192,9 +180,6 @@ describe('ModelsPage component', () => {
       const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined
       fetchCalls.push({ method, url, body })
 
-      if (url === '/api/plugins/models/config' && method === 'GET') {
-        return jsonResponse(configState)
-      }
       if (url === '/api/plugins/models/available' && method === 'GET') {
         availableFetchCount += 1
         return availableRequest ?? jsonResponse(availableResponse)
@@ -202,14 +187,9 @@ describe('ModelsPage component', () => {
       if (url === '/api/plugins/models/refresh' && method === 'POST') {
         return refreshRequest ?? jsonResponse(refreshResponse)
       }
-      if (url === '/api/plugins/models/aliases' && method === 'GET') {
-        return jsonResponse({ aliases: aliasesState })
-      }
-      if (url === '/api/plugins/models/routing' && method === 'GET') {
-        return jsonResponse(routingState)
-      }
-      // The ONE write path (#907): every save arrives as selection ops. The
-      // read mirrors the fake config so the page classifies its mode honestly.
+      // The page's whole contract: GET /selections + GET /plan, POST /selections
+      // (the ONE write path, #907), GET /available + POST /refresh. The read
+      // mirrors the fake config so the page classifies its mode honestly.
       if (url === '/api/plugins/models/selections' && method === 'GET') {
         const states = [
           { ref: 'policy:defaultModel', model: configState.defaultModel, document: 'policy', label: 'Default model' },
@@ -245,6 +225,12 @@ describe('ModelsPage component', () => {
         })
       }
       if (url === '/api/plugins/models/selections' && method === 'POST') {
+        // Revision-checked like the real mutator: every write moves it, and
+        // a write under an old one is refused — including the page's own
+        // first-visit ui:mode persist, which advances it too.
+        if (body?.revision !== `rev-${selectionsRevision}`) {
+          return jsonResponse({ error: 'stale_revision', message: 'the configuration changed since this change was planned', current: `rev-${selectionsRevision}` }, 409)
+        }
         const ops = (body?.ops as Array<{ ref: string; set: { model?: string | null; thinking?: string | null } }>) ?? []
         for (const op of ops) {
           const [kind, a, b] = op.ref.split(':')
@@ -281,10 +267,8 @@ describe('ModelsPage component', () => {
           }
         }
         selectionsRevision += 1
-        return jsonResponse({ applied: ops.map((o) => o.ref), failed: [], pending: [], warnings: [], revision: `rev-${selectionsRevision}`, ...(body?.snapshot === 'reset' ? { snapshot: '/tmp/snapshots/2026-09-22.json' } : {}) })
-      }
-      if (url === '/api/plugins/models/aliases/recommended' && method === 'GET') {
-        return jsonResponse({ aliases: { opus: 'anthropic/claude-opus-4-6' } })
+        const outcome = mutationOverride?.(ops) ?? {}
+        return jsonResponse({ applied: ops.map((o) => o.ref), failed: [], pending: [], warnings: [], ...outcome, revision: `rev-${selectionsRevision}`, ...(body?.snapshot === 'reset' ? { snapshot: '/tmp/snapshots/2026-09-22.json' } : {}) })
       }
 
       throw new Error(`Unhandled fetch: ${method} ${url}`)
@@ -296,6 +280,17 @@ describe('ModelsPage component', () => {
   })
 
   const openTab = async (name: 'Agents' | 'Work routing') => fireEvent.click(await screen.findByRole('tab', { name }))
+
+  /**
+   * A `?ref=` deep link has landed when its control holds focus AND the
+   * picker is ready: Base UI pre-mounts a Select's popup the moment its
+   * trigger gains focus, so a test that stops at the focus leaves that
+   * mount in flight (the act gate catches exactly that).
+   */
+  const deepLinkLanded = async (controlLabel: string) => {
+    await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe(controlLabel))
+    await waitFor(() => expect(document.querySelector('[role="listbox"]')).not.toBeNull())
+  }
 
   describe('Advanced view (S4, support-gated)', () => {
     it('Defaults: changing the default model stages one policy op; the subagent default renders when supported', async () => {
@@ -310,7 +305,7 @@ describe('ModelsPage component', () => {
       expect(configWrite()?.body?.ops).toEqual([{ ref: 'policy:defaultModel', set: { model: 'openai-codex/gpt-5.4' } }])
     })
 
-    it('Overview: default model, recommendation, in-use tiles and the extras disclosure; ?tab= picks a tab', async () => {
+    it('Overview opens by default: default model, recommendation, in-use tiles and the extras disclosure', async () => {
       render(<ModelsPage />)
       expect((await screen.findByRole('tab', { name: 'Overview' })).getAttribute('aria-selected')).toBe('true')
       const stats = within(screen.getByTestId('overview-stats'))
@@ -322,9 +317,53 @@ describe('ModelsPage component', () => {
       expect(screen.getByRole('button', { name: 'Remove fallback 1' })).toBeTruthy()
     })
 
+    it('?tab= opens that tab; a ?ref= lands on its owning tab and the tablist still works afterwards', async () => {
+      queryOverrides.tab = 'routing'
+      const first = render(<ModelsPage />)
+      expect(await screen.findByRole('region', { name: 'Agent work' })).toBeTruthy()
+      first.unmount()
+      cleanup()
+
+      delete queryOverrides.tab
+      queryOverrides.ref = 'agent:patch:model'
+      render(<ModelsPage />)
+      expect((await screen.findByRole('tab', { name: 'Agents' })).getAttribute('aria-selected')).toBe('true')
+      await screen.findByText('Patch')
+      // The ref seeded the tab once; the user can still move on.
+      await openTab('Work routing')
+      expect(await screen.findByRole('region', { name: 'Agent work' })).toBeTruthy()
+      expect(screen.queryByText('Patch')).toBeNull()
+    })
+
+    it('a ?ref= row is visibly selected and its control takes focus — a deep link from Health lands on something you can see', async () => {
+      queryOverrides.ref = 'agent:patch:model'
+      render(<ModelsPage />)
+      await deepLinkLanded('Patch model')
+      const row = screen.getByText('Patch').closest('[data-agent-model-row]') as HTMLElement
+      expect(row.hasAttribute('data-selected')).toBe(true)
+      expect(document.activeElement).toBe(within(row).getByRole('combobox', { name: 'Patch model' }))
+      const main = screen.getByText('Main').closest('[data-agent-model-row]')
+      expect(main?.hasAttribute('data-selected')).toBe(false)
+    })
+
+    it('saving a new default leaves exactly ONE Default badge in the catalog (the catalog re-reads after a save)', async () => {
+      const user = userEvent.setup()
+      render(<ModelsPage />)
+      await user.click(await screen.findByRole('combobox', { name: 'Default model' }))
+      await user.click(await screen.findByRole('option', { name: 'GPT-5.4' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(configWrite()).toBeTruthy())
+      await waitFor(() => expect(screen.queryByTestId('draft-summary')).toBeNull())
+      const catalog = within(await screen.findByTestId('model-catalog'))
+      await waitFor(() => {
+        const defaults = catalog.getAllByRole('row').filter((r) => r.getAttribute('data-default') === 'true')
+        expect(defaults).toHaveLength(1)
+        expect(defaults[0]!.textContent).toContain('GPT-5.4')
+      })
+    })
+
     it('Agents carry a sortable Team column from the roster; the main agent leads by default', async () => {
       agentStoreState = { teams: [{ id: 'ops', label: 'Ops', reportsTo: null }], displaySettings: { patch: { teamId: 'ops' } } }
-      configState = { ...configState, agents: [...configState.agents, { ...configState.agents[0]!, agentId: 'main', name: 'Main' }] }
       render(<ModelsPage />)
       await openTab('Agents')
       const rows = await screen.findAllByRole('row')
@@ -404,7 +443,15 @@ describe('ModelsPage component', () => {
       expect(addOverride.disabled).toBe(true)
       await user.click(screen.getByRole('combobox', { name: 'Model' }))
       await user.click(await screen.findByRole('option', { name: 'Claude Opus 4.6' }))
+      // A tag that would break the ref (`tag:a:b`) or already exists cannot be added.
+      fireEvent.change(screen.getByRole('textbox', { name: 'Task tag' }), { target: { value: 'a:b' } })
+      expect(addOverride.disabled).toBe(true)
+      expect(screen.getByText(/cannot contain/)).toBeTruthy()
+      fireEvent.change(screen.getByRole('textbox', { name: 'Task tag' }), { target: { value: 'heavy' } })
       fireEvent.click(addOverride)
+      fireEvent.change(screen.getByRole('textbox', { name: 'Task tag' }), { target: { value: 'heavy' } })
+      expect(addOverride.disabled).toBe(true)
+      expect(screen.getByText(/already has an override/)).toBeTruthy()
       expect((await screen.findByTestId('draft-summary')).textContent).toContain('2 changes staged')
       expect(screen.getByRole('button', { name: 'Remove tag override heavy' })).toBeTruthy()
       fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -654,9 +701,39 @@ describe('ModelsPage component', () => {
       uiModeState = 'simple'
       queryOverrides.ref = 'agent:patch:model'
       render(<ModelsPage />)
-      expect((await screen.findByRole('tab', { name: 'Advanced' })).getAttribute('aria-selected')).toBe('true')
-      await screen.findByText('Patch')
+      // The deep link lands: the VIEW flips and focus moves to the pinned agent's control.
+      await deepLinkLanded('Patch model')
+      expect(screen.getByRole('tab', { name: 'Advanced' }).getAttribute('aria-selected')).toBe('true')
       expect(modeWrites()).toHaveLength(0)
+    })
+
+    it('?ref= to a chores route that carries a thinking level flips to Advanced — Simple has no thinking control to land on', async () => {
+      uiModeState = 'simple'
+      routingState = { routes: [{ workClass: 'relay', thinking: 'high' }], tagOverrides: [] }
+      queryOverrides.ref = 'route:relay'
+      render(<ModelsPage />)
+      await deepLinkLanded('Relay model')
+      expect(screen.getByRole('tab', { name: 'Advanced' }).getAttribute('aria-selected')).toBe('true')
+      expect(screen.getByRole('combobox', { name: 'Relay thinking' })).toBeTruthy()
+    })
+
+    it('the first-visit mode persist moves the revision the page holds: a later view switch and a Reset both post under the CURRENT revision', async () => {
+      // Fresh install: no persisted ui:mode ⇒ the page writes one on load (rev-0 → rev-1).
+      render(<ModelsPage />)
+      await waitFor(() => expect(modeWrites()).toHaveLength(1))
+      fireEvent.click(await screen.findByRole('tab', { name: 'Simple' }))
+      await waitFor(() => expect(modeWrites()).toHaveLength(2))
+      expect(modeWrites()[1]!.body?.revision).toBe('rev-1')
+      expect(uiModeState).toBe('simple')
+      // Reset (an immediate write) is planned under the live revision, not the one the page loaded with.
+      fireEvent.click(await screen.findByRole('button', { name: 'Reset to this plan…' }))
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.change(within(dialog).getByPlaceholderText('reset'), { target: { value: 'reset' } })
+      await waitFor(() => expect((within(dialog).getByRole('button', { name: 'Reset' }) as HTMLButtonElement).disabled).toBe(false))
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Reset' }))
+      await waitFor(() => expect(configWrite()).toBeTruthy())
+      expect(configWrite()?.body?.revision).toBe('rev-2')
+      expect((await screen.findByRole('status')).textContent).toContain('bakin models restore')
     })
 
     it('pending adapter writes are summarized in the header meta', async () => {
@@ -692,6 +769,55 @@ describe('ModelsPage component', () => {
       await waitFor(() => expect(configWrite()).toBeTruthy())
       expect(configWrite()?.body?.ops).toEqual(CHORES.map((workClass) => ({ ref: `route:${workClass}`, set: { model: 'anthropic/claude-haiku-4-5' } })))
       await waitFor(() => expect(screen.queryByTestId('draft-summary')).toBeNull())
+    })
+
+    it('a partially failed save keeps the failed ref staged with the reason on the bar; Retry posts ONLY that ref under the new revision (S10)', async () => {
+      plain()
+      mutationOverride = (ops) => ({
+        applied: ops.filter((o) => o.ref !== 'route:enrichment').map((o) => o.ref),
+        failed: [{ ref: 'route:enrichment', error: { code: 'adapter_failed', message: 'gateway down' } }],
+      })
+      const user = userEvent.setup()
+      render(<ModelsPage />)
+      const lane = within(await screen.findByTestId('lane-chores'))
+      await user.click(lane.getByRole('combobox', { name: 'Model' }))
+      await user.click(await screen.findByRole('option', { name: 'Claude Haiku 4.5' }))
+      expect((await screen.findByTestId('draft-summary')).textContent).toContain('5 changes staged')
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(configWrite()).toBeTruthy())
+      await waitFor(() => expect(screen.getByTestId('draft-summary').textContent).toContain('1 change staged'))
+      expect(screen.getByText(/route:enrichment — gateway down/)).toBeTruthy()
+
+      mutationOverride = null
+      fireEvent.click(screen.getByRole('button', { name: 'Retry save' }))
+      const writes = () => fetchCalls.filter((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections' && !((c.body?.ops as Array<{ ref: string }>) ?? []).every((op) => op.ref === 'ui:mode'))
+      await waitFor(() => expect(writes()).toHaveLength(2))
+      expect(writes()[1]!.body?.ops).toEqual([{ ref: 'route:enrichment', set: { model: 'anthropic/claude-haiku-4-5' } }])
+      expect(writes()[1]!.body?.revision).toBe('rev-2')
+      await waitFor(() => expect(screen.queryByTestId('draft-summary')).toBeNull())
+    })
+
+    it('a write the runtime has not confirmed leaves the draft, marks its ref and is counted on the bar (S10 pending)', async () => {
+      plain()
+      mutationOverride = (ops) => {
+        pendingState = [{ document: 'policy', refs: ops.map((o) => o.ref), intended: {}, state: 'unsettled', startedAt: Date.now() }]
+        return { applied: [], pending: ops.map((o) => ({ ref: o.ref, intended: o.set.model ?? null })) }
+      }
+      const user = userEvent.setup()
+      render(<ModelsPage />)
+      const lane = within(await screen.findByTestId('lane-agent'))
+      await user.click(lane.getByRole('combobox', { name: 'Model' }))
+      await user.click(await screen.findByRole('option', { name: 'GPT-5.4' }))
+      expect((await screen.findByTestId('draft-summary')).textContent).toContain('1 change staged')
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(configWrite()).toBeTruthy())
+      expect((await screen.findByTestId('pending-policy:defaultModel')).textContent).toContain('saving…')
+      // The draft is clean (the bar only speaks for the draft); the header
+      // badge carries the pending count read back from the server.
+      expect(screen.queryByTestId('draft-summary')).toBeNull()
+      expect((await screen.findByTestId('pending-writes')).textContent).toContain('1 write pending runtime confirmation')
+      // The chip never becomes part of the control's name.
+      expect(lane.getByRole('combobox', { name: 'Model' })).toBeTruthy()
     })
 
     it('changing the agent model stages exactly one policy op; discarding clears the draft', async () => {
@@ -774,7 +900,8 @@ describe('ModelsPage component', () => {
       // A deep link to the pin lands on the Agents tab on its own.
       queryOverrides.ref = 'agent:patch:model'
       render(<ModelsPage />)
-      const callout = await screen.findByTestId('callout-agent:patch:model')
+      await deepLinkLanded('Patch model')
+      const callout = screen.getByTestId('callout-agent:patch:model')
       expect(callout.textContent).toContain('No eligible replacement')
     })
 
@@ -791,9 +918,13 @@ describe('ModelsPage component', () => {
       render(<ModelsPage />)
       fireEvent.click(await screen.findByRole('button', { name: 'Reset to this plan…' }))
       const dialog = await screen.findByRole('dialog')
-      // The fixture's customizations: subagent default, fallback, alias, workflow route (model + thinking).
-      expect(within(dialog).getByText('policy:fallback:0')).toBeTruthy()
-      expect(within(dialog).getByText('route:workflow')).toBeTruthy()
+      // The fixture's customizations: subagent default, fallback, alias, workflow
+      // route (model + thinking) — each named by its label with its before-value.
+      expect(within(dialog).getByText('Fallback 1')).toBeTruthy()
+      expect(within(dialog).getByText('anthropic/claude-opus-4-6 → cleared')).toBeTruthy()
+      expect(within(dialog).getByText('workflow')).toBeTruthy()
+      expect(within(dialog).getByText('anthropic/claude-sonnet-4-6 · medium thinking → cleared')).toBeTruthy()
+      expect(within(dialog).queryByText('policy:fallback:0')).toBeNull()
       const confirm = within(dialog).getByRole('button', { name: 'Reset' })
       expect(confirm.getAttribute('aria-disabled') === 'true' || (confirm as HTMLButtonElement).disabled).toBe(true)
       fireEvent.change(within(dialog).getByPlaceholderText('reset'), { target: { value: 'reset' } })
@@ -828,8 +959,8 @@ describe('ModelsPage component', () => {
       render(<ModelsPage />)
       fireEvent.click(await screen.findByRole('button', { name: 'Reset to this plan…' }))
       const dialog = await screen.findByRole('dialog')
-      expect(within(dialog).getByText('Kept policy:fallback:0')).toBeTruthy()
-      expect(within(dialog).getByText('Kept policy:alias:sonnet')).toBeTruthy()
+      expect(within(dialog).getByText('Kept Fallback 1')).toBeTruthy()
+      expect(within(dialog).getByText('Kept Alias sonnet')).toBeTruthy()
     })
   })
 

@@ -134,12 +134,19 @@ export function CardHeader({ className, ...props }: ComponentProps<'div'>) {
   )
 }
 
-export function CardTitle({ className, ...props }: ComponentProps<'div'>) {
+export type CardTitleElement = 'div' | 'h2' | 'h3' | 'h4'
+
+/**
+ * The card's title. `as` renders it as a real heading when the card is a
+ * section of the page (a settings lane, a guide) so the document outline
+ * and heading navigation reach it; the visual treatment is the same.
+ */
+export function CardTitle({ as: Comp = 'div', className, ...props }: ComponentProps<'div'> & { as?: CardTitleElement }) {
   return (
-    <div
+    <Comp
       data-slot="card-title"
       className={cn(
-        'min-w-0 [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold leading-snug group-data-[size=sm]/card:text-[length:var(--bakin-typography-size-body)]',
+        'm-0 min-w-0 [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold leading-snug group-data-[size=sm]/card:text-[length:var(--bakin-typography-size-body)]',
         className,
       )}
       {...props}

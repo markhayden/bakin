@@ -19,6 +19,7 @@ import { WORK_CLASSES } from '../lib/mode'
 import { choresLane } from '../lib/simple'
 import { StagedMark } from './advanced-shared'
 import { PendingChip, SelectionCallout } from './selection-callout'
+import { useDeepLinkFocus } from './use-deep-link-focus'
 import type { SelectionsData } from './use-selections'
 
 export interface AdvancedOverviewProps {
@@ -49,6 +50,7 @@ export function AdvancedOverview({ sel, modelOptions }: AdvancedOverviewProps) {
   const agents = agentRows(states)
   const chores = choresLane(sel.effective)
   const highlight = sel.highlightRef
+  useDeepLinkFocus(highlight, selections !== null)
 
   // What is in use, from the DRAFT (staged values win).
   const byModel = new Map<string, number>()
@@ -112,7 +114,7 @@ export function AdvancedOverview({ sel, modelOptions }: AdvancedOverviewProps) {
             </Text>
           </CardHeader>
           <CardContent>
-          <Field name="advanced-default-model" data-highlighted={highlight === 'policy:defaultModel' ? 'true' : undefined}>
+          <Field name="advanced-default-model" data-selection-ref="policy:defaultModel">
             <FieldLabel htmlFor="advanced-default-model">Default model <StagedMark staged={agent.staged} /> <PendingChip sel={sel} refName="policy:defaultModel" /></FieldLabel>
             <ModelSelect
               id="advanced-default-model"
@@ -199,7 +201,7 @@ export function AdvancedOverview({ sel, modelOptions }: AdvancedOverviewProps) {
         <DisclosurePanel summary="More defaults" summaryMeta={extras.join(' · ')} data-testid="overview-extras">
           <Stack gap="section">
             {support?.defaultSubagentModel ? (
-              <Field name="advanced-default-subagent" data-highlighted={highlight === 'policy:defaultSubagentModel' ? 'true' : undefined}>
+              <Field name="advanced-default-subagent" data-selection-ref="policy:defaultSubagentModel">
                 <FieldLabel htmlFor="advanced-default-subagent">Default subagent model <StagedMark staged={defaultSub.staged} /></FieldLabel>
                 <FieldDescription>What an agent uses when it delegates work to helpers. Set the orchestrator to a strong model here and let its helpers run on something lighter.</FieldDescription>
                 <ModelSelect

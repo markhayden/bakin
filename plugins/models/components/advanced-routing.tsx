@@ -11,14 +11,14 @@
 import { useState } from 'react'
 import { Plus, Route, Wand2, X } from 'lucide-react'
 import { Section, Stack } from '@makinbakin/sdk/layout'
-import { ConfirmDialog, DEFAULT_MODEL_VALUE, DataTable, KeyValue, ListRow, ListRows, ModelSelect, type DataTableColumn, type KeyValueItem, type ModelSelectOption } from '@makinbakin/sdk/patterns'
-import { Alert, Button, Field, FieldLabel, Input, Text } from '@makinbakin/sdk/ui'
+import { ConfirmDialog, DEFAULT_MODEL_VALUE, DataTable, GuideCard, KeyValue, ListRow, ListRows, ModelSelect, type DataTableColumn, type KeyValueItem, type ModelSelectOption } from '@makinbakin/sdk/patterns'
+import { Alert, Button, Field, FieldDescription, FieldLabel, Input, Text } from '@makinbakin/sdk/ui'
 
 import { effectiveTagOverrides } from '../lib/advanced'
 import { WORK_CLASSES } from '../lib/mode'
-import { GuideCard } from '@makinbakin/sdk/patterns'
 import { ALL_THINKING_LEVELS, StagedMark, ThinkingSelect } from './advanced-shared'
 import { PendingChip, SelectionCallout } from './selection-callout'
+import { useDeepLinkFocus } from './use-deep-link-focus'
 import type { SelectionsData } from './use-selections'
 
 const AGENT_WORK_ROWS = WORK_CLASSES.filter((c) => c.routable && c.recommendedTier === undefined)
@@ -40,6 +40,7 @@ export function AdvancedRouting({ sel, modelOptions }: AdvancedRoutingProps) {
   const [newTag, setNewTag] = useState({ tag: '', model: '' })
   const tagRows = effectiveTagOverrides(states, sel.draft, sel.effective)
   const highlight = sel.highlightRef
+  useDeepLinkFocus(highlight, selections !== null)
   const routesSet = [...AGENT_WORK_ROWS, ...CHORES_ROWS].filter((c) => sel.effective(`route:${c.id}`).model || sel.effective(`route:${c.id}`).thinking).length
 
   const routeColumns: ReadonlyArray<DataTableColumn<RouteRow>> = [
@@ -50,9 +51,9 @@ export function AdvancedRouting({ sel, modelOptions }: AdvancedRoutingProps) {
       cell: (row) => {
         const eff = sel.effective(`route:${row.id}`)
         return (
-          <div className="min-w-0" data-route-row={row.id} data-highlighted={highlight === `route:${row.id}` ? 'true' : undefined}>
+          <div className="min-w-0" data-route-row={row.id}>
             <div className="flex flex-wrap items-center gap-bakin-2">
-              <h3 className="m-0">{row.label}</h3>
+              <span className="font-bakin-typography-weight-semibold text-bakin-text-primary">{row.label}</span>
               <StagedMark staged={eff.staged} />
               <PendingChip sel={sel} refName={`route:${row.id}`} />
             </div>
@@ -102,13 +103,22 @@ export function AdvancedRouting({ sel, modelOptions }: AdvancedRoutingProps) {
     ...proposals.skipped.map((s) => ({ label: `Skipped ${s.workClass}`, value: s.reason })),
   ]
 
-  // A new override needs a model to mean anything (tag + nothing = no op).
+  // A new override needs a model to mean anything (tag + nothing = no op);
+  // ':' would break the `tag:<name>` ref, and an existing tag is edited in
+  // its row rather than silently overwritten.
+  const tagName = newTag.tag.trim()
+  const tagProblem = tagName.includes(':')
+    ? 'A tag cannot contain ":".'
+    : tagRows.some((r) => r.tag === tagName)
+      ? `"${tagName}" already has an override — change it in its row below.`
+      : null
   const addTag = () => {
-    const tag = newTag.tag.trim()
-    if (!tag || !newTag.model) return
-    sel.stage(`tag:${tag}`, { model: newTag.model })
+    if (!tagName || tagProblem || !newTag.model) return
+    sel.stage(`tag:${tagName}`, { model: newTag.model })
     setNewTag({ tag: '', model: '' })
   }
+  const rowProps = (row: RouteRow) => ({ 'data-routing-row': row.id, 'data-selection-ref': highlight === `route:${row.id}` ? highlight : undefined })
+  const rowSelected = (row: RouteRow) => highlight === `route:${row.id}`
 
   return (
     <Stack gap="section">
@@ -122,10 +132,15 @@ export function AdvancedRouting({ sel, modelOptions }: AdvancedRoutingProps) {
           { heading: 'Thinking and tags refine it', body: 'Thinking levels trade depth for speed and cost — only the levels your runtime honors are offered. A tag override wins over every route for tasks carrying that tag; use it for a few exceptional jobs, not as a second routing table.' },
         ]}
         actions={(
-          <Button type="button" variant="outline" size="sm" disabled={!perTurnModel || proposals.proposals.length === 0} onClick={() => setRoutesOpen(true)}>
-            <Wand2 className="size-bakin-4" />
-            Use recommended routes
-          </Button>
+          <>
+            {perTurnModel && proposals.proposals.length === 0 ? (
+              <Text as="span" size="meta" tone="muted">No routes to suggest right now.</Text>
+            ) : null}
+            <Button type="button" variant="outline" size="sm" disabled={!perTurnModel || proposals.proposals.length === 0} onClick={() => setRoutesOpen(true)}>
+              <Wand2 className="size-bakin-4" />
+              Use recommended routes
+            </Button>
+          </>
         )}
       />
 
@@ -140,7 +155,7 @@ export function AdvancedRouting({ sel, modelOptions }: AdvancedRoutingProps) {
           <h2 id="agent-work-heading" className="m-0">Agent work</h2>
           <Text as="p" size="meta" tone="muted" className="mt-bakin-1 max-w-prose leading-relaxed">The turns your agents spend on tasks and conversations. Leave these on the agent model unless one kind consistently needs more (or less).</Text>
         </div>
-        <DataTable label="Agent work routes" columns={routeColumns} rows={AGENT_WORK_ROWS} rowKey={(row) => row.id} rowProps={(row) => ({ 'data-routing-row': row.id })} />
+        <DataTable label="Agent work routes" columns={routeColumns} rows={AGENT_WORK_ROWS} rowKey={(row) => row.id} rowProps={rowProps} rowSelected={rowSelected} />
       </Section>
 
       <Section spacing="compact" divider="top" aria-labelledby="chores-heading">
@@ -148,7 +163,7 @@ export function AdvancedRouting({ sel, modelOptions }: AdvancedRoutingProps) {
           <h2 id="chores-heading" className="m-0">Background chores</h2>
           <Text as="p" size="meta" tone="muted" className="mt-bakin-1 max-w-prose leading-relaxed">Small jobs Bakin runs on its own, many times a day. A light model here is the easiest saving on the page.</Text>
         </div>
-        <DataTable label="Background chores routes" columns={routeColumns} rows={CHORES_ROWS} rowKey={(row) => row.id} rowProps={(row) => ({ 'data-routing-row': row.id })} />
+        <DataTable label="Background chores routes" columns={routeColumns} rows={CHORES_ROWS} rowKey={(row) => row.id} rowProps={rowProps} rowSelected={rowSelected} />
       </Section>
 
       <Section spacing="compact" divider="top" aria-labelledby="tag-overrides-heading">
@@ -160,13 +175,14 @@ export function AdvancedRouting({ sel, modelOptions }: AdvancedRoutingProps) {
           <div className="flex flex-wrap items-end gap-bakin-2">
             <Field name="advanced-new-tag">
               <FieldLabel htmlFor="advanced-new-tag">Task tag</FieldLabel>
-              <Input id="advanced-new-tag" value={newTag.tag} placeholder="e.g. heavy" disabled={!perTurnModel} onChange={(event) => setNewTag((p) => ({ ...p, tag: event.target.value }))} />
+              <Input id="advanced-new-tag" value={newTag.tag} placeholder="e.g. heavy" disabled={!perTurnModel} aria-invalid={tagProblem ? true : undefined} onChange={(event) => setNewTag((p) => ({ ...p, tag: event.target.value }))} />
+              {tagProblem ? <FieldDescription>{tagProblem}</FieldDescription> : null}
             </Field>
             <Field name="advanced-new-tag-model">
               <FieldLabel htmlFor="advanced-new-tag-model">Model</FieldLabel>
               <ModelSelect id="advanced-new-tag-model" value={newTag.model || DEFAULT_MODEL_VALUE} onValueChange={(value) => setNewTag((p) => ({ ...p, model: value === DEFAULT_MODEL_VALUE ? '' : value }))} models={modelOptions} defaultLabel="Choose a model…" disabled={!perTurnModel} className="w-full min-w-0" />
             </Field>
-            <Button type="button" variant="outline" size="sm" disabled={!perTurnModel || !newTag.tag.trim() || !newTag.model} onClick={addTag}>
+            <Button type="button" variant="outline" size="sm" disabled={!perTurnModel || !tagName || tagProblem !== null || !newTag.model} onClick={addTag}>
               <Plus className="size-bakin-4" />
               Add override
             </Button>
@@ -177,7 +193,7 @@ export function AdvancedRouting({ sel, modelOptions }: AdvancedRoutingProps) {
         ) : (
           <ListRows aria-label="Tag routing overrides" variant="separated" columns="minmax(8rem,.5fr) minmax(0,1fr) minmax(10rem,.5fr) auto" columnsAt="3xl" columnsAlign="end">
             {tagRows.map((row) => (
-              <ListRow key={row.ref} data-tag-row={row.tag} data-highlighted={highlight === row.ref ? 'true' : undefined} className="px-bakin-4 py-bakin-3">
+              <ListRow key={row.ref} data-tag-row={row.tag} data-selection-ref={highlight === row.ref ? row.ref : undefined} selected={highlight === row.ref} className="px-bakin-4 py-bakin-3">
                 <div className="flex flex-wrap items-center gap-bakin-2">
                   <span className="font-bakin-typography-family-mono text-bakin-text-primary">{row.tag}</span>
                   <StagedMark staged={row.staged} />

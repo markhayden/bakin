@@ -15,7 +15,15 @@ import { Section, Stack } from '@makinbakin/sdk/layout'
 import { Button, Text } from '@makinbakin/sdk/ui'
 
 import { buildResetOps, choresLane } from '../lib/simple'
-import { postSelections, type SelectionsData } from './use-selections'
+import type { SelectionsData } from './use-selections'
+
+/** "anthropic/claude-opus-4-6 · medium thinking" — what a setting holds today, in the words the page uses. */
+function describeBefore(state: { model: string | null; thinking?: string }): string {
+  const parts: string[] = []
+  if (state.model) parts.push(state.model)
+  if (state.thinking && state.thinking !== 'inherit') parts.push(`${state.thinking} thinking`)
+  return parts.join(' · ') || 'unset'
+}
 
 export function ResetToPlan({ sel }: { sel: SelectionsData }) {
   const [open, setOpen] = useState(false)
@@ -30,18 +38,27 @@ export function ResetToPlan({ sel }: { sel: SelectionsData }) {
   const chores = lane.mixed ? null : lane.explicit ? lane.model : null
   const { ops, skipped } = buildResetOps(selections.states, selections.support, { chores })
   const agent = sel.effective('policy:defaultModel').model
+  // Each change by the setting's label with its before-value — the reader
+  // confirms what goes away, never a ref they have to decode.
+  const byRef = new Map(selections.states.map((s) => [s.ref, s]))
   const items: KeyValueItem[] = [
     { label: 'Agent model', value: agent ?? 'Not set', mono: true },
     { label: 'Background chores', value: chores ?? `Same as the agent model${lane.mixed ? ' (the lanes were mixed)' : ''}`, mono: chores !== null },
-    ...ops.map((op) => ({ label: op.ref, value: op.set.model === undefined ? 'thinking cleared' : op.set.model === null ? 'cleared' : op.set.model, mono: true })),
-    ...skipped.map((s) => ({ label: `Kept ${s.ref}`, value: s.reason })),
+    ...ops.map((op) => {
+      const state = byRef.get(op.ref)
+      const after = op.set.model === undefined
+        ? `${state?.model ?? 'unset'} (thinking cleared)`
+        : op.set.model === null ? 'cleared' : op.set.model
+      return { label: state?.label ?? op.ref, value: `${state ? describeBefore(state) : 'unset'} → ${after}`, mono: true }
+    }),
+    ...skipped.map((s) => ({ label: `Kept ${s.label}`, value: s.reason })),
   ]
 
   const confirm = async () => {
     setBusy(true)
     setError(null)
     try {
-      const outcome = await postSelections(selections.revision, ops, { snapshot: 'reset' })
+      const outcome = await sel.submit(ops, { snapshot: 'reset' })
       if (outcome.failed.length > 0) {
         setError(`${outcome.failed.length} change${outcome.failed.length === 1 ? '' : 's'} could not be written: ${outcome.failed.map((f) => `${f.ref} — ${f.message}`).join('; ')}`)
         return

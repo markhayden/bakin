@@ -249,7 +249,9 @@ export function CatalogPanel({ catalog, defaultModel }: CatalogPanelProps) {
       key: 'status',
       header: 'Status',
       cell: (model) => {
-        const isDefault = model.isDefault || model.id === effectiveDefaultModel
+        // The persisted selection decides — the cached catalog row's own flag
+        // goes stale the moment the default changes.
+        const isDefault = model.id === effectiveDefaultModel
         return (
           <span className="flex flex-wrap items-center gap-bakin-1">
             {model.eligibility?.status === 'ineligible' ? (
@@ -397,7 +399,7 @@ export function CatalogPanel({ catalog, defaultModel }: CatalogPanelProps) {
           rowKey={(model) => model.id}
           rowProps={(model) => ({
             'data-model-row': '',
-            'data-default': model.isDefault || model.id === effectiveDefaultModel ? 'true' : undefined,
+            'data-default': model.id === effectiveDefaultModel ? 'true' : undefined,
           })}
           sort={sort ?? undefined}
           onSortChange={(field) => {

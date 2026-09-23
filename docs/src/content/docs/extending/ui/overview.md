@@ -330,6 +330,14 @@ columns stay unsortable. Paginated tables keep the controlled form
 slice. See the DataTable `SelfSorting` story.
 :::
 
+:::note[Mark the chosen or deep-linked row]
+`rowSelected={(row) => …}` gives a row the kit's selected treatment on both
+renders — the `ListRow` tint in the narrow render, `data-selected` on the
+wide `<tr>` — for the record a deep link landed on or the one currently
+chosen. Consumers own the state; nothing about the row becomes interactive.
+See the DataTable `SelectedRow` story.
+:::
+
 For media-led detail pages, use the default full `Page` canvas and
 `PageHeader measure="wide"` with the preview in the primary column and
 context, enrichment, downloads, and version history in the named `PageAside`.
@@ -593,7 +601,7 @@ The surface/content set covers bounded objects, compact identity, content bounda
 
 | Need | Component | Contract |
 | --- | --- | --- |
-| Represent a coherent bounded object | `Card` and its subparts | Use for an entity, record, or grouped data—not page layout |
+| Represent a coherent bounded object | `Card` and its subparts | Use for an entity, record, or grouped data—not page layout. When a card IS a section of the page (a settings lane, a guide), render its title as a real heading with `CardTitle as="h2"` (or `h3`) so heading navigation reaches it — the look is unchanged; see the Card `TitleAsHeading` story |
 | Arrange bounded objects in lanes | `KanbanBoard`, `KanbanColumn`, `KanbanColumnHeader`, `KanbanColumnBody`, and `KanbanCardSignal` | Keep one labelled horizontal overflow boundary; lanes remain structural, records retain their own Card boundaries, and operational feedback uses a full-width filled row rather than another chip |
 | Show compact identity | `Avatar`, `AvatarFallback`, and group helpers | Pair the visual with a visible or accessible identity name |
 | Reinforce a real content boundary | `Separator` | Decorative by default; opt into separator semantics deliberately |

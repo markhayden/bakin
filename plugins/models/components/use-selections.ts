@@ -97,6 +97,14 @@ export interface SelectionsData {
   /** The `?ref=` deep link, if any — highlighted by whichever view owns it. */
   highlightRef: string | null
   pendingRefs: Map<string, { state: 'unsettled' | 'failed' | 'conflict'; detail?: string }>
+  /**
+   * The ONE client write: POST `ops` under the revision the page holds,
+   * re-posting once against a fresh revision if someone else saved in
+   * between, and adopting the returned revision so the NEXT write plans
+   * against live state. `save` (the draft), the view persist and Reset all
+   * go through it.
+   */
+  submit: (ops: SelectionOpWire[], extra?: { snapshot?: 'reset' }) => Promise<SaveOutcome>
   // ── the draft (S5/S10) ────────────────────────────────────────────────
   draft: Draft
   dirty: boolean
@@ -124,7 +132,9 @@ export function useSelections(): SelectionsData {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [ref] = useQueryState('ref', '')
-  const [viewOverride, setViewOverride] = useState<UiMode | null>(null)
+  // A view the operator chose by hand — keyed to the deep link it was chosen
+  // under, so a NEW `?ref=` (Health → Models while already here) flips again.
+  const [viewOverride, setViewOverride] = useState<{ ref: string | null; view: UiMode } | null>(null)
   const [draft, setDraft] = useState<Draft>(() => new Map())
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -156,6 +166,39 @@ export function useSelections(): SelectionsData {
 
   const reload = useCallback(() => load(), [load])
 
+  // The revision every write plans under — the loaded one, moved forward by
+  // each write's answer (the page's own ui:mode persist moves it too: the
+  // hash covers every ref, so a Reset planned under the loaded revision
+  // would be refused as stale).
+  const revisionRef = useRef<string | null>(null)
+  revisionRef.current = selections?.revision ?? null
+  const adoptRevision = useCallback((revision: string | null) => {
+    if (!revision) return
+    revisionRef.current = revision
+    setSelections((prev) => (prev && prev.revision !== revision ? { ...prev, revision } : prev))
+  }, [])
+
+  const submit = useCallback(async (ops: SelectionOpWire[], extra?: { snapshot?: 'reset' }): Promise<SaveOutcome> => {
+    let revision = revisionRef.current
+    if (!revision) throw new Error('Model configuration is not loaded yet.')
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const outcome = await postSelections(revision, ops, extra)
+        adoptRevision(outcome.revision)
+        return outcome
+      } catch (err) {
+        // Someone else saved in between: the ops are explicit intents, so
+        // re-posting them against the fresh revision is safe — once.
+        if ((err as { code?: string }).code === 'stale_revision' && attempt === 0) {
+          const fresh = await pluginFetchJson<SelectionsResponse>(PLUGIN_ID, 'selections', { label: 'Model selections', timeoutMs: LOAD_TIMEOUT_MS })
+          revision = fresh.revision
+          continue
+        }
+        throw err
+      }
+    }
+  }, [adoptRevision])
+
   const states: SelectionStateWire[] = useMemo(() => selections?.states ?? [], [selections])
   const customizations = useMemo(() => listCustomizations(states), [states])
   const persistedMode = states.find((s) => s.ref === 'ui:mode')?.model
@@ -167,25 +210,25 @@ export function useSelections(): SelectionsData {
   useEffect(() => {
     if (!selections || persistedMode || persistedOnce.current) return
     persistedOnce.current = true
-    void postSelections(selections.revision, [{ ref: 'ui:mode', set: { model: mode } }]).catch(() => {
+    void submit([{ ref: 'ui:mode', set: { model: mode } }]).catch(() => {
       // A failed mode write is cosmetic: the page still classifies on the next load.
     })
-  }, [selections, persistedMode, mode])
+  }, [selections, persistedMode, mode, submit])
 
   const highlightRef = ref || null
   // A ref in the Advanced layer must be visible: flip the VIEW (no write).
-  const refView: UiMode | null = highlightRef && refLayer(highlightRef) === 'advanced' ? 'advanced' : null
-  const view: UiMode = viewOverride ?? refView ?? mode
+  const refView: UiMode | null = highlightRef && refLayer(highlightRef, states) === 'advanced' ? 'advanced' : null
+  const chosen = viewOverride && viewOverride.ref === highlightRef ? viewOverride.view : null
+  const view: UiMode = chosen ?? refView ?? mode
 
   const setView = useCallback((next: UiMode) => {
-    setViewOverride(next)
-    if (!selections) return
-    void postSelections(selections.revision, [{ ref: 'ui:mode', set: { model: next } }])
+    setViewOverride({ ref: highlightRef, view: next })
+    void submit([{ ref: 'ui:mode', set: { model: next } }])
       .then(() => load())
       .catch(() => {
         // The view already switched; a failed persist only affects the next visit.
       })
-  }, [selections, load])
+  }, [highlightRef, submit, load])
 
   const pendingRefs = useMemo(() => {
     const map = new Map<string, { state: 'unsettled' | 'failed' | 'conflict'; detail?: string }>()
@@ -215,41 +258,25 @@ export function useSelections(): SelectionsData {
     setSaving(true)
     setSaveError(null)
     try {
-      let revision = selections.revision
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          const outcome = await postSelections(revision, ops)
-          // Applied + pending refs leave the draft; failed ones stay for Retry.
-          setDraft((prev) => retainFailed(prev, outcome))
-          setLastSave(outcome)
-          if (outcome.failed.length > 0) {
-            setSaveError(`${outcome.failed.length} change${outcome.failed.length === 1 ? '' : 's'} could not be written: ${outcome.failed.map((f) => `${f.ref} — ${f.message}`).join('; ')}`)
-          }
-          await load()
-          return outcome.failed.length === 0
-        } catch (err) {
-          // Someone else saved in between: the ops are explicit intents, so
-          // re-posting them against the fresh revision is safe — once.
-          if ((err as { code?: string }).code === 'stale_revision' && attempt === 0) {
-            const fresh = await pluginFetchJson<SelectionsResponse>(PLUGIN_ID, 'selections', { label: 'Model selections', timeoutMs: LOAD_TIMEOUT_MS })
-            revision = fresh.revision
-            continue
-          }
-          throw err
-        }
+      const outcome = await submit(ops)
+      // Applied + pending refs leave the draft; failed ones stay for Retry.
+      setDraft((prev) => retainFailed(prev, outcome))
+      setLastSave(outcome)
+      if (outcome.failed.length > 0) {
+        setSaveError(`${outcome.failed.length} change${outcome.failed.length === 1 ? '' : 's'} could not be written: ${outcome.failed.map((f) => `${f.ref} — ${f.message}`).join('; ')}`)
       }
-      setSaveError('The configuration kept changing while saving — review and try again.')
-      return false
+      await load()
+      return outcome.failed.length === 0
     } catch (err) {
       setSaveError(errorMessage(err))
       return false
     } finally {
       setSaving(false)
     }
-  }, [draft, selections, load])
+  }, [draft, selections, submit, load])
 
   return {
-    selections, plan, loading, error, reload, mode, view, setView, customizations, highlightRef, pendingRefs,
+    selections, plan, loading, error, reload, mode, view, setView, customizations, highlightRef, pendingRefs, submit,
     draft, dirty: draft.size > 0, stagedCount: draft.size, stage, stageAll, unstage, discard, effective,
     saving, saveError, lastSave, save,
   }

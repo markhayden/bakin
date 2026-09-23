@@ -17,8 +17,10 @@ import { Alert, Badge, Button, Card, CardContent, CardDescription, CardHeader, C
 
 import { CHORES_CLASSES } from '../lib/mode'
 import { choresLane, setAllChoresOps } from '../lib/simple'
+import { StagedMark } from './advanced-shared'
 import { ResetToPlan } from './reset-dialog'
 import { PendingChip, SelectionCallout } from './selection-callout'
+import { useDeepLinkFocus } from './use-deep-link-focus'
 import type { SelectionsData } from './use-selections'
 
 export interface SimpleModeProps {
@@ -28,11 +30,12 @@ export interface SimpleModeProps {
   onAdvanced: () => void
 }
 
-function PlanLane({ id, title, description, children, staged, highlighted }: { id: string; title: string; description: string; children: ReactNode; staged: boolean; highlighted: boolean }) {
+/** One lane card. The title is a real h2: the two lanes ARE the page's sections. `selectionRef` lets a deep link land on the lane's control. */
+function PlanLane({ id, title, description, children, staged, selectionRef }: { id: string; title: string; description: string; children: ReactNode; staged: boolean; selectionRef: string | null }) {
   return (
-    <Card data-testid={id} data-highlighted={highlighted ? 'true' : undefined} data-staged={staged ? 'true' : undefined}>
+    <Card data-testid={id} data-selection-ref={selectionRef ?? undefined} data-staged={staged ? 'true' : undefined}>
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        <CardTitle as="h2">{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent>
@@ -51,6 +54,8 @@ export function SimpleMode({ sel, modelOptions, onAdvanced }: SimpleModeProps) {
   const stagedAgentLabel = agent.staged ? ' (unsaved)' : ''
   const choresStaged = CHORES_CLASSES.some((c) => sel.effective(`route:${c}`).staged)
   const highlighted = sel.highlightRef
+  const choresHighlighted = highlighted !== null && highlighted.startsWith('route:') && (CHORES_CLASSES as readonly string[]).includes(highlighted.slice(6))
+  useDeepLinkFocus(highlighted, sel.selections !== null)
   // The runtime refuses per-turn model overrides (#880): chores routes are
   // saved here but every chore runs on the agent model until that changes.
   const perTurnModel = sel.selections?.support.perTurnModel !== false
@@ -73,10 +78,14 @@ export function SimpleMode({ sel, modelOptions, onAdvanced }: SimpleModeProps) {
           title="Agent model"
           description="Chat, direct messages, and every task your agents run."
           staged={agent.staged}
-          highlighted={highlighted === 'policy:defaultModel'}
+          selectionRef={highlighted === 'policy:defaultModel' ? highlighted : null}
         >
           <Field name="lane-agent-model">
-            <FieldLabel htmlFor="lane-agent-model">Model{stagedAgentLabel} <PendingChip sel={sel} refName="policy:defaultModel" /></FieldLabel>
+            {/* The chip sits BESIDE the label so the control's name stays "Model". */}
+            <div className="flex flex-wrap items-center gap-bakin-2">
+              <FieldLabel htmlFor="lane-agent-model">Model{stagedAgentLabel}</FieldLabel>
+              <PendingChip sel={sel} refName="policy:defaultModel" />
+            </div>
             <ModelSelect
               id="lane-agent-model"
               value={agent.model ?? DEFAULT_MODEL_VALUE}
@@ -97,7 +106,7 @@ export function SimpleMode({ sel, modelOptions, onAdvanced }: SimpleModeProps) {
           title="Background chores"
           description="Titles, asset enrichment, notifications, team routing, and skill mapping — the lighter model that does the small jobs."
           staged={choresStaged}
-          highlighted={highlighted !== null && highlighted.startsWith('route:') && (CHORES_CLASSES as readonly string[]).includes(highlighted.slice(6))}
+          selectionRef={choresHighlighted ? highlighted : null}
         >
           {!perTurnModel ? (
             <Alert tone="attention" data-testid="chores-not-applied">
@@ -108,6 +117,7 @@ export function SimpleMode({ sel, modelOptions, onAdvanced }: SimpleModeProps) {
             <Stack gap="dense">
               <div className="flex flex-wrap items-center gap-bakin-2">
                 <Badge tone="attention" variant="soft" data-testid="chores-mixed">Mixed ({chores.models.length} model{chores.models.length === 1 ? '' : 's'}{chores.thinkingSet ? ', thinking set' : ''})</Badge>
+                <StagedMark staged={choresStaged} />
               </div>
               <Field name="lane-chores-set-all">
                 <FieldLabel htmlFor="lane-chores-set-all">Set all to</FieldLabel>
