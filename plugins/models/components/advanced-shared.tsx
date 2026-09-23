@@ -49,7 +49,7 @@ export function GuideCard({ icon: Icon, title, lead, points, actions }: GuideCar
             <Icon className="size-bakin-4" />
           </span>
         ) : null}
-        <div className="flex min-w-0 flex-1 flex-col gap-bakin-6">
+        <div className="flex min-w-0 flex-1 flex-col gap-bakin-4">
           <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
             <div className="min-w-0">
               <CardTitle>{title}</CardTitle>

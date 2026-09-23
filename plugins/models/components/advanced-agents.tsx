@@ -69,7 +69,7 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
         title="Give one agent a different model"
         lead={`Every agent runs on the default model${agent.model ? ` (${agent.model})` : ''} unless you override it here. ${pinned === 0 ? 'Nothing is overridden right now.' : `${pinned} of ${rows.length} agent${rows.length === 1 ? '' : 's'} ${pinned === 1 ? 'has' : 'have'} an override.`}`}
         points={[
-          { heading: 'Leave most agents on the default', body: 'One good default keeps behavior predictable and makes a provider switch a one-line change. Override only where the work is genuinely different.' },
+          { heading: 'Leave most agents on the default', body: 'One default keeps behavior predictable and provider switches painless. Override only where the work is genuinely different.' },
           { heading: 'Pin up for hard work, down for volume', body: 'A strategist or reviewer may earn a premium model; a triage or monitoring agent that runs constantly is where a budget model pays off.' },
           { heading: 'Subagents are a separate dial', body: 'Where the runtime supports it, an agent that delegates can send its helpers to a lighter model without changing what it uses itself.' },
         ]}
