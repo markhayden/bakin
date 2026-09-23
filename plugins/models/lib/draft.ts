@@ -82,7 +82,7 @@ export function retainFailed(draft: Draft, outcome: { applied: string[]; pending
 export function withInFlight(states: readonly SelectionStateWire[], submitted: Draft): SelectionStateWire[] {
   if (submitted.size === 0) return [...states]
   const seen = new Set<string>()
-  const overlaid = states.map((state) => {
+  const overlaid = states.filter((state) => !isFallbackRef(state.ref)).map((state) => {
     const set = submitted.get(state.ref)
     if (!set) return state
     seen.add(state.ref)
@@ -93,15 +93,17 @@ export function withInFlight(states: readonly SelectionStateWire[], submitted: D
     }
   })
   for (const [ref, set] of submitted) {
-    if (seen.has(ref)) continue
+    if (seen.has(ref) || isFallbackRef(ref)) continue
     overlaid.push({ ref, model: set.model ?? null, ...(set.thinking ? { thinking: set.thinking } : {}), document: 'policy', label: ref })
   }
-  return overlaid
+  // Fallbacks are positional: the list the save LEAVES is the server's
+  // result (assign-then-compact), re-emitted as fresh index states.
+  return [...overlaid, ...fallbackStates(applyFallbackOps(fallbackList(states), submitted))]
 }
 
 const FALLBACK_PREFIX = 'policy:fallback:'
 
-/** The persisted fallback list in index order — the positional context a `policy:fallback:<n>` op was staged against. */
+/** The persisted fallback list in index order — the positional context a `policy:fallback:<n>` op is relative to. */
 export function fallbackList(states: readonly SelectionStateWire[]): string[] {
   return states
     .filter((s) => s.ref.startsWith(FALLBACK_PREFIX))
@@ -109,10 +111,42 @@ export function fallbackList(states: readonly SelectionStateWire[]): string[] {
     .filter((row) => Number.isFinite(row.n))
     .sort((a, b) => a.n - b.n)
     .map((row) => row.model ?? '')
+    .filter((model) => model.length > 0)
 }
 
 export function isFallbackRef(ref: string): boolean {
   return ref.startsWith(FALLBACK_PREFIX)
+}
+
+export function sameFallbackList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((model, n) => model === b[n])
+}
+
+/**
+ * The fallback list a set of positional ops produces from `list` — exactly
+ * the server's rule (`model-mutations.ts`): every op assigns its index
+ * (`null` empties it), then the list compacts. Order-independent.
+ */
+export function applyFallbackOps(list: readonly string[], ops: Draft | readonly SelectionOpWire[]): string[] {
+  const next = [...list]
+  const entries: Array<[string, DraftSet]> = Array.isArray(ops)
+    ? (ops as readonly SelectionOpWire[]).map((op) => [op.ref, op.set])
+    : [...(ops as Draft).entries()]
+  for (const [ref, set] of entries) {
+    if (!isFallbackRef(ref) || set.model === undefined) continue
+    const n = Number(ref.slice(FALLBACK_PREFIX.length))
+    if (!Number.isFinite(n)) continue
+    next[n] = set.model ?? ''
+  }
+  return next.filter((model) => typeof model === 'string' && model.length > 0)
+}
+
+function fallbackStates(list: readonly string[]): SelectionStateWire[] {
+  return list.map((model, n) => ({ ref: `${FALLBACK_PREFIX}${n}`, model, document: 'policy', label: `Fallback ${n + 1}` }))
+}
+
+export function hasFallbackOps(draft: Draft): boolean {
+  return [...draft.keys()].some(isFallbackRef)
 }
 
 /** Drop every positional fallback op — they were staged against a list that no longer exists. */
