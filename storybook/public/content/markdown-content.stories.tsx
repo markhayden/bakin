@@ -61,12 +61,34 @@ export const CanonicalUsage = {
   args: { content: '# Release notes\n\nThe **routing contract** remains authoritative.' },
   argTypes: {
     content: { control: 'text' },
+    compareTo: { control: 'text' },
     // Internal links delegate to the consumer's routing link.
     renderInternalLink: { control: false },
   },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('heading', { name: 'Release notes', level: 1 })).toBeVisible()
     await expect(canvas.getByText('routing contract')).toBeVisible()
+  },
+} satisfies Story
+
+const comparisonBefore = '# Project plan\n\n## Goal\n\nAn old goal.\n\n## Tasks\n\n- First task\n  - Nested detail\n- Second task\n\n| Day | Place |\n| --- | --- |\n| Saturday | Old park |\n\n```ts\nconst ready = false\n```\n\n[Project reference][project]\n\n[project]: /projects/old\n\nRemoved closing note.'
+const comparisonAfter = comparisonBefore.replace('An old goal.', 'An updated goal.').replace('Second task', 'Replacement task').replace('Old park', 'New park').replace('false', 'true').replace('/projects/old', '/projects/current').replace('\n\nRemoved closing note.', '')
+
+export const WholeDocumentComparison = {
+  args: { content: comparisonAfter, compareTo: comparisonBefore },
+  play: async ({ canvas, canvasElement }) => {
+    await expect(canvas.getByRole('heading', { name: 'Goal', level: 2 })).toBeVisible()
+    await expect(canvas.getByRole('table')).toBeVisible()
+    await expect(canvas.getByRole('link', { name: 'Project reference' })).toHaveAttribute('href', '/projects/current')
+    await expect(canvasElement.querySelectorAll('[data-md-changed-block]')).toHaveLength(5)
+    await expect(canvas.getAllByText(/removed from the previous version/).length).toBeGreaterThan(0)
+  },
+} satisfies Story
+
+export const DeletedDocument = {
+  args: { content: '', compareTo: 'A removed paragraph.' },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('1 block removed from the previous version.')).toBeVisible()
   },
 } satisfies Story
 

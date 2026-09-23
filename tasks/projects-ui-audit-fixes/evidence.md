@@ -78,3 +78,14 @@ references and code-fence marker handling. Managed-section presentation now runs
 on the parsed full document. Ten Markdown tests, three browser stories (including
 axe), typecheck and lint pass. Shared parser dependencies are declared directly.
 Packed-SDK consumer verification is included in T08/T26; no baseline replacement.
+
+## C3 — Bounded Markdown comparison (T05)
+
+Approved `compareTo` parses full documents, fingerprints semantic blocks and their
+resolved references, and preserves whole lists/tables/code. Replacements receive a
+green edge plus non-color accessible text; surplus deletions receive positioned
+text markers, including an empty current document. At the one-million-step ceiling,
+the complete document remains visible with an explicit unavailable notice.
+Focused comparison/Markdown tests and five public stories pass. Desktop/320px
+browser checks pass for flow geometry, semantics, copy action and 200% text.
+Typecheck/lint pass. An initial Storybook dependency-cache reload required one rerun.

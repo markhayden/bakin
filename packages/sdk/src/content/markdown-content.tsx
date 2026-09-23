@@ -19,6 +19,7 @@ import {
 // Deep subpath: the patterns barrel is most of the SDK patterns bundle.
 import { CopyButton } from '@bakin/ui/patterns/copy-button'
 import { remarkManagedSections } from './markdown-document'
+import { remarkComparison } from './markdown-comparison'
 
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v)(\?.*)?$/i
 // Raw or percent-encoded angle brackets: a template placeholder, not a URL.
@@ -33,6 +34,8 @@ export interface MarkdownInternalLinkProps {
 /** Props for rich, safe Bakin Markdown presentation. */
 export interface MarkdownContentProps {
   content: string
+  /** Previous full document; adds semantic change/deletion annotations. */
+  compareTo?: string
   className?: string
   /** Use the established host/plugin link for internal SPA navigation. */
   renderInternalLink?: (props: MarkdownInternalLinkProps) => ReactNode
@@ -146,7 +149,7 @@ function SafeAnchor({
   return <a href={href}>{children}</a>
 }
 
-function MarkdownBody({ content, renderInternalLink }: MarkdownContentProps) {
+function MarkdownBody({ content, compareTo, renderInternalLink }: MarkdownContentProps) {
   const components = useMemo<Components>(() => ({
     pre: ({ children }) => <FencedCode>{children}</FencedCode>,
     img: ({ src, alt }) => <MediaImage src={src} alt={alt} />,
@@ -167,9 +170,9 @@ function MarkdownBody({ content, renderInternalLink }: MarkdownContentProps) {
     ) : null,
   }), [renderInternalLink])
 
-  if (!content.trim()) return null
+  if (!content.trim() && compareTo === undefined) return null
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm, remarkManagedSections]} rehypePlugins={[rehypeHighlight]} components={components}>
+    <ReactMarkdown remarkPlugins={[remarkGfm, [remarkComparison, compareTo], remarkManagedSections]} rehypePlugins={[rehypeHighlight]} components={components}>
       {content}
     </ReactMarkdown>
   )
@@ -178,10 +181,10 @@ function MarkdownBody({ content, renderInternalLink }: MarkdownContentProps) {
 const markdownClasses = 'min-w-0 font-bakin-typography-family-ui [font-size:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted'
 
 /** Rich GFM, code, media, and managed-section presentation for Bakin content. */
-export function MarkdownContent({ content, className, renderInternalLink }: MarkdownContentProps) {
+export function MarkdownContent({ content, compareTo, className, renderInternalLink }: MarkdownContentProps) {
   return (
     <div data-markdown-content="" className={`${markdownClasses} ${className ?? ''}`}>
-      <MarkdownBody content={content} renderInternalLink={renderInternalLink} />
+      <MarkdownBody content={content} compareTo={compareTo} renderInternalLink={renderInternalLink} />
     </div>
   )
 }

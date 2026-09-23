@@ -18,7 +18,7 @@ evidence when checking an item; a written plan is not a passing test.
 - [x] T02b: Make scoped plugin replacement writes atomic
 - [x] T03: Implement AgentSelect's approved appearance contract
 - [x] T04: Preserve full Markdown context through managed sections
-- [ ] T05: Add bounded, accessible Markdown comparison
+- [x] T05: Add bounded, accessible Markdown comparison
 - [x] T06: Correct shared composer focus behavior
 - [x] T07: Correct contained conversation keyboard scrolling
 - [x] T07b: Forward the existing composer handle through ConversationPanel
