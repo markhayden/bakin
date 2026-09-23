@@ -1613,3 +1613,37 @@ plus “+N more”; the popup exposes every selected option. Supply `items` labe
 and `SelectItem label` for rich option typeahead. `null` means a placeholder;
 an empty-string option is an explicit selectable “None” choice. Select has no
 editable search input; use Combobox for searchable selection.
+
+
+### Searchable selection
+
+Use `Combobox` from `@makinbakin/sdk/ui` when users search a predefined catalog.
+Its query stays separate from committed single or multiple values; it does not
+create arbitrary values. The 16 public parts cover the root, control, input,
+trigger, clear, value, content, list, item, group/label, empty/status and chips.
+`ComboboxLabel` labels a group; use `FieldLabel` for the editable input.
+
+```tsx
+<Field name="runtime">
+  <FieldLabel>Runtime</FieldLabel>
+  <Combobox items={['Pi', 'OpenClaw']}>
+    <ComboboxControl size="md" variant="outlined">
+      <ComboboxInput placeholder="Search runtimes" />
+      <ComboboxClear aria-label="Clear runtime" />
+      <ComboboxTrigger aria-label="Show runtimes" />
+    </ComboboxControl>
+    <ComboboxContent>
+      <ComboboxEmpty>No matching runtimes.</ComboboxEmpty>
+      <ComboboxList>{(item: string) => <ComboboxItem key={item} value={item}>{item}</ComboboxItem>}</ComboboxList>
+    </ComboboxContent>
+  </Combobox>
+</Field>
+```
+
+Control width defaults to `full`; `auto` is available for constrained toolbars.
+Put size/variant on ComboboxControl. The input accepts `htmlSize` for native
+width hints. Object values should provide `itemToStringLabel`,
+`itemToStringValue` and `isItemEqualToValue` with stable IDs. The root preserves
+Base UI's controlled/uncontrolled callbacks, including event details.
+ComboboxContent retains plugin portal ownership and anchor positioning.
+Keep ComboboxStatus mounted and update its contents to announce changes.

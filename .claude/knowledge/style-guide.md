@@ -358,3 +358,14 @@ the editable control. Disable mutating actions explicitly for disabled/readonly
 fields. Apply disabled opacity once at the shell. Use the public `TextEntry`
 story for clear/reveal/copy/count/loading/submit composition and `FieldControl`
 for textarea help/error association. Form/Field do not provide visual defaults.
+
+
+### Searchable choices
+
+Choose Select for bounded noneditable choices; Combobox for a searchable
+catalog. Query text never becomes a selected form value. Compose FieldLabel
+with ComboboxInput; ComboboxLabel belongs to an option group. Style only
+ComboboxControl. Chips wrap with the input and have explicitly named removal
+actions. Use the existing Base UI value/identity contract, shared option-list
+styles and PluginPortalBoundary. Keep loading announcements separate from
+field validation and never render a status message as a selectable option.

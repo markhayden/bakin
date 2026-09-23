@@ -24,7 +24,7 @@ export function InputGroup({ className, size = 'md', variant = 'outlined', ...pr
       data-variant={variant}
       role="group"
       className={cn(
-        controlStyles({ size, variant }),
+        controlStyles({ size: null, variant }),
         controlHeight[size],
         [
           'group/input-group relative flex w-full items-center p-0',

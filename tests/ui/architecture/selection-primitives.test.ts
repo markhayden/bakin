@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
-const PRIMITIVES = ['checkbox', 'switch', 'select'] as const
+const PRIMITIVES = ['checkbox', 'switch', 'select', 'combobox'] as const
 
 function readRepoFile(path: string): string {
   return readFileSync(join(REPO_ROOT, path), 'utf8')
@@ -44,6 +44,8 @@ describe('selection primitive ownership', () => {
 
     expect(publicUi.Checkbox).toBe(privateUi.Checkbox)
     expect(publicUi.Switch).toBe(privateUi.Switch)
+    expect(publicUi.Combobox).toBe(privateUi.Combobox)
+    expect(publicUi.ComboboxContent).toBe(privateUi.ComboboxContent)
     expect(publicUi.Select).toBe(privateUi.Select)
     expect(publicUi.SelectTrigger).toBe(privateUi.SelectTrigger)
     expect(publicUi.SelectContent).toBe(privateUi.SelectContent)

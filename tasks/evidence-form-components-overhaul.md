@@ -73,3 +73,22 @@ Starting commit: `1ecbc0b90`; branch: `codex/form-components-overhaul`.
   min-height class assertion with DOM prop checks plus real matrix geometry.
   No consumers used the removed `default` size outside the repaired public story.
   Logs: `/private/tmp/bakin-form-{select-unit,select-browser,selection-stories}.log`.
+
+- C5 committed `1edf08289`. C6 adds the approved 16 Combobox values and 16
+  Props types (public inventory now 316 values/423 types). Basic filtering,
+  grouping, chip removal and matrix stories passed, along with 8 unit/portal
+  tests and quick conformance. Added the second visual spec to the architecture
+  harness's explicit filename contract; no ratchet allowances were changed.
+- Canonical Dialog feasibility and group-padding regression: **9/9 passed**
+  across all engines at 320px. Search/select/remove/Escape and final focus
+  return work inside Dialog. Unit tests distinguish queries from submitted
+  object IDs and preserve plugin ownership.
+- Shared shell repair: `p-0` did not override token-specific px/py CSS utilities;
+  inspected padding was `4px 8px`. Shells now request no size padding from the
+  private recipe; children/addons own inset. Browser regression asserts zero
+  shell padding and all nominal sizes. Log: `/private/tmp/bakin-form-combo-browser.log`.
+- C6 payload check is **pending approval**, not passing: a matched in-memory
+  production build attributes 47,109 bytes to Combobox. Six reviewed totals
+  need the explicitly proposed adjustment in `tasks/form-components-payload-review.md`.
+  Source/API checkpoint commits do not claim full conformance while this and
+  exact PNG approvals remain outstanding.

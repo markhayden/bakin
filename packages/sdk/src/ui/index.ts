@@ -351,3 +351,40 @@ export type {
   TooltipProviderProps,
   TooltipTriggerProps,
 } from '@bakin/ui'
+
+export {
+  Combobox,
+  ComboboxControl,
+  ComboboxInput,
+  ComboboxTrigger,
+  ComboboxClear,
+  ComboboxValue,
+  ComboboxContent,
+  ComboboxList,
+  ComboboxItem,
+  ComboboxGroup,
+  ComboboxLabel,
+  ComboboxEmpty,
+  ComboboxStatus,
+  ComboboxChips,
+  ComboboxChip,
+  ComboboxChipRemove
+} from '@bakin/ui'
+export type {
+  ComboboxProps,
+  ComboboxControlProps,
+  ComboboxInputProps,
+  ComboboxTriggerProps,
+  ComboboxClearProps,
+  ComboboxValueProps,
+  ComboboxContentProps,
+  ComboboxListProps,
+  ComboboxItemProps,
+  ComboboxGroupProps,
+  ComboboxLabelProps,
+  ComboboxEmptyProps,
+  ComboboxStatusProps,
+  ComboboxChipsProps,
+  ComboboxChipProps,
+  ComboboxChipRemoveProps
+} from '@bakin/ui'

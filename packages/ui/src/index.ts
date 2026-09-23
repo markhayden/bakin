@@ -415,3 +415,40 @@ export type {
   DrawerSectionHeadingLevel,
   DrawerSectionProps,
 } from './patterns/drawer-section'
+
+export {
+  Combobox,
+  ComboboxControl,
+  ComboboxInput,
+  ComboboxTrigger,
+  ComboboxClear,
+  ComboboxValue,
+  ComboboxContent,
+  ComboboxList,
+  ComboboxItem,
+  ComboboxGroup,
+  ComboboxLabel,
+  ComboboxEmpty,
+  ComboboxStatus,
+  ComboboxChips,
+  ComboboxChip,
+  ComboboxChipRemove
+} from './primitives/combobox'
+export type {
+  ComboboxProps,
+  ComboboxControlProps,
+  ComboboxInputProps,
+  ComboboxTriggerProps,
+  ComboboxClearProps,
+  ComboboxValueProps,
+  ComboboxContentProps,
+  ComboboxListProps,
+  ComboboxItemProps,
+  ComboboxGroupProps,
+  ComboboxLabelProps,
+  ComboboxEmptyProps,
+  ComboboxStatusProps,
+  ComboboxChipsProps,
+  ComboboxChipProps,
+  ComboboxChipRemoveProps
+} from './primitives/combobox'

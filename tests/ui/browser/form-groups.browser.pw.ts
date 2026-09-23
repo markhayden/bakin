@@ -7,6 +7,7 @@ test('group shells contain addons at every size, narrow widths and enlarged text
     for (const variant of ['outlined', 'filled', 'ghost']) {
       const group = page.getByRole('group', { name: `${variant} ${size}`, exact: true })
       expect(await group.evaluate(el => el.getBoundingClientRect().height)).toBe(height)
+      expect(await group.evaluate(el => getComputedStyle(el).padding)).toBe('0px')
       await group.getByRole('textbox').focus()
       expect(await group.evaluate(el => getComputedStyle(el).outlineStyle)).toBe('solid')
     }

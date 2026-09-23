@@ -27,7 +27,7 @@ describe('canonical Playwright visual harness', () => {
     expect(config).toContain("outputFolder: 'playwright-report/ui'")
     expect(config).toContain('tests/ui/snapshots')
     expect(config).toContain("testMatch: '**/*.visual.ts'")
-    expect(readdirSync(join(REPO_ROOT, 'tests/ui/visual'))).toEqual(['foundation.visual.ts'])
+    expect(readdirSync(join(REPO_ROOT, 'tests/ui/visual'))).toEqual(['foundation.visual.ts', 'form-controls.visual.ts'])
   })
 
   it('allows rendering in the pinned image but never allows CI to update snapshots', () => {
