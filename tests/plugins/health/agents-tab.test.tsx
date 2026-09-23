@@ -277,7 +277,7 @@ function stubAgentFetch() {
     if (url === '/api/settings') {
       return Promise.resolve(jsonResponse({ dispatch: { contextBudgetBytes: 65_536 } }))
     }
-    if (url === '/api/plugins/models/spend?window=24h') {
+    if (url === '/api/plugins/spend/spend?window=24h') {
       return Promise.resolve(jsonResponse({
         totalUsdMicros: 120_000,
         byAgent: [{ agent: 'pixel', costUsdMicros: 120_000, runs: 3 }],
@@ -348,7 +348,7 @@ describe('AgentsTab', () => {
     expect(queryKeys).toContain('agents_metric')
     expect(urls).toContain('/api/plugins/health/usage-history?window=24h')
     expect(urls).toContain('/api/plugins/health/agent-effort?window=24h')
-    expect(urls).not.toContain('/api/plugins/models/spend?window=24h')
+    expect(urls).not.toContain('/api/plugins/spend/spend?window=24h')
 
     const takeaway = within(usageCost!).getByText(/The last completed day, 07-12, had 300 tokens.*Today is still being counted/i)
     const trendPlot = usageCost!.querySelector('[data-agent-token-trend-plot]')
@@ -362,7 +362,7 @@ describe('AgentsTab', () => {
     expect(usageCost!.textContent).toContain('Today is still being counted')
     expect(screen.queryByText('Bakin-attributed estimate')).toBeNull()
     expect(screen.queryByText('fixed 24h scope · used by budget caps')).toBeNull()
-    expect(within(usageCost!).getByRole('link', { name: 'View budgets in Models' }).getAttribute('href')).toBe('/models?tab=spend')
+    expect(within(usageCost!).getByRole('link', { name: 'View limits in Spend' }).getAttribute('href')).toBe('/spend')
   })
 
   it('totals only explicitly complete agents when transcript coverage is partial', async () => {
@@ -1206,8 +1206,8 @@ describe('AgentsTab', () => {
     expect(usageCost.textContent).toContain('No runtime-reported cost is available in this window.')
     expect(usageCost.textContent).toContain('none included runtime-reported cost')
     expect(usageCost.textContent).not.toContain('$0.00')
-    expect(within(usageCost).getByRole('link', { name: 'View budgets in Models' }).getAttribute('href'))
-      .toBe('/models?tab=spend')
+    expect(within(usageCost).getByRole('link', { name: 'View limits in Spend' }).getAttribute('href'))
+      .toBe('/spend')
   })
 })
 

@@ -10,7 +10,7 @@
 import { healthError, healthHealthy, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthObservationInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
 import { stableKeyPart } from './key'
-import { repairTargetSelection } from './repair-support'
+import { repairTargetSelection } from '@bakin/core/health/repair-support'
 
 /** Pending rows older than this suggest the engine has been down a while. */
 const STALE_PENDING_MS = 10 * 60 * 1000

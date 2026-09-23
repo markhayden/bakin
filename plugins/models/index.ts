@@ -13,7 +13,6 @@ import { definePlugin } from '@bakin/core/routing'
 import { modelsRoutes } from './lib/routes'
 import { registerModelsHooks } from './lib/register-hooks'
 import { registerModelsExecTools } from './lib/exec-tools'
-import { isLegacyBudget, migrateLegacyBudget } from './lib/budget-migration'
 import { isLegacyRouting, migrateLegacyRouting } from './lib/routing-migration'
 import { buildRoutingHealthDeps, checkModelRouting, recommendedRoutesRepair } from './lib/health-checks'
 import { checkDeadSelections, deadSelectionRepair } from './lib/dead-selections'
@@ -28,7 +27,7 @@ import type { ModelsPluginSettings } from './types'
 const modelsPlugin: BakinPlugin = definePlugin({
   id: 'models',
   name: 'Models',
-  version: '2.1.0',
+  version: '2.3.0',
   routes: modelsRoutes,
 
   settingsSchema: {
@@ -40,14 +39,6 @@ const modelsPlugin: BakinPlugin = definePlugin({
   // Nav items registered in client.tsx (order: 70) — no server-side duplication
 
   activate(ctx: PluginContext) {
-    // One-shot budget-shape migration (PR #500 {global, perAgent} → v2 rule
-    // list). Runs before hooks register so models.getBudgetPolicy never
-    // serves the legacy shape.
-    const budget = ctx.getSettings<ModelsPluginSettings>().budget
-    if (isLegacyBudget(budget)) {
-      ctx.updateSettings({ budget: migrateLegacyBudget(budget) })
-    }
-
     // One-shot routing-shape migration (origin policies → work-class routes).
     // Same discipline: runs before hooks register so models.getRoutingConfig
     // never serves the legacy shape.

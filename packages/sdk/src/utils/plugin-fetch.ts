@@ -48,3 +48,66 @@ export function pluginFetch(
 
   return fetch(pluginApiUrl(pluginId, path), { ...init, headers, body })
 }
+
+export interface PluginFetchJsonOptions {
+  /** Hard deadline for the WHOLE call, body parsing included. */
+  timeoutMs: number
+  /** Names the request in the failure message (`"<label> fetch failed (503)"`). */
+  label?: string
+  /** The caller's own cancellation (unmount / dependency change). */
+  signal?: AbortSignal
+  init?: Parameters<typeof pluginFetch>[2]
+}
+
+/**
+ * `pluginFetch` + JSON parse under a hard deadline, for call sites that are
+ * plain functions (effects AND mutation handlers) rather than hooks — the
+ * plain-function twin of `usePluginJsonFetch`'s `timeoutMs`.
+ *
+ * The deadline races the whole chain: `fetch` resolves at HEADERS, so racing
+ * the bare fetch promise would still leave the caller hanging inside
+ * `res.json()`. The caller's `signal` rejects as an `AbortError` (drop it
+ * without touching state); a deadline breach rejects with a plain
+ * `Error('Request timed out')` — never disguised as a caller cancellation.
+ */
+export async function pluginFetchJson<T>(
+  pluginId: string,
+  path: string,
+  { timeoutMs, label = path, signal, init }: PluginFetchJsonOptions,
+): Promise<T> {
+  const controller = new AbortController()
+  const forwardAbort = () => controller.abort()
+  if (signal?.aborted) controller.abort()
+  else signal?.addEventListener('abort', forwardAbort, { once: true })
+
+  let timedOut = false
+  let rejectDeadline: ((reason: Error) => void) | null = null
+  const deadline = setTimeout(() => {
+    timedOut = true
+    // Abort to free the socket, but RACE the rejection rather than relying on
+    // it: a fetch implementation that ignores the signal would otherwise leave
+    // the caller hanging forever, the exact failure the deadline prevents.
+    controller.abort()
+    rejectDeadline?.(new Error('Request timed out'))
+  }, timeoutMs)
+
+  const request = pluginFetch(pluginId, path, { ...init, signal: controller.signal })
+    .then(async (res) => {
+      if (!res.ok) throw new Error(`${label} fetch failed (${res.status})`)
+      return await res.json() as T
+    })
+
+  try {
+    return await Promise.race([
+      request,
+      new Promise<never>((_resolve, reject) => { rejectDeadline = reject }),
+    ])
+  } catch (err) {
+    if (timedOut) throw new Error('Request timed out')
+    throw err
+  } finally {
+    clearTimeout(deadline)
+    rejectDeadline = null
+    signal?.removeEventListener('abort', forwardAbort)
+  }
+}

@@ -35,7 +35,7 @@ mock.module('../../packages/core/src/logger', loggerMock)
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import type { AgentRuntimeAdapter, RuntimeMemoryEntry } from '@bakin/core/adapters/runtime'
 import { scanUsageHistory, bucketSessionUsage } from '../../src/core/usage-history'
-import { getScanState, usageByAgentSince, usageByDaySince, toLocalDayKey } from '@bakin/core/usage-history/store'
+import { coveredDaysSince, getScanState, recordScanDay, usageByAgentSince, usageByDaySince, toLocalDayKey } from '@bakin/core/usage-history/store'
 import { closeAllDbs, openNamedDb } from '@bakin/core/storage/db'
 
 afterAll(() => {
@@ -885,5 +885,56 @@ describe('session origin provenance (#691)', () => {
     const rows = storedRows()
     expect(rows.find((r) => r.session_id === 'no-meta.jsonl')?.origin).toBe('unknown')
     expect(rows.find((r) => r.session_id === 'bad-meta.jsonl')?.origin).toBe('unknown')
+  })
+})
+
+describe('scan_days coverage receipts (D27)', () => {
+  it('a COMPLETE sweep records today as covered; partial and unavailable sweeps record nothing', async () => {
+    const today = toLocalDayKey(Date.now())
+    // Unavailable: roster read fails.
+    const down = createMockRuntimeAdapter()
+    down.memory.listTiers = async () => [{ id: SESSION_TIER, label: 'Session transcripts', metadata: { sourceKind: 'session_jsonl' } }]
+    down.agents.list = async () => { throw new Error('roster unavailable') }
+    await scanUsageHistory(down)
+    expect(coveredDaysSince(1)).not.toContain(today)
+
+    // Partial: one agent's session is unreadable.
+    addSession('basil', 'ok', sessionLines('ok', '2026-07-01T10:00:00Z', [{ ts: '2026-07-01T10:01:00Z', model: 'm1', input: 5, output: 0 }]))
+    addSession('clover', 'broken', sessionLines('broken', '2026-07-01T11:00:00Z', [{ ts: '2026-07-01T11:01:00Z', model: 'm1', input: 9, output: 0 }]))
+    const partial = makeRuntime()
+    const originalGetEntry = partial.memory.getEntry
+    partial.memory.getEntry = async (tierId, id, opts) => {
+      if (opts?.agentId === 'clover') throw new Error('session unreadable')
+      return originalGetEntry(tierId, id, opts)
+    }
+    expect((await scanUsageHistory(partial)).coverage.status).toBe('partial')
+    expect(coveredDaysSince(1)).not.toContain(today)
+
+    // An EMPTY roster answer observes nothing — no receipt (a transient
+    // empty list must not stamp a $0 day as watched).
+    sessions.length = 0
+    const nobody = makeRuntime()
+    expect((await scanUsageHistory(nobody)).coverage.status).toBe('complete')
+    expect(coveredDaysSince(1)).not.toContain(today)
+
+    // Complete — a real roster with zero sessions to scan: the day is observed.
+    const complete = makeRuntime()
+    complete.agents.list = async () => [{ id: 'basil', name: 'basil', status: 'active' as const }]
+    expect((await scanUsageHistory(complete)).coverage.status).toBe('complete')
+    expect(coveredDaysSince(1)).toContain(today)
+  })
+
+  it('recordScanDay upserts (first/last scan kept), lists the last N days, and prunes past 90 days', () => {
+    const t0 = Date.parse('2026-06-01T12:00:00')
+    recordScanDay('2026-06-01', t0)
+    recordScanDay('2026-06-01', t0 + 60_000)
+    recordScanDay('2026-05-01', t0)
+    recordScanDay('2026-02-01', t0) // > 90 days before the newest scan → pruned
+    const store = openNamedDb('usage', () => join(testDir, 'usage.db'))
+    const rows = store.db().prepare<{ day: string; first_scan_at: number; last_scan_at: number }, []>('SELECT day, first_scan_at, last_scan_at FROM scan_days ORDER BY day').all()
+    expect(rows.map((r) => r.day)).toEqual(['2026-05-01', '2026-06-01'])
+    expect(rows[1]).toMatchObject({ first_scan_at: t0, last_scan_at: t0 + 60_000 })
+    expect(coveredDaysSince(30, t0)).toEqual(['2026-06-01'])
+    expect(coveredDaysSince(60, t0)).toEqual(['2026-05-01', '2026-06-01'])
   })
 })

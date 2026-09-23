@@ -25,7 +25,6 @@ import { getModelEligibility, resolveCatalogId, type EligibilityReport, type Ine
 import { mapModelToCatalog } from './model-selections'
 import { evaluateBudget, ruleMatchesTurn, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetDecision, type TurnBillingContext } from './budget'
 import { assembleBudgetSpend, type BudgetSpendFacets } from './budget-spend'
-import { notifyBudgetIncidentOpened } from './budget-notify'
 import { getBootId } from './boot-id'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { moveTask as moveStoredTask } from './task-store'
@@ -197,6 +196,20 @@ const FAIL_CLOSED_DECISION: BudgetDecision = {
   capValue: 0,
 }
 
+/** The limits policy itself is unreadable — fail closed, name the cause (S13). */
+const POLICY_UNAVAILABLE_DECISION: BudgetDecision = { action: 'defer', cause: 'budget_policy_unavailable' }
+
+// The missing-policy fail-closed state is a standing condition, not an event
+// stream: ONE `budget.policy_unavailable` audit row per local day window
+// (the same latch discipline as the ledger-unavailable case above).
+const policyUnavailableAuditedWindows = new Set<number>()
+function auditPolicyUnavailableOnce(contentDir: string, agentId: string, reason: string): void {
+  const windowStart = dayStartMs(Date.now())
+  if (policyUnavailableAuditedWindows.has(windowStart)) return
+  policyUnavailableAuditedWindows.add(windowStart)
+  appendAudit(contentDir, 'budget.policy_unavailable', agentId, { reason, window: 'daily' })
+}
+
 export async function budgetGate(
   agentId: string,
   contentDir: string,
@@ -207,12 +220,22 @@ export async function budgetGate(
    *  must never reclassify image dollars. */
   prospect?: { model?: string; billedMedia?: boolean },
 ): Promise<BudgetDecision> {
+  // The limits policy is the spend plugin's. An absent or throwing hook is
+  // NOT "no limits" — it is "we cannot know", and money fails closed (S13):
+  // a crash mid-upgrade or a plugin that failed to activate never runs
+  // uncapped. The health-owned spend.policy-available check names it.
   let policy: BudgetPolicy | undefined
   try {
-    policy = (await hooks().invoke<BudgetPolicy>('models.getBudgetPolicy', {})) ?? undefined
+    if (!hooks().has('spend.getBudgetPolicy')) {
+      log.error('Budget policy hook is not registered; deferring (fail-closed)', undefined, { agentId })
+      auditPolicyUnavailableOnce(contentDir, agentId, 'hook_unregistered')
+      return POLICY_UNAVAILABLE_DECISION
+    }
+    policy = (await hooks().invoke<BudgetPolicy>('spend.getBudgetPolicy', {})) ?? undefined
   } catch (err) {
-    log.error('Budget policy read failed; allowing (no policy)', err, { agentId })
-    return { action: 'allow' }
+    log.error('Budget policy read failed; deferring (fail-closed)', err, { agentId })
+    auditPolicyUnavailableOnce(contentDir, agentId, err instanceof Error ? err.message : String(err))
+    return POLICY_UNAVAILABLE_DECISION
   }
   const now = Date.now()
 
@@ -232,7 +255,7 @@ export async function budgetGate(
   const turn: TurnBillingContext = { agent: agentId, model: prospect?.model }
   try {
     const billing = await hooks().invoke<{ provider?: string; lane?: 'metered' | 'subscription'; model?: string | null }>(
-      'models.resolveBilling',
+      'spend.resolveBilling',
       {
         // Billed media: provider-keyed lane only — omit agentId so the
         // agent's chat-auth detection can't reclassify image dollars.
@@ -352,9 +375,13 @@ function recordSpendEvidenceDeferral(
 }
 
 /**
- * Open (idempotently) the durable incident for a breach and audit it exactly
- * once per (rule identity, window, kind) — the budget_incidents UNIQUE is
- * the restart-safe debounce. Never throws into the gate.
+ * Open (idempotently) the durable cap incident for a breach and audit it
+ * exactly once per (rule identity, window) — the budget_incidents UNIQUE is
+ * the restart-safe debounce. Delivery is NOT done here: the row lands with
+ * notified_at NULL and the one delivery worker (spend-observer
+ * deliverPending) sends it, so a crash between open and send is recovered
+ * and the observer's own open of the same incident cannot double-alert.
+ * Never throws into the gate.
  */
 function recordBudgetBreach(
   contentDir: string,
@@ -370,18 +397,22 @@ function recordBudgetBreach(
       lane: decision.rule.lane,
       window: decision.window,
       windowStartMs: windowStart,
-      kind: decision.action === 'defer' ? 'cap' : 'warn',
+      kind: 'cap',
       unit: decision.unit,
       capValue: decision.capValue,
       spentValue: decision.spentValue,
-      // Warn incidents never block — they must always rollover-sweep, even
-      // on pause-mode rules (only CAP incidents inherit the pause hold).
-      atCap: decision.action === 'defer' ? decision.rule.atCap ?? 'defer' : 'defer',
+      atCap: decision.rule.atCap ?? 'defer',
       openedAt: Date.now(),
     })
     if (!incident.opened) return
-    const event = decision.action === 'defer' ? 'budget.deferred' : 'budget.warn'
-    appendAudit(contentDir, event, agentId, {
+    // The lifecycle audit (`budget.incident_opened`) is the same row the
+    // observer writes when IT opens one — history does not depend on which
+    // path saw the threshold first; `budget.deferred` below is the turn hold.
+    void import('./spend-observer').then((m) => m.auditIncidentOpened({
+      incidentId: incident.id, source: 'gate', scope: decision.rule.scope, scopeId: decision.rule.scopeId, lane: decision.rule.lane,
+      window: decision.window, unit: decision.unit, spentValue: decision.spentValue, capValue: decision.capValue, atCap: decision.rule.atCap ?? 'defer',
+    })).catch((err: unknown) => log.warn('incident_opened audit failed', { err: err instanceof Error ? err.message : String(err) }))
+    appendAudit(contentDir, 'budget.deferred', agentId, {
       incidentId: incident.id,
       scope: decision.rule.scope,
       ...(decision.rule.scopeId ? { scopeId: decision.rule.scopeId } : {}),
@@ -391,21 +422,10 @@ function recordBudgetBreach(
       spentValue: decision.spentValue,
       capValue: decision.capValue,
     })
-    // Proactive fan-out (SSE/browser + main-agent relay) — fresh opens only.
-    notifyBudgetIncidentOpened({
-      incidentId: incident.id,
-      kind: decision.action === 'defer' ? 'cap' : 'warn',
-      scope: decision.rule.scope,
-      ...(decision.rule.scopeId ? { scopeId: decision.rule.scopeId } : {}),
-      lane: decision.rule.lane,
-      window: decision.window,
-      unit: decision.unit,
-      capValue: decision.capValue,
-      spentValue: decision.spentValue,
-      // Warn incidents never block — they must always rollover-sweep, even
-      // on pause-mode rules (only CAP incidents inherit the pause hold).
-      atCap: decision.action === 'defer' ? decision.rule.atCap ?? 'defer' : 'defer',
-    }, () => getAppServices().runtime)
+    // Deliver now rather than at the next tick — detached, from durable rows.
+    void import('./spend-observer').then((m) => m.deliverPending()).catch((err: unknown) => {
+      log.error('Budget incident delivery kick failed', err, { incidentId: incident.id })
+    })
   } catch (err) {
     log.error('Failed to record budget breach incident', err, { agentId })
   }
@@ -582,7 +602,7 @@ export async function resolveDispatchRouting(task: DispatchTask, isRecovery: boo
 /**
  * Record the cost of a settled turn. The threadId IS the ledger run id, so
  * the row is first-write-wins idempotent. Pricing is delegated to the models
- * plugin via the `models.priceTurn` hook (core stays pricing-agnostic);
+ * plugin via the `spend.priceTurn` hook (core stays pricing-agnostic);
  * absent plugin → null model/cost, tokens still recorded ("unmetered"). The
  * same data also feeds the live usage recorder. Never throws into the settle
  * path — a metering failure must not fail a successful turn.

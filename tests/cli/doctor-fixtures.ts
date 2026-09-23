@@ -58,11 +58,11 @@ export const actionableIncident: HealthIncident = {
 }
 
 export const advisoryObservation: HealthObservation = {
-  id: 'health.budget:usage-note',
+  id: 'spend.budget:usage-note',
   key: 'usage-note',
   status: 'warning',
   summary: 'Usage is trending upward.',
-  checkId: 'health.budget',
+  checkId: 'spend.budget',
   checkName: 'Budget trend',
   owner: { kind: 'plugin', id: 'health', label: 'Health' },
   group: { key: 'cost', label: 'Cost' },

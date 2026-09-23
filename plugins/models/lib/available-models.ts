@@ -6,7 +6,7 @@
  * persisted disk cache (`./models-cache` — ~/.bakin/plugin-settings/models/
  * available.json), and the live runtime fetch with in-flight promise dedupe.
  * `loadConfiguredModelsFromRuntime` merges the curated known-models catalog
- * (plugins/models/data/known-models.ts) into each runtime model — enrichment
+ * (packages/core/src/llm/model-catalog.ts) into each runtime model — enrichment
  * only, never fabricated metadata: unknown models get none of the catalog
  * fields and render plain in the UI.
  */
@@ -22,8 +22,8 @@ import {
   readPersistedCache,
   writePersistedCache,
 } from './models-cache'
-import { getKnownModel, getKnownProvider, formatCostRange } from '../data/known-models'
-import { normalizeModelId, providerFromId, tierFromId } from './model-id'
+import { getKnownModel, getKnownProvider, formatCostRange } from '@bakin/core/llm/model-catalog'
+import { normalizeModelId, providerFromId, tierFromId } from '@bakin/core/llm/model-id'
 
 // ---------------------------------------------------------------------------
 // Available models cache (globalThis-backed so every reach into this module
@@ -77,7 +77,7 @@ export async function loadConfiguredModelsFromRuntime(ctx: PluginContext): Promi
         configured: tags.includes('configured'),
         isDefault: id === defaultModel,
         fallbackIndex: fallbackIndex >= 0 ? fallbackIndex : null,
-        // Enrichment from the curated catalog (plugins/models/data/known-models.ts).
+        // Enrichment from the curated catalog (packages/core/src/llm/model-catalog.ts).
         // Unknown models get none of these and render plain in the UI.
         description: known?.description,
         bestFor: known?.bestFor,

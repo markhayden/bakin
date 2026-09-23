@@ -165,7 +165,7 @@ mock.module('../../src/core/dispatch-registry', () => ({
 mock.module('../../src/core/plugin-registry', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mock().mockResolvedValue(undefined),
-    has: mock().mockReturnValue(false),
+    has: mock((name: string) => name === 'spend.getBudgetPolicy'),
     register: mock(),
   }),
 }))
@@ -175,7 +175,7 @@ let hookInvokeImpl: (name: string, data?: unknown) => Promise<unknown> = async (
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: (name: string, data?: unknown) => hookInvokeImpl(name, data),
-    has: mock().mockReturnValue(false),
+    has: mock((name: string) => name === 'spend.getBudgetPolicy'),
     register: mock(),
   }),
 }))

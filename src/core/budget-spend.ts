@@ -306,7 +306,7 @@ async function resolveObservedLane(
       // the agent's current effective model, so provider-scoped overrides
       // can never match a guessed provider and no runtime round-trip runs
       // on the budget hot path.
-      const billing = (await invoke('models.resolveBilling', {
+      const billing = (await invoke('spend.resolveBilling', {
         agentId: agent,
         model: model || undefined,
         prospective: false,
@@ -337,43 +337,49 @@ async function resolveObservedLane(
   return lane
 }
 
+/** One accumulation target: a window + its evidence, and which local days feed it. */
+interface SpendBucket {
+  window: WindowSpend
+  evidence: SpendEvidenceWindow
+  includesDay: (day: string) => boolean
+}
+
+interface AssembledSpend {
+  observedUsageEvidence: BudgetSpendFacets['observedUsageEvidence']
+}
+
 /**
- * Assemble the full spend facets for the daily + monthly windows containing
- * `now`. Pure over its inputs (stores + clock injected by module boundary);
- * throws only if the LEDGER read throws (fail-closed callers rely on that).
- * A usage.db failure preserves attributed facts but is explicit in
- * `observedUsageEvidence`; callers must not treat that as a complete zero.
+ * The accumulation core shared by every entry point: every attributed
+ * run_costs row and every observed usage.db cell since `sinceMs` lands in
+ * each bucket whose `includesDay` accepts its local day — same attribution,
+ * same observed-minus-attributed reconciliation per (agent, day, lane),
+ * same lane classification and evidence-gap rules whatever the bucket set.
+ * Throws only if the LEDGER read throws (fail-closed callers rely on that);
+ * a usage.db failure preserves attributed facts and is explicit in the
+ * returned `observedUsageEvidence`.
  */
-export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacets> {
+async function assembleSpendInto(buckets: SpendBucket[], sinceMs: number, now: number): Promise<AssembledSpend> {
   const [{ listRunCostsSince }, usageStore, hooksModule] = await Promise.all([
     import('./execution-ledger'),
     import('../../packages/core/src/usage-history/store'),
     import('@bakin/core/hooks/hook-registry-singleton').catch(() => null),
   ])
-  const dayStart = dayStartMs(now)
-  const monthStart = monthStartMs(now)
-  const daily = emptyWindow(dayStart)
-  const monthly = emptyWindow(monthStart)
-  const dailySpendEvidence = emptySpendEvidence()
-  const monthlySpendEvidence = emptySpendEvidence()
-  const todayKey = usageStore.toLocalDayKey(dayStart)
+  const todayKey = usageStore.toLocalDayKey(dayStartMs(now))
+  const bucketsForDay = (day: string) => buckets.filter((bucket) => bucket.includesDay(day))
   let observedUsageEvidence: BudgetSpendFacets['observedUsageEvidence'] = { status: 'available' }
 
   // ---- attributed (run_costs) --------------------------------------------
   // Keyed sums retained for the delta computation below.
   const attributedByLane = new Map<string, DayLaneSums>()
-  for (const row of listRunCostsSince(monthStart)) {
+  for (const row of listRunCostsSince(sinceMs)) {
     const lane: Lane | null = row.lane === 'subscription' || row.lane === 'metered' ? row.lane : null
     // Null means either token evidence is missing or tokens do not apply.
     // `usageKind` distinguishes those states; only the former creates a gap.
     const tokens = row.usageKind === 'tokens' ? row.totalTokens : null
     const usd = lane === 'metered' ? row.costUsdMicros : null
-    const windowPairs: Array<{ window: WindowSpend; evidence: SpendEvidenceWindow }> = row.occurredAt >= dayStart
-      ? [
-          { window: monthly, evidence: monthlySpendEvidence },
-          { window: daily, evidence: dailySpendEvidence },
-        ]
-      : [{ window: monthly, evidence: monthlySpendEvidence }]
+    const day = usageStore.toLocalDayKey(row.occurredAt)
+    const windowPairs = bucketsForDay(day)
+    if (windowPairs.length === 0) continue
     const evidenceWindows = windowPairs.map((pair) => pair.evidence)
 
     if (row.usageKind === 'tokens' && (lane === 'subscription' || lane === null)) {
@@ -471,7 +477,6 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
         addAttributed(wc, lane, tokens, usd)
         wc.runs += 1
       }
-      const day = usageStore.toLocalDayKey(row.occurredAt)
       const key = laneKey(row.agent, day, lane)
       const sums = attributedByLane.get(key) ?? emptyDayLaneSums()
       if (tokens !== null) addDayLaneValue(sums, 'tokens', tokens)
@@ -487,7 +492,7 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
     // pre-cutoff usage that cannot attribute is excluded from gaps and
     // the unattributed delta — caps compute from the cutoff forward.
     const policy = invoke
-      ? await invoke('models.getBudgetPolicy', {}).catch(() => undefined) as { acceptUnattributedBefore?: string } | undefined
+      ? await invoke('spend.getBudgetPolicy', {}).catch(() => undefined) as { acceptUnattributedBefore?: string } | undefined
       : undefined
     const rawCutoff = typeof policy?.acceptUnattributedBefore === 'string' ? policy.acceptUnattributedBefore : null
     // Clamp to today at READ: a future-dated cutoff would silence current
@@ -495,12 +500,11 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
     const acceptedBefore = rawCutoff !== null && rawCutoff > todayKey ? todayKey : rawCutoff
     const laneCache = new Map<string, Lane | null>()
     const observedByLane = new Map<string, DayLaneSums>()
-    for (const cell of usageStore.readUsageByAgentModelDaySince(usageStore.toLocalDayKey(monthStart))) {
+    for (const cell of usageStore.readUsageByAgentModelDaySince(usageStore.toLocalDayKey(sinceMs))) {
+      const evidenceWindows = bucketsForDay(cell.day).map((bucket) => bucket.evidence)
+      if (evidenceWindows.length === 0) continue
       const writtenOff = acceptedBefore !== null && cell.day < acceptedBefore
       const lane = await resolveObservedLane(invoke, laneCache, cell.agent, cell.model)
-      const evidenceWindows = cell.day === todayKey
-        ? [monthlySpendEvidence, dailySpendEvidence]
-        : [monthlySpendEvidence]
       if (lane === null) {
         // Written-off fossil: never attributable, explicitly accepted —
         // contributes nothing (no gaps, no spend).
@@ -598,13 +602,7 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
         ? Math.max(0, observed.usdMicros - attributed.usdMicros)
         : 0
       if (deltaTokens === 0 && deltaUsd === 0) continue
-      const windowPairs: Array<{ window: WindowSpend; evidence: SpendEvidenceWindow }> = day === todayKey
-        ? [
-            { window: monthly, evidence: monthlySpendEvidence },
-            { window: daily, evidence: dailySpendEvidence },
-          ]
-        : [{ window: monthly, evidence: monthlySpendEvidence }]
-      for (const { window, evidence } of windowPairs) {
+      for (const { window, evidence } of bucketsForDay(day)) {
         const scopes: Array<{ scope: ScopeSpend; affectedScope: 'global' | 'agent' }> = [
           { scope: window.global, affectedScope: 'global' },
           { scope: (window.byAgent[agent] ??= emptyScope()), affectedScope: 'agent' },
@@ -631,18 +629,65 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
     log.error('Observed-usage delta failed; spend is attributed-only this pass', err)
   }
 
-  sortEvidenceGaps(dailySpendEvidence)
-  sortEvidenceGaps(monthlySpendEvidence)
+  for (const bucket of buckets) sortEvidenceGaps(bucket.evidence)
+  return { observedUsageEvidence }
+}
+
+/**
+ * Assemble the full spend facets for the daily + monthly windows containing
+ * `now` — the cap-window view every budget surface consumes.
+ */
+export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacets> {
+  const [usageStore] = await Promise.all([import('../../packages/core/src/usage-history/store')])
+  const dayStart = dayStartMs(now)
+  const monthStart = monthStartMs(now)
+  const todayKey = usageStore.toLocalDayKey(dayStart)
+  const daily: SpendBucket = { window: emptyWindow(dayStart), evidence: emptySpendEvidence(), includesDay: (day) => day === todayKey }
+  // Rows are already bounded to the month by the read; every day qualifies.
+  const monthly: SpendBucket = { window: emptyWindow(monthStart), evidence: emptySpendEvidence(), includesDay: () => true }
+  // Monthly first so gap ordering within each bucket matches the pre-refactor engine.
+  const { observedUsageEvidence } = await assembleSpendInto([monthly, daily], monthStart, now)
   return {
     computedAt: now,
     observedUsageEvidence,
-    spendEvidence: {
-      daily: dailySpendEvidence,
-      monthly: monthlySpendEvidence,
-    },
-    daily,
-    monthly,
+    spendEvidence: { daily: daily.evidence, monthly: monthly.evidence },
+    daily: daily.window,
+    monthly: monthly.window,
   }
+}
+
+/** Spend over an explicit set of local days — the same engine, one bucket. */
+export interface DaySetSpend {
+  computedAt: number
+  /** The days that were asked for (sorted ascending, deduplicated). */
+  days: string[]
+  observedUsageEvidence: BudgetSpendFacets['observedUsageEvidence']
+  spendEvidence: SpendEvidenceWindow
+  window: WindowSpend
+}
+
+/**
+ * Spend on a selected set of local days (YYYY-MM-DD), for the spend
+ * plugin's coverage-aware limit suggestion (D32): the SAME attribution,
+ * observed-minus-attributed reconciliation, lane classification and
+ * evidence-gap rules as the cap windows, applied to exactly those days —
+ * so a suggestion agrees with the Overview by construction and the plugin
+ * performs no spend arithmetic of its own. An empty set is an empty
+ * window, never a read.
+ */
+export async function assembleSpendForDays(days: string[], now: number): Promise<DaySetSpend> {
+  const selected = [...new Set(days)].sort()
+  const evidence = emptySpendEvidence()
+  if (selected.length === 0) {
+    return { computedAt: now, days: selected, observedUsageEvidence: { status: 'available' }, spendEvidence: evidence, window: emptyWindow(dayStartMs(now)) }
+  }
+  const wanted = new Set(selected)
+  const earliest = selected[0]!
+  const [y, m, d] = earliest.split('-').map(Number)
+  const sinceMs = new Date(y!, m! - 1, d!).getTime()
+  const bucket: SpendBucket = { window: emptyWindow(sinceMs), evidence, includesDay: (day) => wanted.has(day) }
+  const { observedUsageEvidence } = await assembleSpendInto([bucket], sinceMs, now)
+  return { computedAt: now, days: selected, observedUsageEvidence, spendEvidence: evidence, window: bucket.window }
 }
 
 /** Next local midnight after the window start. */

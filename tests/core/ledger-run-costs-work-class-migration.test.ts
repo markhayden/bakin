@@ -53,6 +53,18 @@ beforeAll(() => {
     raw.prepare('INSERT INTO schema_migrations (module, version, applied_at) VALUES (?, ?, ?)')
       .run('execution', version, T0)
   }
+  // v6 created budget_incidents; later migrations (v10) alter it, so a
+  // fixture that claims v6 applied must carry the table.
+  raw.exec(
+    `CREATE TABLE budget_incidents (
+       id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL, scope_id TEXT NOT NULL DEFAULT '',
+       lane TEXT NOT NULL, win TEXT NOT NULL, window_start_ms INTEGER NOT NULL, kind TEXT NOT NULL,
+       unit TEXT NOT NULL, cap_value INTEGER NOT NULL, spent_value INTEGER NOT NULL,
+       at_cap TEXT NOT NULL DEFAULT 'defer', opened_at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open',
+       resolved_at INTEGER, resolution TEXT,
+       UNIQUE(scope, scope_id, lane, win, window_start_ms, kind)
+     )`,
+  )
   raw.exec(
     `CREATE TABLE run_costs (
        run_id TEXT PRIMARY KEY,

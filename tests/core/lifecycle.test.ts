@@ -91,14 +91,14 @@ mock.module('../../src/core/plugin-registry', () => ({
   },
   getHookRegistry: () => ({
     invoke: async () => undefined,
-    has: () => false,
+    has: (name: string) => name === 'spend.getBudgetPolicy',
     register: () => () => {},
   }),
 }))
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: () => ({
     invoke: async () => undefined,
-    has: () => false,
+    has: (name: string) => name === 'spend.getBudgetPolicy',
     register: () => () => {},
   }),
 }))

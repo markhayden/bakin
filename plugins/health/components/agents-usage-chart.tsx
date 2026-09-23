@@ -311,10 +311,10 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
             </>
           )}
           <PluginLink
-            to="/models?tab=spend"
+            to="/spend"
             className="inline-flex items-center gap-bakin-1 rounded-bakin-control text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-signal-accent underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring"
           >
-            View budgets in Models <ArrowUpRight className="size-bakin-3" aria-hidden="true" />
+            View limits in Spend <ArrowUpRight className="size-bakin-3" aria-hidden="true" />
           </PluginLink>
         </>
       )}

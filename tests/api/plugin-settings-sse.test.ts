@@ -29,17 +29,17 @@ mock.module('@bakin/core/content-dir', () => ({
   getContentDir: () => testDir,
 }))
 
-mock.module('../../src/core/plugin-registry', () => ({
+// A plugin that validates its own document (the spend plugin does) gets the
+// last word on the generic route; everything else has no validator.
+const validators: Record<string, (value: unknown) => { ok: true } | { ok: false; error: string }> = {}
+const pluginRegistryMock = () => ({
   pluginRegistry: {
     notifySettingsChange,
+    getPlugin: (pluginId: string) => (validators[pluginId] ? { validateSettings: validators[pluginId] } : undefined),
   },
-}))
-
-mock.module('@/core/plugin-registry', () => ({
-  pluginRegistry: {
-    notifySettingsChange,
-  },
-}))
+})
+mock.module('../../src/core/plugin-registry', pluginRegistryMock)
+mock.module('@/core/plugin-registry', pluginRegistryMock)
 
 mock.module('../../src/core/sse', () => ({
   broadcast,
@@ -125,6 +125,21 @@ describe('plugin settings SSE', () => {
     expect(existsSync(join(testDir, 'plugin-settings'))).toBe(false)
     expect(notifySettingsChange).not.toHaveBeenCalled()
     expect(broadcast).not.toHaveBeenCalled()
+  })
+
+  it('a plugin that declares validateSettings refuses an invalid document on the generic route — no side door leaves a bad policy on disk', async () => {
+    validators.spend = (value) => (value && typeof value === 'object' && 'limits' in value ? { ok: true } : { ok: false, error: 'not a valid spend policy' })
+    try {
+      const url = new URL('http://localhost/api/plugin-settings/spend')
+      const refused = await put(new Request(url, { method: 'PUT', body: JSON.stringify({ rules: [] }), headers: { 'Content-Type': 'application/json' } }), url)
+      expect(refused.status).toBe(400)
+      expect(existsSync(join(testDir, 'plugin-settings', 'spend.json'))).toBe(false)
+      expect(notifySettingsChange).not.toHaveBeenCalled()
+      const accepted = await put(new Request(url, { method: 'PUT', body: JSON.stringify({ limits: { rules: [] }, billing: { overrides: [] } }), headers: { 'Content-Type': 'application/json' } }), url)
+      expect(accepted.status).toBe(200)
+    } finally {
+      delete validators.spend
+    }
   })
 
   it('rejects invalid plugin ids on GET', async () => {

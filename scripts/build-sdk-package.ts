@@ -81,6 +81,8 @@ const FORBIDDEN_BARE_PREFIXES = [
   '@bakin/models',
   '@bakin/health',
   '@bakin/schedule',
+  '@bakin/spend',
+  '@bakin/explore',
 ]
 
 const IMPORT_SPECIFIER_RE = /\bfrom\s+["']([^"']+)["']|\bimport\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/g

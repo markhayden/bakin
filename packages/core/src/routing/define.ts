@@ -72,6 +72,7 @@ export interface DefinePluginInput {
   onReady?(): void | Promise<void>
   onShutdown?(): void | Promise<void>
   onSettingsChange?(settings: Record<string, unknown>): void | Promise<void>
+  validateSettings?(value: unknown): { ok: true } | { ok: false; error: string }
   onUninstall?(ctx: any): void | Promise<void>
   beforeUninstall?(ctx: any): void | Promise<void>
   settingsSchema?: PluginSettingsSchema

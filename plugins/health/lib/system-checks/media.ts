@@ -14,7 +14,7 @@
  */
 import { healthError, healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
-import { repairTargetSelection } from './repair-support'
+import { repairTargetSelection } from '@bakin/core/health/repair-support'
 
 export const MEDIA_REPAIR_ACTION_ID = 'media-install-store'
 

@@ -85,6 +85,8 @@
      (style.setProperty on <html> overrides these stylesheet defaults). */
   --bakin-header-top: 0px;
   --bakin-shell-top: 3.5rem;
+  /* One header banner row (update / kill switch / spend ladder bars). */
+  --bakin-banner-height: 2.25rem;
 
   /* Surface hierarchy (darkest → lightest) */
   --background: var(--bakin-color-canvas-default);

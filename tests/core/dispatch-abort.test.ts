@@ -108,14 +108,14 @@ mock.module('@/core/task-store', () => taskStoreMock)
 mock.module('../../src/core/plugin-registry', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mock(async (hook: string) => (hook === 'workflows.getActiveAgents' ? [] : undefined)),
-    has: mock().mockReturnValue(false),
+    has: mock((name: string) => name === 'spend.getBudgetPolicy'),
     register: mock(),
   }),
 }))
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mock(async (hook: string) => (hook === 'workflows.getActiveAgents' ? [] : undefined)),
-    has: mock().mockReturnValue(false),
+    has: mock((name: string) => name === 'spend.getBudgetPolicy'),
     register: mock(),
   }),
 }))

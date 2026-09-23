@@ -28,7 +28,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthRepairActionDefinition, HealthRepairPlanItem } from '@makinbakin/sdk'
-import { repairTargetSelection } from './repair-support'
+import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { createLogger } from '../../../../src/core/logger'
 
 const log = createLogger('health-search-engine-watch')

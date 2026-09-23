@@ -126,14 +126,14 @@ const mockHookInvoke = mock(async (hook: string, _data?: Record<string, unknown>
 mock.module('../../src/core/plugin-registry', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mockHookInvoke,
-    has: mock().mockReturnValue(false),
+    has: mock((name: string) => name === 'spend.getBudgetPolicy'),
     register: mock(),
   }),
 }))
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mockHookInvoke,
-    has: mock().mockReturnValue(false),
+    has: mock((name: string) => name === 'spend.getBudgetPolicy'),
     register: mock(),
   }),
 }))

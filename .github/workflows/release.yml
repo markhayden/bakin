@@ -29,6 +29,7 @@ jobs:
   gate:
     name: Validate release tag
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
@@ -119,6 +120,7 @@ jobs:
   build:
     name: Build and pre-publish gates
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: gate
     permissions:
       contents: read
@@ -254,6 +256,7 @@ jobs:
   sign-macos:
     name: Sign and notarize macOS binary
     runs-on: macos-latest
+    timeout-minutes: 20
     needs:
       - gate
       - build
@@ -298,6 +301,7 @@ jobs:
   publish:
     name: Publish release artifacts
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs:
       - gate
       - build
@@ -506,6 +510,7 @@ jobs:
   smoke-binaries:
     name: Smoke binaries (${{ matrix.asset }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
     needs:
       - gate
       - publish
@@ -550,6 +555,7 @@ jobs:
   smoke-sdk:
     name: Smoke SDK install
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs:
       - gate
       - publish
@@ -589,6 +595,7 @@ jobs:
   smoke-homebrew:
     name: Smoke Homebrew install
     runs-on: macos-latest
+    timeout-minutes: 15
     needs:
       - gate
       - publish

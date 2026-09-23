@@ -32,10 +32,10 @@ Bun.
 │   ├── host/                  ← @bakin/host — client shell + API handlers
 │   ├── adapter-openclaw/      ← runtime adapter implementation
 │   └── adapter-antfly/        ← search adapter implementation
-├── plugins/                   ← 11 first-party plugins (each has bakin-plugin.json)
+├── plugins/                   ← 14 first-party plugins (each has bakin-plugin.json)
 │   ├── tasks/      workflows/   assets/      schedule/    git/
 │   ├── memory/     models/      team/        health/      images/
-│   ├── explore/
+│   ├── explore/    chat/        brands/      spend/
 ├── src/
 │   ├── core/                  ← server-only modules with side effects
 │   ├── cli/                   ← CLI command modules (commands/<group>.ts) + shared

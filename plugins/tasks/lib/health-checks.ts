@@ -2,13 +2,12 @@
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { selectRuntimeMainAgent, type AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import type {
   HealthCheckRunInput,
   HealthObservationInput,
   HealthRepairActionDefinition,
   HealthRepairChange,
-  HealthRepairPlanItem,
-  HealthRepairTarget,
 } from '@makinbakin/sdk'
 import {
   healthError,
@@ -24,16 +23,6 @@ import type { ColumnId, Task } from '../types'
 
 type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
 
-function repairTargetSelection(target: HealthRepairTarget): Pick<
-  HealthRepairPlanItem,
-  'incidentIds' | 'observationIds' | 'preconditions'
-> {
-  return {
-    incidentIds: target.type === 'incidents' ? [...target.ids] : [],
-    observationIds: target.type === 'observations' ? [...target.ids] : [],
-    preconditions: [],
-  }
-}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
