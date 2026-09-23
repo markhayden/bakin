@@ -77,14 +77,17 @@ export interface EligibleModelOption {
   name: string
   provider?: string
   disabled: boolean
+  description?: string
+  tone?: 'default' | 'danger'
 }
 
 /**
  * Map catalog rows to picker options so NO picker can select a dead model
- * (#907): `ineligible` rows are disabled and carry the reason in their label
- * (the documented label-suffix composition until the SDK option gains a
- * description field); `unknown` rows stay selectable — missing evidence is
- * never a refusal.
+ * (#907): `ineligible` rows are disabled, carry the reason as the option's
+ * DESCRIPTION (secondary text + `aria-describedby`; the name stays the
+ * name) and the `danger` tone (a dead value that is currently selected
+ * renders as such in the trigger) — D23; `unknown` rows stay selectable —
+ * missing evidence is never a refusal.
  */
 export function toModelSelectOptions(models: readonly AvailableModel[]): EligibleModelOption[] {
   return models.map((m) => {
@@ -92,9 +95,10 @@ export function toModelSelectOptions(models: readonly AvailableModel[]): Eligibl
     const dead = e?.status === 'ineligible'
     return {
       id: m.id,
-      name: dead ? `${m.name} — ${e.detail}` : m.name,
+      name: m.name,
       provider: m.provider,
       disabled: dead,
+      ...(dead ? { description: e.detail, tone: 'danger' as const } : {}),
     }
   })
 }
