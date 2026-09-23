@@ -163,3 +163,41 @@ Starting commit: `1ecbc0b90`; branch: `codex/form-components-overhaul`.
 - Final production vendor/plugin/host builds, approved performance check and
   lint passed (lint has six pre-existing warnings). Unrelated asset manifest
   hash remains unchanged. No generated token, allowance or baseline changed.
+
+
+## Current checkpoint: contrast decision pending
+
+- Broad canonical browser sweep completed: **120/123 passed**; all three
+  failures were the frozen old list-header inner-input assertion. Its repaired
+  version passed in every engine in the final 18-check rerun. No suppression,
+  tolerance increase or browser exception was added.
+- Stronger capture validation now listens for Storybook console failures and
+  waits for interaction completion. This exposed two mobile matrix mismatches
+  (Input sm 36px; Combobox sm 34px). Shared input typography now explicitly
+  retains tight line height after its mobile font-size class, preserving 16px
+  text and 32/36/44px geometry without clipping.
+- An added no-typing text-enlargement check failed in all three browsers:
+  ResizeObserver previously compared only outer width. It now compares width,
+  line-height, font-size, padding and borders, excluding its own height writes
+  to avoid resize loops. Minimum rows recalculate immediately at 200% text.
+- These repairs are checkpoint `d29fd2db5`. **24/24 final canonical browser
+  checks passed** (sizes at desktop/320px, immediate 200% growth, forced colors,
+  group addons, Select and Combobox/async behavior). Ten focused units and quick
+  conformance passed; rebuilt vendors stay inside approved performance ceilings.
+  Logs: `/private/tmp/bakin-form-{font-green,font-fix-unit,font-fix-quick,font-performance}.log`.
+- Full visual comparison: **262 unchanged**, 18 inherited replacements and 18
+  new files proposed. No baseline writes. The 18 final new candidates were
+  recaptured after the typography/settling fixes; all interaction, console and
+  overflow checks pass, with only missing-baseline comparison failures.
+  Existing comparison captures predate those final typography repairs and must
+  be refreshed with any approved border change before the final exact allowlist.
+- Draft inventory: `tasks/form-components-visual-review.md`; stable copied
+  artifacts and hashes: `test-results/form-components-review/manifest.json`.
+  Checked desktop/mobile matrices, chips, group addons and representative
+  Drawer/Select/settings/conversation inherited diffs. Textarea capture now
+  waits for its play to finish; the screenshot shows its empty three-row end
+  state, not an intermediate typing frame.
+- Pending required decisions: the measured control-border token extension in
+  `tasks/form-components-border-review.md`, followed by exact final PNG review.
+  C12 baseline changes and C13 full aggregate verification have not been run.
+  This is an implementation/review checkpoint, not a merge-ready handoff.

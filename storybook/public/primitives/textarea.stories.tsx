@@ -77,7 +77,8 @@ export const BoundedGrowth = {
       </Grid>
     </StoryStage>
   ),
-  play: async ({ canvas, userEvent }) => {
+  play: async ({ canvas, canvasElement, userEvent }) => {
+    delete canvasElement.dataset.storyReady
     const textarea = canvas.getByRole('textbox', { name: 'Growing note' })
     const initial = textarea.getBoundingClientRect().height
     await userEvent.type(textarea, Array(12).fill('A line of notes').join('\n'))
@@ -86,6 +87,7 @@ export const BoundedGrowth = {
     await userEvent.clear(textarea)
     await expect(textarea.getBoundingClientRect().height).toBe(initial)
     textarea.blur()
+    canvasElement.dataset.storyReady = 'true'
   },
 } satisfies Story
 

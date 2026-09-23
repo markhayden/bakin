@@ -1,6 +1,7 @@
-# Form components overhaul — specification draft
+# Form components overhaul — approved specification
 
-Status: specification and implementation plan approved; implementation in progress.
+Status: approved foundation implemented; contrast-token decision and exact visual
+baseline approval pending before final full conformance.
 Date: 2026-09-22.
 Evidence: [source audit](form-components-overhaul-audit.md).
 Plan: [implementation plan](form-components-overhaul-plan.md).

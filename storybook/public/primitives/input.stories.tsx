@@ -13,7 +13,7 @@ const meta = {
   parameters: {
     layout: 'fullscreen',
     docs: { description: { component: 'Input is the low-level native input contract, including text-like fields and file selection. Preserve type, inputMode, autoComplete, required, readOnly, disabled, accept, multiple, and aria-invalid attributes. Prefer the SDK field pattern for routine form composition; a raw native input is reserved for documented domain-interface exceptions.' } },
-    bakinCoverage: ['desktop', 'mobile-320', 'keyboard', 'disabled', 'error', 'long-labels'],
+    bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'disabled', 'error', 'long-labels'],
   },
 } satisfies Meta<typeof Input>
 
@@ -149,5 +149,20 @@ export const StatesAndMobileModes = {
     await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth)
     // Settle focus so visual capture never races a caret or focus ring.
     ;(document.activeElement as HTMLElement | null)?.blur?.()
+  },
+} satisfies Story
+
+export const SurfaceContexts = {
+  render: () => <StoryStage eyebrow="Surface contrast" title="Field appearances on surfaces" description="Outlined borders, filled surfaces and ghost controls preserve focus and error treatment across their parent surfaces.">
+    {[['Canvas', 'bg-bakin-canvas-default'], ['Default surface', 'bg-bakin-surface-default'], ['Elevated surface', 'bg-bakin-surface-elevated']].map(([label, background]) => <StorySection key={label} title={label}><div className={`${background} rounded-bakin-control p-bakin-4`}><Grid layout="split" gap="section">{(['outlined', 'filled', 'ghost'] as const).map(variant => <Field key={variant}><FieldLabel>{label} {variant}</FieldLabel><Input variant={variant} defaultValue="Editable value" /></Field>)}</Grid></div></StorySection>)}
+    <StorySection title="Invalid and readonly"><Grid layout="split" gap="section">{(['outlined', 'filled', 'ghost'] as const).map(variant => <Field key={variant} invalid><FieldLabel>{variant} invalid</FieldLabel><Input variant={variant} defaultValue="Review this value" readOnly /><FieldError match>Update this value at its source.</FieldError></Field>)}</Grid></StorySection>
+  </StoryStage>,
+  play: async ({ canvas, userEvent }) => {
+    const ghost = canvas.getByRole('textbox', { name: 'Canvas ghost' })
+    await userEvent.click(ghost)
+    await userEvent.tab({ shift: true })
+    await userEvent.tab()
+    await expect(ghost).toHaveFocus()
+    await expect(getComputedStyle(ghost).outlineStyle).toBe('solid')
   },
 } satisfies Story
