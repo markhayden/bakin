@@ -19,7 +19,7 @@
   },
   "hostInitialJs": {
     "path": "packages/host/dist/main.js",
-    "bytes": 237877
+    "bytes": 238585
   },
   "sdkUiBundles": [
     {
@@ -38,7 +38,7 @@
       "name": "sdk-conversation",
       "path": "packages/host/public/vendor/sdk-conversation.js",
       "bytes": 55829,
-      "reachableBytes": 711528
+      "reachableBytes": 711630
     },
     {
       "name": "sdk-layout",
@@ -151,12 +151,12 @@
       "bytes": 199
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-d382agef.js",
-      "bytes": 28516
-    },
-    {
       "path": "packages/host/public/vendor/sdk-shared-ecagn6xp.js",
       "bytes": 280602
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-ffj2xech.js",
+      "bytes": 28618
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-g45m9g03.js",
@@ -292,7 +292,7 @@
       "repository": "bakin",
       "pluginId": "spend",
       "path": "plugins/spend/dist/client.js",
-      "bytes": 40156
+      "bytes": 44155
     },
     {
       "repository": "bakin",

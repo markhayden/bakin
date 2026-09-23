@@ -383,7 +383,7 @@ const result = await ctx.hooks.invoke(
 Label: Get the limits policy.
 Purpose: Returns the spend-limit rule list (with ids) that dispatch consults before each turn, plus the accept-unattributed cutoff. Use it to read the current limits.
 Kind: rpc
-Source: plugins/spend/lib/register-hooks.ts:30
+Source: plugins/spend/lib/register-hooks.ts:31
 
 Example:
 
@@ -399,7 +399,7 @@ const result = await ctx.hooks.invoke(
 Label: List billing-lane overrides.
 Purpose: Returns the operator-set billing-lane overrides (agent / provider / pair → metered or subscription) so other plugins resolve lanes with the same precedence — the model plan reads provider-level entries.
 Kind: rpc
-Source: plugins/spend/lib/register-hooks.ts:119
+Source: plugins/spend/lib/register-hooks.ts:120
 
 Example:
 
@@ -415,7 +415,7 @@ const result = await ctx.hooks.invoke(
 Label: Price an image.
 Purpose: Returns billing attribution plus an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null cost when the model is provider-priced or the provider is overridden to the subscription lane. The agent’s chat auth never affects image billing.
 Kind: rpc
-Source: plugins/spend/lib/register-hooks.ts:95
+Source: plugins/spend/lib/register-hooks.ts:96
 
 Example:
 
@@ -431,7 +431,7 @@ const result = await ctx.hooks.invoke(
 Label: Price a turn.
 Purpose: Resolves the model an agent turn ran on and returns billing attribution (provider, metered/subscription lane) plus an estimated micro-dollar cost from the catalog pricing. Cost is null when the model is unpriced or the lane is subscription (tokens are the unit there).
 Kind: rpc
-Source: plugins/spend/lib/register-hooks.ts:65
+Source: plugins/spend/lib/register-hooks.ts:66
 
 Example:
 
@@ -447,7 +447,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve billing.
 Purpose: Returns the provider, billing lane (metered vs subscription), lane source, and normalized model for an agent/model pair — falling back to the agent’s effective model when none is given, unless prospective:false marks the attribution as historical. Use it to attribute or gate spend before a turn or billed media call.
 Kind: rpc
-Source: plugins/spend/lib/register-hooks.ts:125
+Source: plugins/spend/lib/register-hooks.ts:126
 
 Example:
 
@@ -463,7 +463,7 @@ const result = await ctx.hooks.invoke(
 Label: Update the limits policy.
 Purpose: Applies a narrow limits patch — currently the accept-unattributed-history cutoff written by the Health repair. Money policy never changes without an explicit, validated write.
 Kind: rpc
-Source: plugins/spend/lib/register-hooks.ts:36
+Source: plugins/spend/lib/register-hooks.ts:37
 
 Example:
 
