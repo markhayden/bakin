@@ -907,7 +907,7 @@
       },
       "sourcePath": "bakin-bits-official/plugins/projects/client.tsx",
       "symbols": [
-        "ProjectEditRoute"
+        "ProjectDetailRoute"
       ],
       "exportStatus": "not-applicable",
       "classification": "visual-surface",
@@ -920,7 +920,7 @@
         {
           "type": "client-registration",
           "path": "bakin-bits-official/plugins/projects/client.tsx",
-          "detail": "registerPlugin routes \"/projects/[id]/edit\" -> ProjectEditRoute"
+          "detail": "registerPlugin routes \"/projects/[id]/edit\" -> ProjectDetailRoute"
         }
       ]
     },

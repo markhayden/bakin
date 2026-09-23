@@ -354,7 +354,13 @@ Set `disabled` while a search is active so the upstream relevance order (e.g. An
 
 ## Conversation surfaces
 
-`IntegratedBrainstorm` was DELETED (2026-07). Every conversational surface — chat plugin, embedded brainstorm/plan panels, single-turn output embeds — composes the **conversation kit** (`src/components/conversation/`). Full reference: `.claude/knowledge/conversation-kit.md`. Short version: `ConversationPanel` + `useConversationStream` for embedded single-session surfaces (fitParent/showHeader/readOnly/transformText/onCustom cover the old brainstorm call-site shapes), `Conversation`/`AgentTurn`/`ActivityGroup`/`Composer` primitives for custom layouts, `foldConversation` as THE chunk-folding engine, and `conversationThreadId`/`createTurnRecorder` server-side. Routes stream `event: chunk` frames (raw runtime chunk JSON) instead of the old token/activity taxonomy.
+Embedded agent conversations compose `ConversationPanel` and `useConversationThread`
+from `@makinbakin/sdk/conversation`. The consumer supplies presentation-ready agents
+and an `agentControl` slot. Durable plugin-event turns survive navigation; no
+per-request/component-owned streaming hook exists. Optional `composerHandleRef`
+forwards emptiness, text and focus without exposing private storage keys. Compose
+`Collapsible` with mounted content when optional detail needs disclosure. Full
+reference: `.claude/knowledge/conversation-kit.md`.
 
 ## Key Files
 

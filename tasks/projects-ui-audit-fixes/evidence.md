@@ -145,3 +145,70 @@ downstream create failure, foreign task identity, deleted/reused checklist targe
 and deleted projects/tasks. One reserved board-task ID and verified provenance
 survive retries; the global project lock is released for external task APIs.
 All 239 Projects tests pass. Typecheck/lint pass. Add receipts checkpoint: `0e2cd28`.
+
+
+## Shared history and rendered comparison (T11/T24)
+
+Bits `0015163` owns one abortable/versioned history request for both views, with
+inline SystemState retry feedback and a ConfirmDialog that retains errors and the
+exact reviewed snapshot. Oversized line diffs say unavailable and retain keyboard
+scrolling. Focused failure/restore tests pass. Bits `5a8cdba` removes the blank-line
+renderer and passes full documents through MarkdownContent/compareTo. The actual
+packed SDK desktop/mobile plan fixture passes (report
+`/private/tmp/projects-audit-live-consumer-v2/test-results/bakin-ui-plan/index.html`),
+including visible spacing, axe, keyboard, overflow and console checks. Reviewed the
+mobile screenshot. The geometry assertion excludes the SDK's screen-reader-only
+change hint, not visible content. Core quick conformance passes (228 tests/types).
+
+## Staged draft model (T16)
+
+Bits `cb8cd64`: six pure/hook tests cover untouched-field merge, explicit overlap
+resolution, a second race, convergence, title validation, failed writes and typing
+during an in-flight save. The subsequent form integration passes nine focused
+form/detail tests; title/owner/status/body use one expected-field patch and SaveBar.
+T17/T18 remain in progress until actual consumer browser verification.
+
+## Integrated detail and required browser coverage (T02/T08/T17–T25)
+
+Bits checkpoints `b119695`, `ae0d7b4`, `d7ee9d2`, `ef842b2` and `884af39`
+complete checklist ownership, the staged form, protected route transitions,
+mobile disclosure, and required installed-SDK detail coverage. Durable service and
+file-watcher changes emit `projects.changed` through the plugin event bus, allowing
+the draft model to reconcile agent updates. Read/edit routes share the same
+mounted project owner. An actual router test exposed a duplicate exit prompt;
+the controlled exit now navigates only after the dirty guard has cleaned up.
+
+The final assembled SDK (`/private/tmp/projects-audit-sdk-final`, dry run only)
+passed all ten official Bits UI fixtures: template, terminal, four Messaging
+surfaces, and Projects list/plan/read/edit. The seven required Projects interaction
+scenarios prove overlapping-edit decisions, mounted drafts across read/edit,
+lost-response add replay, partial Save All, retained mobile draft and conversation
+scroll, 200% text, completed-filter persistence, native unload protection,
+Cancel/Discard, and honest retryable history failure. No composer send occurs on
+exit. Reports are retained under the Bits checkout's
+`test-results/plugin-ui-conformance/`; desktop read and mobile edit screenshots
+were visually inspected. No accessibility suppressions were added.
+
+All 643 Bits unit tests pass (8 intentionally skipped), with typecheck and lint.
+The final Core run passed 9,794 tests (18 skipped), types, lint, architecture,
+payload, and deterministic Storybook build; remaining full gates are still running.
+Initial final-gate failures were corrected: enrollment still expected only the plan
+fixture, the stub lacked the fixture-only draft writer export, and two conflict
+regions used raw heights. Conflict values now use canonical read-only Textarea;
+retired migration allowances remove ten raw-scale findings and two paths.
+
+## Approved payload ceilings
+
+The user approved the exact four entries in `payload-review.md` on 2026-09-23.
+Only those numeric fields changed. The 2,048-byte review threshold and every other
+ceiling remain unchanged. The payload gate passes. Subsequent canonical conflict
+composition reduces Projects JavaScript; it does not require a further increase.
+
+## Documentation and release boundary (T27)
+
+Projects README and UI-AUDIT now explain staged edits, conflicts, independent
+lifecycle, retries, shared patterns, browser coverage, and coordinated rollback.
+Projects is staged at 0.11.0. Shared author guidance uses the current conversation
+API, and generated tool/hook documentation reflects the new lifecycle contract.
+The exact fetchable Core prerequisite will be pinned in Bits CI before PR handoff.
+No runtime data, release tag, published SDK, or production installation changed.

@@ -267,7 +267,7 @@ never sit at rest in a card — surface on hover or behind the detail view.
 
 - One engine per domain; components are thin. Chat-like surfaces compose the
   conversation kit; embedded agent help = `ConversationPanel` +
-  `useConversationStream` over a per-request SSE plugin route
+  `useConversationThread` over durable plugin-event turns
   (chunk/done/error frames), `ephemeral: true`, reply-in-chat-only prompts.
 - Cross-plugin data flows through hooks/REST, never imports.
 - `data-*` test hooks on every meaningful element; tests assert behavior,

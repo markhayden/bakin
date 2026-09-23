@@ -43,7 +43,7 @@ compact single-turn composition for task and workflow embeds.
 ## Two consumption modes
 
 1. **Session-manager** (chat plugin): user creates/navigates many conversations. The rail/launcher/session chrome lives in the chat plugin — promote it to the SDK only when a second session-manager surface appears.
-2. **Embedded single-session** (`ConversationPanel`): ONE thread inside a host page — brainstorms, plan reviews (the bits messaging/projects plugins). No session navigation. API contract extracted from the real consumers: `messages`/`liveChunks`/`streaming`, `onSend`, `onAgentChange` (agent-switcher slot), `transformText → {text, extras}` (proposal stripping), `readOnly`/`readOnlyNotice`, `fitParent`/`showHeader`, internal `ToolCallDrawer`, opt-in queue plumb (`queueMode`/`queuedItems`/`onRemoveQueued` — default off, embedded surfaces keep strict one-turn semantics). Collapsible mode was deliberately dropped — no real consumer used it.
+2. **Embedded single-session** (`ConversationPanel`): ONE thread inside a host page — brainstorms, plan reviews (the bits messaging/projects plugins). No session navigation. API contract extracted from the real consumers: `messages`/`liveChunks`/`streaming`, `onSend`, `agentControl` (consumer-owned agent-switcher slot), `transformText → {text, extras}` (proposal stripping), `readOnly`/`readOnlyNotice`, `fitParent`/`showHeader`, internal `ToolCallDrawer`, opt-in queue plumb (`queueMode`/`queuedItems`/`onRemoveQueued` — default off, embedded surfaces keep strict one-turn semantics). Disclosure is consumer composition: wrap the panel in `CollapsibleContent keepMounted` and use `composerHandleRef` to inspect a hydrated draft.
 
 ## The turn model (fold.ts)
 
