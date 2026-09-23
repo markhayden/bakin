@@ -69,3 +69,12 @@ passed (empty/restored, identity changes, read-only, focus and unmount). Nine sh
 conversation/composer stories pass including axe; transcript names derive from
 panel titles to distinguish multiple sessions. Typecheck and focused lint pass.
 Quick conformance still stops only at the recorded fleet compatibility drift.
+
+## C2 — Whole-document Markdown parsing (T04)
+
+Pattern: `storybook/public/content/markdown-content.stories.tsx` —
+ManagedDocumentContext. Regression fixtures first reproduced broken cross-section
+references and code-fence marker handling. Managed-section presentation now runs
+on the parsed full document. Ten Markdown tests, three browser stories (including
+axe), typecheck and lint pass. Shared parser dependencies are declared directly.
+Packed-SDK consumer verification is included in T08/T26; no baseline replacement.

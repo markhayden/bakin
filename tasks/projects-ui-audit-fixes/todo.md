@@ -17,7 +17,7 @@ evidence when checking an item; a written plan is not a passing test.
 - [ ] T02: Reproduce detail diagnostics and risky write behavior
 - [x] T02b: Make scoped plugin replacement writes atomic
 - [x] T03: Implement AgentSelect's approved appearance contract
-- [ ] T04: Preserve full Markdown context through managed sections
+- [x] T04: Preserve full Markdown context through managed sections
 - [ ] T05: Add bounded, accessible Markdown comparison
 - [x] T06: Correct shared composer focus behavior
 - [x] T07: Correct contained conversation keyboard scrolling

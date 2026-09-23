@@ -18,15 +18,11 @@ import {
 } from '@bakin/ui'
 // Deep subpath: the patterns barrel is most of the SDK patterns bundle.
 import { CopyButton } from '@bakin/ui/patterns/copy-button'
+import { remarkManagedSections } from './markdown-document'
 
-const MARKER_PAIR = /<!--\s*bakin:([^\s]+?):start\s*-->([\s\S]*?)<!--\s*bakin:\1:end\s*-->/g
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v)(\?.*)?$/i
 // Raw or percent-encoded angle brackets: a template placeholder, not a URL.
 const PLACEHOLDER_URL = /%3C|%3E|[<>]/i
-
-type Segment =
-  | { kind: 'normal'; text: string }
-  | { kind: 'bakin'; markerName: string; body: string }
 
 /** Properties available when integrating Bakin's existing routing link. */
 export interface MarkdownInternalLinkProps {
@@ -40,19 +36,6 @@ export interface MarkdownContentProps {
   className?: string
   /** Use the established host/plugin link for internal SPA navigation. */
   renderInternalLink?: (props: MarkdownInternalLinkProps) => ReactNode
-}
-
-function splitBakinSegments(source: string): Segment[] {
-  const segments: Segment[] = []
-  let lastIndex = 0
-  for (const match of source.matchAll(MARKER_PAIR)) {
-    const start = match.index ?? 0
-    if (start > lastIndex) segments.push({ kind: 'normal', text: source.slice(lastIndex, start) })
-    segments.push({ kind: 'bakin', markerName: match[1], body: match[2].trim() })
-    lastIndex = start + match[0].length
-  }
-  if (lastIndex < source.length) segments.push({ kind: 'normal', text: source.slice(lastIndex) })
-  return segments
 }
 
 function nodeText(node: unknown): string {
@@ -186,7 +169,7 @@ function MarkdownBody({ content, renderInternalLink }: MarkdownContentProps) {
 
   if (!content.trim()) return null
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={components}>
+    <ReactMarkdown remarkPlugins={[remarkGfm, remarkManagedSections]} rehypePlugins={[rehypeHighlight]} components={components}>
       {content}
     </ReactMarkdown>
   )
@@ -196,24 +179,9 @@ const markdownClasses = 'min-w-0 font-bakin-typography-family-ui [font-size:var(
 
 /** Rich GFM, code, media, and managed-section presentation for Bakin content. */
 export function MarkdownContent({ content, className, renderInternalLink }: MarkdownContentProps) {
-  const segments = splitBakinSegments(content)
   return (
     <div data-markdown-content="" className={`${markdownClasses} ${className ?? ''}`}>
-      {segments.map((segment, index) => segment.kind === 'normal' ? (
-        <MarkdownBody key={index} content={segment.text} renderInternalLink={renderInternalLink} />
-      ) : (
-        <section
-          key={index}
-          data-bakin-block={segment.markerName}
-          aria-label={`Managed section: ${segment.markerName}`}
-          className="my-bakin-4 rounded-bakin-surface border border-dashed border-bakin-border-subtle bg-bakin-surface-default/55 px-bakin-4 py-bakin-3"
-        >
-          <p className="mb-bakin-2 font-bakin-typography-family-mono [font-size:var(--bakin-typography-size-meta)] uppercase tracking-widest text-bakin-text-muted">
-            bakin:{segment.markerName}
-          </p>
-          <MarkdownBody content={segment.body} renderInternalLink={renderInternalLink} />
-        </section>
-      ))}
+      <MarkdownBody content={content} renderInternalLink={renderInternalLink} />
     </div>
   )
 }

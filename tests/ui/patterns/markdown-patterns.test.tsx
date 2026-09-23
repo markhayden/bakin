@@ -8,6 +8,26 @@ import '../../rtl-settle'
 const CODE = '```typescript\nconst ready: boolean = true\n```'
 
 describe('focused markdown content', () => {
+  it('resolves references across managed sections without splitting document context', () => {
+    const { container, getByRole } = render(<MarkdownContent content={'[Outside][inside]\n\n<!-- bakin:plan:start -->\n[Inside][outside]\n\n[inside]: /projects/inside\n<!-- bakin:plan:end -->\n\n[outside]: /projects/outside'} />)
+    expect(getByRole('link', { name: 'Outside' }).getAttribute('href')).toBe('/projects/inside')
+    expect(getByRole('link', { name: 'Inside' }).getAttribute('href')).toBe('/projects/outside')
+    expect(container.querySelector('[data-bakin-block="plan"]')).not.toBeNull()
+  })
+
+  it('treats marker text inside fenced code as literal code', () => {
+    const { container } = render(<MarkdownContent content={'```html\n<!-- bakin:example:start -->\n<p>literal</p>\n<!-- bakin:example:end -->\n```'} />)
+    expect(container.querySelector('[data-bakin-block]')).toBeNull()
+    expect(container.querySelector('pre')?.textContent).toContain('<!-- bakin:example:start -->')
+  })
+
+  it('keeps managed lists and tables in legal flow containers', () => {
+    const { container } = render(<MarkdownContent content={'<!-- bakin:plan:start -->\n\n- first\n  - nested\n- second\n\n| name | state |\n| --- | --- |\n| project | ready |\n\n<!-- bakin:plan:end -->'} />)
+    expect(container.querySelectorAll('[data-bakin-block] ul')).toHaveLength(2)
+    expect(container.querySelector('[data-bakin-block] table')).not.toBeNull()
+    expect(container.querySelector('p section, ul > section, table > section')).toBeNull()
+  })
+
   it('renders GFM and copyable highlighted code with canonical chrome', async () => {
     const writes: string[] = []
     Object.defineProperty(globalThis.navigator, 'clipboard', {

@@ -105,3 +105,16 @@ export const ReadingAndCode = {
     await expect(canvas.getByRole('region', { name: 'Managed section: release' })).toBeVisible()
   },
 } satisfies Story
+
+export const ManagedDocumentContext = {
+  args: {
+    content: '[Outside reference][inside]\n\n<!-- bakin:plan:start -->\n\n## Managed plan\n\n- [Inside reference][outside]\n  - Nested task\n\n[inside]: /projects/inside\n\n<!-- bakin:plan:end -->\n\n[outside]: /projects/outside\n\n```html\n<!-- bakin:literal:start -->\n<p>Code stays code</p>\n<!-- bakin:literal:end -->\n```',
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('link', { name: 'Outside reference' })).toHaveAttribute('href', '/projects/inside')
+    await expect(canvas.getByRole('link', { name: 'Inside reference' })).toHaveAttribute('href', '/projects/outside')
+    await expect(canvas.getByRole('region', { name: 'Managed section: plan' })).toBeVisible()
+    await expect(canvas.queryByRole('region', { name: 'Managed section: literal' })).not.toBeInTheDocument()
+    await expect(canvas.getByRole('button', { name: 'Copy code' })).toBeVisible()
+  },
+} satisfies Story
