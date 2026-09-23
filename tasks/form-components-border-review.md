@@ -1,7 +1,7 @@
 # Form control border contrast — approval proposal
 
 Status: explicitly approved by the user; token implementation applied.
-Canonical verification is in progress. No PNG baseline changes authorized.
+Canonical contrast and interaction verification passed. No PNG baseline changes authorized.
 The generated CSS name follows the existing `--bakin-color-*` convention;
 the proposal originally abbreviated it as `--bakin-border-control`.
 

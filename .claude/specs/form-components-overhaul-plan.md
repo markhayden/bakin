@@ -632,3 +632,14 @@ The generated property is `--bakin-color-border-control`, following existing
 naming, and the shared utility is `border-bakin-border-control`. No separator,
 focus/error token, public entrypoint or performance ceiling changes accompany
 this extension. Exact PNG approval remains separate.
+
+
+### Final visual review checkpoint
+
+T19/C11 is complete, including the separately approved control-border token.
+`tasks/form-components-visual-review.md` lists the exact 66 candidate paths
+(18 new, 48 replacements), with before/after evidence and artifact hashes.
+The full canonical comparison leaves 232 existing baselines unchanged. All
+354 Storybook tests, 9,662 repository tests and 33 focused browser checks pass.
+T20/C12 remains gated on exact PNG approval; T21/C13 full aggregate validation
+follows the approved update. No product migration or baseline write occurred.

@@ -165,7 +165,7 @@ Starting commit: `1ecbc0b90`; branch: `codex/form-components-overhaul`.
   hash remains unchanged. No generated token, allowance or baseline changed.
 
 
-## Current checkpoint: contrast decision pending
+## Review checkpoint before control-border approval
 
 - Broad canonical browser sweep completed: **120/123 passed**; all three
   failures were the frozen old list-header inner-input assertion. Its repaired
@@ -224,6 +224,41 @@ and overlay selection. Actual values are saved in
 Quick conformance, docs check/validation, consecutive public build determinism,
 plugin conformance, production builds and performance pass. CSS is 191,737
 bytes, still below its original 192,625 ceiling; no extra payload adjustment.
-The final complete Storybook, repository and visual sweeps are in progress.
+The complete repository suite passed: **9,662 passed, 18 skipped, zero failed**
+across 1,016 files. The complete Storybook suite passed: **354 tests in 114
+files**, with five internal zero-test files skipped. The final visual sweep
+completed with baseline writes disabled.
 Exact new/changed PNG approval remains pending; captures use writes disabled.
 Logs: `/private/tmp/bakin-form-approved-border-{quick,browser,contrast,docs,doc-validation,determinism,plugin,performance}.log`.
+
+
+## Final canonical PNG review — awaiting exact approval
+
+C11 review is complete against source checkpoint `3fa5b8648`. The final
+canonical desktop/mobile sweep ran all **298 checks**: **232 unchanged**, **48
+existing screenshot differences**, and **18 new missing baselines**. Every
+failure is a screenshot comparison or missing baseline; there are no other
+errors. No baseline PNG has been written or altered.
+
+The exact 66 paths, actions, reasons and before/after/diff links are in
+`tasks/form-components-visual-review.md`. Copied review artifacts and SHA-256
+hashes are in `test-results/form-components-review/manifest.json`. Reviewed
+mobile/desktop control matrices, wrapping chips, group addons/error messages,
+Select typography, parent surfaces, settings/schema fields, pickers, search,
+Drawer/Sheet, conversation and token specimens. Existing compositions inherit
+the shared appearance; product-page migration remains deferred.
+
+Final logs:
+- `/private/tmp/bakin-form-approved-border-tests.log` — 9,662 passed; 18 skipped.
+- `/private/tmp/bakin-form-approved-border-stories.log` — 354 passed; 114 files.
+- `/private/tmp/bakin-form-approved-border-browser.log` — 33 passed, three engines.
+- `/private/tmp/bakin-form-approved-border-visual.log` — 232 unchanged + 66 reviewed.
+- `/private/tmp/bakin-form-approved-border-lint.log` — no errors; six existing warnings.
+
+Quick conformance, token tests, docs check/validation, deterministic public
+Storybook builds, plugin conformance, production builds and performance are
+also green. Full aggregate conformance is deferred until exact PNG approval,
+since its standard visual runner can create missing snapshots. C12 and C13
+remain pending; this is not a merge-ready claim. The unrelated embedded asset
+manifest diff remains unchanged (SHA-256
+`f761346b71c4693015c1c94aca52cb90c9a8580048cd3763c1c5525d5f3958ee`).

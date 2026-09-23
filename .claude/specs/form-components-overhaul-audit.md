@@ -188,8 +188,9 @@ or upstream compatibility shim was added.
 README and ui-patterns guidance were reviewed: no setup/command/product or
 archetype change requires an edit. Public UI overview, style guide, design-system
 knowledge and generated SDK API reference carry the author-facing changes.
-No product-page migration, dependency, token, exception, suppression or legacy
-allowance was added. See tasks/evidence-form-components-overhaul.md for receipts
+No product-page migration, dependency, exception, suppression or legacy
+allowance was added. The separately approved control-border token is the only
+new semantic token. See tasks/evidence-form-components-overhaul.md for receipts
 and the separate exact visual-baseline approval boundary.
 
 
