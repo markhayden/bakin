@@ -376,7 +376,7 @@ describe('ModelsPage component', () => {
       await openTab('Agents')
       const row = within((await screen.findByText('Patch')).closest('[data-agent-model-row]') as HTMLElement)
       expect(row.getByText('default')).toBeTruthy()
-      await user.click(row.getByRole('combobox', { name: 'Override' }))
+      await user.click(row.getByRole('combobox', { name: 'Model' }))
       await user.click(await screen.findByRole('option', { name: 'Claude Opus 4.6' }))
       expect((await screen.findByTestId('draft-summary')).textContent).toContain('1 change staged')
       fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))

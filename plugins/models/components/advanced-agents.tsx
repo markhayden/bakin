@@ -110,7 +110,7 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
                     ) : null}
                   </div>
                   <Field name={`agent-${row.agentId}-model`}>
-                    <FieldLabel htmlFor={`agent-${row.agentId}-model`}>Override <StagedMark staged={own.staged} /> <PendingChip sel={sel} refName={row.modelRef} /></FieldLabel>
+                    <FieldLabel htmlFor={`agent-${row.agentId}-model`}>Model <StagedMark staged={own.staged} /> <PendingChip sel={sel} refName={row.modelRef} /></FieldLabel>
                     <ModelSelect
                       id={`agent-${row.agentId}-model`}
                       value={own.model ?? DEFAULT_MODEL_VALUE}
