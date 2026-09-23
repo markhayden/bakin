@@ -330,6 +330,14 @@ columns stay unsortable. Paginated tables keep the controlled form
 slice. See the DataTable `SelfSorting` story.
 :::
 
+:::note[Mark the chosen or deep-linked row]
+`rowSelected={(row) => …}` gives a row the kit's selected treatment on both
+renders — the `ListRow` tint in the narrow render, `data-selected` on the
+wide `<tr>` — for the record a deep link landed on or the one currently
+chosen. Consumers own the state; nothing about the row becomes interactive.
+See the DataTable `SelectedRow` story.
+:::
+
 For media-led detail pages, use the default full `Page` canvas and
 `PageHeader measure="wide"` with the preview in the primary column and
 context, enrichment, downloads, and version history in the named `PageAside`.
@@ -593,7 +601,7 @@ The surface/content set covers bounded objects, compact identity, content bounda
 
 | Need | Component | Contract |
 | --- | --- | --- |
-| Represent a coherent bounded object | `Card` and its subparts | Use for an entity, record, or grouped data—not page layout |
+| Represent a coherent bounded object | `Card` and its subparts | Use for an entity, record, or grouped data—not page layout. When a card IS a section of the page (a settings lane, a guide), render its title as a real heading with `CardTitle as="h2"` (or `h3`) so heading navigation reaches it — the look is unchanged; see the Card `TitleAsHeading` story |
 | Arrange bounded objects in lanes | `KanbanBoard`, `KanbanColumn`, `KanbanColumnHeader`, `KanbanColumnBody`, and `KanbanCardSignal` | Keep one labelled horizontal overflow boundary; lanes remain structural, records retain their own Card boundaries, and operational feedback uses a full-width filled row rather than another chip |
 | Show compact identity | `Avatar`, `AvatarFallback`, and group helpers | Pair the visual with a visible or accessible identity name |
 | Reinforce a real content boundary | `Separator` | Decorative by default; opt into separator semantics deliberately |
@@ -1399,6 +1407,10 @@ export function OperationalCharts() {
 ```
 
 Each full chart owns a named plot and its exact-data table, rendered expanded below the chart by default so the evidence stays visible; pass `compactData` to collapse the table behind its "View {caption}" disclosure only in genuinely space-tight contexts. Axis-based charts add a keyboard-scrollable plot boundary at narrow widths. Set `showDataTable={false}` on `BarChart` or `RankedBarChart` only when the same exact dataset is already rendered beside it; a chart without an equivalent table is not a supported composition. Axis labels may shorten visually to keep the plot readable, while the accessible mark labels and exact table retain the full text.
+
+`GuideCard` (`@makinbakin/sdk/patterns`) is the plain-words opener for a settings surface — icon gutter, real heading (level 2 or 3), lead sentence, an optional action slot, and considerations as a railed overline strip that stacks on narrow containers. Use it once at the top of a tab or section; a condition that needs a decision is an `Alert`/`Banner`, not a guide.
+
+`CompositionBar` comes in three sizes: `inline` (a 6 px strip for a metric row; the accessible summary carries the values, no legend), `default` (10 px, keyboard-focusable segments with the shared tooltip and a legend of exact values), and `large` (a 32 px headline strip where each segment also carries its label and value inside it on a canvas-toned chip — clipped when the segment is too narrow, while the legend and summary stay complete). Pick `large` when the composition IS the point of a card, `default` when it supports other metrics, `inline` inside a tile.
 
 When a series *means* an outcome — succeeded, failed, warning — it wears status colors instead of categorical slots. Opt in with `tones` on `PieChart`, `RankedBarChart`, or `CompositionBar`: a map from entity or series key to `'success' | 'danger' | 'attention' | 'neutral'`. The four status chart-fill steps are fixed tokens (`--bakin-color-data-status-*`), re-stepped in lightness so adjacent green and red stay separable under color-vision deficiency; never substitute signal tokens or arbitrary colors in a plot. On `PieChart` and `CompositionBar`, `tones` switches the whole part-to-whole to status vocabulary and any unmapped key falls back explicitly to `neutral`; on `RankedBarChart`, only mapped series change, so an identity bar keeps its categorical slot while its failure overlay wears `danger`. Status and categorical meaning never mix within one ring or strip, and a chart without `tones` is untouched.
 

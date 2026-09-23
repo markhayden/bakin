@@ -28973,10 +28973,10 @@
         "x-bakin-full-path": "/api/plugins/models/routing"
       }
     },
-    "/api/plugins/models/routing/recommend": {
+    "/api/plugins/models/plan": {
       "get": {
-        "operationId": "models.get.routing-recommend",
-        "summary": "Compute recommended cheap-model routes for unrouted system classes",
+        "operationId": "models.get.plan",
+        "summary": "The recommended two-lane model plan (agent model + background chores)",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -29013,8 +29013,8 @@
         "tags": [
           "Models"
         ],
-        "description": "Proposal list only — nothing is written. The UI shows the diff in a ConfirmDialog; confirming PUTs the routes.",
-        "x-bakin-full-path": "/api/plugins/models/routing/recommend"
+        "description": "Read-only: the current lanes, the recommendation with plain-words reasons, the ops that reach it (staged by the Models page, applied by `bakin models plan --apply` through POST /selections under the returned revision), and the route-only proposals for unrouted chores classes.",
+        "x-bakin-full-path": "/api/plugins/models/plan"
       }
     },
     "/api/plugins/models/runtime/status": {

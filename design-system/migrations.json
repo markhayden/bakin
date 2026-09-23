@@ -20,11 +20,11 @@
     "private-import"
   ],
   "summary": {
-    "paths": 166,
+    "paths": 164,
     "totals": {
       "raw-palette": 4,
       "arbitrary-size": 77,
-      "raw-scale": 436,
+      "raw-scale": 434,
       "raw-control": 18,
       "inline-style": 33,
       "generic-token": 72,
@@ -2057,38 +2057,6 @@
       "status": "legacy-allowed",
       "allowances": {
         "raw-scale": 3
-      }
-    },
-    {
-      "path": "plugins/models/components/agents-tab.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "models"
-      },
-      "censusEntryId": "plugin-slot:models:page:/models",
-      "migrationTask": "T60",
-      "archetype": "list-index",
-      "target": "catalog/settings archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 1
-      }
-    },
-    {
-      "path": "plugins/models/components/available-models-tab.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "models"
-      },
-      "censusEntryId": "plugin-slot:models:page:/models",
-      "migrationTask": "T60",
-      "archetype": "list-index",
-      "target": "catalog/settings archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 1
       }
     },
     {

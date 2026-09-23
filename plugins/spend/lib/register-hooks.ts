@@ -10,7 +10,7 @@ import { getKnownModel, computeCostUsdMicros, computeImageCostUsdMicros } from '
 import { normalizeModelId } from '@bakin/core/llm/model-id'
 import { toLocalDayKey } from '@bakin/core/usage-history/store'
 import { resolveBilling } from './billing'
-import { readLimits, withSpendPolicyWrite } from './settings'
+import { readLimits, readOverrides, withSpendPolicyWrite } from './settings'
 
 async function effectiveModelFor(ctx: PluginContext, agentId: string): Promise<string | null> {
   try {
@@ -117,6 +117,12 @@ export function registerSpendHooks(ctx: PluginContext): void {
   // Billing attribution for a prospective turn (provider + metered vs
   // subscription lane) — the budget gate and billed-media gate consult this
   // before spending. Detection: overrides → auth-profile shape → metered.
+  ctx.hooks.register('spend.listBillingOverrides', async () => readOverrides(), {
+    label: 'List billing-lane overrides.',
+    summary: 'Returns the operator-set billing-lane overrides (agent / provider / pair → metered or subscription) so other plugins resolve lanes with the same precedence — the model plan reads provider-level entries.',
+    hookKind: 'rpc',
+  })
+
   ctx.hooks.register('spend.resolveBilling', async (data: Record<string, unknown>) => {
     const agentId = data.agentId as string | undefined
     let model = typeof data.model === 'string' ? normalizeModelId(data.model) : undefined

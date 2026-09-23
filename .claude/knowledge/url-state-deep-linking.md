@@ -110,6 +110,7 @@ registerPlugin({
 | `file` | string | `2026-09-18.md` | Selected daily memory file on the team Memory tab (`?tab=memory`); same rules as `skill` |
 | `activity_window` | string | `24h`, `7d` | Team Diagnostics activity-timeline window (default `24h`); changing it resets `activityPage` in the same navigation. Health uses the same name with its own defaults |
 | `tab` | string | `overview`, `system`, `models`, … | Active tab / category of a page; the default tab is omitted. On `/settings` the values are `system` (System & Alerts, default), `integrations` (Integrations & Keys), or a plugin id |
+| `tab` (models) | `overview` \| `agents` \| `routing` | `agents` | Active Advanced tab on `/models` (omitted at `overview`); a `?ref=` deep link overrides it with the tab that owns the ref |
 | `field` | string | settings field key (`dispatch.paused`) | Highlight + scroll ONCE to one field on `/settings?tab=<category>` (kit `PluginSettingsRenderer` `highlightKey`); inert on `integrations` and for unknown keys; dropped when the category changes |
 | `mode` | string | `create`, `edit`, `duplicate`, `preview` | Form mode (schedule plugin); edit-vs-preview on routed markdown editors (team shared context — default `edit`, so only `?mode=preview` appears) |
 | `page` | string | `1`, `2` | Pagination page number |

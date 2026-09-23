@@ -373,3 +373,30 @@ export const MetaFooter = {
     await expect(getComputedStyle(footer).backgroundColor).toBe('rgba(0, 0, 0, 0)')
   },
 } satisfies Story
+
+export const TitleAsHeading = {
+  render: () => (
+    <StoryStage
+      eyebrow="Primitives / heading title"
+      title="A card that is a section of the page"
+      description="CardTitle renders a div by default (a bounded object). When the card IS a section of the page — a settings lane, a guide — `as` makes the title a real heading so the document outline and heading navigation reach it; the visual treatment is unchanged."
+    >
+      <StorySection title="as='h2'">
+        <div style={{ width: 'min(100%, 28rem)', minWidth: 0 }}>
+          <Card>
+            <CardHeader>
+              <CardTitle as="h2">Agent model</CardTitle>
+              <CardDescription>Chat, direct messages, and every task your agents run.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button variant="outline" size="sm">Choose a model</Button>
+            </CardContent>
+          </Card>
+        </div>
+      </StorySection>
+    </StoryStage>
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('heading', { level: 2, name: 'Agent model' })).toBeVisible()
+  },
+} satisfies Story

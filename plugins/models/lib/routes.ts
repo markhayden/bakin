@@ -12,16 +12,14 @@ import {
   readPersistedCache,
   writePersistedCache,
 } from './models-cache'
-import { listRunCostsSince } from '../../../src/core/execution-ledger'
 import { probeModels } from './probe'
-import { describeSelections, getSelectionMutator } from './selections'
+import { applySelections, describeSelections, getSelectionMutator } from './selections'
 import { MutationRefused } from '../../../src/core/model-mutations'
 import type { SelectionDocument } from '../../../src/core/model-selections'
 import { AcknowledgePendingSchema } from './route-schemas'
-import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
+import { isLegacyRouting, migrateLegacyRouting } from '../../../src/core/routing-migration'
 import { resolveAgents } from './config-io'
-import { clearPendingRestart, describeRestart, notePendingChange, recordRestartFailure } from '../../../src/core/pending-restart'
-import type { RuntimeConfigChangeKind } from '@bakin/core/adapters/runtime'
+import { clearPendingRestart, describeRestart, recordRestartFailure } from '../../../src/core/pending-restart'
 import { normalizeModelId } from '@bakin/core/llm/model-id'
 import {
   applyEligibilityOverlay,
@@ -83,6 +81,9 @@ export const modelsRoutes = [
           // too (#907) — probing them would bill a call that cannot succeed.
           ? await probeModels(ctx as unknown as PluginContext, models.filter((m) => m.available !== false))
           : null
+        // Every catalog-changing path announces itself so pickers everywhere
+        // (Team's model options, the Models page) refetch instead of caching.
+        ctx.events.emit('models.catalog_changed', { reason: probeResult ? 'probe' : 'refresh' })
         return Response.json({
           ok: true,
           models: await applyEligibilityOverlay(ctx as unknown as PluginContext, models),
@@ -140,24 +141,9 @@ export const modelsRoutes = [
     responses: { 200: passthrough, 400: errorResponse, 409: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { body }) => {
       try {
-        const result = await getSelectionMutator(ctx as unknown as PluginContext).mutate(body)
-        if (result.applied.length > 0 || result.pending.length > 0) {
-          // Post-write side effects: the adapter decides whether a restart is
-          // needed per change kind (#878); the catalog's default/fallback
-          // flags refresh; the config-changed hook fires for agent pins.
-          const touched = [...result.applied, ...result.pending.map((p) => p.ref)]
-          const kinds = new Set<RuntimeConfigChangeKind>()
-          for (const ref of touched) {
-            if (ref.startsWith('agent:')) kinds.add('model-config')
-            else if (ref.startsWith('policy:')) kinds.add('routing-policy')
-          }
-          notePendingChange((ctx as unknown as PluginContext).runtime, [...kinds])
-          setModelsCache(null)
-          if (result.applied.some((ref) => ref.startsWith('agent:'))) {
-            await ctx.hooks.invoke('models.configChanged', { refs: result.applied })
-          }
-        }
-        return Response.json(result)
+        // Mutate + post-write side effects live in applySelections — the
+        // health repairs write through the same function.
+        return Response.json(await applySelections(ctx as unknown as PluginContext, body))
       } catch (err) {
         if (err instanceof MutationRefused) return Response.json(err.toBody(), { status: err.status })
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -311,24 +297,16 @@ export const modelsRoutes = [
   }),
 
   defineRoute({
-    path: '/routing/recommend',
+    path: '/plan',
     method: 'GET',
-    summary: 'Compute recommended cheap-model routes for unrouted system classes',
-    description: 'Proposal list only — nothing is written. The UI shows the diff in a ConfirmDialog; confirming PUTs the routes.',
+    summary: 'The recommended two-lane model plan (agent model + background chores)',
+    description: 'Read-only: the current lanes, the recommendation with plain-words reasons, the ops that reach it (staged by the Models page, applied by `bakin models plan --apply` through POST /selections under the returned revision), and the route-only proposals for unrouted chores classes.',
     responses: { 200: passthrough, 500: errorResponse },
     handler: async (_req, ctx) => {
       try {
-        const { buildRoutingHealthDeps, recommendRoutes } = await import('./health-checks')
-        const deps = buildRoutingHealthDeps(ctx as unknown as PluginContext, {
-          readRoutingConfig: () => {
-            const stored = ctx.getSettings<ModelsPluginSettings>().routing
-            if (isLegacyRouting(stored)) return migrateLegacyRouting(stored)
-            return stored ?? { routes: [], tagOverrides: [] }
-          },
-          listAvailableModels: async () => (await fetchAvailableModels(ctx as unknown as PluginContext)).models,
-          listRunCostsSince: (sinceMs) => listRunCostsSince(sinceMs),
-        })
-        return Response.json(await recommendRoutes(deps))
+        const { describePlan } = await import('./plan')
+        const { revision } = await getSelectionMutator(ctx as unknown as PluginContext).reconcile()
+        return Response.json(await describePlan(ctx as unknown as PluginContext, revision))
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
@@ -355,6 +333,7 @@ export const modelsRoutes = [
         await (ctx as unknown as PluginContext).runtime.restart()
         clearPendingRestart()
         resetModelsCache()
+        ctx.events.emit('models.catalog_changed', { reason: 'restart' })
         ctx.activity.audit('runtime.restarted', 'system')
         ctx.activity.log('system', 'Runtime restarted', { category: 'models' })
         return Response.json({ ok: true, message: 'Restart initiated' })

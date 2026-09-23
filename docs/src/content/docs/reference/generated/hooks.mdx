@@ -15,7 +15,7 @@ import HookCard from '../../../../components/HookCard.astro'
 <p class="hook-section-description">Asset hooks expose file, sidecar, variant, and trash helpers for plugins that need to work with Bakin-managed files.</p>
 
 <div class="hook-card-list">
-<HookCard id="assets-describe" name="assets.describe" label="Describe assets by id." summary="Batch {description, enrichment caption, type, exists} per assetId — lets brand asset groups (and any consumer) label members without direct imports." source="plugins/assets/lib/register-hooks.ts:49" badges={["rpc"]}>
+<HookCard id="assets-describe" name="assets.describe" label="Describe assets by id." summary="Batch {description, enrichment caption, type, exists} per assetId — lets brand asset groups (and any consumer) label members without direct imports." source="plugins/assets/lib/register-hooks.ts:56" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.describe',
@@ -23,7 +23,15 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-enrichmentstats" name="assets.enrichmentStats" label="Enrichment queue stats." summary="Returns the vision-enrichment queue depth and processed/failed/skipped counters for telemetry." source="plugins/assets/lib/register-hooks.ts:30" badges={["rpc"]}>
+<HookCard id="assets-enrichmentenabled" name="assets.enrichmentEnabled" label="Is vision enrichment on?" summary="Returns whether asset enrichment (captions, OCR, tags) runs — the models plan needs a vision-capable chores model only when it does." source="plugins/assets/lib/register-hooks.ts:31" badges={["rpc"]}>
+```ts frame="terminal"
+const result = await ctx.hooks.invoke(
+  'assets.enrichmentEnabled',
+  {},
+)
+```
+</HookCard>
+<HookCard id="assets-enrichmentstats" name="assets.enrichmentStats" label="Enrichment queue stats." summary="Returns the vision-enrichment queue depth and processed/failed/skipped counters for telemetry." source="plugins/assets/lib/register-hooks.ts:37" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.enrichmentStats',
@@ -31,7 +39,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-getassettypes" name="assets.getAssetTypes" label="List asset types." summary="Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories." source="plugins/assets/lib/register-hooks.ts:44" badges={["rpc"]}>
+<HookCard id="assets-getassettypes" name="assets.getAssetTypes" label="List asset types." summary="Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories." source="plugins/assets/lib/register-hooks.ts:51" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.getAssetTypes',
@@ -39,7 +47,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-listbytask" name="assets.listByTask" label="List assets linked to a task." summary="Returns {assetId, description, type} for every versioned asset whose manifest taskId matches. Backed by an in-memory index — the sanctioned way for core (dispatch) to resolve a task’s attached assets without scanning plugin storage." source="plugins/assets/lib/register-hooks.ts:36" badges={["rpc"]}>
+<HookCard id="assets-listbytask" name="assets.listByTask" label="List assets linked to a task." summary="Returns {assetId, description, type} for every versioned asset whose manifest taskId matches. Backed by an in-memory index — the sanctioned way for core (dispatch) to resolve a task’s attached assets without scanning plugin storage." source="plugins/assets/lib/register-hooks.ts:43" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.listByTask',
@@ -47,7 +55,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-purgeclipboardfortask" name="assets.purgeClipboardForTask" label="Purge task clipboard assets." summary="Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized." source="plugins/assets/lib/register-hooks.ts:99" badges={["rpc"]}>
+<HookCard id="assets-purgeclipboardfortask" name="assets.purgeClipboardForTask" label="Purge task clipboard assets." summary="Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized." source="plugins/assets/lib/register-hooks.ts:106" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.purgeClipboardForTask',
@@ -57,7 +65,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-resolveserve" name="assets.resolveServe" label="Resolve versioned asset serve request." summary="Resolves an /api/assets/&lt;assetId&gt; path (current, /v/&lt;n&gt;, /thumb, /export/&lt;name&gt;) to a file on disk for serving." source="plugins/assets/lib/register-hooks.ts:67" badges={["rpc"]}>
+<HookCard id="assets-resolveserve" name="assets.resolveServe" label="Resolve versioned asset serve request." summary="Resolves an /api/assets/&lt;assetId&gt; path (current, /v/&lt;n&gt;, /thumb, /export/&lt;name&gt;) to a file on disk for serving." source="plugins/assets/lib/register-hooks.ts:74" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.resolveServe',
@@ -70,7 +78,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-savefromsource" name="assets.saveFromSource" label="Save a file as a managed asset." summary="Upserts a file into the versioned asset store by source path (new asset, version bump, or no-op when unchanged). The sanctioned cross-plugin/core save path; mirrors bakin_exec_assets_save." source="plugins/assets/lib/register-hooks.ts:73" badges={["rpc"]}>
+<HookCard id="assets-savefromsource" name="assets.saveFromSource" label="Save a file as a managed asset." summary="Upserts a file into the versioned asset store by source path (new asset, version bump, or no-op when unchanged). The sanctioned cross-plugin/core save path; mirrors bakin_exec_assets_save." source="plugins/assets/lib/register-hooks.ts:80" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.saveFromSource',
@@ -148,19 +156,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Model hooks expose the effective model configuration and notify dependent surfaces when runtime model state changes.</p>
 
 <div class="hook-card-list">
-<HookCard id="models-configchanged" name="models.configChanged" label="Model config changed." summary="Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing." source="plugins/models/lib/register-hooks.ts:17" badges={["event"]}>
-```ts frame="terminal"
-await ctx.hooks.callAll(
-  'models.configChanged',
-  {
-    agentId: 'patch',
-    oldModel: 'gpt-5.4',
-    newModel: 'gpt-5.5'
-  },
-)
-```
-</HookCard>
-<HookCard id="models-getavailablemodels" name="models.getAvailableModels" label="List available models." summary="Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config." source="plugins/models/lib/register-hooks.ts:35" badges={["rpc"]}>
+<HookCard id="models-getavailablemodels" name="models.getAvailableModels" label="List available models." summary="Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config." source="plugins/models/lib/register-hooks.ts:31" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getAvailableModels',
@@ -168,7 +164,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-geteffectivemodel" name="models.getEffectiveModel" label="Get effective model." summary="Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent." source="plugins/models/lib/register-hooks.ts:21" badges={["rpc"]}>
+<HookCard id="models-geteffectivemodel" name="models.getEffectiveModel" label="Get effective model." summary="Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent." source="plugins/models/lib/register-hooks.ts:17" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getEffectiveModel',
@@ -178,7 +174,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-getroutingconfig" name="models.getRoutingConfig" label="Get routing config." summary="Returns the per-turn model/thinking routing policy (work classes + tag overrides) applied before each routable agent turn. Use it to read the current routing rules." source="plugins/models/lib/register-hooks.ts:49" badges={["rpc"]}>
+<HookCard id="models-getroutingconfig" name="models.getRoutingConfig" label="Get routing config." summary="Returns the per-turn model/thinking routing policy (work classes + tag overrides) applied before each routable agent turn. Use it to read the current routing rules." source="plugins/models/lib/register-hooks.ts:45" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getRoutingConfig',
@@ -186,7 +182,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-listagentmodels" name="models.listAgentModels" label="List agent models." summary="Returns every runtime agent with its own/subagent/default/effective model resolved (the roster the Models page shows). Use it when a plugin needs runtime-ready model information for the whole roster — the spend plugin's per-agent billing map reads it." source="plugins/models/lib/register-hooks.ts:29" badges={["rpc"]}>
+<HookCard id="models-listagentmodels" name="models.listAgentModels" label="List agent models." summary="Returns every runtime agent with its own/subagent/default/effective model resolved (the roster the Models page shows). Use it when a plugin needs runtime-ready model information for the whole roster — the spend plugin's per-agent billing map reads it." source="plugins/models/lib/register-hooks.ts:25" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.listAgentModels',
@@ -194,7 +190,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-refreshavailablemodels" name="models.refreshAvailableModels" label="Refresh the model catalog." summary="Bypasses caches and re-fetches the model catalog (with pricing) live from the configured providers. Use it when pricing is stale or missing — e.g. the spend-evidence repair — instead of waiting on the Models page to trigger a refresh." source="plugins/models/lib/register-hooks.ts:41" badges={["rpc"]}>
+<HookCard id="models-refreshavailablemodels" name="models.refreshAvailableModels" label="Refresh the model catalog." summary="Bypasses caches and re-fetches the model catalog (with pricing) live from the configured providers. Use it when pricing is stale or missing — e.g. the spend-evidence repair — instead of waiting on the Models page to trigger a refresh." source="plugins/models/lib/register-hooks.ts:37" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.refreshAvailableModels',
@@ -202,7 +198,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-resetcatalogcache" name="models.resetCatalogCache" label="Reset the model catalog cache." summary="Drops every catalog cache layer (hot, disk, in-flight) and bumps the runtime epoch so a stale fetch cannot publish. Invoked by the runtime switch." source="plugins/models/lib/register-hooks.ts:40" badges={["event"]}>
+<HookCard id="models-resetcatalogcache" name="models.resetCatalogCache" label="Reset the model catalog cache." summary="Drops every catalog cache layer (hot, disk, in-flight) and bumps the runtime epoch so a stale fetch cannot publish. Invoked by the runtime switch." source="plugins/models/lib/register-hooks.ts:36" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'models.resetCatalogCache',
@@ -248,6 +244,14 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
+<HookCard id="spend-listbillingoverrides" name="spend.listBillingOverrides" label="List billing-lane overrides." summary="Returns the operator-set billing-lane overrides (agent / provider / pair → metered or subscription) so other plugins resolve lanes with the same precedence — the model plan reads provider-level entries." source="plugins/spend/lib/register-hooks.ts:120" badges={["rpc"]}>
+```ts frame="terminal"
+const result = await ctx.hooks.invoke(
+  'spend.listBillingOverrides',
+  {},
+)
+```
+</HookCard>
 <HookCard id="spend-priceimage" name="spend.priceImage" label="Price an image." summary="Returns billing attribution plus an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null cost when the model is provider-priced or the provider is overridden to the subscription lane. The agent’s chat auth never affects image billing." source="plugins/spend/lib/register-hooks.ts:96" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
@@ -264,7 +268,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="spend-resolvebilling" name="spend.resolveBilling" label="Resolve billing." summary="Returns the provider, billing lane (metered vs subscription), lane source, and normalized model for an agent/model pair — falling back to the agent’s effective model when none is given, unless prospective:false marks the attribution as historical. Use it to attribute or gate spend before a turn or billed media call." source="plugins/spend/lib/register-hooks.ts:120" badges={["rpc"]}>
+<HookCard id="spend-resolvebilling" name="spend.resolveBilling" label="Resolve billing." summary="Returns the provider, billing lane (metered vs subscription), lane source, and normalized model for an agent/model pair — falling back to the agent’s effective model when none is given, unless prospective:false marks the attribution as historical. Use it to attribute or gate spend before a turn or billed media call." source="plugins/spend/lib/register-hooks.ts:126" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'spend.resolveBilling',

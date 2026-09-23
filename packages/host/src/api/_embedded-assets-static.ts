@@ -26,6 +26,7 @@ import asset_vendor_sdk_conversation_js from '../../public/vendor/sdk-conversati
 import asset_vendor_sdk_shared_xwf7zwwb_js from '../../public/vendor/sdk-shared-xwf7zwwb.js' with { type: 'file' }
 import asset_vendor_sdk_content_js from '../../public/vendor/sdk-content.js' with { type: 'file' }
 import asset_vendor_sdk_shared_b3v28rcx_js from '../../public/vendor/sdk-shared-b3v28rcx.js' with { type: 'file' }
+import asset_vendor_sdk_shared_wmt0kn8t_js from '../../public/vendor/sdk-shared-wmt0kn8t.js' with { type: 'file' }
 import asset_vendor_react_js from '../../public/vendor/react.js' with { type: 'file' }
 import asset_vendor_sdk_shared_2m59avfb_js from '../../public/vendor/sdk-shared-2m59avfb.js' with { type: 'file' }
 import asset_vendor_sdk_shared_3tnggsqa_js from '../../public/vendor/sdk-shared-3tnggsqa.js' with { type: 'file' }
@@ -41,7 +42,6 @@ import asset_vendor_sdk_shared_sky48pgw_js from '../../public/vendor/sdk-shared-
 import asset_vendor_sdk_shared_rqd21pxb_js from '../../public/vendor/sdk-shared-rqd21pxb.js' with { type: 'file' }
 import asset_vendor_react_dom_js from '../../public/vendor/react-dom.js' with { type: 'file' }
 import asset_vendor_sdk_shared_9s1twpqb_js from '../../public/vendor/sdk-shared-9s1twpqb.js' with { type: 'file' }
-import asset_vendor_sdk_shared_2f4g2e6p_js from '../../public/vendor/sdk-shared-2f4g2e6p.js' with { type: 'file' }
 import asset_vendor_sdk_charts_js from '../../public/vendor/sdk-charts.js' with { type: 'file' }
 import asset_vendor_sdk_index_js from '../../public/vendor/sdk-index.js' with { type: 'file' }
 import asset_vendor_sdk_layout_js from '../../public/vendor/sdk-layout.js' with { type: 'file' }
@@ -88,6 +88,7 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/vendor/sdk-shared-xwf7zwwb.js', asset_vendor_sdk_shared_xwf7zwwb_js],
   ['/vendor/sdk-content.js', asset_vendor_sdk_content_js],
   ['/vendor/sdk-shared-b3v28rcx.js', asset_vendor_sdk_shared_b3v28rcx_js],
+  ['/vendor/sdk-shared-wmt0kn8t.js', asset_vendor_sdk_shared_wmt0kn8t_js],
   ['/vendor/react.js', asset_vendor_react_js],
   ['/vendor/sdk-shared-2m59avfb.js', asset_vendor_sdk_shared_2m59avfb_js],
   ['/vendor/sdk-shared-3tnggsqa.js', asset_vendor_sdk_shared_3tnggsqa_js],
@@ -103,7 +104,6 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/vendor/sdk-shared-rqd21pxb.js', asset_vendor_sdk_shared_rqd21pxb_js],
   ['/vendor/react-dom.js', asset_vendor_react_dom_js],
   ['/vendor/sdk-shared-9s1twpqb.js', asset_vendor_sdk_shared_9s1twpqb_js],
-  ['/vendor/sdk-shared-2f4g2e6p.js', asset_vendor_sdk_shared_2f4g2e6p_js],
   ['/vendor/sdk-charts.js', asset_vendor_sdk_charts_js],
   ['/vendor/sdk-index.js', asset_vendor_sdk_index_js],
   ['/vendor/sdk-layout.js', asset_vendor_sdk_layout_js],

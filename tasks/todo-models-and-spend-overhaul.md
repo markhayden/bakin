@@ -45,19 +45,19 @@ Plan: `tasks/plan-models-and-spend-overhaul.md` (v2) · Spec: `.claude/specs/mod
 - [~] CHECKPOINT B (2026-09-22): gates green; ui:conformance --full green except the pre-existing #904 `ModelSelect › Grouped Catalog` story flake (Base UI focus-guard aria-hidden-focus; fails identically without this branch's changes); ui:test:conformance green (spend graduated); /verify on an isolated boot with a seeded legacy models.json: upgrade at activation (ids, no warnPct, backup, keys stripped) → boot pass recorded 50 (covered by 75) + 75 delivered → cap crossed ⇒ 90 covered by 100 + cap incident episode 1 delivered once → resume refused 409 still_over_limit (S12) → raise-through-incident updated the rule in place (same id) + resolved `raised` → `bakin budget show` milestones + `bakin spend` pace basis → doctor `health.spend.policy-available` healthy, `spend.budget` under spend ownership; unit suites cover S8/S9/S13/S14 + the upgrade crash matrix. REMAINING: Mark's live test on 3737 (needs a server restart) — then the stack merges bottom-up.
 
 ## PR 3 — feat/models-plan-page
-- [ ] T3.1 D23 approval → sdk contract + DisabledWithReason story + public-api (or record fallback)
-- [ ] T3.2 recommender (absorbs recommendRoutes) + GET /plan + bakin models plan [--apply] (restore already shipped in PR 1)
-- [ ] T3.3 onboarding models step + ONBOARDING_VERSION bump
-- [ ] T3.4 page shell: mode toggle, catalog panel, ?ref, classification, pending chips (old tabs still mounted)
-- [ ] T3.5 draft/op model + one SaveBar + partial-failure/pending UI + dirty-exit guard
-- [ ] T3.6 Simple view + save-minimality property test
-- [ ] T3.7 Reset: buildResetOps, dialog, snapshot, refused-with-dirty-draft
-- [ ] T3.8 Advanced sections support-gated
-- [ ] T3.9 selection callouts (stage-into-draft)
-- [ ] T3.10 Team shared options hook + models.catalog_changed
-- [ ] T3.11 delete tabs, dead Settings field, stale hooks  **[PoNR]**
-- [ ] T3.12 docs: models-plugin, onboarding, CLI, CLAUDE.md routing paragraph, README
-- [ ] CHECKPOINT C: gates + ui:conformance --full + ui:test:conformance (models) + /verify S4 S5 S6 S7 S10 S11 + live test → merge
+- [~] T3.1 D23 approval — PENDING Mark (recorded in spec D23); fallback (label-suffix composition) in force; lands as one add-on commit on a yes
+- [x] T3.2 recommender (absorbs recommendRoutes) + GET /plan + bakin models plan [--apply] (restore already shipped in PR 1) — `src/core/model-plan.ts` pure + `plugins/models/lib/plan.ts` composition; `/routing/recommend` deleted; `assets.enrichmentEnabled` hook; purity arch test
+- [x] T3.3 onboarding models step + ONBOARDING_VERSION bump (6) — `src/core/onboarding/models.ts` + TUI confirm step + `bakin check models`; plan-input assembly moved to core (`model-plan-input.ts`, `routing-migration.ts`, `@bakin/core/llm/billing-lane`) so onboarding runs the same recommender without plugins
+- [x] T3.4 page shell: mode toggle (SegmentedControl in PageHeader controls), catalog DisclosurePanel (`catalog-panel.tsx`, no Set default), `?ref=` view flip, classification (`lib/mode.ts`), pending summary badge, evidence banner; `use-selections.ts` (GET /selections + /plan, ui:mode op) + `use-catalog.ts` extracted; old tabs still mounted inside the Advanced panel
+- [x] T3.5 draft/op model (`lib/draft.ts` pure: stage/unstage/matchesPersisted/retainFailed) + `useSelections` save (revision, one stale retry, failed refs retained) + one `SaveBar` + `useUnsavedChangesGuard`; consumers land in T3.6/T3.8
+- [x] T3.6 Simple view — `simple-mode.tsx` (two lane cards with ModelSelect, Mixed + "Set all to…", customizations line → Advanced, recommended-plan ConfirmDialog staging ops), `lib/simple.ts` pure lane rules, `simple-save-minimality.test.ts` (200-seed property test); perTurnModel notice rides T3.8
+- [x] T3.7 Reset to this plan — `buildResetOps` in core (support-gated clears, skipped + disclosed), `reset-dialog.tsx` (ConfirmDialog with typed confirmation + diff, immediate `snapshot:'reset'`, refused while dirty, undo handle shown; MutateResult now carries `snapshot`)
+- [x] T3.8 Advanced view — `advanced-mode.tsx` (Defaults with support-gated fallbacks/aliases/subagent default + one muted line for hidden knobs; Agents ListRows with override + gated subagent column; Work routing DataTables Agent work / Background chores + thinking selects + tag overrides + "Use recommended routes" dialog; perTurnModel=false ⇒ Alert + read-only), `lib/advanced.ts` draft readers; old tabs unmounted (deleted in T3.11)
+- [x] T3.9 selection callouts — `selection-callout.tsx` (`SelectionCallout`: dead ⇒ reason + "Use <proposal>" that STAGES; unknown ⇒ info only; hidden once staged; `PendingChip` per ref) wired into both lanes, defaults, fallbacks, aliases, agent rows, routing rows, tag rows
+- [x] T3.10 shared model-options hook — `src/hooks/use-available-models.ts` module cache deleted, refetch on `models.catalog_changed` (emitted by POST /refresh, POST /selections, POST /runtime/restart); Team's agent form/detail already ride the hook
+- [x] T3.11 deletions [PoNR] — tabs (agents/aliases/routing/available-models), `use-models-data.ts`, `lib/selection-ops.ts`, Settings `defaultModel` field + `ModelsPluginSettings.defaultModel`, `models.configChanged` (no listeners), `?tab=` deep links → `?ref=`, routing-tab exception + two migration allowances retired (debt −2 raw-scale), stylesheet rebuilt
+- [x] T3.12 docs — models-plugin.md (Models page section: mode, draft, Simple, Reset, Advanced, callouts, catalog_changed), doctor/plugin-system/agent-system/CLAUDE.md updates, user docs `using/models.md` rewritten, tasks.md link, models plugin 3.0.0 + manifest description, generated refs
+- [~] CHECKPOINT C (2026-09-22): lint/typecheck/check:cycles/full suite green (9852 pass); `ui:conformance --full` green — the one visual failure (`forms-asset-library-picker` mobile, 1 px, untouched story) re-ran 280/280 (the #894 AssetLibraryPicker flake class); `ui:test:conformance` green with models graduated; isolated /verify on 3799: /selections (support+states+eligibility), /plan, page shell, ui:mode op, stale revision 409, ineligible restore refused 400 + proposal, reset with snapshot file, `bakin models plan`, `bakin check models` (warn on a blind enrichment lane). REMAINING: Mark's live test on 3737 (server restart) → merge bottom-up.
 
 ## Close-out
 - [ ] #907 closed with rig note; #378 comment (model slice shipped); #878 comment (Models half shipped)

@@ -19,8 +19,13 @@ export interface CompositionBarProps {
   data: readonly CompositionBarSegment[]
   /** Accessible name for the strip and basis for its legend name. */
   label: string
-  /** `inline` fits inside a metric row; `default` leaves room for the legend. */
-  size?: 'inline' | 'default'
+  /**
+   * `inline` fits inside a metric row; `default` leaves room for the legend;
+   * `large` is the tall strip for a headline part-to-whole — each segment
+   * carries its label and value inside it (clipped when the segment is too
+   * narrow; the legend and the accessible summary always carry them all).
+   */
+  size?: 'inline' | 'default' | 'large'
   /**
    * List legend with exact values below the strip. Defaults to true at size
    * `default`; forced off at size `inline`, where the accessible summary
@@ -40,7 +45,7 @@ export interface CompositionBarProps {
   tones?: Readonly<Record<string, ChartTone>>
 }
 
-const STRIP_HEIGHT: Record<'inline' | 'default', number> = { inline: 6, default: 10 }
+const STRIP_HEIGHT: Record<'inline' | 'default' | 'large', number> = { inline: 6, default: 10, large: 32 }
 const SEGMENT_GAP = 2
 
 interface ResolvedSegment extends CompositionBarSegment {
@@ -93,8 +98,9 @@ export function CompositionBar({
   const tooltipId = useId()
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const { segments, total } = useMemo(() => resolveSegments(data, tones), [data, tones])
-  const interactive = size === 'default' && total > 0
-  const showLegend = size === 'default' && legend && segments.length > 0
+  const interactive = size !== 'inline' && total > 0
+  const showLegend = size !== 'inline' && legend && segments.length > 0
+  const labelled = size === 'large'
   const visible = segments.filter((segment) => segment.plotted > 0)
   const lastVisibleKey = visible[visible.length - 1]?.key
 
@@ -135,7 +141,7 @@ export function CompositionBar({
                 key={segment.key}
                 data-slot="composition-bar-segment"
                 data-segment-key={segment.key}
-                className={`block h-full min-w-px ${rounded}${interactive ? ' focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring' : ''}`}
+                className={`${labelled ? 'flex items-center overflow-hidden px-bakin-2' : 'block'} h-full min-w-px ${rounded}${interactive ? ' focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring' : ''}`}
                 style={{ flexGrow: segment.plotted, flexBasis: 0, backgroundColor: segment.color }}
                 {...(interactive
                   ? {
@@ -149,7 +155,14 @@ export function CompositionBar({
                       onBlur: deactivate,
                     }
                   : { 'aria-hidden': true as const })}
-              />
+              >
+                {labelled ? (
+                  // A canvas-toned chip keeps the text readable on any fill color.
+                  <span aria-hidden="true" className="min-w-0 truncate rounded-bakin-control bg-bakin-canvas-default/85 px-bakin-2 py-bakin-0.5 text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-primary">
+                    {segment.label} <span className="font-bakin-typography-family-mono font-bakin-typography-weight-medium tabular-nums text-bakin-text-muted">{formatValue(segment.plotted)}</span>
+                  </span>
+                ) : null}
+              </span>
             )
           })}
         </div>
@@ -163,7 +176,7 @@ export function CompositionBar({
         ) : null}
       </div>
 
-      {size === 'default' && segments.length === 0 ? (
+      {size !== 'inline' && segments.length === 0 ? (
         <p className="mt-bakin-1 text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">{emptyLabel}</p>
       ) : null}
 

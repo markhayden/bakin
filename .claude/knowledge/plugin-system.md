@@ -1182,7 +1182,7 @@ Same pattern is used for the plugin registry
 | workflows | 19 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.approveGate`, `workflows.rejectGate`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.authorizeToolUse`, `workflows.matchWorkflow`, `workflows.definitions.list`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
 | assets | 8 | `assets.validateSidecar`, `assets.getSidecarPath`, `assets.createStub`, `assets.detectVariant`, `assets.getAssetTypes`, `assets.trash.list`, `assets.restoreAsset`, `assets.emptyTrash` |
 | team | 7 | `team.list`, `team.getAgent`, `team.getAgentIds`, `team.resolveProfile`, `team.getTeamMembers`, `team.getAgentTeam`, `team.getOrgStructure` |
-| models | 7 | `models.configChanged`, `models.getEffectiveModel`, `models.listAgentModels`, `models.getAvailableModels`, `models.refreshAvailableModels`, `models.resetCatalogCache`, `models.getRoutingConfig` |
+| models | 6 | `models.getEffectiveModel`, `models.listAgentModels`, `models.getAvailableModels`, `models.refreshAvailableModels`, `models.resetCatalogCache`, `models.getRoutingConfig` |
 | spend | 5 | `spend.getBudgetPolicy`, `spend.updateBudgetPolicy`, `spend.resolveBilling`, `spend.priceTurn`, `spend.priceImage` (absent `spend.getBudgetPolicy` ⇒ the dispatch gate fails closed) |
 | tasks extensions | 2 | `tasks.statusChanged`, `tasks.enrichDetails` |
 

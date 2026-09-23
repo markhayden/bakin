@@ -13,6 +13,7 @@ import type { PluginContext } from '@bakin/core/plugin-types'
 
 import { resolveAssetServe } from './serve'
 import { enrichmentQueueStats } from './enrichment/queue'
+import type { EnrichmentSettings } from './enrichment/providers'
 import {
   getAsset, upsertFromSource,
   listAssets as listVersionedAssets,
@@ -27,6 +28,12 @@ import { createLogger } from '../../../src/core/logger'
 const log = createLogger('assets')
 
 export function registerAssetsHooks(ctx: PluginContext): void {
+  ctx.hooks.register('assets.enrichmentEnabled', () => ctx.getSettings<EnrichmentSettings>().enrichmentEnabled !== false, {
+    label: 'Is vision enrichment on?',
+    summary: 'Returns whether asset enrichment (captions, OCR, tags) runs — the models plan needs a vision-capable chores model only when it does.',
+    hookKind: 'rpc',
+  })
+
   ctx.hooks.register('assets.enrichmentStats', () => ({ ...enrichmentQueueStats(), coverage: enrichmentCoverage() }), {
     label: 'Enrichment queue stats.',
     summary: 'Returns the vision-enrichment queue depth and processed/failed/skipped counters for telemetry.',

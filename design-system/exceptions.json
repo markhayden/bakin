@@ -218,36 +218,6 @@
       "removalCondition": "Remove when the last pill-variant consumer migrates to the underline variant and the frozen geometry is deleted."
     },
     {
-      "id": "models-routing-tab-work-classes-import",
-      "status": "approved-temporary",
-      "scope": [
-        "plugins/models/components/routing-tab.tsx"
-      ],
-      "allowances": {
-        "plugins/models/components/routing-tab.tsx": {
-          "private-import": 1
-        }
-      },
-      "closestPattern": {
-        "storyPath": "storybook/public/forms/plugin-settings-renderer.stories.tsx",
-        "storyExport": "CanonicalUsage"
-      },
-      "mismatch": "The routing tab renders the work-class routing matrix and must enumerate the canonical WorkClass list from src/core/model-routing.ts; duplicating the list in the plugin would create a second routing vocabulary, which the model-routing architecture explicitly forbids.",
-      "compositionLimit": "The SDK does not publish the work-class enumeration, and CLAUDE.md's routing rule (one routing key, never a parallel config) outweighs the plugin-import boundary until the SDK exposes the type.",
-      "alternative": "Keep the single private import of the WORK_CLASSES constant in the models plugin's routing tab, as a core plugin inside the same repository.",
-      "safeguards": {
-        "accessibility": "Not affected; the import carries data only and the tab renders through supported form patterns.",
-        "responsiveness": "Not affected by the import; layout composes supported patterns.",
-        "routing": "No effect on browser routing; the import concerns model routing configuration only.",
-        "isolation": "Core plugins are compiled in-repo, so the private import cannot break external plugin authors; external plugins never see this path."
-      },
-      "approvedBy": "Mark Hayden",
-      "approvedOn": "2026-07-31",
-      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the routing-tab WORK_CLASSES private import keep as a formal exception.",
-      "reviewBy": "2026-10-30",
-      "removalCondition": "Remove when the work-class enumeration is published through a supported SDK entrypoint and the routing tab imports it from there."
-    },
-    {
       "id": "brands-hex-literal-copy",
       "status": "approved-temporary",
       "scope": [

@@ -23,7 +23,7 @@ Asset hooks expose file, sidecar, variant, and trash helpers for plugins that ne
 Label: Describe assets by id.
 Purpose: Batch {description, enrichment caption, type, exists} per assetId — lets brand asset groups (and any consumer) label members without direct imports.
 Kind: rpc
-Source: plugins/assets/lib/register-hooks.ts:49
+Source: plugins/assets/lib/register-hooks.ts:56
 
 Example:
 
@@ -34,12 +34,28 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
+### assets.enrichmentEnabled
+
+Label: Is vision enrichment on?
+Purpose: Returns whether asset enrichment (captions, OCR, tags) runs — the models plan needs a vision-capable chores model only when it does.
+Kind: rpc
+Source: plugins/assets/lib/register-hooks.ts:31
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'assets.enrichmentEnabled',
+  {},
+)
+```
+
 ### assets.enrichmentStats
 
 Label: Enrichment queue stats.
 Purpose: Returns the vision-enrichment queue depth and processed/failed/skipped counters for telemetry.
 Kind: rpc
-Source: plugins/assets/lib/register-hooks.ts:30
+Source: plugins/assets/lib/register-hooks.ts:37
 
 Example:
 
@@ -55,7 +71,7 @@ const result = await ctx.hooks.invoke(
 Label: List asset types.
 Purpose: Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories.
 Kind: rpc
-Source: plugins/assets/lib/register-hooks.ts:44
+Source: plugins/assets/lib/register-hooks.ts:51
 
 Example:
 
@@ -71,7 +87,7 @@ const result = await ctx.hooks.invoke(
 Label: List assets linked to a task.
 Purpose: Returns {assetId, description, type} for every versioned asset whose manifest taskId matches. Backed by an in-memory index — the sanctioned way for core (dispatch) to resolve a task’s attached assets without scanning plugin storage.
 Kind: rpc
-Source: plugins/assets/lib/register-hooks.ts:36
+Source: plugins/assets/lib/register-hooks.ts:43
 
 Example:
 
@@ -87,7 +103,7 @@ const result = await ctx.hooks.invoke(
 Label: Purge task clipboard assets.
 Purpose: Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized.
 Kind: rpc
-Source: plugins/assets/lib/register-hooks.ts:99
+Source: plugins/assets/lib/register-hooks.ts:106
 
 Example:
 
@@ -105,7 +121,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve versioned asset serve request.
 Purpose: Resolves an /api/assets/<assetId> path (current, /v/<n>, /thumb, /export/<name>) to a file on disk for serving.
 Kind: rpc
-Source: plugins/assets/lib/register-hooks.ts:67
+Source: plugins/assets/lib/register-hooks.ts:74
 
 Example:
 
@@ -126,7 +142,7 @@ const result = await ctx.hooks.invoke(
 Label: Save a file as a managed asset.
 Purpose: Upserts a file into the versioned asset store by source path (new asset, version bump, or no-op when unchanged). The sanctioned cross-plugin/core save path; mirrors bakin_exec_assets_save.
 Kind: rpc
-Source: plugins/assets/lib/register-hooks.ts:73
+Source: plugins/assets/lib/register-hooks.ts:80
 
 Example:
 
@@ -228,32 +244,12 @@ const result = await ctx.hooks.invoke(
 
 Model hooks expose the effective model configuration and notify dependent surfaces when runtime model state changes.
 
-### models.configChanged
-
-Label: Model config changed.
-Purpose: Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing.
-Kind: event
-Source: plugins/models/lib/register-hooks.ts:17
-
-Example:
-
-```ts
-await ctx.hooks.callAll(
-  'models.configChanged',
-  {
-    agentId: 'patch',
-    oldModel: 'gpt-5.4',
-    newModel: 'gpt-5.5'
-  },
-)
-```
-
 ### models.getAvailableModels
 
 Label: List available models.
 Purpose: Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:35
+Source: plugins/models/lib/register-hooks.ts:31
 
 Example:
 
@@ -269,7 +265,7 @@ const result = await ctx.hooks.invoke(
 Label: Get effective model.
 Purpose: Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:21
+Source: plugins/models/lib/register-hooks.ts:17
 
 Example:
 
@@ -287,7 +283,7 @@ const result = await ctx.hooks.invoke(
 Label: Get routing config.
 Purpose: Returns the per-turn model/thinking routing policy (work classes + tag overrides) applied before each routable agent turn. Use it to read the current routing rules.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:49
+Source: plugins/models/lib/register-hooks.ts:45
 
 Example:
 
@@ -303,7 +299,7 @@ const result = await ctx.hooks.invoke(
 Label: List agent models.
 Purpose: Returns every runtime agent with its own/subagent/default/effective model resolved (the roster the Models page shows). Use it when a plugin needs runtime-ready model information for the whole roster — the spend plugin's per-agent billing map reads it.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:29
+Source: plugins/models/lib/register-hooks.ts:25
 
 Example:
 
@@ -319,7 +315,7 @@ const result = await ctx.hooks.invoke(
 Label: Refresh the model catalog.
 Purpose: Bypasses caches and re-fetches the model catalog (with pricing) live from the configured providers. Use it when pricing is stale or missing — e.g. the spend-evidence repair — instead of waiting on the Models page to trigger a refresh.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:41
+Source: plugins/models/lib/register-hooks.ts:37
 
 Example:
 
@@ -335,7 +331,7 @@ const result = await ctx.hooks.invoke(
 Label: Reset the model catalog cache.
 Purpose: Drops every catalog cache layer (hot, disk, in-flight) and bumps the runtime epoch so a stale fetch cannot publish. Invoked by the runtime switch.
 Kind: event
-Source: plugins/models/lib/register-hooks.ts:40
+Source: plugins/models/lib/register-hooks.ts:36
 
 Example:
 
@@ -398,6 +394,22 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
+### spend.listBillingOverrides
+
+Label: List billing-lane overrides.
+Purpose: Returns the operator-set billing-lane overrides (agent / provider / pair → metered or subscription) so other plugins resolve lanes with the same precedence — the model plan reads provider-level entries.
+Kind: rpc
+Source: plugins/spend/lib/register-hooks.ts:120
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'spend.listBillingOverrides',
+  {},
+)
+```
+
 ### spend.priceImage
 
 Label: Price an image.
@@ -435,7 +447,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve billing.
 Purpose: Returns the provider, billing lane (metered vs subscription), lane source, and normalized model for an agent/model pair — falling back to the agent’s effective model when none is given, unless prospective:false marks the attribution as historical. Use it to attribute or gate spend before a turn or billed media call.
 Kind: rpc
-Source: plugins/spend/lib/register-hooks.ts:120
+Source: plugins/spend/lib/register-hooks.ts:126
 
 Example:
 

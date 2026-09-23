@@ -7,7 +7,7 @@ The 14th core plugin (`plugins/spend/`, initiative #907 / spec `.claude/specs/mo
 | Concern | Owner | Where |
 |---|---|---|
 | Limits policy (rules with ids, accept-unattributed cutoff) | spend | `~/.bakin/plugin-settings/spend.json` → `limits` (zod: `plugins/spend/lib/settings.ts`) |
-| Billing-lane overrides + detection | spend | `spend.json` → `billing.overrides`; `plugins/spend/lib/billing.ts` |
+| Billing-lane overrides + detection | spend | `spend.json` → `billing.overrides`; `plugins/spend/lib/billing.ts` (rules in `@bakin/core/llm/billing-lane`) |
 | Pricing of turns / images | spend | `spend.priceTurn` / `spend.priceImage` (catalog pricing from core) |
 | Per-agent effective model (for pricing / status) | models | `models.getEffectiveModel`, `models.listAgentModels` (hooks the spend plugin invokes) |
 | Spend arithmetic | core | `src/core/budget-spend.ts` — ONE engine (`assembleBudgetSpend` cap windows, `assembleSpendForDays` day sets) |
@@ -21,6 +21,7 @@ The 14th core plugin (`plugins/spend/`, initiative #907 / spec `.claude/specs/mo
 - `spend.getBudgetPolicy` (rpc) → `BudgetPolicy` (`{ rules[], acceptUnattributedBefore? }`). **Absent or throwing = the dispatch gate FAILS CLOSED** with `BudgetDecision.cause = 'budget_policy_unavailable'` (S13) — "we cannot know" is never "no limits". The media gate refuses with the same code; the board shows "Limits unavailable" → Health when `/status` 404s; the health-OWNED `health.spend.policy-available` check names the state (a plugin cannot report its own activation failure).
 - `spend.updateBudgetPolicy` (rpc, narrow) — only `acceptUnattributedBefore` (the doctor's accept-unattributed-history repair); full edits are `PUT /limits`.
 - `spend.resolveBilling` (rpc) — provider + lane (+ `laneSource` override|detected|default) for an agent/model; `prospective:false` = historical attribution, never substitutes today's model.
+- `spend.listBillingOverrides` (rpc) — the operator's `billing.overrides` list, so the models plan resolves lanes with the same precedence (provider-level entries). The two PURE lane rules (`detectLanesFromCredentials`, `resolveLaneFor`) are core-owned in `@bakin/core/llm/billing-lane` — `billing.ts` re-exports them and adds the per-agent detection cache + `resolveBilling`.
 - `spend.priceTurn` / `spend.priceImage` (rpc) — estimated micro-dollars from catalog pricing; `null` when unpriced or subscription lane (tokens are that lane's unit; a subscription CHAT auth never suppresses billed IMAGE dollars).
 
 ## Routes (`/api/plugins/spend/…`, `plugins/spend/lib/routes.ts`)

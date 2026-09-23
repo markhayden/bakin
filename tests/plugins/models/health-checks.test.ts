@@ -16,6 +16,7 @@ mock.module('../../../src/core/logger', () => ({
 import { checkModelRouting, recommendRoutes, recommendedRoutesRepair, type RoutingHealthDeps } from '../../../plugins/models/lib/health-checks'
 import type { RunCostSpendRow } from '../../../src/core/execution-ledger'
 import type { WorkClassRoute } from '../../../src/core/model-routing'
+import { recommendPlan, type PlanCandidate } from '../../../src/core/model-plan'
 
 const NOW = 1_752_000_000_000
 
@@ -27,25 +28,26 @@ function row(over: Partial<RunCostSpendRow>): RunCostSpendRow {
   }
 }
 
-function deps(over: Partial<RoutingHealthDeps> = {}): RoutingHealthDeps {
-  return {
+const HAIKU: PlanCandidate = { id: 'anthropic/claude-haiku-4-5', tier: 'budget', lane: 'metered', pricePer1M: 6, vision: true }
+const OPUS: PlanCandidate = { id: 'anthropic/claude-opus-4-6', tier: 'premium', lane: 'metered', pricePer1M: 90, vision: true }
+const FLASH: PlanCandidate = { id: 'google/gemini-2.5-flash', tier: 'budget', lane: 'metered', pricePer1M: 3, vision: true }
+
+/** Deps whose plan runs the REAL recommender over a candidate list (default: opus is the agent model). */
+function deps(over: Partial<RoutingHealthDeps> & { candidates?: PlanCandidate[]; defaultModel?: string } = {}): RoutingHealthDeps {
+  const { candidates = [HAIKU, OPUS, FLASH], defaultModel = OPUS.id, ...rest } = over
+  const base: RoutingHealthDeps = {
     getRoutingConfig: () => ({ routes: [], tagOverrides: [] }),
-    listAvailableModels: async () => [
-      { id: 'anthropic/claude-haiku-4-5' },
-      { id: 'anthropic/claude-opus-4-6' },
-      { id: 'google/gemini-2.5-flash' },
-    ],
+    recommendPlan: async () => recommendPlan({ candidates, currentDefaultModel: defaultModel, routing: base.getRoutingConfig(), enrichmentEnabled: true }),
     supportedThinkingLevels: () => ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
     supportsPerTurnModel: () => true,
     listRecentRunCosts: () => [],
-    listOpenModelRejections: () => [],
     now: () => NOW,
-    ...over,
   }
+  return Object.assign(base, rest)
 }
 
 describe('recommendRoutes', () => {
-  it('proposes the cheapest available model for each unrouted recommended class', async () => {
+  it('proposes the plan\'s chores model for each unrouted chores class', async () => {
     const { proposals, skipped } = await recommendRoutes(deps())
     const byClass = new Map(proposals.map((p) => [p.workClass, p]))
     // gemini flash is the cheapest priced model in the pool (catalog truth).
@@ -60,38 +62,63 @@ describe('recommendRoutes', () => {
     expect(byClass.has('adhoc')).toBe(false)
   })
 
-  it('skips cheap-vision with a reason when no vision model is available — never blind', async () => {
+  it('skips enrichment with a reason when no eligible model can see — never blind', async () => {
     const { proposals, skipped } = await recommendRoutes(deps({
-      listAvailableModels: async () => [{ id: 'openai-codex/gpt-5.5-codex' }, { id: 'anthropic/claude-opus-4-6' }],
+      candidates: [
+        { id: 'openai-codex/gpt-5.5-codex', tier: 'premium', lane: 'subscription', vision: false },
+        { id: 'openai-codex/gpt-5.4-mini', tier: 'budget', lane: 'subscription', vision: false },
+      ],
+      defaultModel: 'openai-codex/gpt-5.5-codex',
     }))
-    expect(skipped).toEqual(expect.arrayContaining([
-      expect.objectContaining({ workClass: 'enrichment', reason: expect.stringContaining('vision') }),
-    ]))
+    expect(skipped).toEqual([expect.objectContaining({ workClass: 'enrichment', reason: expect.stringContaining('vision-capable') })])
     expect(proposals.find((p) => p.workClass === 'enrichment')).toBeUndefined()
+    expect(proposals.find((p) => p.workClass === 'relay')?.model).toBe('openai-codex/gpt-5.4-mini')
   })
 
-  it('uses runtime-merged tiers when the catalog has no entry (Codex-only box)', async () => {
+  it('Codex-only box with unknown vision metadata: the lightest model is proposed for every chore (disclosed, never withheld)', async () => {
     const { proposals, skipped } = await recommendRoutes(deps({
-      listAvailableModels: async () => [
-        { id: 'openai-codex/gpt-5.4', tier: 'premium' },
-        { id: 'openai-codex/gpt-5.4-mini', tier: 'budget' },
-        { id: 'openai-codex/gpt-5.5', tier: 'premium' },
+      candidates: [
+        { id: 'openai-codex/gpt-5.4', tier: 'premium', lane: 'subscription', vision: null },
+        { id: 'openai-codex/gpt-5.4-mini', tier: 'budget', lane: 'subscription', vision: null },
+        { id: 'openai-codex/gpt-5.5', tier: 'premium', lane: 'subscription', vision: null },
       ],
+      defaultModel: 'openai-codex/gpt-5.5',
     }))
     const byClass = new Map(proposals.map((p) => [p.workClass, p]))
     expect(byClass.get('auto-title')?.model).toBe('openai-codex/gpt-5.4-mini')
-    expect(byClass.get('relay')?.model).toBe('openai-codex/gpt-5.4-mini')
-    // No vision model on this runtime — enrichment skips honestly.
-    expect(skipped).toEqual([expect.objectContaining({ workClass: 'enrichment' })])
+    expect(byClass.get('enrichment')?.model).toBe('openai-codex/gpt-5.4-mini')
+    expect(skipped).toEqual([])
   })
 
-  it('skips with an honest reason when only premium models exist', async () => {
+  it('a plan row that names the AGENT model is never a proposal — unrouted already inherits it (enrichment → agent case)', async () => {
+    // opus (premium, sees) + a blind budget model: the plan sends the four
+    // chores to the budget model and enrichment to the agent model. Unrouted
+    // enrichment already resolves to opus, so proposing "route:enrichment →
+    // opus" would be a standing false "unrouted, route it cheap" finding
+    // whose repair routes background work to the PREMIUM model.
+    const blindMini: PlanCandidate = { id: 'openai-codex/gpt-5.4-mini', tier: 'budget', lane: 'subscription', vision: false }
+    const d = deps({ candidates: [OPUS, blindMini], defaultModel: OPUS.id })
+    const { proposals, skipped } = await recommendRoutes(d)
+    expect(proposals.map((p) => p.workClass).sort()).toEqual(['auto-title', 'relay', 'skill-mapping', 'team-routing'])
+    expect(skipped).toEqual([expect.objectContaining({ workClass: 'enrichment', reason: expect.stringContaining('inherits the agent model') })])
+    // …and once those four are routed, the check is clean — no finding lingers on enrichment.
+    const routed = deps({
+      candidates: [OPUS, blindMini], defaultModel: OPUS.id,
+      getRoutingConfig: () => ({ routes: ['auto-title', 'relay', 'skill-mapping', 'team-routing'].map((workClass) => ({ workClass: workClass as WorkClassRoute['workClass'], model: blindMini.id })), tagOverrides: [] }),
+    })
+    const result = await checkModelRouting(routed)
+    if (result.outcome !== 'observed') throw new Error('expected observed')
+    expect(result.observations.find((o) => o.key === 'unrouted-system-classes')).toBeUndefined()
+  })
+
+  it('only the agent model exists ⇒ nothing to propose; every class skips as inherit', async () => {
     const { proposals, skipped } = await recommendRoutes(deps({
-      listAvailableModels: async () => [{ id: 'openai-codex/gpt-5.5', tier: 'premium' }],
+      candidates: [{ id: 'openai-codex/gpt-5.5', tier: 'premium', lane: 'subscription', vision: null }],
+      defaultModel: 'openai-codex/gpt-5.5',
     }))
     expect(proposals).toEqual([])
     expect(skipped).toEqual(expect.arrayContaining([
-      expect.objectContaining({ workClass: 'relay', reason: expect.stringContaining('Only premium-tier') }),
+      expect.objectContaining({ workClass: 'relay', reason: expect.stringContaining('inherits the agent model') }),
     ]))
   })
 
@@ -108,7 +135,8 @@ describe('routes-model-clamped — runtime refuses per-turn overrides (#880)', (
     const result = await checkModelRouting(deps({
       getRoutingConfig: () => ({ routes: [{ workClass: 'relay', model: 'openai/gpt-5.5' }, { workClass: 'auto-title', model: 'openai/gpt-5.5' }], tagOverrides: [] }),
       supportsPerTurnModel: () => false,
-      listAvailableModels: async () => [{ id: 'openai/gpt-5.5' }],
+      candidates: [{ id: 'openai/gpt-5.5', tier: 'premium', lane: 'metered', vision: true }],
+      defaultModel: 'openai/gpt-5.5',
     }))
     if (result.outcome !== 'observed') throw new Error('expected observed')
     const finding = result.observations.find((o) => o.key === 'routes-model-clamped')!
@@ -120,7 +148,8 @@ describe('routes-model-clamped — runtime refuses per-turn overrides (#880)', (
     const result = await checkModelRouting(deps({
       getRoutingConfig: () => ({ routes: [], tagOverrides: [{ tag: 'heavy', model: 'openai/gpt-5.5' }] }),
       supportsPerTurnModel: () => false,
-      listAvailableModels: async () => [{ id: 'openai/gpt-5.5' }],
+      candidates: [{ id: 'openai/gpt-5.5', tier: 'premium', lane: 'metered', vision: true }],
+      defaultModel: 'openai/gpt-5.5',
     }))
     if (result.outcome !== 'observed') throw new Error('expected observed')
     const finding = result.observations.find((o) => o.key === 'routes-model-clamped')!

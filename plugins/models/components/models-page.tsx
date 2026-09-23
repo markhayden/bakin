@@ -1,112 +1,82 @@
 'use client'
 
-import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
-import {
-  Page,
-  PageBody,
-  PageHeader,
-  SearchInput,
-} from '@makinbakin/sdk/patterns'
-import { Banner, Button, Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
+/**
+ * The Models page (spec §3.4): one page, no tabs. A Simple/Advanced mode
+ * switch in the header (a VIEW over the same selections — never
+ * destructive), the two-lane Simple view, the three Advanced sections, and
+ * the read-only model catalog behind a disclosure at the foot. `?ref=`
+ * deep-links a selection: the owning view highlights it and, when it lives
+ * in a layer Simple cannot show, the VIEW flips to Advanced without writing.
+ */
+import { useCallback, useMemo } from 'react'
+import { useRuntimeStatus } from '@makinbakin/sdk/hooks'
+import { useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
+import { Page, PageBody, PageHeader, SaveBar, SegmentedControl } from '@makinbakin/sdk/patterns'
+import { Badge, Banner, Button, SystemState } from '@makinbakin/sdk/ui'
 
-import { useModelsData } from './use-models-data'
-import { AgentsTab } from './agents-tab'
-import { AvailableModelsTab } from './available-models-tab'
-import { AliasesTab } from './aliases-tab'
-import { RoutingTab } from './routing-tab'
+import { agentRows } from '../lib/advanced'
+import type { UiMode } from '../lib/mode'
+import { AdvancedMode } from './advanced-mode'
+import { CatalogPanel } from './catalog-panel'
+import { SimpleMode } from './simple-mode'
+import { useCatalog } from './use-catalog'
+import { useSelections, type SelectionsData } from './use-selections'
 
-const TABS = [
-  { id: 'agents', label: 'Agent Config' },
-  { id: 'available', label: 'Available Models' },
-  { id: 'aliases', label: 'Aliases' },
-  { id: 'routing', label: 'Routing' },
-] as const
+const MODE_OPTIONS = [
+  { value: 'simple', label: 'Simple' },
+  { value: 'advanced', label: 'Advanced' },
+] as const satisfies ReadonlyArray<{ value: UiMode; label: string }>
 
-// ---------------------------------------------------------------------------
-// Main component — page shell: header, banners, tab bar, and the four tabs
-// (each fed the shared useModelsData() object).
-// ---------------------------------------------------------------------------
+function PendingSummary({ sel }: { sel: SelectionsData }) {
+  const count = sel.pendingRefs.size
+  if (count === 0) return null
+  const failed = [...sel.pendingRefs.values()].filter((p) => p.state !== 'unsettled').length
+  return (
+    <Badge tone={failed > 0 ? 'danger' : 'attention'} variant="soft" size="xs" data-testid="pending-writes">
+      {failed > 0
+        ? `${failed} write${failed === 1 ? '' : 's'} not confirmed`
+        : `${count} write${count === 1 ? '' : 's'} pending runtime confirmation`}
+    </Badge>
+  )
+}
+
 export function ModelsPage() {
-  const m = useModelsData()
-  const { tab, setTab, error, fetchConfig, runtimeStatus } = m
-  const [modelQuery, setModelQuery] = useQueryState('modelQuery', '')
-  const [modelProviders, setModelProviders] = useQueryArrayState('modelProviders')
-  const [modelPage, setModelPage] = useQueryState('modelPage', '1')
-  const [modelShowAll, setModelShowAll] = useQueryState('modelAll', 'false')
-  const [aliasQuery, setAliasQuery] = useQueryState('aliasQuery', '')
-  const [aliasPage, setAliasPage] = useQueryState('aliasPage', '1')
-  const [aliasShowAll, setAliasShowAll] = useQueryState('aliasAll', 'false')
+  const sel = useSelections()
+  // Roster agents get their own catalog verdicts (their credentials).
+  const agentIds = useMemo(() => agentRows(sel.selections?.states ?? []).map((row) => row.agentId), [sel.selections?.states])
+  const catalog = useCatalog({ agentIds })
+  const runtimeStatus = useRuntimeStatus()
+  const defaultModel = sel.selections?.states.find((s) => s.ref === 'policy:defaultModel')?.model ?? null
+  const evidence = sel.selections?.evidence
 
-  const updateModelQuery = (query: string) => {
-    setModelQuery(query)
-    setModelPage('1')
-    setModelShowAll('false')
-  }
-  const updateAliasQuery = (query: string) => {
-    setAliasQuery(query)
-    setAliasPage('1')
-    setAliasShowAll('false')
-  }
+  // One draft, one bar, one write (S10): every lane/row edit stages an op;
+  // the bar saves the whole draft, keeps failed refs for Retry, and the
+  // navigation guard covers routes, anchors, and browser unload. A save can
+  // move the default / fallbacks, so the catalog re-reads its flags after.
+  const { save: saveDraft } = sel
+  const { fetchAvailable } = catalog
+  const save = useCallback(async () => {
+    const ok = await saveDraft()
+    void fetchAvailable()
+    return ok
+  }, [saveDraft, fetchAvailable])
+  const guard = useUnsavedChangesGuard({
+    hasUnsavedChanges: sel.dirty,
+    saving: sel.saving,
+    onSaveAndExit: save,
+    onDiscardAndExit: sel.discard,
+    error: sel.saveError,
+    description: 'Your model changes are not saved yet. Save them before leaving, discard them, or stay here.',
+  })
 
-  const headerControls = tab === 'available' ? (
-    <SearchInput
-      align="end"
-      label="Search available models"
-      value={modelQuery}
-      onValueChange={updateModelQuery}
-      placeholder="Search models…"
-      mobileFullWidth
-    />
-  ) : tab === 'aliases' ? (
-    <SearchInput
-      align="end"
-      label="Search aliases"
-      value={aliasQuery}
-      onValueChange={updateAliasQuery}
-      placeholder="Search aliases…"
-      mobileFullWidth
-    />
-  ) : undefined
-
-  const headerActions = tab === 'aliases' ? (
-    <Button
-      type="button"
-      variant="outline"
-      disabled={m.saving === 'aliases'}
-      onClick={() => void m.prepopulateAliases()}
-    >
-      Add recommended aliases
-    </Button>
-  ) : undefined
-
-  const pendingFeedback = tab === 'routing' && m.pendingRouting ? (
-    <Banner
-      tone="attention"
-      announce="polite"
-      headingLevel={2}
-      title="Unsaved routing changes"
-      description="Save these routes before leaving this tab, or discard them to return to the current runtime configuration."
-      action={(
-        <>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={m.saving === 'routing'}
-            onClick={() => m.setPendingRouting(null)}
-          >
-            Discard changes
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={m.saving === 'routing'}
-            onClick={() => void m.saveRouting()}
-          >
-            {m.saving === 'routing' ? 'Saving…' : 'Save routing'}
-          </Button>
-        </>
-      )}
+  const shellState = sel.loading ? (
+    <SystemState kind="loading" title="Loading model configuration" description="Reading every persisted model selection and the recommended plan." />
+  ) : sel.error ? (
+    <SystemState
+      kind="error"
+      title="Model configuration could not be loaded"
+      description={sel.error}
+      action={<Button type="button" variant="outline" size="sm" onClick={() => void sel.reload()}>Retry</Button>}
     />
   ) : undefined
 
@@ -114,26 +84,19 @@ export function ModelsPage() {
     <Page>
       <PageHeader
         title="Models"
-        description="Choose which AI models Bakin and each agent use, then set fallbacks and routing rules."
-        controls={headerControls}
-        controlsLabel={tab === 'aliases' ? 'Alias search' : 'Available model search'}
-        actions={headerActions}
-        actionsLabel="Alias actions"
+        description="Choose the model your agents work with and the lighter one that handles background chores. Advanced opens every per-agent and per-job control."
+        controls={(
+          <SegmentedControl
+            ariaLabel="Models view"
+            idPrefix="models-mode"
+            options={MODE_OPTIONS}
+            value={sel.view}
+            onValueChange={sel.setView}
+          />
+        )}
+        controlsLabel="Models view"
+        meta={<PendingSummary sel={sel} />}
       />
-
-      {error ? (
-        <Banner
-          tone="danger"
-          announce="assertive"
-          title="Model configuration could not be loaded"
-          description={error}
-          action={(
-            <Button variant="outline" size="sm" onClick={fetchConfig}>
-              Retry
-            </Button>
-          )}
-        />
-      ) : null}
 
       {runtimeStatus.pending && (
         <Banner
@@ -155,64 +118,66 @@ export function ModelsPage() {
         />
       )}
 
-      <Tabs value={tab} onValueChange={(id) => setTab(id as typeof tab)}>
-        <TabsList variant="underline" activateOnFocus aria-label="Model settings">
-          {TABS.map((item) => (
-            <TabsTrigger
-              key={item.id}
-              value={item.id}
-              id={`models-tab-${item.id}`}
-              aria-controls={`models-panel-${item.id}`}
-            >
-              {item.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      {evidence && (evidence.credentials !== 'ok' || evidence.rejections !== 'ok') ? (
+        <Banner
+          tone="info"
+          title="Some availability facts could not be verified"
+          description={evidence.credentials === 'failed'
+            ? 'The runtime did not report which providers have credentials, so models are listed as unverified rather than disabled. Fix the runtime and reload to see exact verdicts.'
+            : 'Credential evidence is partial: models whose provider could not be checked stay selectable and are marked unverified.'}
+        />
+      ) : null}
+      {/* A save that ended with NOTHING left staged (positional fallback ops
+          dropped after the list moved) has no save bar to speak through —
+          the explanation still has to be on the page. */}
+      {!sel.dirty && sel.saveError ? (
+        <Banner
+          tone="attention"
+          title="Your change was not saved"
+          description={sel.saveError}
+          action={<Button type="button" variant="outline" size="sm" onClick={sel.discard}>Dismiss</Button>}
+          data-testid="save-notice"
+        />
+      ) : null}
 
-      <PageBody
-        id={`models-panel-${tab}`}
-        role="tabpanel"
-        labelledBy={`models-tab-${tab}`}
-        feedback={pendingFeedback}
-      >
-        {tab === 'agents' && <AgentsTab m={m} />}
-        {tab === 'available' && (
-          <AvailableModelsTab
-            m={m}
-            query={modelQuery}
-            providers={modelProviders}
-            pageValue={modelPage}
-            showAllValue={modelShowAll}
-            onQueryChange={updateModelQuery}
-            onProvidersChange={(providers) => {
-              setModelProviders(providers)
-              setModelPage('1')
-              setModelShowAll('false')
-            }}
-            onPageChange={setModelPage}
-            onShowAllChange={(showAll) => {
-              setModelShowAll(showAll)
-              setModelPage('1')
-            }}
-          />
-        )}
-        {tab === 'aliases' && (
-          <AliasesTab
-            m={m}
-            query={aliasQuery}
-            pageValue={aliasPage}
-            showAllValue={aliasShowAll}
-            onQueryChange={updateAliasQuery}
-            onPageChange={setAliasPage}
-            onShowAllChange={(showAll) => {
-              setAliasShowAll(showAll)
-              setAliasPage('1')
-            }}
-          />
-        )}
-        {tab === 'routing' && <RoutingTab m={m} />}
-      </PageBody>
+      {sel.view === 'simple' ? (
+        <PageBody
+          id="models-mode-panel-simple"
+          role="tabpanel"
+          labelledBy="models-mode-tab-simple"
+          state={shellState}
+        >
+          <SimpleMode sel={sel} modelOptions={catalog.modelSelectOptions} onAdvanced={() => sel.setView('advanced')} />
+          <CatalogPanel catalog={catalog} defaultModel={defaultModel} />
+        </PageBody>
+      ) : (
+        <PageBody
+          id="models-mode-panel-advanced"
+          role="tabpanel"
+          labelledBy="models-mode-tab-advanced"
+          state={shellState}
+        >
+          <AdvancedMode sel={sel} modelOptions={catalog.modelSelectOptions} agentModelOptions={catalog.agentModelSelectOptions} overviewFooter={<CatalogPanel catalog={catalog} defaultModel={defaultModel} />} />
+        </PageBody>
+      )}
+
+      {/* Writes the runtime has not confirmed are the header badge's story
+          (PendingSummary reads them back after every load) — the bar only
+          ever speaks for the draft. */}
+      {sel.dirty || sel.saveError ? (
+        <SaveBar
+          dirty={sel.dirty}
+          saving={sel.saving}
+          error={sel.saveError ?? undefined}
+          onSave={() => void save()}
+          onDiscard={sel.discard}
+        >
+          <span data-testid="draft-summary">
+            {sel.stagedCount > 0 ? `${sel.stagedCount} change${sel.stagedCount === 1 ? '' : 's'} staged` : null}
+          </span>
+        </SaveBar>
+      ) : null}
+      {guard.dialog}
     </Page>
   )
 }

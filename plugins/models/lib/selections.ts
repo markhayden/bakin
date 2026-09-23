@@ -6,23 +6,23 @@
  */
 import { join } from 'path'
 import type { PluginContext } from '@bakin/core/plugin-types'
+import type { RuntimeConfigChangeKind } from '@bakin/core/adapters/runtime'
+import { createLogger } from '../../../src/core/logger'
 import { getContentDir } from '../../../src/core/content-dir'
 import { getBootId } from '../../../src/core/boot-id'
-import { createSelectionMutator, type SelectionMutator } from '../../../src/core/model-mutations'
-import { evaluateSelections, proposeRepairs, type UiMode } from '../../../src/core/model-selections'
-import type { RoutingConfig } from '../../../src/core/model-routing'
-import type { ModelsPluginSettings } from '../types'
-import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
+import { createSelectionMutator, type MutateRequest, type MutateResult, type SelectionMutator } from '../../../src/core/model-mutations'
+import { evaluateSelections, proposeRepairs } from '../../../src/core/model-selections'
+import { recommendForRef } from '../../../src/core/model-plan-input'
+import { notePendingChange } from '../../../src/core/pending-restart'
+import { setModelsCache } from './available-models'
+import { readRoutingSettings } from './routing-settings'
+import { currentPlan, lastPlan } from './plan'
+
+export { readRoutingSettings }
+
+const log = createLogger('models:selections')
 
 const holder = globalThis as typeof globalThis & { __bakinSelectionMutator?: SelectionMutator }
-
-export function readRoutingSettings(ctx: PluginContext): { routing: RoutingConfig; uiMode: UiMode | null } {
-  const settings = ctx.getSettings<ModelsPluginSettings>()
-  const stored = settings.routing
-  const routing = isLegacyRouting(stored) ? migrateLegacyRouting(stored) : (stored ?? { routes: [], tagOverrides: [] })
-  const uiMode = settings.ui?.mode === 'simple' || settings.ui?.mode === 'advanced' ? settings.ui.mode : null
-  return { routing, uiMode }
-}
 
 export function modelsStateDir(): string {
   return join(getContentDir(), 'plugin-settings', 'models')
@@ -38,6 +38,12 @@ export function getSelectionMutator(ctx: PluginContext): SelectionMutator {
     },
     stateDir: modelsStateDir(),
     bootId: getBootId(),
+    // A refused write's proposal reads the last computed plan (GET /plan or
+    // /selections refresh it); every proposal is re-checked for eligibility.
+    recommendFor: (ref) => {
+      const plan = lastPlan()
+      return plan ? recommendForRef(plan, ref) : null
+    },
     audit: (event, data) => ctx.activity.audit(event.replace(/^models\./, ''), 'system', data),
   })
   holder.__bakinSelectionMutator = mutator
@@ -49,15 +55,49 @@ export function _resetSelectionMutator(): void {
   delete holder.__bakinSelectionMutator
 }
 
+/**
+ * The ONE write: mutate + the post-write side effects every writer needs —
+ * POST /selections, the dead-selections repair and the recommended-routes
+ * repair all land here. Runtime-config refs (agent pins, the runtime
+ * policy) ask the adapter whether a restart is needed (#878), drop the
+ * catalog's default/fallback flags and tell every mounted picker the
+ * catalog changed; route/tag/page-mode refs touch neither the runtime
+ * config nor the catalog and stay silent.
+ */
+export async function applySelections(ctx: PluginContext, request: MutateRequest): Promise<MutateResult> {
+  const result = await getSelectionMutator(ctx).mutate(request)
+  const touched = [...result.applied, ...result.pending.map((p) => p.ref)]
+  const kinds = new Set<RuntimeConfigChangeKind>()
+  for (const ref of touched) {
+    if (ref.startsWith('agent:')) kinds.add('model-config')
+    else if (ref.startsWith('policy:')) kinds.add('routing-policy')
+  }
+  if (kinds.size > 0) {
+    notePendingChange(ctx.runtime, [...kinds])
+    setModelsCache(null)
+    ctx.events.emit('models.catalog_changed', { reason: 'selections', refs: touched })
+  }
+  return result
+}
+
 /** GET /selections payload: states + revision + per-selection eligibility + proposals + pending writes. */
 export async function describeSelections(ctx: PluginContext) {
   const mutator = getSelectionMutator(ctx)
   const { states, revision, pending } = await mutator.reconcile()
-  // Each agent pin is judged under ITS agent's credentials (evaluateSelections).
-  const evaluation = await evaluateSelections(ctx.runtime, states)
-  const proposals = proposeRepairs(states.filter((s) => s.ref !== 'ui:mode'), evaluation.reportFor, { recommendFor: () => null, revision })
+  // Each agent pin is judged under ITS agent's credentials (evaluateSelections);
+  // proposals read the plan when it is available, same-id mapping otherwise.
+  const [evaluation, plan] = await Promise.all([
+    evaluateSelections(ctx.runtime, states),
+    currentPlan(ctx).catch((err: unknown) => {
+      log.warn('Model plan unavailable for proposals; same-id mapping only', { err: err instanceof Error ? err.message : String(err) })
+      return null
+    }),
+  ])
+  const proposals = proposeRepairs(states.filter((s) => s.ref !== 'ui:mode'), evaluation.reportFor, { recommendFor: (ref) => (plan ? recommendForRef(plan, ref) : null), revision })
   return {
     revision,
+    // Which routing knobs the ACTIVE runtime honors — the page hides the rest.
+    support: ctx.runtime.models.routingSupport(),
     states: states.map((s) => ({
       ...s,
       eligibility: s.model && s.ref !== 'ui:mode' ? evaluation.eligibilityOf(s) ?? { status: 'unknown', detail: 'not evaluated' } : undefined,

@@ -1,24 +1,33 @@
 'use client'
 
+/**
+ * The model catalog — the section at the foot of the Models page (spec
+ * §3.4): every model the runtime lists with its eligibility verdict,
+ * provider facets, search, sort, pagination, refresh and the explicit
+ * (billed) availability probe. Read-only: model choices are made in the
+ * lanes above, never from the catalog.
+ */
 import { useMemo, useState } from 'react'
 import { RefreshCw, ShieldCheck } from 'lucide-react'
+import { Section } from '@makinbakin/sdk/layout'
+import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
 import {
   DataTable,
   FacetFilter,
   PageControls,
+  SearchInput,
   type DataTableColumn,
   type DataTableSort,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Button, SystemState, Text } from '@makinbakin/sdk/ui'
 
 import type { AvailableModel } from '../types'
-import { BrandIcon } from './brand-icon'
-import type { ModelsData } from './use-models-data'
+import type { CatalogData } from './use-catalog'
 
 /** Plain-words badge per eligibility reason (#907). */
 const INELIGIBLE_LABEL: Record<NonNullable<Extract<AvailableModel['eligibility'], { status: 'ineligible' }>>['reason'], string> = {
   no_credentials: 'No credentials',
-  account_rejected: 'Rejected by account',
+  account_rejected: 'Not available to your account',
   runtime_unavailable: 'Unavailable',
   not_in_catalog: 'Not in catalog',
 }
@@ -93,46 +102,39 @@ function sortValue(model: AvailableModel, field: ModelSortField): string | numbe
   return contextSortValue(model)
 }
 
-export interface AvailableModelsTabProps {
-  m: ModelsData
-  query: string
-  providers: string[]
-  pageValue: string
-  showAllValue: string
-  onQueryChange: (query: string) => void
-  onProvidersChange: (providers: string[]) => void
-  onPageChange: (page: string) => void
-  onShowAllChange: (showAll: string) => void
+export interface CatalogPanelProps {
+  catalog: CatalogData
+  /** The runtime's current default model — badged in the Status column. */
+  defaultModel: string | null
 }
 
-export function AvailableModelsTab({
-  m,
-  query,
-  providers,
-  pageValue,
-  showAllValue,
-  onQueryChange,
-  onProvidersChange,
-  onPageChange,
-  onShowAllChange,
-}: AvailableModelsTabProps) {
+export function CatalogPanel({ catalog, defaultModel }: CatalogPanelProps) {
   const {
     availableProviders,
-    effectiveDefaultModel,
     handleRefresh,
     handleVerify,
     verifying,
     probeVerdicts,
-    modelOptions,
+    availableModels: modelOptions,
     modelsCached,
     modelsCachedAt,
     modelsError,
     modelsLoaded,
     modelsStale,
     refreshing,
-    saving,
-    setAsDefault,
-  } = m
+  } = catalog
+  const effectiveDefaultModel = defaultModel ?? ''
+  // Catalog view state rides the URL (shareable filters), omitted at default.
+  const [query, setQuery] = useQueryState('modelQuery', '')
+  const [providers, setProviders] = useQueryArrayState('modelProviders')
+  const [pageValue, onPageChange] = useQueryState('modelPage', '1')
+  const [showAllValue, onShowAllChange] = useQueryState('modelAll', 'false')
+  const onQueryChange = (next: string) => {
+    setQuery(next)
+    onPageChange('1')
+    onShowAllChange('false')
+  }
+  const onProvidersChange = (next: string[]) => setProviders(next)
 
   // Catalog order is the runtime's until the reader asks for another one —
   // the consumer owns ordering (DataTable contract).
@@ -147,18 +149,7 @@ export function AvailableModelsTab({
   ), [availableProviders, modelOptions])
   const providerOptions = useMemo(() => availableProviders.map((provider) => {
     const representative = modelOptions.find((model) => model.provider === provider)
-    return {
-      value: provider,
-      label: representative ? providerLabel(representative) : provider,
-      icon: representative ? (
-        <BrandIcon
-          slug={representative.providerBrandIconSlug}
-          fallbackText={providerLabel(representative)}
-          fallbackColor={representative.providerBrandColor}
-          size="sm"
-        />
-      ) : undefined,
-    }
+    return { value: provider, label: representative ? providerLabel(representative) : provider }
   }), [availableProviders, modelOptions])
   const filteredModels = useMemo(() => modelOptions.filter((model) => (
     (providers.length === 0 || providers.includes(model.provider))
@@ -206,16 +197,9 @@ export function AvailableModelsTab({
       key: 'name',
       header: 'Model',
       sortable: true,
-      headClassName: 'min-w-64',
       cellClassName: 'whitespace-normal',
       cell: (model) => (
-        <div className="flex min-w-0 items-start gap-bakin-3">
-          <BrandIcon
-            slug={model.brandIconSlug ?? model.providerBrandIconSlug}
-            fallbackText={providerLabel(model)}
-            fallbackColor={model.providerBrandColor}
-            size="sm"
-          />
+        <div className="flex min-w-0 items-start">
           <div className="grid min-w-0 gap-bakin-1">
             <span className="min-w-0 break-words font-bakin-typography-weight-semibold text-bakin-text-primary">
               {model.name}
@@ -265,7 +249,9 @@ export function AvailableModelsTab({
       key: 'status',
       header: 'Status',
       cell: (model) => {
-        const isDefault = model.isDefault || model.id === effectiveDefaultModel
+        // The persisted selection decides — the cached catalog row's own flag
+        // goes stale the moment the default changes.
+        const isDefault = model.id === effectiveDefaultModel
         return (
           <span className="flex flex-wrap items-center gap-bakin-1">
             {model.eligibility?.status === 'ineligible' ? (
@@ -274,10 +260,10 @@ export function AvailableModelsTab({
               // account, runtime-unavailable, or gone from the catalog.
               <Badge
                 tone="danger"
-                variant="solid"
+                variant="soft"
                 size="xs"
                 title={model.rejection
-                  ? `Rejected ${model.rejection.occurrences}× — last ${formatRelativeTime(model.rejection.lastSeenAt)}. Reroute or verify availability after the account regains access.`
+                  ? `The provider refused this model for your credentials ${model.rejection.occurrences}× (last ${formatRelativeTime(model.rejection.lastSeenAt)}) — usually a plan or key that doesn't include it. Nothing to fix here: it clears on its own the next time a call succeeds, and Verify availability re-checks it now.`
                   : model.eligibility.detail}
               >
                 {INELIGIBLE_LABEL[model.eligibility.reason]}
@@ -286,30 +272,14 @@ export function AvailableModelsTab({
               <Badge tone="neutral" variant="outline" size="xs" title={model.eligibility.detail}>Unverified</Badge>
             ) : null}
             {isDefault ? (
-              <Badge tone="success" variant="solid" size="xs">Default</Badge>
+              <Badge tone="success" variant="soft" size="xs">Default</Badge>
             ) : model.configured ? (
-              <Badge tone="neutral" variant="solid" size="xs">Configured</Badge>
+              <Badge tone="neutral" variant="soft" size="xs">Configured</Badge>
             ) : null}
-            {model.local ? <Badge tone="neutral" variant="solid" size="xs">Local</Badge> : null}
+            {model.local ? <Badge tone="neutral" variant="soft" size="xs">Local</Badge> : null}
           </span>
         )
       },
-    },
-    {
-      key: 'actions',
-      header: 'Actions',
-      hideLabel: true,
-      align: 'end',
-      cell: (model) => (model.isDefault || model.id === effectiveDefaultModel ? null : (
-        <Button
-          type="button"
-          size="xs"
-          disabled={saving === 'defaults' || model.eligibility?.status === 'ineligible'}
-          onClick={() => void setAsDefault(model.id)}
-        >
-          Set default
-        </Button>
-      )),
     },
   ]
 
@@ -353,10 +323,17 @@ export function AvailableModelsTab({
   ) : undefined
 
   return (
-    <>
+    <Section spacing="compact" divider="top" aria-labelledby="model-catalog-heading" data-testid="model-catalog">
+      <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+        <h2 id="model-catalog-heading" className="m-0">Model catalog</h2>
+        {modelsLoaded ? <Badge tone="neutral" variant="soft" size="xs">{modelOptions.length} model{modelOptions.length === 1 ? '' : 's'}</Badge> : null}
+      </div>
+      <Text as="p" size="meta" tone="muted" className="max-w-prose leading-relaxed">
+        Every model your runtime reports, with whether it can run here. Choices are made in the lanes above — this list is for looking things up.
+      </Text>
       <PageControls
         variant="filters"
-        label="Available model controls"
+        label="Model catalog controls"
         actions={(
           <>
             {modelsLoaded && modelsCachedAt ? (
@@ -397,6 +374,13 @@ export function AvailableModelsTab({
           onChange={setProviderFilters}
           counts={providerCounts}
         />
+        <SearchInput
+          align="end"
+          label="Search the model catalog"
+          value={query}
+          onValueChange={onQueryChange}
+          placeholder="Search models…"
+        />
       </PageControls>
 
       {probeVerdicts ? (
@@ -406,8 +390,7 @@ export function AvailableModelsTab({
       ) : null}
 
       {/* Comparable catalog records read as a table (the tasks-Log ruling):
-          columns, alignment, and sortable identity/provider/tier/context. The
-          page's own PageBody (models-page) owns the region contract. */}
+          columns, alignment, and sortable identity/provider/tier/context. */}
       {state ?? (
         <DataTable
           label="Available models"
@@ -416,7 +399,7 @@ export function AvailableModelsTab({
           rowKey={(model) => model.id}
           rowProps={(model) => ({
             'data-model-row': '',
-            'data-default': model.isDefault || model.id === effectiveDefaultModel ? 'true' : undefined,
+            'data-default': model.id === effectiveDefaultModel ? 'true' : undefined,
           })}
           sort={sort ?? undefined}
           onSortChange={(field) => {
@@ -439,6 +422,6 @@ export function AvailableModelsTab({
           }}
         />
       )}
-    </>
+    </Section>
   )
 }

@@ -16,7 +16,7 @@ import type { AvailableModel } from '../types'
 import { getModelEligibility } from '../../../src/core/model-eligibility'
 import { enumerateSelections } from '../../../src/core/model-selections'
 import { createLogger } from '../../../src/core/logger'
-import { readRoutingSettings } from './selections'
+import { readRoutingSettings } from './routing-settings'
 import {
   clearPersistedCache,
   readPersistedCache,

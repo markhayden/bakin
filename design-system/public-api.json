@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 316,
-    "typeExports": 423
+    "valueExports": 317,
+    "typeExports": 426
   },
   "entrypoints": [
     {
@@ -454,6 +454,7 @@
         "DataTable",
         "DEFAULT_MODEL_VALUE",
         "FacetFilter",
+        "GuideCard",
         "InspectorPanel",
         "InspectorPanelContent",
         "InspectorPanelFooter",
@@ -554,6 +555,9 @@
         "DataTableSort",
         "FacetFilterProps",
         "FacetOption",
+        "GuideCardHeadingLevel",
+        "GuideCardPoint",
+        "GuideCardProps",
         "InspectorPanelContentProps",
         "InspectorPanelFooterProps",
         "InspectorPanelHeaderProps",

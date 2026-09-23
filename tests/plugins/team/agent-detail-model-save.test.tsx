@@ -48,7 +48,6 @@ mock.module('../../../plugins/team/hooks/use-agent-store', () => ({
 mock.module('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))
 
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'
-import { __resetAvailableModelsCache } from '../../../src/hooks/use-available-models'
 import { HEALTHY_TEAM_HEALTH_REPORT } from './health-report-fixture'
 
 const originalFetch = global.fetch
@@ -57,7 +56,6 @@ let posts: Array<Record<string, unknown>> = []
 
 beforeEach(() => {
   posts = []
-  __resetAvailableModelsCache() // the hook caches per scope across mounts; every case starts cold
   mutationResult = { applied: ['agent:explorer:model'], failed: [], pending: [], warnings: [], revision: 'rev-2' }
   global.fetch = mock((url: RequestInfo | URL, init?: RequestInit) => {
     const u = String(url)
