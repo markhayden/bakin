@@ -2,6 +2,7 @@ import { expect, test } from 'playwright/test'
 
 test('closing a drawer during a drag restores normal page interaction', async ({ page }) => {
   await page.goto('/iframe.html?id=components-overlays-drawer--canonical-usage&viewMode=story', { waitUntil: 'networkidle' })
+  const originalBodyStyle = await page.evaluate(() => ({ cursor: document.body.style.cursor, userSelect: document.body.style.userSelect }))
   const handle = page.getByRole('separator', { name: 'Resize panel' })
   const bounds = (await handle.boundingBox())!
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
@@ -11,7 +12,7 @@ test('closing a drawer during a drag restores normal page interaction', async ({
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toBeHidden()
   await expect.poll(() => page.evaluate(() => ({ cursor: document.body.style.cursor, userSelect: document.body.style.userSelect })))
-    .toEqual({ cursor: '', userSelect: '' })
+    .toEqual(originalBodyStyle)
   await page.mouse.up()
 })
 

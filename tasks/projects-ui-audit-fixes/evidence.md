@@ -295,3 +295,23 @@ and overlapping-pointer cases. The browser suite also exercises Escape during a
 captured drag. Quick conformance passes (228 architecture tests and TypeScript).
 All 645 Bits tests pass (8 existing skips), with lint/types passing. Final shared
 SDK package, cross-repository pins, complete UI checks, and PR CI are being updated.
+
+The final SDK implementation is `351bd0e64291f40e1453e12081311871f69c58bf`,
+including deterministic removal of an unused responsive CSS rule. Bits pins that
+revision; Core pins companion `dd4a01cfeca12251fe158b78ab22a5f868437bea`.
+[Bits run 35932076978](https://github.com/markhayden/bakin-bits-official/actions/runs/35932076978)
+passes both required jobs. All ten installed-package fixtures and eight Projects
+browser scenarios also pass locally against that exact SDK.
+
+Local full conformance passed 10,018 unit tests (19 skips), quick checks, lint,
+builds, payload, deterministic Storybook, and all Storybook interactions. The
+first final Core CI run passed the complete visual baseline suite, both story
+shards, Firefox, and the unit/build/docs gates (one unchanged task-menu test
+passed its rerun and five local repetitions). Chromium exposed an existing clock
+pause race in the async-selection test; WebKit exposed an incorrect assumption
+that an unset inline `userSelect` property always reads as an empty string.
+The clock now starts before its pause target, and drag cleanup compares the
+original inline styles. All 42 checks across the two affected browser files pass
+with two repetitions per engine. Quick conformance and lint pass again. These
+test-only corrections do not change the SDK pin, approved images, or budgets.
+The updated PR checks provide the final merge-gate result.
