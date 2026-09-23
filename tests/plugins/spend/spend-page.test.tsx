@@ -7,6 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import '../../rtl-settle'
 
@@ -74,12 +75,12 @@ const routes: Record<string, unknown> = {
   },
   status: { paused: false, configured: true, perAgent: {}, perTask: {}, billing: { main: { provider: 'openai-codex', lane: 'subscription', model: 'openai-codex/gpt-5.6-luna' } }, overrides: [], deferredProviders: [], openIncidents: [] },
   'models:available': { models: [{ id: 'openai-codex/gpt-5.6-luna', provider: 'openai-codex' }] },
-  coverage: {
-    lookbackDays: 30, computedAt: 1, coveredDays: Array.from({ length: 14 }, (_, i) => `2026-09-${String(8 + i).padStart(2, '0')}`), uncoveredDays: [],
-    covered: { window: { ...window, global: { ...scope, meteredUsdMicros: 140_000_000 } } },
-    uncovered: { window: { ...window, global: { ...scope, meteredUsdMicros: 5_000_000 } } },
-    suggestion: { status: 'ready', monthlyUsd: 450, basis: { coveredDays: 14, coveredUsdMicros: 140_000_000, dailyRateUsdMicros: 10_000_000 }, unobservedUsdMicros: 5_000_000 },
-  },
+}
+const coverageFixture = {
+  lookbackDays: 30, computedAt: 1, coveredDays: Array.from({ length: 14 }, (_, i) => `2026-09-${String(8 + i).padStart(2, '0')}`), uncoveredDays: [],
+  covered: { window: { ...window, global: { ...scope, meteredUsdMicros: 140_000_000 } } },
+  uncovered: { window: { ...window, global: { ...scope, meteredUsdMicros: 5_000_000 } } },
+  suggestion: { status: 'ready', monthlyUsd: 450, basis: { coveredDays: 14, coveredUsdMicros: 140_000_000, dailyRateUsdMicros: 10_000_000 }, unobservedUsdMicros: 5_000_000 },
 }
 const putBodies: Array<Record<string, unknown>> = []
 const resolvePosts: Array<{ path: string; body: Record<string, unknown> }> = []
@@ -97,6 +98,7 @@ beforeEach(() => {
   routes.limits = { rules: [{ id: 'g', scope: 'global', lane: 'metered', dailyCap: 20, atCap: 'defer' }], revision: 'rev-1' }
   routes.incidents = { incidents: [globalIncident] }
   routes['spend?window=24h'] = spendFixture
+  routes.coverage = coverageFixture
   routes.status = {
     paused: false, configured: true, perAgent: {}, perTask: {},
     billing: { main: { provider: 'openai-codex', lane: 'subscription', model: 'openai-codex/gpt-5.6-luna' } },
@@ -273,6 +275,45 @@ describe('SpendPage', () => {
       ],
     })
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add a spending limit' })).toBeNull())
+  })
+
+  it('Add a limit: one agent on subscription tokens — the basis shows THAT agent\'s observed tokens, no dollar suggestion is offered, and the save appends a new identity (#911 review)', async () => {
+    querySeed.tab = 'limits'
+    routes.coverage = {
+      ...coverageFixture,
+      covered: { window: { ...coverageFixture.covered.window, byAgent: { main: { ...scope, subscriptionTokens: 1_400_000 } } } },
+    }
+    render(<SpendPage />)
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Budget rules' })).toBeTruthy())
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Add a limit' })[0]!) })
+    const dialog = await screen.findByRole('dialog', { name: 'Add a spending limit' })
+    await waitFor(() => expect(within(dialog).getByText('$140.00')).toBeTruthy())
+    // A scoped limit needs its id — refused with the reason until chosen.
+    await act(async () => { fireEvent.click(within(dialog).getByRole('radio', { name: 'One agent' })) })
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Save limit' })) })
+    expect(within(dialog).getByText('Choose the agent this limit applies to.')).toBeTruthy()
+    expect(putBodies).toHaveLength(0)
+    const user = userEvent.setup()
+    // Inside its Field the select is named by the field label, like the rule editor's "Scope".
+    await user.click(within(dialog).getByRole('combobox', { name: 'Agent' }))
+    await user.click(await screen.findByRole('option', { name: 'Main' }))
+    await act(async () => { fireEvent.click(within(dialog).getByRole('radio', { name: 'Subscription tokens (plan logins)' })) })
+    // The basis is now this agent's tokens; the unit follows the lane; the prefill is honest about having nothing.
+    await waitFor(() => expect(within(dialog).getByText('1.4M tokens')).toBeTruthy())
+    expect(within(dialog).getByText(/Last 30 days · observed · main/)).toBeTruthy()
+    expect(within(dialog).getByText(/No suggested number for a scoped or token limit/)).toBeTruthy()
+    const monthly = within(dialog).getByLabelText('Monthly limit (tokens)') as HTMLInputElement
+    expect(monthly.value).toBe('')
+    fireEvent.change(monthly, { target: { value: '2M' } })
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Save limit' })) })
+    await waitFor(() => expect(putBodies).toHaveLength(1))
+    expect(putBodies[0]).toEqual({
+      revision: 'rev-1',
+      rules: [
+        { id: 'g', scope: 'global', lane: 'metered', dailyCap: 20, atCap: 'defer' },
+        { scope: 'agent', scopeId: 'main', lane: 'subscription', monthlyCap: 2_000_000, atCap: 'defer' },
+      ],
+    })
   })
 
   it('a failed /limits load renders the unavailable state — never "No spending limits" — and nothing can be added or saved against unknown rules', async () => {

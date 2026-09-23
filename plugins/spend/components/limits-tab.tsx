@@ -59,7 +59,7 @@ export function LimitsTab({ m }: { m: SpendData }) {
       <CurrentPeriodSection m={m} />
       <BudgetRulesSection m={m} onAddLimit={() => { setDialogError(null); setDialogOpen(true) }} />
       <BillingLanesSection m={m} />
-      <LimitDialog open={dialogOpen} onOpenChange={setDialogOpen} onSave={saveLimit} saving={dialogSaving} error={dialogError} />
+      <LimitDialog open={dialogOpen} onOpenChange={setDialogOpen} onSave={saveLimit} saving={dialogSaving} error={dialogError} agents={m.agents} providers={m.availableProviders} />
     </div>
   )
 }
