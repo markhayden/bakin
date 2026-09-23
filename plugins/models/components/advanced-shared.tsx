@@ -8,7 +8,7 @@
  */
 import type { ComponentType, ReactNode } from 'react'
 import { Grid } from '@makinbakin/sdk/layout'
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Overline, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Text } from '@makinbakin/sdk/ui'
+import { Badge, Card, CardContent, CardDescription, CardTitle, Overline, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Text } from '@makinbakin/sdk/ui'
 
 // The full ordered ladder; the active runtime's declared support filters it.
 export const ALL_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'] as const
@@ -42,31 +42,30 @@ export interface GuideCardProps {
 export function GuideCard({ icon: Icon, title, lead, points, actions }: GuideCardProps) {
   return (
     <Card data-slot="models-guide" className="bg-bakin-surface-subtle">
-      <CardHeader>
-        <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
-          <div className="flex min-w-0 items-start gap-bakin-3">
-            {Icon ? (
-              <span aria-hidden="true" className="mt-bakin-1 flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-action-primary-background/10 text-bakin-action-primary-background">
-                <Icon className="size-bakin-4" />
-              </span>
-            ) : null}
+      {/* One icon gutter for the whole card: title, lead AND the strip share the same left edge. */}
+      <CardContent className="flex min-w-0 items-start gap-bakin-3 pt-bakin-6">
+        {Icon ? (
+          <span aria-hidden="true" className="mt-bakin-1 flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-action-primary-background/10 text-bakin-action-primary-background">
+            <Icon className="size-bakin-4" />
+          </span>
+        ) : null}
+        <div className="flex min-w-0 flex-1 flex-col gap-bakin-5">
+          <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
             <div className="min-w-0">
               <CardTitle>{title}</CardTitle>
               <CardDescription className="mt-bakin-1 max-w-prose leading-relaxed">{lead}</CardDescription>
             </div>
+            {actions ? <div className="flex flex-wrap items-center gap-bakin-2">{actions}</div> : null}
           </div>
-          {actions ? <div className="flex flex-wrap items-center gap-bakin-2">{actions}</div> : null}
+          <Grid layout="thirds" gap="item" align="stretch" data-testid="guide-points">
+            {points.map((point) => (
+              <div key={point.heading} className="min-w-0 border-s border-bakin-border-subtle py-bakin-2 ps-bakin-4">
+                <Overline>{point.heading}</Overline>
+                <Text as="p" size="meta" tone="muted" className="mt-bakin-2 leading-relaxed">{point.body}</Text>
+              </div>
+            ))}
+          </Grid>
         </div>
-      </CardHeader>
-      <CardContent>
-        <Grid layout="thirds" gap="item" align="stretch" data-testid="guide-points">
-          {points.map((point) => (
-            <div key={point.heading} className="min-w-0 border-s border-bakin-border-subtle py-bakin-2 ps-bakin-4">
-              <Overline>{point.heading}</Overline>
-              <Text as="p" size="meta" tone="muted" className="mt-bakin-2 leading-relaxed">{point.body}</Text>
-            </div>
-          ))}
-        </Grid>
       </CardContent>
     </Card>
   )
