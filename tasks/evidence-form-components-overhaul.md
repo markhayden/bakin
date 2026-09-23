@@ -65,3 +65,11 @@ Starting commit: `1ecbc0b90`; branch: `codex/form-components-overhaul`.
   only for the default input, and grouped children enforce their owner's size.
   Logs: `/private/tmp/bakin-form-{group-form,group-browser,selection-stories}.log`.
   C4 adds a dedicated group browser file to keep its rollback separate from C3.
+
+- C4 committed `63ffa2508`. C5 Select: **5/5** stories, focused selection
+  tests, quick conformance and **3/3 canonical browser checks** passed.
+  Browser checks cover repeated native form values, controlled reset, summary,
+  keyboard open/Escape/focus and 320px popup containment. Replaced an obsolete
+  min-height class assertion with DOM prop checks plus real matrix geometry.
+  No consumers used the removed `default` size outside the repaired public story.
+  Logs: `/private/tmp/bakin-form-{select-unit,select-browser,selection-stories}.log`.

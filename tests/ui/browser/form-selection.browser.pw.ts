@@ -1,0 +1,21 @@
+import { expect, test } from 'playwright/test'
+
+test('Select summarizes multiple values, submits each value and resets deliberately', async ({ page }) => {
+  await page.goto('/iframe.html?id=components-primitives-select--multiple-selection&viewMode=story')
+  const trigger = page.getByRole('combobox', { name: 'Allowed runtimes' })
+  await expect(trigger).toHaveText('Pi +2 more')
+  await expect(page.getByRole('listbox')).toHaveCount(0)
+  expect(await page.locator('form').evaluate(form => new FormData(form as HTMLFormElement).getAll('runtimes'))).toEqual(['pi', 'openclaw', 'managed'])
+  await page.getByRole('button', { name: 'Reset runtimes' }).click()
+  await expect(trigger).toHaveText('Pi +1 more')
+  await page.setViewportSize({ width: 320, height: 800 })
+  await trigger.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('listbox')).toBeVisible()
+  const popup = page.locator('[data-slot=select-content]')
+  const bounds = await popup.boundingBox()
+  expect(bounds!.x).toBeGreaterThanOrEqual(0)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320)
+  await page.keyboard.press('Escape')
+  await expect(trigger).toBeFocused()
+})

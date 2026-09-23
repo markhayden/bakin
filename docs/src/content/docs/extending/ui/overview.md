@@ -1604,3 +1604,12 @@ decorative icons, described units, announced loading, readonly `CopyButton` from
 and SubmitButton. Counts use UTF-16 code units to match native `maxLength`.
 Keep copy feedback tied to the actual clipboard result; never display optimistic
 success. Loading need not disable typing; readonly still permits copying.
+
+
+SelectTrigger accepts `size="sm|md|lg"`, `variant="outlined|filled|ghost"`, and
+`width="auto|full"` (default auto). Use full width in forms. Multiple Select
+values are summarized through SelectValue's render function as the first label
+plus “+N more”; the popup exposes every selected option. Supply `items` labels
+and `SelectItem label` for rich option typeahead. `null` means a placeholder;
+an empty-string option is an explicit selectable “None” choice. Select has no
+editable search input; use Combobox for searchable selection.

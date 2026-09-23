@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import {
+  Button,
   Field,
   FieldError,
   FieldLabel,
@@ -23,7 +25,7 @@ const meta = {
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
-    docs: { description: { component: 'Use Select for one choice from a bounded, known list. Group labels describe option sets; the field still needs its own visible label. Long options wrap within the viewport, and an empty-value item is an explicit none choice rather than a missing label.' } },
+    docs: { description: { component: 'Use Select for one or multiple choices from a bounded, known list. Use Combobox when editable search is needed. Group labels describe option sets; the field still needs its own visible label. Long options wrap within the viewport, and an empty-value item is an explicit none choice rather than a missing label.' } },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'disabled', 'validation', 'overflow'],
   },
 } satisfies Meta<typeof Select>
@@ -32,8 +34,8 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 interface SelectCanonicalArgs {
-  /** Trigger density: `default` control height or the compact `sm`. */
-  size: 'default' | 'sm'
+  size: 'sm' | 'md' | 'lg'
+  variant: 'outlined' | 'filled' | 'ghost'
   /** Disable the whole select. */
   disabled: boolean
 }
@@ -41,13 +43,15 @@ interface SelectCanonicalArgs {
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
   args: {
-    size: 'default',
+    size: 'md',
+    variant: 'outlined',
     disabled: false,
   },
   // `size` styles SelectTrigger, not the Select root, so docgen cannot infer it.
   argTypes: {
-    size: { control: 'select', options: ['default', 'sm'] },
+    size: { control: 'select', options: ['sm', 'md', 'lg'] },
     disabled: { control: 'boolean' },
+    variant: { control: 'select', options: ['outlined', 'filled', 'ghost'] },
   },
   // Width frame: the centered (shrink-to-fit) canvas collapses the full-width
   // trigger to min-content. In the app selects sit in field layouts with
@@ -57,7 +61,7 @@ export const CanonicalUsage = {
       <Field>
         <FieldLabel>Execution runtime</FieldLabel>
         <Select items={{ pi: 'Pi', openclaw: 'OpenClaw' }} defaultValue="openclaw" disabled={args.disabled}>
-          <SelectTrigger size={args.size} style={{ width: '100%' }}>
+          <SelectTrigger size={args.size} variant={args.variant} width="full">
             <SelectValue placeholder="Choose a runtime" />
           </SelectTrigger>
           <SelectContent>
@@ -100,7 +104,7 @@ function RuntimeSelect({ disabled = false, invalid = false, compact = false }: {
         disabled={disabled}
         required={invalid}
       >
-        <SelectTrigger aria-invalid={invalid || undefined} size={compact ? 'sm' : 'default'} style={{ width: '100%' }}>
+        <SelectTrigger aria-invalid={invalid || undefined} size={compact ? 'sm' : 'md'} width="full">
           <SelectValue placeholder="Choose a runtime" />
         </SelectTrigger>
         <SelectContent>
@@ -148,5 +152,41 @@ export const Behavior = {
     await userEvent.keyboard('{Home}{ArrowDown}{Enter}')
     await expect(trigger).toHaveTextContent('Pi')
     await waitFor(() => expect(trigger).toHaveFocus())
+  },
+} satisfies Story
+
+export const SizesAndVariants = {
+  render: () => <StoryStage eyebrow="Bounded choice" title="Select sizes and variants" description="Full-width fields and content-width toolbar controls use the same sizes and appearances.">
+    {(['sm', 'md', 'lg'] as const).map(size => <StorySection key={size} title={size}><Grid layout="split" gap="section">
+      {(['outlined', 'filled', 'ghost'] as const).map(variant => <Field key={variant}><FieldLabel>{variant} {size}</FieldLabel><Select items={{ pi: 'Pi', openclaw: 'OpenClaw' }} defaultValue="pi"><SelectTrigger size={size} variant={variant} width="full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pi">Pi</SelectItem><SelectItem value="openclaw">OpenClaw</SelectItem></SelectContent></Select></Field>)}
+    </Grid></StorySection>)}
+  </StoryStage>,
+  play: async ({ canvas }) => {
+    for (const [size, height] of [['sm', 32], ['md', 36], ['lg', 44]] as const) for (const variant of ['outlined', 'filled', 'ghost']) {
+      await expect(canvas.getByRole('combobox', { name: `${variant} ${size}` }).getBoundingClientRect().height).toBe(height)
+    }
+  },
+} satisfies Story
+
+export const MultipleSelection = {
+  render: function MultipleSelectionStory() {
+    const [values, setValues] = useState(['pi', 'openclaw'])
+    const labels: Record<string, string> = { pi: 'Pi', openclaw: 'OpenClaw', managed: 'Managed runtime' }
+    return <StoryStage eyebrow="Multiple choice" title="Runtime selection" description="The first label plus a count keeps the trigger compact. Every selected value remains available in the list.">
+      <form onReset={() => setValues(['pi', 'openclaw'])}><Field name="runtimes"><FieldLabel>Allowed runtimes</FieldLabel>
+        <Select multiple items={labels} value={values} onValueChange={setValues} name="runtimes">
+          <SelectTrigger width="full"><SelectValue placeholder="Choose runtimes">{(selected: string[]) => selected.length ? `${labels[selected[0]]}${selected.length > 1 ? ` +${selected.length - 1} more` : ''}` : 'Choose runtimes'}</SelectValue></SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}><SelectGroup><SelectLabel>Available</SelectLabel>{Object.entries(labels).map(([value, label]) => <SelectItem key={value} value={value} label={label}>{label}</SelectItem>)}</SelectGroup></SelectContent>
+        </Select>
+      </Field><Button type="reset" variant="ghost">Reset runtimes</Button></form>
+    </StoryStage>
+  },
+  play: async ({ canvas, userEvent }) => {
+    const trigger = canvas.getByRole('combobox', { name: 'Allowed runtimes' })
+    await expect(trigger).toHaveTextContent('Pi +1 more')
+    await userEvent.click(trigger)
+    await userEvent.click(await within(document.body).findByRole('option', { name: 'Managed runtime' }))
+    await expect(trigger).toHaveTextContent('Pi +2 more')
+    await userEvent.keyboard('{Escape}')
   },
 } satisfies Story

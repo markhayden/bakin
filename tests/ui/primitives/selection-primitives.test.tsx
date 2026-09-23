@@ -106,7 +106,9 @@ describe('Select public contract', () => {
     const trigger = screen.getByRole('combobox', { name: 'Execution environment' })
     expect(trigger.getAttribute('aria-invalid')).toBe('true')
     expect(trigger.getAttribute('data-size')).toBe('sm')
-    expect(trigger.className).toContain('min-h-bakin-8')
+    expect(trigger.getAttribute('data-variant')).toBe('outlined')
+    expect(trigger.hasAttribute('size')).toBe(false)
+    expect(trigger.hasAttribute('variant')).toBe(false)
     expect(trigger.className).toContain('min-w-0')
 
     expect((screen.getByRole('combobox', { name: 'Disabled environment' }) as HTMLButtonElement).disabled).toBe(true)
