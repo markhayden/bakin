@@ -170,6 +170,36 @@ describe('models onboarding component (S7)', () => {
     expect((await modelsComponent.check()).status).toBe('ok')
   })
 
+  it('a persisted plan whose UNROUTED enrichment inherits a text-only default is a warn — inheritance does not bypass the vision check (review P2)', async () => {
+    defaultModel = MINI
+    writePluginSettings('models', { ui: { mode: 'simple' }, routing: { routes: [], tagOverrides: [] } })
+    const r = await modelsComponent.check()
+    expect(r.status).toBe('warn')
+    expect(r.message).toContain('enrichment inherits the default model')
+    expect(r.message).toContain('cannot see images')
+  })
+
+  it('an install already on the recommendation is NOT ok while no eligible model can see images — enrichment cannot run (review P2)', async () => {
+    catalog = [{ id: MINI, available: true, input: 'text' }]
+    defaultModel = MINI
+    writePluginSettings('models', { ui: { mode: 'simple' }, routing: { routes: [], tagOverrides: [] } })
+    const r = await modelsComponent.check()
+    expect(r.status).toBe('warn')
+    expect(r.message).toContain('enrichment')
+    expect(r.message).toContain('vision-capable')
+    // install() has nothing to apply but says so honestly too.
+    const i = await modelsComponent.install(YES)
+    expect(i.status).toBe('noop')
+    expect(i.message).toContain('Needs attention')
+  })
+
+  it('with enrichment disabled a text-only default is fine', async () => {
+    defaultModel = MINI
+    writePluginSettings('assets', { enrichmentEnabled: false })
+    writePluginSettings('models', { ui: { mode: 'simple' }, routing: { routes: [], tagOverrides: [] } })
+    expect((await modelsComponent.check()).status).toBe('ok')
+  })
+
   it('a persisted plan whose enrichment route cannot see images is a warn', async () => {
     writePluginSettings('models', { routing: { routes: ['auto-title', 'enrichment', 'relay', 'skill-mapping', 'team-routing'].map((workClass) => ({ workClass, model: MINI })), tagOverrides: [] } })
     const r = await modelsComponent.check()

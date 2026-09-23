@@ -21,6 +21,12 @@ export function useDeepLinkFocus(sel: Pick<SelectionsData, 'highlightRef' | 'lan
     const host = document.querySelector<HTMLElement>(`[data-selection-ref="${ref.replace(/["\\]/g, '\\$&')}"]`)
     if (!host) return
     landed.current = ref
+    // A control folded behind a closed disclosure (`<details>`, e.g. the
+    // Overview's "More defaults") is not something you can see — open every
+    // enclosing one before scrolling to it.
+    for (let details = host.closest('details'); details; details = details.parentElement?.closest('details') ?? null) {
+      details.open = true
+    }
     host.scrollIntoView?.({ block: 'center' })
     const control = host.querySelector<HTMLElement>('[role="combobox"], button, input, select, textarea')
     control?.focus({ preventScroll: true })

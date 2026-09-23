@@ -239,7 +239,11 @@ describe('ModelsPage component', () => {
           return jsonResponse({ error: 'stale_revision', message: 'the configuration changed since this change was planned', current: `rev-${selectionsRevision}` }, 409)
         }
         const ops = (body?.ops as Array<{ ref: string; set: { model?: string | null; thinking?: string | null } }>) ?? []
+        // Like the real mutator, an op the override reports as FAILED leaves its document untouched.
+        const outcome = mutationOverride?.(ops) ?? {}
+        const failedRefs = new Set((outcome.failed ?? []).map((f) => f.ref))
         for (const op of ops) {
+          if (failedRefs.has(op.ref)) continue
           const [kind, a, b] = op.ref.split(':')
           if (kind === 'policy' && a === 'defaultModel' && typeof op.set.model === 'string') {
             const next = op.set.model
@@ -274,7 +278,6 @@ describe('ModelsPage component', () => {
           }
         }
         selectionsRevision += 1
-        const outcome = mutationOverride?.(ops) ?? {}
         return jsonResponse({ applied: ops.map((o) => o.ref), failed: [], pending: [], warnings: [], ...outcome, revision: `rev-${selectionsRevision}`, ...(body?.snapshot === 'reset' ? { snapshot: '/tmp/snapshots/2026-09-22.json' } : {}) })
       }
 
@@ -431,20 +434,57 @@ describe('ModelsPage component', () => {
       expect(configWrite()?.body?.ops).toEqual([{ ref: 'policy:fallback:0', set: { model: null } }])
     })
 
-    it('Fallbacks: a stale save carrying a POSITIONAL fallback op is refused, reloaded and explained — never re-posted against a moved list', async () => {
+    it('Fallbacks: a stale save carrying a POSITIONAL fallback op is re-posted once when the list is unchanged, and refused with the positional ops DROPPED when it moved — never left staged for a Retry against the reloaded list', async () => {
+      const posts = () => fetchCalls.filter((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections' && !((c.body?.ops as Array<{ ref: string }>) ?? []).every((op) => op.ref === 'ui:mode'))
+      configState.fallbackModels = ['anthropic/claude-opus-4-6', 'anthropic/claude-haiku-4-5']
       render(<ModelsPage />)
       fireEvent.click(await screen.findByText('More defaults'))
-      fireEvent.click(await screen.findByRole('button', { name: 'Remove fallback 1' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Remove fallback 2' }))
       await screen.findByTestId('draft-summary')
-      // Another editor saved after this page loaded (and after its first-visit mode persist).
+      // Another editor REORDERED the list after this page loaded: position 2 is now Opus.
       selectionsRevision += 1
-      const posts = () => fetchCalls.filter((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections' && !((c.body?.ops as Array<{ ref: string }>) ?? []).every((op) => op.ref === 'ui:mode'))
+      configState.fallbackModels = ['anthropic/claude-haiku-4-5', 'anthropic/claude-opus-4-6']
       fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
       await waitFor(() => expect(posts()).toHaveLength(1))
-      expect(await screen.findByText(/changed since this page loaded/)).toBeTruthy()
-      // Still exactly one attempt; the draft is kept for the operator to re-decide.
+      // Nothing is staged any more, so the explanation cannot ride the save bar — it must still be on the page.
+      expect(await screen.findByText(/fallback list changed since this page loaded/)).toBeTruthy()
+      // One attempt, the positional op is gone (nothing staged), and the page shows the moved list.
       expect(posts()).toHaveLength(1)
-      expect(screen.getByTestId('draft-summary').textContent).toContain('1 change staged')
+      await waitFor(() => expect(screen.queryByTestId('draft-summary')).toBeNull())
+      expect(configState.fallbackModels).toEqual(['anthropic/claude-haiku-4-5', 'anthropic/claude-opus-4-6'])
+      await waitFor(() => expect((screen.getByRole('combobox', { name: 'Fallback 2' }).textContent ?? '')).toContain('Opus'))
+
+      // Same list, someone else merely bumped the revision: safe to re-post once.
+      fireEvent.click(screen.getByRole('button', { name: 'Remove fallback 2' }))
+      await screen.findByTestId('draft-summary')
+      selectionsRevision += 1
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(posts()).toHaveLength(3))
+      expect(posts().at(-1)?.body?.ops).toEqual([{ ref: 'policy:fallback:1', set: { model: null } }])
+      await waitFor(() => expect(configState.fallbackModels).toEqual(['anthropic/claude-haiku-4-5']))
+    })
+
+    it('a ?ref= into the "More defaults" disclosure opens it and lands on the control (review P2)', async () => {
+      queryOverrides.ref = 'policy:defaultSubagentModel'
+      render(<ModelsPage />)
+      // Labelled through its FieldLabel (no aria-label): land = focus on the control + its popup pre-mounted.
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Default subagent model' })))
+      await waitFor(() => expect(document.querySelector('[role="listbox"]')).not.toBeNull())
+      const details = screen.getByTestId('overview-extras') as HTMLDetailsElement
+      expect(details.open).toBe(true)
+    })
+
+    it('a ?ref= to a fallback position or an alias lands on that row (review P2)', async () => {
+      queryOverrides.ref = 'policy:fallback:0'
+      const first = render(<ModelsPage />)
+      await deepLinkLanded('Fallback 1')
+      expect((screen.getByTestId('overview-extras') as HTMLDetailsElement).open).toBe(true)
+      first.unmount()
+
+      queryOverrides.ref = 'policy:alias:sonnet'
+      render(<ModelsPage />)
+      await deepLinkLanded('Alias sonnet target')
+      expect((screen.getByTestId('overview-extras') as HTMLDetailsElement).open).toBe(true)
     })
 
     it('Aliases: adding stages a set op, removing stages a clear', async () => {
@@ -988,6 +1028,38 @@ describe('ModelsPage component', () => {
       expect((await screen.findByRole('status')).textContent).toContain('bakin models restore /tmp/snapshots/2026-09-22.json')
       await waitFor(() => expect(screen.queryByRole('button', { name: 'Reset to this plan…' })).toBeNull())
       expect(screen.queryByTestId('customizations-line')).toBeNull()
+    })
+
+    it('a partial reset keeps the FIRST snapshot as the undo handle and never mints another on retry (review P2)', async () => {
+      uiModeState = 'simple'
+      // The first attempt clears everything but the alias.
+      mutationOverride = (ops) => ({
+        applied: ops.filter((op) => op.ref !== 'policy:alias:sonnet').map((op) => op.ref),
+        failed: ops.filter((op) => op.ref === 'policy:alias:sonnet').map((op) => ({ ref: op.ref, error: { code: 'write_failed', message: 'adapter exploded' } })),
+      })
+      render(<ModelsPage />)
+      fireEvent.click(await screen.findByRole('button', { name: 'Reset to this plan…' }))
+      let dialog = await screen.findByRole('dialog')
+      fireEvent.change(within(dialog).getByPlaceholderText('reset'), { target: { value: 'reset' } })
+      await waitFor(() => expect((within(dialog).getByRole('button', { name: 'Reset' }) as HTMLButtonElement).disabled).toBe(false))
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Reset' }))
+      const posts = () => fetchCalls.filter((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections' && !((c.body?.ops as Array<{ ref: string }>) ?? []).every((op) => op.ref === 'ui:mode'))
+      await waitFor(() => expect(posts()).toHaveLength(1))
+      expect(posts()[0]?.body?.snapshot).toBe('reset')
+      // The dialog stays open, names the failure AND the handle written before anything was cleared.
+      dialog = await screen.findByRole('dialog')
+      await within(dialog).findByText(/adapter exploded/)
+      expect(within(dialog).getByText(/bakin models restore \/tmp\/snapshots\/2026-09-22\.json/)).toBeTruthy()
+
+      // Retry: only the alias is left to clear, and NO new snapshot is requested.
+      mutationOverride = null
+      fireEvent.change(within(dialog).getByPlaceholderText('reset'), { target: { value: 'reset' } })
+      await waitFor(() => expect((within(dialog).getByRole('button', { name: 'Reset' }) as HTMLButtonElement).disabled).toBe(false))
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Reset' }))
+      await waitFor(() => expect(posts()).toHaveLength(2))
+      expect(posts()[1]?.body?.snapshot).toBeUndefined()
+      expect((posts()[1]?.body?.ops as Array<{ ref: string }>).map((op) => op.ref)).toEqual(['policy:alias:sonnet'])
+      expect((await screen.findByRole('status')).textContent).toContain('bakin models restore /tmp/snapshots/2026-09-22.json')
     })
 
     it('is refused while the page holds an unsaved draft', async () => {

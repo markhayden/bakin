@@ -127,6 +127,18 @@ export function ModelsPage() {
             : 'Credential evidence is partial: models whose provider could not be checked stay selectable and are marked unverified.'}
         />
       ) : null}
+      {/* A save that ended with NOTHING left staged (positional fallback ops
+          dropped after the list moved) has no save bar to speak through —
+          the explanation still has to be on the page. */}
+      {!sel.dirty && sel.saveError ? (
+        <Banner
+          tone="attention"
+          title="Your change was not saved"
+          description={sel.saveError}
+          action={<Button type="button" variant="outline" size="sm" onClick={sel.discard}>Dismiss</Button>}
+          data-testid="save-notice"
+        />
+      ) : null}
 
       {sel.view === 'simple' ? (
         <PageBody

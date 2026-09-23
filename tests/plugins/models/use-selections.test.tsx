@@ -21,6 +21,7 @@ mock.module('@makinbakin/sdk/navigation', () => ({
 }))
 
 import { act, renderHook, waitFor } from '@testing-library/react'
+import { settleFor } from '../../helpers/wait'
 import { actRender } from '../../rtl-settle'
 import { useSelections } from '../../../plugins/models/components/use-selections'
 
@@ -29,20 +30,28 @@ const MINI = 'openai-codex/gpt-5.4-mini'
 let revision = 'rev-1'
 let posts: Array<{ revision: string; ops: Array<{ ref: string; set: Record<string, unknown> }> }> = []
 let postResponses: Array<{ status: number; body: Record<string, unknown> }> = []
+/** Extra states (fallbacks) and pending rows the GET serves; `gets` counts selections reads. */
+let fallbacks: string[] = []
+let pending: Array<{ refs: string[]; state: 'unsettled' | 'failed' | 'conflict'; detail?: string }> = []
+let gets = 0
+/** When set, the next POST waits on it — the in-flight window a test edits inside. */
+let holdPost: Promise<void> | null = null
 const originalFetch = globalThis.fetch
 
 function selectionsBody() {
+  gets += 1
   return {
     revision,
-    support: { defaultModel: true, fallbackModels: false, defaultSubagentModel: false, aliases: false, perAgentSubagentModel: false, supportedThinkingLevels: ['off', 'low'], perTurnModel: true },
+    support: { defaultModel: true, fallbackModels: true, defaultSubagentModel: false, aliases: false, perAgentSubagentModel: false, supportedThinkingLevels: ['off', 'low'], perTurnModel: true },
     states: [
       { ref: 'policy:defaultModel', model: LUNA, document: 'policy', label: 'Default model' },
       { ref: 'route:relay', model: null, document: 'routing', label: 'relay' },
       { ref: 'route:auto-title', model: null, document: 'routing', label: 'auto-title' },
       { ref: 'ui:mode', model: 'simple', document: 'routing', label: 'mode' },
+      ...fallbacks.map((model, n) => ({ ref: `policy:fallback:${n}`, model, document: 'policy', label: `Fallback ${n + 1}` })),
     ],
     proposals: [],
-    pending: [],
+    pending,
     evidence: { catalog: 'ok', runtimeAvailability: 'ok', credentials: 'ok', rejections: 'ok' },
   }
 }
@@ -58,6 +67,10 @@ beforeEach(() => {
   revision = 'rev-1'
   posts = []
   postResponses = []
+  fallbacks = []
+  pending = []
+  gets = 0
+  holdPost = null
   globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -65,6 +78,7 @@ beforeEach(() => {
     if (url.endsWith('/plan')) return json(planBody)
     if (url.endsWith('/selections') && init?.method === 'POST') {
       posts.push(JSON.parse(String(init.body)) as (typeof posts)[number])
+      if (holdPost) await holdPost
       const next = postResponses.shift() ?? { status: 200, body: { applied: posts.at(-1)!.ops.map((o) => o.ref), failed: [], pending: [], warnings: [], revision } }
       return json(next.body, next.status)
     }
@@ -73,8 +87,8 @@ beforeEach(() => {
 })
 afterEach(() => { globalThis.fetch = originalFetch })
 
-async function mount() {
-  const rendered = await actRender(() => renderHook(() => useSelections()))
+async function mount(options?: { pendingPollMs?: number }) {
+  const rendered = await actRender(() => renderHook(() => useSelections(options)))
   await waitFor(() => expect(rendered.result.current.loading).toBe(false))
   return rendered
 }
@@ -127,6 +141,88 @@ describe('useSelections draft + save', () => {
     await act(async () => { await result.current.save() })
     expect(posts.map((p) => p.revision)).toEqual(['rev-1', 'rev-2'])
     expect(result.current.dirty).toBe(false)
+  })
+
+  it('an edit made WHILE a save is in flight survives the settle — the newer value was never sent (review P2)', async () => {
+    const { result } = await mount()
+    act(() => result.current.stage('route:relay', { model: MINI }))
+    let release!: () => void
+    holdPost = new Promise<void>((resolve) => { release = resolve })
+    let saved: Promise<boolean>
+    act(() => { saved = result.current.save() })
+    await waitFor(() => expect(posts).toHaveLength(1))
+    // The user moves on to another model, and reverts a second field to its pre-save value.
+    act(() => result.current.stage('route:relay', { model: LUNA }))
+    release()
+    await act(async () => { await saved })
+    expect(posts[0]!.ops).toEqual([{ ref: 'route:relay', set: { model: MINI } }])
+    // MINI was applied; LUNA is still staged and rides the next save.
+    expect(result.current.dirty).toBe(true)
+    expect(result.current.effective('route:relay').model).toBe(LUNA)
+    await act(async () => { await result.current.save() })
+    expect(posts.at(-1)!.ops).toEqual([{ ref: 'route:relay', set: { model: LUNA } }])
+  })
+
+  it('reverting to the pre-save value during the save stays staged: the save is persisting the other value', async () => {
+    const { result } = await mount()
+    act(() => result.current.stage('route:auto-title', { model: MINI }))
+    let release!: () => void
+    holdPost = new Promise<void>((resolve) => { release = resolve })
+    let saved: Promise<boolean>
+    act(() => { saved = result.current.save() })
+    await waitFor(() => expect(posts).toHaveLength(1))
+    act(() => result.current.stage('route:auto-title', { model: null }))
+    expect(result.current.dirty).toBe(true)
+    release()
+    await act(async () => { await saved })
+    expect(result.current.draft.get('route:auto-title')).toEqual({ model: null })
+  })
+
+  it('a stale save carrying positional fallback ops is re-posted only when the fallback list is unchanged', async () => {
+    fallbacks = [MINI, LUNA]
+    const { result } = await mount()
+    act(() => result.current.stage('policy:fallback:1', { model: null }))
+    postResponses = [{ status: 409, body: { error: 'stale_revision', message: 'stale' } }]
+    revision = 'rev-2'
+    await act(async () => { await result.current.save() })
+    expect(posts.map((p) => p.revision)).toEqual(['rev-1', 'rev-2'])
+    expect(result.current.dirty).toBe(false)
+    expect(result.current.saveError).toBeNull()
+  })
+
+  it('a stale save whose fallback list MOVED drops the positional ops instead of leaving them staged for Retry (review P2)', async () => {
+    fallbacks = [MINI, LUNA]
+    const { result } = await mount()
+    act(() => result.current.stage('policy:fallback:1', { model: null }))
+    act(() => result.current.stage('route:relay', { model: MINI }))
+    postResponses = [{ status: 409, body: { error: 'stale_revision', message: 'stale' } }]
+    // Another editor reordered the list: position 1 is now MINI, not LUNA.
+    revision = 'rev-2'
+    fallbacks = [LUNA, MINI]
+    let ok = true
+    await act(async () => { ok = await result.current.save() })
+    expect(ok).toBe(false)
+    // One attempt only; the positional op is gone, the named one is kept for Retry.
+    expect(posts).toHaveLength(1)
+    expect([...result.current.draft.keys()]).toEqual(['route:relay'])
+    expect(result.current.saveError).toContain('fallback')
+    await waitFor(() => expect(result.current.selections?.states.find((s) => s.ref === 'policy:fallback:1')?.model).toBe(MINI))
+    await act(async () => { await result.current.save() })
+    expect(posts.at(-1)!.ops).toEqual([{ ref: 'route:relay', set: { model: MINI } }])
+  })
+
+  it('a write awaiting runtime confirmation is re-read on a cadence until it settles — no manual reload (review P2)', async () => {
+    pending = [{ refs: ['policy:defaultModel'], state: 'unsettled' }]
+    const { result } = await mount({ pendingPollMs: 20 })
+    expect(result.current.pendingRefs.get('policy:defaultModel')?.state).toBe('unsettled')
+    const before = gets
+    await waitFor(() => expect(gets).toBeGreaterThan(before + 1))
+    // The runtime confirmed: the next read carries no pending row and the page drops the chip on its own.
+    pending = []
+    await waitFor(() => expect(result.current.pendingRefs.size).toBe(0))
+    const settledAt = gets
+    await settleFor(80, 'polling must stop once nothing is pending — four poll intervals with no further read')
+    expect(gets).toBe(settledAt)
   })
 
   it('a refusal (ineligible model) keeps the draft and surfaces the reason + proposal', async () => {

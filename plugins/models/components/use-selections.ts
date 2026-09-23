@@ -20,11 +20,19 @@ import { pluginFetch, pluginFetchJson } from '@makinbakin/sdk/utils'
 
 import type { PlanResponse, SelectionOpWire, SelectionStateWire, SelectionsResponse } from '../types'
 import { classifyMode, listCustomizations, refLayer, type Customization, type UiMode } from '../lib/mode'
-import { draftOps, effectiveSelection, retainFailed, stageOp, unstageOp, type Draft, type DraftSet } from '../lib/draft'
+import { draftOps, dropFallbackOps, effectiveSelection, fallbackList, isFallbackRef, retainFailed, stageOp, unstageOp, withInFlight, type Draft, type DraftSet } from '../lib/draft'
 
 const PLUGIN_ID = 'models'
 /** Every read is bounded: a stalled endpoint renders as an error, never as a spinner forever. */
 const LOAD_TIMEOUT_MS = 10_000
+/**
+ * While a write awaits runtime confirmation the page re-reads on this
+ * cadence: the server reconciles pending writes on every GET /selections,
+ * so the read IS the settle signal — a late success drops the "saving…"
+ * chip and shows the new value, a late failure/conflict is disclosed,
+ * neither waits for the operator to reload.
+ */
+const PENDING_POLL_MS = 5_000
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
@@ -128,7 +136,8 @@ export interface SelectionsData {
   save: () => Promise<boolean>
 }
 
-export function useSelections(): SelectionsData {
+export function useSelections(options: { pendingPollMs?: number } = {}): SelectionsData {
+  const pendingPollMs = options.pendingPollMs ?? PENDING_POLL_MS
   const [selections, setSelections] = useState<SelectionsResponse | null>(null)
   const [plan, setPlan] = useState<PlanResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -168,6 +177,17 @@ export function useSelections(): SelectionsData {
 
   const reload = useCallback(() => load(), [load])
 
+  // A write the runtime has not confirmed settles on the server's next
+  // reconcile, which every GET /selections performs — so while any is
+  // unsettled the page re-reads on a cadence instead of showing a stale
+  // value under a "saving…" chip until someone reloads by hand.
+  const hasUnsettled = (selections?.pending ?? []).some((p) => p.state === 'unsettled')
+  useEffect(() => {
+    if (!hasUnsettled) return
+    const timer = setInterval(() => { void load() }, pendingPollMs)
+    return () => clearInterval(timer)
+  }, [hasUnsettled, pendingPollMs, load])
+
   // The revision every write plans under — the loaded one, moved forward by
   // each write's answer (the page's own ui:mode persist moves it too: the
   // hash covers every ref, so a Reset planned under the loaded revision
@@ -180,6 +200,10 @@ export function useSelections(): SelectionsData {
     setSelections((prev) => (prev && prev.revision !== revision ? { ...prev, revision } : prev))
   }, [])
 
+  const states: SelectionStateWire[] = useMemo(() => selections?.states ?? [], [selections])
+  const statesRef = useRef<SelectionStateWire[]>(states)
+  statesRef.current = states
+
   const submit = useCallback(async (ops: SelectionOpWire[], extra?: { snapshot?: 'reset' }): Promise<SaveOutcome> => {
     let revision = revisionRef.current
     if (!revision) throw new Error('Model configuration is not loaded yet.')
@@ -189,27 +213,30 @@ export function useSelections(): SelectionsData {
         adoptRevision(outcome.revision)
         return outcome
       } catch (err) {
+        if ((err as { code?: string }).code !== 'stale_revision' || attempt > 0) throw err
         // Someone else saved in between. Ops keyed by a NAME (agent, route,
         // tag, alias, policy field) are explicit intents, so re-posting them
         // against the fresh revision is safe — once. A fallback op is
-        // POSITIONAL (`policy:fallback:<n>`): against a reordered list it
-        // would remove the wrong entry, so it is never re-posted blind — the
-        // page reloads and the operator decides again.
-        if ((err as { code?: string }).code === 'stale_revision' && attempt === 0 && !ops.some((op) => op.ref.startsWith('policy:fallback:'))) {
-          const fresh = await pluginFetchJson<SelectionsResponse>(PLUGIN_ID, 'selections', { label: 'Model selections', timeoutMs: LOAD_TIMEOUT_MS })
+        // POSITIONAL (`policy:fallback:<n>`): it names an index of the list
+        // this page loaded. It is re-posted only when the fresh list is that
+        // same list; a moved list would make it remove a different model,
+        // so the positional ops are DROPPED from the draft — never left
+        // staged for a Retry against the reloaded list — and the operator
+        // stages them again over what is there now.
+        const fresh = await pluginFetchJson<SelectionsResponse>(PLUGIN_ID, 'selections', { label: 'Model selections', timeoutMs: LOAD_TIMEOUT_MS })
+        const positional = ops.some((op) => isFallbackRef(op.ref))
+        const listMoved = positional && JSON.stringify(fallbackList(statesRef.current)) !== JSON.stringify(fallbackList(fresh.states))
+        if (!listMoved) {
           revision = fresh.revision
           continue
         }
-        if ((err as { code?: string }).code === 'stale_revision') {
-          void load()
-          throw new Error('The configuration changed since this page loaded — it has been reloaded; review your change and try again.')
-        }
-        throw err
+        setSelections(fresh)
+        setDraft((prev) => dropFallbackOps(prev))
+        void load()
+        throw new Error('The fallback list changed since this page loaded — your fallback changes were discarded because they named positions in the old list. Review the fallbacks shown now and stage them again.')
       }
     }
   }, [adoptRevision, load])
-
-  const states: SelectionStateWire[] = useMemo(() => selections?.states ?? [], [selections])
   const customizations = useMemo(() => listCustomizations(states), [states])
   const persistedMode = states.find((s) => s.ref === 'ui:mode')?.model
   const mode: UiMode = persistedMode === 'simple' || persistedMode === 'advanced' ? persistedMode : classifyMode(states)
@@ -249,12 +276,26 @@ export function useSelections(): SelectionsData {
     return map
   }, [selections])
 
+  // The draft a save is carrying right now. Staging during that save compares
+  // against the states it will LEAVE (submitted values over persisted ones),
+  // and the settle only drops a ref whose draft value is still the one sent.
+  const inFlightRef = useRef<Draft>(new Map())
+  const stagingBase = useCallback(() => (inFlightRef.current.size > 0 ? withInFlight(states, inFlightRef.current) : states), [states])
+  // A failed save's message belongs to the refs it left staged. Once nothing
+  // is staged (the ops were dropped), the first fresh edit starts a new
+  // draft — the old message would only mislabel its Save as a Retry.
+  const draftEmpty = draft.size === 0
   const stage = useCallback((target: string, set: DraftSet) => {
-    setDraft((prev) => stageOp(prev, states, target, set))
-  }, [states])
+    if (draftEmpty) setSaveError(null)
+    setDraft((prev) => stageOp(prev, stagingBase(), target, set))
+  }, [stagingBase, draftEmpty])
   const stageAll = useCallback((ops: SelectionOpWire[]) => {
-    setDraft((prev) => ops.reduce((acc, op) => stageOp(acc, states, op.ref, op.set), prev))
-  }, [states])
+    if (draftEmpty) setSaveError(null)
+    setDraft((prev) => {
+      const base = stagingBase()
+      return ops.reduce((acc, op) => stageOp(acc, base, op.ref, op.set), prev)
+    })
+  }, [stagingBase, draftEmpty])
   const unstage = useCallback((target: string) => setDraft((prev) => unstageOp(prev, target)), [])
   const discard = useCallback(() => {
     setDraft(new Map())
@@ -268,10 +309,13 @@ export function useSelections(): SelectionsData {
     if (ops.length === 0 || !selections) return true
     setSaving(true)
     setSaveError(null)
+    const submitted = draft
+    inFlightRef.current = submitted
     try {
       const outcome = await submit(ops)
-      // Applied + pending refs leave the draft; failed ones stay for Retry.
-      setDraft((prev) => retainFailed(prev, outcome))
+      // Applied + pending refs leave the draft — unless they were edited
+      // again while this save ran; failed ones stay for Retry.
+      setDraft((prev) => retainFailed(prev, outcome, submitted))
       setLastSave(outcome)
       if (outcome.failed.length > 0) {
         setSaveError(`${outcome.failed.length} change${outcome.failed.length === 1 ? '' : 's'} could not be written: ${outcome.failed.map((f) => `${f.ref} — ${f.message}`).join('; ')}`)
@@ -282,6 +326,7 @@ export function useSelections(): SelectionsData {
       setSaveError(errorMessage(err))
       return false
     } finally {
+      inFlightRef.current = new Map()
       setSaving(false)
     }
   }, [draft, selections, submit, load])

@@ -29,6 +29,11 @@ export function ResetToPlan({ sel }: { sel: SelectionsData }) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The snapshot written before the FIRST attempt — the only handle that
+  // restores the configuration as it was. A retry after a partial reset
+  // never asks for another one (that would snapshot an already half-cleared
+  // state and bury the real undo point).
+  const [snapshot, setSnapshot] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const selections = sel.selections
   // Once nothing is customized the section only lingers to show the undo handle.
@@ -58,12 +63,17 @@ export function ResetToPlan({ sel }: { sel: SelectionsData }) {
     setBusy(true)
     setError(null)
     try {
-      const outcome = await sel.submit(ops, { snapshot: 'reset' })
+      const outcome = await sel.submit(ops, snapshot ? undefined : { snapshot: 'reset' })
+      const handle = snapshot ?? outcome.snapshot ?? null
+      if (handle && !snapshot) setSnapshot(handle)
       if (outcome.failed.length > 0) {
-        setError(`${outcome.failed.length} change${outcome.failed.length === 1 ? '' : 's'} could not be written: ${outcome.failed.map((f) => `${f.ref} — ${f.message}`).join('; ')}`)
+        const undo = handle ? ` The snapshot written before the first attempt still restores everything: \`bakin models restore ${handle}\`.` : ''
+        setError(`${outcome.failed.length} change${outcome.failed.length === 1 ? '' : 's'} could not be written: ${outcome.failed.map((f) => `${f.ref} — ${f.message}`).join('; ')}.${undo}`)
+        // Re-read so a retry lists only what is still customized.
+        await sel.reload()
         return
       }
-      setDone(outcome.snapshot ?? null)
+      setDone(handle)
       setOpen(false)
       await sel.reload()
     } catch (err) {

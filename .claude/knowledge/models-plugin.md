@@ -316,6 +316,44 @@ probe) behind `use-catalog.ts`.
   `useAvailableModels` (Team's pickers) refetches on it and never caches
   across mounts.
 
+**Review-round hardening (2026-09-23, #912 round 4 — six P2s, don't regress):**
+- **A save settles by VALUE, not by ref.** `save` remembers the draft it
+  submitted (`inFlightRef`); `retainFailed(prev, outcome, submitted)` drops
+  an applied/pending ref only while the draft still holds the submitted
+  value. Staging DURING a save compares against `withInFlight(states,
+  submitted)` — the states the save will leave — so an edit back to the
+  pre-save value stays staged and re-picking the submitted one unstages.
+  An edit made while its previous save ran is never silently lost.
+- **Positional fallback ops never survive a moved list.** On
+  `stale_revision`, `submit` fetches fresh and compares `fallbackList`
+  (index order) of the loaded vs fresh states: unchanged ⇒ the ops are
+  re-posted once like named ones; moved ⇒ `dropFallbackOps` empties them
+  from the draft (named ops stay for Retry), the page adopts the fresh
+  states, and the message says the fallback changes were discarded. With
+  nothing staged the save bar cannot show that (`SaveBar` returns null when
+  not dirty), so the page renders a `Banner` (`save-notice`, Dismiss =
+  `discard`) for a save error with an empty draft; the first fresh edit
+  onto an empty draft clears the old error so its Save is not a "Retry".
+- **Reset keeps the FIRST snapshot.** `ResetToPlan` stores the handle the
+  first attempt returned; a retry after a partial reset posts WITHOUT
+  `snapshot: 'reset'` (a second snapshot would capture the half-cleared
+  state and bury the real undo point), the failure text names the original
+  handle, and the section re-reads so the retry lists only what is left.
+- **Pending writes settle without a reload.** While any `pending` row is
+  `unsettled`, `useSelections` re-reads on `pendingPollMs` (default 5 s;
+  the server reconciles pending writes on every GET /selections, so the
+  read IS the settle signal) and stops when none remain.
+- **Deep links reveal their controls.** `useDeepLinkFocus` opens every
+  enclosing `<details>` (the Overview's "More defaults") before scrolling;
+  fallback rows carry `data-selection-ref="policy:fallback:<n>"` and alias
+  rows `policy:alias:<name>` so `?ref=` lands on them.
+- **Onboarding never calls unusable enrichment healthy.** `assess()` flags
+  an UNROUTED enrichment that inherits a text-only default (inheritance is
+  not a bypass of the vision check) and a plan whose recommender left
+  enrichment `unset` (nothing eligible can see); `check()` returns `warn`
+  for those even when the recommendation diff is empty, and `install()`'s
+  noop message carries the caveat.
+
 ## Pending restart (#878 Models half, D30)
 
 `src/core/pending-restart.ts` persists WHICH change kinds still wait on a

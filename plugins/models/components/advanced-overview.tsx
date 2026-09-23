@@ -232,7 +232,7 @@ export function AdvancedOverview({ sel, modelOptions }: AdvancedOverviewProps) {
                 ) : (
                   <ListRows aria-label="Fallback models" variant="separated" columns="auto minmax(0,1fr) auto" columnsAt="2xl" columnsAlign="end">
                     {fallbacks.map((model, index) => (
-                      <ListRow key={`${index}-${model}`} data-fallback-row={index} className="px-bakin-4 py-bakin-3">
+                      <ListRow key={`${index}-${model}`} data-fallback-row={index} data-selection-ref={`policy:fallback:${index}`} className="px-bakin-4 py-bakin-3">
                         <Text size="meta" tone="muted">{index + 1}</Text>
                         <ModelSelect
                           id={`advanced-fallback-${index}`}
@@ -268,7 +268,7 @@ export function AdvancedOverview({ sel, modelOptions }: AdvancedOverviewProps) {
                 ) : (
                   <ListRows aria-label="Model aliases" variant="separated" columns="minmax(8rem,.4fr) minmax(0,1fr) auto" columnsAt="2xl" columnsAlign="end">
                     {Object.entries(aliases).map(([name, target]) => (
-                      <ListRow key={name} data-alias-row={name} className="px-bakin-4 py-bakin-3">
+                      <ListRow key={name} data-alias-row={name} data-selection-ref={`policy:alias:${name}`} className="px-bakin-4 py-bakin-3">
                         <span className="font-bakin-typography-family-mono text-bakin-text-primary">{name}</span>
                         <ModelSelect
                           id={`advanced-alias-${name}`}

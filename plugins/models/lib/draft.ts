@@ -53,10 +53,72 @@ export function effectiveSelection(draft: Draft, states: readonly SelectionState
   }
 }
 
-/** Keep only the refs a save left failed (applied + pending drop out; the rest stays as-is). */
-export function retainFailed(draft: Draft, outcome: { applied: string[]; pending: string[] }): Draft {
+function sameSet(a: DraftSet | undefined, b: DraftSet | undefined): boolean {
+  return a !== undefined && b !== undefined && a.model === b.model && a.thinking === b.thinking
+}
+
+/**
+ * Keep only the refs a save left failed: applied + pending refs drop out
+ * ONLY when the draft still holds the value that was submitted. A ref
+ * edited again while the save was in flight keeps its newer value — the
+ * server never saw it, so it must ride the next save.
+ */
+export function retainFailed(draft: Draft, outcome: { applied: string[]; pending: string[] }, submitted: Draft): Draft {
   const settled = new Set([...outcome.applied, ...outcome.pending])
   const next = new Map<string, DraftSet>()
-  for (const [ref, set] of draft) if (!settled.has(ref)) next.set(ref, set)
+  for (const [ref, set] of draft) {
+    if (settled.has(ref) && sameSet(set, submitted.get(ref))) continue
+    next.set(ref, set)
+  }
+  return next
+}
+
+/**
+ * The states as a save in flight will leave them: `submitted` values win
+ * over the persisted ones. Staging compares against THIS while a save runs,
+ * so an edit back to the pre-save value stays staged (the server is about
+ * to persist the submitted one) and an edit to the submitted value unstages.
+ */
+export function withInFlight(states: readonly SelectionStateWire[], submitted: Draft): SelectionStateWire[] {
+  if (submitted.size === 0) return [...states]
+  const seen = new Set<string>()
+  const overlaid = states.map((state) => {
+    const set = submitted.get(state.ref)
+    if (!set) return state
+    seen.add(state.ref)
+    return {
+      ...state,
+      ...(set.model !== undefined ? { model: set.model } : {}),
+      ...(set.thinking !== undefined ? { thinking: set.thinking ?? undefined } : {}),
+    }
+  })
+  for (const [ref, set] of submitted) {
+    if (seen.has(ref)) continue
+    overlaid.push({ ref, model: set.model ?? null, ...(set.thinking ? { thinking: set.thinking } : {}), document: 'policy', label: ref })
+  }
+  return overlaid
+}
+
+const FALLBACK_PREFIX = 'policy:fallback:'
+
+/** The persisted fallback list in index order — the positional context a `policy:fallback:<n>` op was staged against. */
+export function fallbackList(states: readonly SelectionStateWire[]): string[] {
+  return states
+    .filter((s) => s.ref.startsWith(FALLBACK_PREFIX))
+    .map((s) => ({ n: Number(s.ref.slice(FALLBACK_PREFIX.length)), model: s.model }))
+    .filter((row) => Number.isFinite(row.n))
+    .sort((a, b) => a.n - b.n)
+    .map((row) => row.model ?? '')
+}
+
+export function isFallbackRef(ref: string): boolean {
+  return ref.startsWith(FALLBACK_PREFIX)
+}
+
+/** Drop every positional fallback op — they were staged against a list that no longer exists. */
+export function dropFallbackOps(draft: Draft): Draft {
+  if (![...draft.keys()].some(isFallbackRef)) return draft
+  const next = new Map<string, DraftSet>()
+  for (const [ref, set] of draft) if (!isFallbackRef(ref)) next.set(ref, set)
   return next
 }

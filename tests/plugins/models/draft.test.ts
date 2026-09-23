@@ -12,7 +12,7 @@ const testDir = join(tmpdir(), 'bakin-test-models-draft')
 mock.module('../../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 
-import { draftOps, effectiveSelection, retainFailed, stageOp, unstageOp, type Draft } from '../../../plugins/models/lib/draft'
+import { draftOps, dropFallbackOps, effectiveSelection, fallbackList, retainFailed, stageOp, unstageOp, withInFlight, type Draft } from '../../../plugins/models/lib/draft'
 import type { SelectionStateWire } from '../../../plugins/models/types'
 
 const LUNA = 'openai-codex/gpt-5.6-luna'
@@ -65,7 +65,43 @@ describe('retainFailed', () => {
     let draft = stageOp(empty, states, 'route:relay', { model: LUNA })
     draft = stageOp(draft, states, 'policy:defaultModel', { model: MINI })
     draft = stageOp(draft, states, 'route:adhoc', { model: MINI })
-    const left = retainFailed(draft, { applied: ['route:relay'], pending: ['route:adhoc'] })
+    const left = retainFailed(draft, { applied: ['route:relay'], pending: ['route:adhoc'] }, draft)
     expect(draftOps(left)).toEqual([{ ref: 'policy:defaultModel', set: { model: MINI } }])
+  })
+
+  it('an applied ref edited AGAIN while the save ran keeps its newer value — the server never saw it', () => {
+    const submitted = stageOp(empty, states, 'route:adhoc', { model: MINI })
+    // The user moved on to LUNA while MINI was in flight.
+    const draft = stageOp(submitted, withInFlight(states, submitted), 'route:adhoc', { model: LUNA })
+    const left = retainFailed(draft, { applied: ['route:adhoc'], pending: [] }, submitted)
+    expect(draftOps(left)).toEqual([{ ref: 'route:adhoc', set: { model: LUNA } }])
+  })
+})
+
+describe('withInFlight', () => {
+  it('overlays the submitted values so staging during a save compares against what the save will leave', () => {
+    const submitted = stageOp(empty, states, 'route:adhoc', { model: MINI })
+    const base = withInFlight(states, submitted)
+    // Back to the pre-save value is a CHANGE now (the server is persisting MINI)…
+    expect(draftOps(stageOp(submitted, base, 'route:adhoc', { model: null }))).toEqual([{ ref: 'route:adhoc', set: { model: null } }])
+    // …and re-picking the submitted value is not.
+    expect(draftOps(stageOp(submitted, base, 'route:adhoc', { model: MINI }))).toEqual([])
+    expect(withInFlight(states, empty)).toEqual(states)
+  })
+})
+
+describe('fallback positions', () => {
+  const withFallbacks: SelectionStateWire[] = [
+    ...states,
+    { ref: 'policy:fallback:1', model: MINI, document: 'policy', label: 'Fallback 2' },
+    { ref: 'policy:fallback:0', model: LUNA, document: 'policy', label: 'Fallback 1' },
+  ]
+  it('reads the persisted list in index order and drops only the positional ops', () => {
+    expect(fallbackList(withFallbacks)).toEqual([LUNA, MINI])
+    let draft = stageOp(empty, withFallbacks, 'policy:fallback:1', { model: null })
+    draft = stageOp(draft, withFallbacks, 'route:adhoc', { model: MINI })
+    expect(draftOps(dropFallbackOps(draft))).toEqual([{ ref: 'route:adhoc', set: { model: MINI } }])
+    const untouched = stageOp(empty, withFallbacks, 'route:adhoc', { model: MINI })
+    expect(dropFallbackOps(untouched)).toBe(untouched)
   })
 })

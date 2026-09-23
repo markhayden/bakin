@@ -88,19 +88,32 @@ async function assess(): Promise<Assessment> {
   })
   const plan = recommendPlan(input)
   const eligible = new Set(input.candidates.map((c) => c.id))
+  const cannotSee = (model: string) => input.candidates.find((c) => c.id === model)?.vision === false
   const problems: string[] = []
   const agentModel = input.currentDefaultModel
   if (!agentModel) problems.push('no default model is set')
   else if (!eligible.has(agentModel)) problems.push(`the default model ${agentModel} cannot run here`)
   for (const workClass of CHORES_CLASSES) {
-    // An unrouted chore inherits the default, whose problem is reported once above.
     const routed = routing.routes.find((r) => r.workClass === workClass)?.model ?? null
-    if (!routed) continue
+    if (!routed) {
+      // An unrouted chore inherits the default, whose eligibility problem is
+      // reported once above — but enrichment also needs to SEE, and a
+      // text-only default inherited by enrichment fails on every image.
+      if (workClass === 'enrichment' && input.enrichmentEnabled && agentModel && eligible.has(agentModel) && cannotSee(agentModel)) {
+        problems.push(`enrichment inherits the default model ${agentModel}, which cannot see images`)
+      }
+      continue
+    }
     if (!eligible.has(routed)) {
       problems.push(`${workClass} routes to ${routed}, which cannot run here`)
-    } else if (workClass === 'enrichment' && input.enrichmentEnabled && input.candidates.find((c) => c.id === routed)?.vision === false) {
+    } else if (workClass === 'enrichment' && input.enrichmentEnabled && cannotSee(routed)) {
       problems.push(`enrichment routes to ${routed}, which cannot see images`)
     }
+  }
+  // Nothing eligible can see: the recommender cannot route enrichment either,
+  // so "on the recommended plan" is still not a plan under which enrichment runs.
+  if (plan.enrichment === 'unset') {
+    problems.push('no eligible model can see images, so enrichment (captions, OCR, tags) will fail until a vision-capable model is available')
   }
   return { input, plan, persisted: planPersisted(routing, uiMode), problems }
 }
@@ -120,20 +133,25 @@ async function check(): Promise<CheckResult> {
   if (input.candidates.length === 0) {
     return { name: 'models', status: 'missing', message: 'No model can run here yet — add credentials for a provider first.', remediation: 'Configure an LLM provider in the runtime, then rerun `bakin onboard` or `bakin models plan --apply`.', details }
   }
+  // An install on the recommendation, or a persisted plan, is still not
+  // "ok" while one of its jobs cannot run — enrichment on a model that
+  // cannot see is the case an empty diff used to hide.
+  const attention = (): CheckResult => ({
+    name: 'models',
+    status: 'warn',
+    message: `Your model plan needs attention: ${problems.join('; ')}.`,
+    remediation: `Review the recommendation with \`bakin models plan\` (apply with --apply) or open Models in the browser. Recommended: ${describe(plan)}.`,
+    details: { ...details, problems },
+  })
   if (plan.ops.length === 0) {
+    if (problems.length > 0) return attention()
     return { name: 'models', status: 'ok', message: `Model plan in place: ${describe(plan)}.`, details }
   }
   if (persisted) {
     if (problems.length === 0) {
       return { name: 'models', status: 'ok', message: `Model plan in place (agent ${input.currentDefaultModel}); the recommended plan would differ — see \`bakin models plan\`.`, details }
     }
-    return {
-      name: 'models',
-      status: 'warn',
-      message: `Your model plan needs attention: ${problems.join('; ')}.`,
-      remediation: `Review the recommendation with \`bakin models plan\` (apply with --apply) or open Models in the browser. Recommended: ${describe(plan)}.`,
-      details: { ...details, problems },
-    }
+    return attention()
   }
   return {
     name: 'models',
@@ -167,7 +185,8 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
     return { name: 'models', status: 'skipped', message: 'No model can run here yet — add credentials for a provider, then `bakin models plan --apply`.', durationMs: Date.now() - start }
   }
   if (plan.ops.length === 0) {
-    return { name: 'models', status: 'noop', message: `Already on the recommended plan: ${describe(plan)}.`, durationMs: Date.now() - start }
+    const caveat = problems.length > 0 ? ` Needs attention: ${problems.join('; ')}.` : ''
+    return { name: 'models', status: 'noop', message: `Already on the recommended plan: ${describe(plan)}.${caveat}`, durationMs: Date.now() - start }
   }
   if (persisted) {
     // Never auto-apply over an existing plan — the operator repairs it.
