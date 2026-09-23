@@ -7,7 +7,9 @@ Status: ready for exact PNG approval. The
 
 Canonical renderer: Playwright 1.60.0, Ubuntu Noble, linux/amd64, Chromium,
 dark scheme, device scale 1, desktop 1440px and mobile 320px. New candidates
-include the final geometry, text-enlargement and approved border repairs. All captures compare
+include the final geometry, text-enlargement and approved border repairs, plus
+the user-requested filled refinement: a shaded surface with a single bottom edge
+and transparent top/side borders at rest. Focus and complete error borders remain. All captures compare
 the approved shared form changes against the original committed baselines.
 
 Artifacts and SHA-256 digests: [manifest](../test-results/form-components-review/manifest.json).

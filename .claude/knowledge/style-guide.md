@@ -45,9 +45,11 @@ the selected Product Character values generated from
 
 Text controls use explicit `size="sm|md|lg"` (32/36/44px at standard text
 size) and `variant="outlined|filled|ghost"`; defaults are `md` and `outlined`.
-Outlined suits ordinary forms, filled emphasizes the field surface, and ghost
+Outlined uses a complete border, filled emphasizes the field surface with only
+a bottom edge (transparent top and sides at rest), and ghost
 suits inline/toolbar contexts. Keep a visible label and a visible focus/error
-treatment for every appearance. Outlined/filled boundaries use the approved
+treatment for every appearance. Invalid fields retain a complete error border.
+Outlined borders and filled bottom edges use the approved
 `--bakin-color-border-control` token (at least 3:1 against supported surfaces);
 `--bakin-color-border-subtle` remains for nonessential separators. Text enlargement
 may increase height.

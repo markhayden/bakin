@@ -262,3 +262,38 @@ since its standard visual runner can create missing snapshots. C12 and C13
 remain pending; this is not a merge-ready claim. The unrelated embedded asset
 manifest diff remains unchanged (SHA-256
 `f761346b71c4693015c1c94aca52cb90c9a8580048cd3763c1c5525d5f3958ee`).
+
+## Filled appearance refinement after user visual review
+
+The user requested less border contrast for filled because it looked too close
+to outlined. The shared filled recipe now uses the elevated surface with a
+single control-color bottom edge; transparent top/side borders reserve layout
+space. Outlined keeps its complete border. Focus rings and complete invalid
+borders remain intact. This uses existing approved tokens and adds no API,
+exception, suppression or payload allowance.
+
+Storybook contract: `storybook/public/primitives/input.stories.tsx` —
+`SizesAndVariants` and `SurfaceContexts`, inherited by the shared text/selection
+recipe in Input, default FieldControl, Textarea, InputGroup, Select and Combobox.
+The visual distinction follows MUI FilledInput's default underline:
+https://mui.com/material-ui/api/filled-input/ . The bottom indicator retains
+at least 3:1 contrast; its top/side transparency and complete error border are
+verified in actual browsers rather than inferred from class names.
+
+The new assertion failed against the previous fully bordered treatment, then
+**15/15 browser checks** passed across Chromium, Firefox and WebKit. All **27
+Storybook tests in the five affected files** passed. Quick conformance, public
+Storybook build, docs validation and the production-vendor performance check
+passed. Generated CSS is 191,822 bytes, below the unchanged 192,625 ceiling.
+
+All 18 new candidate screenshots were refreshed in canonical desktop/mobile
+rendering; their only comparison failures remain the unapproved missing PNGs.
+Reviewed Input size matrices, grouped and chip layouts, parent surfaces and
+invalid states. The exact 66-path baseline allowlist is unchanged; its new
+candidate artifacts/hashes now include this refinement. Existing replacement
+candidates retain the previous review. No baseline PNG was written. Full
+aggregate verification remains after exact baseline approval.
+
+Logs: `/private/tmp/bakin-form-filled-{red,browser,stories,quick,build,docs,performance,visual}.log`.
+Review: `tasks/form-components-visual-review.md` and
+`test-results/form-components-review/manifest.json`.

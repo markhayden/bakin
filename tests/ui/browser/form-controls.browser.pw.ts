@@ -1,11 +1,18 @@
 import { expect, test } from 'playwright/test'
 
-test('outlined and filled boundaries maintain contrast on every supported surface', async ({ page }) => {
+test('outlined borders and filled bottom edges maintain contrast on every supported surface', async ({ page }) => {
   await page.goto('/iframe.html?id=components-primitives-input--surface-contexts&viewMode=story')
   for (const surface of ['Canvas', 'Default surface', 'Elevated surface']) {
     for (const variant of ['outlined', 'filled']) {
       const input = page.getByRole('textbox', { name: `${surface} ${variant}` })
       await expect(input).toBeVisible()
+      if (variant === 'filled') {
+        const sides = await input.evaluate(el => {
+          const style = getComputedStyle(el)
+          return [style.borderTopColor, style.borderLeftColor, style.borderRightColor]
+        })
+        expect(sides).toEqual(Array(3).fill('rgba(0, 0, 0, 0)'))
+      }
       const ratio = await input.evaluate(el => {
         const style = getComputedStyle(el)
         const luminance = (color: string) => {
@@ -15,13 +22,20 @@ test('outlined and filled boundaries maintain contrast on every supported surfac
             return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
           }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0)
         }
-        const border = luminance(style.borderTopColor)
+        const border = luminance(style.borderBottomColor)
         const background = luminance(style.backgroundColor)
         return (Math.max(border, background) + 0.05) / (Math.min(border, background) + 0.05)
       })
       expect(ratio).toBeGreaterThanOrEqual(3)
     }
   }
+  const invalid = page.getByRole('textbox', { name: 'filled invalid' })
+  const errorBorder = await invalid.evaluate(el => {
+    const style = getComputedStyle(el)
+    return [style.borderTopColor, style.borderBottomColor, style.borderLeftColor, style.borderRightColor]
+  })
+  expect(errorBorder[0]).not.toBe('rgba(0, 0, 0, 0)')
+  expect(new Set(errorBorder).size).toBe(1)
 })
 
 test('field sizes align with their button peers', async ({ page }) => {

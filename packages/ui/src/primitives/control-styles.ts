@@ -20,7 +20,7 @@ export const controlStyles = cva([
     },
     variant: {
       outlined: 'border-bakin-border-control bg-bakin-canvas-default',
-      filled: 'border-bakin-border-control bg-bakin-surface-elevated',
+      filled: 'border-transparent border-b-bakin-border-control bg-bakin-surface-elevated',
       ghost: 'border-transparent bg-transparent hover:not-disabled:bg-bakin-surface-default focus-visible:bg-bakin-surface-default',
     },
   },

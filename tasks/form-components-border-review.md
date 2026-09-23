@@ -2,6 +2,11 @@
 
 Status: explicitly approved by the user; token implementation applied.
 Canonical contrast and interaction verification passed. No PNG baseline changes authorized.
+Subsequent user visual feedback requested a quieter filled perimeter. Filled now
+uses the approved token only on its bottom edge; top and side borders are
+transparent at rest. Outlined retains the complete border. Both retain focus
+and complete invalid borders. The original proposal below records the token
+approval; this refinement changes its placement, not its value or contrast.
 The generated CSS name follows the existing `--bakin-color-*` convention;
 the proposal originally abbreviated it as `--bakin-border-control`.
 
