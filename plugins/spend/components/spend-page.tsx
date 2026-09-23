@@ -137,7 +137,7 @@ export function SpendPage() {
       {m.budgetWarnings.map((warning) => (
         <Banner key={warning} tone="attention" title="Budget rule needs review" description={warning} />
       ))}
-      <IncidentBanners incidents={m.incidents} resolveIncident={m.resolveIncident} rules={m.budgetRules} facets={m.spend?.facets} />
+      <IncidentBanners incidents={m.incidents} resolveIncident={m.resolveIncident} rules={m.budgetRules} facets={m.spend?.facets} paused={paused} />
 
       <Tabs value={tab} onValueChange={(id) => setTab(id === 'overview' ? null : id)}>
         <TabsList variant="underline" activateOnFocus aria-label="Spend sections">
