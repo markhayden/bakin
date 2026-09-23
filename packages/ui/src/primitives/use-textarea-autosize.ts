@@ -26,11 +26,18 @@ export function useTextareaAutosize(ref: RefObject<HTMLTextAreaElement | null>, 
     const element = ref.current
     if (!enabled || !element) return
     let active = true
-    let width = element.getBoundingClientRect().width
+    const measurementKey = () => {
+      const style = getComputedStyle(element)
+      return [element.getBoundingClientRect().width, style.fontSize, style.lineHeight,
+        style.paddingTop, style.paddingBottom, style.borderTopWidth, style.borderBottomWidth].join('|')
+    }
+    let measurements = measurementKey()
     const observer = new ResizeObserver(() => {
-      const nextWidth = element.getBoundingClientRect().width
-      if (nextWidth === width) return
-      width = nextWidth
+      // Text enlargement can change the content box without changing outer width.
+      // Exclude height: our own height writes must not cause an observer loop.
+      const nextMeasurements = measurementKey()
+      if (nextMeasurements === measurements) return
+      measurements = nextMeasurements
       resize()
     })
     observer.observe(element)

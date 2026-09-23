@@ -1,12 +1,15 @@
 import { expect, test } from 'playwright/test'
 
 test('field sizes align with their button peers', async ({ page }) => {
-  await page.goto('/iframe.html?id=components-primitives-input--sizes-and-variants&viewMode=story')
-  for (const [size, height] of [['sm', 32], ['md', 36], ['lg', 44]] as const) {
-    for (const variant of ['outlined', 'filled', 'ghost']) {
-      const input = page.getByRole('textbox', { name: `${variant} ${size}`, exact: true })
-      await expect(input).toBeVisible()
-      expect(await input.evaluate((el) => el.getBoundingClientRect().height)).toBe(height)
+  for (const width of [1280, 320]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/iframe.html?id=components-primitives-input--sizes-and-variants&viewMode=story')
+    for (const [size, height] of [['sm', 32], ['md', 36], ['lg', 44]] as const) {
+      for (const variant of ['outlined', 'filled', 'ghost']) {
+        const input = page.getByRole('textbox', { name: `${variant} ${size}`, exact: true })
+        await expect(input).toBeVisible()
+        expect(await input.evaluate((el) => el.getBoundingClientRect().height)).toBe(height)
+      }
     }
   }
   await page.goto('/iframe.html?id=components-primitives-button--sizes&viewMode=story')
@@ -36,4 +39,37 @@ test('textarea auto growth is bounded, resets and responds to controlled updates
   const manual = page.getByRole('textbox', { name: 'Manual notes' })
   await expect(manual).toHaveAttribute('rows', '3')
   expect(await manual.evaluate((el) => getComputedStyle(el).resize)).toBe('vertical')
+  await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+  await expect.poll(() => input.evaluate(el => {
+    const style = getComputedStyle(el)
+    return Math.abs((el.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)) / parseFloat(style.lineHeight) - 3)
+  })).toBeLessThan(0.1)
+  await input.fill('A note that wraps when enlarged. '.repeat(20))
+  await expect.poll(() => input.evaluate(el => {
+    const style = getComputedStyle(el)
+    const rows = (el.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)) / parseFloat(style.lineHeight)
+    return Math.abs(rows - 6)
+  })).toBeLessThan(0.1)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+})
+
+test('field focus and invalid boundaries survive forced colors and reduced motion', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active', reducedMotion: 'reduce' })
+  await page.goto('/iframe.html?id=components-primitives-input--surface-contexts&viewMode=story')
+  const ghost = page.getByRole('textbox', { name: 'Canvas ghost' })
+  await expect(ghost).toBeFocused()
+  const focus = await ghost.evaluate(el => {
+    const style = getComputedStyle(el)
+    return { outline: style.outlineStyle, width: parseFloat(style.outlineWidth) }
+  })
+  expect(focus.outline).toBe('solid')
+  expect(focus.width).toBeGreaterThanOrEqual(2)
+  for (const variant of ['outlined', 'filled', 'ghost']) {
+    const invalid = page.getByRole('textbox', { name: `${variant} invalid` })
+    await expect(invalid).toHaveAttribute('aria-invalid', 'true')
+    await expect(invalid).toHaveAccessibleDescription('Update this value at its source.')
+    expect(await invalid.evaluate(el => parseFloat(getComputedStyle(el).borderTopWidth))).toBeGreaterThan(0)
+  }
+  await page.setViewportSize({ width: 320, height: 800 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
 })

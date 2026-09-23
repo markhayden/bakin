@@ -11,7 +11,7 @@ export type InputProps = Omit<InputPrimitive.Props, 'size'> & {
 
 /** Shared internally by FieldControl when it renders its default input. */
 export const inputClasses = [
-  'w-full text-base md:text-[length:var(--bakin-typography-size-body)]',
+  'w-full text-base md:text-[length:var(--bakin-typography-size-body)] leading-tight',
   'autofill:bg-bakin-canvas-default autofill:text-bakin-text-primary',
   'file:mr-bakin-3 file:inline-flex file:h-bakin-6 file:border-0 file:bg-transparent file:font-bakin-typography-weight-semibold file:text-bakin-text-primary',
 ].join(' ')
