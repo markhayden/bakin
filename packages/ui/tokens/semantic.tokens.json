@@ -76,7 +76,7 @@
           }
         },
         "control": {
-          "$description": "Resting boundary of outlined and filled editable controls on canvas, default and elevated surfaces.",
+          "$description": "Resting boundary of outlined editable controls on canvas, default and elevated surfaces.",
           "$value": "{reference.color.warm.400}",
           "$extensions": {
             "dev.bakin.tokens": {

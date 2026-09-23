@@ -1168,7 +1168,7 @@ export const GENERATED_TOKENS: readonly GeneratedStoryToken[] = [
     "layer": "semantic",
     "visibility": "public",
     "type": "color",
-    "description": "Resting boundary of outlined and filled editable controls on canvas, default and elevated surfaces.",
+    "description": "Resting boundary of outlined editable controls on canvas, default and elevated surfaces.",
     "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/border/control",
     "references": [
       "reference.color.warm.400"

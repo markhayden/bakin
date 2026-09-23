@@ -326,3 +326,30 @@ desktop/mobile filled controls were visually reviewed.
 Only the expected missing-baseline comparisons fail; no interaction, overflow
 or console errors occurred. The same 66-path review inventory now points to the
 latest borderless-filled images and hashes. Exact PNG approval remains pending.
+
+
+## C12 — approved visual baselines applied
+
+The user explicitly approved the 66-path review inventory and requested a PR
+with passing checks. Canonical updates selected exact test titles/projects in
+batches of at most four PNGs. A post-batch hash scan rejected any write outside
+the approved allowlist. Applied **18 new and 47 replacement PNGs**; the remaining
+approved calendar candidate reproduced its original baseline and stayed unchanged.
+
+63/66 initial update captures were byte-identical to their review candidates.
+InputGroup desktop and AssetPicker mobile had only 12/18 antialiased pixel
+changes (maximum channel delta 1); existing screenshot tolerances were unchanged.
+The third differing candidate was the unchanged calendar baseline. Final review
+also corrected stale token metadata from “outlined and filled” to “outlined”
+to match the explicit borderless-filled request, then recaptured the four token
+catalog PNGs already inside the same approved allowlist. No token value changed.
+
+The updated review table links to committed after images and base-commit before
+images, making evidence usable in the PR. Local receipts are
+`test-results/form-components-review/{full-update-receipt,update-receipt}.json`.
+Logs: `/private/tmp/bakin-form-approved-updates.log` and
+`/private/tmp/bakin-form-token-doc-updates.log`. Full conformance is now running
+with an isolated `OPENCLAW_MOCK_HOME`; it has not yet been declared passing.
+
+The latest instruction authorizes pushing this task branch and creating the PR;
+merge, release, deployment and product migration remain outside this task.

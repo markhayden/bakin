@@ -56,7 +56,7 @@ const TOKENS = [
     "cssVariable": "--bakin-color-border-control",
     "cssValue": "#716c6c",
     "tailwindVariable": "--color-bakin-border-control",
-    "description": "Resting boundary of outlined and filled editable controls on canvas, default and elevated surfaces.",
+    "description": "Resting boundary of outlined editable controls on canvas, default and elevated surfaces.",
     "contrast": {
       "against": "semantic.color.surface.elevated",
       "role": "non-text",
