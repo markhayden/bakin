@@ -1,0 +1,74 @@
+[
+  {
+    "candidate": "desktop-agent-field-appearance-candidate.png",
+    "destination": "tests/ui/snapshots/chromium-desktop/projects-foundation.visual.ts/agent-field-appearance.png",
+    "sha256": "7814bfbbfab5ac2b4d6fa53ba8438129dcb1f3d9bd0113f374a21e0de492ff90",
+    "kind": "new"
+  },
+  {
+    "candidate": "desktop-markdown-comparison-candidate.png",
+    "destination": "tests/ui/snapshots/chromium-desktop/projects-foundation.visual.ts/markdown-comparison.png",
+    "sha256": "1b7e47ccd060a5503205541887d5a2d16c1d55034f15861d40eb0a9dd3e62b1e",
+    "kind": "new"
+  },
+  {
+    "candidate": "desktop-managed-markdown-context-candidate.png",
+    "destination": "tests/ui/snapshots/chromium-desktop/projects-foundation.visual.ts/managed-markdown-context.png",
+    "sha256": "8522a004123374301023e6d2b702aac917472bb988852566ed1614a6806dbf9e",
+    "kind": "new"
+  },
+  {
+    "candidate": "desktop-embedded-draft-handle-candidate.png",
+    "destination": "tests/ui/snapshots/chromium-desktop/projects-foundation.visual.ts/embedded-draft-handle.png",
+    "sha256": "01dcef91962b16d760b746177035bee4c1b15aaca9018a9ae54b01a12c4ab6e6",
+    "kind": "new"
+  },
+  {
+    "candidate": "desktop-foundation-conversation-composer-actual.png",
+    "destination": "tests/ui/snapshots/chromium-desktop/foundation.visual.ts/foundation-conversation-composer.png",
+    "sha256": "6a322f059b263d2e459396308381a45f7a0bbedae9f8140acca9c38622b6a682",
+    "kind": "replacement"
+  },
+  {
+    "candidate": "desktop-foundation-conversation-panel-actual.png",
+    "destination": "tests/ui/snapshots/chromium-desktop/foundation.visual.ts/foundation-conversation-panel.png",
+    "sha256": "65677281d5cb3939f7317f4a1fa96769223d1f88425cd6247a8339699498b217",
+    "kind": "replacement"
+  },
+  {
+    "candidate": "mobile-agent-field-appearance-candidate.png",
+    "destination": "tests/ui/snapshots/chromium-mobile/projects-foundation.visual.ts/agent-field-appearance.png",
+    "sha256": "ea2be39291db14f51a588dc79e8e6d179ad4ddd83efbefca8ac2b24853d0d39b",
+    "kind": "new"
+  },
+  {
+    "candidate": "mobile-markdown-comparison-candidate.png",
+    "destination": "tests/ui/snapshots/chromium-mobile/projects-foundation.visual.ts/markdown-comparison.png",
+    "sha256": "6bfc9e388d4a2ce3569b891b4a00caab9a96f5a9d9cf2cad044c0e7adbe98a48",
+    "kind": "new"
+  },
+  {
+    "candidate": "mobile-managed-markdown-context-candidate.png",
+    "destination": "tests/ui/snapshots/chromium-mobile/projects-foundation.visual.ts/managed-markdown-context.png",
+    "sha256": "d8519b1235ed9bed5d7087b71ac32b183d98eec196dfc2854d393d155983c3ea",
+    "kind": "new"
+  },
+  {
+    "candidate": "mobile-embedded-draft-handle-candidate.png",
+    "destination": "tests/ui/snapshots/chromium-mobile/projects-foundation.visual.ts/embedded-draft-handle.png",
+    "sha256": "1be76b7da5d8a3bc4e16d8029a6fd64c566fe6044800cb4123f8f93a11463e07",
+    "kind": "new"
+  },
+  {
+    "candidate": "mobile-foundation-conversation-composer-actual.png",
+    "destination": "tests/ui/snapshots/chromium-mobile/foundation.visual.ts/foundation-conversation-composer.png",
+    "sha256": "dc67f9921b5fa6703240eeb572658f45a8ad833110499ec0211a417a9d63605b",
+    "kind": "replacement"
+  },
+  {
+    "candidate": "mobile-foundation-conversation-panel-actual.png",
+    "destination": "tests/ui/snapshots/chromium-mobile/foundation.visual.ts/foundation-conversation-panel.png",
+    "sha256": "4778b5b39dfb6b0518f8a57c60a37b49afd995deab6b693c2527cc1f9b08ccb7",
+    "kind": "replacement"
+  }
+]

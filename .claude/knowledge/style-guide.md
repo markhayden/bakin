@@ -253,9 +253,21 @@ never sit at rest in a card — surface on hover or behind the detail view.
 
 ## 11. Composition
 
+- Agent assignment uses `AgentSelect` with explicit shared size/variant props.
+  Default md/outlined fits forms; sm/filled is available for compact embedded
+  tools. Filled controls have no resting border or bottom rule.
+- Rich documents use `MarkdownContent` from `/content`. Pass the entire document,
+  optionally with `compareTo` for semantic change edges and deletion markers.
+  Never split source into separately parsed fragments to highlight changes.
+  The precise line diff remains a separate consumer view.
+- Embedded `ConversationPanel` forwards `composerHandleRef` for draft emptiness,
+  text restoration and focus. Preserve its mount when a disclosure must retain
+  a draft/turn/scroll position; do not inspect private localStorage keys. Contained
+  history is keyboard-focusable; give panels distinct titles on multi-panel pages.
+
 - One engine per domain; components are thin. Chat-like surfaces compose the
   conversation kit; embedded agent help = `ConversationPanel` +
-  `useConversationStream` over a per-request SSE plugin route
+  `useConversationThread` over durable plugin-event turns
   (chunk/done/error frames), `ephemeral: true`, reply-in-chat-only prompts.
 - Cross-plugin data flows through hooks/REST, never imports.
 - `data-*` test hooks on every meaningful element; tests assert behavior,

@@ -11,7 +11,6 @@ import {
   MAX_WIDTH,
   MIN_WIDTH,
   getDrawerWidthStorageKey,
-  getStoredDrawerWidth,
 } from '@/components/drawer'
 import { DrawerSection } from '@makinbakin/sdk/ui'
 
@@ -46,6 +45,8 @@ describe('Drawer', () => {
 
   afterEach(() => {
     window.localStorage.clear()
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
   })
 
   it('hydrates width from localStorage when available', () => {
@@ -70,9 +71,9 @@ describe('Drawer', () => {
     const handle = document.body.querySelector('[role="separator"]')
     expect(handle).toBeTruthy()
 
-    fireEvent.mouseDown(handle as Element, { clientX: 1000 })
-    fireEvent.mouseMove(document, { clientX: 900 })
-    fireEvent.mouseUp(document)
+    fireEvent.pointerDown(handle as Element, { pointerId: 1, clientX: 1000 })
+    fireEvent.pointerMove(handle as Element, { pointerId: 1, clientX: 900 })
+    fireEvent.pointerUp(handle as Element, { pointerId: 1 })
 
     await waitFor(() => {
       expect(window.localStorage.getItem(DRAWER_WIDTH_STORAGE_KEY)).toBe('910')
@@ -94,6 +95,36 @@ describe('Drawer', () => {
     expect(window.localStorage.getItem(DRAWER_WIDTH_STORAGE_KEY)).toBe('496')
     fireEvent.keyDown(separator, { key: 'End' })
     expect(separator.getAttribute('aria-valuenow')).toBe(String(MAX_WIDTH))
+  })
+
+  it('releases a drag when closed and reopens without stale resize state', () => {
+    const view = render(<Drawer open onOpenChange={() => {}}><div>Body</div></Drawer>)
+    const handle = screen.getByRole('separator', { name: 'Resize panel' })
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 1000 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 900 })
+    expect(document.body.style.cursor).toBe('col-resize')
+    expect(document.body.style.userSelect).toBe('none')
+    view.rerender(<Drawer open={false} onOpenChange={() => {}}><div>Body</div></Drawer>)
+    expect(document.body.style.cursor).toBe('')
+    expect(document.body.style.userSelect).toBe('')
+    expect(window.localStorage.getItem(DRAWER_WIDTH_STORAGE_KEY)).toBe('910')
+    view.rerender(<Drawer open onOpenChange={() => {}}><div>Body</div></Drawer>)
+    expect(screen.getByRole('separator', { name: 'Resize panel' }).getAttribute('data-resizing')).toBe('false')
+  })
+
+  it('ignores a second pointer and restores body styles when capture is lost', () => {
+    render(<Drawer open onOpenChange={() => {}}><div>Body</div></Drawer>)
+    const handle = screen.getByRole('separator', { name: 'Resize panel' })
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 1000 })
+    fireEvent.pointerDown(handle, { pointerId: 2, clientX: 950 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 900 })
+    expect(handle.getAttribute('aria-valuenow')).toBe('910')
+    fireEvent.lostPointerCapture(handle, { pointerId: 1 })
+    expect(document.body.style.cursor).toBe('')
+    expect(document.body.style.userSelect).toBe('')
+    expect(handle.getAttribute('data-resizing')).toBe('false')
+    fireEvent.pointerMove(handle, { pointerId: 2, clientX: 800 })
+    expect(handle.getAttribute('aria-valuenow')).toBe('910')
   })
 
   it('always provides a labelled close action and blocks it while busy', () => {
@@ -148,12 +179,13 @@ describe('Drawer', () => {
     expect(sectionContent?.closest('[data-slot="drawer-section"]')?.className).toContain('gap-bakin-3')
   })
 
-  it('supports per-context storage keys and clamps invalid stored widths', () => {
-    window.localStorage.setItem(getDrawerWidthStorageKey('tasks'), '1200')
-    window.localStorage.setItem(getDrawerWidthStorageKey('assets'), 'oops')
-
-    expect(getStoredDrawerWidth(DEFAULT_WIDTH, 'tasks')).toBe(MAX_WIDTH)
-    expect(getStoredDrawerWidth(DEFAULT_WIDTH, 'assets')).toBe(DEFAULT_WIDTH)
-    expect(getStoredDrawerWidth(100, 'missing')).toBe(MIN_WIDTH)
+  it.each([
+    ['tasks', '1200', DEFAULT_WIDTH, MAX_WIDTH],
+    ['assets', 'oops', DEFAULT_WIDTH, DEFAULT_WIDTH],
+    ['missing', null, 100, MIN_WIDTH],
+  ] as const)('hydrates and clamps the %s context', (key, stored, defaultWidth, expected) => {
+    if (stored !== null) window.localStorage.setItem(getDrawerWidthStorageKey(key), stored)
+    render(<Drawer open onOpenChange={() => {}} storageKey={key} defaultWidth={defaultWidth}><div>Body</div></Drawer>)
+    expect(screen.getByRole('separator', { name: 'Resize panel' }).getAttribute('aria-valuenow')).toBe(String(expected))
   })
 })

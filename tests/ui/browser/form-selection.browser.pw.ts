@@ -72,7 +72,8 @@ test('async results ignore older queries and retry is reachable by keyboard with
   const input = page.getByRole('combobox', { name: 'Remote runtime' })
   await expect(page.getByRole('status')).toHaveText('3 runtimes available.')
   const clockStart = new Date('2026-09-22T00:00:00Z')
-  await page.clock.install({ time: clockStart })
+  // Install before the pause target so protocol latency cannot put it in the past.
+  await page.clock.install({ time: new Date(clockStart.getTime() - 60_000) })
   await page.clock.pauseAt(clockStart)
   await input.fill('slow')
   await expect(page.getByRole('status')).toHaveText('Loading runtimes…')

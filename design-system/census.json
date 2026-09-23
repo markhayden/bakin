@@ -931,7 +931,7 @@
       },
       "sourcePath": "bakin-bits-official/plugins/projects/client.tsx",
       "symbols": [
-        "ProjectEditRoute"
+        "ProjectDetailRoute"
       ],
       "exportStatus": "not-applicable",
       "classification": "visual-surface",
@@ -944,7 +944,7 @@
         {
           "type": "client-registration",
           "path": "bakin-bits-official/plugins/projects/client.tsx",
-          "detail": "registerPlugin routes \"/projects/[id]/edit\" -> ProjectEditRoute"
+          "detail": "registerPlugin routes \"/projects/[id]/edit\" -> ProjectDetailRoute"
         }
       ]
     },
@@ -2626,9 +2626,7 @@
         "Drawer",
         "MAX_WIDTH",
         "MIN_WIDTH",
-        "clampDrawerWidth",
-        "getDrawerWidthStorageKey",
-        "getStoredDrawerWidth"
+        "getDrawerWidthStorageKey"
       ],
       "exportStatus": "private",
       "classification": "shared-ui",

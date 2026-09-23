@@ -1,10 +1,48 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
+import * as fs from 'fs'
 import { mkdtempSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { ScopedPluginStorageAdapter } from '../../packages/core/src/storage/scoped-plugin-storage'
 
 describe('ScopedPluginStorageAdapter', () => {
+  it('replaces a file without exposing partial content to an existing reader', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bakin-plugin-storage-'))
+    const storage = new ScopedPluginStorageAdapter(dir, 'sample')
+    storage.write('project.md', 'original')
+    const reader = fs.openSync(join(storage.root, 'project.md'), 'r')
+    try {
+      storage.write('project.md', 'replacement')
+      expect(fs.readFileSync(reader, 'utf8')).toBe('original')
+      expect(storage.read('project.md')).toBe('replacement')
+      expect(storage.list()).toEqual(['project.md'])
+    } finally {
+      fs.closeSync(reader)
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it.each(['write', 'rename'] as const)('preserves the previous file after a failed %s', (stage) => {
+    const dir = mkdtempSync(join(tmpdir(), 'bakin-plugin-storage-'))
+    const storage = new ScopedPluginStorageAdapter(dir, 'sample')
+    storage.write('project.md', 'original')
+    const write = fs.writeFileSync
+    const failure = stage === 'write'
+      ? spyOn(fs, 'writeFileSync').mockImplementation((path) => {
+        write(path, 'partial')
+        throw new Error('interrupted write')
+      })
+      : spyOn(fs, 'renameSync').mockImplementation(() => { throw new Error('interrupted rename') })
+    try {
+      expect(() => storage.write('project.md', 'replacement')).toThrow(`interrupted ${stage}`)
+      expect(storage.read('project.md')).toBe('original')
+      expect(storage.list()).toEqual(['project.md'])
+    } finally {
+      failure.mockRestore()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('stores files under plugin-data/{pluginId}', () => {
     const dir = mkdtempSync(join(tmpdir(), 'bakin-plugin-storage-'))
     try {

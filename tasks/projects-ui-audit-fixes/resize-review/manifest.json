@@ -1,0 +1,27 @@
+{
+  "status": "approved and applied",
+  "visuals": [
+    {
+      "candidate": "drawer-actual.png",
+      "sha256": "cca6bef9e0ad0673b9ae0041126acdc0fc0704e87ec132f1aee76210c5939830",
+      "destination": "tests/ui/snapshots/chromium-desktop/foundation.visual.ts/overlays-drawer.png",
+      "beforeSha256": "0ec7b75b78a44220441dd1cd4bf12e18b6be19a80f9027734c94cab1923f3f17"
+    },
+    {
+      "candidate": "tool-detail-actual.png",
+      "sha256": "063d28f591c07eca34b170a5a69a17f1d13032b32fc903e5991af17328a7a53d",
+      "destination": "tests/ui/snapshots/chromium-desktop/foundation.visual.ts/foundation-conversation-tool-detail.png",
+      "beforeSha256": "0e6b65d347429fb30c8916d82cd6eee37253fb3f47e14970d98d4040a8ac2861"
+    }
+  ],
+  "payload": {
+    "destination": "design-system/performance.json",
+    "beforeSha256": "ac5c90a9084fa69bd7e02420e5259235d92da2daa6cc511d3a201ec13743a203",
+    "candidate": "performance-proposal.json",
+    "sha256": "dc8e487aea850d3599bc1416eea8bb900668af5b11a4c2657dc7a20256c83943",
+    "sharedBytesBefore": 938540,
+    "sharedBytesAfter": 941729
+  },
+  "approvedOn": "2026-09-23",
+  "approvalEvidence": "User approved the two exact desktop snapshot replacements and shared-payload adjustment from this review."
+}

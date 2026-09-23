@@ -78,6 +78,8 @@ describe('buildSdkPackage', () => {
     expect(cliHelp.stdout).toContain('Usage: bakin-plugin-test-ui')
     expect(pkg.dependencies.zod).toBeDefined()
     expect(pkg.dependencies['@base-ui/react']).toBeDefined()
+    expect(pkg.dependencies['@types/mdast']).toBe('4.0.4')
+    expect(pkg.dependencies.mdast).toBeUndefined()
     expect(SDK_STYLES_SPECIFIER).toBe('@makinbakin/sdk/styles.css')
     expect(pkg.exports['./styles.css']).toBe('./styles.css')
     expect(pkg.sideEffects).toEqual(['./styles.css'])

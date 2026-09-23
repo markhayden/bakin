@@ -53,6 +53,8 @@ export const CanonicalUsage = {
   argTypes: {
     value: { control: 'select', options: ['maya', 'patch', ''] },
     disabled: { control: 'boolean' },
+    size: { control: 'select', options: ['sm', 'md', 'lg'] },
+    variant: { control: 'select', options: ['outlined', 'filled', 'ghost'] },
     allowNone: { control: 'boolean' },
     includeAssigned: { control: 'boolean' },
     placeholder: { control: 'text' },
@@ -67,6 +69,32 @@ export const CanonicalUsage = {
     const trigger = canvas.getByRole('combobox', { name: 'Owner' })
     await expect(trigger).toBeVisible()
     await expect(trigger).toHaveTextContent('Maya Chen')
+  },
+} satisfies Story
+
+export const SizesAndVariants = {
+  render: () => (
+    <StoryStage eyebrow="Agents / appearance" title="Agent fields" description="AgentSelect uses the shared 32/36/44px field sizes and outlined, borderless filled, or ghost appearance. The default is md and outlined.">
+      {(['outlined', 'filled', 'ghost'] as const).map((variant) => (
+        <StorySection key={variant} title={variant}>
+          <div style={{ display: 'flex', minWidth: 0, flexWrap: 'wrap', alignItems: 'center', gap: 'var(--bakin-layout-gap-item)' }}>
+            {(['sm', 'md', 'lg'] as const).map((size) => (
+              <AgentSelect key={size} className="max-w-full" ariaLabel={`${variant} ${size} owner`} size={size} variant={variant} value="maya" onValueChange={() => {}} agents={agents} />
+            ))}
+          </div>
+        </StorySection>
+      ))}
+    </StoryStage>
+  ),
+  play: async ({ canvas }) => {
+    for (const variant of ['outlined', 'filled', 'ghost']) {
+      for (const size of ['sm', 'md', 'lg']) {
+        const trigger = canvas.getByRole('combobox', { name: `${variant} ${size} owner` })
+        await expect(trigger).toHaveAttribute('data-size', size)
+        await expect(trigger).toHaveAttribute('data-variant', variant)
+        await expect(trigger).toHaveTextContent('Maya Chen')
+      }
+    }
   },
 } satisfies Story
 

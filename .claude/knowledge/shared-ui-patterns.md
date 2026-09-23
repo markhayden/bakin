@@ -143,7 +143,10 @@ All drawers follow the same section patterns inside `Drawer`:
 
 ## AgentSelect
 
-`src/components/agent-select.tsx` — Shared agent selection dropdown with avatar in both trigger and dropdown items.
+`AgentSelect` from `@makinbakin/sdk/patterns` is the controlled agent/team selector.
+It receives presentation-ready options; consumers own registry queries and persistence.
+Public contract: `storybook/public/agents/agent-select.stories.tsx` — CanonicalUsage
+and SizesAndVariants. Avatars appear in the selected value and popup options.
 
 ### Props
 
@@ -151,10 +154,15 @@ All drawers follow the same section patterns inside `Drawer`:
 |------|------|-------|
 | `value` | `string` | Selected agent ID |
 | `onValueChange` | `(value: string) => void` | Called when selection changes |
-| `allowNone` | `boolean` | Show "None" option (default false) |
-| `noneLabel` | `string` | Label for none option (default "None") |
+| `agents` | `readonly AgentSelectOption[]` | Exact available agents; required |
+| `teams` | `readonly AgentTeamOption[]` | Optional team choices |
+| `allowNone` | `boolean` | Show Unassigned option (default false) |
+| `noneLabel` | `string` | Label for none option (default "Unassigned") |
 | `placeholder` | `string` | Trigger placeholder text |
-| `agentIds` | `string[]` | Restrict to specific agents (default: all) |
+| `size` | `sm \| md \| lg` | Shared 32/36/44px fields; default md; grows for enlarged text |
+| `variant` | `outlined \| filled \| ghost` | Default outlined; filled is borderless |
+| `ariaLabel` | `string` | Accessible name when no external label is associated |
+| `id`, `name`, `required`, `disabled` | standard field props | Labels, form values and state |
 | `className` | `string` | Extra classes on trigger |
 
 ### Where Used
@@ -346,7 +354,13 @@ Set `disabled` while a search is active so the upstream relevance order (e.g. An
 
 ## Conversation surfaces
 
-`IntegratedBrainstorm` was DELETED (2026-07). Every conversational surface — chat plugin, embedded brainstorm/plan panels, single-turn output embeds — composes the **conversation kit** (`src/components/conversation/`). Full reference: `.claude/knowledge/conversation-kit.md`. Short version: `ConversationPanel` + `useConversationStream` for embedded single-session surfaces (fitParent/showHeader/readOnly/transformText/onCustom cover the old brainstorm call-site shapes), `Conversation`/`AgentTurn`/`ActivityGroup`/`Composer` primitives for custom layouts, `foldConversation` as THE chunk-folding engine, and `conversationThreadId`/`createTurnRecorder` server-side. Routes stream `event: chunk` frames (raw runtime chunk JSON) instead of the old token/activity taxonomy.
+Embedded agent conversations compose `ConversationPanel` and `useConversationThread`
+from `@makinbakin/sdk/conversation`. The consumer supplies presentation-ready agents
+and an `agentControl` slot. Durable plugin-event turns survive navigation; no
+per-request/component-owned streaming hook exists. Optional `composerHandleRef`
+forwards emptiness, text and focus without exposing private storage keys. Compose
+`Collapsible` with mounted content when optional detail needs disclosure. Full
+reference: `.claude/knowledge/conversation-kit.md`.
 
 ## Key Files
 

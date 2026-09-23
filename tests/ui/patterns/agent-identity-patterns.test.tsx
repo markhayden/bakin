@@ -71,6 +71,18 @@ describe('focused agent identity patterns', () => {
 })
 
 describe('focused agent assignment pattern', () => {
+  it.each(['sm', 'md', 'lg'] as const)('uses shared %s field appearance without losing the submitted value', (size) => {
+    const { container } = render(
+      <form>
+        <AgentSelect name="owner" ariaLabel="Owner" size={size} variant="filled" value="maya" onValueChange={() => {}} agents={agents} />
+      </form>,
+    )
+    const trigger = screen.getByRole('combobox', { name: 'Owner' })
+    expect(trigger.getAttribute('data-size')).toBe(size)
+    expect(trigger.getAttribute('data-variant')).toBe('filled')
+    expect(new FormData(container.querySelector('form')!).get('owner')).toBe('maya')
+  })
+
   it('preserves the assigned-agent option without a public sentinel export', async () => {
     const onValueChange = mock(() => {})
     const user = userEvent.setup()

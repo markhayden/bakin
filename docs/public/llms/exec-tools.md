@@ -1714,7 +1714,7 @@ bakin_exec_projects_toggle_item {
 ### bakin_exec_projects_update
 
 Label: Updated a project
-Purpose: Update a project's title, status, body, or owner. Cannot set status to "completed" if unchecked items remain.
+Purpose: Update a project's title, status, body, or owner. Lifecycle status is independent of checklist completion; completed may contain unchecked work.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |

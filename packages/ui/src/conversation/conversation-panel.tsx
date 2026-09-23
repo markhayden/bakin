@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useMemo, useState, type CSSProperties, type ReactNode, type Ref } from 'react'
 
 import { usePersistedLeadingEdgeResize } from '../behaviors/use-persisted-leading-edge-resize'
 import { cn } from '../utils'
@@ -10,7 +10,7 @@ import {
   type ConversationAvatarRenderer,
   type ConversationTextRenderer,
 } from './agent-turn'
-import { Composer, type ComposerAttachments } from './composer'
+import { Composer, type ComposerAttachments, type ComposerHandle } from './composer'
 import { Conversation, type ConversationProps } from './conversation'
 import { ConversationHeader } from './conversation-header'
 import {
@@ -24,7 +24,7 @@ import {
   QueuedMessageList,
   type ConversationQueuedItem,
 } from './queued-message-list'
-import { ResizeHandle } from './resize-handle'
+import { ResizeHandle } from '../behaviors/resize-handle'
 import { ToolCallDrawer } from './tool-call-drawer'
 import type { ConversationAttachmentRenderer } from './user-message'
 
@@ -66,6 +66,8 @@ export interface ConversationPanelProps {
   inputLabel?: string
   /** Focus the composer when this panel mounts. Disable for panels embedded below page content. */
   autoFocus?: boolean
+  /** Existing composer draft/focus handle; null while read-only or unmounted. */
+  composerHandleRef?: Ref<ComposerHandle>
   emptyState?: ReactNode
   maxLength?: number
   attachments?: ComposerAttachments
@@ -109,6 +111,7 @@ export function ConversationPanel({
   placeholder = 'Send a message…',
   inputLabel,
   autoFocus = true,
+  composerHandleRef,
   emptyState,
   maxLength,
   attachments,
@@ -161,6 +164,7 @@ export function ConversationPanel({
           orientation="horizontal"
           handleProps={handleProps}
           label="Resize conversation panel"
+          visibleAtRest={chrome === 'top-divider'}
           className="flex h-bakin-2 w-full shrink-0 cursor-row-resize"
         />
       ) : null}
@@ -181,6 +185,7 @@ export function ConversationPanel({
       <Conversation
         turns={turns}
         mode="contained"
+        ariaLabel={typeof title === 'string' ? `${title} history` : 'Conversation history'}
         agent={agent}
         resolveAgent={resolveAgent}
         emptyState={emptyState}
@@ -207,6 +212,7 @@ export function ConversationPanel({
         </div>
       ) : (
         <Composer
+          handleRef={composerHandleRef}
           storageKey={storageKey}
           onSend={onSend}
           busy={streaming}
