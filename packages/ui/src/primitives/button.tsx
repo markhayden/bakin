@@ -95,7 +95,7 @@ const buttonStyles = cva(
         xs: 'h-bakin-6 gap-bakin-1 px-bakin-2 text-[length:var(--bakin-typography-size-meta)] [&_svg:not([class*="size-"])]:size-bakin-3',
         sm: 'h-bakin-8 gap-bakin-2 px-bakin-3',
         md: 'h-[var(--bakin-layout-size-control)] gap-bakin-2 px-bakin-4',
-        lg: 'h-[calc(var(--bakin-layout-size-control)+var(--bakin-layout-space-1))] gap-bakin-2 px-bakin-4',
+        lg: 'h-[calc(var(--bakin-layout-size-control)+var(--bakin-layout-space-2))] gap-bakin-2 px-bakin-4',
         // Text-flow button: sits inside prose/cells at the surrounding text
         // size with no control box — the sanctioned form of the
         // `!h-auto !justify-start !p-0` fights it replaces.
@@ -104,7 +104,7 @@ const buttonStyles = cva(
         'icon-xs': 'size-bakin-6 min-h-bakin-6 min-w-bakin-6 [&_svg:not([class*="size-"])]:size-bakin-3',
         'icon-sm': 'size-bakin-8 min-h-bakin-8 min-w-bakin-8',
         'icon-md': 'size-[var(--bakin-layout-size-control)] min-h-[var(--bakin-layout-size-control)] min-w-[var(--bakin-layout-size-control)]',
-        'icon-lg': 'size-[calc(var(--bakin-layout-size-control)+var(--bakin-layout-space-1))] min-h-[calc(var(--bakin-layout-size-control)+var(--bakin-layout-space-1))] min-w-[calc(var(--bakin-layout-size-control)+var(--bakin-layout-space-1))]',
+        'icon-lg': 'size-[calc(var(--bakin-layout-size-control)+var(--bakin-layout-space-2))] min-h-[calc(var(--bakin-layout-size-control)+var(--bakin-layout-space-2))] min-w-[calc(var(--bakin-layout-size-control)+var(--bakin-layout-space-2))]',
       },
     },
     defaultVariants: {

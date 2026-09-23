@@ -101,7 +101,7 @@ export const Sizes = {
     <StoryStage
       eyebrow="Density"
       title="Purposeful sizes"
-      description="Medium is the Product Character default. Extra-small is reserved for dense operational rows."
+      description="Small, medium and large align with 32, 36 and 44px fields. Extra-small is reserved for dense operational rows."
     >
       <StorySection title="Text actions">
         <StoryCluster>
@@ -134,6 +134,10 @@ export const Sizes = {
       </StorySection>
     </StoryStage>
   ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('button', { name: 'Large' }).getBoundingClientRect().height).toBe(44)
+    await expect(canvas.getByRole('button', { name: 'Add with icon-lg' }).getBoundingClientRect().width).toBe(44)
+  },
 } satisfies Story
 
 export const States = {

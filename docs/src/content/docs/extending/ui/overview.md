@@ -689,6 +689,9 @@ Collapsible is for supporting detail that can safely start hidden. Required deci
 
 ## Text-Field Primitives
 
+Large buttons and icon buttons now align with large fields at 44px. Small and
+medium remain 32px and 36px.
+
 `Input` and the default-input `FieldControl` support `size="sm|md|lg"`
 (32/36/44px) and `variant="outlined|filled|ghost"`. Defaults are `md` and
 `outlined`. Set presentation on the control, not Form or Field. Use
