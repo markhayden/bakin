@@ -196,8 +196,10 @@ export function AdvancedOverview({ sel, modelOptions }: AdvancedOverviewProps) {
       </Stack>
 
       {/* ── Runtime-gated extras ──────────────────────────────────── */}
+      {/* Runtime-gated extras. Compact summary meta (a count): the extras'
+          names squeezed "More defaults" to a letter per line at 320px. */}
       {extras.length > 0 ? (
-        <DisclosurePanel summary="More defaults" summaryMeta={extras.join(' · ')} data-testid="overview-extras">
+        <DisclosurePanel summary="More defaults" summaryMeta={`${extras.length} setting${extras.length === 1 ? '' : 's'}`} data-testid="overview-extras">
           <Stack gap="section">
             {support?.defaultSubagentModel ? (
               <Field name="advanced-default-subagent" data-selection-ref="policy:defaultSubagentModel">

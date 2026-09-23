@@ -29,12 +29,14 @@ export function ResetToPlan({ sel }: { sel: SelectionsData }) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // The snapshot written before the FIRST attempt — the only handle that
-  // restores the configuration as it was. A retry after a partial reset
-  // never asks for another one (that would snapshot an already half-cleared
-  // state and bury the real undo point).
+  // The snapshot written before the FIRST attempt of THIS reset — the only
+  // handle that restores the configuration as it was. A retry after a
+  // partial reset never asks for another one (that would snapshot an
+  // already half-cleared state and bury the real undo point); a NEW reset —
+  // after a success, or after the dialog was closed — starts with none, so
+  // it mints its own snapshot instead of advertising an older undo point.
   const [snapshot, setSnapshot] = useState<string | null>(null)
-  const [done, setDone] = useState<string | null>(null)
+  const [done, setDone] = useState<{ handle: string | null; partial: boolean } | null>(null)
   const selections = sel.selections
   // Once nothing is customized the section only lingers to show the undo handle.
   if (!selections || (sel.customizations.length === 0 && !done)) return null
@@ -73,7 +75,8 @@ export function ResetToPlan({ sel }: { sel: SelectionsData }) {
         await sel.reload()
         return
       }
-      setDone(handle)
+      setDone({ handle, partial: false })
+      setSnapshot(null)
       setOpen(false)
       await sel.reload()
     } catch (err) {
@@ -94,7 +97,12 @@ export function ResetToPlan({ sel }: { sel: SelectionsData }) {
             </Text>
           ) : null}
           {sel.dirty ? <Text size="meta" tone="muted" data-testid="reset-blocked">Save or discard your unsaved changes first.</Text> : null}
-          {done ? <Text size="meta" tone="muted" role="status">Reset applied. Undo with <code>bakin models restore {done}</code>.</Text> : null}
+          {done ? (
+            <Text size="meta" tone="muted" role="status">
+              {done.partial ? 'Reset partially applied — some settings were not cleared.' : 'Reset applied.'}
+              {done.handle ? <> Undo with <code>bakin models restore {done.handle}</code>.</> : null}
+            </Text>
+          ) : null}
         </Stack>
         {ops.length > 0 ? (
           <Button type="button" variant="outline" size="sm" disabled={sel.dirty} onClick={() => setOpen(true)}>
@@ -114,7 +122,15 @@ export function ResetToPlan({ sel }: { sel: SelectionsData }) {
         busy={busy}
         error={error ?? undefined}
         onConfirm={() => void confirm()}
-        onCancel={() => { if (!busy) { setOpen(false); setError(null) } }}
+        onCancel={() => {
+          if (busy) return
+          setOpen(false)
+          setError(null)
+          // Closing after a partial reset ends THIS operation: keep its undo
+          // handle visible on the page, and let the next reset mint its own.
+          if (snapshot) setDone({ handle: snapshot, partial: true })
+          setSnapshot(null)
+        }}
       >
         <KeyValue aria-label="Reset changes" layout="rows" items={items} />
       </ConfirmDialog>

@@ -33,6 +33,7 @@ const LOAD_TIMEOUT_MS = 10_000
  * neither waits for the operator to reload.
  */
 const PENDING_POLL_MS = 5_000
+const FALLBACK_LIST_MOVED = 'The fallback list changed since this page loaded — your fallback changes were discarded because they named positions in the old list. Review the fallbacks shown now and stage them again.'
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
@@ -151,6 +152,29 @@ export function useSelections(options: { pendingPollMs?: number } = {}): Selecti
   const [saveError, setSaveError] = useState<string | null>(null)
   const [lastSave, setLastSave] = useState<SaveOutcome | null>(null)
 
+  // What the page holds right now, readable from async callbacks.
+  const statesRef = useRef<SelectionStateWire[]>([])
+  const draftRef = useRef<Draft>(draft)
+  draftRef.current = draft
+
+  /**
+   * The ONE way fresh states enter the page — the first load, every reload
+   * (mode switch, save, poll) and the stale-revision re-read. A
+   * `policy:fallback:<n>` op names a POSITION in the list the page held
+   * when it was staged; if the incoming list is a different list, those
+   * ops are dropped here with an explanation, so no later save can carry
+   * them against the moved list — whichever path refreshed the states.
+   */
+  const adoptLoaded = useCallback((next: SelectionsResponse) => {
+    const moved = JSON.stringify(fallbackList(statesRef.current)) !== JSON.stringify(fallbackList(next.states))
+    if (moved && [...draftRef.current.keys()].some(isFallbackRef)) {
+      setDraft((prev) => dropFallbackOps(prev))
+      setSaveError(FALLBACK_LIST_MOVED)
+    }
+    statesRef.current = next.states
+    setSelections(next)
+  }, [])
+
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
       const [sel, pl] = await Promise.all([
@@ -158,7 +182,7 @@ export function useSelections(options: { pendingPollMs?: number } = {}): Selecti
         pluginFetchJson<PlanResponse>(PLUGIN_ID, 'plan', { label: 'Model plan', timeoutMs: LOAD_TIMEOUT_MS, signal }),
       ])
       if (signal?.aborted) return
-      setSelections(sel)
+      adoptLoaded(sel)
       setPlan(pl)
       setError(null)
     } catch (err) {
@@ -167,7 +191,7 @@ export function useSelections(options: { pendingPollMs?: number } = {}): Selecti
     } finally {
       if (!signal?.aborted) setLoading(false)
     }
-  }, [])
+  }, [adoptLoaded])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -201,8 +225,6 @@ export function useSelections(options: { pendingPollMs?: number } = {}): Selecti
   }, [])
 
   const states: SelectionStateWire[] = useMemo(() => selections?.states ?? [], [selections])
-  const statesRef = useRef<SelectionStateWire[]>(states)
-  statesRef.current = states
 
   const submit = useCallback(async (ops: SelectionOpWire[], extra?: { snapshot?: 'reset' }): Promise<SaveOutcome> => {
     let revision = revisionRef.current
@@ -218,9 +240,9 @@ export function useSelections(options: { pendingPollMs?: number } = {}): Selecti
         // tag, alias, policy field) are explicit intents, so re-posting them
         // against the fresh revision is safe — once. A fallback op is
         // POSITIONAL (`policy:fallback:<n>`): it names an index of the list
-        // this page loaded. It is re-posted only when the fresh list is that
+        // this page holds. It is re-posted only when the fresh list is that
         // same list; a moved list would make it remove a different model,
-        // so the positional ops are DROPPED from the draft — never left
+        // so the positional ops are DROPPED (adoptLoaded) — never left
         // staged for a Retry against the reloaded list — and the operator
         // stages them again over what is there now.
         const fresh = await pluginFetchJson<SelectionsResponse>(PLUGIN_ID, 'selections', { label: 'Model selections', timeoutMs: LOAD_TIMEOUT_MS })
@@ -230,13 +252,12 @@ export function useSelections(options: { pendingPollMs?: number } = {}): Selecti
           revision = fresh.revision
           continue
         }
-        setSelections(fresh)
-        setDraft((prev) => dropFallbackOps(prev))
+        adoptLoaded(fresh)
         void load()
-        throw new Error('The fallback list changed since this page loaded — your fallback changes were discarded because they named positions in the old list. Review the fallbacks shown now and stage them again.')
+        throw new Error(FALLBACK_LIST_MOVED)
       }
     }
-  }, [adoptRevision, load])
+  }, [adoptRevision, adoptLoaded, load])
   const customizations = useMemo(() => listCustomizations(states), [states])
   const persistedMode = states.find((s) => s.ref === 'ui:mode')?.model
   const mode: UiMode = persistedMode === 'simple' || persistedMode === 'advanced' ? persistedMode : classifyMode(states)

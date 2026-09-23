@@ -211,6 +211,33 @@ describe('useSelections draft + save', () => {
     expect(posts.at(-1)!.ops).toEqual([{ ref: 'route:relay', set: { model: MINI } }])
   })
 
+  it('ANY refresh that brings a moved fallback list drops the positional ops — a reload/mode switch/poll cannot smuggle them past the stale check (review P2)', async () => {
+    fallbacks = [MINI, LUNA]
+    const { result } = await mount()
+    act(() => result.current.stage('policy:fallback:1', { model: null }))
+    act(() => result.current.stage('route:relay', { model: MINI }))
+    // Another editor reordered the list; the page merely re-reads (what a
+    // mode switch, a pending poll or a save's reload do) — no 409 involved.
+    revision = 'rev-2'
+    fallbacks = [LUNA, MINI]
+    await act(async () => { await result.current.reload() })
+    expect([...result.current.draft.keys()]).toEqual(['route:relay'])
+    expect(result.current.saveError).toContain('fallback list changed')
+    // The save that follows carries nothing positional under the adopted revision.
+    await act(async () => { await result.current.save() })
+    expect(posts).toEqual([{ revision: 'rev-2', ops: [{ ref: 'route:relay', set: { model: MINI } }] }])
+  })
+
+  it('a refresh with the SAME fallback list keeps positional ops staged', async () => {
+    fallbacks = [MINI, LUNA]
+    const { result } = await mount()
+    act(() => result.current.stage('policy:fallback:1', { model: null }))
+    revision = 'rev-2'
+    await act(async () => { await result.current.reload() })
+    expect([...result.current.draft.keys()]).toEqual(['policy:fallback:1'])
+    expect(result.current.saveError).toBeNull()
+  })
+
   it('a write awaiting runtime confirmation is re-read on a cadence until it settles — no manual reload (review P2)', async () => {
     pending = [{ refs: ['policy:defaultModel'], state: 'unsettled' }]
     const { result } = await mount({ pendingPollMs: 20 })

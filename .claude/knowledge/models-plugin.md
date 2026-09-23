@@ -324,21 +324,32 @@ probe) behind `use-catalog.ts`.
   submitted)` — the states the save will leave — so an edit back to the
   pre-save value stays staged and re-picking the submitted one unstages.
   An edit made while its previous save ran is never silently lost.
-- **Positional fallback ops never survive a moved list.** On
-  `stale_revision`, `submit` fetches fresh and compares `fallbackList`
-  (index order) of the loaded vs fresh states: unchanged ⇒ the ops are
-  re-posted once like named ones; moved ⇒ `dropFallbackOps` empties them
-  from the draft (named ops stay for Retry), the page adopts the fresh
-  states, and the message says the fallback changes were discarded. With
-  nothing staged the save bar cannot show that (`SaveBar` returns null when
-  not dirty), so the page renders a `Banner` (`save-notice`, Dismiss =
-  `discard`) for a save error with an empty draft; the first fresh edit
-  onto an empty draft clears the old error so its Save is not a "Retry".
-- **Reset keeps the FIRST snapshot.** `ResetToPlan` stores the handle the
-  first attempt returned; a retry after a partial reset posts WITHOUT
-  `snapshot: 'reset'` (a second snapshot would capture the half-cleared
-  state and bury the real undo point), the failure text names the original
-  handle, and the section re-reads so the retry lists only what is left.
+- **Positional fallback ops never survive a moved list — on ANY refresh.**
+  `adoptLoaded` is the ONE way fresh states enter the hook (first load,
+  every reload — mode switch, save, pending poll — and the stale-revision
+  re-read): it compares `fallbackList` (index order) of the held vs
+  incoming states and, when the list moved while the draft holds
+  `policy:fallback:<n>` ops, `dropFallbackOps` empties them (named ops stay)
+  and sets the explanation. A `stale_revision` with an UNCHANGED list
+  re-posts once like named ops. Never adopt states with a bare
+  `setSelections` — a reload that skipped the comparison let a later save
+  remove the wrong model without ever hitting the stale check. With
+  nothing staged the save bar cannot show the message (`SaveBar` returns
+  null when not dirty), so the page renders a `Banner` (`save-notice`,
+  Dismiss = `discard`) for a save error with an empty draft; the first
+  fresh edit onto an empty draft clears the old error so its Save is not a
+  "Retry".
+- **Reset keeps the FIRST snapshot of THIS reset.** `ResetToPlan` stores
+  the handle the first attempt returned; a retry after a partial reset
+  posts WITHOUT `snapshot: 'reset'` (a second snapshot would capture the
+  half-cleared state and bury the real undo point), the failure text names
+  the original handle, and the section re-reads so the retry lists only
+  what is left. The handle is CLEARED on success and on cancel (cancel
+  after a partial keeps it visible as "Reset partially applied"), so a new
+  reset mints its own snapshot instead of advertising an older undo point.
+- **"More defaults" summary meta is a count** (`3 settings`), not the
+  extras' names — the names squeezed the summary to a letter per line at
+  320px.
 - **Pending writes settle without a reload.** While any `pending` row is
   `unsettled`, `useSelections` re-reads on `pendingPollMs` (default 5 s;
   the server reconciles pending writes on every GET /selections, so the
