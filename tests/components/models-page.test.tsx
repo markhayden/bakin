@@ -97,6 +97,7 @@ describe('ModelsPage component', () => {
   /** Per-test override of what a POST returns (partial failure, pending writes) — the fake applies the ops regardless. */
   let mutationOverride: ((ops: Array<{ ref: string; set: { model?: string | null; thinking?: string | null } }>) => { applied?: string[]; failed?: Array<{ ref: string; error: { code: string; message: string } }>; pending?: Array<{ ref: string; intended: string | null }> }) | null
   let availableResponse: AvailableModelsPayload
+  let agentScopedResponses: Record<string, AvailableModelsPayload>
   let refreshResponse: AvailableModelsPayload
   let availableRequest: Promise<Response> | null
   let refreshRequest: Promise<Response> | null
@@ -148,6 +149,7 @@ describe('ModelsPage component', () => {
       cachedAt: null,
     }
     refreshResponse = availableResponse
+    agentScopedResponses = {}
     availableRequest = null
     refreshRequest = null
     aliasesState = {
@@ -183,6 +185,11 @@ describe('ModelsPage component', () => {
       if (url === '/api/plugins/models/available' && method === 'GET') {
         availableFetchCount += 1
         return availableRequest ?? jsonResponse(availableResponse)
+      }
+      // Agent-scoped catalog reads (#907 review): verdicts under THAT agent's credentials.
+      if (url.startsWith('/api/plugins/models/available?agentId=') && method === 'GET') {
+        const agentId = decodeURIComponent(url.slice('/api/plugins/models/available?agentId='.length))
+        return jsonResponse(agentScopedResponses[agentId] ?? availableResponse)
       }
       if (url === '/api/plugins/models/refresh' && method === 'POST') {
         return refreshRequest ?? jsonResponse(refreshResponse)
@@ -293,6 +300,29 @@ describe('ModelsPage component', () => {
   }
 
   describe('Advanced view (S4, support-gated)', () => {
+    it("an agent row's pickers are scoped to THAT agent's credentials: a model dead for Patch is disabled in Patch's picker while the install-wide Default model picker still offers it (#907 review)", async () => {
+      agentScopedResponses.patch = {
+        ...availableResponse,
+        models: availableResponse.models.map((m) => m.id === 'openai-codex/gpt-5.4'
+          ? { ...m, available: false, eligibility: { status: 'ineligible', reason: 'no_credentials', detail: 'no credentials for openai-codex' } }
+          : m),
+      }
+      const user = userEvent.setup()
+      render(<ModelsPage />)
+      await screen.findByRole('combobox', { name: 'Default model' })
+      await waitFor(() => expect(fetchCalls.some((c) => c.url === '/api/plugins/models/available?agentId=patch')).toBe(true))
+      await openTab('Agents')
+      const row = (await screen.findByText('Patch')).closest('[data-agent-model-row]') as HTMLElement
+      await user.click(within(row).getByRole('combobox', { name: 'Patch model' }))
+      const dead = await screen.findByRole('option', { name: 'GPT-5.4 — no credentials for openai-codex' })
+      expect(dead.getAttribute('aria-disabled')).toBe('true')
+      await user.keyboard('{Escape}')
+      // Main holds the key: its row still offers the model.
+      const main = (await screen.findByText('Main')).closest('[data-agent-model-row]') as HTMLElement
+      await user.click(within(main).getByRole('combobox', { name: 'Main model' }))
+      expect(await screen.findByRole('option', { name: 'GPT-5.4' })).toBeTruthy()
+    })
+
     it('Defaults: changing the default model stages one policy op; the subagent default renders when supported', async () => {
       const user = userEvent.setup()
       render(<ModelsPage />)

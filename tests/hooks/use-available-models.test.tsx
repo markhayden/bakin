@@ -64,6 +64,19 @@ describe('useAvailableModels', () => {
     expect(calls).toBe(2)
   })
 
+  it("scoped to an agent, the read asks for THAT agent's verdicts and never shares another scope's in-flight request (#907 review)", async () => {
+    const urls: string[] = []
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      urls.push(String(input))
+      return new Response(JSON.stringify({ models: catalog }), { headers: { 'content-type': 'application/json' } })
+    }) as unknown as typeof fetch
+    const scoped = await actRender(() => renderHook(() => useAvailableModels('explorer')))
+    const unscoped = await actRender(() => renderHook(() => useAvailableModels()))
+    await waitFor(() => expect(scoped.result.current).toHaveLength(1))
+    await waitFor(() => expect(unscoped.result.current).toHaveLength(1))
+    expect(urls.sort()).toEqual(['/api/plugins/models/available', '/api/plugins/models/available?agentId=explorer'])
+  })
+
   it('a fresh mount never reuses an earlier mount\'s rows', async () => {
     const first = await actRender(() => renderHook(() => useAvailableModels()))
     await waitFor(() => expect(first.result.current).toHaveLength(1))

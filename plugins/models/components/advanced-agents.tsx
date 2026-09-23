@@ -22,6 +22,12 @@ import type { SelectionsData } from './use-selections'
 export interface AdvancedAgentsProps {
   sel: SelectionsData
   modelOptions: readonly ModelSelectOption[]
+  /**
+   * Per-agent picker options: an agent's pins are validated under ITS
+   * credentials, so its row disables by that verdict (#907 review). Falls
+   * back to the install-wide options until the scoped read lands.
+   */
+  agentModelOptions?: (agentId: string) => readonly ModelSelectOption[]
 }
 
 /** Supplies registered-agent identity (headshot, color) to the presentation avatar. */
@@ -37,7 +43,8 @@ function OverrideAgentAvatar({ agentId, name }: { agentId: string; name: string 
   )
 }
 
-export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
+export function AdvancedAgents({ sel, modelOptions, agentModelOptions }: AdvancedAgentsProps) {
+  const optionsFor = (agentId: string) => agentModelOptions?.(agentId) ?? modelOptions
   const selections = sel.selections
   const states = selections?.states ?? []
   const support = selections?.support
@@ -112,7 +119,7 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
             id={`agent-${row.agentId}-model`}
             value={sel.effective(row.modelRef).model ?? DEFAULT_MODEL_VALUE}
             onValueChange={(value) => sel.stage(row.modelRef, { model: value === DEFAULT_MODEL_VALUE ? null : value })}
-            models={modelOptions}
+            models={optionsFor(row.agentId)}
             defaultLabel={`Use default model${agent.model ? ` (${agent.model})` : ''}`}
             ariaLabel={`${row.name} model`}
             className="w-full min-w-0"
@@ -133,7 +140,7 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
                   id={`agent-${row.agentId}-subagent`}
                   value={sub.model ?? DEFAULT_MODEL_VALUE}
                   onValueChange={(value) => sel.stage(row.subagentRef, { model: value === DEFAULT_MODEL_VALUE ? null : value })}
-                  models={modelOptions}
+                  models={optionsFor(row.agentId)}
                   defaultLabel="Use default subagent model"
                   ariaLabel={`${row.name} subagents`}
                   className="w-full min-w-0"

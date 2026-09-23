@@ -8,12 +8,13 @@
  * deep-links a selection: the owning view highlights it and, when it lives
  * in a layer Simple cannot show, the VIEW flips to Advanced without writing.
  */
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useRuntimeStatus } from '@makinbakin/sdk/hooks'
 import { useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
 import { Page, PageBody, PageHeader, SaveBar, SegmentedControl } from '@makinbakin/sdk/patterns'
 import { Badge, Banner, Button, SystemState } from '@makinbakin/sdk/ui'
 
+import { agentRows } from '../lib/advanced'
 import type { UiMode } from '../lib/mode'
 import { AdvancedMode } from './advanced-mode'
 import { CatalogPanel } from './catalog-panel'
@@ -41,7 +42,9 @@ function PendingSummary({ sel }: { sel: SelectionsData }) {
 
 export function ModelsPage() {
   const sel = useSelections()
-  const catalog = useCatalog()
+  // Roster agents get their own catalog verdicts (their credentials).
+  const agentIds = useMemo(() => agentRows(sel.selections?.states ?? []).map((row) => row.agentId), [sel.selections?.states])
+  const catalog = useCatalog({ agentIds })
   const runtimeStatus = useRuntimeStatus()
   const defaultModel = sel.selections?.states.find((s) => s.ref === 'policy:defaultModel')?.model ?? null
   const evidence = sel.selections?.evidence
@@ -142,7 +145,7 @@ export function ModelsPage() {
           labelledBy="models-mode-tab-advanced"
           state={shellState}
         >
-          <AdvancedMode sel={sel} modelOptions={catalog.modelSelectOptions} overviewFooter={<CatalogPanel catalog={catalog} defaultModel={defaultModel} />} />
+          <AdvancedMode sel={sel} modelOptions={catalog.modelSelectOptions} agentModelOptions={catalog.agentModelSelectOptions} overviewFooter={<CatalogPanel catalog={catalog} defaultModel={defaultModel} />} />
         </PageBody>
       )}
 

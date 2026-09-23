@@ -46,8 +46,22 @@ export interface ProbeVerdictWire {
   detail?: string
 }
 
-export function useCatalog() {
+export interface UseCatalogOptions {
+  /**
+   * Roster agents whose pickers need THEIR OWN verdicts (#907 review): an
+   * agent pin is validated by the write path under that agent's
+   * credentials, so the picker that stages it must disable by the same
+   * verdict. One scoped `GET /available?agentId=` per agent, re-read
+   * whenever the catalog or the roster changes.
+   */
+  agentIds?: readonly string[]
+}
+
+export function useCatalog(options: UseCatalogOptions = {}) {
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
+  const [agentCatalogs, setAgentCatalogs] = useState<Record<string, AvailableModel[]>>({})
+  // Identity-stable roster key so a fresh array per render never refetches.
+  const agentIdsKey = (options.agentIds ?? []).join('\n')
   const [modelsCached, setModelsCached] = useState(false)
   const [modelsCachedAt, setModelsCachedAt] = useState<number | null>(null)
   const [modelsStale, setModelsStale] = useState(false)
@@ -125,6 +139,29 @@ export function useCatalog() {
     return () => controller.abort()
   }, [fetchAvailable])
 
+  // Agent-scoped catalogs: the unscoped list answers "can this install run
+  // it"; each roster agent's pickers take the verdicts under its own keys.
+  // The unscoped list stands in until a row's read lands (or fails — never
+  // a blank picker).
+  useEffect(() => {
+    const agentIds = agentIdsKey.split('\n').filter(Boolean)
+    if (agentIds.length === 0 || !modelsLoaded) return
+    const controller = new AbortController()
+    void Promise.all(agentIds.map(async (agentId) => {
+      try {
+        const data = await pluginFetchJson<AvailableModelsPayload>(PLUGIN_ID, `available?agentId=${encodeURIComponent(agentId)}`, { label: 'Models', timeoutMs: LOAD_TIMEOUT_MS, signal: controller.signal })
+        return [agentId, data.models ?? []] as const
+      } catch (err) {
+        if (!isAbortError(err) && !controller.signal.aborted) console.warn(`Agent-scoped model catalog for ${agentId} failed; using the unscoped catalog: ${errorMessage(err)}`)
+        return null
+      }
+    })).then((entries) => {
+      if (controller.signal.aborted) return
+      setAgentCatalogs(Object.fromEntries(entries.filter((e): e is readonly [string, AvailableModel[]] => e !== null)))
+    })
+    return () => controller.abort()
+  }, [agentIdsKey, availableModels, modelsLoaded])
+
   // Auto-refresh in the background when the served cache was stale.
   // We surface the cached data immediately; the refresh swaps rows
   // in place when it returns. handleRefresh guards against double-firing.
@@ -140,12 +177,25 @@ export function useCatalog() {
   // ONE mapping every ModelSelect on this page uses. Memoized: a fresh array
   // per render would re-render every picker and defeat the catalog's memos.
   const modelSelectOptions = useMemo(() => toModelSelectOptions(availableModels), [availableModels])
+  // Per-agent options (agent rows): that agent's verdicts, the unscoped
+  // mapping until its scoped read lands. Memoized per catalog generation so
+  // a row's picker keeps a stable array between renders.
+  const agentModelSelectOptions = useMemo(() => {
+    const byAgent = new Map<string, ReturnType<typeof toModelSelectOptions>>()
+    return (agentId: string) => {
+      const hit = byAgent.get(agentId)
+      if (hit) return hit
+      const options = agentCatalogs[agentId] ? toModelSelectOptions(agentCatalogs[agentId]) : modelSelectOptions
+      byAgent.set(agentId, options)
+      return options
+    }
+  }, [agentCatalogs, modelSelectOptions])
   const availableProviders = useMemo(() => [...new Set(availableModels.map((m) => m.provider))].sort((a, b) => a.localeCompare(b)), [availableModels])
 
   return {
     availableModels, modelsCached, modelsCachedAt, modelsStale, modelsError, modelsLoaded,
     refreshing, verifying, probeVerdicts, handleRefresh, handleVerify,
-    modelSelectOptions, availableProviders,
+    modelSelectOptions, agentModelSelectOptions, availableProviders,
     /** Re-read the cached catalog (after a save that changes default/fallback flags). */
     fetchAvailable,
   }

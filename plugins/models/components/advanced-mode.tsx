@@ -21,6 +21,8 @@ import type { SelectionsData } from './use-selections'
 export interface AdvancedModeProps {
   sel: SelectionsData
   modelOptions: readonly ModelSelectOption[]
+  /** Per-agent picker options — that agent's own verdicts (#907 review); the Agents table consumes it. */
+  agentModelOptions?: (agentId: string) => readonly ModelSelectOption[]
   /** Rendered under the Overview tab only (the model catalog) — dead weight on Agents / Work routing. */
   overviewFooter?: ReactNode
 }
@@ -40,7 +42,7 @@ function tabForRef(ref: string | null): TabId | null {
   return 'overview'
 }
 
-export function AdvancedMode({ sel, modelOptions, overviewFooter }: AdvancedModeProps) {
+export function AdvancedMode({ sel, modelOptions, agentModelOptions, overviewFooter }: AdvancedModeProps) {
   const [tabParam, setTab] = useQueryState('tab', 'overview')
   const requested = TABS.some((t) => t.id === tabParam) ? (tabParam as TabId) : 'overview'
   // A `?ref=` seeds the tab that owns it — once per ref. From the first
@@ -72,7 +74,7 @@ export function AdvancedMode({ sel, modelOptions, overviewFooter }: AdvancedMode
             {overviewFooter}
           </div>
         ) : null}
-        {tab === 'agents' ? <AdvancedAgents sel={sel} modelOptions={modelOptions} /> : null}
+        {tab === 'agents' ? <AdvancedAgents sel={sel} modelOptions={modelOptions} agentModelOptions={agentModelOptions} /> : null}
         {tab === 'routing' ? <AdvancedRouting sel={sel} modelOptions={modelOptions} /> : null}
       </div>
     </div>
