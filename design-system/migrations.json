@@ -24,7 +24,7 @@
     "totals": {
       "raw-palette": 4,
       "arbitrary-size": 77,
-      "raw-scale": 424,
+      "raw-scale": 423,
       "raw-control": 18,
       "inline-style": 33,
       "generic-token": 72,
@@ -164,7 +164,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 1,
-        "raw-scale": 7,
+        "raw-scale": 6,
         "inline-style": 1
       }
     },

@@ -18,7 +18,7 @@ import { usePersistedLeadingEdgeResize } from '../behaviors/use-persisted-leadin
 import { Button } from '../primitives/button'
 import { cn } from '../utils'
 import { RemoveIcon, SpinnerIcon } from './glyphs'
-import { ResizeHandle } from './resize-handle'
+import { ResizeHandle } from '../behaviors/resize-handle'
 
 const HISTORY_LIMIT = 50
 const DEFAULT_MIN_HEIGHT = 88

@@ -1,8 +1,9 @@
 'use client'
 
-import { useRef, useState, useCallback, useEffect, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { useState, useCallback, useEffect, type CSSProperties, type ReactNode } from 'react'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
+import { ResizeHandle, usePersistedLeadingEdgeResize } from '../../packages/host/src/ui/resize'
 // The dialog shim rather than `@makinbakin/sdk`: the SDK ui entrypoint
 // re-exports this Drawer, so importing the SDK here would be a module cycle.
 import { UnsavedChangesDialog } from '@/components/ui/dialog'
@@ -17,32 +18,8 @@ const MAX_WIDTH = 960
 const DEFAULT_WIDTH = 810
 const DRAWER_WIDTH_STORAGE_KEY = 'bakin-drawer-width'
 
-function clampDrawerWidth(width: number) {
-  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width))
-}
-
 function getDrawerWidthStorageKey(storageKey?: string) {
   return storageKey ? `${DRAWER_WIDTH_STORAGE_KEY}:${storageKey}` : DRAWER_WIDTH_STORAGE_KEY
-}
-
-function getStoredDrawerWidth(defaultWidth: number, storageKey?: string) {
-  const fallbackWidth = clampDrawerWidth(defaultWidth)
-
-  if (typeof window === 'undefined') {
-    return fallbackWidth
-  }
-
-  try {
-    const storedWidth = window.localStorage.getItem(getDrawerWidthStorageKey(storageKey))
-    if (!storedWidth) {
-      return fallbackWidth
-    }
-
-    const parsedWidth = Number.parseInt(storedWidth, 10)
-    return Number.isFinite(parsedWidth) ? clampDrawerWidth(parsedWidth) : fallbackWidth
-  } catch {
-    return fallbackWidth
-  }
 }
 
 export interface DrawerProps {
@@ -79,85 +56,19 @@ export function Drawer({
   dirty = false,
   busy = false,
 }: DrawerProps) {
-  const [width, setWidth] = useState(() => getStoredDrawerWidth(defaultWidth, storageKey))
+  const { size: width, handleProps } = usePersistedLeadingEdgeResize({
+    axis: 'x',
+    defaultSize: defaultWidth,
+    minSize: MIN_WIDTH,
+    maxSize: MAX_WIDTH,
+    storageKey: getDrawerWidthStorageKey(storageKey),
+    disabled: !open,
+  })
   const [showDirtyConfirm, setShowDirtyConfirm] = useState(false)
-  const dragging = useRef(false)
-  const startX = useRef(0)
-  const startWidth = useRef(0)
-  const widthRef = useRef(width)
-
-  useEffect(() => {
-    setWidth(getStoredDrawerWidth(defaultWidth, storageKey))
-  }, [defaultWidth, storageKey])
-
-  useEffect(() => {
-    widthRef.current = width
-  }, [width])
 
   useEffect(() => {
     if (!open) setShowDirtyConfirm(false)
   }, [open])
-
-  const persistWidth = useCallback((nextWidth: number) => {
-    if (typeof window === 'undefined') return
-
-    try {
-      window.localStorage.setItem(getDrawerWidthStorageKey(storageKey), String(clampDrawerWidth(nextWidth)))
-    } catch {
-      // Ignore storage failures; the drawer should still resize normally.
-    }
-  }, [storageKey])
-
-  const setAndPersistWidth = useCallback((nextWidth: number) => {
-    const clampedWidth = clampDrawerWidth(nextWidth)
-    widthRef.current = clampedWidth
-    setWidth(clampedWidth)
-    persistWidth(clampedWidth)
-  }, [persistWidth])
-
-  const handleMouseDown = useCallback((e: ReactMouseEvent) => {
-    e.preventDefault()
-    dragging.current = true
-    startX.current = e.clientX
-    startWidth.current = widthRef.current
-
-    const handleMouseMove = (ev: MouseEvent) => {
-      if (!dragging.current) return
-      const delta = startX.current - ev.clientX
-      const newWidth = clampDrawerWidth(startWidth.current + delta)
-      widthRef.current = newWidth
-      setWidth(newWidth)
-    }
-
-    const handleMouseUp = () => {
-      dragging.current = false
-      persistWidth(widthRef.current)
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-    }
-
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-  }, [persistWidth])
-
-  const handleResizeKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
-    const step = event.shiftKey ? 64 : 16
-    let nextWidth: number | undefined
-
-    if (event.key === 'ArrowLeft') nextWidth = widthRef.current + step
-    if (event.key === 'ArrowRight') nextWidth = widthRef.current - step
-    if (event.key === 'Home') nextWidth = MIN_WIDTH
-    if (event.key === 'End') nextWidth = MAX_WIDTH
-
-    if (nextWidth !== undefined) {
-      event.preventDefault()
-      setAndPersistWidth(nextWidth)
-    }
-  }, [setAndPersistWidth])
 
   const requestClose = useCallback(() => {
     if (busy) return
@@ -192,17 +103,12 @@ export function Drawer({
           showCloseButton={false}
           style={{ '--bakin-drawer-width': `${width}px` } as CSSProperties}
         >
-          <div
-            aria-label="Resize panel"
-            aria-orientation="vertical"
-            aria-valuemax={MAX_WIDTH}
-            aria-valuemin={MIN_WIDTH}
-            aria-valuenow={width}
-            className="absolute inset-y-0 left-0 z-10 hidden w-bakin-2 cursor-col-resize outline-none transition-colors hover:bg-bakin-signal-accent/20 focus-visible:bg-bakin-signal-accent/25 motion-reduce:transition-none sm:block"
-            onMouseDown={handleMouseDown}
-            onKeyDown={handleResizeKeyDown}
-            role="separator"
-            tabIndex={0}
+          <ResizeHandle
+            orientation="vertical"
+            handleProps={handleProps}
+            label="Resize panel"
+            visibleAtRest
+            className="absolute inset-y-0 left-0 z-10 hidden w-bakin-2 cursor-col-resize sm:flex"
           />
 
           <div
@@ -257,7 +163,5 @@ export {
   MAX_WIDTH,
   DEFAULT_WIDTH,
   DRAWER_WIDTH_STORAGE_KEY,
-  clampDrawerWidth,
   getDrawerWidthStorageKey,
-  getStoredDrawerWidth,
 }

@@ -2626,9 +2626,7 @@
         "Drawer",
         "MAX_WIDTH",
         "MIN_WIDTH",
-        "clampDrawerWidth",
-        "getDrawerWidthStorageKey",
-        "getStoredDrawerWidth"
+        "getDrawerWidthStorageKey"
       ],
       "exportStatus": "private",
       "classification": "shared-ui",

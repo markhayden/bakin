@@ -30,10 +30,12 @@ export interface PersistedResizeHandleProps {
   'aria-valuemin': number
   'aria-valuemax': number
   'aria-valuenow': number
+  'data-resizing': boolean
   onPointerDown: (event: PointerEvent<HTMLDivElement>) => void
   onPointerMove: (event: PointerEvent<HTMLDivElement>) => void
   onPointerUp: (event: PointerEvent<HTMLDivElement>) => void
   onPointerCancel: (event: PointerEvent<HTMLDivElement>) => void
+  onLostPointerCapture: (event: PointerEvent<HTMLDivElement>) => void
   onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void
 }
 
@@ -71,8 +73,10 @@ export function usePersistedLeadingEdgeResize({
   disabled = false,
 }: PersistedResizeOptions): { size: number; handleProps: PersistedResizeHandleProps } {
   const [size, setSizeState] = useState(() => readSize(storageKey, defaultSize, minSize, maxSize))
+  const [resizing, setResizing] = useState(false)
   const sizeRef = useRef(size)
   const pointerRef = useRef<number | null>(null)
+  const targetRef = useRef<HTMLDivElement | null>(null)
   const startRef = useRef({ position: 0, size })
   const bodyStyleRef = useRef({ cursor: '', userSelect: '' })
 
@@ -89,19 +93,34 @@ export function usePersistedLeadingEdgeResize({
     setSizeState(next)
   }, [defaultSize, maxSize, minSize, storageKey])
 
-  useEffect(() => () => {
-    if (pointerRef.current === null) return
+  const finish = useCallback(() => {
+    const pointerId = pointerRef.current
+    if (pointerId === null) return
+    pointerRef.current = null
+    const target = targetRef.current
+    targetRef.current = null
+    if (target?.hasPointerCapture?.(pointerId)) target.releasePointerCapture(pointerId)
+    persistSize(storageKey, sizeRef.current)
     document.body.style.cursor = bodyStyleRef.current.cursor
     document.body.style.userSelect = bodyStyleRef.current.userSelect
-  }, [])
+    setResizing(false)
+  }, [storageKey])
+
+  useEffect(() => {
+    if (disabled) finish()
+    // The handle can disappear while its owner remains mounted (e.g. a closed drawer).
+    return finish
+  }, [disabled, finish])
 
   const position = (event: PointerEvent<HTMLDivElement>) => axis === 'x' ? event.clientX : event.clientY
 
   const begin = (event: PointerEvent<HTMLDivElement>) => {
-    if (disabled) return
+    if (disabled || pointerRef.current !== null || event.button !== 0) return
     event.preventDefault()
     event.currentTarget.setPointerCapture?.(event.pointerId)
     pointerRef.current = event.pointerId
+    targetRef.current = event.currentTarget
+    setResizing(true)
     startRef.current = { position: position(event), size: sizeRef.current }
     bodyStyleRef.current = {
       cursor: document.body.style.cursor,
@@ -119,13 +138,7 @@ export function usePersistedLeadingEdgeResize({
 
   const end = (event: PointerEvent<HTMLDivElement>) => {
     if (pointerRef.current !== event.pointerId) return
-    pointerRef.current = null
-    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-    persistSize(storageKey, sizeRef.current)
-    document.body.style.cursor = bodyStyleRef.current.cursor
-    document.body.style.userSelect = bodyStyleRef.current.userSelect
+    finish()
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -150,10 +163,12 @@ export function usePersistedLeadingEdgeResize({
       'aria-valuemin': minSize,
       'aria-valuemax': maxSize,
       'aria-valuenow': size,
+      'data-resizing': resizing,
       onPointerDown: begin,
       onPointerMove: move,
       onPointerUp: end,
       onPointerCancel: end,
+      onLostPointerCapture: end,
       onKeyDown: handleKeyDown,
     },
   }

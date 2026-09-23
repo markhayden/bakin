@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 190565,
+    "canonicalBytes": 190415,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -32,13 +32,13 @@
       "name": "sdk-content",
       "path": "packages/host/public/vendor/sdk-content.js",
       "bytes": 350469,
-      "reachableBytes": 845893
+      "reachableBytes": 845906
     },
     {
       "name": "sdk-conversation",
       "path": "packages/host/public/vendor/sdk-conversation.js",
-      "bytes": 55829,
-      "reachableBytes": 711630
+      "bytes": 53647,
+      "reachableBytes": 712637
     },
     {
       "name": "sdk-layout",
@@ -56,13 +56,13 @@
       "name": "sdk-patterns",
       "path": "packages/host/public/vendor/sdk-patterns.js",
       "bytes": 2420,
-      "reachableBytes": 619231
+      "reachableBytes": 619306
     },
     {
       "name": "sdk-ui",
       "path": "packages/host/public/vendor/sdk-ui.js",
-      "bytes": 8728,
-      "reachableBytes": 501809
+      "bytes": 7395,
+      "reachableBytes": 503592
     }
   ],
   "vendorChunks": [
@@ -92,7 +92,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-conversation.js",
-      "bytes": 55829
+      "bytes": 53647
     },
     {
       "path": "packages/host/public/vendor/sdk-hooks.js",
@@ -208,7 +208,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-ui.js",
-      "bytes": 8728
+      "bytes": 7395
     },
     {
       "path": "packages/host/public/vendor/sdk-utils.js",
@@ -236,7 +236,7 @@
       "repository": "bakin-bits-official",
       "pluginId": "projects",
       "path": "bakin-bits-official/plugins/projects/dist/client.js",
-      "bytes": 139378
+      "bytes": 139672
     },
     {
       "repository": "bakin-bits-official",

@@ -272,3 +272,26 @@ Projects UI-AUDIT, and all 30 planned tasks are complete. Merge Core #919 first,
 then Bits #108. No merge, release, package publication or live installation was
 performed. Roll back the consumer first and preserve receipt metadata before any
 older-writer downgrade. The pre-kickoff stash and maintainer Storybook are intact.
+
+## Resize affordance follow-up review — 2026-09-23
+
+The desktop Brainstorm heading is removed. Embedded conversation and Projects
+sidebar dividers show faint centered grips and highlight their full length in pink
+on hover, keyboard focus, and drag. Shared Drawer uses the same private grip and
+resize mechanics. Existing mobile disclosure, saved sizes, and size limits remain.
+The exact two corrected desktop snapshots and shared-payload relocation were
+explicitly approved; see `resize-review/full-divider/README.md` and its manifest.
+
+An independent review found two related cleanup defects: closing a drawer during
+a captured drag could strand body cursor/selection overrides, and a second touch
+pointer could overwrite the active drag's original body styles. Both were
+reproduced by failing regressions and corrected with centralized finalization,
+disabled/lost-capture cleanup, and an active-pointer guard. The follow-up review
+found no remaining actionable issue. Obsolete Drawer storage readers were removed;
+consumer-level hydration/clamping tests cover the shared behavior instead.
+
+Focused regression verification: 19 tests pass, including the new close/reopen
+and overlapping-pointer cases. The browser suite also exercises Escape during a
+captured drag. Quick conformance passes (228 architecture tests and TypeScript).
+All 645 Bits tests pass (8 existing skips), with lint/types passing. Final shared
+SDK package, cross-repository pins, complete UI checks, and PR CI are being updated.

@@ -24,7 +24,7 @@ import {
   QueuedMessageList,
   type ConversationQueuedItem,
 } from './queued-message-list'
-import { ResizeHandle } from './resize-handle'
+import { ResizeHandle } from '../behaviors/resize-handle'
 import { ToolCallDrawer } from './tool-call-drawer'
 import type { ConversationAttachmentRenderer } from './user-message'
 
@@ -164,6 +164,7 @@ export function ConversationPanel({
           orientation="horizontal"
           handleProps={handleProps}
           label="Resize conversation panel"
+          visibleAtRest={chrome === 'top-divider'}
           className="flex h-bakin-2 w-full shrink-0 cursor-row-resize"
         />
       ) : null}

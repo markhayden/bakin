@@ -218,18 +218,27 @@ export const DocumentDividerPanel = {
           <header className="bakin-conversation-story__intro">
             <p>Conversation / document continuation</p>
             <h1>Continue a project conversation without another box</h1>
-            <p>The surrounding document owns the surface. A single top divider separates its embedded conversation without adding side or bottom borders.</p>
+            <p>The surrounding document owns the surface. Its divider has a faint centered grip at rest. Hover, keyboard focus, and dragging highlight the full divider in pink, matching a resizable side panel.</p>
           </header>
           <ConversationPanel {...args} />
         </Stack>
       </PageShell>
     </main>
   ),
-  play: async ({ canvas }) => {
+  play: async ({ canvas, userEvent }) => {
     const panel = canvas.getByRole('region', { name: 'Conversation' })
     await expect(panel).toHaveAttribute('data-chrome', 'top-divider')
     await expect(panel).toHaveClass('border-t')
     await expect(panel).not.toHaveClass('rounded-bakin-overlay')
+    const handle = canvas.getByRole('separator', { name: 'Resize conversation panel' })
+    const grip = handle.querySelector('span')!
+    await waitFor(() => expect(getComputedStyle(grip).opacity).toBe('0.6'))
+    handle.focus()
+    const initial = Number(handle.getAttribute('aria-valuenow'))
+    await userEvent.keyboard('{ArrowUp}')
+    await expect(handle).toHaveAttribute('aria-valuenow', String(Math.min(initial + 16, 800)))
+    await userEvent.keyboard('{ArrowDown}')
+    handle.blur()
   },
 } satisfies Story
 

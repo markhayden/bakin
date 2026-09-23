@@ -16,7 +16,7 @@ import {
 import { cn } from '../utils'
 import { formatDuration } from './activity-group'
 import type { ConversationToolCall } from './fold'
-import { ResizeHandle } from './resize-handle'
+import { ResizeHandle } from '../behaviors/resize-handle'
 import { CopyButton } from './turn-controls'
 
 const DRAWER_DEFAULT_WIDTH = 720

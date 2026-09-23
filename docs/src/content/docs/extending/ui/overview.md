@@ -1303,6 +1303,11 @@ existing `ComposerHandle` (`isEmpty`, `setText`, `focus`). Inspect it after moun
 instead of reading private draft storage. It is null when unmounted or read-only.
 Keep a panel mounted inside a preserving disclosure to retain draft and scroll
 state. Use distinct panel titles to name each keyboard-scrollable history region.
+With `chrome="top-divider"`, the existing resize grip stays faintly visible at
+rest. Hover, keyboard focus, and dragging highlight the full divider in pink,
+with the short grip centered along it. `Drawer` uses the same treatment rotated
+vertically and the same pointer/keyboard behavior, preserving size preferences. Use `showHeader={false}` when the
+surrounding document already supplies context; retain the panel's accessible title.
 
 Internal links must keep using the shipped routing contract. Supply `renderInternalLink` with `PluginLink`; do not rebuild history or route parsing inside a Markdown renderer:
 

@@ -13,7 +13,7 @@ const meta = {
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
-    docs: { description: { component: 'Drawer is the supported resizable product composition for long contextual detail and edit flows. It uses Sheet semantics, persists width by context, fills mobile viewports, provides keyboard resizing, aligns its title and content to one shared gutter, and owns the nested dirty-confirm path.' } },
+    docs: { description: { component: 'Drawer is the supported resizable product composition for long contextual detail and edit flows. It uses Sheet semantics, persists width by context, fills mobile viewports, provides keyboard resizing, aligns its title and content to one shared gutter, and owns the nested dirty-confirm path. Its full divider highlights pink on hover, keyboard focus, and pointer drag, with a short centered grip that stays faintly visible at rest; embedded conversation dividers use the same treatment.' } },
     bakinCoverage: ['desktop', 'keyboard', 'resize', 'dirty-confirm'],
   },
 } satisfies Meta<typeof Drawer>
@@ -53,6 +53,9 @@ export const CanonicalUsage = {
     const dialog = await page.findByRole('dialog', { name: 'Task detail' })
     await expect(dialog).toBeVisible()
     await expect(within(dialog).getByRole('region', { name: 'Details' })).toBeVisible()
+    const handle = page.getByRole('separator', { name: 'Resize panel' })
+    handle.blur()
+    await waitFor(() => expect(getComputedStyle(handle.querySelector('span')!).opacity).toBe('0.6'))
   },
 } satisfies Story
 

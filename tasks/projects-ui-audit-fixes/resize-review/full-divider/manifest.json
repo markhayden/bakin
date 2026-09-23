@@ -1,0 +1,19 @@
+{
+  "status": "approved and applied",
+  "visuals": [
+    {
+      "candidate": "drawer-actual.png",
+      "sha256": "8a473ffbff0f4404d84394868b3b54b39ffe1de9b7e6118636f5ca50fbc843b4",
+      "destination": "tests/ui/snapshots/chromium-desktop/foundation.visual.ts/overlays-drawer.png",
+      "beforeSha256": "cca6bef9e0ad0673b9ae0041126acdc0fc0704e87ec132f1aee76210c5939830"
+    },
+    {
+      "candidate": "tool-detail-actual.png",
+      "sha256": "2ae9a70268a4b6d3408a75c793a4a2ff9e92ae7362d66586b2d486a5c2e4f107",
+      "destination": "tests/ui/snapshots/chromium-desktop/foundation.visual.ts/foundation-conversation-tool-detail.png",
+      "beforeSha256": "063d28f591c07eca34b170a5a69a17f1d13032b32fc903e5991af17328a7a53d"
+    }
+  ],
+  "approvedOn": "2026-09-23",
+  "approvalEvidence": "User approved these two corrected snapshots from the full-divider review."
+}
