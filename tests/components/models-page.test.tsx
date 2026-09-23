@@ -85,6 +85,7 @@ describe('ModelsPage component', () => {
   let availableFetchCount: number
   let selectionsRevision = 0
   let availableResponse: AvailableModelsPayload
+  let agentScopedResponses: Record<string, AvailableModelsPayload>
   let refreshResponse: AvailableModelsPayload
   let availableRequest: Promise<Response> | null
   let refreshRequest: Promise<Response> | null
@@ -140,6 +141,7 @@ describe('ModelsPage component', () => {
       cachedAt: null,
     }
     refreshResponse = availableResponse
+    agentScopedResponses = {}
     availableRequest = null
     refreshRequest = null
     aliasesState = {
@@ -248,6 +250,11 @@ describe('ModelsPage component', () => {
       if (url === '/api/plugins/models/available' && method === 'GET') {
         availableFetchCount += 1
         return availableRequest ?? jsonResponse(availableResponse)
+      }
+      // Agent-scoped catalog reads (#907 review): verdicts under THAT agent's credentials.
+      if (url.startsWith('/api/plugins/models/available?agentId=') && method === 'GET') {
+        const agentId = decodeURIComponent(url.slice('/api/plugins/models/available?agentId='.length))
+        return jsonResponse(agentScopedResponses[agentId] ?? availableResponse)
       }
       if (url === '/api/plugins/models/refresh' && method === 'POST') {
         return refreshRequest ?? jsonResponse(refreshResponse)
@@ -397,6 +404,52 @@ describe('ModelsPage component', () => {
     await waitFor(() => expect(configLoads()).toBeGreaterThan(loadsBefore))
     // No second POST with the same ops under the fresher revision.
     expect(posts()).toHaveLength(1)
+  })
+
+  it('a Routing-tab visit never refreshes the revision behind the defaults snapshot — a positional fallback edit staged against the old list is refused, not authorized', async () => {
+    const user = userEvent.setup()
+    render(<ModelsPage />)
+    await screen.findByText('Patch')
+    await waitFor(() => expect(fetchCalls.some((c) => c.method === 'GET' && c.url === '/api/plugins/models/selections')).toBe(true))
+    // Another editor moved the configuration after this page loaded its defaults…
+    selectionsRevision += 1
+    // …then the operator visits Routing (its own snapshot + a fresher server revision) and comes back.
+    fireEvent.click(screen.getByRole('tab', { name: 'Routing' }))
+    await screen.findByRole('region', { name: 'Task dispatch routes' })
+    fireEvent.click(screen.getByRole('tab', { name: 'Agent Config' }))
+    await screen.findByText('Global Defaults')
+
+    // Remove fallback #1 — a POSITIONAL op built from the defaults snapshot loaded under rev-0.
+    await user.click(screen.getByRole('button', { name: 'Remove fallback 1' }))
+    fireEvent.click(screen.getByText('Save Defaults'))
+
+    const posts = () => fetchCalls.filter((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+    await waitFor(() => expect(posts()).toHaveLength(1))
+    expect(posts()[0]!.body?.revision).toBe('rev-0')
+    expect((posts()[0]!.body?.ops as Array<{ ref: string }>)[0]!.ref).toBe('policy:fallback:0')
+    expect(await screen.findByText(/changed since this page loaded/)).toBeTruthy()
+    expect(posts()).toHaveLength(1)
+  })
+
+  it("an agent row's pickers are scoped to THAT agent's credentials: a model dead for Patch is disabled in Patch's Own Model picker while the install-wide Default Model picker still offers it", async () => {
+    agentScopedResponses.patch = {
+      ...availableResponse,
+      models: availableResponse.models!.map((m) => m.id === 'openai-codex/gpt-5.4'
+        ? { ...m, available: false, eligibility: { status: 'ineligible', reason: 'no_credentials', detail: 'no credentials for openai-codex' } }
+        : m),
+    } as AvailableModelsPayload
+    const user = userEvent.setup()
+    render(<ModelsPage />)
+    const row = (await screen.findByText('Patch')).closest('[data-agent-model-row]') as HTMLElement
+    await waitFor(() => expect(fetchCalls.some((c) => c.url === '/api/plugins/models/available?agentId=patch')).toBe(true))
+
+    await user.click(within(row).getByRole('combobox', { name: 'Own Model' }))
+    const dead = await screen.findByRole('option', { name: 'GPT-5.4 — no credentials for openai-codex' })
+    expect(dead.getAttribute('aria-disabled')).toBe('true')
+    await user.keyboard('{Escape}')
+
+    await user.click(screen.getByRole('combobox', { name: 'Default Model' }))
+    expect(await screen.findByRole('option', { name: 'GPT-5.4' })).toBeTruthy()
   })
 
   it('saves agent-specific model overrides', async () => {

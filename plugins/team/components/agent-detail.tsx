@@ -98,7 +98,8 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const [loading, setLoading] = useState(true)
   const [avatarKey, setAvatarKey] = useState(0)
   const avatarInputRef = useRef<FileInputHandle>(null)
-  const availableModels = useAvailableModels()
+  // This agent's picker: verdicts under ITS credentials (#907 review).
+  const availableModels = useAvailableModels(agentId)
   const [savingModel, setSavingModel] = useState(false)
   const [modelError, setModelError] = useState<string | null>(null)
   const [modelNotice, setModelNotice] = useState<string | null>(null)

@@ -324,7 +324,15 @@ export interface SpendResponse {
  * to the former inline hooks — same call order, same effects.
  */
 export function useModelsData() {
-  /** The selections revision the editor snapshots (config / aliases / routing) were loaded under — every save posts under it. */
+  /**
+   * The selections revision the DEFAULTS snapshot (config: default /
+   * subagent / positional fallbacks) was loaded under — every save posts
+   * under it. Only `loadConfig` refreshes it: the alias and routing tabs
+   * load their own snapshots without touching the revision, because a
+   * fresher revision paired with a stale fallback snapshot would let the
+   * server accept positional fallback ops built against the wrong list.
+   * A save adopts the returned revision; a stale refusal reloads all three.
+   */
   const revisionRef = useRef<string | null>(null)
   const [tab, setTab] = useQueryState('tab', 'agents')
   const [agents, setAgents] = useState<AgentModelConfig[]>([])
@@ -485,7 +493,6 @@ export function useModelsData() {
       if (signal?.aborted) return
       if (data.aliases) setAliases(data.aliases)
       clearError('aliases')
-      revisionRef.current = await readRevision()
     } catch (err) {
       if (isAbortError(err) || signal?.aborted) return
       reportError('aliases', `Failed to load model aliases: ${errorMessage(err)}`)
@@ -525,6 +532,32 @@ export function useModelsData() {
     fetchAliases(controller.signal)
     return () => controller.abort()
   }, [loadConfig, fetchAvailable, fetchAliases])
+
+  // Each agent row's picker is judged under THAT agent's credentials (#907
+  // review): the unscoped catalog answers "can this install run it", but an
+  // agent pin is validated by the write path under the agent's own keys, so
+  // the picker that stages it must disable by the same verdict. One scoped
+  // read per agent off the same cached catalog, re-run whenever the roster
+  // or the catalog changes; the unscoped list stands in until a row's read
+  // lands (or fails — never a blank picker).
+  const [agentCatalogs, setAgentCatalogs] = useState<Record<string, AvailableModel[]>>({})
+  useEffect(() => {
+    if (agents.length === 0 || !modelsLoaded) return
+    const controller = new AbortController()
+    void Promise.all(agents.map(async (agent) => {
+      try {
+        const data = await fetchPluginJson<AvailableModelsPayload>(`available?agentId=${encodeURIComponent(agent.agentId)}`, 'Models', LOAD_TIMEOUT_MS, controller.signal)
+        return [agent.agentId, data.models ?? []] as const
+      } catch (err) {
+        if (!isAbortError(err) && !controller.signal.aborted) console.warn(`Agent-scoped model catalog for ${agent.agentId} failed; using the unscoped catalog: ${errorMessage(err)}`)
+        return null
+      }
+    })).then((entries) => {
+      if (controller.signal.aborted) return
+      setAgentCatalogs(Object.fromEntries(entries.filter((e): e is readonly [string, AvailableModel[]] => e !== null)))
+    })
+    return () => controller.abort()
+  }, [agents, availableModels, modelsLoaded])
 
   const fetchBudget = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -697,7 +730,6 @@ export function useModelsData() {
       if (signal?.aborted) return
       setRouting({ routes: data.routes ?? [], tagOverrides: data.tagOverrides ?? [] })
       clearError('routing')
-      revisionRef.current = await readRevision()
     } catch (err) {
       if (isAbortError(err) || signal?.aborted) return
       // Empty routing reads as "everything inherits the agent model" — a load
@@ -953,8 +985,11 @@ export function useModelsData() {
   const modelOptions: AvailableModel[] = availableModels
   const modelsReady = modelsLoaded && availableModels.length > 0
   // Picker options: ineligible rows disabled with their reason (#907) — the
-  // ONE mapping every ModelSelect on this page uses.
+  // ONE mapping every ModelSelect on this page uses. Agent rows take the
+  // agent-scoped verdicts (their own credentials), falling back to the
+  // unscoped catalog until the scoped read lands.
   const modelSelectOptions = toModelSelectOptions(modelOptions)
+  const agentModelSelectOptions = (agentId: string) => toModelSelectOptions(agentCatalogs[agentId] ?? modelOptions)
 
   const availableProviders = [...new Set(modelOptions.map((m) => m.provider))].sort((a, b) => a.localeCompare(b))
   const effectiveDefaultModel = pendingDefaultModel ?? defaultModel
@@ -969,7 +1004,7 @@ export function useModelsData() {
     // tab + window navigation
     tab, setTab, spendWindow, setSpendWindow,
     // config + agents
-    modelSelectOptions, fallbackCandidateOptions,
+    modelSelectOptions, agentModelSelectOptions, fallbackCandidateOptions,
     agents, loading, error, saving, runtimeStatus,
     fetchConfig,
     // available models

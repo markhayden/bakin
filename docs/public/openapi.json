@@ -28351,7 +28351,7 @@
         "tags": [
           "Models"
         ],
-        "description": "Returns the model catalog from the configured runtime adapter. Cached on disk; the response signals freshness.",
+        "description": "Returns the model catalog from the configured runtime adapter with per-model eligibility. Cached on disk; the response signals freshness. `?agentId=<id>` judges eligibility under THAT agent's credentials (#907) — the scope an agent's own picker must use, and the scope the write path validates an agent pin under.",
         "x-bakin-full-path": "/api/plugins/models/available"
       }
     },

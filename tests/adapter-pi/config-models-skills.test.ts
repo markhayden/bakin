@@ -211,6 +211,15 @@ describe('models + capabilities', () => {
     expect(configured!.unavailableReason).toBeUndefined()
   })
 
+  test('resolveId answers with the turn path\'s rule: exact provider/id, bare id → the registry row, wrong provider → null (#907 review)', async () => {
+    expect(await adapter.models.resolveId!('openai-codex/gpt-test-vision')).toBe('openai-codex/gpt-test-vision')
+    // A bare id is what a turn would run it as — the same row Pi's session build picks.
+    expect(await adapter.models.resolveId!('gpt-test-text')).toBe('openai-codex/gpt-test-text')
+    // A real id under the wrong provider is NOT rescued by bare-name matching: no turn would run it.
+    expect(await adapter.models.resolveId!('anthropic/gpt-test-text')).toBeNull()
+    expect(await adapter.models.resolveId!('nobody/no-such-model')).toBeNull()
+  })
+
   test('capabilities follow the agent model; unknown agent all-false', async () => {
     await adapter.agents.update('main', { model: 'openai-codex/gpt-test-vision' })
     expect((await adapter.capabilities!({ agentId: 'main' })).input).toEqual({ imageInput: true, audioInput: false })

@@ -58,11 +58,12 @@ export const modelsRoutes = [
     path: '/available',
     method: 'GET',
     summary: 'List available models',
-    description: 'Returns the model catalog from the configured runtime adapter. Cached on disk; the response signals freshness.',
+    description: 'Returns the model catalog from the configured runtime adapter with per-model eligibility. Cached on disk; the response signals freshness. `?agentId=<id>` judges eligibility under THAT agent\'s credentials (#907) — the scope an agent\'s own picker must use, and the scope the write path validates an agent pin under.',
     responses: { 200: passthrough, 500: errorResponse },
-    handler: async (_req, ctx) => {
+    handler: async (req, ctx) => {
       try {
-        const result = await fetchAvailableModels(ctx as unknown as PluginContext)
+        const agentId = new URL(req.url).searchParams.get('agentId')?.trim() || undefined
+        const result = await fetchAvailableModels(ctx as unknown as PluginContext, agentId ? { agentId } : {})
         return Response.json(result)
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })

@@ -113,13 +113,23 @@ current revision (one 409 retry) — valid right after a Reset and after
 later edits.
 
 **Review-round hardening (2026-09-22, #909):**
-- **Id resolution.** The report is keyed by the id as asked; an `extraIds`
-  entry the catalog does not list verbatim is judged by the UNIQUE catalog
-  row it maps onto (`mapModelToCatalog`, the leaf `src/core/model-id-map.ts`
-  — bare id the runtime resolves itself, e.g. Pi's `gpt-5.5`; or a
-  provider rename) and carries `resolvedTo`; ambiguous ⇒ `not_in_catalog`,
-  never a guess. The dispatch gate applies the same rule to its memoized
-  report, so a working selection can never become a pre-dispatch hold.
+- **Id resolution is the RUNTIME's.** The report is keyed by the id as
+  asked; an `extraIds` entry the catalog does not list verbatim is judged by
+  the row the adapter's own `models.resolveId?(ref)` returns (Pi: the SAME
+  `findPiModel` rule its turn path uses — exact `provider/id`, else the
+  first registry model with that bare id; an ambiguous bare id is therefore
+  the runtime's call, and `wrongprovider/real-id` never resolves by bare
+  name) and carries `resolvedTo`. A runtime without the member (OpenClaw,
+  the mock) runs exactly what its catalog lists, so a non-verbatim id is
+  `not_in_catalog` there. `resolveCatalogId(runtime, id)` is the ONE
+  feature-detecting helper (engine + dispatch gate); `mapModelToCatalog`
+  survives only as the catalog-MIGRATION proposal rule (same-id-under-a-
+  credentialed-provider, roster carry) — never a verdict. Round 3 (2026-09-23)
+  replaced the round-2 catalog-shape guess that made `gpt-5.5` under two
+  providers `not_in_catalog` on Pi (Pi runs it) and `wrongprovider/gpt-5.5`
+  eligible (Pi refuses it). Conformance pins the member per adapter
+  (`resolveId: 'present' | 'absent'` + honesty: a listed id resolves
+  verbatim, an unknown reference to null) with teeth.
 - **Agent-scoped credentials.** `evaluateSelections(runtime, states)`
   (`model-selections.ts`) judges every `agent:<id>:*` ref under THAT agent's
   credential inventory (OpenClaw keys them per agent) and everything else
@@ -127,8 +137,33 @@ later edits.
   selections inventory, doctor proposals and the runtime switch all go
   through it — an unscoped read condemned pins the agent could run.
 - **Pending-write race.** Every write to `pending-writes.json` re-reads it
-  first: a document that settles while a LATER write awaits its deadline is
-  never resurrected by that write's timeout (it was reserved until restart).
+  first — including the pre-write cleanup that drops replaced failures: the
+  record list a mutation read on entry is stale by the time `plan()` (async
+  eligibility) returns, and a document that settles during planning or while
+  a LATER write awaits its deadline must never be resurrected (it would be
+  reserved until restart). Pinned by two tests: settle-during-later-timeout
+  and settle-during-planning (`hangNextListAvailable` fixture gate).
+- **Revision ↔ snapshot pairing (page).** `revisionRef` in
+  `use-models-data.ts` is refreshed ONLY by `loadConfig` (the defaults
+  snapshot, incl. positional fallbacks). The alias and routing tabs load
+  their own snapshots without touching it — a fresher revision paired with
+  a stale fallback list would let the server ACCEPT a positional
+  `policy:fallback:n` op built against the wrong list. A save adopts the
+  returned revision; a stale refusal reloads all three.
+- **Doctor repair identity.** `apply-model-proposal` plan items are keyed by
+  the exact proposal they displayed (`apply-model-proposal:<sha16 of
+  ref|from|to|revision>:<ref>`): a second preview after the configuration
+  moved yields different item ids, so applying the first preview applies
+  what IT showed (then 409s honestly) — never the newer target. The planned
+  map is bounded (256, oldest out).
+- **Agent-scoped pickers.** `GET /available?agentId=<id>` overlays
+  eligibility under THAT agent's credentials (same `applyEligibilityOverlay`,
+  `CatalogScope`); the live load is deduped RAW and overlaid per caller so
+  two concurrent scopes never share a verdict. `useAvailableModels(agentId?)`
+  caches per scope (Team's agent detail passes its id; the create form stays
+  unscoped); the Models page reads one scoped catalog per roster agent
+  (`agentModelSelectOptions(agentId)`, unscoped list as the stand-in) so an
+  agent row can only stage what the write path would accept for that agent.
 - **Conflict recovery.** `POST /selections/pending/acknowledge { document }`
   (404 `no_conflict` when nothing to acknowledge, audited
   `pending_write_acknowledged`) and `bakin models pending [--ack

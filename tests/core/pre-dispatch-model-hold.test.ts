@@ -55,6 +55,7 @@ const runtime = {
   agents: { ...base.agents, get: async (id: string) => (agents.has(id) ? { id, name: id, ...agents.get(id) } : null) },
   models: {
     ...base.models,
+    resolveId: undefined as undefined | ((ref: string) => Promise<string | null>),
     listAvailable: async () => [
       { id: LIVE, available: true },
       { id: DEAD, available: false, unavailableReason: 'no_credentials' as const },
@@ -100,6 +101,24 @@ describe('preDispatchGate — effective-model hold', () => {
     expect(byClass).toMatchObject({ reason: 'model_not_eligible', ref: 'route:scheduled' })
     const byTag = await preDispatchGate('pixel', dir, undefined, { model: DEAD, routeSource: 'tag:legal', workClass: 'scheduled', taskId: 't5' })
     expect(byTag).toMatchObject({ ref: 'tag:legal' })
+  })
+
+  it("a non-verbatim pin is judged by the RUNTIME's resolution: resolvable ⇒ no hold; a runtime without a resolver ⇒ not_in_catalog", async () => {
+    agents.set('pixel', { model: 'gpt-5.5' }) // bare id
+    // No resolver: the runtime runs exactly what its catalog lists.
+    expect(await preDispatchGate('pixel', dir, undefined, { taskId: 't8' })).toMatchObject({ ref: 'agent:pixel:model', code: 'not_in_catalog' })
+    // The runtime resolves the bare id to its LIVE row (Pi's rule) ⇒ a working model, never a hold.
+    runtime.models.resolveId = async (ref: string) => (ref === 'gpt-5.5' ? LIVE : null)
+    _resetModelHoldMemo()
+    try {
+      expect(await preDispatchGate('pixel', dir, undefined, { taskId: 't9' })).toBeNull()
+      // …and the resolver's word is final: a wrong provider on a real id is not rescued by bare-name matching.
+      agents.set('pixel', { model: 'wrongprovider/gpt-5.5' })
+      _resetModelHoldMemo()
+      expect(await preDispatchGate('pixel', dir, undefined, { taskId: 't10' })).toMatchObject({ ref: 'agent:pixel:model', code: 'not_in_catalog' })
+    } finally {
+      delete runtime.models.resolveId
+    }
   })
 
   it('a model the catalog lacks entirely is not_in_catalog; unknown evidence never holds', async () => {

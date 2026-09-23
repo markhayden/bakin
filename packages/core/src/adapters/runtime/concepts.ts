@@ -949,6 +949,18 @@ export interface AgentRuntimeAdapter {
      * schedule or from background refresh paths.
      */
     probe?(modelId: string, opts?: { signal?: AbortSignal }): Promise<void>
+    /**
+     * OPTIONAL (#907 review): the catalog id this runtime would RUN `ref`
+     * as — `ref` itself when the catalog lists it verbatim, the runtime's
+     * OWN resolution of a non-verbatim reference (Pi accepts bare model
+     * ids and resolves them by its registry rule), or null when the
+     * runtime would not resolve it. The eligibility engine judges a
+     * persisted selection by this row, so the verdict follows the
+     * adapter's actual turn-time semantics — never a catalog-shape guess.
+     * A runtime that omits the member runs exactly what its catalog lists.
+     * Read-only: no network, no turn.
+     */
+    resolveId?(ref: string): Promise<string | null>
     /** Static declaration of which routing-policy fields this runtime honors. */
     routingSupport(): RuntimeRoutingSupport
     /** The runtime's current routing policy (unsupported fields empty). */

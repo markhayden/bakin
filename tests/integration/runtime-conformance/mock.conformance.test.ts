@@ -99,7 +99,7 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-runRuntimeConformanceSuite('dev mock', () => target, { cron: 'absent', contextStats: 'absent', credentials: 'absent', restartAdvice: 'absent' })
+runRuntimeConformanceSuite('dev mock', () => target, { cron: 'absent', contextStats: 'absent', credentials: 'absent', restartAdvice: 'absent', resolveId: 'absent' })
 
 // The minimal mock omits credentials/restartAdvice (optional members); the
 // opt-in factories must satisfy the status-only and well-formed pins so

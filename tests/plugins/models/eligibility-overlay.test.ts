@@ -41,10 +41,13 @@ const LIVE = 'openai-codex/gpt-5.5'
 const NO_AUTH = 'openai/gpt-5.6-luna'
 
 const UNREFERENCED = 'anthropic/claude-opus-4-6'
+/** Runtime-available; whether it is CREDENTIALED depends on the agent asking (per-agent keys). */
+const AGENT_KEYED = 'google/gemini-3-pro'
 const runtimeRows = [
   { id: LIVE, name: 'GPT-5.5', available: true },
   { id: NO_AUTH, name: 'GPT-5.6 Luna', available: false, unavailableReason: 'no_credentials' as const },
   { id: UNREFERENCED, name: 'Opus', available: false, unavailableReason: 'no_credentials' as const },
+  { id: AGENT_KEYED, name: 'Gemini 3 Pro', available: true },
 ]
 
 function ctxWith(credentials?: { providers: () => Promise<unknown> }): PluginContext {
@@ -69,11 +72,50 @@ const completeInventory = {
   }),
 }
 
+/** Only `enrich` holds a google key (OpenClaw keys auth per agent). */
+const agentKeyedInventory = {
+  providers: async (opts?: { agentId?: string }) => ({
+    providers: [
+      { providerId: 'openai-codex', configured: true },
+      { providerId: 'openai', configured: false },
+      { providerId: 'google', configured: opts?.agentId === 'enrich' },
+    ],
+    evidence: 'complete' as const,
+  }),
+}
+
 beforeEach(() => {
   setModelsCache(null)
   clearPersistedCache()
   resetEligibilityMemo()
   resolveModelRejection({ model: LIVE, resolution: 'manual' })
+})
+
+describe('/available agent scope (#907 review) — a picker for ONE agent is judged under THAT agent\'s credentials', () => {
+  test('unscoped: the agent-keyed provider is credential-less; scoped to the keyed agent: eligible', async () => {
+    const unscoped = await fetchAvailableModels(ctxWith(agentKeyedInventory))
+    expect(unscoped.models.find((m) => m.id === AGENT_KEYED)!.eligibility).toMatchObject({ status: 'ineligible', reason: 'no_credentials' })
+    const scoped = await fetchAvailableModels(ctxWith(agentKeyedInventory), { agentId: 'enrich' })
+    expect(scoped.models.find((m) => m.id === AGENT_KEYED)!.eligibility).toEqual({ status: 'eligible' })
+    expect(scoped.models.find((m) => m.id === AGENT_KEYED)!.available).toBe(true)
+    // A different agent without the key still sees it dead.
+    const other = await fetchAvailableModels(ctxWith(agentKeyedInventory), { agentId: 'main' })
+    expect(other.models.find((m) => m.id === AGENT_KEYED)!.eligibility).toMatchObject({ status: 'ineligible', reason: 'no_credentials' })
+  })
+
+  test('two cold reads in flight for different scopes share ONE runtime fetch but each get their own overlay', async () => {
+    let listCalls = 0
+    const ctx = ctxWith(agentKeyedInventory)
+    const original = ctx.runtime.models.listAvailable
+    ctx.runtime.models.listAvailable = async (opts) => { listCalls += 1; return original(opts) }
+    const [scoped, unscoped] = await Promise.all([
+      fetchAvailableModels(ctx, { agentId: 'enrich' }),
+      fetchAvailableModels(ctx),
+    ])
+    expect(listCalls).toBe(1)
+    expect(scoped.models.find((m) => m.id === AGENT_KEYED)!.eligibility).toEqual({ status: 'eligible' })
+    expect(unscoped.models.find((m) => m.id === AGENT_KEYED)!.eligibility).toMatchObject({ status: 'ineligible', reason: 'no_credentials' })
+  })
 })
 
 describe('/available eligibility overlay (#907)', () => {
@@ -149,7 +191,7 @@ describe('resetModelsCache — epoch-guarded (D29)', () => {
     expect(getModelsCache()).toBeNull()
     // The next caller fetches fresh.
     const fresh = await fetchAvailableModels(ctxWith(completeInventory))
-    expect(fresh.models.map((m) => m.id).sort()).toEqual([NO_AUTH, LIVE].sort())
+    expect(fresh.models.map((m) => m.id).sort()).toEqual([NO_AUTH, LIVE, AGENT_KEYED].sort())
     expect(getModelsCache()).not.toBeNull()
   })
 })

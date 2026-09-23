@@ -48,6 +48,7 @@ mock.module('../../../plugins/team/hooks/use-agent-store', () => ({
 mock.module('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))
 
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'
+import { __resetAvailableModelsCache } from '../../../src/hooks/use-available-models'
 import { HEALTHY_TEAM_HEALTH_REPORT } from './health-report-fixture'
 
 const originalFetch = global.fetch
@@ -56,6 +57,7 @@ let posts: Array<Record<string, unknown>> = []
 
 beforeEach(() => {
   posts = []
+  __resetAvailableModelsCache() // the hook caches per scope across mounts; every case starts cold
   mutationResult = { applied: ['agent:explorer:model'], failed: [], pending: [], warnings: [], revision: 'rev-2' }
   global.fetch = mock((url: RequestInfo | URL, init?: RequestInit) => {
     const u = String(url)
@@ -105,5 +107,14 @@ describe('AgentDetail — model picker writes through the tri-state selections p
     await pickHaiku()
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull())
     expect(screen.queryByText(/refused/)).toBeNull()
+  })
+
+  it("the picker's catalog is scoped to THIS agent — the same credentials the write path validates the pin under (#907 review)", async () => {
+    await pickHaiku()
+    const catalogReads = (global.fetch as unknown as { mock: { calls: Array<[RequestInfo | URL]> } }).mock.calls
+      .map(([u]) => String(u))
+      .filter((u) => u.includes('/api/plugins/models/available'))
+    expect(catalogReads.length).toBeGreaterThan(0)
+    for (const u of catalogReads) expect(u).toContain('agentId=explorer')
   })
 })

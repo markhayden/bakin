@@ -28,7 +28,7 @@ function OverrideAgentAvatar({ agentId, name }: { agentId: string; name: string 
 
 export function AgentsTab({ m }: { m: ModelsData }) {
   const {
-    agents, loading, saving, modelsReady, modelSelectOptions,
+    agents, loading, saving, modelsReady, modelSelectOptions, agentModelSelectOptions,
     pendingOwn, setPendingOwn, pendingSub, setPendingSub,
     setPendingDefaultModel, setPendingDefaultSubagentModel,
     pendingFallbackModels, setPendingFallbackModels, fallbackModels,
@@ -224,6 +224,8 @@ export function AgentsTab({ m }: { m: ModelsData }) {
               const isSaving = saving === agent.agentId
               const ownModelId = `agent-${agent.agentId}-own-model`
               const subagentModelId = `agent-${agent.agentId}-subagent-model`
+              // Both of an agent's pins are validated under ITS credentials.
+              const rowOptions = agentModelSelectOptions(agent.agentId)
 
               return (
                 <ListRow
@@ -243,7 +245,7 @@ export function AgentsTab({ m }: { m: ModelsData }) {
                       id={ownModelId}
                       value={ownVal}
                       onValueChange={(v) => setPendingOwn((p) => ({ ...p, [agent.agentId]: v }))}
-                      models={modelSelectOptions}
+                      models={rowOptions}
                       defaultLabel={`Default (${agent.defaultModel})`}
                       className="w-full min-w-0"
                     />
@@ -254,7 +256,7 @@ export function AgentsTab({ m }: { m: ModelsData }) {
                       id={subagentModelId}
                       value={subVal}
                       onValueChange={(v) => setPendingSub((p) => ({ ...p, [agent.agentId]: v }))}
-                      models={modelSelectOptions}
+                      models={rowOptions}
                       defaultLabel={`Default (${agent.defaultSubagentModel || agent.defaultModel})`}
                       className="w-full min-w-0"
                     />

@@ -33,6 +33,8 @@ const CATALOG: RuntimeAvailableModel[] = [
 function runtimeWith(opts: {
   catalog?: RuntimeAvailableModel[] | Error
   credentials?: ReturnType<typeof mockCredentials> | 'absent'
+  /** The runtime's OWN resolution of a non-verbatim reference (optional contract member). */
+  resolveId?: (ref: string) => Promise<string | null>
 }) {
   const base = createMockRuntimeAdapter(opts.credentials && opts.credentials !== 'absent' ? { credentials: opts.credentials } : {})
   return {
@@ -43,7 +45,20 @@ function runtimeWith(opts: {
         if (opts.catalog instanceof Error) throw opts.catalog
         return opts.catalog ?? CATALOG
       },
+      ...(opts.resolveId ? { resolveId: opts.resolveId } : {}),
     },
+  }
+}
+
+/**
+ * Pi's actual rule (`findPiModel`): `provider/id` must match exactly; a
+ * bare id matches the FIRST registry model with that id — ambiguity is the
+ * runtime's call, and `wrongprovider/real-id` never resolves by bare name.
+ */
+function piLikeResolver(catalog: RuntimeAvailableModel[]) {
+  return async (ref: string): Promise<string | null> => {
+    if (catalog.some((m) => m.id === ref)) return ref
+    return catalog.find((m) => m.id.slice(m.id.indexOf('/') + 1) === ref && !ref.includes('/'))?.id ?? null
   }
 }
 
@@ -124,22 +139,40 @@ describe('getModelEligibility — facts → verdict', () => {
     expect(report.byModel.get('openai-codex/gpt-5.5')!.eligibility.status).toBe('unknown')
   })
 
-  it('a BARE model id the catalog lists under exactly one provider resolves to that row — Pi accepts bare ids, so a working selection is never not_in_catalog', async () => {
-    const report = await getModelEligibility(runtimeWith({ credentials: complete() }), { extraIds: ['gpt-5.5'] }, noRejections)
+  it('a non-verbatim id is judged by the row the RUNTIME resolves it to (Pi accepts bare ids) — a working selection is never not_in_catalog', async () => {
+    const runtime = runtimeWith({ credentials: complete(), resolveId: piLikeResolver(CATALOG) })
+    const report = await getModelEligibility(runtime, { extraIds: ['gpt-5.5'] }, noRejections)
     const entry = report.byModel.get('gpt-5.5')
     expect(entry?.eligibility.status).toBe('eligible')
     expect(entry?.resolvedTo).toBe('openai-codex/gpt-5.5')
     // The resolved row's own facts carry through (a no-credentials row stays no_credentials).
-    expect(report.byModel.get('gpt-5.6-luna')).toBeUndefined()
-    const dead = await getModelEligibility(runtimeWith({ credentials: complete() }), { extraIds: ['gpt-5.6-luna'] }, noRejections)
+    const dead = await getModelEligibility(runtime, { extraIds: ['gpt-5.6-luna'] }, noRejections)
     expect(dead.byModel.get('gpt-5.6-luna')?.eligibility).toMatchObject({ status: 'ineligible', reason: 'no_credentials' })
   })
 
-  it('an AMBIGUOUS bare id (listed under two providers) stays not_in_catalog — never a guess', async () => {
+  it("an AMBIGUOUS bare id is the runtime's call: Pi runs the first match, so eligibility follows that row", async () => {
     const catalog: RuntimeAvailableModel[] = [...CATALOG, { id: 'anthropic/gpt-5.5', available: true }]
-    const report = await getModelEligibility(runtimeWith({ catalog, credentials: complete() }), { extraIds: ['gpt-5.5'] }, noRejections)
+    const report = await getModelEligibility(runtimeWith({ catalog, credentials: complete(), resolveId: piLikeResolver(catalog) }), { extraIds: ['gpt-5.5'] }, noRejections)
+    expect(report.byModel.get('gpt-5.5')?.eligibility).toEqual({ status: 'eligible' })
+    expect(report.byModel.get('gpt-5.5')?.resolvedTo).toBe('openai-codex/gpt-5.5')
+  })
+
+  it('a WRONG provider on a real model id never resolves by bare name — the runtime would not run it, so it is not_in_catalog', async () => {
+    const report = await getModelEligibility(runtimeWith({ credentials: complete(), resolveId: piLikeResolver(CATALOG) }), { extraIds: ['wrongprovider/gpt-5.5'] }, noRejections)
+    expect(report.byModel.get('wrongprovider/gpt-5.5')?.eligibility).toMatchObject({ status: 'ineligible', reason: 'not_in_catalog' })
+    expect(report.byModel.get('wrongprovider/gpt-5.5')?.resolvedTo).toBeUndefined()
+  })
+
+  it('a runtime WITHOUT a resolver runs exactly what its catalog lists: a bare id is not_in_catalog even when it would be unique — never a catalog-shape guess', async () => {
+    const report = await getModelEligibility(runtimeWith({ credentials: complete() }), { extraIds: ['gpt-5.5'] }, noRejections)
     expect(report.byModel.get('gpt-5.5')?.eligibility).toMatchObject({ status: 'ineligible', reason: 'not_in_catalog' })
     expect(report.byModel.get('gpt-5.5')?.resolvedTo).toBeUndefined()
+  })
+
+  it('a resolver that throws leaves the id unresolved (not_in_catalog), never the whole report failed', async () => {
+    const report = await getModelEligibility(runtimeWith({ credentials: complete(), resolveId: async () => { throw new Error('registry not ready') } }), { extraIds: ['gpt-5.5'] }, noRejections)
+    expect(report.byModel.get('gpt-5.5')?.eligibility).toMatchObject({ status: 'ineligible', reason: 'not_in_catalog' })
+    expect(report.byModel.get('openai-codex/gpt-5.5')!.eligibility).toEqual({ status: 'eligible' })
   })
 
   it('a persisted selection the catalog lacks is not_in_catalog', async () => {

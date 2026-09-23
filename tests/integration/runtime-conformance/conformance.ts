@@ -144,6 +144,13 @@ export interface RuntimeConformanceSuiteOptions {
    * every change kind; 'absent' pins true omission.
    */
   restartAdvice?: 'present' | 'absent'
+  /**
+   * models.resolveId() optional-member declaration (#907 review). 'present'
+   * pins the member to exist AND to be honest: a listed catalog id resolves
+   * to itself and an unknown reference resolves to null; 'absent' pins true
+   * omission (the runtime runs exactly what its catalog lists).
+   */
+  resolveId?: 'present' | 'absent'
 }
 
 /** Field names a status-only credential inventory may carry — anything else is a leak vector. */
@@ -256,6 +263,41 @@ export const runtimeConformanceChecks = {
     if (options.restartAdvice === 'present' && member === undefined) {
       fail('restartAdvice declared present but the adapter omits the member')
     }
+  },
+
+  /**
+   * models.resolveId optional-member honesty (#907 review): presence is the
+   * contract — absence must be member omission, never a throwing stub.
+   */
+  async resolveIdMemberMatchesDeclaration(target: RuntimeConformanceTarget, options?: RuntimeConformanceSuiteOptions): Promise<void> {
+    if (options?.resolveId === undefined) return
+    const member = target.runtime.models.resolveId
+    if (options.resolveId === 'absent' && member !== undefined) {
+      fail('models.resolveId declared absent but the adapter exposes the member — absence must be member omission')
+    }
+    if (options.resolveId === 'present' && member === undefined) {
+      fail('models.resolveId declared present but the adapter omits the member')
+    }
+  },
+
+  /**
+   * models.resolveId honesty, when the member exists: the eligibility engine
+   * judges a persisted selection by what this returns, so a listed catalog
+   * id MUST resolve to itself (verbatim) and a reference no turn could run
+   * MUST resolve to null — a runtime that "resolves" garbage would let a
+   * dead selection pass as live.
+   */
+  async resolveIdIsHonest(target: RuntimeConformanceTarget): Promise<void> {
+    const member = target.runtime.models.resolveId
+    if (member === undefined) return
+    const [first] = await target.runtime.models.listAvailable({ includeUnavailable: true })
+    if (first?.id) {
+      const resolved = await member.call(target.runtime.models, first.id)
+      if (resolved !== first.id) fail(`models.resolveId('${first.id}') must return the listed id verbatim, got ${String(resolved)}`)
+    }
+    const nonsense = `bakin-conformance/no-such-model-${Date.now()}`
+    const resolved = await member.call(target.runtime.models, nonsense)
+    if (resolved !== null) fail(`models.resolveId('${nonsense}') must be null for a reference no turn could run, got ${String(resolved)}`)
   },
 
   /**
@@ -1037,6 +1079,14 @@ export function runRuntimeConformanceSuite(
 
     it('restartAdvice is well-formed for every change kind (when the member exists)', async () => {
       await runtimeConformanceChecks.restartAdviceIsWellFormed(getTarget())
+    })
+
+    it('models.resolveId member matches its declaration (presence is the contract)', async () => {
+      await runtimeConformanceChecks.resolveIdMemberMatchesDeclaration(getTarget(), options)
+    })
+
+    it('models.resolveId is honest: a listed id resolves verbatim, an unknown reference to null (when the member exists)', async () => {
+      await runtimeConformanceChecks.resolveIdIsHonest(getTarget())
     })
 
     it('initialize() is write-free (provisioning owns home writes)', async () => {

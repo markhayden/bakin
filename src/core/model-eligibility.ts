@@ -17,7 +17,6 @@
 import type { AgentRuntimeAdapter, ProviderCredentialInventory, RuntimeAvailableModel } from '@bakin/core/adapters/runtime'
 import { createLogger } from '@/core/logger'
 import { listModelRejections } from '@/core/execution-ledger'
-import { mapModelToCatalog } from '@/core/model-id-map'
 
 const log = createLogger('model-eligibility')
 
@@ -43,9 +42,10 @@ export type EvidenceStatus = 'ok' | 'partial' | 'failed'
 export interface EligibilityReport {
   /**
    * Keyed by the id as ASKED (an `extraIds` entry stays under its own key).
-   * A bare or provider-renamed id that maps onto exactly one catalog row is
-   * judged by that row and carries `resolvedTo` — the runtime resolves such
-   * ids itself (Pi accepts bare ids), so they are never `not_in_catalog`.
+   * An id the catalog does not list verbatim is judged by the row the
+   * RUNTIME resolves it to (`models.resolveId`, Pi's bare-id rule) and
+   * carries `resolvedTo`; a runtime without a resolver runs exactly what
+   * its catalog lists, so such an id is `not_in_catalog` there.
    */
   byModel: Map<string, { eligibility: Eligibility; facts: EligibilityFacts; rejection?: OpenRejection; resolvedTo?: string }>
   evidence: { catalog: EvidenceStatus; runtimeAvailability: EvidenceStatus; credentials: EvidenceStatus; rejections: EvidenceStatus }
@@ -153,6 +153,23 @@ export function deriveEligibility(facts: EligibilityFacts, ctx: { modelId: strin
   return { status: 'eligible' }
 }
 
+/**
+ * The catalog id the runtime would run `id` as, when the catalog does not
+ * list it verbatim — the ADAPTER's resolution (feature-detected), never a
+ * catalog-shape guess: a runtime without `models.resolveId` resolves
+ * nothing beyond its listed ids. A throwing resolver reads as unresolved.
+ */
+export async function resolveCatalogId(runtime: AgentRuntimeAdapter, id: string): Promise<string | null> {
+  const resolve = runtime.models.resolveId
+  if (!resolve) return null
+  try {
+    return await resolve.call(runtime.models, id)
+  } catch (error) {
+    log.warn('runtime model resolution failed; treating the id as unresolved', { id, error: String(error) })
+    return null
+  }
+}
+
 type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown }
 
 async function settle<T>(p: Promise<T>): Promise<Settled<T>> {
@@ -201,14 +218,22 @@ export async function getModelEligibility(
   if (rejections.ok) for (const r of rejections.value) rejectionByModel.set(r.model, r)
 
   const ids = new Set<string>([...catalogById.keys(), ...(opts.extraIds ?? [])])
-  const catalogIds = [...catalogById.keys()]
   const byModel: EligibilityReport['byModel'] = new Map()
 
+  // An asked-for id the catalog does not list verbatim is judged by the row
+  // the RUNTIME resolves it to — its rule, not a catalog-shape guess (an
+  // ambiguous bare id is the adapter's call; a wrong provider on a real id
+  // never resolves by bare name because the runtime would not run it).
+  const resolutions = new Map<string, string | null>()
+  if (catalog.ok) {
+    await Promise.all([...ids].filter((id) => !catalogById.has(id)).map(async (id) => {
+      const resolved = await resolveCatalogId(runtime, id)
+      resolutions.set(id, resolved !== null && resolved !== id && catalogById.has(resolved) ? resolved : null)
+    }))
+  }
+
   for (const id of ids) {
-    // An asked-for id the catalog does not list verbatim may still be a row
-    // under the runtime's own resolution (bare id, provider rename) — judge
-    // it by that row. Ambiguous ⇒ no resolution ⇒ not_in_catalog, never a guess.
-    const resolvedTo = !catalogById.has(id) && catalog.ok ? mapModelToCatalog(id, catalogIds) : null
+    const resolvedTo = resolutions.get(id) ?? null
     const row = catalogById.get(resolvedTo ?? id)
     const provider = providerOf(resolvedTo ?? id)
 

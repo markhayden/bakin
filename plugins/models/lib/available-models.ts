@@ -103,11 +103,16 @@ export interface FetchResult {
   error?: string
 }
 
+/** The RAW runtime snapshot a live load produced (eligibility is overlaid per caller, never cached). */
+type LiveLoad =
+  | { ok: true; models: AvailableModel[]; fetchedAt: number }
+  | { ok: false; error: string; stale: boolean }
+
 // In-flight promise dedupe — two concurrent /available requests on a
 // cold-cold start would otherwise both ask the runtime for its complete
 // model list, which can be slow. With this, the second caller awaits
-// the first's result.
-let inflightFetch: Promise<FetchResult> | null = null
+// the first's RAW result and overlays its own scope on top.
+let inflightLoad: Promise<LiveLoad> | null = null
 let lastRuntimeModelFetchWarning: { message: string; at: number } | null = null
 
 // Runtime epoch (#907, D29): bumped whenever the runtime behind the catalog
@@ -123,7 +128,7 @@ export function resetModelsCache(): void {
   catalogEpoch++
   setModelsCache(null)
   clearPersistedCache()
-  inflightFetch = null
+  inflightLoad = null
 }
 const MODEL_FETCH_WARNING_TTL = 60_000
 
@@ -154,6 +159,11 @@ function withFreshTiers(models: AvailableModel[]): AvailableModel[] {
 let lastOverlayWarning = 0
 const OVERLAY_WARNING_TTL = 60_000
 
+/** Who a catalog read is FOR: an agent's picker is judged under that agent's credentials. */
+export interface CatalogScope {
+  agentId?: string
+}
+
 /**
  * Overlay ELIGIBILITY (#907; subsumes the #852 rejection overlay) on every
  * read — same posture as withFreshTiers: ledger + credential state is
@@ -162,8 +172,10 @@ const OVERLAY_WARNING_TTL = 60_000
  * pickers can disable it WITH the reason. The cached rows are the catalog
  * snapshot the engine folds over (no second runtime round-trip); missing
  * evidence reads `unknown` (FAIL OPEN — a DB glitch must not starve routing).
+ * Scoped to an agent, the credential fact is THAT agent's (runtimes that
+ * key auth per agent) — the same scope the write path validates under.
  */
-export async function applyEligibilityOverlay(ctx: PluginContext, models: AvailableModel[]): Promise<AvailableModel[]> {
+export async function applyEligibilityOverlay(ctx: PluginContext, models: AvailableModel[], scope: CatalogScope = {}): Promise<AvailableModel[]> {
   const report = await getModelEligibility(ctx.runtime, {
     catalog: models.map((m) => ({
       id: m.id,
@@ -171,6 +183,7 @@ export async function applyEligibilityOverlay(ctx: PluginContext, models: Availa
       ...(m.unavailableReason ? { unavailableReason: m.unavailableReason } : {}),
       ...(m.local ? { local: true } : {}),
     })),
+    ...(scope.agentId ? { agentId: scope.agentId } : {}),
   })
   // Runtime-unavailable rows are kept ONLY when a persisted selection points
   // at them: a dead pin must stay visible (disabled, with its reason) in the
@@ -211,15 +224,16 @@ async function referencedModelIds(ctx: PluginContext): Promise<Set<string>> {
   }
 }
 
-export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: boolean }): Promise<FetchResult> {
+export async function fetchAvailableModels(ctx: PluginContext, opts: { force?: boolean } & CatalogScope = {}): Promise<FetchResult> {
+  const scope: CatalogScope = opts.agentId ? { agentId: opts.agentId } : {}
   // force: skip both caches and fetch live — the repair path for stale/
   // missing pricing (a health repair must refresh deterministically, not
   // depend on a human visiting the Models page to trigger it).
-  if (!opts?.force) {
+  if (!opts.force) {
     // 1. Hot read — in-memory cache (fresh by TTL)
     const memCached = getModelsCache()
     if (memCached && Date.now() - memCached.fetchedAt < CACHE_TTL) {
-      return { models: await applyEligibilityOverlay(ctx, withFreshTiers(memCached.models)), cached: true, cachedAt: memCached.fetchedAt, stale: false }
+      return { models: await applyEligibilityOverlay(ctx, withFreshTiers(memCached.models), scope), cached: true, cachedAt: memCached.fetchedAt, stale: false }
     }
 
     // 2. Persistent cache hydration — survives server restart even when
@@ -229,39 +243,49 @@ export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: 
     if (diskCached) {
       setModelsCache({ models: diskCached.models, fetchedAt: diskCached.fetchedAt })
       const stale = Date.now() - diskCached.fetchedAt >= CACHE_TTL
-      return { models: await applyEligibilityOverlay(ctx, withFreshTiers(diskCached.models)), cached: true, cachedAt: diskCached.fetchedAt, stale }
+      return { models: await applyEligibilityOverlay(ctx, withFreshTiers(diskCached.models), scope), cached: true, cachedAt: diskCached.fetchedAt, stale }
     }
   }
 
-  // 3. No cache → live fetch. Dedupe concurrent callers against one
-  //    in-flight promise. On success: write both caches. On failure:
-  //    honest empty state — no fake data.
-  if (inflightFetch) return inflightFetch
+  // 3. No cache → live fetch (deduped); the overlay is per caller because
+  //    two concurrent readers may be asking for different agents.
+  const loaded = await loadLive(ctx)
+  if (!loaded.ok) return { models: [], cached: false, cachedAt: null, stale: loaded.stale, error: loaded.error }
+  return { models: await applyEligibilityOverlay(ctx, loaded.models, scope), cached: false, cachedAt: loaded.fetchedAt, stale: false }
+}
+
+/**
+ * Live runtime load, deduped against one in-flight promise. On success:
+ * write both caches with the RAW snapshot. On failure: honest empty state —
+ * no fake data.
+ */
+function loadLive(ctx: PluginContext): Promise<LiveLoad> {
+  if (inflightLoad) return inflightLoad
   const startedEpoch = catalogEpoch
-  let self: Promise<FetchResult> | null = null
-  const fetch = (async (): Promise<FetchResult> => {
+  let self: Promise<LiveLoad> | null = null
+  const load = (async (): Promise<LiveLoad> => {
     try {
-      const models = await loadConfiguredModelsFromRuntime(ctx as unknown as PluginContext)
+      const models = await loadConfiguredModelsFromRuntime(ctx)
       const now = Date.now()
       if (catalogEpoch !== startedEpoch) {
         // The runtime changed underneath this fetch: serve nothing stale and
         // publish nothing — the next caller fetches from the new runtime.
-        return { models: [], cached: false, cachedAt: null, stale: true, error: 'runtime changed during fetch' }
+        return { ok: false, error: 'runtime changed during fetch', stale: true }
       }
-      // Caches persist the RAW runtime snapshot; only the response is
-      // overlaid — rejection truth lives in the ledger alone.
+      // Caches persist the RAW runtime snapshot; only responses are
+      // overlaid — rejection + credential truth never enters the cache.
       setModelsCache({ models, fetchedAt: now })
       writePersistedCache({ models, fetchedAt: now, source: 'runtime' })
-      return { models: await applyEligibilityOverlay(ctx, models), cached: false, cachedAt: now, stale: false }
+      return { ok: true, models, fetchedAt: now }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       warnRuntimeModelFetchFailed(message)
-      return { models: [], cached: false, cachedAt: null, stale: false, error: message }
+      return { ok: false, error: message, stale: false }
     } finally {
-      if (inflightFetch === self) inflightFetch = null
+      if (inflightLoad === self) inflightLoad = null
     }
   })()
-  self = fetch
-  inflightFetch = fetch
-  return fetch
+  self = load
+  inflightLoad = load
+  return load
 }

@@ -49,6 +49,8 @@ interface Fixture {
   hangNextUpdate(): { release(): void; fail(err: Error): void }
   /** Make the next agents.update for ONE agent hang (several can be armed at once). */
   hangUpdate(agentId: string): { release(): void; fail(err: Error): void }
+  /** Make the next models.listAvailable hang (blocks a mutation inside plan()) until released; `reached` flips when it is hit. */
+  hangNextListAvailable(): { release(): void; readonly reached: boolean }
 }
 
 function fixture(opts: { pi?: boolean; deadlineMs?: number; bootId?: string } = {}): Fixture {
@@ -57,6 +59,7 @@ function fixture(opts: { pi?: boolean; deadlineMs?: number; bootId?: string } = 
   let hang: { promise: Promise<void>; release(): void; fail(err: Error): void } | null = null
   /** Per-agent hangs for overlapping-write scenarios (`hangUpdate(agentId)`). */
   const hangs = new Map<string, { promise: Promise<void>; release(): void; fail(err: Error): void }>()
+  let catalogGate: { promise: Promise<void>; reached: boolean } | null = null
   const routing = { config: { routes: [], tagOverrides: [] } as RoutingConfig, uiMode: null as 'simple' | 'advanced' | null }
   const policy = { defaultModel: LIVE, fallbackModels: [] as string[], defaultSubagentModel: null as string | null, aliases: {} as Record<string, string> }
   const base = createMockRuntimeAdapter({
@@ -81,12 +84,17 @@ function fixture(opts: { pi?: boolean; deadlineMs?: number; bootId?: string } = 
     },
     models: {
       ...base.models,
-      listAvailable: async () => [
-        { id: LIVE, available: true },
-        { id: ASTRA, available: true },
-        { id: DEAD, available: false, unavailableReason: 'no_credentials' as const },
-        { id: 'openai-codex/gpt-5.6-luna', available: true },
-      ],
+      listAvailable: async () => {
+        const gate = catalogGate
+        catalogGate = null
+        if (gate) { gate.reached = true; await gate.promise }
+        return [
+          { id: LIVE, available: true },
+          { id: ASTRA, available: true },
+          { id: DEAD, available: false, unavailableReason: 'no_credentials' as const },
+          { id: 'openai-codex/gpt-5.6-luna', available: true },
+        ]
+      },
       routingSupport: () => ({
         defaultModel: true,
         fallbackModels: !opts.pi,
@@ -130,6 +138,12 @@ function fixture(opts: { pi?: boolean; deadlineMs?: number; bootId?: string } = 
       const promise = new Promise<void>((res, rej) => { release = res; fail = rej })
       hangs.set(agentId, { promise, release, fail })
       return { release, fail }
+    },
+    hangNextListAvailable() {
+      let release!: () => void
+      const gate = { promise: new Promise<void>((res) => { release = res }), reached: false }
+      catalogGate = gate
+      return { release, get reached() { return gate.reached } }
     },
   }
 }
@@ -345,6 +359,30 @@ describe('mutateSelections — late-settling writes (S10)', () => {
     const { pending } = await m.reconcile()
     expect(pending.map((p) => p.document)).toEqual(['agent:enrich'])
     // …so the settled document is writable again, not 409 write_pending forever.
+    const again = await m.mutate({ revision: (await m.reconcile()).revision, ops: [{ ref: 'agent:main:model', set: { model: null } }] })
+    expect(again.applied).toEqual(['agent:main:model'])
+  })
+
+  it('a write that settles while a LATER mutation is still PLANNING is released — the planner never writes back the list it read before planning', async () => {
+    const f = fixture({ deadlineMs: 30 })
+    const m = createSelectionMutator(f.deps)
+    const a = f.hangUpdate('main')
+    const first = await m.mutate({ revision: await currentRevision(f.deps), ops: [{ ref: 'agent:main:model', set: { model: ASTRA } }] })
+    expect(first.pending.map((p) => p.ref)).toEqual(['agent:main:model'])
+
+    // B reads the pending list (A unsettled) and then blocks inside plan()
+    // on the catalog read; A settles meanwhile.
+    const gate = f.hangNextListAvailable()
+    const second = m.mutate({ revision: first.revision, ops: [{ ref: 'route:relay', set: { model: ASTRA } }] })
+    await waitUntil(() => gate.reached, { label: 'B is planning' })
+    a.release()
+    const pendingFile = () => (JSON.parse(readFileSync(join(f.deps.stateDir, 'pending-writes.json'), 'utf8')) as { writes: unknown[] }).writes
+    await waitUntil(() => pendingFile().length === 0, { label: 'A settles while B plans' })
+    gate.release()
+    expect((await second).applied).toEqual(['route:relay'])
+
+    // A's record was not resurrected by B's write of the pending file.
+    expect((await m.reconcile()).pending).toEqual([])
     const again = await m.mutate({ revision: (await m.reconcile()).revision, ops: [{ ref: 'agent:main:model', set: { model: null } }] })
     expect(again.applied).toEqual(['agent:main:model'])
   })

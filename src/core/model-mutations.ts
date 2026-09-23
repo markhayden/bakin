@@ -444,13 +444,14 @@ export function createSelectionMutator(deps: MutationDeps) {
 
     const result: MutateResult = { applied: [], failed: [], pending: [], warnings, revision }
     // A retried document whose earlier record FAILED is being replaced now.
-    // Every write to the pending file below re-reads it first: a detached
-    // settle can land while a LATER write is still awaiting its deadline,
-    // and writing from a stale in-memory list would resurrect that record
-    // (a document reserved until restart).
+    // Every write to the pending file below re-reads it first — including
+    // this one: `records` was read BEFORE the asynchronous plan() above, and
+    // a detached settle can land during planning or while a LATER write is
+    // still awaiting its deadline. Writing from a stale in-memory list would
+    // resurrect that record (a document reserved until restart).
     const retried = new Set(writes.map((w) => w.document))
     const dropReplacedFailures = (list: PendingRecord[]) => list.filter((r) => !(r.failed && retried.has(r.document)))
-    writePending(deps.stateDir, dropReplacedFailures(records))
+    writePending(deps.stateDir, dropReplacedFailures(readPending(deps.stateDir)))
 
     for (const w of writes) {
       let settled = false

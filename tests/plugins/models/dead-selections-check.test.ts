@@ -153,6 +153,30 @@ describe('deadSelectionRepair', () => {
     expect(calls[0]!.map((p) => p.ref).sort()).toEqual(['agent:enrich:model', 'agent:pixel:model'])
   })
 
+  it('a SECOND preview never changes what the FIRST preview applies — items are keyed by the exact proposal they showed, not by ref', async () => {
+    const OTHER = 'openai-codex/gpt-5.5'
+    const applied: Proposal[] = []
+    let desc = description()
+    const d: DeadSelectionDeps = {
+      describe: async () => desc,
+      apply: async (proposals) => { applied.push(...proposals); return { applied: proposals.map((p) => p.ref), failed: [], pending: [], warnings: [], revision: 'rev-3' } },
+    }
+    const repair = deadSelectionRepair(d)
+    const first = await repair.plan({ type: 'incidents', reportId: 'r1', ids: ['models:models:dead-selection:agent:enrich:model'] })
+    // The configuration moves and the proposal for the same ref changes target.
+    desc = description({
+      revision: 'rev-2',
+      proposals: [{ ref: 'agent:enrich:model', from: DEAD, to: OTHER, reason: 'recommended', source: 'recommender', revision: 'rev-2' }],
+    })
+    const second = await repair.plan({ type: 'incidents', reportId: 'r2', ids: ['models:models:dead-selection:agent:enrich:model'] })
+    expect(second[0]!.id).not.toBe(first[0]!.id)
+
+    const results = await repair.apply(first.map((i) => ({ ...i, id: `models.apply-model-proposal:${i.id}` })))
+    expect(results[0]).toMatchObject({ status: 'applied' })
+    // Exactly what the first preview displayed — FIX under rev-1, not OTHER under rev-2.
+    expect(applied).toEqual([{ ref: 'agent:enrich:model', from: DEAD, to: FIX, reason: 'no credentials for openai', source: 'same-id-credentialed-provider', revision: 'rev-1' }])
+  })
+
   it('reports failed when the mutation refuses (stale revision / write pending)', async () => {
     const d: DeadSelectionDeps = { describe: async () => description(), apply: async () => { throw Object.assign(new Error('the configuration changed'), { code: 'stale_revision', status: 409 }) } }
     const repair = deadSelectionRepair(d)

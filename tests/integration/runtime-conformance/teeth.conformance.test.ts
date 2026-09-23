@@ -183,6 +183,25 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
       .rejects.toThrow(/evidence must be/)
   })
 
+  it('fails the models.resolveId declaration check on a throwing stub, and the honesty check on a guessing resolver', async () => {
+    const base = createMockRuntimeAdapter()
+    const stubbed = { ...base, models: { ...base.models, resolveId: async () => { throw new Error('unsupported') } } }
+    await expect(
+      runtimeConformanceChecks.resolveIdMemberMatchesDeclaration(quietTarget(stubbed), { resolveId: 'absent' }),
+    ).rejects.toThrow(/member omission/)
+    await expect(
+      runtimeConformanceChecks.resolveIdMemberMatchesDeclaration(quietTarget(base), { resolveId: 'present' }),
+    ).rejects.toThrow(/omits the member/)
+    // A resolver that maps EVERYTHING onto the first catalog row would let a dead selection pass as live.
+    const guessing = { ...base, models: { ...base.models, resolveId: async () => 'mock/conformance-model' } }
+    await expect(runtimeConformanceChecks.resolveIdIsHonest(quietTarget(guessing)))
+      .rejects.toThrow(/must be null for a reference no turn could run/)
+    // A resolver that rewrites a listed id is not the runtime's catalog.
+    const rewriting = { ...base, models: { ...base.models, resolveId: async () => null } }
+    await expect(runtimeConformanceChecks.resolveIdIsHonest(quietTarget(rewriting)))
+      .rejects.toThrow(/must return the listed id verbatim/)
+  })
+
   it('fails the restartAdvice declaration check on a throwing stub, and the shape check on malformed advice', async () => {
     const base = createMockRuntimeAdapter()
     const stubbed = { ...base, restartAdvice: () => { throw new Error('unsupported') } }

@@ -137,6 +137,19 @@ export function createModelsSurface(): AgentRuntimeAdapter['models'] {
     },
 
     /**
+     * The catalog id a turn would RUN `ref` as — the SAME `findPiModel`
+     * rule the turn path applies (exact `provider/id`, else the first
+     * registry model whose bare id matches), qualified back to Bakin's
+     * `provider/id` form. Null when no turn could resolve it.
+     */
+    async resolveId(ref: string): Promise<string | null> {
+      const { registry } = await getModelRegistry()
+      await registry.refresh()
+      const model = findPiModel(ref)
+      return model ? qualifiedModelId(String(model.provider), model.id) : null
+    },
+
+    /**
      * Account-callability probe (#852): a minimal direct completion via
      * ModelRuntime.completeSimple — no agent session, no workspace, no
      * history. The SDK resolves provider failures into the message

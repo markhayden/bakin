@@ -10,6 +10,8 @@
  * unknown finding per source — selections whose verdict depends on it are
  * `unknown`, not dead, and produce no per-selection noise.
  */
+import { createHash } from 'crypto'
+
 import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@bakin/core/plugin-types'
 import { healthError, healthHealthy, healthObserved, healthUnknown } from '@makinbakin/sdk/utils'
 import type { HealthObservationInput, HealthRepairPlanItem, HealthRepairTarget, ModelEligibilitySummary } from '@makinbakin/sdk/types'
@@ -115,10 +117,25 @@ function refFromIncidentId(id: string): string | null {
   return idx === -1 ? null : id.slice(idx + INCIDENT_KEY_PREFIX.length)
 }
 
+/**
+ * A plan item's identity IS the proposal it displayed: {ref, from, to,
+ * revision} hashed into the id, so two previews that propose different
+ * things for one ref are two different items — applying the first can
+ * never pick up what the second planned. The ref rides along for humans.
+ */
+function planItemId(proposal: Proposal): string {
+  const token = createHash('sha256').update(JSON.stringify([proposal.ref, proposal.from, proposal.to, proposal.revision])).digest('hex').slice(0, 16)
+  return `${DEAD_SELECTION_REPAIR_ID}:${token}:${proposal.ref}`
+}
+
+/** Bounded memory of planned proposals — previews are cheap and repeated; the oldest fall off. */
+const PLANNED_LIMIT = 256
+
 export function deadSelectionRepair(deps: DeadSelectionDeps): HealthRepairActionDefinition {
   // What was PLANNED is what gets applied: the proposal (incl. its revision)
-  // is held from plan() to apply() so a change in between is refused by the
-  // mutator's revision check instead of being silently re-targeted.
+  // is held from plan() to apply() under its item id so a change in between
+  // is refused by the mutator's revision check instead of being silently
+  // re-targeted — and a later preview cannot overwrite an earlier one.
   const planned = new Map<string, Proposal>()
   return {
     id: DEAD_SELECTION_REPAIR_ID,
@@ -132,9 +149,12 @@ export function deadSelectionRepair(deps: DeadSelectionDeps): HealthRepairAction
         const ref = refFromIncidentId(incidentId)
         const proposal = ref ? proposalByRef.get(ref) : undefined
         if (!ref || !proposal?.to) continue
-        planned.set(ref, proposal)
+        const id = planItemId(proposal)
+        planned.delete(id)
+        planned.set(id, proposal)
+        while (planned.size > PLANNED_LIMIT) planned.delete(planned.keys().next().value!)
         items.push({
-          id: `apply-model-proposal:${ref}`,
+          id,
           actionId: DEAD_SELECTION_REPAIR_ID,
           title: `Repoint ${ref} to ${proposal.to}`,
           reason: proposal.reason,
@@ -154,10 +174,10 @@ export function deadSelectionRepair(deps: DeadSelectionDeps): HealthRepairAction
     },
     async apply(items) {
       // The registry namespaces item ids with the owning action id
-      // (`models.apply-model-proposal:apply-model-proposal:<ref>`), so the
-      // ref is whatever follows the LAST marker.
-      const marker = 'apply-model-proposal:'
-      const refOf = (item: HealthRepairPlanItem) => item.id.slice(item.id.lastIndexOf(marker) + marker.length)
+      // (`models.apply-model-proposal:apply-model-proposal:<token>:<ref>`),
+      // so the planned id is whatever follows the LAST marker.
+      const marker = `${DEAD_SELECTION_REPAIR_ID}:`
+      const plannedIdOf = (item: HealthRepairPlanItem) => item.id.slice(item.id.lastIndexOf(marker))
       const failure = (item: HealthRepairPlanItem, message: string) => ({
         itemId: item.id, actionId: item.actionId, status: 'failed' as const, message, affectedCheckIds: [DEAD_SELECTIONS_CHECK_ID], changes: [],
       })
@@ -165,21 +185,21 @@ export function deadSelectionRepair(deps: DeadSelectionDeps): HealthRepairAction
       // Every proposal of one plan carries the same revision; the first
       // successful write moves it, so the batch goes out as ONE mutation
       // under that shared revision — never one call per selection.
-      const live: Array<{ item: HealthRepairPlanItem; ref: string; proposal: Proposal }> = []
+      const live: Array<{ item: HealthRepairPlanItem; plannedId: string; ref: string; proposal: Proposal }> = []
       const results: Array<{ itemId: string; actionId: string; status: 'applied' | 'failed'; message: string; affectedCheckIds: string[]; changes: HealthRepairPlanItem['changes'] }> = []
       for (const item of items) {
-        const ref = refOf(item)
-        const proposal = planned.get(ref)
-        if (!proposal?.to) results.push(failure(item, `the repair plan for ${ref} expired — run the check again`))
-        else live.push({ item, ref, proposal })
+        const plannedId = plannedIdOf(item)
+        const proposal = planned.get(plannedId)
+        if (!proposal?.to) results.push(failure(item, `the repair plan for ${item.title} expired — run the check again`))
+        else live.push({ item, plannedId, ref: proposal.ref, proposal })
       }
       const byRevision = new Map<string, typeof live>()
       for (const entry of live) byRevision.set(entry.proposal.revision, [...(byRevision.get(entry.proposal.revision) ?? []), entry])
       for (const batch of byRevision.values()) {
         try {
           const result = await deps.apply(batch.map((b) => b.proposal))
-          for (const { item, ref, proposal } of batch) {
-            planned.delete(ref)
+          for (const { item, plannedId, ref, proposal } of batch) {
+            planned.delete(plannedId)
             const ok = result.applied.includes(ref)
             const pending = result.pending.some((p) => p.ref === ref)
             results.push({
