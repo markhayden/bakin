@@ -276,9 +276,10 @@ probe) behind `use-catalog.ts`.
   persists them, else one muted "doesn't support …" line; hidden, not
   disabled, D11). This is where future recommendations / model news land.
   **Agents** = a `GuideCard` (why most agents stay on the default; pin up for
-  hard work, down for volume; subagents are a separate dial) then one
-  DataTable (Agent | Model | Subagents when supported — headers once, like
-  Work routing) per roster team (`useAgentStore` teams + `displaySettings
+  hard work, down for volume; subagents are a separate dial) then ONE
+  sortable DataTable (Agent | Team | Model | Subagents when supported —
+  headers once, like Work routing; Agent and Team sort, the main agent
+  leads by default, then roster team order, then name) (`useAgentStore` teams + `displaySettings
   [id].teamId`; "Not on a team" last), soft `default`/`own model` chips,
   subagent column when supported. **Work routing** = a `GuideCard` (agent
   work vs background chores, thinking, tags) then two DataTables — Agent

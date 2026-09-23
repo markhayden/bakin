@@ -1,14 +1,15 @@
 'use client'
 
 /**
- * Advanced › Agents: per-agent overrides, grouped by team when the roster
- * defines teams. Opens with plain-words guidance — most agents should stay
- * on the default; pin a model only where one agent's work is different
- * enough to earn it.
+ * Advanced › Agents: one sortable table of every agent — Agent | Team |
+ * Model | Subagents (when the runtime manages them). The main agent leads
+ * by default; Agent and Team sort. Opens with plain-words guidance — most
+ * agents should stay on the default; pin a model only where one agent's
+ * work is different enough to earn it.
  */
 import { Users } from 'lucide-react'
 import { useAgent, useAgentColor, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
-import { Section, Stack } from '@makinbakin/sdk/layout'
+import { Stack } from '@makinbakin/sdk/layout'
 import { AgentAvatar, DEFAULT_MODEL_VALUE, DataTable, ModelSelect, type DataTableColumn, type ModelSelectOption } from '@makinbakin/sdk/patterns'
 import { Badge, SystemState, Text } from '@makinbakin/sdk/ui'
 
@@ -36,12 +37,6 @@ function OverrideAgentAvatar({ agentId, name }: { agentId: string; name: string 
   )
 }
 
-interface TeamGroup {
-  id: string
-  label: string
-  rows: AgentRow[]
-}
-
 export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
   const selections = sel.selections
   const states = selections?.states ?? []
@@ -54,23 +49,27 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
   const rows = [...agentRows(states)].sort((a, b) => Number(b.agentId === mainAgentId) - Number(a.agentId === mainAgentId))
   const highlight = sel.highlightRef
 
-  // Group by the roster's teams (team order, then label); agents without a
-  // team come last so the org structure reads top-down.
-  const orderedTeams = [...teams].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.label.localeCompare(b.label))
-  const groups: TeamGroup[] = orderedTeams
-    .map((team) => ({ id: team.id, label: team.label, rows: rows.filter((r) => displaySettings[r.agentId]?.teamId === team.id) }))
-    .filter((g) => g.rows.length > 0)
-  const teamed = new Set(groups.flatMap((g) => g.rows.map((r) => r.agentId)))
-  const rest = rows.filter((r) => !teamed.has(r.agentId))
-  if (rest.length > 0) groups.push({ id: '__none', label: groups.length > 0 ? 'Not on a team' : 'Agents', rows: rest })
-  groups.sort((a, b) => Number(b.rows.some((r) => r.agentId === mainAgentId)) - Number(a.rows.some((r) => r.agentId === mainAgentId)))
+  // Default order: the main agent, then the roster's team order, then name.
+  // Column sorts (Agent, Team) take over from here — the table self-sorts.
+  const teamRank = new Map([...teams].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.label.localeCompare(b.label)).map((t, i) => [t.id, i]))
+  const teamOf = (row: AgentRow) => teams.find((t) => t.id === displaySettings[row.agentId]?.teamId) ?? null
+  rows.sort((a, b) => {
+    if (a.agentId === mainAgentId) return -1
+    if (b.agentId === mainAgentId) return 1
+    const ta = teamOf(a); const tb = teamOf(b)
+    const ra = ta ? teamRank.get(ta.id) ?? 0 : Number.MAX_SAFE_INTEGER
+    const rb = tb ? teamRank.get(tb.id) ?? 0 : Number.MAX_SAFE_INTEGER
+    return ra - rb || a.name.localeCompare(b.name)
+  })
   const pinned = rows.filter((r) => sel.effective(r.modelRef).model).length
 
   // One header row per table, like Work routing — never a label on every row.
-  const columns: ReadonlyArray<DataTableColumn<AgentRow>> = [
+  const columns: ReadonlyArray<DataTableColumn<AgentRow, 'agent' | 'team'>> = [
     {
       key: 'agent',
       header: 'Agent',
+      sortable: true,
+      sortValue: (row) => row.name,
       cellClassName: 'whitespace-normal align-top',
       cell: (row) => {
         const own = sel.effective(row.modelRef)
@@ -89,6 +88,17 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
             <SelectionCallout sel={sel} refName={row.subagentRef} />
           </div>
         )
+      },
+    },
+    {
+      key: 'team',
+      header: 'Team',
+      sortable: true,
+      sortValue: (row) => teamOf(row)?.label ?? null,
+      cellClassName: 'align-top',
+      cell: (row) => {
+        const team = teamOf(row)
+        return team ? <span data-agent-team={team.id}>{team.label}</span> : <Text as="span" size="meta" tone="muted">—</Text>
       },
     },
     {
@@ -129,7 +139,7 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
               </div>
             )
           },
-        } satisfies DataTableColumn<AgentRow>]
+        } satisfies DataTableColumn<AgentRow, 'agent' | 'team'>]
       : []),
   ]
 
@@ -148,21 +158,15 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
 
       {rows.length === 0 ? (
         <SystemState kind="initial-empty" scope="section" title="No agents configured" description="Agents appear here once the runtime reports its roster." />
-      ) : groups.map((group) => (
-        <Section key={group.id} spacing="compact" aria-labelledby={`agents-group-${group.id}`} data-testid={`agents-group-${group.id}`}>
-          <div className="flex min-w-0 items-center gap-bakin-2">
-            <h2 id={`agents-group-${group.id}`} className="m-0">{group.label}</h2>
-            <Badge tone="neutral" variant="soft" size="xs">{group.rows.length} agent{group.rows.length === 1 ? '' : 's'}</Badge>
-          </div>
-          <DataTable
-            label={`${group.label} models`}
-            columns={columns}
-            rows={group.rows}
-            rowKey={(row) => row.agentId}
-            rowProps={(row) => ({ 'data-agent-model-row': row.agentId, 'data-highlighted': highlight === row.modelRef || highlight === row.subagentRef ? 'true' : undefined })}
-          />
-        </Section>
-      ))}
+      ) : (
+        <DataTable
+          label="Agent models"
+          columns={columns}
+          rows={rows}
+          rowKey={(row) => row.agentId}
+          rowProps={(row) => ({ 'data-agent-model-row': row.agentId, 'data-highlighted': highlight === row.modelRef || highlight === row.subagentRef ? 'true' : undefined })}
+        />
+      )}
       {rows.length > 0 && !support?.perAgentSubagentModel ? (
         <Text size="meta" tone="muted">The active runtime doesn&apos;t manage per-agent subagent models.</Text>
       ) : null}

@@ -322,13 +322,19 @@ describe('ModelsPage component', () => {
       expect(screen.getByRole('button', { name: 'Remove fallback 1' })).toBeTruthy()
     })
 
-    it('Agents are grouped by team when the roster defines teams', async () => {
-      agentStoreState = { teams: [{ id: 'ops', label: 'Ops', color: '#f00', reportsTo: null }], displaySettings: { patch: { teamId: 'ops' } } }
+    it('Agents carry a sortable Team column from the roster; the main agent leads by default', async () => {
+      agentStoreState = { teams: [{ id: 'ops', label: 'Ops', reportsTo: null }], displaySettings: { patch: { teamId: 'ops' } } }
+      configState = { ...configState, agents: [...configState.agents, { ...configState.agents[0]!, agentId: 'main', name: 'Main' }] }
       render(<ModelsPage />)
       await openTab('Agents')
-      expect(await screen.findByTestId('agents-group-ops')).toBeTruthy()
-      expect(within(screen.getByTestId('agents-group-ops')).getByText('Patch')).toBeTruthy()
-      expect(screen.queryByTestId('agents-group-__none')).toBeNull()
+      const rows = await screen.findAllByRole('row')
+      expect(rows.some((r) => r.textContent?.includes('Main'))).toBe(true)
+      const patchRow = (await screen.findByText('Patch')).closest('[data-agent-model-row]') as HTMLElement
+      expect(within(patchRow).getByText('Ops')).toBeTruthy()
+      // Main first by default (Pixel-less fixture: Main before Patch), Team header sorts.
+      const names = screen.getAllByRole('row').map((r) => r.textContent ?? '').filter((t) => t.includes('Use default model')).map((t) => (t.includes('Main') ? 'Main' : 'Patch'))
+      expect(names[0]).toBe('Main')
+      expect(screen.getByRole('columnheader', { name: /Team/ })).toBeTruthy()
     })
 
     it('knobs the runtime cannot persist are hidden behind one muted line (Pi shape)', async () => {
