@@ -187,6 +187,35 @@ Sharding is a PR-latency optimization, not a correctness one.
 `bun run lint` gates PR and main. It used to run only in `release.yml`, so a lint error
 could merge to main and surface weeks later while cutting a release.
 
+### Every job has a deadline
+
+A healthy PR run finishes in ~6 min wall clock (UI lanes 2–6 min each, test shards 1–2
+min). Every job in `ci-pr.yml`, `ci-main.yml`, `ui-visual.yml` and `release.yml` carries
+`timeout-minutes` at roughly **3× its slowest green run**. Before that, a hung step cost
+GitHub's 6h default — the whole run looked "hours long" when it was one step that never
+produced a verdict. Keep the rule when adding a job; a job that legitimately needs longer
+should widen its own number, not lose it. (`timeout-minutes` cannot sit on a job that
+`uses:` a reusable workflow — set it inside the called workflow's jobs.)
+
+### The conformance-runner hang (2026-09-23)
+
+`scripts/ui/verify-plugin-conformance.ts` (the `Contract verifies + catalog` lane) used to
+verify every fixture in ONE bun process, launching and closing a Chromium per fixture.
+Inside the CI Playwright container that degrades cumulatively: after a few launches the
+next `chromium.launch()` gets its devtools pipe torn down immediately (`Connection
+terminated while reading from pipe`), Playwright waits its 180s launch timeout, throws, and
+the process then **never exits** — the event loop stays pinned. Reproduced in the image:
+one fixture three times in one process → runs 1–2 pass in ~6s, run 3 hits the launch
+timeout; the same fixture alone passes every time. It was the launch COUNT, not the
+fixture (a seventh fixture, #911's `spend`, was just the first to cross the line).
+
+The runner now verifies each fixture in its own process (`--fixture <name>` child mode,
+`runIsolated`) under a 120s deadline — SIGTERM (Playwright closes its browsers), SIGKILL
+after 5s if ignored — and both child and parent `process.exit` with the verdict rather
+than draining the loop. A fixture with no verdict is a NAMED failure in the log within two
+minutes. `tests/ui/conformance/verify-runner-isolation.test.ts` pins the deadline and the
+SIGKILL escalation with real subprocesses.
+
 ### The completeness gate
 
 `scripts/check-test-completeness.ts` fails a run in which any discovered test file was

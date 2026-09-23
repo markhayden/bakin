@@ -139,38 +139,120 @@ function uniqueRules(rules: readonly PluginUiConformanceRule[]): PluginUiConform
   return [...new Set(rules)].sort()
 }
 
-async function main(): Promise<void> {
+/**
+ * Deadline for one fixture (build + two-viewport browser pass; ~6s when
+ * healthy) and for the browser-teeth suite. Generous enough for a loaded
+ * runner, small enough that a dead browser launch (Playwright's own launch
+ * timeout is 180s) becomes a named failure instead of a hung job.
+ */
+const ISOLATED_TIMEOUT_MS = 120_000
+const ISOLATED_KILL_GRACE_MS = 5_000
+
+export type IsolatedOutcome = { status: 'exited'; code: number } | { status: 'timeout' }
+
+/**
+ * Run a command in its own process with a hard deadline: SIGTERM at the
+ * deadline (Playwright closes its browsers on it), SIGKILL after the grace
+ * period when the process ignores that. Output streams straight through so a
+ * failure's evidence is in the job log, not lost in a buffer.
+ */
+export async function runIsolated(
+  command: string[],
+  options: { cwd?: string; env?: Record<string, string | undefined>; timeoutMs?: number; graceMs?: number } = {},
+): Promise<IsolatedOutcome> {
+  const timeoutMs = options.timeoutMs ?? ISOLATED_TIMEOUT_MS
+  const graceMs = options.graceMs ?? ISOLATED_KILL_GRACE_MS
+  const child = Bun.spawn(command, {
+    cwd: options.cwd ?? REPO_ROOT,
+    env: { ...process.env, ...options.env },
+    stdout: 'inherit',
+    stderr: 'inherit',
+  })
+  let timedOut = false
+  const deadline = setTimeout(() => {
+    timedOut = true
+    child.kill('SIGTERM')
+    setTimeout(() => child.kill('SIGKILL'), graceMs).unref()
+  }, timeoutMs)
+  try {
+    const code = await child.exited
+    return timedOut ? { status: 'timeout' } : { status: 'exited', code }
+  } finally {
+    clearTimeout(deadline)
+  }
+}
+
+/** Verify one fixture in THIS process and print its verdict. */
+async function verifyFixture(fixture: TeethFixture): Promise<boolean> {
+  const report = await runPluginUiConformance({
+    cwd: REPO_ROOT,
+    config: {
+      pluginId: fixture.pluginId,
+      fixtureEntry: fixture.fixtureEntry ?? `${FIXTURE_ROOT}/${fixture.name}/fixture.tsx`,
+      reportDir: `${REPORT_ROOT}/${fixture.name}`,
+    },
+  })
+  const actualRules = uniqueRules(report.findings.map((finding) => finding.rule))
+  const expectedRules = uniqueRules(fixture.expectedRules)
+  if (JSON.stringify(actualRules) !== JSON.stringify(expectedRules)) {
+    console.error(`✗ ${fixture.name}: expected ${expectedRules.join(', ') || 'no findings'}; received ${actualRules.join(', ') || 'no findings'}`)
+    for (const finding of report.findings) console.error(`  ${formatPluginUiFinding(finding)}`)
+    return false
+  }
+  const messages = report.findings.map((finding) => finding.message).join('\n')
+  const missingMessages = fixture.expectedMessages.filter((expected) => !messages.includes(expected))
+  if (missingMessages.length > 0) {
+    console.error(`✗ ${fixture.name}: missing expected evidence: ${missingMessages.join(', ')}`)
+    for (const finding of report.findings) console.error(`  ${formatPluginUiFinding(finding)}`)
+    return false
+  }
+  console.log(`✓ ${fixture.name}: ${expectedRules.join(', ') || 'clean fixture passed'}`)
+  return true
+}
+
+/**
+ * Child mode (`--fixture <name>`): one fixture, one browser launch, then a
+ * HARD exit. Never let this process drain its event loop — after a failed
+ * browser launch Playwright leaves it pinned, which is exactly the hang the
+ * parent's deadline exists to catch.
+ */
+async function fixtureChild(name: string): Promise<never> {
+  const fixture = fixtures.find((candidate) => candidate.name === name)
+  if (!fixture) {
+    console.error(`✗ unknown fixture: ${name}`)
+    process.exit(2)
+  }
+  let passed = false
+  try {
+    passed = await verifyFixture(fixture)
+  } catch (error) {
+    console.error(`✗ ${fixture.name}: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  process.exit(passed ? 0 : 1)
+}
+
+async function main(): Promise<number> {
+  const fixtureFlag = process.argv.indexOf('--fixture')
+  if (fixtureFlag !== -1) return fixtureChild(process.argv[fixtureFlag + 1] ?? '')
+
   const enrollmentErrors = validateCorePluginUiEnrollment()
   if (enrollmentErrors.length > 0) {
     throw new Error(`Official core plugin UI enrollment is invalid:\n${enrollmentErrors.map((error) => `- ${error}`).join('\n')}`)
   }
 
+  let failed = false
+  // Every fixture gets its own process: browser launches never accumulate in
+  // one runtime, and a fixture that produces no verdict is killed and named
+  // instead of stalling the job.
   for (const fixture of fixtures) {
-    const report = await runPluginUiConformance({
-      cwd: REPO_ROOT,
-      config: {
-        pluginId: fixture.pluginId,
-        fixtureEntry: fixture.fixtureEntry ?? `${FIXTURE_ROOT}/${fixture.name}/fixture.tsx`,
-        reportDir: `${REPORT_ROOT}/${fixture.name}`,
-      },
-    })
-    const actualRules = uniqueRules(report.findings.map((finding) => finding.rule))
-    const expectedRules = uniqueRules(fixture.expectedRules)
-    if (JSON.stringify(actualRules) !== JSON.stringify(expectedRules)) {
-      console.error(`✗ ${fixture.name}: expected ${expectedRules.join(', ') || 'no findings'}; received ${actualRules.join(', ') || 'no findings'}`)
-      for (const finding of report.findings) console.error(`  ${formatPluginUiFinding(finding)}`)
-      process.exitCode = 1
-      continue
+    const startedAt = Date.now()
+    const outcome = await runIsolated(['bun', 'run', import.meta.path, '--fixture', fixture.name])
+    if (outcome.status === 'timeout') {
+      console.error(`✗ ${fixture.name}: no verdict within ${Math.round((Date.now() - startedAt) / 1000)}s — fixture process killed`)
+      failed = true
+    } else if (outcome.code !== 0) {
+      failed = true
     }
-    const messages = report.findings.map((finding) => finding.message).join('\n')
-    const missingMessages = fixture.expectedMessages.filter((expected) => !messages.includes(expected))
-    if (missingMessages.length > 0) {
-      console.error(`✗ ${fixture.name}: missing expected evidence: ${missingMessages.join(', ')}`)
-      for (const finding of report.findings) console.error(`  ${formatPluginUiFinding(finding)}`)
-      process.exitCode = 1
-      continue
-    }
-    console.log(`✓ ${fixture.name}: ${expectedRules.join(', ') || 'clean fixture passed'}`)
   }
   for (const entry of CORE_PLUGIN_UI_ENROLLMENT) {
     if (entry.status === 'migration-pending') {
@@ -181,22 +263,31 @@ async function main(): Promise<void> {
   }
   // Runner-behavior teeth that need a real browser stay env-gated in the
   // plain suite; this script is where they actually execute.
-  const browserTeeth = Bun.spawn(
+  const browserTeeth = await runIsolated(
     ['bun', 'test', 'tests/ui/conformance/focusable-disabled.browser.test.ts', '--isolate'],
-    { cwd: REPO_ROOT, env: { ...process.env, BAKIN_UI_BROWSER_TEST: '1' }, stdout: 'inherit', stderr: 'inherit' },
+    { env: { BAKIN_UI_BROWSER_TEST: '1' } },
   )
-  if (await browserTeeth.exited !== 0) {
+  if (browserTeeth.status === 'timeout') {
+    console.error('✗ runner browser teeth: no verdict before the deadline — process killed')
+    failed = true
+  } else if (browserTeeth.code !== 0) {
     console.error('✗ runner browser teeth: focusable-disabled behavior check failed')
-    process.exitCode = 1
+    failed = true
   }
 
-  if (process.exitCode) return
+  if (failed) return 1
   console.log(`Plugin UI conformance verified. Reports: ${resolve(REPO_ROOT, REPORT_ROOT)}`)
+  return 0
 }
 
 if (import.meta.main) {
-  main().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error))
-    process.exitCode = 1
-  })
+  // Hard exit either way: the verdict is printed, nothing left in the event
+  // loop may keep the job alive.
+  main().then(
+    (code) => process.exit(code),
+    (error) => {
+      console.error(error instanceof Error ? error.message : String(error))
+      process.exit(1)
+    },
+  )
 }
