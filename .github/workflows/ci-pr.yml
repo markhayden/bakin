@@ -12,11 +12,15 @@ concurrency:
   group: pr-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Every job carries a timeout-minutes of roughly 3x its slowest green run
+# (the whole workflow finishes in ~6 min when healthy). A hang without one
+# costs GitHub's 6h default before anything turns red.
 jobs:
   impact:
     name: UI impact
     if: ${{ github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
     outputs:
@@ -47,6 +51,7 @@ jobs:
     name: Checks
     if: ${{ github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -134,6 +139,7 @@ jobs:
     name: Tests
     if: ${{ github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     strategy:
@@ -196,6 +202,7 @@ jobs:
     name: Tests (stamped host)
     if: ${{ github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     strategy:
@@ -262,6 +269,7 @@ jobs:
     needs: [test]
     if: always() && needs.test.result != 'cancelled'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:

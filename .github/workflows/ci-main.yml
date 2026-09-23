@@ -20,6 +20,7 @@ jobs:
   full:
     name: Full Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -106,6 +107,7 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     strategy:
@@ -168,6 +170,7 @@ jobs:
     needs: [test]
     if: always() && needs.test.result != 'cancelled'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:

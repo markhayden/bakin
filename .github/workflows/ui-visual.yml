@@ -14,10 +14,16 @@ on:
 # The `visual` job at the bottom is a gate that aggregates them under the
 # historical required-check name — keep its id/name stable for branch
 # protection.
+#
+# Every job carries a timeout-minutes of roughly 3x its slowest green run
+# (all lanes finish in 2-6 min). Without one a hung step costs GitHub's 6h
+# default — the conformance runner did exactly that twice before it verified
+# fixtures in isolated processes.
 jobs:
   verify:
     name: Contract verifies + catalog
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     container:
       image: mcr.microsoft.com/playwright:v1.60.0-noble
       options: --init --ipc=host
@@ -73,6 +79,7 @@ jobs:
   stories:
     name: Story a11y + interactions (shard ${{ matrix.shard }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -121,6 +128,7 @@ jobs:
   visual-baselines:
     name: Visual baselines
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     container:
       image: mcr.microsoft.com/playwright:v1.60.0-noble
       options: --init --ipc=host
@@ -163,6 +171,7 @@ jobs:
   browsers:
     name: Behavior (${{ matrix.browser }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -226,6 +235,7 @@ jobs:
   visual:
     name: Canonical Playwright visuals
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     needs: [verify, stories, visual-baselines, browsers]
     if: always()
     permissions: {}
