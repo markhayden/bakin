@@ -13,9 +13,9 @@ Spec: [approved scope](../../.claude/specs/projects-ui-audit-fixes.md).
 Implementation started on the approved feature branches. Record checkpoint hashes and verification
 evidence when checking an item; a written plan is not a passing test.
 
-- [ ] T01: Establish isolated baseline and execution records
+- [x] T01: Establish isolated baseline and execution records
 - [ ] T02: Reproduce detail diagnostics and risky write behavior
-- [ ] T02b: Make scoped plugin replacement writes atomic
+- [x] T02b: Make scoped plugin replacement writes atomic
 - [ ] T03: Implement AgentSelect's approved appearance contract
 - [ ] T04: Preserve full Markdown context through managed sections
 - [ ] T05: Add bounded, accessible Markdown comparison

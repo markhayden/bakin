@@ -13,7 +13,16 @@ No dev server or production state was modified.
 - Core quick baseline: tokens/API pass; census stops at pre-existing compatibility
   drift (Projects 0.10.7 vs recorded 0.10.6). No matrix replacement performed.
 - Installed-SDK baseline browser run started using the previously verified package
-  assembled from prerequisite SHA 949da83f539ecb5c1eb4f0d71d88d159644d9254; result pending.
+  assembled from prerequisite SHA 949da83f539ecb5c1eb4f0d71d88d159644d9254; all eight fixtures passed with zero findings.
 
 Logs: `/private/tmp/projects-audit-{core,bits}-baseline*.log`.
 Further checks are recorded with each checkpoint; baseline failures are not fixes.
+
+## C0b — Atomic scoped plugin replacement (T02b)
+
+Three new tests failed before the fix: open readers observed replacement bytes,
+an interrupted write corrupted the target, and rename failure was not exercised.
+The existing atomicWriteText helper now owns replacement; append is unchanged.
+All six scoped-storage tests pass, along with 22 watcher/search sync tests.
+Focused lint and Core typecheck pass. Red log: `/private/tmp/projects-audit-storage-red.log`.
+No power-loss or cross-file transactional guarantee is claimed.

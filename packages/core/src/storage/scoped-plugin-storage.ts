@@ -7,10 +7,10 @@ import {
   rmSync,
   renameSync,
   statSync,
-  writeFileSync,
 } from 'fs'
 import { dirname, isAbsolute, join, normalize, relative, sep } from 'path'
 import type { StorageAdapter } from '../plugin-types'
+import { atomicWriteText } from './atomic-write'
 
 function assertSafePluginId(pluginId: string): void {
   if (!/^[a-z][a-z0-9-]{0,39}$/.test(pluginId)) {
@@ -55,8 +55,7 @@ export class ScopedPluginStorageAdapter implements StorageAdapter {
 
   write(path: string, content: string): void {
     const file = this.resolve(path)
-    mkdirSync(dirname(file), { recursive: true })
-    writeFileSync(file, content, 'utf-8')
+    atomicWriteText(file, content)
   }
 
   append(path: string, content: string): void {
