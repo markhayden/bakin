@@ -119,29 +119,25 @@ describe('models onboarding component (S7)', () => {
     expect(routes()).toHaveLength(5)
   })
 
-  it('--yes never rewrites an EXISTING runtime default, dead or not: the chores routes land, the dead default is reported for review', async () => {
-    // An upgraded box re-onboards with no chores routes and looks "fresh";
-    // its runtime default is the runtime's own config — --yes leaves it alone.
+  it('a dead default with NO persisted plan is repaired by --yes (the permitted carve-out): nothing dispatches on a dead default, so the policy op lands', async () => {
     defaultModel = 'openai/gpt-6-astra'
     expect((await modelsComponent.check()).status).toBe('missing')
     const r = await modelsComponent.install(YES)
     expect(r.status).toBe('installed')
-    expect(policyWrites).toEqual([])
+    expect(policyWrites).toEqual([{ defaultModel: LUNA }])
     expect(routes()).toHaveLength(5)
-    expect(r.message).toContain('openai/gpt-6-astra')
-    expect(r.message).toContain('bakin models plan')
+    expect(r.message).toContain(LUNA)
   })
 
-  it('--yes with NO runtime default at all sets one (nothing to preserve); explicit approval applies the whole plan, dead default included', async () => {
-    defaultModel = null
+  it('a WORKING default is never moved by --yes (the recommender keeps an eligible current default); no default at all gets one', async () => {
+    defaultModel = TERRA
     expect((await modelsComponent.install(YES)).status).toBe('installed')
-    expect(policyWrites).toEqual([{ defaultModel: LUNA }])
+    expect(policyWrites).toEqual([])
 
     rmSync(join(testDir, 'plugin-settings'), { recursive: true, force: true })
     mkdirSync(join(testDir, 'plugin-settings'), { recursive: true })
-    policyWrites.length = 0
-    defaultModel = 'openai/gpt-6-astra'
-    expect((await modelsComponent.install(APPROVED)).status).toBe('installed')
+    defaultModel = null
+    expect((await modelsComponent.install(YES)).status).toBe('installed')
     expect(policyWrites).toEqual([{ defaultModel: LUNA }])
   })
 

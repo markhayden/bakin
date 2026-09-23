@@ -16,10 +16,10 @@
  *                      — NEVER auto-applied, --yes included
  *   install() applies ONLY on --yes, an explicit TUI approval, or an
  *   interactive yes (the one permitted auto-apply: fresh install, no plan);
- *   nothing eligible ⇒ skipped with the credentials hint. --yes alone never
- *   rewrites a runtime default that already exists (an upgraded box
- *   re-onboards with no chores routes and looks fresh): a dead default is
- *   reported for review; explicit approval saw the whole plan and applies it.
+ *   nothing eligible ⇒ skipped with the credentials hint. A WORKING default
+ *   is never moved (the recommender keeps an eligible current default); the
+ *   only default --yes ever touches is a dead one, where nothing dispatches
+ *   until it is repaired — leaving it would be the one outcome nobody wants.
  */
 import { join } from 'path'
 
@@ -175,8 +175,7 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
     return { name: 'models', status: 'skipped', message: `Your model plan ${why} — review with \`bakin models plan\`; onboarding never changes an existing plan.`, durationMs: Date.now() - start }
   }
 
-  const explicitlyApproved = opts.approvedComponents?.includes('models') === true
-  const approved = opts.autoApprove || explicitlyApproved
+  const approved = opts.autoApprove || opts.approvedComponents?.includes('models') === true
   if (!approved && opts.interactive) {
     console.log(`  Recommended model plan: ${describe(plan)}.`)
     for (const note of plan.notes) console.log(`  Note: ${note}`)
@@ -188,30 +187,14 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
     return { name: 'models', status: 'skipped', message: 'not approved for non-interactive install — run `bakin models plan --apply` to use the recommendation', durationMs: Date.now() - start }
   }
 
-  // --yes without an explicit approval never rewrites a runtime default that
-  // already exists — it is the runtime's own config and nobody saw the plan.
-  // The Bakin-owned chores routes still land; a dead default is reported.
-  const unseen = opts.autoApprove && !explicitlyApproved && !opts.interactive
-  const holdDefault = unseen && input.currentDefaultModel !== null && plan.ops.some((op) => op.ref === 'policy:defaultModel')
-  const ops = holdDefault ? plan.ops.filter((op) => op.ref !== 'policy:defaultModel') : plan.ops
-  const held = holdDefault
-    ? ` The default model (${input.currentDefaultModel}) cannot run here and was left as it is — review with \`bakin models plan\` (apply with --apply) or on the Models page.`
-    : ''
-  if (ops.length === 0) {
-    return { name: 'models', status: 'skipped', message: `Nothing to change without touching the default model.${held}`, durationMs: Date.now() - start }
-  }
-
   try {
     const runtime = await getRuntime()
-    const outcome = await apply(runtime, ops)
+    const outcome = await apply(runtime, plan.ops)
     if (outcome.failed.length > 0) {
-      return { name: 'models', status: 'failed', message: `Model plan partially applied (${outcome.applied} ok): ${outcome.failed.join('; ')}${held}`, durationMs: Date.now() - start }
+      return { name: 'models', status: 'failed', message: `Model plan partially applied (${outcome.applied} ok): ${outcome.failed.join('; ')}`, durationMs: Date.now() - start }
     }
     const pending = outcome.pending > 0 ? ` (${outcome.pending} write${outcome.pending === 1 ? '' : 's'} still pending runtime confirmation)` : ''
-    const summary = holdDefault
-      ? `background chores ${plan.chores.model ?? '(none)'} (${plan.chores.why})`
-      : describe(plan)
-    return { name: 'models', status: 'installed', message: `Model plan applied: ${summary}${pending}.${held}`, durationMs: Date.now() - start }
+    return { name: 'models', status: 'installed', message: `Model plan applied: ${describe(plan)}${pending}.`, durationMs: Date.now() - start }
   } catch (err) {
     log.error('Model plan apply failed', err)
     return { name: 'models', status: 'failed', message: `Model plan apply failed: ${err instanceof Error ? err.message : String(err)}`, error: err, durationMs: Date.now() - start }
