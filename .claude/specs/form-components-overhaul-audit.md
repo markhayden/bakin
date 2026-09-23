@@ -1,7 +1,7 @@
 # Form components overhaul — audit
 
 Date: 2026-09-22. Baseline: `1ecbc0b90`.
-Status: source audit reconciled with implemented contracts; final visual review pending.
+Status: audit reconciled, implementation and approved baselines complete; full conformance passed.
 The inventory and findings below describe baseline `1ecbc0b90`; implementation
 resolution is recorded at the end of this document.
 Scope decision: audit all form controls; implement text and selection first.
@@ -206,4 +206,7 @@ before/after previews are in `tasks/form-components-border-review.md`.
 The user subsequently approved this exact color/scope. The implemented token
 is `--bakin-color-border-control` (the generator's existing naming convention),
 with 3.39:1 against elevated fill and a gating non-text contrast assertion.
-Subtle separators retain their existing token. PNG approval remains pending.
+Subtle separators retain their existing token. Subsequent screenshot review
+explicitly removed all resting borders from filled controls; the resting-border
+contrast claim therefore applies only to outlined. Exact PNG scope is approved
+and applied (18 new, 47 replacements, one approved candidate retained unchanged).

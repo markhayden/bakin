@@ -1,14 +1,14 @@
 # Form components overhaul — approved specification
 
-Status: approved foundation and control-border extension implemented; exact visual
-baseline approval pending before final full conformance.
+Status: approved foundation and visual baselines implemented; full conformance
+passed. PR #914 is ready for final CI verification.
 Date: 2026-09-22.
 Evidence: [source audit](form-components-overhaul-audit.md).
 Plan: [implementation plan](form-components-overhaul-plan.md).
 
 The user explicitly approved this specification and the detailed implementation
-plan, including local checkpoint commits. Visual baseline replacement still
-requires review of the exact candidate images.
+plan, including local checkpoint commits. The user subsequently approved the
+exact 66-path visual inventory and requested PR preparation with passing checks.
 
 ## Objective and confirmed scope
 

@@ -1,6 +1,6 @@
 # Form components overhaul — implementation plan
 
-Status: approved by the user; execution in progress on `codex/form-components-overhaul`.
+Status: C0–C13 complete on `codex/form-components-overhaul`; full conformance passed.
 Date: 2026-09-22.
 Inputs: [approved spec](form-components-overhaul.md),
 [audit](form-components-overhaul-audit.md).
@@ -593,7 +593,7 @@ component extensions; do not request them again.
 - [x] Rollback order covers exports, stories, docs and baseline dependencies.
 - [x] Core work is separated from product/domain migration.
 - [x] User approves this plan, including local checkpoint commits.
-- [ ] Exact baseline changes are reviewed after implementation evidence exists.
+- [x] Exact baseline changes are reviewed after implementation evidence exists.
 
 No design question remains open before plan review. Implementation feasibility
 checks may reveal a concrete issue; record it and resolve it without silently
@@ -643,3 +643,28 @@ The full canonical comparison leaves 232 existing baselines unchanged. All
 354 Storybook tests, 9,662 repository tests and 33 focused browser checks pass.
 T20/C12 remains gated on exact PNG approval; T21/C13 full aggregate validation
 follows the approved update. No product migration or baseline write occurred.
+
+
+### Approved baseline and PR execution
+
+The user approved the exact 66-path PNG inventory and requested a passing PR.
+C12 (`f543b2fe3`) changes 65 PNGs: 18 new and 47 replacements; the calendar
+candidate reproduced its original committed baseline and needed no change.
+Token metadata now describes outlined boundaries only, matching the final
+explicitly requested borderless filled treatment. No unapproved snapshot path,
+mask or tolerance changed. PR #914 is open; C13 full conformance is in progress.
+The latest instruction authorizes branch publication and PR creation, superseding
+the original plan's no-push boundary. Merge and deployment remain unrequested.
+
+
+### C13 completion
+
+`bun run ui:conformance --full` passed against implementation/baseline checkpoint
+`f543b2fe3`: 9,662 repository tests (18 skipped), 354 Storybook tests, 298 visual
+comparisons and 126 browser checks. Tokens/API/governance, TypeScript, lint,
+production builds, payload limits, deterministic Storybook, plugin conformance
+and the published documentation/catalog all passed. No baseline was rewritten
+during verification. Final code review has no unresolved implementation finding.
+PR #914's initial 17 checks passed after one documented transient menu-test rerun;
+the final evidence-only commit is subject to the same CI checks. Product migration
+and deferred form-control families remain follow-up work, as approved.

@@ -6,8 +6,9 @@ Starting commit: `1ecbc0b90`; branch: `codex/form-components-overhaul`.
 ## Ownership and approvals
 
 - User approved implementation and local checkpoint commits.
-- Visual baseline replacement remains unapproved; all candidate renders use
-  `--update-snapshots=none`.
+- Exact 66-path visual scope is approved and applied at C12 (65 changed PNGs;
+  one retained unchanged). Earlier candidate runs used `--update-snapshots=none`.
+- User authorized PR preparation and publication; PR #914 is open.
 - Pre-existing dirty file: `packages/host/src/api/_embedded-assets-static.ts`.
   Its starting patch is saved at
   `/private/tmp/bakin-form-overhaul-manifest-before.patch`; never stage it.
@@ -353,3 +354,67 @@ with an isolated `OPENCLAW_MOCK_HOME`; it has not yet been declared passing.
 
 The latest instruction authorizes pushing this task branch and creating the PR;
 merge, release, deployment and product migration remain outside this task.
+
+## PR verification — initial CI timeout investigation
+
+PR: https://github.com/markhayden/bakin/pull/914 . Initial CI passed the main
+checks, ordinary test shards, stamped-host shards 1/3, test completeness, both
+Storybook shards, all browser engines, token/catalog contracts and visual
+baselines. Stamped-host shard 2 timed out finding the TaskLogTable “Edit” menu
+item (`tests/plugins/tasks/task-log-table.test.tsx:62`), a test untouched by this
+change. The same test passed in the local full suite and ordinary CI shard.
+Repeating its entire test file 20 times locally yielded **120 passed, zero
+failed**. No timeout, assertion, test suppression or product behavior changed.
+The single diagnostic rerun passed. All **17 GitHub checks** are green at
+`f543b2fe3`; the initial transient timeout remains recorded here.
+Logs: `/private/tmp/bakin-form-ci-stamped-job.log` and
+`/private/tmp/bakin-form-task-log-repeat.log`.
+
+## Final code review
+
+Reviewed the complete source/API delta against the approved spec: one private
+appearance recipe, explicit control props, no new selection state engine,
+Base UI keyboard/form semantics, scoped portal ownership, native input props,
+Textarea row bounds/ref forwarding/observer cleanup, and controlled reset and
+async recipes. No new dependencies, unsafe HTML, routing system, product-page
+migration or legacy-barrel consumer was introduced. Deferred family findings
+remain in the audit. The public API inventory, stories and author guidance
+agree with the final borderless-filled contract. No unresolved implementation
+finding remains; final aggregate verification is recorded below.
+
+
+## C13 — full conformance passed
+
+`bun run ui:conformance --full` completed successfully on the final source and
+approved baselines at `f543b2fe3`. Full log: `/private/tmp/bakin-form-full.log`.
+
+- Repository tests: **9,662 passed, 18 skipped, zero failed**, 1,016 files.
+- UI architecture: **228 passed**; generated tokens, public API, census,
+  legacy/style/story/kit ratchets and TypeScript passed.
+- Storybook accessibility/interactions: **354 passed**, 114 nonempty files.
+- Canonical visual comparisons: **298 passed**, desktop and mobile; no writes.
+- Cross-browser behavior: **126 passed**, Chromium/Firefox/WebKit.
+- Production builds, existing payload limits and consecutive public-catalog
+  determinism passed. CSS remains 191,737 bytes under its original ceiling.
+- Plugin conformance and its four focus-regression checks passed. Inspected
+  reference-plugin HTML/JSON report: passed, zero findings.
+- Documentation validation, typed-route checks, site build and integration of
+  **468 public UI stories** passed.
+
+Reverted only unrelated generator timestamp/external-plugin-version churn in
+seven previously clean generated docs pages. All form/API/token documentation
+is retained. The pre-existing embedded-assets manifest remains unstaged and
+byte-identical to its starting diff (SHA-256
+`f761346b71c4693015c1c94aca52cb90c9a8580048cd3763c1c5525d5f3958ee`).
+
+PR #914 is non-draft and mergeable. All 17 checks passed on `f543b2fe3` after
+the single diagnostic CI rerun described above. This final evidence-only commit
+will receive a fresh CI run before handoff. No merge, release or deployment was
+performed. Maintainer Storybook remains available at http://localhost:6006.
+
+UI conformance
+- Pattern: `storybook/public/primitives/{input,textarea,input-group,select,combobox}.stories.tsx`; size/variant, state and composition stories.
+- Contract: `@makinbakin/sdk/ui`, with `layout` and existing form patterns for composition.
+- Story/style-guide update: complete, including borderless filled fields and deferred-family audit.
+- Deviation: none; component/token/payload/PNG extensions explicitly approved.
+- Verification: full conformance passed; final PR-head CI verified before handoff.
