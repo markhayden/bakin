@@ -112,6 +112,44 @@ same engine.
 current revision (one 409 retry) — valid right after a Reset and after
 later edits.
 
+**Review-round hardening (2026-09-22, #909):**
+- **Id resolution.** The report is keyed by the id as asked; an `extraIds`
+  entry the catalog does not list verbatim is judged by the UNIQUE catalog
+  row it maps onto (`mapModelToCatalog`, the leaf `src/core/model-id-map.ts`
+  — bare id the runtime resolves itself, e.g. Pi's `gpt-5.5`; or a
+  provider rename) and carries `resolvedTo`; ambiguous ⇒ `not_in_catalog`,
+  never a guess. The dispatch gate applies the same rule to its memoized
+  report, so a working selection can never become a pre-dispatch hold.
+- **Agent-scoped credentials.** `evaluateSelections(runtime, states)`
+  (`model-selections.ts`) judges every `agent:<id>:*` ref under THAT agent's
+  credential inventory (OpenClaw keys them per agent) and everything else
+  unscoped; `proposeRepairs` takes its `reportFor`. The mutation plan, the
+  selections inventory, doctor proposals and the runtime switch all go
+  through it — an unscoped read condemned pins the agent could run.
+- **Pending-write race.** Every write to `pending-writes.json` re-reads it
+  first: a document that settles while a LATER write awaits its deadline is
+  never resurrected by that write's timeout (it was reserved until restart).
+- **Conflict recovery.** `POST /selections/pending/acknowledge { document }`
+  (404 `no_conflict` when nothing to acknowledge, audited
+  `pending_write_acknowledged`) and `bakin models pending [--ack
+  <document>]` — the operator's path out of a conflict record, which
+  otherwise reserves its document across restarts.
+- **Full-state restore.** `buildRestoreOps` restores `ui:mode` and clears a
+  thinking-only tag added since the snapshot.
+- **Batched repairs.** The dead-selections repair applies every planned
+  proposal in ONE mutation under their shared revision (one call per
+  selection made the second stale).
+- **Team-routing holds.** `/holds` gates an UNRESOLVED team task on the
+  `team-routing` model first, as dispatch does (`routingCallGated`), naming
+  `route:team-routing`; `PreDispatchProspect.workClass` widened to any
+  `WorkClass` for that ref.
+- **Clients never re-post blind.** A save goes out under the revision its
+  editor snapshot loaded (fallback refs are positional — re-posting against
+  a moved state removed the wrong entry); a stale refusal reloads and asks
+  the operator to look again. Team's picker inspects the tri-state result
+  (`failed` ⇒ the adapter's reason, `pending` ⇒ "waiting for the runtime";
+  the kit `FieldError` needs `match` to show next to a non-Field control).
+
 ## Dead selections: hold, explain, repair (#907)
 
 - **Pre-claim hold** (`preDispatchGate` → `modelHoldFor`, `src/core/dispatch-turns.ts`):

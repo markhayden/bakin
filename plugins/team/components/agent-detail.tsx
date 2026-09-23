@@ -101,6 +101,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const availableModels = useAvailableModels()
   const [savingModel, setSavingModel] = useState(false)
   const [modelError, setModelError] = useState<string | null>(null)
+  const [modelNotice, setModelNotice] = useState<string | null>(null)
   const runtimeStatus = useRuntimeStatus()
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -119,6 +120,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
     if (!profile) return
     setSavingModel(true)
     setModelError(null)
+    setModelNotice(null)
     try {
       const ownModel = modelId === '__default__' ? null : modelId
       // The ONE model write path (#907): revision-checked selection ops.
@@ -129,6 +131,12 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         body: JSON.stringify({ revision: current.revision, ops: [{ ref: `agent:${agentId}:model`, set: { model: ownModel } }] }),
       })
       if (response.ok) {
+        // 200 is tri-state (#907): a write can be applied, FAILED at the
+        // adapter, or PENDING its confirmation — only `applied` is success.
+        const result = await response.json().catch(() => ({})) as { failed?: Array<{ ref: string; error: { message: string } }>; pending?: Array<{ ref: string }> }
+        const failed = result.failed ?? []
+        if (failed.length > 0) setModelError(failed.map((f) => f.error.message).join('; '))
+        setModelNotice((result.pending ?? []).length > 0 ? 'Saved — waiting for the runtime to confirm the write.' : null)
         await runtimeStatus.refresh()
         const updated = await fetch(`/api/plugins/team/${agentId}`).then((result) => result.json())
         setProfile(updated)
@@ -343,6 +351,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
                 onModelChange={handleModelChange}
                 savingModel={savingModel}
                 modelError={modelError}
+                modelNotice={modelNotice}
               />
             ) : null}
             {activeTab === 'diagnostics' ? <DiagnosticsTab agentId={agentId} /> : null}

@@ -79,40 +79,47 @@ interface SelectionsMutationWire {
 }
 
 export type SelectionsMutationOutcome =
-  | { ok: true; applied: string[]; pending: Array<{ ref: string; intended: string | null }>; warnings: string[] }
-  | { ok: false; error: string }
+  | { ok: true; applied: string[]; pending: Array<{ ref: string; intended: string | null }>; warnings: string[]; revision: string | null }
+  | { ok: false; error: string; stale?: boolean }
+
+const STALE_MESSAGE = 'The configuration changed since this page loaded — it has been reloaded; review your change and try again.'
+
+/** Read the revision the current selections carry — the revision an editor snapshot is taken under. */
+async function readRevision(): Promise<string | null> {
+  const current = await pluginFetch(PLUGIN_ID, 'selections')
+  if (!current.ok) return null
+  const { revision } = await current.json() as { revision?: string }
+  return typeof revision === 'string' ? revision : null
+}
 
 /**
- * Apply selection ops through POST /selections under the CURRENT revision.
- * The revision is fetched just-in-time; one retry on 409 stale_revision
- * (something else saved in between — the ops are explicit intents, so
- * replanning them against the fresh state is safe). Refusals (400/409)
- * come back as `{ ok: false, error }` with the server's plain-words reason.
+ * Apply selection ops through POST /selections under the revision the ops
+ * were BUILT against (the editor snapshot's), never a fresher one: the ops
+ * are diffs of that snapshot — a fallback op is positional, so re-posting
+ * them against a state someone else moved can remove the wrong entry. A
+ * 409 stale_revision therefore comes back as `{ ok: false, stale: true }`
+ * for the caller to reload and let the operator look again. Refusals
+ * (400/409) carry the server's plain-words reason.
  */
-async function mutateSelections(ops: MutationOp[]): Promise<SelectionsMutationOutcome> {
-  if (ops.length === 0) return { ok: true, applied: [], pending: [], warnings: [] }
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const current = await pluginFetch(PLUGIN_ID, 'selections')
-    if (!current.ok) return { ok: false, error: `Could not read the current configuration (${current.status})` }
-    const { revision } = await current.json() as { revision: string }
-    const res = await pluginFetch(PLUGIN_ID, 'selections', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ revision, ops }),
-    })
-    const data = await res.json() as SelectionsMutationWire
-    if (res.status === 409 && data.error === 'stale_revision' && attempt === 0) continue
-    if (!res.ok) {
-      const proposal = data.proposal?.to ? ` Try ${data.proposal.to} instead.` : ''
-      return { ok: false, error: `${data.message ?? data.error ?? `Save failed (${res.status})`}${proposal}` }
-    }
-    const failed = data.failed ?? []
-    if (failed.length > 0) {
-      return { ok: false, error: failed.map((f) => `${f.ref}: ${f.error.message}`).join('; ') }
-    }
-    return { ok: true, applied: data.applied ?? [], pending: data.pending ?? [], warnings: data.warnings ?? [] }
+async function postSelectionOps(ops: MutationOp[], revision: string | null): Promise<SelectionsMutationOutcome> {
+  if (ops.length === 0) return { ok: true, applied: [], pending: [], warnings: [], revision }
+  if (!revision) return { ok: false, error: 'Could not read the current configuration — reload and try again.' }
+  const res = await pluginFetch(PLUGIN_ID, 'selections', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ revision, ops }),
+  })
+  const data = await res.json() as SelectionsMutationWire
+  if (res.status === 409 && data.error === 'stale_revision') return { ok: false, error: STALE_MESSAGE, stale: true }
+  if (!res.ok) {
+    const proposal = data.proposal?.to ? ` Try ${data.proposal.to} instead.` : ''
+    return { ok: false, error: `${data.message ?? data.error ?? `Save failed (${res.status})`}${proposal}` }
   }
-  return { ok: false, error: 'The configuration kept changing while saving — try again.' }
+  const failed = data.failed ?? []
+  if (failed.length > 0) {
+    return { ok: false, error: failed.map((f) => `${f.ref}: ${f.error.message}`).join('; ') }
+  }
+  return { ok: true, applied: data.applied ?? [], pending: data.pending ?? [], warnings: data.warnings ?? [], revision: data.revision ?? null }
 }
 
 /**
@@ -317,6 +324,8 @@ export interface SpendResponse {
  * to the former inline hooks — same call order, same effects.
  */
 export function useModelsData() {
+  /** The selections revision the editor snapshots (config / aliases / routing) were loaded under — every save posts under it. */
+  const revisionRef = useRef<string | null>(null)
   const [tab, setTab] = useQueryState('tab', 'agents')
   const [agents, setAgents] = useState<AgentModelConfig[]>([])
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
@@ -380,6 +389,7 @@ export function useModelsData() {
       setPendingDefaultSubagentModel(undefined)
       setPendingFallbackModels(null)
       clearError('config')
+      revisionRef.current = await readRevision()
     } catch (err) {
       if (isAbortError(err) || signal?.aborted) return
       reportError('config', `Failed to load agent config: ${errorMessage(err)}`)
@@ -475,6 +485,7 @@ export function useModelsData() {
       if (signal?.aborted) return
       if (data.aliases) setAliases(data.aliases)
       clearError('aliases')
+      revisionRef.current = await readRevision()
     } catch (err) {
       if (isAbortError(err) || signal?.aborted) return
       reportError('aliases', `Failed to load model aliases: ${errorMessage(err)}`)
@@ -686,6 +697,7 @@ export function useModelsData() {
       if (signal?.aborted) return
       setRouting({ routes: data.routes ?? [], tagOverrides: data.tagOverrides ?? [] })
       clearError('routing')
+      revisionRef.current = await readRevision()
     } catch (err) {
       if (isAbortError(err) || signal?.aborted) return
       // Empty routing reads as "everything inherits the agent model" — a load
@@ -693,6 +705,19 @@ export function useModelsData() {
       reportError('routing', `Failed to load work-class routing: ${errorMessage(err)}`)
     }
   }, [clearError, reportError])
+
+  /**
+   * The ONE client write: ops go out under the revision the editor snapshot
+   * loaded (`revisionRef`), a success adopts the returned revision, and a
+   * stale refusal reloads every editor so the operator re-decides against
+   * the moved state — it is never re-posted blind.
+   */
+  const mutateSelections = useCallback(async (ops: MutationOp[]): Promise<SelectionsMutationOutcome> => {
+    const outcome = await postSelectionOps(ops, revisionRef.current)
+    if (outcome.ok) revisionRef.current = outcome.revision ?? revisionRef.current
+    else if (outcome.stale) void Promise.all([fetchConfig(), fetchAliases(), fetchRouting()])
+    return outcome
+  }, [fetchConfig, fetchAliases, fetchRouting])
 
   useEffect(() => {
     if (tab !== 'routing') return

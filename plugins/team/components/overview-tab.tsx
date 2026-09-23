@@ -40,6 +40,8 @@ export interface OverviewTabProps {
   savingModel: boolean
   /** Refusal from the selections write path (dead model, stale revision …). */
   modelError?: string | null
+  /** A write the runtime has not confirmed yet — informational, never an error. */
+  modelNotice?: string | null
 }
 
 interface LessonsMeta {
@@ -66,6 +68,7 @@ export function OverviewTab({
   onModelChange,
   savingModel,
   modelError,
+  modelNotice,
 }: OverviewTabProps) {
   const teams = useAgentStore((state) => state.teams)
   const displaySettings = useAgentStore((state) => state.displaySettings)
@@ -177,7 +180,9 @@ export function OverviewTab({
                 ariaLabel="Agent model"
                 aria-invalid={modelError ? true : undefined}
               />
-              {modelError ? <FieldError>{modelError}</FieldError> : null}
+              {/* `match`: the picker is not a Base UI field control, so the error must be told to show. */}
+              {modelError ? <FieldError match>{modelError}</FieldError> : null}
+              {modelNotice ? <FieldDescription role="status">{modelNotice}</FieldDescription> : null}
             </Field>
 
             {teams.length > 0 ? (

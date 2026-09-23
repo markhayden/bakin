@@ -293,6 +293,11 @@ describe('ModelsPage component', () => {
         return jsonResponse({ revision: `rev-${selectionsRevision}`, states: [], proposals: [], pending: [], evidence: {} })
       }
       if (url === '/api/plugins/models/selections' && method === 'POST') {
+        // Revision-checked like the real mutator: a write under a revision
+        // the page did not load from is refused, never applied.
+        if (body?.revision !== `rev-${selectionsRevision}`) {
+          return jsonResponse({ error: 'stale_revision', message: 'the configuration changed since this change was planned', current: `rev-${selectionsRevision}` }, 409)
+        }
         const ops = (body?.ops as Array<{ ref: string; set: { model?: string | null; thinking?: string | null } }>) ?? []
         for (const op of ops) {
           const [kind, a, b] = op.ref.split(':')
@@ -369,6 +374,29 @@ describe('ModelsPage component', () => {
       expect(call?.body?.ops).toEqual([{ ref: 'policy:defaultModel', set: { model: 'openai-codex/gpt-5.4' } }])
       expect(availableFetchCount).toBe(2)
     })
+  })
+
+  it('a save whose editor snapshot is behind the server is REFUSED, reloaded and explained — never re-posted against the moved state (positional fallback refs)', async () => {
+    const user = userEvent.setup()
+    render(<ModelsPage />)
+    await screen.findByText('Patch')
+    await waitFor(() => expect(fetchCalls.some((c) => c.method === 'GET' && c.url === '/api/plugins/models/selections')).toBe(true))
+    // Another editor saved after this page loaded.
+    selectionsRevision += 1
+    const configLoads = () => fetchCalls.filter((c) => c.method === 'GET' && c.url === '/api/plugins/models/config').length
+    const loadsBefore = configLoads()
+
+    await user.click(screen.getByRole('combobox', { name: 'Default Model' }))
+    await user.click(await screen.findByRole('option', { name: 'GPT-5.4' }))
+    fireEvent.click(screen.getByText('Save Defaults'))
+
+    const posts = () => fetchCalls.filter((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+    await waitFor(() => expect(posts()).toHaveLength(1))
+    expect(posts()[0]!.body?.revision).toBe('rev-0')
+    expect(await screen.findByText(/changed since this page loaded/)).toBeTruthy()
+    await waitFor(() => expect(configLoads()).toBeGreaterThan(loadsBefore))
+    // No second POST with the same ops under the fresher revision.
+    expect(posts()).toHaveLength(1)
   })
 
   it('saves agent-specific model overrides', async () => {
