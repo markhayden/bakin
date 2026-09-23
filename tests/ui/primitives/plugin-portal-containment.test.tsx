@@ -30,9 +30,18 @@ import {
   TooltipTrigger,
 } from '@makinbakin/sdk/ui'
 
+import { Combobox, ComboboxControl, ComboboxInput, ComboboxContent, ComboboxList, ComboboxItem } from '../../../packages/ui/src/primitives/combobox'
+
 afterEach(() => cleanup())
 
 describe('plugin portal containment', () => {
+  it('keeps a searchable selection popup in its plugin scope', async () => {
+    await act(async () => render(<PluginOwnershipRoot pluginId="combo-owner"><Combobox defaultOpen items={['Pi']}>
+      <ComboboxControl><ComboboxInput aria-label="Runtime" /></ComboboxControl><ComboboxContent><ComboboxList>{(item: string) => <ComboboxItem key={item} value={item}>{item}</ComboboxItem>}</ComboboxList></ComboboxContent>
+    </Combobox></PluginOwnershipRoot>))
+    expect(screen.getByRole('option', { name: 'Pi' }).closest('[data-bakin-plugin-portal]')?.getAttribute('data-bakin-plugin')).toBe('combo-owner')
+  })
+
   it('retains the host-injected plugin identity when dialog content leaves the page root', () => {
     render(
       <PluginOwnershipRoot pluginId="alpha">

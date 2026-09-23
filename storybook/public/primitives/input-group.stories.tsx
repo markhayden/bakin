@@ -15,11 +15,15 @@ import {
   Label,
 } from '@makinbakin/sdk/ui'
 
+import { TextEntryRecipes } from '../../support/form-input-recipes'
+
 import { SendIcon, StorySection, StoryStage } from '../../support'
 
 const meta = {
   title: 'Components/Primitives/InputGroup',
   component: InputGroup,
+  args: { size: 'md', variant: 'outlined' },
+  argTypes: { size: { control: 'select', options: ['sm', 'md', 'lg'] }, variant: { control: 'select', options: ['outlined', 'filled', 'ghost'] } },
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -159,5 +163,46 @@ export const LocalSubmitAction = {
     await expect(submit).toBeEnabled()
     await userEvent.keyboard('{Enter}')
     await expect(canvas.getByRole('status')).toHaveTextContent('Submitted: Confirm the launch owner')
+  },
+} satisfies Story
+
+export const SizesAndVariants = {
+  render: () => <StoryStage eyebrow="Shared shell" title="Grouped controls" description="Size and appearance belong to the group. Addons remain inside its border and focus boundary.">
+    {(['sm', 'md', 'lg'] as const).map(size => <StorySection key={size} title={size}>
+      <Stack gap="dense">{(['outlined', 'filled', 'ghost'] as const).map(variant => <InputGroup key={variant} size={size} variant={variant} aria-label={`${variant} ${size}`}>
+        <InputGroupAddon><InputGroupText>https://</InputGroupText></InputGroupAddon>
+        <InputGroupInput aria-label={`${variant} ${size} address`} placeholder="example.com" />
+        <InputGroupAddon align="inline-end"><InputGroupButton size="icon-xs" aria-label={`Open ${variant} ${size}`}><SendIcon /></InputGroupButton></InputGroupAddon>
+      </InputGroup>)}</Stack>
+    </StorySection>)}
+  </StoryStage>,
+  play: async ({ canvas }) => {
+    for (const [size, height] of [['sm', 32], ['md', 36], ['lg', 44]] as const) {
+      for (const variant of ['outlined', 'filled', 'ghost']) {
+        const group = canvas.getByRole('group', { name: `${variant} ${size}` })
+        await expect(group.getBoundingClientRect().height).toBe(height)
+      }
+    }
+  },
+} satisfies Story
+
+export const TextEntry = {
+  render: () => <StoryStage eyebrow="Text entry" title="Field actions" description="Clear, reveal, units, loading, copy, counts and guarded submission compose the public controls."><TextEntryRecipes /></StoryStage>,
+  play: async ({ canvas, userEvent }) => {
+    const query = canvas.getByRole('textbox', { name: 'Search notes' })
+    await userEvent.click(canvas.getByRole('button', { name: 'Clear search notes' }))
+    await expect(query).toHaveValue('')
+    await expect(query).toHaveFocus()
+    await userEvent.click(canvas.getByRole('button', { name: 'Show password' }))
+    await expect(canvas.getByRole('textbox', { name: 'Password' })).toHaveValue('a-demo-password')
+    await userEvent.click(canvas.getByRole('button', { name: 'Hide password' }))
+    await expect(canvas.getByLabelText('Password')).toHaveAttribute('type', 'password')
+    const note = canvas.getByRole('textbox', { name: 'Counted note' })
+    await userEvent.type(note, 'Ready')
+    await expect(canvas.getByText('5/120')).toBeVisible()
+    await userEvent.click(canvas.getByRole('button', { name: 'Add counted note' }))
+    await expect(canvas.getByRole('button', { name: 'Adding note' })).toBeDisabled()
+    await expect(canvas.findByText('Added: Ready')).resolves.toBeVisible()
+    await expect(canvas.getByRole('textbox', { name: 'Disabled reference' })).toBeDisabled()
   },
 } satisfies Story

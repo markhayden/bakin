@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect } from 'storybook/test'
+import { useState } from 'react'
 
 import { Grid } from '@makinbakin/sdk/layout'
-import { Field, FieldControl, FieldError, FieldLabel, Textarea } from '@makinbakin/sdk/ui'
+import { Button, Field, FieldControl, FieldError, FieldLabel, Textarea } from '@makinbakin/sdk/ui'
 
 import { StorySection, StoryStage } from '../../support'
 
@@ -23,11 +24,15 @@ type Story = StoryObj<typeof meta>
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
   args: {
-    rows: 4,
+    rows: 3,
+    size: 'md',
+    variant: 'outlined',
     disabled: false,
     readOnly: false,
   },
   argTypes: {
+    size: { control: 'select', options: ['sm', 'md', 'lg'] },
+    variant: { control: 'select', options: ['outlined', 'filled', 'ghost'] },
     rows: { control: { type: 'number', min: 1 } },
     disabled: { control: 'boolean' },
     readOnly: { control: 'boolean' },
@@ -50,6 +55,53 @@ export const CanonicalUsage = {
     }
     await userEvent.type(textarea, 'Confirm the launch checklist.')
     await expect(textarea).toHaveValue('Confirm the launch checklist.')
+  },
+} satisfies Story
+
+export const BoundedGrowth = {
+  render: () => (
+    <StoryStage eyebrow="Multiline sizing" title="Bounded growth" description="Manual rows are the default. Auto mode grows to its maximum, then scrolls internally.">
+      <Field>
+        <FieldLabel>Growing note</FieldLabel>
+        <FieldControl render={<Textarea autoSize minRows={3} maxRows={6} />} />
+      </Field>
+      <Grid layout="split" gap="section">
+        {(['outlined', 'filled', 'ghost'] as const).flatMap((variant) =>
+          (['sm', 'md', 'lg'] as const).map((size) => (
+            <Field key={`${variant}-${size}`}>
+              <FieldLabel>{variant} {size}</FieldLabel>
+              <FieldControl render={<Textarea rows={3} size={size} variant={variant} defaultValue="Editable notes" />} />
+            </Field>
+          )),
+        )}
+      </Grid>
+    </StoryStage>
+  ),
+  play: async ({ canvas, canvasElement, userEvent }) => {
+    delete canvasElement.dataset.storyReady
+    const textarea = canvas.getByRole('textbox', { name: 'Growing note' })
+    const initial = textarea.getBoundingClientRect().height
+    await userEvent.type(textarea, Array(12).fill('A line of notes').join('\n'))
+    await expect(textarea.getBoundingClientRect().height).toBeGreaterThan(initial)
+    await expect(textarea.scrollHeight).toBeGreaterThan(textarea.clientHeight)
+    await userEvent.clear(textarea)
+    await expect(textarea.getBoundingClientRect().height).toBe(initial)
+    textarea.blur()
+    canvasElement.dataset.storyReady = 'true'
+  },
+} satisfies Story
+
+export const SizingFixture = {
+  render: function SizingFixture() {
+    const [value, setValue] = useState('')
+    return (
+      <form onReset={() => setValue('')}>
+        <Field><FieldLabel>Automatic notes</FieldLabel><FieldControl render={<Textarea autoSize minRows={3} maxRows={6} value={value} onChange={(event) => setValue(event.target.value)} />} /></Field>
+        <Button type="button" onClick={() => setValue(Array(15).fill('A long line of notes for resizing').join('\n'))}>Load notes</Button>
+        <Button type="reset">Reset notes</Button>
+        <Field><FieldLabel>Manual notes</FieldLabel><FieldControl render={<Textarea rows={3} />} /></Field>
+      </form>
+    )
   },
 } satisfies Story
 

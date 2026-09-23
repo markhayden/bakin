@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { createRef } from 'react'
 import '../../rtl-settle'
 
 import {
@@ -27,6 +28,16 @@ describe('Label public contract', () => {
 })
 
 describe('Input public contract', () => {
+  it('keeps visual size separate from the native width hint and preserves a ref', () => {
+    const control = createRef<HTMLInputElement>()
+    render(<Input aria-label="Sized" size="lg" variant="filled" htmlSize={24} ref={control} />)
+    const input = screen.getByRole('textbox', { name: 'Sized' }) as HTMLInputElement
+    expect(input.getAttribute('size')).toBe('24')
+    expect(input.hasAttribute('variant')).toBe(false)
+    expect(input.hasAttribute('htmlSize')).toBe(false)
+    expect(control.current).toBe(input)
+  })
+
   it('preserves native field states and mobile keyboard hints', () => {
     render(
       <Input
@@ -69,7 +80,7 @@ describe('Textarea public contract', () => {
     expect(textarea.required).toBe(true)
     expect(textarea.readOnly).toBe(true)
     expect(textarea.className).toContain('resize-y')
-    expect(textarea.className).toContain('read-only:text-bakin-text-muted')
+    expect(textarea.readOnly).toBe(true)
     expect(textarea.className).toContain('aria-invalid:border-bakin-signal-danger')
   })
 })

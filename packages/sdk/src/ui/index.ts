@@ -212,6 +212,7 @@ export type {
   ToastTone,
 } from '@bakin/ui'
 export { Input } from '@bakin/ui'
+export type { ControlSize, ControlVariant } from '@bakin/ui'
 export type { InputProps } from '@bakin/ui'
 export {
   InputGroup,
@@ -349,4 +350,41 @@ export type {
   TooltipProps,
   TooltipProviderProps,
   TooltipTriggerProps,
+} from '@bakin/ui'
+
+export {
+  Combobox,
+  ComboboxControl,
+  ComboboxInput,
+  ComboboxTrigger,
+  ComboboxClear,
+  ComboboxValue,
+  ComboboxContent,
+  ComboboxList,
+  ComboboxItem,
+  ComboboxGroup,
+  ComboboxLabel,
+  ComboboxEmpty,
+  ComboboxStatus,
+  ComboboxChips,
+  ComboboxChip,
+  ComboboxChipRemove
+} from '@bakin/ui'
+export type {
+  ComboboxProps,
+  ComboboxControlProps,
+  ComboboxInputProps,
+  ComboboxTriggerProps,
+  ComboboxClearProps,
+  ComboboxValueProps,
+  ComboboxContentProps,
+  ComboboxListProps,
+  ComboboxItemProps,
+  ComboboxGroupProps,
+  ComboboxLabelProps,
+  ComboboxEmptyProps,
+  ComboboxStatusProps,
+  ComboboxChipsProps,
+  ComboboxChipProps,
+  ComboboxChipRemoveProps
 } from '@bakin/ui'

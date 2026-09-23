@@ -274,7 +274,8 @@ describe('KanbanBoard — search signals', () => {
     const search = screen.getAllByRole('searchbox', { name: 'Task search' })[0]!
     const board = screen.getAllByRole('tab', { name: 'Board' })[0]!
     const newTask = screen.getAllByRole('button', { name: 'New Task' })[0]!
-    expect(search.className).toContain('h-[var(--bakin-layout-size-control)]')
+    // The group owns geometry; its editable input fills that shell.
+    expect(search.closest('[data-slot="input-group"]')?.getAttribute('data-size')).toBe('md')
     expect(board.className).toContain('h-[var(--bakin-layout-size-control)]')
     expect(newTask.className).toContain('h-[var(--bakin-layout-size-control)]')
     expect(screen.getByRole('region', { name: 'Task results' })).toBeTruthy()

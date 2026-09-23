@@ -9,6 +9,9 @@ import {
   AlertTitle,
   Button,
   Checkbox,
+  Combobox, ComboboxControl, ComboboxInput, ComboboxContent, ComboboxList, ComboboxItem, ComboboxTrigger,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupText,
   Field,
   FieldControl,
   FieldDescription,
@@ -295,5 +298,49 @@ export const SubmissionWorkflow = {
     await userEvent.type(slug, 'plugin-routing-tools')
     await userEvent.click(canvas.getByRole('button', { name: 'Register plugin' }))
     await expect(canvas.findByRole('status')).resolves.toHaveTextContent('Plugin registered')
+  },
+} satisfies Story
+
+const formOwners = [{ id: 'maya', label: 'Maya' }, { id: 'jules', label: 'Jules' }]
+type FoundationValues = { title: string; notes: string; channels: string[]; owner: string }
+
+function FoundationFormExample() {
+  const [title, setTitle] = useState('Workflow')
+  const [channels, setChannels] = useState(['email', 'chat'])
+  const [owner, setOwner] = useState<typeof formOwners[number] | null>(formOwners[0])
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [result, setResult] = useState('Not submitted')
+  return <PageShell width="content"><FormStoryHeader title="Text and selection foundation" description="Field owns association and validation. Controls own their presentation and keep actual committed form values." />
+    <Form<FoundationValues> aria-label="Foundation form" errors={errors} onReset={() => { setTitle('Workflow'); setChannels(['email', 'chat']); setOwner(formOwners[0]); setErrors({}); setResult('Reset to defaults') }} onFormSubmit={values => {
+      if (values.title === 'Rejected') { setErrors({ title: 'This title is unavailable.' }); setResult('Save failed; draft retained.'); return }
+      setErrors({}); setResult(`Saved ${values.title}; ${values.channels.join(', ')}; ${values.owner || 'unassigned'}`)
+    }}>
+      <Field name="title"><FieldLabel>Workflow title</FieldLabel><Input required size="lg" variant="filled" value={title} onChange={event => { setTitle(event.target.value); setErrors({}) }} /><FieldError /></Field>
+      <Field name="notes"><FieldLabel>Workflow notes</FieldLabel><InputGroup variant="filled"><FieldControl render={<InputGroupTextarea autoSize minRows={3} maxRows={5} defaultValue="Keep the launch owner informed." />} /><InputGroupAddon align="block-end"><InputGroupText>Internal note</InputGroupText></InputGroupAddon></InputGroup><FieldDescription>Saved with this workflow.</FieldDescription></Field>
+      <Field name="channels"><FieldLabel>Notification channels</FieldLabel><Select multiple items={{ email: 'Email', chat: 'Chat' }} value={channels} onValueChange={setChannels}>
+        <SelectTrigger width="full"><SelectValue placeholder="Choose channels">{(values: string[]) => values.length ? `${values[0]}${values.length > 1 ? ` +${values.length - 1} more` : ''}` : 'Choose channels'}</SelectValue></SelectTrigger><SelectContent><SelectItem value="email">Email</SelectItem><SelectItem value="chat">Chat</SelectItem></SelectContent>
+      </Select></Field>
+      <Field name="owner"><FieldLabel>Workflow owner</FieldLabel><Combobox items={formOwners} value={owner} onValueChange={setOwner} itemToStringLabel={item => item.label} itemToStringValue={item => item.id} isItemEqualToValue={(a, b) => a.id === b.id}>
+        <ComboboxControl><ComboboxInput /><ComboboxTrigger aria-label="Show owners" /></ComboboxControl><ComboboxContent><ComboboxList>{(item: typeof formOwners[number]) => <ComboboxItem key={item.id} value={item}>{item.label}</ComboboxItem>}</ComboboxList></ComboboxContent>
+      </Combobox></Field>
+      <FormActions><Button type="reset" variant="ghost">Reset form</Button><SubmitButton size="lg">Save workflow</SubmitButton></FormActions>
+    </Form><p role="status">{result}</p>
+  </PageShell>
+}
+
+export const FoundationControls = {
+  render: () => <FoundationFormExample />,
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: 'Save workflow' }))
+    await expect(canvas.getByRole('status')).toHaveTextContent('Saved Workflow; email, chat; maya')
+    const title = canvas.getByRole('textbox', { name: 'Workflow title' })
+    await userEvent.clear(title)
+    await userEvent.type(title, 'Rejected')
+    await userEvent.click(canvas.getByRole('button', { name: 'Save workflow' }))
+    await expect(canvas.getByRole('status')).toHaveTextContent('Save failed; draft retained.')
+    await expect(title).toHaveValue('Rejected')
+    await expect(title).toHaveAccessibleDescription('This title is unavailable.')
+    await userEvent.click(canvas.getByRole('button', { name: 'Reset form' }))
+    await expect(title).toHaveValue('Workflow')
   },
 } satisfies Story

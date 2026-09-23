@@ -17,6 +17,9 @@ import {
   Form,
   FormActions,
   Input,
+  InputGroup,
+  InputGroupTextarea,
+  InputGroupAddon,
   SubmitButton,
   Textarea,
 } from '@makinbakin/sdk/ui'
@@ -62,6 +65,22 @@ describe('Field public contract', () => {
     expect(textarea.className).toContain('resize-y')
     await waitFor(() => expect(textarea.getAttribute('aria-describedby')).toBe(screen.getByText('Markdown is supported.').id))
     expect(screen.getByText('Optional').getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('associates help and errors with the actual grouped textarea', async () => {
+    render(<Field invalid name="groupedNotes"><FieldLabel>Grouped notes</FieldLabel>
+      <InputGroup variant="filled" size="lg"><FieldControl render={<InputGroupTextarea autoSize minRows={2} maxRows={5} />} /><InputGroupAddon align="block-end">Markdown</InputGroupAddon></InputGroup>
+      <FieldDescription>Include the owner.</FieldDescription><FieldError match>Owner is missing.</FieldError>
+    </Field>)
+    const textarea = screen.getByRole('textbox', { name: 'Grouped notes' })
+    await waitFor(() => {
+      const ids = textarea.getAttribute('aria-describedby')?.split(' ') ?? []
+      expect(ids).toContain(screen.getByText('Include the owner.').id)
+      expect(ids).toContain(screen.getByText('Owner is missing.').id)
+    })
+    expect(textarea.getAttribute('data-slot')).toBe('input-group-control')
+    expect(textarea.getAttribute('aria-invalid')).toBe('true')
+    expect(textarea.getAttribute('data-size')).toBe('lg')
   })
 
   it('supports async validation without moving presentation into a form library', async () => {

@@ -25,7 +25,7 @@
     },
     "field": {
       "background": { "$value": "{semantic.color.canvas.default}" },
-      "border": { "$value": "{semantic.color.border.subtle}" },
+      "border": { "$value": "{semantic.color.border.control}" },
       "focusRing": { "$value": "{semantic.color.focus.ring}" },
       "gap": { "$value": "{semantic.layout.space.2}" },
       "radius": { "$value": "{semantic.radius.control}" }

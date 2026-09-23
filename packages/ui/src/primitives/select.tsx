@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Select as SelectPrimitive } from '@base-ui/react/select'
 
-import { mergeClassName } from '../utils'
+import { cn, mergeClassName } from '../utils'
 import {
   optionGroupClasses,
   optionGroupLabelClasses,
@@ -11,13 +11,14 @@ import {
   optionScrollButtonClasses,
   optionSeparatorClasses,
 } from './option-list'
+import { controlStyles, controlHeight, type ControlSize, type ControlVariant } from './control-styles'
 import { PluginPortalBoundary } from './portal-ownership'
 
 export type SelectProps<Value, Multiple extends boolean | undefined = false> = SelectPrimitive.Root.Props<Value, Multiple>
 export type SelectGroupProps = SelectPrimitive.Group.Props
 export type SelectValueProps = SelectPrimitive.Value.Props
-export type SelectTriggerSize = 'sm' | 'default'
-export type SelectTriggerProps = SelectPrimitive.Trigger.Props & { size?: SelectTriggerSize }
+export type SelectTriggerSize = ControlSize
+export type SelectTriggerProps = SelectPrimitive.Trigger.Props & { size?: SelectTriggerSize; variant?: ControlVariant; width?: 'full' | 'auto' }
 export type SelectContentProps = SelectPrimitive.Popup.Props & Pick<SelectPrimitive.Positioner.Props, 'align' | 'alignOffset' | 'side' | 'sideOffset' | 'alignItemWithTrigger'>
 export type SelectLabelProps = SelectPrimitive.GroupLabel.Props
 export type SelectItemProps = SelectPrimitive.Item.Props
@@ -42,26 +43,20 @@ export function SelectValue({ className, ...props }: SelectValueProps) {
 }
 
 const selectTriggerClasses = [
-  'flex w-fit min-w-0 max-w-full items-center justify-between gap-bakin-2 rounded-bakin-control border border-bakin-border-subtle',
-  'bg-bakin-canvas-default px-bakin-3 font-bakin-typography-family-ui text-[length:var(--bakin-typography-size-body)] leading-tight text-bakin-text-primary outline-none select-none',
-  'transition-[background-color,border-color,color,opacity] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard',
-  'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
-  'data-[size=default]:h-[var(--bakin-layout-size-control)] data-[size=sm]:min-h-bakin-8 data-[size=sm]:px-bakin-2',
+  'flex max-w-full items-center justify-between gap-bakin-2 select-none',
   'data-placeholder:text-bakin-text-muted data-popup-open:border-bakin-focus-ring',
-  'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-[var(--bakin-state-opacity-disabled)]',
-  'aria-invalid:border-bakin-signal-danger',
-  // Size only unsized svgs (the chevron) — an avatar identity ring inside
-  // SelectValue carries its own size-full and must keep it (Button precedent).
+  'disabled:pointer-events-none',
   '[&_[data-slot=select-value]]:truncate [&_svg]:pointer-events-none [&_svg:not([class*="size-"])]:size-bakin-4 [&_svg]:shrink-0',
-  'motion-reduce:transition-none',
 ].join(' ')
 
-export function SelectTrigger({ className, size = 'default', children, ...props }: SelectTriggerProps) {
+export function SelectTrigger({ className, size = 'md', variant = 'outlined', width = 'auto', children, ...props }: SelectTriggerProps) {
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
       data-size={size}
-      className={mergeClassName(selectTriggerClasses, className)}
+      data-variant={variant}
+      data-width={width}
+      className={mergeClassName(cn(controlStyles({ size, variant }), controlHeight[size], selectTriggerClasses, width === 'full' ? 'w-full' : 'w-fit'), className)}
       {...props}
     >
       {children}

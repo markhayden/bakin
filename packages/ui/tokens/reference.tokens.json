@@ -38,6 +38,13 @@
             "hex": "#4a4747"
           }
         },
+        "400": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.443137, 0.423529, 0.423529],
+            "hex": "#716c6c"
+          }
+        },
         "100": {
           "$value": {
             "colorSpace": "srgb",

@@ -103,6 +103,7 @@ export const ListHeaderControls = {
     const board = canvas.getByRole('tab', { name: 'Board' })
     const action = canvas.getByRole('button', { name: 'New task' })
     const control = search.closest('[data-slot="search-input-control"]') as HTMLElement
+    const shell = search.closest('[data-slot="input-group"]') as HTMLElement
     const page = search.closest('[data-archetype="page"]')
     const boardTop = board.getBoundingClientRect().top
     const actionTop = action.getBoundingClientRect().top
@@ -110,8 +111,8 @@ export const ListHeaderControls = {
     await expect(control).toHaveAttribute('data-state', 'empty')
     await expect(page).toHaveAttribute('data-width', 'full')
     await expect(search).toHaveValue('')
-    await expect(Math.abs(search.getBoundingClientRect().height - board.getBoundingClientRect().height)).toBeLessThan(1)
-    await expect(Math.abs(search.getBoundingClientRect().height - action.getBoundingClientRect().height)).toBeLessThan(1)
+    await expect(Math.abs(shell.getBoundingClientRect().height - board.getBoundingClientRect().height)).toBeLessThan(1)
+    await expect(Math.abs(shell.getBoundingClientRect().height - action.getBoundingClientRect().height)).toBeLessThan(1)
     await expect(Math.abs(board.getBoundingClientRect().top - boardTop)).toBeLessThan(1)
     await expect(Math.abs(action.getBoundingClientRect().top - actionTop)).toBeLessThan(1)
   },

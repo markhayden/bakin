@@ -2,6 +2,7 @@
 @theme inline {
   --color-bakin-action-primary-background: var(--bakin-color-action-primary-background);
   --color-bakin-action-primary-foreground: var(--bakin-color-action-primary-foreground);
+  --color-bakin-border-control: var(--bakin-color-border-control);
   --color-bakin-border-subtle: var(--bakin-color-border-subtle);
   --color-bakin-canvas-default: var(--bakin-color-canvas-default);
   --color-bakin-data-other: var(--bakin-color-data-other);

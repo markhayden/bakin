@@ -201,16 +201,16 @@ export const GENERATED_TOKENS: readonly GeneratedStoryToken[] = [
     "type": "color",
     "source": "packages/ui/tokens/component.tokens.json#/component/field/border",
     "references": [
-      "semantic.color.border.subtle"
+      "semantic.color.border.control"
     ],
     "value": {
       "colorSpace": "srgb",
       "components": [
-        0.290196,
-        0.278431,
-        0.278431
+        0.443137,
+        0.423529,
+        0.423529
       ],
-      "hex": "#4a4747"
+      "hex": "#716c6c"
     }
   },
   {
@@ -615,6 +615,23 @@ export const GENERATED_TOKENS: readonly GeneratedStoryToken[] = [
         0.666667
       ],
       "hex": "#aeaaaa"
+    }
+  },
+  {
+    "path": "reference.color.warm.400",
+    "layer": "reference",
+    "visibility": "internal",
+    "type": "color",
+    "source": "packages/ui/tokens/reference.tokens.json#/reference/color/warm/400",
+    "references": [],
+    "value": {
+      "colorSpace": "srgb",
+      "components": [
+        0.443137,
+        0.423529,
+        0.423529
+      ],
+      "hex": "#716c6c"
     }
   },
   {
@@ -1143,6 +1160,34 @@ export const GENERATED_TOKENS: readonly GeneratedStoryToken[] = [
       "ratio": 6.54,
       "minimum": 4.5,
       "standard": "WCAG AA normal text",
+      "status": "pass"
+    }
+  },
+  {
+    "path": "semantic.color.border.control",
+    "layer": "semantic",
+    "visibility": "public",
+    "type": "color",
+    "description": "Resting boundary of outlined editable controls on canvas, default and elevated surfaces.",
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/border/control",
+    "references": [
+      "reference.color.warm.400"
+    ],
+    "value": {
+      "colorSpace": "srgb",
+      "components": [
+        0.443137,
+        0.423529,
+        0.423529
+      ],
+      "hex": "#716c6c"
+    },
+    "contrast": {
+      "against": "semantic.color.surface.elevated",
+      "role": "non-text",
+      "ratio": 3.39,
+      "minimum": 3,
+      "standard": "WCAG AA non-text UI",
       "status": "pass"
     }
   },

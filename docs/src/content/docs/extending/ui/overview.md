@@ -689,6 +689,31 @@ Collapsible is for supporting detail that can safely start hidden. Required deci
 
 ## Text-Field Primitives
 
+Large buttons and icon buttons now align with large fields at 44px. Small and
+medium remain 32px and 36px.
+
+`Textarea` shares those size/variant props; size changes padding and type, not
+row count. It defaults to three manually resizable rows. Use `rows={5}` for a
+different initial height. For bounded growth use
+`<Textarea autoSize minRows={3} maxRows={10} />`; auto mode disables manual
+resizing and scrolls after its maximum. Do not pass `rows` in auto mode. Values,
+paste, reset, container changes and font loading recalculate its height.
+
+`Input` and the default-input `FieldControl` support `size="sm|md|lg"`
+(32/36/44px) and `variant="outlined|filled|ghost"`. Defaults are `md` and
+`outlined`. Outlined borders use `--bakin-color-border-control`, with
+at least 3:1 contrast on canvas, default and elevated surfaces. Subtle separators
+retain their separate token. Set presentation on the control, not Form or Field. Use
+`htmlSize={24}` for the native numeric input width hint; CSS layout still owns
+the available width. Input remains full-width by default. Custom-rendered
+FieldControl delegates presentation to its rendered control.
+
+Outlined provides a complete border. Filled uses its background alone, with
+all borders transparent at rest. Pair it with a visible label and a parent
+surface that distinguishes the field fill. Ghost supports
+compact inline contexts. Invalid fields retain a complete error border. Every appearance retains
+labels, associated help/errors and keyboard focus. Empty-value hints do not replace labels.
+
 The text-field set standardizes the native entry controls and their composable adornments:
 
 | Need | Component | Contract |
@@ -1568,3 +1593,85 @@ bun run docs:check
 - [Plugin client UI](/docs/extending/plugins/client-ui/)
 - [Quality control](/docs/extending/quality-control/)
 - [SDK reference](/docs/reference/generated/sdk/)
+
+
+InputGroup owns `size` and `variant` for its shell and editable child. Set those
+props on the group; `InputGroupInput` and `InputGroupTextarea` omit them. Addon
+buttons retain explicit inset sizes (`xs`/`icon-xs` fit every field size;
+`sm`/`icon-sm` fit medium and large fields). Disable each mutating action when
+its field is disabled or readonly; a disabled action alone does not disable typing.
+Use `FieldControl render={<InputGroupTextarea … />}` for textarea association.
+
+`InputGroup/TextEntry` demonstrates clear with focus restoration, password reveal,
+decorative icons, described units, announced loading, readonly `CopyButton` from
+`/patterns`, bounded multiline counts, and duplicate-safe submission using Form
+and SubmitButton. Counts use UTF-16 code units to match native `maxLength`.
+Keep copy feedback tied to the actual clipboard result; never display optimistic
+success. Loading need not disable typing; readonly still permits copying.
+
+
+SelectTrigger accepts `size="sm|md|lg"`, `variant="outlined|filled|ghost"`, and
+`width="auto|full"` (default auto). Use full width in forms. Multiple Select
+values are summarized through SelectValue's render function as the first label
+plus “+N more”; the popup exposes every selected option. Supply `items` labels
+and `SelectItem label` for rich option typeahead. `null` means no selection;
+an empty-string option is an explicit selectable “None” choice. Select has no
+editable search input; use Combobox for searchable selection.
+
+
+### Searchable selection
+
+Use `Combobox` from `@makinbakin/sdk/ui` when users search a predefined catalog.
+Its query stays separate from committed single or multiple values; it does not
+create arbitrary values. The 16 public parts cover the root, control, input,
+trigger, clear, value, content, list, item, group/label, empty/status and chips.
+`ComboboxLabel` labels a group; use `FieldLabel` for the editable input.
+
+```tsx
+<Field name="runtime">
+  <FieldLabel>Runtime</FieldLabel>
+  <Combobox items={['Pi', 'OpenClaw']}>
+    <ComboboxControl size="md" variant="outlined">
+      <ComboboxInput />
+      <ComboboxClear aria-label="Clear runtime" />
+      <ComboboxTrigger aria-label="Show runtimes" />
+    </ComboboxControl>
+    <ComboboxContent>
+      <ComboboxEmpty>No matching runtimes.</ComboboxEmpty>
+      <ComboboxList>{(item: string) => <ComboboxItem key={item} value={item}>{item}</ComboboxItem>}</ComboboxList>
+    </ComboboxContent>
+  </Combobox>
+</Field>
+```
+
+Control width defaults to `full`; `auto` is available for constrained toolbars.
+Put size/variant on ComboboxControl. The input accepts `htmlSize` for native
+width hints. Object values should provide `itemToStringLabel`,
+`itemToStringValue` and `isItemEqualToValue` with stable IDs. The root preserves
+Base UI's controlled/uncontrolled callbacks, including event details. A native
+form reset does not reset Combobox selection in the installed Base UI version.
+Use a controlled value and restore it in Form's onReset, as shown in
+Field and form composition/FoundationControls. Form submission serializes
+object options to their itemToStringValue IDs; uncontrolled native Textarea
+values reset through the browser.
+ComboboxContent retains plugin portal ownership and anchor positioning.
+Keep ComboboxStatus mounted and update its contents to announce changes.
+
+
+`Combobox/CompactAndObjectValues` switches chips to a first-label/count summary
+without changing the selected array. Keep the query visible in compact mode and
+keep every selected value accessible in the popup. Each chip removal button
+names the value it removes. Backspace in an empty chip input removes the last
+chip; Escape closes an open popup without changing selection. Base UI also
+supports clearing a selection with Escape when its popup is already closed.
+
+`Combobox/AsyncAndUnavailable` supplies caller-owned results with `filter={null}`.
+Keep selected objects/known labels independently of the result catalog. Cancel
+requests or ignore outdated responses after completion; the deterministic story
+proves the latter. Announce loading and errors with a persistently mounted
+ComboboxStatus, show empty feedback only after a successful empty response, and
+place Retry outside the listbox's options. A missing filtered result is not an
+unavailable value: only explicit caller knowledge marks a value unavailable,
+with associated error and an actionable clear/replacement path. Empty query
+clearing follows Base UI's input-clear semantics; replacing a nonempty query or
+refreshing the catalog does not discard a committed value.

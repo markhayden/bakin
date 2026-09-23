@@ -41,6 +41,25 @@ the selected Product Character values generated from
 
 ## 1. Text hierarchy — four tiers, never adjacent at the same weight
 
+### Text-control presentation
+
+Text controls use explicit `size="sm|md|lg"` (32/36/44px at standard text
+size) and `variant="outlined|filled|ghost"`; defaults are `md` and `outlined`.
+Outlined uses a complete border, filled uses the field background alone
+(all borders transparent at rest), and ghost
+suits inline/toolbar contexts. Keep a visible label and a visible focus/error
+treatment for every appearance. Invalid fields retain a complete error border.
+Outlined borders use the approved
+`--bakin-color-border-control` token (at least 3:1 against supported surfaces);
+`--bakin-color-border-subtle` remains for nonessential separators. Text enlargement
+may increase height.
+Form and Field do not supply inherited visual defaults. `Input.htmlSize`
+preserves the native numeric width hint; `size` always means presentation.
+
+Textarea defaults to three manually resizable rows. Opt into bounded growth
+with `autoSize`, `minRows` and `maxRows` (defaults 3 and 10); omit `rows` in
+that mode. Readonly values retain full text contrast, focus and copyability.
+
 | Tier | Treatment | Examples |
 |---|---|---|
 | Page identity | `PageHeader` title/eyebrow contract | one page `h1`, domain context |
@@ -333,3 +352,34 @@ and administrative surfaces during the full style-guide sweep:
   without it.
 - Use the exported `focusRing`/`focusRingInset` recipe for custom
   interactive elements; never hand-type the outline stack.
+
+
+### InputGroup ownership
+
+`InputGroup` owns the shared size and variant; its input and textarea omit those
+props. Match 24px inset actions to small fields; 32px inset actions fit medium
+and large fields. Preserve action focus outlines while the group outline follows
+the editable control. Disable mutating actions explicitly for disabled/readonly
+fields. Apply disabled opacity once at the shell. Use the public `TextEntry`
+story for clear/reveal/copy/count/loading/submit composition and `FieldControl`
+for textarea help/error association. Form/Field do not provide visual defaults.
+
+
+### Searchable choices
+
+Choose Select for bounded noneditable choices; Combobox for a searchable
+catalog. Query text never becomes a selected form value. Compose FieldLabel
+with ComboboxInput; ComboboxLabel belongs to an option group. Style only
+ComboboxControl. Chips wrap with the input and have explicitly named removal
+actions. Use the existing Base UI value/identity contract, shared option-list
+styles and PluginPortalBoundary. Keep loading announcements separate from
+field validation and never render a status message as a selectable option.
+
+
+For async Combobox, the caller owns results, request lifetime and selected value
+identity. Pass `filter={null}` and ignore stale responses after reading the
+result; keep loading/error/no-match feedback distinct. Query absence in results
+never proves a selected value unavailable. Mark confirmed unavailable values
+with FieldError and explicit recovery. Compact summaries retain an editable
+query and access to every selected value in the popup. Escape closes an open
+popup; Base UI's closed-popup Escape shortcut clears the selection.

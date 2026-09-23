@@ -8,7 +8,7 @@ import { cn } from '../utils'
 
 type NativeSearchInputProps = Omit<
   React.ComponentPropsWithoutRef<typeof Input>,
-  'aria-label' | 'children' | 'className' | 'defaultValue' | 'onChange' | 'size' | 'type' | 'value'
+  'aria-label' | 'children' | 'className' | 'defaultValue' | 'onChange' | 'size' | 'variant' | 'type' | 'value'
 >
 
 export interface SearchInputProps extends NativeSearchInputProps {
