@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { expect, waitFor, within } from 'storybook/test'
 
 import {
   ConversationPanel,
+  type ComposerHandle,
   ToolCallDrawer,
   type ConversationMessage,
   type ConversationToolCall,
@@ -64,13 +65,49 @@ export const CanonicalUsage = {
   render: (args) => <ConversationPanel {...args} />,
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('region', { name: 'Release review' })).toBeVisible()
-    await expect(canvas.getByRole('region', { name: 'Conversation history' })).toHaveAttribute('tabindex', '0')
+    await expect(canvas.getByRole('region', { name: 'Release review history' })).toHaveAttribute('tabindex', '0')
     await expect(canvas.getByRole('article', { name: 'Release agent reply' })).toBeVisible()
     await expect(canvas.getByRole('textbox', { name: 'Message the release agent' })).toBeVisible()
   },
 } satisfies Story
 
 const releaseAgent = { id: 'release', name: 'Release operations agent' }
+
+function DraftHandleExample() {
+  const handle = useRef<ComposerHandle>(null)
+  const [mounted, setMounted] = useState(true)
+  const [status, setStatus] = useState('Check the current draft')
+  return (
+    <PageShell>
+      <Stack>
+        <Button onClick={() => { handle.current?.setText('Review the project plan'); handle.current?.focus() }}>Restore idea</Button>
+        <Button onClick={() => setStatus(handle.current ? (handle.current.isEmpty() ? 'Draft is empty' : 'Draft is present') : 'Composer is unmounted')}>Check draft</Button>
+        <Button onClick={() => setMounted(value => !value)}>{mounted ? 'Unmount panel' : 'Mount panel'}</Button>
+        <p role="status">{status}</p>
+        {mounted ? <ConversationPanel messages={[]} onSend={() => {}} storageKey="storybook-panel-handle" autoFocus={false} composerHandleRef={handle} inputLabel="Project idea" /> : null}
+      </Stack>
+    </PageShell>
+  )
+}
+
+export const DraftHandle = {
+  args: { messages: [], onSend: () => {}, storageKey: 'storybook-panel-handle' },
+  render: () => <DraftHandleExample />,
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.clear(canvas.getByRole('textbox', { name: 'Project idea' }))
+    await userEvent.click(canvas.getByRole('button', { name: 'Check draft' }))
+    await expect(canvas.getByRole('status')).toHaveTextContent('Draft is empty')
+    await userEvent.click(canvas.getByRole('button', { name: 'Restore idea' }))
+    await expect(canvas.getByRole('textbox')).toHaveFocus()
+    await userEvent.click(canvas.getByRole('button', { name: 'Unmount panel' }))
+    await userEvent.click(canvas.getByRole('button', { name: 'Check draft' }))
+    await expect(canvas.getByRole('status')).toHaveTextContent('Composer is unmounted')
+    await userEvent.click(canvas.getByRole('button', { name: 'Mount panel' }))
+    await expect(canvas.getByRole('textbox')).toHaveValue('Review the project plan')
+    await userEvent.click(canvas.getByRole('button', { name: 'Check draft' }))
+    await expect(canvas.getByRole('status')).toHaveTextContent('Draft is present')
+  },
+} satisfies Story
 
 const toolCall: ConversationToolCall = {
   key: 'route-audit',

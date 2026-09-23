@@ -21,7 +21,7 @@ evidence when checking an item; a written plan is not a passing test.
 - [ ] T05: Add bounded, accessible Markdown comparison
 - [x] T06: Correct shared composer focus behavior
 - [x] T07: Correct contained conversation keyboard scrolling
-- [ ] T07b: Forward the existing composer handle through ConversationPanel
+- [x] T07b: Forward the existing composer handle through ConversationPanel
 - [ ] T08: Publish shared contract evidence and docs
 - [ ] T09: Centralize detail requests and honest load states
 - [ ] T10: Propagate corrupt/unavailable history honestly

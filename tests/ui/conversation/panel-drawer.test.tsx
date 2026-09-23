@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'bun:test'
-import { fireEvent, render } from '@testing-library/react'
+import { act, fireEvent, render } from '@testing-library/react'
+import { createRef } from 'react'
 
 import {
   ConversationPanel,
+  type ComposerHandle,
   ToolCallDrawer,
   type ConversationMessage,
   type ConversationToolCall,
@@ -61,6 +63,28 @@ describe('focused tool call drawer', () => {
 })
 
 describe('focused conversation panel', () => {
+  it('forwards the existing composer handle across draft identity and read-only transitions', () => {
+    const ref = createRef<ComposerHandle>()
+    const props = { messages: [], onSend: () => {}, autoFocus: false, composerHandleRef: ref }
+    const view = render(<ConversationPanel {...props} storageKey="first" />)
+    expect(ref.current?.isEmpty()).toBe(true)
+    act(() => ref.current!.setText('Restored idea'))
+    expect(ref.current?.isEmpty()).toBe(false)
+    act(() => ref.current!.focus())
+    expect(document.activeElement).toBe(view.getByRole('textbox'))
+    view.rerender(<ConversationPanel {...props} storageKey="second" />)
+    expect(ref.current?.isEmpty()).toBe(true)
+    view.rerender(<ConversationPanel {...props} storageKey="first" />)
+    expect(ref.current?.isEmpty()).toBe(false)
+    expect((view.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Restored idea')
+    view.rerender(<ConversationPanel {...props} storageKey="first" readOnly />)
+    expect(ref.current).toBeNull()
+    view.rerender(<ConversationPanel {...props} storageKey="first" />)
+    expect(ref.current?.isEmpty()).toBe(false)
+    view.unmount()
+    expect(ref.current).toBeNull()
+  })
+
   it('supports a top-divider workspace treatment without an outer frame', () => {
     const { container } = render(
       <ConversationPanel

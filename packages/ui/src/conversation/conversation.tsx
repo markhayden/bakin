@@ -28,6 +28,8 @@ export interface ConversationProps {
   turns: readonly ConversationTurn[]
   /** Document scroll is the product default; contained is for an explicitly bounded standalone surface. */
   mode?: ConversationMode
+  /** Distinguishes contained transcript regions when a page has multiple sessions. */
+  ariaLabel?: string
   /** Fallback identity for agent turns. */
   agent?: ConversationAgent
   /** Resolve identity when a turn carries its own agent id. */
@@ -77,6 +79,7 @@ function ArrowDownIcon() {
 export function Conversation({
   turns,
   mode = 'document',
+  ariaLabel = 'Conversation history',
   agent,
   resolveAgent,
   emptyState,
@@ -137,7 +140,7 @@ export function Conversation({
         ref={scrollRef}
         data-conv-scroller=""
         role={contained ? 'region' : undefined}
-        aria-label={contained ? 'Conversation history' : undefined}
+        aria-label={contained ? ariaLabel : undefined}
         tabIndex={contained ? 0 : undefined}
         onScroll={contained ? handleScroll : undefined}
         className={cn(contained && 'h-full overflow-y-auto overscroll-contain outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring')}

@@ -60,3 +60,12 @@ document mode keeps its parent-owned scrolling and gains no tab stop. Regression
 failed first; all conversation/composer unit tests and four desktop/mobile browser
 checks pass, including real Page Down scrolling and Tab exit. Projects heading and
 detail traversal findings still await consumer fixes; no suppressions added.
+
+## C4c — Composer handle forwarding (T07b)
+
+Approved `composerHandleRef` forwards the existing `handleRef` methods with no
+storage-key coupling. Lifecycle regression failed first, then all nine panel tests
+passed (empty/restored, identity changes, read-only, focus and unmount). Nine shared
+conversation/composer stories pass including axe; transcript names derive from
+panel titles to distinguish multiple sessions. Typecheck and focused lint pass.
+Quick conformance still stops only at the recorded fleet compatibility drift.
