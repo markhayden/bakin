@@ -22,7 +22,6 @@ import {
 import { Badge, Button, SystemState, Text } from '@makinbakin/sdk/ui'
 
 import type { AvailableModel } from '../types'
-import { BrandIcon } from './brand-icon'
 import type { CatalogData } from './use-catalog'
 
 /** Plain-words badge per eligibility reason (#907). */
@@ -150,18 +149,7 @@ export function CatalogPanel({ catalog, defaultModel }: CatalogPanelProps) {
   ), [availableProviders, modelOptions])
   const providerOptions = useMemo(() => availableProviders.map((provider) => {
     const representative = modelOptions.find((model) => model.provider === provider)
-    return {
-      value: provider,
-      label: representative ? providerLabel(representative) : provider,
-      icon: representative ? (
-        <BrandIcon
-          slug={representative.providerBrandIconSlug}
-          fallbackText={providerLabel(representative)}
-          fallbackColor={representative.providerBrandColor}
-          size="sm"
-        />
-      ) : undefined,
-    }
+    return { value: provider, label: representative ? providerLabel(representative) : provider }
   }), [availableProviders, modelOptions])
   const filteredModels = useMemo(() => modelOptions.filter((model) => (
     (providers.length === 0 || providers.includes(model.provider))
@@ -211,13 +199,7 @@ export function CatalogPanel({ catalog, defaultModel }: CatalogPanelProps) {
       sortable: true,
       cellClassName: 'whitespace-normal',
       cell: (model) => (
-        <div className="flex min-w-0 items-start gap-bakin-3">
-          <BrandIcon
-            slug={model.brandIconSlug ?? model.providerBrandIconSlug}
-            fallbackText={providerLabel(model)}
-            fallbackColor={model.providerBrandColor}
-            size="sm"
-          />
+        <div className="flex min-w-0 items-start">
           <div className="grid min-w-0 gap-bakin-1">
             <span className="min-w-0 break-words font-bakin-typography-weight-semibold text-bakin-text-primary">
               {model.name}
