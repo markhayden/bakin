@@ -9,8 +9,8 @@
 import { Users } from 'lucide-react'
 import { useAgent, useAgentColor, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
 import { Section, Stack } from '@makinbakin/sdk/layout'
-import { AgentAvatar, DEFAULT_MODEL_VALUE, ListRow, ListRows, ModelSelect, type ModelSelectOption } from '@makinbakin/sdk/patterns'
-import { Badge, Field, FieldLabel, SystemState, Text } from '@makinbakin/sdk/ui'
+import { AgentAvatar, DEFAULT_MODEL_VALUE, DataTable, ModelSelect, type DataTableColumn, type ModelSelectOption } from '@makinbakin/sdk/patterns'
+import { Badge, SystemState, Text } from '@makinbakin/sdk/ui'
 
 import { agentRows, type AgentRow } from '../lib/advanced'
 import { GuideCard } from '@makinbakin/sdk/patterns'
@@ -66,6 +66,73 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
   groups.sort((a, b) => Number(b.rows.some((r) => r.agentId === mainAgentId)) - Number(a.rows.some((r) => r.agentId === mainAgentId)))
   const pinned = rows.filter((r) => sel.effective(r.modelRef).model).length
 
+  // One header row per table, like Work routing — never a label on every row.
+  const columns: ReadonlyArray<DataTableColumn<AgentRow>> = [
+    {
+      key: 'agent',
+      header: 'Agent',
+      cellClassName: 'whitespace-normal align-top',
+      cell: (row) => {
+        const own = sel.effective(row.modelRef)
+        return (
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+              <OverrideAgentAvatar agentId={row.agentId} name={row.name} />
+              <span className="min-w-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{row.name}</span>
+              <Badge tone={own.model ? 'accent' : 'neutral'} variant="soft" size="xs" title={own.model ? 'Runs on its own model' : 'Runs on the default model'}>
+                {own.model ? 'own model' : 'default'}
+              </Badge>
+              <StagedMark staged={own.staged} />
+              <PendingChip sel={sel} refName={row.modelRef} />
+            </div>
+            <SelectionCallout sel={sel} refName={row.modelRef} />
+            <SelectionCallout sel={sel} refName={row.subagentRef} />
+          </div>
+        )
+      },
+    },
+    {
+      key: 'model',
+      header: 'Model',
+      cellClassName: 'align-top',
+      cell: (row) => (
+        <ModelSelect
+          id={`agent-${row.agentId}-model`}
+          value={sel.effective(row.modelRef).model ?? DEFAULT_MODEL_VALUE}
+          onValueChange={(value) => sel.stage(row.modelRef, { model: value === DEFAULT_MODEL_VALUE ? null : value })}
+          models={modelOptions}
+          defaultLabel={`Use default model${agent.model ? ` (${agent.model})` : ''}`}
+          ariaLabel={`${row.name} model`}
+          className="w-full min-w-0"
+        />
+      ),
+    },
+    ...(support?.perAgentSubagentModel
+      ? [{
+          key: 'subagents',
+          header: 'Subagents',
+          cellClassName: 'align-top',
+          cell: (row: AgentRow) => {
+            const sub = sel.effective(row.subagentRef)
+            return (
+              <div className="min-w-0">
+                <ModelSelect
+                  id={`agent-${row.agentId}-subagent`}
+                  value={sub.model ?? DEFAULT_MODEL_VALUE}
+                  onValueChange={(value) => sel.stage(row.subagentRef, { model: value === DEFAULT_MODEL_VALUE ? null : value })}
+                  models={modelOptions}
+                  defaultLabel="Use default subagent model"
+                  ariaLabel={`${row.name} subagents`}
+                  className="w-full min-w-0"
+                />
+                {sub.staged ? <div className="mt-bakin-1"><StagedMark staged /></div> : null}
+              </div>
+            )
+          },
+        } satisfies DataTableColumn<AgentRow>]
+      : []),
+  ]
+
   return (
     <Stack gap="section">
       <GuideCard
@@ -87,58 +154,13 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
             <h2 id={`agents-group-${group.id}`} className="m-0">{group.label}</h2>
             <Badge tone="neutral" variant="soft" size="xs">{group.rows.length} agent{group.rows.length === 1 ? '' : 's'}</Badge>
           </div>
-          <ListRows
-            aria-label={`${group.label} model overrides`}
-            variant="separated"
-            columns={support?.perAgentSubagentModel ? 'minmax(9rem,.55fr) minmax(0,1fr) minmax(0,1fr)' : 'minmax(9rem,.55fr) minmax(0,1fr)'}
-            columnsAt="3xl"
-            columnsAlign="end"
-          >
-            {group.rows.map((row) => {
-              const own = sel.effective(row.modelRef)
-              const sub = sel.effective(row.subagentRef)
-              const effectiveModel = own.model ?? agent.model
-              return (
-                <ListRow key={row.agentId} data-agent-model-row={row.agentId} data-highlighted={highlight === row.modelRef || highlight === row.subagentRef ? 'true' : undefined} className="px-bakin-4 py-bakin-4">
-                  <div className="flex min-w-0 flex-wrap items-center gap-bakin-2 @3xl/list-rows:self-center">
-                    <OverrideAgentAvatar agentId={row.agentId} name={row.name} />
-                    <span className="min-w-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{row.name}</span>
-                    {effectiveModel ? (
-                      <Badge tone={own.model ? 'accent' : 'neutral'} variant="soft" size="xs" title={own.model ? 'Runs on its own model' : 'Runs on the default model'}>
-                        {own.model ? 'own model' : 'default'}
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <Field name={`agent-${row.agentId}-model`}>
-                    <FieldLabel htmlFor={`agent-${row.agentId}-model`}>Model <StagedMark staged={own.staged} /> <PendingChip sel={sel} refName={row.modelRef} /></FieldLabel>
-                    <ModelSelect
-                      id={`agent-${row.agentId}-model`}
-                      value={own.model ?? DEFAULT_MODEL_VALUE}
-                      onValueChange={(value) => sel.stage(row.modelRef, { model: value === DEFAULT_MODEL_VALUE ? null : value })}
-                      models={modelOptions}
-                      defaultLabel={`Use default model${agent.model ? ` (${agent.model})` : ''}`}
-                      className="w-full min-w-0"
-                    />
-                    <SelectionCallout sel={sel} refName={row.modelRef} />
-                  </Field>
-                  {support?.perAgentSubagentModel ? (
-                    <Field name={`agent-${row.agentId}-subagent`}>
-                      <FieldLabel htmlFor={`agent-${row.agentId}-subagent`}>Subagents <StagedMark staged={sub.staged} /></FieldLabel>
-                      <ModelSelect
-                        id={`agent-${row.agentId}-subagent`}
-                        value={sub.model ?? DEFAULT_MODEL_VALUE}
-                        onValueChange={(value) => sel.stage(row.subagentRef, { model: value === DEFAULT_MODEL_VALUE ? null : value })}
-                        models={modelOptions}
-                        defaultLabel="Use default subagent model"
-                        className="w-full min-w-0"
-                      />
-                      <SelectionCallout sel={sel} refName={row.subagentRef} />
-                    </Field>
-                  ) : null}
-                </ListRow>
-              )
-            })}
-          </ListRows>
+          <DataTable
+            label={`${group.label} models`}
+            columns={columns}
+            rows={group.rows}
+            rowKey={(row) => row.agentId}
+            rowProps={(row) => ({ 'data-agent-model-row': row.agentId, 'data-highlighted': highlight === row.modelRef || highlight === row.subagentRef ? 'true' : undefined })}
+          />
         </Section>
       ))}
       {rows.length > 0 && !support?.perAgentSubagentModel ? (

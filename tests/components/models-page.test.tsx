@@ -339,7 +339,7 @@ describe('ModelsPage component', () => {
       expect(screen.getByTestId('unsupported-knobs').textContent).toContain("doesn't support fallbacks, aliases, a default subagent model")
       await openTab('Agents')
       await screen.findByText('Patch')
-      expect(screen.queryByRole('combobox', { name: 'Subagents' })).toBeNull()
+      expect(screen.queryByRole('combobox', { name: 'Patch subagents' })).toBeNull()
     })
 
     it('Fallbacks: removing the only fallback stages a clear of its index; adding stages the next index', async () => {
@@ -376,7 +376,7 @@ describe('ModelsPage component', () => {
       await openTab('Agents')
       const row = within((await screen.findByText('Patch')).closest('[data-agent-model-row]') as HTMLElement)
       expect(row.getByText('default')).toBeTruthy()
-      await user.click(row.getByRole('combobox', { name: 'Model' }))
+      await user.click(row.getByRole('combobox', { name: 'Patch model' }))
       await user.click(await screen.findByRole('option', { name: 'Claude Opus 4.6' }))
       expect((await screen.findByTestId('draft-summary')).textContent).toContain('1 change staged')
       fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
