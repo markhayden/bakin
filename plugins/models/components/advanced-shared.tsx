@@ -49,7 +49,7 @@ export function GuideCard({ icon: Icon, title, lead, points, actions }: GuideCar
             <Icon className="size-bakin-4" />
           </span>
         ) : null}
-        <div className="flex min-w-0 flex-1 flex-col gap-bakin-5">
+        <div className="flex min-w-0 flex-1 flex-col gap-bakin-6">
           <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
             <div className="min-w-0">
               <CardTitle>{title}</CardTitle>
@@ -60,8 +60,8 @@ export function GuideCard({ icon: Icon, title, lead, points, actions }: GuideCar
           <Grid layout="thirds" gap="item" align="stretch" data-testid="guide-points">
             {points.map((point) => (
               <div key={point.heading} className="min-w-0 border-s border-bakin-border-subtle py-bakin-2 ps-bakin-4">
-                <Overline>{point.heading}</Overline>
-                <Text as="p" size="meta" tone="muted" className="mt-bakin-2 leading-relaxed">{point.body}</Text>
+                <Overline className="text-bakin-text-primary">{point.heading}</Overline>
+                <Text as="p" size="meta" tone="muted" className="mt-bakin-3 leading-relaxed">{point.body}</Text>
               </div>
             ))}
           </Grid>
