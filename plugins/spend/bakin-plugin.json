@@ -1,0 +1,78 @@
+{
+  "id": "spend",
+  "name": "Spend",
+  "version": "1.0.0",
+  "bakin": ">=1.0.0",
+  "description": "What your agents spend — observed and projected per billing lane — and the opt-in spending limits that notify at 50/75/90/100% and stop matching work at the line",
+  "contentFiles": [],
+  "secrets": [],
+  "dependencies": [],
+  "permissions": [
+    "storage.read",
+    "storage.write"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/spend",
+        "summary": "Windowed spend rollups + cap-window facets + pace projections"
+      },
+      {
+        "method": "GET",
+        "path": "/coverage",
+        "summary": "Observed-days coverage + the monthly limit suggestion with its basis"
+      },
+      {
+        "method": "GET",
+        "path": "/limits",
+        "summary": "The spend limits policy (rules with ids)"
+      },
+      {
+        "method": "PUT",
+        "path": "/limits",
+        "summary": "Replace the spend limits (ids server-assigned)"
+      },
+      {
+        "method": "GET",
+        "path": "/status",
+        "summary": "Live gate status: kill switch, per-agent/per-task holds, billing lanes, open incidents (?lite=1 = kill switch only)"
+      },
+      {
+        "method": "GET",
+        "path": "/incidents",
+        "summary": "Durable budget breach records (?all=1 includes resolved)"
+      },
+      {
+        "method": "POST",
+        "path": "/incidents/:id/resolve",
+        "summary": "Resolve an incident: raise | ack | resume"
+      },
+      {
+        "method": "PUT",
+        "path": "/billing/overrides",
+        "summary": "Replace manual billing-lane overrides"
+      },
+      {
+        "method": "POST",
+        "path": "/milestones/:id/ack",
+        "summary": "Dismiss a milestone bar for its window"
+      }
+    ],
+    "nav": [
+      {
+        "id": "spend",
+        "label": "Spend",
+        "icon": "CircleDollarSign",
+        "href": "/spend",
+        "order": 35,
+        "section": "operations"
+      }
+    ],
+    "slots": [
+      "page:/spend",
+      "nav-badge-providers"
+    ],
+    "eager": true
+  }
+}

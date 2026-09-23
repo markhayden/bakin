@@ -1184,12 +1184,11 @@ describe('plugin registration', () => {
     expect(registeredIds).toEqual(expect.arrayContaining([
       'content-dir', 'media.sharp', 'capabilities', 'github-readiness', 'service', 'runtime', 'session-store',
       'channel-approvals', 'channel-aliases', 'delivery-discord', 'restart-recovery', 'execution-safety',
-      'context.startup-size', 'budget', 'usage.agent-burn', 'search', 'dispatch.run-dirs',
+      'context.startup-size', 'spend.policy-available', 'usage.agent-burn', 'search', 'dispatch.run-dirs',
       'search-consistency', 'search-spin', 'search-canary', 'search-engine-burn',
       'skill', 'plugin-assets', 'plugin-artifacts', 'plugin-registry',
     ]))
     expect(actionIds.sort()).toEqual([
-      'accept-unattributed-history',
       'media-install-store',
       'search-canary-restart',
       'search-consistency-rebuild',
@@ -1198,7 +1197,6 @@ describe('plugin registration', () => {
       'search-outbox-revive',
       'search-scar-rebuild',
       'search-spin-rebuild',
-      'spend-evidence-refresh-pricing',
       'sweep-run-dirs',
       'sync-skill',
     ])

@@ -25,7 +25,7 @@ import {
   isUsageHistoryScanInFlight,
   getUsageHistoryScanStaleAfterMs,
   DEFAULT_SCAN_MINUTES,
-} from './lib/usage-history-timer'
+} from '../../src/core/usage-history-timer'
 import { DoctorRepairRequestNotFoundError } from '../../src/core/doctor-repair-store'
 import { getContentDir } from '../../src/core/content-dir'
 import { applyDoctorRepair, planDoctorRepair } from '../../src/core/doctor-repair'
@@ -66,7 +66,6 @@ import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
 import { checkExecutionSafety } from './lib/system-checks/execution-safety'
 import { checkRunDirs, runDirsSweepRepair } from './lib/system-checks/run-dirs'
 import { checkStartupContextSize } from './lib/system-checks/context-report'
-import { acceptUnattributedHistoryRepair, checkBudget, spendEvidenceRepair } from './lib/system-checks/budget'
 import { checkAgentBurn } from './lib/system-checks/agent-burn'
 import { checkSearchAdapter, searchScarRepair } from './lib/system-checks/search'
 import { searchOutboxRepair } from './lib/system-checks/search-outbox'
@@ -77,6 +76,7 @@ import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-ski
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
 import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
 import { checkPluginRegistry } from './lib/system-checks/plugin-registry'
+import { checkSpendPolicyAvailable } from './lib/system-checks/spend-policy'
 import {
   agentEffortResponseSchema,
   agentUsageSnapshotResponseSchema,
@@ -1025,12 +1025,12 @@ const healthPlugin: BakinPlugin = definePlugin({
       run: () => checkStartupContextSize(ctx.runtime),
     })
     ctx.registerHealthCheck({
-      id: 'budget',
-      name: 'Spend vs budget caps',
-      description: 'Evaluates spending policy, open holds, and current usage against every budget rule.',
+      id: 'spend.policy-available',
+      name: 'Spend limits policy reachable',
+      description: 'Confirms the spend plugin answers the limits-policy hook the dispatch gate consults; while it does not, dispatch fails closed.',
       group: workGroup,
       maxAgeMs: 120_000,
-      run: () => checkBudget(),
+      run: () => checkSpendPolicyAvailable(),
     })
     ctx.registerHealthCheck({
       id: 'usage.agent-burn',
@@ -1122,8 +1122,6 @@ const healthPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthRepairAction(searchCanaryRepair())
     ctx.registerHealthRepairAction(searchEngineBurnRepair())
     ctx.registerHealthRepairAction(searchConsistencyRestartRepair())
-    ctx.registerHealthRepairAction(spendEvidenceRepair())
-    ctx.registerHealthRepairAction(acceptUnattributedHistoryRepair())
     ctx.registerHealthRepairAction(syncSkillRepair(process.cwd(), ctx.runtime))
   },
 

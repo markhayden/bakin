@@ -431,9 +431,20 @@ export async function keyboardFocusFindings(
   viewport: 'desktop' | 'mobile',
 ): Promise<PluginUiConformanceFinding[]> {
   const targets = await page.evaluate(() => {
+    const hiddenInClosedDetails = (element: Element): boolean => {
+      // The closed disclosure's own summary stays reachable; anything under
+      // its content slot does not — at any nesting depth.
+      for (let node: Element | null = element; node; node = node.parentElement) {
+        const parent = node.parentElement
+        if (!parent || parent.tagName !== 'DETAILS' || parent.hasAttribute('open')) continue
+        if (node.tagName !== 'SUMMARY') return true
+      }
+      return false
+    }
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
     document.body.tabIndex = -1
     document.body.focus()
+    // `summary` is natively focusable (the kit's chart data-table disclosure).
     const selector = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), details > summary:first-of-type, [contenteditable="true"], [tabindex]:not([tabindex="-1"])'
     const visibleElements = [...document.querySelectorAll<HTMLElement>(selector)].filter((element) => {
       const style = getComputedStyle(element)
@@ -447,6 +458,10 @@ export async function keyboardFocusFindings(
         // Kit buttons may stay focusable while disabled so their tooltip can explain why.
         && element.tabIndex >= 0
         && !element.closest('[inert], [aria-hidden="true"]')
+        // Chromium keeps layout boxes for the content of a CLOSED <details>
+        // (content-visibility: hidden), so size alone does not prove
+        // visibility: only the summary of a closed disclosure is tabbable.
+        && !hiddenInClosedDetails(element)
     })
     const radioGroups = new Map<string, HTMLInputElement[]>()
     for (const element of visibleElements) {
@@ -500,7 +515,10 @@ export async function keyboardFocusFindings(
     const focus = await page.evaluate(async (restingById) => {
       await new Promise<void>((resolveFrame) => requestAnimationFrame(() => resolveFrame()))
       const element = document.activeElement
-      if (!(element instanceof HTMLElement) || element === document.body) {
+      // SVG focusables are real controls too: the kit's chart data points
+      // (<circle tabIndex=0 role="img">) take focus and announce through a
+      // tooltip, so an SVGElement here is reached, not "left the fixture".
+      if (!(element instanceof HTMLElement || element instanceof SVGElement) || element === document.body) {
         return { reached: false, visible: false, id: '', label: 'document body', diagnostic: '' }
       }
       const id = element.getAttribute('data-bakin-ui-test-focus-id') ?? ''
@@ -535,6 +553,12 @@ export async function keyboardFocusFindings(
         'transform',
       ].some((property) => focused[property as keyof typeof focused] !== resting[property as keyof typeof focused])
       const focusVisible = element.matches(':focus-visible')
+      // Chart data points show focus by activating their tooltip (the point
+      // gains aria-describedby → the tooltip id) rather than restyling the
+      // point itself — the documented chart-kit affordance.
+      const chartPointDescribed = element instanceof SVGElement
+        && element.getAttribute('role') === 'img'
+        && Boolean(element.getAttribute('aria-describedby'))
       const group = element.matches('[data-slot="input-group-control"]')
         ? element.closest('[data-slot="input-group"]') : null
       const groupStyle = group ? getComputedStyle(group) : null
@@ -551,7 +575,7 @@ export async function keyboardFocusFindings(
       const label = element.getAttribute('aria-label') || element.textContent?.trim() || element.tagName.toLowerCase()
       return {
         reached: Boolean(id),
-        visible: focusVisible && ((visibleOutline && outlineChanged) || shadowChanged || surfaceChanged || groupRingChanged),
+        visible: focusVisible && ((visibleOutline && outlineChanged) || shadowChanged || surfaceChanged || groupRingChanged || chartPointDescribed),
         id,
         label: label.slice(0, 80),
         diagnostic: `focus-visible=${focusVisible}; outline=${style.outlineStyle} ${style.outlineWidth}; shadow=${style.boxShadow}`,
@@ -559,16 +583,23 @@ export async function keyboardFocusFindings(
     }, Object.fromEntries(targets.map((target) => [target.id, target.resting])))
 
     if (!focus.reached) {
-      const missing = targets
-        .filter((target) => !reached.has(target.id))
-        .map((target) => target.label)
-        .join(', ')
+      const missingTargets = targets.filter((target) => !reached.has(target.id))
+      // Why each missing control was skipped, measured NOW (a control that was
+      // visible when targets were collected may since have collapsed).
+      const why = await page.evaluate((ids: string[]) => ids.map((id) => {
+        const element = document.querySelector<HTMLElement>(`[data-bakin-ui-test-focus-id="${id}"]`)
+        if (!element) return 'gone'
+        const rect = element.getBoundingClientRect()
+        const style = getComputedStyle(element)
+        return `display=${style.display} size=${Math.round(rect.width)}x${Math.round(rect.height)} tabindex=${element.tabIndex}${element.closest('details:not([open])') ? ' inside-closed-details' : ''}`
+      }), missingTargets.map((target) => target.id))
+      const missing = missingTargets.map((target, index) => `${target.label} [${why[index]}]`).join(', ')
       findings.push({
         rule: 'keyboard-focus',
         enforcement: 'conformance',
         fixture: FIXTURE_NAME,
         viewport,
-        message: `Tab left the visible fixture controls after reaching ${reached.size} of ${targets.length}. Missing: ${missing}.`,
+        message: `Tab left the visible fixture controls after reaching ${reached.size} of ${targets.length} (focus landed on ${focus.label}). Missing: ${missing}.`,
         repair: 'Use native interactive elements or a documented SDK control and preserve its complete tab order.',
       })
       break

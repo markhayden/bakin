@@ -26,7 +26,7 @@ mock.module('../../src/core/settings', () => ({
 }))
 mock.module('../../src/core/audit', () => ({ appendAudit: mock() }))
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
-  getHookRegistry: mock().mockReturnValue({ invoke: mock().mockResolvedValue(undefined), has: () => false, register: mock() }),
+  getHookRegistry: mock().mockReturnValue({ invoke: mock().mockResolvedValue(undefined), has: (name: string) => name === 'spend.getBudgetPolicy', register: mock() }),
 }))
 
 import {

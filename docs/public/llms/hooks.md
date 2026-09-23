@@ -233,7 +233,7 @@ Model hooks expose the effective model configuration and notify dependent surfac
 Label: Model config changed.
 Purpose: Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing.
 Kind: event
-Source: plugins/models/lib/register-hooks.ts:25
+Source: plugins/models/lib/register-hooks.ts:17
 
 Example:
 
@@ -253,7 +253,7 @@ await ctx.hooks.callAll(
 Label: List available models.
 Purpose: Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:39
+Source: plugins/models/lib/register-hooks.ts:35
 
 Example:
 
@@ -264,28 +264,12 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
-### models.getBudgetPolicy
-
-Label: Get budget policy.
-Purpose: Returns the spend-cap rule list that dispatch consults before each turn (legacy shapes migrate on read). Use it to read the current budget limits.
-Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:167
-
-Example:
-
-```ts
-const result = await ctx.hooks.invoke(
-  'models.getBudgetPolicy',
-  {},
-)
-```
-
 ### models.getEffectiveModel
 
 Label: Get effective model.
 Purpose: Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:29
+Source: plugins/models/lib/register-hooks.ts:21
 
 Example:
 
@@ -303,7 +287,7 @@ const result = await ctx.hooks.invoke(
 Label: Get routing config.
 Purpose: Returns the per-turn model/thinking routing policy (work classes + tag overrides) applied before each routable agent turn. Use it to read the current routing rules.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:153
+Source: plugins/models/lib/register-hooks.ts:49
 
 Example:
 
@@ -314,34 +298,18 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
-### models.priceImage
+### models.listAgentModels
 
-Label: Price an image.
-Purpose: Returns billing attribution plus an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null cost when the model is provider-priced or the provider is overridden to the subscription lane. The agent’s chat auth never affects image billing.
+Label: List agent models.
+Purpose: Returns every runtime agent with its own/subagent/default/effective model resolved (the roster the Models page shows). Use it when a plugin needs runtime-ready model information for the whole roster — the spend plugin's per-agent billing map reads it.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:108
+Source: plugins/models/lib/register-hooks.ts:29
 
 Example:
 
 ```ts
 const result = await ctx.hooks.invoke(
-  'models.priceImage',
-  {},
-)
-```
-
-### models.priceTurn
-
-Label: Price a turn.
-Purpose: Resolves the model an agent turn ran on and returns billing attribution (provider, metered/subscription lane) plus an estimated micro-dollar cost from the catalog pricing. Cost is null when the model is unpriced or the lane is subscription (tokens are the unit there).
-Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:79
-
-Example:
-
-```ts
-const result = await ctx.hooks.invoke(
-  'models.priceTurn',
+  'models.listAgentModels',
   {},
 )
 ```
@@ -351,7 +319,7 @@ const result = await ctx.hooks.invoke(
 Label: Refresh the model catalog.
 Purpose: Bypasses caches and re-fetches the model catalog (with pricing) live from the configured providers. Use it when pricing is stale or missing — e.g. the spend-evidence repair — instead of waiting on the Models page to trigger a refresh.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:68
+Source: plugins/models/lib/register-hooks.ts:41
 
 Example:
 
@@ -367,45 +335,13 @@ const result = await ctx.hooks.invoke(
 Label: Reset the model catalog cache.
 Purpose: Drops every catalog cache layer (hot, disk, in-flight) and bumps the runtime epoch so a stale fetch cannot publish. Invoked by the runtime switch.
 Kind: event
-Source: plugins/models/lib/register-hooks.ts:67
+Source: plugins/models/lib/register-hooks.ts:40
 
 Example:
 
 ```ts
 await ctx.hooks.callAll(
   'models.resetCatalogCache',
-  {},
-)
-```
-
-### models.resolveBilling
-
-Label: Resolve billing.
-Purpose: Returns the provider, billing lane (metered vs subscription), lane source, and normalized model for an agent/model pair — falling back to the agent’s effective model when none is given, unless prospective:false marks the attribution as historical. Use it to attribute or gate spend before a turn or billed media call.
-Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:131
-
-Example:
-
-```ts
-const result = await ctx.hooks.invoke(
-  'models.resolveBilling',
-  {},
-)
-```
-
-### models.updateBudgetPolicy
-
-Label: Update budget policy.
-Purpose: Applies a narrow budget-policy patch — currently the accept-unattributed-history cutoff written by the Health repair. Money policy never changes without an explicit, validated write.
-Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:44
-
-Example:
-
-```ts
-const result = await ctx.hooks.invoke(
-  'models.updateBudgetPolicy',
   {},
 )
 ```
@@ -440,6 +376,88 @@ Example:
 ```ts
 const result = await ctx.hooks.invoke(
   'schedule.ensureBakinJob',
+  {},
+)
+```
+
+## Spend
+
+### spend.getBudgetPolicy
+
+Label: Get the limits policy.
+Purpose: Returns the spend-limit rule list (with ids) that dispatch consults before each turn, plus the accept-unattributed cutoff. Use it to read the current limits.
+Kind: rpc
+Source: plugins/spend/lib/register-hooks.ts:31
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'spend.getBudgetPolicy',
+  {},
+)
+```
+
+### spend.priceImage
+
+Label: Price an image.
+Purpose: Returns billing attribution plus an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null cost when the model is provider-priced or the provider is overridden to the subscription lane. The agent’s chat auth never affects image billing.
+Kind: rpc
+Source: plugins/spend/lib/register-hooks.ts:96
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'spend.priceImage',
+  {},
+)
+```
+
+### spend.priceTurn
+
+Label: Price a turn.
+Purpose: Resolves the model an agent turn ran on and returns billing attribution (provider, metered/subscription lane) plus an estimated micro-dollar cost from the catalog pricing. Cost is null when the model is unpriced or the lane is subscription (tokens are the unit there).
+Kind: rpc
+Source: plugins/spend/lib/register-hooks.ts:66
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'spend.priceTurn',
+  {},
+)
+```
+
+### spend.resolveBilling
+
+Label: Resolve billing.
+Purpose: Returns the provider, billing lane (metered vs subscription), lane source, and normalized model for an agent/model pair — falling back to the agent’s effective model when none is given, unless prospective:false marks the attribution as historical. Use it to attribute or gate spend before a turn or billed media call.
+Kind: rpc
+Source: plugins/spend/lib/register-hooks.ts:120
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'spend.resolveBilling',
+  {},
+)
+```
+
+### spend.updateBudgetPolicy
+
+Label: Update the limits policy.
+Purpose: Applies a narrow limits patch — currently the accept-unattributed-history cutoff written by the Health repair. Money policy never changes without an explicit, validated write.
+Kind: rpc
+Source: plugins/spend/lib/register-hooks.ts:37
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'spend.updateBudgetPolicy',
   {},
 )
 ```

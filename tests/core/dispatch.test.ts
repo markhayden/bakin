@@ -130,14 +130,14 @@ mock.module('@/core/task-store', () => ({
 mock.module('../../src/core/plugin-registry', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mock().mockResolvedValue(undefined),
-    has: mock().mockReturnValue(false),
+    has: mock((name: string) => name === 'spend.getBudgetPolicy'),
     register: mock(),
   }),
 }))
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mock().mockResolvedValue(undefined),
-    has: mock().mockReturnValue(false),
+    has: mock((name: string) => name === 'spend.getBudgetPolicy'),
     register: mock(),
   }),
 }))
@@ -382,7 +382,7 @@ describe('dispatch', () => {
       })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke,
-        has: mock().mockReturnValue(false),
+        has: mock((name: string) => name === 'spend.getBudgetPolicy'),
         register: mock(),
       } as unknown as HookRegistry)
     }
@@ -466,7 +466,7 @@ describe('dispatch', () => {
       })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke,
-        has: mock().mockReturnValue(false),
+        has: mock((name: string) => name === 'spend.getBudgetPolicy'),
         register: mock(),
       } as unknown as HookRegistry)
       // Seed state already at maxRetries (3 in the test settings mock)
@@ -614,7 +614,7 @@ describe('dispatch', () => {
       })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke,
-        has: mock().mockReturnValue(false),
+        has: mock((name: string) => name === 'spend.getBudgetPolicy'),
         register: mock(),
       } as unknown as HookRegistry)
       // The workflow branch calls sendMessage inside dispatchWorkflowTask; make it throw transiently.
@@ -754,7 +754,7 @@ describe('dispatch', () => {
       })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke,
-        has: mock().mockReturnValue(false),
+        has: mock((name: string) => name === 'spend.getBudgetPolicy'),
         register: mock(),
       } as unknown as HookRegistry)
     }
@@ -825,7 +825,7 @@ describe('dispatch', () => {
       })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke,
-        has: mock().mockReturnValue(false),
+        has: mock((name: string) => name === 'spend.getBudgetPolicy'),
         register: mock(),
       } as unknown as HookRegistry)
 
@@ -866,7 +866,7 @@ describe('dispatch', () => {
       })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke,
-        has: mock().mockReturnValue(false),
+        has: mock((name: string) => name === 'spend.getBudgetPolicy'),
         register: mock(),
       } as unknown as HookRegistry)
 
@@ -913,10 +913,10 @@ describe('dispatch', () => {
       setDispatchColumns({ todo: [{ id: 't-cost', title: 'Costed task', agent: 'pixel' }] })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke: mock(async (hook: string) => {
-          if (hook === 'models.priceTurn') return { model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 123_456 }
+          if (hook === 'spend.priceTurn') return { model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 123_456 }
           return undefined
         }),
-        has: mock().mockReturnValue(false),
+        has: mock((name: string) => name === 'spend.getBudgetPolicy'),
         register: mock(),
       } as unknown as HookRegistry)
       mockRuntimeSend.mockResolvedValueOnce({ id: 'm', usage: { input: 1000, output: 200, total: 1200 } } as never)
@@ -937,7 +937,7 @@ describe('dispatch', () => {
       setDispatchColumns({ todo: [{ id: 't-unmetered', title: 'Unmetered task', agent: 'trainer' }] })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke: mock(async () => undefined), // no priceTurn handler → null model/cost
-        has: mock().mockReturnValue(false),
+        has: mock((name: string) => name === 'spend.getBudgetPolicy'),
         register: mock(),
       } as unknown as HookRegistry)
       mockRuntimeSend.mockResolvedValueOnce({ id: 'm' }) // no usage
@@ -960,7 +960,7 @@ describe('dispatch', () => {
           }
           return undefined
         }),
-        has: mock().mockReturnValue(false),
+        has: mock((name: string) => name === 'spend.getBudgetPolicy'),
         register: mock(),
       } as unknown as HookRegistry)
 
@@ -984,10 +984,10 @@ describe('dispatch', () => {
       setDispatchColumns({ todo: [{ id: 't-budget', title: 'Over budget', agent: 'pixel' }] })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke: mock(async (hook: string) => {
-          if (hook === 'models.getBudgetPolicy') return { rules: [{ scope: 'global', lane: 'metered', dailyCap: 1 }] }
+          if (hook === 'spend.getBudgetPolicy') return { rules: [{ scope: 'global', lane: 'metered', dailyCap: 1 }] }
           return undefined
         }),
-        has: mock().mockReturnValue(false),
+        has: mock((name: string) => name === 'spend.getBudgetPolicy'),
         register: mock(),
       } as unknown as HookRegistry)
 
@@ -1006,8 +1006,8 @@ describe('dispatch', () => {
     it('regression: no budget policy → dispatch proceeds normally', async () => {
       setDispatchColumns({ todo: [{ id: 't-nobudget', title: 'No cap', agent: 'pixel' }] })
       vi.mocked(getHookRegistry).mockReturnValue({
-        invoke: mock(async (hook: string) => (hook === 'models.getBudgetPolicy' ? {} : undefined)),
-        has: mock().mockReturnValue(false),
+        invoke: mock(async (hook: string) => (hook === 'spend.getBudgetPolicy' ? {} : undefined)),
+        has: mock((name: string) => name === 'spend.getBudgetPolicy'),
         register: mock(),
       } as unknown as HookRegistry)
 
@@ -1034,7 +1034,7 @@ describe('dispatch', () => {
           if (hook === 'models.getRoutingConfig') return { routes: [{ workClass: 'recovery', model: 'anthropic/claude-opus-4-6' }], tagOverrides: [] }
           return undefined
         }),
-        has: mock().mockReturnValue(false),
+        has: mock((name: string) => name === 'spend.getBudgetPolicy'),
         register: mock(),
       } as unknown as HookRegistry)
 
@@ -1049,7 +1049,7 @@ describe('dispatch', () => {
       setDispatchColumns({ todo: [{ id: 't-inherit', title: 'Adhoc task', agent: 'pixel' }] })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke: mock(async (hook: string) => (hook === 'models.getRoutingConfig' ? { routes: [], tagOverrides: [] } : undefined)),
-        has: mock().mockReturnValue(false),
+        has: mock((name: string) => name === 'spend.getBudgetPolicy'),
         register: mock(),
       } as unknown as HookRegistry)
 
@@ -1086,7 +1086,7 @@ describe('dispatch', () => {
 
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke,
-        has: mock().mockReturnValue(false),
+        has: mock((name: string) => name === 'spend.getBudgetPolicy'),
         register: mock(),
       } as unknown as HookRegistry)
 

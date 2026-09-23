@@ -76,7 +76,7 @@ import {
   runUsageHistoryScan,
   startUsageHistoryTimer,
   stopUsageHistoryTimer,
-} from '../../../plugins/health/lib/usage-history-timer'
+} from '../../../src/core/usage-history-timer'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 
 let activated: ActivatedPlugin

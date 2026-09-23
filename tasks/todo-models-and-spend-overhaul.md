@@ -29,20 +29,20 @@ Plan: `tasks/plan-models-and-spend-overhaul.md` (v2) · Spec: `.claude/specs/mod
 - [ ] T2.1 bits grep gate
 - [ ] T2.2 atomic plugin-settings writes
 - [ ] T2.3 curated catalog → packages/core/src/llm/model-catalog.ts
-- [ ] T2.4 spend scaffold (ids, static imports ×3, config, enrollment, route, router, route-shadow, nav-placement, census) — page shell only
-- [ ] T2.5 pure moves into plugins/spend (billing, budget routes/schemas, health check, overview components); Models still owns hooks/routes; delete legacy budget-migration
-- [ ] T2.6 ledger v10: budget_milestones + incident episode/event_id/notified_at + reopen set incl. rule_removed; mark verbs take (id, eventId); evaluateBudget.crossed; warn incidents removed; consumers updated (S14 test; stale-eventId mark changes 0 rows)
-- [ ] T2.7 CUTOVER (XL exception, one commit): upgrade+backup, spend.* hooks, fail-closed budget_policy_unavailable, health-owned spend.policy-available, PUT/GET /limits + Limits list, delete Models budget surface, repoint every caller + CLI endpoints, regen docs  **[PoNR]**
-- [ ] T2.9a scan_days receipts (complete-coverage only, 90-day prune)
-- [ ] T2.9b assembleSpendForDays — day-set variant of the ONE spend engine (behaviour-neutral refactor of assembleBudgetSpend)
-- [ ] T2.9c coverage summary via the engine + limit dialog + normalized suggestion (tests: unavailable roster, partial, zero-use covered day, backfill excluded, 14d@$10 ⇒ ~$450, prune, same-$10-in-both-stores counts once, suggestion == Overview)
-- [ ] T2.8 Overview tab live (lane-honest tiles, pace line with observed-days basis) — after T2.9
-- [ ] T2.10 spend observer (coalesced, generation-keyed memo) + incident at 100 + single-worker deliverPending marking (id, event_id) + hook points (recordSpend, scan, watchdog, boot); tests incl. reopen-during-in-flight-delivery and concurrent boot+watchdog callers
-- [ ] T2.11 ladder: badge provider (eager), header banners with computed offsets (90 yellow ack / 100 red actions), status milestones, Resume 409 still_over_limit
-- [ ] T2.12 remove nags; CLI --at-cap wait|pause, no --warn, milestones, pace basis; onboarding budget → note; ONBOARDING_VERSION bump
-- [ ] T2.13 spend UI fixture → conformant (inspect test-results/bakin-ui/index.html)
-- [ ] T2.14 docs: spend-plugin.md (new, behaviour table), models-plugin, execution-ledger, doctor, cost-control-v2 status, CLAUDE.md (14 plugins, spend.json, pending files)
-- [ ] CHECKPOINT B: gates + ui:conformance --full + ui:test:conformance + /verify S8 S9 S12 S13 S14 + upgrade crash matrix + live test → merge
+- [x] T2.4 spend scaffold (ids, static imports ×3, config, enrollment, route, router, route-shadow, nav-placement, census) — page shell only
+- [x] T2.5 spend ownership series (4 commits: core hoists → health check to spend → legacy budget-migration deleted → Spend UI to /spend with use-spend-data); billing.ts/budget-routes.ts/hooks stay in Models until T2.7 (plugin-boundary rule)
+- [x] T2.6 ledger v10: budget_milestones + incident episode/event_id/notified_at + reopen set incl. rule_removed; mark verbs take (id, eventId); evaluateBudget.crossed; warn incidents removed; consumers updated (S14 test; stale-eventId mark changes 0 rows)
+- [x] T2.7 CUTOVER (XL exception, one commit): upgrade+backup, spend.* hooks, fail-closed budget_policy_unavailable, health-owned spend.policy-available, PUT/GET /limits + Limits list, delete Models budget surface, repoint every caller + CLI endpoints, regen docs  **[PoNR]**
+- [x] T2.9a scan_days receipts (complete-coverage only, 90-day prune)
+- [x] T2.9b assembleSpendForDays — day-set variant of the ONE spend engine (behaviour-neutral refactor of assembleBudgetSpend)
+- [x] T2.9c coverage summary via the engine + limit dialog + normalized suggestion (tests: unavailable roster, partial, zero-use covered day, backfill excluded, 14d@$10 ⇒ ~$450, prune, same-$10-in-both-stores counts once, suggestion == Overview)
+- [x] T2.8 Overview tab live (lane-honest tiles, pace line with observed-days basis) — after T2.9
+- [x] T2.10 spend observer (coalesced, generation-keyed memo) + incident at 100 + single-worker deliverPending marking (id, event_id) + hook points (recordSpend, scan, watchdog, boot); tests incl. reopen-during-in-flight-delivery and concurrent boot+watchdog callers
+- [x] T2.11 ladder: badge provider (eager), header banners with computed offsets (90 yellow ack / 100 red actions), status milestones, Resume 409 still_over_limit
+- [x] T2.12 remove nags; CLI --at-cap wait|pause, no --warn, milestones, pace basis; onboarding budget → note; ONBOARDING_VERSION bump
+- [x] T2.13 spend UI fixture → conformant (inspect test-results/bakin-ui/index.html)
+- [x] T2.14 docs: spend-plugin.md (new, behaviour table), models-plugin, execution-ledger, doctor, cost-control-v2 status, CLAUDE.md (14 plugins, spend.json, pending files)
+- [~] CHECKPOINT B (2026-09-22): gates green; ui:conformance --full green except the pre-existing #904 `ModelSelect › Grouped Catalog` story flake (Base UI focus-guard aria-hidden-focus; fails identically without this branch's changes); ui:test:conformance green (spend graduated); /verify on an isolated boot with a seeded legacy models.json: upgrade at activation (ids, no warnPct, backup, keys stripped) → boot pass recorded 50 (covered by 75) + 75 delivered → cap crossed ⇒ 90 covered by 100 + cap incident episode 1 delivered once → resume refused 409 still_over_limit (S12) → raise-through-incident updated the rule in place (same id) + resolved `raised` → `bakin budget show` milestones + `bakin spend` pace basis → doctor `health.spend.policy-available` healthy, `spend.budget` under spend ownership; unit suites cover S8/S9/S13/S14 + the upgrade crash matrix. REMAINING: Mark's live test on 3737 (needs a server restart) — then the stack merges bottom-up.
 
 ## PR 3 — feat/models-plan-page
 - [ ] T3.1 D23 approval → sdk contract + DisabledWithReason story + public-api (or record fallback)

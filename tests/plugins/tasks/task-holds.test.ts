@@ -13,7 +13,7 @@ mock.module('../../../packages/core/src/content-dir', contentDirMock)
 
 import { modelHoldReason, pickTaskHold, type BudgetGateStatus } from '../../../plugins/tasks/hooks/use-budget-status'
 
-const status = (over: Partial<BudgetGateStatus> = {}): BudgetGateStatus => ({ paused: false, configured: false, perAgent: {}, perTask: {}, deferredProviders: [], ...over })
+const status = (over: Partial<BudgetGateStatus> = {}): BudgetGateStatus => ({ paused: false, configured: false, perAgent: {}, perTask: {}, deferredProviders: [], policyUnavailable: false, ...over })
 const dead = { ref: 'agent:enrich:model', model: 'openai/gpt-5.6-luna', detail: 'no credentials for openai' }
 
 describe('pickTaskHold', () => {
@@ -32,5 +32,13 @@ describe('pickTaskHold', () => {
   it('no hold when nothing is dead, capped or paused', () => {
     expect(pickTaskHold(status(), undefined, { id: 't1' })).toBeNull()
     expect(modelHoldReason(undefined)).toBeNull()
+  })
+})
+
+describe('policy unavailable (S13)', () => {
+  it('a missing spend plugin (status route 404) holds every task with a Health link — above a dead model, below the kill switch', () => {
+    const s = status({ policyUnavailable: true })
+    expect(pickTaskHold(s, dead, { id: 't1', agent: 'enrich' })).toMatchObject({ label: 'Limits unavailable', href: '/health', kind: 'budget' })
+    expect(pickTaskHold(status({ policyUnavailable: true, paused: true }), undefined, { id: 't1' })?.label).toBe('Dispatch paused')
   })
 })

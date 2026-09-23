@@ -40,6 +40,7 @@ export const CORE_PLUGIN_UI_ENROLLMENT: readonly OfficialPluginUiEnrollment[] = 
   { id: 'images', root: 'plugins/images', status: 'server-only', reason: 'No browser client entrypoint.' },
   { id: 'memory', root: 'plugins/memory', status: 'migration-pending', migrationTask: 'T51-T52' },
   { id: 'models', root: 'plugins/models', status: 'migration-pending', migrationTask: 'T49-T50' },
+  { id: 'spend', root: 'plugins/spend', status: 'conformant', migrationTask: 'T71a' },
   { id: 'schedule', root: 'plugins/schedule', status: 'migration-pending', migrationTask: 'T47-T48' },
   { id: 'tasks', root: 'plugins/tasks', status: 'migration-pending', migrationTask: 'T45' },
   { id: 'team', root: 'plugins/team', status: 'migration-pending', migrationTask: 'T61-T62' },
@@ -76,6 +77,13 @@ const fixtures: TeethFixture[] = [
     name: 'reference-plugin',
     pluginId: 'reference-bookmarks',
     fixtureEntry: 'examples/reference-plugin/tests/ui.fixture.tsx',
+    expectedRules: [],
+    expectedMessages: [],
+  },
+  {
+    name: 'spend',
+    pluginId: 'spend',
+    fixtureEntry: 'plugins/spend/tests/ui.fixture.tsx',
     expectedRules: [],
     expectedMessages: [],
   },
@@ -126,7 +134,8 @@ export function validateCorePluginUiEnrollment(
     }
   }
 
-  const runnableIds = new Set(fixtures.filter((fixture) => fixture.name === 'reference-plugin').map((fixture) => fixture.pluginId))
+  // A graduate's proof is its own package fixture, run clean by this suite.
+  const runnableIds = new Set(fixtures.filter((fixture) => fixture.fixtureEntry !== undefined && fixture.expectedRules.length === 0).map((fixture) => fixture.pluginId))
   for (const entry of enrollment) {
     if (entry.status === 'conformant' && !runnableIds.has(entry.id)) {
       errors.push(`${entry.id} is conformant but is not run by the official conformance suite`)

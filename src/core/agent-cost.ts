@@ -4,12 +4,13 @@
  * task-service). Without this, a budget cap would only bound dispatched task
  * spend and a runaway non-dispatch loop would be uncapped (#464 / review #2).
  *
- * Pricing is delegated to the models plugin via the `models.priceTurn` hook
+ * Pricing is delegated to the spend plugin via the `spend.priceTurn` hook
  * so core stays pricing-agnostic; absent plugin → null cost (unmetered,
  * never a fabricated zero). The same data feeds the live usage recorder.
  * Never throws — a metering failure must not fail the turn that succeeded.
  */
 import { randomUUID } from 'crypto'
+import { emitSpendRecorded } from './spend-events'
 
 import { createLogger } from './logger'
 import type { MessageResult } from '@bakin/core/adapters/runtime'
@@ -82,6 +83,9 @@ async function recordSpend(e: {
       routeSource: e.routeSource ?? null,
       occurredAt: Date.now(),
     })
+    // Spend moved: the observer (subscribed at boot) invalidates its memo and
+    // runs a pass — detached, never failing or slowing the turn that happened.
+    emitSpendRecorded()
     recordUsage({
       kind: 'agent',
       activityClass: e.activityClass,
@@ -141,7 +145,7 @@ export async function meterAgentTurn(opts: {
     } | undefined
     try {
       priced = await (await loadHooks()).invoke(
-        'models.priceTurn',
+        'spend.priceTurn',
         { agentId: opts.agent, model: ranModel, input: usage?.input, output: usage?.output, cacheRead: usage?.cacheRead, cacheWrite: usage?.cacheWrite },
       )
     } catch (err) {
@@ -178,7 +182,7 @@ export async function meterAgentTurn(opts: {
 
 /**
  * Record the cost of an image generation/edit as a spend event (no tokens;
- * cost from the flat per-image rate via models.priceImage). Counts toward the
+ * cost from the flat per-image rate via spend.priceImage). Counts toward the
  * budget cap like any other run. Unpriced models record the run with null
  * cost. Never throws.
  */
@@ -197,7 +201,7 @@ export async function meterImageTurn(opts: {
     } | undefined
     try {
       priced = await (await loadHooks()).invoke(
-        'models.priceImage',
+        'spend.priceImage',
         { model: opts.model, count: opts.count },
       )
     } catch (err) {

@@ -550,7 +550,7 @@ export interface AvailableModel {
   configured?: boolean
   isDefault?: boolean
   fallbackIndex?: number | null
-  // ── Enrichment from the curated catalog (plugins/models/data/known-models.ts) ──
+  // ── Enrichment from the curated catalog (packages/core/src/llm/model-catalog.ts) ──
   // All optional — unknown models render without them.
   /** Display-ready description shown under the model name. */
   description?: string

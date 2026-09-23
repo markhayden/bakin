@@ -52,3 +52,5 @@ export { humanizeKey, formatStructured, summarizeStructured, unwrapToolResult, t
 
 /** Fetch a plugin's own API route (`/api/plugins/<id>/<path>`) with JSON defaults. */
 export { pluginFetch } from './plugin-fetch'
+/** `pluginFetch` + JSON parse under a hard deadline (the plain-function twin of `usePluginJsonFetch`'s `timeoutMs`). */
+export { pluginFetchJson, type PluginFetchJsonOptions } from './plugin-fetch'

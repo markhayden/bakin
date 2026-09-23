@@ -161,7 +161,7 @@ mock.module('../../../src/core/plugin-registry', () => ({
     invoke: async (_name: string, _data: Record<string, unknown>) => {
       return undefined
     },
-    has: () => false,
+    has: (name: string) => name === 'spend.getBudgetPolicy',
     register: () => () => {},
   }),
 }))
@@ -170,7 +170,7 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
     invoke: async (_name: string, _data: Record<string, unknown>) => {
       return undefined
     },
-    has: () => false,
+    has: (name: string) => name === 'spend.getBudgetPolicy',
     register: () => () => {},
   }),
 }))
@@ -402,7 +402,7 @@ describe('plugin registration', () => {
       getSettings: () => ({}),
       updateSettings: noop,
       activity: { log: noop, audit: noop },
-      hooks: { register: () => () => {}, has: () => false, invoke: noopAsync },
+      hooks: { register: () => () => {}, has: (name: string) => name === 'spend.getBudgetPolicy', invoke: noopAsync },
       search: {
         registerContentType: noop, registerFileBackedContentType: noop,
         index: noopAsync, remove: noopAsync, transform: noopAsync,

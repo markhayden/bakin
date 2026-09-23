@@ -676,6 +676,8 @@ Source: `packages/sdk/src/utils/index.ts`.
 | `unwrapToolResult` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
 | `FormatStructuredOptions` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
 | `pluginFetch` | Fetch a plugin's own API route (`/api/plugins/&lt;id>/&lt;path>`) with JSON defaults. |
+| `pluginFetchJson` | `pluginFetch` + JSON parse under a hard deadline (the plain-function twin of `usePluginJsonFetch`'s `timeoutMs`). |
+| `PluginFetchJsonOptions` | `pluginFetch` + JSON parse under a hard deadline (the plain-function twin of `usePluginJsonFetch`'s `timeoutMs`). |
 
 ## `@makinbakin/sdk/metadata`
 

@@ -147,7 +147,7 @@ describe('MCP server tool registration', () => {
         },
         hooks: {
           register: () => () => {},
-          has: () => false,
+          has: (name: string) => name === 'spend.getBudgetPolicy',
           invoke: async () => undefined,
         },
         runtime,

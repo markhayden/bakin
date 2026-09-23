@@ -18,7 +18,7 @@ const log = createLogger('media-gate')
 
 /** Typed refusal a billed media tool relays to the agent (cost-control v2). */
 export interface MediaGateRefusal {
-  code: 'budget_exceeded' | 'budget_evidence_incomplete' | 'dispatch_paused'
+  code: 'budget_exceeded' | 'budget_evidence_incomplete' | 'budget_policy_unavailable' | 'dispatch_paused'
   scope?: string
   scopeId?: string
   lane?: 'metered' | 'subscription'
@@ -47,6 +47,15 @@ export async function gateBilledMediaCall(opts: { agent: string; model: string }
     }
     const decision = await budgetGate(opts.agent, contentDir, undefined, { model: opts.model, billedMedia: true })
     if (decision.action !== 'defer') return { allowed: true }
+    if (decision.cause === 'budget_policy_unavailable') {
+      return {
+        allowed: false,
+        refusal: {
+          code: 'budget_policy_unavailable',
+          message: 'The spend limits policy could not be read (the spend plugin is unavailable) — billed media is blocked until it answers. Health names the cause.',
+        },
+      }
+    }
     if (decision.cause === 'spend_evidence_incomplete' || decision.cause === 'spend_evidence_unavailable') {
       const unavailable = decision.cause === 'spend_evidence_unavailable'
       return {

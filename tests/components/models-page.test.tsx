@@ -100,10 +100,6 @@ describe('ModelsPage component', () => {
     routes: Array<{ workClass: string; model?: string; thinking?: string }>
     tagOverrides: Array<{ tag: string; model?: string; thinking?: string }>
   }
-  let spendResponse: Record<string, unknown>
-  let budgetRulesState: Array<Record<string, unknown>>
-  let budgetStatusState: Record<string, unknown>
-  let incidentsState: Array<Record<string, unknown>>
 
   beforeEach(() => {
     cleanup()
@@ -153,85 +149,6 @@ describe('ModelsPage component', () => {
       ],
       tagOverrides: [],
     }
-    spendResponse = {
-      window: '24h',
-      estimated: true,
-      totalUsdMicros: 2_480_000,
-      byAgent: [
-        { agent: 'patch', costUsdMicros: 1_480_000, runs: 8 },
-        { agent: 'pixel', costUsdMicros: 1_000_000, runs: 5 },
-      ],
-      byModel: [
-        { model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 1_780_000, runs: 9 },
-        { model: 'anthropic/claude-haiku-4-5', costUsdMicros: 700_000, runs: 4 },
-      ],
-      byWorkClass: [
-        { workClass: 'workflow', runs: 8, totalTokens: 48_000, costUsdMicros: 1_480_000, subscriptionTokens: 0, avgCostUsdMicros: 185_000 },
-        { workClass: 'scheduled', runs: 5, totalTokens: 32_000, costUsdMicros: 1_000_000, subscriptionTokens: 0, avgCostUsdMicros: 200_000 },
-      ],
-      timeline: [
-        { startMs: Date.now() - 8 * 60 * 60 * 1000, endMs: Date.now() - 4 * 60 * 60 * 1000, costUsdMicros: 980_000, subscriptionTokens: 8_000, unpricedMeteredTokens: 0 },
-        { startMs: Date.now() - 4 * 60 * 60 * 1000, endMs: Date.now(), costUsdMicros: 1_500_000, subscriptionTokens: 16_000, unpricedMeteredTokens: 0 },
-      ],
-      facets: {
-        computedAt: Date.now(),
-        daily: {
-          startMs: Date.now() - 86_400_000,
-          global: {
-            meteredUsdMicros: 2_480_000,
-            meteredTokens: 80_000,
-            subscriptionTokens: 24_000,
-            unpricedMeteredTokens: 0,
-            unattributed: { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0 },
-          },
-          byAgent: {},
-          byProvider: {
-            anthropic: { meteredUsdMicros: 2_480_000, meteredTokens: 80_000, subscriptionTokens: 0, unpricedMeteredTokens: 0 },
-            'openai-codex': { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 24_000, unpricedMeteredTokens: 0 },
-          },
-          byModel: {},
-        },
-        monthly: {
-          startMs: Date.now() - 2_000_000_000,
-          global: {
-            meteredUsdMicros: 8_420_000,
-            meteredTokens: 280_000,
-            subscriptionTokens: 124_000,
-            unpricedMeteredTokens: 0,
-            unattributed: { meteredUsdMicros: 120_000, meteredTokens: 4_000, subscriptionTokens: 2_000 },
-          },
-          byAgent: {},
-          byProvider: {
-            anthropic: { meteredUsdMicros: 8_420_000, meteredTokens: 280_000, subscriptionTokens: 0, unpricedMeteredTokens: 0 },
-            'openai-codex': { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 124_000, unpricedMeteredTokens: 0 },
-          },
-          byModel: {
-            'anthropic/claude-sonnet-4-6': { meteredUsdMicros: 6_300_000, meteredTokens: 210_000, subscriptionTokens: 0, unpricedMeteredTokens: 0 },
-          },
-        },
-      },
-      pace: {
-        daily: { meteredUsdMicros: 3_100_000, subscriptionTokens: 30_000, endsMs: Date.now() + 43_200_000 },
-        monthly: { meteredUsdMicros: 12_000_000, subscriptionTokens: 180_000, endsMs: Date.now() + 604_800_000 },
-      },
-    }
-    budgetRulesState = [
-      { scope: 'global', lane: 'metered', dailyCap: 5, monthlyCap: 25, warnPct: 0.8, atCap: 'defer' },
-    ]
-    budgetStatusState = {
-      paused: false,
-      configured: true,
-      perAgent: {},
-      perTask: {},
-      billing: {
-        patch: { provider: 'anthropic', lane: 'metered', model: 'anthropic/claude-sonnet-4-6' },
-        pixel: { provider: 'openai-codex', lane: 'subscription', model: 'openai-codex/gpt-5.4' },
-      },
-      overrides: [],
-      deferredProviders: [],
-      openIncidents: [],
-    }
-    incidentsState = []
     runtimeState.pending = false
     runtimeState.advice = { needed: false }
     runtimeState.lastError = null
@@ -262,38 +179,8 @@ describe('ModelsPage component', () => {
       if (url === '/api/plugins/models/aliases' && method === 'GET') {
         return jsonResponse({ aliases: aliasesState })
       }
-      if (url.startsWith('/api/plugins/models/spend') && method === 'GET') {
-        return jsonResponse(spendResponse)
-      }
       if (url === '/api/plugins/models/routing' && method === 'GET') {
         return jsonResponse(routingState)
-      }
-      if (url === '/api/plugins/models/budget' && method === 'GET') {
-        return jsonResponse({ rules: budgetRulesState })
-      }
-      if (url === '/api/plugins/models/budget' && method === 'PUT') {
-        budgetRulesState = (body?.rules as Array<Record<string, unknown>>) ?? []
-        return jsonResponse({ ok: true })
-      }
-      if (url === '/api/plugins/models/budget/incidents' && method === 'GET') {
-        return jsonResponse({ incidents: incidentsState })
-      }
-      if (url === '/api/plugins/models/budget/status' && method === 'GET') {
-        return jsonResponse(budgetStatusState)
-      }
-      if (url === '/api/plugins/models/billing/overrides' && method === 'PUT') {
-        budgetStatusState = {
-          ...budgetStatusState,
-          overrides: body?.overrides ?? [],
-        }
-        return jsonResponse({ ok: true })
-      }
-      if (url === '/api/settings' && method === 'POST') {
-        budgetStatusState = {
-          ...budgetStatusState,
-          paused: Boolean((body?.dispatch as { paused?: boolean } | undefined)?.paused),
-        }
-        return jsonResponse({ ok: true })
       }
       // The ONE write path (#907): every save arrives as selection ops.
       if (url === '/api/plugins/models/selections' && method === 'GET') {
@@ -706,34 +593,6 @@ describe('ModelsPage component', () => {
       ]))
     })
     expect(screen.queryByText('Unsaved routing changes')).toBeNull()
-  })
-
-  it('composes spend from shared settings, summary, selection, and pagination patterns', async () => {
-    const { container } = render(<ModelsPage />)
-    fireEvent.click(await screen.findByText('Spend'))
-
-    expect(await screen.findByRole('region', { name: 'Spending overview' })).toBeTruthy()
-    expect(screen.getByRole('region', { name: 'Budget rules' })).toBeTruthy()
-    expect(screen.getByRole('region', { name: 'Billing lanes' })).toBeTruthy()
-    expect(screen.getByRole('region', { name: 'Spend breakdown' })).toBeTruthy()
-    expect(screen.getByRole('group', { name: 'Estimated spend over time' })).toBeTruthy()
-    expect(screen.getByRole('group', { name: 'Top agent spend' })).toBeTruthy()
-    expect(container.querySelectorAll('select')).toHaveLength(0)
-
-    const windowControl = screen.getByRole('tablist', { name: 'Spend window' })
-    expect(windowControl.closest('[data-slot="page-header-controls"]')).toBeTruthy()
-    // The ranked chart's exact-data table adds one occurrence beyond the breakdown rows.
-    expect(screen.getAllByText('patch')).toHaveLength(3)
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Models' }))
-    // The ranked chart's exact-data table adds one occurrence beyond the breakdown rows.
-    expect(await screen.findAllByText('anthropic/claude-sonnet-4-6')).toHaveLength(3)
-    expect(screen.getByRole('group', { name: 'Top model spend' })).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Add budget rule' }))
-    expect(await screen.findByText('Unsaved budget rules')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }))
-    expect(screen.queryByText('Unsaved budget rules')).toBeNull()
   })
 
   it('paginates the model catalog and resets to filtered search results', async () => {

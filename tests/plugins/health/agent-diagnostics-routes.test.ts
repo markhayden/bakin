@@ -63,7 +63,7 @@ mock.module('../../../src/core/doctor-repair-store', () => ({
 
 import healthPlugin from '../../../plugins/health'
 import { activatePlugin, callRoute, findRoute, type ActivatedPlugin } from '../test-helpers'
-import { stopUsageHistoryTimer } from '../../../plugins/health/lib/usage-history-timer'
+import { stopUsageHistoryTimer } from '../../../src/core/usage-history-timer'
 import { replaceSessionUsage, toLocalDayKey } from '@bakin/core/usage-history/store'
 import { claimRun, settleRun, recordRunCost, recordCompletion } from '../../../src/core/execution-ledger'
 import { closeAllDbs } from '@bakin/core/storage/db'

@@ -15,7 +15,7 @@
 import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
 import { stableKeyPart } from './key'
-import { repairTargetSelection } from './repair-support'
+import { repairTargetSelection } from '@bakin/core/health/repair-support'
 
 /** Zero progress across this window while "building" = spinning. */
 const SPIN_WINDOW_MS = 10 * 60 * 1000

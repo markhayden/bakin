@@ -42,6 +42,10 @@ import {
   readSessionUsageRollupsSince,
   UsageHistoryStoreReadError,
   type SessionDayUsage,
+  localDayKeyDaysAgo,
+  toLocalDayKey,
+  coveredDaysSince,
+  recordScanDay,
 } from '../../packages/core/src/usage-history/store'
 import { closeAllDbs, openNamedDb } from '../../packages/core/src/storage/db'
 
@@ -281,6 +285,25 @@ describe('usageByAgentModelDaySince (cost-control v2)', () => {
     const only2 = usageByAgentModelDaySince(DAY2)
     expect(only2.every((c) => c.day >= DAY2)).toBe(true)
     expect(only2.find((c) => c.agent === 'lane-agent' && c.day === DAY1)).toBeUndefined()
+  })
+})
+
+describe('calendar-day stepping (DST-safe)', () => {
+  it('localDayKeyDaysAgo steps whole local days, never 24-hour blocks: half an hour past midnight on the fall-back day, "yesterday" is still yesterday', () => {
+    // 2026-11-01 is the US fall-back day (25 local hours). 24h before 00:30
+    // on it is 23:30 two days back in a DST zone; a calendar step is not.
+    const now = new Date(2026, 10, 1, 0, 30).getTime()
+    expect(localDayKeyDaysAgo(now, 1)).toBe(toLocalDayKey(new Date(2026, 9, 31, 12).getTime()))
+    expect(localDayKeyDaysAgo(now, 0)).toBe(toLocalDayKey(now))
+    expect(localDayKeyDaysAgo(now, 31)).toBe(toLocalDayKey(new Date(2026, 9, 1, 12).getTime()))
+  })
+
+  it('coveredDaysSince uses the same stepping: a 2-day lookback from 00:30 on the fall-back day includes yesterday', () => {
+    mkdirSync(testDir, { recursive: true }) // an earlier case closes + removes the store dir
+    const now = new Date(2026, 10, 1, 0, 30).getTime()
+    const yesterday = toLocalDayKey(new Date(2026, 9, 31, 12).getTime())
+    recordScanDay(yesterday, now - 3_600_000)
+    expect(coveredDaysSince(2, now)).toContain(yesterday)
   })
 })
 

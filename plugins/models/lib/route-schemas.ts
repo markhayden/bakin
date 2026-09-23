@@ -1,9 +1,6 @@
 /**
- * Zod schemas for models-route request validation + response shapes.
- *
- * Extracted from index.ts. Request bodies (config/defaults/aliases/routing/
- * budget), the shared passthrough/ok/error response shapes, and the spend
- * window parsing used by GET /spend.
+ * Zod schemas for models-route request validation + response shapes: the
+ * selections mutation body and the shared passthrough/ok/error responses.
  */
 import { z } from 'zod'
 
@@ -37,37 +34,3 @@ export const AcknowledgePendingSchema = z.object({
   document: z.string().regex(/^(policy|routing|agent:[^:\s]+)$/, 'document must be policy, routing or agent:<id>'),
 })
 
-// Cap rules (cost-control v2): scope × lane; unit-per-lane — dailyCap /
-// monthlyCap are whole USD on metered rules, tokens on subscription rules.
-// 'model' scope is accepted today (evaluator handles it); the UI ships
-// through provider.
-export const BudgetRuleSchema = z
-  .object({
-    scope: z.enum(['global', 'agent', 'provider', 'model']),
-    scopeId: z.string().min(1).optional(),
-    lane: z.enum(['metered', 'subscription']),
-    dailyCap: z.number().positive().optional(),
-    monthlyCap: z.number().positive().optional(),
-    warnPct: z.number().gt(0).lte(1).optional(),
-    atCap: z.enum(['defer', 'pause']).optional(),
-  })
-  .refine((r) => r.scope === 'global' || typeof r.scopeId === 'string', {
-    message: 'scopeId is required for agent/provider/model rules',
-  })
-export const BudgetPolicySchema = z.object({
-  rules: z.array(BudgetRuleSchema).optional(),
-  // Written only by the accept-unattributed-history repair.
-  acceptUnattributedBefore: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-})
-
-// Spend reporting windows. Coarser than the live-usage 5m/1h windows —
-// spend is a daily/monthly story. 'all' = since the beginning of time.
-export type SpendWindow = '24h' | '7d' | '30d' | 'all'
-export const SPEND_WINDOW_MS: Record<Exclude<SpendWindow, 'all'>, number> = {
-  '24h': 86_400_000,
-  '7d': 604_800_000,
-  '30d': 2_592_000_000,
-}
-export function parseSpendWindow(raw: string | null): SpendWindow {
-  return raw === '7d' || raw === '30d' || raw === 'all' ? raw : '24h'
-}

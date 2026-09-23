@@ -6,7 +6,7 @@ import {
   getUsageHistoryScanState,
   isUsageHistoryScanInFlight,
   runUsageHistoryScan,
-} from '../../../plugins/health/lib/usage-history-timer'
+} from '../../../src/core/usage-history-timer'
 
 const g = globalThis as typeof globalThis & {
   __bakinUsageHistoryLastScan?: unknown

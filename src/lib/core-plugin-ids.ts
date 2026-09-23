@@ -20,6 +20,7 @@ export const CORE_PLUGIN_IDS: readonly string[] = [
   'tasks',
   'memory',
   'models',
+  'spend',
   'assets',
   'images',
   'brands',

@@ -1,7 +1,8 @@
 /**
- * Budget incident notifications (cost-control v2, #464) — triggered on FRESH
- * incident opens only (the budget_incidents UNIQUE upstream guarantees
- * once-per-(rule, window, kind), restart-safe), never by polling:
+ * Budget incident notifications (cost-control v2, #464) — sent by the ONE
+ * delivery worker (`src/core/spend-observer.ts` deliverPending) from durable
+ * budget_incidents rows whose episode has not been delivered, never by
+ * polling and never twice for the same (id, event_id):
  *
  *  1. SSE plugin-event `budget.incident_opened` — the client shell fires a
  *     browser notification (same bell toggle as workflow gates) and
@@ -22,6 +23,9 @@ const log = createLogger('budget-notify')
 
 export interface BudgetIncidentNotification {
   incidentId: number
+  /** The episode being delivered — consumers de-duplicate on it (D22). */
+  eventId: string
+  episode: number
   kind: BudgetIncidentKind
   scope: string
   scopeId?: string
@@ -40,29 +44,38 @@ function fmtValue(unit: 'usd_micros' | 'tokens', value: number): string {
 /** Human line shared by the SSE payload, the agent message, and (via SSE) the browser notification body. */
 export function describeBudgetIncident(n: BudgetIncidentNotification): string {
   const scopeLabel = n.scopeId ? `${n.scope} '${n.scopeId}'` : 'global'
-  const state =
-    n.kind === 'cap'
-      ? n.atCap === 'pause'
-        ? 'cap reached — dispatch is PAUSED until you resolve the incident'
-        : 'cap reached — dispatch defers until the window resets or the cap is raised'
-      : 'approaching its cap'
+  const state = n.atCap === 'pause'
+    ? 'cap reached — dispatch is PAUSED until you resolve the incident'
+    : 'cap reached — dispatch defers until the window resets or the cap is raised'
   return `Budget alert: ${scopeLabel} ${n.window} ${n.lane} spend ${fmtValue(n.unit, n.spentValue)} of ${fmtValue(n.unit, n.capValue)} — ${state}.`
 }
 
+/** Per-channel outcome of one delivery attempt — the worker marks the row only on `relayed`. */
+export interface BudgetIncidentDelivery {
+  broadcast: boolean
+  relayed: boolean
+}
+
 /**
- * Fan out a freshly-opened incident. Synchronous facade; the agent relay
- * runs detached. Never throws. The runtime is INJECTED by the caller
- * (dispatch-turns already holds app-services) — importing app-services here
- * would close an import cycle back through the dispatch graph.
+ * Fan out a freshly-opened incident and report what actually went out.
+ * Never throws: each channel's failure is logged and reported as false so
+ * the delivery worker keeps the row pending and retries on its next pass
+ * (browsers de-duplicate the repeated SSE on `eventId`). The runtime is
+ * INJECTED by the caller (dispatch-turns already holds app-services) —
+ * importing app-services here would close an import cycle back through
+ * the dispatch graph.
  */
-export function notifyBudgetIncidentOpened(n: BudgetIncidentNotification, getRuntime: () => AgentRuntimeAdapter): void {
+export async function notifyBudgetIncidentOpened(n: BudgetIncidentNotification, getRuntime: () => AgentRuntimeAdapter): Promise<BudgetIncidentDelivery> {
   const message = describeBudgetIncident(n)
+  let sent = false
   try {
     broadcast({ type: 'plugin-event', event: 'budget.incident_opened', ...n, message, timestamp: new Date().toISOString() })
+    sent = true
   } catch (err) {
     log.error('Failed to broadcast budget incident', err, { incidentId: n.incidentId })
   }
-  void relayToMainAgent(n, message, getRuntime)
+  const relayed = await relayToMainAgent(n, message, getRuntime)
+  return { broadcast: sent, relayed }
 }
 
 /** SSE-only companion for resolutions (UI refresh; no agent message). */
@@ -74,7 +87,16 @@ export function emitBudgetIncidentResolved(payload: { incidentId: number; resolu
   }
 }
 
-async function relayToMainAgent(n: BudgetIncidentNotification, message: string, getRuntime: () => AgentRuntimeAdapter): Promise<void> {
+/** SSE-only: a 90% bar was dismissed — every browser's badge/header drops it, not just the tab that clicked. */
+export function emitSpendMilestoneAcknowledged(milestoneId: number): void {
+  try {
+    broadcast({ type: 'plugin-event', event: 'spend.milestone_acknowledged', milestoneId, timestamp: new Date().toISOString() })
+  } catch (err) {
+    log.error('Failed to broadcast milestone acknowledgement', err, { milestoneId })
+  }
+}
+
+async function relayToMainAgent(n: BudgetIncidentNotification, message: string, getRuntime: () => AgentRuntimeAdapter): Promise<boolean> {
   try {
     // Dynamic imports keep the notify module out of the static graphs of the
     // many gate call sites (same rationale as agent-cost.ts).
@@ -90,10 +112,12 @@ async function relayToMainAgent(n: BudgetIncidentNotification, message: string, 
       agentId: mainAgentId,
       activityClass: 'system',
       ...routeSendArgs(route),
-      content: `${message}\n\nReview and resolve: Models → Spend (or \`bakin budget incidents\`). Relay this to the operator if they are not watching the dashboard.`,
+      content: `${message}\n\nReview and resolve: Spend (or \`bakin budget incidents\`). Relay this to the operator if they are not watching the dashboard. [event ${n.eventId}]`,
     })
     await meterAgentTurn({ agent: mainAgentId, activityClass: 'system', result, workClass: 'relay', routeSource: route.source, resolvedModel: route.model, name: 'budget-alert' })
+    return true
   } catch (err) {
     log.error('Failed to relay budget incident to the main agent', err, { incidentId: n.incidentId })
+    return false
   }
 }

@@ -12,7 +12,7 @@ import type { PluginContext } from '@bakin/core/plugin-types'
 import { selectRuntimeMainAgent } from '@bakin/core/adapters/runtime'
 
 import type { AgentModelConfig } from '../types'
-import { normalizeModelId } from './model-id'
+import { normalizeModelId } from '@bakin/core/llm/model-id'
 
 // ---------------------------------------------------------------------------
 // Agent metadata from team hook (cached)

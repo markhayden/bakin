@@ -36,13 +36,16 @@ mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => dir,
 // The two seams under test.
 let budgetPolicy: unknown = {}
 let billingImpl: (data: Record<string, unknown>) => unknown = () => undefined
+// S13: flipped false to simulate the spend plugin never having activated.
+let policyHookPresent = true
 const hookRegistryMock = () => ({
   getHookRegistry: () => ({
     invoke: async (name: string, data: Record<string, unknown>) => {
-      if (name === 'models.getBudgetPolicy') return budgetPolicy
-      if (name === 'models.resolveBilling') return billingImpl(data)
+      if (name === 'spend.getBudgetPolicy') return budgetPolicy
+      if (name === 'spend.resolveBilling') return billingImpl(data)
       return undefined
     },
+    has: (name: string) => policyHookPresent && (name === 'spend.getBudgetPolicy' || name === 'spend.resolveBilling'),
   }),
 })
 // getHookRegistry lives in the leaf module post-WS2 K1; mock the leaf + legacy facade.
@@ -149,6 +152,17 @@ describe('budgetGate', () => {
     const decision = await budgetGate('pixel', dir)
     expect(decision.action).toBe('defer')
     expect(auditCalls.some((c) => c[1] === 'budget.deferred')).toBe(true)
+  })
+
+  it('FAIL-CLOSED: a missing policy hook defers AND audits budget.policy_unavailable once per window — a standing condition, not a row per turn', async () => {
+    policyHookPresent = false
+    try {
+      expect(await budgetGate('pixel', dir)).toMatchObject({ action: 'defer', cause: 'budget_policy_unavailable' })
+      expect(await budgetGate('patch', dir)).toMatchObject({ action: 'defer', cause: 'budget_policy_unavailable' })
+      expect(auditCalls.filter((c) => c[1] === 'budget.policy_unavailable')).toHaveLength(1)
+    } finally {
+      policyHookPresent = true
+    }
   })
 
   it('FAIL-CLOSED: global totals defer when observed usage cannot be read', async () => {
@@ -551,7 +565,7 @@ describe('budgetGate', () => {
     }
   })
 
-  it('MEDIA GATE: warn does not block; kill switch does', async () => {
+  it('MEDIA GATE: approaching a cap does not block; kill switch does', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
     costRows.push({ runId: 'img-2', agent: 'pixel', model: 'google/nanobanana', provider: 'google', lane: 'metered', totalTokens: 0, costUsdMicros: 8_500_000, occurredAt: Date.now() })
     expect((await gateBilledMediaCall({ agent: 'pixel', model: 'google/nanobanana' })).allowed).toBe(true)
@@ -562,20 +576,29 @@ describe('budgetGate', () => {
     if (!refused.allowed) expect(refused.refusal.code).toBe('dispatch_paused')
   })
 
-  it('a warn threshold opens a warn incident and audits budget.warn once', async () => {
+  it('approaching a cap opens NO incident and audits nothing — the milestone ladder owns approach (v10)', async () => {
     budgetPolicy = GLOBAL_10
     costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 100, costUsdMicros: 8_500_000, occurredAt: Date.now() })
-    expect((await budgetGate('pixel', dir)).action).toBe('warn')
-    expect((await budgetGate('pixel', dir)).action).toBe('warn')
-    expect(incidentOpens).toHaveLength(1)
-    expect(incidentOpens[0]).toMatchObject({ kind: 'warn' })
-    expect(auditCalls.filter((c) => c[1] === 'budget.warn')).toHaveLength(1)
+    expect(await budgetGate('pixel', dir)).toEqual({ action: 'allow' })
+    expect(await budgetGate('pixel', dir)).toEqual({ action: 'allow' })
+    expect(incidentOpens).toHaveLength(0)
+    expect(auditCalls.filter((c) => c[1] === 'budget.warn')).toHaveLength(0)
   })
 
-  it('a WARN on a pause-mode rule opens a sweepable (defer) incident — warnings never hold past rollover', async () => {
+  it('a breach on a pause-mode rule opens a cap incident carrying the pause reaction', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10, atCap: 'pause' }] }
-    costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 100, costUsdMicros: 8_500_000, occurredAt: Date.now() })
-    expect((await budgetGate('pixel', dir)).action).toBe('warn')
-    expect(incidentOpens[0]).toMatchObject({ kind: 'warn', atCap: 'defer' })
+    costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 100, costUsdMicros: 10_500_000, occurredAt: Date.now() })
+    expect((await budgetGate('pixel', dir)).action).toBe('defer')
+    expect(incidentOpens[0]).toMatchObject({ kind: 'cap', atCap: 'pause' })
+  })
+
+  it('S13 FAIL-CLOSED: an absent spend policy hook defers with budget_policy_unavailable and opens no incident', async () => {
+    policyHookPresent = false
+    try {
+      expect(await budgetGate('pixel', dir)).toEqual({ action: 'defer', cause: 'budget_policy_unavailable' })
+      expect(incidentOpens).toHaveLength(0)
+    } finally {
+      policyHookPresent = true
+    }
   })
 })

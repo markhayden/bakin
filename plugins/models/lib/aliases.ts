@@ -6,7 +6,7 @@
  * `readAliases` normalizes the target ids. `DEFAULT_ALIASES` seeds the
  * prepopulate action on POST /aliases.
  */
-import { normalizeModelId } from './model-id'
+import { normalizeModelId } from '@bakin/core/llm/model-id'
 
 export const DEFAULT_ALIASES: Record<string, string> = {
   haiku: 'anthropic/claude-haiku-4-5',

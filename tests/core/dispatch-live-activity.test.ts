@@ -101,7 +101,7 @@ mock.module('@/core/task-store', () => taskStoreMock)
 const hookRegistryMock = () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mock(async (hook: string) => (hook === 'workflows.getActiveAgents' ? [] : undefined)),
-    has: mock().mockReturnValue(false),
+    has: mock((name: string) => name === 'spend.getBudgetPolicy'),
     register: mock(),
   }),
 })

@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 191737,
+    "canonicalBytes": 191801,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -19,7 +19,7 @@
   },
   "hostInitialJs": {
     "path": "packages/host/dist/main.js",
-    "bytes": 234731
+    "bytes": 238585
   },
   "sdkUiBundles": [
     {
@@ -38,7 +38,7 @@
       "name": "sdk-conversation",
       "path": "packages/host/public/vendor/sdk-conversation.js",
       "bytes": 55829,
-      "reachableBytes": 709950
+      "reachableBytes": 710041
     },
     {
       "name": "sdk-layout",
@@ -143,6 +143,10 @@
       "bytes": 1814
     },
     {
+      "path": "packages/host/public/vendor/sdk-shared-84033vtz.js",
+      "bytes": 28637
+    },
+    {
       "path": "packages/host/public/vendor/sdk-shared-9dn0qn42.js",
       "bytes": 1804
     },
@@ -161,10 +165,6 @@
     {
       "path": "packages/host/public/vendor/sdk-shared-edkvzga3.js",
       "bytes": 27174
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-fz67qhy7.js",
-      "bytes": 28546
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-gg2fx0xq.js",
@@ -208,7 +208,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-utils.js",
-      "bytes": 8008
+      "bytes": 8600
     },
     {
       "path": "packages/host/public/vendor/tanstack-router.js",
@@ -268,7 +268,7 @@
       "repository": "bakin",
       "pluginId": "health",
       "path": "plugins/health/dist/client.js",
-      "bytes": 502722
+      "bytes": 502709
     },
     {
       "repository": "bakin",
@@ -280,7 +280,7 @@
       "repository": "bakin",
       "pluginId": "models",
       "path": "plugins/models/dist/client.js",
-      "bytes": 81018
+      "bytes": 53612
     },
     {
       "repository": "bakin",
@@ -290,9 +290,15 @@
     },
     {
       "repository": "bakin",
+      "pluginId": "spend",
+      "path": "plugins/spend/dist/client.js",
+      "bytes": 44155
+    },
+    {
+      "repository": "bakin",
       "pluginId": "tasks",
       "path": "plugins/tasks/dist/client.js",
-      "bytes": 201153
+      "bytes": 201407
     },
     {
       "repository": "bakin",

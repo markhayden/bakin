@@ -23,8 +23,8 @@ let priceTurnImpl: (data: Record<string, unknown>) => unknown = () => ({ model: 
 let priceImageImpl: (data: Record<string, unknown>) => unknown = () => ({ model: null, costUsdMicros: null })
 const hookRegistryMock = () => ({
   getHookRegistry: () => ({ invoke: async (name: string, data: Record<string, unknown>) => {
-    if (name === 'models.priceTurn') return priceTurnImpl(data)
-    if (name === 'models.priceImage') return priceImageImpl(data)
+    if (name === 'spend.priceTurn') return priceTurnImpl(data)
+    if (name === 'spend.priceImage') return priceImageImpl(data)
     return undefined
   } }),
 })

@@ -164,7 +164,28 @@ const MIGRATIONS = [
       db.exec('DELETE FROM session_scan_state')
     },
   },
+  {
+    // v5 — scan_days coverage receipts (spend plan D27, §11 Q3 approved).
+    // One row per local day on which a usage sweep completed with FULL
+    // roster coverage. The existing rows cannot tell "zero usage" from
+    // "not observed"; this table can, so spend suggestions count only
+    // observed days. Written by the scanner on complete sweeps only;
+    // pruned to the last 90 days.
+    version: 5,
+    up: (db: Db) => {
+      db.exec(
+        `CREATE TABLE scan_days (
+           day           TEXT PRIMARY KEY,
+           first_scan_at INTEGER NOT NULL,
+           last_scan_at  INTEGER NOT NULL
+         )`,
+      )
+    },
+  },
 ]
+
+/** Coverage receipts are kept for this many days (the suggestion looks back 30). */
+export const SCAN_DAYS_RETENTION = 90
 
 function db(): Db {
   store.applyMigrations(MODULE, MIGRATIONS)
@@ -589,4 +610,47 @@ export function usageByDaySince(sinceDay: string): DayUsageRollup[] {
     log.error('usageByDaySince failed', err, { sinceDay })
     return []
   }
+}
+
+/**
+ * Record that a usage sweep completed with full coverage on `day` (the
+ * caller decides completeness — `scanUsageHistory` writes this only when
+ * `coverage.status === 'complete'`). Upsert keeps the first scan time and
+ * refreshes the last; rows older than the retention window relative to
+ * `now` are pruned in the same transaction. Storage failures are logged —
+ * a lost receipt only makes a day look unobserved (conservative).
+ */
+export function recordScanDay(day: string, now: number = Date.now()): void {
+  try {
+    const d = db()
+    d.transaction(() => {
+      d.prepare(
+        `INSERT INTO scan_days (day, first_scan_at, last_scan_at) VALUES (?, ?, ?)
+         ON CONFLICT(day) DO UPDATE SET last_scan_at = excluded.last_scan_at`,
+      ).run(day, now, now)
+      d.prepare('DELETE FROM scan_days WHERE day < ?').run(localDayKeyDaysAgo(now, SCAN_DAYS_RETENTION))
+    })()
+  } catch (err) {
+    log.warn('usage history: scan day receipt not recorded', { day, err: err instanceof Error ? err.message : String(err) })
+  }
+}
+
+/** Local day keys (ascending) that received a complete sweep within the last `days` days up to `now`. */
+/**
+ * The local day key `n` calendar days before `now`. Calendar stepping, not
+ * `now - n × 86 400 000`: a 24-hour subtraction across a DST change lands
+ * an hour off and, near midnight, on the wrong local day.
+ */
+export function localDayKeyDaysAgo(now: number, n: number): string {
+  const d = new Date(now)
+  d.setDate(d.getDate() - n)
+  return toLocalDayKey(d.getTime())
+}
+
+export function coveredDaysSince(days: number, now: number = Date.now()): string[] {
+  const since = localDayKeyDaysAgo(now, Math.max(0, days - 1))
+  return db()
+    .prepare<{ day: string }, [string]>('SELECT day FROM scan_days WHERE day >= ? ORDER BY day ASC')
+    .all(since)
+    .map((r) => r.day)
 }

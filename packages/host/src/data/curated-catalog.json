@@ -236,6 +236,26 @@
       "builtin": true
     },
     {
+      "id": "spend",
+      "kind": "plugin",
+      "name": "Spend",
+      "emoji": "💸",
+      "description": "What your agents spend and the limits you choose to set.",
+      "category": "Platform",
+      "tags": [
+        "spend",
+        "budget",
+        "cost"
+      ],
+      "useCases": [
+        "See observed and projected spend per billing lane",
+        "Set a limit once you know what normal looks like",
+        "Get told at 50/75/90% so the stop is never a surprise"
+      ],
+      "trust": "official",
+      "builtin": true
+    },
+    {
       "id": "assets",
       "kind": "plugin",
       "name": "Assets",

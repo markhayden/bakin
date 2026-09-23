@@ -9,7 +9,7 @@ import { getSettings } from '../../../../src/core/settings'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDefinition, SearchHealthSnapshot } from '@makinbakin/sdk'
 import { checkSearchOutboxObservations } from './search-outbox'
-import { repairTargetSelection } from './repair-support'
+import { repairTargetSelection } from '@bakin/core/health/repair-support'
 
 export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
   const settings = getSettings()
