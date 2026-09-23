@@ -966,6 +966,19 @@ bakin diagnostics startup <status|on|off> [--slow-ms <ms>] [--json]
     </tbody>
   </table>
 </CliCommandCard>
+<CliCommandCard id="models" name="models" summary="Restore model selections from a Reset snapshot." description="Diffs a Models-page Reset snapshot (plugin-settings/models/snapshots/*.json) against the CURRENT selections and applies the difference through the validated selections write path under the current revision — undoes a Reset even after later edits.">
+```sh frame="terminal"
+bakin models restore <snapshot.json> [--json]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>restore</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>&lt;snapshot.json&gt;</code></td><td>argument</td><td>yes</td><td>Required value.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
 <CliCommandCard id="spend" name="spend" summary="Estimated agent spend + budget utilization." description="Lane-split spend (metered dollars vs subscription tokens — plan quota carries no dollar figure), per-rule budget utilization, on-pace projections, unattributed share, per-agent/per-model rollups, and the kill-switch state. Same engine the dispatch gate enforces, so the numbers match the Spend tab.">
 ```sh frame="terminal"
 bakin spend [--window 24h|7d|30d|all] [--json]
@@ -1076,5 +1089,5 @@ bakin brands remove <id> [--yes]
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Sep 20, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Sep 23, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -123,6 +123,13 @@ async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags)
       console.log(`  ○ ${kept.agentId}: subagent model '${kept.sourceModel}' preserved (not active on ${result.to}) — restored on switch back`)
     }
   }
+  const dead = result.deadSelections as { dead: Array<{ ref: string; label: string; model: string; detail: string; proposal: { to: string | null } }> } | null
+  if (dead && dead.dead.length > 0) {
+    console.log(`Model settings that ${flags.dryRun ? 'would not' : 'cannot'} run on ${result.to}: ${dead.dead.length} (nothing was changed — review in Models)`)
+    for (const d of dead.dead) {
+      console.log(`  ⚠ ${d.label} (${d.ref}) uses '${d.model}' — ${d.detail}${d.proposal.to ? `; proposed: ${d.proposal.to}` : ''}`)
+    }
+  }
   const cron = result.cron as { adopted: string[]; skipped: string[]; failed: Array<{ jobId: string; error: string }> } | null
   if (cron) {
     console.log(`Cron: ${flags.dryRun ? 'would adopt' : 'adopted'} ${cron.adopted.length}, already Bakin ${cron.skipped.length}, failed ${cron.failed.length}`)

@@ -373,22 +373,25 @@ export function TeamGrid() {
           <PageBody
             gap="content"
             className="h-full min-h-0 flex-1"
-            feedback={runtimeStatus.restartNeeded ? (
+            feedback={runtimeStatus.pending ? (
               <Alert tone="attention">
-                <AlertTitle>Runtime restart required</AlertTitle>
+                <AlertTitle>{runtimeStatus.advice.title ?? 'Runtime config changed'}</AlertTitle>
                 <AlertDescription>
-                  Agent configuration changed and is not active in the runtime yet.
+                  {runtimeStatus.advice.body}
+                  {runtimeStatus.lastError ? ` The last restart failed: ${runtimeStatus.lastError}` : null}
                 </AlertDescription>
-                <AlertAction>
-                  <Button
-                    onClick={runtimeStatus.restart}
-                    disabled={runtimeStatus.restarting}
-                    variant="warning"
-                    size="sm"
-                  >
-                    {runtimeStatus.restarting ? 'Restarting…' : 'Restart runtime'}
-                  </Button>
-                </AlertAction>
+                {runtimeStatus.advice.action ? (
+                  <AlertAction>
+                    <Button
+                      onClick={runtimeStatus.restart}
+                      disabled={runtimeStatus.restarting}
+                      variant="warning"
+                      size="sm"
+                    >
+                      {runtimeStatus.restarting ? 'Restarting…' : runtimeStatus.advice.action.label}
+                    </Button>
+                  </AlertAction>
+                ) : null}
               </Alert>
             ) : undefined}
           >

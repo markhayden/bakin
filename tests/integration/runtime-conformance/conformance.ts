@@ -132,7 +132,31 @@ export interface RuntimeConformanceSuiteOptions {
    * member, never a throwing stub). Omit to skip the declaration pin.
    */
   contextStats?: 'present' | 'absent'
+  /**
+   * credentials.providers() optional-member declaration (#907/#378 slice).
+   * 'present' pins the member to exist and to return a STATUS-ONLY
+   * inventory; 'absent' pins true omission (never a throwing stub).
+   */
+  credentials?: 'present' | 'absent'
+  /**
+   * restartAdvice() optional-member declaration (#878 Models half).
+   * 'present' pins the member to exist and to return well-formed advice for
+   * every change kind; 'absent' pins true omission.
+   */
+  restartAdvice?: 'present' | 'absent'
+  /**
+   * models.resolveId() optional-member declaration (#907 review). 'present'
+   * pins the member to exist AND to be honest: a listed catalog id resolves
+   * to itself and an unknown reference resolves to null; 'absent' pins true
+   * omission (the runtime runs exactly what its catalog lists).
+   */
+  resolveId?: 'present' | 'absent'
 }
+
+/** Field names a status-only credential inventory may carry — anything else is a leak vector. */
+const INVENTORY_KEYS = new Set(['providers', 'evidence', 'detail'])
+const PROVIDER_STATUS_KEYS = new Set(['providerId', 'configured', 'authFree', 'source'])
+const RESTART_CHANGE_KINDS = ['model-config', 'roster', 'routing-policy'] as const
 
 function fail(message: string): never {
   throw new Error(`conformance violation: ${message}`)
@@ -179,6 +203,122 @@ export const runtimeConformanceChecks = {
     }
     if (options.contextStats === 'present' && member === undefined) {
       fail('contextStats declared present but the adapter omits the member')
+    }
+  },
+
+  /**
+   * credentials optional-member honesty (#907 / #378 model slice): presence
+   * is the contract — absence must be member omission, never a throwing stub.
+   */
+  async credentialsMemberMatchesDeclaration(target: RuntimeConformanceTarget, options?: RuntimeConformanceSuiteOptions): Promise<void> {
+    if (options?.credentials === undefined) return
+    const member = target.runtime.credentials
+    if (options.credentials === 'absent' && member !== undefined) {
+      fail('credentials declared absent but the adapter exposes the member — absence must be member omission')
+    }
+    if (options.credentials === 'present' && member === undefined) {
+      fail('credentials declared present but the adapter omits the member')
+    }
+  },
+
+  /**
+   * Status-only credential inventory: when the member exists, `providers()`
+   * must return the declared shape and NOTHING else — no extra field on the
+   * inventory or on any provider entry (an `apiKey`/`token` field, however
+   * it is spelled, is a secret crossing the boundary). Evidence must be an
+   * honest 'complete' | 'partial'.
+   */
+  async credentialInventoryIsStatusOnly(target: RuntimeConformanceTarget): Promise<void> {
+    const member = target.runtime.credentials
+    if (member === undefined) return
+    const inventory = await member.providers()
+    if (!inventory || typeof inventory !== 'object') fail('credentials.providers() did not return an object')
+    for (const key of Object.keys(inventory)) {
+      if (!INVENTORY_KEYS.has(key)) fail(`credential inventory carries an undeclared field '${key}' — status only, never secrets`)
+    }
+    if (inventory.evidence !== 'complete' && inventory.evidence !== 'partial') {
+      fail(`credential inventory evidence must be 'complete' | 'partial', got ${String(inventory.evidence)}`)
+    }
+    if (!Array.isArray(inventory.providers)) fail('credential inventory providers must be an array')
+    for (const entry of inventory.providers) {
+      if (!entry || typeof entry !== 'object') fail('credential inventory entry is not an object')
+      for (const key of Object.keys(entry)) {
+        if (!PROVIDER_STATUS_KEYS.has(key)) fail(`credential inventory entry carries an undeclared field '${key}' — status only, never secrets`)
+      }
+      if (typeof entry.providerId !== 'string' || entry.providerId.length === 0) fail('credential inventory entry lacks a providerId')
+      if (typeof entry.configured !== 'boolean') fail(`credential inventory entry '${entry.providerId}' lacks a boolean configured flag`)
+    }
+  },
+
+  /**
+   * restartAdvice optional-member honesty (#878): presence is the contract —
+   * absence must be member omission, never a throwing stub.
+   */
+  async restartAdviceMemberMatchesDeclaration(target: RuntimeConformanceTarget, options?: RuntimeConformanceSuiteOptions): Promise<void> {
+    if (options?.restartAdvice === undefined) return
+    const member = target.runtime.restartAdvice
+    if (options.restartAdvice === 'absent' && member !== undefined) {
+      fail('restartAdvice declared absent but the adapter exposes the member — absence must be member omission')
+    }
+    if (options.restartAdvice === 'present' && member === undefined) {
+      fail('restartAdvice declared present but the adapter omits the member')
+    }
+  },
+
+  /**
+   * models.resolveId optional-member honesty (#907 review): presence is the
+   * contract — absence must be member omission, never a throwing stub.
+   */
+  async resolveIdMemberMatchesDeclaration(target: RuntimeConformanceTarget, options?: RuntimeConformanceSuiteOptions): Promise<void> {
+    if (options?.resolveId === undefined) return
+    const member = target.runtime.models.resolveId
+    if (options.resolveId === 'absent' && member !== undefined) {
+      fail('models.resolveId declared absent but the adapter exposes the member — absence must be member omission')
+    }
+    if (options.resolveId === 'present' && member === undefined) {
+      fail('models.resolveId declared present but the adapter omits the member')
+    }
+  },
+
+  /**
+   * models.resolveId honesty, when the member exists: the eligibility engine
+   * judges a persisted selection by what this returns, so a listed catalog
+   * id MUST resolve to itself (verbatim) and a reference no turn could run
+   * MUST resolve to null — a runtime that "resolves" garbage would let a
+   * dead selection pass as live.
+   */
+  async resolveIdIsHonest(target: RuntimeConformanceTarget): Promise<void> {
+    const member = target.runtime.models.resolveId
+    if (member === undefined) return
+    const [first] = await target.runtime.models.listAvailable({ includeUnavailable: true })
+    if (first?.id) {
+      const resolved = await member.call(target.runtime.models, first.id)
+      if (resolved !== first.id) fail(`models.resolveId('${first.id}') must return the listed id verbatim, got ${String(resolved)}`)
+    }
+    const nonsense = `bakin-conformance/no-such-model-${Date.now()}`
+    const resolved = await member.call(target.runtime.models, nonsense)
+    if (resolved !== null) fail(`models.resolveId('${nonsense}') must be null for a reference no turn could run, got ${String(resolved)}`)
+  },
+
+  /**
+   * restartAdvice shape: for every change kind the adapter returns either
+   * undefined or `{ needed: boolean, title?, body?, action?: { label, kind:
+   * 'restart-runtime' } }`. The Models banner is a dumb renderer of this —
+   * a malformed answer would render garbage or hide a needed restart.
+   */
+  async restartAdviceIsWellFormed(target: RuntimeConformanceTarget): Promise<void> {
+    const member = target.runtime.restartAdvice
+    if (member === undefined) return
+    for (const kind of RESTART_CHANGE_KINDS) {
+      const advice = member.call(target.runtime, kind)
+      if (advice === undefined) continue
+      if (typeof advice.needed !== 'boolean') fail(`restartAdvice('${kind}').needed must be a boolean`)
+      if (advice.title !== undefined && typeof advice.title !== 'string') fail(`restartAdvice('${kind}').title must be a string`)
+      if (advice.body !== undefined && typeof advice.body !== 'string') fail(`restartAdvice('${kind}').body must be a string`)
+      if (advice.action !== undefined) {
+        if (typeof advice.action.label !== 'string' || advice.action.label.length === 0) fail(`restartAdvice('${kind}').action.label must be a non-empty string`)
+        if (advice.action.kind !== 'restart-runtime') fail(`restartAdvice('${kind}').action.kind must be 'restart-runtime'`)
+      }
     }
   },
 
@@ -923,6 +1063,30 @@ export function runRuntimeConformanceSuite(
 
     it('contextStats reports sane, null-honest values after a real turn (when declared present)', async () => {
       await runtimeConformanceChecks.contextStatsReportsSaneValues(getTarget(), options)
+    })
+
+    it('credentials member matches its declaration (presence is the contract)', async () => {
+      await runtimeConformanceChecks.credentialsMemberMatchesDeclaration(getTarget(), options)
+    })
+
+    it('credential inventory is status-only (when the member exists)', async () => {
+      await runtimeConformanceChecks.credentialInventoryIsStatusOnly(getTarget())
+    })
+
+    it('restartAdvice member matches its declaration (presence is the contract)', async () => {
+      await runtimeConformanceChecks.restartAdviceMemberMatchesDeclaration(getTarget(), options)
+    })
+
+    it('restartAdvice is well-formed for every change kind (when the member exists)', async () => {
+      await runtimeConformanceChecks.restartAdviceIsWellFormed(getTarget())
+    })
+
+    it('models.resolveId member matches its declaration (presence is the contract)', async () => {
+      await runtimeConformanceChecks.resolveIdMemberMatchesDeclaration(getTarget(), options)
+    })
+
+    it('models.resolveId is honest: a listed id resolves verbatim, an unknown reference to null (when the member exists)', async () => {
+      await runtimeConformanceChecks.resolveIdIsHonest(getTarget())
     })
 
     it('initialize() is write-free (provisioning owns home writes)', async () => {

@@ -707,6 +707,27 @@ describe('team plugin — POST / (create agent with new fields)', () => {
     expect(runtimeMocks.updateAllowlist).toHaveBeenCalledWith('chef', { add: ['trainer'] })
   })
 
+  it('refuses to create an agent on a model this install cannot run (#907)', async () => {
+    const route = findRoute(activated.routes, 'POST', '/')!
+    const listAvailable = activated.ctx.runtime.models.listAvailable
+    activated.ctx.runtime.models.listAvailable = async () => [
+      { id: 'openai/gpt-5.6-luna', available: false, unavailableReason: 'no_credentials' },
+      { id: 'openai-codex/gpt-5.5', available: true },
+    ]
+    try {
+      const refused = await callRoute(route, activated.ctx, { body: { id: 'ghost', name: 'Ghost', model: 'openai/gpt-5.6-luna' } })
+      expect(refused.status).toBe(400)
+      expect(refused.body.error).toBe('model_not_eligible')
+      expect(String(refused.body.message)).toMatch(/no credentials for openai/)
+      expect(runtimeMocks.create).not.toHaveBeenCalled()
+
+      const created = await callRoute(route, activated.ctx, { body: { id: 'real', name: 'Real', model: 'openai-codex/gpt-5.5' } })
+      expect(created.status).toBe(200)
+    } finally {
+      activated.ctx.runtime.models.listAvailable = listAvailable
+    }
+  })
+
   it('writes teamId to display settings when provided', async () => {
     const route = findRoute(activated.routes, 'POST', '/')!
     const teamJsonPath = join(testDir, 'plugin-settings', 'team.json')

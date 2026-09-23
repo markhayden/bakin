@@ -11,6 +11,7 @@ import { existsSync } from 'fs'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
+import { adviceFor, clearPendingRestart, notePendingChange, recordRestartFailure } from '../../src/core/pending-restart'
 import { readHeartbeats } from '../../src/lib/content-files'
 import { getContentDir } from '../../packages/core/src/content-dir'
 import { getSettings, resetSettingsCache } from '../../src/core/settings'
@@ -590,13 +591,17 @@ const teamPlugin: BakinPlugin = definePlugin({
         resetSettingsCache()
 
         let runtimeRestarted = false
-        try {
-          await ctx.runtime.restart()
-          runtimeRestarted = true
-          log.info('Runtime restarted after agent creation', { agent: id })
-          try { ctx.hooks.invoke('models.markRuntimeRestarted', {}) } catch { /* ok */ }
-        } catch (err) {
-          log.warn('Failed to restart runtime', { error: err instanceof Error ? err.message : String(err) })
+        if (adviceFor(ctx.runtime, 'roster').advice.needed) {
+          try {
+            await ctx.runtime.restart()
+            runtimeRestarted = true
+            log.info('Runtime restarted after agent creation', { agent: id })
+            clearPendingRestart()
+          } catch (err) {
+            log.warn('Failed to restart runtime', { error: err instanceof Error ? err.message : String(err) })
+            notePendingChange(ctx.runtime, ['roster'])
+            recordRestartFailure(err)
+          }
         }
 
         return {
@@ -676,13 +681,17 @@ const teamPlugin: BakinPlugin = definePlugin({
         resetSettingsCache()
 
         let runtimeRestarted = false
-        try {
-          await ctx.runtime.restart()
-          runtimeRestarted = true
-          log.info('Runtime restarted after agent deletion', { agent: agentId })
-          try { ctx.hooks.invoke('models.markRuntimeRestarted', {}) } catch { /* ok */ }
-        } catch (err) {
-          log.warn('Failed to restart runtime', { error: err instanceof Error ? err.message : String(err) })
+        if (adviceFor(ctx.runtime, 'roster').advice.needed) {
+          try {
+            await ctx.runtime.restart()
+            runtimeRestarted = true
+            log.info('Runtime restarted after agent deletion', { agent: agentId })
+            clearPendingRestart()
+          } catch (err) {
+            log.warn('Failed to restart runtime', { error: err instanceof Error ? err.message : String(err) })
+            notePendingChange(ctx.runtime, ['roster'])
+            recordRestartFailure(err)
+          }
         }
 
         return { ok: true, id: agentId, trashed: true, runtimeRestarted }

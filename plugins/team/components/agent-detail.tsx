@@ -98,8 +98,11 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const [loading, setLoading] = useState(true)
   const [avatarKey, setAvatarKey] = useState(0)
   const avatarInputRef = useRef<FileInputHandle>(null)
-  const availableModels = useAvailableModels()
+  // This agent's picker: verdicts under ITS credentials (#907 review).
+  const availableModels = useAvailableModels(agentId)
   const [savingModel, setSavingModel] = useState(false)
+  const [modelError, setModelError] = useState<string | null>(null)
+  const [modelNotice, setModelNotice] = useState<string | null>(null)
   const runtimeStatus = useRuntimeStatus()
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -117,17 +120,30 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const handleModelChange = async (modelId: string) => {
     if (!profile) return
     setSavingModel(true)
+    setModelError(null)
+    setModelNotice(null)
     try {
       const ownModel = modelId === '__default__' ? null : modelId
-      const response = await fetch('/api/plugins/models/config', {
+      // The ONE model write path (#907): revision-checked selection ops.
+      const current = await fetch('/api/plugins/models/selections').then((r) => r.json()) as { revision: string }
+      const response = await fetch('/api/plugins/models/selections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId, ownModel }),
+        body: JSON.stringify({ revision: current.revision, ops: [{ ref: `agent:${agentId}:model`, set: { model: ownModel } }] }),
       })
       if (response.ok) {
-        runtimeStatus.markDirty()
+        // 200 is tri-state (#907): a write can be applied, FAILED at the
+        // adapter, or PENDING its confirmation — only `applied` is success.
+        const result = await response.json().catch(() => ({})) as { failed?: Array<{ ref: string; error: { message: string } }>; pending?: Array<{ ref: string }> }
+        const failed = result.failed ?? []
+        if (failed.length > 0) setModelError(failed.map((f) => f.error.message).join('; '))
+        setModelNotice((result.pending ?? []).length > 0 ? 'Saved — waiting for the runtime to confirm the write.' : null)
+        await runtimeStatus.refresh()
         const updated = await fetch(`/api/plugins/team/${agentId}`).then((result) => result.json())
         setProfile(updated)
+      } else {
+        const body = await response.json().catch(() => ({})) as { message?: string; error?: string }
+        setModelError(body.message ?? body.error ?? `Save failed (${response.status})`)
       }
     } finally {
       setSavingModel(false)
@@ -291,21 +307,26 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         onFiles={(files) => void handleAvatarUpload(files)}
       />
 
-      {runtimeStatus.restartNeeded ? (
+      {runtimeStatus.pending ? (
         <Alert tone="attention">
-          <AlertTitle>Runtime configuration is out of sync</AlertTitle>
-          <AlertDescription>Restart the runtime to apply this agent’s latest configuration.</AlertDescription>
-          <AlertAction>
-            <Button
-              type="button"
-              variant="warning"
-              size="sm"
-              onClick={runtimeStatus.restart}
-              disabled={runtimeStatus.restarting}
-            >
-              {runtimeStatus.restarting ? 'Restarting…' : 'Restart runtime'}
-            </Button>
-          </AlertAction>
+          <AlertTitle>{runtimeStatus.advice.title ?? 'Runtime config changed'}</AlertTitle>
+          <AlertDescription>
+            {runtimeStatus.advice.body}
+            {runtimeStatus.lastError ? ` The last restart failed: ${runtimeStatus.lastError}` : null}
+          </AlertDescription>
+          {runtimeStatus.advice.action ? (
+            <AlertAction>
+              <Button
+                type="button"
+                variant="warning"
+                size="sm"
+                onClick={runtimeStatus.restart}
+                disabled={runtimeStatus.restarting}
+              >
+                {runtimeStatus.restarting ? 'Restarting…' : runtimeStatus.advice.action.label}
+              </Button>
+            </AlertAction>
+          ) : null}
         </Alert>
       ) : null}
 
@@ -330,6 +351,8 @@ export function AgentDetail({ agentId }: { agentId: string }) {
                 availableModels={availableModels}
                 onModelChange={handleModelChange}
                 savingModel={savingModel}
+                modelError={modelError}
+                modelNotice={modelNotice}
               />
             ) : null}
             {activeTab === 'diagnostics' ? <DiagnosticsTab agentId={agentId} /> : null}

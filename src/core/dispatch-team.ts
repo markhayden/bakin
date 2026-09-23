@@ -240,7 +240,7 @@ function resolveShared(task: DispatchTask, contentDir: string): Promise<TeamReso
  * 'team-routing' route's model. Lazy imports keep this module out of the
  * app-services import cycle (check:cycles). */
 async function routingCallGated(contentDir: string): Promise<boolean> {
-  const { dispatchPaused, deferForBudget } = await import('./dispatch-turns')
+  const { dispatchPaused, preDispatchGate } = await import('./dispatch-turns')
   if (dispatchPaused(contentDir)) return true
   try {
     const { getAppServices } = await import('./app-services-store')
@@ -248,7 +248,7 @@ async function routingCallGated(contentDir: string): Promise<boolean> {
     const mainAgentId = await getRuntimeMainAgentId(getAppServices().runtime)
     const { resolveSystemRoute } = await import('./system-route')
     const route = await resolveSystemRoute('team-routing')
-    return await deferForBudget(mainAgentId, contentDir, undefined, route.model ? { model: route.model } : undefined)
+    return (await preDispatchGate(mainAgentId, contentDir, undefined, route.model ? { model: route.model, routeSource: route.source, workClass: 'team-routing' } : {})) !== null
   } catch (err) {
     // A broken gate must not strand routing forever — proceed; the resolver's
     // own typed failure handling is the backstop.

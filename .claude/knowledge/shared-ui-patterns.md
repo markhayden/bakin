@@ -284,28 +284,22 @@ Options are grouped by provider (`anthropic`, `openai-codex`, `google`, etc.), n
 
 ## useRuntimeStatus
 
-`src/hooks/use-runtime-status.ts` — Checks if the active runtime needs a restart after config changes.
+`src/hooks/use-runtime-status.ts` — Pending runtime restart, in the ADAPTER's words (#878).
 
 ### Return Value
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `restartNeeded` | `boolean` | True if config changed since last runtime restart |
-| `restarting` | `boolean` | True while restart POST is in flight |
-| `restart` | `() => Promise<void>` | Calls `POST /api/plugins/models/runtime/restart` |
-| `markDirty` | `() => void` | Optimistically set `restartNeeded` without waiting for server |
+| `pending` | `boolean` | A config change is waiting on a runtime restart (server-persisted, adapter-advised) |
+| `advice` | `{ needed, title?, body?, action? }` | What to render — the adapter's `restartAdvice()` or the generic fallback |
+| `restarting` | `boolean` | True while the restart POST is in flight |
+| `lastError` | `string \| null` | The last failed restart attempt's error (the banner stays and says why) |
+| `restart` | `() => Promise<void>` | `POST /api/plugins/models/runtime/restart`, then `refresh()` |
+| `refresh` | `() => Promise<void>` | Re-read `GET /api/plugins/models/runtime/status` after a save — the SERVER decides |
 
 ### How It Works
 
-Server tracks `lastConfigChangeAt` and `lastRestartAt` timestamps via `globalThis.__bakinRuntimeSync` (survives Bun HMR and module re-evaluation). The hook fetches `GET /api/plugins/models/runtime/status` on mount and shows the amber restart banner if out of sync.
-
-### Where Used
-
-| Plugin | Component | Trigger |
-|--------|-----------|---------|
-| Team | agent-detail | Model change via dropdown |
-| Team | team-grid | "Save Without Restart" on agent creation |
-| Models | models-page | Any config/defaults change |
+`src/core/pending-restart.ts` persists which change kinds are pending; only kinds the adapter's `restartAdvice(kind)` marks `needed` are recorded (Pi: none; OpenClaw: roster). Only a successful `restart()` clears it. The hook never sets pending optimistically — there is no `markDirty`.
 
 ## useSearch
 

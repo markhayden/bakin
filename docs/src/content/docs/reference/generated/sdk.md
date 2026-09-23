@@ -133,6 +133,8 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | `useHistoryBack` | — |
 | `useHorizontalResize` | Resize a side-by-side split pane by dragging the divider between columns. |
 | `useAvailableModels` | The available-models catalog (cached, read-only); empty until loaded. |
+| `toModelSelectOptions` | The available-models catalog (cached, read-only); empty until loaded. |
+| `EligibleModelOption` | — |
 | `toNavigationOptions` | — |
 
 ## `@makinbakin/sdk/ui`
@@ -755,5 +757,5 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Sep 22, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Sep 23, 2026 · Bakin 0.0.0-dev</span>
 </aside>

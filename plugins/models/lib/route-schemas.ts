@@ -7,29 +7,6 @@
  */
 import { z } from 'zod'
 
-import { ROUTABLE_WORK_CLASSES } from '../../../src/core/model-routing'
-
-// ---------------------------------------------------------------------------
-// Zod schemas for request validation
-// ---------------------------------------------------------------------------
-export const ConfigUpdateSchema = z.object({
-  agentId: z.string().min(1, 'agentId required'),
-  ownModel: z.string().nullable().optional(),
-  subagentModel: z.string().nullable().optional(),
-})
-
-export const DefaultsUpdateSchema = z.object({
-  defaultModel: z.string().optional(),
-  defaultSubagentModel: z.string().nullable().optional(),
-  fallbackModels: z.array(z.string()).optional(),
-})
-
-export const AliasActionSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('add'), name: z.string().min(1), target: z.string().min(1) }),
-  z.object({ action: z.literal('delete'), name: z.string().min(1) }),
-  z.object({ action: z.literal('prepopulate') }),
-]).or(z.object({ aliases: z.record(z.string(), z.string()) }))
-
 
 // ---------------------------------------------------------------------------
 // Response shapes
@@ -39,21 +16,25 @@ export const errorResponse = z.object({ error: z.string() }).passthrough()
 export const passthrough = z.object({}).passthrough()
 
 const ThinkingSettingSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max', 'inherit'])
-// Routes may target any routable work class ('chat' is metered-only and
-// rejected by construction).
-const WorkClassRouteSchema = z.object({
-  workClass: z.enum(ROUTABLE_WORK_CLASSES as unknown as [string, ...string[]]),
-  model: z.string().optional(),
-  thinking: ThinkingSettingSchema.optional(),
+
+// The ONE model-selection write (#907, D25): ops per selection ref under a
+// revision. `model: null` clears; `thinking: null` clears; `ui:mode` takes
+// 'simple' | 'advanced' as its model.
+export const MutationOpSchema = z.object({
+  ref: z.string().min(1),
+  set: z.object({
+    model: z.string().min(1).nullable().optional(),
+    thinking: ThinkingSettingSchema.nullable().optional(),
+  }).refine((s) => s.model !== undefined || s.thinking !== undefined, { message: 'an op must set model and/or thinking' }),
 })
-const TagOverrideSchema = z.object({
-  tag: z.string().min(1),
-  model: z.string().optional(),
-  thinking: ThinkingSettingSchema.optional(),
+export const MutateSelectionsSchema = z.object({
+  revision: z.string().min(1),
+  ops: z.array(MutationOpSchema).min(1),
+  snapshot: z.literal('reset').optional(),
 })
-export const RoutingConfigSchema = z.object({
-  routes: z.array(WorkClassRouteSchema),
-  tagOverrides: z.array(TagOverrideSchema),
+/** Operator acknowledgement of a CONFLICTED pending write — frees its document (`policy` | `routing` | `agent:<id>`). */
+export const AcknowledgePendingSchema = z.object({
+  document: z.string().regex(/^(policy|routing|agent:[^:\s]+)$/, 'document must be policy, routing or agent:<id>'),
 })
 
 // Cap rules (cost-control v2): scope × lane; unit-per-lane — dailyCap /

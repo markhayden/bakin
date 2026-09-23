@@ -47,9 +47,13 @@ describe('rejection overlay — ledger down (#852)', () => {
     ]
     setModelsCache({ models, fetchedAt: Date.now() })
 
-    const result = await fetchAvailableModels({} as never)
+    // Minimal ctx: the eligibility engine reads the cached rows as its
+    // catalog and feature-detects credentials.providers() (absent here).
+    const result = await fetchAvailableModels({ runtime: { models: {} } } as never)
     expect(result.models).toHaveLength(1)
     expect(result.models[0]!.available).toBe(true)
     expect(result.models[0]!.rejection).toBeUndefined()
+    // Missing evidence reads UNKNOWN — never ineligible (fail open).
+    expect(result.models[0]!.eligibility?.status).toBe('unknown')
   })
 })

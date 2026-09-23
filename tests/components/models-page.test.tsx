@@ -31,10 +31,12 @@ mock.module('@makinbakin/sdk/navigation', () => ({
 }))
 
 const runtimeState = {
-  restartNeeded: false,
+  pending: false,
+  advice: { needed: false } as { needed: boolean; title?: string; body?: string; action?: { label: string; kind: 'restart-runtime' } },
+  lastError: null as string | null,
+  refresh: mock(async () => {}),
   restarting: false,
   restart: mock(),
-  markDirty: mock(),
 }
 
 mock.module('@/hooks/use-runtime-status', () => ({
@@ -81,7 +83,9 @@ function createDeferred<T>(): Deferred<T> {
 describe('ModelsPage component', () => {
   let fetchCalls: FetchCall[]
   let availableFetchCount: number
+  let selectionsRevision = 0
   let availableResponse: AvailableModelsPayload
+  let agentScopedResponses: Record<string, AvailableModelsPayload>
   let refreshResponse: AvailableModelsPayload
   let availableRequest: Promise<Response> | null
   let refreshRequest: Promise<Response> | null
@@ -104,9 +108,10 @@ describe('ModelsPage component', () => {
   beforeEach(() => {
     cleanup()
     mock.restore()
-    runtimeState.markDirty.mockReset()
+    runtimeState.refresh.mockReset()
     fetchCalls = []
     availableFetchCount = 0
+    selectionsRevision = 0
     configState = {
       agents: [
         {
@@ -136,6 +141,7 @@ describe('ModelsPage component', () => {
       cachedAt: null,
     }
     refreshResponse = availableResponse
+    agentScopedResponses = {}
     availableRequest = null
     refreshRequest = null
     aliasesState = {
@@ -226,7 +232,9 @@ describe('ModelsPage component', () => {
       openIncidents: [],
     }
     incidentsState = []
-    runtimeState.restartNeeded = false
+    runtimeState.pending = false
+    runtimeState.advice = { needed: false }
+    runtimeState.lastError = null
     runtimeState.restarting = false
     runtimeState.restart.mockReset()
 
@@ -243,6 +251,11 @@ describe('ModelsPage component', () => {
         availableFetchCount += 1
         return availableRequest ?? jsonResponse(availableResponse)
       }
+      // Agent-scoped catalog reads (#907 review): verdicts under THAT agent's credentials.
+      if (url.startsWith('/api/plugins/models/available?agentId=') && method === 'GET') {
+        const agentId = decodeURIComponent(url.slice('/api/plugins/models/available?agentId='.length))
+        return jsonResponse(agentScopedResponses[agentId] ?? availableResponse)
+      }
       if (url === '/api/plugins/models/refresh' && method === 'POST') {
         return refreshRequest ?? jsonResponse(refreshResponse)
       }
@@ -254,13 +267,6 @@ describe('ModelsPage component', () => {
       }
       if (url === '/api/plugins/models/routing' && method === 'GET') {
         return jsonResponse(routingState)
-      }
-      if (url === '/api/plugins/models/routing' && method === 'PUT') {
-        routingState = {
-          routes: (body?.routes as typeof routingState.routes) ?? [],
-          tagOverrides: (body?.tagOverrides as typeof routingState.tagOverrides) ?? [],
-        }
-        return jsonResponse({ ok: true })
       }
       if (url === '/api/plugins/models/budget' && method === 'GET') {
         return jsonResponse({ rules: budgetRulesState })
@@ -289,43 +295,54 @@ describe('ModelsPage component', () => {
         }
         return jsonResponse({ ok: true })
       }
-      if (url === '/api/plugins/models/defaults' && method === 'POST') {
-        configState = {
-          ...configState,
-          defaultModel: String(body?.defaultModel ?? configState.defaultModel),
-          defaultSubagentModel: body?.defaultSubagentModel === null ? null : String(body?.defaultSubagentModel ?? configState.defaultSubagentModel),
-          fallbackModels: (body?.fallbackModels as string[]) ?? configState.fallbackModels,
-          agents: configState.agents.map((agent) => ({
-            ...agent,
-            defaultModel: String(body?.defaultModel ?? configState.defaultModel),
-            defaultSubagentModel: body?.defaultSubagentModel === null ? null : String(body?.defaultSubagentModel ?? configState.defaultSubagentModel),
-            effectiveModel: agent.ownModel ?? String(body?.defaultModel ?? configState.defaultModel),
-          })),
-        }
-        return jsonResponse({ ok: true })
+      // The ONE write path (#907): every save arrives as selection ops.
+      if (url === '/api/plugins/models/selections' && method === 'GET') {
+        return jsonResponse({ revision: `rev-${selectionsRevision}`, states: [], proposals: [], pending: [], evidence: {} })
       }
-      if (url === '/api/plugins/models/config' && method === 'POST') {
-        configState = {
-          ...configState,
-          agents: configState.agents.map((agent) => agent.agentId === body?.agentId
-            ? {
-                ...agent,
-                ownModel: body?.ownModel ?? null,
-                subagentModel: body?.subagentModel ?? agent.subagentModel,
-                effectiveModel: body?.ownModel ?? configState.defaultModel,
-              }
-            : agent),
+      if (url === '/api/plugins/models/selections' && method === 'POST') {
+        // Revision-checked like the real mutator: a write under a revision
+        // the page did not load from is refused, never applied.
+        if (body?.revision !== `rev-${selectionsRevision}`) {
+          return jsonResponse({ error: 'stale_revision', message: 'the configuration changed since this change was planned', current: `rev-${selectionsRevision}` }, 409)
         }
-        return jsonResponse({ ok: true })
+        const ops = (body?.ops as Array<{ ref: string; set: { model?: string | null; thinking?: string | null } }>) ?? []
+        for (const op of ops) {
+          const [kind, a, b] = op.ref.split(':')
+          if (kind === 'policy' && a === 'defaultModel' && typeof op.set.model === 'string') {
+            const next = op.set.model
+            configState = { ...configState, defaultModel: next, agents: configState.agents.map((agent) => ({ ...agent, defaultModel: next, effectiveModel: agent.ownModel ?? next })) }
+          } else if (kind === 'policy' && a === 'defaultSubagentModel') {
+            configState = { ...configState, defaultSubagentModel: op.set.model ?? null }
+          } else if (kind === 'policy' && a === 'fallback') {
+            const n = Number(b)
+            const fallbacks = [...configState.fallbackModels]
+            if (op.set.model === null) fallbacks.splice(n, 1); else fallbacks[n] = String(op.set.model)
+            configState = { ...configState, fallbackModels: fallbacks }
+          } else if (kind === 'policy' && a === 'alias' && b) {
+            if (op.set.model === null) delete aliasesState[b]; else aliasesState[b] = String(op.set.model)
+          } else if (kind === 'agent' && a && b === 'model') {
+            configState = { ...configState, agents: configState.agents.map((agent) => agent.agentId === a ? { ...agent, ownModel: op.set.model ?? null, effectiveModel: op.set.model ?? configState.defaultModel } : agent) }
+          } else if (kind === 'agent' && a && b === 'subagentModel') {
+            configState = { ...configState, agents: configState.agents.map((agent) => agent.agentId === a ? { ...agent, subagentModel: op.set.model ?? null } : agent) }
+          } else if (kind === 'route' && a) {
+            const routes = routingState.routes.filter((r) => r.workClass !== a)
+            const existing = routingState.routes.find((r) => r.workClass === a) ?? { workClass: a }
+            const next = { ...existing } as { workClass: string; model?: string; thinking?: string }
+            if (op.set.model !== undefined) { if (op.set.model) next.model = op.set.model; else delete next.model }
+            if (op.set.thinking !== undefined) { if (op.set.thinking) next.thinking = op.set.thinking; else delete next.thinking }
+            if (next.model || next.thinking) routes.push(next as typeof routingState.routes[number])
+            routingState = { ...routingState, routes }
+          } else if (kind === 'tag' && a) {
+            const tagOverrides = routingState.tagOverrides.filter((t) => t.tag !== a)
+            if (op.set.model || op.set.thinking) tagOverrides.push({ tag: a, ...(op.set.model ? { model: op.set.model } : {}), ...(op.set.thinking ? { thinking: op.set.thinking } : {}) } as typeof routingState.tagOverrides[number])
+            routingState = { ...routingState, tagOverrides }
+          }
+        }
+        selectionsRevision += 1
+        return jsonResponse({ applied: ops.map((o) => o.ref), failed: [], pending: [], warnings: [], revision: `rev-${selectionsRevision}` })
       }
-      if (url === '/api/plugins/models/aliases' && method === 'POST') {
-        if (body?.action === 'add') {
-          aliasesState[String(body.name)] = String(body.target)
-        }
-        if (body?.action === 'delete') {
-          delete aliasesState[String(body.name)]
-        }
-        return jsonResponse({ ok: true })
+      if (url === '/api/plugins/models/aliases/recommended' && method === 'GET') {
+        return jsonResponse({ aliases: { opus: 'anthropic/claude-opus-4-6' } })
       }
 
       throw new Error(`Unhandled fetch: ${method} ${url}`)
@@ -358,15 +375,81 @@ describe('ModelsPage component', () => {
     fireEvent.click(screen.getByText('Save Defaults'))
 
     await waitFor(() => {
-      const defaultCall = fetchCalls.find((call) => call.method === 'POST' && call.url === '/api/plugins/models/defaults')
-      expect(defaultCall).toBeTruthy()
-      expect(defaultCall?.body).toEqual({
-        defaultModel: 'openai-codex/gpt-5.4',
-        defaultSubagentModel: 'anthropic/claude-haiku-4-5',
-        fallbackModels: ['anthropic/claude-opus-4-6'],
-      })
+      const call = fetchCalls.find((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+      expect(call).toBeTruthy()
+      // Only the changed ref rides the write (D24): the default model.
+      expect(call?.body?.ops).toEqual([{ ref: 'policy:defaultModel', set: { model: 'openai-codex/gpt-5.4' } }])
       expect(availableFetchCount).toBe(2)
     })
+  })
+
+  it('a save whose editor snapshot is behind the server is REFUSED, reloaded and explained — never re-posted against the moved state (positional fallback refs)', async () => {
+    const user = userEvent.setup()
+    render(<ModelsPage />)
+    await screen.findByText('Patch')
+    await waitFor(() => expect(fetchCalls.some((c) => c.method === 'GET' && c.url === '/api/plugins/models/selections')).toBe(true))
+    // Another editor saved after this page loaded.
+    selectionsRevision += 1
+    const configLoads = () => fetchCalls.filter((c) => c.method === 'GET' && c.url === '/api/plugins/models/config').length
+    const loadsBefore = configLoads()
+
+    await user.click(screen.getByRole('combobox', { name: 'Default Model' }))
+    await user.click(await screen.findByRole('option', { name: 'GPT-5.4' }))
+    fireEvent.click(screen.getByText('Save Defaults'))
+
+    const posts = () => fetchCalls.filter((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+    await waitFor(() => expect(posts()).toHaveLength(1))
+    expect(posts()[0]!.body?.revision).toBe('rev-0')
+    expect(await screen.findByText(/changed since this page loaded/)).toBeTruthy()
+    await waitFor(() => expect(configLoads()).toBeGreaterThan(loadsBefore))
+    // No second POST with the same ops under the fresher revision.
+    expect(posts()).toHaveLength(1)
+  })
+
+  it('a Routing-tab visit never refreshes the revision behind the defaults snapshot — a positional fallback edit staged against the old list is refused, not authorized', async () => {
+    const user = userEvent.setup()
+    render(<ModelsPage />)
+    await screen.findByText('Patch')
+    await waitFor(() => expect(fetchCalls.some((c) => c.method === 'GET' && c.url === '/api/plugins/models/selections')).toBe(true))
+    // Another editor moved the configuration after this page loaded its defaults…
+    selectionsRevision += 1
+    // …then the operator visits Routing (its own snapshot + a fresher server revision) and comes back.
+    fireEvent.click(screen.getByRole('tab', { name: 'Routing' }))
+    await screen.findByRole('region', { name: 'Task dispatch routes' })
+    fireEvent.click(screen.getByRole('tab', { name: 'Agent Config' }))
+    await screen.findByText('Global Defaults')
+
+    // Remove fallback #1 — a POSITIONAL op built from the defaults snapshot loaded under rev-0.
+    await user.click(screen.getByRole('button', { name: 'Remove fallback 1' }))
+    fireEvent.click(screen.getByText('Save Defaults'))
+
+    const posts = () => fetchCalls.filter((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+    await waitFor(() => expect(posts()).toHaveLength(1))
+    expect(posts()[0]!.body?.revision).toBe('rev-0')
+    expect((posts()[0]!.body?.ops as Array<{ ref: string }>)[0]!.ref).toBe('policy:fallback:0')
+    expect(await screen.findByText(/changed since this page loaded/)).toBeTruthy()
+    expect(posts()).toHaveLength(1)
+  })
+
+  it("an agent row's pickers are scoped to THAT agent's credentials: a model dead for Patch is disabled in Patch's Own Model picker while the install-wide Default Model picker still offers it", async () => {
+    agentScopedResponses.patch = {
+      ...availableResponse,
+      models: availableResponse.models!.map((m) => m.id === 'openai-codex/gpt-5.4'
+        ? { ...m, available: false, eligibility: { status: 'ineligible', reason: 'no_credentials', detail: 'no credentials for openai-codex' } }
+        : m),
+    } as AvailableModelsPayload
+    const user = userEvent.setup()
+    render(<ModelsPage />)
+    const row = (await screen.findByText('Patch')).closest('[data-agent-model-row]') as HTMLElement
+    await waitFor(() => expect(fetchCalls.some((c) => c.url === '/api/plugins/models/available?agentId=patch')).toBe(true))
+
+    await user.click(within(row).getByRole('combobox', { name: 'Own Model' }))
+    const dead = await screen.findByRole('option', { name: 'GPT-5.4 — no credentials for openai-codex' })
+    expect(dead.getAttribute('aria-disabled')).toBe('true')
+    await user.keyboard('{Escape}')
+
+    await user.click(screen.getByRole('combobox', { name: 'Default Model' }))
+    expect(await screen.findByRole('option', { name: 'GPT-5.4' })).toBeTruthy()
   })
 
   it('saves agent-specific model overrides', async () => {
@@ -382,12 +465,9 @@ describe('ModelsPage component', () => {
     fireEvent.click(within(row as HTMLElement).getByText('Save'))
 
     await waitFor(() => {
-      const configCall = fetchCalls.find((call) => call.method === 'POST' && call.url === '/api/plugins/models/config')
-      expect(configCall?.body).toEqual({
-        agentId: 'patch',
-        ownModel: 'google/gemini-2.5-pro',
-      })
-      expect(runtimeState.markDirty).toHaveBeenCalled()
+      const call = fetchCalls.find((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+      expect(call?.body?.ops).toEqual([{ ref: 'agent:patch:model', set: { model: 'google/gemini-2.5-pro' } }])
+      expect(runtimeState.refresh).toHaveBeenCalled()
     })
   })
 
@@ -404,12 +484,8 @@ describe('ModelsPage component', () => {
     await user.click(screen.getByRole('button', { name: 'Add alias' }))
 
     await waitFor(() => {
-      const aliasCall = fetchCalls.find((call) => call.method === 'POST' && call.url === '/api/plugins/models/aliases')
-      expect(aliasCall?.body).toEqual({
-        action: 'add',
-        name: 'fast',
-        target: 'google/gemini-2.5-pro',
-      })
+      const call = fetchCalls.find((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+      expect(call?.body?.ops).toEqual([{ ref: 'policy:alias:fast', set: { model: 'google/gemini-2.5-pro' } }])
       expect(availableFetchCount).toBe(2)
     })
   })
@@ -450,7 +526,8 @@ describe('ModelsPage component', () => {
     const dialog = screen.getByRole('dialog', { name: 'Delete “sonnet” alias?' })
     expect(within(dialog).getByText(/currently points to anthropic\/claude-sonnet-4-6/)).toBeTruthy()
     expect(within(dialog).getByText(/may stop resolving/)).toBeTruthy()
-    expect(fetchCalls.some((call) => call.body?.action === 'delete')).toBe(false)
+    const isAliasClear = (call: { body?: Record<string, unknown> }) => ((call.body?.ops as Array<{ ref: string; set: { model?: string | null } }> | undefined) ?? []).some((op) => op.ref === 'policy:alias:sonnet' && op.set.model === null)
+    expect(fetchCalls.some(isAliasClear)).toBe(false)
 
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('dialog', { name: 'Delete “sonnet” alias?' })).toBeNull()
@@ -462,7 +539,7 @@ describe('ModelsPage component', () => {
     ).getByRole('button', { name: 'Delete alias' }))
 
     await waitFor(() => {
-      expect(fetchCalls.some((call) => call.body?.action === 'delete')).toBe(true)
+      expect(fetchCalls.some(isAliasClear)).toBe(true)
       expect(screen.queryByText('sonnet')).toBeNull()
     })
   })
@@ -495,15 +572,25 @@ describe('ModelsPage component', () => {
     expect(screen.getByText('runtime unavailable')).toBeTruthy()
   })
 
-  it('renders the runtime restart-needed banner and calls restart', async () => {
-    runtimeState.restartNeeded = true
+  it("renders the pending-restart banner in the ADAPTER's words and calls restart (#878)", async () => {
+    runtimeState.pending = true
+    runtimeState.advice = { needed: true, title: 'Restart the OpenClaw gateway', body: 'Agents attach at gateway start.', action: { label: 'Restart gateway', kind: 'restart-runtime' } }
+    runtimeState.lastError = 'gateway restart timed out'
 
     render(<ModelsPage />)
 
-    expect(await screen.findByText('Runtime config out of sync. Restart to apply changes.')).toBeTruthy()
-    fireEvent.click(screen.getByText('Restart Runtime'))
+    expect(await screen.findByText('Restart the OpenClaw gateway')).toBeTruthy()
+    expect(screen.getByText(/The last restart failed: gateway restart timed out/)).toBeTruthy()
+    fireEvent.click(screen.getByText('Restart gateway'))
 
     expect(runtimeState.restart).toHaveBeenCalled()
+  })
+
+  it('renders no banner when nothing is pending (Pi after a model save)', async () => {
+    runtimeState.pending = false
+    render(<ModelsPage />)
+    await screen.findByText('Patch')
+    expect(screen.queryByText(/Restart/)).toBeNull()
   })
 
   it('disables the refresh button while a refresh request is in flight', async () => {
@@ -613,12 +700,9 @@ describe('ModelsPage component', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save routing' }))
 
     await waitFor(() => {
-      const saveCall = fetchCalls.find((call) => call.method === 'PUT' && call.url === '/api/plugins/models/routing')
-      expect(saveCall?.body?.routes).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          workClass: 'scheduled',
-          model: 'anthropic/claude-haiku-4-5',
-        }),
+      const call = fetchCalls.find((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections')
+      expect(call?.body?.ops).toEqual(expect.arrayContaining([
+        { ref: 'route:scheduled', set: { model: 'anthropic/claude-haiku-4-5' } },
       ]))
     })
     expect(screen.queryByText('Unsaved routing changes')).toBeNull()

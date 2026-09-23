@@ -11,7 +11,6 @@
  */
 import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@bakin/core/plugin-types'
 import {
-  healthError,
   healthHealthy,
   healthObserved,
   healthWarning,
@@ -42,9 +41,8 @@ export interface RoutingHealthDeps {
   supportsPerTurnModel(): boolean
   /** run_costs rows for the premium-on-cheap scan window. */
   listRecentRunCosts(sinceMs: number): RunCostSpendRow[]
-  /** Open account rejections (#852) — sharpens route-model-missing evidence
-   *  ("rejected by your account" vs "not in the catalog"). Empty on ledger
-   *  failure: evidence-only, never a gate. */
+  /** Open account rejections (#852) — keeps rejected models out of the
+   *  recommender pool. Empty on ledger failure: evidence-only, never a gate. */
   listOpenModelRejections(): Array<{ model: string; lastSeenAt: number; occurrences: number }>
   now?(): number
 }
@@ -129,43 +127,11 @@ export async function recommendRoutes(deps: RoutingHealthDeps): Promise<{ propos
 export async function checkModelRouting(deps: RoutingHealthDeps): Promise<HealthCheckRunInput> {
   const observations: HealthObservationInput[] = []
   const config = deps.getRoutingConfig()
-  const available = new Set((await deps.listAvailableModels()).map((m) => m.id))
   const supported = deps.supportedThinkingLevels()
   const now = deps.now?.() ?? Date.now()
 
-  // 1. Routes pointing at models the account cannot call — errors. Two
-  //    distinguishable causes (#852): the model is account-REJECTED (durable
-  //    ledger evidence — say exactly that, with counts) vs simply absent
-  //    from the runtime catalog. Either signal alone fires the finding.
-  const rejections = new Map(deps.listOpenModelRejections().map((r) => [r.model, r]))
-  const missingModels = config.routes.filter((r) => r.model && (!available.has(r.model) || rejections.has(r.model)))
-  for (const r of missingModels) {
-    const rejection = r.model ? rejections.get(r.model) : undefined
-    observations.push(healthError({
-      key: `route-model-missing-${r.workClass}`,
-      summary: rejection
-        ? `Route '${r.workClass}' targets '${r.model}', which was rejected by your account (${rejection.occurrences} failure${rejection.occurrences === 1 ? '' : 's'}, last ${new Date(rejection.lastSeenAt).toISOString()}).`
-        : `Route '${r.workClass}' targets '${r.model}', which is not available on the active runtime.`,
-      evidence: {
-        workClass: r.workClass,
-        model: r.model ?? null,
-        rejected: Boolean(rejection),
-        ...(rejection ? { occurrences: rejection.occurrences, lastSeenAt: rejection.lastSeenAt } : {}),
-      },
-      incident: {
-        key: `route-model-missing-${r.workClass}`,
-        title: rejection
-          ? `Routing targets a model your account cannot call (${r.workClass})`
-          : `Routing targets an unavailable model (${r.workClass})`,
-        impact: rejection
-          ? 'Every turn for this class fails at the provider — the model is retired or unentitled for this account.'
-          : 'Turns for this class will fail or silently fall back at the provider.',
-        disposition: 'action_required',
-        resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
-        resolution: { key: 'fix-route', type: 'navigate', label: 'Fix route', href: '/models?tab=routing' },
-      },
-    }))
-  }
+  // Routes to models that cannot run are the dead-selections check's job
+  // (#907): one finding per persisted selection, with a proposal + repair.
 
   // 1b. Standing model clamps (#880) — the runtime refuses per-turn model
   //     overrides, so every configured model route runs on agent defaults.
@@ -335,7 +301,7 @@ export function buildRoutingHealthDeps(ctx: {
 /** Deterministic repair: apply the same proposals the recommend endpoint computes. */
 export function recommendedRoutesRepair(
   deps: RoutingHealthDeps,
-  applyRoutes: (routes: WorkClassRoute[]) => void,
+  applyRoutes: (routes: WorkClassRoute[]) => void | Promise<void>,
 ): HealthRepairActionDefinition {
   return {
     id: 'apply-recommended-routes',
@@ -364,7 +330,7 @@ export function recommendedRoutesRepair(
       if (items.length === 0) return []
       try {
         const { proposals } = await recommendRoutes(deps)
-        applyRoutes(proposals.map((p) => ({ workClass: p.workClass, model: p.model })))
+        await applyRoutes(proposals.map((p) => ({ workClass: p.workClass, model: p.model })))
         return items.map((item) => ({
           itemId: item.id,
           actionId: item.actionId,

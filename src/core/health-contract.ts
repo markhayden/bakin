@@ -311,6 +311,7 @@ const healthResourceKindSchema = z.enum([
   'schedule',
   'budget_rule',
   'model',
+  'model_selection',
   'channel',
   'capability',
   'setting',

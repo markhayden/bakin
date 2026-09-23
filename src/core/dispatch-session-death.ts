@@ -333,6 +333,16 @@ export async function reconcileRejectedDispatch(input: {
   const prev = getFailureRecord(input.state.failedDispatches[input.task.id])
   const kind = classifyDispatchError(input.err)
   const detail = classifyDispatchFailureDetail(input.err)
+  // A provider failure caused by a DEAD selection gets the true remediation
+  // (#907) instead of the provider's "add a key / log in" text.
+  if (detail.category === 'model_provider_unavailable') {
+    const { explainDeadSelectionFailure } = await import('./dispatch-turns')
+    const explained = await explainDeadSelectionFailure(input.err, input.targetAgent)
+    if (explained) {
+      detail.specificReason = explained.message
+      detail.selectionRef = explained.ref
+    }
+  }
   const attempt = (prev?.count || 0) + 1
   // Preserve any in-flight recovery-ladder state: a transport failure
   // between ladder rungs (e.g. the corrective re-dispatch fired while the

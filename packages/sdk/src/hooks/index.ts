@@ -98,7 +98,8 @@ export { getChannelInitials } from '@bakin/workflows/hooks/use-notification-chan
 // Group 3b: Model catalog
 
 /** The available-models catalog (cached, read-only); empty until loaded. */
-export { useAvailableModels } from '@/hooks/use-available-models'
+export { useAvailableModels, toModelSelectOptions } from '@/hooks/use-available-models'
+export type { EligibleModelOption } from '@/hooks/use-available-models'
 
 // Group 4: Router compatibility adapters; new work uses the navigation entrypoint.
 

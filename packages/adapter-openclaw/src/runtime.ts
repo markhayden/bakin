@@ -20,6 +20,9 @@ import type {
   CapabilitySet,
   RuntimeToolAccess,
   RuntimeCredentialStatus,
+  ProviderCredentialInventory,
+  RestartAdvice,
+  RuntimeConfigChangeKind,
   RuntimeRoutingPolicy,
   RuntimeRoutingSupport,
   ToolAccessProvisioningStatus,
@@ -1139,17 +1142,52 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    * credentials". Never secrets.
    */
   credentialStatus = async (opts?: { agentId?: string }): Promise<RuntimeCredentialStatus> => {
-    // MERGE the JSON store with the CLI probe rather than only-CLI-when-empty:
-    // the two sources can each hold providers the other misses (a plugin
-    // provider like codex may surface only through `models auth list`, while a
-    // partially-populated auth-profiles.json would otherwise suppress the CLI
-    // read and hide it — the #615 false "no provider" warning). Union, dedup
-    // by provider (JSON wins the kind on collision — it's the richer record).
-    const jsonCreds = listLlmCredentials(opts?.agentId)
+    const { llmCredentials } = await this.resolveLlmCredentials(opts?.agentId)
+    return {
+      llmProviders: llmCredentials.map((entry) => entry.provider),
+      llmCredentials,
+      channels: listConfiguredChannels(),
+    }
+  }
+
+  /**
+   * Status-only per-provider inventory (#907 / #378 slice) over the SAME
+   * merged resolution `credentialStatus` uses. The one honesty upgrade: a
+   * failed CLI probe is REPORTED as `evidence: 'partial'` instead of being
+   * swallowed — a provider absent from a partial inventory is unknown, not
+   * credential-less (the CLI is the only source that sees plugin providers
+   * such as codex, #615).
+   */
+  credentials = {
+    providers: async (opts?: { agentId?: string }): Promise<ProviderCredentialInventory> => {
+      const { llmCredentials, cliFailed } = await this.resolveLlmCredentials(opts?.agentId)
+      return {
+        providers: llmCredentials
+          .map((c) => ({ providerId: c.provider, configured: true, source: 'runtime' as const }))
+          .sort((a, b) => a.providerId.localeCompare(b.providerId)),
+        evidence: cliFailed ? 'partial' : 'complete',
+        ...(cliFailed ? { detail: 'The OpenClaw CLI auth probe failed; only the auth-profiles.json store was read.' } : {}),
+      }
+    },
+  }
+
+  /**
+   * MERGE the JSON store with the CLI probe rather than only-CLI-when-empty:
+   * the two sources can each hold providers the other misses (a plugin
+   * provider like codex may surface only through `models auth list`, while a
+   * partially-populated auth-profiles.json would otherwise suppress the CLI
+   * read and hide it — the #615 false "no provider" warning). Union, dedup
+   * by provider (JSON wins the kind on collision — it's the richer record).
+   * `cliFailed` lets callers report partial evidence honestly.
+   */
+  private async resolveLlmCredentials(agentId?: string): Promise<{ llmCredentials: LlmCredential[]; cliFailed: boolean }> {
+    const jsonCreds = listLlmCredentials(agentId)
     let cliCreds: LlmCredential[] = []
+    let cliFailed = false
     try {
-      cliCreds = await listLlmCredentialsViaCli((args) => this.exec(args), opts?.agentId)
+      cliCreds = await listLlmCredentialsViaCli((args) => this.exec(args), agentId)
     } catch (err) {
+      cliFailed = true
       // Only a hard failure with NOTHING from JSON is worth surfacing.
       if (jsonCreds.length === 0) {
         this.logger.warn('OpenClaw auth-profile CLI probe failed; reporting no LLM providers', { error: String(err) })
@@ -1157,11 +1195,25 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     }
     const byProvider = new Map<string, LlmCredential>()
     for (const c of [...cliCreds, ...jsonCreds]) byProvider.set(c.provider, c)
-    const llmCredentials = [...byProvider.values()]
+    return { llmCredentials: [...byProvider.values()], cliFailed }
+  }
+
+  /**
+   * What a Bakin config change needs from the gateway (#878). The gateway
+   * hot-reloads openclaw.json — the 2026-09-20 incident log shows
+   * `config hot reload applied (agents.entries.patch.model)` — so per-agent
+   * model pins and `agents.defaults.*` routing policy apply live. Roster
+   * changes are different: each agent's Bakin MCP server attaches at
+   * gateway start, so a created/removed agent needs a restart to gain or
+   * lose its exec tools.
+   */
+  restartAdvice = (change: RuntimeConfigChangeKind): RestartAdvice => {
+    if (change !== 'roster') return { needed: false }
     return {
-      llmProviders: llmCredentials.map((entry) => entry.provider),
-      llmCredentials,
-      channels: listConfiguredChannels(),
+      needed: true,
+      title: 'Restart the OpenClaw gateway to apply agent changes',
+      body: 'Agents reach Bakin tools through per-agent MCP servers that attach when the gateway starts. New or removed agents take effect after a restart.',
+      action: { label: 'Restart gateway', kind: 'restart-runtime' },
     }
   }
 

@@ -517,6 +517,13 @@ export interface AssetsAPI {
 // ---------------------------------------------------------------------------
 
 /** A model available in the models catalog (LLM, image, or video). */
+export type ModelIneligibleReason = 'not_in_catalog' | 'runtime_unavailable' | 'no_credentials' | 'account_rejected'
+
+export type ModelEligibilitySummary =
+  | { status: 'eligible' }
+  | { status: 'ineligible'; reason: ModelIneligibleReason; detail: string }
+  | { status: 'unknown'; detail: string }
+
 export interface AvailableModel {
   id: string
   name: string
@@ -526,11 +533,19 @@ export interface AvailableModel {
   contextWindow?: number
   local?: boolean
   available?: boolean
+  /** Runtime-supplied reason for `available: false` (#907) — Pi says
+   *  `no_credentials` for auth-less providers. Cached with the raw snapshot. */
+  unavailableReason?: 'no_credentials' | 'not_configured' | 'other'
   /** Present when the account's provider deterministically rejected this
    *  model (#852) — the row stays listed with `available: false` so UIs can
    *  show WHY instead of the model silently vanishing. Overlaid live from
    *  the rejection ledger on every read; never persisted in the cache. */
   rejection?: { lastSeenAt: number; occurrences: number }
+  /** The ONE verdict pickers act on (#907): catalog × runtime availability ×
+   *  credentials × rejections. `ineligible` rows render disabled with
+   *  `detail` as the reason; `unknown` means evidence was unavailable and
+   *  the row stays selectable. Overlaid on every read; never cached. */
+  eligibility?: ModelEligibilitySummary
   tags?: string[]
   configured?: boolean
   isDefault?: boolean

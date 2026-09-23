@@ -16,6 +16,8 @@ import { registerModelsExecTools } from './lib/exec-tools'
 import { isLegacyBudget, migrateLegacyBudget } from './lib/budget-migration'
 import { isLegacyRouting, migrateLegacyRouting } from './lib/routing-migration'
 import { buildRoutingHealthDeps, checkModelRouting, recommendedRoutesRepair } from './lib/health-checks'
+import { checkDeadSelections, deadSelectionRepair } from './lib/dead-selections'
+import { describeSelections, getSelectionMutator } from './lib/selections'
 import { fetchAvailableModels } from './lib/available-models'
 import { listRunCostsSince } from '../../src/core/execution-ledger'
 import type { ModelsPluginSettings } from './types'
@@ -71,14 +73,34 @@ const modelsPlugin: BakinPlugin = definePlugin({
       listAvailableModels: async () => (await fetchAvailableModels(ctx)).models,
       listRunCostsSince: (sinceMs) => listRunCostsSince(sinceMs),
     })
-    ctx.registerHealthRepairAction(recommendedRoutesRepair(routingDeps, (newRoutes) => {
-      const current = routingDeps.getRoutingConfig()
-      ctx.updateSettings({ routing: { ...current, routes: [...current.routes, ...newRoutes] } })
+    ctx.registerHealthRepairAction(recommendedRoutesRepair(routingDeps, async (newRoutes) => {
+      // Through the ONE write path (#907) — never a direct settings write.
+      const mutator = getSelectionMutator(ctx)
+      const { revision } = await mutator.reconcile()
+      await mutator.mutate({ revision, ops: newRoutes.map((r) => ({ ref: `route:${r.workClass}`, set: { model: r.model ?? null } })) })
     }))
+    // models.dead-selections: one finding per persisted selection that cannot
+    // run, with a one-click repair applying EXACTLY the displayed proposal.
+    const deadDeps = {
+      describe: () => describeSelections(ctx),
+      // ONE mutation under the batch's shared revision (every proposal of a plan carries the same one).
+      apply: async (proposals: Array<{ ref: string; to: string | null; revision: string }>) =>
+        getSelectionMutator(ctx).mutate({ revision: proposals[0]!.revision, ops: proposals.map((p) => ({ ref: p.ref, set: { model: p.to } })) }),
+    }
+    ctx.registerHealthRepairAction(deadSelectionRepair(deadDeps))
+    ctx.registerHealthCheck({
+      id: 'dead-selections',
+      name: 'Model selections that cannot run',
+      description: 'Every persisted model selection (agent pins, work-class routes, tag overrides, runtime defaults) whose model has no credentials, was rejected by the account, or is gone from the catalog — each with a proposed repair.',
+      group: { key: 'models', label: 'Models' },
+      maxAgeMs: 60_000,
+      run: () => checkDeadSelections(deadDeps),
+    })
+
     ctx.registerHealthCheck({
       id: 'routing',
       name: 'Work-class model routing',
-      description: 'Flags unrouted system classes, routes to unavailable models, clamping thinking levels, and premium models on cheap work.',
+      description: 'Flags unrouted system classes, clamping thinking levels, and premium models on cheap work. (Routes to models that cannot run are the dead-selections check.)',
       group: { key: 'models', label: 'Models' },
       maxAgeMs: 60_000,
       run: () => checkModelRouting(routingDeps),

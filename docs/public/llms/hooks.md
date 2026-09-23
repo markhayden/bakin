@@ -233,7 +233,7 @@ Model hooks expose the effective model configuration and notify dependent surfac
 Label: Model config changed.
 Purpose: Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing.
 Kind: event
-Source: plugins/models/lib/register-hooks.ts:24
+Source: plugins/models/lib/register-hooks.ts:25
 
 Example:
 
@@ -253,7 +253,7 @@ await ctx.hooks.callAll(
 Label: List available models.
 Purpose: Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:40
+Source: plugins/models/lib/register-hooks.ts:39
 
 Example:
 
@@ -285,7 +285,7 @@ const result = await ctx.hooks.invoke(
 Label: Get effective model.
 Purpose: Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:28
+Source: plugins/models/lib/register-hooks.ts:29
 
 Example:
 
@@ -310,38 +310,6 @@ Example:
 ```ts
 const result = await ctx.hooks.invoke(
   'models.getRoutingConfig',
-  {},
-)
-```
-
-### models.markConfigDirty
-
-Label: Mark config dirty.
-Purpose: Marks model configuration as changed so the runtime knows a refresh is needed. Use it after writing model settings that should not be treated as live yet.
-Kind: event
-Source: plugins/models/lib/register-hooks.ts:36
-
-Example:
-
-```ts
-await ctx.hooks.callAll(
-  'models.markConfigDirty',
-  {},
-)
-```
-
-### models.markRuntimeRestarted
-
-Label: Mark runtime refreshed.
-Purpose: Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear.
-Kind: event
-Source: plugins/models/lib/register-hooks.ts:38
-
-Example:
-
-```ts
-await ctx.hooks.callAll(
-  'models.markRuntimeRestarted',
   {},
 )
 ```
@@ -394,6 +362,22 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
+### models.resetCatalogCache
+
+Label: Reset the model catalog cache.
+Purpose: Drops every catalog cache layer (hot, disk, in-flight) and bumps the runtime epoch so a stale fetch cannot publish. Invoked by the runtime switch.
+Kind: event
+Source: plugins/models/lib/register-hooks.ts:67
+
+Example:
+
+```ts
+await ctx.hooks.callAll(
+  'models.resetCatalogCache',
+  {},
+)
+```
+
 ### models.resolveBilling
 
 Label: Resolve billing.
@@ -415,7 +399,7 @@ const result = await ctx.hooks.invoke(
 Label: Update budget policy.
 Purpose: Applies a narrow budget-policy patch — currently the accept-unattributed-history cutoff written by the Health repair. Money policy never changes without an explicit, validated write.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:45
+Source: plugins/models/lib/register-hooks.ts:44
 
 Example:
 
@@ -533,7 +517,7 @@ Team hooks expose runtime agent and team metadata for plugins that need agent-aw
 Label: Check team exists.
 Purpose: Returns true when the given teamId is a configured team. Use it for write-time validation of team assignments.
 Kind: rpc
-Source: plugins/team/index.ts:299
+Source: plugins/team/index.ts:300
 
 Example:
 
@@ -549,7 +533,7 @@ const result = await ctx.hooks.invoke(
 Label: Get an agent.
 Purpose: Returns one runtime agent by id, including team-aware metadata when available. Use it when a plugin already has an agent id and needs the full display record.
 Kind: rpc
-Source: plugins/team/index.ts:277
+Source: plugins/team/index.ts:278
 
 Example:
 
@@ -567,7 +551,7 @@ const result = await ctx.hooks.invoke(
 Label: List agent ids.
 Purpose: Returns the ids of agents currently known to the runtime. Use it for lightweight validation, assignment pickers, or loops that do not need full agent metadata.
 Kind: rpc
-Source: plugins/team/index.ts:282
+Source: plugins/team/index.ts:283
 
 Example:
 
@@ -583,7 +567,7 @@ const result = await ctx.hooks.invoke(
 Label: Get agent team.
 Purpose: Returns the team currently assigned to an agent, or null when the agent is unassigned. Use it to add team context to task, workflow, or activity views.
 Kind: rpc
-Source: plugins/team/index.ts:289
+Source: plugins/team/index.ts:290
 
 Example:
 
@@ -601,7 +585,7 @@ const result = await ctx.hooks.invoke(
 Label: Get org structure.
 Purpose: Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records.
 Kind: rpc
-Source: plugins/team/index.ts:296
+Source: plugins/team/index.ts:297
 
 Example:
 
@@ -617,7 +601,7 @@ const result = await ctx.hooks.invoke(
 Label: List team members.
 Purpose: Returns the agents assigned to one team. Use it for team dashboards, routing rules, or workflow logic that needs team membership.
 Kind: rpc
-Source: plugins/team/index.ts:286
+Source: plugins/team/index.ts:287
 
 Example:
 
@@ -635,7 +619,7 @@ const result = await ctx.hooks.invoke(
 Label: List agents.
 Purpose: Returns runtime agents with their display and team metadata attached. Use it when another plugin needs the agent roster as Bakin presents it.
 Kind: rpc
-Source: plugins/team/index.ts:276
+Source: plugins/team/index.ts:277
 
 Example:
 
@@ -651,7 +635,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve team assignment.
 Purpose: Resolves a team-assigned task to the best-suited member via an ephemeral runtime turn (#189). Returns {ok:true, agentId, reason, model} or {ok:false, kind: transient|structural, message} — dispatch classifies by kind. Use it from dispatch or any surface that must turn a teamId into a concrete agent.
 Kind: rpc
-Source: plugins/team/index.ts:302
+Source: plugins/team/index.ts:303
 
 Example:
 
@@ -667,7 +651,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve agent profile.
 Purpose: Returns the runtime profile for an agent id. Use it when a plugin needs the lower-level profile data behind an agent display record.
 Kind: rpc
-Source: plugins/team/index.ts:283
+Source: plugins/team/index.ts:284
 
 Example:
 

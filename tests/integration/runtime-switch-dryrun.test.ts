@@ -171,6 +171,13 @@ describe('switchRuntime — dry run is a full preview with ZERO writes', () => {
     expect(result.credentials!.llmProviders).toEqual(['openai-codex'])
     expect(result.capabilities!.toolCalling.access.style).toBe('in-process')
     expect(phases).toContain('reconcile-roster:ok')
+    // S3 (#907): selections evaluated against the TARGET — the fixture's Pi
+    // catalog has only openai-codex models, so the target's own default
+    // (empty on a fresh Pi) and the source's anthropic pins are not its
+    // concern here; the phase runs, reports, and writes nothing.
+    expect(phases).toContain('reconcile-selections:ok')
+    expect(result.deadSelections).not.toBeNull()
+    expect(Array.isArray(result.deadSelections!.dead)).toBe(true)
     expect(phases).toContain('carry-workspaces:ok')
 
     // ZERO writes anywhere.

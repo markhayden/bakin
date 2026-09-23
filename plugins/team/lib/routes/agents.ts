@@ -19,6 +19,8 @@ import { serveAvatar, detectImageExtension } from '@bakin/core/agents/avatar'
 import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
 import { getRuntimeMainAgentId, RuntimeError } from '@bakin/core/adapters/runtime'
 
+import { getModelEligibility } from '../../../../src/core/model-eligibility'
+import { adviceFor, clearPendingRestart, notePendingChange, recordRestartFailure } from '../../../../src/core/pending-restart'
 import { createLogger } from '../../../../src/core/logger'
 import { readHeartbeats } from '../../../../src/lib/content-files'
 import { getBakinPaths } from '../../../../packages/core/src/content-dir'
@@ -154,6 +156,17 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
           return Response.json({ error: `Agent already exists: ${id}` }, { status: 409 })
         }
 
+        // A new agent must never be born on a model this install cannot run
+        // (#907): same verdict the models pickers and /selections apply.
+        const requestedModel = typeof body.model === 'string' && body.model.length > 0 ? body.model : undefined
+        if (requestedModel) {
+          const report = await getModelEligibility(ctx.runtime, { extraIds: [requestedModel] })
+          const verdict = report.byModel.get(requestedModel)?.eligibility
+          if (verdict?.status === 'ineligible') {
+            return Response.json({ error: 'model_not_eligible', message: `${requestedModel} cannot run here: ${verdict.detail}`, reason: verdict.reason }, { status: 400 })
+          }
+        }
+
         await createRuntimeAgent(ctx.runtime, {
           id,
           name: body.name as string,
@@ -190,21 +203,27 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
         // during create (OpenClaw MCP entry / Pi no-op) — nothing to sync here.
         resetSettingsCache()
 
-        // Restart the active runtime unless caller opted out
+        // Roster changes restart the runtime only when the ADAPTER says so
+        // (#878): OpenClaw attaches per-agent MCP servers at gateway start;
+        // Pi needs nothing. A skipped restart is recorded as pending so the
+        // banner is honest; a failed one stays pending with the error.
         const url = new URL(req.url)
         const skipRestart = url.searchParams.get('skipRestart') === 'true'
-        if (!skipRestart) {
+        const needsRestart = adviceFor(ctx.runtime, 'roster').advice.needed
+        if (needsRestart && !skipRestart) {
           ctx.runtime.restart().then(() => {
             log.info('Runtime restarted after agent creation', { agent: id })
-            try { ctx.hooks.invoke('models.markRuntimeRestarted', {}) } catch { /* ok */ }
+            clearPendingRestart()
           }).catch((err) => {
             log.warn('Failed to restart runtime after agent creation', { error: err instanceof Error ? err.message : String(err) })
+            notePendingChange(ctx.runtime, ['roster'])
+            recordRestartFailure(err)
           })
-        } else {
-          try { ctx.hooks.invoke('models.markConfigDirty', {}) } catch { /* ok */ }
+        } else if (needsRestart) {
+          notePendingChange(ctx.runtime, ['roster'])
         }
 
-        return Response.json({ ok: true, id, runtimeRestarted: !skipRestart })
+        return Response.json({ ok: true, id, runtimeRestarted: needsRestart && !skipRestart })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         return Response.json({ error: msg }, { status: 500 })
@@ -252,13 +271,17 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
         // during remove (stale OpenClaw MCP entry / Pi no-op).
         resetSettingsCache()
 
-        // Restart the active runtime
-        ctx.runtime.restart().then(() => {
-          log.info('Runtime restarted after agent deletion', { agent: agentId })
-          try { ctx.hooks.invoke('models.markRuntimeRestarted', {}) } catch { /* ok */ }
-        }).catch((err) => {
-          log.warn('Failed to restart runtime after agent deletion', { error: err instanceof Error ? err.message : String(err) })
-        })
+        // Restart only when the adapter says a roster change needs it (#878).
+        if (adviceFor(ctx.runtime, 'roster').advice.needed) {
+          ctx.runtime.restart().then(() => {
+            log.info('Runtime restarted after agent deletion', { agent: agentId })
+            clearPendingRestart()
+          }).catch((err) => {
+            log.warn('Failed to restart runtime after agent deletion', { error: err instanceof Error ? err.message : String(err) })
+            notePendingChange(ctx.runtime, ['roster'])
+            recordRestartFailure(err)
+          })
+        }
 
         return Response.json({ ok: true, id: agentId })
       } catch (err) {

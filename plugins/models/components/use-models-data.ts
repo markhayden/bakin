@@ -3,12 +3,14 @@
 // React
 import { useCallback, useEffect, useRef, useState } from 'react'
 // SDK
-import { usePluginEvent, emitPluginEvent } from "@makinbakin/sdk/hooks"
+import { usePluginEvent, emitPluginEvent, toModelSelectOptions } from "@makinbakin/sdk/hooks"
 import { useRuntimeStatus } from "@makinbakin/sdk/hooks"
 import { useQueryState } from "@makinbakin/sdk/navigation"
 import { pluginFetch } from "@makinbakin/sdk/utils"
 // Relative
 import type { AgentModelConfig, AvailableModel, ModelsConfigResponse } from '../types'
+import type { RoutingConfig as RoutingConfigArg } from '../types'
+import { aliasOps, policyDefaultsOps, routingDiffOps, type MutationOp } from '../lib/selection-ops'
 
 /** This plugin's id — every own-route call goes through `pluginFetch(PLUGIN_ID, …)`. */
 const PLUGIN_ID = 'models'
@@ -60,6 +62,64 @@ export interface ProbeVerdictWire {
 /** The message a failed mutation should show: the server's reason, or the status. */
 function mutationError(data: MutationResult, status: number): string {
   return typeof data.error === 'string' ? data.error : `Save failed (${status})`
+}
+
+/** Wire shape of POST /selections (the ONE write path, #907). */
+interface SelectionsMutationWire {
+  applied?: string[]
+  failed?: Array<{ ref: string; error: { code: string; message: string } }>
+  pending?: Array<{ ref: string; intended: string | null }>
+  warnings?: string[]
+  revision?: string
+  // refusal shape
+  error?: string
+  message?: string
+  current?: string
+  proposal?: { to: string | null }
+}
+
+export type SelectionsMutationOutcome =
+  | { ok: true; applied: string[]; pending: Array<{ ref: string; intended: string | null }>; warnings: string[]; revision: string | null }
+  | { ok: false; error: string; stale?: boolean }
+
+const STALE_MESSAGE = 'The configuration changed since this page loaded — it has been reloaded; review your change and try again.'
+
+/** Read the revision the current selections carry — the revision an editor snapshot is taken under. */
+async function readRevision(): Promise<string | null> {
+  const current = await pluginFetch(PLUGIN_ID, 'selections')
+  if (!current.ok) return null
+  const { revision } = await current.json() as { revision?: string }
+  return typeof revision === 'string' ? revision : null
+}
+
+/**
+ * Apply selection ops through POST /selections under the revision the ops
+ * were BUILT against (the editor snapshot's), never a fresher one: the ops
+ * are diffs of that snapshot — a fallback op is positional, so re-posting
+ * them against a state someone else moved can remove the wrong entry. A
+ * 409 stale_revision therefore comes back as `{ ok: false, stale: true }`
+ * for the caller to reload and let the operator look again. Refusals
+ * (400/409) carry the server's plain-words reason.
+ */
+async function postSelectionOps(ops: MutationOp[], revision: string | null): Promise<SelectionsMutationOutcome> {
+  if (ops.length === 0) return { ok: true, applied: [], pending: [], warnings: [], revision }
+  if (!revision) return { ok: false, error: 'Could not read the current configuration — reload and try again.' }
+  const res = await pluginFetch(PLUGIN_ID, 'selections', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ revision, ops }),
+  })
+  const data = await res.json() as SelectionsMutationWire
+  if (res.status === 409 && data.error === 'stale_revision') return { ok: false, error: STALE_MESSAGE, stale: true }
+  if (!res.ok) {
+    const proposal = data.proposal?.to ? ` Try ${data.proposal.to} instead.` : ''
+    return { ok: false, error: `${data.message ?? data.error ?? `Save failed (${res.status})`}${proposal}` }
+  }
+  const failed = data.failed ?? []
+  if (failed.length > 0) {
+    return { ok: false, error: failed.map((f) => `${f.ref}: ${f.error.message}`).join('; ') }
+  }
+  return { ok: true, applied: data.applied ?? [], pending: data.pending ?? [], warnings: data.warnings ?? [], revision: data.revision ?? null }
 }
 
 /**
@@ -264,6 +324,16 @@ export interface SpendResponse {
  * to the former inline hooks — same call order, same effects.
  */
 export function useModelsData() {
+  /**
+   * The selections revision the DEFAULTS snapshot (config: default /
+   * subagent / positional fallbacks) was loaded under — every save posts
+   * under it. Only `loadConfig` refreshes it: the alias and routing tabs
+   * load their own snapshots without touching the revision, because a
+   * fresher revision paired with a stale fallback snapshot would let the
+   * server accept positional fallback ops built against the wrong list.
+   * A save adopts the returned revision; a stale refusal reloads all three.
+   */
+  const revisionRef = useRef<string | null>(null)
   const [tab, setTab] = useQueryState('tab', 'agents')
   const [agents, setAgents] = useState<AgentModelConfig[]>([])
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
@@ -327,6 +397,7 @@ export function useModelsData() {
       setPendingDefaultSubagentModel(undefined)
       setPendingFallbackModels(null)
       clearError('config')
+      revisionRef.current = await readRevision()
     } catch (err) {
       if (isAbortError(err) || signal?.aborted) return
       reportError('config', `Failed to load agent config: ${errorMessage(err)}`)
@@ -461,6 +532,32 @@ export function useModelsData() {
     fetchAliases(controller.signal)
     return () => controller.abort()
   }, [loadConfig, fetchAvailable, fetchAliases])
+
+  // Each agent row's picker is judged under THAT agent's credentials (#907
+  // review): the unscoped catalog answers "can this install run it", but an
+  // agent pin is validated by the write path under the agent's own keys, so
+  // the picker that stages it must disable by the same verdict. One scoped
+  // read per agent off the same cached catalog, re-run whenever the roster
+  // or the catalog changes; the unscoped list stands in until a row's read
+  // lands (or fails — never a blank picker).
+  const [agentCatalogs, setAgentCatalogs] = useState<Record<string, AvailableModel[]>>({})
+  useEffect(() => {
+    if (agents.length === 0 || !modelsLoaded) return
+    const controller = new AbortController()
+    void Promise.all(agents.map(async (agent) => {
+      try {
+        const data = await fetchPluginJson<AvailableModelsPayload>(`available?agentId=${encodeURIComponent(agent.agentId)}`, 'Models', LOAD_TIMEOUT_MS, controller.signal)
+        return [agent.agentId, data.models ?? []] as const
+      } catch (err) {
+        if (!isAbortError(err) && !controller.signal.aborted) console.warn(`Agent-scoped model catalog for ${agent.agentId} failed; using the unscoped catalog: ${errorMessage(err)}`)
+        return null
+      }
+    })).then((entries) => {
+      if (controller.signal.aborted) return
+      setAgentCatalogs(Object.fromEntries(entries.filter((e): e is readonly [string, AvailableModel[]] => e !== null)))
+    })
+    return () => controller.abort()
+  }, [agents, availableModels, modelsLoaded])
 
   const fetchBudget = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -641,6 +738,19 @@ export function useModelsData() {
     }
   }, [clearError, reportError])
 
+  /**
+   * The ONE client write: ops go out under the revision the editor snapshot
+   * loaded (`revisionRef`), a success adopts the returned revision, and a
+   * stale refusal reloads every editor so the operator re-decides against
+   * the moved state — it is never re-posted blind.
+   */
+  const mutateSelections = useCallback(async (ops: MutationOp[]): Promise<SelectionsMutationOutcome> => {
+    const outcome = await postSelectionOps(ops, revisionRef.current)
+    if (outcome.ok) revisionRef.current = outcome.revision ?? revisionRef.current
+    else if (outcome.stale) void Promise.all([fetchConfig(), fetchAliases(), fetchRouting()])
+    return outcome
+  }, [fetchConfig, fetchAliases, fetchRouting])
+
   useEffect(() => {
     if (tab !== 'routing') return
     const controller = new AbortController()
@@ -670,28 +780,19 @@ export function useModelsData() {
     setSaving(agentId)
     clearError('agent-save')
     try {
-      const body: Record<string, unknown> = { agentId }
-      if (ownModel !== undefined) {
-        body.ownModel = ownModel === '__default__' ? null : ownModel
-      }
-      if (subagentModel !== undefined) {
-        body.subagentModel = subagentModel === '__default__' ? null : subagentModel
-      }
-      const res = await pluginFetch(PLUGIN_ID, 'config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json() as MutationResult
-      if (data.ok) {
+      const ops: MutationOp[] = []
+      if (ownModel !== undefined) ops.push({ ref: `agent:${agentId}:model`, set: { model: ownModel === '__default__' ? null : ownModel } })
+      if (subagentModel !== undefined) ops.push({ ref: `agent:${agentId}:subagentModel`, set: { model: subagentModel === '__default__' ? null : subagentModel } })
+      const outcome = await mutateSelections(ops)
+      if (outcome.ok) {
         setPendingOwn((prev) => { const n = { ...prev }; delete n[agentId]; return n })
         setPendingSub((prev) => { const n = { ...prev }; delete n[agentId]; return n })
-        runtimeStatus.markDirty()
+        await runtimeStatus.refresh()
         await fetchConfig()
       } else {
         // A rejected save leaves the pending edit staged; say so, never drop it
         // on the floor while the row goes back to looking saved.
-        reportError('agent-save', `Failed to save the model for ${agentId}: ${mutationError(data, res.status)}`)
+        reportError('agent-save', `Failed to save the model for ${agentId}: ${outcome.error}`)
       }
     } catch (err) {
       reportError('agent-save', `Failed to save the model for ${agentId}: ${errorMessage(err)}`)
@@ -717,22 +818,16 @@ export function useModelsData() {
     setSaving('defaults')
     clearError('defaults-save')
     try {
-      const res = await pluginFetch(PLUGIN_ID, 'defaults', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          defaultModel: nextDefaultModel,
-          defaultSubagentModel: nextDefaultSubagentModel,
-          fallbackModels: nextFallbackModels,
-        }),
-      })
-      const data = await res.json() as MutationResult
-      if (data.ok) {
-        runtimeStatus.markDirty()
+      const outcome = await mutateSelections(policyDefaultsOps(
+        { defaultModel, defaultSubagentModel: defaultSubagentModel ?? null, fallbackModels },
+        { defaultModel: nextDefaultModel, defaultSubagentModel: nextDefaultSubagentModel ?? null, fallbackModels: nextFallbackModels },
+      ))
+      if (outcome.ok) {
+        await runtimeStatus.refresh()
         await fetchConfig()
         await fetchAvailable()
       } else {
-        reportError('defaults-save', `Failed to save the default models: ${mutationError(data, res.status)}`)
+        reportError('defaults-save', `Failed to save the default models: ${outcome.error}`)
       }
     } catch (err) {
       reportError('defaults-save', `Failed to save the default models: ${errorMessage(err)}`)
@@ -748,70 +843,59 @@ export function useModelsData() {
   // -------------------------------------------------------------------------
   // Alias actions
   // -------------------------------------------------------------------------
-  const addAlias = async () => {
-    if (!newAliasName.trim() || !newAliasTarget.trim()) return
+  const saveAliases = async (next: Record<string, string>, label: string, onOk?: () => void) => {
     setSaving('aliases')
     clearError('alias-save')
     try {
-      const res = await pluginFetch(PLUGIN_ID, 'aliases', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add', name: newAliasName.trim(), target: newAliasTarget.trim() }),
-      })
-      const data = await res.json() as MutationResult
-      if (data.ok) {
-        setNewAliasName('')
-        setNewAliasTarget('')
+      const outcome = await mutateSelections(aliasOps(aliases, next))
+      if (outcome.ok) {
+        onOk?.()
         await fetchAliases()
         await fetchAvailable()
       } else {
-        reportError('alias-save', `Failed to add the “${newAliasName.trim()}” alias: ${mutationError(data, res.status)}`)
+        reportError('alias-save', `${label}: ${outcome.error}`)
       }
     } catch (err) {
-      reportError('alias-save', `Failed to add the “${newAliasName.trim()}” alias: ${errorMessage(err)}`)
+      reportError('alias-save', `${label}: ${errorMessage(err)}`)
     } finally {
       setSaving(null)
     }
+  }
+
+  const addAlias = async () => {
+    if (!newAliasName.trim() || !newAliasTarget.trim()) return
+    const name = newAliasName.trim()
+    await saveAliases({ ...aliases, [name]: newAliasTarget.trim() }, `Failed to add the “${name}” alias`, () => {
+      setNewAliasName('')
+      setNewAliasTarget('')
+    })
   }
 
   const deleteAlias = async (name: string) => {
-    setSaving('aliases')
-    clearError('alias-save')
-    try {
-      const res = await pluginFetch(PLUGIN_ID, 'aliases', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete', name }),
-      })
-      const data = await res.json() as MutationResult
-      if (data.ok) {
-        await fetchAliases()
-        await fetchAvailable()
-      } else {
-        reportError('alias-save', `Failed to delete the “${name}” alias: ${mutationError(data, res.status)}`)
-      }
-    } catch (err) {
-      reportError('alias-save', `Failed to delete the “${name}” alias: ${errorMessage(err)}`)
-    } finally {
-      setSaving(null)
-    }
+    const next = { ...aliases }
+    delete next[name]
+    await saveAliases(next, `Failed to delete the “${name}” alias`)
   }
 
   const prepopulateAliases = async () => {
+    // The recommended set is server-owned data; read it, merge without
+    // clobbering the user's own aliases, write through the one path.
     setSaving('aliases')
     clearError('alias-save')
     try {
-      const res = await pluginFetch(PLUGIN_ID, 'aliases', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'prepopulate' }),
-      })
-      const data = await res.json() as MutationResult
-      if (data.ok) {
+      const res = await pluginFetch(PLUGIN_ID, 'aliases/recommended')
+      const data = await res.json() as { aliases?: Record<string, string>; error?: string }
+      if (!res.ok || !data.aliases) {
+        reportError('alias-save', `Failed to add the recommended aliases: ${data.error ?? `HTTP ${res.status}`}`)
+        return
+      }
+      const merged = { ...data.aliases, ...aliases }
+      const outcome = await mutateSelections(aliasOps(aliases, merged))
+      if (outcome.ok) {
         await fetchAliases()
         await fetchAvailable()
       } else {
-        reportError('alias-save', `Failed to add the recommended aliases: ${mutationError(data, res.status)}`)
+        reportError('alias-save', `Failed to add the recommended aliases: ${outcome.error}`)
       }
     } catch (err) {
       reportError('alias-save', `Failed to add the recommended aliases: ${errorMessage(err)}`)
@@ -859,13 +943,8 @@ export function useModelsData() {
       routes: [...base.routes, ...proposals.map((p) => ({ workClass: p.workClass, model: p.model }))],
       tagOverrides: base.tagOverrides,
     }
-    const res = await pluginFetch(PLUGIN_ID, 'routing', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(merged),
-    })
-    const data = await res.json() as MutationResult
-    if (!data.ok) throw new Error(data.error ?? 'Failed to apply recommended routes')
+    const outcome = await mutateSelections(routingDiffOps(routing as RoutingConfigArg, merged as RoutingConfigArg))
+    if (!outcome.ok) throw new Error(outcome.error)
     setRouting(merged)
     setPendingRouting(null)
   }
@@ -880,19 +959,14 @@ export function useModelsData() {
         routes: pendingRouting.routes.map((r) => ({ workClass: r.workClass, ...(r.model ? { model: r.model } : {}), ...(r.thinking && r.thinking !== 'inherit' ? { thinking: r.thinking } : {}) })),
         tagOverrides: pendingRouting.tagOverrides.filter((t) => t.tag.trim()).map((t) => ({ tag: t.tag.trim(), ...(t.model ? { model: t.model } : {}), ...(t.thinking && t.thinking !== 'inherit' ? { thinking: t.thinking } : {}) })),
       }
-      const res = await pluginFetch(PLUGIN_ID, 'routing', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(clean),
-      })
-      const data = await res.json() as MutationResult
-      if (data.ok) {
+      const outcome = await mutateSelections(routingDiffOps(routing as RoutingConfigArg, clean as RoutingConfigArg))
+      if (outcome.ok) {
         setRouting(clean)
         setPendingRouting(null)
       } else {
         // The staged rows stay staged — the unsaved-changes banner must not be
         // the only hint that the routes never reached the server.
-        reportError('routing-save', `Failed to save work-class routing: ${mutationError(data, res.status)}`)
+        reportError('routing-save', `Failed to save work-class routing: ${outcome.error}`)
       }
     } catch (err) {
       reportError('routing-save', `Failed to save work-class routing: ${errorMessage(err)}`)
@@ -910,6 +984,12 @@ export function useModelsData() {
   // upstream of this derivation.
   const modelOptions: AvailableModel[] = availableModels
   const modelsReady = modelsLoaded && availableModels.length > 0
+  // Picker options: ineligible rows disabled with their reason (#907) — the
+  // ONE mapping every ModelSelect on this page uses. Agent rows take the
+  // agent-scoped verdicts (their own credentials), falling back to the
+  // unscoped catalog until the scoped read lands.
+  const modelSelectOptions = toModelSelectOptions(modelOptions)
+  const agentModelSelectOptions = (agentId: string) => toModelSelectOptions(agentCatalogs[agentId] ?? modelOptions)
 
   const availableProviders = [...new Set(modelOptions.map((m) => m.provider))].sort((a, b) => a.localeCompare(b))
   const effectiveDefaultModel = pendingDefaultModel ?? defaultModel
@@ -918,11 +998,13 @@ export function useModelsData() {
     : (pendingDefaultSubagentModel || '__default__')
   const effectiveFallbackModels = pendingFallbackModels ?? fallbackModels
   const fallbackCandidates = modelOptions.filter((model) => model.id !== effectiveDefaultModel)
+  const fallbackCandidateOptions = toModelSelectOptions(fallbackCandidates)
 
   return {
     // tab + window navigation
     tab, setTab, spendWindow, setSpendWindow,
     // config + agents
+    modelSelectOptions, agentModelSelectOptions, fallbackCandidateOptions,
     agents, loading, error, saving, runtimeStatus,
     fetchConfig,
     // available models

@@ -13,8 +13,12 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
 
 import type { AvailableModel } from '../types'
-import { listModelRejections } from '../../../src/core/execution-ledger'
+import { getModelEligibility } from '../../../src/core/model-eligibility'
+import { enumerateSelections } from '../../../src/core/model-selections'
+import { createLogger } from '../../../src/core/logger'
+import { readRoutingSettings } from './selections'
 import {
+  clearPersistedCache,
   readPersistedCache,
   writePersistedCache,
 } from './models-cache'
@@ -31,6 +35,7 @@ if (!mc.__bakinModelsCache) mc.__bakinModelsCache = null
 export function getModelsCache(): ModelsCache | null { return mc.__bakinModelsCache ?? null }
 export function setModelsCache(cache: ModelsCache | null) { mc.__bakinModelsCache = cache }
 const CACHE_TTL = 60 * 60 * 1000 // 1 hour
+const log = createLogger('models:available')
 
 function sortModels(a: AvailableModel, b: AvailableModel): number {
   if (a.provider !== b.provider) return a.provider.localeCompare(b.provider)
@@ -41,13 +46,16 @@ function sortModels(a: AvailableModel, b: AvailableModel): number {
 }
 
 export async function loadConfiguredModelsFromRuntime(ctx: PluginContext): Promise<AvailableModel[]> {
-  const runtimeModels = await ctx.runtime.models.listAvailable()
+  // includeUnavailable: an auth-less model must stay LISTED (disabled, with
+  // its reason) so a picker can show why a persisted selection is dead
+  // instead of the row silently vanishing (#907).
+  const runtimeModels = await ctx.runtime.models.listAvailable({ includeUnavailable: true })
   const policy = await ctx.runtime.models.routingPolicy()
   const defaultModel = normalizeModelId(policy.defaultModel)
   const fallbackModels = policy.fallbackModels.map(normalizeModelId)
 
   return runtimeModels
-    .filter((model) => model.id && model.available !== false)
+    .filter((model) => Boolean(model.id))
     .map((model) => {
       const id = normalizeModelId(model.id)
       const tags = model.tags ?? []
@@ -64,6 +72,7 @@ export async function loadConfiguredModelsFromRuntime(ctx: PluginContext): Promi
         contextWindow: model.contextWindow,
         local: model.local,
         available: model.available ?? true,
+        ...(model.unavailableReason ? { unavailableReason: model.unavailableReason } : {}),
         tags,
         configured: tags.includes('configured'),
         isDefault: id === defaultModel,
@@ -94,12 +103,33 @@ export interface FetchResult {
   error?: string
 }
 
+/** The RAW runtime snapshot a live load produced (eligibility is overlaid per caller, never cached). */
+type LiveLoad =
+  | { ok: true; models: AvailableModel[]; fetchedAt: number }
+  | { ok: false; error: string; stale: boolean }
+
 // In-flight promise dedupe — two concurrent /available requests on a
 // cold-cold start would otherwise both ask the runtime for its complete
 // model list, which can be slow. With this, the second caller awaits
-// the first's result.
-let inflightFetch: Promise<FetchResult> | null = null
+// the first's RAW result and overlays its own scope on top.
+let inflightLoad: Promise<LiveLoad> | null = null
 let lastRuntimeModelFetchWarning: { message: string; at: number } | null = null
+
+// Runtime epoch (#907, D29): bumped whenever the runtime behind the catalog
+// changes (a switch). A fetch captures the epoch when it starts and PUBLISHES
+// to the hot/disk caches only if it is unchanged when it completes — nulling
+// `inflightFetch` alone would let the old promise repopulate the caches with
+// the previous runtime's models.
+let catalogEpoch = 0
+export function currentCatalogEpoch(): number { return catalogEpoch }
+
+/** Drop every catalog cache layer and invalidate any fetch still in flight. */
+export function resetModelsCache(): void {
+  catalogEpoch++
+  setModelsCache(null)
+  clearPersistedCache()
+  inflightLoad = null
+}
 const MODEL_FETCH_WARNING_TTL = 60_000
 
 function warnRuntimeModelFetchFailed(message: string): void {
@@ -129,44 +159,81 @@ function withFreshTiers(models: AvailableModel[]): AvailableModel[] {
 let lastOverlayWarning = 0
 const OVERLAY_WARNING_TTL = 60_000
 
+/** Who a catalog read is FOR: an agent's picker is judged under that agent's credentials. */
+export interface CatalogScope {
+  agentId?: string
+}
+
 /**
- * Overlay open account rejections (#852) on every read — same posture as
- * withFreshTiers: ledger state is code-external truth the cache must never
- * pin, in either direction. Flip, not filter: the row stays listed with
- * `available: false` + typed rejection info so UIs can show WHY.
- * Ledger unavailable ⇒ FAIL OPEN (nothing marked unavailable on missing
- * evidence — a DB glitch must not starve routing).
+ * Overlay ELIGIBILITY (#907; subsumes the #852 rejection overlay) on every
+ * read — same posture as withFreshTiers: ledger + credential state is
+ * code-external truth the cache must never pin, in either direction. Flip,
+ * not filter: a row stays listed with `available: false` + the verdict so
+ * pickers can disable it WITH the reason. The cached rows are the catalog
+ * snapshot the engine folds over (no second runtime round-trip); missing
+ * evidence reads `unknown` (FAIL OPEN — a DB glitch must not starve routing).
+ * Scoped to an agent, the credential fact is THAT agent's (runtimes that
+ * key auth per agent) — the same scope the write path validates under.
  */
-export function applyRejectionOverlay(models: AvailableModel[]): AvailableModel[] {
-  try {
-    const open = listModelRejections({ openOnly: true })
-    if (open.length === 0) return models
-    const byId = new Map(open.map((r) => [r.model, r]))
-    return models.map((m) => {
-      const r = byId.get(m.id)
-      return r
-        ? { ...m, available: false, rejection: { lastSeenAt: r.lastSeenAt, occurrences: r.occurrences } }
-        : m
-    })
-  } catch (err) {
+export async function applyEligibilityOverlay(ctx: PluginContext, models: AvailableModel[], scope: CatalogScope = {}): Promise<AvailableModel[]> {
+  const report = await getModelEligibility(ctx.runtime, {
+    catalog: models.map((m) => ({
+      id: m.id,
+      available: m.available,
+      ...(m.unavailableReason ? { unavailableReason: m.unavailableReason } : {}),
+      ...(m.local ? { local: true } : {}),
+    })),
+    ...(scope.agentId ? { agentId: scope.agentId } : {}),
+  })
+  // Runtime-unavailable rows are kept ONLY when a persisted selection points
+  // at them: a dead pin must stay visible (disabled, with its reason) in the
+  // picker that holds it, but Pi's full catalog has ~1,300 auth-less models
+  // that nobody selected — listing them would bury the ones that matter.
+  const referenced = await referencedModelIds(ctx)
+  if (report.evidence.rejections === 'failed') {
     const now = Date.now()
     if (now - lastOverlayWarning >= OVERLAY_WARNING_TTL) {
       lastOverlayWarning = now
-      console.warn(`Model-rejection overlay skipped (ledger unavailable?): ${err instanceof Error ? err.message : String(err)}`)
+      console.warn('Model-rejection overlay skipped (ledger unavailable?): rejection evidence failed')
     }
-    return models
+  }
+  return models
+    .filter((m) => m.available !== false || referenced.has(m.id))
+    .map((m) => {
+      const entry = report.byModel.get(m.id)
+      if (!entry) return m
+      const { eligibility, rejection } = entry
+      return {
+        ...m,
+        available: eligibility.status !== 'ineligible' && m.available !== false,
+        eligibility,
+        ...(rejection ? { rejection: { lastSeenAt: rejection.lastSeenAt, occurrences: rejection.occurrences } } : {}),
+      }
+    })
+}
+
+/** Model ids any persisted selection (policy, roster, routes, tags) points at. Empty on read failure — never blocks a listing. */
+async function referencedModelIds(ctx: PluginContext): Promise<Set<string>> {
+  try {
+    const { routing } = readRoutingSettings(ctx)
+    const states = await enumerateSelections(ctx.runtime, { routing })
+    return new Set(states.filter((s) => s.ref !== 'ui:mode').map((s) => s.model).filter((m): m is string => typeof m === 'string' && m.length > 0))
+  } catch (err) {
+    log.debug('referenced-model read failed; listing available rows only', { error: String(err) })
+    return new Set()
   }
 }
 
-export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: boolean }): Promise<FetchResult> {
+export async function fetchAvailableModels(ctx: PluginContext, opts: { force?: boolean } & CatalogScope = {}): Promise<FetchResult> {
+  const scope: CatalogScope = opts.agentId ? { agentId: opts.agentId } : {}
   // force: skip both caches and fetch live — the repair path for stale/
   // missing pricing (a health repair must refresh deterministically, not
   // depend on a human visiting the Models page to trigger it).
-  if (!opts?.force) {
+  if (!opts.force) {
     // 1. Hot read — in-memory cache (fresh by TTL)
     const memCached = getModelsCache()
     if (memCached && Date.now() - memCached.fetchedAt < CACHE_TTL) {
-      return { models: applyRejectionOverlay(withFreshTiers(memCached.models)), cached: true, cachedAt: memCached.fetchedAt, stale: false }
+      return { models: await applyEligibilityOverlay(ctx, withFreshTiers(memCached.models), scope), cached: true, cachedAt: memCached.fetchedAt, stale: false }
     }
 
     // 2. Persistent cache hydration — survives server restart even when
@@ -176,30 +243,49 @@ export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: 
     if (diskCached) {
       setModelsCache({ models: diskCached.models, fetchedAt: diskCached.fetchedAt })
       const stale = Date.now() - diskCached.fetchedAt >= CACHE_TTL
-      return { models: applyRejectionOverlay(withFreshTiers(diskCached.models)), cached: true, cachedAt: diskCached.fetchedAt, stale }
+      return { models: await applyEligibilityOverlay(ctx, withFreshTiers(diskCached.models), scope), cached: true, cachedAt: diskCached.fetchedAt, stale }
     }
   }
 
-  // 3. No cache → live fetch. Dedupe concurrent callers against one
-  //    in-flight promise. On success: write both caches. On failure:
-  //    honest empty state — no fake data.
-  if (inflightFetch) return inflightFetch
-  inflightFetch = (async (): Promise<FetchResult> => {
+  // 3. No cache → live fetch (deduped); the overlay is per caller because
+  //    two concurrent readers may be asking for different agents.
+  const loaded = await loadLive(ctx)
+  if (!loaded.ok) return { models: [], cached: false, cachedAt: null, stale: loaded.stale, error: loaded.error }
+  return { models: await applyEligibilityOverlay(ctx, loaded.models, scope), cached: false, cachedAt: loaded.fetchedAt, stale: false }
+}
+
+/**
+ * Live runtime load, deduped against one in-flight promise. On success:
+ * write both caches with the RAW snapshot. On failure: honest empty state —
+ * no fake data.
+ */
+function loadLive(ctx: PluginContext): Promise<LiveLoad> {
+  if (inflightLoad) return inflightLoad
+  const startedEpoch = catalogEpoch
+  let self: Promise<LiveLoad> | null = null
+  const load = (async (): Promise<LiveLoad> => {
     try {
-      const models = await loadConfiguredModelsFromRuntime(ctx as unknown as PluginContext)
+      const models = await loadConfiguredModelsFromRuntime(ctx)
       const now = Date.now()
-      // Caches persist the RAW runtime snapshot; only the response is
-      // overlaid — rejection truth lives in the ledger alone.
+      if (catalogEpoch !== startedEpoch) {
+        // The runtime changed underneath this fetch: serve nothing stale and
+        // publish nothing — the next caller fetches from the new runtime.
+        return { ok: false, error: 'runtime changed during fetch', stale: true }
+      }
+      // Caches persist the RAW runtime snapshot; only responses are
+      // overlaid — rejection + credential truth never enters the cache.
       setModelsCache({ models, fetchedAt: now })
       writePersistedCache({ models, fetchedAt: now, source: 'runtime' })
-      return { models: applyRejectionOverlay(models), cached: false, cachedAt: now, stale: false }
+      return { ok: true, models, fetchedAt: now }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       warnRuntimeModelFetchFailed(message)
-      return { models: [], cached: false, cachedAt: null, stale: false, error: message }
+      return { ok: false, error: message, stale: false }
     } finally {
-      inflightFetch = null
+      if (inflightLoad === self) inflightLoad = null
     }
   })()
-  return inflightFetch
+  self = load
+  inflightLoad = load
+  return load
 }

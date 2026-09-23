@@ -32,7 +32,7 @@ const loggerMock = () => ({
 mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 
-import { createMockRuntimeAdapter, mockCron, withMockIsolation, MOCK_ISOLATION_PROBE } from '../../../packages/core/src/adapters/runtime/testing'
+import { createMockRuntimeAdapter, mockCredentials, mockCron, mockRestartAdvice, withMockIsolation, MOCK_ISOLATION_PROBE } from '../../../packages/core/src/adapters/runtime/testing'
 import { runRuntimeConformanceSuite, runtimeConformanceChecks, type RuntimeConformanceTarget } from './conformance'
 
 let target: RuntimeConformanceTarget
@@ -99,7 +99,24 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-runRuntimeConformanceSuite('dev mock', () => target, { cron: 'absent', contextStats: 'absent' })
+runRuntimeConformanceSuite('dev mock', () => target, { cron: 'absent', contextStats: 'absent', credentials: 'absent', restartAdvice: 'absent', resolveId: 'absent' })
+
+// The minimal mock omits credentials/restartAdvice (optional members); the
+// opt-in factories must satisfy the status-only and well-formed pins so
+// consumers can test feature-detected code paths against them.
+describe('mock credentials + restartAdvice opt-ins', () => {
+  it('mockCredentials() passes the status-only inventory pin', async () => {
+    const t = { ...target, runtime: createMockRuntimeAdapter({ credentials: mockCredentials([{ providerId: 'mock', configured: true }]) }) }
+    await runtimeConformanceChecks.credentialsMemberMatchesDeclaration(t, { credentials: 'present' })
+    await runtimeConformanceChecks.credentialInventoryIsStatusOnly(t)
+  })
+
+  it('mockRestartAdvice() passes the well-formed pin', async () => {
+    const t = { ...target, runtime: createMockRuntimeAdapter({ restartAdvice: mockRestartAdvice({ needed: false }) }) }
+    await runtimeConformanceChecks.restartAdviceMemberMatchesDeclaration(t, { restartAdvice: 'present' })
+    await runtimeConformanceChecks.restartAdviceIsWellFormed(t)
+  })
+})
 
 // The minimal mock omits cron; the opt-in surface must still honor the CRUD
 // contract so schedule tests exercising it inherit pinned behavior.

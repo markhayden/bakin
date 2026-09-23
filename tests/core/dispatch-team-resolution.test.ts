@@ -138,7 +138,7 @@ mock.module('../../src/core/dispatch-prepare', () => ({
 }))
 mock.module('../../src/core/dispatch-turns', () => ({
   concurrencyGate: () => null,
-  deferForBudget: async () => false,
+  preDispatchGate: async () => null,
   fireDispatchTurn: mock(async () => undefined),
   claimDispatchRun: mock(async () => ({ ok: true })),
   auditDispatchSuppressed: mock(() => undefined),

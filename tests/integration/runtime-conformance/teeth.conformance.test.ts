@@ -93,6 +93,21 @@ function brokenTarget(): RuntimeConformanceTarget {
   }
 }
 
+/** A target whose messaging recipes are never exercised — for member/shape pins only. */
+function quietTarget(runtime: RuntimeConformanceTarget['runtime']): RuntimeConformanceTarget {
+  return {
+    runtime,
+    agentId: 'main',
+    newThreadId: () => `teeth-quiet:${randomUUID()}`,
+    failingSend: () => Promise.reject(new Error('unused')),
+    startAbortableTurn: () => ({ settled: Promise.resolve({ id: 'unused' }) }),
+    prepareToolTurn: () => 'teeth-quiet: [[tool]]',
+    failingStream: async function* (): AsyncIterable<ChatChunk> {
+      yield { type: 'text', content: 'unused' }
+    },
+  }
+}
+
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
@@ -131,6 +146,77 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
     await expect(
       runtimeConformanceChecks.contextStatsMemberMatchesDeclaration(target, { contextStats: 'absent' }),
     ).rejects.toThrow(/member omission/)
+  })
+
+  it('fails the credentials declaration check on a throwing stub, and the status-only check on a leaked field', async () => {
+    const base = createMockRuntimeAdapter()
+    // A throwing stub is NOT absence — the member exists.
+    const stubbed = {
+      ...base,
+      credentials: { providers: async () => { throw new Error('unsupported') } },
+    }
+    await expect(
+      runtimeConformanceChecks.credentialsMemberMatchesDeclaration(quietTarget(stubbed), { credentials: 'absent' }),
+    ).rejects.toThrow(/member omission/)
+    // Declared present but omitted.
+    await expect(
+      runtimeConformanceChecks.credentialsMemberMatchesDeclaration(quietTarget(base), { credentials: 'present' }),
+    ).rejects.toThrow(/omits the member/)
+    // A secret riding on an entry — however it is spelled — fails the status-only pin.
+    const leaking = {
+      ...base,
+      credentials: {
+        providers: async () => ({
+          providers: [{ providerId: 'openai', configured: true, apiKey: 'sk-live-should-never-cross' }],
+          evidence: 'complete' as const,
+        }),
+      },
+    }
+    await expect(runtimeConformanceChecks.credentialInventoryIsStatusOnly(quietTarget(leaking)))
+      .rejects.toThrow(/undeclared field 'apiKey'/)
+    // Dishonest evidence.
+    const vague = {
+      ...base,
+      credentials: { providers: async () => ({ providers: [], evidence: 'probably' as unknown as 'complete' }) },
+    }
+    await expect(runtimeConformanceChecks.credentialInventoryIsStatusOnly(quietTarget(vague)))
+      .rejects.toThrow(/evidence must be/)
+  })
+
+  it('fails the models.resolveId declaration check on a throwing stub, and the honesty check on a guessing resolver', async () => {
+    const base = createMockRuntimeAdapter()
+    const stubbed = { ...base, models: { ...base.models, resolveId: async () => { throw new Error('unsupported') } } }
+    await expect(
+      runtimeConformanceChecks.resolveIdMemberMatchesDeclaration(quietTarget(stubbed), { resolveId: 'absent' }),
+    ).rejects.toThrow(/member omission/)
+    await expect(
+      runtimeConformanceChecks.resolveIdMemberMatchesDeclaration(quietTarget(base), { resolveId: 'present' }),
+    ).rejects.toThrow(/omits the member/)
+    // A resolver that maps EVERYTHING onto the first catalog row would let a dead selection pass as live.
+    const guessing = { ...base, models: { ...base.models, resolveId: async () => 'mock/conformance-model' } }
+    await expect(runtimeConformanceChecks.resolveIdIsHonest(quietTarget(guessing)))
+      .rejects.toThrow(/must be null for a reference no turn could run/)
+    // A resolver that rewrites a listed id is not the runtime's catalog.
+    const rewriting = { ...base, models: { ...base.models, resolveId: async () => null } }
+    await expect(runtimeConformanceChecks.resolveIdIsHonest(quietTarget(rewriting)))
+      .rejects.toThrow(/must return the listed id verbatim/)
+  })
+
+  it('fails the restartAdvice declaration check on a throwing stub, and the shape check on malformed advice', async () => {
+    const base = createMockRuntimeAdapter()
+    const stubbed = { ...base, restartAdvice: () => { throw new Error('unsupported') } }
+    await expect(
+      runtimeConformanceChecks.restartAdviceMemberMatchesDeclaration(quietTarget(stubbed), { restartAdvice: 'absent' }),
+    ).rejects.toThrow(/member omission/)
+    await expect(
+      runtimeConformanceChecks.restartAdviceMemberMatchesDeclaration(quietTarget(base), { restartAdvice: 'present' }),
+    ).rejects.toThrow(/omits the member/)
+    const malformed = {
+      ...base,
+      restartAdvice: () => ({ needed: 'yes' as unknown as boolean, action: { label: 'Restart', kind: 'reboot' as unknown as 'restart-runtime' } }),
+    }
+    await expect(runtimeConformanceChecks.restartAdviceIsWellFormed(quietTarget(malformed)))
+      .rejects.toThrow(/needed must be a boolean/)
   })
 
   it('fails the threaded-sessionId check', async () => {

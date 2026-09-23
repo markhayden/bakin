@@ -62,7 +62,7 @@ type RouteRow = (typeof DISPATCH_ROWS)[number]
 export function RoutingTab({ m }: { m: ModelsData }) {
   const {
     displayRouting, routingSupport,
-    setRouteField, addTagOverride, updateTagOverride, removeTagOverride, modelOptions, applyRecommendedRoutes,
+    setRouteField, addTagOverride, updateTagOverride, removeTagOverride, modelSelectOptions, applyRecommendedRoutes,
   } = m
 
   // Apply-recommended flow: propose (server) → diff preview in a ConfirmDialog
@@ -77,7 +77,6 @@ export function RoutingTab({ m }: { m: ModelsData }) {
       // A proposal pass prices every routable class; without a deadline a wedged
       // server leaves the dialog empty and the operator with no explanation.
       const res = await pluginFetch('models', 'routing/recommend', {
-        method: 'POST',
         signal: AbortSignal.timeout(RECOMMEND_TIMEOUT_MS),
       })
       const data = await res.json() as RecommendPayload & { error?: string }
@@ -188,7 +187,7 @@ export function RoutingTab({ m }: { m: ModelsData }) {
           id={`routing-${workClass.id}-model`}
           value={displayRouting.routes.find((r) => r.workClass === workClass.id)?.model ?? ''}
           onValueChange={(value) => setRouteField(workClass.id, 'model', value)}
-          models={modelOptions}
+          models={modelSelectOptions}
           defaultLabel="Use agent model"
           defaultValue=""
           ariaLabel={`${workClass.label} model`}
@@ -354,7 +353,7 @@ export function RoutingTab({ m }: { m: ModelsData }) {
                       id={modelId}
                       value={row.model ?? ''}
                       onValueChange={(value) => updateTagOverride(index, 'model', value)}
-                      models={modelOptions}
+                      models={modelSelectOptions}
                       defaultLabel="Use work route"
                       defaultValue=""
                       ariaLabel={`Tag override ${index + 1} model`}

@@ -201,21 +201,23 @@ export function ModelsPage() {
         />
       ) : null}
 
-      {runtimeStatus.restartNeeded && (
+      {runtimeStatus.pending && (
         <Banner
           tone="attention"
-          title="Runtime config out of sync. Restart to apply changes."
-          description="Your saved settings are retained, but the runtime will keep using its current model configuration until it restarts."
-          action={(
+          title={runtimeStatus.advice.title ?? 'Runtime config changed'}
+          description={runtimeStatus.lastError
+            ? `${runtimeStatus.advice.body ?? ''} The last restart failed: ${runtimeStatus.lastError}`.trim()
+            : runtimeStatus.advice.body}
+          action={runtimeStatus.advice.action ? (
             <Button
               onClick={runtimeStatus.restart}
               disabled={runtimeStatus.restarting}
               variant="outline"
               size="sm"
             >
-              {runtimeStatus.restarting ? 'Restarting...' : 'Restart Runtime'}
+              {runtimeStatus.restarting ? 'Restarting...' : runtimeStatus.advice.action.label}
             </Button>
-          )}
+          ) : undefined}
         />
       )}
 

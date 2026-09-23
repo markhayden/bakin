@@ -15,6 +15,7 @@ import { ModelSelect, StatGroup, StatTile } from '@makinbakin/sdk/patterns'
 import {
   Field,
   FieldDescription,
+  FieldError,
   FieldLabel,
   Select,
   SelectContent,
@@ -24,7 +25,7 @@ import {
   SystemState,
   Text,
 } from '@makinbakin/sdk/ui'
-import { useAgentStore, useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
+import { toModelSelectOptions, useAgentStore, useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
 import type { AgentUsage, AvailableModel } from '@makinbakin/sdk/types'
 import { DiagnosticsChipsView, useAgentAttention } from './diagnostics-tab'
 import { PackageCardBody } from './package-card'
@@ -37,6 +38,10 @@ export interface OverviewTabProps {
   availableModels: AvailableModel[]
   onModelChange: (modelId: string) => Promise<void> | void
   savingModel: boolean
+  /** Refusal from the selections write path (dead model, stale revision …). */
+  modelError?: string | null
+  /** A write the runtime has not confirmed yet — informational, never an error. */
+  modelNotice?: string | null
 }
 
 interface LessonsMeta {
@@ -62,6 +67,8 @@ export function OverviewTab({
   availableModels,
   onModelChange,
   savingModel,
+  modelError,
+  modelNotice,
 }: OverviewTabProps) {
   const teams = useAgentStore((state) => state.teams)
   const displaySettings = useAgentStore((state) => state.displaySettings)
@@ -167,11 +174,15 @@ export function OverviewTab({
                 id="agent-overview-model"
                 value={resolvedModelId}
                 onValueChange={onModelChange}
-                models={availableModels}
+                models={toModelSelectOptions(availableModels)}
                 defaultLabel="Use default"
                 disabled={savingModel}
                 ariaLabel="Agent model"
+                aria-invalid={modelError ? true : undefined}
               />
+              {/* `match`: the picker is not a Base UI field control, so the error must be told to show. */}
+              {modelError ? <FieldError match>{modelError}</FieldError> : null}
+              {modelNotice ? <FieldDescription role="status">{modelNotice}</FieldDescription> : null}
             </Field>
 
             {teams.length > 0 ? (

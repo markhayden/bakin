@@ -94,6 +94,8 @@ export type HealthResourceKind =
   | 'schedule'
   | 'budget_rule'
   | 'model'
+  /** One persisted model selection (agent pin, route, tag, policy field) — id is the selection ref (#907). */
+  | 'model_selection'
   | 'channel'
   | 'capability'
   | 'setting'

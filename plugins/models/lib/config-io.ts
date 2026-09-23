@@ -6,28 +6,13 @@
  * / setRoutingPolicy()`, and per-agent assignments ride `agents.list()` /
  * `agents.update()`. This module keeps the team-hook agent-metadata cache and
  * `resolveAgents` (runtime roster + policy → per-agent effective models).
- *
- * Also owns the runtime restart-sync cell: `markConfigDirty` /
- * `markRuntimeRestarted` record whether the runtime has picked up the latest
- * routing write. globalThis-backed so every reach into this module reads the
- * same instance — and kept in exactly this ONE module.
+ * (Pending-restart state is core-owned: src/core/pending-restart.ts, #878.)
  */
 import type { PluginContext } from '@bakin/core/plugin-types'
 import { selectRuntimeMainAgent } from '@bakin/core/adapters/runtime'
 
 import type { AgentModelConfig } from '../types'
 import { normalizeModelId } from './model-id'
-
-// ---------------------------------------------------------------------------
-// Runtime restart sync tracking (globalThis-backed so every reach into this module
-// reads the same instance)
-// ---------------------------------------------------------------------------
-interface RuntimeSync { lastConfigChangeAt: number | null; lastRestartAt: number | null }
-const runtimeSyncGlobal = globalThis as typeof globalThis & { __bakinRuntimeSync?: RuntimeSync }
-if (!runtimeSyncGlobal.__bakinRuntimeSync) runtimeSyncGlobal.__bakinRuntimeSync = { lastConfigChangeAt: null, lastRestartAt: null }
-export function getRuntimeSync(): RuntimeSync { return runtimeSyncGlobal.__bakinRuntimeSync! }
-export function markConfigDirty() { getRuntimeSync().lastConfigChangeAt = Date.now() }
-export function markRuntimeRestarted() { getRuntimeSync().lastRestartAt = Date.now() }
 
 // ---------------------------------------------------------------------------
 // Agent metadata from team hook (cached)

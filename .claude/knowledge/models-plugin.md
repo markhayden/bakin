@@ -12,7 +12,7 @@ Path: `~/.bakin/plugin-settings/models/available.json`. Owned by `plugins/models
 
 `fetchAvailableModels` returns `{ models, stale: boolean, error? }`. The client surfaces cached data immediately and kicks off a background `POST /api/plugins/models/refresh` when `stale` is true.
 
-`POST /api/plugins/models/runtime/restart` clears both cache layers (memory + disk).
+`POST /api/plugins/models/runtime/restart` calls `resetModelsCache()` — every layer (memory + disk + in-flight) plus a **runtime epoch** bump (#907, D29): a fetch captures the epoch when it starts and publishes to the caches only if it is unchanged when it completes, so a catalog fetch that straddles a runtime switch cannot repopulate the caches with the OLD runtime's models. The runtime switch invokes the same reset through the `models.resetCatalogCache` hook.
 
 ## Layer 2: Curated catalog
 
@@ -20,30 +20,47 @@ Path: `plugins/models/data/known-models.ts`. Bakin-maintained lookup of ~22 popu
 
 Merged into each runtime-sourced `AvailableModel` server-side via `getKnownModel()` / `getKnownProvider()`. Unknown models render plain — **no fabrication**.
 
-## Layer 3: Account-rejection overlay (#852)
+## Layer 3: Eligibility overlay (#907; subsumes the #852 rejection overlay)
 
 The runtime catalog LIES about callability (Pi stamps `available` from
-provider-level OAuth over a static SDK catalog — a retired model stayed
-"available" for 10 days while four subsystems failed). Truth comes from
-observing real calls:
+provider-level auth over a static SDK catalog — a retired model stayed
+"available" for 10 days while four subsystems failed; an agent pinned to
+`openai/…` on a box that only has `openai-codex` credentials failed with
+"add an API key" advice, #907). Truth is assembled from four INDEPENDENT
+facts by the ONE eligibility engine (`src/core/model-eligibility.ts`):
 
-- **Signal:** adapters classify the provider's model-verdict as the typed
-  `RuntimeErrorKind 'model_not_supported'` (Pi: `errors.ts` ladder; stream
-  terminal error chunks carry `data: { kind, model }`).
-- **Evidence:** the runtime facade wrapper (`src/core/model-availability.ts`,
-  installed once in `createRuntimeAdapter()` — every consumer inherits it)
-  records rejections into the ledger's `model_rejections` table and
-  auto-resolves them on the next explicit-model success (audits
-  `model.rejected` / `model.rejection_resolved`).
-- **Overlay:** `applyRejectionOverlay` runs on EVERY read of the model list
-  (cache-served included — the `withFreshTiers` posture): open rejections flip
-  `available: false` + a typed `rejection { lastSeenAt, occurrences }` on the
-  SDK row. Flip-not-filter (the row stays visible; the UI badges "Rejected by
-  account"). NEVER persisted into `available.json` — the ledger is the sole
-  rejection truth. Ledger down ⇒ fail open (nothing marked unavailable).
-- **Consequences for free:** the recommender can't propose a rejected model
-  (pool gates on `available !== false`), and `route-model-missing-*` fires
-  with account-rejected evidence (see health below).
+- **inCatalog / runtimeAvailable** — from `listAvailable({ includeUnavailable: true })`.
+  The runtime's own `unavailableReason` (Pi: `no_credentials`) is the ONLY
+  per-model reason source; `available:false` without one reads
+  `runtime_unavailable` — never an invented "retired".
+- **credentialed** — from the OPTIONAL `credentials.providers()` inventory
+  (status only; `evidence: 'partial'` when OpenClaw's CLI probe failed ⇒
+  absent providers are UNKNOWN, never credential-less). `authFree`/`local`
+  models need none.
+- **notRejected** — from the ledger's `model_rejections` (the #852 signal:
+  adapters classify the provider verdict as `model_not_supported`; the
+  facade wrapper `src/core/model-availability.ts` records/auto-resolves).
+
+`eligible` iff every fact is known-true; `ineligible` with the FIRST
+known-false fact's reason (`not_in_catalog | runtime_unavailable |
+no_credentials | account_rejected`); `unknown` when nothing is false but
+evidence is missing. A failed lookup never erases an independently known
+fact. `applyEligibilityOverlay` runs on EVERY read of the model list
+(cache-served included — the `withFreshTiers` posture) and stamps
+`eligibility` + `available` (+ `rejection` facts) on the SDK row. Flip-not-
+filter: unavailable rows now stay LISTED so pickers can show them disabled
+with the reason. NEVER persisted into `available.json`. The credential
+inventory is memoised 30 s per (runtime, agent) — OpenClaw shells its CLI.
+
+**Every picker consumes it:** `toModelSelectOptions` (`@makinbakin/sdk/hooks`)
+maps rows to `ModelSelectOption`s — `ineligible` ⇒ `disabled` with the
+reason as a label suffix ("GPT-5.6 Luna — no credentials for openai"; the
+documented composition until D23 gives the option a description field),
+`unknown` ⇒ selectable. The Available Models tab badges No credentials /
+Rejected by account / Unavailable / Not in catalog / Unverified; "Set
+default" is disabled on ineligible rows; `?probe=1` skips runtime-
+unavailable rows (a billed call that cannot succeed).
+
 - **Probe (opt-in, manual-only):** `POST /refresh?probe=1` fires the
   runtime's OPTIONAL `models.probe(modelId)` per fetched model (concurrency
   3) and reports per-model verdicts `verified | rejected | skipped` (a
@@ -51,9 +68,167 @@ observing real calls:
   Outcomes ride the same evidence pipeline (probe success resolves an open
   rejection). The default refresh, the stale auto-refresh, and the
   `models.refreshAvailableModels` hook are provably probe-free; there is NO
-  scheduled probing — passive rejection detection is the always-on layer,
-  probing answers "is this model I'm *not* using still callable?" on demand
-  (UI: "Verify availability" on the Available Models tab).
+  scheduled probing.
+
+## Selections — the ONE write path (#907, D25/D29)
+
+Every persisted model reference is a **selection** with a stable ref
+(`src/core/model-selections.ts`): `policy:defaultModel`,
+`policy:defaultSubagentModel`, `policy:fallback:<n>`, `policy:alias:<name>`
+(runtime routing policy), `agent:<id>:model` / `agent:<id>:subagentModel`
+(roster pins), `route:<workClass>` / `tag:<tag>` (plugin routing settings),
+`ui:mode` (page mode). `enumerateSelections(runtime, { routing, uiMode })`
+walks all of them; `computeRevision` hashes every (ref, model, thinking) so
+any change a mutation can make moves it; `proposeRepairs` offers, per dead
+selection, the same model id under a credentialed provider
+(`mapModelToCatalog` — the SAME helper the runtime switch's roster carry
+uses), else the lane recommender's pick, else `to: null`.
+
+`POST /api/plugins/models/selections` (`src/core/model-mutations.ts`,
+composed in `plugins/models/lib/selections.ts`) is the only writer — the
+old `POST /config`, `/defaults`, `/aliases` and `PUT /routing` are GONE.
+It is serialized process-wide, revision-checked under the lock
+(`409 stale_revision { current }`), validates every op (`400
+model_not_eligible { reason, proposal? }`; `unknown` passes with
+`warnings[]`; `400 unsupported_by_runtime` for knobs the runtime cannot
+persist — Pi rejects per-agent subagent pins even to clear), and folds ops
+per DOCUMENT (`policy` / `agent:<id>` / `routing`) into one adapter write
+each, in fixed order. **Outcomes are tri-state**: `applied`, `failed`, or
+`pending` when the adapter has not settled within 10 s — the record lands
+in `plugin-settings/models/pending-writes.json` and the document stays
+RESERVED until the promise settles in this process (a read never releases
+it; a retry is `409 write_pending`). Prior-boot records are classified by
+re-read (intended ⇒ resolved; previous ⇒ failed "not confirmed before
+restart"; else conflict, reserved until acknowledged). `GET /selections`
+returns states + revision + per-selection eligibility + proposals +
+pending. Client intents become ops through the pure builders in
+`plugins/models/lib/selection-ops.ts` — only refs that changed are sent
+(D24). Team's agent-model picker and agent create validate through the
+same engine.
+
+**Snapshots** (`snapshot: 'reset'`) are FULL STATE files under
+`plugin-settings/models/snapshots/` (bounded 5); `bakin models restore
+<file>` diffs one against the CURRENT selections and submits under the
+current revision (one 409 retry) — valid right after a Reset and after
+later edits.
+
+**Review-round hardening (2026-09-22, #909):**
+- **Id resolution is the RUNTIME's.** The report is keyed by the id as
+  asked; an `extraIds` entry the catalog does not list verbatim is judged by
+  the row the adapter's own `models.resolveId?(ref)` returns (Pi: the SAME
+  `findPiModel` rule its turn path uses — exact `provider/id`, else the
+  first registry model with that bare id; an ambiguous bare id is therefore
+  the runtime's call, and `wrongprovider/real-id` never resolves by bare
+  name) and carries `resolvedTo`. A runtime without the member (OpenClaw,
+  the mock) runs exactly what its catalog lists, so a non-verbatim id is
+  `not_in_catalog` there. `resolveCatalogId(runtime, id)` is the ONE
+  feature-detecting helper (engine + dispatch gate); `mapModelToCatalog`
+  survives only as the catalog-MIGRATION proposal rule (same-id-under-a-
+  credentialed-provider, roster carry) — never a verdict. Round 3 (2026-09-23)
+  replaced the round-2 catalog-shape guess that made `gpt-5.5` under two
+  providers `not_in_catalog` on Pi (Pi runs it) and `wrongprovider/gpt-5.5`
+  eligible (Pi refuses it). Conformance pins the member per adapter
+  (`resolveId: 'present' | 'absent'` + honesty: a listed id resolves
+  verbatim, an unknown reference to null) with teeth.
+- **Agent-scoped credentials.** `evaluateSelections(runtime, states)`
+  (`model-selections.ts`) judges every `agent:<id>:*` ref under THAT agent's
+  credential inventory (OpenClaw keys them per agent) and everything else
+  unscoped; `proposeRepairs` takes its `reportFor`. The mutation plan, the
+  selections inventory, doctor proposals and the runtime switch all go
+  through it — an unscoped read condemned pins the agent could run.
+- **Pending-write race.** Every write to `pending-writes.json` re-reads it
+  first — including the pre-write cleanup that drops replaced failures: the
+  record list a mutation read on entry is stale by the time `plan()` (async
+  eligibility) returns, and a document that settles during planning or while
+  a LATER write awaits its deadline must never be resurrected (it would be
+  reserved until restart). Pinned by two tests: settle-during-later-timeout
+  and settle-during-planning (`hangNextListAvailable` fixture gate).
+- **Revision ↔ snapshot pairing (page).** `revisionRef` in
+  `use-models-data.ts` is refreshed ONLY by `loadConfig` (the defaults
+  snapshot, incl. positional fallbacks). The alias and routing tabs load
+  their own snapshots without touching it — a fresher revision paired with
+  a stale fallback list would let the server ACCEPT a positional
+  `policy:fallback:n` op built against the wrong list. A save adopts the
+  returned revision; a stale refusal reloads all three.
+- **Doctor repair identity.** `apply-model-proposal` plan items are keyed by
+  the exact proposal they displayed (`apply-model-proposal:<sha16 of
+  ref|from|to|revision>:<ref>`): a second preview after the configuration
+  moved yields different item ids, so applying the first preview applies
+  what IT showed (then 409s honestly) — never the newer target. The planned
+  map is bounded (256, oldest out).
+- **Agent-scoped pickers.** `GET /available?agentId=<id>` overlays
+  eligibility under THAT agent's credentials (same `applyEligibilityOverlay`,
+  `CatalogScope`); the live load is deduped RAW and overlaid per caller so
+  two concurrent scopes never share a verdict. `useAvailableModels(agentId?)`
+  caches per scope (Team's agent detail passes its id; the create form stays
+  unscoped); the Models page reads one scoped catalog per roster agent
+  (`agentModelSelectOptions(agentId)`, unscoped list as the stand-in) so an
+  agent row can only stage what the write path would accept for that agent.
+- **Conflict recovery.** `POST /selections/pending/acknowledge { document }`
+  (404 `no_conflict` when nothing to acknowledge, audited
+  `pending_write_acknowledged`) and `bakin models pending [--ack
+  <document>]` — the operator's path out of a conflict record, which
+  otherwise reserves its document across restarts.
+- **Full-state restore.** `buildRestoreOps` restores `ui:mode` and clears a
+  thinking-only tag added since the snapshot.
+- **Batched repairs.** The dead-selections repair applies every planned
+  proposal in ONE mutation under their shared revision (one call per
+  selection made the second stale).
+- **Team-routing holds.** `/holds` gates an UNRESOLVED team task on the
+  `team-routing` model first, as dispatch does (`routingCallGated`), naming
+  `route:team-routing`; `PreDispatchProspect.workClass` widened to any
+  `WorkClass` for that ref.
+- **Clients never re-post blind.** A save goes out under the revision its
+  editor snapshot loaded (fallback refs are positional — re-posting against
+  a moved state removed the wrong entry); a stale refusal reloads and asks
+  the operator to look again. Team's picker inspects the tri-state result
+  (`failed` ⇒ the adapter's reason, `pending` ⇒ "waiting for the runtime";
+  the kit `FieldError` needs `match` to show next to a non-Field control).
+
+## Dead selections: hold, explain, repair (#907)
+
+- **Pre-claim hold** (`preDispatchGate` → `modelHoldFor`, `src/core/dispatch-turns.ts`):
+  the EFFECTIVE model a turn would run on (route/tag → agent pin → runtime
+  default) is checked in the agent's credential context before any claim;
+  a dead result holds the task (`task.deferred` reason `model_not_eligible`,
+  audited once per task+model), independent of budget status.
+  `GET /api/plugins/models/holds` serves the per-task holds; the Tasks board
+  picks ONE hold per card (kill switch > dead model > budget cap) and
+  renders "Model can't run" linking to `/models?ref=<ref>`.
+- **Translation** (`explainDeadSelectionFailure`): a `provider_cooldown`
+  with `authProfileUnavailable` or a `model_not_supported` on a dead
+  selection becomes "The 'enrich' agent uses openai/gpt-5.6-luna, but this
+  install has no credentials for openai. Use openai-codex/gpt-5.6-luna
+  instead? Fix in Models." — by structured fields only. Dispatch failures
+  and the enrichment queue use it.
+- **Doctor** `models.dead-selections` (`plugins/models/lib/dead-selections.ts`):
+  one action_required finding per dead selection (class `service_failure`,
+  resource `{ kind: 'model_selection', id: <ref> }`), repair
+  `apply-model-proposal` applies EXACTLY the planned `{ref, from, to,
+  revision}` through the mutator (stale ⇒ refused). Failed/partial evidence
+  ⇒ ONE unknown finding per source (class `evidence_gap`), never per-
+  selection noise. `models.routing` keeps clamp / unrouted / premium-on-
+  cheap only.
+- **Runtime switch** (`reconcile-selections` phase, real + dry-run):
+  evaluates every selection against the TARGET and reports the dead ones
+  with proposals in `result.deadSelections` — REPORT ONLY, never rewrites
+  (roster carry remains the one approved write).
+
+## Pending restart (#878 Models half, D30)
+
+`src/core/pending-restart.ts` persists WHICH change kinds still wait on a
+restart (`plugin-settings/models/pending-restart.json`). The adapter's
+OPTIONAL `restartAdvice(kind)` decides: Pi ⇒ `needed:false` for everything
+(it re-reads its stores per turn — pinned by
+`tests/integration/pi/model-change-no-restart.test.ts`); OpenClaw ⇒ only
+`roster` (per-agent MCP servers attach at gateway start; model pins and
+`agents.defaults.*` hot-reload). Adapters without the member get generic
+advice. `POST /selections` notes `model-config` / `routing-policy` kinds;
+Team notes `roster` when a restart is skipped or fails. A successful
+`restart()` is the ONLY thing that clears it; a failed attempt is recorded
+and shown. `GET /runtime/status` returns `{ pending, kinds, advice, generic,
+lastAttempt }` and `useRuntimeStatus` renders the adapter's words — the
+old `markConfigDirty` cell and hooks are gone.
 
 ## Brand icons
 

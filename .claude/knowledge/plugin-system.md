@@ -1182,7 +1182,7 @@ Same pattern is used for the plugin registry
 | workflows | 19 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.approveGate`, `workflows.rejectGate`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.authorizeToolUse`, `workflows.matchWorkflow`, `workflows.definitions.list`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
 | assets | 8 | `assets.validateSidecar`, `assets.getSidecarPath`, `assets.createStub`, `assets.detectVariant`, `assets.getAssetTypes`, `assets.trash.list`, `assets.restoreAsset`, `assets.emptyTrash` |
 | team | 7 | `team.list`, `team.getAgent`, `team.getAgentIds`, `team.resolveProfile`, `team.getTeamMembers`, `team.getAgentTeam`, `team.getOrgStructure` |
-| models | 5 | `models.configChanged`, `models.getEffectiveModel`, `models.getAvailableModels`, `models.markConfigDirty`, `models.markGatewayRestarted` |
+| models | 11 | `models.configChanged`, `models.getEffectiveModel`, `models.getAvailableModels`, `models.refreshAvailableModels`, `models.resetCatalogCache`, `models.updateBudgetPolicy`, `models.priceTurn`, `models.priceImage`, `models.resolveBilling`, `models.getRoutingConfig`, `models.getBudgetPolicy` |
 | tasks extensions | 2 | `tasks.statusChanged`, `tasks.enrichDetails` |
 
 ### Invoking hooks from core

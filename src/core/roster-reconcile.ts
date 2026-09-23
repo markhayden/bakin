@@ -18,6 +18,7 @@
  */
 import type { AgentRuntimeAdapter, RuntimeAgent } from '@bakin/core/adapters/runtime'
 import { createLogger } from './logger'
+import { mapModelToCatalog } from './model-selections'
 
 const log = createLogger('roster-reconcile')
 
@@ -43,20 +44,9 @@ export interface RosterCarryReport {
   failed: Array<{ agentId: string; error: string }>
 }
 
-/**
- * Map a source model id onto the target catalog:
- *   1. exact id match → as-is
- *   2. UNIQUE bare-model match (`anything/<model>` present exactly once) →
- *      the target's qualified id (catalogs differ per runtime:
- *      `openai/gpt-5.5` ↔ `openai-codex/gpt-5.5`)
- *   3. otherwise null — reported, never guessed.
- */
-export function mapModelToCatalog(sourceModel: string, targetCatalog: string[]): string | null {
-  if (targetCatalog.includes(sourceModel)) return sourceModel
-  const bare = sourceModel.includes('/') ? sourceModel.slice(sourceModel.indexOf('/') + 1) : sourceModel
-  const matches = targetCatalog.filter((id) => id === bare || id.endsWith(`/${bare}`))
-  return matches.length === 1 ? matches[0] : null
-}
+// The same-id mapping rule lives in model-selections so switch carry and
+// dead-selection proposals can never disagree.
+export { mapModelToCatalog }
 
 /** Feature-detect per-agent subagent-model support; an unreadable declaration reads as unsupported. */
 function supportsPerAgentSubagentModel(target: AgentRuntimeAdapter): boolean {

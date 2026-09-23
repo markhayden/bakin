@@ -52,7 +52,7 @@ mock.module('../../src/core/audit', () => ({ appendAudit: auditSpy }))
 let paused = false
 mock.module('../../src/core/dispatch-turns', () => ({
   dispatchPaused: () => paused,
-  deferForBudget: async () => false,
+  preDispatchGate: async () => null,
 }))
 mock.module('../../src/core/system-route', () => ({
   resolveSystemRoute: async () => ({ source: 'inherit' }),

@@ -21,7 +21,7 @@ import {
 } from './dispatch-state'
 import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInProgress, tryAddTaskLog } from './dispatch-board'
 import { formatDispatchError } from './dispatch-failures'
-import { concurrencyGate, deferForBudget, fireDispatchTurn, getSameAgentTurnsMode, resolveDispatchRouting } from './dispatch-turns'
+import { concurrencyGate, preDispatchGate, fireDispatchTurn, getSameAgentTurnsMode, resolveDispatchRouting } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
 import { deferForMissingBrand } from './dispatch-context-blocks'
 import { dispatchWorkflowTask } from './dispatch-workflow'
@@ -186,8 +186,9 @@ export async function dispatchSingleTask(
     const routing = await resolveDispatchRouting(task, source === 'recovery')
 
     // Spend ceiling — defer (leave in todo) when a budget cap is hit.
-    if (await deferForBudget(targetAgent, contentDir, undefined, { model: routing.model })) {
-      log.debug('Single-task dispatch deferred by budget gate', { id: task.id, agent: targetAgent, source })
+    const hold = await preDispatchGate(targetAgent, contentDir, undefined, { model: routing.model, routeSource: routing.source, workClass: routing.workClass, taskId: task.id })
+    if (hold) {
+      log.debug('Single-task dispatch held before claim', { id: task.id, agent: targetAgent, source, reason: hold.reason })
       return
     }
 

@@ -64,6 +64,8 @@ const ledgerMock = () => ({
   loseRun: () => true,
   currentSeq: () => fakeSeq,
   recordRunCost: () => {},
+  // Model-availability evidence (#852/#907) — inert here.
+  listModelRejections: () => [],
   spendTotal: () => 0,
   listRunCostsSince: () => [],
   openBudgetIncident: () => ({ opened: false, id: 1 }),

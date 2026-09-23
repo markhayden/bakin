@@ -114,7 +114,7 @@ mock.module('../../src/core/settings', () => ({
   },
 }))
 
-import { budgetGate, deferForBudget } from '../../src/core/dispatch'
+import { budgetGate, preDispatchGate } from '../../src/core/dispatch'
 import { gateBilledMediaCall } from '../../src/core/media-gate'
 
 beforeEach(() => {
@@ -423,15 +423,15 @@ describe('budgetGate', () => {
 
   it('KILL SWITCH: dispatch.paused defers everything, even with no budget policy', async () => {
     dispatchPausedSetting = true
-    expect(await deferForBudget('pixel', dir)).toBe(true)
-    expect(await deferForBudget('rolo', dir)).toBe(true)
+    expect(await preDispatchGate('pixel', dir)).toEqual({ reason: 'kill_switch' })
+    expect(await preDispatchGate('rolo', dir)).toEqual({ reason: 'kill_switch' })
     // Audited once per activation, not per task.
     expect(auditCalls.filter((c) => c[1] === 'dispatch.paused')).toHaveLength(1)
     // Unpause restores dispatch and re-arms the audit latch.
     dispatchPausedSetting = false
-    expect(await deferForBudget('pixel', dir)).toBe(false)
+    expect(await preDispatchGate('pixel', dir)).toBeNull()
     dispatchPausedSetting = true
-    expect(await deferForBudget('pixel', dir)).toBe(true)
+    expect(await preDispatchGate('pixel', dir)).toEqual({ reason: 'kill_switch' })
     expect(auditCalls.filter((c) => c[1] === 'dispatch.paused')).toHaveLength(2)
   })
 

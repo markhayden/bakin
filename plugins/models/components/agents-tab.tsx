@@ -28,12 +28,12 @@ function OverrideAgentAvatar({ agentId, name }: { agentId: string; name: string 
 
 export function AgentsTab({ m }: { m: ModelsData }) {
   const {
-    agents, loading, saving, modelsReady, modelOptions,
+    agents, loading, saving, modelsReady, modelSelectOptions, agentModelSelectOptions,
     pendingOwn, setPendingOwn, pendingSub, setPendingSub,
     setPendingDefaultModel, setPendingDefaultSubagentModel,
     pendingFallbackModels, setPendingFallbackModels, fallbackModels,
     saveAgent, saveAll, saveDefaults, hasPending, defaultsDirty,
-    effectiveDefaultModel, effectiveDefaultSubagentModel, effectiveFallbackModels, fallbackCandidates,
+    effectiveDefaultModel, effectiveDefaultSubagentModel, effectiveFallbackModels, fallbackCandidates, fallbackCandidateOptions,
   } = m
 
   return (
@@ -69,7 +69,7 @@ export function AgentsTab({ m }: { m: ModelsData }) {
               id="models-default-primary"
               value={effectiveDefaultModel}
               onValueChange={(v) => setPendingDefaultModel(v)}
-              models={modelOptions}
+              models={modelSelectOptions}
               className="w-full min-w-0"
             />
           </Field>
@@ -79,7 +79,7 @@ export function AgentsTab({ m }: { m: ModelsData }) {
               id="models-default-subagent"
               value={effectiveDefaultSubagentModel}
               onValueChange={(v) => setPendingDefaultSubagentModel(v === '__default__' ? null : v)}
-              models={modelOptions}
+              models={modelSelectOptions}
               defaultLabel={`Use primary default (${effectiveDefaultModel})`}
               className="w-full min-w-0"
             />
@@ -130,7 +130,7 @@ export function AgentsTab({ m }: { m: ModelsData }) {
                         next[index] = value
                         setPendingFallbackModels([...new Set(next.filter(Boolean).filter((id) => id !== effectiveDefaultModel))])
                       }}
-                      models={fallbackCandidates}
+                      models={fallbackCandidateOptions}
                       className="min-w-48 flex-1"
                     />
                     <div className="flex items-center gap-bakin-2">
@@ -224,6 +224,8 @@ export function AgentsTab({ m }: { m: ModelsData }) {
               const isSaving = saving === agent.agentId
               const ownModelId = `agent-${agent.agentId}-own-model`
               const subagentModelId = `agent-${agent.agentId}-subagent-model`
+              // Both of an agent's pins are validated under ITS credentials.
+              const rowOptions = agentModelSelectOptions(agent.agentId)
 
               return (
                 <ListRow
@@ -243,7 +245,7 @@ export function AgentsTab({ m }: { m: ModelsData }) {
                       id={ownModelId}
                       value={ownVal}
                       onValueChange={(v) => setPendingOwn((p) => ({ ...p, [agent.agentId]: v }))}
-                      models={modelOptions}
+                      models={rowOptions}
                       defaultLabel={`Default (${agent.defaultModel})`}
                       className="w-full min-w-0"
                     />
@@ -254,7 +256,7 @@ export function AgentsTab({ m }: { m: ModelsData }) {
                       id={subagentModelId}
                       value={subVal}
                       onValueChange={(v) => setPendingSub((p) => ({ ...p, [agent.agentId]: v }))}
-                      models={modelOptions}
+                      models={rowOptions}
                       defaultLabel={`Default (${agent.defaultSubagentModel || agent.defaultModel})`}
                       className="w-full min-w-0"
                     />

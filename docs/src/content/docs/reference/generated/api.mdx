@@ -1401,13 +1401,10 @@ curl -sS \
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="models.post.aliases">
+<OpenApiReference operationId="models.get.aliases-recommended">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
-  -X POST \
-  'http://localhost:3737/api/plugins/models/aliases' \
-  -H 'Content-Type: application/json' \
-  --data '"value"'
+  'http://localhost:3737/api/plugins/models/aliases/recommended'
 ```
 </OpenApiReference>
 
@@ -1476,23 +1473,10 @@ curl -sS \
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="models.post.config">
+<OpenApiReference operationId="models.get.holds">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
-  -X POST \
-  'http://localhost:3737/api/plugins/models/config' \
-  -H 'Content-Type: application/json' \
-  --data '{"agentId":"value","ownModel":"value","subagentModel":"value"}'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="models.post.defaults">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X POST \
-  'http://localhost:3737/api/plugins/models/defaults' \
-  -H 'Content-Type: application/json' \
-  --data '{"defaultModel":"value","defaultSubagentModel":"value","fallbackModels":["value"]}'
+  'http://localhost:3737/api/plugins/models/holds'
 ```
 </OpenApiReference>
 
@@ -1511,20 +1495,9 @@ curl -sS \
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="models.put.routing">
+<OpenApiReference operationId="models.get.routing-recommend">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
-  -X PUT \
-  'http://localhost:3737/api/plugins/models/routing' \
-  -H 'Content-Type: application/json' \
-  --data '{"routes":[{"workClass":"scheduled","model":"value","thinking":"off"}],"tagOverrides":[{"tag":"value","model":"value","thinking":"off"}]}'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="models.post.routing-recommend">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X POST \
   'http://localhost:3737/api/plugins/models/routing/recommend'
 ```
 </OpenApiReference>
@@ -1541,6 +1514,33 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/plugins/models/runtime/status'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models.get.selections">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/models/selections'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models.post.selections">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/models/selections' \
+  -H 'Content-Type: application/json' \
+  --data '{"revision":"value","ops":[{"ref":"value","set":{"model":"value","thinking":"value"}}],"snapshot":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models.post.selections-pending-acknowledge">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/models/selections/pending/acknowledge' \
+  -H 'Content-Type: application/json' \
+  --data '{"document":"value"}'
 ```
 </OpenApiReference>
 
@@ -2264,5 +2264,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Sep 20, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Sep 23, 2026 · Bakin 0.0.0-dev</span>
 </aside>

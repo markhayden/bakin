@@ -39,6 +39,9 @@ import { getInFlightTurnCount } from './dispatch-registry'
 import { resetSameAgentTurnsModeCache } from './dispatch-turns'
 import { createLogger } from './logger'
 import { reconcileRoster, type RosterCarryReport } from './roster-reconcile'
+import { resetEligibilityMemo } from './model-eligibility'
+import { enumerateSelections, evaluateSelections, proposeRepairs, computeRevision, type Proposal } from './model-selections'
+import type { RoutingConfig } from './model-routing'
 import { getSettings, updateSettings } from './settings'
 import { snapshotAgentContent, carryAgentContent, previewWorkspaceCarry, type AgentContentSnapshot, type WorkspaceCarryReport } from './workspace-carry'
 import { snapshotSourceCapabilities, buildCantCarryReport, type CantCarryLine, type SourceCapabilitySnapshot } from './switch-report'
@@ -72,6 +75,7 @@ export type SwitchPhase =
   | 'initialize'
   | 'provision'
   | 'reconcile-roster'
+  | 'reconcile-selections'
   | 'adopt-cron'
   | 'carry-workspaces'
   | 'sync-agents'
@@ -91,6 +95,14 @@ export interface RuntimeSwitchResult {
   /** Settings backup — the rollback artifact (null only if validate failed). */
   backupPath: string | null
   roster: RosterCarryReport | null
+  /**
+   * Persisted model selections (routes, tag overrides, the TARGET's own
+   * defaults/pins) that cannot run on the target, with proposals (#907).
+   * REPORT ONLY — a switch never rewrites a selection; the Models page and
+   * the dead-selections doctor check carry the repairs. Null when the phase
+   * didn't run.
+   */
+  deadSelections: DeadSelectionsReport | null
   /** Workspace/skill content carried for switch-created agents (null when the phase didn't run). */
   workspaces: WorkspaceCarryReport | null
   /** Drift-gated re-projection outcome (null when the phase didn't run). */
@@ -136,6 +148,38 @@ export interface SwitchRuntimeOptions {
 }
 
 type CronAdoptionResult = NonNullable<RuntimeSwitchResult['cron']>
+
+export interface DeadSelectionsReport {
+  dead: Array<{ ref: string; label: string; model: string; detail: string; proposal: Proposal }>
+  /** How complete the target's evidence was — a partial read leaves selections unknown, never dead. */
+  evidence: Record<string, string>
+}
+
+/**
+ * Evaluate every persisted selection against the TARGET adapter (#907, S3).
+ * Bakin-owned routes/tags come from the models plugin's settings (hook);
+ * runtime-owned defaults/pins come from the target itself. Read-only.
+ */
+async function reconcileSelections(target: AgentRuntimeAdapter): Promise<DeadSelectionsReport> {
+  let routing: RoutingConfig = { routes: [], tagOverrides: [] }
+  try {
+    routing = (await getHookRegistry().invoke<RoutingConfig>('models.getRoutingConfig', {})) ?? routing
+  } catch (err) {
+    log.warn('routing config unavailable during selection reconcile; evaluating runtime selections only', { error: String(err) })
+  }
+  const states = await enumerateSelections(target, { routing })
+  const evaluation = await evaluateSelections(target, states)
+  const revision = computeRevision(states)
+  const proposals = proposeRepairs(states.filter((s) => s.ref !== 'ui:mode'), evaluation.reportFor, { recommendFor: () => null, revision })
+  const byRef = new Map(states.map((s) => [s.ref, s]))
+  return {
+    dead: proposals.map((p) => {
+      const state = byRef.get(p.ref)!
+      return { ref: p.ref, label: state.label, model: p.from, detail: p.reason, proposal: p }
+    }),
+    evidence: evaluation.evidence,
+  }
+}
 
 /**
  * Hand snapshotted source cron jobs to the schedule plugin's adoption hook.
@@ -232,6 +276,7 @@ export async function switchRuntime(
     to: target as RuntimeAdapterName,
     backupPath: null,
     roster: null,
+    deadSelections: null,
     workspaces: null,
     sync: null,
     cron: null,
@@ -445,6 +490,19 @@ export async function switchRuntime(
       detail: `carried ${result.roster.carried.length}, existing ${result.roster.existing.length}, unmapped models ${result.roster.unmappedModels.length}, failed ${result.roster.failed.length}`,
     })
 
+    // ── reconcile selections (report only — never rewrites, #907) ────────
+    emit({ phase: 'reconcile-selections', status: 'start' })
+    try {
+      // The catalog + eligibility caches belong to the OLD runtime: bump the
+      // epoch so an in-flight fetch cannot publish stale rows, then re-read.
+      resetEligibilityMemo()
+      try { await getHookRegistry().invoke('models.resetCatalogCache', {}) } catch { /* models plugin not active — nothing cached */ }
+      result.deadSelections = await reconcileSelections(newRuntime)
+      emit({ phase: 'reconcile-selections', status: 'ok', detail: `${result.deadSelections.dead.length} selection(s) cannot run on ${target} — review in Models` })
+    } catch (err) {
+      emit({ phase: 'reconcile-selections', status: 'error', detail: err instanceof Error ? err.message : String(err) })
+    }
+
     // ── adopt source cron jobs into Bakin schedules (opt-in) ─────────────
     emit({ phase: 'adopt-cron', status: 'start' })
     if (!opts.adoptCron) {
@@ -585,6 +643,14 @@ async function dryRunSwitch(
       status: 'ok',
       detail: `would carry ${result.roster.carried.length}, existing ${result.roster.existing.length}, unmapped models ${result.roster.unmappedModels.length}`,
     })
+
+    emit({ phase: 'reconcile-selections', status: 'start' })
+    try {
+      result.deadSelections = await reconcileSelections(targetRuntime)
+      emit({ phase: 'reconcile-selections', status: 'ok', detail: `${result.deadSelections.dead.length} selection(s) would not run on ${target}` })
+    } catch (err) {
+      emit({ phase: 'reconcile-selections', status: 'error', detail: err instanceof Error ? err.message : String(err) })
+    }
 
     emit({ phase: 'adopt-cron', status: 'start' })
     if (!opts.adoptCron) {

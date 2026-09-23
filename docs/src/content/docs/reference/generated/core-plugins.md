@@ -72,21 +72,21 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Messaging<br/><span>Content messaging with scheduling, brainstorming, and multi-agent content pipeline</span></td>
       <td><code>messaging</code></td>
       <td>Official</td>
-      <td><code>0.11.4</code></td>
+      <td><code>0.11.5</code></td>
       <td><code>team</code> <code>workflows</code></td>
     </tr>
     <tr>
       <td>Models<br/><span>Agent model configuration — per-agent models, aliases, available models, per-turn model/thinking routing, and spend/budget tracking</span></td>
       <td><code>models</code></td>
       <td>Core</td>
-      <td><code>2.1.1</code></td>
+      <td><code>2.2.0</code></td>
       <td><code>team</code></td>
     </tr>
     <tr>
       <td>Projects<br/><span>Project management with specs, checklists, task linking, and agent access via MCP tools</span></td>
       <td><code>projects</code></td>
       <td>Official</td>
-      <td><code>0.10.4</code></td>
+      <td><code>0.10.6</code></td>
       <td><code>tasks</code> <code>assets</code> <code>team</code></td>
     </tr>
     <tr>
@@ -114,7 +114,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Terminal<br/><span>Persistent shared terminals with per-agent access and retained coding worktrees.</span></td>
       <td><code>terminal</code></td>
       <td>Official</td>
-      <td><code>0.1.0</code></td>
+      <td><code>0.1.1</code></td>
       <td><code>git</code></td>
     </tr>
     <tr>
@@ -128,5 +128,5 @@ description: Generated catalog of official plugins supported by Bakin.
 </table>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Sep 20, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Sep 23, 2026 · Bakin 0.0.0-dev</span>
 </aside>

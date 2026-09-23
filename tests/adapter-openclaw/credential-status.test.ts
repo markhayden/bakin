@@ -233,3 +233,44 @@ describe('credentialStatus — JSON + CLI merge (#615: a plugin provider the JSO
     expect(status.llmProviders).toEqual(['anthropic'])
   })
 })
+
+describe('credentials.providers() — status-only inventory with honest evidence (#907)', () => {
+  it('reports the merged JSON+CLI providers as configured with evidence complete', async () => {
+    writeFileSync(authProfilesPath(), JSON.stringify([{ provider: 'anthropic', apiKey: 'sk-ant-must-not-leak' }]))
+    const { createOpenClawRuntimeAdapter } = await import('../../packages/adapter-openclaw/src/index')
+    const adapter = createOpenClawRuntimeAdapter({ settings: {} })
+    ;(adapter as unknown as { exec: (a: string[]) => Promise<string> }).exec = async () =>
+      JSON.stringify({ profiles: [{ provider: 'openai-codex', type: 'oauth' }] })
+
+    const inventory = await adapter.credentials!.providers()
+    expect(inventory.evidence).toBe('complete')
+    expect(inventory.providers.map((p) => p.providerId).sort()).toEqual(['anthropic', 'openai-codex'])
+    for (const p of inventory.providers) expect(p).toEqual({ providerId: p.providerId, configured: true, source: 'runtime' })
+    expect(JSON.stringify(inventory)).not.toContain('sk-ant-must-not-leak')
+  })
+
+  it('a CLI probe failure is reported as evidence partial — the JSON subset is not the whole truth', async () => {
+    writeFileSync(authProfilesPath(), JSON.stringify([{ provider: 'anthropic', apiKey: 'k' }]))
+    const { createOpenClawRuntimeAdapter } = await import('../../packages/adapter-openclaw/src/index')
+    const adapter = createOpenClawRuntimeAdapter({ settings: {} })
+    ;(adapter as unknown as { exec: (a: string[]) => Promise<string> }).exec = async () => { throw new Error('cli down') }
+
+    const inventory = await adapter.credentials!.providers()
+    expect(inventory.evidence).toBe('partial')
+    expect(inventory.detail).toMatch(/CLI/)
+    expect(inventory.providers).toEqual([{ providerId: 'anthropic', configured: true, source: 'runtime' }])
+  })
+})
+
+describe('restartAdvice — what the gateway needs a restart for (#878)', () => {
+  it('per-agent model and routing-policy changes hot-reload; roster changes need a gateway restart', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('../../packages/adapter-openclaw/src/index')
+    const adapter = createOpenClawRuntimeAdapter({ settings: {} })
+    expect(adapter.restartAdvice!('model-config')).toEqual({ needed: false })
+    expect(adapter.restartAdvice!('routing-policy')).toEqual({ needed: false })
+    const roster = adapter.restartAdvice!('roster')
+    expect(roster?.needed).toBe(true)
+    expect(roster?.action).toEqual({ label: expect.stringMatching(/gateway/i), kind: 'restart-runtime' })
+    expect(roster?.body).toMatch(/MCP|tool/)
+  })
+})

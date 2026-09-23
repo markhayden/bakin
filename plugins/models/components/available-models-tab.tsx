@@ -15,6 +15,14 @@ import type { AvailableModel } from '../types'
 import { BrandIcon } from './brand-icon'
 import type { ModelsData } from './use-models-data'
 
+/** Plain-words badge per eligibility reason (#907). */
+const INELIGIBLE_LABEL: Record<NonNullable<Extract<AvailableModel['eligibility'], { status: 'ineligible' }>>['reason'], string> = {
+  no_credentials: 'No credentials',
+  account_rejected: 'Rejected by account',
+  runtime_unavailable: 'Unavailable',
+  not_in_catalog: 'Not in catalog',
+}
+
 const PAGE_SIZE = 8
 
 /** Catalog sort keys — the union `DataTable` narrows `onSortChange` to. */
@@ -260,18 +268,22 @@ export function AvailableModelsTab({
         const isDefault = model.isDefault || model.id === effectiveDefaultModel
         return (
           <span className="flex flex-wrap items-center gap-bakin-1">
-            {model.available === false && model.rejection ? (
-              // #852: the account's provider rejected this model (retired/
-              // unentitled). Flip-not-filter keeps the row visible; the badge
-              // says why, with the evidence in plain words on hover.
+            {model.eligibility?.status === 'ineligible' ? (
+              // #907 (subsumes #852): the row stays LISTED with the true
+              // reason — no credentials for the provider, rejected by the
+              // account, runtime-unavailable, or gone from the catalog.
               <Badge
                 tone="danger"
                 variant="solid"
                 size="xs"
-                title={`Rejected ${model.rejection.occurrences}× — last ${formatRelativeTime(model.rejection.lastSeenAt)}. Reroute or verify availability after the account regains access.`}
+                title={model.rejection
+                  ? `Rejected ${model.rejection.occurrences}× — last ${formatRelativeTime(model.rejection.lastSeenAt)}. Reroute or verify availability after the account regains access.`
+                  : model.eligibility.detail}
               >
-                Rejected by account
+                {INELIGIBLE_LABEL[model.eligibility.reason]}
               </Badge>
+            ) : model.eligibility?.status === 'unknown' ? (
+              <Badge tone="neutral" variant="outline" size="xs" title={model.eligibility.detail}>Unverified</Badge>
             ) : null}
             {isDefault ? (
               <Badge tone="success" variant="solid" size="xs">Default</Badge>
@@ -292,7 +304,7 @@ export function AvailableModelsTab({
         <Button
           type="button"
           size="xs"
-          disabled={saving === 'defaults'}
+          disabled={saving === 'defaults' || model.eligibility?.status === 'ineligible'}
           onClick={() => void setAsDefault(model.id)}
         >
           Set default
