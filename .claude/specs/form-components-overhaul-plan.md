@@ -618,3 +618,17 @@ weakening the approved contract.
 - T19 adds Input SurfaceContexts and browser checks for forced colors, reduced
   motion and enlarged textarea text. These complete the already approved
   appearance/accessibility matrix without a new public API or token.
+
+
+### Approved control-border extension
+
+The user approved `tasks/form-components-border-review.md` after measured
+resting contrast of 1.90–2.10:1. Implement in bounded slices: (1) reference,
+semantic and component token sources, shared control recipe and token test;
+(2) generated token/CSS/story/docs artifacts; (3) rendered contrast proof,
+guidance and final canonical review evidence. One coherent local checkpoint
+may group the slices so generated artifacts always match their sources.
+The generated property is `--bakin-color-border-control`, following existing
+naming, and the shared utility is `border-bakin-border-control`. No separator,
+focus/error token, public entrypoint or performance ceiling changes accompany
+this extension. Exact PNG approval remains separate.

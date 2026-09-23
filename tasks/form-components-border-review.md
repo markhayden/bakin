@@ -1,6 +1,9 @@
 # Form control border contrast — approval proposal
 
-Status: proposed; no token, public stylesheet or baseline changes applied.
+Status: explicitly approved by the user; token implementation applied.
+Canonical verification is in progress. No PNG baseline changes authorized.
+The generated CSS name follows the existing `--bakin-color-*` convention;
+the proposal originally abbreviated it as `--bakin-border-control`.
 
 The approved Input/SurfaceContexts contract exposes outlined and filled fields
 on canvas, default and elevated surfaces. Canonical computed contrast measures
@@ -16,7 +19,7 @@ resting boundary; its label, hover/focus and error treatments remain unchanged.
 
 - Add internal reference color `reference.color.warm.400 = #716c6c`.
 - Add public semantic `semantic.color.border.control`, generated as
-  `--bakin-border-control`, referencing warm.400. Describe it as the resting
+  `--bakin-color-border-control`, referencing warm.400. Describe it as the resting
   boundary of outlined/filled editable controls; record UI-component contrast
   against elevated surface (the worst of the three supported parents).
 - Use it only in the shared outlined/filled field recipe for Input, default

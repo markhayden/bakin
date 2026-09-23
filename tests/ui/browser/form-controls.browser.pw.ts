@@ -1,5 +1,29 @@
 import { expect, test } from 'playwright/test'
 
+test('outlined and filled boundaries maintain contrast on every supported surface', async ({ page }) => {
+  await page.goto('/iframe.html?id=components-primitives-input--surface-contexts&viewMode=story')
+  for (const surface of ['Canvas', 'Default surface', 'Elevated surface']) {
+    for (const variant of ['outlined', 'filled']) {
+      const input = page.getByRole('textbox', { name: `${surface} ${variant}` })
+      await expect(input).toBeVisible()
+      const ratio = await input.evaluate(el => {
+        const style = getComputedStyle(el)
+        const luminance = (color: string) => {
+          const components = color.match(/[\d.]+/g)!.slice(0, 3).map(Number)
+          return components.map(value => {
+            const channel = value / 255
+            return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+          }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0)
+        }
+        const border = luminance(style.borderTopColor)
+        const background = luminance(style.backgroundColor)
+        return (Math.max(border, background) + 0.05) / (Math.min(border, background) + 0.05)
+      })
+      expect(ratio).toBeGreaterThanOrEqual(3)
+    }
+  }
+})
+
 test('field sizes align with their button peers', async ({ page }) => {
   for (const width of [1280, 320]) {
     await page.setViewportSize({ width, height: 900 })

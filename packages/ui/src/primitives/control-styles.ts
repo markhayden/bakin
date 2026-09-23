@@ -19,8 +19,8 @@ export const controlStyles = cva([
       lg: 'px-bakin-4 py-bakin-2',
     },
     variant: {
-      outlined: 'border-bakin-border-subtle bg-bakin-canvas-default',
-      filled: 'border-bakin-border-subtle bg-bakin-surface-elevated',
+      outlined: 'border-bakin-border-control bg-bakin-canvas-default',
+      filled: 'border-bakin-border-control bg-bakin-surface-elevated',
       ghost: 'border-transparent bg-transparent hover:not-disabled:bg-bakin-surface-default focus-visible:bg-bakin-surface-default',
     },
   },

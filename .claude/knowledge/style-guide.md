@@ -47,7 +47,10 @@ Text controls use explicit `size="sm|md|lg"` (32/36/44px at standard text
 size) and `variant="outlined|filled|ghost"`; defaults are `md` and `outlined`.
 Outlined suits ordinary forms, filled emphasizes the field surface, and ghost
 suits inline/toolbar contexts. Keep a visible label and a visible focus/error
-treatment for every appearance. Text enlargement may increase height.
+treatment for every appearance. Outlined/filled boundaries use the approved
+`--bakin-color-border-control` token (at least 3:1 against supported surfaces);
+`--bakin-color-border-subtle` remains for nonessential separators. Text enlargement
+may increase height.
 Form and Field do not supply inherited visual defaults. `Input.htmlSize`
 preserves the native numeric width hint; `size` always means presentation.
 

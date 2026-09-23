@@ -202,4 +202,7 @@ semantic token is explicitly intended for nonessential boundaries. Do not
 interpret passing text/error checks as a 3:1 resting-control-boundary pass.
 A concrete, narrowly scoped new control-border token proposal and canonical
 before/after previews are in `tasks/form-components-border-review.md`.
-Token approval is pending; no token or baseline change has been applied.
+The user subsequently approved this exact color/scope. The implemented token
+is `--bakin-color-border-control` (the generator's existing naming convention),
+with 3.39:1 against elevated fill and a gating non-text contrast assertion.
+Subtle separators retain their existing token. PNG approval remains pending.

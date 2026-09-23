@@ -1,6 +1,6 @@
 # Form components overhaul — approved specification
 
-Status: approved foundation implemented; contrast-token decision and exact visual
+Status: approved foundation and control-border extension implemented; exact visual
 baseline approval pending before final full conformance.
 Date: 2026-09-22.
 Evidence: [source audit](form-components-overhaul-audit.md).
@@ -308,14 +308,15 @@ native disabled behavior and are not merely made translucent.
 
 ## Visual implementation constraints
 
-No new public tokens or entrypoints are proposed. Reuse semantic control
+The separately approved `semantic.color.border.control` token is the only new
+public token; no new entrypoint is proposed. Reuse semantic control
 radius, typography, focus, danger, disabled opacity and motion tokens.
 Compute 44px from the existing 36px control token plus the 8px spacing token;
 use the existing 32px token-backed spacing for small controls. Keep the shared
 recipe private; do not publish a bag of arbitrary CSS values.
 
-- Outlined: canvas background and visible subtle border.
-- Filled: elevated surface fill; a geometrically reserved boundary maintains
+- Outlined: canvas background and visible control border (at least 3:1 contrast).
+- Filled: elevated surface fill with the same control-border token; a reserved boundary maintains
   layout stability. Verify visibility on canvas, default and elevated parents.
 - Ghost: transparent at rest, neutral surface hover and visible keyboard
   focus/invalid state. Reserve border space so interaction does not shift text.

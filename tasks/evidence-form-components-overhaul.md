@@ -201,3 +201,29 @@ Starting commit: `1ecbc0b90`; branch: `codex/form-components-overhaul`.
   `tasks/form-components-border-review.md`, followed by exact final PNG review.
   C12 baseline changes and C13 full aggregate verification have not been run.
   This is an implementation/review checkpoint, not a merge-ready handoff.
+
+
+## Approved control-border implementation
+
+The user explicitly approved the control-border proposal. Added internal
+warm.400 (#716c6c), public semantic.color.border.control, and the field alias;
+the shared outlined/filled recipe consumes it. The generated property is
+`--bakin-color-border-control`, correcting the proposal's abbreviated name to
+the repository's existing convention. No separator/focus/error color changed.
+The public semantic inventory is now 66 tokens (139 total including internals).
+
+The new token assertion failed before implementation, then **17/17 token tests
+passed**. Generator contrast is 3.39:1 against elevated surface and uses the
+existing non-text gate. **33/33 focused canonical browser checks passed** in
+all three engines, including rendered contrast across the three parent surfaces,
+geometry, enlargement, readonly/disabled/error, submission/reset/IME, async retry
+and overlay selection. Actual values are saved in
+`test-results/form-contrast-approved.json`: border 3.39–3.73:1, primary text
+17.50–19.28:1, focus 8.46:1 and invalid border 4.65–5.12:1.
+
+Quick conformance, docs check/validation, consecutive public build determinism,
+plugin conformance, production builds and performance pass. CSS is 191,737
+bytes, still below its original 192,625 ceiling; no extra payload adjustment.
+The final complete Storybook, repository and visual sweeps are in progress.
+Exact new/changed PNG approval remains pending; captures use writes disabled.
+Logs: `/private/tmp/bakin-form-approved-border-{quick,browser,contrast,docs,doc-validation,determinism,plugin,performance}.log`.

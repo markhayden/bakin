@@ -45,6 +45,28 @@ export const BAKIN_SEMANTIC_TOKENS = [
     "sourcePointer": "#/semantic/color/action/primary/foreground"
   },
   {
+    "name": "semantic.color.border.control",
+    "family": "Color",
+    "type": "color",
+    "visibility": "public",
+    "cssVariable": "--bakin-color-border-control",
+    "cssValue": "#716c6c",
+    "tailwindVariable": "--color-bakin-border-control",
+    "description": "Resting boundary of outlined and filled editable controls on canvas, default and elevated surfaces.",
+    "contrast": {
+      "against": "semantic.color.surface.elevated",
+      "role": "non-text",
+      "ratio": 3.39,
+      "minimum": 3,
+      "standard": "WCAG AA non-text UI",
+      "status": "pass",
+      "againstCssVariable": "--bakin-color-surface-elevated"
+    },
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/border/control",
+    "sourceUrl": "https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json",
+    "sourcePointer": "#/semantic/color/border/control"
+  },
+  {
     "name": "semantic.color.border.subtle",
     "family": "Color",
     "type": "color",

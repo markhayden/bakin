@@ -469,6 +469,17 @@ describe('token artifact generation', () => {
     expect(publicColors.every((token) => ['pass', 'reference'].includes(token.contrast?.status ?? ''))).toBe(true)
   })
 
+  it('gives editable control boundaries non-text contrast without changing subtle separators', () => {
+    const manifest = compileTokenSources(loadTokenSources(REPO_ROOT))
+    const tokens = new Map(manifest.tokens.map(token => [token.path, token]))
+    const control = tokens.get('semantic.color.border.control')
+    expect(control?.contrast?.role).toBe('non-text')
+    expect(control?.contrast?.against).toBe('semantic.color.surface.elevated')
+    expect(control?.contrast?.ratio).toBeGreaterThanOrEqual(3)
+    expect(control?.contrast?.status).toBe('pass')
+    expect(tokens.get('semantic.color.border.subtle')?.contrast?.role).toBe('reference')
+  })
+
   it('codifies the approved Product Character foundation in generated semantic tokens', () => {
     const manifest = compileTokenSources(loadTokenSources(REPO_ROOT))
     const tokens = new Map(manifest.tokens.map((token) => [token.path, token]))

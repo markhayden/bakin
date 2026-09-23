@@ -701,7 +701,9 @@ paste, reset, container changes and font loading recalculate its height.
 
 `Input` and the default-input `FieldControl` support `size="sm|md|lg"`
 (32/36/44px) and `variant="outlined|filled|ghost"`. Defaults are `md` and
-`outlined`. Set presentation on the control, not Form or Field. Use
+`outlined`. Outlined and filled fields use `--bakin-color-border-control`, with
+at least 3:1 contrast on canvas, default and elevated surfaces. Subtle separators
+retain their separate token. Set presentation on the control, not Form or Field. Use
 `htmlSize={24}` for the native numeric input width hint; CSS layout still owns
 the available width. Input remains full-width by default. Custom-rendered
 FieldControl delegates presentation to its rendered control.
