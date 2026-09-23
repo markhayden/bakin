@@ -41,6 +41,16 @@ the selected Product Character values generated from
 
 ## 1. Text hierarchy — four tiers, never adjacent at the same weight
 
+### Text-control presentation
+
+Text controls use explicit `size="sm|md|lg"` (32/36/44px at standard text
+size) and `variant="outlined|filled|ghost"`; defaults are `md` and `outlined`.
+Outlined suits ordinary forms, filled emphasizes the field surface, and ghost
+suits inline/toolbar contexts. Keep a visible label and a visible focus/error
+treatment for every appearance. Text enlargement may increase height.
+Form and Field do not supply inherited visual defaults. `Input.htmlSize`
+preserves the native numeric width hint; `size` always means presentation.
+
 | Tier | Treatment | Examples |
 |---|---|---|
 | Page identity | `PageHeader` title/eyebrow contract | one page `h1`, domain context |

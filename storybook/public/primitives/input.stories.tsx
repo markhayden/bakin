@@ -23,11 +23,15 @@ type Story = StoryObj<typeof meta>
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
   args: {
+    size: 'md',
+    variant: 'outlined',
     disabled: false,
     readOnly: false,
     'aria-invalid': false,
   },
   argTypes: {
+    size: { control: 'select', options: ['sm', 'md', 'lg'] },
+    variant: { control: 'select', options: ['outlined', 'filled', 'ghost'] },
     disabled: { control: 'boolean' },
     readOnly: { control: 'boolean' },
     'aria-invalid': { control: 'boolean' },
@@ -52,6 +56,31 @@ export const CanonicalUsage = {
     }
     await userEvent.type(input, 'Publish weekly digest')
     await expect(input).toHaveValue('Publish weekly digest')
+  },
+} satisfies Story
+
+export const SizesAndVariants = {
+  render: () => (
+    <StoryStage eyebrow="Presentation" title="Input sizes and variants" description="Explicit presentation on the control; labels and validation remain with the field.">
+      <Grid layout="split" gap="section">
+        {(['outlined', 'filled', 'ghost'] as const).flatMap((variant) =>
+          (['sm', 'md', 'lg'] as const).map((size) => (
+            <Field key={`${variant}-${size}`}>
+              <FieldLabel>{variant} {size}</FieldLabel>
+              <Input size={size} variant={variant} placeholder="Workflow name" />
+            </Field>
+          )),
+        )}
+      </Grid>
+    </StoryStage>
+  ),
+  play: async ({ canvas }) => {
+    for (const variant of ['outlined', 'filled', 'ghost']) {
+      for (const [size, height] of [['sm', 32], ['md', 36], ['lg', 44]] as const) {
+        const control = canvas.getByRole('textbox', { name: `${variant} ${size}` })
+        await expect(control.getBoundingClientRect().height).toBe(height)
+      }
+    }
   },
 } satisfies Story
 

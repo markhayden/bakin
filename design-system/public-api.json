@@ -11,7 +11,7 @@
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
     "valueExports": 300,
-    "typeExports": 405
+    "typeExports": 407
   },
   "entrypoints": [
     {
@@ -210,6 +210,8 @@
         "CommandProps",
         "CommandSeparatorProps",
         "CommandShortcutProps",
+        "ControlSize",
+        "ControlVariant",
         "DialogCloseProps",
         "DialogContentProps",
         "DialogDescriptionProps",

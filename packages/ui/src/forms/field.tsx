@@ -4,7 +4,8 @@ import { Field as FieldPrimitive } from '@base-ui/react/field'
 import type { ReactNode } from 'react'
 
 import { inputClasses } from '../primitives/input'
-import { mergeClassName } from '../utils'
+import { controlHeight, controlStyles, type ControlSize, type ControlVariant } from '../primitives/control-styles'
+import { cn, mergeClassName } from '../utils'
 
 export type FieldOrientation = 'vertical' | 'horizontal'
 
@@ -102,18 +103,23 @@ export function FieldError({ className, role = 'alert', ...props }: FieldErrorPr
   )
 }
 
-export type FieldControlProps = FieldPrimitive.Control.Props
+export type FieldControlProps = Omit<FieldPrimitive.Control.Props, 'size'> & {
+  size?: ControlSize
+  variant?: ControlVariant
+  htmlSize?: number
+}
 
 /**
  * A styled input by default. Pass `render={<Textarea />}` to associate native
  * controls that do not participate in Base UI's field context themselves.
  */
-export function FieldControl({ className, render, ...props }: FieldControlProps) {
+export function FieldControl({ className, render, size = 'md', variant = 'outlined', htmlSize, ...props }: FieldControlProps) {
   return (
     <FieldPrimitive.Control
       data-field-control=""
       render={render}
-      className={mergeClassName(render == null ? inputClasses : '', className)}
+      size={htmlSize}
+      className={mergeClassName(render == null ? cn(controlStyles({ size, variant }), controlHeight[size], inputClasses) : '', className)}
       {...props}
     />
   )

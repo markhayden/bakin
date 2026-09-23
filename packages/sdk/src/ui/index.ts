@@ -212,6 +212,7 @@ export type {
   ToastTone,
 } from '@bakin/ui'
 export { Input } from '@bakin/ui'
+export type { ControlSize, ControlVariant } from '@bakin/ui'
 export type { InputProps } from '@bakin/ui'
 export {
   InputGroup,

@@ -205,6 +205,7 @@ export { Label } from './primitives/label'
 export type { LabelProps } from './primitives/label'
 
 export { Input } from './primitives/input'
+export type { ControlSize, ControlVariant } from './primitives/control-styles'
 export type { InputProps } from './primitives/input'
 
 export { Textarea } from './primitives/textarea'

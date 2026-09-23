@@ -689,6 +689,17 @@ Collapsible is for supporting detail that can safely start hidden. Required deci
 
 ## Text-Field Primitives
 
+`Input` and the default-input `FieldControl` support `size="sm|md|lg"`
+(32/36/44px) and `variant="outlined|filled|ghost"`. Defaults are `md` and
+`outlined`. Set presentation on the control, not Form or Field. Use
+`htmlSize={24}` for the native numeric input width hint; CSS layout still owns
+the available width. Input remains full-width by default. Custom-rendered
+FieldControl delegates presentation to its rendered control.
+
+Outlined provides an ordinary form boundary, filled uses a contrasting
+surface, and ghost supports compact inline contexts. Every appearance retains
+labels, associated help/errors and keyboard focus. A placeholder is not a label.
+
 The text-field set standardizes the native entry controls and their composable adornments:
 
 | Need | Component | Contract |
