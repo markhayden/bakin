@@ -55,7 +55,7 @@ export function SimpleMode({ sel, modelOptions, onAdvanced }: SimpleModeProps) {
   const choresStaged = CHORES_CLASSES.some((c) => sel.effective(`route:${c}`).staged)
   const highlighted = sel.highlightRef
   const choresHighlighted = highlighted !== null && highlighted.startsWith('route:') && (CHORES_CLASSES as readonly string[]).includes(highlighted.slice(6))
-  useDeepLinkFocus(highlighted, sel.selections !== null)
+  useDeepLinkFocus(sel, sel.selections !== null)
   // The runtime refuses per-turn model overrides (#880): chores routes are
   // saved here but every chore runs on the agent model until that changes.
   const perTurnModel = sel.selections?.support.perTurnModel !== false

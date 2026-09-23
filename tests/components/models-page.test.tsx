@@ -333,6 +333,10 @@ describe('ModelsPage component', () => {
       await openTab('Work routing')
       expect(await screen.findByRole('region', { name: 'Agent work' })).toBeTruthy()
       expect(screen.queryByText('Patch')).toBeNull()
+      // …and coming back does not steal focus again: the deep link landed once.
+      await openTab('Agents')
+      await screen.findByText('Patch')
+      expect(document.activeElement?.getAttribute('aria-label')).not.toBe('Patch model')
     })
 
     it('a ?ref= row is visibly selected and its control takes focus — a deep link from Health lands on something you can see', async () => {

@@ -77,7 +77,7 @@ export interface PlanRecommendation {
   routes: ChoresRoute[]
   /**
    * Where enrichment goes: `chores` (the chores model can see), `agent` (only
-   * the agent model can — `route:enrichment → agentModel`), `unset` (no
+   * the agent model can — the route stays unrouted and inherits it), `unset` (no
    * eligible model has vision — enrichment will fail until one is), or
    * `disabled` (enrichment is off; no vision requirement).
    */
@@ -220,11 +220,16 @@ function routedModel(routing: RoutingConfig, workClass: WorkClass): string | nul
   return routing.routes.find((r) => r.workClass === workClass)?.model ?? null
 }
 
-/** The desired chores routes: explicit when the chores model differs from the agent model, inherit when it is the same. */
+/**
+ * The desired chores routes: explicit when the chores model differs from the
+ * agent model, inherit (null) when it is the same — including enrichment when
+ * only the agent model can see: it stays UNROUTED so it follows the default
+ * wherever that moves, rather than pinning today's agent model.
+ */
 function planRoutes(agent: LanePick, chores: LanePick, enrichment: PlanRecommendation['enrichment']): ChoresRoute[] {
   return CHORES_CLASSES.map((workClass) => {
     if (workClass === 'enrichment' && enrichment === 'agent') {
-      return { workClass, model: agent.model, reason: `${agent.model} is the only eligible model that can see images` }
+      return { workClass, model: null, reason: `inherits the agent model — ${agent.model} is the only eligible model that can see images` }
     }
     if (workClass === 'enrichment' && enrichment === 'unset') {
       return { workClass, model: null, reason: 'No eligible model can see images — enrichment will fail until a vision-capable model is available.' }

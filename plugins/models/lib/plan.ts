@@ -64,10 +64,9 @@ export interface RouteSkip {
  * The route-only view of a plan for the UNROUTED chores classes — what the
  * routing health check flags and its repair applies. Routed classes are the
  * operator's choice and never proposed here (Simple's "Use recommended
- * plan" shows the full diff instead). A plan row that names the AGENT model
- * (enrichment when only the agent model can see) is a skip: unrouted already
- * inherits it, and proposing it would be a standing false finding whose
- * repair routes background work to the premium model.
+ * plan" shows the full diff instead). An inheriting plan row (enrichment when
+ * only the agent model can see, or nothing lighter than the agent model) is
+ * a skip with the plan's reason — unrouted already resolves there.
  */
 export function routeProposals(plan: PlanRecommendation, routing: RoutingConfig): { proposals: RouteProposal[]; skipped: RouteSkip[] } {
   const routed = new Set(routing.routes.filter((r) => r.model).map((r) => r.workClass))
@@ -75,8 +74,7 @@ export function routeProposals(plan: PlanRecommendation, routing: RoutingConfig)
   const skipped: RouteSkip[] = []
   for (const route of plan.routes) {
     if (routed.has(route.workClass)) continue
-    if (route.model && route.model === plan.agent.model) skipped.push({ workClass: route.workClass, reason: `inherits the agent model (${route.reason})` })
-    else if (route.model) proposals.push({ workClass: route.workClass, model: route.model, reason: route.reason })
+    if (route.model) proposals.push({ workClass: route.workClass, model: route.model, reason: route.reason })
     else skipped.push({ workClass: route.workClass, reason: route.reason })
   }
   return { proposals, skipped }

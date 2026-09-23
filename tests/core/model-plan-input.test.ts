@@ -96,7 +96,7 @@ describe('recommendForRef (dead-selection proposals)', () => {
       chores: { model: MINI, why: '', suitability: 'known' },
       routes: [
         { workClass: 'auto-title', model: MINI, reason: '' },
-        { workClass: 'enrichment', model: LUNA, reason: '' },
+        { workClass: 'enrichment', model: null, reason: 'inherits the agent model' },
         { workClass: 'relay', model: MINI, reason: '' },
         { workClass: 'team-routing', model: MINI, reason: '' },
         { workClass: 'skill-mapping', model: MINI, reason: '' },
@@ -108,7 +108,7 @@ describe('recommendForRef (dead-selection proposals)', () => {
     }
   }
 
-  it('a chores route takes the plan route for that class — enrichment → agent included', () => {
+  it('a chores route takes the plan route for that class; an inheriting enrichment on `agent` resolves to the agent model', () => {
     expect(recommendForRef(plan(), 'route:relay')).toBe(MINI)
     expect(recommendForRef(plan(), 'route:enrichment')).toBe(LUNA)
   })

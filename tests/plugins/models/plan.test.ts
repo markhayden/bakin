@@ -127,7 +127,7 @@ describe('buildPlanInput', () => {
     // chores and enrichment rides the (free, seeing) agent model.
     expect(plan.chores.model).toBe(MINI)
     expect(plan.enrichment).toBe('agent')
-    expect(plan.routes.find((r) => r.workClass === 'enrichment')?.model).toBe(LUNA)
+    expect(plan.routes.find((r) => r.workClass === 'enrichment')?.model).toBeNull()
     expect(plan.ops.some((op) => op.ref === 'policy:defaultModel')).toBe(false)
   })
 })
@@ -172,7 +172,7 @@ describe('routeProposals', () => {
     expect(skipped).toEqual([{ workClass: 'enrichment', reason: expect.stringContaining('enrichment will fail') }])
   })
 
-  it('a plan row naming the agent model is a skip, not a proposal — unrouted already inherits it', () => {
+  it('enrichment on the agent model is an inheriting row — a skip, not a proposal (unrouted already resolves there)', () => {
     const routing = { routes: [], tagOverrides: [] }
     const plan = recommendPlan({
       candidates: [

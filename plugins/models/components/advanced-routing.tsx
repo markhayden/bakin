@@ -12,7 +12,7 @@ import { useState } from 'react'
 import { Plus, Route, Wand2, X } from 'lucide-react'
 import { Section, Stack } from '@makinbakin/sdk/layout'
 import { ConfirmDialog, DEFAULT_MODEL_VALUE, DataTable, GuideCard, KeyValue, ListRow, ListRows, ModelSelect, type DataTableColumn, type KeyValueItem, type ModelSelectOption } from '@makinbakin/sdk/patterns'
-import { Alert, Button, Field, FieldDescription, FieldLabel, Input, Text } from '@makinbakin/sdk/ui'
+import { Alert, Button, Field, FieldError, FieldLabel, Input, Text } from '@makinbakin/sdk/ui'
 
 import { effectiveTagOverrides } from '../lib/advanced'
 import { WORK_CLASSES } from '../lib/mode'
@@ -40,7 +40,7 @@ export function AdvancedRouting({ sel, modelOptions }: AdvancedRoutingProps) {
   const [newTag, setNewTag] = useState({ tag: '', model: '' })
   const tagRows = effectiveTagOverrides(states, sel.draft, sel.effective)
   const highlight = sel.highlightRef
-  useDeepLinkFocus(highlight, selections !== null)
+  useDeepLinkFocus(sel, selections !== null)
   const routesSet = [...AGENT_WORK_ROWS, ...CHORES_ROWS].filter((c) => sel.effective(`route:${c.id}`).model || sel.effective(`route:${c.id}`).thinking).length
 
   const routeColumns: ReadonlyArray<DataTableColumn<RouteRow>> = [
@@ -175,8 +175,8 @@ export function AdvancedRouting({ sel, modelOptions }: AdvancedRoutingProps) {
           <div className="flex flex-wrap items-end gap-bakin-2">
             <Field name="advanced-new-tag">
               <FieldLabel htmlFor="advanced-new-tag">Task tag</FieldLabel>
-              <Input id="advanced-new-tag" value={newTag.tag} placeholder="e.g. heavy" disabled={!perTurnModel} aria-invalid={tagProblem ? true : undefined} onChange={(event) => setNewTag((p) => ({ ...p, tag: event.target.value }))} />
-              {tagProblem ? <FieldDescription>{tagProblem}</FieldDescription> : null}
+              <Input id="advanced-new-tag" value={newTag.tag} placeholder="e.g. heavy" disabled={!perTurnModel} aria-invalid={tagProblem ? true : undefined} aria-describedby={tagProblem ? 'advanced-new-tag-problem' : undefined} onChange={(event) => setNewTag((p) => ({ ...p, tag: event.target.value }))} />
+              {tagProblem ? <FieldError id="advanced-new-tag-problem" match>{tagProblem}</FieldError> : null}
             </Field>
             <Field name="advanced-new-tag-model">
               <FieldLabel htmlFor="advanced-new-tag-model">Model</FieldLabel>

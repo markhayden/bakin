@@ -49,8 +49,7 @@ export function AdvancedOverview({ sel, modelOptions }: AdvancedOverviewProps) {
   const tagRows = effectiveTagOverrides(states, sel.draft, sel.effective)
   const agents = agentRows(states)
   const chores = choresLane(sel.effective)
-  const highlight = sel.highlightRef
-  useDeepLinkFocus(highlight, selections !== null)
+  useDeepLinkFocus(sel, selections !== null)
 
   // What is in use, from the DRAFT (staged values win).
   const byModel = new Map<string, number>()

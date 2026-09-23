@@ -89,16 +89,17 @@ describe('models onboarding component (S7)', () => {
     expect(r.status).toBe('missing')
     // terra resolves to the same tier as luna here (no catalog entry), so
     // it is not lighter: the budget model takes the chores, enrichment
-    // rides the agent model (the only lighter-or-equal model that sees).
+    // inherits the agent model (the only lighter-or-equal model that sees)
+    // — four route ops, enrichment stays unrouted.
     expect(r.message).toContain(LUNA)
     expect(r.message).toContain(MINI)
-    expect(r.details).toMatchObject({ agent: LUNA, chores: MINI, enrichment: 'agent', ops: 5 })
+    expect(r.details).toMatchObject({ agent: LUNA, chores: MINI, enrichment: 'agent', ops: 4 })
   })
 
   it('--yes on a fresh install applies the recommendation through the mutator; check() is then ok', async () => {
     const r = await modelsComponent.install(YES)
     expect(r.status).toBe('installed')
-    expect(routes().map((x) => `${x.workClass}=${x.model}`).sort()).toEqual(['auto-title', 'enrichment', 'relay', 'skill-mapping', 'team-routing'].map((c) => `${c}=${c === 'enrichment' ? LUNA : MINI}`))
+    expect(routes().map((x) => `${x.workClass}=${x.model}`).sort()).toEqual(['auto-title', 'relay', 'skill-mapping', 'team-routing'].map((c) => `${c}=${MINI}`))
     expect(policyWrites).toEqual([])
     expect((await modelsComponent.check()).status).toBe('ok')
   })
@@ -107,7 +108,7 @@ describe('models onboarding component (S7)', () => {
     expect((await modelsComponent.install(SILENT)).status).toBe('skipped')
     expect(routes()).toEqual([])
     expect((await modelsComponent.install(APPROVED)).status).toBe('installed')
-    expect(routes()).toHaveLength(5)
+    expect(routes()).toHaveLength(4)
   })
 
   it('interactive: asks, applies on yes, skips on no', async () => {
@@ -116,7 +117,7 @@ describe('models onboarding component (S7)', () => {
     expect(routes()).toEqual([])
     yesNoAnswers = [true]
     expect((await modelsComponent.install(INTERACTIVE)).status).toBe('installed')
-    expect(routes()).toHaveLength(5)
+    expect(routes()).toHaveLength(4)
   })
 
   it('a dead default with NO persisted plan is repaired by --yes (the permitted carve-out): nothing dispatches on a dead default, so the policy op lands', async () => {
@@ -125,7 +126,7 @@ describe('models onboarding component (S7)', () => {
     const r = await modelsComponent.install(YES)
     expect(r.status).toBe('installed')
     expect(policyWrites).toEqual([{ defaultModel: LUNA }])
-    expect(routes()).toHaveLength(5)
+    expect(routes()).toHaveLength(4)
     expect(r.message).toContain(LUNA)
   })
 

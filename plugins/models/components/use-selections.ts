@@ -13,7 +13,7 @@
  *   revision the page loaded, renders applied / failed / pending per ref,
  *   retries failed refs only, and guards dirty exits.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 
 import { useQueryState } from '@makinbakin/sdk/navigation'
 import { pluginFetch, pluginFetchJson } from '@makinbakin/sdk/utils'
@@ -96,6 +96,8 @@ export interface SelectionsData {
   customizations: Customization[]
   /** The `?ref=` deep link, if any — highlighted by whichever view owns it. */
   highlightRef: string | null
+  /** The ref the page already landed on (scroll + focus) — once per arrival, whatever tab or view remounts. */
+  landed: MutableRefObject<string | null>
   pendingRefs: Map<string, { state: 'unsettled' | 'failed' | 'conflict'; detail?: string }>
   /**
    * The ONE client write: POST `ops` under the revision the page holds,
@@ -216,6 +218,7 @@ export function useSelections(): SelectionsData {
   }, [selections, persistedMode, mode, submit])
 
   const highlightRef = ref || null
+  const landed = useRef<string | null>(null)
   // A ref in the Advanced layer must be visible: flip the VIEW (no write).
   const refView: UiMode | null = highlightRef && refLayer(highlightRef, states) === 'advanced' ? 'advanced' : null
   const chosen = viewOverride && viewOverride.ref === highlightRef ? viewOverride.view : null
@@ -276,7 +279,7 @@ export function useSelections(): SelectionsData {
   }, [draft, selections, submit, load])
 
   return {
-    selections, plan, loading, error, reload, mode, view, setView, customizations, highlightRef, pendingRefs, submit,
+    selections, plan, loading, error, reload, mode, view, setView, customizations, highlightRef, landed, pendingRefs, submit,
     draft, dirty: draft.size > 0, stagedCount: draft.size, stage, stageAll, unstage, discard, effective,
     saving, saveError, lastSave, save,
   }

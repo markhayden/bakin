@@ -125,8 +125,10 @@ export function recommendForRef(plan: PlanRecommendation, ref: string): string |
   if (kind === 'route' && name && (CHORES_CLASSES as readonly string[]).includes(name)) {
     const route = plan.routes.find((r) => r.workClass === name)
     if (route?.model) return route.model
-    // Inherit ⇒ the chores model reads through; an unset enrichment (nobody sees) has no honest answer.
+    // Inherit ⇒ the chores model reads through — except enrichment when only
+    // the agent model can see; an unset enrichment (nobody sees) has no honest answer.
     if (name === 'enrichment' && plan.enrichment === 'unset') return null
+    if (name === 'enrichment' && plan.enrichment === 'agent') return plan.agent.model
     return plan.chores.model ?? plan.agent.model
   }
   return plan.agent.model

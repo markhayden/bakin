@@ -47,7 +47,7 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
   const agent = sel.effective('policy:defaultModel')
   const rows = [...agentRows(states)]
   const highlight = sel.highlightRef
-  useDeepLinkFocus(highlight, rows.length > 0)
+  useDeepLinkFocus(sel, rows.length > 0)
 
   // Default order: the main agent (the orchestrator) first, then the
   // roster's team order, then name. Column sorts (Agent, Team) take over

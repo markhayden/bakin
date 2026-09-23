@@ -78,12 +78,16 @@ describe('recommendPlan', () => {
     expect(plan.chores.why).toBe(`~$6 per 1M tokens vs ~$90 for ${opus.id}`)
   })
 
-  it('enrichment → agent: no lighter model can see but the agent model can; every other chore still goes light', () => {
+  it('enrichment → agent: no lighter model can see but the agent model can; every other chore goes light, enrichment stays UNROUTED (inherits — follows the default when it moves)', () => {
     const plan = recommendPlan(input({ candidates: [luna, mini], currentDefaultModel: luna.id }))
     expect(plan.chores.model).toBe(mini.id)
     expect(plan.enrichment).toBe('agent')
-    expect(plan.ops).toEqual(CHORES_CLASSES.map((workClass) => ({ ref: `route:${workClass}`, set: { model: workClass === 'enrichment' ? luna.id : mini.id } })))
+    expect(plan.routes.find((r) => r.workClass === 'enrichment')).toMatchObject({ model: null, reason: expect.stringContaining('inherits the agent model') })
+    expect(plan.ops).toEqual(CHORES_CLASSES.filter((c) => c !== 'enrichment').map((workClass) => ({ ref: `route:${workClass}`, set: { model: mini.id } })))
     expect(plan.notes[0]).toContain('cannot see images')
+    // A stray explicit enrichment pin is cleared back to inherit.
+    const pinned = recommendPlan(input({ candidates: [luna, mini], currentDefaultModel: luna.id, routing: { routes: [{ workClass: 'enrichment', model: luna.id }], tagOverrides: [] } }))
+    expect(pinned.ops).toContainEqual({ ref: 'route:enrichment', set: { model: null } })
   })
 
   it('no eligible model can see ⇒ enrichment unset (an existing enrichment route is cleared) and the plan says so', () => {
