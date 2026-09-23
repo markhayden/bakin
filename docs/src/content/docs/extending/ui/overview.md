@@ -701,15 +701,16 @@ paste, reset, container changes and font loading recalculate its height.
 
 `Input` and the default-input `FieldControl` support `size="sm|md|lg"`
 (32/36/44px) and `variant="outlined|filled|ghost"`. Defaults are `md` and
-`outlined`. Outlined borders and filled bottom edges use `--bakin-color-border-control`, with
+`outlined`. Outlined borders use `--bakin-color-border-control`, with
 at least 3:1 contrast on canvas, default and elevated surfaces. Subtle separators
 retain their separate token. Set presentation on the control, not Form or Field. Use
 `htmlSize={24}` for the native numeric input width hint; CSS layout still owns
 the available width. Input remains full-width by default. Custom-rendered
 FieldControl delegates presentation to its rendered control.
 
-Outlined provides a complete border. Filled uses a contrasting surface and a
-single bottom edge, with transparent top and side borders at rest. Ghost supports
+Outlined provides a complete border. Filled uses its background alone, with
+all borders transparent at rest. Pair it with a visible label and a parent
+surface that distinguishes the field fill. Ghost supports
 compact inline contexts. Invalid fields retain a complete error border. Every appearance retains
 labels, associated help/errors and keyboard focus. Empty-value hints do not replace labels.
 

@@ -297,3 +297,32 @@ aggregate verification remains after exact baseline approval.
 Logs: `/private/tmp/bakin-form-filled-{red,browser,stories,quick,build,docs,performance,visual}.log`.
 Review: `tasks/form-components-visual-review.md` and
 `test-results/form-components-review/manifest.json`.
+
+## Borderless filled treatment — explicit screenshot correction
+
+The user explicitly requested removing the remaining bottom border. The shared
+filled recipe now has a surface background and transparent borders on every
+side at rest. Reserved border width keeps geometry stable; focus rings and
+complete invalid borders remain. Input/`SizesAndVariants` and `SurfaceContexts`
+define the revised appearance through `@makinbakin/sdk/ui`; the same recipe
+covers Input, FieldControl, Textarea, InputGroup, Select and Combobox.
+
+Updated author guidance and the specification: filled uses labels and its fill
+for identification; the prior 3:1 resting-border claim now applies only to
+outlined. No token value, public API, exception or accessibility suppression
+was added. The user's explicit correction supersedes the prior bottom-edge
+recommendation. No product UI migration or PNG baseline replacement occurred.
+
+Quick conformance, public Storybook build, docs validation and production vendor
+performance checks passed. **9/9 focused browser checks** passed across Chromium,
+Firefox and WebKit, including all four transparent resting edges, complete
+invalid borders, nominal sizes, forced colors and reduced motion. Generated
+CSS is back to 191,737 bytes, within the unchanged budget.
+
+Logs: `/private/tmp/bakin-form-borderless-{browser,quick,build,docs,performance,visual}.log`.
+
+All 18 canonical desktop/mobile candidates were refreshed; representative
+desktop/mobile filled controls were visually reviewed.
+Only the expected missing-baseline comparisons fail; no interaction, overflow
+or console errors occurred. The same 66-path review inventory now points to the
+latest borderless-filled images and hashes. Exact PNG approval remains pending.

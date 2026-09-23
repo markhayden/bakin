@@ -1,6 +1,6 @@
 import { expect, test } from 'playwright/test'
 
-test('outlined borders and filled bottom edges maintain contrast on every supported surface', async ({ page }) => {
+test('outlined retains contrast and filled stays borderless with visible errors', async ({ page }) => {
   await page.goto('/iframe.html?id=components-primitives-input--surface-contexts&viewMode=story')
   for (const surface of ['Canvas', 'Default surface', 'Elevated surface']) {
     for (const variant of ['outlined', 'filled']) {
@@ -9,9 +9,10 @@ test('outlined borders and filled bottom edges maintain contrast on every suppor
       if (variant === 'filled') {
         const sides = await input.evaluate(el => {
           const style = getComputedStyle(el)
-          return [style.borderTopColor, style.borderLeftColor, style.borderRightColor]
+          return [style.borderTopColor, style.borderBottomColor, style.borderLeftColor, style.borderRightColor]
         })
-        expect(sides).toEqual(Array(3).fill('rgba(0, 0, 0, 0)'))
+        expect(sides).toEqual(Array(4).fill('rgba(0, 0, 0, 0)'))
+        continue
       }
       const ratio = await input.evaluate(el => {
         const style = getComputedStyle(el)

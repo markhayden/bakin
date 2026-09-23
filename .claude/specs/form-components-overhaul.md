@@ -316,11 +316,11 @@ use the existing 32px token-backed spacing for small controls. Keep the shared
 recipe private; do not publish a bag of arbitrary CSS values.
 
 - Outlined: canvas background and visible control border (at least 3:1 contrast).
-- Filled: elevated surface fill with a single bottom edge using the same
-  control-border token; transparent top/side borders reserve space for a complete
-  invalid border without layout shifts. This follows the user's visual review
-  requesting less perimeter contrast and clearer differentiation from outlined.
-  Verify visibility on canvas, default and elevated parents.
+- Filled: elevated surface fill with all borders transparent at rest, including
+  the bottom edge, as explicitly requested in the user's screenshot review.
+  Reserved border space allows a complete invalid border without layout shifts.
+  Identify the field through its visible label and fill; the resting 3:1 border
+  claim applies only to outlined. Keep focus and error treatments visible.
 - Ghost: transparent at rest, neutral surface hover and visible keyboard
   focus/invalid state. Reserve border space so interaction does not shift text.
 - Focus uses the established visible outline. Invalid state remains visible

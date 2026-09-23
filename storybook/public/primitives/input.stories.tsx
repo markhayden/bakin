@@ -60,7 +60,7 @@ export const CanonicalUsage = {
 } satisfies Story
 
 export const SizesAndVariants = {
-  parameters: { docs: { description: { story: 'Outlined uses a complete border. Filled emphasizes its surface with a single bottom edge; top and side borders are transparent at rest. Ghost is transparent at rest. All appearances retain visible focus and full invalid boundaries.' } } },
+  parameters: { docs: { description: { story: 'Outlined uses a complete border. Filled uses its background alone, with all borders transparent at rest. Ghost is transparent at rest. All appearances retain visible focus and full invalid boundaries.' } } },
   render: () => (
     <StoryStage eyebrow="Presentation" title="Input sizes and variants" description="Explicit presentation on the control; labels and validation remain with the field.">
       <Grid layout="split" gap="section">
@@ -154,7 +154,7 @@ export const StatesAndMobileModes = {
 } satisfies Story
 
 export const SurfaceContexts = {
-  render: () => <StoryStage eyebrow="Surface contrast" title="Field appearances on surfaces" description="Outlined borders, filled surfaces with a bottom edge, and ghost controls preserve focus and error treatment across their parent surfaces.">
+  render: () => <StoryStage eyebrow="Surface contrast" title="Field appearances on surfaces" description="Outlined borders, borderless filled surfaces, and ghost controls preserve focus and error treatment across their parent surfaces.">
     {[['Canvas', 'bg-bakin-canvas-default'], ['Default surface', 'bg-bakin-surface-default'], ['Elevated surface', 'bg-bakin-surface-elevated']].map(([label, background]) => <StorySection key={label} title={label}><div className={`${background} rounded-bakin-control p-bakin-4`}><Grid layout="split" gap="section">{(['outlined', 'filled', 'ghost'] as const).map(variant => <Field key={variant}><FieldLabel>{label} {variant}</FieldLabel><Input variant={variant} defaultValue="Editable value" /></Field>)}</Grid></div></StorySection>)}
     <StorySection title="Invalid and readonly"><Grid layout="split" gap="section">{(['outlined', 'filled', 'ghost'] as const).map(variant => <Field key={variant} invalid><FieldLabel>{variant} invalid</FieldLabel><Input variant={variant} defaultValue="Review this value" readOnly /><FieldError match>Update this value at its source.</FieldError></Field>)}</Grid></StorySection>
   </StoryStage>,
