@@ -240,3 +240,35 @@ implementation. Later Core evidence/census commits do not change that SDK packag
   subsequent Core commits contain review records and companion pin updates only.
 - Final quick conformance passes (228 architecture tests plus types); Bits build
   compiles Projects, Terminal and Messaging. Required CI remains in progress.
+
+
+## Completed validation and handoff — 2026-09-23
+
+Main advanced during implementation. Merge `dc047ffa3990f748d96e3d922a769f793e652f77`
+incorporates Spend and the isolated CI runner fixes. Generated census, migration
+ledger and canonical CSS conflicts were resolved through their owning generators.
+Relative to current main, the payload diff remains exactly the four approved
+numeric ceilings. No extra ceiling, snapshot, suppression or exception was added.
+
+Final Core implementation CI: [run 35921296006](https://github.com/markhayden/bakin/actions/runs/35921296006).
+All 17 required jobs passed: standard checks/docs/build/payload, six normal and
+stamped-host unit shards, completeness, deterministic catalog/conformance runner,
+both Storybook shards, all canonical visual baselines, Chromium/Firefox/WebKit
+behavior, and the aggregate UI gate. Local merged verification also passed quick
+conformance (228 architecture tests/types), lint, 9,896 unit tests (19 skipped),
+production builds, payload, and deterministic Storybook. `ui:conformance --full`
+was invoked locally; its redundant Storybook rerun was stopped after the complete
+canonical CI matrix passed. The passing CI lanes provide the remaining full-suite
+evidence rather than claiming an interrupted local wrapper completed.
+
+Final Projects CI: [run 35921387976](https://github.com/markhayden/bakin-bits-official/actions/runs/35921387976).
+Both required jobs passed at `568601a`. CI pins the exact merged Core prerequisite
+`dc047ffa3990f748d96e3d922a769f793e652f77`. All ten installed-SDK UI fixtures and
+all eight Projects interaction scenarios also passed locally against that merged
+package. Bits unit/type/lint/build checks passed (645 tests, 8 opt-in skips).
+
+The final code review findings are resolved, every audit finding has closure in
+Projects UI-AUDIT, and all 30 planned tasks are complete. Merge Core #919 first,
+then Bits #108. No merge, release, package publication or live installation was
+performed. Roll back the consumer first and preserve receipt metadata before any
+older-writer downgrade. The pre-kickoff stash and maintainer Storybook are intact.

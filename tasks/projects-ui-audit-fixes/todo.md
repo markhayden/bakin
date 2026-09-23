@@ -42,11 +42,11 @@ evidence when checking an item; a written plan is not a passing test.
 - [x] T25: Make detail behavior a required browser gate
 - [x] T26: Coordinate exact SDK package, canonical CSS and CI pin
 - [x] T27: Finish docs and finding-by-finding closure
-- [ ] T28: Final review, conformance and PR handoff
+- [x] T28: Final review, conformance and PR handoff
 
 - [x] Exact 12 shared foundation visual candidates approved and verified; any later candidates require their own approval.
-- [ ] All audit findings closed with linked evidence.
-- [ ] Both PRs pass checks at their final heads.
-- [ ] Handoff includes Core host prerequisite, exact SDK pin and rollback order.
+- [x] All audit findings closed with linked evidence.
+- [x] Both implementation heads pass all required CI checks (linked final runs in evidence).
+- [x] Handoff includes Core host prerequisite, exact SDK pin and rollback order.
 
 Merge, release and production installation require separate user instruction.
