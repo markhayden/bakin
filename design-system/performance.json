@@ -292,7 +292,7 @@
       "repository": "bakin",
       "pluginId": "spend",
       "path": "plugins/spend/dist/client.js",
-      "bytes": 44155
+      "bytes": 56726
     },
     {
       "repository": "bakin",
