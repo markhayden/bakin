@@ -91,6 +91,7 @@ interface PackageJson {
   peerDependencies?: Record<string, string>
   peerDependenciesMeta?: Record<string, { optional?: boolean }>
   dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
   repository?: unknown
   homepage?: string
   bugs?: unknown
@@ -426,11 +427,15 @@ function buildDependencies(outDir: string, sourceSdkPkg: PackageJson): Record<st
   const deps: Record<string, string> = {}
   for (const name of collectBareDeclarationDependencies(outDir)) {
     if (name in sourcePeers) continue
-    const version = rootDeps[name]
+    // Declaration-only modules (for example mdast) are supplied by Definitely
+    // Typed, not by the obsolete/runtime package with the same bare name.
+    const typesName = `@types/${name.replace(/^@/, '').replace('/', '__')}`
+    const dependencyName = rootDeps[name] ? name : typesName
+    const version = rootDeps[name] ?? rootDeps[typesName] ?? rootPkg.devDependencies?.[typesName]
     if (!version) {
       throw new Error(`No package.json version found for SDK declaration dependency: ${name}`)
     }
-    deps[name] = version
+    deps[dependencyName] = version
   }
   return deps
 }
