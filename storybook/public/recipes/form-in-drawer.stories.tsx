@@ -140,7 +140,9 @@ export const EditFlow = {
     // The row action opens the drawer-hosted form.
     await userEvent.click(canvas.getByRole('button', { name: 'Edit agent' }))
     const drawer = await page.findByRole('dialog', { name: 'Edit agent' })
-    await expect(within(drawer).getByRole('region', { name: 'Profile' })).toBeVisible()
+    // The dialog is in the tree a beat before its open transition finishes;
+    // under a loaded runner a synchronous visibility check here loses the race.
+    await waitFor(() => expect(within(drawer).getByRole('region', { name: 'Profile' })).toBeVisible())
 
     // Editing stages a draft; closing while dirty demands an explicit decision.
     const name = within(drawer).getByLabelText('Display name')
