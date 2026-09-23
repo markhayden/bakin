@@ -7,8 +7,8 @@
  * runtime honors.
  */
 import type { ComponentType, ReactNode } from 'react'
-import { DisclosurePanel } from '@makinbakin/sdk/layout'
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Text } from '@makinbakin/sdk/ui'
+import { Grid } from '@makinbakin/sdk/layout'
+import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Overline, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Text } from '@makinbakin/sdk/ui'
 
 // The full ordered ladder; the active runtime's declared support filters it.
 export const ALL_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'] as const
@@ -38,7 +38,7 @@ export interface GuideCardProps {
   actions?: ReactNode
 }
 
-/** Opens each Advanced tab: the purpose in plain words always visible; the things worth weighing one click away, stacked. */
+/** Opens each Advanced tab: the purpose in plain words, then the things worth weighing as a railed strip (the stat-strip rhythm, with prose in place of numbers). */
 export function GuideCard({ icon: Icon, title, lead, points, actions }: GuideCardProps) {
   return (
     <Card data-slot="models-guide" className="bg-bakin-surface-subtle">
@@ -59,16 +59,14 @@ export function GuideCard({ icon: Icon, title, lead, points, actions }: GuideCar
         </div>
       </CardHeader>
       <CardContent>
-        <DisclosurePanel variant="ghost" summary="What to consider" summaryMeta={`${points.length} points`} data-testid="guide-points">
-          <ul className="m-0 flex list-none flex-col gap-bakin-3 p-0">
-            {points.map((point) => (
-              <li key={point.heading} className="min-w-0 max-w-prose">
-                <span className="font-bakin-typography-weight-semibold text-bakin-text-primary">{point.heading}</span>
-                <Text as="span" size="meta" tone="muted" className="leading-relaxed"> — {point.body}</Text>
-              </li>
-            ))}
-          </ul>
-        </DisclosurePanel>
+        <Grid layout="thirds" gap="item" align="stretch" data-testid="guide-points">
+          {points.map((point) => (
+            <div key={point.heading} className="min-w-0 border-s border-bakin-border-subtle py-bakin-2 ps-bakin-4">
+              <Overline>{point.heading}</Overline>
+              <Text as="p" size="meta" tone="muted" className="mt-bakin-2 leading-relaxed">{point.body}</Text>
+            </div>
+          ))}
+        </Grid>
       </CardContent>
     </Card>
   )
