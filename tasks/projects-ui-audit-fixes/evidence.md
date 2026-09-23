@@ -212,3 +212,31 @@ Projects is staged at 0.11.0. Shared author guidance uses the current conversati
 API, and generated tool/hook documentation reflects the new lifecycle contract.
 The exact fetchable Core prerequisite will be pinned in Bits CI before PR handoff.
 No runtime data, release tag, published SDK, or production installation changed.
+
+
+## Final independent review and corrections
+
+A separate read-only code review covered durable operations, concurrency, stale
+identity, and draft ownership. Two confirmed findings were reproduced by failing
+regressions, then fixed: a deleted add receipt could let Save All exit successfully,
+and a legacy item without a UUID could transfer its draft to a replacement using
+the same display ID. Deleted receipts now retain an unresolved draft with an
+explicit discard action; every instance-identity transition preserves the old draft
+as removed/replaced. Neither path silently recreates or overwrites an item.
+
+All 645 Bits tests pass (8 skipped), and all eight detail browser scenarios pass,
+including the deleted-receipt Save All decision. Typecheck/lint and payload gates
+pass. The promotion reservation/recovery review found no further confirmed defect.
+The exact published Core prerequisite pinned by Bits CI is
+`d361de367a69ea1887adffa4abaee0f979b090c2`; it contains the complete host/SDK/CSS
+implementation. Later Core evidence/census commits do not change that SDK package.
+
+## Linked review branches
+
+- Core foundation: https://github.com/markhayden/bakin/pull/919
+- Projects consumer: https://github.com/markhayden/bakin-bits-official/pull/108
+- Reviewed consumer checkpoint: `454f66c` (Core compatibility matrix pins its full SHA).
+- Merge Core first. Bits CI pins `d361de367a69ea1887adffa4abaee0f979b090c2`;
+  subsequent Core commits contain review records and companion pin updates only.
+- Final quick conformance passes (228 architecture tests plus types); Bits build
+  compiles Projects, Terminal and Messaging. Required CI remains in progress.

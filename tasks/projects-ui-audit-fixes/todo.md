@@ -40,7 +40,7 @@ evidence when checking an item; a written plan is not a passing test.
 - [x] T23: Finish detail layout, headings, labels and asset feedback
 - [x] T24: Consume canonical Markdown comparison in Projects
 - [x] T25: Make detail behavior a required browser gate
-- [ ] T26: Coordinate exact SDK package, canonical CSS and CI pin
+- [x] T26: Coordinate exact SDK package, canonical CSS and CI pin
 - [x] T27: Finish docs and finding-by-finding closure
 - [ ] T28: Final review, conformance and PR handoff
 
