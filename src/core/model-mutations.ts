@@ -28,11 +28,12 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, w
 import { join } from 'path'
 import type { AgentRuntimeAdapter, RuntimeRoutingPolicy, UpdateRuntimeAgentInput } from '@bakin/core/adapters/runtime'
 import { createLogger } from '@/core/logger'
-import { getModelEligibility, type EligibilityDeps, type OpenRejection } from '@/core/model-eligibility'
+import type { EligibilityDeps, OpenRejection } from '@/core/model-eligibility'
 import {
   computeRevision,
   documentOf,
   enumerateSelections,
+  evaluateSelections,
   proposeRepairs,
   type Proposal,
   type SelectionDocument,
@@ -190,12 +191,20 @@ function writeSnapshot(stateDir: string, revision: string, states: SelectionStat
   return file
 }
 
-/** Snapshot → current diff: every ref that differs becomes an op; refs present now but absent then are cleared. */
+/** True when a state carries a real thinking override (absent / `inherit` do not). */
+function hasThinking(s: Pick<SelectionState, 'thinking'>): boolean {
+  return s.thinking !== undefined && s.thinking !== 'inherit'
+}
+
+/**
+ * Snapshot → current diff: every ref that differs becomes an op; refs
+ * present now but absent then are cleared. FULL state: the page mode rides
+ * along, and a thinking-only override (a tag with no model) counts.
+ */
 export function buildRestoreOps(snapshot: readonly SelectionState[], current: readonly SelectionState[]): MutationOp[] {
   const ops: MutationOp[] = []
   const currentByRef = new Map(current.map((s) => [s.ref, s]))
   for (const s of snapshot) {
-    if (s.ref === 'ui:mode') continue
     const c = currentByRef.get(s.ref)
     if (c && c.model === s.model && (c.thinking ?? null) === (s.thinking ?? null)) continue
     const set: MutationOp['set'] = { model: s.model }
@@ -204,7 +213,7 @@ export function buildRestoreOps(snapshot: readonly SelectionState[], current: re
   }
   const snapshotRefs = new Set(snapshot.map((s) => s.ref))
   for (const c of current) {
-    if (c.ref === 'ui:mode' || snapshotRefs.has(c.ref) || c.model === null) continue
+    if (snapshotRefs.has(c.ref) || (c.model === null && !hasThinking(c))) continue
     // Only refs that can be REMOVED are cleared (fallbacks, aliases, tags);
     // fixed refs (routes, agents, policy defaults) absent from a snapshot
     // simply were not captured and are left alone.
@@ -290,17 +299,21 @@ export function createSelectionMutator(deps: MutationDeps) {
     const byRef = new Map(states.map((s) => [s.ref, s]))
     const warnings: string[] = []
 
-    // Eligibility for every model being SET, plus the current states (for proposals).
-    const targets = ops.map((o) => o.set.model).filter((m): m is string => typeof m === 'string' && m.length > 0)
-    const report = await getModelEligibility(deps.runtime, { extraIds: [...targets, ...states.map((s) => s.model).filter((m): m is string => Boolean(m))] }, eligibilityDeps)
+    // Eligibility for every model being SET, plus the current states (for
+    // proposals) — each judged under the credentials of the agent it belongs
+    // to (an agent pin is only as runnable as THAT agent's keys).
+    const targets: SelectionState[] = ops
+      .filter((o) => typeof o.set.model === 'string' && o.set.model.length > 0)
+      .map((o) => ({ ref: o.ref, model: o.set.model as string, document: documentOf(o.ref), label: o.ref }))
+    const evaluation = await evaluateSelections(deps.runtime, [...targets, ...states], eligibilityDeps)
     for (const op of ops) {
       const parsed = parseRef(op.ref)
       if (parsed.kind === 'ui') continue
       const model = op.set.model
       if (typeof model !== 'string' || model.length === 0) continue
-      const e = report.byModel.get(model)?.eligibility
+      const e = evaluation.eligibilityOf({ ref: op.ref, model })
       if (e?.status === 'ineligible') {
-        const [proposal] = proposeRepairs([{ ref: op.ref, model, document: documentOf(op.ref), label: op.ref }], report, { recommendFor: deps.recommendFor ?? (() => null), revision })
+        const [proposal] = proposeRepairs([{ ref: op.ref, model, document: documentOf(op.ref), label: op.ref }], evaluation.reportFor, { recommendFor: deps.recommendFor ?? (() => null), revision })
         throw new MutationRefused('model_not_eligible', `${model} cannot run here: ${e.detail}`, { ref: op.ref, reason: e.reason, ...(proposal && proposal.to ? { proposal } : {}) })
       }
       if (!e || e.status === 'unknown') warnings.push(`${op.ref}: could not verify ${model} (${e?.detail ?? 'no evidence'}) — saved anyway`)
@@ -431,7 +444,13 @@ export function createSelectionMutator(deps: MutationDeps) {
 
     const result: MutateResult = { applied: [], failed: [], pending: [], warnings, revision }
     // A retried document whose earlier record FAILED is being replaced now.
-    let liveRecords = records.filter((r) => !(r.failed && writes.some((w) => w.document === r.document)))
+    // Every write to the pending file below re-reads it first: a detached
+    // settle can land while a LATER write is still awaiting its deadline,
+    // and writing from a stale in-memory list would resurrect that record
+    // (a document reserved until restart).
+    const retried = new Set(writes.map((w) => w.document))
+    const dropReplacedFailures = (list: PendingRecord[]) => list.filter((r) => !(r.failed && retried.has(r.document)))
+    writePending(deps.stateDir, dropReplacedFailures(records))
 
     for (const w of writes) {
       let settled = false
@@ -453,8 +472,7 @@ export function createSelectionMutator(deps: MutationDeps) {
       // Unsettled past the deadline: record + reserve; the detached promise owns the release.
       void settled
       const record: PendingRecord = { document: w.document, refs: w.refs, previous: w.previous, intended: w.intended, startedAt: Date.now(), revision, bootId: deps.bootId }
-      liveRecords = [...liveRecords.filter((r) => r.document !== w.document), record]
-      writePending(deps.stateDir, liveRecords)
+      writePending(deps.stateDir, [...readPending(deps.stateDir).filter((r) => r.document !== w.document), record])
       result.pending.push(...w.refs.map((ref) => ({ ref, intended: w.intended[ref] ?? null })))
       const detached = promise.then(
         () => {
@@ -471,7 +489,6 @@ export function createSelectionMutator(deps: MutationDeps) {
       )
       unsettled.set(w.document, detached)
     }
-    if (result.pending.length === 0 && liveRecords.length !== records.length) writePending(deps.stateDir, liveRecords)
 
     result.revision = computeRevision(await currentStates())
     deps.audit?.('models.selections_mutated', {

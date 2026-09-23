@@ -19,7 +19,8 @@
  */
 import { createHash } from 'crypto'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
-import type { EligibilityReport } from '@/core/model-eligibility'
+import { getModelEligibility, type Eligibility, type EligibilityDeps, type EligibilityOptions, type EligibilityReport, type EvidenceStatus } from '@/core/model-eligibility'
+import { mapModelToCatalog } from '@/core/model-id-map'
 import { ROUTABLE_WORK_CLASSES, type RoutingConfig, type ThinkingSetting, type WorkClass } from '@/core/model-routing'
 
 export type SelectionDocument = 'policy' | `agent:${string}` | 'routing'
@@ -109,19 +110,74 @@ export function computeRevision(states: readonly SelectionState[]): string {
   return createHash('sha256').update(rows.join('\n')).digest('hex').slice(0, 24)
 }
 
+export { mapModelToCatalog }
+
+/** The agent a ref belongs to (`agent:<id>:model` / `agent:<id>:subagentModel`), else null. */
+function agentOfRef(ref: string): string | null {
+  const m = /^agent:([^:]+):/.exec(ref)
+  return m ? m[1]! : null
+}
+
+const EVIDENCE_RANK: Record<EvidenceStatus, number> = { ok: 0, partial: 1, failed: 2 }
+function worst(a: EvidenceStatus, b: EvidenceStatus): EvidenceStatus {
+  return EVIDENCE_RANK[b] > EVIDENCE_RANK[a] ? b : a
+}
+
+export interface SelectionEvaluation {
+  /** The report for refs that are not agent-scoped (runtime policy, routing, page mode). */
+  report: EligibilityReport
+  /** The report a selection is judged by: an agent pin uses THAT agent's credentials (OpenClaw keys them per agent). */
+  reportFor(state: Pick<SelectionState, 'ref'>): EligibilityReport
+  eligibilityOf(state: Pick<SelectionState, 'ref' | 'model'>): Eligibility | undefined
+  /** Worst evidence across every report consulted. */
+  evidence: EligibilityReport['evidence']
+}
+
 /**
- * Map a source model id onto a target catalog:
- *   1. exact id match → as-is
- *   2. UNIQUE bare-model match (`anything/<model>` present exactly once) →
- *      the target's qualified id (catalogs differ per runtime/provider:
- *      `openai/gpt-5.5` ↔ `openai-codex/gpt-5.5`)
- *   3. otherwise null — reported, never guessed.
+ * Evaluate every selection under the RIGHT credentials: one unscoped report
+ * for policy/routing refs, plus one per agent that holds a pin — an
+ * unscoped read condemns a pin the agent can run (or admits one it cannot)
+ * whenever credentials differ per agent.
  */
-export function mapModelToCatalog(sourceModel: string, targetCatalog: readonly string[]): string | null {
-  if (targetCatalog.includes(sourceModel)) return sourceModel
-  const bare = sourceModel.includes('/') ? sourceModel.slice(sourceModel.indexOf('/') + 1) : sourceModel
-  const matches = targetCatalog.filter((id) => id === bare || id.endsWith(`/${bare}`))
-  return matches.length === 1 ? matches[0]! : null
+export async function evaluateSelections(
+  runtime: AgentRuntimeAdapter,
+  states: readonly SelectionState[],
+  deps?: EligibilityDeps,
+  opts: Pick<EligibilityOptions, 'catalog' | 'epoch'> = {},
+): Promise<SelectionEvaluation> {
+  const modelOf = (s: SelectionState) => (s.ref !== 'ui:mode' && typeof s.model === 'string' && s.model.length > 0 ? s.model : null)
+  const unscopedIds = states.filter((s) => agentOfRef(s.ref) === null).map(modelOf).filter((m): m is string => m !== null)
+  const byAgent = new Map<string, string[]>()
+  for (const s of states) {
+    const agentId = agentOfRef(s.ref)
+    const model = modelOf(s)
+    if (!agentId || !model) continue
+    byAgent.set(agentId, [...(byAgent.get(agentId) ?? []), model])
+  }
+  const [report, ...agentReports] = await Promise.all([
+    getModelEligibility(runtime, { ...opts, extraIds: unscopedIds }, deps),
+    ...[...byAgent].map(([agentId, ids]) => getModelEligibility(runtime, { ...opts, agentId, extraIds: ids }, deps).then((r) => [agentId, r] as const)),
+  ])
+  const perAgent = new Map(agentReports)
+  const reportFor = (state: Pick<SelectionState, 'ref'>) => {
+    const agentId = agentOfRef(state.ref)
+    return (agentId ? perAgent.get(agentId) : undefined) ?? report
+  }
+  let evidence = report.evidence
+  for (const r of perAgent.values()) {
+    evidence = {
+      catalog: worst(evidence.catalog, r.evidence.catalog),
+      runtimeAvailability: worst(evidence.runtimeAvailability, r.evidence.runtimeAvailability),
+      credentials: worst(evidence.credentials, r.evidence.credentials),
+      rejections: worst(evidence.rejections, r.evidence.rejections),
+    }
+  }
+  return {
+    report,
+    reportFor,
+    eligibilityOf: (state) => (state.model ? reportFor(state).byModel.get(state.model)?.eligibility : undefined),
+    evidence,
+  }
 }
 
 export type ProposalSource = 'same-id-credentialed-provider' | 'recommender' | 'none'
@@ -143,12 +199,32 @@ export interface ProposeOptions {
   revision: string
 }
 
-/** One proposal per DEAD selection (ineligible). Unknown eligibility ⇒ no proposal (missing evidence is not a defect). */
-export function proposeRepairs(states: readonly SelectionState[], report: EligibilityReport, opts: ProposeOptions): Proposal[] {
-  const eligibleIds = [...report.byModel.entries()].filter(([, e]) => e.eligibility.status === 'eligible').map(([id]) => id)
+/**
+ * One proposal per DEAD selection (ineligible). Unknown eligibility ⇒ no
+ * proposal (missing evidence is not a defect). `report` is one report for
+ * every state, or a per-state resolver (`evaluateSelections().reportFor`) so
+ * an agent pin is judged — and repaired — under its own credentials.
+ */
+export function proposeRepairs(
+  states: readonly SelectionState[],
+  report: EligibilityReport | ((state: SelectionState) => EligibilityReport),
+  opts: ProposeOptions,
+): Proposal[] {
+  const reportOf = typeof report === 'function' ? report : () => report
+  const eligibleCache = new Map<EligibilityReport, string[]>()
+  const eligibleIn = (r: EligibilityReport) => {
+    let ids = eligibleCache.get(r)
+    if (!ids) {
+      ids = [...r.byModel.entries()].filter(([, e]) => e.eligibility.status === 'eligible').map(([id]) => id)
+      eligibleCache.set(r, ids)
+    }
+    return ids
+  }
   const proposals: Proposal[] = []
   for (const state of states) {
     if (state.ref === 'ui:mode' || !state.model) continue
+    const report = reportOf(state)
+    const eligibleIds = eligibleIn(report)
     const entry = report.byModel.get(state.model)
     if (!entry || entry.eligibility.status !== 'ineligible') continue
     const sameId = mapModelToCatalog(state.model, eligibleIds)

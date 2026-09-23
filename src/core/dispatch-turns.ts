@@ -478,7 +478,13 @@ export async function modelHoldFor(
           eligibilityMemo.set(agentId, { at: now, report })
           return report
         })()
-    const entry = report.byModel.get(model)
+    // The report is keyed by catalog id; a bare or provider-renamed id the
+    // runtime resolves itself (Pi accepts bare ids) maps onto its row here
+    // with the same rule the engine uses — never a hold on a working model.
+    const entry = report.byModel.get(model) ?? (() => {
+      const resolved = mapModelToCatalog(model, [...report.byModel.keys()])
+      return resolved ? report.byModel.get(resolved) : undefined
+    })()
     const verdict = entry?.eligibility
       ?? (report.evidence.catalog === 'ok'
         ? { status: 'ineligible' as const, reason: 'not_in_catalog' as const, detail: `${model} is not in the runtime's model catalog` }

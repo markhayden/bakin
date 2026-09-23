@@ -124,6 +124,24 @@ describe('getModelEligibility — facts → verdict', () => {
     expect(report.byModel.get('openai-codex/gpt-5.5')!.eligibility.status).toBe('unknown')
   })
 
+  it('a BARE model id the catalog lists under exactly one provider resolves to that row — Pi accepts bare ids, so a working selection is never not_in_catalog', async () => {
+    const report = await getModelEligibility(runtimeWith({ credentials: complete() }), { extraIds: ['gpt-5.5'] }, noRejections)
+    const entry = report.byModel.get('gpt-5.5')
+    expect(entry?.eligibility.status).toBe('eligible')
+    expect(entry?.resolvedTo).toBe('openai-codex/gpt-5.5')
+    // The resolved row's own facts carry through (a no-credentials row stays no_credentials).
+    expect(report.byModel.get('gpt-5.6-luna')).toBeUndefined()
+    const dead = await getModelEligibility(runtimeWith({ credentials: complete() }), { extraIds: ['gpt-5.6-luna'] }, noRejections)
+    expect(dead.byModel.get('gpt-5.6-luna')?.eligibility).toMatchObject({ status: 'ineligible', reason: 'no_credentials' })
+  })
+
+  it('an AMBIGUOUS bare id (listed under two providers) stays not_in_catalog — never a guess', async () => {
+    const catalog: RuntimeAvailableModel[] = [...CATALOG, { id: 'anthropic/gpt-5.5', available: true }]
+    const report = await getModelEligibility(runtimeWith({ catalog, credentials: complete() }), { extraIds: ['gpt-5.5'] }, noRejections)
+    expect(report.byModel.get('gpt-5.5')?.eligibility).toMatchObject({ status: 'ineligible', reason: 'not_in_catalog' })
+    expect(report.byModel.get('gpt-5.5')?.resolvedTo).toBeUndefined()
+  })
+
   it('a persisted selection the catalog lacks is not_in_catalog', async () => {
     const report = await getModelEligibility(runtimeWith({ credentials: complete() }), { extraIds: ['openai-codex/gpt-4.9-retired'] }, noRejections)
     expect(report.byModel.get('openai-codex/gpt-4.9-retired')!.eligibility).toMatchObject({ status: 'ineligible', reason: 'not_in_catalog' })

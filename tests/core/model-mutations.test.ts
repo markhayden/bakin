@@ -25,7 +25,7 @@ mock.module('../../src/core/logger', () => ({
 
 import { createMockRuntimeAdapter, mockCredentials } from '../../packages/core/src/adapters/runtime/testing'
 import type { RoutingConfig } from '../../src/core/model-routing'
-import { computeRevision, enumerateSelections, type SelectionState } from '../../src/core/model-selections'
+import { computeRevision, enumerateSelections, evaluateSelections, type SelectionState } from '../../src/core/model-selections'
 import {
   buildRestoreOps,
   MutationRefused,
@@ -47,12 +47,16 @@ interface Fixture {
   routing: { config: RoutingConfig; uiMode: 'simple' | 'advanced' | null }
   /** Make the next agents.update hang until `release()` is called. */
   hangNextUpdate(): { release(): void; fail(err: Error): void }
+  /** Make the next agents.update for ONE agent hang (several can be armed at once). */
+  hangUpdate(agentId: string): { release(): void; fail(err: Error): void }
 }
 
 function fixture(opts: { pi?: boolean; deadlineMs?: number; bootId?: string } = {}): Fixture {
   const agents = new Map<string, { model?: string; subagentModel?: string }>([['main', {}], ['enrich', { model: DEAD }]])
   const updateCalls: string[] = []
   let hang: { promise: Promise<void>; release(): void; fail(err: Error): void } | null = null
+  /** Per-agent hangs for overlapping-write scenarios (`hangUpdate(agentId)`). */
+  const hangs = new Map<string, { promise: Promise<void>; release(): void; fail(err: Error): void }>()
   const routing = { config: { routes: [], tagOverrides: [] } as RoutingConfig, uiMode: null as 'simple' | 'advanced' | null }
   const policy = { defaultModel: LIVE, fallbackModels: [] as string[], defaultSubagentModel: null as string | null, aliases: {} as Record<string, string> }
   const base = createMockRuntimeAdapter({
@@ -65,8 +69,9 @@ function fixture(opts: { pi?: boolean; deadlineMs?: number; bootId?: string } = 
       list: async () => [...agents.entries()].map(([id, a]) => ({ id, name: id, ...a })),
       update: async (id: string, patch: { model?: string | null; subagentModel?: string | null }) => {
         updateCalls.push(id)
-        const pending = hang
+        const pending = hang ?? hangs.get(id) ?? null
         hang = null
+        hangs.delete(id)
         if (pending) await pending.promise
         const a = agents.get(id)!
         if (patch.model !== undefined) { if (patch.model === null) delete a.model; else a.model = patch.model }
@@ -117,6 +122,13 @@ function fixture(opts: { pi?: boolean; deadlineMs?: number; bootId?: string } = 
       let fail!: (err: Error) => void
       const promise = new Promise<void>((res, rej) => { release = res; fail = rej })
       hang = { promise, release, fail }
+      return { release, fail }
+    },
+    hangUpdate(agentId: string) {
+      let release!: () => void
+      let fail!: (err: Error) => void
+      const promise = new Promise<void>((res, rej) => { release = res; fail = rej })
+      hangs.set(agentId, { promise, release, fail })
       return { release, fail }
     },
   }
@@ -171,6 +183,42 @@ describe('mutateSelections — validation', () => {
     expect(statuses.sort()).toEqual(['fulfilled', 'rejected'])
     const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult
     expect(rejected.reason).toMatchObject({ code: 'stale_revision' })
+  })
+})
+
+describe('mutateSelections — agent-scoped eligibility', () => {
+  /** Credentials keyed per agent (OpenClaw): only `enrich` holds an openai-codex key. */
+  function scoped(f: Fixture) {
+    f.deps.runtime.credentials = {
+      providers: async (opts?: { agentId?: string }) => ({
+        evidence: 'complete' as const,
+        providers: [{ providerId: 'openai-codex', configured: opts?.agentId === 'enrich' }, { providerId: 'openai', configured: false }],
+      }),
+    }
+  }
+
+  it('an agent pin is validated with THAT agent\'s credentials: accepted for the agent that holds the key, refused for one that does not', async () => {
+    const f = fixture()
+    scoped(f)
+    const m = createSelectionMutator(f.deps)
+    const codex = 'openai-codex/gpt-5.6-luna'
+    const ok = await m.mutate({ revision: await currentRevision(f.deps), ops: [{ ref: 'agent:enrich:model', set: { model: codex } }] })
+    expect(ok.applied).toEqual(['agent:enrich:model'])
+    await expect(m.mutate({ revision: await currentRevision(f.deps), ops: [{ ref: 'agent:main:model', set: { model: codex } }] }))
+      .rejects.toMatchObject({ code: 'model_not_eligible', status: 400 })
+  })
+
+  it('the inventory evaluates each agent pin under its own credentials (an unscoped read would condemn a working pin)', async () => {
+    const f = fixture()
+    scoped(f)
+    f.agents.get('enrich')!.model = 'openai-codex/gpt-5.6-luna'
+    const m = createSelectionMutator(f.deps)
+    const { states } = await m.reconcile()
+    const evaluated = await evaluateSelections(f.deps.runtime, states, { listOpenRejections: () => [] })
+    expect(evaluated.eligibilityOf(states.find((s) => s.ref === 'agent:enrich:model')!)?.status).toBe('eligible')
+    // The runtime default is judged unscoped — the key only `enrich` holds does not vouch for everyone.
+    expect(evaluated.eligibilityOf(states.find((s) => s.ref === 'policy:defaultModel')!)).toMatchObject({ status: 'ineligible', reason: 'no_credentials' })
+    expect(evaluated.eligibilityOf(states.find((s) => s.ref === 'agent:main:model')!)).toBeUndefined()
   })
 })
 
@@ -279,6 +327,28 @@ describe('mutateSelections — late-settling writes (S10)', () => {
     expect(existsSync(join(f.deps.stateDir, 'pending-writes.json')) ? JSON.parse(readFileSync(join(f.deps.stateDir, 'pending-writes.json'), 'utf8')).writes : []).toEqual([])
   })
 
+  it('a write that settles while a LATER write is still awaiting its deadline is released — the later timeout never resurrects it', async () => {
+    const f = fixture({ deadlineMs: 100 })
+    const a = f.hangUpdate('main')
+    f.hangUpdate('enrich') // stays hung: B ends the call as pending
+    const m = createSelectionMutator(f.deps)
+    const run = m.mutate({ revision: await currentRevision(f.deps), ops: [
+      { ref: 'agent:main:model', set: { model: ASTRA } },
+      { ref: 'agent:enrich:model', set: { model: ASTRA } },
+    ] })
+    // A times out at ~100 ms; B's write starts then. Settle A while B waits.
+    await new Promise((r) => setTimeout(r, 150))
+    a.release()
+    const result = await run
+    expect(result.pending.map((p) => p.ref).sort()).toEqual(['agent:enrich:model', 'agent:main:model'])
+    await new Promise((r) => setTimeout(r, 20))
+    const { pending } = await m.reconcile()
+    expect(pending.map((p) => p.document)).toEqual(['agent:enrich'])
+    // …so the settled document is writable again, not 409 write_pending forever.
+    const again = await m.mutate({ revision: (await m.reconcile()).revision, ops: [{ ref: 'agent:main:model', set: { model: null } }] })
+    expect(again.applied).toEqual(['agent:main:model'])
+  })
+
   it('a late FAILURE converts the record to failed and frees the document for Retry', async () => {
     const f = fixture({ deadlineMs: 30 })
     const m = createSelectionMutator(f.deps)
@@ -340,5 +410,23 @@ describe('buildRestoreOps — snapshot vs current → ops', () => {
       { ref: 'tag:urgent', set: { model: null, thinking: null } },
     ]))
     expect(ops).toHaveLength(5)
+  })
+
+  it('is FULL state: the page mode restores, and a thinking-only tag added since the snapshot is cleared', () => {
+    const snapshot: SelectionState[] = [
+      { ref: 'policy:defaultModel', model: LIVE, document: 'policy', label: '' },
+      { ref: 'ui:mode', model: 'advanced', document: 'routing', label: '' },
+    ]
+    const current: SelectionState[] = [
+      { ref: 'policy:defaultModel', model: LIVE, document: 'policy', label: '' },
+      { ref: 'ui:mode', model: 'simple', document: 'routing', label: '' },
+      { ref: 'tag:heavy', model: null, thinking: 'high', document: 'routing', label: '' },
+      { ref: 'tag:inert', model: null, thinking: 'inherit', document: 'routing', label: '' },
+    ]
+    expect(buildRestoreOps(snapshot, current)).toEqual(expect.arrayContaining([
+      { ref: 'ui:mode', set: { model: 'advanced' } },
+      { ref: 'tag:heavy', set: { model: null, thinking: null } },
+    ]))
+    expect(buildRestoreOps(snapshot, current)).toHaveLength(2)
   })
 })

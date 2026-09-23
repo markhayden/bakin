@@ -39,8 +39,8 @@ import { getInFlightTurnCount } from './dispatch-registry'
 import { resetSameAgentTurnsModeCache } from './dispatch-turns'
 import { createLogger } from './logger'
 import { reconcileRoster, type RosterCarryReport } from './roster-reconcile'
-import { getModelEligibility, resetEligibilityMemo } from './model-eligibility'
-import { enumerateSelections, proposeRepairs, computeRevision, type Proposal } from './model-selections'
+import { resetEligibilityMemo } from './model-eligibility'
+import { enumerateSelections, evaluateSelections, proposeRepairs, computeRevision, type Proposal } from './model-selections'
 import type { RoutingConfig } from './model-routing'
 import { getSettings, updateSettings } from './settings'
 import { snapshotAgentContent, carryAgentContent, previewWorkspaceCarry, type AgentContentSnapshot, type WorkspaceCarryReport } from './workspace-carry'
@@ -168,17 +168,16 @@ async function reconcileSelections(target: AgentRuntimeAdapter): Promise<DeadSel
     log.warn('routing config unavailable during selection reconcile; evaluating runtime selections only', { error: String(err) })
   }
   const states = await enumerateSelections(target, { routing })
-  const ids = states.filter((s) => s.ref !== 'ui:mode').map((s) => s.model).filter((m): m is string => typeof m === 'string' && m.length > 0)
-  const report = await getModelEligibility(target, { extraIds: ids })
+  const evaluation = await evaluateSelections(target, states)
   const revision = computeRevision(states)
-  const proposals = proposeRepairs(states.filter((s) => s.ref !== 'ui:mode'), report, { recommendFor: () => null, revision })
+  const proposals = proposeRepairs(states.filter((s) => s.ref !== 'ui:mode'), evaluation.reportFor, { recommendFor: () => null, revision })
   const byRef = new Map(states.map((s) => [s.ref, s]))
   return {
     dead: proposals.map((p) => {
       const state = byRef.get(p.ref)!
       return { ref: p.ref, label: state.label, model: p.from, detail: p.reason, proposal: p }
     }),
-    evidence: report.evidence,
+    evidence: evaluation.evidence,
   }
 }
 

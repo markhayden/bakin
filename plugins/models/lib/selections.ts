@@ -8,9 +8,8 @@ import { join } from 'path'
 import type { PluginContext } from '@bakin/core/plugin-types'
 import { getContentDir } from '../../../src/core/content-dir'
 import { getBootId } from '../../../src/core/boot-id'
-import { getModelEligibility } from '../../../src/core/model-eligibility'
 import { createSelectionMutator, type SelectionMutator } from '../../../src/core/model-mutations'
-import { proposeRepairs, type UiMode } from '../../../src/core/model-selections'
+import { evaluateSelections, proposeRepairs, type UiMode } from '../../../src/core/model-selections'
 import type { RoutingConfig } from '../../../src/core/model-routing'
 import type { ModelsPluginSettings } from '../types'
 import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
@@ -54,17 +53,17 @@ export function _resetSelectionMutator(): void {
 export async function describeSelections(ctx: PluginContext) {
   const mutator = getSelectionMutator(ctx)
   const { states, revision, pending } = await mutator.reconcile()
-  const ids = states.filter((s) => s.ref !== 'ui:mode').map((s) => s.model).filter((m): m is string => typeof m === 'string' && m.length > 0)
-  const report = await getModelEligibility(ctx.runtime, { extraIds: ids })
-  const proposals = proposeRepairs(states.filter((s) => s.ref !== 'ui:mode'), report, { recommendFor: () => null, revision })
+  // Each agent pin is judged under ITS agent's credentials (evaluateSelections).
+  const evaluation = await evaluateSelections(ctx.runtime, states)
+  const proposals = proposeRepairs(states.filter((s) => s.ref !== 'ui:mode'), evaluation.reportFor, { recommendFor: () => null, revision })
   return {
     revision,
     states: states.map((s) => ({
       ...s,
-      eligibility: s.model && s.ref !== 'ui:mode' ? report.byModel.get(s.model)?.eligibility ?? { status: 'unknown', detail: 'not evaluated' } : undefined,
+      eligibility: s.model && s.ref !== 'ui:mode' ? evaluation.eligibilityOf(s) ?? { status: 'unknown', detail: 'not evaluated' } : undefined,
     })),
     proposals,
     pending,
-    evidence: report.evidence,
+    evidence: evaluation.evidence,
   }
 }

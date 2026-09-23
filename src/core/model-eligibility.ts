@@ -17,6 +17,7 @@
 import type { AgentRuntimeAdapter, ProviderCredentialInventory, RuntimeAvailableModel } from '@bakin/core/adapters/runtime'
 import { createLogger } from '@/core/logger'
 import { listModelRejections } from '@/core/execution-ledger'
+import { mapModelToCatalog } from '@/core/model-id-map'
 
 const log = createLogger('model-eligibility')
 
@@ -40,7 +41,13 @@ export type Eligibility =
 export type EvidenceStatus = 'ok' | 'partial' | 'failed'
 
 export interface EligibilityReport {
-  byModel: Map<string, { eligibility: Eligibility; facts: EligibilityFacts; rejection?: OpenRejection }>
+  /**
+   * Keyed by the id as ASKED (an `extraIds` entry stays under its own key).
+   * A bare or provider-renamed id that maps onto exactly one catalog row is
+   * judged by that row and carries `resolvedTo` — the runtime resolves such
+   * ids itself (Pi accepts bare ids), so they are never `not_in_catalog`.
+   */
+  byModel: Map<string, { eligibility: Eligibility; facts: EligibilityFacts; rejection?: OpenRejection; resolvedTo?: string }>
   evidence: { catalog: EvidenceStatus; runtimeAvailability: EvidenceStatus; credentials: EvidenceStatus; rejections: EvidenceStatus }
   /** Runtime epoch the report was computed under; consumers discard reports from an older epoch. */
   epoch: number
@@ -194,11 +201,16 @@ export async function getModelEligibility(
   if (rejections.ok) for (const r of rejections.value) rejectionByModel.set(r.model, r)
 
   const ids = new Set<string>([...catalogById.keys(), ...(opts.extraIds ?? [])])
+  const catalogIds = [...catalogById.keys()]
   const byModel: EligibilityReport['byModel'] = new Map()
 
   for (const id of ids) {
-    const row = catalogById.get(id)
-    const provider = providerOf(id)
+    // An asked-for id the catalog does not list verbatim may still be a row
+    // under the runtime's own resolution (bare id, provider rename) — judge
+    // it by that row. Ambiguous ⇒ no resolution ⇒ not_in_catalog, never a guess.
+    const resolvedTo = !catalogById.has(id) && catalog.ok ? mapModelToCatalog(id, catalogIds) : null
+    const row = catalogById.get(resolvedTo ?? id)
+    const provider = providerOf(resolvedTo ?? id)
 
     const inCatalog: EligibilityFact = catalog.ok ? KNOWN(row !== undefined) : UNKNOWN
     const runtimeAvailable: EligibilityFact = catalog.ok && row ? KNOWN(row.available !== false) : UNKNOWN
@@ -213,7 +225,8 @@ export async function getModelEligibility(
       // partial inventory + provider absent ⇒ unknown, never credential-less
     }
 
-    const notRejected: EligibilityFact = rejections.ok ? KNOWN(!rejectionByModel.has(id)) : UNKNOWN
+    const rejection = rejectionByModel.get(id) ?? (resolvedTo ? rejectionByModel.get(resolvedTo) : undefined)
+    const notRejected: EligibilityFact = rejections.ok ? KNOWN(rejection === undefined) : UNKNOWN
 
     const facts: EligibilityFacts = {
       inCatalog,
@@ -222,11 +235,11 @@ export async function getModelEligibility(
       notRejected,
       ...(row?.unavailableReason ? { runtimeReason: row.unavailableReason } : {}),
     }
-    const rejection = rejectionByModel.get(id)
     byModel.set(id, {
       facts,
       eligibility: deriveEligibility(facts, { modelId: id, rejection }),
       ...(rejection ? { rejection } : {}),
+      ...(resolvedTo ? { resolvedTo } : {}),
     })
   }
 
