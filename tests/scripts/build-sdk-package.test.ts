@@ -98,6 +98,16 @@ describe('buildSdkPackage', () => {
       expect(readFileSync(join(outDir, exportConfig.import), 'utf8')).not.toContain('react/jsx-dev-runtime')
     }
 
+    // Official plugin fixtures consume the packed content entry in a browser.
+    // A Bun-targeted markdown bundle freezes vfile's Node-only URL/process
+    // imports, which cannot be resolved by a downstream browser build.
+    const browserContent = spawnSync('bun', [
+      'build', join(outDir, 'content/index.js'), '--target', 'browser',
+      '--outfile', join(testRoot, 'browser-content.js'),
+      '--external', 'react', '--external', 'react-dom',
+    ], { cwd: repoRoot, encoding: 'utf8' })
+    expect(browserContent.status).toBe(0)
+
     const runtime = await import(`${pathToFileURL(join(outDir, 'index.js')).href}?test=${Date.now()}`)
     expect(runtime.registerPlugin).toBeFunction()
     expect(runtime.defineRoute).toBeFunction()
