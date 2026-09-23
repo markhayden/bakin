@@ -7,13 +7,14 @@
  * enough to earn it.
  */
 import { Users } from 'lucide-react'
-import { useAgent, useAgentColor, useAgentStore } from '@makinbakin/sdk/hooks'
+import { useAgent, useAgentColor, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
 import { Section, Stack } from '@makinbakin/sdk/layout'
 import { AgentAvatar, DEFAULT_MODEL_VALUE, ListRow, ListRows, ModelSelect, type ModelSelectOption } from '@makinbakin/sdk/patterns'
 import { Badge, Field, FieldLabel, SystemState, Text } from '@makinbakin/sdk/ui'
 
 import { agentRows, type AgentRow } from '../lib/advanced'
-import { GuideCard, StagedMark } from './advanced-shared'
+import { GuideCard } from '@makinbakin/sdk/patterns'
+import { StagedMark } from './advanced-shared'
 import { PendingChip, SelectionCallout } from './selection-callout'
 import type { SelectionsData } from './use-selections'
 
@@ -47,8 +48,10 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
   const support = selections?.support
   const teams = useAgentStore((s) => s.teams)
   const displaySettings = useAgentStore((s) => s.displaySettings)
+  const mainAgentId = useMainAgentId()
   const agent = sel.effective('policy:defaultModel')
-  const rows = agentRows(states)
+  // The main agent (the orchestrator) always leads: first row of the first group.
+  const rows = [...agentRows(states)].sort((a, b) => Number(b.agentId === mainAgentId) - Number(a.agentId === mainAgentId))
   const highlight = sel.highlightRef
 
   // Group by the roster's teams (team order, then label); agents without a
@@ -60,6 +63,7 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
   const teamed = new Set(groups.flatMap((g) => g.rows.map((r) => r.agentId)))
   const rest = rows.filter((r) => !teamed.has(r.agentId))
   if (rest.length > 0) groups.push({ id: '__none', label: groups.length > 0 ? 'Not on a team' : 'Agents', rows: rest })
+  groups.sort((a, b) => Number(b.rows.some((r) => r.agentId === mainAgentId)) - Number(a.rows.some((r) => r.agentId === mainAgentId)))
   const pinned = rows.filter((r) => sel.effective(r.modelRef).model).length
 
   return (

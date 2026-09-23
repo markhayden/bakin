@@ -790,6 +790,7 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=components-charts-areachart--stacked-and-missing-data&viewMode=story', png: 'charts-area-chart.png', text: 'The line carries identity; the fill carries magnitude' },
   { url: '/iframe.html?id=components-charts-compositionbar--composition-strips&viewMode=story', png: 'charts-composition-bar.png', text: 'One strip for how a whole divides' },
   { url: '/iframe.html?id=components-charts-compositionbar--large-strip&viewMode=story', png: 'charts-composition-bar-large.png', role: 'list' as const, name: 'Agents by model legend' },
+  { url: '/iframe.html?id=components-layout-guidecard--opening-a-section&viewMode=story', png: 'layout-guide-card.png', text: 'Say what a surface is for before showing its controls' },
   { url: '/iframe.html?id=components-pages-page--aside-layout&viewMode=story', png: 'pages-page.png', role: 'complementary' as const, name: 'Workflow context' },
   { url: '/iframe.html?id=components-lists-datatable--sorted-paged-dual-render&viewMode=story', png: 'lists-data-table.png', text: 'Showing 4–6 of 8', unstableContent: true },
   { url: '/iframe.html?id=components-lists-datatable--narrow-roles&viewMode=story', png: 'lists-data-table-narrow.png', text: 'Narrow roles compose the mobile card' },

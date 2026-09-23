@@ -54,6 +54,7 @@ mock.module('@bakin/team/hooks/use-agent-store', () => ({
   useAgent: () => undefined,
   useAgentColor: () => '#a1a1aa',
   useAgentList: () => [],
+  useMainAgentId: () => 'main',
 }))
 
 interface FetchCall {

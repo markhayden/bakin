@@ -8,6 +8,7 @@
  * Every edit stages an op; the page's one SaveBar writes. The active tab
  * rides `?tab=` so a shared link opens the same section.
  */
+import type { ReactNode } from 'react'
 import { useQueryState } from '@makinbakin/sdk/navigation'
 import type { ModelSelectOption } from '@makinbakin/sdk/patterns'
 import { Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
@@ -20,6 +21,8 @@ import type { SelectionsData } from './use-selections'
 export interface AdvancedModeProps {
   sel: SelectionsData
   modelOptions: readonly ModelSelectOption[]
+  /** Rendered under the Overview tab only (the model catalog) — dead weight on Agents / Work routing. */
+  overviewFooter?: ReactNode
 }
 
 const TABS = [
@@ -37,7 +40,7 @@ function tabForRef(ref: string | null): TabId | null {
   return 'overview'
 }
 
-export function AdvancedMode({ sel, modelOptions }: AdvancedModeProps) {
+export function AdvancedMode({ sel, modelOptions, overviewFooter }: AdvancedModeProps) {
   const [tabParam, setTab] = useQueryState('tab', 'overview')
   const requested = TABS.some((t) => t.id === tabParam) ? (tabParam as TabId) : 'overview'
   const tab: TabId = tabForRef(sel.highlightRef) ?? requested
@@ -54,7 +57,12 @@ export function AdvancedMode({ sel, modelOptions }: AdvancedModeProps) {
         </TabsList>
       </Tabs>
       <div id={`models-advanced-panel-${tab}`} role="tabpanel" aria-labelledby={`models-advanced-tab-${tab}`} className="min-w-0">
-        {tab === 'overview' ? <AdvancedOverview sel={sel} modelOptions={modelOptions} /> : null}
+        {tab === 'overview' ? (
+          <div className="flex min-w-0 flex-col gap-bakin-8">
+            <AdvancedOverview sel={sel} modelOptions={modelOptions} />
+            {overviewFooter}
+          </div>
+        ) : null}
         {tab === 'agents' ? <AdvancedAgents sel={sel} modelOptions={modelOptions} /> : null}
         {tab === 'routing' ? <AdvancedRouting sel={sel} modelOptions={modelOptions} /> : null}
       </div>

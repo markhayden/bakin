@@ -125,6 +125,7 @@ export function ModelsPage() {
           state={shellState}
         >
           <SimpleMode sel={sel} modelOptions={catalog.modelSelectOptions} onAdvanced={() => sel.setView('advanced')} />
+          <CatalogPanel catalog={catalog} defaultModel={defaultModel} />
         </PageBody>
       ) : (
         <PageBody
@@ -133,11 +134,9 @@ export function ModelsPage() {
           labelledBy="models-mode-tab-advanced"
           state={shellState}
         >
-          <AdvancedMode sel={sel} modelOptions={catalog.modelSelectOptions} />
+          <AdvancedMode sel={sel} modelOptions={catalog.modelSelectOptions} overviewFooter={<CatalogPanel catalog={catalog} defaultModel={defaultModel} />} />
         </PageBody>
       )}
-
-      <CatalogPanel catalog={catalog} defaultModel={defaultModel} />
 
       {sel.dirty || sel.saveError || pendingFromSave.length > 0 ? (
         <SaveBar

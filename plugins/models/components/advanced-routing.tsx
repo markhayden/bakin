@@ -16,7 +16,8 @@ import { Alert, Button, Field, FieldLabel, Input, Text } from '@makinbakin/sdk/u
 
 import { effectiveTagOverrides } from '../lib/advanced'
 import { WORK_CLASSES } from '../lib/mode'
-import { ALL_THINKING_LEVELS, GuideCard, StagedMark, ThinkingSelect } from './advanced-shared'
+import { GuideCard } from '@makinbakin/sdk/patterns'
+import { ALL_THINKING_LEVELS, StagedMark, ThinkingSelect } from './advanced-shared'
 import { PendingChip, SelectionCallout } from './selection-callout'
 import type { SelectionsData } from './use-selections'
 
