@@ -51,7 +51,7 @@ export function AdvancedRouting({ sel, modelOptions }: AdvancedRoutingProps) {
         return (
           <div className="min-w-0" data-route-row={row.id} data-highlighted={highlight === `route:${row.id}` ? 'true' : undefined}>
             <div className="flex flex-wrap items-center gap-bakin-2">
-              <h4 className="m-0">{row.label}</h4>
+              <h3 className="m-0">{row.label}</h3>
               <StagedMark staged={eff.staged} />
               <PendingChip sel={sel} refName={`route:${row.id}`} />
             </div>
@@ -136,7 +136,7 @@ export function AdvancedRouting({ sel, modelOptions }: AdvancedRoutingProps) {
 
       <Section spacing="compact" aria-labelledby="agent-work-heading">
         <div className="min-w-0">
-          <h3 id="agent-work-heading" className="m-0">Agent work</h3>
+          <h2 id="agent-work-heading" className="m-0">Agent work</h2>
           <Text as="p" size="meta" tone="muted" className="mt-bakin-1 max-w-prose leading-relaxed">The turns your agents spend on tasks and conversations. Leave these on the agent model unless one kind consistently needs more (or less).</Text>
         </div>
         <DataTable label="Agent work routes" columns={routeColumns} rows={AGENT_WORK_ROWS} rowKey={(row) => row.id} rowProps={(row) => ({ 'data-routing-row': row.id })} />
@@ -144,7 +144,7 @@ export function AdvancedRouting({ sel, modelOptions }: AdvancedRoutingProps) {
 
       <Section spacing="compact" divider="top" aria-labelledby="chores-heading">
         <div className="min-w-0">
-          <h3 id="chores-heading" className="m-0">Background chores</h3>
+          <h2 id="chores-heading" className="m-0">Background chores</h2>
           <Text as="p" size="meta" tone="muted" className="mt-bakin-1 max-w-prose leading-relaxed">Small jobs Bakin runs on its own, many times a day. A light model here is the easiest saving on the page.</Text>
         </div>
         <DataTable label="Background chores routes" columns={routeColumns} rows={CHORES_ROWS} rowKey={(row) => row.id} rowProps={(row) => ({ 'data-routing-row': row.id })} />
@@ -153,7 +153,7 @@ export function AdvancedRouting({ sel, modelOptions }: AdvancedRoutingProps) {
       <Section spacing="compact" divider="top" aria-labelledby="tag-overrides-heading">
         <div className="flex min-w-0 flex-wrap items-end justify-between gap-bakin-3">
           <div className="min-w-0">
-            <h3 id="tag-overrides-heading" className="m-0">Tag overrides</h3>
+            <h2 id="tag-overrides-heading" className="m-0">Tag overrides</h2>
             <Text as="p" size="meta" tone="muted" className="mt-bakin-1 max-w-prose leading-relaxed">A task carrying this tag uses this model and thinking level before any route above is consulted. The first matching override wins.</Text>
           </div>
           <div className="flex flex-wrap items-end gap-bakin-2">

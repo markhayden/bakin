@@ -80,7 +80,7 @@ export function AdvancedAgents({ sel, modelOptions }: AdvancedAgentsProps) {
       ) : groups.map((group) => (
         <Section key={group.id} spacing="compact" aria-labelledby={`agents-group-${group.id}`} data-testid={`agents-group-${group.id}`}>
           <div className="flex min-w-0 items-center gap-bakin-2">
-            <h3 id={`agents-group-${group.id}`} className="m-0">{group.label}</h3>
+            <h2 id={`agents-group-${group.id}`} className="m-0">{group.label}</h2>
             <Badge tone="neutral" variant="soft" size="xs">{group.rows.length} agent{group.rows.length === 1 ? '' : 's'}</Badge>
           </div>
           <ListRows

@@ -7,6 +7,7 @@
  * runtime honors.
  */
 import type { ComponentType, ReactNode } from 'react'
+import { DisclosurePanel } from '@makinbakin/sdk/layout'
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Text } from '@makinbakin/sdk/ui'
 
 // The full ordered ladder; the active runtime's declared support filters it.
@@ -37,7 +38,7 @@ export interface GuideCardProps {
   actions?: ReactNode
 }
 
-/** Opens each Advanced tab: the purpose in plain words, then the things worth weighing before changing anything. */
+/** Opens each Advanced tab: the purpose in plain words always visible; the things worth weighing one click away, stacked. */
 export function GuideCard({ icon: Icon, title, lead, points, actions }: GuideCardProps) {
   return (
     <Card data-slot="models-guide" className="bg-bakin-surface-subtle">
@@ -58,16 +59,16 @@ export function GuideCard({ icon: Icon, title, lead, points, actions }: GuideCar
         </div>
       </CardHeader>
       <CardContent>
-        <dl className="grid min-w-0 gap-bakin-4 @2xl/page-shell:grid-cols-3">
-          {points.map((point) => (
-            <div key={point.heading} className="min-w-0">
-              <dt className="font-bakin-typography-weight-semibold text-bakin-text-primary">{point.heading}</dt>
-              <dd className="m-0 mt-bakin-1">
-                <Text as="span" size="meta" tone="muted" className="leading-relaxed">{point.body}</Text>
-              </dd>
-            </div>
-          ))}
-        </dl>
+        <DisclosurePanel variant="ghost" summary="What to consider" summaryMeta={`${points.length} points`} data-testid="guide-points">
+          <ul className="m-0 flex list-none flex-col gap-bakin-3 p-0">
+            {points.map((point) => (
+              <li key={point.heading} className="min-w-0 max-w-prose">
+                <span className="font-bakin-typography-weight-semibold text-bakin-text-primary">{point.heading}</span>
+                <Text as="span" size="meta" tone="muted" className="leading-relaxed"> — {point.body}</Text>
+              </li>
+            ))}
+          </ul>
+        </DisclosurePanel>
       </CardContent>
     </Card>
   )
