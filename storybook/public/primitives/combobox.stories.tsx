@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, waitFor, within } from 'storybook/test'
 import { Grid } from '@makinbakin/sdk/layout'
-import { Combobox, ComboboxControl, ComboboxInput, ComboboxTrigger, ComboboxClear, ComboboxContent, ComboboxList, ComboboxItem, ComboboxEmpty, ComboboxStatus, ComboboxGroup, ComboboxLabel, ComboboxValue, ComboboxChips, ComboboxChip, ComboboxChipRemove, Field, FieldLabel, Dialog, DialogTrigger, DialogContent, DialogTitle, DialogClose, Button } from '@makinbakin/sdk/ui'
+import { Combobox, ComboboxControl, ComboboxInput, ComboboxTrigger, ComboboxClear, ComboboxContent, ComboboxList, ComboboxItem, ComboboxEmpty, ComboboxStatus, ComboboxGroup, ComboboxLabel, ComboboxValue, ComboboxChips, ComboboxChip, ComboboxChipRemove, Field, FieldLabel, FieldError, Dialog, DialogTrigger, DialogContent, DialogTitle, DialogClose, Button } from '@makinbakin/sdk/ui'
+import { CompactSelectionExample, AsyncSelectionExample } from '../../support/combobox-examples'
 import { StoryStage, StorySection } from '../../support'
 
 const meta = {
@@ -58,7 +59,7 @@ export const MultipleSelection = {
     await expect(canvas.queryByRole('button', { name: 'Remove Pi' })).not.toBeInTheDocument()
     await expect(canvas.getByRole('combobox', { name: 'Allowed runtimes' })).toHaveFocus()
     await expect(canvas.getByRole('status')).toHaveTextContent('1 runtimes selected.')
-    await userEvent.keyboard('{Escape}')
+    canvas.getByRole('combobox', { name: 'Allowed runtimes' }).blur()
   },
 } satisfies Story
 
@@ -97,4 +98,76 @@ export const OverlayFixture = {
       <ComboboxContent><ComboboxEmpty>No runtimes found.</ComboboxEmpty><ComboboxList>{(item: string) => <ComboboxItem key={item} value={item}>{item}</ComboboxItem>}</ComboboxList></ComboboxContent>
     </Combobox></Field><DialogClose render={<Button variant="ghost" />}>Done</DialogClose>
   </DialogContent></Dialog>,
+} satisfies Story
+
+export const CompactAndObjectValues = {
+  render: () => <StoryStage eyebrow="Multiple choice" title="Chips or compact summary" description="Switch presentation without changing selected values; the query stays editable in both modes."><CompactSelectionExample /></StoryStage>,
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: 'Show compact summary' }))
+    await expect(canvas.getByText('Pi +1 more')).toBeVisible()
+    await expect(canvas.getByRole('combobox', { name: 'Object runtimes' })).toBeVisible()
+    await userEvent.click(canvas.getByRole('button', { name: 'Submit runtimes' }))
+    await expect(canvas.getByLabelText('Submitted runtime IDs')).toHaveTextContent('pi, claw')
+    await userEvent.click(canvas.getByRole('button', { name: 'Clear object runtimes' }))
+    await expect(canvas.getByText('No runtimes selected.')).toBeVisible()
+    await userEvent.click(canvas.getByRole('button', { name: 'Reset object runtimes' }))
+    await userEvent.click(canvas.getByRole('button', { name: 'Show chips' }))
+    await expect(canvas.getByRole('button', { name: 'Remove Pi' })).toBeVisible()
+    await expect(canvas.getByRole('button', { name: 'Remove OpenClaw' })).toBeVisible()
+  },
+} satisfies Story
+
+export const AsyncAndUnavailable = {
+  render: () => <StoryStage eyebrow="Caller-owned requests" title="Async catalog states" description="Loading, no matches and request failures stay distinct. An absent result never erases a selected value."><AsyncSelectionExample /></StoryStage>,
+  play: async ({ canvas, userEvent }) => {
+    const input = canvas.getByRole('combobox', { name: 'Remote runtime' })
+    await userEvent.type(input, 'error')
+    const page = within(document.body)
+    await expect(page.findByRole('button', { name: 'Retry runtime search' })).resolves.toBeVisible()
+    await expect(page.queryByText('No matching remote runtimes.')).not.toBeInTheDocument()
+    await userEvent.click(page.getByRole('button', { name: 'Retry runtime search' }))
+    await waitFor(() => expect(canvas.getByRole('status')).toHaveTextContent('3 runtimes available.'))
+    await userEvent.click(input)
+    ;(input as HTMLInputElement).select()
+    await userEvent.type(input, 'no-matches', { skipClick: true })
+    await waitFor(() => expect(canvas.getByRole('status')).toHaveTextContent('No matching remote runtimes.'))
+    await expect(canvas.getByText('Selected runtime: Pi')).toBeVisible()
+    await userEvent.keyboard('{Escape}')
+    await userEvent.click(canvas.getByRole('button', { name: 'Mark selected runtime unavailable' }))
+    await expect(input).toHaveAttribute('aria-invalid', 'true')
+    await expect(input).toHaveAccessibleDescription(/This runtime is no longer available/)
+    await userEvent.click(input)
+    ;(input as HTMLInputElement).select()
+    await userEvent.type(input, 'OpenClaw', { skipClick: true })
+    await userEvent.click(await page.findByRole('option', { name: /OpenClaw/ }))
+    await expect(input).not.toHaveAttribute('aria-invalid', 'true')
+    await expect(canvas.getByText('Selected runtime: OpenClaw')).toBeVisible()
+    await userEvent.click(canvas.getByRole('button', { name: 'Mark selected runtime unavailable' }))
+    await userEvent.click(canvas.getByRole('button', { name: 'Clear remote runtime' }))
+    await expect(input).not.toHaveAttribute('aria-invalid', 'true')
+    await expect(canvas.getByText('Selected runtime: None')).toBeVisible()
+  },
+} satisfies Story
+
+export const AsyncFixture = { render: () => <AsyncSelectionExample /> } satisfies Story
+
+export const ControlStates = {
+  render: () => <StoryStage eyebrow="Field state" title="Combobox states" description="Readonly preserves inspection; disabled prevents interaction; invalid state explains recovery."><Grid layout="split" gap="section">
+    {(['outlined', 'filled', 'ghost'] as const).flatMap(variant => ['readonly', 'disabled', 'invalid'].map(state => <Field key={`${variant}-${state}`} invalid={state === 'invalid'} disabled={state === 'disabled'}>
+      <FieldLabel>{variant} {state}</FieldLabel><Combobox items={['Pi', 'OpenClaw']} defaultValue={state === 'invalid' ? null : 'Pi'} readOnly={state === 'readonly'} disabled={state === 'disabled'} required={state === 'invalid'}>
+        <ComboboxControl variant={variant}><ComboboxInput /><ComboboxClear /><ComboboxTrigger /></ComboboxControl><ComboboxContent><ComboboxList>{(item: string) => <ComboboxItem key={item} value={item}>{item}</ComboboxItem>}</ComboboxList></ComboboxContent>
+      </Combobox>{state === 'invalid' ? <FieldError match>Choose an installed runtime.</FieldError> : null}
+    </Field>))}
+  </Grid></StoryStage>,
+  play: async ({ canvas }) => {
+    for (const variant of ['outlined', 'filled', 'ghost']) {
+      await expect(canvas.getByRole('combobox', { name: `${variant} readonly` })).toHaveAttribute('readonly')
+      await expect(canvas.getByRole('combobox', { name: `${variant} disabled` })).toBeDisabled()
+      await expect(canvas.getByRole('combobox', { name: `${variant} invalid` })).toHaveAccessibleDescription('Choose an installed runtime.')
+      for (const state of ['readonly', 'disabled', 'invalid']) {
+        const shell = canvas.getByRole('combobox', { name: `${variant} ${state}` }).closest('[data-slot=combobox-control]')!
+        await expect(shell.getBoundingClientRect().height).toBe(36)
+      }
+    }
+  },
 } satisfies Story

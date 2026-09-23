@@ -708,7 +708,7 @@ FieldControl delegates presentation to its rendered control.
 
 Outlined provides an ordinary form boundary, filled uses a contrasting
 surface, and ghost supports compact inline contexts. Every appearance retains
-labels, associated help/errors and keyboard focus. A placeholder is not a label.
+labels, associated help/errors and keyboard focus. Empty-value hints do not replace labels.
 
 The text-field set standardizes the native entry controls and their composable adornments:
 
@@ -1610,7 +1610,7 @@ SelectTrigger accepts `size="sm|md|lg"`, `variant="outlined|filled|ghost"`, and
 `width="auto|full"` (default auto). Use full width in forms. Multiple Select
 values are summarized through SelectValue's render function as the first label
 plus “+N more”; the popup exposes every selected option. Supply `items` labels
-and `SelectItem label` for rich option typeahead. `null` means a placeholder;
+and `SelectItem label` for rich option typeahead. `null` means no selection;
 an empty-string option is an explicit selectable “None” choice. Select has no
 editable search input; use Combobox for searchable selection.
 
@@ -1628,7 +1628,7 @@ trigger, clear, value, content, list, item, group/label, empty/status and chips.
   <FieldLabel>Runtime</FieldLabel>
   <Combobox items={['Pi', 'OpenClaw']}>
     <ComboboxControl size="md" variant="outlined">
-      <ComboboxInput placeholder="Search runtimes" />
+      <ComboboxInput />
       <ComboboxClear aria-label="Clear runtime" />
       <ComboboxTrigger aria-label="Show runtimes" />
     </ComboboxControl>
@@ -1644,6 +1644,30 @@ Control width defaults to `full`; `auto` is available for constrained toolbars.
 Put size/variant on ComboboxControl. The input accepts `htmlSize` for native
 width hints. Object values should provide `itemToStringLabel`,
 `itemToStringValue` and `isItemEqualToValue` with stable IDs. The root preserves
-Base UI's controlled/uncontrolled callbacks, including event details.
+Base UI's controlled/uncontrolled callbacks, including event details. A native
+form reset does not reset Combobox selection in the installed Base UI version.
+Use a controlled value and restore it in Form's onReset, as shown in
+Field and form composition/FoundationControls. Form submission serializes
+object options to their itemToStringValue IDs; uncontrolled native Textarea
+values reset through the browser.
 ComboboxContent retains plugin portal ownership and anchor positioning.
 Keep ComboboxStatus mounted and update its contents to announce changes.
+
+
+`Combobox/CompactAndObjectValues` switches chips to a first-label/count summary
+without changing the selected array. Keep the query visible in compact mode and
+keep every selected value accessible in the popup. Each chip removal button
+names the value it removes. Backspace in an empty chip input removes the last
+chip; Escape closes an open popup without changing selection. Base UI also
+supports clearing a selection with Escape when its popup is already closed.
+
+`Combobox/AsyncAndUnavailable` supplies caller-owned results with `filter={null}`.
+Keep selected objects/known labels independently of the result catalog. Cancel
+requests or ignore outdated responses after completion; the deterministic story
+proves the latter. Announce loading and errors with a persistently mounted
+ComboboxStatus, show empty feedback only after a successful empty response, and
+place Retry outside the listbox's options. A missing filtered result is not an
+unavailable value: only explicit caller knowledge marks a value unavailable,
+with associated error and an actionable clear/replacement path. Empty query
+clearing follows Base UI's input-clear semantics; replacing a nonempty query or
+refreshing the catalog does not discard a committed value.

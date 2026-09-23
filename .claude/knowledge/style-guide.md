@@ -369,3 +369,12 @@ ComboboxControl. Chips wrap with the input and have explicitly named removal
 actions. Use the existing Base UI value/identity contract, shared option-list
 styles and PluginPortalBoundary. Keep loading announcements separate from
 field validation and never render a status message as a selectable option.
+
+
+For async Combobox, the caller owns results, request lifetime and selected value
+identity. Pass `filter={null}` and ignore stale responses after reading the
+result; keep loading/error/no-match feedback distinct. Query absence in results
+never proves a selected value unavailable. Mark confirmed unavailable values
+with FieldError and explicit recovery. Compact summaries retain an editable
+query and access to every selected value in the popup. Escape closes an open
+popup; Base UI's closed-popup Escape shortcut clears the selection.

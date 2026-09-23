@@ -24,7 +24,7 @@ const minimumHeight: Record<ControlSize, string> = {
 export function ComboboxControl({ size = 'md', variant = 'outlined', width = 'full', className, ...props }: ComboboxControlProps) {
   return <Appearance value={size}><ComboboxPrimitive.InputGroup data-slot="combobox-control" data-size={size} data-variant={variant} data-width={width}
     className={mergeClassName(cn(controlStyles({ size: null, variant }), minimumHeight[size],
-      'group/combobox flex max-w-full items-center gap-bakin-1 p-0', width === 'full' ? 'w-full' : 'w-fit',
+      'group/combobox flex max-w-full self-start items-center gap-bakin-1 p-0', width === 'full' ? 'w-full' : 'w-fit',
       controlGroupFocus,
       'data-invalid:border-bakin-signal-danger data-disabled:opacity-[var(--bakin-state-opacity-disabled)]',
       'data-readonly:[&_[data-slot=combobox-clear]]:hidden data-readonly:[&_[data-slot=combobox-chip-remove]]:hidden',

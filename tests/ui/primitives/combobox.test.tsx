@@ -33,3 +33,12 @@ it('removes a chip through the shared value contract and leaves the other values
   expect(screen.getByRole('button', { name: 'Remove OpenClaw' })).toBeTruthy()
   expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Runtimes' }))
 })
+
+it('does not allow readonly or disabled controls to mutate through clear actions', async () => {
+  const { rerender } = render(<Combobox readOnly items={['Pi']} defaultValue="Pi"><ComboboxControl><ComboboxInput aria-label="Locked runtime" /><ComboboxClear aria-label="Clear locked runtime" /></ComboboxControl></Combobox>)
+  fireEvent.click(screen.getByRole('button', { name: 'Clear locked runtime' }))
+  expect((screen.getByRole('combobox', { name: 'Locked runtime' }) as HTMLInputElement).value).toBe('Pi')
+  rerender(<Combobox disabled items={['Pi']} defaultValue="Pi"><ComboboxControl><ComboboxInput aria-label="Locked runtime" /><ComboboxClear aria-label="Clear locked runtime" /></ComboboxControl></Combobox>)
+  expect((screen.getByRole('combobox', { name: 'Locked runtime' }) as HTMLInputElement).disabled).toBe(true)
+  expect((screen.getByRole('button', { name: 'Clear locked runtime' }) as HTMLButtonElement).disabled).toBe(true)
+})
