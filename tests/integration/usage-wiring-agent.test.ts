@@ -257,6 +257,9 @@ describe('T2.3 agent usage wiring', () => {
   beforeEach(() => {
     clearUsage()
     resetTaskColumns()
+    // The dispatch gate fails closed without the spend plugin's policy hook
+    // (S13); stand in for it with "no limits" like a fresh install.
+    handlers.set('spend.getBudgetPolicy', () => ({ rules: [] }))
     mockMoveTask.mockClear()
     mockUpdateTask.mockClear()
     mockAddTaskLog.mockClear()

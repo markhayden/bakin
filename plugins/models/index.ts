@@ -27,7 +27,7 @@ import type { ModelsPluginSettings } from './types'
 const modelsPlugin: BakinPlugin = definePlugin({
   id: 'models',
   name: 'Models',
-  version: '2.1.0',
+  version: '2.3.0',
   routes: modelsRoutes,
 
   settingsSchema: {

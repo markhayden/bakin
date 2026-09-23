@@ -36,13 +36,16 @@ mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => dir,
 // The two seams under test.
 let budgetPolicy: unknown = {}
 let billingImpl: (data: Record<string, unknown>) => unknown = () => undefined
+// S13: flipped false to simulate the spend plugin never having activated.
+let policyHookPresent = true
 const hookRegistryMock = () => ({
   getHookRegistry: () => ({
     invoke: async (name: string, data: Record<string, unknown>) => {
-      if (name === 'models.getBudgetPolicy') return budgetPolicy
-      if (name === 'models.resolveBilling') return billingImpl(data)
+      if (name === 'spend.getBudgetPolicy') return budgetPolicy
+      if (name === 'spend.resolveBilling') return billingImpl(data)
       return undefined
     },
+    has: (name: string) => policyHookPresent && (name === 'spend.getBudgetPolicy' || name === 'spend.resolveBilling'),
   }),
 })
 // getHookRegistry lives in the leaf module post-WS2 K1; mock the leaf + legacy facade.
@@ -576,5 +579,15 @@ describe('budgetGate', () => {
     costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 100, costUsdMicros: 10_500_000, occurredAt: Date.now() })
     expect((await budgetGate('pixel', dir)).action).toBe('defer')
     expect(incidentOpens[0]).toMatchObject({ kind: 'cap', atCap: 'pause' })
+  })
+
+  it('S13 FAIL-CLOSED: an absent spend policy hook defers with budget_policy_unavailable and opens no incident', async () => {
+    policyHookPresent = false
+    try {
+      expect(await budgetGate('pixel', dir)).toEqual({ action: 'defer', cause: 'budget_policy_unavailable' })
+      expect(incidentOpens).toHaveLength(0)
+    } finally {
+      policyHookPresent = true
+    }
   })
 })

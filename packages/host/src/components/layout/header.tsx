@@ -58,7 +58,7 @@ function useDispatchPaused(): { paused: boolean; resuming: boolean; resume: () =
     let cancelled = false
     const check = async () => {
       try {
-        const res = await fetch('/api/plugins/models/budget/status?lite=1')
+        const res = await fetch('/api/plugins/spend/status?lite=1')
         if (!res.ok) return
         const body = (await res.json()) as { paused?: boolean }
         if (!cancelled) setPaused(body.paused === true)

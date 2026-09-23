@@ -3,6 +3,7 @@ import { createHash } from 'crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { getHookRegistry } from '../../../packages/core/src/hooks/hook-registry-singleton'
 import type { PluginContext } from '@bakin/core/plugin-types'
 import { resetContentDir } from '../../../src/core/content-dir'
 
@@ -78,10 +79,14 @@ describe('images tools', () => {
     resetContentDir()
     process.env.GEMINI_API_KEY = 'gemini-key'
     process.env.OPENAI_API_KEY = 'openai-key'
+    // The billed-media gate FAILS CLOSED without the spend plugin's policy
+    // hook (S13); stand in for it with "no limits" like a fresh install.
+    getHookRegistry().register('spend.getBudgetPolicy', () => ({ rules: [] }), { pluginId: 'test-spend-policy' } as never)
     delete process.env.GOOGLE_AI_API_KEY
   })
 
   afterEach(() => {
+    getHookRegistry().unregisterByPlugin('test-spend-policy')
     if (originalOpenAI === undefined) delete process.env.OPENAI_API_KEY
     else process.env.OPENAI_API_KEY = originalOpenAI
     if (originalGemini === undefined) delete process.env.GEMINI_API_KEY
@@ -1174,10 +1179,11 @@ describe('images tools', () => {
     const { getHookRegistry } = await import('../../../packages/core/src/hooks/hook-registry-singleton')
     const { recordRunCost } = await import('../../../src/core/execution-ledger')
     const registry = getHookRegistry()
-    // Register the models-plugin policy hooks under a throwaway plugin id so
-    // unregisterByPlugin cleans the global registry after the test.
-    registry.register('models.getBudgetPolicy', () => ({ rules: [{ scope: 'global', lane: 'metered', dailyCap: 1 }] }), { pluginId: 'test-budget' } as never)
-    registry.register('models.resolveBilling', (d: Record<string, unknown>) => ({ provider: String(d.model ?? '').split('/')[0], lane: 'metered', model: d.model ?? null }), { pluginId: 'test-budget' } as never)
+    // Replace the beforeEach no-limits stand-in with a $1 cap under a
+    // throwaway plugin id so unregisterByPlugin cleans the global registry.
+    registry.unregisterByPlugin('test-spend-policy')
+    registry.register('spend.getBudgetPolicy', () => ({ rules: [{ scope: 'global', lane: 'metered', dailyCap: 1 }] }), { pluginId: 'test-budget' } as never)
+    registry.register('spend.resolveBilling', (d: Record<string, unknown>) => ({ provider: String(d.model ?? '').split('/')[0], lane: 'metered', model: d.model ?? null }), { pluginId: 'test-budget' } as never)
     try {
       // $2 attributed today against the $1 cap.
       recordRunCost({ workClass: null, runId: 'seed:media-gate', taskId: 't', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 1, costUsdMicros: 2_000_000, occurredAt: Date.now() })

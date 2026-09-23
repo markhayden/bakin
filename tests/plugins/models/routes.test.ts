@@ -84,7 +84,7 @@ mock.module('../../../src/core/logger', () => ({
 // Spend route reads the ledger facade; mock it with canned rollups so the
 // route test doesn't need a real db.
 class FakeLedgerUnavailable extends Error {}
-let incidentsList: unknown[] = []
+const incidentsList: unknown[] = []
 const incidentResolves: Array<Record<string, unknown>> = []
 mock.module('../../../src/core/execution-ledger', () => ({
   listRunCostsSince: mock(() => [
@@ -216,25 +216,17 @@ describe('Models Plugin Activation', () => {
       'GET /aliases',
       'GET /aliases/recommended',
       'GET /available',
-      'GET /budget',
-      'GET /budget/incidents',
-      'GET /budget/status',
       'GET /config',
       'GET /holds',
       'GET /routing',
       'GET /routing/recommend',
       'GET /runtime/status',
       'GET /selections',
-      'GET /spend',
-      'POST /budget/incidents/:id/resolve',
       'POST /refresh',
       'POST /runtime/restart',
       'POST /selections',
       'POST /selections/pending/acknowledge',
-      'PUT /billing/overrides',
-      'PUT /budget',
     ])
-    expect(activated.routes.find((route) => route.path === '/budget/status')?.activityClass).toBe('routine')
   })
 
   it('registers 2 exec tools', () => {
@@ -245,92 +237,20 @@ describe('Models Plugin Activation', () => {
     ])
   })
 
-  it('registers 11 hooks', () => {
-    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(11)
+  it('registers 7 hooks — "which model" only; pricing/billing/limits are the spend plugin\'s', () => {
+    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(7)
     const hookNames = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map(
       (c: unknown[]) => c[0]
     )
     expect(hookNames.sort()).toEqual([
       'models.configChanged',
       'models.getAvailableModels',
-      'models.getBudgetPolicy',
       'models.getEffectiveModel',
       'models.getRoutingConfig',
-      'models.priceImage',
-      'models.priceTurn',
+      'models.listAgentModels',
       'models.refreshAvailableModels',
       'models.resetCatalogCache',
-      'models.resolveBilling',
-      'models.updateBudgetPolicy',
     ])
-  })
-
-  describe('models.priceTurn hook', () => {
-    function priceTurnHandler(): (data: Record<string, unknown>) => Promise<{ model: string | null; costUsdMicros: number | null }> {
-      const call = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.find(
-        (c: unknown[]) => c[0] === 'models.priceTurn'
-      )!
-      return call[1] as (data: Record<string, unknown>) => Promise<{ model: string | null; costUsdMicros: number | null }>
-    }
-
-    it('prices a turn from an explicit catalog model', async () => {
-      const result = await priceTurnHandler()({ model: 'anthropic/claude-sonnet-4-6', input: 1_000_000, output: 1_000_000 })
-      expect(result.model).toBe('anthropic/claude-sonnet-4-6')
-      // 1M in @ $3 + 1M out @ $15 = $18 → 18_000_000 micro-$
-      expect(result.costUsdMicros).toBe(18_000_000)
-    })
-
-    it('returns null cost for an unpriced model but still resolves the model id', async () => {
-      const result = await priceTurnHandler()({ model: 'mystery/unknown', input: 1000, output: 500 })
-      expect(result.model).toBe('mystery/unknown')
-      expect(result.costUsdMicros).toBeNull()
-    })
-
-    it('returns null cost when token counts are absent', async () => {
-      const result = await priceTurnHandler()({ model: 'anthropic/claude-sonnet-4-6' })
-      expect(result.costUsdMicros).toBeNull()
-    })
-  })
-
-  describe('models.priceImage hook', () => {
-    function priceImageHandler(): (data: Record<string, unknown>) => Promise<{ model: string | null; provider: string; lane: string; costUsdMicros: number | null }> {
-      const call = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.find(
-        (c: unknown[]) => c[0] === 'models.priceImage'
-      )!
-      return call[1] as (data: Record<string, unknown>) => Promise<{ model: string | null; provider: string; lane: string; costUsdMicros: number | null }>
-    }
-
-    it('prices an image at the flat per-image rate × count', async () => {
-      const r = await priceImageHandler()({ model: 'black-forest-labs/flux-pro', count: 2 })
-      expect(r.costUsdMicros).toBe(110_000)
-      expect(r.provider).toBe('black-forest-labs')
-      expect(r.lane).toBe('metered') // no auth-profile info in this ctx → conservative default
-    })
-
-    it('returns null cost for a provider-priced image model', async () => {
-      const r = await priceImageHandler()({ model: 'openai/gpt-image-2', count: 1 })
-      expect(r.model).toBe('openai/gpt-image-2')
-      expect(r.costUsdMicros).toBeNull()
-    })
-
-    it("REGRESSION: an agent's subscription CHAT auth never suppresses billed-image dollars", async () => {
-      // Image generation bills via provider credentials, not the agent's
-      // chat auth — a Codex-OAuth agent generating on a metered image key
-      // must still book real dollars against the caps.
-      const originalStatus = activated.ctx.runtime.credentialStatus
-      activated.ctx.runtime.credentialStatus = (async () => ({
-        llmProviders: ['black-forest-labs'],
-        llmCredentials: [{ provider: 'black-forest-labs', kind: 'oauth' as const }],
-        channels: [],
-      })) as typeof activated.ctx.runtime.credentialStatus
-      try {
-        const r = await priceImageHandler()({ agentId: 'main', model: 'black-forest-labs/flux-pro', count: 2 })
-        expect(r.lane).toBe('metered')
-        expect(r.costUsdMicros).toBe(110_000)
-      } finally {
-        activated.ctx.runtime.credentialStatus = originalStatus
-      }
-    })
   })
 
   it('has valid settings schema', () => {
@@ -752,242 +672,6 @@ describe('routing config', () => {
     expect(body).toEqual({ routes: [], tagOverrides: [] })
   })
 
-})
-
-describe('budget policy', () => {
-  it('GET /budget returns an empty policy by default', async () => {
-    const route = findRoute(activated.routes, 'GET', '/budget')!
-    const { status, body } = await callRoute(route, activated.ctx)
-    expect(status).toBe(200)
-    expect(body).toEqual({})
-  })
-
-  it('PUT /budget validates and persists the FULL rule list (agent/provider rules round-trip)', async () => {
-    const route = findRoute(activated.routes, 'PUT', '/budget')!
-    const policy = {
-      rules: [
-        { scope: 'global', lane: 'metered', dailyCap: 25, monthlyCap: 500 },
-        { scope: 'agent', scopeId: 'pixel', lane: 'metered', dailyCap: 5 },
-        { scope: 'provider', scopeId: 'google', lane: 'metered', dailyCap: 5, atCap: 'pause' },
-        { scope: 'agent', scopeId: 'main', lane: 'subscription', dailyCap: 5_000_000 },
-      ],
-    }
-    const { status, body } = await callRoute(route, activated.ctx, { body: policy })
-    expect(status).toBe(200)
-    expect(body.ok).toBe(true)
-    expect(activated.ctx.updateSettings).toHaveBeenCalledWith({ budget: policy })
-  })
-
-  it('PUT /budget rejects a negative cap', async () => {
-    const route = findRoute(activated.routes, 'PUT', '/budget')!
-    const { status } = await callRoute(route, activated.ctx, { body: { rules: [{ scope: 'global', lane: 'metered', dailyCap: -5 }] } })
-    expect(status).toBe(400)
-  })
-
-  it('PUT /budget rejects a scoped rule without a scopeId', async () => {
-    const route = findRoute(activated.routes, 'PUT', '/budget')!
-    const { status } = await callRoute(route, activated.ctx, { body: { rules: [{ scope: 'provider', lane: 'metered', dailyCap: 5 }] } })
-    expect(status).toBe(400)
-  })
-})
-
-describe('budget status + incidents routes (cost-control v2)', () => {
-  it('GET /budget/status is side-effect-free and reports configured=false with no rules', async () => {
-    const route = findRoute(activated.routes, 'GET', '/budget/status')!
-    const { status, body } = await callRoute(route, activated.ctx)
-    expect(status).toBe(200)
-    expect(body.configured).toBe(false)
-    expect(body.paused).toBe(false)
-    expect(body.perAgent).toEqual({})
-  })
-
-  it('REGRESSION: /budget/status degrades (200, empty perAgent) when the runtime config is unreadable', async () => {
-    // Found live at checkpoint E: resolveAgents threw (no runtime installed)
-    // and the status poll 500'd — killing task badges + the pause banner.
-    const originalGetSettings = activated.ctx.getSettings
-    const originalList = activated.ctx.runtime.agents.list
-    activated.ctx.getSettings = (() => ({ budget: { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] } })) as typeof activated.ctx.getSettings
-    activated.ctx.runtime.agents.list = (async () => { throw new Error('runtime down') }) as typeof activated.ctx.runtime.agents.list
-    try {
-      const route = findRoute(activated.routes, 'GET', '/budget/status')!
-      const { status, body } = await callRoute(route, activated.ctx)
-      expect(status).toBe(200)
-      expect(body.configured).toBe(true)
-      expect(body.perAgent).toEqual({})
-    } finally {
-      activated.ctx.getSettings = originalGetSettings
-      activated.ctx.runtime.agents.list = originalList
-    }
-  })
-
-  it('PUT /budget warns on unknown agent/provider scopeIds (typo = fake safety)', async () => {
-    const route = findRoute(activated.routes, 'PUT', '/budget')!
-    const { status, body } = await callRoute(route, activated.ctx, {
-      body: { rules: [
-        { scope: 'agent', scopeId: 'no-such-agent', lane: 'metered', dailyCap: 5 },
-        { scope: 'provider', scopeId: 'Anthropic', lane: 'metered', dailyCap: 5 },
-      ] },
-    })
-    expect(status).toBe(200)
-    const warnings = body.warnings as string[]
-    expect(warnings.some((w) => w.includes('no-such-agent'))).toBe(true)
-    expect(warnings.some((w) => w.includes("'Anthropic'"))).toBe(true)
-  })
-
-  it('PUT /budget normalizes model-scope scopeIds so they key like spend rows', async () => {
-    const route = findRoute(activated.routes, 'PUT', '/budget')!
-    const originalGetSettings = activated.ctx.getSettings
-    const writes: Array<Record<string, unknown>> = []
-    const originalUpdate = activated.ctx.updateSettings
-    activated.ctx.updateSettings = ((patch: Record<string, unknown>) => { writes.push(patch); return (originalUpdate as (p: Record<string, unknown>) => unknown)(patch) }) as typeof activated.ctx.updateSettings
-    try {
-      const { status } = await callRoute(route, activated.ctx, {
-        body: { rules: [{ scope: 'model', scopeId: 'claude-opus-4-6', lane: 'metered', dailyCap: 10 }] },
-      })
-      expect(status).toBe(200)
-      const saved = writes.at(-1) as { budget?: { rules?: Array<{ scopeId?: string }> } }
-      expect(saved.budget?.rules?.[0]?.scopeId).toBe('anthropic/claude-opus-4-6')
-    } finally {
-      activated.ctx.updateSettings = originalUpdate
-      activated.ctx.getSettings = originalGetSettings
-    }
-  })
-
-  it('PUT /budget resolves live incidents whose rule was deleted (no orphaned banner rows)', async () => {
-    incidentsList = [{ id: 12, scope: 'provider', scopeId: 'google', lane: 'metered', window: 'daily', kind: 'cap', status: 'open' }]
-    const route = findRoute(activated.routes, 'PUT', '/budget')!
-    const { status } = await callRoute(route, activated.ctx, { body: { rules: [] } })
-    expect(status).toBe(200)
-    expect(incidentResolves.at(-1)).toMatchObject({ id: 12, status: 'resolved', resolution: 'rule_removed' })
-    incidentsList = []
-  })
-
-  it('PUT /billing/overrides validates and persists lane overrides', async () => {
-    const route = findRoute(activated.routes, 'PUT', '/billing/overrides')!
-    const ok = await callRoute(route, activated.ctx, { body: { overrides: [{ agentId: 'main', lane: 'subscription' }] } })
-    expect(ok.status).toBe(200)
-    const bad = await callRoute(route, activated.ctx, { body: { overrides: [{ lane: 'metered' }] } })
-    expect(bad.status).toBe(400)
-  })
-
-  it('GET /budget/status computes perTask holds with the main-agent fallback (unassigned tasks badge)', async () => {
-    const originalGetSettings = activated.ctx.getSettings
-    const originalAgents = activated.ctx.runtime.agents
-    // $0.10 daily cap; the mocked ledger has $0.15 attributed → deferred.
-    activated.ctx.getSettings = (() => ({ budget: { rules: [{ scope: 'global', lane: 'metered', dailyCap: 0.1 }] } })) as typeof activated.ctx.getSettings
-    activated.ctx.runtime.agents = { ...originalAgents, list: (async () => [{ id: 'main', name: 'Main' }]) } as typeof activated.ctx.runtime.agents
-    try {
-      const route = findRoute(activated.routes, 'GET', '/budget/status')!
-      const { status, body } = await callRoute(route, activated.ctx)
-      expect(status).toBe(200)
-      expect((body.perTask as Record<string, string>)['t-unassigned']).toBe('deferred')
-    } finally {
-      activated.ctx.getSettings = originalGetSettings
-      activated.ctx.runtime.agents = originalAgents
-    }
-  })
-
-  it('GET /budget/status?lite=1 returns only the kill-switch bit', async () => {
-    const route = findRoute(activated.routes, 'GET', '/budget/status')!
-    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { lite: '1' } })
-    expect(status).toBe(200)
-    expect(Object.keys(body)).toEqual(['paused'])
-  })
-
-  it('GET /budget/incidents lists open incidents', async () => {
-    incidentsList = [{ id: 1, scope: 'global', scopeId: '', lane: 'metered', window: 'daily', kind: 'cap', status: 'open' }]
-    const route = findRoute(activated.routes, 'GET', '/budget/incidents')!
-    const { status, body } = await callRoute(route, activated.ctx)
-    expect(status).toBe(200)
-    expect((body.incidents as unknown[]).length).toBe(1)
-    incidentsList = []
-  })
-
-  it('POST resolve ack acknowledges without touching settings', async () => {
-    incidentsList = [{ id: 4, scope: 'global', scopeId: '', lane: 'metered', window: 'daily', kind: 'cap', status: 'open' }]
-    const route = findRoute(activated.routes, 'POST', '/budget/incidents/:id/resolve')!
-    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { id: '4' }, body: { action: 'ack' } })
-    expect(status).toBe(200)
-    expect(body.ok).toBe(true)
-    expect(incidentResolves.at(-1)).toMatchObject({ id: 4, status: 'acknowledged' })
-    incidentsList = []
-  })
-
-  it('POST resolve raise validates the new cap against current spend and updates the rule', async () => {
-    // Rule + settings: global metered $0.10 daily cap; attributed spend is 150_000 micros ($0.15).
-    const originalGetSettings = activated.ctx.getSettings
-    activated.ctx.getSettings = (() => ({ budget: { rules: [{ scope: 'global', lane: 'metered', dailyCap: 0.1 }] } })) as typeof activated.ctx.getSettings
-    incidentsList = [{ id: 9, scope: 'global', scopeId: '', lane: 'metered', window: 'daily', kind: 'cap', status: 'open' }]
-    const route = findRoute(activated.routes, 'POST', '/budget/incidents/:id/resolve')!
-    try {
-      // Too low (≤ current $0.15 spend) → 400.
-      const low = await callRoute(route, activated.ctx, { searchParams: { id: '9' }, body: { action: 'raise', cap: 0.12 } })
-      expect(low.status).toBe(400)
-      expect(String(low.body.error)).toContain('must exceed current')
-
-      // High enough → rule updated + incident resolved.
-      const ok = await callRoute(route, activated.ctx, { searchParams: { id: '9' }, body: { action: 'raise', cap: 5 } })
-      expect(ok.status).toBe(200)
-      expect(activated.ctx.updateSettings).toHaveBeenCalledWith({ budget: { rules: [{ scope: 'global', lane: 'metered', dailyCap: 5 }] } })
-      expect(incidentResolves.at(-1)).toMatchObject({ id: 9, status: 'resolved', resolution: 'raised' })
-    } finally {
-      incidentsList = []
-      activated.ctx.getSettings = originalGetSettings
-    }
-  })
-
-  it('POST resolve 404s for an unknown incident', async () => {
-    const route = findRoute(activated.routes, 'POST', '/budget/incidents/:id/resolve')!
-    const { status } = await callRoute(route, activated.ctx, { searchParams: { id: '999' }, body: { action: 'ack' } })
-    expect(status).toBe(404)
-  })
-})
-
-describe('GET /spend', () => {
-  it('exposes cap-window facets + pace alongside the rolling rollups', async () => {
-    const route = findRoute(activated.routes, 'GET', '/spend')!
-    const { status, body } = await callRoute(route, activated.ctx)
-    expect(status).toBe(200)
-    const facets = body.facets as { daily: { global: Record<string, unknown> } }
-    expect(facets.daily.global.meteredUsdMicros).toBe(150_000)
-    expect(body.pace).toHaveProperty('daily')
-    expect(body.pace).toHaveProperty('monthly')
-    const timeline = body.timeline as Array<{ costUsdMicros: number | null }>
-    expect(timeline).toHaveLength(6)
-    expect(timeline.reduce(
-      (sum: number, bucket: { costUsdMicros: number | null }) => sum + (bucket.costUsdMicros ?? 0),
-      0,
-    )).toBe(150_000)
-  })
-
-  it('returns windowed spend rollups (total, byAgent, byModel, byWorkClass) — NULL-honest', async () => {
-    const route = findRoute(activated.routes, 'GET', '/spend')!
-    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { window: '24h' } })
-    expect(status).toBe(200)
-    expect(body.window).toBe('24h')
-    expect(body.totalUsdMicros).toBe(150_000)
-    expect(body.byAgent).toEqual([
-      { agent: 'pixel', costUsdMicros: 150_000, runs: 1 },
-      // Unpriced bucket reports null — never the legacy fabricated $0.
-      { agent: 'patch', costUsdMicros: null, runs: 1 },
-    ])
-    // Unmodeled '' model id surfaces as a recognizable "unknown" label.
-    expect(body.byModel).toEqual(expect.arrayContaining([
-      { model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 150_000, runs: 1 },
-      { model: 'unknown', costUsdMicros: null, runs: 1 },
-    ]))
-    expect(body.byWorkClass).toEqual(expect.arrayContaining([
-      expect.objectContaining({ workClass: 'scheduled', runs: 1, costUsdMicros: 150_000, avgCostUsdMicros: 150_000 }),
-      expect.objectContaining({ workClass: 'unclassified', runs: 1, costUsdMicros: null }),
-    ]))
-  })
-
-  it('defaults to a 24h window when none is given', async () => {
-    const route = findRoute(activated.routes, 'GET', '/spend')!
-    const { status, body } = await callRoute(route, activated.ctx)
-    expect(status).toBe(200)
-    expect(body.window).toBe('24h')
-  })
 })
 
 describe('GET /runtime/status — adapter-advised pending restart (#878)', () => {

@@ -8,8 +8,8 @@
  * Unknown always resolves to 'metered' (conservative: unknown auth reads as
  * real money, never silently uncapped-as-free).
  *
- * Resolution: manual settings override (most specific first: agent+provider
- * → agent → provider) → per-agent detection → 'metered'. Detection reads the
+ * Resolution: manual override in spend.json (most specific first:
+ * agent+provider → agent → provider) → per-agent detection → 'metered'. Detection reads the
  * runtime-neutral `credentialStatus()` contract (presence-only credential
  * KIND per provider) — credential shapes stay adapter-private, values never
  * cross the boundary.
@@ -21,13 +21,12 @@ import type { RuntimeCredentialStatus } from '@bakin/core/adapters/runtime'
 
 import { createLogger } from '../../../src/core/logger'
 import { normalizeModelId, providerFromId } from '@bakin/core/llm/model-id'
-import type { BillingOverride, ModelsPluginSettings } from '../types'
+import type { BillingOverride } from '../types'
+import { readOverrides } from './settings'
 
-const log = createLogger('models:billing')
+const log = createLogger('spend:billing')
 
 export type { BillingLane }
-// Single-homed in ../types (the settings shape owns it); re-exported here
-// for the detection API surface.
 export type { BillingOverride } from '../types'
 
 /**
@@ -116,7 +115,7 @@ export async function resolveBilling(
   opts: { agentId?: string; model?: string | null },
 ): Promise<{ provider: string; lane: BillingLane; laneSource: BillingLaneSource }> {
   const provider = resolveProviderForModel(opts.model)
-  const overrides = ctx.getSettings<ModelsPluginSettings>().billing?.overrides ?? []
+  const overrides = readOverrides(ctx)
   const detected = opts.agentId ? await detectedLanesForAgent(ctx, opts.agentId) : {}
   const { lane, laneSource } = resolveLaneFor({ provider, agentId: opts.agentId, overrides, detected })
   return { provider, lane, laneSource }

@@ -76,10 +76,10 @@ description: Generated catalog of official plugins supported by Bakin.
       <td><code>team</code> <code>workflows</code></td>
     </tr>
     <tr>
-      <td>Models<br/><span>Agent model configuration — per-agent models, aliases, available models, per-turn model/thinking routing, and spend/budget tracking</span></td>
+      <td>Models<br/><span>Agent model configuration — per-agent models, aliases, available models, and per-turn model/thinking routing</span></td>
       <td><code>models</code></td>
       <td>Core</td>
-      <td><code>2.2.0</code></td>
+      <td><code>2.3.0</code></td>
       <td><code>team</code></td>
     </tr>
     <tr>
@@ -100,7 +100,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Spend<br/><span>What your agents spend — observed and projected per billing lane — and the opt-in spending limits that notify at 50/75/90/100% and stop matching work at the line</span></td>
       <td><code>spend</code></td>
       <td>Core</td>
-      <td><code>0.1.0</code></td>
+      <td><code>1.0.0</code></td>
       <td>none</td>
     </tr>
     <tr>

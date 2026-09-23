@@ -152,7 +152,7 @@ export interface BudgetPolicy {
 /** Billing context of the turn (or billed call) being gated. */
 export interface TurnBillingContext {
   agent: string
-  /** Provider the turn will spend on (from models.resolveBilling); unknown = matches no provider rule. */
+  /** Provider the turn will spend on (from spend.resolveBilling); unknown = matches no provider rule. */
   provider?: string
   /** Normalized model id; unknown = matches no model rule. */
   model?: string
@@ -200,6 +200,16 @@ export type BudgetDecision =
       unit: BudgetUnit
       spentValue: number
       capValue: number
+    }
+  | {
+      /**
+       * The limits policy itself could not be read (spend plugin absent,
+       * failed to activate, or its hook threw). Not "no limits" — "we cannot
+       * know" — so money fails closed until the health-owned
+       * spend.policy-available check clears (S13).
+       */
+      action: 'defer'
+      cause: 'budget_policy_unavailable'
     }
 
 /** The fixed ladder every limit notifies on (D19) — never configurable. */

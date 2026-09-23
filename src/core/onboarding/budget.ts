@@ -10,6 +10,7 @@
  * Spend tab edits). `--yes` skips with a printed warning — an explicit
  * decision to run uncapped, not a silent default.
  */
+import { randomUUID } from 'crypto'
 import { readPluginSettings, mergePluginSettings } from '../../../packages/core/src/plugins/settings-store'
 import type { BudgetPolicy, BudgetRule } from '../budget'
 import { createLogger } from '../logger'
@@ -18,11 +19,11 @@ import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions
 
 const log = createLogger('onboarding:budget')
 
-const MODELS_PLUGIN_ID = 'models'
+const SPEND_PLUGIN_ID = 'spend'
 
 function currentRules(): BudgetRule[] {
-  const settings = readPluginSettings<{ budget?: BudgetPolicy }>(MODELS_PLUGIN_ID)
-  return settings.budget?.rules ?? []
+  const settings = readPluginSettings<{ limits?: BudgetPolicy }>(SPEND_PLUGIN_ID)
+  return settings.limits?.rules ?? []
 }
 
 async function checkBudget(): Promise<CheckResult> {
@@ -90,14 +91,15 @@ async function installBudget(opts: OnboardingOptions): Promise<InstallResult> {
 
   try {
     const rule: BudgetRule = {
+      id: randomUUID(),
       scope: 'global',
       lane: 'metered',
       ...(dailyCap !== null ? { dailyCap } : {}),
       ...(monthlyCap !== null ? { monthlyCap } : {}),
     }
-    mergePluginSettings(MODELS_PLUGIN_ID, { budget: { rules: [rule] } })
+    mergePluginSettings(SPEND_PLUGIN_ID, { limits: { rules: [rule] } })
     const caps = [dailyCap !== null ? `$${dailyCap}/day` : null, monthlyCap !== null ? `$${monthlyCap}/month` : null].filter(Boolean).join(', ')
-    return { name: 'budget', status: 'installed', message: `Global metered budget set (${caps}). Warn at 80%, defer at 100%.`, durationMs: Date.now() - start }
+    return { name: 'budget', status: 'installed', message: `Global metered budget set (${caps}). You'll be notified at 50/75/90%; work waits at 100%.`, durationMs: Date.now() - start }
   } catch (err) {
     return { name: 'budget', status: 'failed', message: `Failed to write the budget policy: ${err instanceof Error ? err.message : String(err)}`, error: err, durationMs: Date.now() - start }
   }

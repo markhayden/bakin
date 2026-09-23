@@ -76,6 +76,7 @@ import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-ski
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
 import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
 import { checkPluginRegistry } from './lib/system-checks/plugin-registry'
+import { checkSpendPolicyAvailable } from './lib/system-checks/spend-policy'
 import {
   agentEffortResponseSchema,
   agentUsageSnapshotResponseSchema,
@@ -1022,6 +1023,14 @@ const healthPlugin: BakinPlugin = definePlugin({
       group: workGroup,
       maxAgeMs: 600_000,
       run: () => checkStartupContextSize(ctx.runtime),
+    })
+    ctx.registerHealthCheck({
+      id: 'spend.policy-available',
+      name: 'Spend limits policy reachable',
+      description: 'Confirms the spend plugin answers the limits-policy hook the dispatch gate consults; while it does not, dispatch fails closed.',
+      group: workGroup,
+      maxAgeMs: 120_000,
+      run: () => checkSpendPolicyAvailable(),
     })
     ctx.registerHealthCheck({
       id: 'usage.agent-burn',

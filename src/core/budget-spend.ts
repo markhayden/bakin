@@ -306,7 +306,7 @@ async function resolveObservedLane(
       // the agent's current effective model, so provider-scoped overrides
       // can never match a guessed provider and no runtime round-trip runs
       // on the budget hot path.
-      const billing = (await invoke('models.resolveBilling', {
+      const billing = (await invoke('spend.resolveBilling', {
         agentId: agent,
         model: model || undefined,
         prospective: false,
@@ -487,7 +487,7 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
     // pre-cutoff usage that cannot attribute is excluded from gaps and
     // the unattributed delta — caps compute from the cutoff forward.
     const policy = invoke
-      ? await invoke('models.getBudgetPolicy', {}).catch(() => undefined) as { acceptUnattributedBefore?: string } | undefined
+      ? await invoke('spend.getBudgetPolicy', {}).catch(() => undefined) as { acceptUnattributedBefore?: string } | undefined
       : undefined
     const rawCutoff = typeof policy?.acceptUnattributedBefore === 'string' ? policy.acceptUnattributedBefore : null
     // Clamp to today at READ: a future-dated cutoff would silence current

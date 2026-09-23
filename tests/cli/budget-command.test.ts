@@ -30,10 +30,10 @@ mock.module('../../src/cli/http', () => ({
   api: mock(async (path: string, init?: RequestInit) => { apiCalls.push({ path, init }); return { ok: true } }),
   apiGet: mock(async (path: string) => {
     apiCalls.push({ path })
-    if (path.startsWith('/api/plugins/models/budget/status')) return { paused: false, perAgent: {}, deferredProviders: [], openIncidents: [] }
-    if (path.startsWith('/api/plugins/models/budget/incidents')) return { incidents: [] }
-    if (path.startsWith('/api/plugins/models/budget')) return { rules }
-    if (path.startsWith('/api/plugins/models/spend')) {
+    if (path.startsWith('/api/plugins/spend/status')) return { paused: false, perAgent: {}, deferredProviders: [], openIncidents: [] }
+    if (path.startsWith('/api/plugins/spend/incidents')) return { incidents: [] }
+    if (path.startsWith('/api/plugins/spend/limits')) return { rules }
+    if (path.startsWith('/api/plugins/spend/spend')) {
       return {
         window: '24h', totalUsdMicros: 0, byAgent: [], byModel: [],
         byWorkClass: [
@@ -113,14 +113,14 @@ describe('bakin budget pause/resume', () => {
 describe('bakin budget incidents --resolve', () => {
   it('POSTs the resolve action with the new cap', async () => {
     await run(['budget', 'incidents', '--resolve', '7', '--action', 'raise', '--cap', '50'])
-    expect(apiPostSpy).toHaveBeenCalledWith('/api/plugins/models/budget/incidents/7/resolve', { action: 'raise', cap: 50 })
+    expect(apiPostSpy).toHaveBeenCalledWith('/api/plugins/spend/incidents/7/resolve', { action: 'raise', cap: 50 })
   })
 })
 
 describe('bakin spend', () => {
   it('renders without error and warns when no rules exist', async () => {
     await run(['spend'])
-    expect(apiCalls.some((c) => c.path.startsWith('/api/plugins/models/spend'))).toBe(true)
+    expect(apiCalls.some((c) => c.path.startsWith('/api/plugins/spend/spend'))).toBe(true)
   })
 
   it('renders the by-work-class block NULL-honestly', async () => {

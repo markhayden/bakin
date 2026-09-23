@@ -64,14 +64,14 @@ describe('budget onboarding component', () => {
   it('--yes skips LOUDLY and writes nothing', async () => {
     const r = await budgetComponent.install(YES_MODE)
     expect(r.status).toBe('skipped')
-    expect(readPluginSettings<{ budget?: unknown }>('models').budget).toBeUndefined()
+    expect(readPluginSettings<{ limits?: { rules?: unknown[] } }>('spend').limits?.rules ?? []).toEqual([])
   })
 
   it('interactive decline skips and writes nothing', async () => {
     yesNoAnswers = [false]
     const r = await budgetComponent.install(INTERACTIVE)
     expect(r.status).toBe('skipped')
-    expect(readPluginSettings<{ budget?: unknown }>('models').budget).toBeUndefined()
+    expect(readPluginSettings<{ limits?: { rules?: unknown[] } }>('spend').limits?.rules ?? []).toEqual([])
   })
 
   it('interactive accept writes ONE global metered rule from the entered caps', async () => {
@@ -79,8 +79,8 @@ describe('budget onboarding component', () => {
     lineAnswers = ['25', '300']
     const r = await budgetComponent.install(INTERACTIVE)
     expect(r.status).toBe('installed')
-    const settings = readPluginSettings<{ budget?: { rules?: unknown[] } }>('models')
-    expect(settings.budget?.rules).toEqual([{ scope: 'global', lane: 'metered', dailyCap: 25, monthlyCap: 300 }])
+    const settings = readPluginSettings<{ limits?: { rules?: Array<Record<string, unknown>> } }>('spend')
+    expect(settings.limits?.rules).toEqual([{ id: expect.stringMatching(/^[0-9a-f-]{36}$/), scope: 'global', lane: 'metered', dailyCap: 25, monthlyCap: 300 }])
     // check() clears once a rule exists.
     expect((await budgetComponent.check()).status).toBe('ok')
   })
@@ -90,7 +90,7 @@ describe('budget onboarding component', () => {
     lineAnswers = ['', ''] // Enter twice
     const r = await budgetComponent.install(INTERACTIVE)
     expect(r.status).toBe('skipped')
-    expect(readPluginSettings<{ budget?: unknown }>('models').budget).toBeUndefined()
+    expect(readPluginSettings<{ limits?: { rules?: unknown[] } }>('spend').limits?.rules ?? []).toEqual([])
   })
 
   it('noops when a budget already exists', async () => {

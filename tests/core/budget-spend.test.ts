@@ -74,7 +74,7 @@ const resolveBillingImpl: (data: Record<string, unknown>) => unknown = (d) => {
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: () => ({
     invoke: async (name: string, data: Record<string, unknown>) =>
-      name === 'models.resolveBilling' ? resolveBillingImpl(data) : undefined,
+      name === 'spend.resolveBilling' ? resolveBillingImpl(data) : undefined,
   }),
 }))
 

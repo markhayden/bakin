@@ -1,28 +1,19 @@
 /**
- * Models plugin REST routes (declarative).
- *
- * Extracted from index.ts. The catalog reads (/available, /refresh), config
- * reads/writes (/config, /defaults, /aliases), the routing + budget policy
- * settings surface, spend reporting off the execution ledger, and the runtime
- * restart-sync endpoints — assembled into one array the plugin shell registers
- * via `routes: modelsRoutes`. Handlers stay verbatim from the pre-split file;
- * shared state (models cache, restart-sync cell) is reached through its owning
- * lib module, never duplicated here.
+ * Models plugin REST routes (declarative): the catalog reads (/available,
+ * /refresh), the ONE selections write path, config/alias/routing reads, and
+ * the runtime restart endpoints. Spend, limits, incidents and billing are
+ * the spend plugin's routes.
  */
 import type { PluginContext } from '@bakin/core/plugin-types'
 import { defineRoute } from '@bakin/core/routing'
 
 import type { ModelsPluginSettings } from '../types'
-import { KNOWN_PROVIDERS } from '@bakin/core/llm/model-catalog'
 import {
   readPersistedCache,
   writePersistedCache,
 } from './models-cache'
-import { listRunCostsSince, listBudgetIncidents, resolveBudgetIncident, LedgerUnavailableError } from '../../../src/core/execution-ledger'
+import { listRunCostsSince } from '../../../src/core/execution-ledger'
 import { probeModels } from './probe'
-import { buildSpendTimeline, rollupSpend } from './spend-rollup'
-import { assembleBudgetSpend, paceProjection, dayEndMs, monthEndMs } from '../../../src/core/budget-spend'
-import { budgetStatusRoutes } from './budget-routes'
 import { describeSelections, getSelectionMutator } from './selections'
 import { MutationRefused } from '../../../src/core/model-mutations'
 import type { SelectionDocument } from '../../../src/core/model-selections'
@@ -41,12 +32,9 @@ import {
 } from './available-models'
 import { DEFAULT_ALIASES, readAliases } from './aliases'
 import {
-  BudgetPolicySchema,
   okResponse,
   errorResponse,
   passthrough,
-  SPEND_WINDOW_MS,
-  parseSpendWindow,
   MutateSelectionsSchema,
 } from './route-schemas'
 
@@ -348,126 +336,6 @@ export const modelsRoutes = [
   }),
 
   defineRoute({
-    path: '/budget',
-    method: 'GET',
-    summary: 'Spend-cap policy',
-    responses: { 200: passthrough, 500: errorResponse },
-    handler: async (_req, ctx) => {
-      try {
-        return Response.json(ctx.getSettings<ModelsPluginSettings>().budget ?? {})
-      } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-      }
-    },
-  }),
-
-  defineRoute({
-    path: '/budget',
-    method: 'PUT',
-    summary: 'Replace the budget policy',
-    body: BudgetPolicySchema,
-    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
-    handler: async (_req, ctx, { body }) => {
-      try {
-        // Model-scoped rule ids normalize on write so they key identically
-        // to the normalized model ids on spend rows.
-        const rules = (body.rules ?? []).map((r) =>
-          r.scope === 'model' && r.scopeId ? { ...r, scopeId: normalizeModelId(r.scopeId) } : r,
-        )
-        ;(ctx as unknown as PluginContext).updateSettings({ budget: { rules } })
-        // Live incidents whose rule was just deleted would otherwise strand
-        // in the banner with no working action — resolve them now.
-        try {
-          for (const incident of listBudgetIncidents({ openOnly: true })) {
-            const stillExists = rules.some(
-              (r) => r.scope === incident.scope && (r.scopeId ?? '') === incident.scopeId && r.lane === incident.lane,
-            )
-            if (!stillExists) resolveBudgetIncident({ id: incident.id, status: 'resolved', resolution: 'rule_removed' })
-          }
-        } catch (err) {
-          // Cleanup is best-effort — a failed sweep must not fail the save.
-          void err
-        }
-        // Unknown scope ids are the #1 fake-safety trap (a typo'd agent id
-        // caps nothing) — warn, don't reject (the id may exist later).
-        const warnings: string[] = []
-        try {
-          const knownAgents = new Set((await resolveAgents(ctx as unknown as PluginContext)).map((a) => a.agentId))
-          const knownProviders = new Set(KNOWN_PROVIDERS.map((p) => p.id))
-          for (const r of rules) {
-            if (r.scope === 'agent' && r.scopeId && !knownAgents.has(r.scopeId)) {
-              warnings.push(`No agent named '${r.scopeId}' — this rule caps nothing until such an agent exists.`)
-            }
-            if (r.scope === 'provider' && r.scopeId && !knownProviders.has(r.scopeId)) {
-              warnings.push(`Unknown provider '${r.scopeId}' — this rule caps nothing (known: ${KNOWN_PROVIDERS.map((p) => p.id).join(', ')}).`)
-            }
-          }
-        } catch (err) {
-          void err // runtime unreachable — skip validation, never block the save
-        }
-        ctx.activity.audit('budget.updated', 'system', { rules: rules.length, warnings: warnings.length })
-        ctx.activity.log('system', 'Updated budget policy', { category: 'models' })
-        return Response.json({ ok: true, ...(warnings.length ? { warnings } : {}) })
-      } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-      }
-    },
-  }),
-
-  defineRoute({
-    path: '/spend',
-    method: 'GET',
-    summary: 'Estimated agent spend over a window',
-    description: 'Windowed token/cost rollups from the execution ledger (total, by agent, by model). Costs are estimates — cache-token rates default to a fixed multiple of input where a model does not declare exact rates.',
-    responses: { 200: passthrough, 500: errorResponse },
-    handler: async (req) => {
-      try {
-        const window = parseSpendWindow(new URL(req.url).searchParams.get('window'))
-        const now = Date.now()
-        const sinceMs = window === 'all' ? 0 : now - SPEND_WINDOW_MS[window]
-        // NULL-honest rollups over raw rows (replaced the ledger GROUP-BY
-        // verbs whose COALESCE fabricated $0 for unpriced buckets).
-        const rows = listRunCostsSince(sinceMs)
-        const rollups = rollupSpend(rows)
-        const timeline = buildSpendTimeline(rows, window, now)
-        // Cap-window facets from the shared engine (lane/provider split +
-        // pace) ride alongside the rolling browse rollups — utilization
-        // always computes on calendar cap windows, whatever the selector.
-        const facets = await assembleBudgetSpend(now)
-        const pace = {
-          daily: {
-            meteredUsdMicros: paceProjection(facets.daily.global.meteredUsdMicros + facets.daily.global.unattributed.meteredUsdMicros, facets.daily.startMs, dayEndMs(now), now),
-            subscriptionTokens: paceProjection(facets.daily.global.subscriptionTokens + facets.daily.global.unattributed.subscriptionTokens, facets.daily.startMs, dayEndMs(now), now),
-            endsMs: dayEndMs(now),
-          },
-          monthly: {
-            meteredUsdMicros: paceProjection(facets.monthly.global.meteredUsdMicros + facets.monthly.global.unattributed.meteredUsdMicros, facets.monthly.startMs, monthEndMs(now), now),
-            subscriptionTokens: paceProjection(facets.monthly.global.subscriptionTokens + facets.monthly.global.unattributed.subscriptionTokens, facets.monthly.startMs, monthEndMs(now), now),
-            endsMs: monthEndMs(now),
-          },
-        }
-        return Response.json({
-          window,
-          estimated: true,
-          totalUsdMicros: rollups.totalUsdMicros,
-          byAgent: rollups.byAgent,
-          byModel: rollups.byModel,
-          byWorkClass: rollups.byWorkClass,
-          timeline,
-          facets,
-          pace,
-        })
-      } catch (err) {
-        // A reporting read must not crash the page when the ledger is down.
-        if (err instanceof LedgerUnavailableError) {
-          return Response.json({ error: 'Spend ledger unavailable', totalUsdMicros: 0, byAgent: [], byModel: [], byWorkClass: [] }, { status: 500 })
-        }
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-      }
-    },
-  }),
-
-  defineRoute({
     path: '/runtime/status',
     method: 'GET',
     summary: 'Pending runtime restart, in the adapter\'s words',
@@ -498,6 +366,4 @@ export const modelsRoutes = [
     },
   }),
 
-  // Budget status + incident routes (cost-control v2) — see budget-routes.ts.
-  ...budgetStatusRoutes,
 ]

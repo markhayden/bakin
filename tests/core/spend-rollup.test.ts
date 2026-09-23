@@ -8,11 +8,11 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), 'bakin-test-spend-rollup')
-mock.module('../../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db') }) }))
-mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db') }) }))
+mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db') }) }))
+mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db') }) }))
 
-import { buildSpendTimeline, rollupSpend } from '../../../plugins/models/lib/spend-rollup'
-import type { RunCostSpendRow } from '../../../src/core/execution-ledger'
+import { buildSpendTimeline, rollupSpend } from '../../src/core/spend-rollup'
+import type { RunCostSpendRow } from '../../src/core/execution-ledger'
 
 function row(over: Partial<RunCostSpendRow>): RunCostSpendRow {
   return {

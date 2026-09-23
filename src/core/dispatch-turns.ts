@@ -197,6 +197,9 @@ const FAIL_CLOSED_DECISION: BudgetDecision = {
   capValue: 0,
 }
 
+/** The limits policy itself is unreadable — fail closed, name the cause (S13). */
+const POLICY_UNAVAILABLE_DECISION: BudgetDecision = { action: 'defer', cause: 'budget_policy_unavailable' }
+
 export async function budgetGate(
   agentId: string,
   contentDir: string,
@@ -207,12 +210,20 @@ export async function budgetGate(
    *  must never reclassify image dollars. */
   prospect?: { model?: string; billedMedia?: boolean },
 ): Promise<BudgetDecision> {
+  // The limits policy is the spend plugin's. An absent or throwing hook is
+  // NOT "no limits" — it is "we cannot know", and money fails closed (S13):
+  // a crash mid-upgrade or a plugin that failed to activate never runs
+  // uncapped. The health-owned spend.policy-available check names it.
   let policy: BudgetPolicy | undefined
   try {
-    policy = (await hooks().invoke<BudgetPolicy>('models.getBudgetPolicy', {})) ?? undefined
+    if (!hooks().has('spend.getBudgetPolicy')) {
+      log.error('Budget policy hook is not registered; deferring (fail-closed)', undefined, { agentId })
+      return POLICY_UNAVAILABLE_DECISION
+    }
+    policy = (await hooks().invoke<BudgetPolicy>('spend.getBudgetPolicy', {})) ?? undefined
   } catch (err) {
-    log.error('Budget policy read failed; allowing (no policy)', err, { agentId })
-    return { action: 'allow' }
+    log.error('Budget policy read failed; deferring (fail-closed)', err, { agentId })
+    return POLICY_UNAVAILABLE_DECISION
   }
   const now = Date.now()
 
@@ -232,7 +243,7 @@ export async function budgetGate(
   const turn: TurnBillingContext = { agent: agentId, model: prospect?.model }
   try {
     const billing = await hooks().invoke<{ provider?: string; lane?: 'metered' | 'subscription'; model?: string | null }>(
-      'models.resolveBilling',
+      'spend.resolveBilling',
       {
         // Billed media: provider-keyed lane only — omit agentId so the
         // agent's chat-auth detection can't reclassify image dollars.
@@ -577,7 +588,7 @@ export async function resolveDispatchRouting(task: DispatchTask, isRecovery: boo
 /**
  * Record the cost of a settled turn. The threadId IS the ledger run id, so
  * the row is first-write-wins idempotent. Pricing is delegated to the models
- * plugin via the `models.priceTurn` hook (core stays pricing-agnostic);
+ * plugin via the `spend.priceTurn` hook (core stays pricing-agnostic);
  * absent plugin → null model/cost, tokens still recorded ("unmetered"). The
  * same data also feeds the live usage recorder. Never throws into the settle
  * path — a metering failure must not fail a successful turn.

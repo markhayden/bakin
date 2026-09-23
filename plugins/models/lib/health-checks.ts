@@ -21,7 +21,7 @@ import { ROUTABLE_WORK_CLASSES, WORK_CLASSES, type RoutingConfig, type WorkClass
 import { listModelRejections, type RunCostSpendRow } from '../../../src/core/execution-ledger'
 import { VISION_MODELS } from '@bakin/core/llm/vision-models'
 import { getKnownModel } from '@bakin/core/llm/model-catalog'
-import { workClassKey } from './spend-rollup'
+import { workClassKey } from '../../../src/core/spend-rollup'
 
 const TIER_ORDER: Record<string, number> = { budget: 0, standard: 1, premium: 2 }
 const SEVEN_DAYS_MS = 7 * 86_400_000

@@ -14,16 +14,12 @@ import type {
   SpendResponse,
 } from '../types'
 
-/**
- * The plugin whose routes serve spend, policy, incidents and billing today.
- * Still `models` until the ownership cutover (plan T2.7) mounts them under
- * this plugin — the ONE place the page knows which plugin answers.
- */
-const SOURCE_PLUGIN = 'models'
+/** This plugin's id — every own-route call goes through `pluginFetch(PLUGIN_ID, …)`. */
+const PLUGIN_ID = 'spend'
 
 /** Deadline for configuration reads — a stalled endpoint renders as an error, never an endless spinner. */
 const LOAD_TIMEOUT_MS = 10_000
-/** `/spend` and `/budget/status` read the ledger + durable usage history: slower, still bounded. */
+/** `/spend` and `/status` read the ledger + durable usage history: slower, still bounded. */
 const LEDGER_TIMEOUT_MS = 20_000
 
 function isAbortError(err: unknown): boolean {
@@ -41,8 +37,8 @@ function mutationError(data: MutationResult, status: number): string {
   return typeof data.error === 'string' ? data.error : `Save failed (${status})`
 }
 
-function fetchSourceJson<T>(path: string, label: string, timeoutMs: number, signal?: AbortSignal): Promise<T> {
-  return pluginFetchJson<T>(SOURCE_PLUGIN, path, { label, timeoutMs, signal })
+function fetchPluginJson<T>(path: string, label: string, timeoutMs: number, signal?: AbortSignal): Promise<T> {
+  return pluginFetchJson<T>(PLUGIN_ID, path, { label, timeoutMs, signal })
 }
 
 /** One rendered error message plus the identity of whatever produced it. */
@@ -107,7 +103,7 @@ export function useSpendData() {
     const superseded = () => spendGenerationRef.current !== generation
     setSpendLoading(true)
     try {
-      const data = await fetchSourceJson<SpendResponse>(
+      const data = await fetchPluginJson<SpendResponse>(
         `spend?window=${encodeURIComponent(window)}`, 'Spend', LEDGER_TIMEOUT_MS, signal,
       )
       if (signal?.aborted || superseded()) return
@@ -123,7 +119,7 @@ export function useSpendData() {
 
   const fetchBudget = useCallback(async (signal?: AbortSignal) => {
     try {
-      const policy = await fetchSourceJson<{ rules?: BudgetRuleWire[] }>('budget', 'Budget', LOAD_TIMEOUT_MS, signal)
+      const policy = await fetchPluginJson<{ rules?: BudgetRuleWire[] }>('limits', 'Limits', LOAD_TIMEOUT_MS, signal)
       if (signal?.aborted) return
       setBudgetRules(policy.rules ?? [])
       clearBudgetError('budget-rules')
@@ -135,7 +131,7 @@ export function useSpendData() {
 
   const fetchIncidents = useCallback(async (signal?: AbortSignal) => {
     try {
-      const data = await fetchSourceJson<{ incidents?: BudgetIncidentWire[] }>('budget/incidents', 'Incidents', LOAD_TIMEOUT_MS, signal)
+      const data = await fetchPluginJson<{ incidents?: BudgetIncidentWire[] }>('incidents', 'Incidents', LOAD_TIMEOUT_MS, signal)
       if (signal?.aborted) return
       setIncidents(data.incidents ?? [])
       clearBudgetError('budget-incidents')
@@ -147,7 +143,7 @@ export function useSpendData() {
 
   const fetchBudgetStatus = useCallback(async (signal?: AbortSignal) => {
     try {
-      const data = await fetchSourceJson<BudgetStatusWire>('budget/status', 'Budget status', LEDGER_TIMEOUT_MS, signal)
+      const data = await fetchPluginJson<BudgetStatusWire>('status', 'Budget status', LEDGER_TIMEOUT_MS, signal)
       if (signal?.aborted) return
       setBudgetStatus(data)
       clearBudgetError('budget-status')
@@ -158,11 +154,12 @@ export function useSpendData() {
     }
   }, [clearBudgetError, reportBudgetError])
 
-  // Scope candidates for the rule editor (provider + model ids) — display
-  // data only; a failed read leaves the free-text scope input usable.
+  // Scope candidates for the rule editor (provider + model ids) come from
+  // the models plugin's catalog — display data only; a failed read leaves
+  // the free-text scope input usable.
   const fetchCatalogScopes = useCallback(async (signal?: AbortSignal) => {
     try {
-      const data = await fetchSourceJson<{ models?: Array<{ id: string; provider: string }> }>('available', 'Models', LOAD_TIMEOUT_MS, signal)
+      const data = await pluginFetchJson<{ models?: Array<{ id: string; provider: string }> }>('models', 'available', { label: 'Models', timeoutMs: LOAD_TIMEOUT_MS, signal })
       if (signal?.aborted) return
       const models = data.models ?? []
       setModelIds(models.map((model) => model.id))
@@ -189,7 +186,7 @@ export function useSpendData() {
         reportBudgetError('budget-save', `Rule ${capless + 1} has no caps — set a daily or monthly cap, or remove the row.`)
         return
       }
-      const res = await pluginFetch(SOURCE_PLUGIN, 'budget', { method: 'PUT', body: { rules: pendingRules } })
+      const res = await pluginFetch(PLUGIN_ID, 'limits', { method: 'PUT', body: { rules: pendingRules } })
       const data = await res.json() as MutationResult & { warnings?: unknown }
       if (data.ok) {
         setBudgetRules(pendingRules)
@@ -240,7 +237,7 @@ export function useSpendData() {
       const current = budgetStatus?.overrides ?? []
       const others = current.filter((o) => !(o.agentId === agentId && o.provider === undefined))
       const overrides = lane === 'auto' ? others : [...others, { agentId, lane }]
-      const res = await pluginFetch(SOURCE_PLUGIN, 'billing/overrides', { method: 'PUT', body: { overrides } })
+      const res = await pluginFetch(PLUGIN_ID, 'billing/overrides', { method: 'PUT', body: { overrides } })
       if (!res.ok) {
         const data = await res.json().catch(() => ({})) as MutationResult
         reportBudgetError('billing-override', typeof data.error === 'string' ? data.error : `Failed to save the lane override (${res.status}).`)
@@ -255,7 +252,7 @@ export function useSpendData() {
   /** Resolve an incident: raise (new cap in the rule's unit), ack, or resume. */
   const resolveIncident = async (id: number, action: 'raise' | 'ack' | 'resume', cap?: number): Promise<string | null> => {
     try {
-      const res = await pluginFetch(SOURCE_PLUGIN, `budget/incidents/${id}/resolve`, {
+      const res = await pluginFetch(PLUGIN_ID, `incidents/${id}/resolve`, {
         method: 'POST', body: { action, ...(cap !== undefined ? { cap } : {}) },
       })
       const data = await res.json() as MutationResult

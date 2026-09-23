@@ -95,7 +95,7 @@ describe('evaluateBudget — rule matching and units', () => {
       facets: facets({ global: scope({ subscriptionTokens: 900 }, { subscriptionTokens: 100 }) }),
     })
     expect(r.action).toBe('defer')
-    if (r.action !== 'allow') {
+    if (r.action !== 'allow' && r.cause !== 'budget_policy_unavailable') {
       expect(r.unit).toBe('tokens')
       expect(r.spentValue).toBe(1000)
       expect(r.capValue).toBe(1000)
@@ -543,7 +543,7 @@ describe('evaluateBudget — rule matching and units', () => {
     const f = facets({ global: scope({ meteredUsdMicros: 85_000_000 }), byAgent: { pixel: scope({ meteredUsdMicros: 5_000_000 }) } })
     const r = evaluateBudget({ policy, turn: { agent: 'pixel' }, facets: f })
     expect(r.action).toBe('defer')
-    if (r.action !== 'allow') expect(r.rule.scope).toBe('agent')
+    if (r.action !== 'allow' && r.cause !== 'budget_policy_unavailable') expect(r.rule.scope).toBe('agent')
   })
 
   it('monthly window evaluates against monthly facets', () => {
@@ -553,7 +553,7 @@ describe('evaluateBudget — rule matching and units', () => {
       facets: facets({ global: scope({ meteredUsdMicros: 1_000_000 }) }, { global: scope({ meteredUsdMicros: 100_000_000 }) }),
     })
     expect(r.action).toBe('defer')
-    if (r.action !== 'allow') expect(r.window).toBe('monthly')
+    if (r.action !== 'allow' && r.cause !== 'budget_policy_unavailable') expect(r.window).toBe('monthly')
   })
 })
 

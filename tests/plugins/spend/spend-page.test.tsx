@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 /**
- * /spend page smoke: the page composes its own data hook against the
- * spend/policy/incident/billing routes (served by the models plugin until
- * the ownership cutover), renders Overview tiles from `/spend`, the
- * Limits tab from the policy, and open incidents as banners on both.
+ * /spend page smoke: the page composes its own data hook against the spend
+ * plugin's routes (scope suggestions still read the models catalog),
+ * renders Overview tiles from `/spend`, the Limits tab from the policy,
+ * and open incidents as banners on both.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -58,22 +58,22 @@ const spendFixture = {
 
 const routes: Record<string, unknown> = {
   'spend?window=24h': spendFixture,
-  budget: { rules: [{ scope: 'global', lane: 'metered', dailyCap: 20, atCap: 'defer' }] },
-  'budget/incidents': {
+  limits: { rules: [{ id: 'g', scope: 'global', lane: 'metered', dailyCap: 20, atCap: 'defer' }] },
+  incidents: {
     incidents: [{
       id: 7, scope: 'global', scopeId: '', lane: 'metered', window: 'daily', windowStartMs: 0, kind: 'cap',
       unit: 'usd_micros', capValue: 20_000_000, spentValue: 21_000_000, atCap: 'defer', openedAt: 1, status: 'open',
     }],
   },
-  'budget/status': { paused: false, configured: true, perAgent: {}, perTask: {}, billing: { main: { provider: 'openai-codex', lane: 'subscription', model: 'openai-codex/gpt-5.6-luna' } }, overrides: [], deferredProviders: [], openIncidents: [] },
-  available: { models: [{ id: 'openai-codex/gpt-5.6-luna', provider: 'openai-codex' }] },
+  status: { paused: false, configured: true, perAgent: {}, perTask: {}, billing: { main: { provider: 'openai-codex', lane: 'subscription', model: 'openai-codex/gpt-5.6-luna' } }, overrides: [], deferredProviders: [], openIncidents: [] },
+  'models:available': { models: [{ id: 'openai-codex/gpt-5.6-luna', provider: 'openai-codex' }] },
 }
 
 beforeEach(() => {
   requested.length = 0
   globalThis.fetch = mock(async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
-    const path = url.replace('/api/plugins/models/', '')
+    const path = url.startsWith('/api/plugins/models/') ? `models:${url.slice('/api/plugins/models/'.length)}` : url.replace('/api/plugins/spend/', '')
     requested.push(url)
     const body = routes[path]
     return body === undefined ? jsonResponse({ error: 'not found' }, 404) : jsonResponse(body)
@@ -93,8 +93,8 @@ describe('SpendPage', () => {
     expect(screen.getByRole('heading', { name: 'Spend' })).toBeTruthy()
     expect(screen.getByText('Budget cap reached')).toBeTruthy()
     expect(screen.getByRole('tab', { name: 'Overview', selected: true })).toBeTruthy()
-    // Every read went to the source plugin's routes — no hand-built URLs.
-    expect(requested.every((url) => url.startsWith('/api/plugins/models/'))).toBe(true)
+    // Every read went to this plugin's routes, except the catalog scopes (models).
+    expect(requested.filter((url) => !url.startsWith('/api/plugins/spend/'))).toEqual(['/api/plugins/models/available'])
   })
 
   it('switches to Limits and shows the policy rule editor with the roster + billing lanes', async () => {

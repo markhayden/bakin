@@ -6,8 +6,16 @@
 export type SpendTab = 'overview' | 'limits'
 export type SpendWindow = '24h' | '7d' | '30d' | 'all'
 
-/** Wire shape of one budget cap rule (cost-control v2). */
+/** Manual billing-lane override; most-specific match wins (agent+provider → agent → provider). */
+export interface BillingOverride {
+  agentId?: string
+  provider?: string
+  lane: 'metered' | 'subscription'
+}
+
+/** Wire shape of one budget cap rule (cost-control v2). `id` is server-assigned; absent only on a row staged in the editor. */
 export interface BudgetRuleWire {
+  id?: string
   scope: 'global' | 'agent' | 'provider' | 'model'
   scopeId?: string
   lane: 'metered' | 'subscription'

@@ -32,10 +32,10 @@ const hookRegistryMock = () => ({
   getHookRegistry: () => ({
     has: (name: string) => (name === 'models.refreshAvailableModels' ? refreshModelsRegistered : true),
     invoke: async (name: string, data?: Record<string, unknown>) => {
-      if (name === 'models.getBudgetPolicy') return budgetPolicy
-      if (name === 'models.resolveBilling' && resolveBilling) return await resolveBilling()
+      if (name === 'spend.getBudgetPolicy') return budgetPolicy
+      if (name === 'spend.resolveBilling' && resolveBilling) return await resolveBilling()
       if (name === 'models.refreshAvailableModels') return refreshModelsResult
-      if (name === 'models.updateBudgetPolicy') {
+      if (name === 'spend.updateBudgetPolicy') {
         budgetPolicyPatches.push(data ?? {})
         return { ok: true }
       }

@@ -171,7 +171,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
 
   let policy: BudgetPolicy | undefined
   try {
-    policy = (await getHookRegistry().invoke<BudgetPolicy>('models.getBudgetPolicy', {})) ?? undefined
+    policy = (await getHookRegistry().invoke<BudgetPolicy>('spend.getBudgetPolicy', {})) ?? undefined
   } catch (err) {
     observations.push(healthUnknown({
       key: 'policy',
@@ -371,6 +371,9 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
   for (const rule of policy.rules) {
     const decision = evaluateBudget({ policy: { rules: [rule] }, turn: matchingTurn(rule), facets })
     if (decision.action === 'allow') continue
+    // The check itself read the policy from the hook above, so the evaluator
+    // can never report it unavailable here; the type still requires the arm.
+    if (decision.cause === 'budget_policy_unavailable') continue
     if (decision.cause === 'spend_evidence_incomplete' || decision.cause === 'spend_evidence_unavailable') {
       incompleteSpendRules.push({
         rule,
@@ -727,11 +730,11 @@ export function acceptUnattributedHistoryRepair(): HealthRepairActionDefinition 
       try {
         const cutoff = toLocalDayKey(Date.now())
         const result = await getHookRegistry().invoke<{ ok: boolean; error?: string }>(
-          'models.updateBudgetPolicy',
+          'spend.updateBudgetPolicy',
           { acceptUnattributedBefore: cutoff },
         )
         if (!result?.ok) {
-          return done('failed', `Budget policy write failed: ${result?.error ?? 'models plugin unavailable'}`)
+          return done('failed', `Budget policy write failed: ${result?.error ?? 'spend plugin unavailable'}`)
         }
         return done('applied', `Unattributed usage before ${cutoff} is written off. Caps compute from today forward; new evidence gaps still fail closed.`)
       } catch (err) {

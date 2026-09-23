@@ -13,7 +13,7 @@ import { tmpdir } from 'os'
 import { rmSync } from 'fs'
 import { randomUUID } from 'crypto'
 
-const testDir = join(tmpdir(), `bakin-test-models-billing-${Date.now()}-${randomUUID()}`)
+const testDir = join(tmpdir(), `bakin-test-spend-billing-${Date.now()}-${randomUUID()}`)
 
 const contentDirMock = () => ({
   getContentDir: () => testDir,
@@ -41,7 +41,7 @@ import {
   resolveBilling,
   _resetBillingCache,
   type BillingOverride,
-} from '../../../plugins/models/lib/billing'
+} from '../../../plugins/spend/lib/billing'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -109,7 +109,7 @@ describe('resolveLaneFor (override precedence)', () => {
 describe('resolveBilling (ctx-bound)', () => {
   function makeCtx(credentials: Array<{ provider: string; kind: 'api-key' | 'oauth' }> | undefined, overrides: BillingOverride[] = []) {
     return {
-      getSettings: () => ({ billing: { overrides } }),
+      getSettings: () => ({ limits: { rules: [] }, billing: { overrides } }),
       runtime: {
         credentialStatus: async (_opts?: { agentId?: string }) => ({
           llmProviders: (credentials ?? []).map((c) => c.provider),

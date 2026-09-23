@@ -79,12 +79,12 @@ function flag(args: string[], name: string): string | undefined {
 }
 
 async function fetchRules(): Promise<RuleWire[]> {
-  const policy = (await apiGet('/api/plugins/models/budget')) as { rules?: RuleWire[] }
+  const policy = (await apiGet('/api/plugins/spend/limits')) as { rules?: RuleWire[] }
   return policy.rules ?? []
 }
 
 async function putRules(rules: RuleWire[]): Promise<void> {
-  const result = (await api('/api/plugins/models/budget', {
+  const result = (await api('/api/plugins/spend/limits', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ rules }),
@@ -110,9 +110,9 @@ function ruleSpent(rule: RuleWire, w: WindowSpend): number {
 export async function cmdSpend(args: string[]): Promise<void> {
   const window = flag(args, '--window') ?? '24h'
   const [spend, rules, status] = await Promise.all([
-    apiGet(`/api/plugins/models/spend?window=${encodeURIComponent(window)}`) as Promise<SpendPayload>,
+    apiGet(`/api/plugins/spend/spend?window=${encodeURIComponent(window)}`) as Promise<SpendPayload>,
     fetchRules(),
-    apiGet('/api/plugins/models/budget/status') as Promise<{ paused?: boolean }>,
+    apiGet('/api/plugins/spend/status') as Promise<{ paused?: boolean }>,
   ])
   if (args.includes('--json')) {
     print({ ...spend, rules, paused: status.paused === true })
@@ -184,7 +184,7 @@ export async function cmdSpend(args: string[]): Promise<void> {
 
 async function cmdBudgetShow(json: boolean): Promise<void> {
   const rules = await fetchRules()
-  const status = (await apiGet('/api/plugins/models/budget/status')) as { paused?: boolean }
+  const status = (await apiGet('/api/plugins/spend/status')) as { paused?: boolean }
   if (json) {
     print({ rules, paused: status.paused === true })
     return
@@ -269,12 +269,12 @@ async function cmdBudgetIncidents(args: string[]): Promise<void> {
     }
     const cap = parseCap(flag(args, '--cap'))
     const body: Record<string, unknown> = { action, ...(cap !== undefined ? { cap } : {}) }
-    await apiPost(`/api/plugins/models/budget/incidents/${resolveId}/resolve`, body)
+    await apiPost(`/api/plugins/spend/incidents/${resolveId}/resolve`, body)
     console.log(`Incident ${resolveId}: ${action}${cap ? ` (new cap ${cap})` : ''}.`)
     return
   }
   const all = args.includes('--all')
-  const data = (await apiGet(`/api/plugins/models/budget/incidents${all ? '?all=1' : ''}`)) as { incidents?: IncidentWire[] }
+  const data = (await apiGet(`/api/plugins/spend/incidents${all ? '?all=1' : ''}`)) as { incidents?: IncidentWire[] }
   const incidents = data.incidents ?? []
   if (args.includes('--json')) {
     print({ incidents })

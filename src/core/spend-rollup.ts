@@ -8,7 +8,7 @@
  * runs only; subscription-lane rows contribute tokens, never dollars (their
  * cost is null by lane suppression upstream).
  */
-import type { RunCostSpendRow } from '../../../src/core/execution-ledger'
+import type { RunCostSpendRow } from './execution-ledger'
 
 export interface SpendAgentRollup {
   agent: string

@@ -127,7 +127,7 @@ describe('Header update banner', () => {
     global.fetch = mock((input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/api/version') return Promise.resolve(response({ version: '0.1.0' }))
-      if (url.startsWith('/api/plugins/models/budget/status')) return Promise.resolve(response({ paused: true }))
+      if (url.startsWith('/api/plugins/spend/status')) return Promise.resolve(response({ paused: true }))
       if (url === '/api/dispatch') return Promise.resolve(response({ secondsUntilNext: 120, dispatching: false }))
       return Promise.resolve(response({}))
     }) as unknown as typeof global.fetch
@@ -154,7 +154,7 @@ describe('Header update banner', () => {
           latestTag: 'v0.2.0', updateAvailable: true, checkedAt: '2026-06-01T12:00:00.000Z',
         }))
       }
-      if (url.startsWith('/api/plugins/models/budget/status')) return Promise.resolve(response({ paused: true }))
+      if (url.startsWith('/api/plugins/spend/status')) return Promise.resolve(response({ paused: true }))
       if (url === '/api/dispatch') return Promise.resolve(response({ secondsUntilNext: 120, dispatching: false }))
       return Promise.resolve(response({}))
     }) as unknown as typeof global.fetch

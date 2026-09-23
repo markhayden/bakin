@@ -1415,57 +1415,6 @@ curl -sS \
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="models.put.billing-overrides">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X PUT \
-  'http://localhost:3737/api/plugins/models/billing/overrides' \
-  -H 'Content-Type: application/json' \
-  --data '{"overrides":[{"agentId":"value","provider":"value","lane":"metered"}]}'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="models.get.budget">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  'http://localhost:3737/api/plugins/models/budget'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="models.put.budget">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X PUT \
-  'http://localhost:3737/api/plugins/models/budget' \
-  -H 'Content-Type: application/json' \
-  --data '{"rules":[{"scope":"global","scopeId":"value","lane":"metered","dailyCap":1,"monthlyCap":1,"atCap":"defer"}],"acceptUnattributedBefore":"value"}'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="models.get.budget-incidents">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  'http://localhost:3737/api/plugins/models/budget/incidents'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="models.post.budget-incidents-id-resolve">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X POST \
-  'http://localhost:3737/api/plugins/models/budget/incidents/<id>/resolve' \
-  -H 'Content-Type: application/json' \
-  --data '{"action":"raise","cap":1}'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="models.get.budget-status">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  'http://localhost:3737/api/plugins/models/budget/status'
-```
-</OpenApiReference>
-
 <OpenApiReference operationId="models.get.config">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -1531,23 +1480,6 @@ curl -sS \
   'http://localhost:3737/api/plugins/models/selections' \
   -H 'Content-Type: application/json' \
   --data '{"revision":"value","ops":[{"ref":"value","set":{"model":"value","thinking":"value"}}],"snapshot":"value"}'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="models.post.selections-pending-acknowledge">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X POST \
-  'http://localhost:3737/api/plugins/models/selections/pending/acknowledge' \
-  -H 'Content-Type: application/json' \
-  --data '{"document":"value"}'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="models.get.spend">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  'http://localhost:3737/api/plugins/models/spend'
 ```
 </OpenApiReference>
 
@@ -1677,6 +1609,68 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/plugins/schedule/search?q=<q>&limit=<limit>&offset=<offset>&facets=<facets>'
+```
+</OpenApiReference>
+
+## Spend
+
+<OpenApiReference tag="Spend" summary />
+
+<OpenApiReference operationId="spend.put.billing-overrides">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/spend/billing/overrides' \
+  -H 'Content-Type: application/json' \
+  --data '{"overrides":[{"agentId":"value","provider":"value","lane":"metered"}]}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="spend.get.incidents">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/spend/incidents'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="spend.post.incidents-id-resolve">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/spend/incidents/<id>/resolve' \
+  -H 'Content-Type: application/json' \
+  --data '{"action":"raise","cap":1}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="spend.get.limits">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/spend/limits'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="spend.put.limits">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/spend/limits' \
+  -H 'Content-Type: application/json' \
+  --data '{"rules":[{"id":"value","scope":"global","scopeId":"value","lane":"metered","dailyCap":1,"monthlyCap":1,"atCap":"defer"}]}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="spend.get.spend">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/spend/spend'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="spend.get.status">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/spend/status'
 ```
 </OpenApiReference>
 

@@ -11,12 +11,19 @@ export interface BudgetGateStatus {
    *  resolution (covers tag/origin-routed and unassigned tasks). */
   perTask: Record<string, 'deferred'>
   deferredProviders: string[]
+  /**
+   * The spend plugin's status route is not mounted (404): its limits policy
+   * hook is absent too, so the gate is failing closed on EVERY task
+   * (budget_policy_unavailable). Set only on a definitive 404 — a blip
+   * keeps the prior value.
+   */
+  policyUnavailable: boolean
 }
 
-const EMPTY: BudgetGateStatus = { paused: false, configured: false, perAgent: {}, perTask: {}, deferredProviders: [] }
+const EMPTY: BudgetGateStatus = { paused: false, configured: false, perAgent: {}, perTask: {}, deferredProviders: [], policyUnavailable: false }
 
 /**
- * Poll the models plugin's side-effect-free budget status (cost-control v2)
+ * Poll the spend plugin's side-effect-free gate status (cost-control v2)
  * so budget-deferred tasks stop sitting invisibly in todo. 15s cadence (same
  * as the workflow gate poll) + an immediate refetch on budget SSE events so
  * incidents/resolutions reflect without waiting out the poll.
@@ -26,7 +33,11 @@ export function useBudgetStatus(): BudgetGateStatus {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/plugins/models/budget/status')
+      const res = await fetch('/api/plugins/spend/status')
+      if (res.status === 404) {
+        setStatus((prev) => ({ ...prev, policyUnavailable: true }))
+        return
+      }
       if (!res.ok) return
       const data = (await res.json()) as Partial<BudgetGateStatus>
       setStatus({
@@ -35,6 +46,7 @@ export function useBudgetStatus(): BudgetGateStatus {
         perAgent: data.perAgent ?? {},
         perTask: data.perTask ?? {},
         deferredProviders: data.deferredProviders ?? [],
+        policyUnavailable: false,
       })
     } catch {
       // best effort — the board renders without badges on a blip
@@ -55,7 +67,7 @@ export function useBudgetStatus(): BudgetGateStatus {
 /** A pre-claim hold on a todo task, whatever gate raised it. */
 export interface BudgetHold {
   /** Bold badge label — distinguishes the kill switch, a cap hold, and a dead model. */
-  label: 'Dispatch paused' | 'Budget-deferred' | "Model can't run"
+  label: 'Dispatch paused' | 'Budget-deferred' | 'Limits unavailable' | "Model can't run"
   /** One-line reason + where to fix it. */
   detail: string
   /** Where the badge links: the gate that owns the fix. */
@@ -66,6 +78,7 @@ export interface BudgetHold {
 /** Why a todo task isn't dispatching right now, or null when it would. */
 export function budgetHoldReason(status: BudgetGateStatus, task: { id: string; agent?: string }): BudgetHold | null {
   if (status.paused) return { label: 'Dispatch paused', detail: 'kill switch — resume in the header banner or `bakin budget resume`', href: '/spend', kind: 'budget' }
+  if (status.policyUnavailable) return { label: 'Limits unavailable', detail: 'the spend plugin is not answering — dispatch fails closed; see Health', href: '/health', kind: 'budget' }
   if (status.perTask[task.id] === 'deferred' || (task.agent && status.perAgent[task.agent] === 'deferred')) {
     return { label: 'Budget-deferred', detail: 'cap reached — resolve in Spend', href: '/spend', kind: 'budget' }
   }
@@ -77,7 +90,9 @@ export function budgetHoldReason(status: BudgetGateStatus, task: { id: string; a
  * model outranks a cap (repairing the model is what unblocks the task).
  */
 export function pickTaskHold(status: BudgetGateStatus, modelHold: { ref: string; model: string; detail: string } | undefined, task: { id: string; agent?: string }): BudgetHold | null {
-  if (status.paused) return budgetHoldReason(status, task)
+  // Global holds first (they defer every task whatever its model), then the
+  // per-task model verdict, then a cap hold.
+  if (status.paused || status.policyUnavailable) return budgetHoldReason(status, task)
   return modelHoldReason(modelHold) ?? budgetHoldReason(status, task)
 }
 

@@ -1,9 +1,9 @@
 {
   "id": "models",
   "name": "Models",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "bakin": ">=1.0.0",
-  "description": "Agent model configuration — per-agent models, aliases, available models, per-turn model/thinking routing, and spend/budget tracking",
+  "description": "Agent model configuration — per-agent models, aliases, available models, and per-turn model/thinking routing",
   "contentFiles": [],
   "secrets": [
     {
@@ -49,21 +49,6 @@
         "method": "GET",
         "path": "/routing",
         "summary": "Get the per-turn model/thinking routing policy"
-      },
-      {
-        "method": "GET",
-        "path": "/budget",
-        "summary": "Get the spend-cap (budget) policy"
-      },
-      {
-        "method": "PUT",
-        "path": "/budget",
-        "summary": "Replace the spend-cap (budget) policy"
-      },
-      {
-        "method": "GET",
-        "path": "/spend",
-        "summary": "Estimated agent spend rollups over a window"
       },
       {
         "method": "POST",

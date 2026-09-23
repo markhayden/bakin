@@ -23,7 +23,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => dir,
 // Zero budget rules: the hold must not depend on budget status at all.
 const hookRegistryMock = () => ({
   getHookRegistry: () => ({
-    invoke: async (name: string) => (name === 'models.getBudgetPolicy' ? { rules: [] } : null),
+    invoke: async (name: string) => (name === 'spend.getBudgetPolicy' ? { rules: [] } : null),
     has: () => true,
   }),
 })
