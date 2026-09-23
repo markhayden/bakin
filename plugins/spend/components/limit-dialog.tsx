@@ -33,7 +33,7 @@ import {
 import type { BudgetRuleWire, CoverageWire, LimitSuggestionWire } from '../types'
 import { formatTokens, formatUsd, parseCapInput } from './spend-utils'
 
-/** What the dialog hands back: one global metered rule, id-less (the server assigns it). */
+/** What the dialog hands back: the global metered rule (merged onto the existing one when there is one; the server assigns ids). */
 export type LimitDraft = Pick<BudgetRuleWire, 'scope' | 'lane' | 'monthlyCap' | 'dailyCap' | 'atCap'>
 
 /**
@@ -65,17 +65,27 @@ export function LimitDialog({
   const [daily, setDaily] = useState('')
   const [reaction, setReaction] = useState<'defer' | 'pause'>('defer')
   const [fieldError, setFieldError] = useState<string | null>(null)
+  const [dailyError, setDailyError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
     const controller = new AbortController()
+    // Every opening starts from a clean draft — a dismissed dialog's numbers
+    // must not reappear as if chosen.
     setCoverage(null)
     setCoverageError(null)
     setFieldError(null)
+    setDailyError(null)
+    setMonthly('')
+    setDailyOn(false)
+    setDaily('')
+    setReaction('defer')
     pluginFetchJson<CoverageWire>('spend', 'coverage', { label: 'Coverage', timeoutMs: 20_000, signal: controller.signal })
       .then((data) => {
         setCoverage(data)
-        if (data.suggestion.status === 'ready') setMonthly(String(data.suggestion.monthlyUsd))
+        // The suggestion is a PREFILL: it fills an empty field and never
+        // clobbers a number the operator typed while the read was in flight.
+        if (data.suggestion.status === 'ready') setMonthly((current) => (current.trim() === '' ? String(data.suggestion.status === 'ready' ? data.suggestion.monthlyUsd : '') : current))
       })
       .catch((err: unknown) => {
         if ((err as { name?: string }).name === 'AbortError') return
@@ -87,15 +97,16 @@ export function LimitDialog({
   const submit = async () => {
     const monthlyCap = parseCapInput(monthly)
     if (monthlyCap === undefined || monthlyCap <= 0) {
-      setFieldError('Enter a monthly limit in whole dollars.')
-      return
-    }
-    const dailyCap = dailyOn ? parseCapInput(daily) : undefined
-    if (dailyOn && (dailyCap === undefined || dailyCap <= 0)) {
-      setFieldError('Enter a daily limit in whole dollars, or turn the daily limit off.')
+      setFieldError('Enter a monthly limit in dollars.')
       return
     }
     setFieldError(null)
+    const dailyCap = dailyOn ? parseCapInput(daily) : undefined
+    if (dailyOn && (dailyCap === undefined || dailyCap <= 0)) {
+      setDailyError('Enter a daily limit in dollars, or turn the daily limit off.')
+      return
+    }
+    setDailyError(null)
     await onSave({ scope: 'global', lane: 'metered', monthlyCap, ...(dailyOn && dailyCap !== undefined ? { dailyCap } : {}), atCap: reaction })
   }
 
@@ -136,7 +147,7 @@ export function LimitDialog({
                 <FieldLabel>Monthly limit (USD)</FieldLabel>
                 <Input
                   inputMode="decimal"
-                  placeholder={coverage?.suggestion.status === 'ready' ? String(coverage.suggestion.monthlyUsd) : 'e.g. 100'}
+                  placeholder="Dollars per month"
                   value={monthly}
                   onChange={(event) => setMonthly(event.currentTarget.value)}
                 />
@@ -150,9 +161,10 @@ export function LimitDialog({
                 <FieldDescription>Useful when one runaway day matters more than the month.</FieldDescription>
               </Field>
               {dailyOn ? (
-                <Field name="limit-daily">
+                <Field name="limit-daily" invalid={Boolean(dailyError)}>
                   <FieldLabel>Daily limit (USD)</FieldLabel>
-                  <Input inputMode="decimal" placeholder="e.g. 10" value={daily} onChange={(event) => setDaily(event.currentTarget.value)} />
+                  <Input inputMode="decimal" placeholder="Dollars per day" value={daily} onChange={(event) => setDaily(event.currentTarget.value)} />
+                  {dailyError ? <FieldError match>{dailyError}</FieldError> : null}
                 </Field>
               ) : null}
 

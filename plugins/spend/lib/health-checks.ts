@@ -169,24 +169,51 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
     }))
   }
 
+  // An unregistered hook answers `undefined` from invoke — that is NOT "no
+  // rules". It is the fail-closed state the health-owned
+  // spend.policy-available check names; here it is unknown, never healthy.
   let policy: BudgetPolicy | undefined
   try {
+    if (!getHookRegistry().has('spend.getBudgetPolicy')) throw new Error('spend.getBudgetPolicy is not registered — the dispatch gate is failing closed')
     policy = (await getHookRegistry().invoke<BudgetPolicy>('spend.getBudgetPolicy', {})) ?? undefined
   } catch (err) {
-    observations.push(healthUnknown({
-      key: 'policy',
-      summary: 'Spending policy could not be verified.',
-      detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'policy-unavailable',
-        title: 'Spending policy is unavailable',
-        class: 'service_failure',
-        impact: 'Health cannot confirm whether agent spend is capped.',
-        disposition: 'watch',
-        resources: [{ kind: 'system', id: 'budget-policy', label: 'Spending policy' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
-    }))
+    // Same disposition as spend.policy-available for the same state: an
+    // invalid spend.json (operator-fixable) is action required; a transient
+    // read failure is watch.
+    const detail = err instanceof Error ? err.message : String(err)
+    if ((err as { code?: string }).code === 'spend_settings_invalid') {
+      // A KNOWN failure (the file is invalid), not missing evidence: error +
+      // action required, exactly as the health-owned check reports it.
+      observations.push(healthError({
+        key: 'policy',
+        summary: 'The spend limits file is invalid — dispatch is failing closed.',
+        detail,
+        incident: {
+          key: 'policy-invalid',
+          title: 'Spend limits file is invalid',
+          class: 'service_failure',
+          impact: 'Task dispatch and billed media calls defer until spend.json is a valid policy again; your limits are still in the file.',
+          disposition: 'action_required',
+          resources: [{ kind: 'plugin', id: 'spend', label: 'Spend plugin' }],
+          resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+        },
+      }))
+    } else {
+      observations.push(healthUnknown({
+        key: 'policy',
+        summary: 'Spending policy could not be verified — dispatch is failing closed.',
+        detail,
+        incident: {
+          key: 'policy-unavailable',
+          title: 'Spending policy is unavailable',
+          class: 'service_failure',
+          impact: 'Task dispatch and billed media calls defer until the policy read succeeds.',
+          disposition: 'watch',
+          resources: [{ kind: 'plugin', id: 'spend', label: 'Spend plugin' }],
+          resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+        },
+      }))
+    }
     return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
   }
   if (!policy?.rules?.length) {

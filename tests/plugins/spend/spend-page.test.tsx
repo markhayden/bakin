@@ -15,10 +15,16 @@ const querySeed: Record<string, string> = {}
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => () => undefined,
 }))
+/** The dirty-exit guard is kit-owned (needs a router); the page test pins what it is TOLD. */
+const guardCalls: Array<{ hasUnsavedChanges: boolean; saving: boolean }> = []
 mock.module('@makinbakin/sdk/navigation', () => ({
   useQueryState: (key: string, initial?: string) => {
     const [value, setValue] = useState<string | null>(querySeed[key] ?? initial ?? null)
     return [value, setValue, setValue]
+  },
+  useUnsavedChangesGuard: (options: { hasUnsavedChanges: boolean; saving: boolean }) => {
+    guardCalls.push({ hasUnsavedChanges: options.hasUnsavedChanges, saving: options.saving })
+    return { requestExit: () => {}, reset: () => {}, dialog: null }
   },
 }))
 mock.module('@makinbakin/sdk/hooks', () => ({
@@ -59,7 +65,7 @@ const spendFixture = {
 
 const routes: Record<string, unknown> = {
   'spend?window=24h': spendFixture,
-  limits: { rules: [{ id: 'g', scope: 'global', lane: 'metered', dailyCap: 20, atCap: 'defer' }] },
+  limits: { rules: [{ id: 'g', scope: 'global', lane: 'metered', dailyCap: 20, atCap: 'defer' }], revision: 'rev-1' },
   incidents: {
     incidents: [{
       id: 7, scope: 'global', scopeId: '', lane: 'metered', window: 'daily', windowStartMs: 0, kind: 'cap',
@@ -76,17 +82,20 @@ const routes: Record<string, unknown> = {
   },
 }
 const putBodies: Array<Record<string, unknown>> = []
+let putReply: Response | null = null
 
 beforeEach(() => {
   requested.length = 0
   putBodies.length = 0
+  putReply = null
+  routes.limits = { rules: [{ id: 'g', scope: 'global', lane: 'metered', dailyCap: 20, atCap: 'defer' }], revision: 'rev-1' }
   globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
     const path = url.startsWith('/api/plugins/models/') ? `models:${url.slice('/api/plugins/models/'.length)}` : url.replace('/api/plugins/spend/', '')
     requested.push(url)
     if (init?.method === 'PUT' && path === 'limits') {
       putBodies.push(JSON.parse(String(init.body)) as Record<string, unknown>)
-      return jsonResponse({ ok: true })
+      return putReply ?? jsonResponse({ ok: true, revision: 'rev-2' })
     }
     const body = routes[path]
     return body === undefined ? jsonResponse({ error: 'not found' }, 404) : jsonResponse(body)
@@ -158,7 +167,7 @@ describe('SpendPage', () => {
     expect(screen.queryByText('Unsaved budget rules')).toBeNull()
   })
 
-  it('Add a limit: the dialog prefills the coverage suggestion, "Pause" maps to atCap pause, and saves through PUT /limits with existing rules intact', async () => {
+  it('Add a limit: the dialog prefills the coverage suggestion, "Pause" maps to atCap pause, and saves through PUT /limits under the loaded revision — onto the existing global metered rule (one rule per identity)', async () => {
     querySeed.tab = 'limits'
     render(<SpendPage />)
     await waitFor(() => expect(screen.getByRole('region', { name: 'Budget rules' })).toBeTruthy())
@@ -177,12 +186,73 @@ describe('SpendPage', () => {
     await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Save limit' })) })
     await waitFor(() => expect(putBodies).toHaveLength(1))
     expect(putBodies[0]).toEqual({
+      revision: 'rev-1',
       rules: [
-        { id: 'g', scope: 'global', lane: 'metered', dailyCap: 20, atCap: 'defer' },
-        { scope: 'global', lane: 'metered', monthlyCap: 450, atCap: 'pause' },
+        { id: 'g', scope: 'global', lane: 'metered', dailyCap: 20, monthlyCap: 450, atCap: 'pause' },
       ],
     })
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add a spending limit' })).toBeNull())
+  })
+
+  it('a failed /limits load renders the unavailable state — never "No spending limits" — and nothing can be added or saved against unknown rules', async () => {
+    delete routes.limits
+    querySeed.tab = 'limits'
+    render(<SpendPage />)
+    await waitFor(() => expect(screen.getByText('Spend limits could not be loaded')).toBeTruthy())
+    expect(screen.queryByText('No spending limits')).toBeNull()
+    for (const button of screen.getAllByRole('button', { name: 'Add a limit' })) expect((button as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Add a rule' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(putBodies).toHaveLength(0)
+  })
+
+  it('a save under a revision that moved is refused by the server and explained — the limits reload, nothing is re-posted', async () => {
+    putReply = jsonResponse({ error: 'stale_revision', message: 'the spend limits changed since this edit was loaded — reload and try again', current: 'rev-9' }, 409)
+    querySeed.tab = 'limits'
+    render(<SpendPage />)
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Budget rules' })).toBeTruthy())
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Add a limit' })[0]!) })
+    const dialog = await screen.findByRole('dialog', { name: 'Add a spending limit' })
+    const monthly = within(dialog).getByLabelText('Monthly limit (USD)') as HTMLInputElement
+    await waitFor(() => expect(monthly.value).toBe('450'))
+    const limitsLoads = () => requested.filter((u) => u === '/api/plugins/spend/limits').length
+    const before = limitsLoads()
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Save limit' })) })
+    expect(await within(dialog).findByText(/changed since this page loaded/)).toBeTruthy()
+    await waitFor(() => expect(limitsLoads()).toBeGreaterThan(before))
+    expect(putBodies).toHaveLength(1)
+  })
+
+  it('Add a limit: a number typed while the suggestion is still loading is kept — the prefill only fills an empty field', async () => {
+    let releaseCoverage!: () => void
+    const gate = new Promise<void>((resolve) => { releaseCoverage = resolve })
+    const inner = globalThis.fetch
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      if (url === '/api/plugins/spend/coverage') await gate
+      return inner(input, init)
+    }) as unknown as typeof fetch
+    querySeed.tab = 'limits'
+    render(<SpendPage />)
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Budget rules' })).toBeTruthy())
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Add a limit' })[0]!) })
+    const dialog = await screen.findByRole('dialog', { name: 'Add a spending limit' })
+    const monthly = within(dialog).getByLabelText('Monthly limit (USD)') as HTMLInputElement
+    await act(async () => { fireEvent.change(monthly, { target: { value: '200' } }) })
+    await act(async () => { releaseCoverage() })
+    await waitFor(() => expect(within(dialog).getByText(/Suggested \$450/)).toBeTruthy())
+    expect(monthly.value).toBe('200')
+  })
+
+  it('staged rule edits arm the dirty-exit guard (leaving asks: save, discard or stay); a discard disarms it', async () => {
+    querySeed.tab = 'limits'
+    guardCalls.length = 0
+    render(<SpendPage />)
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Budget rules' })).toBeTruthy())
+    expect(guardCalls.at(-1)?.hasUnsavedChanges).toBe(false)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Add a rule' })) })
+    await waitFor(() => expect(guardCalls.at(-1)?.hasUnsavedChanges).toBe(true))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Discard changes' })) })
+    await waitFor(() => expect(guardCalls.at(-1)?.hasUnsavedChanges).toBe(false))
   })
 
   it('Add a limit: an invalid amount is rejected inside the dialog, nothing is sent', async () => {
@@ -195,7 +265,7 @@ describe('SpendPage', () => {
     await waitFor(() => expect((monthly as HTMLInputElement).value).toBe('450'))
     await act(async () => { fireEvent.change(monthly, { target: { value: 'lots' } }) })
     await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Save limit' })) })
-    expect(await within(dialog).findByText('Enter a monthly limit in whole dollars.')).toBeTruthy()
+    expect(await within(dialog).findByText('Enter a monthly limit in dollars.')).toBeTruthy()
     expect(putBodies).toHaveLength(0)
   })
 

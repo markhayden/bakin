@@ -37,6 +37,17 @@ describe('spend.policy-available', () => {
     expect(row.summary).toContain('2 limits')
   })
 
+  it('an INVALID spend.json (the plugin refuses to read it) is action required, naming the file and its issues', async () => {
+    registry.register('spend.getBudgetPolicy', () => {
+      throw Object.assign(new Error('/x/spend.json is not a valid spend policy'), { code: 'spend_settings_invalid', file: '/x/spend.json', issues: ['limits.rules.0.dailyCap: Expected number'] })
+    }, { pluginId: 'test-spend' } as never)
+    const [row] = observations(await checkSpendPolicyAvailable())
+    expect(row.status).toBe('error')
+    expect(row.incident).toMatchObject({ key: 'policy-invalid', class: 'service_failure', disposition: 'action_required' })
+    expect(JSON.stringify(row)).toContain('/x/spend.json')
+    expect(JSON.stringify(row)).toContain('dailyCap')
+  })
+
   it('is unknown (watch) when the hook throws — never healthy on a failed read', async () => {
     registry.register('spend.getBudgetPolicy', () => { throw new Error('settings unreadable') }, { pluginId: 'test-spend' } as never)
     const [row] = observations(await checkSpendPolicyAvailable())

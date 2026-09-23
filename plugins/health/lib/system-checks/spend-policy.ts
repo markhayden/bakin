@@ -48,6 +48,35 @@ export async function checkSpendPolicyAvailable(): Promise<HealthCheckRunInput> 
       evidence: { hook: HOOK, registered: true, rules },
     })])
   } catch (err) {
+    // The spend plugin refuses to read a spend.json that exists but is not a
+    // valid policy (S13: never "no limits"). That is an operator-fixable
+    // file, not a transient read — name it, action required.
+    const invalid = err as { code?: string; file?: string; issues?: string[] }
+    if (invalid?.code === 'spend_settings_invalid') {
+      return healthObserved([healthError({
+        key: 'hook',
+        summary: 'The spend limits file is invalid — dispatch is failing closed until it is fixed.',
+        detail: err instanceof Error ? err.message : String(err),
+        evidence: { hook: HOOK, registered: true, file: invalid.file ?? null, issues: invalid.issues ?? [] },
+        incident: {
+          key: 'policy-invalid',
+          title: 'Spend limits file is invalid',
+          class: 'service_failure',
+          impact: 'Task dispatch and billed media calls defer until spend.json is a valid policy again. Your limits are still in the file — nothing has overwritten it.',
+          disposition: 'action_required',
+          resources: [{ kind: 'plugin', id: 'spend', label: 'Spend plugin' }],
+          resolution: {
+            key: 'fix-spend-settings',
+            type: 'instructions',
+            label: 'Fix spend.json',
+            steps: [
+              `Open ${invalid.file ?? '~/.bakin/plugin-settings/spend.json'} and fix the listed issues (or remove the file to start with no limits), then rerun Health.`,
+              ...(invalid.issues ?? []).map((issue) => `Issue: ${issue}`),
+            ],
+          },
+        },
+      })])
+    }
     return healthObserved([healthUnknown({
       key: 'hook',
       summary: 'The spend limits policy did not answer — dispatch is failing closed.',

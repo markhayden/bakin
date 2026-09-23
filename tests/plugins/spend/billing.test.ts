@@ -34,6 +34,7 @@ const loggerMock = () => ({
 mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 
+import { writePluginSettings } from '../../../packages/core/src/plugins/settings-store'
 import {
   detectLanesFromCredentials,
   resolveProviderForModel,
@@ -108,6 +109,8 @@ describe('resolveLaneFor (override precedence)', () => {
 
 describe('resolveBilling (ctx-bound)', () => {
   function makeCtx(credentials: Array<{ provider: string; kind: 'api-key' | 'oauth' }> | undefined, overrides: BillingOverride[] = []) {
+    // Overrides live in spend.json (the strict reader — never a ctx snapshot).
+    writePluginSettings('spend', { limits: { rules: [] }, billing: { overrides } })
     return {
       getSettings: () => ({ limits: { rules: [] }, billing: { overrides } }),
       runtime: {

@@ -24,11 +24,29 @@ export function pluginSettingsPath(pluginId: string): string {
 
 /** Read a plugin's settings, or `{}` when absent/corrupt. */
 export function readPluginSettings<T = Record<string, unknown>>(pluginId: string): T {
+  const read = readPluginSettingsFile(pluginId)
+  return (read.status === 'ok' ? read.value : {}) as T
+}
+
+/**
+ * The HONEST read: a file that is absent is different from one that exists
+ * but cannot be parsed. Money-bearing settings (the spend policy) must
+ * never mistake "unreadable" for "empty" — an absent policy is no limits,
+ * an unreadable one is "we cannot know".
+ */
+export type PluginSettingsRead =
+  | { status: 'absent' }
+  | { status: 'ok'; value: unknown }
+  | { status: 'unreadable'; file: string; error: string }
+
+export function readPluginSettingsFile(pluginId: string): PluginSettingsRead {
   const file = pluginSettingsPath(pluginId)
+  if (!existsSync(file)) return { status: 'absent' }
   try {
-    if (existsSync(file)) return JSON.parse(readFileSync(file, 'utf-8')) as T
-  } catch { /* fall through to empty */ }
-  return {} as T
+    return { status: 'ok', value: JSON.parse(readFileSync(file, 'utf-8')) as unknown }
+  } catch (err) {
+    return { status: 'unreadable', file, error: err instanceof Error ? err.message : String(err) }
+  }
 }
 
 /**

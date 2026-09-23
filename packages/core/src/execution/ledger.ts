@@ -1213,7 +1213,7 @@ export function listRunCostsByPrefix(prefix: string): RunCostByPrefixRow[] {
 /** Only cap incidents exist since v10 — approach rides budget_milestones. */
 export type BudgetIncidentKind = 'cap'
 export type BudgetIncidentStatus = 'open' | 'acknowledged' | 'resolved'
-export type BudgetIncidentResolution = 'raised' | 'acknowledged' | 'window_rollover' | 'killswitch_cleared' | 'rule_removed'
+export type BudgetIncidentResolution = 'raised' | 'acknowledged' | 'resumed' | 'window_rollover' | 'killswitch_cleared' | 'rule_removed'
 
 export interface BudgetIncidentInput {
   scope: string
@@ -1287,8 +1287,14 @@ function toIncidentRow(r: RawIncidentRow): BudgetIncidentRow {
 
 const INCIDENT_COLUMNS = 'id, scope, scope_id, lane, win, window_start_ms, kind, unit, cap_value, spent_value, at_cap, opened_at, status, resolved_at, resolution, episode, event_id, notified_at'
 
-/** Resolutions after which a fresh breach is a NEW alertable episode (D28). */
-const REOPENABLE_RESOLUTIONS: ReadonlySet<BudgetIncidentResolution> = new Set(['raised', 'window_rollover', 'rule_removed'])
+/**
+ * Resolutions after which a fresh breach is a NEW alertable episode (D28).
+ * `resumed` (the operator cleared a hold while spend was under the cap) is
+ * reopenable: going over again is a genuinely new event, and a pause rule
+ * must re-engage its hold rather than quietly degrade to defer.
+ * `acknowledged` (the operator dismissed THIS breach) stays quiet.
+ */
+const REOPENABLE_RESOLUTIONS: ReadonlySet<BudgetIncidentResolution> = new Set(['raised', 'resumed', 'window_rollover', 'rule_removed'])
 
 /**
  * Open (or find) the incident for a breach. Idempotent per (rule identity,

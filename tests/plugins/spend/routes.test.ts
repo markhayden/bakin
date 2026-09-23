@@ -6,7 +6,7 @@
  * roster comes from the models plugin over `models.listAgentModels`.
  */
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
-import { mkdirSync, rmSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -25,6 +25,10 @@ mock.module('../../../packages/core/src/content-dir', contentDirMock)
 const loggerMock = () => ({ createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }) })
 mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
+
+const broadcasts: Array<Record<string, unknown>> = []
+mock.module('../../../src/core/sse', () => ({ broadcast: (event: Record<string, unknown>) => { broadcasts.push(event) } }))
+mock.module('@/core/sse', () => ({ broadcast: (event: Record<string, unknown>) => { broadcasts.push(event) } }))
 
 class FakeLedgerUnavailable extends Error {}
 let incidentsList: unknown[] = []
@@ -111,6 +115,11 @@ afterAll(() => {
   mock.restore()
 })
 
+/** The revision every write must present — what GET /limits serves right now. */
+async function rev(): Promise<string> {
+  return (await callRoute(findRoute(activated.routes, 'GET', '/limits')!, activated.ctx)).body.revision as string
+}
+
 function handler(name: string): (data: Record<string, unknown>) => Promise<Record<string, unknown>> {
   const call = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.find((c: unknown[]) => c[0] === name)!
   return call[1] as (data: Record<string, unknown>) => Promise<Record<string, unknown>>
@@ -178,7 +187,7 @@ describe('GET/PUT /limits', () => {
     const existing = (await handler('spend.getBudgetPolicy')({}) as { rules: Array<{ id: string }> }).rules[0].id
     const route = findRoute(activated.routes, 'PUT', '/limits')!
     const { status, body } = await callRoute(route, activated.ctx, {
-      body: { rules: [
+      body: { revision: await rev(), rules: [
         { id: existing, scope: 'global', lane: 'metered', dailyCap: 25, monthlyCap: 500 },
         { scope: 'agent', scopeId: 'pixel', lane: 'metered', dailyCap: 5 },
         { scope: 'provider', scopeId: 'google', lane: 'metered', dailyCap: 5, atCap: 'pause' },
@@ -196,15 +205,16 @@ describe('GET/PUT /limits', () => {
 
   it('rejects a negative cap, a scoped rule without a scopeId, and a capless rule', async () => {
     const route = findRoute(activated.routes, 'PUT', '/limits')!
-    expect((await callRoute(route, activated.ctx, { body: { rules: [{ scope: 'global', lane: 'metered', dailyCap: -5 }] } })).status).toBe(400)
-    expect((await callRoute(route, activated.ctx, { body: { rules: [{ scope: 'provider', lane: 'metered', dailyCap: 5 }] } })).status).toBe(400)
-    expect((await callRoute(route, activated.ctx, { body: { rules: [{ scope: 'global', lane: 'metered' }] } })).status).toBe(400)
+    const revision = await rev()
+    expect((await callRoute(route, activated.ctx, { body: { revision, rules: [{ scope: 'global', lane: 'metered', dailyCap: -5 }] } })).status).toBe(400)
+    expect((await callRoute(route, activated.ctx, { body: { revision, rules: [{ scope: 'provider', lane: 'metered', dailyCap: 5 }] } })).status).toBe(400)
+    expect((await callRoute(route, activated.ctx, { body: { revision, rules: [{ scope: 'global', lane: 'metered' }] } })).status).toBe(400)
   })
 
   it('warns on unknown agent/provider scopeIds (typo = fake safety) and normalizes model-scope ids', async () => {
     const route = findRoute(activated.routes, 'PUT', '/limits')!
     const { status, body } = await callRoute(route, activated.ctx, {
-      body: { rules: [
+      body: { revision: await rev(), rules: [
         { scope: 'agent', scopeId: 'no-such-agent', lane: 'metered', dailyCap: 5 },
         { scope: 'provider', scopeId: 'Anthropic', lane: 'metered', dailyCap: 5 },
         { scope: 'model', scopeId: 'claude-opus-4-6', lane: 'metered', dailyCap: 10 },
@@ -220,10 +230,76 @@ describe('GET/PUT /limits', () => {
 
   it('resolves live incidents whose rule was deleted (no orphaned banner rows)', async () => {
     incidentsList = [{ id: 12, scope: 'provider', scopeId: 'google', lane: 'metered', window: 'daily', kind: 'cap', status: 'open' }]
-    const { status } = await callRoute(findRoute(activated.routes, 'PUT', '/limits')!, activated.ctx, { body: { rules: [] } })
+    const { status } = await callRoute(findRoute(activated.routes, 'PUT', '/limits')!, activated.ctx, { body: { revision: await rev(), rules: [] } })
     expect(status).toBe(200)
     expect(incidentResolves.at(-1)).toMatchObject({ id: 12, status: 'resolved', resolution: 'rule_removed' })
     incidentsList = []
+  })
+
+  it('a PUT under a revision the editor did not load is REFUSED (409 stale_revision, current revision returned) — a snapshot that never saw the current limits cannot replace them', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/limits')!
+    const before = (await callRoute(findRoute(activated.routes, 'GET', '/limits')!, activated.ctx)).body as { rules: unknown[]; revision: string }
+    const refused = await callRoute(route, activated.ctx, { body: { revision: 'rev-from-a-failed-load', rules: [{ scope: 'global', lane: 'metered', monthlyCap: 1 }] } })
+    expect(refused.status).toBe(409)
+    expect(refused.body).toMatchObject({ error: 'stale_revision', current: before.revision })
+    const after = (await callRoute(findRoute(activated.routes, 'GET', '/limits')!, activated.ctx)).body as { rules: unknown[] }
+    expect(after.rules).toEqual(before.rules)
+  })
+
+  it('one rule per (scope, scopeId, lane): a duplicate identity or a repeated id is a 400, never two ladders on one cap', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/limits')!
+    const dupIdentity = await callRoute(route, activated.ctx, { body: { revision: await rev(), rules: [
+      { scope: 'global', lane: 'metered', dailyCap: 5 },
+      { scope: 'global', lane: 'metered', monthlyCap: 50 },
+    ] } })
+    expect(dupIdentity.status).toBe(400)
+    const dupId = await callRoute(route, activated.ctx, { body: { revision: await rev(), rules: [
+      { id: 'same', scope: 'global', lane: 'metered', dailyCap: 5 },
+      { id: 'same', scope: 'agent', scopeId: 'pixel', lane: 'metered', dailyCap: 5 },
+    ] } })
+    expect(dupId.status).toBe(400)
+  })
+
+  it('reconciles live incidents on every edit: a raised cap resolves raised, a removed window cap or a recreated id resolves rule_removed', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/limits')!
+    writePluginSettings('spend', { limits: { rules: [{ id: 'g', scope: 'global', lane: 'metered', dailyCap: 10, monthlyCap: 100 }] }, billing: { overrides: [] } })
+    try {
+      // Raised: the daily incident recorded a $10 cap; the edit makes it $30.
+      incidentsList = [{ id: 31, scope: 'global', scopeId: '', lane: 'metered', window: 'daily', kind: 'cap', status: 'open', capValue: 10_000_000 }]
+      expect((await callRoute(route, activated.ctx, { body: { revision: await rev(), rules: [{ id: 'g', scope: 'global', lane: 'metered', dailyCap: 30, monthlyCap: 100 }] } })).status).toBe(200)
+      expect(incidentResolves.at(-1)).toMatchObject({ id: 31, resolution: 'raised' })
+      // Window cap removed: the rule survives (monthly), the daily hold cannot.
+      incidentsList = [{ id: 32, scope: 'global', scopeId: '', lane: 'metered', window: 'daily', kind: 'cap', status: 'open', capValue: 30_000_000 }]
+      expect((await callRoute(route, activated.ctx, { body: { revision: await rev(), rules: [{ id: 'g', scope: 'global', lane: 'metered', monthlyCap: 100 }] } })).status).toBe(200)
+      expect(incidentResolves.at(-1)).toMatchObject({ id: 32, resolution: 'rule_removed' })
+      // Same identity under a NEW id: a recreated rule starts fresh.
+      incidentsList = [{ id: 33, scope: 'global', scopeId: '', lane: 'metered', window: 'monthly', kind: 'cap', status: 'open', capValue: 100_000_000 }]
+      expect((await callRoute(route, activated.ctx, { body: { revision: await rev(), rules: [{ scope: 'global', lane: 'metered', monthlyCap: 100 }] } })).status).toBe(200)
+      expect(incidentResolves.at(-1)).toMatchObject({ id: 33, resolution: 'rule_removed' })
+      // Every resolution reached the browsers.
+      expect(broadcasts.filter((b) => b.event === 'budget.incident_resolved').map((b) => b.resolution)).toEqual(expect.arrayContaining(['raised', 'rule_removed']))
+    } finally {
+      incidentsList = []
+    }
+  })
+
+  it('an invalid spend.json fails CLOSED everywhere: the policy hook throws, reads are 422 naming the file, writes never touch it', async () => {
+    const file = join(contentDir, 'plugin-settings', 'spend.json')
+    const invalid = '{"limits":{"rules":[{"id":"g","scope":"global","lane":"metered","dailyCap":"100"}]},"billing":{"overrides":[]}}'
+    writeFileSync(file, invalid)
+    try {
+      await expect(handler('spend.getBudgetPolicy')({})).rejects.toMatchObject({ code: 'spend_settings_invalid', file })
+      const read = await callRoute(findRoute(activated.routes, 'GET', '/limits')!, activated.ctx)
+      expect(read.status).toBe(422)
+      expect(read.body).toMatchObject({ error: 'spend_settings_invalid', file })
+      const write = await callRoute(findRoute(activated.routes, 'PUT', '/limits')!, activated.ctx, { body: { revision: 'x', rules: [] } })
+      expect(write.status).toBe(422)
+      const overrides = await callRoute(findRoute(activated.routes, 'PUT', '/billing/overrides')!, activated.ctx, { body: { overrides: [] } })
+      expect(overrides.status).toBe(422)
+      expect(readFileSync(file, 'utf-8')).toBe(invalid)
+    } finally {
+      writePluginSettings('spend', { limits: { rules: [] }, billing: { overrides: [] } })
+    }
   })
 })
 
@@ -327,7 +403,8 @@ describe('incidents', () => {
       writePluginSettings('spend', { limits: { rules: [{ id: 'g', scope: 'global', lane: 'metered', dailyCap: 5, atCap: 'pause' }] }, billing: { overrides: [] } })
       const ok = await callRoute(route, activated.ctx, { searchParams: { id: '21' }, body: { action: 'resume' } })
       expect(ok.status).toBe(200)
-      expect(incidentResolves.at(-1)).toMatchObject({ id: 21, status: 'resolved', resolution: 'acknowledged' })
+      // `resumed` — reopenable: going over again is a new episode, so a pause rule re-engages its hold.
+      expect(incidentResolves.at(-1)).toMatchObject({ id: 21, status: 'resolved', resolution: 'resumed' })
     } finally {
       incidentsList = []
     }

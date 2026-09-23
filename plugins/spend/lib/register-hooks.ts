@@ -10,7 +10,7 @@ import { getKnownModel, computeCostUsdMicros, computeImageCostUsdMicros } from '
 import { normalizeModelId } from '@bakin/core/llm/model-id'
 import { toLocalDayKey } from '@bakin/core/usage-history/store'
 import { resolveBilling } from './billing'
-import { readLimits, SpendSettingsSchema } from './settings'
+import { readLimits, withSpendPolicyWrite } from './settings'
 
 async function effectiveModelFor(ctx: PluginContext, agentId: string): Promise<string | null> {
   try {
@@ -26,8 +26,9 @@ async function effectiveModelFor(ctx: PluginContext, agentId: string): Promise<s
 export function registerSpendHooks(ctx: PluginContext): void {
   // Expose the limits policy to core dispatch, which consults it before
   // claiming a run. Empty when none is set → no gating. Absent hook = the
-  // gate FAILS CLOSED (budget_policy_unavailable) — never runs uncapped.
-  ctx.hooks.register('spend.getBudgetPolicy', () => readLimits(ctx), {
+  // gate FAILS CLOSED (budget_policy_unavailable) — never runs uncapped;
+  // an invalid spend.json THROWS here for the same reason (S13).
+  ctx.hooks.register('spend.getBudgetPolicy', async () => readLimits(), {
     label: 'Get the limits policy.',
     summary: 'Returns the spend-limit rule list (with ids) that dispatch consults before each turn, plus the accept-unattributed cutoff. Use it to read the current limits.',
     hookKind: 'rpc',
@@ -47,9 +48,9 @@ export function registerSpendHooks(ctx: PluginContext): void {
     if (value > toLocalDayKey(Date.now())) {
       return { ok: false, error: 'acceptUnattributedBefore cannot be in the future' }
     }
-    const current = SpendSettingsSchema.safeParse(ctx.getSettings<unknown>())
-    const limits = current.success ? current.data.limits : { rules: [] }
-    await ctx.updateSettings({ limits: { ...limits, acceptUnattributedBefore: value } })
+    // Serialized RMW at the write boundary: never rebuilt from a stale or
+    // failed read, never written over an invalid document.
+    await withSpendPolicyWrite((current) => ({ next: { ...current, limits: { ...current.limits, acceptUnattributedBefore: value } }, result: null }))
     return { ok: true }
   }, {
     label: 'Update the limits policy.',

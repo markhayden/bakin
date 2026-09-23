@@ -115,7 +115,7 @@ export async function resolveBilling(
   opts: { agentId?: string; model?: string | null },
 ): Promise<{ provider: string; lane: BillingLane; laneSource: BillingLaneSource }> {
   const provider = resolveProviderForModel(opts.model)
-  const overrides = readOverrides(ctx)
+  const overrides = readOverrides()
   const detected = opts.agentId ? await detectedLanesForAgent(ctx, opts.agentId) : {}
   const { lane, laneSource } = resolveLaneFor({ provider, agentId: opts.agentId, overrides, detected })
   return { provider, lane, laneSource }

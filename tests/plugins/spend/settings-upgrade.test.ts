@@ -106,4 +106,62 @@ describe('upgradeSpendSettings', () => {
     const spend = readPluginSettings<{ limits: { rules: Array<{ id: string }> } }>('spend')
     expect(spend.limits.rules.map((r) => r.id)).toEqual(['keep-me'])
   })
+
+  it('a valid pre-v2 budget ({ global, perAgent } metered dollars) is mapped into rules — a box that skipped releases keeps its caps', () => {
+    writeFileSync(modelsFile, JSON.stringify({ budget: { global: { dailyUsd: 10, monthlyUsd: 200, warnPct: 0.8 }, perAgent: { pixel: { monthlyUsd: 50 }, idle: {} } } }))
+    expect(upgradeSpendSettings()).toEqual({ status: 'upgraded', rules: 2 })
+    const spend = readPluginSettings<{ limits: { rules: Array<Record<string, unknown>> } }>('spend')
+    expect(spend.limits.rules.map(({ id: _id, ...r }) => r)).toEqual([
+      { scope: 'global', lane: 'metered', dailyCap: 10, monthlyCap: 200 },
+      { scope: 'agent', scopeId: 'pixel', lane: 'metered', monthlyCap: 50 },
+    ])
+    expect(readPluginSettings<Record<string, unknown>>('models').budget).toBeUndefined()
+    expect(existsSync(backupFile)).toBe(true)
+  })
+
+  it('an UNREADABLE models.json blocks the upgrade: nothing written, no backup, no empty completion marker', () => {
+    writeFileSync(modelsFile, '{"budget":')
+    const result = upgradeSpendSettings()
+    expect(result.status).toBe('blocked')
+    expect(existsSync(spendFile)).toBe(false)
+    expect(existsSync(backupFile)).toBe(false)
+    expect(readFileSync(modelsFile, 'utf-8')).toBe('{"budget":')
+    // Restored source ⇒ the real upgrade runs, with its backup.
+    writeFileSync(modelsFile, JSON.stringify(legacyModels))
+    expect(upgradeSpendSettings()).toEqual({ status: 'upgraded', rules: 2 })
+    expect(JSON.parse(readFileSync(backupFile, 'utf-8'))).toEqual(legacyModels)
+  })
+
+  it('a present-but-invalid spend.json is never overwritten (blocked, bytes untouched) — the operator\'s limits are still in it', () => {
+    writeFileSync(modelsFile, '{}')
+    const invalid = '{"limits":{"rules":[{"id":"g","scope":"global","lane":"metered","dailyCap":10}]},"billing":null}'
+    writeFileSync(spendFile, invalid)
+    const result = upgradeSpendSettings()
+    expect(result.status).toBe('blocked')
+    expect(readFileSync(spendFile, 'utf-8')).toBe(invalid)
+    expect(existsSync(backupFile)).toBe(false)
+  })
+
+  it('a valid destination WITHOUT the backup means the source keys were never migrated: they are merged in, not stripped away', () => {
+    // An earlier boot initialized an empty spend.json (e.g. the source was
+    // unreadable then); the operator has since restored models.json.
+    writeFileSync(spendFile, JSON.stringify({ limits: { rules: [{ id: 'kept', scope: 'provider', scopeId: 'google', lane: 'metered', dailyCap: 3 }] }, billing: { overrides: [] } }))
+    writeFileSync(modelsFile, JSON.stringify(legacyModels))
+    const result = upgradeSpendSettings()
+    expect(result).toEqual({ status: 'upgraded', rules: 3, merged: true })
+    const spend = readPluginSettings<{ limits: { rules: Array<{ id: string; scope: string }> }; billing: { overrides: unknown[] } }>('spend')
+    expect(spend.limits.rules.map((r) => r.scope)).toEqual(['provider', 'global', 'agent'])
+    expect(spend.billing.overrides).toEqual([{ agentId: 'pixel', lane: 'subscription' }])
+    expect(readPluginSettings<Record<string, unknown>>('models').budget).toBeUndefined()
+    expect(JSON.parse(readFileSync(backupFile, 'utf-8'))).toEqual(legacyModels)
+  })
+
+  it('legacy rules that duplicate an identity collapse to the first (one rule per scope+lane), reported as skipped', () => {
+    writeFileSync(modelsFile, JSON.stringify({ budget: { rules: [
+      { scope: 'global', lane: 'metered', dailyCap: 5 },
+      { scope: 'global', lane: 'metered', monthlyCap: 50 },
+    ] } }))
+    const result = upgradeSpendSettings()
+    expect(result).toEqual({ status: 'upgraded', rules: 1, skipped: [{ index: 1, reason: expect.stringContaining('duplicates') }] })
+  })
 })

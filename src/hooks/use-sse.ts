@@ -10,6 +10,8 @@ import { sendBrowserNotification } from '@/lib/browser-notify'
 const MAX_RETRIES = 20
 const BASE_DELAY = 1000
 const MAX_DELAY = 30000
+/** Cap-incident episodes already notified in this browser (at-least-once delivery ⇒ replays). */
+const seenCapEventIds = new Set<string>()
 
 function isDevPluginHotReloadActive(): boolean {
   return typeof document !== 'undefined' && !!document.querySelector('script[src="/__bakin-dev/client.js"]')
@@ -153,13 +155,19 @@ export function useSSE() {
           // bell toggle as workflow gates) + an activity entry. Resolutions
           // ride emitPluginEvent (line above) for surface refreshes only.
           if (data.type === 'plugin-event' && data.event === 'budget.incident_opened') {
+            // At-least-once delivery: the same episode (eventId) can be
+            // re-sent after a crash between send and mark — notify once per
+            // episode, and never miss a genuinely new one.
+            const capEventId = typeof data.eventId === 'string' ? data.eventId : null
+            if (capEventId && seenCapEventIds.has(capEventId)) return
+            if (capEventId) seenCapEventIds.add(capEventId)
             sendBrowserNotification(
               'Budget alert',
               data.message || 'A budget cap was reached — dispatch may be deferred',
               '/spend',
             )
             appendActivityEvent({
-              id: `${data.timestamp || new Date().toISOString()}-budget-incident-${data.incidentId}`,
+              id: `budget-incident-${data.incidentId}-${capEventId ?? data.timestamp ?? new Date().toISOString()}`,
               ts: data.timestamp || new Date().toISOString(),
               type: 'alert',
               agent: 'system',

@@ -84,6 +84,18 @@ describe('incident episodes (D28)', () => {
     expect(second.atCap).toBe('pause')
   })
 
+  it("'resumed' is reopenable and 'acknowledged' is not: resume clears a hold while under the cap, so going over again is a NEW episode (a pause rule re-engages); a dismissed breach stays quiet", () => {
+    const { id } = openBudgetIncident(capInput('ep-resume', { atCap: 'pause' }))
+    resolveBudgetIncident({ id, status: 'resolved', resolution: 'resumed' })
+    const reopened = openBudgetIncident(capInput('ep-resume', { atCap: 'pause', openedAt: W0 + 60 }))
+    expect(reopened).toEqual({ opened: true, id })
+    expect(listBudgetIncidents({}).find((i) => i.id === id)!.episode).toBe(2)
+
+    const { id: dismissed } = openBudgetIncident(capInput('ep-ack'))
+    resolveBudgetIncident({ id: dismissed, status: 'resolved', resolution: 'acknowledged' })
+    expect(openBudgetIncident(capInput('ep-ack', { openedAt: W0 + 60 }))).toEqual({ opened: false, id: dismissed })
+  })
+
   it('a delivery mark names its event: the stale episode-1 event changes zero rows after a reopen', () => {
     const { id } = openBudgetIncident(capInput('ep-stale'))
     const first = listBudgetIncidents({}).find((i) => i.id === id)!

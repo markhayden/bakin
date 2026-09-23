@@ -821,6 +821,13 @@ export interface BakinPlugin {
   /** Called when this plugin's settings are updated */
   onSettingsChange?(settings: Record<string, unknown>): void | Promise<void>
   /**
+   * Validate a whole settings document BEFORE the generic
+   * `PUT /api/plugin-settings/{id}` writes it. A plugin whose settings are
+   * money or policy (the spend plugin) refuses documents its own routes
+   * would refuse, so no side door can leave an invalid file on disk.
+   */
+  validateSettings?(value: unknown): { ok: true } | { ok: false; error: string }
+  /**
    * Called by `bakin plugins remove` BEFORE Bakin tears down the plugin's
    * own bookkeeping (registry rows, settings JSON, plugin dir, etc.).
    * Plugin's responsibility: clean up any data it wrote OUTSIDE its own

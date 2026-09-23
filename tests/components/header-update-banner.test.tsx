@@ -228,6 +228,32 @@ describe('Header update banner', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Resume as-is' })) })
     await waitFor(() => expect(screen.getByRole('link', { name: 'Raise limit to resume' })).toBeDefined())
     expect(screen.queryByRole('button', { name: 'Resume as-is' })).toBeNull()
-    expect(screen.getByText(/Still over the limit/)).toBeDefined()
+    // The SERVER's reason is what the bar prints, not a guess.
+    expect(screen.getByText(/raise the limit to resume/)).toBeDefined()
+  })
+
+  it('spend ladder: a "wait" (defer) cap bar offers Acknowledge — never a Resume that is refused all window — and a failed 90% Dismiss says so instead of pretending', async () => {
+    const acked = { action: null as string | null }
+    global.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/version') return Promise.resolve(response({ version: '0.1.0' }))
+      if (url === '/api/plugins/spend/milestones/5/ack' && init?.method === 'POST') return Promise.resolve(response({ error: 'No unacknowledged milestone 5' }, 404))
+      if (url === '/api/plugins/spend/incidents/7/resolve' && init?.method === 'POST') { acked.action = String((JSON.parse(String(init.body)) as { action: string }).action); return Promise.resolve(response({ ok: true })) }
+      if (url.startsWith('/api/plugins/spend/status')) return Promise.resolve(response({ paused: false, milestones: [WARNING_ROW], openIncidents: acked.action ? [] : [{ ...CAP_ROW, atCap: 'defer' }] }))
+      if (url === '/api/dispatch') return Promise.resolve(response({ secondsUntilNext: 120, dispatching: false }))
+      return Promise.resolve(response({}))
+    }) as unknown as typeof global.fetch
+
+    renderHeader()
+    await waitFor(() => expect(screen.getByText('monthly limit reached')).toBeDefined())
+    expect(screen.queryByRole('button', { name: 'Resume as-is' })).toBeNull()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Acknowledge' })) })
+    await waitFor(() => expect(screen.queryByText('monthly limit reached')).toBeNull())
+    expect(acked.action).toBe('ack')
+
+    // The 90% Dismiss failed (already rolled over): the bar stays and carries the reason.
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Dismiss' })) })
+    await waitFor(() => expect(screen.getByText(/No unacknowledged milestone 5/)).toBeDefined())
+    expect(screen.getByText('90% of your monthly limit')).toBeDefined()
   })
 })

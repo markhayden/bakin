@@ -16,6 +16,8 @@ export interface BillingOverride {
 /** Wire shape of one budget cap rule (cost-control v2). `id` is server-assigned; absent only on a row staged in the editor. */
 export interface BudgetRuleWire {
   id?: string
+  /** Client-only: a stable key for a staged (not yet saved) editor row — stripped before the wire. */
+  stagedKey?: string
   scope: 'global' | 'agent' | 'provider' | 'model'
   scopeId?: string
   lane: 'metered' | 'subscription'
@@ -41,9 +43,21 @@ export interface BudgetIncidentWire {
 }
 
 export interface BillingOverrideWire { agentId?: string; provider?: string; lane: 'metered' | 'subscription' }
-/** Wire shape of GET /budget/status (full mode). */
+/** One milestone row of a current window (wire shape of a budget_milestones row the status route serves). */
+export interface BudgetMilestoneWire {
+  id: number
+  ruleId: string
+  window: 'daily' | 'monthly'
+  milestone: number
+  spentValue: number
+  capValue: number
+  unit: 'usd_micros' | 'tokens'
+  acknowledgedAt: number | null
+}
+/** Wire shape of GET /status (full mode). */
 export interface BudgetStatusWire {
   paused: boolean
+  milestones?: BudgetMilestoneWire[]
   configured: boolean
   perAgent: Record<string, 'ok' | 'deferred'>
   perTask: Record<string, 'deferred'>

@@ -33,7 +33,7 @@ mock.module('../../src/cli/http', () => ({
     apiCalls.push({ path })
     if (path.startsWith('/api/plugins/spend/status')) return { paused: false, perAgent: {}, deferredProviders: [], openIncidents: [] }
     if (path.startsWith('/api/plugins/spend/incidents')) return { incidents: [] }
-    if (path.startsWith('/api/plugins/spend/limits')) return { rules }
+    if (path.startsWith('/api/plugins/spend/limits')) return { rules, revision: 'rev-7' }
     if (path.startsWith('/api/plugins/spend/spend')) {
       return {
         window: '24h', totalUsdMicros: 0, byAgent: [], byModel: [],
@@ -95,12 +95,21 @@ describe('bakin budget set', () => {
     expect(body.rules).toEqual([{ scope: 'global', lane: 'metered', monthlyCap: 100, atCap: 'defer' }])
   })
 
-  it('editing an existing identity keeps its id (the milestone ladder keys on it)', async () => {
+  it('editing an existing identity keeps its id (the milestone ladder keys on it) and posts under the loaded revision', async () => {
     rules = [{ id: 'keep', scope: 'global', lane: 'metered', monthlyCap: 50 }]
     await run(['budget', 'set', '--monthly', '120'])
     const put = apiCalls.find((c) => c.init?.method === 'PUT')
-    const body = JSON.parse(String(put!.init!.body)) as { rules: Array<Record<string, unknown>> }
+    const body = JSON.parse(String(put!.init!.body)) as { rules: Array<Record<string, unknown>>; revision: string }
     expect(body.rules).toEqual([{ id: 'keep', scope: 'global', lane: 'metered', monthlyCap: 120 }])
+    expect(body.revision).toBe('rev-7')
+  })
+
+  it('an edit keeps every field the flags did not mention: raising the month never drops the daily cap or the pause reaction', async () => {
+    rules = [{ id: 'keep', scope: 'global', lane: 'metered', dailyCap: 10, monthlyCap: 200, atCap: 'pause' }]
+    await run(['budget', 'set', '--monthly', '300'])
+    const put = apiCalls.find((c) => c.init?.method === 'PUT')
+    const body = JSON.parse(String(put!.init!.body)) as { rules: Array<Record<string, unknown>> }
+    expect(body.rules).toEqual([{ id: 'keep', scope: 'global', lane: 'metered', dailyCap: 10, monthlyCap: 300, atCap: 'pause' }])
   })
 
   it('there is no warn threshold to set, and --at-cap takes only wait|pause', async () => {

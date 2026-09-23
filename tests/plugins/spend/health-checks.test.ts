@@ -28,11 +28,16 @@ let resolveBilling: (() => Promise<unknown>) | null = null
 let refreshModelsRegistered = true
 let refreshModelsResult: unknown = { count: 3, live: true, error: null }
 let budgetPolicyPatches: Array<Record<string, unknown>> = []
+let budgetPolicyRegistered = true
+let budgetPolicyError: Error | null = null
 const hookRegistryMock = () => ({
   getHookRegistry: () => ({
-    has: (name: string) => (name === 'models.refreshAvailableModels' ? refreshModelsRegistered : true),
+    has: (name: string) => (name === 'models.refreshAvailableModels' ? refreshModelsRegistered : name === 'spend.getBudgetPolicy' ? budgetPolicyRegistered : true),
     invoke: async (name: string, data?: Record<string, unknown>) => {
-      if (name === 'spend.getBudgetPolicy') return budgetPolicy
+      if (name === 'spend.getBudgetPolicy') {
+        if (budgetPolicyError) throw budgetPolicyError
+        return budgetPolicy
+      }
       if (name === 'spend.resolveBilling' && resolveBilling) return await resolveBilling()
       if (name === 'models.refreshAvailableModels') return refreshModelsResult
       if (name === 'spend.updateBudgetPolicy') {
@@ -128,6 +133,28 @@ function observed(run: HealthCheckRunInput) {
 }
 
 describe('budget health check', () => {
+  it('an UNREGISTERED policy hook is unknown (the gate is failing closed), never the healthy "no limits" fact', async () => {
+    budgetPolicyRegistered = false
+    try {
+      const [r] = observed(await checkBudget())
+      expect(r.status).toBe('unknown')
+      expect(r.incident).toMatchObject({ key: 'policy-unavailable', class: 'service_failure' })
+    } finally {
+      budgetPolicyRegistered = true
+    }
+  })
+
+  it('an invalid spend.json is action required (the same verdict the health-owned check gives)', async () => {
+    budgetPolicyError = Object.assign(new Error('bad file'), { code: 'spend_settings_invalid' })
+    try {
+      const [r] = observed(await checkBudget())
+      expect(r.status).toBe('error')
+      expect(r.incident).toMatchObject({ key: 'policy-invalid', disposition: 'action_required' })
+    } finally {
+      budgetPolicyError = null
+    }
+  })
+
   it('no limits is HEALTHY and plainly stated — never a nag (S8)', async () => {
     const [r] = observed(await checkBudget())
     expect(r.status).toBe('healthy')

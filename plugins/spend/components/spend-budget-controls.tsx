@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { Inline, Section, Stack } from '@makinbakin/sdk/layout'
 import { AgentAvatar, ListRow, ListRows } from '@makinbakin/sdk/patterns'
@@ -52,6 +53,12 @@ function RuleSelect({
   )
 }
 
+/**
+ * A cap field keeps the TEXT the operator typed ("2." on the way to "2.5",
+ * "5k") and commits the parsed number as it becomes valid; a value that
+ * arrives from outside (reload, discard) replaces the text. Placeholders
+ * name the unit only — never an example number (spec: no example amounts).
+ */
 function CapInput({
   rule,
   label,
@@ -65,30 +72,51 @@ function CapInput({
   value: number | undefined
   onChange: (value: number | undefined) => void
 }) {
+  const [text, setText] = useState(value === undefined ? '' : String(value))
+  useEffect(() => {
+    // Sync only when the committed value diverges from what the text parses
+    // to — typing "2." (unparseable) must not be clobbered by the stale prop.
+    const parsed = parseCapInput(text)
+    if (parsed !== value && !(value === undefined && text.trim() !== '' && parsed === undefined)) {
+      setText(value === undefined ? '' : String(value))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
   return (
     <Field name={label}>
       <FieldLabel>{label}</FieldLabel>
       <Input
         inputMode="decimal"
         aria-label={ariaLabel}
-        placeholder={rule.lane === 'metered' ? 'e.g. 25' : 'e.g. 5M'}
-        value={value ?? ''}
-        onChange={(event) => onChange(parseCapInput(event.currentTarget.value))}
+        placeholder={rule.lane === 'metered' ? 'Dollars' : 'Tokens (k or M suffix)'}
+        value={text}
+        onChange={(event) => {
+          const next = event.currentTarget.value
+          setText(next)
+          const parsed = parseCapInput(next)
+          if (parsed !== undefined || next.trim() === '') onChange(parsed)
+        }}
       />
     </Field>
   )
 }
 
+/** A stable React key per editor row: the saved id, else the staging key the row was created with. */
+function rowKey(rule: BudgetRuleWire, index: number): string {
+  return rule.id ?? rule.stagedKey ?? `row-${index}`
+}
+
 function BudgetRuleRow({
   index,
   rule,
+  rules,
   m,
 }: {
   index: number
   rule: BudgetRuleWire
+  rules: BudgetRuleWire[]
   m: SpendData
 }) {
-  const rules = m.pendingRules ?? m.budgetRules
   const edit = (patch: Partial<BudgetRuleWire>) => {
     m.setPendingRules(rules.map((current, currentIndex) => (
       currentIndex === index ? { ...current, ...patch } : current
@@ -170,8 +198,8 @@ function BudgetRuleRow({
           label={`Budget rule ${index + 1} cap action`}
           value={rule.atCap ?? 'defer'}
           options={[
-            { value: 'defer', label: 'Defer work' },
-            { value: 'pause', label: 'Pause dispatch' },
+            { value: 'defer', label: 'Wait for the next period' },
+            { value: 'pause', label: 'Pause until resumed' },
           ]}
           onValueChange={(atCap) => edit({ atCap: atCap as BudgetRuleWire['atCap'] })}
         />
@@ -190,8 +218,14 @@ function BudgetRuleRow({
   )
 }
 
+let stagedRowSeq = 0
+
 export function BudgetRulesSection({ m, onAddLimit }: { m: SpendData; onAddLimit: () => void }) {
+  // `null` = the current limits have not loaded (failed or pending): the
+  // editor cannot show "No spending limits" for a policy it does not know,
+  // and nothing can be added to a list that might replace unseen rules.
   const rules = m.pendingRules ?? m.budgetRules
+  const unavailable = rules === null
 
   return (
     <Section className="@container/budget-rules" spacing="compact" divider="top" aria-label="Budget rules">
@@ -199,7 +233,7 @@ export function BudgetRulesSection({ m, onAddLimit }: { m: SpendData; onAddLimit
         <Stack gap="dense">
           <h2>Budget rules</h2>
           <Text size="body" tone="muted" as="p" className="max-w-prose leading-relaxed">
-            Cap estimated metered cost or subscription-token usage by day or month. At the cap, work can defer until reset or pause until an operator resumes it.
+            Cap estimated metered cost or subscription-token usage by day or month — one rule per scope and lane, with both caps on it. At the cap, work can wait for the next period or pause until you resume it.
           </Text>
         </Stack>
         <div className="flex w-full shrink-0 flex-col gap-bakin-2 @2xl/budget-rules:w-auto @2xl/budget-rules:flex-row">
@@ -207,21 +241,30 @@ export function BudgetRulesSection({ m, onAddLimit }: { m: SpendData; onAddLimit
             type="button"
             variant="outline"
             size="sm"
+            disabled={unavailable}
             onClick={() => m.setPendingRules([
-              ...rules,
-              { scope: 'global', lane: 'metered', atCap: 'defer' },
+              ...(rules ?? []),
+              { scope: 'global', lane: 'metered', atCap: 'defer', stagedKey: `staged-${++stagedRowSeq}` },
             ])}
           >
             Add a rule
           </Button>
-          <Button type="button" size="sm" onClick={onAddLimit}>
+          <Button type="button" size="sm" disabled={unavailable} onClick={onAddLimit}>
             <Plus />
             Add a limit
           </Button>
         </div>
       </div>
 
-      {rules.length === 0 ? (
+      {rules === null ? (
+        <SystemState
+          kind="error"
+          scope="section"
+          recovery="unavailable"
+          title="Spend limits could not be loaded"
+          description="The current limits are unknown, so nothing can be edited or added until they load — otherwise a save could replace limits you have not seen."
+        />
+      ) : rules.length === 0 ? (
         <SystemState
           kind="initial-empty"
           scope="section"
@@ -248,9 +291,10 @@ export function BudgetRulesSection({ m, onAddLimit }: { m: SpendData; onAddLimit
           >
             {rules.map((rule, index) => (
               <BudgetRuleRow
-                key={`${rule.scope}-${rule.scopeId ?? 'global'}-${rule.lane}-${index}`}
+                key={rowKey(rule, index)}
                 index={index}
                 rule={rule}
+                rules={rules}
                 m={m}
               />
             ))}

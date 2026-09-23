@@ -30,10 +30,11 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-/** Shape every mutation route answers with. */
-interface MutationResult { ok?: boolean; error?: string }
+/** Shape every mutation route answers with — `message` is the plain-words reason when the server has one. */
+interface MutationResult { ok?: boolean; error?: string; message?: string }
 
 function mutationError(data: MutationResult, status: number): string {
+  if (typeof data.message === 'string' && data.message) return data.message
   return typeof data.error === 'string' ? data.error : `Save failed (${status})`
 }
 
@@ -72,17 +73,36 @@ function useSurfacedError(): SurfacedError {
 /** The roster row the limit editor and billing-lanes panel need (id + display name). */
 export interface SpendAgentRow { agentId: string; name: string }
 
+/** A rule's identity — one rule per (scope, scopeId, lane); daily + monthly live on that one rule. */
+export function ruleIdentity(rule: Pick<BudgetRuleWire, 'scope' | 'scopeId' | 'lane'>): string {
+  return `${rule.scope}\u0000${rule.scopeId ?? ''}\u0000${rule.lane}`
+}
+
+/** Strip the client-only staging key before a rule goes on the wire. */
+function toWire(rule: BudgetRuleWire): BudgetRuleWire {
+  const { stagedKey: _stagedKey, ...wire } = rule
+  return wire
+}
+
 /**
  * The Spend page data layer: spend rollups for the selected window, the cap
  * rule list (+ staged edits), incidents, billing status, and the actions
- * that mutate them. Extracted from the Models page's data hook when the
- * Spend tab moved to /spend — same fetch order, same effects.
+ * that mutate them.
+ *
+ * The rule list is `null` until GET /limits has SUCCEEDED (a failed or
+ * pending load is not "no limits"), and every write posts under the
+ * revision that load returned — a snapshot that never saw the current
+ * limits cannot replace them (the server refuses 409; the page reloads and
+ * says so, never re-posts blind).
  */
 export function useSpendData() {
   const [spendWindow, setSpendWindow] = useQueryState('window', '24h')
   const [spend, setSpend] = useState<SpendResponse | null>(null)
   const [spendLoading, setSpendLoading] = useState(false)
-  const [budgetRules, setBudgetRules] = useState<BudgetRuleWire[]>([])
+  /** The latest /spend read failed while an earlier one is still shown — labelled stale, never blanked. */
+  const [spendStale, setSpendStale] = useState<string | null>(null)
+  const [budgetRules, setBudgetRules] = useState<BudgetRuleWire[] | null>(null)
+  const [limitsRevision, setLimitsRevision] = useState<string | null>(null)
   const [pendingRules, setPendingRules] = useState<BudgetRuleWire[] | null>(null)
   const [incidents, setIncidents] = useState<BudgetIncidentWire[]>([])
   const { value: budgetError, report: reportBudgetError, clear: clearBudgetError, reset: resetBudgetError } = useSurfacedError()
@@ -95,9 +115,9 @@ export function useSpendData() {
 
   // `/spend` is fired by a window switch AND by SSE, with no ordering
   // guarantee. Without a generation guard a slow 24h response landing after a
-  // switch to 7d overwrote the newer data — and its failure path blanked good
-  // data with `setSpend(null)`.
+  // switch to 7d overwrote the newer data.
   const spendGenerationRef = useRef(0)
+  const spendRef = useRef<SpendResponse | null>(null)
   const fetchSpend = useCallback(async (window: string, signal?: AbortSignal) => {
     const generation = ++spendGenerationRef.current
     const superseded = () => spendGenerationRef.current !== generation
@@ -107,11 +127,16 @@ export function useSpendData() {
         `spend?window=${encodeURIComponent(window)}`, 'Spend', LEDGER_TIMEOUT_MS, signal,
       )
       if (signal?.aborted || superseded()) return
+      spendRef.current = data
       setSpend(data)
+      setSpendStale(null)
     } catch (err) {
       if (isAbortError(err) || signal?.aborted || superseded()) return
-      // The Overview renders `spend === null` as an explicit unavailable state.
-      setSpend(null)
+      // A refresh that fails keeps the last good reading on screen with a
+      // stale label; only a page that never loaded renders the unavailable
+      // state (`spend === null`).
+      if (spendRef.current && spendRef.current.window === window) setSpendStale(errorMessage(err))
+      else { spendRef.current = null; setSpend(null); setSpendStale(null) }
     } finally {
       if (!signal?.aborted && !superseded()) setSpendLoading(false)
     }
@@ -119,13 +144,16 @@ export function useSpendData() {
 
   const fetchBudget = useCallback(async (signal?: AbortSignal) => {
     try {
-      const policy = await fetchPluginJson<{ rules?: BudgetRuleWire[] }>('limits', 'Limits', LOAD_TIMEOUT_MS, signal)
+      const policy = await fetchPluginJson<{ rules?: BudgetRuleWire[]; revision?: string }>('limits', 'Limits', LOAD_TIMEOUT_MS, signal)
       if (signal?.aborted) return
       setBudgetRules(policy.rules ?? [])
+      setLimitsRevision(policy.revision ?? null)
       clearBudgetError('budget-rules')
     } catch (err) {
       if (isAbortError(err) || signal?.aborted) return
-      reportBudgetError('budget-rules', `Failed to load the budget policy: ${errorMessage(err)}`)
+      // The list stays whatever it was (null on a first load) — an unknown
+      // policy must never render as the healthy "No spending limits".
+      reportBudgetError('budget-rules', `Failed to load the spend limits: ${errorMessage(err)}`)
     }
   }, [clearBudgetError, reportBudgetError])
 
@@ -170,11 +198,27 @@ export function useSpendData() {
     }
   }, [])
 
-  /** PUT the full rule list — every rule round-trips; nothing is dropped.
-   *  Failures and unknown-id warnings surface in the UI, never only the
-   *  console (a silently-rejected cap is fake safety). */
-  const saveBudgetRules = async (): Promise<void> => {
-    if (!pendingRules) return
+  /**
+   * PUT the full rule list under the loaded revision. A 409 (someone else
+   * saved since this page loaded) reloads the list and says so — the edit
+   * is never re-posted against limits the operator has not seen.
+   */
+  const putRules = async (rules: BudgetRuleWire[]): Promise<{ ok: true; warnings: string[] } | { ok: false; error: string }> => {
+    if (limitsRevision === null) return { ok: false, error: 'The current limits have not loaded yet — retry in a moment.' }
+    const res = await pluginFetch(PLUGIN_ID, 'limits', { method: 'PUT', body: { revision: limitsRevision, rules: rules.map(toWire) } })
+    const data = await res.json() as MutationResult & { warnings?: unknown; revision?: string }
+    if (res.status === 409) {
+      void fetchBudget()
+      return { ok: false, error: 'The limits changed since this page loaded (another editor saved). They have been reloaded — check them and save again.' }
+    }
+    if (!res.ok || !data.ok) return { ok: false, error: mutationError(data, res.status) }
+    if (typeof data.revision === 'string') setLimitsRevision(data.revision)
+    return { ok: true, warnings: Array.isArray(data.warnings) ? data.warnings.filter((w): w is string => typeof w === 'string') : [] }
+  }
+
+  /** Save the staged editor rows. Resolves true when they were persisted. */
+  const saveBudgetRules = async (): Promise<boolean> => {
+    if (!pendingRules) return true
     setSaving('budget')
     resetBudgetError()
     setBudgetWarnings([])
@@ -184,40 +228,46 @@ export function useSpendData() {
       const capless = pendingRules.findIndex((r) => !r.dailyCap && !r.monthlyCap)
       if (capless >= 0) {
         reportBudgetError('budget-save', `Rule ${capless + 1} has no caps — set a daily or monthly cap, or remove the row.`)
-        return
+        return false
       }
-      const res = await pluginFetch(PLUGIN_ID, 'limits', { method: 'PUT', body: { rules: pendingRules } })
-      const data = await res.json() as MutationResult & { warnings?: unknown }
-      if (data.ok) {
-        setBudgetRules(pendingRules)
-        setPendingRules(null)
-        setBudgetWarnings(Array.isArray(data.warnings) ? data.warnings : [])
-        // Re-fetch the canonical rules — the server normalizes model-scope
-        // ids, and the utilization cards must key exactly like spend rows.
-        fetchBudget()
-        fetchBudgetStatus()
-      } else {
-        reportBudgetError('budget-save', mutationError(data, res.status))
+      const outcome = await putRules(pendingRules)
+      if (!outcome.ok) {
+        reportBudgetError('budget-save', outcome.error)
+        return false
       }
+      setPendingRules(null)
+      setBudgetWarnings(outcome.warnings)
+      // Re-fetch the canonical rules — the server normalizes model-scope
+      // ids, and the utilization cards must key exactly like spend rows.
+      await Promise.all([fetchBudget(), fetchBudgetStatus()])
+      return true
     } catch (err) {
       reportBudgetError('budget-save', errorMessage(err))
+      return false
     } finally {
       setSaving(null)
     }
   }
 
   /**
-   * Append ONE rule from the guided dialog through the same PUT /limits the
-   * editor uses — every existing rule round-trips untouched (ids included).
-   * Staged editor edits are discarded: the dialog is the explicit action.
+   * The guided dialog's rule, through the same PUT /limits the editor uses.
+   * One rule per identity: a draft for an identity that already has a rule
+   * EDITS that rule (its id and ladder survive; the drafted caps/reaction
+   * replace the old ones) — never a second global metered rule beside it.
+   * Refused until the current limits have loaded (nothing to merge into).
    */
-  const addLimit = async (draft: Pick<BudgetRuleWire, 'scope' | 'lane' | 'monthlyCap' | 'dailyCap' | 'atCap'>): Promise<{ ok: true } | { ok: false; error: string }> => {
+  const addLimit = async (draft: Pick<BudgetRuleWire, 'scope' | 'scopeId' | 'lane' | 'monthlyCap' | 'dailyCap' | 'atCap'>): Promise<{ ok: true } | { ok: false; error: string }> => {
+    if (budgetRules === null) return { ok: false, error: 'The current limits have not loaded yet — retry in a moment.' }
     try {
-      const res = await pluginFetch(PLUGIN_ID, 'limits', { method: 'PUT', body: { rules: [...budgetRules, draft] } })
-      const data = await res.json() as MutationResult & { warnings?: unknown }
-      if (!res.ok || !data.ok) return { ok: false, error: mutationError(data, res.status) }
+      const identity = ruleIdentity(draft)
+      const existing = budgetRules.find((rule) => ruleIdentity(rule) === identity)
+      const merged = existing
+        ? budgetRules.map((rule) => (rule === existing ? { ...rule, ...draft } : rule))
+        : [...budgetRules, draft]
+      const outcome = await putRules(merged)
+      if (!outcome.ok) return outcome
       setPendingRules(null)
-      setBudgetWarnings(Array.isArray(data.warnings) ? data.warnings : [])
+      setBudgetWarnings(outcome.warnings)
       await Promise.all([fetchBudget(), fetchBudgetStatus()])
       return { ok: true }
     } catch (err) {
@@ -259,7 +309,7 @@ export function useSpendData() {
       const res = await pluginFetch(PLUGIN_ID, 'billing/overrides', { method: 'PUT', body: { overrides } })
       if (!res.ok) {
         const data = await res.json().catch(() => ({})) as MutationResult
-        reportBudgetError('billing-override', typeof data.error === 'string' ? data.error : `Failed to save the lane override (${res.status}).`)
+        reportBudgetError('billing-override', mutationError(data, res.status))
         return
       }
       fetchBudgetStatus()
@@ -268,14 +318,14 @@ export function useSpendData() {
     }
   }
 
-  /** Resolve an incident: raise (new cap in the rule's unit), ack, or resume. */
+  /** Resolve an incident: raise (new cap in the rule's unit), ack, or resume. Returns the plain-words refusal, or null. */
   const resolveIncident = async (id: number, action: 'raise' | 'ack' | 'resume', cap?: number): Promise<string | null> => {
     try {
       const res = await pluginFetch(PLUGIN_ID, `incidents/${id}/resolve`, {
         method: 'POST', body: { action, ...(cap !== undefined ? { cap } : {}) },
       })
       const data = await res.json() as MutationResult
-      if (!res.ok) return String(data.error ?? `Resolve failed (${res.status})`)
+      if (!res.ok) return mutationError(data, res.status)
       await Promise.all([fetchIncidents(), fetchBudget()])
       return null
     } catch (err) {
@@ -303,8 +353,8 @@ export function useSpendData() {
 
   return {
     spendWindow, setSpendWindow,
-    spend, spendLoading,
-    budgetRules, pendingRules, setPendingRules, saveBudgetRules, addLimit, saving, budgetError, budgetWarnings,
+    spend, spendLoading, spendStale, refreshSpend: () => fetchSpend(spendWindow),
+    budgetRules, limitsRevision, pendingRules, setPendingRules, saveBudgetRules, addLimit, saving, budgetError, budgetWarnings,
     incidents, resolveIncident,
     budgetStatus, setDispatchPaused, setAgentLaneOverride,
     agents, availableProviders, modelIds,

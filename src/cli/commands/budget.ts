@@ -91,15 +91,20 @@ function flag(args: string[], name: string): string | undefined {
 }
 
 async function fetchRules(): Promise<RuleWire[]> {
-  const policy = (await apiGet('/api/plugins/spend/limits')) as { rules?: RuleWire[] }
-  return policy.rules ?? []
+  return (await fetchLimits()).rules
 }
 
-async function putRules(rules: RuleWire[]): Promise<void> {
+/** The policy plus the revision the write must present (a stale snapshot is refused, never re-posted blind). */
+async function fetchLimits(): Promise<{ rules: RuleWire[]; revision: string | null }> {
+  const policy = (await apiGet('/api/plugins/spend/limits')) as { rules?: RuleWire[]; revision?: string }
+  return { rules: policy.rules ?? [], revision: policy.revision ?? null }
+}
+
+async function putRules(rules: RuleWire[], revision: string | null): Promise<void> {
   const result = (await api('/api/plugins/spend/limits', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ rules }),
+    body: JSON.stringify({ rules, ...(revision ? { revision } : {}) }),
   })) as { warnings?: string[] }
   for (const warning of result.warnings ?? []) console.log(`⚠ ${warning}`)
 }
@@ -260,13 +265,15 @@ async function cmdBudgetSet(args: string[]): Promise<void> {
   }
   const atCap: RuleWire['atCap'] | undefined = reaction === 'pause' ? 'pause' : reaction === 'wait' ? 'defer' : undefined
 
-  const rules = await fetchRules()
+  const { rules, revision } = await fetchLimits()
   const existing = rules.find((r) => r.scope === scope && (r.scopeId ?? '') === (scopeId ?? '') && r.lane === lane)
   const others = rules.filter((r) => r !== existing)
-  // Same identity ⇒ same id: an edit keeps its milestone ladder; a new
-  // identity gets a server-assigned id.
+  // Same identity ⇒ the SAME rule, edited: an edit keeps its id (the
+  // milestone ladder keys on it) and every field the flags did not mention
+  // (`--monthly 300` on a rule with a daily cap and a pause reaction keeps
+  // both). A new identity gets a server-assigned id.
   const rule: RuleWire = {
-    ...(existing?.id ? { id: existing.id } : {}),
+    ...(existing ?? {}),
     scope,
     ...(scopeId ? { scopeId } : {}),
     lane,
@@ -277,9 +284,12 @@ async function cmdBudgetSet(args: string[]): Promise<void> {
   if (!rule.dailyCap && !rule.monthlyCap) {
     await exitUsage(SET_USAGE, 'Set at least one of --daily / --monthly (values in whole USD for metered rules, tokens for subscription rules).')
   }
-  await putRules([...others, rule])
+  await putRules([...others, rule], revision)
   const unit = lane === 'metered' ? 'USD' : 'tokens'
-  console.log(`Set ${ruleName(rule)} ${lane} rule (${unit}): ${rule.dailyCap ? `${rule.dailyCap}/day ` : ''}${rule.monthlyCap ? `${rule.monthlyCap}/month` : ''}`.trim())
+  const kept = existing
+    ? [existing.dailyCap && daily === undefined ? 'daily cap' : null, existing.monthlyCap && monthly === undefined ? 'monthly cap' : null, existing.atCap && !atCap ? `at-cap ${existing.atCap === 'defer' ? 'wait' : 'pause'}` : null].filter(Boolean)
+    : []
+  console.log(`${existing ? 'Updated' : 'Set'} ${ruleName(rule)} ${lane} rule (${unit}): ${rule.dailyCap ? `${rule.dailyCap}/day ` : ''}${rule.monthlyCap ? `${rule.monthlyCap}/month` : ''}${kept.length ? ` (kept ${kept.join(', ')})` : ''}`.trim())
 }
 
 async function cmdBudgetRm(args: string[]): Promise<void> {
@@ -287,13 +297,13 @@ async function cmdBudgetRm(args: string[]): Promise<void> {
   const lane = flag(args, '--lane') as RuleWire['lane'] | undefined
   const scopeId = flag(args, '--id')
   if (!scope || !lane) await exitUsage('bakin budget rm --scope global|agent|provider|model [--id <scopeId>] --lane metered|subscription')
-  const rules = await fetchRules()
+  const { rules, revision } = await fetchLimits()
   const next = rules.filter((r) => !(r.scope === scope && (r.scopeId ?? '') === (scopeId ?? '') && r.lane === lane))
   if (next.length === rules.length) {
     console.error(`No matching rule (${scope}${scopeId ? `:${scopeId}` : ''} ${lane}).`)
     process.exit(1)
   }
-  await putRules(next)
+  await putRules(next, revision)
   console.log(`Removed ${scope}${scopeId ? `:${scopeId}` : ''} ${lane} rule.`)
 }
 

@@ -76,16 +76,29 @@ export function warningBars(rows: LiveMilestoneRow[]): LiveMilestoneRow[] {
   return rows.filter((row) => row.milestone === 90 && row.acknowledgedAt === null)
 }
 
+/**
+ * The 50/75 heads-ups that have not been SEEN yet (spec §6: nav attention at
+ * every level). They were toasted once; a browser that was away for the
+ * toast still finds them on the badge until the Spend page is opened, which
+ * acknowledges them (the 90 row keeps its own explicit Dismiss).
+ */
+export function headsUpRows(rows: LiveMilestoneRow[]): LiveMilestoneRow[] {
+  return rows.filter((row) => row.milestone < 90 && row.acknowledgedAt === null)
+}
+
 /** The red bars: open cap incidents (acknowledged ones are quiet). */
 export function capBars(incidents: OpenIncidentRow[]): OpenIncidentRow[] {
   return incidents.filter((incident) => incident.status === 'open')
 }
 
-/** Nav badge: bars needing attention; error tone once a cap is hit. */
+/** Nav badge: everything needing attention; the tone is the worst level present (cap > 90 > heads-up). */
 export function spendBadge(rows: LiveMilestoneRow[], incidents: OpenIncidentRow[]): NavBadge | null {
   const caps = capBars(incidents).length
   const warnings = warningBars(rows).length
-  if (caps > 0) return { count: caps + warnings, tone: 'error' }
-  if (warnings > 0) return { count: warnings, tone: 'attention' }
+  const headsUp = headsUpRows(rows).length
+  const count = caps + warnings + headsUp
+  if (caps > 0) return { count, tone: 'error' }
+  if (warnings > 0) return { count, tone: 'attention' }
+  if (headsUp > 0) return { count, tone: 'info' }
   return null
 }

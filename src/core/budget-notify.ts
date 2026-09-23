@@ -75,6 +75,15 @@ export function emitBudgetIncidentResolved(payload: { incidentId: number; resolu
   }
 }
 
+/** SSE-only: a 90% bar was dismissed — every browser's badge/header drops it, not just the tab that clicked. */
+export function emitSpendMilestoneAcknowledged(milestoneId: number): void {
+  try {
+    broadcast({ type: 'plugin-event', event: 'spend.milestone_acknowledged', milestoneId, timestamp: new Date().toISOString() })
+  } catch (err) {
+    log.error('Failed to broadcast milestone acknowledgement', err, { milestoneId })
+  }
+}
+
 async function relayToMainAgent(n: BudgetIncidentNotification, message: string, getRuntime: () => AgentRuntimeAdapter): Promise<void> {
   try {
     // Dynamic imports keep the notify module out of the static graphs of the

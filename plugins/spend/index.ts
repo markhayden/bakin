@@ -16,6 +16,7 @@ import { createLogger } from '../../src/core/logger'
 import { acceptUnattributedHistoryRepair, checkBudget, spendEvidenceRepair } from './lib/health-checks'
 import { registerSpendHooks } from './lib/register-hooks'
 import { spendRoutes } from './lib/routes'
+import { describeSchemaIssues, SpendSettingsSchema } from './lib/settings'
 import { upgradeSpendSettings } from './lib/settings-upgrade'
 
 const log = createLogger('spend')
@@ -26,9 +27,20 @@ const spendPlugin: BakinPlugin = definePlugin({
   version: '1.0.0',
   routes: spendRoutes,
 
+  // The generic PUT /api/plugin-settings/spend must not become a side door
+  // that leaves an invalid policy on disk (which would fail dispatch closed).
+  validateSettings(value: unknown) {
+    const parsed = SpendSettingsSchema.safeParse(value)
+    return parsed.success ? { ok: true } : { ok: false, error: `not a valid spend policy: ${describeSchemaIssues(parsed.error).join('; ')}` }
+  },
+
   activate(ctx: PluginContext) {
     const upgrade = upgradeSpendSettings()
-    if (upgrade.status !== 'noop') log.info('spend settings', upgrade)
+    // A blocked upgrade leaves the operator's bytes untouched; the hooks
+    // still register so every read names the exact file (fail closed with
+    // a reason, not a silent "no limits").
+    if (upgrade.status === 'blocked') log.error('spend settings upgrade blocked — dispatch fails closed until the file is fixed', undefined, { reason: upgrade.reason })
+    else if (upgrade.status !== 'noop') log.info('spend settings', upgrade)
 
     registerSpendHooks(ctx)
 

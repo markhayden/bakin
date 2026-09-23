@@ -190,15 +190,35 @@ function DispatchPausedBanner({ resuming, resume }: { resuming: boolean; resume:
   )
 }
 
+/** The server's plain-words reason for a refused action, when it sent one. */
+async function refusalMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = (await res.json()) as { message?: unknown; error?: unknown }
+    if (typeof body.message === 'string' && body.message) return body.message
+    // A bare machine code (`still_over_limit`) is not a sentence — keep the fallback.
+    if (typeof body.error === 'string' && body.error && !/^[a-z0-9_]+$/.test(body.error)) return body.error
+  } catch {
+    // Non-JSON failure body — the fallback names the status.
+  }
+  return fallback
+}
+
 /** Yellow bar: 90% of a limit reached — dismissible for the window (row acknowledged). */
 function SpendWarningBanner({ row, onDismissed }: { row: SpendWarningRow; onDismissed: () => void }) {
   const [busy, setBusy] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
   const dismiss = async () => {
     setBusy(true)
+    setFailure(null)
     try {
-      await fetch(`/api/plugins/spend/milestones/${row.id}/ack`, { method: 'POST' })
+      const res = await fetch(`/api/plugins/spend/milestones/${row.id}/ack`, { method: 'POST' })
+      // Only a confirmed ack clears the bar; a 404 (already dismissed or
+      // rolled over) or a 500 says so instead of pretending.
+      if (!res.ok) { setFailure(await refusalMessage(res, `Could not dismiss (${res.status}).`)); return }
       emitPluginEvent({ event: 'spend.milestone_acknowledged', milestoneId: row.id })
       onDismissed()
+    } catch (err) {
+      setFailure(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy(false)
     }
@@ -208,6 +228,7 @@ function SpendWarningBanner({ row, onDismissed }: { row: SpendWarningRow; onDism
       <span className="font-bakin-typography-weight-medium text-bakin-signal-attention">90% of your {row.window} limit</span>
       <span className="min-w-0 truncate text-bakin-text-muted">
         {formatSpendValue(row.unit, row.spentValue)} of {formatSpendValue(row.unit, row.capValue)} — work stops at the line.
+        {failure ? ` ${failure}` : ''}
       </span>
       <PluginLink to="/spend" className="ml-auto shrink-0 underline-offset-4 hover:underline">Review</PluginLink>
       <Button type="button" size="xs" variant="outline" onClick={dismiss} disabled={busy}>
@@ -217,18 +238,28 @@ function SpendWarningBanner({ row, onDismissed }: { row: SpendWarningRow; onDism
   )
 }
 
-/** Red bar: a limit is reached — raise it (on the Spend page) or resume as-is (refused while still over). */
+/**
+ * Red bar: a limit is reached. A "wait" rule (defer, the default) releases
+ * itself at the next period, so its bar offers Acknowledge (silence, keep
+ * waiting); a pause rule offers Resume as-is, which the server refuses
+ * while spend is still over the cap — then only a raise gets work moving.
+ */
 function SpendCapBanner({ row, onResolved }: { row: SpendCapRow; onResolved: () => void }) {
   const [busy, setBusy] = useState(false)
   const [stillOver, setStillOver] = useState(false)
-  const resume = async () => {
+  const [failure, setFailure] = useState<string | null>(null)
+  const act = async (action: 'ack' | 'resume') => {
     setBusy(true)
+    setFailure(null)
     try {
       const res = await fetch(`/api/plugins/spend/incidents/${row.id}/resolve`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'resume' }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }),
       })
-      if (res.status === 409) { setStillOver(true); return }
-      if (res.ok) onResolved()
+      if (res.status === 409) { setStillOver(true); setFailure(await refusalMessage(res, 'Spend is still at or over this limit — raise the limit to resume.')); return }
+      if (!res.ok) { setFailure(await refusalMessage(res, `Could not update the incident (${res.status}).`)); return }
+      onResolved()
+    } catch (err) {
+      setFailure(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy(false)
     }
@@ -240,14 +271,19 @@ function SpendCapBanner({ row, onResolved }: { row: SpendCapRow; onResolved: () 
       <span className="min-w-0 truncate text-bakin-text-muted">
         {scope} · {formatSpendValue(row.unit, row.spentValue)} of {formatSpendValue(row.unit, row.capValue)} {row.lane}
         {row.atCap === 'pause' ? ' — matching work is paused until you act.' : ' — matching work waits for the next period.'}
-        {stillOver ? ' Still over the limit: raise it to resume.' : ''}
+        {failure ? ` ${failure}` : ''}
       </span>
       <PluginLink to="/spend?tab=limits" className="ml-auto shrink-0 underline-offset-4 hover:underline">
         {stillOver ? 'Raise limit to resume' : 'Raise limit'}
       </PluginLink>
-      {!stillOver ? (
-        <Button type="button" size="xs" variant="danger" onClick={resume} disabled={busy}>
-          {busy ? 'Resuming…' : row.atCap === 'pause' ? 'Resume as-is' : 'Dismiss'}
+      {row.atCap === 'pause' && !stillOver ? (
+        <Button type="button" size="xs" variant="danger" onClick={() => act('resume')} disabled={busy}>
+          {busy ? 'Resuming…' : 'Resume as-is'}
+        </Button>
+      ) : null}
+      {row.atCap === 'defer' ? (
+        <Button type="button" size="xs" variant="outline" onClick={() => act('ack')} disabled={busy}>
+          {busy ? 'Acknowledging…' : 'Acknowledge'}
         </Button>
       ) : null}
     </HeaderBar>

@@ -29,6 +29,13 @@ export async function put(req: Request, url: URL): Promise<Response> {
     return Response.json({ error: 'Invalid plugin id' }, { status: 400 })
   }
   const body = await req.json()
+  // A plugin that validates its own document (money/policy settings) gets
+  // the last word — this generic route must never leave an invalid file
+  // behind that the plugin's own routes would have refused.
+  const verdict = pluginRegistry.getPlugin(pluginId)?.validateSettings?.(body)
+  if (verdict && !verdict.ok) {
+    return Response.json({ error: verdict.error }, { status: 400 })
+  }
   writePluginSettings(pluginId, body)
 
   // Notify the plugin of settings change

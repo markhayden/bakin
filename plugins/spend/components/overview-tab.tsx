@@ -3,7 +3,7 @@
 import { AreaChart, type ChartDatum } from '@makinbakin/sdk/charts'
 import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
 import { SegmentedControl, StatGroup, StatTile } from '@makinbakin/sdk/patterns'
-import { Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
+import { Banner, Button, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 
 import { SpendBreakdown, type SpendBreakdownDimension } from './spend-breakdown'
 import { budgetRuleLabel, budgetRuleSpend, formatRuleUnit, formatTokens, formatUsd } from './spend-utils'
@@ -194,8 +194,15 @@ function SpendOverview({
     : 0
   // Lane-honest tiles: a lane with no rows at all reads "not metered" /
   // "none", never "$ unavailable" (that state is reserved for unpriced rows).
-  const meteredLaneEmpty = monthlyMeteredTokens === 0 && monthlyMetered === 0 && (month?.unpricedMeteredTokens ?? 0) === 0
-  const subscriptionLaneEmpty = monthlySubscription === 0
+  // Zero SUMS are not proof of an empty lane: unpriced media has zero tokens
+  // and zero priced dollars, a subscription turn can lack token evidence,
+  // and an unavailable observed-usage store hides everything outside tasks —
+  // those read "unknown", not "none".
+  const observedUnavailable = spend.facets?.observedUsageEvidence?.status === 'unavailable'
+  const meteredLaneEmpty = !observedUnavailable && monthlyMeteredTokens === 0 && monthlyMetered === 0 && (month?.unpricedMeteredTokens ?? 0) === 0 && !spend.byModel.some((row) => row.costUsdMicros === null && row.runs > 0)
+  const subscriptionLaneEmpty = !observedUnavailable && monthlySubscription === 0 && !(spend.byWorkClass ?? []).some((row) => row.totalTokens === null && row.runs > 0)
+  const meteredUnknown = !meteredLaneEmpty && monthlyMetered === 0 && monthlyMeteredTokens === 0
+  const subscriptionUnknown = !subscriptionLaneEmpty && monthlySubscription === 0
 
   return (
     <Section spacing="compact" aria-label="Spending overview">
@@ -219,16 +226,24 @@ function SpendOverview({
         <StatTile
           variant="surface"
           label="Month metered"
-          value={meteredLaneEmpty ? 'Not metered' : formatUsd(monthlyMetered, month?.unpricedMeteredTokens ?? 0)}
-          valueTone={meteredLaneEmpty ? 'neutral' : undefined}
-          sub={meteredLaneEmpty ? 'No pay-per-token usage this month' : `${formatTokens(monthlyMeteredTokens)} tokens`}
+          value={meteredLaneEmpty ? 'Not metered' : meteredUnknown ? 'Unknown' : formatUsd(monthlyMetered, month?.unpricedMeteredTokens ?? 0)}
+          valueTone={meteredLaneEmpty || meteredUnknown ? 'neutral' : undefined}
+          sub={meteredLaneEmpty
+            ? 'No pay-per-token usage this month'
+            : meteredUnknown
+              ? (observedUnavailable ? 'Observed usage is unavailable — Health names the gap' : 'Usage recorded without a price — Health names the gap')
+              : `${formatTokens(monthlyMeteredTokens)} tokens`}
         />
         <StatTile
           variant="surface"
           label="Month subscription"
-          value={subscriptionLaneEmpty ? 'None' : formatTokens(monthlySubscription)}
-          valueTone={subscriptionLaneEmpty ? 'neutral' : undefined}
-          sub={subscriptionLaneEmpty ? 'No subscription-plan usage this month' : 'Tokens included in subscription plans'}
+          value={subscriptionLaneEmpty ? 'None' : subscriptionUnknown ? 'Unknown' : formatTokens(monthlySubscription)}
+          valueTone={subscriptionLaneEmpty || subscriptionUnknown ? 'neutral' : undefined}
+          sub={subscriptionLaneEmpty
+            ? 'No subscription-plan usage this month'
+            : subscriptionUnknown
+              ? (observedUnavailable ? 'Observed usage is unavailable — Health names the gap' : 'Usage recorded without token counts — Health names the gap')
+              : 'Tokens included in subscription plans'}
         />
       </StatGroup>
 
@@ -277,9 +292,18 @@ export function OverviewTab({
   }
   return (
     <div className="@container/spend flex min-w-0 flex-col gap-bakin-8">
+      {m.spendStale ? (
+        <Banner
+          tone="attention"
+          announce="polite"
+          title="Showing the last reading — the refresh failed"
+          description={m.spendStale}
+          action={<Button type="button" variant="outline" size="sm" onClick={() => void m.refreshSpend()}>Retry</Button>}
+        />
+      ) : null}
       <SpendOverview
         spend={m.spend}
-        rules={m.budgetRules}
+        rules={m.budgetRules ?? []}
         metric={metric}
         onMetricChange={onMetricChange}
       />

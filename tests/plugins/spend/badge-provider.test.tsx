@@ -32,7 +32,7 @@ mock.module('../../../plugins/spend/lib/browser-notify', () => ({
 import { act, render } from '@testing-library/react'
 import '../../rtl-settle'
 import { SpendBadgeProvider } from '../../../plugins/spend/components/spend-badge-provider'
-import { milestoneNotifies, spendBadge, warningBars } from '../../../plugins/spend/components/attention'
+import { headsUpRows, milestoneNotifies, spendBadge, warningBars } from '../../../plugins/spend/components/attention'
 
 let statusBody: Record<string, unknown> = { paused: false, milestones: [], openIncidents: [] }
 const originalFetch = globalThis.fetch
@@ -64,6 +64,17 @@ describe('attention rules', () => {
     expect(spendBadge([ROW_90], [CAP])).toEqual({ count: 2, tone: 'error' })
     expect(spendBadge([{ ...ROW_90, acknowledgedAt: 1 }], [{ ...CAP, status: 'acknowledged' }])).toBeNull()
     expect(warningBars([ROW_90, { ...ROW_90, id: 6, milestone: 75 }])).toHaveLength(1)
+  })
+})
+
+describe('attention rules — 50/75 heads-ups', () => {
+  it('an unacknowledged 50/75 row badges (info tone) until the Spend page is opened; it never becomes a bar', () => {
+    const row75 = { ...ROW_90, id: 8, milestone: 75 }
+    expect(headsUpRows([row75, ROW_90])).toEqual([row75])
+    expect(spendBadge([row75], [])).toEqual({ count: 1, tone: 'info' })
+    expect(spendBadge([row75, ROW_90], [])).toEqual({ count: 2, tone: 'attention' })
+    expect(spendBadge([{ ...row75, acknowledgedAt: 1 }], [])).toBeNull()
+    expect(warningBars([row75])).toHaveLength(0)
   })
 })
 

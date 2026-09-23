@@ -1,8 +1,10 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 import { Pause, Play } from 'lucide-react'
-import { useQueryState } from '@makinbakin/sdk/navigation'
+import { emitPluginEvent } from '@makinbakin/sdk/hooks'
+import { useQueryState, useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 import { Page, PageBody, PageHeader, SegmentedControl } from '@makinbakin/sdk/patterns'
 import { Banner, Button, Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
 
@@ -39,6 +41,33 @@ export function SpendPage() {
   const [spendPage, setSpendPage] = useQueryState('spendPage', '1')
   const [spendShowAll, setSpendShowAll] = useQueryState('spendAll', 'false')
   const paused = m.budgetStatus?.paused === true
+
+  // Opening Spend is "seen" for the 50/75 heads-ups: their badge entries
+  // acknowledge here (the 90 row keeps its explicit Dismiss). Once per row.
+  const acked = useRef(new Set<number>())
+  const headsUp = (m.budgetStatus?.milestones ?? []).filter((row) => row.milestone < 90 && row.acknowledgedAt === null && !acked.current.has(row.id))
+  useEffect(() => {
+    for (const row of headsUp) {
+      acked.current.add(row.id)
+      void pluginFetch('spend', `milestones/${row.id}/ack`, { method: 'POST' })
+        .then((res) => { if (res.ok) emitPluginEvent({ event: 'spend.milestone_acknowledged', milestoneId: row.id }) })
+        .catch(() => { acked.current.delete(row.id) })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [headsUp.map((row) => row.id).join(',')])
+
+  // Staged rule edits are unsaved work: leaving the page (route, anchor,
+  // unload, back) asks — save, discard, or stay — instead of dropping them.
+  const unsavedGuard = useUnsavedChangesGuard({
+    hasUnsavedChanges: m.pendingRules !== null,
+    saving: m.saving === 'budget',
+    title: 'Unsaved budget rules',
+    description: 'You have unsaved changes to your spend limits. Save them before leaving, discard them, or stay here.',
+    saveLabel: 'Save budget rules',
+    onSaveAndExit: m.saveBudgetRules,
+    onDiscardAndExit: () => m.setPendingRules(null),
+    error: m.budgetError,
+  })
 
   const headerControls = tab === 'overview' ? (
     <SegmentedControl
@@ -108,7 +137,7 @@ export function SpendPage() {
       {m.budgetWarnings.map((warning) => (
         <Banner key={warning} tone="attention" title="Budget rule needs review" description={warning} />
       ))}
-      <IncidentBanners incidents={m.incidents} resolveIncident={m.resolveIncident} />
+      <IncidentBanners incidents={m.incidents} resolveIncident={m.resolveIncident} rules={m.budgetRules} facets={m.spend?.facets} />
 
       <Tabs value={tab} onValueChange={(id) => setTab(id === 'overview' ? null : id)}>
         <TabsList variant="underline" activateOnFocus aria-label="Spend sections">
@@ -139,6 +168,7 @@ export function SpendPage() {
           )}
         </Suspense>
       </PageBody>
+      {unsavedGuard.dialog}
     </Page>
   )
 }

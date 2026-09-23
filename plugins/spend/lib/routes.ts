@@ -38,14 +38,85 @@ import { assembleBudgetSpend, paceProjection, dayEndMs, monthEndMs, type BudgetS
 import { evaluateBudget, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetRule } from '../../../src/core/budget'
 import { buildSpendTimeline, rollupSpend } from '../../../src/core/spend-rollup'
 import { getSettings as getSystemSettings } from '../../../src/core/settings'
-import { emitBudgetIncidentResolved } from '../../../src/core/budget-notify'
+import { emitBudgetIncidentResolved, emitSpendMilestoneAcknowledged } from '../../../src/core/budget-notify'
 import { createLogger } from '../../../src/core/logger'
 import { resolveBilling } from './billing'
 import { coverageSummary, suggestMonthlyLimit } from './coverage'
 import { coveredDaysSince } from '@bakin/core/usage-history/store'
-import { BillingOverridesSchema, LimitsSchema, readLimits, readOverrides, SpendSettingsSchema } from './settings'
+import {
+  BillingOverridesSchema,
+  readLimits,
+  readOverrides,
+  readSpendSettings,
+  ruleListIssues,
+  SpendRevisionStaleError,
+  SpendSettingsInvalidError,
+  spendRevision,
+  withSpendPolicyWrite,
+  type SpendPluginSettings,
+} from './settings'
 
 const log = createLogger('spend:routes')
+
+/**
+ * The two policy-write refusals every writer can hit, mapped once: a stale
+ * revision is 409 (reload and re-decide), an invalid document on disk is
+ * 422 (fix the file — dispatch is failing closed until then). Anything else
+ * is a 500 with its stack logged.
+ */
+function policyErrorResponse(err: unknown, route: string): Response {
+  if (err instanceof SpendRevisionStaleError) {
+    return Response.json({ error: err.code, message: err.message, current: err.current }, { status: 409 })
+  }
+  if (err instanceof SpendSettingsInvalidError) {
+    return Response.json({ error: err.code, message: err.message, file: err.file, issues: err.issues }, { status: 422 })
+  }
+  if (err instanceof LedgerUnavailableError) return Response.json({ error: 'Spend ledger unavailable' }, { status: 503 })
+  log.error(`spend route ${route} failed`, err, { route })
+  return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+}
+
+/** After any policy write: the ladder/incidents reflect the new rules NOW, not at the next tick. */
+function observeAfterPolicyWrite(reason: string): void {
+  void import('../../../src/core/spend-observer')
+    .then((m) => m.observeSpend())
+    .catch((err: unknown) => log.warn('spend observer pass after a policy write failed', { reason, err: err instanceof Error ? err.message : String(err) }))
+}
+
+/** A cap in the rule's unit (micro-USD for metered, tokens for subscription), or null when the window has no cap. */
+function capInUnit(rule: BudgetRule, window: 'daily' | 'monthly'): number | null {
+  const cap = window === 'daily' ? rule.dailyCap : rule.monthlyCap
+  if (cap === undefined) return null
+  return rule.lane === 'metered' ? Math.round(cap * 1_000_000) : Math.round(cap)
+}
+
+/**
+ * Reconcile live incidents with a freshly written rule list. Every case an
+ * edit can produce is handled, not just "identity gone":
+ *   - identity gone, or the incident's window no longer has a cap  ⇒ rule_removed
+ *   - same identity under a NEW id (a recreated rule starts fresh)  ⇒ rule_removed
+ *   - the incident's cap was raised above what it recorded            ⇒ raised
+ * Both resolutions are reopenable, so a still-over cap re-breaches as a
+ * new episode on the observer pass that follows the write.
+ */
+function reconcileIncidentsAfterPolicyWrite(previous: readonly BudgetRule[], next: readonly BudgetRule[]): void {
+  try {
+    for (const incident of listBudgetIncidents({ openOnly: true })) {
+      const rule = next.find((r) => ruleMatchesIncident(r, incident))
+      const before = previous.find((r) => ruleMatchesIncident(r, incident))
+      const cap = rule ? capInUnit(rule, incident.window) : null
+      let resolution: 'rule_removed' | 'raised' | null = null
+      if (!rule || cap === null) resolution = 'rule_removed'
+      else if (before && before.id !== rule.id) resolution = 'rule_removed'
+      else if (cap > incident.capValue) resolution = 'raised'
+      if (!resolution) continue
+      resolveBudgetIncident({ id: incident.id, status: 'resolved', resolution })
+      emitBudgetIncidentResolved({ incidentId: incident.id, resolution })
+    }
+  } catch (err) {
+    log.warn('could not reconcile incidents after a limits write', { err: err instanceof Error ? err.message : String(err) })
+  }
+}
 
 const okResponse = z.object({ ok: z.boolean(), warnings: z.array(z.string()).optional() })
 const errorResponse = z.object({ error: z.string() })
@@ -143,18 +214,29 @@ function sweepRollover(): void {
  * The ladder rows the header/badge render: milestone rows for the CURRENT
  * daily and monthly windows of rules that still exist (a deleted rule's
  * rows are history, not attention), below 100 (the incident speaks for
- * 100), oldest crossing first.
+ * 100), recorded against the rule's CURRENT cap (a row crossed under a cap
+ * since raised is history too — its "$90 of $100" would misstate the
+ * present), oldest crossing first.
  */
 function liveMilestones(policy: BudgetPolicy, now: number): BudgetMilestoneRow[] {
-  const ruleIds = new Set((policy.rules ?? []).map((r) => r.id).filter((id): id is string => typeof id === 'string'))
+  const byId = new Map((policy.rules ?? []).filter((r): r is BudgetRule & { id: string } => typeof r.id === 'string').map((r) => [r.id, r]))
   const windowStarts = { daily: dayStartMs(now), monthly: monthStartMs(now) }
+  // A row the cap incident already speaks for (the same rule's window is
+  // AT the cap) is history: a 49%→101% jump must not raise a yellow bar
+  // beside the red one, and an earlier 90 warning retires when 100 lands.
+  const superseded = (rule: BudgetRule, window: 'daily' | 'monthly'): boolean => {
+    const open = findOpenCapIncident({ scope: rule.scope, scopeId: rule.scopeId, lane: rule.lane })
+    return open !== null && open.window === window
+  }
   return listMilestones({ sinceMs: windowStarts.monthly })
-    .filter((row) => ruleIds.has(row.ruleId) && row.milestone < 100 && row.windowStartMs === windowStarts[row.window])
-}
-
-function writeLimits(ctx: PluginContext, limits: z.infer<typeof LimitsSchema>): void {
-  const current = SpendSettingsSchema.safeParse(ctx.getSettings<unknown>())
-  ctx.updateSettings({ limits, billing: current.success ? current.data.billing : { overrides: [] } })
+    .filter((row) => {
+      const rule = byId.get(row.ruleId)
+      return rule !== undefined
+        && row.milestone < 100
+        && row.windowStartMs === windowStarts[row.window]
+        && capInUnit(rule, row.window) === row.capValue
+        && !superseded(rule, row.window)
+    })
 }
 
 const ResolveIncidentSchema = z.object({
@@ -163,8 +245,13 @@ const ResolveIncidentSchema = z.object({
   cap: z.number().positive().optional(),
 })
 
-/** PUT /limits body: the same rule shape, id optional (assigned on save). */
+/**
+ * PUT /limits body: the same rule shape, id optional (assigned on save),
+ * plus the revision the editor loaded — a snapshot that never saw the
+ * current limits cannot replace them.
+ */
 const PutLimitsSchema = z.object({
+  revision: z.string().min(1),
   rules: z.array(
     z
       .object({
@@ -182,8 +269,18 @@ const PutLimitsSchema = z.object({
       .refine((r) => r.dailyCap !== undefined || r.monthlyCap !== undefined, {
         message: 'a limit needs a daily or a monthly cap',
       }),
-  ),
+  ).superRefine((rules, ctx) => {
+    for (const message of ruleListIssues(rules)) ctx.addIssue({ code: z.ZodIssueCode.custom, message })
+  }),
 })
+
+/** A rule as the file stores it (id always present). */
+type StoredRule = SpendPluginSettings['limits']['rules'][number]
+
+/** GET /limits payload: the policy plus the revision every write must present. */
+function limitsPayload(document: SpendPluginSettings): Record<string, unknown> {
+  return { ...document.limits, revision: spendRevision(document) }
+}
 
 export const spendRoutes = [
   defineRoute({
@@ -241,10 +338,7 @@ export const spendRoutes = [
           observedDays: { month: observedDays, daysIntoMonth },
         })
       } catch (err) {
-        if (err instanceof LedgerUnavailableError) {
-          return Response.json({ error: 'Spend ledger unavailable' }, { status: 503 })
-        }
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        return policyErrorResponse(err, 'GET /spend')
       }
     },
   }),
@@ -269,8 +363,7 @@ export const spendRoutes = [
           suggestion,
         })
       } catch (err) {
-        if (err instanceof LedgerUnavailableError) return Response.json({ error: 'Spend ledger unavailable' }, { status: 503 })
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        return policyErrorResponse(err, 'GET /coverage')
       }
     },
   }),
@@ -279,13 +372,13 @@ export const spendRoutes = [
     path: '/limits',
     method: 'GET',
     summary: 'Spend limits policy',
-    description: 'The rule list dispatch consults (each rule carries its server-assigned id) and the accept-unattributed cutoff.',
-    responses: { 200: passthrough, 500: errorResponse },
-    handler: async (_req, ctx) => {
+    description: 'The rule list dispatch consults (each rule carries its server-assigned id), the accept-unattributed cutoff, and the `revision` every write must present. 422 when spend.json exists but is not a valid policy (dispatch fails closed until it is fixed).',
+    responses: { 200: passthrough, 422: errorResponse, 500: errorResponse },
+    handler: async () => {
       try {
-        return Response.json(readLimits(ctx))
+        return Response.json(limitsPayload(readSpendSettings()))
       } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        return policyErrorResponse(err, 'GET /limits')
       }
     },
   }),
@@ -294,40 +387,29 @@ export const spendRoutes = [
     path: '/limits',
     method: 'PUT',
     summary: 'Replace the spend limits',
-    description: 'Every rule round-trips; ids are kept when present and assigned when absent (a rule with a fresh id starts its milestone ladder fresh). Incidents of deleted rules resolve rule_removed. Unknown scope ids warn (a typo caps nothing) but never block the save.',
+    description: 'Every rule round-trips; ids are kept when present and assigned when absent (a rule with a fresh id starts its milestone ladder fresh). Requires the `revision` the editor loaded — 409 stale_revision when the limits changed since. One rule per (scope, scopeId, lane): put both caps on it. Live incidents are reconciled: deleted rules / removed window caps / recreated ids resolve rule_removed, a raised cap resolves raised. Unknown scope ids warn (a typo caps nothing) but never block the save.',
     body: PutLimitsSchema,
-    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    responses: { 200: okResponse, 400: errorResponse, 409: errorResponse, 422: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { body }) => {
       try {
-        const previous = readLimits(ctx)
+        // Unknown scope ids are the #1 fake-safety trap (a typo'd agent id
+        // caps nothing) — warn, don't reject (the id may exist later). The
+        // roster read happens BEFORE the write turn so no await sits inside it.
+        const knownAgents = new Set((await listAgentModels(ctx as unknown as PluginContext)).map((a) => a.agentId))
+        const knownProviders = new Set(KNOWN_PROVIDERS.map((p) => p.id))
         // Model-scoped rule ids normalize on write so they key identically
         // to the normalized model ids on spend rows.
-        const rules = body.rules.map((r) => ({
+        const rules: StoredRule[] = body.rules.map((r) => ({
           ...r,
           id: r.id ?? randomUUID(),
           ...(r.scope === 'model' && r.scopeId ? { scopeId: normalizeModelId(r.scopeId) } : {}),
         }))
-        const limits = LimitsSchema.parse({
-          rules,
-          ...(previous.acceptUnattributedBefore ? { acceptUnattributedBefore: previous.acceptUnattributedBefore } : {}),
-        })
-        writeLimits(ctx as unknown as PluginContext, limits)
-        // Live incidents whose rule was just deleted would otherwise strand
-        // in the banner with no working action — resolve them now.
-        try {
-          for (const incident of listBudgetIncidents({ openOnly: true })) {
-            if (!rules.some((r) => ruleMatchesIncident(r as BudgetRule, incident))) {
-              resolveBudgetIncident({ id: incident.id, status: 'resolved', resolution: 'rule_removed' })
-            }
-          }
-        } catch (err) {
-          log.warn('could not resolve incidents of removed rules', { err: err instanceof Error ? err.message : String(err) })
-        }
-        // Unknown scope ids are the #1 fake-safety trap (a typo'd agent id
-        // caps nothing) — warn, don't reject (the id may exist later).
+        const { result: previous, revision } = await withSpendPolicyWrite<BudgetRule[]>((current) => ({
+          next: { ...current, limits: { ...current.limits, rules } },
+          result: current.limits.rules as BudgetRule[],
+        }), { expectRevision: body.revision })
+        reconcileIncidentsAfterPolicyWrite(previous, rules as BudgetRule[])
         const warnings: string[] = []
-        const knownAgents = new Set((await listAgentModels(ctx as unknown as PluginContext)).map((a) => a.agentId))
-        const knownProviders = new Set(KNOWN_PROVIDERS.map((p) => p.id))
         for (const r of rules) {
           if (r.scope === 'agent' && r.scopeId && knownAgents.size > 0 && !knownAgents.has(r.scopeId)) {
             warnings.push(`No agent named '${r.scopeId}' — this rule caps nothing until such an agent exists.`)
@@ -338,9 +420,10 @@ export const spendRoutes = [
         }
         ctx.activity.audit('budget.updated', 'system', { rules: rules.length, warnings: warnings.length })
         ctx.activity.log('system', 'Updated spend limits', { category: 'spend' })
-        return Response.json({ ok: true, ...(warnings.length ? { warnings } : {}) })
+        observeAfterPolicyWrite('limits updated')
+        return Response.json({ ok: true, revision, ...(warnings.length ? { warnings } : {}) })
       } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        return policyErrorResponse(err, 'PUT /limits')
       }
     },
   }),
@@ -355,7 +438,7 @@ export const spendRoutes = [
     handler: async (req, ctx) => {
       try {
         const paused = getSystemSettings().dispatch.paused
-        const policy = readLimits(ctx)
+        const policy = readLimits()
         // ?lite=1 — the header's poll wants the kill switch and the ladder
         // rows (milestones + open incidents — cheap ledger reads); skip the
         // facets/agents/per-task work entirely.
@@ -364,7 +447,7 @@ export const spendRoutes = [
           return Response.json({ paused, milestones: liveMilestones(policy, Date.now()), openIncidents: listBudgetIncidents({ openOnly: true }) })
         }
         sweepRollover()
-        const overrides = readOverrides(ctx)
+        const overrides = readOverrides()
         const openIncidents = listBudgetIncidents({ openOnly: true })
         const milestones = liveMilestones(policy, Date.now())
         const agents = await listAgentModels(ctx as unknown as PluginContext)
@@ -439,8 +522,7 @@ export const spendRoutes = [
         }
         return Response.json({ paused, configured: true, perAgent, perTask, billing, overrides, deferredProviders: [...new Set(deferredProviders)], openIncidents, milestones })
       } catch (err) {
-        const status = err instanceof LedgerUnavailableError ? 503 : 500
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status })
+        return policyErrorResponse(err, 'GET /status')
       }
     },
   }),
@@ -457,7 +539,7 @@ export const spendRoutes = [
         const all = new URL(req.url).searchParams.get('all') === '1'
         return Response.json({ incidents: listBudgetIncidents(all ? {} : { openOnly: true }) })
       } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        return policyErrorResponse(err, 'GET /incidents')
       }
     },
   }),
@@ -479,6 +561,9 @@ export const spendRoutes = [
 
         if (body.action === 'ack') {
           resolveBudgetIncident({ id, status: 'acknowledged', resolution: 'acknowledged' })
+          // Every surface that renders this incident (badge, header bar,
+          // other tabs) learns about it the same way it learned it opened.
+          emitBudgetIncidentResolved({ incidentId: id, resolution: 'acknowledged' })
           ctx.activity.audit('budget.incident_resolved', 'system', { incidentId: id, action: 'ack' })
           return Response.json({ ok: true })
         }
@@ -487,17 +572,19 @@ export const spendRoutes = [
           // S12: resuming while spend is still at/over the cap would just
           // re-breach on the next turn (and, on a defer rule, re-alert). Say
           // so — the honest way out is a raise.
-          const rule = (readLimits(ctx).rules ?? []).find((r) => ruleMatchesIncident(r, incident))
+          const rule = (readLimits().rules ?? []).find((r) => ruleMatchesIncident(r, incident))
           if (rule) {
             const facets = await assembleBudgetSpend(Date.now())
-            const capValue = incident.window === 'daily' ? rule.dailyCap : rule.monthlyCap
-            const capInUnit = capValue === undefined ? null : rule.lane === 'metered' ? Math.round(capValue * 1_000_000) : Math.round(capValue)
-            if (capInUnit !== null && ruleSpend(rule, facets, incident.window) >= capInUnit) {
+            const cap = capInUnit(rule, incident.window)
+            if (cap !== null && ruleSpend(rule, facets, incident.window) >= cap) {
               return Response.json({ error: 'still_over_limit', message: 'Spend is still at or over this limit — raise the limit to resume.' }, { status: 409 })
             }
           }
-          resolveBudgetIncident({ id, status: 'resolved', resolution: 'acknowledged' })
-          emitBudgetIncidentResolved({ incidentId: id, resolution: 'acknowledged' })
+          // `resumed` is REOPENABLE: spend went under, then over again is a
+          // new event — a pause rule re-engages its hold instead of quietly
+          // degrading to defer for the rest of the window.
+          resolveBudgetIncident({ id, status: 'resolved', resolution: 'resumed' })
+          emitBudgetIncidentResolved({ incidentId: id, resolution: 'resumed' })
           ctx.activity.audit('budget.incident_resolved', 'system', { incidentId: id, action: 'resume' })
           void import('../../../src/core/dispatch-cycle').then((m) => m.requestImmediateDispatch(`budget incident ${id} resumed`)).catch(() => {})
           return Response.json({ ok: true })
@@ -507,32 +594,39 @@ export const spendRoutes = [
         if (typeof body.cap !== 'number') {
           return Response.json({ error: 'raise requires a cap (in the rule\'s unit: whole USD or tokens)' }, { status: 400 })
         }
-        const limits = readLimits(ctx)
-        const rules = limits.rules ?? []
-        const rule = rules.find((r) => ruleMatchesIncident(r, incident))
-        if (!rule) return Response.json({ error: 'The breached rule no longer exists — nothing to raise' }, { status: 400 })
+        const cap = body.cap
+        const preview = (readLimits().rules ?? []).find((r) => ruleMatchesIncident(r, incident))
+        if (!preview) return Response.json({ error: 'The breached rule no longer exists — nothing to raise' }, { status: 400 })
 
+        // The spend read is the await a concurrent PUT can land during, so
+        // the rule is re-found INSIDE the serialized write turn below and the
+        // new cap is applied to whatever list is current then.
         const facets = await assembleBudgetSpend(Date.now())
-        const spentNow = ruleSpend(rule, facets, incident.window)
-        const newCapValue = rule.lane === 'metered' ? Math.round(body.cap * 1_000_000) : Math.round(body.cap)
+        const spentNow = ruleSpend(preview, facets, incident.window)
+        const newCapValue = preview.lane === 'metered' ? Math.round(cap * 1_000_000) : Math.round(cap)
         if (newCapValue <= spentNow) {
-          const spentHuman = rule.lane === 'metered' ? `$${(spentNow / 1_000_000).toFixed(2)}` : `${spentNow.toLocaleString()} tokens`
+          const spentHuman = preview.lane === 'metered' ? `$${(spentNow / 1_000_000).toFixed(2)}` : `${spentNow.toLocaleString()} tokens`
           return Response.json({ error: `New cap must exceed current ${incident.window} spend (${spentHuman})` }, { status: 400 })
         }
 
-        const updated = rules.map((r) =>
-          r === rule ? { ...r, ...(incident.window === 'daily' ? { dailyCap: body.cap } : { monthlyCap: body.cap }) } : r,
-        )
-        writeLimits(ctx as unknown as PluginContext, LimitsSchema.parse({ ...limits, rules: updated }))
+        const { result: applied } = await withSpendPolicyWrite<boolean>((current) => {
+          const rules = current.limits.rules
+          const live = rules.find((r) => ruleMatchesIncident(r as BudgetRule, incident))
+          if (!live) return { next: current, result: false }
+          const updated: StoredRule[] = rules.map((r) => (r === live ? { ...r, ...(incident.window === 'daily' ? { dailyCap: cap } : { monthlyCap: cap }) } : r))
+          return { next: { ...current, limits: { ...current.limits, rules: updated } }, result: true }
+        })
+        if (!applied) return Response.json({ error: 'The breached rule was removed while raising — nothing to raise' }, { status: 409 })
         resolveBudgetIncident({ id, status: 'resolved', resolution: 'raised' })
         emitBudgetIncidentResolved({ incidentId: id, resolution: 'raised' })
-        ctx.activity.audit('budget.incident_resolved', 'system', { incidentId: id, action: 'raise', cap: body.cap, window: incident.window })
+        ctx.activity.audit('budget.incident_resolved', 'system', { incidentId: id, action: 'raise', cap, window: incident.window })
+        observeAfterPolicyWrite('cap raised')
         // "Raise & resume" must RESUME — kick a dispatch cycle so deferred
         // tasks move now, not at the next interval.
         void import('../../../src/core/dispatch-cycle').then((m) => m.requestImmediateDispatch(`budget incident ${id} raised`)).catch(() => {})
         return Response.json({ ok: true })
       } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        return policyErrorResponse(err, 'POST /incidents/:id/resolve')
       }
     },
   }),
@@ -551,9 +645,12 @@ export const spendRoutes = [
         const ok = acknowledgeMilestone(id)
         if (!ok) return Response.json({ error: `No unacknowledged milestone ${id}` }, { status: 404 })
         ctx.activity.audit('budget.milestone_acknowledged', 'system', { milestoneId: id })
+        // Reaches every browser (the header emits its own local copy for
+        // the tab that clicked; other tabs and the nav badge need this one).
+        emitSpendMilestoneAcknowledged(id)
         return Response.json({ ok: true })
       } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        return policyErrorResponse(err, 'POST /milestones/:id/ack')
       }
     },
   }),
@@ -562,17 +659,17 @@ export const spendRoutes = [
     path: '/billing/overrides',
     method: 'PUT',
     summary: 'Replace billing-lane overrides',
-    description: 'Manual lane assignments (metered vs subscription) that win over auth-profile detection — the fix when e.g. a Codex subscription reads as metered because its OAuth lives outside the per-agent auth profiles. Most-specific match wins: agent+provider, then agent, then provider.',
+    description: 'Manual lane assignments (metered vs subscription) that win over auth-profile detection — the fix when e.g. a Codex subscription reads as metered because its OAuth lives outside the per-agent auth profiles. Most-specific match wins: agent+provider, then agent, then provider. 422 when spend.json is invalid (nothing is written over it).',
     body: BillingOverridesSchema,
-    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    responses: { 200: okResponse, 400: errorResponse, 422: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { body }) => {
       try {
-        const limits = readLimits(ctx)
-        ;(ctx as unknown as PluginContext).updateSettings({ limits, billing: { overrides: body.overrides } })
+        await withSpendPolicyWrite((current) => ({ next: { ...current, billing: { overrides: body.overrides } }, result: null }))
         ctx.activity.audit('billing.overrides_updated', 'system', { overrides: body.overrides.length })
+        observeAfterPolicyWrite('billing overrides updated')
         return Response.json({ ok: true })
       } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        return policyErrorResponse(err, 'PUT /billing/overrides')
       }
     },
   }),

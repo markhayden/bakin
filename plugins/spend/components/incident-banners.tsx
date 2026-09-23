@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { Banner, Button, Field, FieldError, Input } from '@makinbakin/sdk/ui'
 
-import { formatRuleUnit, parseCapInput } from './spend-utils'
-import type { BudgetIncidentWire } from '../types'
+import { budgetRuleSpend, formatRuleUnit, parseCapInput } from './spend-utils'
+import type { BudgetIncidentWire, BudgetRuleWire, SpendResponse } from '../types'
 import type { SpendData } from './use-spend-data'
 
 /**
@@ -16,9 +16,12 @@ import type { SpendData } from './use-spend-data'
 function IncidentBanner({
   incident,
   resolveIncident,
+  stillOver,
 }: {
   incident: BudgetIncidentWire
   resolveIncident: SpendData['resolveIncident']
+  /** Current spend is still at/over this cap — resuming would just re-breach (S12), so only a raise is offered. */
+  stillOver: boolean
 }) {
   const [raiseValue, setRaiseValue] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -33,7 +36,9 @@ function IncidentBanner({
           <span>
             {incident.scopeId ? `${incident.scope} “${incident.scopeId}”` : 'Global'} · {incident.window} · {incident.lane} at{' '}
             {formatRuleUnit(incident.lane, incident.spentValue, incident.unit === 'usd_micros')} of{' '}
-            {formatRuleUnit(incident.lane, incident.capValue, incident.unit === 'usd_micros')}.
+            {formatRuleUnit(incident.lane, incident.capValue, incident.unit === 'usd_micros')}
+            {incident.atCap === 'pause' ? ' — matching work is paused until you act.' : ' — matching work waits for the next period.'}
+            {stillOver && incident.atCap === 'pause' ? ' Still over the limit: raise it to resume.' : ''}
           </span>
         )}
         action={(
@@ -62,14 +67,18 @@ function IncidentBanner({
                 Acknowledge
               </Button>
             ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={async () => setError(await resolveIncident(incident.id, 'resume'))}
-            >
-              {incident.atCap === 'pause' ? 'Resume as-is' : 'Dismiss'}
-            </Button>
+            {/* Resume is only honest while spend is under the cap; a "wait"
+                rule releases itself at rollover, so it has nothing to resume. */}
+            {incident.atCap === 'pause' && !stillOver ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={async () => setError(await resolveIncident(incident.id, 'resume'))}
+              >
+                Resume as-is
+              </Button>
+            ) : null}
           </>
         )}
       />
@@ -87,12 +96,27 @@ function IncidentBanner({
   )
 }
 
+/** Whether an incident's rule is still at/over its cap on CURRENT spend (the page's facets); the recorded values decide when facets are absent. */
+export function incidentStillOver(incident: BudgetIncidentWire, rules: BudgetRuleWire[] | null, facets: SpendResponse['facets'] | undefined): boolean {
+  const rule = rules?.find((r) => r.scope === incident.scope && (r.scopeId ?? '') === incident.scopeId && r.lane === incident.lane)
+  const window = facets?.[incident.window]
+  if (!rule || !window) return incident.spentValue >= incident.capValue
+  const cap = incident.window === 'daily' ? rule.dailyCap : rule.monthlyCap
+  if (cap === undefined) return false
+  const capInUnit = rule.lane === 'metered' ? Math.round(cap * 1_000_000) : Math.round(cap)
+  return budgetRuleSpend(rule, window) >= capInUnit
+}
+
 export function IncidentBanners({
   incidents,
   resolveIncident,
+  rules,
+  facets,
 }: {
   incidents: BudgetIncidentWire[]
   resolveIncident: SpendData['resolveIncident']
+  rules: BudgetRuleWire[] | null
+  facets: SpendResponse['facets'] | undefined
 }) {
   const live = incidents.filter((incident) => incident.status !== 'resolved')
   if (live.length === 0) return null
@@ -104,6 +128,7 @@ export function IncidentBanners({
           key={incident.id}
           incident={incident}
           resolveIncident={resolveIncident}
+          stillOver={incidentStillOver(incident, rules, facets)}
         />
       ))}
     </div>
