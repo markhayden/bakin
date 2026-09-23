@@ -16,7 +16,7 @@ evidence when checking an item; a written plan is not a passing test.
 - [x] T01: Establish isolated baseline and execution records
 - [ ] T02: Reproduce detail diagnostics and risky write behavior
 - [x] T02b: Make scoped plugin replacement writes atomic
-- [ ] T03: Implement AgentSelect's approved appearance contract
+- [x] T03: Implement AgentSelect's approved appearance contract
 - [ ] T04: Preserve full Markdown context through managed sections
 - [ ] T05: Add bounded, accessible Markdown comparison
 - [ ] T06: Correct shared composer focus behavior

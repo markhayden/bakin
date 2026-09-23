@@ -18,6 +18,8 @@ import {
   TooltipContent,
   TooltipTrigger,
   type AvatarSize,
+  type ControlSize,
+  type ControlVariant,
 } from '@bakin/ui'
 
 // The kit's own merger: the sdk utils barrel also re-exports the
@@ -227,6 +229,8 @@ export interface AgentSelectProps extends Pick<AriaAttributes, 'aria-describedby
   ariaLabel?: string
   disabled?: boolean
   required?: boolean
+  size?: ControlSize
+  variant?: ControlVariant
   className?: string
 }
 
@@ -253,10 +257,10 @@ function TeamMark({ color }: { color?: string }) {
   )
 }
 
-function AgentChoice({ agent }: { agent: AgentSelectOption }) {
+function AgentChoice({ agent, compact = false }: { agent: AgentSelectOption; compact?: boolean }) {
   return (
-    <span data-agent-choice="" className="inline-flex min-h-bakin-6 min-w-0 items-center gap-bakin-2 align-middle">
-      <AgentAvatar agent={agent} size="sm" decorative className="self-center" />
+    <span data-agent-choice="" className="inline-flex min-w-0 items-center gap-bakin-2 align-middle">
+      <AgentAvatar agent={agent} size={compact ? 'xs' : 'sm'} decorative className="self-center" />
       <span className="min-w-0 self-center truncate">{agent.name}</span>
     </span>
   )
@@ -278,6 +282,8 @@ export function AgentSelect({
   ariaLabel,
   disabled = false,
   required = false,
+  size = 'md',
+  variant = 'outlined',
   className,
   'aria-describedby': ariaDescribedBy,
   'aria-invalid': ariaInvalid,
@@ -299,6 +305,8 @@ export function AgentSelect({
       required={required}
     >
       <SelectTrigger
+        size={size}
+        variant={variant}
         id={id}
         aria-label={ariaLabel}
         aria-describedby={ariaDescribedBy}
@@ -314,7 +322,7 @@ export function AgentSelect({
               <span className="truncate">{selectedTeam?.label ?? teamIdFromValue(value)}</span>
             </span>
           ) : selectedAgent ? (
-            <AgentChoice agent={selectedAgent} />
+            <AgentChoice agent={selectedAgent} compact={size === 'sm'} />
           ) : value ? (
             <span className="truncate">{value}</span>
           ) : allowNone ? noneLabel : undefined}

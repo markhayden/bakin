@@ -26,3 +26,20 @@ The existing atomicWriteText helper now owns replacement; append is unchanged.
 All six scoped-storage tests pass, along with 22 watcher/search sync tests.
 Focused lint and Core typecheck pass. Red log: `/private/tmp/projects-audit-storage-red.log`.
 No power-loss or cross-file transactional guarantee is claimed.
+
+## Detail diagnostic (Bits 2b2ccaf)
+
+The real-SDK synthetic detail fixture reproduces six findings across desktop/mobile:
+heading order, composer focus, unreachable controls, and unfocusable contained scroll.
+The diagnostic remains separate from required passing fixtures until fixes land.
+Report: `/private/tmp/bakin-projects-spacing-consumer/test-results/bakin-ui-detail/index.html`.
+
+## C1 — AgentSelect appearance (T03)
+
+Pattern: `storybook/public/agents/agent-select.stories.tsx` — CanonicalUsage,
+SizesAndVariants. Contract: `@makinbakin/sdk/patterns`. Approved extension, no deviation.
+Three new appearance tests failed first; all 11 identity tests and four stories pass.
+Browser verifies 32/36/44px geometry, avatar containment, borderless filled controls,
+keyboard popup/escape and 320px layout at 200% text. Typecheck and focused lint pass.
+Quick conformance still reports the recorded pre-existing fleet census drift.
+Visual baselines remain untouched; aggregate contract docs and candidates follow in T08.
