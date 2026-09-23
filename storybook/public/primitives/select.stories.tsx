@@ -172,11 +172,12 @@ export const MultipleSelection = {
   render: function MultipleSelectionStory() {
     const [values, setValues] = useState(['pi', 'openclaw'])
     const labels: Record<string, string> = { pi: 'Pi', openclaw: 'OpenClaw', managed: 'Managed runtime' }
+    const descriptions: Record<string, string> = { pi: 'Local execution', openclaw: 'Connected gateway', managed: 'Hosted execution' }
     return <StoryStage eyebrow="Multiple choice" title="Runtime selection" description="The first label plus a count keeps the trigger compact. Every selected value remains available in the list.">
       <form onReset={() => setValues(['pi', 'openclaw'])}><Field name="runtimes"><FieldLabel>Allowed runtimes</FieldLabel>
         <Select multiple items={labels} value={values} onValueChange={setValues} name="runtimes">
           <SelectTrigger width="full"><SelectValue placeholder="Choose runtimes">{(selected: string[]) => selected.length ? `${labels[selected[0]]}${selected.length > 1 ? ` +${selected.length - 1} more` : ''}` : 'Choose runtimes'}</SelectValue></SelectTrigger>
-          <SelectContent alignItemWithTrigger={false}><SelectGroup><SelectLabel>Available</SelectLabel>{Object.entries(labels).map(([value, label]) => <SelectItem key={value} value={value} label={label}>{label}</SelectItem>)}</SelectGroup></SelectContent>
+          <SelectContent alignItemWithTrigger={false}><SelectGroup><SelectLabel>Available</SelectLabel>{Object.entries(labels).map(([value, label]) => <SelectItem key={value} value={value} label={label}><span className="block">{label}</span><span className="block text-bakin-text-muted">{descriptions[value]}</span></SelectItem>)}</SelectGroup></SelectContent>
         </Select>
       </Field><Button type="reset" variant="ghost">Reset runtimes</Button></form>
     </StoryStage>
@@ -185,7 +186,7 @@ export const MultipleSelection = {
     const trigger = canvas.getByRole('combobox', { name: 'Allowed runtimes' })
     await expect(trigger).toHaveTextContent('Pi +1 more')
     await userEvent.click(trigger)
-    await userEvent.click(await within(document.body).findByRole('option', { name: 'Managed runtime' }))
+    await userEvent.click(await within(document.body).findByRole('option', { name: /^Managed runtime/ }))
     await expect(trigger).toHaveTextContent('Pi +2 more')
     await userEvent.keyboard('{Escape}')
   },
