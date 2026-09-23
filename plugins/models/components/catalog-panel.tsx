@@ -276,7 +276,7 @@ export function CatalogPanel({ catalog, defaultModel }: CatalogPanelProps) {
               // account, runtime-unavailable, or gone from the catalog.
               <Badge
                 tone="danger"
-                variant="solid"
+                variant="soft"
                 size="xs"
                 title={model.rejection
                   ? `The provider refused this model for your credentials ${model.rejection.occurrences}× (last ${formatRelativeTime(model.rejection.lastSeenAt)}) — usually a plan or key that doesn't include it. Nothing to fix here: it clears on its own the next time a call succeeds, and Verify availability re-checks it now.`
@@ -288,11 +288,11 @@ export function CatalogPanel({ catalog, defaultModel }: CatalogPanelProps) {
               <Badge tone="neutral" variant="outline" size="xs" title={model.eligibility.detail}>Unverified</Badge>
             ) : null}
             {isDefault ? (
-              <Badge tone="success" variant="solid" size="xs">Default</Badge>
+              <Badge tone="success" variant="soft" size="xs">Default</Badge>
             ) : model.configured ? (
-              <Badge tone="neutral" variant="solid" size="xs">Configured</Badge>
+              <Badge tone="neutral" variant="soft" size="xs">Configured</Badge>
             ) : null}
-            {model.local ? <Badge tone="neutral" variant="solid" size="xs">Local</Badge> : null}
+            {model.local ? <Badge tone="neutral" variant="soft" size="xs">Local</Badge> : null}
           </span>
         )
       },
