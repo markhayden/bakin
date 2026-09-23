@@ -53,8 +53,8 @@ export function effectiveTagOverrides(states: readonly SelectionStateWire[], dra
   for (const ref of refsOf(states, draft, 'tag:').sort()) {
     const eff = effective(ref)
     const added = !persisted.has(ref)
-    if (eff.model === null && eff.thinking === null && !added) continue
-    if (added && eff.model === null && eff.thinking === null) continue
+    // Cleared (or never given anything) ⇒ gone from the next save's view.
+    if (eff.model === null && eff.thinking === null) continue
     rows.push({ tag: ref.slice('tag:'.length), ref, ...eff, added })
   }
   return rows

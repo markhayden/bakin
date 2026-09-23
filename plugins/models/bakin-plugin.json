@@ -58,7 +58,7 @@
       {
         "method": "POST",
         "path": "/runtime/restart",
-        "summary": "List available AI models with tier classification (budget/standard/premium). Use this to discover what models are available for assignment."
+        "summary": "Restart the active runtime so pending model-config writes take effect (adapter-advised)"
       },
       {
         "method": "GET",

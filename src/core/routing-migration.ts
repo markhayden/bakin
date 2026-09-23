@@ -23,7 +23,7 @@ export interface LegacyRoutingConfig {
 export function isLegacyRouting(routing: unknown): routing is LegacyRoutingConfig {
   if (routing === null || typeof routing !== 'object') return false
   const r = routing as Record<string, unknown>
-  return !('routes' in r) && 'policies' in r
+  return !('routes' in r) && Array.isArray(r.policies)
 }
 
 /** Map origins to work classes 1:1; unknown origins are dropped, not guessed. */

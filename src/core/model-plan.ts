@@ -22,10 +22,10 @@ import type { MutationOp } from './model-mutations'
 export type PlanTier = 'budget' | 'standard' | 'premium'
 const TIER_RANK: Record<PlanTier, number> = { budget: 0, standard: 1, premium: 2 }
 
-/** An ELIGIBLE model with the metadata the ranking needs (caller-merged). */
+/** An ELIGIBLE model with the metadata the ranking needs (caller-merged; the assembler always resolves a tier). */
 export interface PlanCandidate {
   id: string
-  tier?: PlanTier
+  tier: PlanTier
   /** Billing lane for the model's provider — decides which ranking applies. */
   lane: 'metered' | 'subscription'
   /** Whole USD per 1M tokens (input + output), when the catalog prices it. */
@@ -89,7 +89,7 @@ export interface PlanRecommendation {
 }
 
 function tierRank(candidate: PlanCandidate): number {
-  return candidate.tier ? TIER_RANK[candidate.tier] : 99
+  return TIER_RANK[candidate.tier]
 }
 
 function byId(a: PlanCandidate, b: PlanCandidate): number {
@@ -143,7 +143,7 @@ export function pickAgentModel(input: PlanInput): LanePick {
   const why = input.currentDefaultModel
     ? `Your current default (${input.currentDefaultModel}) cannot run here; this is the strongest model that can.`
     : 'The strongest model that can run here.'
-  return { model: strongest.id, why, suitability: strongest.tier ? 'known' : 'unknown' }
+  return { model: strongest.id, why, suitability: 'known' }
 }
 
 function priceWhy(pick: PlanCandidate, agent: PlanCandidate | null): string {
@@ -156,25 +156,40 @@ function priceWhy(pick: PlanCandidate, agent: PlanCandidate | null): string {
 }
 
 /**
- * Chores pick: the lightest suitable candidate lighter than the agent model
- * (the agent model itself only when nothing else is eligible). With
- * enrichment on, "suitable" needs vision: known-capable first, unknown
- * ranked after and disclosed; none of the lighter models can see but the
- * agent model can ⇒ the lightest still takes every other chore and
- * enrichment routes to the agent model; nothing eligible can see ⇒
- * enrichment stays unset and the plan says so.
+ * Chores pick: the lightest suitable candidate LIGHTER than the agent model
+ * — not heavier by tier AND ranked before it, so a paid same-tier model never
+ * displaces a free subscription agent model; nothing lighter ⇒ the agent
+ * model takes the chores too (routes inherit). With enrichment on,
+ * "suitable" needs vision: known-capable first, unknown ranked after and
+ * disclosed; none of the lighter models can see but the agent model can ⇒
+ * the lightest still takes every other chore and enrichment routes to the
+ * agent model; nothing eligible can see ⇒ enrichment stays unset and the
+ * plan says so.
  */
 export function pickChoresModel(input: PlanInput, agent: LanePick): { pick: LanePick; enrichment: PlanRecommendation['enrichment']; notes: string[] } {
   const notes: string[] = []
   const agentCandidate = agent.model ? input.candidates.find((c) => c.id === agent.model) ?? null : null
-  const ceiling = agentCandidate ? tierRank(agentCandidate) : 99
-  const lighter = input.candidates.filter((c) => tierRank(c) <= ceiling && c.id !== agentCandidate?.id)
-  const notHeavier = lighter.length > 0 ? lighter : agentCandidate ? [agentCandidate] : []
-  if (notHeavier.length === 0) {
-    return { pick: { model: null, why: 'No model can run here yet.', suitability: 'none' }, enrichment: input.enrichmentEnabled ? 'unset' : 'disabled', notes }
-  }
+  const ceiling = agentCandidate ? tierRank(agentCandidate) : Number.POSITIVE_INFINITY
+  const notHeavier = rankCandidates(input.candidates.filter((c) => tierRank(c) <= ceiling))
+  const agentAt = agentCandidate ? notHeavier.findIndex((c) => c.id === agentCandidate.id) : -1
+  const lighter = agentAt === -1 ? notHeavier : notHeavier.slice(0, agentAt)
   const needsVision = input.enrichmentEnabled
-  const ranked = rankCandidates(notHeavier)
+  if (lighter.length === 0) {
+    if (!agentCandidate) {
+      return { pick: { model: null, why: 'No model can run here yet.', suitability: 'none' }, enrichment: needsVision ? 'unset' : 'disabled', notes }
+    }
+    // Nothing lighter can run: the agent model does the chores (inherit).
+    const pick: LanePick = { model: agentCandidate.id, why: 'the agent model — nothing lighter can run here', suitability: 'known' }
+    if (!needsVision) return { pick, enrichment: 'disabled', notes }
+    if (agentCandidate.vision === true) return { pick, enrichment: 'chores', notes }
+    if (agentCandidate.vision === null) {
+      notes.push(`Whether ${agentCandidate.id} can see images is unknown here — enrichment may fail until a vision-capable model is confirmed.`)
+      return { pick: { ...pick, suitability: 'unknown' }, enrichment: 'chores', notes }
+    }
+    notes.push('No eligible model can see images — enrichment will fail until a vision-capable model is available.')
+    return { pick, enrichment: 'unset', notes }
+  }
+  const ranked = lighter
   if (!needsVision) {
     const pick = ranked[0]!
     return { pick: { model: pick.id, why: priceWhy(pick, agentCandidate), suitability: 'known' }, enrichment: 'disabled', notes }
@@ -215,7 +230,7 @@ function planRoutes(agent: LanePick, chores: LanePick, enrichment: PlanRecommend
       return { workClass, model: null, reason: 'No eligible model can see images — enrichment will fail until a vision-capable model is available.' }
     }
     if (!chores.model) return { workClass, model: null, reason: 'No model can run here yet.' }
-    if (chores.model === agent.model) return { workClass, model: null, reason: 'inherits the agent model — the only eligible choice' }
+    if (chores.model === agent.model) return { workClass, model: null, reason: 'inherits the agent model — nothing lighter can run here' }
     return { workClass, model: chores.model, reason: chores.why }
   })
 }
@@ -257,9 +272,4 @@ export function choresLaneState(routing: RoutingConfig, defaultModel: string | n
   const list = [...models]
   const mixed = list.length !== 1 || thinkingSet
   return { model: mixed ? null : list[0]!, models: list, mixed }
-}
-
-/** Stage every chores route to one model (thinking untouched) — Simple's "Set all to…". */
-export function setAllChoresOps(model: string): MutationOp[] {
-  return CHORES_CLASSES.map((workClass) => ({ ref: `route:${workClass}`, set: { model } }))
 }

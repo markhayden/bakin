@@ -9,6 +9,7 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { BillingOverride } from '@bakin/core/llm/billing-lane'
 
+import { createLogger } from '../../../src/core/logger'
 import { assemblePlanInput } from '../../../src/core/model-plan-input'
 import {
   choresLaneState,
@@ -20,12 +21,15 @@ import type { RoutingConfig, WorkClass } from '../../../src/core/model-routing'
 import { fetchAvailableModels } from './available-models'
 import { readRoutingSettings } from './routing-settings'
 
-/** Cross-plugin reads with honest defaults: absent hook or a throw never blocks a plan. */
+const log = createLogger('models:plan')
+
+/** Cross-plugin reads with honest defaults: absent hook or a throw never blocks a plan (a throw is logged — it changes the ranking). */
 async function hookOr<T>(ctx: PluginContext, name: string, fallback: T): Promise<T> {
   if (!ctx.hooks.has(name)) return fallback
   try {
     return (await ctx.hooks.invoke<T>(name, {})) ?? fallback
-  } catch {
+  } catch (err) {
+    log.warn('Plan input hook failed; using its fallback', { hook: name, err: err instanceof Error ? err.message : String(err) })
     return fallback
   }
 }
@@ -60,7 +64,10 @@ export interface RouteSkip {
  * The route-only view of a plan for the UNROUTED chores classes — what the
  * routing health check flags and its repair applies. Routed classes are the
  * operator's choice and never proposed here (Simple's "Use recommended
- * plan" shows the full diff instead).
+ * plan" shows the full diff instead). A plan row that names the AGENT model
+ * (enrichment when only the agent model can see) is a skip: unrouted already
+ * inherits it, and proposing it would be a standing false finding whose
+ * repair routes background work to the premium model.
  */
 export function routeProposals(plan: PlanRecommendation, routing: RoutingConfig): { proposals: RouteProposal[]; skipped: RouteSkip[] } {
   const routed = new Set(routing.routes.filter((r) => r.model).map((r) => r.workClass))
@@ -68,7 +75,8 @@ export function routeProposals(plan: PlanRecommendation, routing: RoutingConfig)
   const skipped: RouteSkip[] = []
   for (const route of plan.routes) {
     if (routed.has(route.workClass)) continue
-    if (route.model) proposals.push({ workClass: route.workClass, model: route.model, reason: route.reason })
+    if (route.model && route.model === plan.agent.model) skipped.push({ workClass: route.workClass, reason: `inherits the agent model (${route.reason})` })
+    else if (route.model) proposals.push({ workClass: route.workClass, model: route.model, reason: route.reason })
     else skipped.push({ workClass: route.workClass, reason: route.reason })
   }
   return { proposals, skipped }

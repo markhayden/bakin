@@ -41,10 +41,17 @@ function labelOf(workClass: string): string {
   return WORK_CLASSES.find((c) => c.id === workClass)?.label ?? workClass
 }
 
-/** Which view shows a ref: Simple owns the agent lane + chores route models; all else is Advanced. */
-export function refLayer(ref: string): 'simple' | 'advanced' {
+/**
+ * Which view shows a ref: Simple owns the agent lane + chores route MODELS;
+ * all else is Advanced — including a chores route whose persisted state
+ * carries a thinking level (a clamp deep link must land on a thinking control).
+ */
+export function refLayer(ref: string, states: readonly SelectionStateWire[] = []): 'simple' | 'advanced' {
   if (ref === 'policy:defaultModel') return 'simple'
-  if (ref.startsWith('route:') && CHORES.has(ref.slice('route:'.length))) return 'simple'
+  if (ref.startsWith('route:') && CHORES.has(ref.slice('route:'.length))) {
+    const thinking = states.find((s) => s.ref === ref)?.thinking
+    return thinking && thinking !== 'inherit' ? 'advanced' : 'simple'
+  }
   return 'advanced'
 }
 
@@ -79,6 +86,8 @@ export function listCustomizations(states: readonly SelectionStateWire[]): Custo
     }
   }
   if (choresModels.size > 1) {
+    // A SYNTHETIC ref for the highlight / deep link only — it is not a
+    // mutable selection (`parseRef` refuses it); never stage an op on it.
     found.push({ ref: 'route:chores', label: 'Background chores', detail: `Background chores use ${choresModels.size} different models` })
   }
   return found

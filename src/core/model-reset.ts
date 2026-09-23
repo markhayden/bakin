@@ -4,6 +4,7 @@
  * must never drag `model-selections.ts` (and its `crypto` revision hash)
  * into a client bundle.
  */
+import { CHORES_CLASSES } from './model-plan'
 import type { ThinkingSetting } from './model-routing'
 import type { SelectionState } from './model-selections'
 
@@ -25,8 +26,6 @@ export interface ResetPlan {
   /** Customizations the reset leaves in place because the runtime cannot clear them. */
   skipped: Array<{ ref: string; label: string; reason: string }>
 }
-
-const CHORES_CLASSES: readonly string[] = ['auto-title', 'enrichment', 'relay', 'team-routing', 'skill-mapping']
 
 /**
  * Everything Simple cannot express goes back to the two lanes: agent pins
@@ -69,7 +68,7 @@ export function buildResetOps(states: readonly ResetInputState[], support: Reset
     }
     if (family === 'route' && second) {
       const thinkingSet = s.thinking !== undefined && s.thinking !== 'inherit'
-      if (CHORES_CLASSES.includes(second)) {
+      if ((CHORES_CLASSES as readonly string[]).includes(second)) {
         const set: ResetOp['set'] = {}
         if ((s.model ?? null) !== plan.chores) set.model = plan.chores
         if (thinkingSet) set.thinking = null

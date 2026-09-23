@@ -18,9 +18,8 @@ import { registerModelsExecTools } from './lib/exec-tools'
 import { isLegacyRouting, migrateLegacyRouting } from '../../src/core/routing-migration'
 import { buildRoutingHealthDeps, checkModelRouting, recommendedRoutesRepair } from './lib/health-checks'
 import { checkDeadSelections, deadSelectionRepair } from './lib/dead-selections'
-import { describeSelections, getSelectionMutator } from './lib/selections'
-import { buildPlanInput } from './lib/plan'
-import { recommendPlan } from '../../src/core/model-plan'
+import { applySelections, describeSelections, getSelectionMutator, readRoutingSettings } from './lib/selections'
+import { currentPlan } from './lib/plan'
 import { listRunCostsSince } from '../../src/core/execution-ledger'
 import type { ModelsPluginSettings } from './types'
 
@@ -53,27 +52,23 @@ const modelsPlugin: BakinPlugin = definePlugin({
     // models.routing health check + apply-recommended repair (repair first —
     // the check's resolution references its actionId).
     const routingDeps = buildRoutingHealthDeps(ctx, {
-      readRoutingConfig: () => {
-        const stored = ctx.getSettings<ModelsPluginSettings>().routing
-        if (isLegacyRouting(stored)) return migrateLegacyRouting(stored)
-        return stored ?? { routes: [], tagOverrides: [] }
-      },
-      recommendPlan: async () => recommendPlan(await buildPlanInput(ctx)),
+      readRoutingConfig: () => readRoutingSettings(ctx).routing,
+      // currentPlan remembers the plan for refused-write proposals too.
+      recommendPlan: () => currentPlan(ctx),
       listRunCostsSince: (sinceMs) => listRunCostsSince(sinceMs),
     })
     ctx.registerHealthRepairAction(recommendedRoutesRepair(routingDeps, async (newRoutes) => {
       // Through the ONE write path (#907) — never a direct settings write.
-      const mutator = getSelectionMutator(ctx)
-      const { revision } = await mutator.reconcile()
-      await mutator.mutate({ revision, ops: newRoutes.map((r) => ({ ref: `route:${r.workClass}`, set: { model: r.model ?? null } })) })
+      const { revision } = await getSelectionMutator(ctx).reconcile()
+      await applySelections(ctx, { revision, ops: newRoutes.map((r) => ({ ref: `route:${r.workClass}`, set: { model: r.model ?? null } })) })
     }))
     // models.dead-selections: one finding per persisted selection that cannot
     // run, with a one-click repair applying EXACTLY the displayed proposal.
     const deadDeps = {
       describe: () => describeSelections(ctx),
-      // ONE mutation under the batch's shared revision (every proposal of a plan carries the same one).
-      apply: async (proposals: Array<{ ref: string; to: string | null; revision: string }>) =>
-        getSelectionMutator(ctx).mutate({ revision: proposals[0]!.revision, ops: proposals.map((p) => ({ ref: p.ref, set: { model: p.to } })) }),
+      // ONE mutation under the batch's shared revision (every proposal of a plan carries the same one), through applySelections so the post-write side effects run.
+      apply: (proposals: Array<{ ref: string; to: string | null; revision: string }>) =>
+        applySelections(ctx, { revision: proposals[0]!.revision, ops: proposals.map((p) => ({ ref: p.ref, set: { model: p.to } })) }),
     }
     ctx.registerHealthRepairAction(deadSelectionRepair(deadDeps))
     ctx.registerHealthCheck({

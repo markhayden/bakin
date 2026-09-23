@@ -17,7 +17,7 @@ import {
 import type { HealthObservationInput } from '@makinbakin/sdk/types'
 
 import { ROUTABLE_WORK_CLASSES, WORK_CLASSES, type RoutingConfig, type WorkClassRoute } from '../../../src/core/model-routing'
-import { listModelRejections, type RunCostSpendRow } from '../../../src/core/execution-ledger'
+import type { RunCostSpendRow } from '../../../src/core/execution-ledger'
 import { getKnownModel } from '@bakin/core/llm/model-catalog'
 import { workClassKey } from '../../../src/core/spend-rollup'
 import type { PlanRecommendation } from '../../../src/core/model-plan'
@@ -38,9 +38,6 @@ export interface RoutingHealthDeps {
   supportsPerTurnModel(): boolean
   /** run_costs rows for the premium-on-cheap scan window. */
   listRecentRunCosts(sinceMs: number): RunCostSpendRow[]
-  /** Open account rejections (#852) — keeps rejected models out of the
-   *  recommender pool. Empty on ledger failure: evidence-only, never a gate. */
-  listOpenModelRejections(): Array<{ model: string; lastSeenAt: number; occurrences: number }>
   now?(): number
 }
 
@@ -98,7 +95,7 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
         impact: 'Turns run at a lower thinking level than configured (clamped with audit evidence).',
         disposition: 'watch',
         resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
-        resolution: { key: 'fix-thinking', type: 'navigate', label: 'Adjust level', href: '/models?ref=route:relay' },
+        resolution: { key: 'fix-thinking', type: 'navigate', label: 'Adjust level', href: `/models?ref=route:${r.workClass}` },
       },
     }))
   }
@@ -208,17 +205,6 @@ export function buildRoutingHealthDeps(ctx: {
         return helpers.listRunCostsSince(sinceMs)
       } catch {
         return [] // ledger down — the check degrades to config-only findings
-      }
-    },
-    listOpenModelRejections: () => {
-      try {
-        return listModelRejections({ openOnly: true }).map((r) => ({
-          model: r.model,
-          lastSeenAt: r.lastSeenAt,
-          occurrences: r.occurrences,
-        }))
-      } catch {
-        return [] // ledger down — fail open, evidence-only (#852)
       }
     },
   }

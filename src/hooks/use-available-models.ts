@@ -25,16 +25,27 @@ function catalogUrl(agentId?: string): string {
   return agentId ? `/api/plugins/models/available?agentId=${encodeURIComponent(agentId)}` : '/api/plugins/models/available'
 }
 
-function fetchAvailableModels(agentId?: string): Promise<AvailableModel[]> {
-  const key = agentId ?? ''
-  const pending = inFlight.get(key)
-  if (pending) return pending
-  const request = fetch(catalogUrl(agentId))
+function readCatalog(agentId?: string): Promise<AvailableModel[]> {
+  return fetch(catalogUrl(agentId))
     .then((r) => (r.ok ? r.json() : null))
     .then((data: { models?: AvailableModel[] } | null) => (data && Array.isArray(data.models) ? data.models : []))
     .catch(() => [] as AvailableModel[])
-    .finally(() => { inFlight.delete(key) })
+}
+
+/**
+ * Mount-time reads share the in-flight request of their scope; a `fresh`
+ * read (the server said the catalog changed) always issues its own request
+ * AFTER any in-flight one settles — the dedupe must never answer a refetch
+ * with pre-change rows.
+ */
+function fetchAvailableModels(agentId: string | undefined, fresh = false): Promise<AvailableModel[]> {
+  const key = agentId ?? ''
+  const pending = inFlight.get(key)
+  if (pending && !fresh) return pending
+  const read = () => readCatalog(agentId)
+  const request: Promise<AvailableModel[]> = (pending ?? Promise.resolve()).then(read, read)
   inFlight.set(key, request)
+  void request.finally(() => { if (inFlight.get(key) === request) inFlight.delete(key) })
   return request
 }
 
@@ -46,16 +57,16 @@ function fetchAvailableModels(agentId?: string): Promise<AvailableModel[]> {
 export function useAvailableModels(agentId?: string): AvailableModel[] {
   const [models, setModels] = useState<AvailableModel[]>([])
 
-  const load = useCallback(() => {
+  const load = useCallback((fresh: boolean) => {
     let cancelled = false
-    void fetchAvailableModels(agentId).then((list) => {
+    void fetchAvailableModels(agentId, fresh).then((list) => {
       if (!cancelled) setModels(list)
     })
     return () => { cancelled = true }
   }, [agentId])
 
-  useEffect(() => load(), [load])
-  usePluginEvent('models.catalog_changed', () => { load() })
+  useEffect(() => load(false), [load])
+  usePluginEvent('models.catalog_changed', () => { load(true) })
 
   return models
 }

@@ -41,7 +41,6 @@ function deps(over: Partial<RoutingHealthDeps> & { candidates?: PlanCandidate[];
     supportedThinkingLevels: () => ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
     supportsPerTurnModel: () => true,
     listRecentRunCosts: () => [],
-    listOpenModelRejections: () => [],
     now: () => NOW,
   }
   return Object.assign(base, rest)
@@ -89,6 +88,27 @@ describe('recommendRoutes', () => {
     expect(byClass.get('auto-title')?.model).toBe('openai-codex/gpt-5.4-mini')
     expect(byClass.get('enrichment')?.model).toBe('openai-codex/gpt-5.4-mini')
     expect(skipped).toEqual([])
+  })
+
+  it('a plan row that names the AGENT model is never a proposal — unrouted already inherits it (enrichment → agent case)', async () => {
+    // opus (premium, sees) + a blind budget model: the plan sends the four
+    // chores to the budget model and enrichment to the agent model. Unrouted
+    // enrichment already resolves to opus, so proposing "route:enrichment →
+    // opus" would be a standing false "unrouted, route it cheap" finding
+    // whose repair routes background work to the PREMIUM model.
+    const blindMini: PlanCandidate = { id: 'openai-codex/gpt-5.4-mini', tier: 'budget', lane: 'subscription', vision: false }
+    const d = deps({ candidates: [OPUS, blindMini], defaultModel: OPUS.id })
+    const { proposals, skipped } = await recommendRoutes(d)
+    expect(proposals.map((p) => p.workClass).sort()).toEqual(['auto-title', 'relay', 'skill-mapping', 'team-routing'])
+    expect(skipped).toEqual([expect.objectContaining({ workClass: 'enrichment', reason: expect.stringContaining('inherits the agent model') })])
+    // …and once those four are routed, the check is clean — no finding lingers on enrichment.
+    const routed = deps({
+      candidates: [OPUS, blindMini], defaultModel: OPUS.id,
+      getRoutingConfig: () => ({ routes: ['auto-title', 'relay', 'skill-mapping', 'team-routing'].map((workClass) => ({ workClass: workClass as WorkClassRoute['workClass'], model: blindMini.id })), tagOverrides: [] }),
+    })
+    const result = await checkModelRouting(routed)
+    if (result.outcome !== 'observed') throw new Error('expected observed')
+    expect(result.observations.find((o) => o.key === 'unrouted-system-classes')).toBeUndefined()
   })
 
   it('only the agent model exists ⇒ nothing to propose; every class skips as inherit', async () => {

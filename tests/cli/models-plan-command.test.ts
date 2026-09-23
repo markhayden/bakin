@@ -4,7 +4,7 @@
  * POST /selections under the plan's revision (one retry on a stale
  * revision). Never writes without the flag.
  */
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -111,6 +111,19 @@ describe('bakin models plan', () => {
     await run(['models', 'plan', '--apply'])
     expect(getCalls).toHaveLength(2)
     expect(posts).toHaveLength(2)
+  })
+
+  it('--apply exits 1 on a partial failure in BOTH output modes — --json never hides a failed write behind exit 0', async () => {
+    const exitSpy = spyOn(process, 'exit').mockImplementation(((code?: number) => { throw new ExitCalled(`exit ${code}`) }) as never)
+    try {
+      for (const flags of [['--apply'], ['--apply', '--json']]) {
+        postResponses = [{ status: 200, body: { applied: ['route:auto-title'], failed: [{ ref: 'route:enrichment', error: { code: 'adapter_failed', message: 'gateway down' } }], pending: [] } }]
+        await expect(run(['models', 'plan', ...flags])).rejects.toThrow('exit 1')
+      }
+      expect(printSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      exitSpy.mockRestore()
+    }
   })
 
   it('--apply with nothing to change says so and never posts', async () => {

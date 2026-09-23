@@ -89,4 +89,11 @@ describe('refLayer', () => {
     expect(refLayer('policy:fallback:0')).toBe('advanced')
     expect(refLayer('tag:heavy')).toBe('advanced')
   })
+
+  it('a chores route that carries a thinking level lives in Advanced — Simple has no thinking control to land on', () => {
+    const states = [state('route:relay', MINI, { thinking: 'high' })]
+    expect(refLayer('route:relay', states)).toBe('advanced')
+    expect(refLayer('route:relay', [state('route:relay', MINI)])).toBe('simple')
+    expect(refLayer('route:relay', [state('route:relay', MINI, { thinking: 'inherit' })])).toBe('simple')
+  })
 })

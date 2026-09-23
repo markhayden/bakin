@@ -97,17 +97,18 @@ export async function cmdPlan(apply: boolean, json: boolean): Promise<void> {
       if (result.proposal) console.error(`  Proposal: ${JSON.stringify(result.proposal)}`)
       process.exit(1)
     }
+    const applied = (result.applied as string[]) ?? []
+    const failed = (result.failed as Array<{ ref: string; error: { message: string } }>) ?? []
+    const pending = (result.pending as Array<{ ref: string }>) ?? []
     if (json) {
       print(result)
     } else {
-      const applied = (result.applied as string[]) ?? []
-      const failed = (result.failed as Array<{ ref: string; error: { message: string } }>) ?? []
-      const pending = (result.pending as Array<{ ref: string }>) ?? []
       console.log(`Applied ${applied.length} of ${ops.length} change${ops.length === 1 ? '' : 's'}.`)
       for (const f of failed) console.log(`  ✗ ${f.ref}: ${f.error.message}`)
       for (const p of pending) console.log(`  … ${p.ref}: write pending — the runtime has not confirmed it yet`)
-      if (failed.length > 0) process.exit(1)
     }
+    // A partial failure is a failure in both output modes.
+    if (failed.length > 0) process.exit(1)
     return
   }
   console.error('Apply refused: the configuration kept changing while applying. Try again.')

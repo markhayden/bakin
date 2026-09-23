@@ -10,7 +10,7 @@
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { mkdirSync, rmSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-onboard-models-${Date.now()}-${randomUUID()}`)
@@ -87,15 +87,18 @@ describe('models onboarding component (S7)', () => {
   it('fresh install: no persisted plan ⇒ missing, with the recommendation in the message', async () => {
     const r = await modelsComponent.check()
     expect(r.status).toBe('missing')
+    // terra resolves to the same tier as luna here (no catalog entry), so
+    // it is not lighter: the budget model takes the chores, enrichment
+    // rides the agent model (the only lighter-or-equal model that sees).
     expect(r.message).toContain(LUNA)
-    expect(r.message).toContain(TERRA)
-    expect(r.details).toMatchObject({ agent: LUNA, chores: TERRA, ops: 5 })
+    expect(r.message).toContain(MINI)
+    expect(r.details).toMatchObject({ agent: LUNA, chores: MINI, enrichment: 'agent', ops: 5 })
   })
 
   it('--yes on a fresh install applies the recommendation through the mutator; check() is then ok', async () => {
     const r = await modelsComponent.install(YES)
     expect(r.status).toBe('installed')
-    expect(routes().map((x) => `${x.workClass}=${x.model}`).sort()).toEqual(['auto-title', 'enrichment', 'relay', 'skill-mapping', 'team-routing'].map((c) => `${c}=${TERRA}`))
+    expect(routes().map((x) => `${x.workClass}=${x.model}`).sort()).toEqual(['auto-title', 'enrichment', 'relay', 'skill-mapping', 'team-routing'].map((c) => `${c}=${c === 'enrichment' ? LUNA : MINI}`))
     expect(policyWrites).toEqual([])
     expect((await modelsComponent.check()).status).toBe('ok')
   })
@@ -116,12 +119,44 @@ describe('models onboarding component (S7)', () => {
     expect(routes()).toHaveLength(5)
   })
 
-  it('a dead default with NO persisted plan is repaired by --yes (the permitted carve-out): the policy op lands', async () => {
+  it('--yes never rewrites an EXISTING runtime default, dead or not: the chores routes land, the dead default is reported for review', async () => {
+    // An upgraded box re-onboards with no chores routes and looks "fresh";
+    // its runtime default is the runtime's own config — --yes leaves it alone.
     defaultModel = 'openai/gpt-6-astra'
     expect((await modelsComponent.check()).status).toBe('missing')
     const r = await modelsComponent.install(YES)
     expect(r.status).toBe('installed')
+    expect(policyWrites).toEqual([])
+    expect(routes()).toHaveLength(5)
+    expect(r.message).toContain('openai/gpt-6-astra')
+    expect(r.message).toContain('bakin models plan')
+  })
+
+  it('--yes with NO runtime default at all sets one (nothing to preserve); explicit approval applies the whole plan, dead default included', async () => {
+    defaultModel = null
+    expect((await modelsComponent.install(YES)).status).toBe('installed')
     expect(policyWrites).toEqual([{ defaultModel: LUNA }])
+
+    rmSync(join(testDir, 'plugin-settings'), { recursive: true, force: true })
+    mkdirSync(join(testDir, 'plugin-settings'), { recursive: true })
+    policyWrites.length = 0
+    defaultModel = 'openai/gpt-6-astra'
+    expect((await modelsComponent.install(APPROVED)).status).toBe('installed')
+    expect(policyWrites).toEqual([{ defaultModel: LUNA }])
+  })
+
+  it('every onboarding write leaves an audit trail, like the plugin path does', async () => {
+    await modelsComponent.install(YES)
+    const audit = readFileSync(join(testDir, 'audit.jsonl'), 'utf8')
+    expect(audit).toContain('models.selections_mutated')
+  })
+
+  it('a dead default is ONE problem, not one per chore that inherits it', async () => {
+    writePluginSettings('models', { ui: { mode: 'simple' } })
+    defaultModel = 'openai/gpt-6-astra'
+    const r = await modelsComponent.check()
+    expect(r.status).toBe('warn')
+    expect((r.details as { problems: string[] }).problems).toEqual(['the default model openai/gpt-6-astra cannot run here'])
   })
 
   it('a persisted plan with a dead lane is a WARN with remediation — never auto-applied, even with --yes', async () => {

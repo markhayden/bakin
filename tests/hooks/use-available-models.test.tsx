@@ -44,6 +44,26 @@ describe('useAvailableModels', () => {
     expect(fetches).toBe(2)
   })
 
+  it('a catalog_changed event during an in-flight read fetches AGAIN — the refetch never resolves to the pre-change rows', async () => {
+    // Save on the Models page while a Team picker is still loading: the
+    // single-flight dedupe must not hand the event-driven refetch the stale
+    // request's answer.
+    let release: (() => void) | null = null
+    let calls = 0
+    globalThis.fetch = mock(async () => {
+      calls += 1
+      if (calls === 1) await new Promise<void>((resolve) => { release = resolve })
+      return new Response(JSON.stringify({ models: catalog }), { headers: { 'content-type': 'application/json' } })
+    }) as unknown as typeof fetch
+    const { result } = await actRender(() => renderHook(() => useAvailableModels()))
+    await waitFor(() => expect(calls).toBe(1))
+    catalog = [{ id: 'a/two', name: 'Two', provider: 'a', tier: 'budget' }]
+    await act(async () => { emitPluginEvent({ event: 'models.catalog_changed', reason: 'selections' }) })
+    await act(async () => { release?.() })
+    await waitFor(() => expect(result.current.map((m) => m.id)).toEqual(['a/two']))
+    expect(calls).toBe(2)
+  })
+
   it('a fresh mount never reuses an earlier mount\'s rows', async () => {
     const first = await actRender(() => renderHook(() => useAvailableModels()))
     await waitFor(() => expect(first.result.current).toHaveLength(1))

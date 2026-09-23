@@ -6,12 +6,15 @@
  */
 import { join } from 'path'
 import type { PluginContext } from '@bakin/core/plugin-types'
+import type { RuntimeConfigChangeKind } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../../../src/core/logger'
 import { getContentDir } from '../../../src/core/content-dir'
 import { getBootId } from '../../../src/core/boot-id'
-import { createSelectionMutator, type SelectionMutator } from '../../../src/core/model-mutations'
+import { createSelectionMutator, type MutateRequest, type MutateResult, type SelectionMutator } from '../../../src/core/model-mutations'
 import { evaluateSelections, proposeRepairs } from '../../../src/core/model-selections'
 import { recommendForRef } from '../../../src/core/model-plan-input'
+import { notePendingChange } from '../../../src/core/pending-restart'
+import { setModelsCache } from './available-models'
 import { readRoutingSettings } from './routing-settings'
 import { currentPlan, lastPlan } from './plan'
 
@@ -50,6 +53,31 @@ export function getSelectionMutator(ctx: PluginContext): SelectionMutator {
 /** Test-only: drop the process singleton so a fresh ctx composes a new mutator. */
 export function _resetSelectionMutator(): void {
   delete holder.__bakinSelectionMutator
+}
+
+/**
+ * The ONE write: mutate + the post-write side effects every writer needs —
+ * POST /selections, the dead-selections repair and the recommended-routes
+ * repair all land here. Runtime-config refs (agent pins, the runtime
+ * policy) ask the adapter whether a restart is needed (#878), drop the
+ * catalog's default/fallback flags and tell every mounted picker the
+ * catalog changed; route/tag/page-mode refs touch neither the runtime
+ * config nor the catalog and stay silent.
+ */
+export async function applySelections(ctx: PluginContext, request: MutateRequest): Promise<MutateResult> {
+  const result = await getSelectionMutator(ctx).mutate(request)
+  const touched = [...result.applied, ...result.pending.map((p) => p.ref)]
+  const kinds = new Set<RuntimeConfigChangeKind>()
+  for (const ref of touched) {
+    if (ref.startsWith('agent:')) kinds.add('model-config')
+    else if (ref.startsWith('policy:')) kinds.add('routing-policy')
+  }
+  if (kinds.size > 0) {
+    notePendingChange(ctx.runtime, [...kinds])
+    setModelsCache(null)
+    ctx.events.emit('models.catalog_changed', { reason: 'selections', refs: touched })
+  }
+  return result
 }
 
 /** GET /selections payload: states + revision + per-selection eligibility + proposals + pending writes. */

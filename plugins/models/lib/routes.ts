@@ -13,14 +13,13 @@ import {
   writePersistedCache,
 } from './models-cache'
 import { probeModels } from './probe'
-import { describeSelections, getSelectionMutator } from './selections'
+import { applySelections, describeSelections, getSelectionMutator } from './selections'
 import { MutationRefused } from '../../../src/core/model-mutations'
 import type { SelectionDocument } from '../../../src/core/model-selections'
 import { AcknowledgePendingSchema } from './route-schemas'
 import { isLegacyRouting, migrateLegacyRouting } from '../../../src/core/routing-migration'
 import { resolveAgents } from './config-io'
-import { clearPendingRestart, describeRestart, notePendingChange, recordRestartFailure } from '../../../src/core/pending-restart'
-import type { RuntimeConfigChangeKind } from '@bakin/core/adapters/runtime'
+import { clearPendingRestart, describeRestart, recordRestartFailure } from '../../../src/core/pending-restart'
 import { normalizeModelId } from '@bakin/core/llm/model-id'
 import {
   applyEligibilityOverlay,
@@ -142,22 +141,9 @@ export const modelsRoutes = [
     responses: { 200: passthrough, 400: errorResponse, 409: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { body }) => {
       try {
-        const result = await getSelectionMutator(ctx as unknown as PluginContext).mutate(body)
-        if (result.applied.length > 0 || result.pending.length > 0) {
-          // Post-write side effects: the adapter decides whether a restart is
-          // needed per change kind (#878); the catalog's default/fallback
-          // flags refresh; the config-changed hook fires for agent pins.
-          const touched = [...result.applied, ...result.pending.map((p) => p.ref)]
-          const kinds = new Set<RuntimeConfigChangeKind>()
-          for (const ref of touched) {
-            if (ref.startsWith('agent:')) kinds.add('model-config')
-            else if (ref.startsWith('policy:')) kinds.add('routing-policy')
-          }
-          notePendingChange((ctx as unknown as PluginContext).runtime, [...kinds])
-          setModelsCache(null)
-          ctx.events.emit('models.catalog_changed', { reason: 'selections', refs: touched })
-        }
-        return Response.json(result)
+        // Mutate + post-write side effects live in applySelections — the
+        // health repairs write through the same function.
+        return Response.json(await applySelections(ctx as unknown as PluginContext, body))
       } catch (err) {
         if (err instanceof MutationRefused) return Response.json(err.toBody(), { status: err.status })
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })

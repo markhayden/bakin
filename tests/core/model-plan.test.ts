@@ -16,7 +16,7 @@ const testDir = join(tmpdir(), 'bakin-test-model-plan')
 mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ home: testDir, db: join(testDir, 'bakin.db') }) }))
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ home: testDir, db: join(testDir, 'bakin.db') }) }))
 
-import { CHORES_CLASSES, choresLaneState, pickAgentModel, rankCandidates, recommendPlan, setAllChoresOps, type PlanCandidate, type PlanInput } from '../../src/core/model-plan'
+import { CHORES_CLASSES, choresLaneState, pickAgentModel, rankCandidates, recommendPlan, type PlanCandidate, type PlanInput } from '../../src/core/model-plan'
 
 const luna: PlanCandidate = { id: 'openai-codex/gpt-5.6-luna', tier: 'premium', lane: 'subscription', contextWindow: 400_000, vision: true }
 const terra: PlanCandidate = { id: 'openai-codex/gpt-5.6-terra', tier: 'standard', lane: 'subscription', contextWindow: 400_000, vision: true }
@@ -105,6 +105,19 @@ describe('recommendPlan', () => {
     expect(recommendPlan(input({ candidates: [luna, miniUnknown, mini, terra], currentDefaultModel: luna.id })).chores.model).toBe(terra.id)
   })
 
+  it('a free subscription agent model is never displaced by a PAID same-tier model: chores inherit, zero ops', () => {
+    // Codex subscription + an Anthropic key: opus is "not heavier" than luna
+    // by tier, but it costs money where luna is included — luna stays.
+    const plan = recommendPlan(input({ candidates: [luna, opus], currentDefaultModel: luna.id }))
+    expect(plan.chores.model).toBe(luna.id)
+    expect(plan.chores.why).toContain('nothing lighter')
+    expect(plan.enrichment).toBe('chores')
+    expect(plan.routes.every((r) => r.model === null)).toBe(true)
+    expect(plan.ops).toEqual([])
+    // The other way round a free premium model IS lighter than a paid one.
+    expect(recommendPlan(input({ candidates: [opus, luna], currentDefaultModel: opus.id })).chores.model).toBe(luna.id)
+  })
+
   it('only the agent model is eligible ⇒ it takes the chores too, as inherit (no explicit routes); a stray route is cleared', () => {
     const plan = recommendPlan(input({ candidates: [luna], currentDefaultModel: luna.id }))
     expect(plan.chores.model).toBe(luna.id)
@@ -130,7 +143,7 @@ describe('recommendPlan', () => {
   })
 })
 
-describe('choresLaneState / setAllChoresOps (Simple view)', () => {
+describe('choresLaneState (Simple view)', () => {
   it('ONE value only when all five routes name the same model and none sets thinking; otherwise Mixed', () => {
     const same = { routes: CHORES_CLASSES.map((workClass) => ({ workClass, model: terra.id })), tagOverrides: [] }
     expect(choresLaneState(same, luna.id)).toEqual({ model: terra.id, models: [terra.id], mixed: false })
@@ -140,11 +153,5 @@ describe('choresLaneState / setAllChoresOps (Simple view)', () => {
     expect(choresLaneState(mixed, luna.id)).toMatchObject({ model: null, mixed: true, models: [luna.id, mini.id] })
     const thinking = { routes: CHORES_CLASSES.map((workClass) => ({ workClass, model: terra.id, thinking: 'low' as const })), tagOverrides: [] }
     expect(choresLaneState(thinking, luna.id).mixed).toBe(true)
-  })
-
-  it('"Set all to…" stages five model ops and never touches thinking', () => {
-    const ops = setAllChoresOps(terra.id)
-    expect(ops).toHaveLength(5)
-    expect(ops.every((op) => op.set.model === terra.id && op.set.thinking === undefined)).toBe(true)
   })
 })

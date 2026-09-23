@@ -29,7 +29,7 @@ import type { PluginContext } from '@bakin/core/plugin-types'
 import { closeDb } from '../../../packages/core/src/storage/db'
 import { setModelsCache } from '../../../plugins/models/lib/available-models'
 import { clearPersistedCache } from '../../../plugins/models/lib/models-cache'
-import { buildPlanInput, routeProposals } from '../../../plugins/models/lib/plan'
+import { buildPlanInput, describePlan, lastPlan, routeProposals } from '../../../plugins/models/lib/plan'
 import { recommendForRef, visionOf } from '../../../src/core/model-plan-input'
 import { recommendPlan } from '../../../src/core/model-plan'
 import type { AvailableModel } from '../../../plugins/models/types'
@@ -122,9 +122,12 @@ describe('buildPlanInput', () => {
     const input = await buildPlanInput(fakeCtx())
     const plan = recommendPlan(input)
     expect(plan.agent.model).toBe(LUNA)
-    // mini is blind (runtime says text-only), so the lightest model that can see — haiku — takes the chores.
-    expect(plan.chores.model).toBe(HAIKU)
-    expect(plan.enrichment).toBe('chores')
+    // mini is blind (runtime says text-only) but included in the plan; haiku
+    // is metered and so never "lighter" than a free model — mini takes the
+    // chores and enrichment rides the (free, seeing) agent model.
+    expect(plan.chores.model).toBe(MINI)
+    expect(plan.enrichment).toBe('agent')
+    expect(plan.routes.find((r) => r.workClass === 'enrichment')?.model).toBe(LUNA)
     expect(plan.ops.some((op) => op.ref === 'policy:defaultModel')).toBe(false)
   })
 })
@@ -167,5 +170,36 @@ describe('routeProposals', () => {
     expect(proposals.map((p) => p.workClass).sort()).toEqual(['auto-title', 'skill-mapping', 'team-routing'])
     expect(proposals.every((p) => p.model === MINI)).toBe(true)
     expect(skipped).toEqual([{ workClass: 'enrichment', reason: expect.stringContaining('enrichment will fail') }])
+  })
+
+  it('a plan row naming the agent model is a skip, not a proposal — unrouted already inherits it', () => {
+    const routing = { routes: [], tagOverrides: [] }
+    const plan = recommendPlan({
+      candidates: [
+        { id: LUNA, tier: 'premium', lane: 'subscription', vision: true },
+        { id: MINI, tier: 'budget', lane: 'subscription', vision: false },
+      ],
+      currentDefaultModel: LUNA,
+      routing,
+      enrichmentEnabled: true,
+    })
+    expect(plan.enrichment).toBe('agent')
+    const { proposals, skipped } = routeProposals(plan, routing)
+    expect(proposals.map((p) => p.workClass)).not.toContain('enrichment')
+    expect(skipped).toEqual([{ workClass: 'enrichment', reason: expect.stringContaining('inherits the agent model') }])
+  })
+})
+
+describe('describePlan (GET /plan payload)', () => {
+  it('carries the caller\'s revision, the current lanes, the recommendation, the route-only proposals and the candidate count', async () => {
+    const payload = await describePlan(fakeCtx({ hooks: { 'assets.enrichmentEnabled': () => true, 'spend.listBillingOverrides': () => [] } }), 'rev-abc')
+    expect(payload.revision).toBe('rev-abc')
+    expect(payload.current).toEqual({ agent: LUNA, chores: { model: LUNA, models: [LUNA], mixed: false }, enrichmentEnabled: true })
+    expect(payload.recommended.agent.model).toBe(LUNA)
+    expect(payload.recommended.ops.length).toBeGreaterThan(0)
+    expect(payload.routeProposals.proposals.length + payload.routeProposals.skipped.length).toBe(5)
+    expect(payload.candidates).toBe(3)
+    // …and it is the plan a later refused write proposes from.
+    expect(lastPlan()?.agent.model).toBe(LUNA)
   })
 })

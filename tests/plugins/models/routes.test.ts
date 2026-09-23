@@ -407,6 +407,80 @@ describe('GET/POST /selections — the ONE write path (#907)', () => {
     expect(stale.body.current).toBe(applied.body.revision)
   })
 
+  it('GET /plan reads under the SAME revision GET /selections reports, with the current lanes, the recommendation and the route-only proposals', async () => {
+    const selections = await callRoute(findRoute(activated.routes, 'GET', '/selections')!, activated.ctx)
+    const plan = await callRoute(findRoute(activated.routes, 'GET', '/plan')!, activated.ctx)
+    expect(plan.status).toBe(200)
+    expect(plan.body.revision).toBe(selections.body.revision)
+    expect(plan.body.current).toMatchObject({ agent: routingPolicy.defaultModel, chores: { mixed: expect.any(Boolean) }, enrichmentEnabled: true })
+    const recommended = plan.body.recommended as { agent: { model: string }; ops: unknown[] }
+    expect(recommended.agent.model).toBe(routingPolicy.defaultModel)
+    expect(Array.isArray(recommended.ops)).toBe(true)
+    const proposals = plan.body.routeProposals as { proposals: unknown[]; skipped: unknown[] }
+    expect(proposals.proposals.length + proposals.skipped.length).toBe(5)
+    expect(typeof plan.body.candidates).toBe('number')
+  })
+
+  it('post-write side effects fan out for runtime-config refs ONLY: a ui:mode write is silent, an agent pin drops the catalog cache and emits catalog_changed', async () => {
+    const events: Array<Record<string, unknown>> = []
+    const off = activated.ctx.events.on('models.catalog_changed', (_event, data) => { events.push(data) })
+    try {
+      const get = findRoute(activated.routes, 'GET', '/selections')!
+      const post = findRoute(activated.routes, 'POST', '/selections')!
+      let { revision } = (await callRoute(get, activated.ctx)).body as { revision: string }
+      const mode = await callRoute(post, activated.ctx, { body: { revision, ops: [{ ref: 'ui:mode', set: { model: 'advanced' } }] } })
+      expect(mode.status).toBe(200)
+      expect(events).toEqual([])
+
+      setModelsCache({ models: [], fetchedAt: Date.now() })
+      ;({ revision } = (await callRoute(get, activated.ctx)).body as { revision: string })
+      const pin = await callRoute(post, activated.ctx, { body: { revision, ops: [{ ref: 'agent:patch:model', set: { model: 'anthropic/claude-haiku-4-5' } }] } })
+      expect(pin.status).toBe(200)
+      expect(events).toEqual([{ reason: 'selections', refs: ['agent:patch:model'] }])
+      const { getModelsCache } = await import('../../../plugins/models/lib/available-models')
+      expect(getModelsCache()).toBeNull()
+    } finally {
+      off()
+      writeRuntimeConfig()
+    }
+  })
+
+  it('the dead-selections one-click repair writes through the SAME post-write side effects as POST /selections', async () => {
+    const events: Array<Record<string, unknown>> = []
+    const off = activated.ctx.events.on('models.catalog_changed', (_event, data) => { events.push(data) })
+    const { _resetModelHoldMemo } = await import('../../../src/core/dispatch-turns')
+    routingPolicy.defaultModel = 'xai/grok-4' // runtime-unavailable ⇒ a dead policy:defaultModel
+    // A proposal is only offered for a model whose eligibility is VERIFIED
+    // (never on partial/failed credential evidence): give the runtime a
+    // complete credential inventory for this test.
+    const runtime = activated.ctx.runtime as { credentials?: unknown }
+    const savedCredentials = runtime.credentials
+    runtime.credentials = {
+      providers: async () => ({
+        evidence: 'complete',
+        providers: [{ providerId: 'anthropic', configured: true }, { providerId: 'google', configured: true }, { providerId: 'openai-codex', configured: true }, { providerId: 'xai', configured: false }],
+      }),
+    }
+    setModelsCache(null)
+    try {
+      const registered = (activated.ctx.registerHealthRepairAction as unknown as { mock: { calls: Array<[{ id: string; plan: (t: unknown) => Promise<Array<{ id: string; actionId: string; changes: unknown[] }>>; apply: (items: unknown[]) => Promise<Array<{ status: string; message: string }>> }]> } }).mock.calls
+      const repair = registered.map((c) => c[0]).find((def) => def.id === 'apply-model-proposal')!
+      const items = await repair.plan({ type: 'incidents', ids: ['models:models:dead-selection:policy:defaultModel'] })
+      expect(items).toHaveLength(1)
+      const results = await repair.apply(items.map((i) => ({ ...i, id: `models.apply-model-proposal:${i.id}` })))
+      expect(results[0]!.status).toBe('applied')
+      expect(routingPolicy.defaultModel).not.toBe('xai/grok-4')
+      // The repair went through applySelections: the pickers were told.
+      expect(events).toEqual([{ reason: 'selections', refs: ['policy:defaultModel'] }])
+    } finally {
+      off()
+      runtime.credentials = savedCredentials
+      setModelsCache(null)
+      writeRuntimeConfig()
+      _resetModelHoldMemo()
+    }
+  })
+
   it('POST refuses an unavailable model with 400 model_not_eligible', async () => {
     const get = findRoute(activated.routes, 'GET', '/selections')!
     const { body } = await callRoute(get, activated.ctx)

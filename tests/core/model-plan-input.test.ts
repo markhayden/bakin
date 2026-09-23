@@ -20,7 +20,8 @@ mock.module('../../src/core/logger', () => ({ createLogger: () => ({ info: () =>
 
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { closeDb } from '../../packages/core/src/storage/db'
-import { assemblePlanInput, listPlanCatalogRows } from '../../src/core/model-plan-input'
+import { assemblePlanInput, listPlanCatalogRows, recommendForRef } from '../../src/core/model-plan-input'
+import type { PlanRecommendation } from '../../src/core/model-plan'
 
 afterAll(() => {
   closeDb()
@@ -84,6 +85,46 @@ describe('assemblePlanInput', () => {
     expect(overridden.candidates[0]!.lane).toBe('subscription')
     const failed = await assemblePlanInput({ runtime: runtime({ throwCredentials: true }), routing, enrichmentEnabled: true, rows: [{ id: LUNA }] })
     expect(failed.candidates[0]!.lane).toBe('metered')
+  })
+})
+
+describe('recommendForRef (dead-selection proposals)', () => {
+  const MINI = 'openai-codex/gpt-5.4-mini'
+  function plan(over: Partial<PlanRecommendation> = {}): PlanRecommendation {
+    return {
+      agent: { model: LUNA, why: '', suitability: 'known' },
+      chores: { model: MINI, why: '', suitability: 'known' },
+      routes: [
+        { workClass: 'auto-title', model: MINI, reason: '' },
+        { workClass: 'enrichment', model: LUNA, reason: '' },
+        { workClass: 'relay', model: MINI, reason: '' },
+        { workClass: 'team-routing', model: MINI, reason: '' },
+        { workClass: 'skill-mapping', model: MINI, reason: '' },
+      ],
+      enrichment: 'agent',
+      ops: [],
+      notes: [],
+      ...over,
+    }
+  }
+
+  it('a chores route takes the plan route for that class — enrichment → agent included', () => {
+    expect(recommendForRef(plan(), 'route:relay')).toBe(MINI)
+    expect(recommendForRef(plan(), 'route:enrichment')).toBe(LUNA)
+  })
+
+  it('an inheriting chores route reads through to the chores lane, then the agent lane', () => {
+    const inheriting = plan({ routes: plan().routes.map((r) => ({ ...r, model: null })) })
+    expect(recommendForRef(inheriting, 'route:relay')).toBe(MINI)
+    expect(recommendForRef({ ...inheriting, chores: { model: null, why: '', suitability: 'none' } }, 'route:relay')).toBe(LUNA)
+  })
+
+  it('an unset enrichment (nobody can see) has no honest answer; every non-chores ref gets the agent model', () => {
+    const unset = plan({ enrichment: 'unset', routes: plan().routes.map((r) => (r.workClass === 'enrichment' ? { ...r, model: null } : r)) })
+    expect(recommendForRef(unset, 'route:enrichment')).toBeNull()
+    expect(recommendForRef(plan(), 'agent:pixel:model')).toBe(LUNA)
+    expect(recommendForRef(plan(), 'route:workflow')).toBe(LUNA)
+    expect(recommendForRef(plan(), 'policy:fallback:0')).toBe(LUNA)
   })
 })
 

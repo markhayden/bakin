@@ -25,6 +25,10 @@ describe('isLegacyRouting', () => {
     expect(isLegacyRouting('nope')).toBe(false)
     expect(isLegacyRouting({})).toBe(false)
   })
+  it('a `policies` key that is not an array is junk, not legacy — the migration must never throw at activation', () => {
+    expect(isLegacyRouting({ policies: 'x' })).toBe(false)
+    expect(isLegacyRouting({ policies: null })).toBe(false)
+  })
 })
 
 describe('migrateLegacyRouting', () => {

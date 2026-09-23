@@ -1,16 +1,16 @@
 /**
- * Models plugin cross-plugin hooks — "which model": the configChanged
- * event, effective-model / roster / available-models RPCs, catalog cache
- * control, and the routing policy read core dispatch consults. Pricing,
- * billing lanes and limits are the spend plugin's (`spend.*`). Hook names
- * and payload shapes are cross-plugin contracts.
+ * Models plugin cross-plugin hooks — "which model": effective-model /
+ * roster / available-models RPCs, catalog cache control, and the routing
+ * policy read core dispatch consults. Pricing, billing lanes and limits are
+ * the spend plugin's (`spend.*`). Hook names and payload shapes are
+ * cross-plugin contracts. (Catalog changes ride the `models.catalog_changed`
+ * plugin event, not a hook.)
  */
 import type { PluginContext } from '@bakin/core/plugin-types'
 
-import type { ModelsPluginSettings } from '../types'
 import { resolveAgents } from './config-io'
 import { resetModelsCache } from './available-models'
-import { isLegacyRouting, migrateLegacyRouting } from '../../../src/core/routing-migration'
+import { readRoutingSettings } from './routing-settings'
 import { fetchAvailableModels } from './available-models'
 
 export function registerModelsHooks(ctx: PluginContext): void {
@@ -43,11 +43,9 @@ export function registerModelsHooks(ctx: PluginContext): void {
   // model/thinking for each turn before sending. Returns an empty config
   // when none is set → dispatch inherits the agent's configured model.
   ctx.hooks.register('models.getRoutingConfig', () => {
-    const routing = ctx.getSettings<ModelsPluginSettings>().routing
-    // A legacy-shaped config (a settings file restored AFTER the one-shot
-    // activation migration ran) migrates on READ too — dispatch must never
-    // silently ignore routes the operator believes exist.
-    if (isLegacyRouting(routing)) return migrateLegacyRouting(routing)
-    return routing ?? { routes: [], tagOverrides: [] }
+    // The ONE routing read (legacy-migrating on READ: a settings file restored
+    // AFTER the one-shot activation migration must never make dispatch
+    // silently ignore routes the operator believes exist).
+    return readRoutingSettings(ctx).routing
   }, { label: 'Get routing config.', summary: 'Returns the per-turn model/thinking routing policy (work classes + tag overrides) applied before each routable agent turn. Use it to read the current routing rules.', hookKind: 'rpc' })
 }

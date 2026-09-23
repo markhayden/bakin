@@ -16,7 +16,10 @@
  *                      — NEVER auto-applied, --yes included
  *   install() applies ONLY on --yes, an explicit TUI approval, or an
  *   interactive yes (the one permitted auto-apply: fresh install, no plan);
- *   nothing eligible ⇒ skipped with the credentials hint.
+ *   nothing eligible ⇒ skipped with the credentials hint. --yes alone never
+ *   rewrites a runtime default that already exists (an upgraded box
+ *   re-onboards with no chores routes and looks fresh): a dead default is
+ *   reported for review; explicit approval saw the whole plan and applies it.
  */
 import { join } from 'path'
 
@@ -25,6 +28,7 @@ import type { BillingOverride } from '@bakin/core/llm/billing-lane'
 import { mergePluginSettings, readPluginSettings } from '@bakin/core/plugins/settings-store'
 
 import { createAppServices, maybeGetAppServices } from '../app-services'
+import { appendAudit } from '../audit'
 import { getBootId } from '../boot-id'
 import { getContentDir } from '../content-dir'
 import { createLogger } from '../logger'
@@ -89,13 +93,13 @@ async function assess(): Promise<Assessment> {
   if (!agentModel) problems.push('no default model is set')
   else if (!eligible.has(agentModel)) problems.push(`the default model ${agentModel} cannot run here`)
   for (const workClass of CHORES_CLASSES) {
+    // An unrouted chore inherits the default, whose problem is reported once above.
     const routed = routing.routes.find((r) => r.workClass === workClass)?.model ?? null
-    const effective = routed ?? agentModel
-    if (!effective) continue
-    if (!eligible.has(effective)) {
-      problems.push(`${workClass} routes to ${effective}, which cannot run here`)
-    } else if (workClass === 'enrichment' && input.enrichmentEnabled && input.candidates.find((c) => c.id === effective)?.vision === false) {
-      problems.push(`enrichment routes to ${effective}, which cannot see images`)
+    if (!routed) continue
+    if (!eligible.has(routed)) {
+      problems.push(`${workClass} routes to ${routed}, which cannot run here`)
+    } else if (workClass === 'enrichment' && input.enrichmentEnabled && input.candidates.find((c) => c.id === routed)?.vision === false) {
+      problems.push(`enrichment routes to ${routed}, which cannot see images`)
     }
   }
   return { input, plan, persisted: planPersisted(routing, uiMode), problems }
@@ -140,16 +144,19 @@ async function check(): Promise<CheckResult> {
   }
 }
 
-async function apply(runtime: AgentRuntimeAdapter, plan: PlanRecommendation): Promise<{ applied: number; failed: string[]; pending: number }> {
+async function apply(runtime: AgentRuntimeAdapter, ops: PlanRecommendation['ops']): Promise<{ applied: number; failed: string[]; pending: number }> {
+  const contentDir = getContentDir()
   const mutator = createSelectionMutator({
     runtime,
     loadRouting,
     saveRouting,
-    stateDir: join(getContentDir(), 'plugin-settings', 'models'),
+    stateDir: join(contentDir, 'plugin-settings', 'models'),
     bootId: getBootId(),
+    // Same trail the plugin path writes — an onboarding write is still a write.
+    audit: (event, data) => appendAudit(contentDir, event, 'system', data, 'system'),
   })
   const { revision } = await mutator.reconcile()
-  const result = await mutator.mutate({ revision, ops: plan.ops })
+  const result = await mutator.mutate({ revision, ops })
   return { applied: result.applied.length, failed: result.failed.map((f) => `${f.ref}: ${f.error.message}`), pending: result.pending.length }
 }
 
@@ -168,7 +175,8 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
     return { name: 'models', status: 'skipped', message: `Your model plan ${why} — review with \`bakin models plan\`; onboarding never changes an existing plan.`, durationMs: Date.now() - start }
   }
 
-  const approved = opts.autoApprove || opts.approvedComponents?.includes('models') === true
+  const explicitlyApproved = opts.approvedComponents?.includes('models') === true
+  const approved = opts.autoApprove || explicitlyApproved
   if (!approved && opts.interactive) {
     console.log(`  Recommended model plan: ${describe(plan)}.`)
     for (const note of plan.notes) console.log(`  Note: ${note}`)
@@ -180,14 +188,30 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
     return { name: 'models', status: 'skipped', message: 'not approved for non-interactive install — run `bakin models plan --apply` to use the recommendation', durationMs: Date.now() - start }
   }
 
+  // --yes without an explicit approval never rewrites a runtime default that
+  // already exists — it is the runtime's own config and nobody saw the plan.
+  // The Bakin-owned chores routes still land; a dead default is reported.
+  const unseen = opts.autoApprove && !explicitlyApproved && !opts.interactive
+  const holdDefault = unseen && input.currentDefaultModel !== null && plan.ops.some((op) => op.ref === 'policy:defaultModel')
+  const ops = holdDefault ? plan.ops.filter((op) => op.ref !== 'policy:defaultModel') : plan.ops
+  const held = holdDefault
+    ? ` The default model (${input.currentDefaultModel}) cannot run here and was left as it is — review with \`bakin models plan\` (apply with --apply) or on the Models page.`
+    : ''
+  if (ops.length === 0) {
+    return { name: 'models', status: 'skipped', message: `Nothing to change without touching the default model.${held}`, durationMs: Date.now() - start }
+  }
+
   try {
     const runtime = await getRuntime()
-    const outcome = await apply(runtime, plan)
+    const outcome = await apply(runtime, ops)
     if (outcome.failed.length > 0) {
-      return { name: 'models', status: 'failed', message: `Model plan partially applied (${outcome.applied} ok): ${outcome.failed.join('; ')}`, durationMs: Date.now() - start }
+      return { name: 'models', status: 'failed', message: `Model plan partially applied (${outcome.applied} ok): ${outcome.failed.join('; ')}${held}`, durationMs: Date.now() - start }
     }
     const pending = outcome.pending > 0 ? ` (${outcome.pending} write${outcome.pending === 1 ? '' : 's'} still pending runtime confirmation)` : ''
-    return { name: 'models', status: 'installed', message: `Model plan applied: ${describe(plan)}${pending}.`, durationMs: Date.now() - start }
+    const summary = holdDefault
+      ? `background chores ${plan.chores.model ?? '(none)'} (${plan.chores.why})`
+      : describe(plan)
+    return { name: 'models', status: 'installed', message: `Model plan applied: ${summary}${pending}.${held}`, durationMs: Date.now() - start }
   } catch (err) {
     log.error('Model plan apply failed', err)
     return { name: 'models', status: 'failed', message: `Model plan apply failed: ${err instanceof Error ? err.message : String(err)}`, error: err, durationMs: Date.now() - start }

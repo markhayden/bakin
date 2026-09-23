@@ -199,7 +199,13 @@ export async function collectOnboardingSelections(
 
   const searchCheck = await searchComponent.check();
   const searchModelsCheck = await searchModelsComponent.check();
-  const modelsCheck = await modelsComponent.check();
+  // A gateway flap mid-wizard must skip the plan step, not abort onboarding
+  // (the orchestrator guards check() the same way).
+  const modelsCheck: CheckResult = await modelsComponent.check().catch((err: unknown) => ({
+    name: "models",
+    status: "error",
+    message: `check() threw: ${err instanceof Error ? err.message : String(err)}`,
+  }));
   const pluginCheck = await recommendedPluginsComponent.check();
   const agentCheck = await recommendedAgentsComponent.check();
   const hasWizardSteps = [
