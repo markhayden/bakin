@@ -1,6 +1,6 @@
 /**
  * `bakin budget` / `bakin spend` — flag parsing + request shapes, with the
- * HTTP client mocked (server behavior is covered by the models route tests).
+ * HTTP client mocked (server behavior is covered by the spend route tests).
  * Unit-per-lane rendering: metered caps echo as USD, subscription as tokens.
  */
 import { describe, it, expect, beforeEach, mock } from 'bun:test'

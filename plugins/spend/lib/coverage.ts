@@ -8,10 +8,9 @@
  * module adds no spend arithmetic beyond the daily rate — so the number in
  * the dialog agrees with the Overview by construction.
  */
-import { coveredDaysSince, toLocalDayKey } from '@bakin/core/usage-history/store'
+import { coveredDaysSince, localDayKeyDaysAgo } from '@bakin/core/usage-history/store'
 import { assembleSpendForDays, type DaySetSpend } from '../../../src/core/budget-spend'
 
-const DAY_MS = 86_400_000
 /** Days the suggestion looks back over. */
 export const COVERAGE_LOOKBACK_DAYS = 30
 /** Covered days required before a number is offered (D27). */
@@ -35,7 +34,7 @@ export async function coverageSummary(lookbackDays: number = COVERAGE_LOOKBACK_D
   const coveredSet = new Set(coveredDays)
   const uncoveredDays: string[] = []
   for (let i = lookbackDays - 1; i >= 0; i--) {
-    const day = toLocalDayKey(now - i * DAY_MS)
+    const day = localDayKeyDaysAgo(now, i)
     if (!coveredSet.has(day)) uncoveredDays.push(day)
   }
   const [covered, uncovered] = await Promise.all([

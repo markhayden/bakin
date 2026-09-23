@@ -910,9 +910,16 @@ describe('scan_days coverage receipts (D27)', () => {
     expect((await scanUsageHistory(partial)).coverage.status).toBe('partial')
     expect(coveredDaysSince(1)).not.toContain(today)
 
-    // Complete — even with zero sessions to scan, the day is observed.
+    // An EMPTY roster answer observes nothing — no receipt (a transient
+    // empty list must not stamp a $0 day as watched).
     sessions.length = 0
+    const nobody = makeRuntime()
+    expect((await scanUsageHistory(nobody)).coverage.status).toBe('complete')
+    expect(coveredDaysSince(1)).not.toContain(today)
+
+    // Complete — a real roster with zero sessions to scan: the day is observed.
     const complete = makeRuntime()
+    complete.agents.list = async () => [{ id: 'basil', name: 'basil', status: 'active' as const }]
     expect((await scanUsageHistory(complete)).coverage.status).toBe('complete')
     expect(coveredDaysSince(1)).toContain(today)
   })

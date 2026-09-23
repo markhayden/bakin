@@ -3,20 +3,25 @@
  *
  * `observeSpend` is the ONE place the milestone ladder is recorded: after
  * every spend write (`recordSpend`), after every successful usage scan, on
- * the watchdog tick and at boot, it reads the limits policy, computes the
- * crossings with the gate's own arithmetic (`milestoneCrossings` over
- * `assembleBudgetSpend`), inserts the missing `budget_milestones` rows
- * (lower rows reached in the same pass are covered by the highest new one
- * and need no delivery) and opens/reopens the cap incident at 100 — the
- * incident IS the alert for that level.
+ * the watchdog tick, after every policy write and at boot, it reads the
+ * limits policy, computes the crossings with the gate's own arithmetic
+ * (`milestoneCrossings` over `assembleBudgetSpend`), inserts the missing
+ * `budget_milestones` rows (lower rows reached in the same pass are covered
+ * by the highest new one and need no delivery) and opens/reopens the cap
+ * incident at 100 — the incident IS the alert for that level. The policy is
+ * re-read after the (async) spend read: crossings are committed only
+ * against the policy they were computed for, so a rule deleted mid-pass
+ * cannot come back as an orphan incident.
  *
  * `deliverPending` is the ONE delivery worker: it sends every undelivered
  * milestone row (< 100) and cap incident from durable state, then marks the
- * exact `(id, event_id)` it sent. At-least-once by construction — a crash
- * between insert and send, or between send and mark, is recovered by the
- * next pass, and consumers de-duplicate on `eventId`. A reopen that lands
- * while an older episode's delivery is still in flight keeps its new
- * event id pending because the stale mark names the old one.
+ * exact `(id, event_id)` it sent. Rollover cleanup runs FIRST, so a headless
+ * boot never relays yesterday's already-released defer alert; milestone rows
+ * whose rule is gone or whose window has ended are marked as history, never
+ * sent. A cap incident is marked delivered only once the REQUIRED channel
+ * (the main-agent relay) succeeded — a failed relay stays pending and is
+ * retried on the next pass; the SSE re-broadcast that retry repeats is
+ * de-duplicated by consumers on `eventId`. At-least-once by construction.
  *
  * Both entry points are single-flight with coalescing: a call during a
  * pass schedules exactly one follow-up pass. The observer's facet memo is
@@ -25,7 +30,7 @@
  */
 import { createLogger } from './logger'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
-import { dayStartMs, milestoneCrossings, type BudgetPolicy, type BudgetRule, type MilestoneCrossing } from './budget'
+import { dayStartMs, milestoneCrossings, monthStartMs, type BudgetPolicy, type BudgetRule, type MilestoneCrossing } from './budget'
 import {
   listMilestones,
   listUnnotifiedIncidents,
@@ -34,11 +39,14 @@ import {
   markMilestoneNotified,
   openBudgetIncident,
   recordMilestoneCrossings,
+  resolveExpiredBudgetIncidents,
   type BudgetMilestone,
   type BudgetMilestoneRow,
   type MilestoneCrossingInput,
 } from './execution-ledger'
 import { broadcast } from './sse'
+import { appendAudit } from './audit'
+import { getContentDir } from './content-dir'
 import { notifyBudgetIncidentOpened } from './budget-notify'
 import { getAppServices } from './app-services-store'
 import { onSpendRecorded } from './spend-events'
@@ -102,12 +110,25 @@ async function readPolicy(): Promise<BudgetPolicy | null> {
 }
 
 /**
- * One observer pass. Returns the crossings recorded this pass (tests +
- * callers that want to log). Never throws — a failed pass leaves the memo
- * unset so the next request recomputes.
+ * Lazy window rollover: yesterday's / last month's defer incidents resolve
+ * `window_rollover` before anything is recorded or delivered, so no pass
+ * can alert on a hold that no longer blocks work. Never throws.
+ */
+function sweepRollover(now: number): void {
+  try {
+    resolveExpiredBudgetIncidents({ dailyWindowStartMs: dayStartMs(now), monthlyWindowStartMs: monthStartMs(now), now })
+  } catch (err) {
+    log.warn('spend observer: incident rollover sweep failed', { err: err instanceof Error ? err.message : String(err) })
+  }
+}
+
+/**
+ * One observer pass. Never throws — a failed pass leaves the memo unset so
+ * the next request recomputes.
  */
 async function observeOnce(now: number): Promise<void> {
   const s = state()
+  sweepRollover(now)
   let policy: BudgetPolicy | null
   try {
     policy = await readPolicy()
@@ -117,14 +138,24 @@ async function observeOnce(now: number): Promise<void> {
   }
   if (!policy || !(policy.rules ?? []).some((r) => r.id)) return
 
-  const key = `${dayStartMs(now)}|${rulesRevision(policy)}|${s.generation}`
+  const revision = rulesRevision(policy)
+  const key = `${dayStartMs(now)}|${revision}|${s.generation}`
   if (key !== s.lastKey) {
     try {
       const { assembleBudgetSpend } = await import('./budget-spend')
       const facets = await assembleBudgetSpend(now)
-      const crossings = milestoneCrossings(policy, facets)
-      recordCrossings(crossings, now)
-      s.lastKey = key
+      // The spend read is an await a policy write can land during: commit
+      // crossings only against the policy they were computed for. A moved
+      // policy means a follow-up pass (the write requested one) recomputes.
+      const after = await readPolicy()
+      if (!after || rulesRevision(after) !== revision) {
+        log.info('spend observer: limits changed during the pass; recomputing', {})
+        s.observeFollowUp = s.observeFollowUp ?? now
+      } else {
+        const crossings = milestoneCrossings(policy, facets)
+        recordCrossings(crossings, now)
+        s.lastKey = key
+      }
     } catch (err) {
       log.error('spend observer pass failed', err)
       return
@@ -182,7 +213,20 @@ function openCapIncident(crossing: MilestoneCrossing, now: number): void {
     atCap: rule.atCap ?? 'defer',
     openedAt: now,
   })
-  if (opened.opened) log.info('spend cap incident opened by the observer', { incidentId: opened.id, ruleId: crossing.ruleId, window: crossing.window })
+  if (!opened.opened) return
+  log.info('spend cap incident opened by the observer', { incidentId: opened.id, ruleId: crossing.ruleId, window: crossing.window })
+  // The durable lifecycle audit is independent of which path saw the
+  // threshold first (the gate audits the same event when IT opens one).
+  auditIncidentOpened({ incidentId: opened.id, source: 'observer', scope: rule.scope, scopeId: rule.scopeId, lane: rule.lane, window: crossing.window, unit: crossing.unit, spentValue: crossing.spentValue, capValue: crossing.capValue, atCap: rule.atCap ?? 'defer' })
+}
+
+/** `budget.incident_opened` — one audit row per opened/reopened episode, whichever path opened it. */
+export function auditIncidentOpened(data: { incidentId: number; source: 'observer' | 'gate'; scope: string; scopeId?: string; lane: string; window: string; unit: string; spentValue: number; capValue: number; atCap: string }): void {
+  try {
+    appendAudit(getContentDir(), 'budget.incident_opened', 'system', { ...data, ...(data.scopeId ? {} : { scopeId: undefined }) })
+  } catch (err) {
+    log.warn('could not audit the opened budget incident', { err: err instanceof Error ? err.message : String(err), incidentId: data.incidentId })
+  }
 }
 
 /**
@@ -211,13 +255,13 @@ export function observeSpend(now: number = Date.now()): Promise<void> {
 }
 
 /**
- * Aggregated milestone payload — one SSE event per rule: the highest
- * undelivered crossing plus how many milestones it speaks for (itself + the
- * rows recorded as covered by it, which never get their own delivery).
+ * Aggregated milestone payload — one SSE event per rule × window per pass:
+ * the highest undelivered crossing plus how many milestones it speaks for
+ * (itself + the rows recorded as covered by it, which never get their own
+ * delivery).
  */
-function milestoneEvent(rows: BudgetMilestoneRow[], policy: BudgetPolicy | null): Record<string, unknown> {
+function milestoneEvent(rows: BudgetMilestoneRow[], rule: BudgetRule): Record<string, unknown> {
   const highest = rows.reduce((max, row) => (row.milestone > max.milestone ? row : max), rows[0]!)
-  const rule = policy?.rules?.find((r) => r.id === highest.ruleId)
   const covered = listMilestones({ ruleId: highest.ruleId, windowStartMs: highest.windowStartMs })
     .filter((row) => row.window === highest.window && row.coveredBy === highest.milestone && row.id !== highest.id)
   const spokenFor = [highest, ...covered, ...rows.filter((row) => row.id !== highest.id)]
@@ -228,9 +272,9 @@ function milestoneEvent(rows: BudgetMilestoneRow[], policy: BudgetPolicy | null)
     milestoneId: highest.id,
     milestoneIds: spokenFor.map((r) => r.id),
     ruleId: highest.ruleId,
-    scope: rule?.scope ?? 'global',
-    ...(rule?.scopeId ? { scopeId: rule.scopeId } : {}),
-    lane: rule?.lane ?? (highest.unit === 'tokens' ? 'subscription' : 'metered'),
+    scope: rule.scope,
+    ...(rule.scopeId ? { scopeId: rule.scopeId } : {}),
+    lane: rule.lane,
     window: highest.window,
     unit: highest.unit,
     highest: highest.milestone,
@@ -241,37 +285,59 @@ function milestoneEvent(rows: BudgetMilestoneRow[], policy: BudgetPolicy | null)
   }
 }
 
-async function deliverOnce(): Promise<void> {
+async function deliverOnce(now: number = Date.now()): Promise<void> {
+  sweepRollover(now)
+
+  // Milestones need the policy for their labels AND to tell live rows from
+  // history; an unreadable policy leaves them pending (incidents carry
+  // their own scope and still go).
   let policy: BudgetPolicy | null = null
+  let policyReadable = true
   try {
     policy = await readPolicy()
   } catch (err) {
-    log.warn('spend delivery: limits policy unreadable; rule labels degrade', { err: err instanceof Error ? err.message : String(err) })
+    policyReadable = false
+    log.warn('spend delivery: limits policy unreadable; milestone rows wait', { err: err instanceof Error ? err.message : String(err) })
   }
 
-  // Milestones: one aggregated event per rule per pass. The mark names each
-  // row's own event id, so a re-run after a crash re-sends the same ids.
-  const byRule = new Map<string, BudgetMilestoneRow[]>()
-  for (const row of listUnnotifiedMilestones()) {
-    const list = byRule.get(row.ruleId) ?? []
-    list.push(row)
-    byRule.set(row.ruleId, list)
-  }
-  for (const rows of byRule.values()) {
-    try {
-      broadcast(milestoneEvent(rows, policy))
-    } catch (err) {
-      log.error('spend milestone delivery failed; rows stay pending', err, { ruleId: rows[0]!.ruleId })
-      continue
+  if (policyReadable) {
+    const rules = new Map<string, BudgetRule>()
+    for (const rule of policy?.rules ?? []) if (rule.id) rules.set(rule.id, rule)
+    const windowStarts = { daily: dayStartMs(now), monthly: monthStartMs(now) }
+    // One aggregated event per rule × window × window start: a daily-75 and
+    // a monthly-50 of the same rule are two different facts.
+    const groups = new Map<string, BudgetMilestoneRow[]>()
+    for (const row of listUnnotifiedMilestones()) {
+      const rule = rules.get(row.ruleId)
+      if (!rule || row.windowStartMs !== windowStarts[row.window]) {
+        // A deleted rule's row, or a crossing from a window that has ended,
+        // is history: recorded, never announced as if it were current.
+        markMilestoneNotified(row.id, row.eventId)
+        continue
+      }
+      const key = `${row.ruleId}|${row.window}|${row.windowStartMs}`
+      const list = groups.get(key) ?? []
+      list.push(row)
+      groups.set(key, list)
     }
-    for (const row of rows) markMilestoneNotified(row.id, row.eventId)
+    for (const rows of groups.values()) {
+      const rule = rules.get(rows[0]!.ruleId)!
+      try {
+        broadcast(milestoneEvent(rows, rule))
+      } catch (err) {
+        log.error('spend milestone delivery failed; rows stay pending', err, { ruleId: rows[0]!.ruleId })
+        continue
+      }
+      for (const row of rows) markMilestoneNotified(row.id, row.eventId)
+    }
   }
 
   // Cap incidents: the existing fan-out (SSE + main-agent relay), one per
-  // undelivered episode, marked by the exact event it sent.
+  // undelivered episode, marked by the exact event it sent — and only once
+  // the relay (the away-from-the-browser channel) actually went out.
   for (const incident of listUnnotifiedIncidents()) {
     try {
-      notifyBudgetIncidentOpened({
+      const outcome = await notifyBudgetIncidentOpened({
         incidentId: incident.id,
         eventId: incident.eventId,
         episode: incident.episode,
@@ -285,6 +351,10 @@ async function deliverOnce(): Promise<void> {
         spentValue: incident.spentValue,
         atCap: incident.atCap,
       }, () => getAppServices().runtime)
+      if (!outcome.relayed) {
+        log.warn('spend incident relay did not complete; row stays pending for the next pass', { incidentId: incident.id, episode: incident.episode })
+        continue
+      }
     } catch (err) {
       log.error('spend incident delivery failed; row stays pending', err, { incidentId: incident.id })
       continue

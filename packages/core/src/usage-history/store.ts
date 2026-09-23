@@ -628,7 +628,7 @@ export function recordScanDay(day: string, now: number = Date.now()): void {
         `INSERT INTO scan_days (day, first_scan_at, last_scan_at) VALUES (?, ?, ?)
          ON CONFLICT(day) DO UPDATE SET last_scan_at = excluded.last_scan_at`,
       ).run(day, now, now)
-      d.prepare('DELETE FROM scan_days WHERE day < ?').run(toLocalDayKey(now - SCAN_DAYS_RETENTION * 86_400_000))
+      d.prepare('DELETE FROM scan_days WHERE day < ?').run(localDayKeyDaysAgo(now, SCAN_DAYS_RETENTION))
     })()
   } catch (err) {
     log.warn('usage history: scan day receipt not recorded', { day, err: err instanceof Error ? err.message : String(err) })
@@ -636,8 +636,19 @@ export function recordScanDay(day: string, now: number = Date.now()): void {
 }
 
 /** Local day keys (ascending) that received a complete sweep within the last `days` days up to `now`. */
+/**
+ * The local day key `n` calendar days before `now`. Calendar stepping, not
+ * `now - n × 86 400 000`: a 24-hour subtraction across a DST change lands
+ * an hour off and, near midnight, on the wrong local day.
+ */
+export function localDayKeyDaysAgo(now: number, n: number): string {
+  const d = new Date(now)
+  d.setDate(d.getDate() - n)
+  return toLocalDayKey(d.getTime())
+}
+
 export function coveredDaysSince(days: number, now: number = Date.now()): string[] {
-  const since = toLocalDayKey(now - Math.max(0, days - 1) * 86_400_000)
+  const since = localDayKeyDaysAgo(now, Math.max(0, days - 1))
   return db()
     .prepare<{ day: string }, [string]>('SELECT day FROM scan_days WHERE day >= ? ORDER BY day ASC')
     .all(since)

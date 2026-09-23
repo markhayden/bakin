@@ -199,6 +199,17 @@ const FAIL_CLOSED_DECISION: BudgetDecision = {
 /** The limits policy itself is unreadable — fail closed, name the cause (S13). */
 const POLICY_UNAVAILABLE_DECISION: BudgetDecision = { action: 'defer', cause: 'budget_policy_unavailable' }
 
+// The missing-policy fail-closed state is a standing condition, not an event
+// stream: ONE `budget.policy_unavailable` audit row per local day window
+// (the same latch discipline as the ledger-unavailable case above).
+const policyUnavailableAuditedWindows = new Set<number>()
+function auditPolicyUnavailableOnce(contentDir: string, agentId: string, reason: string): void {
+  const windowStart = dayStartMs(Date.now())
+  if (policyUnavailableAuditedWindows.has(windowStart)) return
+  policyUnavailableAuditedWindows.add(windowStart)
+  appendAudit(contentDir, 'budget.policy_unavailable', agentId, { reason, window: 'daily' })
+}
+
 export async function budgetGate(
   agentId: string,
   contentDir: string,
@@ -217,11 +228,13 @@ export async function budgetGate(
   try {
     if (!hooks().has('spend.getBudgetPolicy')) {
       log.error('Budget policy hook is not registered; deferring (fail-closed)', undefined, { agentId })
+      auditPolicyUnavailableOnce(contentDir, agentId, 'hook_unregistered')
       return POLICY_UNAVAILABLE_DECISION
     }
     policy = (await hooks().invoke<BudgetPolicy>('spend.getBudgetPolicy', {})) ?? undefined
   } catch (err) {
     log.error('Budget policy read failed; deferring (fail-closed)', err, { agentId })
+    auditPolicyUnavailableOnce(contentDir, agentId, err instanceof Error ? err.message : String(err))
     return POLICY_UNAVAILABLE_DECISION
   }
   const now = Date.now()
@@ -392,6 +405,13 @@ function recordBudgetBreach(
       openedAt: Date.now(),
     })
     if (!incident.opened) return
+    // The lifecycle audit (`budget.incident_opened`) is the same row the
+    // observer writes when IT opens one — history does not depend on which
+    // path saw the threshold first; `budget.deferred` below is the turn hold.
+    void import('./spend-observer').then((m) => m.auditIncidentOpened({
+      incidentId: incident.id, source: 'gate', scope: decision.rule.scope, scopeId: decision.rule.scopeId, lane: decision.rule.lane,
+      window: decision.window, unit: decision.unit, spentValue: decision.spentValue, capValue: decision.capValue, atCap: decision.rule.atCap ?? 'defer',
+    })).catch((err: unknown) => log.warn('incident_opened audit failed', { err: err instanceof Error ? err.message : String(err) }))
     appendAudit(contentDir, 'budget.deferred', agentId, {
       incidentId: incident.id,
       scope: decision.rule.scope,

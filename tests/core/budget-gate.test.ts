@@ -154,6 +154,17 @@ describe('budgetGate', () => {
     expect(auditCalls.some((c) => c[1] === 'budget.deferred')).toBe(true)
   })
 
+  it('FAIL-CLOSED: a missing policy hook defers AND audits budget.policy_unavailable once per window — a standing condition, not a row per turn', async () => {
+    policyHookPresent = false
+    try {
+      expect(await budgetGate('pixel', dir)).toMatchObject({ action: 'defer', cause: 'budget_policy_unavailable' })
+      expect(await budgetGate('patch', dir)).toMatchObject({ action: 'defer', cause: 'budget_policy_unavailable' })
+      expect(auditCalls.filter((c) => c[1] === 'budget.policy_unavailable')).toHaveLength(1)
+    } finally {
+      policyHookPresent = true
+    }
+  })
+
   it('FAIL-CLOSED: global totals defer when observed usage cannot be read', async () => {
     budgetPolicy = GLOBAL_10
     usageReadFails = true

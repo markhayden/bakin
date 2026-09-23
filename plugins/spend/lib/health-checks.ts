@@ -635,6 +635,9 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
 }
 
 function budgetRuleId(rule: BudgetRule, index: number): string {
+  // Rules carry stable uuids now (ack/snooze continuity keys on them); the
+  // synthesized identity is only the fallback for a rule that never got one.
+  if (rule.id) return rule.id
   const raw = [rule.scope, rule.scopeId, rule.lane, index].filter((value) => value !== undefined).join('-')
   return raw.toLowerCase().replace(/[^a-z0-9._:-]/g, '-').slice(0, 120) || `rule-${index}`
 }

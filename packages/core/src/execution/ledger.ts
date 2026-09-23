@@ -336,8 +336,11 @@ const MIGRATIONS = [
     // marks name the exact (id, event_id) they delivered. `budget_milestones`
     // holds one durable row per rule × window × fixed milestone (50/75/90/
     // 100), keyed by the rule's id so a deleted-and-recreated rule gets
-    // fresh rows. Existing rows are backfilled with episode 1 + an event id
-    // so an already-open incident is deliverable; legacy 'warn' rows (a
+    // fresh rows. Existing rows are backfilled with episode 1 + an event id.
+    // v9 kept no delivery receipt, so the recovery policy is explicit: a row
+    // the operator already ACKNOWLEDGED or that is RESOLVED was seen, and is
+    // stamped delivered; a still-OPEN row is re-delivered once (a duplicate
+    // alert beats a live hold nobody was told about). Legacy 'warn' rows (a
     // kind the evaluator no longer produces) are dropped rather than left
     // to linger as stale banners. UNIQUE untouched. Coordination facts only.
     version: 10,
@@ -346,6 +349,7 @@ const MIGRATIONS = [
       db.exec('ALTER TABLE budget_incidents ADD COLUMN event_id TEXT')
       db.exec('ALTER TABLE budget_incidents ADD COLUMN notified_at INTEGER')
       db.exec("DELETE FROM budget_incidents WHERE kind = 'warn'")
+      db.exec("UPDATE budget_incidents SET notified_at = COALESCE(resolved_at, opened_at) WHERE status != 'open'")
       const ids = db.prepare<{ id: number }, []>('SELECT id FROM budget_incidents WHERE event_id IS NULL').all()
       const stamp = db.prepare('UPDATE budget_incidents SET event_id = ? WHERE id = ?')
       for (const { id } of ids) stamp.run(randomUUID(), id)

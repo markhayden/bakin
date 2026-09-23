@@ -30942,6 +30942,25 @@
               }
             }
           },
+          "422": {
+            "description": "Unprocessable entity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
           "500": {
             "description": "Server error.",
             "content": {
@@ -30965,7 +30984,7 @@
         "tags": [
           "Spend"
         ],
-        "description": "The rule list dispatch consults (each rule carries its server-assigned id) and the accept-unattributed cutoff.",
+        "description": "The rule list dispatch consults (each rule carries its server-assigned id), the accept-unattributed cutoff, and the `revision` every write must present. 422 when spend.json exists but is not a valid policy (dispatch fails closed until it is fixed).",
         "x-bakin-full-path": "/api/plugins/spend/limits"
       },
       "put": {
@@ -31016,6 +31035,25 @@
               }
             }
           },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
           "415": {
             "description": "Unsupported Media Type — body content type does not match the declared content type.",
             "content": {
@@ -31029,6 +31067,25 @@
                     "issues": {
                       "type": "array",
                       "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -31062,7 +31119,7 @@
         "tags": [
           "Spend"
         ],
-        "description": "Every rule round-trips; ids are kept when present and assigned when absent (a rule with a fresh id starts its milestone ladder fresh). Incidents of deleted rules resolve rule_removed. Unknown scope ids warn (a typo caps nothing) but never block the save.",
+        "description": "Every rule round-trips; ids are kept when present and assigned when absent (a rule with a fresh id starts its milestone ladder fresh). Requires the `revision` the editor loaded — 409 stale_revision when the limits changed since. One rule per (scope, scopeId, lane): put both caps on it. Live incidents are reconciled: deleted rules / removed window caps / recreated ids resolve rule_removed, a raised cap resolves raised. Unknown scope ids warn (a typo caps nothing) but never block the save.",
         "requestBody": {
           "required": true,
           "content": {
@@ -31070,6 +31127,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "revision": {
+                    "type": "string",
+                    "minLength": 1
+                  },
                   "rules": {
                     "type": "array",
                     "items": {
@@ -31124,6 +31185,7 @@
                   }
                 },
                 "required": [
+                  "revision",
                   "rules"
                 ],
                 "additionalProperties": false
@@ -31599,6 +31661,25 @@
               }
             }
           },
+          "422": {
+            "description": "Unprocessable entity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
           "500": {
             "description": "Server error.",
             "content": {
@@ -31622,7 +31703,7 @@
         "tags": [
           "Spend"
         ],
-        "description": "Manual lane assignments (metered vs subscription) that win over auth-profile detection — the fix when e.g. a Codex subscription reads as metered because its OAuth lives outside the per-agent auth profiles. Most-specific match wins: agent+provider, then agent, then provider.",
+        "description": "Manual lane assignments (metered vs subscription) that win over auth-profile detection — the fix when e.g. a Codex subscription reads as metered because its OAuth lives outside the per-agent auth profiles. Most-specific match wins: agent+provider, then agent, then provider. 422 when spend.json is invalid (nothing is written over it).",
         "requestBody": {
           "required": true,
           "content": {

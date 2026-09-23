@@ -70,17 +70,22 @@ afterAll(() => {
 })
 
 describe('ledger v10 — incident episodes + milestones migration', () => {
-  it('existing rows get episode 1 + a minted event id, warn rows are gone, resolved rows keep their state', () => {
+  it('existing rows get episode 1 + a minted event id, warn rows are gone; seen (non-open) rows are stamped delivered, open ones re-deliver once', () => {
     const rows = listBudgetIncidents({})
     expect(rows.map((r) => r.kind)).not.toContain('warn')
     expect(rows).toHaveLength(2)
     for (const row of rows) {
       expect(row.episode).toBe(1)
       expect(row.eventId).toMatch(/^[0-9a-f-]{36}$/)
-      expect(row.notifiedAt).toBeNull()
     }
     expect(new Set(rows.map((r) => r.eventId)).size).toBe(2)
-    expect(rows.find((r) => r.scopeId === 'pixel')?.status).toBe('resolved')
+    // v9 kept no delivery receipt: a RESOLVED/acknowledged row was seen and
+    // is stamped delivered; a still-OPEN row is re-delivered once (a duplicate
+    // alert beats a live hold nobody was told about).
+    const resolved = rows.find((r) => r.scopeId === 'pixel')!
+    expect(resolved.status).toBe('resolved')
+    expect(resolved.notifiedAt).not.toBeNull()
+    expect(rows.find((r) => r.status === 'open')?.notifiedAt).toBeNull()
   })
 
   it('the migrated table still debounces on the untouched UNIQUE and the milestones table is live', () => {

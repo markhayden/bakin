@@ -1,7 +1,6 @@
 /**
- * Spend plugin — shared types. The wire shapes below are what the spend,
- * policy, incident and billing routes answer with (served by the models
- * plugin until the ownership cutover, T2.7 — then by this plugin).
+ * Spend plugin — shared types. The wire shapes below are what this plugin's
+ * spend, limits, incident and billing routes answer with.
  */
 export type SpendTab = 'overview' | 'limits'
 export type SpendWindow = '24h' | '7d' | '30d' | 'all'

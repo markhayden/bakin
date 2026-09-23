@@ -22,6 +22,7 @@ let covered: string[] = []
 const spendByDay = new Map<string, { usd: number; subscriptionTokens?: number; gap?: boolean }>()
 mock.module('../../../packages/core/src/usage-history/store', () => ({
   coveredDaysSince: (days: number, now: number) => covered.filter((d) => d >= dayKey(now - (days - 1) * 86_400_000)),
+  localDayKeyDaysAgo: (now: number, n: number) => dayKey(now - n * 86_400_000),
   toLocalDayKey: dayKey,
 }))
 mock.module('../../../src/core/budget-spend', () => ({

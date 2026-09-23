@@ -33,6 +33,7 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 // the test's own agent (each test owns a fresh agent-scoped rule, so the
 // ledger's rule-independent incident identity cannot bleed across tests).
 let monthlySpendUsdMicros = 0
+let dailySpendUsdMicros = 0
 let facetReads = 0
 let currentAgent = 'nobody'
 let duringFacetRead: (() => void) | null = null
@@ -54,7 +55,7 @@ mock.module('../../src/core/budget-spend', () => ({
       computedAt: now,
       observedUsageEvidence: { status: 'available' },
       spendEvidence: { daily: { status: 'complete', gaps: [] }, monthly: { status: 'complete', gaps: [] } },
-      daily: window(new Date(2026, 8, 22).getTime(), 0),
+      daily: window(dayStartMs(NOW), dailySpendUsdMicros),
       monthly: window(MONTH_START, monthlySpendUsdMicros),
     }
   },
@@ -68,15 +69,18 @@ mock.module('../../src/core/sse', () => ({ broadcast: (d: Record<string, unknown
 // test. Here it is a sink that can be made to throw mid-send, which is how
 // "the process died between send and mark" looks to the worker.
 const relays: Array<Record<string, unknown>> = []
-let notifyImpl: (n: Record<string, unknown>) => void = (n) => { broadcasts.push({ event: 'budget.incident_opened', ...n }); relays.push(n) }
+type Delivery = { broadcast: boolean; relayed: boolean }
+const delivered = (n: Record<string, unknown>): Delivery => { broadcasts.push({ event: 'budget.incident_opened', ...n }); relays.push(n); return { broadcast: true, relayed: true } }
+let notifyImpl: (n: Record<string, unknown>) => Delivery | Promise<Delivery> = delivered
 mock.module('../../src/core/budget-notify', () => ({
-  notifyBudgetIncidentOpened: (n: Record<string, unknown>) => notifyImpl(n),
+  notifyBudgetIncidentOpened: async (n: Record<string, unknown>) => notifyImpl(n),
   emitBudgetIncidentResolved: () => {},
 }))
+mock.module('../../src/core/audit', () => ({ appendAudit: () => {} }))
 mock.module('../../src/core/app-services', () => ({ getAppServices: () => ({ runtime: {} }) }))
 
 import { closeDb } from '../../packages/core/src/storage/db'
-import { listBudgetIncidents, listMilestones, listUnnotifiedIncidents, listUnnotifiedMilestones, resolveBudgetIncident } from '../../src/core/execution-ledger'
+import { listBudgetIncidents, listMilestones, listUnnotifiedIncidents, listUnnotifiedMilestones, openBudgetIncident, resolveBudgetIncident } from '../../src/core/execution-ledger'
 import { _resetSpendObserver, bumpSpendGeneration, deliverPending, observeSpend, startSpendObserver } from '../../src/core/spend-observer'
 import { emitSpendRecorded } from '../../src/core/spend-events'
 
@@ -92,12 +96,13 @@ beforeEach(() => {
   broadcasts.length = 0
   relays.length = 0
   broadcastImpl = (d) => { broadcasts.push(d) }
-  notifyImpl = (n) => { broadcasts.push({ event: 'budget.incident_opened', ...n }); relays.push(n) }
+  notifyImpl = delivered
   facetReads = 0
   duringFacetRead = null
   currentAgent = `agent-${randomUUID()}`
   policy = { rules: [{ ...RULE, id: `rule-${randomUUID()}`, scopeId: currentAgent }] }
   monthlySpendUsdMicros = 0
+  dailySpendUsdMicros = 0
 })
 
 const ruleId = () => policy.rules[0]!.id as string
@@ -239,7 +244,7 @@ describe('deliverPending', () => {
     // The stale episode-1 mark must not clear episode 2.
     const { markIncidentNotified } = await import('../../src/core/execution-ledger')
     expect(markIncidentNotified(first.id, first.eventId)).toBe(0)
-    notifyImpl = (n) => { broadcasts.push({ event: 'budget.incident_opened', ...n }); relays.push(n) }
+    notifyImpl = delivered
     await deliverPending()
     expect(listUnnotifiedIncidents().filter((i) => i.scopeId === currentAgent)).toEqual([])
     expect(incidentEvents().filter((e) => e.eventId === second.eventId)).toHaveLength(2) // crashed attempt + recovery
@@ -275,5 +280,64 @@ describe('deliverPending', () => {
     await observeSpend(NOW) // joins/awaits the pass the write started
     expect(facetReads).toBe(1)
     expect(listMilestones({ ruleId: ruleId() }).map((r) => r.milestone)).toEqual([50])
+  })
+})
+
+describe('delivery honesty (review round)', () => {
+  it('a cap incident is marked delivered only once the relay went out: a failed relay keeps the row pending and the next pass retries with the SAME event id', async () => {
+    spendArrives(101_000_000)
+    notifyImpl = (n) => { broadcasts.push({ event: 'budget.incident_opened', ...n }); return { broadcast: true, relayed: false } }
+    await observeSpend(NOW)
+    const incident = listBudgetIncidents({ openOnly: true }).filter((i) => i.scopeId === currentAgent)[0]!
+    expect(incident.notifiedAt).toBeNull()
+    expect(listUnnotifiedIncidents().map((i) => i.id)).toContain(incident.id)
+    notifyImpl = delivered
+    await deliverPending()
+    expect(listUnnotifiedIncidents().filter((i) => i.scopeId === currentAgent)).toEqual([])
+    expect(incidentEvents().filter((e) => e.eventId === incident.eventId)).toHaveLength(2) // browsers de-duplicate on eventId
+    expect(relays).toHaveLength(1)
+  })
+
+  it('a pending row of a rule that was deleted is marked as history — never announced as a "global" milestone', async () => {
+    const id = ruleId()
+    spendArrives(51_000_000)
+    broadcastImpl = (d) => { broadcasts.push(d); throw new Error('died before mark') }
+    await observeSpend(NOW)
+    expect(listUnnotifiedMilestones().filter((r) => r.ruleId === id)).toHaveLength(1)
+    broadcastImpl = (d) => { broadcasts.push(d) }
+    broadcasts.length = 0
+    policy = { rules: [] }
+    await deliverPending()
+    expect(milestoneEvents()).toHaveLength(0)
+    expect(listUnnotifiedMilestones().filter((r) => r.ruleId === id)).toEqual([])
+  })
+
+  it('daily and monthly crossings of ONE rule are two events (per rule × window) — the lower one is never silently marked away', async () => {
+    policy = { rules: [{ ...RULE, id: ruleId(), scopeId: currentAgent, dailyCap: 10, monthlyCap: 100 }] }
+    dailySpendUsdMicros = 8_000_000 // 80% of the day
+    spendArrives(51_000_000)     // 51% of the month
+    await observeSpend(NOW)
+    const events = milestoneEvents().map((e) => [e.window, e.highest])
+    expect(events.sort()).toEqual([['daily', 75], ['monthly', 50]])
+    expect(listUnnotifiedMilestones().filter((r) => r.ruleId === ruleId())).toEqual([])
+  })
+
+  it('a rule deleted while the spend read was in flight leaves NO orphan incident: crossings commit only against the policy they were computed for', async () => {
+    const id = ruleId()
+    spendArrives(101_000_000)
+    duringFacetRead = () => { policy = { rules: [] } }
+    await observeSpend(NOW)
+    expect(listBudgetIncidents({ openOnly: true }).filter((i) => i.scopeId === currentAgent)).toEqual([])
+    expect(listMilestones({ ruleId: id })).toEqual([])
+    expect(incidentEvents()).toHaveLength(0)
+  })
+
+  it("boot/watchdog delivery sweeps rollover FIRST: yesterday's defer incident resolves window_rollover and is never relayed as if it still blocked work", async () => {
+    const yesterday = dayStartMs(NOW) - 86_400_000
+    const { id } = openBudgetIncident({ scope: 'agent', scopeId: currentAgent, lane: 'metered', window: 'daily', windowStartMs: yesterday, kind: 'cap', unit: 'usd_micros', capValue: 10_000_000, spentValue: 11_000_000, atCap: 'defer', openedAt: yesterday + 1 })
+    await deliverPending()
+    expect(listBudgetIncidents({}).find((i) => i.id === id)).toMatchObject({ status: 'resolved', resolution: 'window_rollover' })
+    expect(incidentEvents()).toHaveLength(0)
+    expect(relays).toHaveLength(0)
   })
 })
