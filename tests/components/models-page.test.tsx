@@ -401,6 +401,22 @@ describe('ModelsPage component', () => {
       expect(configWrite()?.body?.ops).toEqual([{ ref: 'policy:fallback:0', set: { model: null } }])
     })
 
+    it('Fallbacks: a stale save carrying a POSITIONAL fallback op is refused, reloaded and explained — never re-posted against a moved list', async () => {
+      render(<ModelsPage />)
+      fireEvent.click(await screen.findByText('More defaults'))
+      fireEvent.click(await screen.findByRole('button', { name: 'Remove fallback 1' }))
+      await screen.findByTestId('draft-summary')
+      // Another editor saved after this page loaded (and after its first-visit mode persist).
+      selectionsRevision += 1
+      const posts = () => fetchCalls.filter((c) => c.method === 'POST' && c.url === '/api/plugins/models/selections' && !((c.body?.ops as Array<{ ref: string }>) ?? []).every((op) => op.ref === 'ui:mode'))
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(posts()).toHaveLength(1))
+      expect(await screen.findByText(/changed since this page loaded/)).toBeTruthy()
+      // Still exactly one attempt; the draft is kept for the operator to re-decide.
+      expect(posts()).toHaveLength(1)
+      expect(screen.getByTestId('draft-summary').textContent).toContain('1 change staged')
+    })
+
     it('Aliases: adding stages a set op, removing stages a clear', async () => {
       const user = userEvent.setup()
       render(<ModelsPage />)

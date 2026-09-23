@@ -189,17 +189,25 @@ export function useSelections(): SelectionsData {
         adoptRevision(outcome.revision)
         return outcome
       } catch (err) {
-        // Someone else saved in between: the ops are explicit intents, so
-        // re-posting them against the fresh revision is safe — once.
-        if ((err as { code?: string }).code === 'stale_revision' && attempt === 0) {
+        // Someone else saved in between. Ops keyed by a NAME (agent, route,
+        // tag, alias, policy field) are explicit intents, so re-posting them
+        // against the fresh revision is safe — once. A fallback op is
+        // POSITIONAL (`policy:fallback:<n>`): against a reordered list it
+        // would remove the wrong entry, so it is never re-posted blind — the
+        // page reloads and the operator decides again.
+        if ((err as { code?: string }).code === 'stale_revision' && attempt === 0 && !ops.some((op) => op.ref.startsWith('policy:fallback:'))) {
           const fresh = await pluginFetchJson<SelectionsResponse>(PLUGIN_ID, 'selections', { label: 'Model selections', timeoutMs: LOAD_TIMEOUT_MS })
           revision = fresh.revision
           continue
         }
+        if ((err as { code?: string }).code === 'stale_revision') {
+          void load()
+          throw new Error('The configuration changed since this page loaded — it has been reloaded; review your change and try again.')
+        }
         throw err
       }
     }
-  }, [adoptRevision])
+  }, [adoptRevision, load])
 
   const states: SelectionStateWire[] = useMemo(() => selections?.states ?? [], [selections])
   const customizations = useMemo(() => listCustomizations(states), [states])
