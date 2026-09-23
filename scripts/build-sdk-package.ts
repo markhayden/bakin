@@ -274,7 +274,9 @@ function buildJsEntry(entry: SdkExportEntry, outDir: string): void {
       '--outfile',
       targetFile,
       '--target',
-      'bun',
+      // Rich content is a browser entry: vfile selects Node-only process/URL
+      // imports under the Bun target, breaking installed plugin UI fixtures.
+      entry.exportPath === './content' ? 'browser' : 'bun',
       '--format',
       'esm',
       // NOT `--production`: that implies identifier mangling, and Bun 1.3's
