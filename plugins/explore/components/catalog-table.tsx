@@ -41,7 +41,7 @@ export function CatalogTable({ entries, activeAdapter, onSelect, onInstall }: {
     return dir === 'asc' ? order : -order
   }), [entries, field, dir])
   const columns: ReadonlyArray<DataTableColumn<ExploreCatalogEntry>> = [
-    { key: 'name', header: 'Name', sortable: true, narrow: 'primary', cellClassName: 'whitespace-normal', cell: entry => (
+    { key: 'name', header: 'Name', sortable: true, narrow: 'primary', headClassName: 'w-1/2', cellClassName: 'whitespace-normal', cell: entry => (
       <Inline wrap={false} align="start">
         <EntryVisual entry={entry} size="sm" />
         <div className="min-w-0">
@@ -50,18 +50,18 @@ export function CatalogTable({ entries, activeAdapter, onSelect, onInstall }: {
         </div>
       </Inline>
     ) },
-    { key: 'category', header: 'Category', sortable: true, narrow: 'meta', cellClassName: 'whitespace-normal', cell: entry => entry.category },
-    { key: 'status', header: 'Status', sortable: true, narrow: 'meta', cell: entry => {
+    { key: 'category', header: 'Category', sortable: true, narrow: 'meta', cellClassName: 'whitespace-nowrap', cell: entry => entry.category },
+    { key: 'status', header: 'Status', sortable: true, narrow: 'meta', cellClassName: 'whitespace-nowrap', cell: entry => {
       const status = entryStatusBadge(entry)
       return status ? <StatusBadge tone={status.tone} variant={status.variant} icon={status.icon} size="xs">{status.label}</StatusBadge>
         : <Text size="meta" tone="muted">Available</Text>
     } },
-    { key: 'version', header: 'Version', narrow: 'label', cell: entry => entry.installedVersion ? `v${entry.installedVersion}` : '—' },
-    { key: 'runtime', header: 'Runtime', narrow: 'label', cellClassName: 'whitespace-normal', cell: entry => runtimeCompatible(entry, activeAdapter)
+    { key: 'version', header: 'Version', narrow: 'label', cellClassName: 'whitespace-nowrap', cell: entry => entry.installedVersion ? `v${entry.installedVersion}` : '—' },
+    { key: 'runtime', header: 'Runtime', narrow: 'label', headClassName: 'w-1/8', cellClassName: 'whitespace-normal wrap-normal', cell: entry => runtimeCompatible(entry, activeAdapter)
       ? <Text size="meta" tone="muted">{entry.runtimes?.includes('*') || !entry.runtimes ? 'Any runtime' : entry.runtimes.join(', ')}</Text>
       : <Text size="meta" tone="muted">Not for {activeAdapter ?? 'this runtime'} — requires {(entry.runtimes ?? []).join(', ')}</Text> },
     { key: 'actions', header: 'Actions', hideLabel: true, narrow: 'trailing', align: 'end', cell: entry => (
-      <Inline gap="dense">
+      <Inline gap="dense" wrap={false} justify="end">
         <Button variant="ghost" size="xs" aria-label={`View ${entry.name} details`} onClick={() => onSelect(entry)}>Details</Button>
         {!entry.builtin && !entry.installed && onInstall && runtimeCompatible(entry, activeAdapter) ? (
           <Button size="xs" aria-label={`Install ${entry.name}`} onClick={() => onInstall(entry)}><Plus />Install</Button>

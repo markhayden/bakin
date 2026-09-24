@@ -9,3 +9,12 @@ export const catalogEntries: ExploreCatalogEntry[] = [
   source: `github:markhayden/bakin-bits-official#agents/${entry.id}`, ref: null, trust: 'official', builtin: false,
   dependencies: [], defaultSelected: false, screenshots: [],
 }))
+
+catalogEntries.push(...[
+  { id: 'github', name: 'GitHub', category: 'Engineering', description: 'Lets your agents work GitHub the way you do — read issues and pull requests, watch CI runs, inspect diffs, and open PRs — through the official gh command line tool.' },
+  { id: 'google-workspace', name: 'Google Workspace', category: 'Productivity', description: 'Lets your agents work your Google account — search Gmail, read and add calendar events, find files in Drive, and read or update Sheets and Docs — through the open-source gog command line tool.' },
+  { id: 'documents', name: 'Word & Excel Documents', category: 'Productivity', description: 'Lets your agents read and write real Word and Excel files — pull the text out of a .docx, turn a spreadsheet into data they can reason over, and hand back a formatted document or workbook. Fully local, no Office install, no API key.' },
+].map(entry => ({
+  ...catalogEntries[0]!, ...entry, kind: 'skill-pack' as const, capability: entry.id,
+  source: `github:markhayden/bakin-bits-official#packs/${entry.id}`,
+})))

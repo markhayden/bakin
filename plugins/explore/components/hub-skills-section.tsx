@@ -404,8 +404,8 @@ export function HubSkillsSection() {
           <h3>Installed</h3>
           <ListRows variant="separated" size="sm" aria-label="Installed capabilities">
             {installed.map((row) => (
-              <ListRow key={row.packageId + row.skillName}>
-                <div className="min-w-0">
+              <ListRow key={row.packageId + row.skillName} className="flex items-center gap-bakin-2">
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-bakin-2 break-words text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">
                     {row.skillName} <Text size="meta" tone="muted">v{row.version}</Text>
                     <Badge tone="neutral" variant="soft" size="xs">{sourceChip(row.source, row.hub)}</Badge>
@@ -425,7 +425,7 @@ export function HubSkillsSection() {
                 <ListRowActions>
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="icon-sm"
                     onClick={() => setRemoving({ skillName: row.skillName, packageId: row.packageId })}
                     aria-label={`Remove ${row.skillName}`}
                   >
@@ -448,7 +448,7 @@ export function HubSkillsSection() {
           ecosystem — browse clawhub.ai (or a GitHub skills repo), copy the page link, paste it here.
           You&apos;ll review a full trust preview before anything installs.
         </Text>
-        <div className="flex gap-bakin-2">
+        <div className="flex flex-col gap-bakin-2 sm:flex-row">
           <Input
             value={ref}
             onChange={(e) => setRef(e.target.value)}
