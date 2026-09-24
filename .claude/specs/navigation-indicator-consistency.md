@@ -1,6 +1,7 @@
 # Navigation indicator consistency
 
-Status: proposed for review after product interview. Implementation has not started.
+Status: approved and implemented on `fix/navigation-indicators` (core and official Bits).
+Verification evidence is recorded in the companion implementation plan.
 
 ## Objective
 

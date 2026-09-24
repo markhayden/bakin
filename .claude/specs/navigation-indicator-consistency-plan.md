@@ -1,6 +1,7 @@
 # Navigation indicator consistency — implementation plan
 
-Status: proposed; awaiting review. Implements
+Status: approved by “build plan”; implementation and verification complete.
+Two intermittent Firefox checks passed on unchanged isolated rerun (details below). Implements
 [the specification](navigation-indicator-consistency.md).
 
 ## Outcome
@@ -294,8 +295,8 @@ no new console failures, overflow, keyboard regressions, or unexpected fanfare.
 
 Complete only when this matrix agrees with the canonical destination data. Report
 actual checks, any limits of periodic diagnostic detection, the Storybook patterns
-used, and any explicit design-system approvals. Implementation remains gated on
-review under the user's kickoff workflow.
+used, and any explicit design-system approvals. The user approved implementation with “build plan”; no deployment or publication
+is included in this work.
 
 ## Risks and controls
 
@@ -319,5 +320,110 @@ review under the user's kickoff workflow.
 - Planning baseline: `bun run ui:conformance --quick` passed (228 architecture
   tests, zero failures, TypeScript and governance checks passed). Only the spec
   and plan were added; application behavior has not changed.
-- Runtime reproductions and implementation tests pending; no passing result is
-  claimed from source inspection alone.
+
+### Implementation and review — 2026-09-24
+
+- Health was previously refreshed by a full doctor interval (30 minutes by
+  default), while several checks expired after 60 seconds. Opening Health
+  additionally requested a fresh sweep. The new server coordinator schedules
+  each check independently of page visits, handles durable invalidations, and
+  publishes time-dependent projection changes. The exact reported 56-to-3
+  production episode was not replayed; regression tests reproduce superseded
+  responses and expired evidence without a mounted page.
+- Every main-nav layout uses the existing small StatusMarker. Positive counts
+  remain provider metadata; neither visible navigation nor accessible names
+  contain them. Static child defaults participate in consistent rollups.
+- Conversation indicators signal green unread replies only. Removed obsolete
+  working-state inputs from the shared contract and all three first-party
+  consumers; updated the official repository's ambient types and test stub.
+- Health navigation is action-required-only, across sensitivity modes; watch,
+  acknowledged, and snoozed incidents do not light it. Pending workflow gates
+  stay visible in Tasks Review; Workflows publishes no duplicate gate badge.
+- Snapshot reads retain last-known state, retry failures, reject superseded
+  results, and recover through the shell event bus. Chat seen/delete broadcasts
+  now originate after server writes. Assets exposes its watcher-maintained
+  inventory through `/import/summary`; it does not scan per browser event.
+- Review covered correctness (races, failures, suppression, teardown), clarity
+  (removed count aggregation and dead working inputs), architecture (domain
+  ownership and one SSE connection), safety (read-only recovery; isolated test
+  homes), and performance (targeted checks, bounded retries, cheap snapshots).
+  Review fixes included observer-error isolation, accessible expanded links,
+  and preserving Assets retry backoff during loading.
+- README reviewed: core top-level setup unchanged. Updated official Messaging
+  README, public plugin guidance, the style guide, relevant knowledge files,
+  and supersession notes on the older main-navigation specification.
+- Reused `feedback/status-marker.stories.tsx` / `DenseViewMarkers`,
+  `lists/kanban.stories.tsx` / `TaskBoardComposition`, and
+  `recipes/workflow-pages.stories.tsx` / `ReviewAction`. No new public visual
+  contract, styles, token, exception, allowance, or baseline was needed.
+
+### Verification evidence
+
+- Core canonical suite: **10,063 passed, 19 skipped, 0 failed**. The initial
+  sandboxed run could not bind local test servers; the authorized rerun passed
+  with `IMITATION_CRAB_HOME=/tmp/bakin-nav-suite-mock`.
+- Final focused regression suite after review: **213 passed, 0 failed** across
+  18 files. Covers Health eligibility/scheduling/resources, SSE lifecycle,
+  Tasks/Assets/Spend/Chat recovery, dot rendering and rollups, and approvals.
+- Core typecheck and lint passed (six pre-existing warnings; none added).
+  `bun run ui:conformance --quick` passed, including 228 architecture tests.
+- Official repository: **648 passed, 8 skipped, 0 failed**; typecheck and lint
+  passed, as did its production build. Its installed-package UI conformance passed against a freshly built
+  SDK, including all Messaging and Projects surfaces and eight Projects browser
+  scenarios. Direct fixture execution initially selected the test stub; the
+  repository's canonical installed-package runner supplied the real SDK.
+- Health, Tasks, Chat, Workflows, Spend, and Assets `test:ui` fixtures passed;
+  their HTML reports were inspected. Desktop and mobile screenshots were
+  reviewed; reports live at each plugin's `test-results/bakin-ui/index.html`.
+- Isolated mock at port 3747, with all data under `/tmp`, dispatch paused, and
+  search directed to a disabled isolated endpoint: desktop expanded/closed
+  group, collapsed rail/popover, and 390px mobile drawer confirmed count-free
+  dots. Three approvals are visibly marked in Tasks; Workflows is quiet.
+- Browser: a server-side Chat read cleared the original Tasks-page indicator
+  within two seconds. Snoozing action-required Health incidents cleared its dot
+  without visiting Health, while a remaining watch incident stayed silent.
+  Failed snapshots retained state; resume and real browser offline/online
+  transitions reconciled within two seconds without notification replay.
+  There were no page errors. Existing Activity-panel state was closed for the
+  narrow drawer capture; broad page-layout behavior was not changed.
+- Browser screenshots and results: `test-results/navigation-indicators/`.
+  Browser tooling in this session lacked the in-app browser/Node REPL, so
+  repository Playwright was used. Temporary mock processes were stopped.
+- A prolonged-outage test exposed the previous 20-attempt SSE cutoff. The
+  shell now retries for the mounted tab lifetime, capped at 30 seconds, and
+  ignores stale connection errors. The regression failed before the change and
+  passed afterward; all ten SSE tests, typecheck, and focused lint passed.
+- Full conformance was run. Host/plugin/vendor builds, payload ratchet,
+  deterministic Storybook, the core suite, all 365 Storybook interaction and
+  accessibility tests, and all 314 canonical visual comparisons passed.
+- Cross-browser first run: **154 passed, 2 failed** (Chromium and WebKit passed).
+  Firefox's forced-colors field-focus check observed `outline-style: none`, and
+  its markdown/search check recorded an aborted `axe` script request during
+  navigation. Both passed in an isolated canonical-container rerun, unchanged
+  (**2 passed**). No tests were relaxed or ignored. The aggregate full command
+  therefore exited nonzero; this is not recorded as a clean first-run pass.
+- The two remaining full-conformance gates were completed separately after that
+  aggregate exit: `bun run ui:test:conformance` passed, and `bun run docs:check`
+  passed (generated contracts, route checks, docs site, and public catalog).
+  All affected plugin fixtures and the feature-specific mock browser matrix
+  passed; no navigation regression was observed.
+- Canonical visual baselines, public API inventories, design tokens, exception
+  ledgers, and performance ceilings were not changed. Generated API references
+  and the production embedded-asset manifest were committed normally.
+
+### Checkpoints and rollback
+
+Core checkpoints: `45efb8675` specification, `16b626e41` shared recovery,
+`dd548f137` Health scheduling and eligibility, `c887ebbbc` Assets/Spend recovery,
+`7e4021525` dot rendering, `f4f9801cc` unread conversations, `5e89f337c` approval
+ownership, `49b3c7785` prolonged-outage recovery, and `dca9fec3c` generated
+documentation/assets. Official Bits checkpoint: `5987450`. Revert consumers before the
+shared event/contract changes; no persisted domain data migration is involved.
+
+### Limits
+
+Event-backed changes reconcile promptly once their authoritative snapshot is
+available. External diagnostic probes still obey their registered cadence and
+execution deadline; this does not promise instantaneous knowledge of external
+systems. Disconnected or failed reads deliberately retain their last-known state.
+Neither repository has been pushed, merged, published, or deployed.
