@@ -17,7 +17,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { basename, dirname, join, relative, resolve, sep } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
@@ -253,57 +253,35 @@ function copyDeclarationTree(tempDtsDir: string, outDir: string): void {
 }
 
 /**
- * Rich content is a BROWSER entry: vfile swaps its Node-only process/URL
- * helpers through the `browser` field, so a Bun-targeted bundle breaks every
- * downstream plugin browser build (#916). But the browser target also picks
- * `decode-named-character-reference`'s DOM build, which runs
- * `document.createElement('i')` at import — so rc.36's packed content entry
- * threw `ReferenceError: document is not defined` under plain Node/Bun and
- * failed the post-publish SDK smoke. The package's universal build (a static
- * table, what the Bun/Node target resolves) works everywhere, so pin it while
- * keeping the browser target for everything else. Bun's CLI has no plugin
- * hook, hence the JS API for this one entry.
+ * The packed rich-content entry is built by its own script (browser target +
+ * a resolver pin that keeps it importable without a DOM — the rc.36 regression;
+ * see the header of scripts/build-sdk-content-entry.ts).
  */
-const UNIVERSAL_CHARACTER_REFERENCE_PACKAGE = 'decode-named-character-reference'
+const CONTENT_ENTRY_BUILDER = join(REPO_ROOT, 'scripts/build-sdk-content-entry.ts')
 
-async function buildBrowserContentEntry(wrapper: string, targetFile: string): Promise<void> {
-  const result = await Bun.build({
-    entrypoints: [wrapper],
-    outdir: dirname(targetFile),
-    naming: basename(targetFile),
-    target: 'browser',
-    format: 'esm',
-    // Same minify posture as the CLI path below: syntax + whitespace only,
-    // never identifier mangling (see the `--production` note there).
-    minify: { syntax: true, whitespace: true, identifiers: false },
-    define: { 'process.env.NODE_ENV': '"production"' },
-    external: [...EXTERNAL_JS_PEERS],
-    plugins: [{
-      name: 'pin-universal-decode-named-character-reference',
-      setup(build) {
-        build.onResolve({ filter: /^decode-named-character-reference$/ }, (args) => {
-          // Runtime resolution (bun/node/default conditions) yields index.js,
-          // the DOM-free build; the `browser` condition the bundler would
-          // apply yields index.dom.js. Resolve from the importer: the package
-          // is nested under micromark, not hoisted to the repo root.
-          const path = Bun.resolveSync(UNIVERSAL_CHARACTER_REFERENCE_PACKAGE, dirname(args.importer))
-          if (path.endsWith('index.dom.js')) {
-            throw new Error(`${UNIVERSAL_CHARACTER_REFERENCE_PACKAGE} resolved to its DOM build (${path}); the content entry must stay importable without a DOM`)
-          }
-          return { path }
-        })
-      },
-    }],
-  })
-  if (!result.success) {
-    throw new Error(`Failed to build ./content:\n${result.logs.map((log) => String(log)).join('\n')}`)
+/**
+ * Runs in a SUBPROCESS on purpose (like the CLI path below): the SDK package
+ * test builds the package inside the bun test process, and an in-process
+ * `Bun.build` there inherits the test preload's module mocks — CI shards saw
+ * EISDIR on real index.js files and unresolvable react-dom internals.
+ */
+function buildBrowserContentEntry(wrapper: string, targetFile: string): void {
+  const result = spawnSync('bun', [
+    'run',
+    CONTENT_ENTRY_BUILDER,
+    '--entry', wrapper,
+    '--outfile', targetFile,
+    ...EXTERNAL_JS_PEERS.flatMap((specifier) => ['--external', specifier]),
+  ], { cwd: REPO_ROOT, encoding: 'utf-8' })
+  if (result.status !== 0) {
+    throw new Error(`Failed to build ./content:\n${result.stdout}${result.stderr}`)
   }
   if (!existsSync(targetFile)) {
     throw new Error(`Expected ${targetFile} to be generated`)
   }
 }
 
-async function buildJsEntry(entry: SdkExportEntry, outDir: string): Promise<void> {
+function buildJsEntry(entry: SdkExportEntry, outDir: string): void {
   const targetFile = join(outDir, entry.importPath)
   // The root source barrel combines SDK types with runtime values. Core also
   // consumes those SDK types, creating a type-only cycle that Bun 1.3 can
@@ -323,7 +301,7 @@ async function buildJsEntry(entry: SdkExportEntry, outDir: string): Promise<void
   mkdirSync(dirname(targetFile), { recursive: true })
   try {
     if (entry.exportPath === './content') {
-      await buildBrowserContentEntry(wrapper, targetFile)
+      buildBrowserContentEntry(wrapper, targetFile)
       return
     }
     const result = spawnSync('bun', [
@@ -583,7 +561,7 @@ export async function buildSdkPackage(opts: BuildSdkPackageOptions): Promise<voi
   rmSync(outDir, { recursive: true, force: true })
   mkdirSync(outDir, { recursive: true })
 
-  for (const entry of SDK_EXPORTS) await buildJsEntry(entry, outDir)
+  for (const entry of SDK_EXPORTS) buildJsEntry(entry, outDir)
   buildCli(outDir)
   buildStylesheet(outDir)
 
