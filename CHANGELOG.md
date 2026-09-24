@@ -6,9 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.37] - 2026-09-24
+
+A single-fix patch for binary installs: the default workflows, workflow-step skills and runtime skills that every release binary has silently dropped since June now ship inside the binary, and the doctor tells you if a build ever loses them again.
+
 ### Fixed
 
-- **Compiled binaries shipped no default workflows, step skills or runtime skills.** Every install from a release binary booted with an empty Workflows page: the six default workflows (`text-social-post`, `image-social-post`, `video-social-post`, `video-script`, `clip-creation`, `assemble-video`), the three image workflows, their workflow-step skills, and the images plugin's installable runtime skills never registered, and `bakin check plugin-assets` reported that no plugin ships any. The loaders located `defaults/` relative to their own module file, which inside a single-file binary is a virtual `/$bunfs` path that never exists, and returned silently. Source checkouts were unaffected, which is why it went unseen since June. Plugin defaults are now embedded in the binary at build time and every loader resolves through one plugin-resources resolver (disk on a checkout, embedded copies in the binary). A compile-and-run regression asserts parity between a real binary and the checkout, and a new `workflows.shipped-defaults` health check raises an action-required incident if a build ever loses sight of its shipped workflows again.
+- **Compiled binaries shipped no default workflows, step skills or runtime skills (#926).** Every install from a release binary booted with an empty Workflows page: the six default workflows (`text-social-post`, `image-social-post`, `video-social-post`, `video-script`, `clip-creation`, `assemble-video`), the three image workflows, their workflow-step skills, and the images plugin's installable runtime skills never registered, and `bakin check plugin-assets` reported that no plugin ships any. The loaders located `defaults/` relative to their own module file, which inside a single-file binary is a virtual `/$bunfs` path that never exists, and returned silently. Source checkouts were unaffected, which is why it went unseen since June. Plugin defaults are now embedded in the binary at build time and every loader resolves through one plugin-resources resolver (disk on a checkout, embedded copies in the binary). A compile-and-run regression asserts parity between a real binary and the checkout, and a new `workflows.shipped-defaults` health check raises an action-required incident if a build ever loses sight of its shipped workflows again.
 
 ### Upgrade notes
 
@@ -688,5 +692,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.35]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.35
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.36...HEAD
 [0.0.1-rc.36]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.36
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.37...HEAD
+[0.0.1-rc.37]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.37
