@@ -16,34 +16,72 @@ mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: ()
 
 const useNavBadge = mock()
 const toast = mock(() => 'toast-1')
+const emitted: Array<Record<string, unknown>> = []
 const handlers = new Map<string, (payload: Record<string, unknown>) => void>()
+/** A faithful fake of the SDK toast store: add/dismiss/subscribe, persistent toasts never time out. */
+interface FakeToast { id: string; type: string; title?: unknown; message: unknown; action?: unknown; persistent?: boolean }
+const storeState = { toasts: [] as FakeToast[] }
+const listeners = new Set<(state: typeof storeState) => void>()
+let toastSeq = 0
+const notify = () => { for (const l of [...listeners]) l(storeState) }
+const fakeStore = {
+  getState: () => ({
+    toasts: storeState.toasts,
+    add: (t: Omit<FakeToast, 'id'>) => { const id = `t${++toastSeq}`; storeState.toasts = [...storeState.toasts, { ...t, id }]; notify(); return id },
+    dismiss: (id: string) => { storeState.toasts = storeState.toasts.filter((t) => t.id !== id); notify() },
+  }),
+  subscribe: (l: (state: typeof storeState) => void) => { listeners.add(l); return () => listeners.delete(l) },
+}
+/** The operator pressed the toast's own close control: the store drops it, nobody untracked it. */
+const userCloses = (id: string) => fakeStore.getState().dismiss(id)
 mock.module('@makinbakin/sdk/hooks', () => ({
   useNavBadge,
   toast,
-  useToastStore: { getState: () => ({ dismiss: mock() }) },
+  emitPluginEvent: (payload: Record<string, unknown>) => { emitted.push(payload) },
+  useToastStore: fakeStore,
   useRouter: () => ({ push: mock() }),
   usePluginEvent: (event: string, handler: (payload: Record<string, unknown>) => void) => { handlers.set(event, handler) },
+}))
+mock.module('@makinbakin/sdk/navigation', () => ({
+  PluginLink: ({ to, children }: { to: string; children: unknown }) => {
+    const React = require('react') as typeof import('react')
+    return React.createElement('a', { href: to }, children as never)
+  },
 }))
 const notifications: Array<[string, string, string | undefined]> = []
 mock.module('../../../plugins/spend/lib/browser-notify', () => ({
   sendBrowserNotification: (title: string, body: string, url?: string) => { notifications.push([title, body, url]) },
 }))
 
-import { act, render } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { SpendBadgeProvider } from '../../../plugins/spend/components/spend-badge-provider'
 import { headsUpRows, milestoneNotifies, spendBadge, warningBars } from '../../../plugins/spend/components/attention'
 
 let statusBody: Record<string, unknown> = { paused: false, milestones: [], openIncidents: [] }
+const posts: Array<{ url: string; body: unknown }> = []
+let postReply: { status: number; body: unknown } = { status: 200, body: { ok: true } }
 const originalFetch = globalThis.fetch
 
 beforeEach(() => {
   useNavBadge.mockClear()
   toast.mockClear()
   notifications.length = 0
+  emitted.length = 0
+  posts.length = 0
+  postReply = { status: 200, body: { ok: true } }
   handlers.clear()
+  listeners.clear()
+  storeState.toasts = []
   statusBody = { paused: false, milestones: [], openIncidents: [] }
-  globalThis.fetch = mock(async () => new Response(JSON.stringify(statusBody), { headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch
+  globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (init?.method === 'POST') {
+      posts.push({ url, body: init.body ? JSON.parse(String(init.body)) : undefined })
+      return new Response(JSON.stringify(postReply.body), { status: postReply.status, headers: { 'content-type': 'application/json' } })
+    }
+    return new Response(JSON.stringify(statusBody), { headers: { 'content-type': 'application/json' } })
+  }) as unknown as typeof fetch
 })
 afterEach(() => { globalThis.fetch = originalFetch })
 
@@ -98,5 +136,74 @@ describe('SpendBadgeProvider', () => {
     await act(async () => { handlers.get('spend.milestone')!({ ...event, eventId: 'evt-2', highest: 90 }) })
     expect(toast).toHaveBeenCalledTimes(1)
     expect(notifications).toHaveLength(1)
+  })
+})
+
+describe('SpendBadgeProvider — ladder toasts (decision 2026-09-23: toasts the operator has to close, no header bars)', () => {
+  const settle = async () => { await act(async () => { await Promise.resolve() }) }
+
+  it('keeps one persistent toast per unacknowledged 90% row and per open cap incident, derived from the lite status', async () => {
+    statusBody = { paused: false, milestones: [ROW_90], openIncidents: [CAP] }
+    await act(async () => { render(<SpendBadgeProvider />) })
+    await settle()
+    expect(storeState.toasts.map((t) => [t.type, t.title, t.persistent])).toEqual([
+      ['info', '90% of your monthly limit', true],
+      ['error', 'monthly limit reached', true],
+    ])
+    expect(String(storeState.toasts[1]!.message)).toContain('Global · $0.00 of $0.00 metered — matching work waits for the next period. Close to acknowledge.')
+    // A re-read with the same rows adds nothing.
+    await act(async () => { handlers.get('budget.incident_opened')!({}) })
+    await settle()
+    expect(storeState.toasts).toHaveLength(2)
+  })
+
+  it('closing a toast IS the acknowledgement: the 90% row is acked and the event fans out; the cap incident is acked quietly', async () => {
+    statusBody = { paused: false, milestones: [ROW_90], openIncidents: [CAP] }
+    await act(async () => { render(<SpendBadgeProvider />) })
+    await settle()
+    const [warn, cap] = storeState.toasts
+    await act(async () => { userCloses(warn!.id) })
+    await waitFor(() => expect(posts).toEqual([{ url: '/api/plugins/spend/milestones/5/ack', body: undefined }]))
+    expect(emitted).toEqual([{ event: 'spend.milestone_acknowledged', milestoneId: 5 }])
+    await act(async () => { userCloses(cap!.id) })
+    await waitFor(() => expect(posts.at(-1)).toEqual({ url: '/api/plugins/spend/incidents/7/resolve', body: { action: 'ack' } }))
+  })
+
+  it('a row handled elsewhere (acked on another tab, resolved, rolled over) takes its toast away WITHOUT acknowledging again', async () => {
+    statusBody = { paused: false, milestones: [ROW_90], openIncidents: [CAP] }
+    await act(async () => { render(<SpendBadgeProvider />) })
+    await settle()
+    expect(storeState.toasts).toHaveLength(2)
+    statusBody = { paused: false, milestones: [], openIncidents: [] }
+    await act(async () => { handlers.get('budget.incident_resolved')!({}) })
+    await settle()
+    expect(storeState.toasts).toHaveLength(0)
+    expect(posts).toHaveLength(0)
+  })
+
+  it('a failed acknowledgement (already rolled over) says so and the toast is not silently gone for good — the next read re-derives it', async () => {
+    statusBody = { paused: false, milestones: [ROW_90], openIncidents: [] }
+    await act(async () => { render(<SpendBadgeProvider />) })
+    await settle()
+    postReply = { status: 404, body: { error: 'No unacknowledged milestone 5' } }
+    await act(async () => { userCloses(storeState.toasts[0]!.id) })
+    await waitFor(() => expect(toast).toHaveBeenCalledWith('No unacknowledged milestone 5', 'error'))
+    // The re-read after the failure still lists the row: the toast comes back.
+    await settle()
+    await waitFor(() => expect(storeState.toasts).toHaveLength(1))
+  })
+
+  it("a pause cap's toast offers Resume as-is; a 409 turns the link into \"Raise limit to resume\" with the server's reason", async () => {
+    statusBody = { paused: false, milestones: [], openIncidents: [{ ...CAP, atCap: 'pause' }] }
+    await act(async () => { render(<SpendBadgeProvider />) })
+    await settle()
+    expect(String(storeState.toasts[0]!.message)).toContain('paused until you act')
+    render(storeState.toasts[0]!.action as never)
+    expect(screen.getByRole('link', { name: 'Raise limit' }).getAttribute('href')).toBe('/spend?tab=limits')
+    postReply = { status: 409, body: { error: 'still_over_limit', message: 'Spend is still at or over this limit — raise the limit to resume.' } }
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Resume as-is' })) })
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Raise limit to resume' })).toBeTruthy())
+    expect(screen.queryByRole('button', { name: 'Resume as-is' })).toBeNull()
+    expect(screen.getByRole('alert').textContent).toContain('raise the limit to resume')
   })
 })
