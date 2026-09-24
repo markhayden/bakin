@@ -100,3 +100,9 @@ One row per asset keyed by assetId, built from the current version + the
 enrichment block; `media_url` (file:// URL) feeds the `assets_visual`
 CLIP+CLAP leg for raster images AND audio. Content type `schemaVersion: 2`;
 changes blue/green-migrate (`search-system.md`).
+
+The unmanaged-file inventory is seeded by a read-only scan at activation; it never
+auto-imports files. `GET /import/summary` returns the watcher-maintained count
+without rescanning an initialized inventory. A failed initial scan is retried on
+snapshot reads. The nav provider reads this snapshot on mount, asset.unmanaged,
+and connection/resume; failed reads retain its previous signal.

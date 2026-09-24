@@ -12,7 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavBadge, usePluginEvent, useRouter, toast, useToastStore } from '@makinbakin/sdk/hooks'
-import { pluginFetch } from '@makinbakin/sdk/utils'
+import { pluginFetchJson } from '@makinbakin/sdk/utils'
 import { Button, Text } from '@makinbakin/sdk/ui'
 
 import { sendBrowserNotification } from '../lib/browser-notify'
@@ -58,19 +58,30 @@ export function SpendBadgeProvider() {
   // At-least-once delivery ⇒ the same eventId can arrive twice; toast once.
   const seen = useRef(new Set<string>())
 
-  const refresh = useCallback(async () => {
+  const generation = useRef(0)
+  const request = useRef<AbortController | null>(null)
+  const retry = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const attempts = useRef(0)
+  const refresh = useCallback(async function refresh() {
+    const seq = ++generation.current
+    request.current?.abort()
+    if (retry.current) clearTimeout(retry.current)
+    const controller = new AbortController()
+    request.current = controller
     try {
-      const res = await pluginFetch('spend', 'status?lite=1')
-      if (!res.ok) return
-      const body = (await res.json()) as LiteStatus
-      setRows(Array.isArray(body.milestones) ? body.milestones : [])
-      setIncidents(Array.isArray(body.openIncidents) ? body.openIncidents : [])
+      const body = await pluginFetchJson<LiteStatus>('spend', 'status?lite=1', { timeoutMs: 15_000, signal: controller.signal })
+      if (!Array.isArray(body.milestones) || !Array.isArray(body.openIncidents)) throw new Error('Invalid Spend status')
+      if (seq !== generation.current) return
+      attempts.current = 0
+      setRows(body.milestones)
+      setIncidents(body.openIncidents)
     } catch {
-      /* transient fetch failures keep the last known rows */
+      if (seq !== generation.current) return
+      retry.current = setTimeout(() => { void refresh() }, Math.min(1000 * 2 ** attempts.current++, 30_000))
     }
   }, [])
 
-  useEffect(() => { void refresh() }, [refresh])
+  usePluginEvent('bakin.reconcile', () => { void refresh() })
 
   usePluginEvent('spend.milestone', (payload) => {
     void refresh()
@@ -90,6 +101,17 @@ export function SpendBadgeProvider() {
   usePluginEvent('budget.incident_opened', () => { void refresh() })
   usePluginEvent('budget.incident_resolved', () => { void refresh() })
   usePluginEvent('spend.milestone_acknowledged', () => { void refresh() })
+
+  useEffect(() => {
+    void refresh()
+    return () => {
+      // Invalidate every outstanding response when this subscription unmounts.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      generation.current++
+      request.current?.abort()
+      if (retry.current) clearTimeout(retry.current)
+    }
+  }, [refresh])
 
   useNavBadge('spend', 'spend', spendBadge(rows, incidents))
   useLadderToasts(rows, incidents, refresh)

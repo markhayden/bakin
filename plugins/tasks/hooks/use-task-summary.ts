@@ -56,6 +56,8 @@ export function useTaskSummary(): UseTaskSummaryResult {
   useEffect(() => {
     void refresh()
     return () => {
+      // Invalidate every outstanding response when this subscription unmounts.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       generation.current++
       request.current?.abort()
       if (retry.current) clearTimeout(retry.current)

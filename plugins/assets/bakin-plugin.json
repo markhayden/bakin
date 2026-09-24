@@ -17,6 +17,7 @@
   ],
   "contributes": {
     "apiRoutes": [
+      { "path": "/import/summary", "method": "GET", "summary": "Current unmanaged asset count" },
       {
         "path": "/import/scan",
         "method": "GET",

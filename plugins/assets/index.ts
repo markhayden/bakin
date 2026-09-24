@@ -25,7 +25,7 @@ import {
   stopEnrichmentQueue,
 } from './lib/enrichment/queue'
 import type { EnrichmentSettings } from './lib/enrichment/providers'
-import { setUnmanagedEmitter } from './lib/unmanaged-tracker'
+import { setUnmanagedEmitter, unmanagedSnapshot } from './lib/unmanaged-tracker'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { assetRepair, checkAssets, checkEnrichmentEngine, incompleteEnrichmentAssetIds } from './lib/health-checks'
@@ -108,9 +108,12 @@ const assetsPlugin: BakinPlugin = definePlugin({
     // ─── Cross-Plugin Hooks ────────────────────────────────────────────
     registerAssetsHooks(ctx)
 
-    // No boot drain, no auto-ingest (D7): unmanaged files are surfaced by
-    // the live tracker + on-demand scans and imported explicitly.
+    // No auto-ingest (D7): a read-only inventory seeds the live tracker;
+    // importing files remains an explicit action.
     setUnmanagedEmitter((count) => ctx.events.emit('asset.unmanaged', { count }))
+    try { unmanagedSnapshot() } catch (error) {
+      log.warn('Unmanaged asset inventory unavailable; snapshot reads will retry', error)
+    }
 
     // ─── MCP Exec Tools ────────────────────────────────────────────────
     registerAssetsExecTools(ctx)

@@ -81,3 +81,9 @@ Header bars are rows of ONE fixed stack (`packages/host/src/components/layout/he
 ## Tests
 
 `tests/plugins/spend/{routes,registration,settings-upgrade,coverage,health-checks,billing,badge-provider,spend-page}.test.*`, `tests/core/{spend-observer,budget,budget-gate,budget-spend,budget-milestones-ledger,ledger-v10-incident-episodes-migration}.test.ts`, `tests/plugins/health/spend-policy-check.test.ts`, `tests/components/header-update-banner.test.tsx` (bars), `tests/cli/budget-command.test.ts`, `tests/core/onboarding/budget.test.ts`. Registry fakes in dispatch tests must answer `spend.getBudgetPolicy` — an absent hook fails closed by design.
+
+The Spend nav shows a dot (green heads-up, yellow review, red open cap incident).
+Its snapshot reconciles on connection/resume as well as domain events, ignores
+superseded responses, and retains known state on failed reads with bounded retry.
+Snapshot reconciliation never replays the expiring heads-up fanfare; unresolved
+persistent actionable toasts remain derived from current durable rows.

@@ -22,6 +22,7 @@ import {
   handleTrashList, handleTrashRestore, handleTrashPermanentDelete, handleTrashEmpty,
 } from '../routes/versioned'
 import { handleTagsRename, handleTagsRemove, handleTagsApply } from '../routes/tags'
+import { unmanagedSnapshot } from './unmanaged-tracker'
 import { handleImportScan, handleImport } from '../routes/import'
 import {
   drainEnrichmentQueue,
@@ -41,6 +42,18 @@ const okPassthrough = z.object({ ok: z.boolean() }).passthrough()
 // ─── Routes (declarative) ────────────────────────────────────────────────
 
 export const assetsRoutes = [
+  defineRoute({
+    path: '/import/summary',
+    method: 'GET',
+    summary: 'Current unmanaged asset count',
+    activityClass: 'routine',
+    responses: { 200: z.object({ count: z.number().int().nonnegative() }), 503: errorResponse },
+    handler: async () => {
+      try { return Response.json(unmanagedSnapshot()) } catch {
+        return Response.json({ error: 'Asset inventory unavailable' }, { status: 503 })
+      }
+    },
+  }),
   defineRoute({
     path: '/import/scan',
     method: 'GET',

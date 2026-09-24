@@ -207,3 +207,18 @@ describe('SpendBadgeProvider — ladder toasts (decision 2026-09-23: toasts the 
     expect(screen.getByRole('alert').textContent).toContain('raise the limit to resume')
   })
 })
+
+it('retains known alerts on failed reconnect reads, then clears on authoritative recovery', async () => {
+  statusBody = { milestones: [ROW_90], openIncidents: [] }
+  await act(async () => { render(<SpendBadgeProvider />) })
+  expect(useNavBadge).toHaveBeenLastCalledWith('spend', 'spend', { count: 1, tone: 'attention' })
+  const goodFetch = globalThis.fetch
+  globalThis.fetch = mock(async () => { throw new Error('offline') }) as unknown as typeof fetch
+  await act(async () => { handlers.get('bakin.reconcile')?.({}) })
+  expect(useNavBadge).toHaveBeenLastCalledWith('spend', 'spend', { count: 1, tone: 'attention' })
+  globalThis.fetch = goodFetch
+  statusBody = { milestones: [], openIncidents: [] }
+  await act(async () => { handlers.get('bakin.reconcile')?.({}) })
+  expect(useNavBadge).toHaveBeenLastCalledWith('spend', 'spend', null)
+  expect(notifications).toHaveLength(0)
+})
