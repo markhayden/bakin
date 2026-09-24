@@ -6,7 +6,7 @@ import { useHealthSummary } from '../hooks/use-health-summary'
 
 /**
  * Background component (renders nothing) mounted via the host's
- * `nav-badge-providers` slot. Counts unique action/watch incidents (never raw
+ * `nav-badge-providers` slot. Counts unique action-required incidents (never monitoring, raw
  * observations or advisories), using an urgent tone when any incident needs
  * action. Refresh rides the canonical report event—no cron or poll.
  */

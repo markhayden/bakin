@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useMemo } from 'react'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
 import type { HealthReport } from '@makinbakin/sdk/types'
 import {
@@ -46,23 +46,13 @@ export function useHealthReport(): UseHealthReportResult {
     }),
   })
   const { data, refresh } = resource
-  const autoRefreshAttemptedRef = useRef(false)
   const stale = useMemo(() => resource.stale === true || (data !== null && isHealthReportStale(data)), [data, resource.stale])
 
   usePluginEvent('health.report.changed', () => {
-    void refresh('background')
+    void refresh('reconcile')
   })
 
-  useEffect(() => {
-    if (!data) return
-    if (!isHealthReportStale(data)) {
-      autoRefreshAttemptedRef.current = false
-      return
-    }
-    if (autoRefreshAttemptedRef.current) return
-    autoRefreshAttemptedRef.current = true
-    void refresh('stale')
-  }, [data, refresh])
+  usePluginEvent('bakin.reconcile', () => { void refresh('reconcile') })
 
   const runChecks = useCallback(() => refresh('explicit'), [refresh])
 

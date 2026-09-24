@@ -101,6 +101,8 @@ export function useHealthResource<T>(
   const activeRef = useRef<ActiveRequest<T> | null>(null)
   const generationRef = useRef(0)
   const mountedRef = useRef(false)
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryAttempt = useRef(0)
 
   urlRef.current = url
   optionsRef.current = options
@@ -114,6 +116,7 @@ export function useHealthResource<T>(
     const requestUrl = urlRef.current
     if (requestUrl === null) return Promise.resolve(null)
 
+    if (retryRef.current) clearTimeout(retryRef.current)
     const fresh = requiresFreshSweep(reason)
     const forceNew = reason === 'reconcile'
     const active = activeRef.current
@@ -157,6 +160,7 @@ export function useHealthResource<T>(
         if (!mountedRef.current || controller.signal.aborted || generation !== generationRef.current) {
           return null
         }
+        retryAttempt.current = 0
         dataRef.current = next
         setState({ data: next, error: null, backgroundError: null, requesting: false })
         return next
@@ -166,6 +170,9 @@ export function useHealthResource<T>(
           return null
         }
         if (!mountedRef.current) return null
+        retryRef.current = setTimeout(() => {
+          if (mountedRef.current) void startRequest('background')
+        }, Math.min(1000 * 2 ** retryAttempt.current++, 30_000))
         const message = errorMessage(error)
         setState((current) => current.data === null
           ? { ...current, error: message, backgroundError: null, requesting: false }
@@ -198,6 +205,7 @@ export function useHealthResource<T>(
 
     return () => {
       generationRef.current += 1
+      if (retryRef.current) clearTimeout(retryRef.current)
       activeRef.current?.controller.abort()
       activeRef.current = null
     }

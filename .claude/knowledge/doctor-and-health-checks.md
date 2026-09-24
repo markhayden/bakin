@@ -174,8 +174,7 @@ in `getHealthReport` under `settings.doctor.sensitivity`:
   unsupported_surface failure. Repair delegation (`all_actionable`) and the
   CLI act on effective disposition too — a calmed incident never spawns a
   paid repair task.
-- **Quiet (D10)** additionally lives at the NOTIFICATION layer: the nav
-  badge and escalation act only on effective `action_required` — watch
+- **Quiet (D10)** additionally lives at the NOTIFICATION layer: escalation acts only on effective `action_required` — watch
   stays visible on the Health page but silent.
 - The semantic projection key includes sensitivity + effective dispositions:
   flipping the System & Alerts dropdown republishes on the next read, no
@@ -305,3 +304,23 @@ Storage-touching tests must isolate content directories and global registries. U
 ## Decision record
 
 The single-version cutover replaced a flat message-oriented result array, inline repair metadata, a second adapter service, whole-report caching, and message-derived identity. Those shapes were intentionally removed rather than adapted: dual contracts made status, freshness, ownership, and repair safety impossible to trust consistently across UI, CLI, and automation.
+
+## Background freshness and navigation alerts
+
+Navigation always signals only unsuppressed effective `action_required` incidents,
+in every sensitivity mode. Monitoring (`watch`) and advisories remain available
+inside Health without lighting the nav. The nav and page parse the same canonical
+report; no raw-disposition fallback or parallel summary interpretation remains.
+
+The server coordinator checks due diagnostics using each registered `maxAgeMs`
+(and the doctor interval as default), independently of page visits. Failed checks
+retry after 30 seconds. Durable task/workflow, budget, search-completion, settings,
+plugin-lifecycle, and owned-file changes invalidate affected checks. Invalidation
+arriving during execution queues fresh work after the older flight. Stream chunks,
+search progress, and report publication never trigger recursive checks.
+
+The coordinator also advances time-dependent projections, including snooze expiry.
+The full doctor sweep and explicit Run checks remain available; mounting Health
+no longer starts a special sweep. External probes without change events still
+have their registered detection cadence. Clients reconcile report events,
+reconnect, and resume; failed reads preserve last-known state and retry.

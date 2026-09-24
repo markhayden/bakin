@@ -8,6 +8,10 @@ import {
 } from './doctor-execution'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
+import { getCachedHealthCheckState, getHealthReport } from './doctor-report-cache'
+import { listHealthChecks } from './health-check-registry'
+import { createDoctorRefreshCoordinator, healthChecksAffectedByEvent } from './doctor-refresh'
+import { onServerEvent } from './server-events'
 
 export { runDetailedPluginHealthChecks, runPluginHealthChecks, runHealthCheck, type DetailedHealthCheckRun } from './doctor-checks'
 export { getHealthReport } from './doctor-report-cache'
@@ -15,6 +19,8 @@ export { getLastReport, resetDoctorFlightsForTests, runTargetedDiagnostics }
 
 const log = createLogger('doctor')
 let doctorTimer: NodeJS.Timeout | null = null
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+let stopRefresh: (() => void) | null = null
 
 function doctorIntervalMs(): number {
   return getSettings().doctor.intervalMs
@@ -34,6 +40,29 @@ export async function runDiagnostics(
 }
 
 export function start(contentDir: string, projectRoot: string): void {
+  stop()
+  const refresh = createDoctorRefreshCoordinator({
+    checks: () => listHealthChecks().map((check) => {
+      const execution = getCachedHealthCheckState(check.id)?.latestExecution
+      return {
+        id: check.id,
+        maxAgeMs: check.maxAgeMs ?? doctorIntervalMs(),
+        completedAt: execution ? Date.parse(execution.completedAt) : null,
+        failed: execution?.outcome === 'failed' || execution?.outcome === 'invalid',
+      }
+    }),
+    run: (id, afterInFlight) => runTargetedDiagnostics([id], { afterInFlight }),
+    project: () => { getHealthReport() },
+    onError: (error) => log.error('Background Health refresh failed', error),
+  })
+  const unsubscribe = onServerEvent((event) => {
+    refresh.invalidate(healthChecksAffectedByEvent(event, listHealthChecks()))
+  })
+  stopRefresh = () => { unsubscribe(); refresh.stop() }
+  refreshTimer = setInterval(() => {
+    void refresh.tick(Date.now()).catch((error) => log.error('Health projection failed', error))
+  }, 1000)
+  refreshTimer.unref?.()
   runDiagnostics(contentDir, projectRoot)
     .then(async (report) => {
       const { escalateCronIncidents } = await import('./doctor-escalation')
@@ -53,6 +82,10 @@ export function start(contentDir: string, projectRoot: string): void {
 }
 
 export function stop(): void {
+  stopRefresh?.()
+  stopRefresh = null
+  if (refreshTimer) clearInterval(refreshTimer)
+  refreshTimer = null
   if (!doctorTimer) return
   clearInterval(doctorTimer)
   doctorTimer = null

@@ -135,24 +135,16 @@ describe('useHealthReport', () => {
     expect(result.current.data?.id).toBe('report-2')
   })
 
-  it('starts one fresh sweep for stale evidence and lets Run checks join it', async () => {
-    const fresh = deferred<Response>()
+  it('leaves automatic stale-evidence refresh to the server and runs checks only explicitly', async () => {
     const stale = report({ overallStatus: 'unknown_stale' })
-    const fetchMock = mock()
-      .mockResolvedValueOnce(jsonResponse(stale))
-      .mockImplementationOnce(() => fresh.promise)
+    const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) => jsonResponse(stale))
     globalThis.fetch = fetchMock as unknown as typeof fetch
-
     const { result } = renderHook(() => useHealthReport())
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/plugins/health/doctor/run')
-
-    act(() => { void result.current.runChecks() })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-
-    await act(async () => { fresh.resolve(jsonResponse(stale)) })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(result.current.data?.id).toBe('report-1'))
     expect(result.current.stale).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await act(async () => { await result.current.runChecks() })
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/plugins/health/doctor/run')
   })
 
   it('retains the last report when an event-driven background refresh fails', async () => {

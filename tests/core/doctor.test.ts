@@ -254,3 +254,23 @@ describe('canonical doctor orchestration', () => {
     expect(cached.lastFullSweep).not.toBeNull()
   })
 })
+
+it('a mutation refresh waits for old evidence and then executes a new check', async () => {
+  let finish!: () => void
+  let calls = 0
+  let started!: () => void
+  const began = new Promise<void>((resolve) => { started = resolve })
+  const id = register(async () => {
+    calls++
+    started()
+    if (calls === 1) await new Promise<void>((resolve) => { finish = resolve })
+    return healthObserved([healthHealthy({ key: 'ready', summary: 'Ready.' })])
+  })
+  const old = runTargetedDiagnostics([id])
+  await began
+  const fresh = runTargetedDiagnostics([id], { afterInFlight: true })
+  expect(calls).toBe(1)
+  finish()
+  await Promise.all([old, fresh])
+  expect(calls).toBe(2)
+})
