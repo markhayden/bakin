@@ -57,7 +57,9 @@ export function healthChecksAffectedByEvent(
   event: Readonly<Record<string, unknown>>,
   checks: ReadonlyArray<{ id: string; localId: string; owner: { id: string; kind: string } }>,
 ): string[] {
-  const name = String(event.event ?? event.type ?? '')
+  // Plugin envelopes name the event inside; other producers use type and may
+  // also supply an event verb (for example taskboard + change).
+  const name = String(event.type === 'plugin-event' ? event.event ?? '' : event.type ?? event.event ?? '')
   const file = typeof event.file === 'string' ? event.file : ''
   const owners = new Set<string>()
   const system = new Set<string>()

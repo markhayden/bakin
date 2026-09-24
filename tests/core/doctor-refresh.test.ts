@@ -64,9 +64,15 @@ describe('background diagnostic freshness', () => {
 it('invalidates owning diagnostics for durable events and ignores streaming/report output', () => {
   const checks = [
     { id: 'tasks.integrity', localId: 'integrity', owner: { id: 'tasks', kind: 'plugin' } },
+    { id: 'workflows.integrity', localId: 'integrity', owner: { id: 'workflows', kind: 'plugin' } },
+    { id: 'health.restart-recovery', localId: 'restart-recovery', owner: { id: 'health', kind: 'plugin' } },
+    { id: 'health.execution-safety', localId: 'execution-safety', owner: { id: 'health', kind: 'plugin' } },
     { id: 'health.search', localId: 'search', owner: { id: 'health', kind: 'plugin' } },
   ]
-  expect(healthChecksAffectedByEvent({ type: 'taskboard' }, checks)).toEqual(['tasks.integrity'])
+  const taskChecks = ['tasks.integrity', 'workflows.integrity', 'health.restart-recovery', 'health.execution-safety']
+  // The task store emits a top-level type and a separate mutation verb.
+  expect(healthChecksAffectedByEvent({ type: 'taskboard', event: 'change' }, checks)).toEqual(taskChecks)
+  expect(healthChecksAffectedByEvent({ type: 'plugin-event', event: 'workflow.gate_approved' }, checks)).toEqual(taskChecks)
   expect(healthChecksAffectedByEvent({ type: 'search.rebuild.complete' }, checks)).toEqual(['health.search'])
   expect(healthChecksAffectedByEvent({ event: 'health.report.changed' }, checks)).toEqual([])
   expect(healthChecksAffectedByEvent({ type: 'search.rebuild.progress' }, checks)).toEqual([])
