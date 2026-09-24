@@ -6,10 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.38] - 2026-09-24
+
+A search-honesty patch: faceted asset search works again on libraries past a couple hundred assets and degraded answers are always labeled, the published SDK's rich-content entry imports outside a browser again, and Explore's capability rows keep their columns aligned.
+
 ### Fixed
 
 - **Assets search silently degraded to text-only, flat-scored hits once the library grew (#930).** The Assets page asks for facet counts with every search, and antfly rejects any query that combines a semantic leg with aggregations once its embedding index holds more than about a thousand vectors — a couple hundred assets with chunked embeddings — with a misleading `query_candidate_budget_exceeded`. Bakin treated the rejection as an engine failure and served its scan fallback (every hit scored 0.1, no visual or text-embedding scores) without a log line, and the plugin search route dropped the degrade label, so nothing surfaced it; the global search overlay was unaffected because it never requests facets. Facets now ride a separate match-all count query while the hits keep full RSF fusion; a failed facet query omits the buckets with a label instead of degrading the hits; the scan fallback logs a warning; and plugin-scoped search responses carry the same `partial`/per-table budget labels as `/api/search`. The upstream limitation is pinned so it is noticed when antfly lifts it.
-- **`@makinbakin/sdk/content` threw `document is not defined` when imported outside a browser.** Since 0.0.1-rc.36 the packed rich-content entry is built for the browser target (so downstream plugin builds get vfile's browser helpers), but that target also selected `decode-named-character-reference`'s DOM build, which touches `document` at import — so the published entry could not be loaded under plain Node or Bun, and the release pipeline's post-publish SDK smoke has failed on rc.36 and rc.37. The content entry now pins that package to its universal build while staying browser-targeted; the SDK package test executes the packed entry without a DOM so this cannot regress.
+- **`@makinbakin/sdk/content` threw `document is not defined` when imported outside a browser (#929).** Since 0.0.1-rc.36 the packed rich-content entry is built for the browser target (so downstream plugin builds get vfile's browser helpers), but that target also selected `decode-named-character-reference`'s DOM build, which touches `document` at import — so the published entry could not be loaded under plain Node or Bun, and the release pipeline's post-publish SDK smoke has failed on rc.36 and rc.37. The content entry now pins that package to its universal build while staying browser-targeted; the SDK package test executes the packed entry without a DOM so this cannot regress.
+- **Explore capability rows kept their columns and actions aligned (#928).** Long capability descriptions squeezed the category and runtime labels into broken words and wrapped the Details and Install controls, and installed skills placed their remove button below the text. Catalog columns are balanced, metadata stays beside its actions, removal controls sit next to the skill text, and the paste-a-link controls stack at narrow widths.
+
+### Upgrade notes
+
+- No reindex or migration for the search fix: facet counts come from a separate count query at request time, and existing tables are untouched. After upgrading, an Assets page search with the debug overlay on shows the text, visual and full-text leg scores again, and the doctor's search checks stay unchanged.
 
 ## [0.0.1-rc.37] - 2026-09-24
 
@@ -699,5 +708,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.36]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.36
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.37...HEAD
 [0.0.1-rc.37]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.37
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.38...HEAD
+[0.0.1-rc.38]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.38
