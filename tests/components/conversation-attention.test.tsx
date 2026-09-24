@@ -2,7 +2,7 @@
 /**
  * Kit attention rules + useConversationAttention provider hook (#703).
  * The pure rules are chat's S6 suppression matrix generalized to thread
- * keys; the hook is ChatBadgeProvider's mechanics (badge, inflight set,
+ * keys; the hook is ChatBadgeProvider's mechanics (badge,
  * toast/chime/OS fanout, title prefix) as a reusable building block.
  */
 import { describe, expect, it, mock } from 'bun:test'
@@ -64,10 +64,9 @@ describe('attention rules (pure)', () => {
     expect(visibleIdFromLocation('/projects/p1', '/projects')).toBe('p1')
   })
 
-  it('badgeFor: count wins, working dot second, null when idle', () => {
-    expect(badgeFor(3, 1)).toEqual({ count: 3, tone: 'attention' })
-    expect(badgeFor(0, 2)).toEqual({ tone: 'info' })
-    expect(badgeFor(0, 0)).toBeNull()
+  it('badgeFor: green for unread replies, null when read', () => {
+    expect(badgeFor(3)).toEqual({ count: 3, tone: 'success' })
+    expect(badgeFor(0)).toBeNull()
   })
 
   it('withUnreadPrefix is idempotent and caps at 99+', () => {
@@ -83,10 +82,10 @@ const EVENTS = { chunk: 'probe2.chunk', done: 'probe2.done', error: 'probe2.erro
 function makeConfig(overrides?: Partial<ConversationAttentionConfig>): {
   config: ConversationAttentionConfig
   calls: { toasts: Array<string>; chimes: number; refreshes: number }
-  setTotals: (unread: number, inflight: string[]) => void
+  setTotals: (unread: number) => void
 } {
   const calls = { toasts: [] as string[], chimes: 0, refreshes: 0 }
-  let totals = { unreadTotal: 0, inflightKeys: [] as string[] }
+  let totals = { unreadTotal: 0 }
   const config: ConversationAttentionConfig = {
     pluginId: 'probe2',
     navItemId: 'probe2-nav',
@@ -106,17 +105,49 @@ function makeConfig(overrides?: Partial<ConversationAttentionConfig>): {
     chime: () => { calls.chimes += 1 },
     ...overrides,
   }
-  return { config, calls, setTotals: (unread, inflight) => { totals = { unreadTotal: unread, inflightKeys: inflight } } }
+  return { config, calls, setTotals: (unread) => { totals = { unreadTotal: unread } } }
 }
 
 describe('useConversationAttention (provider hook)', () => {
-  it('seeds totals on mount into the nav badge; chunk events add the working dot', async () => {
-    const { config, setTotals } = makeConfig()
-    setTotals(2, [])
+  it('retains unread state on failed recovery and reconciles without replaying notifications', async () => {
+    let fail = false
+    let unread = 3
+    const { config, calls } = makeConfig({ refreshTotals: async () => {
+      if (fail) throw new Error('offline')
+      return { unreadTotal: unread }
+    } })
     renderHook(() => useConversationAttention(config))
-    await waitFor(() => expect(getNavBadge('probe2-nav')).toEqual({ count: 2, tone: 'attention' }))
+    await waitFor(() => expect(getNavBadge('probe2-nav')?.count).toBe(3))
+    fail = true
+    await act(async () => { emitPluginEvent({ event: 'bakin.reconcile' }) })
+    expect(getNavBadge('probe2-nav')?.count).toBe(3)
+    fail = false
+    unread = 0
+    await act(async () => { emitPluginEvent({ event: 'bakin.reconcile' }) })
+    await waitFor(() => expect(getNavBadge('probe2-nav')).toBeUndefined())
+    expect(calls.toasts).toEqual([])
+    expect(calls.chimes).toBe(0)
+  })
 
-    setTotals(0, [])
+  it('cannot resurrect unread state when an older snapshot arrives last', async () => {
+    let resolveOld!: (value: { unreadTotal: number }) => void
+    let requests = 0
+    const { config } = makeConfig({ refreshTotals: () => ++requests === 1
+      ? new Promise((resolve) => { resolveOld = resolve })
+      : Promise.resolve({ unreadTotal: 0 }) })
+    renderHook(() => useConversationAttention(config))
+    await act(async () => { emitPluginEvent({ event: 'bakin.reconcile' }) })
+    await act(async () => { resolveOld({ unreadTotal: 56 }) })
+    expect(getNavBadge('probe2-nav')).toBeUndefined()
+  })
+
+  it('seeds totals on mount into the nav badge; chunk events leave navigation silent', async () => {
+    const { config, setTotals } = makeConfig()
+    setTotals(2)
+    renderHook(() => useConversationAttention(config))
+    await waitFor(() => expect(getNavBadge('probe2-nav')).toEqual({ count: 2, tone: 'success' }))
+
+    setTotals(0)
     await act(async () => {
       emitPluginEvent({ event: EVENTS.done, threadKey: 'visible-thread', agentId: 'main' })
     })
@@ -124,10 +155,10 @@ describe('useConversationAttention (provider hook)', () => {
     act(() => {
       emitPluginEvent({ event: EVENTS.chunk, threadKey: 't9', agentId: 'main' })
     })
-    await waitFor(() => expect(getNavBadge('probe2-nav')).toEqual({ tone: 'info' }))
+    await waitFor(() => expect(getNavBadge('probe2-nav')).toBeUndefined())
   })
 
-  it('started events light the working dot before any chunk arrives (#707)', async () => {
+  it('started events leave navigation silent', async () => {
     const { config } = makeConfig({ events: { ...EVENTS, started: 'probe2.started' } })
     renderHook(() => useConversationAttention(config))
     await act(async () => {})
@@ -136,9 +167,9 @@ describe('useConversationAttention (provider hook)', () => {
     act(() => {
       emitPluginEvent({ event: 'probe2.started', threadKey: 't1', agentId: 'main' })
     })
-    await waitFor(() => expect(getNavBadge('probe2-nav')).toEqual({ tone: 'info' }))
+    await waitFor(() => expect(getNavBadge('probe2-nav')).toBeUndefined())
 
-    // The done clears the started-seeded key even when no chunk ever fired.
+    // Completion without an unread reply remains silent.
     await act(async () => {
       emitPluginEvent({ event: EVENTS.done, threadKey: 't1', agentId: 'main' })
     })
@@ -198,10 +229,10 @@ describe('useConversationAttention (provider hook)', () => {
   it('maintains the (N) tab-title prefix when enabled', async () => {
     const { config, setTotals } = makeConfig({ titlePrefix: true })
     document.title = 'Bakin'
-    setTotals(4, [])
+    setTotals(4)
     renderHook(() => useConversationAttention(config))
     await waitFor(() => expect(document.title).toBe('(4) Bakin'))
-    setTotals(0, [])
+    setTotals(0)
     await act(async () => {
       emitPluginEvent({ event: EVENTS.done, threadKey: 'visible-thread', agentId: 'main' })
     })

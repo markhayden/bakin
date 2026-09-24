@@ -74,13 +74,11 @@ export function visibleIdFromLocation(
   return opts?.exclude?.includes(id) ? '' : id
 }
 
-/** Nav badge from unread totals + in-flight turns: count wins, dot while working. */
+/** Unread replies are informational; work in progress stays inside the conversation. */
 export function badgeFor(
   totalUnread: number,
-  inflightCount: number,
-): { count?: number; tone: 'attention' | 'info' } | null {
-  if (totalUnread > 0) return { count: totalUnread, tone: 'attention' }
-  if (inflightCount > 0) return { tone: 'info' } // dot: agents are working
+): { count?: number; tone: 'success' } | null {
+  if (totalUnread > 0) return { count: totalUnread, tone: 'success' }
   return null
 }
 

@@ -83,10 +83,9 @@ describe('attention helpers', () => {
     expect(visibleChatIdFromLocation('/chat')).toBe('')
   })
 
-  it('badgeFor: unread count wins, working dot otherwise, null when idle', () => {
-    expect(badgeFor(3, 1)).toEqual({ count: 3, tone: 'attention' })
-    expect(badgeFor(0, 2)).toEqual({ tone: 'info' })
-    expect(badgeFor(0, 0)).toBeNull()
+  it('badgeFor: unread count wins, working stays silent, null when idle', () => {
+    expect(badgeFor(3)).toEqual({ count: 3, tone: 'success' })
+    expect(badgeFor(0)).toBeNull()
   })
 
   it('withUnreadPrefix is idempotent and clears cleanly', () => {
@@ -139,12 +138,12 @@ describe('ChatBadgeProvider', () => {
     document.title = 'Bakin'
     render(<ChatBadgeProvider />)
     await waitFor(() => {
-      expect(getNavBadge('chat')).toEqual({ count: 3, tone: 'attention' })
+      expect(getNavBadge('chat')).toEqual({ count: 3, tone: 'success' })
     })
     expect(document.title).toBe('(3) Bakin')
   })
 
-  it('a reply while elsewhere raises a toast; the working dot shows while streaming', async () => {
+  it('a reply while elsewhere raises a toast; streaming leaves navigation silent', async () => {
     unreadCounts = []
     render(<ChatBadgeProvider />)
     await waitFor(() => expect(getNavBadge('chat')).toBeFalsy())
@@ -152,7 +151,7 @@ describe('ChatBadgeProvider', () => {
     act(() => {
       emitPluginEvent({ event: 'chat.chunk', chatId: 'c9', agentId: 'main', chunk: { type: 'text', content: 'x' } })
     })
-    await waitFor(() => expect(getNavBadge('chat')).toEqual({ tone: 'info' }))
+    await waitFor(() => expect(getNavBadge('chat')).toBeUndefined())
 
     unreadCounts = [1]
     act(() => {
@@ -161,6 +160,6 @@ describe('ChatBadgeProvider', () => {
     await waitFor(() => {
       expect(useToastStore.getState().toasts.length).toBe(1)
     })
-    await waitFor(() => expect(getNavBadge('chat')).toEqual({ count: 1, tone: 'attention' }))
+    await waitFor(() => expect(getNavBadge('chat')).toEqual({ count: 1, tone: 'success' }))
   })
 })

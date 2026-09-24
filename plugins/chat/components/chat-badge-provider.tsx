@@ -1,7 +1,7 @@
 /**
  * ChatBadgeProvider — the attention system's global brain. Mounted in the
  * host's `nav-badge-providers` slot (outside the router), so it runs on
- * every page: it keeps the Chat nav badge (unread count / working dot),
+ * every page: it keeps the Chat nav badge (unread replies),
  * the `(N)` tab-title prefix, and fires toast + chime + OS notification
  * when a reply lands while the user is elsewhere. The mechanics live in
  * the kit's useConversationAttention (#703); chat supplies its wiring —
@@ -39,13 +39,12 @@ export function ChatBadgeProvider() {
     navItemId: 'chat',
     events: {
       started: 'chat.started',
-      chunk: 'chat.chunk',
       done: 'chat.done',
       error: 'chat.error',
-      // chat.titled bumps list titles; chat.seen fires after a seen write
+      // chat.changed covers deletion; chat.seen fires after a seen write
       // lands (view opened / reply seen in place) — the authoritative
       // moment to drop the unread count.
-      refresh: ['chat.titled', 'chat.seen'],
+      refresh: ['chat.changed', 'chat.seen'],
     },
     keyOf: (payload) => String(payload.chatId ?? ''),
     visibleKey: () => visibleChatIdFromLocation(window.location.pathname),
@@ -55,7 +54,6 @@ export function ChatBadgeProvider() {
       const { chats } = (await res.json()) as { chats: ChatSummaryDto[] }
       return {
         unreadTotal: chats.reduce((acc, c) => acc + (c.unreadCount ?? 0), 0),
-        inflightKeys: chats.filter((c) => c.streaming).map((c) => c.id),
       }
     },
     settings: () => settingsRef.current,
