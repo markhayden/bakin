@@ -34,6 +34,7 @@ const searchResponse = z.object({
       hits: z.number(),
       took_ms: z.number(),
       budget: z.enum(['degraded', 'omitted']).optional(),
+      facets: z.enum(['omitted']).optional(),
     })).optional(),
   }).optional(),
 })

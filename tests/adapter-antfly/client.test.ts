@@ -487,6 +487,7 @@ describe('#930 facet split on semantic queries', () => {
     expect(result.hits[0]?.score).toBe(1.2)
     expect(result.facets).toBeUndefined()
     expect(result.diagnostics?.budget).toBeUndefined()
+    expect(result.diagnostics?.facets).toBe('omitted') // adapter-neutral — what the response contract propagates
     expect(result.diagnostics?.adapter?.facets).toBe('omitted')
     expect(String(result.diagnostics?.adapter?.facetsError)).toContain('422')
   })

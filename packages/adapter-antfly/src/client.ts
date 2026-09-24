@@ -357,6 +357,7 @@ export class AntflySearchClient implements SearchAdapter {
         log.warn('facet companion query failed — facets omitted', { table, error: companion.error })
         result.diagnostics = {
           ...(result.diagnostics ?? { strategy: 'hybrid' }),
+          facets: 'omitted',
           adapter: { ...(result.diagnostics?.adapter ?? {}), facets: 'omitted', facetsError: companion.error },
         }
       } else {

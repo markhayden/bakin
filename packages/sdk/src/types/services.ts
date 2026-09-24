@@ -227,6 +227,8 @@ export interface SearchTableMeta {
    * keyword-only (semantic lane dropped), 'omitted' = contributed nothing.
    */
   budget?: 'degraded' | 'omitted'
+  /** Present when this table answered but its facet buckets could not be produced. */
+  facets?: 'omitted'
 }
 
 /** Full search response: results, aggregations, and query metadata. */

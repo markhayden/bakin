@@ -110,7 +110,7 @@ async function crossTableSearchInner(q: string, opts?: {
         total: result.total ?? result.hits.length,
         took_ms: result.diagnostics?.durationMs ?? 0,
         source: 'search',
-        ...(result.diagnostics?.budget ? { partial: true } : {}),
+        ...(result.diagnostics?.budget || result.diagnostics?.facets ? { partial: true } : {}),
         tables: [tableMeta(tableName, result)],
       },
     }
@@ -178,7 +178,7 @@ async function crossTableSearchInner(q: string, opts?: {
   }
   const hits = merged.slice(offset, offset + limit)
   const tableMetas = results.map((result, index) => tableMeta(tables[index]!, result))
-  const partial = tableMetas.some((t) => t.budget !== undefined)
+  const partial = tableMetas.some((t) => t.budget !== undefined || t.facets !== undefined)
   return {
     results: hits,
     ...(facets && facets.length > 0 ? { aggregations: mapFacetCounts(mergeFacetCounts(results)) } : {}),
@@ -204,7 +204,7 @@ function queryBudgetMs(): number {
   return 2000
 }
 
-type TableQueryResult = { hits: unknown[]; diagnostics?: { durationMs?: number; budget?: 'degraded' | 'omitted' } }
+type TableQueryResult = { hits: unknown[]; diagnostics?: { durationMs?: number; budget?: 'degraded' | 'omitted'; facets?: 'omitted' } }
 
 /** Merged candidates handed to the one cross-encoder pass — flat-cost up to
  *  ~20 on the batched endpoint (evidence file), a page beyond the default. */
@@ -231,6 +231,7 @@ function tableMeta(table: string, result: TableQueryResult): NonNullable<SearchR
     hits: result.hits.length,
     took_ms: result.diagnostics?.durationMs ?? 0,
     ...(result.diagnostics?.budget ? { budget: result.diagnostics.budget } : {}),
+    ...(result.diagnostics?.facets ? { facets: result.diagnostics.facets } : {}),
   }
 }
 

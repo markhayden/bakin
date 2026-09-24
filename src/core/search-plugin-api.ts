@@ -331,12 +331,13 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
           // Parity with the cross-table path (D11): a degraded or omitted
           // answer is labeled here too — the Assets page read scan-fallback
           // hits as real results for weeks because this meta stayed silent (#930).
-          ...(result.diagnostics?.budget ? { partial: true } : {}),
+          ...(result.diagnostics?.budget || result.diagnostics?.facets ? { partial: true } : {}),
           tables: [{
             table: tableName,
             hits: result.hits.length,
             took_ms: result.diagnostics?.durationMs ?? 0,
             ...(result.diagnostics?.budget ? { budget: result.diagnostics.budget } : {}),
+            ...(result.diagnostics?.facets ? { facets: result.diagnostics.facets } : {}),
           }],
         },
       }

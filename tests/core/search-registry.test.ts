@@ -348,6 +348,38 @@ describe('search-registry', () => {
     expect(result.meta.tables).toEqual([{ table: 'bakin_tasks', hits: 1, took_ms: 3, budget: 'degraded' }])
   })
 
+  it('#930: omitted facets are labeled partial on the plugin-scoped path — missing buckets never read as "no matches"', async () => {
+    searchHarness.calls.query.mockImplementation(async () => ({
+      hits: [{ key: 'doc-1', document: { title: 'fused hit' }, score: 1.4 }],
+      total: 1,
+      diagnostics: { strategy: 'hybrid', durationMs: 4, facets: 'omitted', adapter: { facets: 'omitted', facetsError: 'antfly 422' } },
+    }))
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const result = await api.query({ q: 'anything', facets: ['status'] })
+
+    expect(result.results).toHaveLength(1)
+    expect(result.aggregations).toBeUndefined()
+    expect(result.meta.partial).toBe(true)
+    expect(result.meta.tables).toEqual([{ table: 'bakin_tasks', hits: 1, took_ms: 4, facets: 'omitted' }])
+  })
+
+  it('#930: omitted facets are labeled partial on the cross-table path too', async () => {
+    searchHarness.calls.query.mockImplementation(async () => ({
+      hits: [{ key: 'doc-1', document: { title: 'fused hit' }, score: 1.4 }],
+      total: 1,
+      diagnostics: { strategy: 'hybrid', durationMs: 4, facets: 'omitted' },
+    }))
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    const result = await crossTableSearch('anything', { table: 'tasks', facets: ['status'] })
+
+    expect(result.meta.partial).toBe(true)
+    expect(result.meta.tables?.[0]).toMatchObject({ table: 'bakin_tasks', facets: 'omitted' })
+  })
+
   // ── multi-index support (T3) ─────────────────────────────────────────
 
   it('buildTableConfig synthesizes a single default index when def.indexes is absent', async () => {

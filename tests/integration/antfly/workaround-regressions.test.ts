@@ -124,10 +124,15 @@ if (!binary) {
         console.warn('⚠ #930 pin skipped — BAAI/bge-small model not present')
         return
       }
+      // Prerequisites are met from here on: every setup or convergence
+      // problem below is a FAILURE, not a skip — a pin that can pass without
+      // exercising the restriction pins nothing.
       const T9 = 'pins_semantic_facets'
-      await api('POST', `/db/v1/tables/${T9}`, { num_shards: 1 })
+      const created = await api('POST', `/db/v1/tables/${T9}`, { num_shards: 1 })
+      expect(created.status).toBeLessThan(300)
       await sleep(500)
-      await api('POST', `/db/v1/tables/${T9}/indexes/sem`, { type: 'embeddings', template: '{{#if body}}{{body}}{{/if}}', dimension: 384, embedder: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' } })
+      const leg = await api('POST', `/db/v1/tables/${T9}/indexes/sem`, { type: 'embeddings', template: '{{#if body}}{{body}}{{/if}}', dimension: 384, embedder: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' } })
+      expect(leg.status).toBeLessThan(300)
       await sleep(1200)
       // The dense leg stops being exhaustive once the index holds more
       // VECTORS than its candidate window (1,024 initially — chunked
@@ -141,25 +146,30 @@ if (!binary) {
         for (let i = start; i < Math.min(start + 100, ROWS); i++) {
           inserts[`r${i}`] = { body: `pie recipe number ${i} with ${kinds[i % 3]} notes`, kind: kinds[i % 3] }
         }
+        let inserted = false
         for (let attempt = 0; attempt < 10; attempt++) {
           const r = await api('POST', `/db/v1/tables/${T9}/batch`, { inserts, sync_level: 'full_index' })
-          if (r.status < 300) break
+          if (r.status < 300) { inserted = true; break }
           await sleep(500)
         }
+        expect(inserted).toBe(true)
       }
+      let lastStatus: Record<string, unknown> | null = null
       let ready = false
       for (let i = 0; i < 240; i++) {
         const st = await api('GET', `/db/v1/tables/${T9}/indexes`)
         const entries = Array.isArray(st.json) ? st.json as Array<{ config?: { name?: string }; status?: Record<string, unknown> }> : []
-        const sem = entries.find((e) => e.config?.name === 'sem')?.status
+        const sem = entries.find((e) => e.config?.name === 'sem')?.status ?? null
+        lastStatus = sem
         const runtime = sem?.enrichment_runtime as { pending_sequence_count?: number; active_embed_batch_items?: number } | undefined
-        if (sem && (sem.total_indexed as number) >= ROWS && runtime?.pending_sequence_count === 0 && (runtime?.active_embed_batch_items ?? 0) === 0) { ready = true; break }
+        if (sem && typeof sem.total_indexed === 'number' && sem.total_indexed >= ROWS && runtime?.pending_sequence_count === 0 && (runtime?.active_embed_batch_items ?? 0) === 0) { ready = true; break }
         await sleep(1000)
       }
-      if (!ready) {
-        console.warn('⚠ #930 pin skipped — semantic leg never finished indexing')
-        return
-      }
+      // Convergence is part of the pin: a leg that never indexes ROWS vectors
+      // (or a status shape this loop no longer understands) fails loudly.
+      expect(lastStatus).not.toBeNull()
+      expect(typeof lastStatus?.total_indexed).toBe('number')
+      expect(ready).toBe(true)
       const aggregations = { kind: { type: 'terms', field: 'kind', size: 50 } }
       const hybrid = await api('POST', `/db/v1/tables/${T9}/query`, {
         full_text_search: { match: 'pie', field: 'body' },
