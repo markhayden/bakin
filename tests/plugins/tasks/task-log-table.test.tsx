@@ -62,6 +62,10 @@ describe('TaskLogTable', () => {
         await act(async () => { fireEvent.click(within(surface).getByRole('button', { name: 'Actions for Live task' })) })
         const item = await screen.findByRole('menuitem', { name: action })
         await act(async () => { fireEvent.click(item) })
+        // The menu closes on the click; re-opening while that close is still
+        // in flight toggles it shut again and the next findByRole starves
+        // (#918 — seen only under CI contention). Wait for the item to go.
+        await waitFor(() => expect(screen.queryByRole('menuitem', { name: action })).toBeNull())
       }
     }
     expect(onTaskEdit).toHaveBeenCalledTimes(2)
