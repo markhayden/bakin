@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+### Fixed
+
+- **Assets search silently degraded to text-only, flat-scored hits once the library grew (#930).** The Assets page asks for facet counts with every search, and antfly rejects any query that combines a semantic leg with aggregations once its embedding index holds more than about a thousand vectors — a couple hundred assets with chunked embeddings — with a misleading `query_candidate_budget_exceeded`. Bakin treated the rejection as an engine failure and served its scan fallback (every hit scored 0.1, no visual or text-embedding scores) without a log line, and the plugin search route dropped the degrade label, so nothing surfaced it; the global search overlay was unaffected because it never requests facets. Facets now ride a separate match-all count query while the hits keep full RSF fusion; a failed facet query omits the buckets with a label instead of degrading the hits; the scan fallback logs a warning; and plugin-scoped search responses carry the same `partial`/per-table budget labels as `/api/search`. The upstream limitation is pinned so it is noticed when antfly lifts it.
+
 ## [0.0.1-rc.37] - 2026-09-24
 
 A single-fix patch for binary installs: the default workflows, workflow-step skills and runtime skills that every release binary has silently dropped since June now ship inside the binary, and the doctor tells you if a build ever loses them again.

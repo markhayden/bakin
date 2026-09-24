@@ -25,13 +25,15 @@ mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 import {
-  buildQueryRequest,
-  buildFilterQuery,
-  buildTableProvisioning,
-  buildBatchInserts,
   buildBatchDeletes,
-  mapQueryResponse,
+  buildBatchInserts,
+  buildFacetCountRequest,
+  buildFilterQuery,
+  buildQueryRequest,
+  buildTableProvisioning,
   mapIndexStatuses,
+  mapQueryResponse,
+  needsFacetSplit,
 } from '../../packages/adapter-antfly/src/translate'
 import { DEFAULT_SETTINGS } from '../../packages/adapter-antfly/src/defaults'
 import type { WireQueryEnvelope, WireIndexStatusEntry } from '../../packages/adapter-antfly/src/wire'
@@ -451,5 +453,38 @@ describe('mapQueryResponse rerank surfacing (#846)', () => {
     const result = mapQueryResponse(envelope, 't')
     expect(result.hits[0]!.scoreBreakdown).toEqual({ embeddings: 0.6 })
     expect(result.hits[1]!.scoreBreakdown).toBeUndefined()
+  })
+})
+
+describe('#930 facet split — aggregations never ride a semantic request', () => {
+  const settings = DEFAULT_SETTINGS
+  const hybrid = {
+    text: 'pie',
+    facets: ['asset_type', 'agent'],
+    filters: [{ field: 'agent', op: 'eq' as const, value: 'pixel' }],
+    limit: 20,
+    adapterOptions: { indexes: ['assets_text', 'assets_visual'], searchableFields: ['description'] },
+  }
+
+  it('flags a request that carries both a semantic leg and aggregations', () => {
+    expect(needsFacetSplit(buildQueryRequest('t', hybrid, settings))).toBe(true)
+    expect(needsFacetSplit(buildQueryRequest('t', { ...hybrid, strategy: 'fts' }, settings))).toBe(false)
+    expect(needsFacetSplit(buildQueryRequest('t', { ...hybrid, facets: undefined }, settings))).toBe(false)
+  })
+
+  it('the companion is the match-all count flow: same aggregations + filter, no semantic leg, no reranker', () => {
+    const companion = buildFacetCountRequest('t', hybrid, settings)
+    expect(companion.full_text_search).toEqual({ match_all: {} })
+    expect(companion.semantic_search).toBeUndefined()
+    expect(companion.indexes).toBeUndefined()
+    expect(companion.merge_config).toBeUndefined()
+    expect(companion.reranker).toBeUndefined()
+    expect(companion.count).toBe(true)
+    expect(companion.limit).toBe(0)
+    expect(companion.aggregations).toEqual({
+      asset_type: { type: 'terms', field: 'asset_type', size: 50 },
+      agent: { type: 'terms', field: 'agent', size: 50 },
+    })
+    expect(companion.filter_query).toBeDefined()
   })
 })

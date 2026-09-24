@@ -30,11 +30,13 @@ import type { AntflySettings } from './defaults'
 import {
   buildBatchDeletes,
   buildBatchInserts,
+  buildFacetCountRequest,
   buildQueryRequest,
   buildTableProvisioning,
   embedderUsable,
   mapIndexStatuses,
   mapQueryResponse,
+  needsFacetSplit,
 } from './translate'
 import { paths, type WireBatchResponse, type WireIndexStatusEntry, type WireQueryEnvelope, type WireQueryRequest } from './wire'
 
@@ -297,6 +299,18 @@ export class AntflySearchClient implements SearchAdapter {
   async query(table: string, q: Query): Promise<QueryResult> {
     const started = Date.now()
     const request = buildQueryRequest(table, q, this.settings)
+    // #930: facets never ride a semantic request (the engine rejects the
+    // aggregation rerun as soon as the vector leg is approximate). Run the
+    // hits query without aggregations and a match-all count companion for
+    // the buckets, concurrently, inside the same deadline.
+    let facetCompanion: Promise<QueryResult | { error: string }> | null = null
+    if (needsFacetSplit(request)) {
+      delete request.aggregations
+      const facetRequest = buildFacetCountRequest(table, q, this.settings)
+      facetCompanion = this.runQuery(table, facetRequest, q.deadlineMs)
+        .then((envelope) => mapQueryResponse(envelope, table))
+        .catch((err: unknown) => ({ error: err instanceof Error ? err.message : String(err) }))
+    }
     let main: WireQueryEnvelope | null
     let degraded = false
     try {
@@ -335,10 +349,35 @@ export class AntflySearchClient implements SearchAdapter {
         adapter: { ...(result.diagnostics?.adapter ?? {}), degraded: 'semantic-embed-timeout' },
       }
     }
+    if (facetCompanion) {
+      const companion = await facetCompanion
+      if ('error' in companion) {
+        // Hits are still good; only the buckets are missing — say so (D11),
+        // never fall back to the scan for a facet failure.
+        log.warn('facet companion query failed — facets omitted', { table, error: companion.error })
+        result.diagnostics = {
+          ...(result.diagnostics ?? { strategy: 'hybrid' }),
+          adapter: { ...(result.diagnostics?.adapter ?? {}), facets: 'omitted', facetsError: companion.error },
+        }
+      } else {
+        if (companion.facets) result.facets = companion.facets
+        if (companion.aggregations) result.aggregations = companion.aggregations
+        result.diagnostics = {
+          ...(result.diagnostics ?? { strategy: 'hybrid' }),
+          adapter: { ...(result.diagnostics?.adapter ?? {}), facets: 'companion-count' },
+        }
+      }
+    }
     return result
   }
 
   private async scanFallbackQuery(table: string, q: Query, error: unknown): Promise<QueryResult> {
+    // Sanctioned degrade, but NEVER silent: margo served flat-0.1 scan hits
+    // for weeks with nothing in the log (#930).
+    log.warn('search query failed — serving scan fallback (degraded, flat scores)', {
+      table,
+      error: error instanceof Error ? error.message : String(error),
+    })
     const text = (q.text ?? '').trim()
     const needle = text === '*' ? '' : text.toLowerCase()
     const requested = q.adapterOptions?.searchableFields

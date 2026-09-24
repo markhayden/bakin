@@ -115,6 +115,83 @@ if (!binary) {
       expect(hits?.total).toEqual({ value: 3, relation: 'exact' }) // corpus size, not the page
     })
 
+    it('PIN #930: aggregations on a semantic query 422 (candidate_budget_exceeded) once the vector leg is approximate; the match-all count companion is accepted', async () => {
+      // WHEN THIS FAILS (the hybrid+aggregations request starts returning
+      // 200): antfly accepts aggregations over an approximate candidate set
+      // — retire the facet split in packages/adapter-antfly/src/client.ts
+      // (needsFacetSplit / buildFacetCountRequest) and close #930.
+      if (!instance.modelsAvailable || !existsSync(join(homedir(), '.antfly', 'inference', 'models', 'BAAI'))) {
+        console.warn('⚠ #930 pin skipped — BAAI/bge-small model not present')
+        return
+      }
+      const T9 = 'pins_semantic_facets'
+      await api('POST', `/db/v1/tables/${T9}`, { num_shards: 1 })
+      await sleep(500)
+      await api('POST', `/db/v1/tables/${T9}/indexes/sem`, { type: 'embeddings', template: '{{#if body}}{{body}}{{/if}}', dimension: 384, embedder: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' } })
+      await sleep(1200)
+      // The dense leg stops being exhaustive once the index holds more
+      // VECTORS than its candidate window (1,024 initially — chunked
+      // embeddings inflate the count: margo's 262 assets are 2,125 text
+      // vectors and trip it; a 103-asset / 467-vector dev table and a fresh
+      // 400-row single-vector table do not). One vector per row here.
+      const ROWS = 1200
+      const kinds = ['image', 'video', 'document']
+      for (let start = 0; start < ROWS; start += 100) {
+        const inserts: Record<string, unknown> = {}
+        for (let i = start; i < Math.min(start + 100, ROWS); i++) {
+          inserts[`r${i}`] = { body: `pie recipe number ${i} with ${kinds[i % 3]} notes`, kind: kinds[i % 3] }
+        }
+        for (let attempt = 0; attempt < 10; attempt++) {
+          const r = await api('POST', `/db/v1/tables/${T9}/batch`, { inserts, sync_level: 'full_index' })
+          if (r.status < 300) break
+          await sleep(500)
+        }
+      }
+      let ready = false
+      for (let i = 0; i < 240; i++) {
+        const st = await api('GET', `/db/v1/tables/${T9}/indexes`)
+        const entries = Array.isArray(st.json) ? st.json as Array<{ config?: { name?: string }; status?: Record<string, unknown> }> : []
+        const sem = entries.find((e) => e.config?.name === 'sem')?.status
+        const runtime = sem?.enrichment_runtime as { pending_sequence_count?: number; active_embed_batch_items?: number } | undefined
+        if (sem && (sem.total_indexed as number) >= ROWS && runtime?.pending_sequence_count === 0 && (runtime?.active_embed_batch_items ?? 0) === 0) { ready = true; break }
+        await sleep(1000)
+      }
+      if (!ready) {
+        console.warn('⚠ #930 pin skipped — semantic leg never finished indexing')
+        return
+      }
+      const aggregations = { kind: { type: 'terms', field: 'kind', size: 50 } }
+      const hybrid = await api('POST', `/db/v1/tables/${T9}/query`, {
+        full_text_search: { match: 'pie', field: 'body' },
+        semantic_search: 'pie',
+        indexes: ['sem'],
+        merge_config: { strategy: 'rsf' },
+        limit: 20,
+        aggregations,
+      })
+      expect(hybrid.status).toBe(422)
+      expect((hybrid.json as { error?: string }).error).toBe('query_candidate_budget_exceeded')
+
+      const companion = await api('POST', `/db/v1/tables/${T9}/query`, {
+        full_text_search: { match_all: {} },
+        limit: 0,
+        count: true,
+        aggregations,
+      })
+      expect(companion.status).toBe(200)
+      const buckets = (resp0(companion.json)?.aggregations as { kind?: { buckets?: Array<{ key: string; doc_count: number }> } })?.kind?.buckets ?? []
+      expect(buckets.map((b) => b.doc_count).reduce((a, b) => a + b, 0)).toBe(ROWS)
+
+      const hitsOnly = await api('POST', `/db/v1/tables/${T9}/query`, {
+        full_text_search: { match: 'pie', field: 'body' },
+        semantic_search: 'pie',
+        indexes: ['sem'],
+        merge_config: { strategy: 'rsf' },
+        limit: 20,
+      })
+      expect(hitsOnly.status).toBe(200)
+    }, 300_000)
+
     it('PIN: sync_level aknn stays removed (breaking change absorbed)', async () => {
       // WHEN THIS FAILS: aknn came back (unlikely) — no action needed, we
       // send full_index; delete this pin.
