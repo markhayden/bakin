@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -128,4 +128,36 @@ it('forwards file removal without requiring content or a second EventSource', as
     lastES?.onmessage?.({ data: JSON.stringify({ type: 'file', file: 'messaging/plans/demo.md', event: 'unlink' }) })
   })
   expect(changedFile).toBe('messaging/plans/demo.md')
+})
+
+
+it('keeps retrying after a prolonged server outage and reconciles when it returns', async () => {
+  const view = render(<Probe />)
+  await act(async () => {})
+  let reconnect: (() => void) | undefined
+  const delays: number[] = []
+  const realSetTimeout = globalThis.setTimeout
+  const timer = spyOn(globalThis, 'setTimeout').mockImplementation(((callback: () => void, delay?: number) => {
+    if (typeof delay === 'number' && delay >= 1000) {
+      reconnect = callback
+      delays.push(delay)
+      return 0
+    }
+    return realSetTimeout(callback, delay)
+  }) as typeof setTimeout)
+  try {
+    for (let attempt = 0; attempt < 25; attempt++) {
+      reconnect = undefined
+      await act(async () => { lastES?.onerror?.() })
+      expect(reconnect).toBeDefined()
+      await act(async () => { reconnect?.() })
+    }
+    expect(delays[0]).toBe(1000)
+    expect(delays.at(-1)).toBe(30_000)
+    await act(async () => { lastES?.onopen?.() })
+    expect(reconciles).toBe(1)
+  } finally {
+    timer.mockRestore()
+    view.unmount()
+  }
 })

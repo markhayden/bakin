@@ -7,7 +7,6 @@ import type { Heartbeat } from '@/types'
 import { mapAuditMessage } from '@/lib/map-audit-message'
 import { sendBrowserNotification } from '@/lib/browser-notify'
 
-const MAX_RETRIES = 20
 const BASE_DELAY = 1000
 const MAX_DELAY = 30000
 /** Cap-incident episodes already notified in this browser (at-least-once delivery ⇒ replays). */
@@ -57,6 +56,7 @@ export function useSSE() {
     window.addEventListener('online', resume)
 
     function connect() {
+      if (disposed) return
       // Clean up any prior connection
       if (esRef.current) {
         esRef.current.close()
@@ -304,16 +304,16 @@ export function useSSE() {
       }
 
       es.onerror = () => {
+        if (disposed || esRef.current !== es) return
         setConnected(false)
         setSseConnected(false)
         es.close()
         esRef.current = null
 
-        if (retryRef.current < MAX_RETRIES) {
-          const delay = Math.min(BASE_DELAY * Math.pow(2, retryRef.current), MAX_DELAY)
-          retryRef.current++
-          timeoutRef.current = setTimeout(connect, delay)
-        }
+        // A long server outage must not permanently strand an open tab.
+        const delay = Math.min(BASE_DELAY * Math.pow(2, retryRef.current), MAX_DELAY)
+        retryRef.current = Math.min(retryRef.current + 1, 5)
+        timeoutRef.current = setTimeout(connect, delay)
       }
     }
 
