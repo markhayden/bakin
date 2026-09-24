@@ -6,6 +6,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.36] - 2026-09-24
+
+The Models & Spend overhaul lands: model selection is judged by whether a model can actually run here, spend limits become an opt-in you set from observed usage with a fixed notification ladder, and the Models page collapses to one plan with two lanes. Underneath, the browser kit finishes its table-first collection rollout and gains a shared form-control foundation.
+
+### Added
+
+- **Spend plugin: opt-in limits with a fixed notification ladder (#911, #921).** A new `spend` core plugin owns limits, billing lanes and pricing; the models plugin now owns only "which model". Limits are opt-in — no limit set is a healthy, plainly stated fact everywhere (no doctor warnings, no "uncapped" CLI lines, no onboarding prompt). The `/spend` page's guided **Add a limit** dialog suggests a monthly cap from what you actually spent on observed days (only after 14 covered days — never a guess), scoped to everything, one agent, or one provider, on either the metered-dollars or subscription-tokens lane; an optional daily cap and a reaction (wait for the next period, or pause matching work until you raise or resume). The ladder is fixed at 50 / 75 / 90 / 100 %: toast + OS notification at 50 and 75; at 90 and 100, persistent toasts the operator has to close (closing acknowledges; the cap toast carries Raise and Resume, and Resume is refused while still over). Milestones and incidents are durable rows delivered at-least-once. An incident names the other limits still holding work, and the Limits tab shows where every rule stands this period. `bakin budget set --monthly N [--daily N] [--at-cap wait|pause]`.
+- **Model eligibility engine (#909, #907).** Whether a model can run here is now one verdict from four independent facts — in the catalog, available on the runtime (with the runtime's own reason), credentialed, and not rejected — overlaid on every catalog read. Every model picker keeps unavailable rows listed but disabled, with the reason ("no credentials for openai"), and a dead saved value renders in the danger tone (#922). Dead selections are held before the dispatch claim ("Model can't run" on the board), translated into real remediation in failures, flagged by a new `models.dead-selections` health check with a one-click repair, and reported (never rewritten) by the runtime switch. Restart-needed state is now advised by the adapter and persisted; Pi never needs one.
+- **One write path for model selections (#909, #920).** Every persisted model reference is a selection with a stable ref, saved through `POST /api/plugins/models/selections`: serialized, revision-checked, eligibility-checked, with per-selection applied / failed / pending outcomes, full-state snapshots, and `bakin models restore` to undo. The old per-surface config, defaults, aliases and routing write routes are gone.
+- **Simple/Advanced Models page and a recommended model plan (#912).** `/models` starts Simple: an **Agent model** lane (chat, direct messages, every task) and a **Background chores** lane (titles, enrichment, relay notifications, team routing, skill mapping), with "Set all to…" when the chores disagree. **Advanced** is a view over the same selections — Defaults, Agents, Work routing with tag overrides. **Use recommended plan** shows the exact diff with plain-words reasons and stages it; the same recommender backs `GET /api/plugins/models/plan`, `bakin models plan [--apply]`, the routing health check's apply-recommended-routes repair, and a new onboarding `models` step that applies only on confirmation (or `--yes` on a fresh install with no plan — an existing plan is never touched). Every edit stages into one draft with one save bar; "Reset to this plan" snapshots first and asks for typed confirmation. Deep links (`?ref=`) from the board and doctor land on the exact control.
+- **Form-control foundation (#914).** Input, Textarea, InputGroup and Select share standardized `sm/md/lg` sizes (32/36/44 px) and outlined, filled and ghost appearances; textareas auto-grow within bounds; a new Combobox supports single and multiple selection with chips, grouped and rich options, and caller-owned async states.
+- **Staged editing contracts and resize controls (#919).** Full-document managed-section rendering with bounded semantic Markdown comparison, AgentSelect appearance props, a visible composer focus ring, keyboard-reachable conversation regions, and atomic scoped plugin-data writes — the host prerequisites for staged Projects editing in the official Bits plugin. Drawer and conversation dividers gain visible grips with hover, focus and drag feedback, and clean up correctly when a drawer closes mid-drag or a second touch pointer arrives.
+
+### Changed
+
+- **Table-first collection rollout complete (#910, #806).** Tasks, Schedule, Health, Memory, Explore, Settings, Runtime, and the supporting Chat, Team, Assets and Branding lists now use the public DataTable for comparable records and separated rows for supporting lists, preserving URL sorting, search relevance, mobile metadata and action parity, independent menus and confirmation flows, and honest loading and error states. Galleries, calendars, boards, conversations and canvases stay as they were.
+- **Model pickers describe why an option is dead (#922).** `ModelSelectOption` gains `description` and `tone`, and `SelectItem` gains `description` (exposed as the option's accessible description), replacing the interim label-suffix composition.
+- **Models plugin is 3.0.0 (#912).** The four Models tabs, their `?tab=` links, and the Settings `defaultModel` field are removed in favor of the two-lane plan; the `models.configChanged` hook is replaced by `models.catalog_changed`.
+
+### Fixed
+
+- **Plugin compatibility gate handled release candidates wrong (#923).** The gate stripped every prerelease suffix, so a host on rc.34 wrongly satisfied `>=0.0.1-rc.35`, while an exact `0.0.1-rc.35` requirement rejected rc.35 itself. Requirements that explicitly target a prerelease of the same base version now compare the full host version; broad ranges and later release lines behave as before.
+- **Positional fallback edits survived reloads badly (#920).** A reload landing mid-save could report "changes were discarded" after a successful save, and a stale positional request was judged against whatever list the page held at that moment. The draft is now ref-authoritative, positional ops carry the list they were compared against, and a save's own result is never mistaken for an external change.
+- **Packed SDK content entry failed browser builds (#916).** Standalone plugin builds importing `@makinbakin/sdk/content` resolved vfile to Node-only modules; that entry now builds for the browser target.
+- **UI conformance jobs could hang for six hours (#917).** The runner verified every fixture in one process, and repeated Chromium launches inside the CI container eventually wedged it with no deadline to stop it. Each fixture now runs in its own process under a 120-second deadline, and every CI job carries `timeout-minutes`.
+
+### Upgrade notes
+
+- **Spend settings move on first boot.** Limits and billing overrides migrate once from `~/.bakin/plugin-settings/models.json` to `spend.json`; the original is kept as `models.json.pre-spend.bak`. No limit was ever a real default, so an install that never set one comes up with none — the Spend page will suggest one once it has 14 observed days.
+- **Anything scripting the old Models write routes must move.** `POST /api/plugins/models/{config,defaults,aliases}` and `PUT /api/plugins/models/routing` are gone; use `POST /api/plugins/models/selections`, or `bakin models plan --apply` for the recommended plan.
+- **A model that can no longer run holds its tasks instead of failing them.** After upgrading, check `/models` for danger-toned selections and the `models.dead-selections` health finding; the one-click repair (or the picker's *Use <model>* callout) stages the replacement.
+- **Official Bits plugins that pin `>=0.0.1-rc.35`** (Terminal, Projects) are now judged correctly by the compatibility gate; the Projects staged-editing release depends on this host.
+
 ## [0.0.1-rc.35] - 2026-09-21
 
 Everything v0.0.1-rc.34 promised, actually shipped: rc.34's tag failed macOS signing (see Fixed below) and was never published, so its full contents land here.
@@ -645,5 +678,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.34]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.34
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.35...HEAD
 [0.0.1-rc.35]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.35
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.36...HEAD
+[0.0.1-rc.36]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.36
