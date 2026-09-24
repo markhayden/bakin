@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+### Fixed
+
+- **`@makinbakin/sdk/content` threw `document is not defined` when imported outside a browser.** Since 0.0.1-rc.36 the packed rich-content entry is built for the browser target (so downstream plugin builds get vfile's browser helpers), but that target also selected `decode-named-character-reference`'s DOM build, which touches `document` at import — so the published entry could not be loaded under plain Node or Bun, and the release pipeline's post-publish SDK smoke has failed on rc.36 and rc.37. The content entry now pins that package to its universal build while staying browser-targeted; the SDK package test executes the packed entry without a DOM so this cannot regress.
+
 ## [0.0.1-rc.37] - 2026-09-24
 
 A single-fix patch for binary installs: the default workflows, workflow-step skills and runtime skills that every release binary has silently dropped since June now ship inside the binary, and the doctor tells you if a build ever loses them again.
