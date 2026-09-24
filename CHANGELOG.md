@@ -6,6 +6,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.39] - 2026-09-24
+
+Navigation indicators are smaller, quieter, and kept current without opening each page.
+
+### Changed
+
+- **Count-free navigation dots (#933).** Expanded, collapsed, grouped, and mobile navigation now use small colored dots: green for unread updates, yellow for review or approval, and red for actionable problems. Agent work in progress alone does not light a dot.
+- **Workflow approvals appear on Tasks (#933).** Pending approvals no longer advertise an unexplained Workflows badge; their indicator stays with the task where the decision can be made.
+
+### Fixed
+
+- **Indicators stayed stale until a destination was opened (#933).** Health diagnostics now refresh in the background, and navigation snapshots reconcile after reconnect, tab resume, and network recovery. Failed reads retain their last-known state and retry; older responses cannot restore obsolete indicators. Assets starts from an inventory snapshot, and Chat read and deletion changes propagate across tabs.
+- **Health monitoring looked like an actionable alert (#933).** Only unsuppressed effective action-required incidents light the Health dot, in every sensitivity mode. Monitoring and advisory findings remain available inside Health.
+- **Health updates could interrupt or bypass manual checks (#933).** Report events during Run checks queue a follow-up snapshot without aborting the diagnostic request. Starting Run checks during a cached read always runs diagnostics. Task-store changes now invalidate the affected Health checks using the actual event payload.
+
+### Upgrade notes
+
+- Upgrade Bakin before installing the companion official Messaging 0.11.7 and Projects 0.11.2 releases. They require rc.39 or later for shared reconciliation events and green unread-only conversation indicators.
+- No data migration is required. In-page counts and browser-tab unread counts remain available; only main-navigation counts are removed.
+
 ## [0.0.1-rc.38] - 2026-09-24
 
 A search-honesty patch: faceted asset search works again on libraries past a couple hundred assets and degraded answers are always labeled, the published SDK's rich-content entry imports outside a browser again, and Explore's capability rows keep their columns aligned.
