@@ -75,6 +75,15 @@ Source: `docs/snippets/plugin-basic/bakin-plugin.json`
 
 </div>
 
+The `bakin` range is checked during installation and activation against the
+running host release. Use the earliest verified production version, not a
+synthetic SDK fixture version from CI. For example, `>=0.0.1-rc.35` accepts
+rc.35, later RCs, and newer releases, while rejecting earlier RCs. Explicit
+prerelease bounds are respected within each `||` alternative. Ranges without
+a prerelease for the host's version retain base-version matching, so `*` and
+broad stable ranges continue to accept RC hosts. Unstamped `0.0.0-dev` hosts
+skip version satisfaction; test compatibility with stamped versions too.
+
 ## Optional Fields
 
 <div class="table-light-full table-label-wrap">
