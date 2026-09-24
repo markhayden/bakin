@@ -601,6 +601,24 @@ weights come from the content type's `indexes[].weight` and ride
   ~4 docs/s — avoid it for bulk work.
 
 Each still-standing engine constraint has a regression pin in
+**#930 — aggregations on a semantic query are rejected once the vector leg is approximate
+(0.2.2, unchanged on 0.2.3/main).** The engine computes search aggregations by re-running the
+query for the full result set and only accepts the rerun when `total_hits_relation == exact`;
+the dense leg reports `gte` as soon as the index holds more VECTORS than its 1,024-vector initial
+candidate window (chunked embeddings inflate the count: margo's 262 assets are 2,125 text vectors
+and trip it; a 103-asset / 467-vector dev table and a fresh 400-row table do not; 1,200 single-vector
+rows do — that is the pin) and the whole query 422s with a
+misleading `query_candidate_budget_exceeded` (the 100k budget is irrelevant; `approximate_candidate_source`
+is the honest reason). The adapter therefore never sends `aggregations` with `semantic_search`:
+`needsFacetSplit` strips them and `buildFacetCountRequest` runs a match-all `count:true`
+companion for the buckets (same `filter_query`, same full-corpus semantics the engine returned
+before), concurrently within the deadline; a failed companion omits facets with
+`diagnostics.adapter.facets = 'omitted'` — never the scan fallback. Before this, the 422 fell into
+`scanFallbackQuery` (flat 0.1 scores, no log line) and the plugin-scoped route dropped the
+diagnostics, so the Assets page silently served degraded hits for weeks. The scan fallback now
+logs a warning and plugin-scoped `meta` carries `partial` + `tables[].budget` like `/api/search`.
+Pinned in workaround-regressions (`PIN #930`); retire the split when that pin fails.
+
 `tests/integration/antfly/workaround-regressions.test.ts` written to FAIL when
 upstream fixes it — dead workarounds announce themselves.
 

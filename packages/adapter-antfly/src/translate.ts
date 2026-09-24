@@ -233,6 +233,39 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
   return request
 }
 
+/**
+ * #930: antfly computes search aggregations by re-running the query for the
+ * FULL result set and accepts the rerun only when the engine can prove the
+ * candidate set is complete (`total_hits_relation == exact`). A semantic leg
+ * reports an approximate relation as soon as the vector index stops being
+ * exhaustive — a few hundred rows in practice (margo: 262 assets) — and the
+ * whole query is rejected with 422 `query_candidate_budget_exceeded` even
+ * though the 100k budget is nowhere near. Verified against v0.2.2/v0.2.3
+ * source (`api/aggregation_plan.zig` on main); no request-level opt-out.
+ *
+ * So facets never ride a semantic request. The client strips `aggregations`
+ * from the hybrid/semantic request and runs THIS companion instead: the
+ * match-all list flow (`count:true`, `limit 0`, same `filter_query`, same
+ * aggregations) — the same full-corpus buckets the engine returned for a
+ * semantic query before it started rejecting them, accepted at any size.
+ */
+export function needsFacetSplit(request: WireQueryRequest): boolean {
+  return request.semantic_search !== undefined && request.aggregations !== undefined
+}
+
+/** Companion facet-count request for a semantic query (see needsFacetSplit). */
+export function buildFacetCountRequest(table: string, q: Query, settings: AntflySettings): WireQueryRequest {
+  return buildQueryRequest(table, {
+    ...q,
+    text: '',
+    limit: 0,
+    offset: 0,
+    rerank: false,
+    strategy: 'fts',
+    vector: undefined,
+  }, settings)
+}
+
 function buildAggregations(q: Query): Record<string, unknown> | undefined {
   // FLAT AggregationRequest shape ({type, field, size}) — the published
   // rc.17 contract. The nested {terms:{...}} wrapper only exists on newer

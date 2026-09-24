@@ -27,6 +27,15 @@ const searchResponse = z.object({
     total: z.number(),
     took_ms: z.number(),
     source: z.string(),
+    /** Present (true) when the answer degraded or omitted a leg — never hidden (D11). */
+    partial: z.boolean().optional(),
+    tables: z.array(z.object({
+      table: z.string(),
+      hits: z.number(),
+      took_ms: z.number(),
+      budget: z.enum(['degraded', 'omitted']).optional(),
+      facets: z.enum(['omitted']).optional(),
+    })).optional(),
   }).optional(),
 })
 

@@ -223,6 +223,13 @@ export interface QueryDiagnostics {
    * semantic lane, 'omitted' = could not answer at all (zero hits).
    */
   budget?: 'degraded' | 'omitted'
+  /**
+   * Adapter-neutral: the hits are good but the requested facet buckets could
+   * not be produced (e.g. the engine rejected the aggregation lane, #930).
+   * Consumers label the response partial and never mistake missing buckets
+   * for "no matches".
+   */
+  facets?: 'omitted'
   adapter?: RuntimeMetadata
 }
 

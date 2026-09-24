@@ -424,3 +424,84 @@ describe('standalone rerank (#846)', () => {
     expect(await makeClient([]).rerank('q', [])).toBeNull() // empty input → trivial null
   })
 })
+
+describe('#930 facet split on semantic queries', () => {
+  const hit = (id: string) => ({ _id: id, _score: 1.2, _index_scores: { full_text: 3, assets_text: 0.6, assets_visual: 0.4 }, _source: { title: id } })
+  const envelope = (hits: unknown[], aggregations: unknown = null) =>
+    ({ responses: [{ hits: { total: { value: hits.length, relation: 'exact' }, hits, max_score: 1 }, aggregations, took: 1, status: 200, error: null, table: 't' }] })
+  const hybridQuery = {
+    text: 'pie',
+    facets: ['asset_type'],
+    limit: 20,
+    adapterOptions: { indexes: ['assets_text', 'assets_visual'], searchableFields: ['description'] },
+  }
+
+  function capture() {
+    const bodies: Array<Record<string, unknown>> = []
+    return { bodies, record: (init?: RequestInit) => { bodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>) } }
+  }
+
+  it('sends the hits request WITHOUT aggregations and a match-all count companion, and merges the buckets', async () => {
+    const { bodies, record } = capture()
+    const client = makeClient([{
+      match: (url, init) => url.includes('/query') && init?.method === 'POST',
+      handle: (_url, init) => {
+        record(init)
+        const body = bodies[bodies.length - 1]!
+        if (body.count === true) return json(envelope([], { asset_type: { buckets: [{ key: 'image', doc_count: 9 }] } }))
+        return json(envelope([hit('a'), hit('b')]))
+      },
+    }])
+    const result = await client.query('t', hybridQuery)
+
+    expect(bodies).toHaveLength(2)
+    const main = bodies.find((b) => b.count !== true)!
+    const companion = bodies.find((b) => b.count === true)!
+    expect(main.semantic_search).toBe('pie')
+    expect(main.aggregations).toBeUndefined()
+    expect(companion.semantic_search).toBeUndefined()
+    expect(companion.full_text_search).toEqual({ match_all: {} })
+    expect(companion.limit).toBe(0)
+    expect(companion.aggregations).toEqual({ asset_type: { type: 'terms', field: 'asset_type', size: 50 } })
+
+    expect(result.hits.map((h) => h.key)).toEqual(['a', 'b'])
+    expect(result.hits[0]?.scoreBreakdown).toEqual({ full_text: 3, assets_text: 0.6, assets_visual: 0.4 })
+    expect(result.facets).toEqual({ asset_type: [{ value: 'image', count: 9 }] })
+    expect(result.diagnostics?.budget).toBeUndefined()
+    expect(result.diagnostics?.adapter?.facets).toBe('companion-count')
+  })
+
+  it('a failing companion omits the facets with a label — hits keep their leg scores, never the scan fallback', async () => {
+    const { bodies, record } = capture()
+    const client = makeClient([{
+      match: (url, init) => url.includes('/query') && init?.method === 'POST',
+      handle: (_url, init) => {
+        record(init)
+        const body = bodies[bodies.length - 1]!
+        if (body.count === true) return json({ status: 422, error: 'query_candidate_budget_exceeded', message: 'query candidate budget exceeded' }, 422)
+        return json(envelope([hit('a')]))
+      },
+    }])
+    const result = await client.query('t', hybridQuery)
+    expect(result.hits.map((h) => h.key)).toEqual(['a'])
+    expect(result.hits[0]?.score).toBe(1.2)
+    expect(result.facets).toBeUndefined()
+    expect(result.diagnostics?.budget).toBeUndefined()
+    expect(result.diagnostics?.facets).toBe('omitted') // adapter-neutral — what the response contract propagates
+    expect(result.diagnostics?.adapter?.facets).toBe('omitted')
+    expect(String(result.diagnostics?.adapter?.facetsError)).toContain('422')
+  })
+
+  it('an fts-only query keeps its aggregations on the single request (no split)', async () => {
+    const { bodies, record } = capture()
+    const client = makeClient([{
+      match: (url, init) => url.includes('/query') && init?.method === 'POST',
+      handle: (_url, init) => { record(init); return json(envelope([hit('a')], { asset_type: { buckets: [{ key: 'image', doc_count: 1 }] } })) },
+    }])
+    const result = await client.query('t', { ...hybridQuery, strategy: 'fts' })
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0]?.aggregations).toBeDefined()
+    expect(bodies[0]?.semantic_search).toBeUndefined()
+    expect(result.facets).toEqual({ asset_type: [{ value: 'image', count: 1 }] })
+  })
+})
