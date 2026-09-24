@@ -52,7 +52,8 @@ import { createLogger } from './logger'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { getPluginSkills as skillRegistry, clearPluginSkills, removePluginSkillsByPlugin } from '@bakin/core/skills/plugin-skill-registry'
 import { getContentTypes, purgeContentType, unregisterContentTypesByPlugin } from './search-registry'
-import { loadPluginSkills } from '../lib/plugin-skill-loader'
+import { loadPluginSkillFiles } from '../lib/plugin-skill-loader'
+import { listPluginDefaultFilesWithExtension } from './plugin-resources'
 import { setCorePluginCheck, readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
 import {
   PluginManifestError,
@@ -718,7 +719,7 @@ class PluginRegistryImpl {
     events: EventBus,
     services: AppServices,
     opts: { source: 'core' | 'user'; manifestPath: string; manifest?: PublicPluginManifest; captureConsole: boolean },
-  ): Promise<ReturnType<typeof loadPluginSkills>> {
+  ): Promise<ReturnType<typeof loadPluginSkillFiles>> {
     const { source, manifestPath, manifest, captureConsole } = opts
     const ctx = this.buildContext(plugin.id, state, storage, events, services)
     this.registerDeclarativeRoutes(plugin, state)
@@ -749,9 +750,15 @@ class PluginRegistryImpl {
       pluginId: plugin.id,
       pluginSource: source,
     })
-    let skillResult: ReturnType<typeof loadPluginSkills>
+    let skillResult: ReturnType<typeof loadPluginSkillFiles>
     try {
-      skillResult = loadPluginSkills(pluginPath, ctx, log)
+      // Resolved through plugin-resources so compiled binaries (no plugin
+      // directory on disk) register the same shipped skills a checkout does.
+      const skillFiles = listPluginDefaultFilesWithExtension(
+        { pluginId: plugin.id, pluginPath, kind: 'workflow-skills' },
+        ['.md'],
+      ).map(file => ({ file: file.relPath, path: file.path }))
+      skillResult = loadPluginSkillFiles(skillFiles, ctx, log)
     } catch (err) {
       skillSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
       throw err
@@ -997,7 +1004,7 @@ class PluginRegistryImpl {
       healthRepairActionIds: [],
     }
 
-    let skillResult: ReturnType<typeof loadPluginSkills>
+    let skillResult: ReturnType<typeof loadPluginSkillFiles>
     try {
       skillResult = await this.finalizeActivation(plugin, state, entry.path, storage, events, services, {
         source: 'user',

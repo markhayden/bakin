@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+### Fixed
+
+- **Compiled binaries shipped no default workflows, step skills or runtime skills.** Every install from a release binary booted with an empty Workflows page: the six default workflows (`text-social-post`, `image-social-post`, `video-social-post`, `video-script`, `clip-creation`, `assemble-video`), the three image workflows, their workflow-step skills, and the images plugin's installable runtime skills never registered, and `bakin check plugin-assets` reported that no plugin ships any. The loaders located `defaults/` relative to their own module file, which inside a single-file binary is a virtual `/$bunfs` path that never exists, and returned silently. Source checkouts were unaffected, which is why it went unseen since June. Plugin defaults are now embedded in the binary at build time and every loader resolves through one plugin-resources resolver (disk on a checkout, embedded copies in the binary). A compile-and-run regression asserts parity between a real binary and the checkout, and a new `workflows.shipped-defaults` health check raises an action-required incident if a build ever loses sight of its shipped workflows again.
+
+### Upgrade notes
+
+- Binary installs: after upgrading, the default workflows appear on the Workflows page at the next boot with no migration. Run `bakin install plugin-assets` once to install the images plugin's runtime skills, which the previous binaries could not see.
+
 ## [0.0.1-rc.36] - 2026-09-24
 
 The Models & Spend overhaul lands: model selection is judged by whether a model can actually run here, spend limits become an opt-in you set from observed usage with a fixed notification ladder, and the Models page collapses to one plan with two lanes. Underneath, the browser kit finishes its table-first collection rollout and gains a shared form-control foundation.

@@ -1,14 +1,13 @@
 /**
  * Images plugin — provider-routed image generation primitives.
  */
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import type { ExecToolResult, HealthCheckRunInput, PluginContext } from '@bakin/core/plugin-types'
 import { healthError, healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
-import { loadDefaultWorkflows } from '@bakin/core/workflows/load-defaults'
+import { loadDefaultWorkflowFiles } from '@bakin/core/workflows/load-defaults'
+import { pluginRootFromModuleUrl, shippedWorkflowFiles } from '../../src/core/plugin-resources'
 import { DEFAULT_IMAGE_SETTINGS, listImageProviders, providerReadiness } from './lib/providers'
 import { getImageProfile, listImageProfiles, IMAGE_SURFACE_IDS } from './lib/platform-profiles'
 import { editImage, exportImage, generateImage, importImage } from './lib/tools'
@@ -226,8 +225,13 @@ const imagesPlugin = definePlugin({
   navItems: [],
   contentFiles: [],
   activate(ctx: PluginContext) {
-    const moduleDir = dirname(fileURLToPath(import.meta.url))
-    const defaultsLoaded = loadDefaultWorkflows(ctx, join(moduleDir, 'defaults', 'workflows'), log)
+    // Resolved through plugin-resources: disk on a checkout, the embedded
+    // copies inside a compiled binary (where this module has no directory).
+    const defaultsLoaded = loadDefaultWorkflowFiles(
+      ctx,
+      shippedWorkflowFiles('images', pluginRootFromModuleUrl(import.meta.url)),
+      log,
+    )
     if (defaultsLoaded.registered.length > 0) {
       log.info(`Registered ${defaultsLoaded.registered.length} image workflow(s)`, {
         ids: defaultsLoaded.registered,

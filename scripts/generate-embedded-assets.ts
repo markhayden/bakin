@@ -2,7 +2,9 @@
  * Generate the embedded-assets manifest module (#147 TG1).
  *
  * Collects the SDK stylesheet and walks the directories that hold the host
- * client bundle, vendor bundles, and core plugin dist output, then writes
+ * client bundle, vendor bundles, core plugin dist output, and core plugin
+ * `defaults/**` (shipped workflows/skills — see src/core/plugin-resources.ts),
+ * then writes
  * (packages/host/src/api/_embedded-assets-static.ts) that `import`s every
  * file with `{ type: 'file' }`. Bun's `--compile` resolves these imports at
  * build time and embeds the bytes in the binary; at dev time the same
@@ -25,6 +27,7 @@
 import { readdirSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, resolve, relative, dirname } from 'node:path'
 import { walkFiles } from '../packages/core/src/storage/walk'
+import { PLUGIN_DEFAULTS_KEY_PREFIX } from '../src/core/plugin-resources'
 
 const OUT_FILE_REL = 'packages/host/src/api/_embedded-assets-static.ts'
 const REQUIRED_ASSETS: Array<{ path: string; build: string }> = [
@@ -142,6 +145,14 @@ export function collectAssets(repoRoot: string): AssetSource[] {
     }
   }
 
+  // Core plugin `defaults/**` — shipped workflows, workflow-skills and
+  // runtime-skills. Compiled binaries have no plugin directory on disk (every
+  // module's import.meta.url is /$bunfs/...), so the loaders read these
+  // copies through src/core/plugin-resources.ts instead. Keys are
+  // `plugin-defaults:<id>/<relPath>` — NOT URL paths (no leading slash), so
+  // the static handler's `url.pathname` lookup can never serve them.
+  assets.push(...collectPluginDefaultAssets(repoRoot, makeVarName))
+
   // Host static-data files — mapped to /data/<filename> and read through
   // EMBEDDED_ASSETS (e.g. curated-catalog.json, loaded by
   // src/core/curated-catalog/load.ts). Walk just the top level;
@@ -167,6 +178,41 @@ export function collectAssets(repoRoot: string): AssetSource[] {
   // package bytes.
 
   return assets
+}
+
+/**
+ * Core plugin `defaults/**` only — the entries src/core/plugin-resources.ts
+ * reads inside a compiled binary. Separate from `collectAssets` so the
+ * compile-and-run regression can build a defaults-only manifest without the
+ * host/vendor build outputs present.
+ */
+export function collectPluginDefaultAssets(
+  repoRoot: string,
+  makeVarName: (key: string) => string = defaultVarName,
+): AssetSource[] {
+  const assets: AssetSource[] = []
+  const pluginsDir = join(repoRoot, 'plugins')
+  if (!existsSync(pluginsDir)) return assets
+  for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const id = String(entry.name)
+    const defaultsDir = join(pluginsDir, id, 'defaults')
+    if (!existsSync(defaultsDir)) continue
+    for (const file of walkFiles(defaultsDir)) {
+      if (file.name.endsWith('.map')) continue
+      const key = `${PLUGIN_DEFAULTS_KEY_PREFIX}${id}/${file.relPath}`
+      assets.push({ absPath: file.path, urlPath: key, varName: makeVarName(key) })
+    }
+  }
+  return assets
+}
+
+function defaultVarName(key: string): string {
+  return 'asset_' + key
+    .replace(/^\//, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
 }
 
 function assertRequiredAssetsExist(repoRoot: string): void {

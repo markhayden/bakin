@@ -24,7 +24,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({}),
 }))
 
-import { collectAssets, emitManifest } from '../../scripts/generate-embedded-assets'
+import { collectAssets, collectPluginDefaultAssets, emitManifest } from '../../scripts/generate-embedded-assets'
 
 function seed(rel: string, content = '// stub\n'): void {
   const full = join(root, rel)
@@ -45,6 +45,11 @@ seed('plugins/alpha/dist/client.css')
 seed('plugins/alpha/dist/SKILL-abc123.md')             // stray server-build artifact
 seed('plugins/beta/dist/index.js')                     // server-only plugin
 seed('packages/host/src/data/curated-catalog.json', '[]')
+seed('plugins/alpha/defaults/workflows/hello.yaml', 'id: hello\n')            // shipped workflow
+seed('plugins/alpha/defaults/workflow-skills/write.md', '# write\n')          // workflow-step skill
+seed('plugins/alpha/defaults/runtime-skills/qc/SKILL.md', '# qc\n')          // runtime skill (nested)
+seed('plugins/alpha/defaults/runtime-skills/qc/scripts/run.sh', 'echo\n')    // nested payload
+seed('plugins/alpha/defaults/workflows/hello.yaml.map', '{}')                // must be skipped
 
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
@@ -131,5 +136,31 @@ describe('emitManifest', () => {
     expect(manifest).toContain("  ['/_app/main.js', asset_app_main_js],")
     expect(manifest).toContain(`export const EMBEDDED_ASSET_COUNT = ${assets.length}`)
     expect(manifest).toContain('export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string>')
+  })
+})
+
+describe('core plugin defaults (compiled-binary reads via src/core/plugin-resources)', () => {
+  it('collects every file under plugins/<id>/defaults/** under plugin-defaults:<id>/ keys', () => {
+    const urls = collectAssets(root).map(a => a.urlPath)
+    expect(urls).toContain('plugin-defaults:alpha/workflows/hello.yaml')
+    expect(urls).toContain('plugin-defaults:alpha/workflow-skills/write.md')
+    expect(urls).toContain('plugin-defaults:alpha/runtime-skills/qc/SKILL.md')
+    expect(urls).toContain('plugin-defaults:alpha/runtime-skills/qc/scripts/run.sh')
+    expect(urls).not.toContain('plugin-defaults:alpha/workflows/hello.yaml.map')
+  })
+
+  it('defaults keys are never URL paths — the static handler looks up url.pathname, which always starts with /', () => {
+    const keys = collectAssets(root).map(a => a.urlPath).filter(u => u.startsWith('plugin-defaults:'))
+    expect(keys.length).toBeGreaterThan(0)
+    for (const key of keys) expect(key.startsWith('/')).toBe(false)
+  })
+
+  it('collectPluginDefaultAssets works without any host/vendor build output present', () => {
+    const bare = join(root, 'bare')
+    mkdirSync(join(bare, 'plugins/solo/defaults/workflows'), { recursive: true })
+    writeFileSync(join(bare, 'plugins/solo/defaults/workflows/only.yaml'), 'id: only\n')
+    const assets = collectPluginDefaultAssets(bare)
+    expect(assets.map(a => a.urlPath)).toEqual(['plugin-defaults:solo/workflows/only.yaml'])
+    expect(assets[0]?.varName).toBe('asset_plugin_defaults_solo_workflows_only_yaml')
   })
 })

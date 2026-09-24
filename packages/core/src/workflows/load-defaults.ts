@@ -28,23 +28,29 @@ export interface LoadDefaultsResult {
   skipped: { id: string; errors: string[] }[]
 }
 
-export function loadDefaultWorkflows(
+export interface DefaultWorkflowFile {
+  /** Definition id (filename without extension). */
+  id: string
+  /** Readable path — on disk or an embedded `/$bunfs/...` path. */
+  path: string
+}
+
+/**
+ * Register a list of already-located shipped workflow files. This is the
+ * engine; `loadDefaultWorkflows` (directory form) and the plugin-resources
+ * resolver (`shippedWorkflowFiles`, disk OR embedded) both feed it.
+ */
+export function loadDefaultWorkflowFiles(
   ctx: PluginContext,
-  defaultsDir: string,
+  files: readonly DefaultWorkflowFile[],
   log: { warn: (msg: string, meta?: Record<string, unknown>) => void },
 ): LoadDefaultsResult {
   const result: LoadDefaultsResult = { registered: [], skipped: [] }
-  if (!existsSync(defaultsDir)) return result
 
-  const files = readdirSync(defaultsDir).filter(
-    (f) => f.endsWith('.yaml') || f.endsWith('.yml'),
-  )
-
-  for (const file of files) {
-    const id = file.replace(/\.(yaml|yml)$/, '')
+  for (const { id, path } of files) {
     let definition: WorkflowDefinition
     try {
-      const raw = readFileSync(join(defaultsDir, file), 'utf-8')
+      const raw = readFileSync(path, 'utf-8')
       definition = yaml.load(raw) as unknown as WorkflowDefinition
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -74,4 +80,21 @@ export function loadDefaultWorkflows(
   }
 
   return result
+}
+
+/**
+ * Directory form: every `*.yaml|yml` directly under `defaultsDir`. Only
+ * meaningful where the directory exists on disk (source checkouts, tests);
+ * compiled binaries go through `shippedWorkflowFiles` instead.
+ */
+export function loadDefaultWorkflows(
+  ctx: PluginContext,
+  defaultsDir: string,
+  log: { warn: (msg: string, meta?: Record<string, unknown>) => void },
+): LoadDefaultsResult {
+  if (!existsSync(defaultsDir)) return { registered: [], skipped: [] }
+  const files = readdirSync(defaultsDir)
+    .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'))
+    .map((file) => ({ id: file.replace(/\.(yaml|yml)$/, ''), path: join(defaultsDir, file) }))
+  return loadDefaultWorkflowFiles(ctx, files, log)
 }

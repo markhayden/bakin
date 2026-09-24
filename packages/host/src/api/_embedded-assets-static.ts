@@ -22,36 +22,37 @@ import asset_bakin_logo_svg from '../../public/bakin-logo.svg' with { type: 'fil
 import asset_bakin_hop_svg from '../../public/bakin-hop.svg' with { type: 'file' }
 import asset_vendor_sdk_ui_js from '../../public/vendor/sdk-ui.js' with { type: 'file' }
 import asset_vendor_sdk_routing_js from '../../public/vendor/sdk-routing.js' with { type: 'file' }
+import asset_vendor_sdk_shared_cwfswx6k_js from '../../public/vendor/sdk-shared-cwfswx6k.js' with { type: 'file' }
 import asset_vendor_sdk_conversation_js from '../../public/vendor/sdk-conversation.js' with { type: 'file' }
-import asset_vendor_sdk_shared_xwf7zwwb_js from '../../public/vendor/sdk-shared-xwf7zwwb.js' with { type: 'file' }
+import asset_vendor_sdk_shared_mvp8cayd_js from '../../public/vendor/sdk-shared-mvp8cayd.js' with { type: 'file' }
+import asset_vendor_sdk_shared_krrt298f_js from '../../public/vendor/sdk-shared-krrt298f.js' with { type: 'file' }
 import asset_vendor_sdk_content_js from '../../public/vendor/sdk-content.js' with { type: 'file' }
-import asset_vendor_sdk_shared_b3v28rcx_js from '../../public/vendor/sdk-shared-b3v28rcx.js' with { type: 'file' }
-import asset_vendor_sdk_shared_wmt0kn8t_js from '../../public/vendor/sdk-shared-wmt0kn8t.js' with { type: 'file' }
+import asset_vendor_sdk_shared_4hwtb5cj_js from '../../public/vendor/sdk-shared-4hwtb5cj.js' with { type: 'file' }
 import asset_vendor_react_js from '../../public/vendor/react.js' with { type: 'file' }
-import asset_vendor_sdk_shared_2m59avfb_js from '../../public/vendor/sdk-shared-2m59avfb.js' with { type: 'file' }
-import asset_vendor_sdk_shared_3tnggsqa_js from '../../public/vendor/sdk-shared-3tnggsqa.js' with { type: 'file' }
+import asset_vendor_sdk_shared_60hrnxe0_js from '../../public/vendor/sdk-shared-60hrnxe0.js' with { type: 'file' }
+import asset_vendor_sdk_shared_nfd6pa0v_js from '../../public/vendor/sdk-shared-nfd6pa0v.js' with { type: 'file' }
 import asset_vendor_jsx_runtime_js from '../../public/vendor/jsx-runtime.js' with { type: 'file' }
+import asset_vendor_sdk_shared_2rzgvsy6_js from '../../public/vendor/sdk-shared-2rzgvsy6.js' with { type: 'file' }
 import asset_vendor_sdk_shared_bmsw4wcn_js from '../../public/vendor/sdk-shared-bmsw4wcn.js' with { type: 'file' }
+import asset_vendor_sdk_shared_1n72dnes_js from '../../public/vendor/sdk-shared-1n72dnes.js' with { type: 'file' }
+import asset_vendor_sdk_shared_v9d5yej6_js from '../../public/vendor/sdk-shared-v9d5yej6.js' with { type: 'file' }
 import asset_vendor_sdk_utils_js from '../../public/vendor/sdk-utils.js' with { type: 'file' }
-import asset_vendor_sdk_shared_6ynbn7rm_js from '../../public/vendor/sdk-shared-6ynbn7rm.js' with { type: 'file' }
 import asset_vendor_sdk_types_js from '../../public/vendor/sdk-types.js' with { type: 'file' }
-import asset_vendor_sdk_shared_0pfnm8sn_js from '../../public/vendor/sdk-shared-0pfnm8sn.js' with { type: 'file' }
-import asset_vendor_sdk_shared_pwtrcm3r_js from '../../public/vendor/sdk-shared-pwtrcm3r.js' with { type: 'file' }
-import asset_vendor_sdk_shared_7wdkv94z_js from '../../public/vendor/sdk-shared-7wdkv94z.js' with { type: 'file' }
-import asset_vendor_sdk_shared_sky48pgw_js from '../../public/vendor/sdk-shared-sky48pgw.js' with { type: 'file' }
-import asset_vendor_sdk_shared_rqd21pxb_js from '../../public/vendor/sdk-shared-rqd21pxb.js' with { type: 'file' }
+import asset_vendor_sdk_shared_75w36ygs_js from '../../public/vendor/sdk-shared-75w36ygs.js' with { type: 'file' }
+import asset_vendor_sdk_shared_ey2f3p3b_js from '../../public/vendor/sdk-shared-ey2f3p3b.js' with { type: 'file' }
+import asset_vendor_sdk_shared_kh6y6qys_js from '../../public/vendor/sdk-shared-kh6y6qys.js' with { type: 'file' }
 import asset_vendor_react_dom_js from '../../public/vendor/react-dom.js' with { type: 'file' }
-import asset_vendor_sdk_shared_9s1twpqb_js from '../../public/vendor/sdk-shared-9s1twpqb.js' with { type: 'file' }
+import asset_vendor_sdk_shared_0z0dtqbz_js from '../../public/vendor/sdk-shared-0z0dtqbz.js' with { type: 'file' }
 import asset_vendor_sdk_charts_js from '../../public/vendor/sdk-charts.js' with { type: 'file' }
 import asset_vendor_sdk_index_js from '../../public/vendor/sdk-index.js' with { type: 'file' }
 import asset_vendor_sdk_layout_js from '../../public/vendor/sdk-layout.js' with { type: 'file' }
+import asset_vendor_sdk_shared_r4fvpv4f_js from '../../public/vendor/sdk-shared-r4fvpv4f.js' with { type: 'file' }
 import asset_vendor_sdk_slots_js from '../../public/vendor/sdk-slots.js' with { type: 'file' }
-import asset_vendor_sdk_shared_ryhba62y_js from '../../public/vendor/sdk-shared-ryhba62y.js' with { type: 'file' }
-import asset_vendor_sdk_shared_bs8jwskp_js from '../../public/vendor/sdk-shared-bs8jwskp.js' with { type: 'file' }
+import asset_vendor_sdk_shared_d0zgmk1m_js from '../../public/vendor/sdk-shared-d0zgmk1m.js' with { type: 'file' }
+import asset_vendor_sdk_shared_hy34mvdh_js from '../../public/vendor/sdk-shared-hy34mvdh.js' with { type: 'file' }
 import asset_vendor_sdk_patterns_js from '../../public/vendor/sdk-patterns.js' with { type: 'file' }
 import asset_vendor_sdk_metadata_js from '../../public/vendor/sdk-metadata.js' with { type: 'file' }
-import asset_vendor_sdk_shared_9ef76gtb_js from '../../public/vendor/sdk-shared-9ef76gtb.js' with { type: 'file' }
-import asset_vendor_sdk_shared_85bxt4ab_js from '../../public/vendor/sdk-shared-85bxt4ab.js' with { type: 'file' }
+import asset_vendor_sdk_shared_qybmk0zk_js from '../../public/vendor/sdk-shared-qybmk0zk.js' with { type: 'file' }
 import asset_vendor_sdk_hooks_js from '../../public/vendor/sdk-hooks.js' with { type: 'file' }
 import asset_vendor_tanstack_router_js from '../../public/vendor/tanstack-router.js' with { type: 'file' }
 import asset_vendor_sdk_navigation_js from '../../public/vendor/sdk-navigation.js' with { type: 'file' }
@@ -71,6 +72,25 @@ import asset_api_plugins_team_assets_client_js from '../../../../plugins/team/di
 import asset_api_plugins_team_assets_client_css from '../../../../plugins/team/dist/client.css' with { type: 'file' }
 import asset_api_plugins_spend_assets_client_js from '../../../../plugins/spend/dist/client.js' with { type: 'file' }
 import asset_api_plugins_assets_assets_client_js from '../../../../plugins/assets/dist/client.js' with { type: 'file' }
+import asset_plugin_defaults_images_workflow_skills_generate_image_md from '../../../../plugins/images/defaults/workflow-skills/generate-image.md' with { type: 'file' }
+import asset_plugin_defaults_images_workflows_image_variant_yaml from '../../../../plugins/images/defaults/workflows/image-variant.yaml' with { type: 'file' }
+import asset_plugin_defaults_images_workflows_image_generation_yaml from '../../../../plugins/images/defaults/workflows/image-generation.yaml' with { type: 'file' }
+import asset_plugin_defaults_images_workflows_image_multi_select_yaml from '../../../../plugins/images/defaults/workflows/image-multi-select.yaml' with { type: 'file' }
+import asset_plugin_defaults_images_runtime_skills_create_image_gemini_SKILL_md from '../../../../plugins/images/defaults/runtime-skills/create-image-gemini/SKILL.md' with { type: 'file' }
+import asset_plugin_defaults_images_runtime_skills_image_qc_SKILL_md from '../../../../plugins/images/defaults/runtime-skills/image-qc/SKILL.md' with { type: 'file' }
+import asset_plugin_defaults_images_runtime_skills_create_image_openai_SKILL_md from '../../../../plugins/images/defaults/runtime-skills/create-image-openai/SKILL.md' with { type: 'file' }
+import asset_plugin_defaults_images_runtime_skills_create_image_SKILL_md from '../../../../plugins/images/defaults/runtime-skills/create-image/SKILL.md' with { type: 'file' }
+import asset_plugin_defaults_images_runtime_skills_image_model_routing_SKILL_md from '../../../../plugins/images/defaults/runtime-skills/image-model-routing/SKILL.md' with { type: 'file' }
+import asset_plugin_defaults_workflows_workflow_skills_publish_md from '../../../../plugins/workflows/defaults/workflow-skills/publish.md' with { type: 'file' }
+import asset_plugin_defaults_workflows_workflow_skills_generate_video_md from '../../../../plugins/workflows/defaults/workflow-skills/generate-video.md' with { type: 'file' }
+import asset_plugin_defaults_workflows_workflow_skills_write_copy_md from '../../../../plugins/workflows/defaults/workflow-skills/write-copy.md' with { type: 'file' }
+import asset_plugin_defaults_workflows_workflow_skill_legacy_hashes_json from '../../../../plugins/workflows/defaults/workflow-skill-legacy-hashes.json' with { type: 'file' }
+import asset_plugin_defaults_workflows_workflows_text_social_post_yaml from '../../../../plugins/workflows/defaults/workflows/text-social-post.yaml' with { type: 'file' }
+import asset_plugin_defaults_workflows_workflows_video_social_post_yaml from '../../../../plugins/workflows/defaults/workflows/video-social-post.yaml' with { type: 'file' }
+import asset_plugin_defaults_workflows_workflows_image_social_post_yaml from '../../../../plugins/workflows/defaults/workflows/image-social-post.yaml' with { type: 'file' }
+import asset_plugin_defaults_workflows_workflows_clip_creation_yaml from '../../../../plugins/workflows/defaults/workflows/clip-creation.yaml' with { type: 'file' }
+import asset_plugin_defaults_workflows_workflows_video_script_yaml from '../../../../plugins/workflows/defaults/workflows/video-script.yaml' with { type: 'file' }
+import asset_plugin_defaults_workflows_workflows_assemble_video_yaml from '../../../../plugins/workflows/defaults/workflows/assemble-video.yaml' with { type: 'file' }
 import asset_data_curated_catalog_json from '../data/curated-catalog.json' with { type: 'file' }
 
 /** URL path → embedded file path. Keys are the exact paths the HTTP
@@ -84,36 +104,37 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/bakin-hop.svg', asset_bakin_hop_svg],
   ['/vendor/sdk-ui.js', asset_vendor_sdk_ui_js],
   ['/vendor/sdk-routing.js', asset_vendor_sdk_routing_js],
+  ['/vendor/sdk-shared-cwfswx6k.js', asset_vendor_sdk_shared_cwfswx6k_js],
   ['/vendor/sdk-conversation.js', asset_vendor_sdk_conversation_js],
-  ['/vendor/sdk-shared-xwf7zwwb.js', asset_vendor_sdk_shared_xwf7zwwb_js],
+  ['/vendor/sdk-shared-mvp8cayd.js', asset_vendor_sdk_shared_mvp8cayd_js],
+  ['/vendor/sdk-shared-krrt298f.js', asset_vendor_sdk_shared_krrt298f_js],
   ['/vendor/sdk-content.js', asset_vendor_sdk_content_js],
-  ['/vendor/sdk-shared-b3v28rcx.js', asset_vendor_sdk_shared_b3v28rcx_js],
-  ['/vendor/sdk-shared-wmt0kn8t.js', asset_vendor_sdk_shared_wmt0kn8t_js],
+  ['/vendor/sdk-shared-4hwtb5cj.js', asset_vendor_sdk_shared_4hwtb5cj_js],
   ['/vendor/react.js', asset_vendor_react_js],
-  ['/vendor/sdk-shared-2m59avfb.js', asset_vendor_sdk_shared_2m59avfb_js],
-  ['/vendor/sdk-shared-3tnggsqa.js', asset_vendor_sdk_shared_3tnggsqa_js],
+  ['/vendor/sdk-shared-60hrnxe0.js', asset_vendor_sdk_shared_60hrnxe0_js],
+  ['/vendor/sdk-shared-nfd6pa0v.js', asset_vendor_sdk_shared_nfd6pa0v_js],
   ['/vendor/jsx-runtime.js', asset_vendor_jsx_runtime_js],
+  ['/vendor/sdk-shared-2rzgvsy6.js', asset_vendor_sdk_shared_2rzgvsy6_js],
   ['/vendor/sdk-shared-bmsw4wcn.js', asset_vendor_sdk_shared_bmsw4wcn_js],
+  ['/vendor/sdk-shared-1n72dnes.js', asset_vendor_sdk_shared_1n72dnes_js],
+  ['/vendor/sdk-shared-v9d5yej6.js', asset_vendor_sdk_shared_v9d5yej6_js],
   ['/vendor/sdk-utils.js', asset_vendor_sdk_utils_js],
-  ['/vendor/sdk-shared-6ynbn7rm.js', asset_vendor_sdk_shared_6ynbn7rm_js],
   ['/vendor/sdk-types.js', asset_vendor_sdk_types_js],
-  ['/vendor/sdk-shared-0pfnm8sn.js', asset_vendor_sdk_shared_0pfnm8sn_js],
-  ['/vendor/sdk-shared-pwtrcm3r.js', asset_vendor_sdk_shared_pwtrcm3r_js],
-  ['/vendor/sdk-shared-7wdkv94z.js', asset_vendor_sdk_shared_7wdkv94z_js],
-  ['/vendor/sdk-shared-sky48pgw.js', asset_vendor_sdk_shared_sky48pgw_js],
-  ['/vendor/sdk-shared-rqd21pxb.js', asset_vendor_sdk_shared_rqd21pxb_js],
+  ['/vendor/sdk-shared-75w36ygs.js', asset_vendor_sdk_shared_75w36ygs_js],
+  ['/vendor/sdk-shared-ey2f3p3b.js', asset_vendor_sdk_shared_ey2f3p3b_js],
+  ['/vendor/sdk-shared-kh6y6qys.js', asset_vendor_sdk_shared_kh6y6qys_js],
   ['/vendor/react-dom.js', asset_vendor_react_dom_js],
-  ['/vendor/sdk-shared-9s1twpqb.js', asset_vendor_sdk_shared_9s1twpqb_js],
+  ['/vendor/sdk-shared-0z0dtqbz.js', asset_vendor_sdk_shared_0z0dtqbz_js],
   ['/vendor/sdk-charts.js', asset_vendor_sdk_charts_js],
   ['/vendor/sdk-index.js', asset_vendor_sdk_index_js],
   ['/vendor/sdk-layout.js', asset_vendor_sdk_layout_js],
+  ['/vendor/sdk-shared-r4fvpv4f.js', asset_vendor_sdk_shared_r4fvpv4f_js],
   ['/vendor/sdk-slots.js', asset_vendor_sdk_slots_js],
-  ['/vendor/sdk-shared-ryhba62y.js', asset_vendor_sdk_shared_ryhba62y_js],
-  ['/vendor/sdk-shared-bs8jwskp.js', asset_vendor_sdk_shared_bs8jwskp_js],
+  ['/vendor/sdk-shared-d0zgmk1m.js', asset_vendor_sdk_shared_d0zgmk1m_js],
+  ['/vendor/sdk-shared-hy34mvdh.js', asset_vendor_sdk_shared_hy34mvdh_js],
   ['/vendor/sdk-patterns.js', asset_vendor_sdk_patterns_js],
   ['/vendor/sdk-metadata.js', asset_vendor_sdk_metadata_js],
-  ['/vendor/sdk-shared-9ef76gtb.js', asset_vendor_sdk_shared_9ef76gtb_js],
-  ['/vendor/sdk-shared-85bxt4ab.js', asset_vendor_sdk_shared_85bxt4ab_js],
+  ['/vendor/sdk-shared-qybmk0zk.js', asset_vendor_sdk_shared_qybmk0zk_js],
   ['/vendor/sdk-hooks.js', asset_vendor_sdk_hooks_js],
   ['/vendor/tanstack-router.js', asset_vendor_tanstack_router_js],
   ['/vendor/sdk-navigation.js', asset_vendor_sdk_navigation_js],
@@ -133,7 +154,26 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/api/plugins/team/assets/client.css', asset_api_plugins_team_assets_client_css],
   ['/api/plugins/spend/assets/client.js', asset_api_plugins_spend_assets_client_js],
   ['/api/plugins/assets/assets/client.js', asset_api_plugins_assets_assets_client_js],
+  ['plugin-defaults:images/workflow-skills/generate-image.md', asset_plugin_defaults_images_workflow_skills_generate_image_md],
+  ['plugin-defaults:images/workflows/image-variant.yaml', asset_plugin_defaults_images_workflows_image_variant_yaml],
+  ['plugin-defaults:images/workflows/image-generation.yaml', asset_plugin_defaults_images_workflows_image_generation_yaml],
+  ['plugin-defaults:images/workflows/image-multi-select.yaml', asset_plugin_defaults_images_workflows_image_multi_select_yaml],
+  ['plugin-defaults:images/runtime-skills/create-image-gemini/SKILL.md', asset_plugin_defaults_images_runtime_skills_create_image_gemini_SKILL_md],
+  ['plugin-defaults:images/runtime-skills/image-qc/SKILL.md', asset_plugin_defaults_images_runtime_skills_image_qc_SKILL_md],
+  ['plugin-defaults:images/runtime-skills/create-image-openai/SKILL.md', asset_plugin_defaults_images_runtime_skills_create_image_openai_SKILL_md],
+  ['plugin-defaults:images/runtime-skills/create-image/SKILL.md', asset_plugin_defaults_images_runtime_skills_create_image_SKILL_md],
+  ['plugin-defaults:images/runtime-skills/image-model-routing/SKILL.md', asset_plugin_defaults_images_runtime_skills_image_model_routing_SKILL_md],
+  ['plugin-defaults:workflows/workflow-skills/publish.md', asset_plugin_defaults_workflows_workflow_skills_publish_md],
+  ['plugin-defaults:workflows/workflow-skills/generate-video.md', asset_plugin_defaults_workflows_workflow_skills_generate_video_md],
+  ['plugin-defaults:workflows/workflow-skills/write-copy.md', asset_plugin_defaults_workflows_workflow_skills_write_copy_md],
+  ['plugin-defaults:workflows/workflow-skill-legacy-hashes.json', asset_plugin_defaults_workflows_workflow_skill_legacy_hashes_json],
+  ['plugin-defaults:workflows/workflows/text-social-post.yaml', asset_plugin_defaults_workflows_workflows_text_social_post_yaml],
+  ['plugin-defaults:workflows/workflows/video-social-post.yaml', asset_plugin_defaults_workflows_workflows_video_social_post_yaml],
+  ['plugin-defaults:workflows/workflows/image-social-post.yaml', asset_plugin_defaults_workflows_workflows_image_social_post_yaml],
+  ['plugin-defaults:workflows/workflows/clip-creation.yaml', asset_plugin_defaults_workflows_workflows_clip_creation_yaml],
+  ['plugin-defaults:workflows/workflows/video-script.yaml', asset_plugin_defaults_workflows_workflows_video_script_yaml],
+  ['plugin-defaults:workflows/workflows/assemble-video.yaml', asset_plugin_defaults_workflows_workflows_assemble_video_yaml],
   ['/data/curated-catalog.json', asset_data_curated_catalog_json],
 ])
 
-export const EMBEDDED_ASSET_COUNT = 57
+export const EMBEDDED_ASSET_COUNT = 77
