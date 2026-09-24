@@ -54,9 +54,11 @@ inventory is memoised 30 s per (runtime, agent) — OpenClaw shells its CLI.
 
 **Every picker consumes it:** `toModelSelectOptions` (`@makinbakin/sdk/hooks`)
 maps rows to `ModelSelectOption`s — `ineligible` ⇒ `disabled` with the
-reason as a label suffix ("GPT-5.6 Luna — no credentials for openai"; the
-documented composition until D23 gives the option a description field),
-`unknown` ⇒ selectable. The read-only Model catalog panel badges No
+reason as the option's `description` (secondary text under the name,
+exposed via `aria-describedby` — the name stays the name) and
+`tone: 'danger'` (a dead option that is the CURRENT value renders the
+trigger in the danger tone, `data-tone="danger"`) — D23, approved
+2026-09-23; `unknown` ⇒ selectable. The read-only Model catalog panel badges No
 credentials / Rejected by account / Unavailable / Not in catalog /
 Unverified (choices are made in the lanes, never from the catalog);
 `?probe=1` skips runtime-unavailable rows (a billed call that cannot

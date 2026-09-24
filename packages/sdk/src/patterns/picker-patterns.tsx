@@ -309,6 +309,18 @@ export interface ModelSelectOption {
   name: string
   provider?: string
   disabled?: boolean
+  /**
+   * Secondary text under the name — the reason a disabled option cannot be
+   * chosen ("no credentials for openai"). Rendered as the option's
+   * description (`aria-describedby`), never folded into its name (D23).
+   */
+  description?: string
+  /**
+   * `danger` marks a dead option: when it is the SELECTED value the trigger
+   * renders in the danger tone, so "your default model can't run here" is
+   * visible where the choice is, not only in Health (D23).
+   */
+  tone?: 'default' | 'danger'
 }
 
 export interface ModelSelectProps extends Pick<AriaAttributes, 'aria-describedby' | 'aria-invalid'> {
@@ -357,6 +369,7 @@ export function ModelSelect({
   const selectedLabel = value === defaultValue
     ? defaultLabel
     : selectedModel?.name ?? (value || undefined)
+  const selectedTone = value !== defaultValue && selectedModel?.tone === 'danger' ? 'danger' : undefined
   const hasOptions = Boolean(defaultLabel) || models.length > 0
 
   return (
@@ -374,8 +387,11 @@ export function ModelSelect({
         aria-describedby={ariaDescribedBy}
         aria-invalid={ariaInvalid}
         className={className ?? 'w-full'}
+        data-tone={selectedTone}
       >
-        <SelectValue placeholder={placeholder}>{selectedLabel}</SelectValue>
+        <SelectValue placeholder={placeholder}>
+          {selectedTone === 'danger' ? <span className="text-bakin-signal-danger">{selectedLabel}</span> : selectedLabel}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {defaultLabel ? <SelectItem value={defaultValue}>{defaultLabel}</SelectItem> : null}
@@ -383,7 +399,15 @@ export function ModelSelect({
           <SelectGroup key={provider}>
             <SelectLabel>{providerLabel(provider)}</SelectLabel>
             {grouped[provider].map((model) => (
-              <SelectItem key={model.id} value={model.id} disabled={model.disabled}>{model.name}</SelectItem>
+              <SelectItem
+                key={model.id}
+                value={model.id}
+                disabled={model.disabled}
+                description={model.description}
+                data-tone={model.tone === 'danger' ? 'danger' : undefined}
+              >
+                {model.name}
+              </SelectItem>
             ))}
           </SelectGroup>
         ))}

@@ -317,8 +317,12 @@ describe('ModelsPage component', () => {
       await openTab('Agents')
       const row = (await screen.findByText('Patch')).closest('[data-agent-model-row]') as HTMLElement
       await user.click(within(row).getByRole('combobox', { name: 'Patch model' }))
-      const dead = await screen.findByRole('option', { name: 'GPT-5.4 — no credentials for openai-codex' })
+      // The name stays the name; the reason is the option's description (D23).
+      const dead = await screen.findByRole('option', { name: 'GPT-5.4' })
       expect(dead.getAttribute('aria-disabled')).toBe('true')
+      expect(dead.getAttribute('data-tone')).toBe('danger')
+      expect(dead.getAttribute('aria-describedby')).toBeTruthy()
+      expect(document.getElementById(dead.getAttribute('aria-describedby')!)?.textContent).toBe('no credentials for openai-codex')
       await user.keyboard('{Escape}')
       // Main holds the key: its row still offers the model.
       const main = (await screen.findByText('Main')).closest('[data-agent-model-row]') as HTMLElement

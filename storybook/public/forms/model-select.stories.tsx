@@ -14,7 +14,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'ModelSelect is the controlled provider-grouped model choice. The consumer owns the catalog and persistence; the select groups models by provider, keeps unavailable entries disabled, surfaces the workspace default through `defaultLabel`, keeps a saved value readable even when it is missing from the catalog, and disables the trigger when the controlled catalog is empty instead of opening an empty popup.',
+        component: 'ModelSelect is the controlled provider-grouped model choice. The consumer owns the catalog and persistence; the select groups models by provider, keeps unavailable entries disabled — with the reason as the option\'s `description` (secondary text, `aria-describedby`; the name stays the name) and, for a dead option that is the current value, the `danger` tone on the trigger — surfaces the workspace default through `defaultLabel`, keeps a saved value readable even when it is missing from the catalog, and disables the trigger when the controlled catalog is empty instead of opening an empty popup.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'disabled', 'empty', 'long-content'],
@@ -112,7 +112,64 @@ export const GroupedCatalog = {
     await waitFor(() => expect(page.getByRole('listbox')).toBeVisible())
     await expect(page.getByRole('option', { name: 'Retired preview' })).toHaveAttribute('aria-disabled', 'true')
     await userEvent.click(page.getByRole('option', { name: 'Local Small' }))
+    // Let the popup finish closing before the a11y pass (see DisabledWithReason).
+    await waitFor(() => expect(page.queryByRole('listbox')).not.toBeInTheDocument())
     await expect(canvas.getByRole('status')).toHaveTextContent('Model: local-small.')
+  },
+} satisfies Story
+
+const modelsWithReasons = [
+  ...models.filter((model) => model.id !== 'retired'),
+  { id: 'retired', name: 'Retired preview', provider: 'legacy', disabled: true, description: 'no credentials for legacy', tone: 'danger' as const },
+]
+
+function DisabledWithReasonExample() {
+  // The saved value is the dead option: the trigger says so in the danger tone.
+  const [model, setModel] = useState('retired')
+  return (
+    <StoryStage
+      eyebrow="Models / provider catalog"
+      title="Say why a model cannot be chosen"
+      description="A disabled option carries its reason as secondary text (announced as its description, not as part of its name); a dead value that is currently selected renders in the danger tone."
+    >
+      <StorySection title="Execution defaults">
+        <div style={fieldStyle}>
+          <label htmlFor="reason-picker-model">Model</label>
+          <ModelSelect
+            id="reason-picker-model"
+            value={model}
+            onValueChange={setModel}
+            models={modelsWithReasons}
+            defaultLabel="Use workspace default"
+          />
+        </div>
+        <p role="status">Model: {model}.</p>
+      </StorySection>
+    </StoryStage>
+  )
+}
+
+export const DisabledWithReason = {
+  // Type-satisfying only: the stateful example owns its props.
+  args: { value: 'retired', onValueChange: () => {}, models: modelsWithReasons },
+  render: () => <DisabledWithReasonExample />,
+  play: async ({ canvas }) => {
+    const trigger = canvas.getByRole('combobox', { name: 'Model' })
+    await expect(trigger).toHaveAttribute('data-tone', 'danger')
+    await expect(trigger).toHaveTextContent('Retired preview')
+    trigger.focus()
+    await userEvent.keyboard('{Enter}')
+    const page = within(document.body)
+    await waitFor(() => expect(page.getByRole('listbox')).toBeVisible())
+    const dead = page.getByRole('option', { name: 'Retired preview' })
+    await expect(dead).toHaveAttribute('aria-disabled', 'true')
+    await expect(dead).toHaveAccessibleDescription('no credentials for legacy')
+    await userEvent.click(page.getByRole('option', { name: 'Local Small' }))
+    // Let the popup finish closing before the a11y pass — a mid-close popup
+    // still carries its focus guards and unnamed listbox.
+    await waitFor(() => expect(page.queryByRole('listbox')).not.toBeInTheDocument())
+    await expect(canvas.getByRole('status')).toHaveTextContent('Model: local-small.')
+    await expect(trigger).not.toHaveAttribute('data-tone')
   },
 } satisfies Story
 

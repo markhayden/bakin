@@ -157,11 +157,11 @@ describe('toModelSelectOptions — pickers cannot select a dead model', () => {
     { id: 'x/unverified', name: 'Unverified', tier: 'standard', provider: 'x', eligibility: { status: 'unknown', detail: "couldn't verify credentialed" } },
   ]
 
-  test('ineligible ⇒ disabled with the reason in the label; eligible and unknown stay selectable', () => {
+  test('ineligible ⇒ disabled with the reason as the DESCRIPTION and the danger tone — the name stays the name (D23); eligible and unknown stay selectable', () => {
     const options = toModelSelectOptions(rows)
     expect(options.find((o) => o.id === LIVE)).toEqual({ id: LIVE, name: 'GPT-5.5', provider: 'openai-codex', disabled: false })
-    expect(options.find((o) => o.id === NO_AUTH)).toEqual({ id: NO_AUTH, name: 'GPT-5.6 Luna — no credentials for openai', provider: 'openai', disabled: true })
-    expect(options.find((o) => o.id === 'x/unverified')!.disabled).toBe(false)
+    expect(options.find((o) => o.id === NO_AUTH)).toEqual({ id: NO_AUTH, name: 'GPT-5.6 Luna', provider: 'openai', disabled: true, description: 'no credentials for openai', tone: 'danger' })
+    expect(options.find((o) => o.id === 'x/unverified')).toEqual({ id: 'x/unverified', name: 'Unverified', provider: 'x', disabled: false })
   })
 })
 

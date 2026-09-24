@@ -32,13 +32,13 @@
       "name": "sdk-content",
       "path": "packages/host/public/vendor/sdk-content.js",
       "bytes": 350469,
-      "reachableBytes": 845906
+      "reachableBytes": 846293
     },
     {
       "name": "sdk-conversation",
       "path": "packages/host/public/vendor/sdk-conversation.js",
       "bytes": 53647,
-      "reachableBytes": 712877
+      "reachableBytes": 713482
     },
     {
       "name": "sdk-layout",
@@ -56,13 +56,13 @@
       "name": "sdk-patterns",
       "path": "packages/host/public/vendor/sdk-patterns.js",
       "bytes": 2420,
-      "reachableBytes": 619306
+      "reachableBytes": 619896
     },
     {
       "name": "sdk-ui",
       "path": "packages/host/public/vendor/sdk-ui.js",
       "bytes": 7395,
-      "reachableBytes": 503815
+      "reachableBytes": 504202
     }
   ],
   "vendorChunks": [
@@ -147,12 +147,16 @@
       "bytes": 2165
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-ayhexfcc.js",
-      "bytes": 32164
+      "path": "packages/host/public/vendor/sdk-shared-75w36ygs.js",
+      "bytes": 162036
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-bmsw4wcn.js",
       "bytes": 199
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-cwfswx6k.js",
+      "bytes": 32367
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-d0zgmk1m.js",
@@ -167,6 +171,10 @@
       "bytes": 27174
     },
     {
+      "path": "packages/host/public/vendor/sdk-shared-kh6y6qys.js",
+      "bytes": 28650
+    },
+    {
       "path": "packages/host/public/vendor/sdk-shared-krrt298f.js",
       "bytes": 5235
     },
@@ -179,16 +187,8 @@
       "bytes": 711
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-p7bn15cm.js",
-      "bytes": 161649
-    },
-    {
       "path": "packages/host/public/vendor/sdk-shared-qybmk0zk.js",
       "bytes": 302285
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-qyk3xmfh.js",
-      "bytes": 28635
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-r4fvpv4f.js",
