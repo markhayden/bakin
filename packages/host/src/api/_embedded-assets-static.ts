@@ -40,9 +40,9 @@ import asset_vendor_sdk_utils_js from '../../public/vendor/sdk-utils.js' with { 
 import asset_vendor_sdk_types_js from '../../public/vendor/sdk-types.js' with { type: 'file' }
 import asset_vendor_sdk_shared_75w36ygs_js from '../../public/vendor/sdk-shared-75w36ygs.js' with { type: 'file' }
 import asset_vendor_sdk_shared_ey2f3p3b_js from '../../public/vendor/sdk-shared-ey2f3p3b.js' with { type: 'file' }
-import asset_vendor_sdk_shared_kh6y6qys_js from '../../public/vendor/sdk-shared-kh6y6qys.js' with { type: 'file' }
 import asset_vendor_react_dom_js from '../../public/vendor/react-dom.js' with { type: 'file' }
 import asset_vendor_sdk_shared_0z0dtqbz_js from '../../public/vendor/sdk-shared-0z0dtqbz.js' with { type: 'file' }
+import asset_vendor_sdk_shared_hcf6pada_js from '../../public/vendor/sdk-shared-hcf6pada.js' with { type: 'file' }
 import asset_vendor_sdk_charts_js from '../../public/vendor/sdk-charts.js' with { type: 'file' }
 import asset_vendor_sdk_index_js from '../../public/vendor/sdk-index.js' with { type: 'file' }
 import asset_vendor_sdk_layout_js from '../../public/vendor/sdk-layout.js' with { type: 'file' }
@@ -122,9 +122,9 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/vendor/sdk-types.js', asset_vendor_sdk_types_js],
   ['/vendor/sdk-shared-75w36ygs.js', asset_vendor_sdk_shared_75w36ygs_js],
   ['/vendor/sdk-shared-ey2f3p3b.js', asset_vendor_sdk_shared_ey2f3p3b_js],
-  ['/vendor/sdk-shared-kh6y6qys.js', asset_vendor_sdk_shared_kh6y6qys_js],
   ['/vendor/react-dom.js', asset_vendor_react_dom_js],
   ['/vendor/sdk-shared-0z0dtqbz.js', asset_vendor_sdk_shared_0z0dtqbz_js],
+  ['/vendor/sdk-shared-hcf6pada.js', asset_vendor_sdk_shared_hcf6pada_js],
   ['/vendor/sdk-charts.js', asset_vendor_sdk_charts_js],
   ['/vendor/sdk-index.js', asset_vendor_sdk_index_js],
   ['/vendor/sdk-layout.js', asset_vendor_sdk_layout_js],
