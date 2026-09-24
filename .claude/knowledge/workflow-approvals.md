@@ -193,3 +193,8 @@ confused at call sites.
 - `.claude/knowledge/plugin-system.md` — audit + activity API
 - `.claude/knowledge/repo-architecture.md` — workflows plugin
 - `.claude/knowledge/adapter-architecture.md` — durable approval and channel adapter contract
+
+Pending approval navigation belongs to Tasks: gates project their owning task into
+Review, and taskboard events update its yellow dot (blocked tasks take red
+precedence). Workflows manages definitions and does not advertise pending task
+approvals. Its global provider retains approval toasts and task deep links only.

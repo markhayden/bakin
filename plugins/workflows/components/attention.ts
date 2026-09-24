@@ -8,7 +8,6 @@
  * runtime capabilities. The durable approval record stays the authority —
  * this is attention, not approval state.
  */
-import type { NavBadge } from '@makinbakin/sdk/types'
 
 export interface GateReachedPayload {
   instanceId: string
@@ -16,12 +15,6 @@ export interface GateReachedPayload {
   workflowId: string
   stepId: string
   label?: string
-}
-
-/** Nav badge for N pending gates: attention-toned count, hidden at zero. */
-export function gateBadge(pendingCount: number): NavBadge | null {
-  if (pendingCount <= 0) return null
-  return { count: pendingCount, tone: 'attention' }
 }
 
 /** The gate is approved/rejected on the task detail — deep-link there. */
