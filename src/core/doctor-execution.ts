@@ -114,10 +114,14 @@ function executeSingleFlight(def: HealthCheckDef): Promise<DetailedHealthCheckRu
   return promise
 }
 
-export async function runTargetedDiagnostics(checkIds: readonly string[]): Promise<HealthReport> {
+export async function runTargetedDiagnostics(checkIds: readonly string[], options: { afterInFlight?: boolean } = {}): Promise<HealthReport> {
   ensureOnboardingCheck()
   const defs = [...new Set(checkIds)].map((id) => getHealthCheck(id)).filter((def): def is HealthCheckDef => !!def)
-  await Promise.all(defs.map(executeSingleFlight))
+  await Promise.all(defs.map(async (def) => {
+    if (options.afterInFlight) await checkFlights.get(def.id)?.lifecycleSettled
+    // A check can be removed while awaiting an older provider execution.
+    if (getHealthCheck(def.id) === def) await executeSingleFlight(def)
+  }))
   return getHealthReport()
 }
 

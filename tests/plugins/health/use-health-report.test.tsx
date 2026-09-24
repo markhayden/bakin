@@ -135,24 +135,73 @@ describe('useHealthReport', () => {
     expect(result.current.data?.id).toBe('report-2')
   })
 
-  it('starts one fresh sweep for stale evidence and lets Run checks join it', async () => {
-    const fresh = deferred<Response>()
+  it('leaves automatic stale-evidence refresh to the server and runs checks only explicitly', async () => {
     const stale = report({ overallStatus: 'unknown_stale' })
-    const fetchMock = mock()
-      .mockResolvedValueOnce(jsonResponse(stale))
-      .mockImplementationOnce(() => fresh.promise)
+    const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) => jsonResponse(stale))
     globalThis.fetch = fetchMock as unknown as typeof fetch
-
     const { result } = renderHook(() => useHealthReport())
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/plugins/health/doctor/run')
-
-    act(() => { void result.current.runChecks() })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-
-    await act(async () => { fresh.resolve(jsonResponse(stale)) })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(result.current.data?.id).toBe('report-1'))
     expect(result.current.stale).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await act(async () => { await result.current.runChecks() })
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/plugins/health/doctor/run')
+  })
+
+  it('runs diagnostics instead of joining a cached reconciliation read', async () => {
+    const cached = deferred<Response>()
+    const fetchMock = mock()
+      .mockResolvedValueOnce(jsonResponse(report()))
+      .mockImplementationOnce(() => cached.promise)
+      .mockResolvedValueOnce(jsonResponse(report({ revision: 3 })))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const { result } = renderHook(() => useHealthReport())
+    await waitFor(() => expect(result.current.data?.revision).toBe(1))
+
+    act(() => { emitPluginEvent({ event: 'bakin.reconcile' }) })
+    let explicit!: Promise<HealthReport | null>
+    act(() => { explicit = result.current.runChecks() })
+    // Resolve even if the transport ignores abort; the old snapshot must lose.
+    await act(async () => { cached.resolve(jsonResponse(report({ revision: 2 }))); await explicit })
+
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('/api/plugins/health/doctor/run')
+    expect(fetchMock.mock.calls[2]?.[1]?.method).toBe('POST')
+    expect(result.current.data?.revision).toBe(3)
+  })
+
+  it('finishes a manual sweep despite report events and coalesces a follow-up snapshot', async () => {
+    const sweep = deferred<Response>()
+    const snapshot = deferred<Response>()
+    const fetchMock = mock()
+      .mockResolvedValueOnce(jsonResponse(report()))
+      .mockImplementationOnce(() => sweep.promise)
+      .mockImplementationOnce(() => snapshot.promise)
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const { result } = renderHook(() => useHealthReport())
+    await waitFor(() => expect(result.current.data?.revision).toBe(1))
+
+    let explicit!: Promise<HealthReport | null>
+    act(() => { explicit = result.current.runChecks() })
+    const signal = fetchMock.mock.calls[1]?.[1]?.signal as AbortSignal
+    act(() => {
+      emitPluginEvent({ event: 'health.report.changed' })
+      emitPluginEvent({ event: 'health.report.changed' })
+      emitPluginEvent({ event: 'bakin.reconcile' })
+    })
+    const aborted = signal.aborted
+    const readsDuringSweep = fetchMock.mock.calls.length
+    let completed: HealthReport | null = null
+    await act(async () => {
+      sweep.resolve(jsonResponse(report({ revision: 2 })))
+      completed = await explicit
+      snapshot.resolve(jsonResponse(report({ revision: 3 })))
+    })
+
+    expect(aborted).toBe(false)
+    expect(readsDuringSweep).toBe(2)
+    expect(completed).toMatchObject({ revision: 2 })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('/api/plugins/health/doctor')
+    expect(result.current.data?.revision).toBe(3)
   })
 
   it('retains the last report when an event-driven background refresh fails', async () => {

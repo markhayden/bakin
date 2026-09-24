@@ -72,12 +72,13 @@ afterAll(() => {
 // ===========================================================================
 
 describe('route registration', () => {
-  it('registers all 22 routes', () => {
-    expect(plugin.routes.length).toBe(22)
+  it('registers all 23 routes', () => {
+    expect(plugin.routes.length).toBe(23)
   })
 
   it.each([
     ['GET', '/import/scan'],
+    ['GET', '/import/summary'],
     ['POST', '/import'],
     ['POST', '/upload'],
     ['GET', '/versioned'],

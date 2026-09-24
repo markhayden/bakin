@@ -299,9 +299,10 @@ export const chatRoutes = [
     description: 'Stamps lastSeenAt and clears the unread count (the client calls this when the chat is visible).',
     params: chatIdParams,
     responses: { 200: passthrough, 404: errorResponse },
-    handler: async (_req, _ctx, { params }) => {
+    handler: async (_req, ctx, { params }) => {
       const chat = await markSeen(params.chatId)
       if (!chat) return Response.json({ error: 'chat not found' }, { status: 404 })
+      ctx.events.emit('chat.seen', { chatId: params.chatId })
       return Response.json({ chat })
     },
   }),
@@ -343,7 +344,7 @@ export const chatRoutes = [
     summary: 'Delete a chat and its transcript',
     params: chatIdParams,
     responses: { 200: passthrough, 404: errorResponse },
-    handler: async (_req, _ctx, { params }) => {
+    handler: async (_req, ctx, { params }) => {
       // Abort any in-flight turn FIRST — a deleted chat must never keep
       // billing runtime/image work (the deleted-task incident class) — and
       // clear the queue in the same sync block so the abort settle can
@@ -352,6 +353,7 @@ export const chatRoutes = [
       clearChatQueue(params.chatId)
       const removed = await deleteChat(params.chatId)
       if (!removed) return Response.json({ error: 'chat not found' }, { status: 404 })
+      ctx.events.emit('chat.changed', { chatId: params.chatId })
       return Response.json({ ok: true })
     },
   }),

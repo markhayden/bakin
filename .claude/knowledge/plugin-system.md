@@ -1031,7 +1031,7 @@ component by registering against that slot name.
 
 ## Nav badges (runtime)
 
-Plugin nav items can carry runtime badges — counts or presence dots —
+Plugin nav items can carry runtime indicators — small presence dots —
 that update live without re-registering the plugin. The contract is
 **identical for core and installed plugins**: the registry is keyed on
 `(pluginId, navItemId)` regardless of source.
@@ -1041,7 +1041,7 @@ that update live without re-registering the plugin. The contract is
 ```ts
 import { setNavBadge, getNavBadge, subscribeNavBadges } from '@makinbakin/sdk'
 
-// Set a count badge with the default attention tone
+// Count metadata determines presence; the navigation displays only a dot
 setNavBadge('messaging', 'messaging-plans', { count: 3, tone: 'attention' })
 
 // Clear it
@@ -1050,11 +1050,11 @@ setNavBadge('messaging', 'messaging-plans', null)
 
 The `NavBadge` shape is `{ count?: number; tone?: 'error' | 'attention' | 'info' | 'success' }`.
 Rendering rules:
-- `count` present and `> 0` → small pill, clamped at `99+`.
+- `count` present and `> 0` → small dot, never a displayed number.
 - `count` omitted, object present → small dot (presence-only).
 - `count: 0` or passing `null` → cleared.
 - `tone` defaults to `'attention'` (amber). Tones by severity:
-  `error` (red) > `attention` (amber) > `info` (blue) > `success` (green) —
+  `error` (red) > `attention` (amber) > `info` (green updates) > `success` (green unread replies) —
   this `TONE_PRIORITY` ordering decides which wins a collapsed-parent dot
   rollup. The producer picks the single winning tone (one badge, one
   color); see the Tasks plugin for a two-severity example (blocked →
@@ -1100,11 +1100,10 @@ content-store counters:
 - **tasks** (blocked→`error` / review→`attention`, winning-severity) —
   `usePluginEvent('taskboard', refresh)`, the same signal the Kanban
   board uses.
-- **health** (unique non-advisory incidents) —
+- **health** (unique unsuppressed action-required incidents) —
   `usePluginEvent('health.report.changed', refresh)`. Every canonical report
   revision emits this event; the badge projects incident identity and
-  disposition instead of parsing status messages. Advisory-only findings do
-  not create persistent navigation noise.
+  disposition instead of parsing status messages. Watch and advisory findings never light the nav.
 
 ### Sidebar organization
 
@@ -1132,16 +1131,17 @@ subscribes to badge mutations on a **separate channel**
 ticks don't force the whole nav to re-render. Badges are rendered in all
 five paths:
 
-1. Flat nav item, expanded — pill after label.
-2. Flat nav item, collapsed — dot overlay on icon; aria-label gets the count.
-3. Parent nav item, expanded — pill if the parent itself has a badge.
-4. Child nav item, expanded — pill after child label.
-5. Parent nav item, collapsed (Popover flyout) — rollup dot on the parent
-   icon; per-child pills inside the popover.
+All layouts use the public `StatusMarker` at size `sm`: inline after labels in
+expanded/mobile navigation and flyouts, over the icon in the collapsed rail.
+Closed groups roll up the highest-severity active reason; there is no count math.
+Link accessible names and tooltips describe the state without a number. Green
+means new information, yellow review/approval, and red a problem. Healthy/idle
+state and agent activity alone do not produce indicators.
 
-The collapsed rollup is **presence-only** (one dot, highest-severity tone
-across the parent and children) — no count math. Expanded mode shows real
-per-item counts.
+Providers subscribe to `bakin.reconcile` for connection/resume recovery in addition
+to their domain events. Retain successful snapshots on errors, retry failed reads,
+and reject superseded results. `bakin.file.changed` carries file invalidations on
+the same shell stream. Snapshot recovery never replays historical fanfare.
 
 ### Lifecycle
 

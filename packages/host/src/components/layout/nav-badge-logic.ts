@@ -42,7 +42,7 @@ export function pickRollupTone(item: NavItem, badges: ReadonlyMap<string, NavBad
   if (!item.children?.length) return null
   let best: NavBadgeTone | null = null
   for (const child of item.children) {
-    const b = badges.get(child.id)
+    const b = badges.get(child.id) ?? child.badge
     if (!badgeIsActive(b)) continue
     const tone = b.tone ?? 'attention'
     if (best === null || TONE_PRIORITY[tone] < TONE_PRIORITY[best]) best = tone
@@ -70,12 +70,10 @@ export function collapsedParentRollupTone(
 /**
  * Aggregated badge for an expanded-sidebar group header whose children are
  * HIDDEN (the group is closed). Children's badges must surface here or a
- * child's unread count / working dot is invisible until the user happens to
+ * child's unread or review state is invisible until the user happens to
  * open the group. Merge rule mirrors the kit's badge precedence: pick the
  * highest-severity tone across the parent's own badge and all active child
- * badges, then sum the counts carried by badges of that tone (no counts →
- * presence-only dot). Returns the parent's own badge untouched when nothing
- * rolls up, and undefined when nothing is active at all.
+ * badges, render a presence-only dot. Returns undefined when nothing is active.
  */
 export function closedGroupRollupBadge(
   item: NavItem,
@@ -94,17 +92,12 @@ export function closedGroupRollupBadge(
     const t = b.tone ?? 'attention'
     if (TONE_PRIORITY[t] < TONE_PRIORITY[tone]) tone = t
   }
-  let count: number | undefined
-  for (const b of active) {
-    if ((b.tone ?? 'attention') !== tone || typeof b.count !== 'number') continue
-    count = (count ?? 0) + b.count
-  }
-  return typeof count === 'number' ? { tone, count } : { tone }
+  return { tone }
 }
 
 /**
  * Aria-label suffix for a collapsed parent. When the dot comes from the
- * parent's own badge we announce its count/tone; when a child provides the
+ * parent's own badge we announce its state; when a child provides the
  * highest severity we announce that children need attention — otherwise the
  * icon changes silently for screen-reader users.
  */

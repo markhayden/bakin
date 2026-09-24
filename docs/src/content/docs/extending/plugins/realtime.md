@@ -40,4 +40,20 @@ If the "event" is really agent turn output (streamed text, tool activity), that 
 
 ## Nav badges
 
-A common consumer of live events is a sidebar badge ("3 items need review"). Pair `usePluginEvent` with `useNavBadge` in an eager badge provider — see [Client UI](/docs/extending/plugins/client-ui/) for the badge contract.
+A common consumer of live events is a sidebar dot ("needs review"). Pair `usePluginEvent` with `useNavBadge` in an eager badge provider — see [Client UI](/docs/extending/plugins/client-ui/) for the badge contract.
+
+## Recovering current state
+
+Subscribe to `bakin.reconcile` with `usePluginEvent` to refresh a current snapshot
+when the shared connection opens/reconnects or the browser resumes. The shell
+keeps reconnecting through long server outages, with a 30-second maximum backoff.
+Subscribe
+before the initial snapshot read as well, so late-mounted plugins recover too.
+Retain the last successful snapshot on errors, retry failed reads, and prevent
+older requests from replacing newer state. Reconciliation updates state only;
+do not replay historical toasts, sounds, or OS notifications.
+
+File-backed consumers use `bakin.file.changed` on the same connection. Its `file`
+is the relative content path and `change` is the original file event (including
+unlink). Filter by your owned prefix; content is not guaranteed on deletion.
+Do not open a second EventSource for file-backed navigation indicators.

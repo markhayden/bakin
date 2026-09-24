@@ -59,6 +59,58 @@
     }
   ],
   "paths": {
+    "/api/plugins/assets/import/summary": {
+      "get": {
+        "operationId": "assets.get.import-summary",
+        "summary": "Current unmanaged asset count",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/import/summary"
+      }
+    },
     "/api/plugins/assets/import/scan": {
       "get": {
         "operationId": "assets.get.import-scan",

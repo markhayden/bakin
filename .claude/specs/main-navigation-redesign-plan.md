@@ -1,5 +1,9 @@
 # Main Navigation Redesign — Implementation Plan
 
+> Badge count and announcement behavior below is superseded by
+> [Navigation indicator consistency](navigation-indicator-consistency.md):
+> all main-navigation indicators are count-free semantic dots.
+
 Spec: `.claude/specs/main-navigation-redesign.md` (user-approved 2026-07-15).
 
 ## Overview

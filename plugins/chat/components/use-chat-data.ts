@@ -7,7 +7,7 @@
  * maps 1:1 onto the conversation kit's ConversationMessage rows.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { emitPluginEvent, usePluginEvent } from '@makinbakin/sdk/hooks'
+import { usePluginEvent } from '@makinbakin/sdk/hooks'
 import {
   useConversationThread,
   type ConversationMessage,
@@ -120,6 +120,8 @@ export function useChats(agentFilter: string) {
   usePluginEvent('chat.error', () => { void refresh() })
   usePluginEvent('chat.titled', () => { void refresh() })
   usePluginEvent('chat.seen', () => { void refresh() })
+  usePluginEvent('chat.changed', () => { void refresh() })
+  usePluginEvent('bakin.reconcile', () => { void refresh() })
 
   // Memoized: a fresh filtered array every render fed the page's
   // streaming-indicator effect (keyed on this list) a new identity each
@@ -162,10 +164,6 @@ export async function patchChatRequest(
 
 export async function markSeenRequest(chatId: string): Promise<void> {
   await pluginFetch('chat', `chats/${chatId}/seen`, { method: 'POST' }).catch(() => {})
-  // Client-side synthetic event: the badge provider and chat lists refresh
-  // AFTER the seen write lands — refreshing on chat.done alone raced the
-  // seen POST and left a stale unread count on the nav badge.
-  emitPluginEvent({ event: 'chat.seen', chatId })
 }
 
 export async function abortTurnRequest(chatId: string): Promise<void> {

@@ -5,6 +5,7 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
+import { observeServerEvent } from './server-events'
 import { broadcastDev } from '../../packages/host/src/api/dev/events'
 import { invalidateDocsCache as invalidateRuntimeOpenApi } from '../../packages/host/src/api/docs-runtime'
 
@@ -29,6 +30,7 @@ function nextEventId(): number {
 }
 
 export function broadcast(data: Record<string, unknown>): void {
+  observeServerEvent(data)
   const id = nextEventId()
   const payload = JSON.stringify(data)
   const msg = `id: ${id}\ndata: ${payload}\n\n`

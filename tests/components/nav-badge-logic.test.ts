@@ -135,8 +135,8 @@ describe('collapsedParentRollupTone', () => {
 })
 
 describe('collapsedParentAriaSuffix', () => {
-  it('announces the parent badge count when the parent badge is active', () => {
-    expect(collapsedParentAriaSuffix({ count: 3, tone: 'attention' }, 'attention')).toBe(', 3 needing review')
+  it('announces the parent badge meaning without its count', () => {
+    expect(collapsedParentAriaSuffix({ count: 3, tone: 'attention' }, 'attention')).toBe(', needing review')
   })
 
   it('announces a children hint when the dot is child-driven', () => {
@@ -148,7 +148,7 @@ describe('collapsedParentAriaSuffix', () => {
   })
 
   it('uses the shared tone label for non-attention child rollups', () => {
-    expect(collapsedParentAriaSuffix(undefined, 'info')).toBe(', children info')
+    expect(collapsedParentAriaSuffix(undefined, 'info')).toBe(', children new updates')
   })
 
   it('announces error child rollups as "urgent" (consistent with the counted suffix)', () => {
@@ -174,7 +174,7 @@ describe('closedGroupRollupBadge', () => {
   it("surfaces a hidden child's counted badge on the closed header (the messaging bug)", () => {
     const item = parent([child('calendar'), child('plans'), child('brainstorm')])
     const badges = new Map([['brainstorm', { count: 1, tone: 'attention' as const }]])
-    expect(closedGroupRollupBadge(item, undefined, badges)).toEqual({ tone: 'attention', count: 1 })
+    expect(closedGroupRollupBadge(item, undefined, badges)).toEqual({ tone: 'attention' })
   })
 
   it('surfaces a presence-only working dot from a child', () => {
@@ -190,13 +190,13 @@ describe('closedGroupRollupBadge', () => {
       ['b', { count: 5, tone: 'info' as const }],
       ['c', { count: 3, tone: 'attention' as const }],
     ])
-    expect(closedGroupRollupBadge(item, undefined, badges)).toEqual({ tone: 'attention', count: 5 })
+    expect(closedGroupRollupBadge(item, undefined, badges)).toEqual({ tone: 'attention' })
   })
 
   it('merges the parent\'s own badge into the rollup', () => {
     const item = parent([child('a')])
     const badges = new Map([['a', { count: 1, tone: 'attention' as const }]])
-    expect(closedGroupRollupBadge(item, { count: 2, tone: 'attention' }, badges)).toEqual({ tone: 'attention', count: 3 })
+    expect(closedGroupRollupBadge(item, { count: 2, tone: 'attention' }, badges)).toEqual({ tone: 'attention' })
     // Parent error outranks child attention; error side has no count → dot.
     expect(closedGroupRollupBadge(item, { tone: 'error' }, badges)).toEqual({ tone: 'error' })
   })
@@ -204,6 +204,12 @@ describe('closedGroupRollupBadge', () => {
   it('falls back to the static child.badge when the live map has no entry', () => {
     const staticChild: NavItem = { ...child('a'), badge: { count: 4, tone: 'attention' } }
     const item = parent([staticChild])
-    expect(closedGroupRollupBadge(item, undefined, new Map())).toEqual({ tone: 'attention', count: 4 })
+    expect(closedGroupRollupBadge(item, undefined, new Map())).toEqual({ tone: 'attention' })
   })
+})
+
+it('uses static badges consistently in collapsed and expanded groups', () => {
+  const item = parent([{ ...child('a'), badge: { tone: 'error' } }])
+  expect(collapsedParentRollupTone(item, undefined, new Map())).toBe('error')
+  expect(closedGroupRollupBadge(item, undefined, new Map())).toEqual({ tone: 'error' })
 })

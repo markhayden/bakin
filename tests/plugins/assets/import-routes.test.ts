@@ -35,7 +35,7 @@ mock.module('../../../src/core/watcher', () => ({
 }))
 
 import { handleImportScan, handleImport } from '@bakin/assets/routes/import'
-import { unmanagedCount, resetUnmanagedTrackerForTests } from '@bakin/assets/lib/unmanaged-tracker'
+import { unmanagedCount, unmanagedSnapshot, noteUnmanagedUnlink, resetUnmanagedTrackerForTests } from '@bakin/assets/lib/unmanaged-tracker'
 import { getAsset } from '@bakin/assets/lib/asset-service'
 
 function drop(relPath: string, content = 'x'): string {
@@ -52,6 +52,14 @@ describe('assets import routes', () => {
     resetUnmanagedTrackerForTests()
   })
   afterEach(() => rmSync(testDir, { recursive: true, force: true }))
+
+  it('seeds a reconnect snapshot without opening Import and then uses watcher state', () => {
+    drop('assets/inbox/a.png')
+    expect(unmanagedSnapshot()).toEqual({ count: 1 })
+    // A watcher update must not be replaced by rescanning a stale disk view.
+    noteUnmanagedUnlink('assets/inbox/a.png')
+    expect(unmanagedSnapshot()).toEqual({ count: 0 })
+  })
 
   it('scan lists unmanaged files and reseeds the tracker', async () => {
     drop('assets/inbox/a.png')

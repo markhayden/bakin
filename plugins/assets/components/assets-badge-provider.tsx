@@ -1,27 +1,25 @@
 'use client'
 
-import { useState } from 'react'
-import type { NavBadge } from '@makinbakin/sdk'
-import { useNavBadge, usePluginEvent } from '@makinbakin/sdk/hooks'
+import { useEffect, useRef, useState } from 'react'
+import { useNavBadge, usePluginEvent, usePluginJsonFetch } from '@makinbakin/sdk/hooks'
 
-/**
- * Background component (renders nothing) mounted via the host's
- * `nav-badge-providers` slot. Shows an info count on the Assets nav item
- * when unmanaged files await explicit import (D7). Driven purely by the
- * `asset.unmanaged` SSE event the watcher-fed tracker emits — no fetch on
- * mount: the count is honestly 0 until something is KNOWN (the tracker
- * starts empty at boot; opening the Import view or a doctor sweep reseeds
- * it from a real scan).
- */
+/** Snapshot on mount/recovery; events invalidate it rather than racing a cached count. */
 export function AssetsBadgeProvider() {
-  const [count, setCount] = useState(0)
+  const { data, loading, error, refresh } = usePluginJsonFetch<{ count: number }>('assets', 'import/summary', { timeoutMs: 15_000 })
+  const [count, setCount] = useState<number | null>(null)
+  const attempts = useRef(0)
+  const valid = data !== null && Number.isSafeInteger(data.count) && data.count >= 0
+  usePluginEvent('asset.unmanaged', refresh)
+  usePluginEvent('bakin.reconcile', refresh)
 
-  usePluginEvent('asset.unmanaged', (d) => {
-    setCount(typeof d.count === 'number' ? d.count : 0)
-  })
+  useEffect(() => {
+    if (loading) return
+    if (valid && !error) setCount(data.count)
+    if (!error && (data === null || valid)) { attempts.current = 0; return }
+    const retry = setTimeout(refresh, Math.min(1000 * 2 ** attempts.current++, 30_000))
+    return () => clearTimeout(retry)
+  }, [data, loading, error, valid, refresh])
 
-  const badge: NavBadge | null = count > 0 ? { count, tone: 'info' } : null
-  useNavBadge('assets', 'assets', badge)
-
+  useNavBadge('assets', 'assets', count !== null && count > 0 ? { count, tone: 'info' } : null)
   return null
 }

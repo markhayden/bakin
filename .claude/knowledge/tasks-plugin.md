@@ -387,3 +387,8 @@ Everything bookmark-worthy on `/tasks` rides the URL (`.claude/knowledge/url-sta
 - The create-new drawer (`editing && !task`) is component-level by design — not URL state.
 - Producers: the ⌘K hit renderer (`client.tsx`), scheduled-events (`lib/scheduled-events.ts`), brands' task button, workflows' gate attention + notifications — all `/tasks?taskId=`. The `/` route redirects to `/tasks` WITHOUT forwarding search, so never build `/?taskId=`.
 
+
+Tasks' nav dot covers blocked tasks (red) and Review tasks (yellow), including
+pending workflow approvals. Snapshot reads reconcile on taskboard events and
+connection/resume, reject superseded results, and retain last-known state on
+failure with bounded retries. Workflows does not duplicate the approval dot.

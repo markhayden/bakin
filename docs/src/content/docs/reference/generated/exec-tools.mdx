@@ -297,32 +297,32 @@ bakin_exec_heartbeat {
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="images-edit" name="bakin_exec_images_edit" label="Edited an image" description="Edit a managed image asset (by assetId) through the runtime image provider — edits the current version, appends a NEW VERSION to that same asset, and returns the assetId. Pass referenceImages to supply extra context images alongside the edited asset." source="plugins/images/index.ts:252">
+<McpToolCard id="images-edit" name="bakin_exec_images_edit" label="Edited an image" description="Edit a managed image asset (by assetId) through the runtime image provider — edits the current version, appends a NEW VERSION to that same asset, and returns the assetId. Pass referenceImages to supply extra context images alongside the edited asset." source="plugins/images/index.ts:256">
 ```sh frame="terminal"
 bakin_exec_images_edit
 ```
 </McpToolCard>
-<McpToolCard id="images-export" name="bakin_exec_images_export" label="Exported an image" description="Export an existing image asset to a target surface profile by resizing, cropping, and format-converting it." source="plugins/images/index.ts:266">
+<McpToolCard id="images-export" name="bakin_exec_images_export" label="Exported an image" description="Export an existing image asset to a target surface profile by resizing, cropping, and format-converting it." source="plugins/images/index.ts:270">
 ```sh frame="terminal"
 bakin_exec_images_export
 ```
 </McpToolCard>
-<McpToolCard id="images-generate" name="bakin_exec_images_generate" label="Generated an image" description="Generate an image through a configured runtime image provider, save it as a NEW managed asset (v1), and return its assetId. Pass referenceImages to create a new image conditioned on existing assets/files (e.g. &quot;in the style of these&quot;); to revise an existing asset in place use bakin_exec_images_edit instead. In an interactive chat: omit taskId and, after it returns, deliver the image by embedding ![desc](/api/assets/&lt;assetId&gt;) in your reply — text alone delivers nothing." source="plugins/images/index.ts:245">
+<McpToolCard id="images-generate" name="bakin_exec_images_generate" label="Generated an image" description="Generate an image through a configured runtime image provider, save it as a NEW managed asset (v1), and return its assetId. Pass referenceImages to create a new image conditioned on existing assets/files (e.g. &quot;in the style of these&quot;); to revise an existing asset in place use bakin_exec_images_edit instead. In an interactive chat: omit taskId and, after it returns, deliver the image by embedding ![desc](/api/assets/&lt;assetId&gt;) in your reply — text alone delivers nothing." source="plugins/images/index.ts:249">
 ```sh frame="terminal"
 bakin_exec_images_generate
 ```
 </McpToolCard>
-<McpToolCard id="images-import" name="bakin_exec_images_import" label="Imported an image" description="Import an existing local image file as a new managed asset (v1) and return its assetId." source="plugins/images/index.ts:259">
+<McpToolCard id="images-import" name="bakin_exec_images_import" label="Imported an image" description="Import an existing local image file as a new managed asset (v1) and return its assetId." source="plugins/images/index.ts:263">
 ```sh frame="terminal"
 bakin_exec_images_import
 ```
 </McpToolCard>
-<McpToolCard id="images-profiles" name="bakin_exec_images_profiles" label="Listed image profiles" description="List image surface profiles and configured provider readiness. Use this before choosing dimensions or provider routes for image generation." source="plugins/images/index.ts:273">
+<McpToolCard id="images-profiles" name="bakin_exec_images_profiles" label="Listed image profiles" description="List image surface profiles and configured provider readiness. Use this before choosing dimensions or provider routes for image generation." source="plugins/images/index.ts:277">
 ```sh frame="terminal"
 bakin_exec_images_profiles
 ```
 </McpToolCard>
-<McpToolCard id="images-recommend" name="bakin_exec_images_recommend" label="Recommended an image route" description="Recommend a deterministic image provider, model, surface profile, dimensions, and quality tier for an image generation request." source="plugins/images/index.ts:238">
+<McpToolCard id="images-recommend" name="bakin_exec_images_recommend" label="Recommended an image route" description="Recommend a deterministic image provider, model, surface profile, dimensions, and quality tier for an image generation request." source="plugins/images/index.ts:242">
 ```sh frame="terminal"
 bakin_exec_images_recommend
 ```
@@ -1361,5 +1361,5 @@ bakin_exec_workflows_start {
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Sep 23, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Sep 24, 2026 · Bakin 0.0.0-dev</span>
 </aside>

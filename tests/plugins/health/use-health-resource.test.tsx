@@ -136,7 +136,7 @@ describe('useHealthResource', () => {
     const { result } = renderHook(() => useHealthResource<{ value: number }>('/api/health'))
     await waitFor(() => expect(result.current.data).toEqual({ value: 1 }))
 
-    act(() => { void result.current.refresh('explicit') })
+    act(() => { void result.current.refresh('background') })
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
 
     let reconciled!: Promise<{ value: number } | null>
@@ -147,6 +147,34 @@ describe('useHealthResource', () => {
     await act(async () => { reconciliation.resolve(jsonResponse({ value: 3 })) })
     expect(await reconciled).toEqual({ value: 3 })
     expect(result.current.data).toEqual({ value: 3 })
+  })
+
+  it.each(['unmount', 'source change'] as const)('discards queued reconciliation after %s', async (transition) => {
+    const sweep = deferred<Response>()
+    const fetchMock = mock()
+      .mockResolvedValueOnce(jsonResponse({ value: 1 }))
+      .mockImplementationOnce(() => sweep.promise)
+      .mockResolvedValueOnce(jsonResponse({ value: 3 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const { result, rerender, unmount } = renderHook(
+      ({ url }) => useHealthResource<{ value: number }>(url),
+      { initialProps: { url: '/api/one' } },
+    )
+    await waitFor(() => expect(result.current.data).toEqual({ value: 1 }))
+    let reconciled!: Promise<{ value: number } | null>
+    act(() => {
+      void result.current.refresh('explicit')
+      reconciled = result.current.refresh('reconcile')
+    })
+    await act(async () => {
+      if (transition === 'unmount') unmount()
+      else rerender({ url: '/api/two' })
+    })
+    await act(async () => { sweep.resolve(jsonResponse({ value: 2 })); await reconciled })
+
+    expect(await reconciled).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(transition === 'unmount' ? 2 : 3)
+    if (transition === 'source change') expect(result.current.data).toEqual({ value: 3 })
   })
 
   it('turns a hung request into a retryable timeout instead of a permanent loading state', async () => {

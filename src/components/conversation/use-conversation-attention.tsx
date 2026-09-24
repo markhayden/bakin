@@ -5,7 +5,7 @@
  * conversational surface's `nav-badge-providers` slot component (#703).
  * Mount the consumer's provider outside the router (the host renders the
  * slot on every page) and call this hook with the surface's wiring; it
- * keeps the nav badge (unread count / working dot), the optional `(N)`
+ * keeps the nav indicator (unread replies only), the optional `(N)`
  * tab-title prefix, and fires toast + chime + OS notification when a
  * reply lands while the user is elsewhere — rules in ./attention.ts,
  * mechanics generalized from chat's ChatBadgeProvider (which now
@@ -23,8 +23,6 @@ import { playReplyChime } from './notification-sound'
 
 export interface ConversationAttentionTotals {
   unreadTotal: number
-  /** Threads with a server-seeded in-flight turn (kept live by chunk/done events). */
-  inflightKeys: string[]
 }
 
 export interface ConversationAttentionConfig {
@@ -35,11 +33,11 @@ export interface ConversationAttentionConfig {
    * events — AT MOST TWO (hook-count constraints; extras would be
    * silently dropped, so the type forbids them).
    */
-  events: { chunk: string; done: string; error: string; started?: string; refresh?: [string] | [string, string] }
+  events: { done: string; error: string; started?: string; refresh?: [string] | [string, string] }
   keyOf: (payload: PluginEventPayload) => string
   /** The thread key currently on screen ('' = none) — read at event time. */
   visibleKey: () => string
-  /** Fetch unread + in-flight totals; null keeps the previous totals. */
+  /** Fetch unread totals; null keeps the previous totals. */
   refreshTotals: () => Promise<ConversationAttentionTotals | null>
   /** Attention settings at event time. Default: sound + toasts on. */
   settings?: () => { sound: boolean; toasts: boolean }
@@ -61,50 +59,43 @@ export interface ConversationAttentionConfig {
 
 export function useConversationAttention(config: ConversationAttentionConfig): void {
   const [unreadTotal, setUnreadTotal] = useState(0)
-  const [inflight, setInflight] = useState<ReadonlySet<string>>(new Set())
   const baseTitleRef = useRef<string | null>(null)
   const configRef = useRef(config)
   configRef.current = config
 
   const refreshSeqRef = useRef(0)
-  const refreshTotals = useCallback(async () => {
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryAttempt = useRef(0)
+  const refreshTotals = useCallback(async function refreshTotals() {
     const seq = ++refreshSeqRef.current
+    if (retryRef.current) clearTimeout(retryRef.current)
+    let deadline: ReturnType<typeof setTimeout> | undefined
     try {
-      const totals = await configRef.current.refreshTotals()
-      // A superseded call's response must not regress newer totals.
-      if (!totals || seq !== refreshSeqRef.current) return
+      const totals = await Promise.race([
+        configRef.current.refreshTotals(),
+        new Promise<never>((_, reject) => { deadline = setTimeout(() => reject(new Error('Attention read timed out')), 15_000) }),
+      ])
+      if (seq !== refreshSeqRef.current) return
+      if (!totals || !Number.isSafeInteger(totals.unreadTotal) || totals.unreadTotal < 0) {
+        throw new Error('Attention totals unavailable')
+      }
+      retryAttempt.current = 0
       setUnreadTotal(totals.unreadTotal)
-      setInflight(new Set(totals.inflightKeys))
     } catch {
-      // Server hiccups never break the shell; the next event refreshes.
+      if (seq !== refreshSeqRef.current) return
+      retryRef.current = setTimeout(() => { void refreshTotals() }, Math.min(1000 * 2 ** retryAttempt.current++, 30_000))
+    } finally {
+      if (deadline) clearTimeout(deadline)
     }
   }, [])
 
-  useEffect(() => {
-    void refreshTotals()
-  }, [refreshTotals])
-
-  // `started` fires at turn-accept (before any runtime chunk) — the working
-  // dot lights instantly; the chunk listener stays as the fallback for
-  // consumers without a started event and for mid-turn mounts.
-  usePluginEvent(config.events.started ?? `${config.pluginId}.__attention_noop_started`, (payload) => {
-    const key = configRef.current.keyOf(payload)
-    setInflight((prev) => (prev.has(key) ? prev : new Set(prev).add(key)))
-  })
-
-  usePluginEvent(config.events.chunk, (payload) => {
-    const key = configRef.current.keyOf(payload)
-    setInflight((prev) => (prev.has(key) ? prev : new Set(prev).add(key)))
-  })
+  usePluginEvent('bakin.reconcile', () => { void refreshTotals() })
+  // A new send may mark prior replies read before any reply arrives.
+  usePluginEvent(config.events.started ?? `${config.pluginId}.__attention_noop_started`, () => { void refreshTotals() })
 
   usePluginEvent(config.events.done, (payload) => {
     const cfg = configRef.current
     const key = cfg.keyOf(payload)
-    setInflight((prev) => {
-      const next = new Set(prev)
-      next.delete(key)
-      return next
-    })
     const done: ConversationDonePayload = {
       key,
       agentId: String(payload.agentId ?? ''),
@@ -137,11 +128,6 @@ export function useConversationAttention(config: ConversationAttentionConfig): v
   usePluginEvent(config.events.error, (payload) => {
     const cfg = configRef.current
     const key = cfg.keyOf(payload)
-    setInflight((prev) => {
-      const next = new Set(prev)
-      next.delete(key)
-      return next
-    })
     const settings = cfg.settings?.() ?? { sound: true, toasts: true }
     if (cfg.visibleKey() !== key && settings.toasts) {
       const message = cfg.errorToast?.(payload)
@@ -156,8 +142,18 @@ export function useConversationAttention(config: ConversationAttentionConfig): v
   usePluginEvent(refreshEvents[0] ?? `${config.pluginId}.__attention_noop_0`, () => { void refreshTotals() })
   usePluginEvent(refreshEvents[1] ?? `${config.pluginId}.__attention_noop_1`, () => { void refreshTotals() })
 
-  // Nav badge: unread count (attention) or a working dot (info).
-  useNavBadge(config.pluginId, config.navItemId, badgeFor(unreadTotal, inflight.size))
+  useEffect(() => {
+    void refreshTotals()
+    return () => {
+      // Invalidate every outstanding response when this subscription unmounts.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      refreshSeqRef.current++
+      if (retryRef.current) clearTimeout(retryRef.current)
+    }
+  }, [refreshTotals])
+
+  // Work in progress never competes with unread information in navigation.
+  useNavBadge(config.pluginId, config.navItemId, badgeFor(unreadTotal))
 
   // `(N)` tab-title prefix.
   const titlePrefix = config.titlePrefix ?? false

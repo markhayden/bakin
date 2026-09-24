@@ -27,16 +27,11 @@ import '../../rtl-settle'
 import { emitPluginEvent, useToastStore } from '@makinbakin/sdk/hooks'
 import { getNavBadge } from '@makinbakin/sdk'
 
-import { attentionForGate, gateBadge, gateUrl, viewingGateTask } from '../../../plugins/workflows/components/attention'
+import { attentionForGate, gateUrl, viewingGateTask } from '../../../plugins/workflows/components/attention'
 import { ApprovalsBadgeProvider } from '../../../plugins/workflows/components/approvals-badge-provider'
 
 describe('gate attention (pure rules)', () => {
   const gate = { instanceId: 'i1', taskId: 't-42', workflowId: 'wf', stepId: 'g1', label: 'Publish pricing page' }
-
-  it('badges the pending count with attention tone, hidden at zero', () => {
-    expect(gateBadge(0)).toBeNull()
-    expect(gateBadge(3)).toEqual({ count: 3, tone: 'attention' })
-  })
 
   it('deep-links to the task detail where gates are decided', () => {
     expect(gateUrl(gate)).toBe('/tasks?taskId=t-42')
@@ -75,13 +70,13 @@ describe('ApprovalsBadgeProvider', () => {
     globalThis.fetch = realFetch
   })
 
-  it('seeds the workflows nav badge from the pending count', async () => {
+  it('leaves the workflows nav silent even when approvals are pending', async () => {
     pendingGates = [{ taskId: 't1', stepId: 'g1' }, { taskId: 't2', stepId: 'g2' }]
     render(<ApprovalsBadgeProvider />)
-    await waitFor(() => expect(getNavBadge('workflows')).toEqual({ count: 2, tone: 'attention' }))
+    await waitFor(() => expect(getNavBadge('workflows')).toBeUndefined())
   })
 
-  it('gate_reached elsewhere: toast fires and the badge refreshes', async () => {
+  it('gate_reached elsewhere: toast fires and workflows stays silent', async () => {
     pendingGates = []
     await act(async () => {
       render(<ApprovalsBadgeProvider />)
@@ -92,7 +87,7 @@ describe('ApprovalsBadgeProvider', () => {
     act(() => {
       emitPluginEvent({ event: 'workflow.gate_reached', instanceId: 'i1', taskId: 't-42', workflowId: 'wf', stepId: 'g1', label: 'Publish' })
     })
-    await waitFor(() => expect(getNavBadge('workflows')).toEqual({ count: 1, tone: 'attention' }))
+    await waitFor(() => expect(getNavBadge('workflows')).toBeUndefined())
     expect(useToastStore.getState().toasts.length).toBe(1)
   })
 
@@ -101,7 +96,7 @@ describe('ApprovalsBadgeProvider', () => {
     await act(async () => {
       render(<ApprovalsBadgeProvider />)
     })
-    await waitFor(() => expect(getNavBadge('workflows')).toEqual({ count: 1, tone: 'attention' }))
+    await waitFor(() => expect(getNavBadge('workflows')).toBeUndefined())
 
     pendingGates = []
     act(() => {
