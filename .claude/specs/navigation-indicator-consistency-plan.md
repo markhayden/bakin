@@ -427,3 +427,22 @@ available. External diagnostic probes still obey their registered cadence and
 execution deadline; this does not promise instantaneous knowledge of external
 systems. Disconnected or failed reads deliberately retain their last-known state.
 Neither repository has been pushed, merged, published, or deployed.
+
+### Code-review corrections
+
+- Task-store events carry `{ type: 'taskboard', event: 'change' }`. The server
+  now distinguishes that envelope from plugin events and invalidates the Tasks,
+  Workflows, restart-recovery, and execution-safety checks immediately.
+- Cached reconciliation reads no longer qualify as diagnostic sweeps. Run checks
+  starts a POST even while a cached read is pending. Report/recovery events during
+  a manual run coalesce into one read afterward, preserving the run's promise.
+  Unmount and source changes discard queued reads.
+- The real task envelope and both request races failed regression tests before
+  the fixes. Afterward, 529 Health/doctor tests passed, including cleanup cases;
+  focused lint, typecheck, quick UI conformance, the Health production client
+  build, and both Health browser fixtures passed. The fixture HTML reports were
+  inspected and contain no findings. The full conformance matrix was not rerun
+  for these request-lifecycle corrections; its preceding results remain above.
+- UI contract remains `storybook/public/feedback/status-marker.stories.tsx` —
+  `DenseViewMarkers`, via `@makinbakin/sdk/patterns`. These corrections change no
+  markup or styles and require no story, baseline, or design-system deviation.

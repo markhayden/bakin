@@ -324,3 +324,7 @@ The full doctor sweep and explicit Run checks remain available; mounting Health
 no longer starts a special sweep. External probes without change events still
 have their registered detection cadence. Clients reconcile report events,
 reconnect, and resume; failed reads preserve last-known state and retry.
+Reconciliation is a cached read, never a substitute for an explicit diagnostic
+sweep. Events arriving during an explicit sweep coalesce into one follow-up read
+after it settles, preserving the manual run's result and any intervening changes.
+Changing the resource URL or unmounting cancels that queued read.

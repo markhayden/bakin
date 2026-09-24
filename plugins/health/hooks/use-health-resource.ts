@@ -55,6 +55,7 @@ interface ActiveRequest<T> {
   fresh: boolean
   generation: number
   promise: Promise<T | null>
+  reconciliation?: Promise<T | null>
 }
 
 function errorMessage(error: unknown): string {
@@ -74,7 +75,7 @@ async function requestJson<T>(url: string, signal: AbortSignal): Promise<T> {
 }
 
 function requiresFreshSweep(reason: HealthResourceRefreshReason): boolean {
-  return reason === 'explicit' || reason === 'stale' || reason === 'reconcile'
+  return reason === 'explicit' || reason === 'stale'
 }
 
 /**
@@ -121,9 +122,17 @@ export function useHealthResource<T>(
     const forceNew = reason === 'reconcile'
     const active = activeRef.current
     if (active) {
-      // Any background read can use a fresher in-flight result. Repeated fresh
-      // requests also join. Reconciliation is the exception: its result must
-      // have started after the mutation whose outcome it is confirming.
+      // A diagnostic run emits report events as its checks finish. Let the
+      // caller receive its result, then read once for mutations during the run.
+      if (forceNew && active.fresh) {
+        active.reconciliation ??= active.promise.then(() => {
+          if (!mountedRef.current || generationRef.current !== active.generation) return null
+          return startRequest('reconcile')
+        })
+        return active.reconciliation
+      }
+      // Cached reads may join a sweep, but a sweep must never join a cached
+      // reconciliation. Reconciliation supersedes older reads after mutations.
       if (!forceNew && (!fresh || active.fresh)) return active.promise
       active.controller.abort()
     }
