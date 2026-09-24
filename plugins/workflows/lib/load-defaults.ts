@@ -6,6 +6,7 @@
  * their import surface.
  */
 export {
+  loadDefaultWorkflowFiles,
   loadDefaultWorkflows,
   type LoadDefaultsResult,
 } from '@bakin/core/workflows/load-defaults'

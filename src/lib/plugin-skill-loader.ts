@@ -22,21 +22,28 @@ export interface LoadPluginSkillsResult {
   skipped: { file: string; error: string }[]
 }
 
-export function loadPluginSkills(
-  pluginPath: string,
+export interface PluginSkillFile {
+  /** File name relative to `defaults/workflow-skills/` (e.g. `write-copy.md`). */
+  file: string
+  /** Readable path — on disk or an embedded `/$bunfs/...` path. */
+  path: string
+}
+
+/**
+ * Register already-located skill files. The registry feeds this from the
+ * plugin-resources resolver so compiled binaries (no plugin directory on
+ * disk) register the same skills a source checkout does.
+ */
+export function loadPluginSkillFiles(
+  files: readonly PluginSkillFile[],
   ctx: PluginContext,
   log: { warn: (msg: string, meta?: Record<string, unknown>) => void },
 ): LoadPluginSkillsResult {
   const result: LoadPluginSkillsResult = { registered: [], skipped: [] }
-  const skillsDir = join(pluginPath, 'defaults', 'workflow-skills')
-  if (!existsSync(skillsDir)) return result
 
-  const files = readdirSync(skillsDir).filter((f) => f.endsWith('.md'))
-
-  for (const file of files) {
+  for (const { file, path: sourcePath } of files) {
     const filenameId = file.replace(/\.md$/, '')
     try {
-      const sourcePath = join(skillsDir, file)
       const raw = readFileSync(sourcePath, 'utf-8')
       const { frontmatter, body } = parseFrontmatter(raw)
 
@@ -59,4 +66,18 @@ export function loadPluginSkills(
   }
 
   return result
+}
+
+/** Directory form — every `*.md` under `<pluginPath>/defaults/workflow-skills/` on disk. */
+export function loadPluginSkills(
+  pluginPath: string,
+  ctx: PluginContext,
+  log: { warn: (msg: string, meta?: Record<string, unknown>) => void },
+): LoadPluginSkillsResult {
+  const skillsDir = join(pluginPath, 'defaults', 'workflow-skills')
+  if (!existsSync(skillsDir)) return { registered: [], skipped: [] }
+  const files = readdirSync(skillsDir)
+    .filter((f) => f.endsWith('.md'))
+    .map((file) => ({ file, path: join(skillsDir, file) }))
+  return loadPluginSkillFiles(files, ctx, log)
 }

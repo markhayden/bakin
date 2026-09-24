@@ -63,7 +63,7 @@ Created by `bakin onboard` / `initBakinHome()`. Per-installation state, NOT in t
 
 ## Plugin System
 
-Every plugin has `bakin-plugin.json` (manifest), `package.json` (peer deps on `react` + `@makinbakin/sdk`), `index.ts` (server entry exporting a `BakinPlugin` with `activate(ctx)`), `client.tsx` (calls `registerPlugin({ id, navItems, slots })` as a side effect — exports are not read), `components/`, `types.ts`, and optional `defaults/` for workflows / workflow-skills / runtime-skills.
+Every plugin has `bakin-plugin.json` (manifest), `package.json` (peer deps on `react` + `@makinbakin/sdk`), `index.ts` (server entry exporting a `BakinPlugin` with `activate(ctx)`), `client.tsx` (calls `registerPlugin({ id, navItems, slots })` as a side effect — exports are not read), `components/`, `types.ts`, and optional `defaults/` for workflows / workflow-skills / runtime-skills. **Defaults are located ONLY through `src/core/plugin-resources.ts`** (disk on a checkout, build-embedded `plugin-defaults:<id>/...` copies inside the compiled binary — module-relative `import.meta.url` paths and `process.cwd()` are `/$bunfs`/wherever inside a binary and silently emptied every shipped default on binary installs until 2026-09-24); adding a shipped default means regenerating the tracked embedded-assets manifest.
 
 Core plugins build to `plugins/<id>/dist/`. User plugins build to `~/.bakin/plugins/<id>/dist/` via the in-binary builder (`buildUserPlugin` in `packages/host/src/plugin-host/user-plugin-builder.ts`).
 

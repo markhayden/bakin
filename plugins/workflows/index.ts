@@ -3,12 +3,10 @@
  * Enforces step-by-step agent execution with gated delivery,
  * parallel steps, human gates, and output validation.
  */
-import { join, dirname } from 'path'
-import { fileURLToPath } from 'url'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin } from '@bakin/core/routing'
 import { listDefinitions } from './lib/parser'
-import { loadDefaultWorkflows } from './lib/load-defaults'
+import { loadDefaultWorkflowFiles } from './lib/load-defaults'
 import {
   checkWorkflowDefinitions,
   checkStaleWorkflowInstances,
@@ -28,6 +26,8 @@ import { registerWorkflowHooks } from './lib/register-hooks'
 import { wireChannelApprovals } from './lib/channel-approvals'
 import { createLogger } from '../../src/core/logger'
 import { getContentDir } from '../../src/core/content-dir'
+import { pluginRootFromModuleUrl, shippedWorkflowFiles } from '../../src/core/plugin-resources'
+import { checkShippedDefaults, recordShippedDefaults } from './lib/shipped-defaults'
 import {
   setEventBus,
   setGateNotificationSettings,
@@ -70,9 +70,12 @@ const workflowsPlugin: BakinPlugin = definePlugin({
     // ─── Plugin-shipped workflow defaults ─────────────────────────────
     // Load every YAML in defaults/workflows/ and register through
     // ctx.registerWorkflow so disk-resident user copies still win.
-    const moduleDir = dirname(fileURLToPath(import.meta.url))
-    const defaultsDir = join(moduleDir, 'defaults', 'workflows')
-    const defaultsLoaded = loadDefaultWorkflows(ctx, defaultsDir, log)
+    // Resolved through plugin-resources: disk on a checkout, the embedded
+    // copies inside a compiled binary (where this module has no directory).
+    const pluginRoot = pluginRootFromModuleUrl(import.meta.url)
+    const shipped = shippedWorkflowFiles('workflows', pluginRoot)
+    const defaultsLoaded = loadDefaultWorkflowFiles(ctx, shipped, log)
+    recordShippedDefaults({ files: shipped, pluginPath: pluginRoot, ...defaultsLoaded })
     if (defaultsLoaded.registered.length > 0) {
       log.info(`Registered ${defaultsLoaded.registered.length} plugin-shipped workflow(s)`, {
         ids: defaultsLoaded.registered,
@@ -107,6 +110,14 @@ const workflowsPlugin: BakinPlugin = definePlugin({
       group: { key: 'workflows', label: 'Workflows' },
       maxAgeMs: 5 * 60_000,
       run: () => checkWorkflowDefinitions(getContentDir()),
+    })
+    ctx.registerHealthCheck({
+      id: 'shipped-defaults',
+      name: 'Shipped workflow defaults',
+      description: 'Verifies this build can locate and register the workflows the plugin ships.',
+      group: { key: 'workflows', label: 'Workflows' },
+      maxAgeMs: 10 * 60_000,
+      run: async () => checkShippedDefaults(),
     })
     ctx.registerHealthCheck({
       id: 'stale-instances',

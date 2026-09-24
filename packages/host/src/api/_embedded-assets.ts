@@ -20,10 +20,13 @@ let internal: ReadonlyMap<string, string> = new Map()
 export const EMBEDDED_ASSETS: {
   get(key: string): string | undefined
   has(key: string): boolean
+  /** Iterate every key — used by prefix-scoped readers (plugin defaults). */
+  keys(): IterableIterator<string>
   readonly size: number
 } = {
   get: (key: string) => internal.get(key),
   has: (key: string) => internal.has(key),
+  keys: () => internal.keys(),
   get size() { return internal.size },
 }
 

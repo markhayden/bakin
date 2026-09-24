@@ -1345,6 +1345,14 @@ to drop files in place.
 | `defaults/workflow-skills/*.md` | `src/lib/plugin-skill-loader.ts`, invoked by the plugin loader after every `activate()` | Each `.md` is parsed (YAML frontmatter for `name` + `output_schema`; body is the instruction) and registered via `ctx.registerSkill()`. In-memory only — no filesystem install. |
 | `defaults/runtime-skills/{name}/SKILL.md` (+ `scripts/`) | `src/core/onboarding/plugin-assets.ts` (`bakin install plugin-assets`) | Each skill dir is copied to `runtime skill store/` with a `.installedBy` marker (sha256). `.userEdited` sentinel locks a dir from overwrite. `bakin doctor` surfaces drift. |
 
+**Compiled binaries:** none of these loaders may locate `defaults/` via `import.meta.url` or
+`process.cwd()` — inside a `bun build --compile` binary the module directory is `/$bunfs/root`
+and does not exist, which silently emptied every shipped default on binary installs for months
+(2026-09-24). All three go through `src/core/plugin-resources.ts`: disk when the plugin root
+exists, otherwise the build-time copies embedded under `plugin-defaults:<id>/...` keys by
+`scripts/generate-embedded-assets.ts`. Details: `workflows-plugin.md` § "Where the files come
+from". Adding a shipped default means regenerating the tracked embedded-assets manifest.
+
 The first two are S-A (workflow-step skills, in-memory). The third is
 S-B (runtime skills, on disk). See
 `.claude/knowledge/workflows-plugin.md` for the full breakdown.

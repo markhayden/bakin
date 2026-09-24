@@ -9,11 +9,13 @@
  * with a stale/older generator and committing the result fails CI instead of
  * silently shipping ~2.3 MiB of server code in the binary.
  *
- * Pure scanner — reads the file as text, imports no app modules.
+ * Scanner — reads the manifest as text; the only app import is the pure
+ * directory walker used to enumerate plugins/<id>/defaults/**.
  */
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'fs'
+import { existsSync, readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
+import { walkFiles } from '../../packages/core/src/storage/walk'
 
 const ROOT = process.cwd()
 const STATIC_MANIFEST = join(ROOT, 'packages/host/src/api/_embedded-assets-static.ts')
@@ -39,5 +41,27 @@ describe('embedded-assets static manifest (tracked generated output)', () => {
   it('embeds the canonical SDK stylesheet once at the host stylesheet URL', () => {
     expect(source.match(/from '\.\.\/\.\.\/\.\.\/sdk\/styles\.css'/g)).toHaveLength(1)
     expect(source.match(/\['\/globals\.css', asset_globals_css\]/g)).toHaveLength(1)
+  })
+
+  it('embeds every core plugin defaults/** file under plugin-defaults: keys (compiled binaries read them there)', () => {
+    // If this fails after adding/removing a shipped default: regenerate with
+    // `bun run scripts/generate-embedded-assets.ts` and commit the manifest.
+    const pluginsDir = join(ROOT, 'plugins')
+    const expected: string[] = []
+    for (const id of readdirSync(pluginsDir)) {
+      const defaultsDir = join(pluginsDir, id, 'defaults')
+      if (!existsSync(defaultsDir)) continue
+      for (const file of walkFiles(defaultsDir)) {
+        if (file.name.endsWith('.map')) continue
+        expected.push(`plugin-defaults:${id}/${file.relPath}`)
+      }
+    }
+    expect(expected.length).toBeGreaterThan(0)
+    for (const key of expected) expect(source).toContain(`['${key}',`)
+  })
+
+  it('defaults keys never start with / (they must be unreachable through the static HTTP handler)', () => {
+    expect(source).not.toMatch(/\['\/plugin-defaults/)
+    expect(source).toMatch(/\['plugin-defaults:workflows\/workflows\/text-social-post\.yaml',/)
   })
 })

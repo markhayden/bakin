@@ -25,6 +25,7 @@ import {
   readdirSync,
 } from 'fs'
 import { join } from 'path'
+import { listPluginDefaultFiles, type PluginResourceFile } from '../plugin-resources'
 import { createAppServices, getAppServices, maybeGetAppServices } from '../app-services'
 import { createLogger } from '../logger'
 import type { RuntimeSkill } from '@bakin/core/adapters/runtime'
@@ -75,29 +76,42 @@ function sha256OfFile(path: string): string {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
 }
 
+export interface PluginSkillSource {
+  name: string
+  /** Readable path of the skill's `SKILL.md` (disk or embedded). */
+  skillMdPath: string
+  /** Every file in the skill directory, `relPath` relative to that directory. */
+  files: PluginResourceFile[]
+}
+
 /**
- * Walk a plugin's `defaults/runtime-skills/*` directories and return
- * one entry per skill that has a `SKILL.md`. Skills are 1 directory deep.
+ * One entry per `defaults/runtime-skills/<name>/` that has a `SKILL.md`.
+ * Skills are 1 directory deep. Resolved through plugin-resources, so a
+ * compiled binary (no plugin directory on disk) sees the embedded copies
+ * a source checkout reads from disk.
  *
  * Exported so install + upgrade flows can record `installedSkills` into
  * the lockfile (#119 hardening) — the lockfile becomes the canonical
  * record of which skills each plugin installed, so the uninstall flow
  * doesn't have to trust on-disk `.installedBy` markers blindly.
  */
-export function findSkillsForPlugin(plugin: PluginEntry): Array<{ name: string; sourceDir: string }> {
-  const skillsRoot = join(plugin.path, 'defaults', 'runtime-skills')
-  if (!existsSync(skillsRoot)) return []
-  const entries = readdirSync(skillsRoot, { withFileTypes: true })
-  const skills: Array<{ name: string; sourceDir: string }> = []
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    const sourceDir = join(skillsRoot, entry.name)
-    const skillFile = join(sourceDir, 'SKILL.md')
-    if (existsSync(skillFile)) {
-      skills.push({ name: entry.name, sourceDir })
-    }
+export function findSkillsForPlugin(plugin: PluginEntry): PluginSkillSource[] {
+  const groups = new Map<string, PluginResourceFile[]>()
+  for (const file of listPluginDefaultFiles({ pluginId: plugin.id, pluginPath: plugin.path, kind: 'runtime-skills' })) {
+    const slash = file.relPath.indexOf('/')
+    if (slash < 0) continue
+    const name = file.relPath.slice(0, slash)
+    const list = groups.get(name) ?? []
+    list.push({ ...file, relPath: file.relPath.slice(slash + 1) })
+    groups.set(name, list)
   }
-  return skills
+  const skills: PluginSkillSource[] = []
+  for (const [name, files] of groups) {
+    const skillMd = files.find(file => file.relPath === 'SKILL.md')
+    if (!skillMd) continue
+    skills.push({ name, skillMdPath: skillMd.path, files })
+  }
+  return skills.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 }
 
 function isInstalledMarker(value: unknown): value is InstalledMarker {
@@ -116,23 +130,16 @@ function isUserEditedSkill(skill: RuntimeSkill | null): boolean {
   return skill?.metadata?.userEdited === true
 }
 
-function readSkillFiles(sourceDir: string, prefix = ''): Record<string, string> {
+function readSkillFiles(skill: PluginSkillSource): Record<string, string> {
   const files: Record<string, string> = {}
-  for (const entry of readdirSync(join(sourceDir, prefix), { withFileTypes: true })) {
-    if (entry.isSymbolicLink()) continue
-    const rel = prefix ? `${prefix}/${entry.name}` : entry.name
-    const abs = join(sourceDir, rel)
-    if (entry.isDirectory()) {
-      Object.assign(files, readSkillFiles(sourceDir, rel))
-    } else if (entry.isFile()) {
-      files[rel] = readFileSync(abs, 'utf-8')
-    }
+  for (const file of skill.files) {
+    files[file.relPath] = readFileSync(file.path, 'utf-8')
   }
   return files
 }
 
-function buildRuntimeSkill(skill: { name: string; sourceDir: string }, marker: InstalledMarker): RuntimeSkill {
-  const files = readSkillFiles(skill.sourceDir)
+function buildRuntimeSkill(skill: PluginSkillSource, marker: InstalledMarker): RuntimeSkill {
+  const files = readSkillFiles(skill)
   return {
     name: skill.name,
     instructions: files['SKILL.md'] ?? '',
@@ -167,7 +174,7 @@ export async function scanPluginAssets(plugins: PluginEntry[]): Promise<ScanRepo
         continue
       }
 
-      const sourceHash = sha256OfFile(join(skill.sourceDir, 'SKILL.md'))
+      const sourceHash = sha256OfFile(skill.skillMdPath)
       const marker = readMarker(installedSkill)
       if (marker && marker.sha256 === sourceHash) {
         report.installed.push(ref)
@@ -187,8 +194,7 @@ export async function installPluginAssets(plugins: PluginEntry[]): Promise<Insta
   for (const plugin of plugins) {
     for (const skill of findSkillsForPlugin(plugin)) {
       const ref: SkillRef = { pluginId: plugin.id, name: skill.name }
-      const sourceSkill = join(skill.sourceDir, 'SKILL.md')
-      const sourceHash = sha256OfFile(sourceSkill)
+      const sourceHash = sha256OfFile(skill.skillMdPath)
       const installedSkill = await runtime.skills.get(skill.name)
 
       if (installedSkill && isUserEditedSkill(installedSkill)) {
@@ -234,7 +240,10 @@ function discoverPlugins(): PluginEntry[] {
     for (const p of cfg.plugins ?? []) {
       if (p.enabled === false) continue
       const id = p.path.split('/').pop() || p.path
-      plugins.push({ id, path: join(process.cwd(), p.path) })
+      // Config-relative root; plugin-resources resolves it against the repo
+      // root on a checkout and against the embedded copies in a binary —
+      // never against process.cwd(), which is wherever the daemon started.
+      plugins.push({ id, path: p.path })
     }
   } catch (err) {
     log.warn('Failed to read bakin.config for plugin discovery', { error: String(err) })

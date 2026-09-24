@@ -40,9 +40,42 @@ None of the three are required. A plugin can ship any subset.
 
 | Directory | Loader | Trigger |
 |-----------|--------|---------|
-| `defaults/workflows/` | `plugins/workflows/lib/load-defaults.ts` (called from the workflows plugin's `activate()`) | Server boot, every startup |
-| `defaults/workflow-skills/` | `src/lib/plugin-skill-loader.ts` (invoked by `src/core/plugin-registry.ts` after every `activate()`) | Server boot, every startup, generic across all plugins |
-| `defaults/runtime-skills/` | `src/core/onboarding/plugin-assets.ts` (`scanPluginAssets` + `installPluginAssets`) | `bakin install plugin-assets` (manual), or surfaced by `bakin doctor` |
+| `defaults/workflows/` | `shippedWorkflowFiles()` from `src/core/plugin-resources.ts` → `loadDefaultWorkflowFiles()` (`packages/core/src/workflows/load-defaults.ts`), called from the owning plugin's `activate()` | Server boot, every startup |
+| `defaults/workflow-skills/` | `listPluginDefaultFiles({ kind: 'workflow-skills' })` → `loadPluginSkillFiles()` (`src/lib/plugin-skill-loader.ts`), invoked by `src/core/plugin-registry.ts` after every `activate()` | Server boot, every startup, generic across all plugins |
+| `defaults/runtime-skills/` | `findSkillsForPlugin()` in `src/core/onboarding/plugin-assets.ts` (resolver-backed) → `scanPluginAssets` + `installPluginAssets` | `bakin install plugin-assets` (manual), or surfaced by `bakin doctor` |
+
+### Where the files come from: disk vs. embedded (compiled binaries)
+
+**Every loader above goes through `src/core/plugin-resources.ts` — never `import.meta.url`
++ `join(..., 'defaults', ...)` and never `process.cwd()`.** Inside a `bun build --compile`
+binary every module's `import.meta.url` is `file:///$bunfs/root/...`, so a module-relative
+`defaults/` directory can never exist and a loader that returns early on a missing directory
+comes up empty — silently. That is exactly what happened: compiled installs ran from June to
+September 2026 with **zero** shipped workflows, zero workflow-step skills and no installable
+runtime skills, while source checkouts (where the directory is real) looked fine.
+
+The resolver is a two-way switch decided per plugin root:
+
+- plugin root exists on disk (source checkout, user plugins under `~/.bakin/plugins/<id>`) →
+  read the real `defaults/<kind>/` directory (an existing root that ships nothing yields nothing;
+  it never falls through to embedded copies);
+- plugin root absent (compiled binary) → read the copies `scripts/generate-embedded-assets.ts`
+  embedded at build time under `plugin-defaults:<id>/<kind>/<relPath>` keys in the embedded
+  asset map. Those keys deliberately carry **no leading slash**, so the static HTTP handler
+  (which looks up `url.pathname`) can never serve them. The values are `/$bunfs/...` paths that
+  `readFileSync`/`existsSync`/`statSync` read normally — only directory listing is unavailable,
+  which is what the build-time manifest replaces.
+
+Config-relative plugin roots (`plugins/<id>` from `bakin.config.ts`) resolve against the repo
+root on a checkout and to `embedded` inside the binary — never against the daemon's cwd.
+
+Guards: `tests/integration/plugins/compiled-plugin-defaults.test.ts` compiles a real binary
+and asserts **parity** with the checkout (plus a teeth pin that module-relative directories stay
+dead in binaries); `tests/architecture/embedded-assets-static.test.ts` fails if the tracked
+manifest misses any `plugins/*/defaults/**` file (regenerate with
+`bun run scripts/generate-embedded-assets.ts` after adding a default); and the
+`workflows.shipped-defaults` health check raises an action-required incident when a running
+build cannot locate its shipped workflows at all.
 
 The workflow definition and managed workflow-skill registries are rebuilt on every boot. User workflow-skill files under `~/.bakin/workflows/skills/*.md` still win over managed sources, so those local shadows need drift visibility when a shipped skill contract changes.
 
