@@ -16,10 +16,12 @@
  *
  * Prerelease-stamped hosts (rc tags like `0.6.0-rc.1`, describe-stamped
  * self-builds like `0.6.1-3-gabc1234[-dirty]`) satisfy against the
- * prerelease-STRIPPED base version: npm prerelease-exclusion rules would
+ * prerelease-stripped base version by default: npm prerelease-exclusion rules would
  * otherwise make such a host satisfy nothing (not even `*`), flipping every
  * installed user plugin to incompatible_host on an rc upgrade. Stripping
- * keeps the gate meaningful (an rc of 0.6.0 genuinely is a 0.6.0-era host).
+ * keeps broad ranges compatible with RC hosts. An alternative explicitly
+ * naming a prerelease of the host's base version instead compares the full
+ * version, preserving RC minimums, maximums, and exact pins.
  *
  * Core plugins never pass through this gate: they are version-locked to the
  * host by definition (no independent lifecycle), and the enforcement sites
@@ -126,11 +128,18 @@ export function checkBakinRangeCompatibility(
   // version and would fail every release-floor range.
   if (hostVersion === DEV_HOST_VERSION) return { ok: true }
 
-  // Prerelease-stamped hosts satisfy against the stripped base version —
-  // npm prerelease-exclusion would otherwise reject EVERY range (even `*`).
-  const effectiveHost = stripPrerelease(hostVersion)
+  const baseVersion = stripPrerelease(hostVersion)
+  const compatible = range.split('||').some((alternative) => {
+    // Match comparator operands, including either end of a hyphen range.
+    // Keep each OR alternative independent: an explicit RC in one branch
+    // must not change how a broad stable-version branch treats RC hosts.
+    const targetsPrerelease = alternative.trim().split(/\s+/).some((comparator) => (
+      comparator.match(/^(?:>=|<=|>|<|=|\^|~)?v?(\d+\.\d+\.\d+)-/)?.[1] === baseVersion
+    ))
+    return semver.satisfies(targetsPrerelease ? hostVersion : baseVersion, alternative.trim())
+  })
 
-  if (!semver.satisfies(effectiveHost, range)) {
+  if (!compatible) {
     return {
       ok: false,
       message:

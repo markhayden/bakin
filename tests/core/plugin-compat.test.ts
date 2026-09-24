@@ -99,6 +99,32 @@ describe('checkBakinRangeCompatibility', () => {
     expect(checkBakinRangeCompatibility('>=0.0.0-dev', '1.2.3').ok).toBe(true)
   })
 
+  it('honors an explicit RC minimum while accepting current and newer releases', () => {
+    const range = '>=0.0.1-rc.35'
+    for (const host of ['0.0.1-rc.1', '0.0.1-rc.34', '0.0.1-beta.99', '0.0.0']) {
+      expect(checkBakinRangeCompatibility(range, host).ok, host).toBe(false)
+    }
+    for (const host of ['0.0.1-rc.35', '0.0.1-rc.35+build.1', '0.0.1-rc.36', '0.0.1-rc.100', '0.0.1', '0.0.2-rc.1', '0.0.2', '0.1.0', '1.0.0']) {
+      expect(checkBakinRangeCompatibility(range, host).ok, host).toBe(true)
+    }
+  })
+
+  it('preserves explicit prerelease bounds and exact versions', () => {
+    expect(checkBakinRangeCompatibility('0.0.1-rc.35', '0.0.1-rc.35').ok).toBe(true)
+    expect(checkBakinRangeCompatibility('0.0.1-rc.35', '0.0.1-rc.36').ok).toBe(false)
+    expect(checkBakinRangeCompatibility('>=0.0.1-rc.35 <0.0.1-rc.40', '0.0.1-rc.39').ok).toBe(true)
+    expect(checkBakinRangeCompatibility('>=0.0.1-rc.35 <0.0.1-rc.40', '0.0.1-rc.40').ok).toBe(false)
+    expect(checkBakinRangeCompatibility('0.0.1-rc.35 - 0.0.1-rc.40', '0.0.1-rc.40').ok).toBe(true)
+    expect(checkBakinRangeCompatibility('^0.0.1-rc.35', '0.0.1-rc.34').ok).toBe(false)
+    expect(checkBakinRangeCompatibility('~0.0.1-rc.35', '0.0.1-rc.36').ok).toBe(true)
+  })
+
+  it('evaluates prerelease intent separately for each OR alternative', () => {
+    expect(checkBakinRangeCompatibility('>=0.0.1-rc.35 <0.0.2 || >=0.1.0', '0.0.1-rc.34').ok).toBe(false)
+    expect(checkBakinRangeCompatibility('>=0.0.1-rc.35 <0.0.2 || >=0.1.0', '0.1.0-rc.1').ok).toBe(true)
+    expect(checkBakinRangeCompatibility('>=0.0.1-rc.35 || >=0.0.1', '0.0.1-rc.34').ok).toBe(true)
+  })
+
   it('prerelease hosts satisfy against the stripped base version', () => {
     // Release tags allow rc (v0.6.0-rc.1) and self-builds are describe-stamped
     // (0.6.1-3-gabc1234[-dirty]); npm prerelease-exclusion would reject every
