@@ -1,5 +1,9 @@
 # Main Navigation Redesign — Story, Sections, and Responsive Sidebar
 
+> Badge count and announcement behavior below is superseded by
+> [Navigation indicator consistency](navigation-indicator-consistency.md):
+> all main-navigation indicators are count-free semantic dots.
+
 Reorganize Bakin's primary navigation into a product story that is easier to scan in expanded, collapsed, and mobile layouts. This is a coordinated change across the Bakin shell and the owned `bakin-bits-official` plugin manifests. Single-user machine; priority is a clean contract and reduced tech debt — no compatibility shims or user-configurable navigation.
 
 ## Objective

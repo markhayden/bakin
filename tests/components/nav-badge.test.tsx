@@ -31,36 +31,35 @@ describe('NavBadge', () => {
     expect(renderToStaticMarkup(<NavBadge badge={{ count: 0 }} />)).toBe('')
   })
 
-  it('renders a pill with the count when count is positive', () => {
+  it('renders a small dot without a count when count is positive', () => {
     const html = renderToStaticMarkup(<NavBadge badge={{ count: 3 }} />)
-    expect(html).toContain('nav-badge-pill')
-    expect(html).toContain('>3<')
+    expect(html).toContain('nav-indicator')
+    expect(html).not.toContain('>3<')
+    expect(html).toContain('data-status-marker=')
   })
 
-  it('clamps counts above 99 to "99+"', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ count: 250 }} />)).toContain('99+')
+  it('never renders large counts', () => {
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 250 }} />)).not.toContain('99+')
   })
 
   // Presence-only dots ride the kit StatusMarker; its tone vocabulary has no
-  // `info`, so the info tone maps onto the marker's `accent` signal.
+  // `info`, so new information maps onto the marker's `success` signal.
   it('renders a dot (no count) when count is omitted', () => {
     const html = renderToStaticMarkup(<NavBadge badge={{ tone: 'info' }} />)
-    expect(html).toContain('data-status-marker="accent"')
+    expect(html).toContain('data-status-marker="success"')
     // Decorative: the nav link's aria-label carries the state.
     expect(html).toContain('aria-hidden="true"')
   })
 
-  // Counted pills ride the kit Badge (size xs, solid) — tone maps to the
-  // Badge tone vocabulary and the data attributes are the contract.
+  // All navigation states share the small StatusMarker contract.
   it('applies the attention tone by default', () => {
     const html = renderToStaticMarkup(<NavBadge badge={{ count: 1 }} />)
     expect(html).toContain('data-tone="attention"')
-    expect(html).toContain('data-size="xs"')
-    expect(html).toContain('data-variant="solid"')
+    expect(html).toContain('size-bakin-2')
   })
 
-  it('maps info tone onto the kit info tone', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'info' }} />)).toContain('data-tone="info"')
+  it('maps info tone onto the green kit success tone', () => {
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'info' }} />)).toContain('data-tone="success"')
   })
 
   it('maps success tone onto the kit success tone', () => {
@@ -88,23 +87,23 @@ describe('navBadgeAriaSuffix', () => {
   })
 
   it('formats count + attention tone as "needing review"', () => {
-    expect(navBadgeAriaSuffix({ count: 3, tone: 'attention' })).toBe(', 3 needing review')
+    expect(navBadgeAriaSuffix({ count: 3, tone: 'attention' })).toBe(', needing review')
   })
 
   it('formats count + info tone as the tone label', () => {
-    expect(navBadgeAriaSuffix({ count: 2, tone: 'info' })).toBe(', 2 info')
+    expect(navBadgeAriaSuffix({ count: 2, tone: 'info' })).toBe(', new updates')
   })
 
-  it('clamps counts in aria suffix', () => {
-    expect(navBadgeAriaSuffix({ count: 300 })).toBe(', 99+ needing review')
+  it('omits large counts from the aria suffix', () => {
+    expect(navBadgeAriaSuffix({ count: 300 })).toBe(', needing review')
   })
 
   it('returns just the tone for presence-only badges', () => {
-    expect(navBadgeAriaSuffix({ tone: 'success' })).toBe(', success')
+    expect(navBadgeAriaSuffix({ tone: 'success' })).toBe(', new updates')
   })
 
   it('formats error tone as the neutral word "urgent"', () => {
-    expect(navBadgeAriaSuffix({ count: 3, tone: 'error' })).toBe(', 3 urgent')
+    expect(navBadgeAriaSuffix({ count: 3, tone: 'error' })).toBe(', urgent')
   })
 
   it('formats presence-only error (no count) as "urgent"', () => {

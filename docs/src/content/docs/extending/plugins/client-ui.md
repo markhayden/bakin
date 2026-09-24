@@ -66,7 +66,7 @@ Groups need no special expansion flag. Expanded sidebars render a disclosure but
 
 ## Nav badges
 
-A nav item can carry a runtime badge — a small count pill or a presence
+A nav item can carry a runtime badge — a small colored presence
 dot — that updates live without re-registering the plugin. Use it for
 "needs attention" surfaces such as a Messaging Plans review queue or an
 inbox count.
@@ -103,8 +103,8 @@ registerPlugin({
 
 The `NavBadge` shape is `{ count?: number; tone?: 'error' | 'attention' | 'info' | 'success' }`.
 Tones render by severity — `error` (red) > `attention` (amber) > `info`
-(blue) > `success` (green) — and `error` wins a collapsed-parent rollup.
-Counts greater than 99 render as `99+`. Passing `null` to `setNavBadge`
+(green updates) > `success` (green) — and `error` wins a collapsed-parent rollup.
+Positive counts show presence only; navigation never renders a number. Passing `null` to `setNavBadge`
 clears the badge. The `badge?` field on `NavItem` itself is only an
 initial seed — runtime values from `setNavBadge` take precedence and are
 what the sidebar reads.
@@ -112,7 +112,7 @@ what the sidebar reads.
 Badges are cleaned up automatically when the owning plugin unregisters
 or hot-reloads. A closed or collapsed parent renders one presence rollup
 dot using the highest severity across its own badge and all child badges;
-expanded children retain their real counts.
+expanded children show their own small semantic dots.
 
 ## Routes
 
@@ -335,3 +335,10 @@ import type { NavItem } from '@makinbakin/sdk'
 ```
 
 Host internals can change without warning. SDK exports are the contract.
+
+Navigation displays dots in every layout, including nested groups and mobile.
+Positive counts determine presence but are never rendered or announced; zero and
+`null` clear the indicator. Green signals new information, yellow review/approval,
+and red problems. Working/streaming alone must not set a navigation badge. Keep
+counts and progress inside your page when useful. Use `bakin.reconcile` alongside
+your domain events to recover missed updates; retain last-known state on failures.

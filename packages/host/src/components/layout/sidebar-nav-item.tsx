@@ -258,7 +258,7 @@ export function SidebarNavItem({
       onClick={onNavigate}
       className={cn(navRowClass(active, collapsed), 'relative')}
       aria-current={active ? 'page' : undefined}
-      aria-label={collapsed ? `${item.label}${navBadgeAriaSuffix(flatBadge)}` : undefined}
+      aria-label={`${item.label}${navBadgeAriaSuffix(flatBadge)}`}
     >
       <Icon className="size-bakin-4 shrink-0" />
       {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
@@ -272,7 +272,7 @@ export function SidebarNavItem({
   return (
     <Tooltip>
       <TooltipTrigger render={link} />
-      <TooltipContent side="right" sideOffset={8}>{item.label}</TooltipContent>
+      <TooltipContent side="right" sideOffset={8}>{item.label}{navBadgeAriaSuffix(flatBadge)}</TooltipContent>
     </Tooltip>
   )
 }

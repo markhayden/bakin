@@ -86,6 +86,11 @@ never sit at rest in a card — surface on hover or behind the detail view.
   chip. Use the filled treatment by default so status reads immediately;
   reserve outline for secondary, uncertain, historical, or low-emphasis
   context. Use soft badges for metadata rather than primary state.
+- **Navigation indicators** use `StatusMarker size="sm"` from SDK `/patterns`,
+  following `feedback/status-marker.stories.tsx` → `DenseViewMarkers`. Green
+  means new information, yellow review/approval, red an actionable problem.
+  Never show numeric counts or working-only dots in the main navigation.
+  Announce the meaning in the link label; the dot remains decorative.
 - **Page-header counts** use `Badge tone="neutral" variant="soft"`: results
   shown, available items, agents, members, and step counts are supporting
   metadata. Keep semantic status labels separate; do not restyle every badge
