@@ -110,6 +110,22 @@ describe('buildSdkPackage', () => {
     ], { cwd: repoRoot, encoding: 'utf8' })
     expect(browserContent.status).toBe(0)
 
+    // ...and the same packed entry must still IMPORT without a DOM: the
+    // browser target alone pulled decode-named-character-reference's DOM build
+    // (`document.createElement('i')` at module top), which made rc.36's
+    // published content entry throw `document is not defined` under plain
+    // Node/Bun and failed the post-publish SDK smoke. Bundle it self-contained
+    // for the bun target and execute it top to bottom.
+    const nodeContentBundle = join(testRoot, 'node-content.js')
+    const nodeContent = spawnSync('bun', [
+      'build', join(outDir, 'content/index.js'), '--target', 'bun', '--outfile', nodeContentBundle,
+    ], { cwd: repoRoot, encoding: 'utf8' })
+    expect(nodeContent.status).toBe(0)
+    const executed = spawnSync('bun', [nodeContentBundle], { cwd: repoRoot, encoding: 'utf8' })
+    expect(executed.stderr).not.toContain('document is not defined')
+    expect(executed.status).toBe(0)
+    expect(readFileSync(join(outDir, 'content/index.js'), 'utf8')).not.toContain('document.createElement("i")')
+
     const runtime = await import(`${pathToFileURL(join(outDir, 'index.js')).href}?test=${Date.now()}`)
     expect(runtime.registerPlugin).toBeFunction()
     expect(runtime.defineRoute).toBeFunction()

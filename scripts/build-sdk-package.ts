@@ -252,6 +252,35 @@ function copyDeclarationTree(tempDtsDir: string, outDir: string): void {
   }
 }
 
+/**
+ * The packed rich-content entry is built by its own script (browser target +
+ * a resolver pin that keeps it importable without a DOM — the rc.36 regression;
+ * see the header of scripts/build-sdk-content-entry.ts).
+ */
+const CONTENT_ENTRY_BUILDER = join(REPO_ROOT, 'scripts/build-sdk-content-entry.ts')
+
+/**
+ * Runs in a SUBPROCESS on purpose (like the CLI path below): the SDK package
+ * test builds the package inside the bun test process, and an in-process
+ * `Bun.build` there inherits the test preload's module mocks — CI shards saw
+ * EISDIR on real index.js files and unresolvable react-dom internals.
+ */
+function buildBrowserContentEntry(wrapper: string, targetFile: string): void {
+  const result = spawnSync('bun', [
+    'run',
+    CONTENT_ENTRY_BUILDER,
+    '--entry', wrapper,
+    '--outfile', targetFile,
+    ...EXTERNAL_JS_PEERS.flatMap((specifier) => ['--external', specifier]),
+  ], { cwd: REPO_ROOT, encoding: 'utf-8' })
+  if (result.status !== 0) {
+    throw new Error(`Failed to build ./content:\n${result.stdout}${result.stderr}`)
+  }
+  if (!existsSync(targetFile)) {
+    throw new Error(`Expected ${targetFile} to be generated`)
+  }
+}
+
 function buildJsEntry(entry: SdkExportEntry, outDir: string): void {
   const targetFile = join(outDir, entry.importPath)
   // The root source barrel combines SDK types with runtime values. Core also
@@ -271,15 +300,17 @@ function buildJsEntry(entry: SdkExportEntry, outDir: string): void {
   writeFileSync(wrapper, `export * from ${JSON.stringify(sourceModule)}\n`, 'utf8')
   mkdirSync(dirname(targetFile), { recursive: true })
   try {
+    if (entry.exportPath === './content') {
+      buildBrowserContentEntry(wrapper, targetFile)
+      return
+    }
     const result = spawnSync('bun', [
       'build',
       wrapper,
       '--outfile',
       targetFile,
       '--target',
-      // Rich content is a browser entry: vfile selects Node-only process/URL
-      // imports under the Bun target, breaking installed plugin UI fixtures.
-      entry.exportPath === './content' ? 'browser' : 'bun',
+      'bun',
       '--format',
       'esm',
       // NOT `--production`: that implies identifier mangling, and Bun 1.3's
