@@ -14,13 +14,15 @@ mock.module('../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({ root: testDir }),
 }))
 
-import { render, waitFor } from '@testing-library/react'
+import { act, render, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { useSSE } from '@/hooks/use-sse'
 import { usePluginEvent } from '@/hooks/use-plugin-event'
 import { useContentStore } from '@/hooks/use-content-store'
 
 let doctorRuns = 0
+let reconciles = 0
+let changedFile = ''
 
 // Controllable EventSource — captures the instance so the test can drive
 // onmessage directly (no real network). A factory (constructor returning an
@@ -42,6 +44,8 @@ function createMockEventSource(url: string): MockEventSource {
 function Probe() {
   useSSE()
   usePluginEvent('doctor.run', () => { doctorRuns += 1 })
+  usePluginEvent('bakin.reconcile', () => { reconciles += 1 })
+  usePluginEvent('bakin.file.changed', (event) => { changedFile = String(event.file) })
   return null
 }
 
@@ -54,6 +58,8 @@ function emitAudit(event: string, data: Record<string, unknown> = {}, agent = 's
 beforeEach(() => {
   lastES = null
   doctorRuns = 0
+  reconciles = 0
+  changedFile = ''
   ;(globalThis as { EventSource: unknown }).EventSource = createMockEventSource as unknown
   // initialize() fetches a few endpoints on mount — stub them to empty.
   ;(globalThis as { fetch: typeof fetch }).fetch = (mock(async () => new Response('{}', { status: 200 }))) as unknown as typeof fetch
@@ -100,4 +106,26 @@ describe('useSSE — doctor.run event wiring', () => {
       retryable: true,
     })
   })
+})
+
+it('reconciles on connection and resume, coalescing simultaneous lifecycle events', async () => {
+  const view = render(<Probe />)
+  await act(async () => {
+    lastES?.onopen?.()
+    window.dispatchEvent(new Event('pageshow'))
+  })
+  expect(reconciles).toBe(1)
+  await act(async () => { lastES?.onopen?.() })
+  expect(reconciles).toBe(2)
+  view.unmount()
+  window.dispatchEvent(new Event('pageshow'))
+  expect(reconciles).toBe(2)
+})
+
+it('forwards file removal without requiring content or a second EventSource', async () => {
+  render(<Probe />)
+  await act(async () => {
+    lastES?.onmessage?.({ data: JSON.stringify({ type: 'file', file: 'messaging/plans/demo.md', event: 'unlink' }) })
+  })
+  expect(changedFile).toBe('messaging/plans/demo.md')
 })

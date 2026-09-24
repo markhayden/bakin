@@ -33,6 +33,28 @@ export function useSSE() {
 
   useEffect(() => {
     initialize()
+    let disposed = false
+    let reconcileQueued = false
+    function reconcile() {
+      if (reconcileQueued || disposed) return
+      reconcileQueued = true
+      queueMicrotask(() => {
+        reconcileQueued = false
+        if (!disposed) emitPluginEvent({ event: 'bakin.reconcile' })
+      })
+    }
+    function resume() {
+      if (document.visibilityState === 'hidden') return
+      if (!esRef.current || esRef.current.readyState === EventSource.CLOSED) {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current)
+        retryRef.current = 0
+        connect()
+      }
+      reconcile()
+    }
+    document.addEventListener('visibilitychange', resume)
+    window.addEventListener('pageshow', resume)
+    window.addEventListener('online', resume)
 
     function connect() {
       // Clean up any prior connection
@@ -48,6 +70,7 @@ export function useSSE() {
         setConnected(true)
         setSseConnected(true)
         retryRef.current = 0 // Reset backoff on successful connect
+        reconcile()
       }
 
       es.onmessage = (e) => {
@@ -258,6 +281,9 @@ export function useSSE() {
             })
           }
 
+          if (typeof data.file === 'string') {
+            emitPluginEvent({ ...data, event: 'bakin.file.changed', change: data.event })
+          }
           if (data.file && data.content !== undefined) {
             updateFile(data.file, data.content)
 
@@ -294,6 +320,10 @@ export function useSSE() {
     connect()
 
     return () => {
+      disposed = true
+      document.removeEventListener('visibilitychange', resume)
+      window.removeEventListener('pageshow', resume)
+      window.removeEventListener('online', resume)
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
       if (hbTimerRef.current) clearTimeout(hbTimerRef.current)
       esRef.current?.close()
