@@ -4,7 +4,7 @@
  * id-stability / signature-policy / permission gates every lane runs
  * before mutating disk, and the post-commit plugin-asset projection.
  */
-import { existsSync, readFileSync, rmSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { execFileSync, type ExecFileSyncOptions } from 'child_process'
 import { createHash } from 'crypto'
@@ -12,10 +12,9 @@ import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { appendAudit } from '@/core/audit'
 import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
-import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
 import { BinRequirementsSchema, type BinRequirement } from '@bakin/core/plugins/bin-requirement'
 import type { PluginLockEntry } from '@bakin/core/plugins/lockfile'
-import { binTargetOwners, binTargetPath } from './bin-owners'
+import { deleteBinsWithoutOwners } from './bin-owners'
 import { preflightPluginBins } from './bin-preflight'
 import { consentBinsOf, sameBins, type ConsentBin } from './consent-bins'
 import { getSettings } from '@bakin/core/settings'
@@ -262,18 +261,7 @@ export function gateUpgradeConsent(args: {
  * plugin no longer counts as an owner of what it dropped.
  */
 export function sweepDroppedBins(id: string, previous: PluginLockEntry['installedBins'], kept: readonly string[]): string[] {
-  const keep = new Set(kept)
-  const dropped: string[] = []
-  for (const bin of previous ?? []) {
-    if (keep.has(bin.name)) continue
-    const target = binTargetPath(bin.name)
-    if (binTargetOwners(target).length > 0) continue
-    try { removeInstalledBy(target) } catch (err) {
-      log.warn('Could not remove marker of a dropped bin', { id, bin: bin.name, error: err instanceof Error ? err.message : String(err) })
-    }
-    rmSync(target, { force: true })
-    dropped.push(bin.name)
-  }
+  const dropped = deleteBinsWithoutOwners(previous ?? [], new Set(kept))
   if (dropped.length > 0) {
     log.info('Removed binaries the upgraded manifest no longer declares', { id, dropped })
     try {

@@ -8,9 +8,12 @@
  *   4. Deactivate the plugin in memory: onShutdown, hooks, exec tools,
  *      workflow nodes, notification channels, health checks, search
  *      content types, runtime skills, and registry state
- *   5. Deletes: runtime skills (honors .userEdited), settings
- *      JSON, plugin dir
+ *   5. Deletes (under the install lock): runtime skills (honors
+ *      .userEdited), settings JSON, plugin dir
  *   6. Remove lockfile entry
+ *   7. Delete the binaries this plugin installed that no other owner in
+ *      either lockfile still pins (spec plugin-managed-binaries S6);
+ *      audit `plugin.uninstall.bins`
  */
 import { existsSync, rmSync, readFileSync } from 'fs'
 import { readPluginManifestJson } from '@bakin/core/plugins/manifest'
@@ -33,6 +36,8 @@ import {
   writePluginLockfile,
 } from '@bakin/core/plugins/lockfile'
 import { notifyPluginRemoved } from '@/core/plugins/live-lifecycle'
+import { withInstallLock } from '@/core/install-core/install-lock'
+import { deleteBinsWithoutOwners } from '@/core/plugins/bin-owners'
 
 const log = createLogger('plugin-remove')
 
@@ -169,45 +174,64 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     removeState: true,
   })
 
-  // ─── 5. Filesystem deletes ─────────────────────────────────────────────────
+  // ─── 5–7. Filesystem deletes, ledger, bins — one operation under the install lock ─
   let skillsResult: { removed: number; kept: number; missingFromDisk: string[] } = { removed: 0, kept: 0, missingFromDisk: [] }
-  try {
-    const r = await removePluginAssets(pluginId, ownedSkills, assetsPlan)
-    skillsResult = { removed: r.removed, kept: r.kept, missingFromDisk: r.missingFromDisk }
-    if (r.missingFromDisk.length > 0) {
-      log.warn('lockfile claimed ownership of skills not present on disk', {
-        pluginId,
-        missing: r.missingFromDisk,
-      })
-    }
-  } catch (err) {
-    log.warn('removePluginAssets failed', err, { pluginId })
-  }
-
-  if (existsSync(settingsFile)) {
+  const ownedBins = lockBeforeRemove.plugins[pluginId]?.installedBins ?? []
+  let binsRemoved: string[] = []
+  await withInstallLock(async () => {
     try {
-      rmSync(settingsFile, { force: true })
+      const r = await removePluginAssets(pluginId, ownedSkills, assetsPlan)
+      skillsResult = { removed: r.removed, kept: r.kept, missingFromDisk: r.missingFromDisk }
+      if (r.missingFromDisk.length > 0) {
+        log.warn('lockfile claimed ownership of skills not present on disk', {
+          pluginId,
+          missing: r.missingFromDisk,
+        })
+      }
     } catch (err) {
-      log.warn('plugin-settings rm failed', err, { pluginId, settingsFile })
+      log.warn('removePluginAssets failed', err, { pluginId })
     }
-  }
 
-  if (existsSync(pluginDir)) {
+    if (existsSync(settingsFile)) {
+      try {
+        rmSync(settingsFile, { force: true })
+      } catch (err) {
+        log.warn('plugin-settings rm failed', err, { pluginId, settingsFile })
+      }
+    }
+
+    if (existsSync(pluginDir)) {
+      try {
+        rmSync(pluginDir, { recursive: true, force: true })
+      } catch (err) {
+        log.warn('plugin dir rm failed', err, { pluginId, pluginDir })
+      }
+    }
+
+    // Ledger BEFORE the bin sweep: once the row is gone this plugin no
+    // longer counts as an owner, so the zero-owner rule reads true state.
     try {
-      rmSync(pluginDir, { recursive: true, force: true })
+      const lock = readPluginLockfile()
+      if (lock.plugins[pluginId]) {
+        writePluginLockfile(removePlugin(lock, pluginId))
+      }
     } catch (err) {
-      log.warn('plugin dir rm failed', err, { pluginId, pluginDir })
+      log.warn('lockfile entry removal failed', err, { pluginId })
     }
-  }
 
-  // ─── 6. Lockfile entry removal ─────────────────────────────────────────────
-  try {
-    const lock = readPluginLockfile()
-    if (lock.plugins[pluginId]) {
-      writePluginLockfile(removePlugin(lock, pluginId))
+    try {
+      binsRemoved = deleteBinsWithoutOwners(ownedBins)
+    } catch (err) {
+      log.warn('bin sweep failed — binaries left in ~/.bakin/bin', err, { pluginId })
     }
-  } catch (err) {
-    log.warn('lockfile entry removal failed', err, { pluginId })
+  })
+  const binsKept = ownedBins.map((bin) => bin.name).filter((name) => !binsRemoved.includes(name))
+  if (ownedBins.length > 0) {
+    appendAudit(getContentDir(), 'plugin.uninstall.bins', 'system', {
+      pluginId,
+      removed: binsRemoved,
+      kept: binsKept,
+    }, 'system')
   }
 
   notifyPluginRemoved(pluginId)
@@ -217,12 +241,15 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     sweepReport,
     skillsRemoved: skillsResult.removed,
     skillsKept: skillsResult.kept,
+    binsRemoved,
+    binsKept,
     snapshot: snapshotPath,
   })
   appendAudit(getContentDir(), 'plugin.uninstall', 'system', {
     pluginId,
     sweepReport,
     skills: skillsResult,
+    bins: { removed: binsRemoved, kept: binsKept },
     snapshot: snapshotPath,
   }, 'system')
 
@@ -231,6 +258,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     id: pluginId,
     skills: { removed: skillsResult.removed, kept: skillsResult.kept },
     skillsMissing: skillsResult.missingFromDisk,
+    bins: { removed: binsRemoved, kept: binsKept },
     sweep: sweepReport,
     snapshot: snapshotPath,
     message: `Removed "${pluginId}" and deactivated it.`,

@@ -3,7 +3,7 @@
  * (package lockfile `bin` projections + plugin lockfile `installedBins`).
  */
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { mkdirSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -25,6 +25,7 @@ import {
   assertNoBinPinConflict,
   binTargetOwners,
   binTargetPath,
+  deleteBinsWithoutOwners,
   findBinPinConflicts,
 } from '../../../src/core/plugins/bin-owners'
 import type { BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
@@ -111,5 +112,26 @@ describe('pin conflicts', () => {
     pinsPack('ocr', 'tmux', A)
     const linuxOnly: BinRequirement = { name: 'tmux', version: '1', install: { 'linux-x64': { url: 'https://example.com/x', sha256: B } } }
     expect(findBinPinConflicts([linuxOnly], { kind: 'plugin', id: 'terminal' }, PLATFORM)).toEqual([])
+  })
+})
+
+describe('deleteBinsWithoutOwners (the S6 rule)', () => {
+  const place = (name: string): void => {
+    writeFileSync(binTargetPath(name), '#!/bin/sh\n', { mode: 0o755 })
+    writeFileSync(`${binTargetPath(name)}.installedBy`, '{}')
+  }
+
+  it('deletes file AND marker for a bin nobody pins; keeps one a pack or another plugin still pins; honours keep', () => {
+    place('orphan'); place('packheld'); place('pluginheld'); place('kept')
+    pinsPack('ocr', 'packheld', A)
+    pinsPlugin('other', 'pluginheld', A)
+    const deleted = deleteBinsWithoutOwners([{ name: 'orphan' }, { name: 'packheld' }, { name: 'pluginheld' }, { name: 'kept' }, { name: 'absent' }], new Set(['kept']))
+    expect(deleted).toEqual(['orphan', 'absent'])
+    expect(existsSync(binTargetPath('orphan'))).toBe(false)
+    expect(existsSync(`${binTargetPath('orphan')}.installedBy`)).toBe(false)
+    for (const name of ['packheld', 'pluginheld', 'kept']) {
+      expect(existsSync(binTargetPath(name)), name).toBe(true)
+      expect(existsSync(`${binTargetPath(name)}.installedBy`), name).toBe(true)
+    }
   })
 })

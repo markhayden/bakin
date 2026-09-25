@@ -30,7 +30,7 @@
   - Verify: existing lifecycle tests + restore-on-failure per path + recovery from trees captured after 1st bin / after replacement / after ledger commit
 - [x] T7b: upgrades install changed bins, drop undeclared ones (zero-owner rule); upgrade API is preview → token (manifestSha + permissions + bins) → commit; CLI/UI callers round-trip the token; `--yes` = preview then commit
   - Verify: preview A → source becomes B → accept A re-prompts with no mutation; `tests/plugins/lifecycle/upgrade-*.test.ts`
-- [ ] T8: remove deletes owned bins with zero remaining owners; audit `plugin.uninstall.bins`; snapshot manifest lists bins
+- [x] T8: remove deletes owned bins with zero remaining owners; audit `plugin.uninstall.bins`; snapshot manifest lists bins
   - Verify: `bun test tests/plugins/lifecycle/remove-smoke.test.ts --isolate`
 - [ ] Checkpoint C: lifecycle suite green; failed fixture upgrade restores everything; simulated-termination dir is invisible to the loader and cleaned at boot
 

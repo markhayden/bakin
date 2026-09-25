@@ -12,11 +12,13 @@
  * Callers run these checks under the install lock (the outer operation
  * acquires it); see install-core/install-lock.
  */
+import { rmSync } from 'fs'
 import { basename, join } from 'path'
 import { getBakinPaths } from '../content-dir'
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
 import type { BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
+import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
 
 export type BinOwnerKind = 'package' | 'plugin'
 
@@ -127,4 +129,25 @@ export function assertNoBinPinConflict(
 /** Name of the binary a `~/.bakin/bin` target path refers to. */
 export function binNameOf(target: string): string {
   return basename(target)
+}
+
+/**
+ * Delete the named binaries (file + marker) that no owner in EITHER lockfile
+ * still pins — the S6 rule shared by plugin remove, plugin upgrade (dropped
+ * bins) and the pack uninstaller. Callers run it AFTER their own ledger
+ * write so they no longer count as an owner. Returns the names deleted.
+ */
+export function deleteBinsWithoutOwners(bins: readonly { name: string }[], keep: ReadonlySet<string> = new Set()): string[] {
+  const deleted: string[] = []
+  for (const bin of bins) {
+    if (keep.has(bin.name)) continue
+    const target = binTargetPath(bin.name)
+    if (binTargetOwners(target).length > 0) continue
+    // Marker FIRST: an extension-less path reads as a directory to the
+    // sidecar helper once the file is gone, which would orphan the marker.
+    removeInstalledBy(target)
+    rmSync(target, { force: true })
+    deleted.push(bin.name)
+  }
+  return deleted
 }
