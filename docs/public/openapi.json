@@ -44985,6 +44985,7 @@
         "tags": [
           "Core"
         ],
+        "description": "Two-phase: preview returns awaitingConsent + consentToken when permissions or binaries widen; commit with accepted + consentToken.",
         "requestBody": {
           "required": true,
           "content": {
@@ -44993,6 +44994,12 @@
                 "type": "object",
                 "properties": {
                   "pluginId": {
+                    "type": "string"
+                  },
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "consentToken": {
                     "type": "string"
                   }
                 },

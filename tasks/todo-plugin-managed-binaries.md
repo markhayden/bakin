@@ -40,7 +40,7 @@
 - [ ] Checkpoint D: `bun run test`, typecheck, lint, check:cycles, docs:check, FULL `bun run ui:conformance`; explore `test:ui` report inspected (stories: overlays/dialog CanonicalUsage, feedback/alert CanonicalUsage)
 
 ## Phase E — Docs + PR
-- [ ] T10: knowledge docs (plugin-system, plugin-lifecycle, capability-packs), CLAUDE.md, CHANGELOG
+- [x] T10: knowledge docs (plugin-system, plugin-lifecycle, capability-packs), CLAUDE.md, CHANGELOG
 - [ ] Bakin PR → Mark live test on 3737 → merge → rc.39
 
 ## Phase F — Bits PR 1 (bootstrap)
