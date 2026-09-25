@@ -6,22 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.40] - 2026-09-25
+
 Plugins can now bring their own binaries, and every plugin install or upgrade either lands completely or leaves nothing behind.
 
 ### Added
-
 - **Plugin-managed binaries.** A plugin manifest can declare `requires.bins` (the same schema capability packs use). Bakin discloses the download in the install consent dialog and CLI prompt, checks the platform and pin conflicts before asking, downloads and sha256-verifies it into `~/.bakin/bin`, records it in the plugin lockfile, and removes it with the plugin unless a pack or another plugin still pins it. `bakin check plugin-assets` reports a missing or drifted binary; `bakin install plugin-assets` and the Health check's new one-click repair reinstall it.
 - **Upgrade consent round trip.** `bakin plugins upgrade` and the Health inventory's Update action now preview, show the new permissions and downloads, and commit with a consent token bound to exactly what was shown — a plugin that changed in between asks again. Upgrades install re-pinned binaries and drop ones the new manifest no longer declares.
 - **Install and upgrade progress.** Plugin installs and upgrades run as install jobs, so Explore shows staged progress, including binary downloads.
 
 ### Changed
-
 - **Atomic plugin installs and upgrades.** Every change to `~/.bakin/plugins/<id>/` is one transaction: a failure — or a crash, recovered at the next boot — restores the previous directory, binaries and lockfile entry byte for byte. Half-installed plugins are invisible to the loader.
 - `POST /api/plugins/upgrade` no longer accepts `yes`; it is two-phase (`{ pluginId }` preview, then `{ pluginId, accepted: true, consentToken }`).
+- **One install at a time.** Plugin install, upgrade and remove, capability-pack install and update, and the plugin-assets repair share one install lock. A second operation arriving while one runs is refused with a clear "another install is in progress" message (HTTP 409) instead of racing it.
 
 ### Fixed
-
 - Removing a capability pack or rolling back a plugin install no longer leaves an orphaned `.installedBy` marker beside a deleted binary.
+- Health reports plugin assets as **unknown**, not healthy, when the plugin lockfile cannot be read.
 
 ## [0.0.1-rc.39] - 2026-09-24
 
@@ -747,5 +748,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.37]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.37
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.38...HEAD
 [0.0.1-rc.38]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.38
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.40...HEAD
+[0.0.1-rc.40]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.40
