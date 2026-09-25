@@ -18,9 +18,11 @@ Plugins can now bring their own binaries, and every plugin install or upgrade ei
 ### Changed
 - **Atomic plugin installs and upgrades.** Every change to `~/.bakin/plugins/<id>/` is one transaction: a failure — or a crash, recovered at the next boot — restores the previous directory, binaries and lockfile entry byte for byte. Half-installed plugins are invisible to the loader.
 - `POST /api/plugins/upgrade` no longer accepts `yes`; it is two-phase (`{ pluginId }` preview, then `{ pluginId, accepted: true, consentToken }`).
+- **One install at a time.** Plugin install, upgrade and remove, capability-pack install and update, and the plugin-assets repair share one install lock. A second operation arriving while one runs is refused with a clear "another install is in progress" message (HTTP 409) instead of racing it.
 
 ### Fixed
 - Removing a capability pack or rolling back a plugin install no longer leaves an orphaned `.installedBy` marker beside a deleted binary.
+- Health reports plugin assets as **unknown**, not healthy, when the plugin lockfile cannot be read.
 
 ## [0.0.1-rc.39] - 2026-09-24
 
