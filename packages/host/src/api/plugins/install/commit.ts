@@ -138,8 +138,11 @@ function writeSentinel(targetDir: string, sentinel: InstallSentinel): void {
 /** Undo everything this install placed: the plugin dir and the bins it created (never a shared, pre-existing bin). */
 export function rollbackInstall(targetDir: string, created: readonly string[]): void {
   for (const target of created) {
-    try { rmSync(target, { force: true }) } catch { /* best effort */ }
+    // Marker FIRST: `~/.bakin/bin/<name>` has no extension, so once the
+    // binary is gone the sidecar helper reads the path as a directory and
+    // the marker would be left orphaned (Checkpoint B finding).
     try { removeInstalledBy(target) } catch { /* best effort */ }
+    try { rmSync(target, { force: true }) } catch { /* best effort */ }
   }
   rmSync(targetDir, { recursive: true, force: true })
 }

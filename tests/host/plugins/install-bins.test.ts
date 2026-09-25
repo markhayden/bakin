@@ -114,6 +114,9 @@ describe('install transaction over binaries', () => {
     expect(existsSync(join(testDir, 'plugins', 'toolplug'))).toBe(false)
     expect(existsSync(join(testDir, 'bin', 'one'))).toBe(false)
     expect(existsSync(join(testDir, 'bin', 'two'))).toBe(false)
+    // The rollback must take the marker with the binary — an orphaned
+    // `<name>.installedBy` claimed ownership of nothing (Checkpoint B finding).
+    expect(existsSync(join(testDir, 'bin', 'one.installedBy'))).toBe(false)
     expect(readPluginLockfile().plugins.toolplug).toBeUndefined()
 
     failTwo = false

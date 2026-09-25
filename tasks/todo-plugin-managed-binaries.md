@@ -21,7 +21,7 @@
   - Verify: RTL test; `bun run ui:conformance --quick`
 - [ ] T6: install commit transaction — preflight (platform + conflict) before consent; bins stage; sentinel; rollback removes dir + created bins on any failure incl. ledger write
   - Verify: `bun test tests/host/plugins/install-bins.test.ts --isolate` (2nd-bin failure, retry idempotent, ledger absent, sentinel gone after commit)
-- [ ] T6b: plugin install + upgrade run as install jobs (`startInstallJob`, stages stage/build/bins/ledger, `plugins.install_*` events); Explore install dialog uses the packages progress UI
+- [x] T6b: plugin install + upgrade run as install jobs (`startInstallJob`, stages stage/build/bins/ledger, `plugins.install_*` events); Explore install dialog uses the packages progress UI
   - Verify: REST-path test observes a `bins` stage event
 - [ ] Checkpoint B (injected failures only): isolated-server install of a fixture plugin (local http bin) — consent shows download; job stream shows `bins`; artifacts present; injected 2nd-bin failure leaves nothing. Review with Mark.
 
