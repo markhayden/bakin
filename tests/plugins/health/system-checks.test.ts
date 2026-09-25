@@ -316,11 +316,12 @@ mock.module('../../../src/core/doctor', () => ({
 }))
 
 let mockPluginAssetsResult = { name: 'plugin-assets', status: 'ok' as const, message: '0 plugin assets to install' }
+let mockPluginAssetsInstall: { name: string; status: 'installed' | 'noop' | 'failed' | 'skipped'; message: string; durationMs: number } = { name: 'plugin-assets', status: 'noop', message: 'noop', durationMs: 1 }
 mock.module('../../../src/core/onboarding/plugin-assets', () => ({
   pluginAssetsComponent: {
     name: 'plugin-assets',
     check: async () => mockPluginAssetsResult,
-    install: async () => ({ status: 'noop' as const, message: 'noop' }),
+    install: async () => mockPluginAssetsInstall,
   },
 }))
 
@@ -341,7 +342,7 @@ import {
   searchConsistencyRepair,
 } from '../../../plugins/health/lib/system-checks/search-consistency'
 import { checkAndSyncSkill, syncSkillRepair } from '../../../plugins/health/lib/system-checks/sync-skill'
-import { checkPluginAssets } from '../../../plugins/health/lib/system-checks/plugin-assets'
+import { checkPluginAssets, installPluginAssetsRepair } from '../../../plugins/health/lib/system-checks/plugin-assets'
 import { createMockRuntimeAdapter, mockChannels } from '@bakin/core/adapters/runtime/testing'
 import type { AgentRuntimeAdapter, RuntimeSkill } from '@bakin/core/adapters/runtime'
 import type { HealthCheckRunInput, HealthRepairTarget } from '@makinbakin/sdk'
@@ -1135,10 +1136,35 @@ describe('checkPluginAssets', () => {
     }
     const results = observed(await checkPluginAssets())
     expect(results[0].status).toBe('warning')
+    // One-click repair, not a copy-this-command instruction (spec plugin-managed-binaries S5).
     expect(results[0].incident?.resolution).toMatchObject({
-      type: 'instructions',
-      command: 'bakin install plugin-assets',
+      type: 'repair',
+      actionId: 'install-plugin-assets',
     })
+  })
+})
+
+describe('installPluginAssetsRepair', () => {
+  const target = { scope: 'check' as const, checkId: 'health.plugin-assets' } as unknown as Parameters<ReturnType<typeof installPluginAssetsRepair>['plan']>[0]
+
+  it('plans one safe item that touches the runtime skill store and ~/.bakin/bin', async () => {
+    const items = await installPluginAssetsRepair().plan(target)
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ id: 'install-plugin-assets', actionId: 'install-plugin-assets', safety: 'safe' })
+    expect(items[0].changes.map((c) => c.target)).toEqual(['runtime skill store', '~/.bakin/bin'])
+  })
+
+  it('apply runs the ONE component install and reports its outcome', async () => {
+    const action = installPluginAssetsRepair()
+    const items = await action.plan(target)
+    mockPluginAssetsInstall = { name: 'plugin-assets', status: 'installed', message: 'Installed 1 binary: tmux (terminal)', durationMs: 5 }
+    const applied = await action.apply(items)
+    expect(applied[0]).toMatchObject({ status: 'applied', message: 'Installed 1 binary: tmux (terminal)', affectedCheckIds: ['health.plugin-assets'] })
+    expect(applied[0].changes).toHaveLength(2)
+
+    mockPluginAssetsInstall = { name: 'plugin-assets', status: 'failed', message: 'tmux (terminal): pinned differently by pack ocr', durationMs: 5 }
+    const failed = await action.apply(items)
+    expect(failed[0]).toMatchObject({ status: 'failed', message: 'tmux (terminal): pinned differently by pack ocr', changes: [] })
   })
 })
 
@@ -1189,6 +1215,7 @@ describe('plugin registration', () => {
       'skill', 'plugin-assets', 'plugin-artifacts', 'plugin-registry',
     ]))
     expect(actionIds.sort()).toEqual([
+      'install-plugin-assets',
       'media-install-store',
       'search-canary-restart',
       'search-consistency-rebuild',

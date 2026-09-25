@@ -23,7 +23,7 @@
   - Verify: `bun test tests/host/plugins/install-bins.test.ts --isolate` (2nd-bin failure, retry idempotent, ledger absent, sentinel gone after commit)
 - [x] T6b: plugin install + upgrade run as install jobs (`startInstallJob`, stages stage/build/bins/ledger, `plugins.install_*` events); Explore install dialog uses the packages progress UI
   - Verify: REST-path test observes a `bins` stage event
-- [ ] Checkpoint B (injected failures only): isolated-server install of a fixture plugin (local http bin) — consent shows download; job stream shows `bins`; artifacts present; injected 2nd-bin failure leaves nothing. Review with Mark.
+- [x] Checkpoint B (injected failures only): isolated-server install of a fixture plugin (local http bin) — consent shows download; job stream shows `bins`; artifacts present; injected 2nd-bin failure leaves nothing. Review with Mark.
 
 ## Phase C — Upgrade and remove
 - [x] T7a: `replace-transaction.ts` (sentinel → backup → place → build → assets+bins → ledger → commit; restore on failure) + `install-recovery.ts` (boot sweep before discovery; loader skips sentinel dirs) adopted by install `commit.ts` AND `upgrade.ts`, `upgrade-github.ts`, `upgrade-artifact.ts`
@@ -32,10 +32,10 @@
   - Verify: preview A → source becomes B → accept A re-prompts with no mutation; `tests/plugins/lifecycle/upgrade-*.test.ts`
 - [x] T8: remove deletes owned bins with zero remaining owners; audit `plugin.uninstall.bins`; snapshot manifest lists bins
   - Verify: `bun test tests/plugins/lifecycle/remove-smoke.test.ts --isolate`
-- [ ] Checkpoint C: lifecycle suite green; failed fixture upgrade restores everything; simulated-termination dir is invisible to the loader and cleaned at boot
+- [x] Checkpoint C: lifecycle suite green; failed fixture upgrade restores everything; simulated-termination dir is invisible to the loader and cleaned at boot
 
 ## Phase D — Readiness
-- [ ] T9: plugin-assets scans/installs bins via the predicate + installer under the lock; CLI output; health check resolution becomes a `repair`; `install-plugin-assets` action registered
+- [x] T9: plugin-assets scans/installs bins via the predicate + installer under the lock; CLI output; health check resolution becomes a `repair`; `install-plugin-assets` action registered
   - Verify: `bun test tests/core/onboarding/plugin-assets.test.ts tests/plugins/health --isolate`
 - [ ] Checkpoint D: `bun run test`, typecheck, lint, check:cycles, docs:check, FULL `bun run ui:conformance`; explore `test:ui` report inspected (stories: overlays/dialog CanonicalUsage, feedback/alert CanonicalUsage)
 

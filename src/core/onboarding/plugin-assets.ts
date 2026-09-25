@@ -16,6 +16,12 @@
  *     overwrite forever — install() skips and reports.
  *   - SHA256 mismatch between source and recorded marker → drift.
  *
+ * Binaries (spec plugin-managed-binaries §2.7): a plugin manifest's
+ * `requires.bins` are scanned with the installer's own verification
+ * predicate (`bin-verify.ts`) — installed / drifted / missing — and
+ * reinstalled through the shared plugin-bin installer under the install
+ * lock. The lockfile's `installedBins` is synced with what landed.
+ *
  * Idempotent: re-running install() on identical sources is a noop.
  */
 import { createHash } from 'crypto'
@@ -28,7 +34,12 @@ import { join } from 'path'
 import { listPluginDefaultFiles, type PluginResourceFile } from '../plugin-resources'
 import { createAppServices, getAppServices, maybeGetAppServices } from '../app-services'
 import { createLogger } from '../logger'
+import { binPlatformKey, installPluginBins } from '../agent-packages/bin-installer'
+import { verifyInstalledBin } from '../agent-packages/bin-verify'
+import { withInstallLock } from '../install-core/install-lock'
+import { binTargetPath } from '../plugins/bin-owners'
 import type { RuntimeSkill } from '@bakin/core/adapters/runtime'
+import { BinRequirementsSchema, type BinRequirement } from '@bakin/core/plugins/bin-requirement'
 import {
   type PluginLockfile,
   readPluginLockfile,
@@ -53,18 +64,43 @@ export interface SkillRefSkipped extends SkillRef {
   reason: 'userEdited'
 }
 
+export interface BinRef {
+  pluginId: string
+  name: string
+}
+
+export interface BinScanReport {
+  /** Declared binaries across all plugins (this platform or not). */
+  total: number
+  installed: BinRef[]
+  missing: BinRef[]
+  drifted: BinRef[]
+  /** Declared but with no download for this platform — cannot be repaired here. */
+  unsupported: BinRef[]
+}
+
+export interface BinInstallReport {
+  installed: BinRef[]
+  unchanged: BinRef[]
+  /** Per-plugin install failures (pin conflict, download, checksum) — the repair fails loudly. */
+  failed: Array<BinRef & { error: string }>
+}
+
 export interface ScanReport {
+  /** Runtime skills shipped by plugins. */
   totalAvailable: number
   missing: SkillRef[]
   drifted: SkillRef[]
   installed: SkillRef[]
   userEdited: SkillRef[]
+  bins: BinScanReport
 }
 
 export interface InstallReport {
   installed: SkillRef[]
   unchanged: SkillRef[]
   skipped: SkillRefSkipped[]
+  bins: BinInstallReport
 }
 
 interface InstalledMarker {
@@ -148,6 +184,52 @@ function buildRuntimeSkill(skill: PluginSkillSource, marker: InstalledMarker): R
   }
 }
 
+/**
+ * `requires.bins` of a plugin's on-disk manifest. Core plugins never declare
+ * binaries (they ship inside the Bakin binary), so an entry with no manifest
+ * on disk simply has none; an invalid declaration is logged and ignored here
+ * — install and upgrade already refused it at their gates.
+ */
+export function findBinsForPlugin(plugin: PluginEntry): BinRequirement[] {
+  const manifestPath = join(plugin.path, 'bakin-plugin.json')
+  if (!existsSync(manifestPath)) return []
+  try {
+    const raw = (JSON.parse(readFileSync(manifestPath, 'utf-8')) as { requires?: { bins?: unknown } }).requires?.bins
+    if (raw === undefined) return []
+    const parsed = BinRequirementsSchema.safeParse(raw)
+    if (!parsed.success) {
+      log.warn('Ignoring invalid requires.bins in plugin manifest', { pluginId: plugin.id, issues: parsed.error.issues.map((i) => i.message) })
+      return []
+    }
+    return parsed.data
+  } catch (err) {
+    log.warn('Could not read plugin manifest for binaries', { pluginId: plugin.id, error: err instanceof Error ? err.message : String(err) })
+    return []
+  }
+}
+
+function scanPluginBins(plugins: PluginEntry[]): BinScanReport {
+  const bins: BinScanReport = { total: 0, installed: [], missing: [], drifted: [], unsupported: [] }
+  const platform = binPlatformKey()
+  for (const plugin of plugins) {
+    for (const bin of findBinsForPlugin(plugin)) {
+      bins.total++
+      const ref: BinRef = { pluginId: plugin.id, name: bin.name }
+      const download = platform ? bin.install[platform] : undefined
+      if (!download) {
+        bins.unsupported.push(ref)
+        continue
+      }
+      // ONE predicate with the installer: whatever it would skip is installed here.
+      const verdict = verifyInstalledBin(binTargetPath(bin.name), download)
+      if (verdict.status === 'installed') bins.installed.push(ref)
+      else if (verdict.status === 'drifted') bins.drifted.push(ref)
+      else bins.missing.push(ref)
+    }
+  }
+  return bins
+}
+
 export async function scanPluginAssets(plugins: PluginEntry[]): Promise<ScanReport> {
   const report: ScanReport = {
     totalAvailable: 0,
@@ -155,6 +237,7 @@ export async function scanPluginAssets(plugins: PluginEntry[]): Promise<ScanRepo
     drifted: [],
     installed: [],
     userEdited: [],
+    bins: scanPluginBins(plugins),
   }
 
   const runtime = getAppServices().runtime
@@ -188,7 +271,7 @@ export async function scanPluginAssets(plugins: PluginEntry[]): Promise<ScanRepo
 }
 
 export async function installPluginAssets(plugins: PluginEntry[]): Promise<InstallReport> {
-  const report: InstallReport = { installed: [], unchanged: [], skipped: [] }
+  const report: InstallReport = { installed: [], unchanged: [], skipped: [], bins: { installed: [], unchanged: [], failed: [] } }
   const runtime = getAppServices().runtime
 
   for (const plugin of plugins) {
@@ -222,7 +305,65 @@ export async function installPluginAssets(plugins: PluginEntry[]): Promise<Insta
   // because they wouldn't be in any plugin's `installedSkills`.
   syncLockfileInstalledSkills(plugins)
 
+  // Binaries: the shared installer is idempotent (pinned-sha fast path), so
+  // every declared bin goes through it; `created` tells installed from
+  // unchanged. Serialized under the install lock like every bin writer;
+  // a pin conflict or failed download fails THIS plugin's repair loudly and
+  // leaves the others to proceed.
+  for (const plugin of plugins) {
+    const bins = findBinsForPlugin(plugin)
+    if (bins.length === 0) continue
+    const platform = binPlatformKey()
+    const installable = bins.filter((bin) => platform && bin.install[platform])
+    if (installable.length === 0) continue
+    const entry = readLockEntry(plugin.id)
+    try {
+      const results = await withInstallLock(() => installPluginBins(installable, {
+        pluginId: plugin.id,
+        version: entry?.version ?? '0.0.0',
+        ref: entry?.ref ?? '',
+        commitSha: entry?.commitSha ?? '',
+      }))
+      for (const result of results) {
+        const ref: BinRef = { pluginId: plugin.id, name: result.name }
+        if (result.created) {
+          report.bins.installed.push(ref)
+          log.info('Installed plugin binary', { ...ref })
+        } else {
+          report.bins.unchanged.push(ref)
+        }
+      }
+      if (entry) syncLockfileInstalledBins(plugin.id, results.map((r) => ({ name: r.name, sha256: r.sha256 })))
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err)
+      log.error('Plugin binary install failed', err as Error, { pluginId: plugin.id })
+      for (const bin of installable) report.bins.failed.push({ pluginId: plugin.id, name: bin.name, error })
+    }
+  }
+
   return report
+}
+
+function readLockEntry(pluginId: string): PluginLockfile['plugins'][string] | undefined {
+  try {
+    return readPluginLockfile().plugins[pluginId]
+  } catch (err) {
+    log.warn('lockfile read failed', { pluginId, err: String(err) })
+    return undefined
+  }
+}
+
+/** Record what the repair laid down — the lockfile is the ownership authority for `~/.bakin/bin`. */
+function syncLockfileInstalledBins(pluginId: string, installedBins: Array<{ name: string; sha256: string }>): void {
+  try {
+    const lock = readPluginLockfile()
+    if (!lock.plugins[pluginId]) return
+    const current = JSON.stringify(lock.plugins[pluginId].installedBins ?? [])
+    if (current === JSON.stringify(installedBins)) return
+    writePluginLockfile(updatePlugin(lock, pluginId, { installedBins: installedBins.length > 0 ? installedBins : undefined }))
+  } catch (err) {
+    log.warn('syncLockfileInstalledBins failed', { pluginId, err: String(err) })
+  }
 }
 
 /**
@@ -285,39 +426,57 @@ async function ensureAppServices(): Promise<void> {
   await createAppServices()
 }
 
+const binLabel = (ref: BinRef): string => `${ref.name} (${ref.pluginId})`
+
 async function check(): Promise<CheckResult> {
   await ensureAppServices()
   const plugins = discoverPlugins()
   const report = await scanPluginAssets(plugins)
-  const pending = report.missing.length + report.drifted.length
+  const { bins } = report
+  const skillsPending = report.missing.length + report.drifted.length
+  const binsPending = bins.missing.length + bins.drifted.length
+  const pending = skillsPending + binsPending
+  const total = report.totalAvailable + bins.total
+  const details = report as unknown as Record<string, unknown>
 
-  if (report.totalAvailable === 0) {
+  if (total === 0) {
     return {
       name: 'plugin-assets',
       status: 'ok',
-      message: '0 plugin assets to install (no plugin ships defaults/runtime-skills/)',
-      details: { totalAvailable: 0 },
+      message: '0 plugin assets to install (no plugin ships runtime skills or declares binaries)',
+      details: { totalAvailable: 0, bins },
     }
   }
 
-  if (pending === 0) {
+  if (pending === 0 && bins.unsupported.length === 0) {
     const userEditedNote = report.userEdited.length > 0
       ? ` (${report.userEdited.length} user-edited, locked)`
       : ''
+    const binNote = bins.total > 0 ? ` incl. ${bins.total} binar${bins.total === 1 ? 'y' : 'ies'}` : ''
     return {
       name: 'plugin-assets',
       status: 'ok',
-      message: `All ${report.totalAvailable} plugin asset(s) installed${userEditedNote}`,
-      details: report as unknown as Record<string, unknown>,
+      message: `All ${total} plugin asset(s) installed${binNote}${userEditedNote}`,
+      details,
     }
   }
 
+  const parts: string[] = []
+  if (report.missing.length > 0) parts.push(`${report.missing.length} skill(s) missing`)
+  if (report.drifted.length > 0) parts.push(`${report.drifted.length} skill(s) drifted`)
+  if (bins.missing.length > 0) parts.push(`${bins.missing.length} binar${bins.missing.length === 1 ? 'y' : 'ies'} missing: ${bins.missing.map(binLabel).join(', ')}`)
+  if (bins.drifted.length > 0) parts.push(`${bins.drifted.length} binar${bins.drifted.length === 1 ? 'y' : 'ies'} drifted: ${bins.drifted.map(binLabel).join(', ')}`)
+  if (bins.unsupported.length > 0) parts.push(`${bins.unsupported.length} binar${bins.unsupported.length === 1 ? 'y has' : 'ies have'} no build for this platform: ${bins.unsupported.map(binLabel).join(', ')}`)
   return {
     name: 'plugin-assets',
     status: 'warn',
-    message: `${pending} plugin asset(s) need install (${report.missing.length} missing, ${report.drifted.length} drifted)`,
-    remediation: 'Run `bakin install plugin-assets` to apply.',
-    details: report as unknown as Record<string, unknown>,
+    message: pending > 0
+      ? `${pending} plugin asset(s) need install (${parts.join('; ')})`
+      : `Plugin binaries cannot run here (${parts.join('; ')})`,
+    remediation: pending > 0
+      ? 'Run `bakin install plugin-assets` (or the Health repair) to apply.'
+      : 'Remove the plugin, or install it on a supported platform.',
+    details,
   }
 }
 
@@ -327,25 +486,42 @@ async function install(_opts: OnboardingOptions): Promise<InstallResult> {
   const plugins = discoverPlugins()
   const report = await installPluginAssets(plugins)
   const durationMs = Date.now() - start
+  const { bins } = report
 
-  if (report.installed.length === 0 && report.skipped.length === 0) {
+  if (bins.failed.length > 0) {
+    const failures = bins.failed.map((f) => `${binLabel(f)}: ${f.error}`)
     return {
       name: 'plugin-assets',
-      status: 'noop',
-      message: report.unchanged.length === 0
-        ? '0 plugin assets to install'
-        : `All ${report.unchanged.length} plugin asset(s) already up to date`,
+      status: 'failed',
+      message: `${bins.failed.length} plugin binar${bins.failed.length === 1 ? 'y' : 'ies'} could not be installed — ${failures.join('; ')}`,
+      error: failures,
       durationMs,
     }
   }
 
+  const installedCount = report.installed.length + bins.installed.length
+  if (installedCount === 0 && report.skipped.length === 0) {
+    const unchanged = report.unchanged.length + bins.unchanged.length
+    return {
+      name: 'plugin-assets',
+      status: 'noop',
+      message: unchanged === 0
+        ? '0 plugin assets to install'
+        : `All ${unchanged} plugin asset(s) already up to date`,
+      durationMs,
+    }
+  }
+
+  const parts: string[] = []
+  if (report.installed.length > 0) parts.push(`${report.installed.length} skill(s)`)
+  if (bins.installed.length > 0) parts.push(`${bins.installed.length} binar${bins.installed.length === 1 ? 'y' : 'ies'}: ${bins.installed.map(binLabel).join(', ')}`)
   const skippedNote = report.skipped.length > 0
     ? ` (skipped ${report.skipped.length} user-edited)`
     : ''
   return {
     name: 'plugin-assets',
     status: 'installed',
-    message: `Installed ${report.installed.length} plugin asset(s)${skippedNote}`,
+    message: `Installed ${parts.join(' and ') || '0 plugin asset(s)'}${skippedNote}`,
     durationMs,
   }
 }

@@ -9,10 +9,11 @@
  * All filesystem ops are confined to a temp dir; the runtime adapter is
  * mocked so the component never touches the production runtime skill store.
  */
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
+import { createHash } from 'crypto'
 import type { AgentRuntimeAdapter, RuntimeSkill } from '@bakin/core/adapters/runtime'
 
 const testDir = join(tmpdir(), `bakin-test-plugin-assets-${Date.now()}`)
@@ -27,7 +28,7 @@ mock.module('@bakin/core/main-agent', () => ({
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => bakinHome,
-  getBakinPaths: () => ({ workflows: join(bakinHome, 'workflows') }),
+  getBakinPaths: () => ({ workflows: join(bakinHome, 'workflows'), bin: join(bakinHome, 'bin') }),
 }))
 // CLAUDE.md mock-both-paths rule — the lockfile module imports its own
 // `getContentDir` from `@bakin/core/content-dir`, so without this mock
@@ -35,7 +36,7 @@ mock.module('@/core/content-dir', () => ({
 // safety guard and silently abort.
 mock.module('@bakin/core/content-dir', () => ({
   getContentDir: () => bakinHome,
-  getBakinPaths: () => ({ workflows: join(bakinHome, 'workflows') }),
+  getBakinPaths: () => ({ workflows: join(bakinHome, 'workflows'), bin: join(bakinHome, 'bin') }),
 }))
 mock.module('@/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
@@ -50,6 +51,8 @@ import {
   installPluginAssets,
   pluginAssetsComponent,
 } from '@/core/onboarding/plugin-assets'
+import { addPlugin, readPluginLockfile, writePluginLockfile } from '../../../packages/core/src/plugins/lockfile'
+import { readInstalledBy } from '../../../packages/core/src/agent-packages/markers'
 
 type TestGlobal = typeof globalThis & {
   __bakinAppServices?: { runtime: AgentRuntimeAdapter }
@@ -340,5 +343,121 @@ describe('plugin-assets onboarding component', () => {
       expect(result.status).toBe('ok')
       expect(result.message).toMatch(/0 plugin assets/i)
     })
+  })
+})
+
+// ─── Binaries (spec plugin-managed-binaries S5) ────────────────────────────
+
+const TOOL = '#!/bin/sh\necho tool\n'
+const TOOL_V2 = '#!/bin/sh\necho tool v2\n'
+const sha256 = (text: string) => createHash('sha256').update(text).digest('hex')
+const platform = `${process.platform === 'darwin' ? 'darwin' : 'linux'}-${process.arch === 'arm64' ? 'arm64' : 'x64'}`
+const otherPlatform = platform.startsWith('darwin') ? 'linux-x64' : 'darwin-arm64'
+const nativeFetch = (Bun as unknown as { fetch: typeof fetch }).fetch
+let binServer: { port: number; stop: (force?: boolean) => void }
+let NativeResponse: typeof Response
+let served = TOOL
+
+function makePluginWithBin(pluginId: string, opts: { sha?: string; platformKey?: string; root?: string } = {}): string {
+  const pluginDir = join(opts.root ?? join(testDir, 'plugins'), pluginId)
+  mkdirSync(pluginDir, { recursive: true })
+  writeFileSync(join(pluginDir, 'bakin-plugin.json'), JSON.stringify({
+    id: pluginId, name: pluginId, version: '1.0.0', bakin: '*', description: 'declares a binary',
+    requires: { bins: [{ name: 'tool', version: '1.0.0', install: { [opts.platformKey ?? platform]: { url: `http://127.0.0.1:${binServer.port}/tool`, sha256: opts.sha ?? sha256(TOOL) } } }] },
+  }))
+  return pluginDir
+}
+const binPath = () => join(bakinHome, 'bin', 'tool')
+
+describe('plugin-assets — binaries', () => {
+  beforeAll(async () => {
+    NativeResponse = (await nativeFetch('data:text/plain,x')).constructor as typeof Response
+    binServer = (Bun as unknown as { serve: (o: unknown) => typeof binServer }).serve({ port: 0, fetch: () => new NativeResponse(served) })
+  })
+  afterAll(() => binServer.stop(true))
+  beforeEach(() => {
+    mkdirSync(runtimeSkillHome, { recursive: true })
+    mkdirSync(bakinHome, { recursive: true })
+    installRuntimeMock()
+    served = TOOL
+  })
+  afterEach(() => rmSync(testDir, { recursive: true, force: true }))
+
+  it('missing → install downloads + marks + records in the lockfile → installed; tampered bytes → drifted → reinstalled', async () => {
+    const pluginDir = makePluginWithBin('term')
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'term', {
+      source: pluginDir, type: 'local', ref: '', commitSha: 'a'.repeat(40), installedAt: '2026-09-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'a'.repeat(64),
+    }))
+    const entry = { id: 'term', path: pluginDir }
+
+    let report = await scanPluginAssets([entry])
+    expect(report.bins).toEqual({ total: 1, installed: [], missing: [{ pluginId: 'term', name: 'tool' }], drifted: [], unsupported: [] })
+
+    const installed = await installPluginAssets([entry])
+    expect(installed.bins.installed).toEqual([{ pluginId: 'term', name: 'tool' }])
+    expect(installed.bins.failed).toEqual([])
+    expect(readFileSync(binPath(), 'utf-8')).toBe(TOOL)
+    expect(readInstalledBy(binPath())).toMatchObject({ package: 'plugin:term', commitSha: 'a'.repeat(40) })
+    expect(readPluginLockfile().plugins.term?.installedBins).toEqual([{ name: 'tool', sha256: sha256(TOOL) }])
+
+    report = await scanPluginAssets([entry])
+    expect(report.bins.installed).toEqual([{ pluginId: 'term', name: 'tool' }])
+    expect((await installPluginAssets([entry])).bins.unchanged).toEqual([{ pluginId: 'term', name: 'tool' }])
+
+    // Bytes change under an untouched marker → drifted, and install re-downloads.
+    writeFileSync(binPath(), '#!/bin/sh\necho tampered\n')
+    report = await scanPluginAssets([entry])
+    expect(report.bins.drifted).toEqual([{ pluginId: 'term', name: 'tool' }])
+    const repaired = await installPluginAssets([entry])
+    expect(repaired.bins.installed).toEqual([{ pluginId: 'term', name: 'tool' }])
+    expect(readFileSync(binPath(), 'utf-8')).toBe(TOOL)
+  })
+
+  it('a bin with no build for this platform is reported as unsupported, never installed', async () => {
+    const pluginDir = makePluginWithBin('term', { platformKey: otherPlatform })
+    const report = await scanPluginAssets([{ id: 'term', path: pluginDir }])
+    expect(report.bins.unsupported).toEqual([{ pluginId: 'term', name: 'tool' }])
+    const installed = await installPluginAssets([{ id: 'term', path: pluginDir }])
+    expect(installed.bins).toEqual({ installed: [], unchanged: [], failed: [] })
+    expect(existsSync(binPath())).toBe(false)
+  })
+
+  it('a pin another owner holds differently fails THAT plugin\'s repair loudly and writes nothing', async () => {
+    const pluginDir = makePluginWithBin('term')
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'otherplug', {
+      source: '/x', type: 'local', ref: '', commitSha: '', installedAt: '2026-09-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'b'.repeat(64),
+      installedBins: [{ name: 'tool', sha256: sha256(TOOL_V2) }],
+    }))
+    const installed = await installPluginAssets([{ id: 'term', path: pluginDir }])
+    expect(installed.bins.installed).toEqual([])
+    expect(installed.bins.failed).toHaveLength(1)
+    expect(installed.bins.failed[0]!.error).toMatch(/otherplug/)
+    expect(existsSync(binPath())).toBe(false)
+  })
+
+  it('the component names missing binaries, repairs them, and reports a conflict as a failed install', async () => {
+    // Under bakinHome/plugins so discoverPlugins() finds it.
+    makePluginWithBin('term', { root: join(bakinHome, 'plugins') })
+    const check = await pluginAssetsComponent.check()
+    expect(check.status).toBe('warn')
+    expect(check.message).toMatch(/1 binary missing: tool \(term\)/)
+    expect(check.remediation).toMatch(/bakin install plugin-assets/)
+
+    const install = await pluginAssetsComponent.install({ interactive: false, autoApprove: true, json: false, checkOnly: false, force: false })
+    expect(install.status).toBe('installed')
+    expect(install.message).toMatch(/1 binary: tool \(term\)/)
+    expect((await pluginAssetsComponent.check()).status).toBe('ok')
+    expect((await pluginAssetsComponent.check()).message).toMatch(/incl\. 1 binary/)
+
+    // Another owner re-pins the same target differently → the repair refuses, loudly.
+    rmSync(binPath(), { force: true })
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'otherplug', {
+      source: '/x', type: 'local', ref: '', commitSha: '', installedAt: '2026-09-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'b'.repeat(64),
+      installedBins: [{ name: 'tool', sha256: sha256(TOOL_V2) }],
+    }))
+    const refused = await pluginAssetsComponent.install({ interactive: false, autoApprove: true, json: false, checkOnly: false, force: false })
+    expect(refused.status).toBe('failed')
+    expect(refused.message).toMatch(/tool \(term\)/)
+    expect(refused.message).toMatch(/otherplug/)
   })
 })
