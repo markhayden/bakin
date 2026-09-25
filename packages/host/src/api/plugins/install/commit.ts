@@ -17,6 +17,7 @@ import { SOURCE_TREE_SHA_ALGO, computeSourceTreeSha } from '@/core/plugins/sourc
 import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
 import { withInstallLock } from '@/core/install-core/install-lock'
 import { replacePluginDir } from '@/core/plugins/replace-transaction'
+import { toInstalledBins } from '@/core/agent-packages/bin-installer'
 import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
 import {
   activateUserPluginDir,
@@ -187,7 +188,7 @@ async function commitInstallLocked(args: {
         type: body.type,
         permissions: parsedPermissions,
         gitProvenance,
-        installedBins: installedBins.map((bin) => ({ name: bin.name, sha256: bin.sha256 })),
+        installedBins: toInstalledBins(installedBins),
       }),
     })
     targetDir = result.targetDir

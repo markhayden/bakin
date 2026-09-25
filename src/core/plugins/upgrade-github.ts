@@ -18,6 +18,7 @@ import {
 import { parseGithubSource } from '@bakin/core/plugins/source'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
 import { replacePluginDir } from './replace-transaction'
+import { toInstalledBins } from '@/core/agent-packages/bin-installer'
 import {
   type UpgradeOptions,
   type UpgradeResult,
@@ -173,7 +174,7 @@ export async function upgradeGithub(
         manifestSha,
         permissions: gate.newPerms,
         installedSkills: assets.installedSkills,
-        installedBins: bins.length > 0 ? bins.map((bin) => ({ name: bin.name, sha256: bin.sha256 })) : undefined,
+        installedBins: toInstalledBins(bins),
       }))
     },
   })
@@ -288,7 +289,7 @@ export async function upgradeGithubSubpath(
           manifestSha,
           permissions: gate.newPerms,
           installedSkills: assets.installedSkills,
-          installedBins: bins.length > 0 ? bins.map((bin) => ({ name: bin.name, sha256: bin.sha256 })) : undefined,
+          installedBins: toInstalledBins(bins),
         }))
       },
     })

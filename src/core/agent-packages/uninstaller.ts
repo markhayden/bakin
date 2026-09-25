@@ -28,10 +28,7 @@ import { PackageNotInstalledError, PackageStillRequiredError } from './errors'
 import { unprojectPackage } from './projector'
 import { join } from 'path'
 import { readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
-import {
-  acquireInstallLock,
-  releaseInstallLock,
-} from '../install-core/install-lock'
+import { withInstallLock } from '../install-core/install-lock'
 import { getAppServices } from '../app-services'
 
 const log = createLogger('agent-pkg:uninstall')
@@ -104,9 +101,12 @@ export function withoutSharedArtifacts(
  * Remove a package + its orphaned dependencies.
  */
 export async function removePackageById(options: RemoveOptions): Promise<RemoveResult> {
-  acquireInstallLock()
+  // ONE install lock around the whole operation; inner writers assert it.
+  return withInstallLock(() => removePackageByIdLocked(options))
+}
 
-  try {
+async function removePackageByIdLocked(options: RemoveOptions): Promise<RemoveResult> {
+  {
     let lock = readLockfile()
     const entry = lock.packages[options.packageId]
     if (!entry) {
@@ -237,8 +237,6 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
       deletedAgent,
       ...(deleteAgentError ? { deleteAgentError } : {}),
     }
-  } finally {
-    releaseInstallLock()
   }
 }
 

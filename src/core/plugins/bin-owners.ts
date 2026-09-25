@@ -27,6 +27,8 @@ export interface BinOwner {
   id: string
   /** The sha this owner pins for the target (download/archive sha). */
   sha256: string
+  /** Archive-sourced: the extracted member. Same archive + different member = a different binary. */
+  member?: string
 }
 
 export interface BinOwnerIdentity {
@@ -51,14 +53,14 @@ export function binTargetOwners(target: string): BinOwner[] {
   for (const [id, entry] of Object.entries(readLockfile().packages)) {
     for (const projection of entry.projections ?? []) {
       if (projection.kind === 'bin' && projection.target === target && projection.sha256) {
-        owners.push({ kind: 'package', id: bareOwnerId('package', id), sha256: projection.sha256.toLowerCase() })
+        owners.push({ kind: 'package', id: bareOwnerId('package', id), sha256: projection.sha256.toLowerCase(), ...(projection.member ? { member: projection.member } : {}) })
       }
     }
   }
   const binDir = getBakinPaths().bin
   for (const [id, entry] of Object.entries(readPluginLockfile().plugins)) {
     for (const bin of entry.installedBins ?? []) {
-      if (join(binDir, bin.name) === target) owners.push({ kind: 'plugin', id, sha256: bin.sha256.toLowerCase() })
+      if (join(binDir, bin.name) === target) owners.push({ kind: 'plugin', id, sha256: bin.sha256.toLowerCase(), ...(bin.member ? { member: bin.member } : {}) })
     }
   }
   return owners
@@ -74,7 +76,13 @@ export interface BinPinConflict {
   name: string
   target: string
   declaredSha256: string
+  declaredMember?: string
   owner: BinOwner
+}
+
+/** The identity two owners must agree on to share one binary: the pin, plus the archive member when there is one. */
+export function samePin(a: { sha256: string; member?: string }, b: { sha256: string; member?: string }): boolean {
+  return a.sha256.toLowerCase() === b.sha256.toLowerCase() && (a.member ?? null) === (b.member ?? null)
 }
 
 export class BinPinConflictError extends Error {
@@ -84,9 +92,10 @@ export class BinPinConflictError extends Error {
   }
 
   static describe(conflicts: BinPinConflict[], self: BinOwnerIdentity): string {
+    const pin = (sha: string, member?: string) => `${sha.slice(0, 12)}…${member ? ` (member ${member})` : ''}`
     const lines = conflicts.map((c) =>
-      `"${c.name}" is pinned at ${c.owner.sha256.slice(0, 12)}… by ${c.owner.kind} "${c.owner.id}"; `
-      + `${self.kind} "${self.id}" declares ${c.declaredSha256.slice(0, 12)}…`)
+      `"${c.name}" is pinned at ${pin(c.owner.sha256, c.owner.member)} by ${c.owner.kind} "${c.owner.id}"; `
+      + `${self.kind} "${self.id}" declares ${pin(c.declaredSha256, c.declaredMember)}`)
     return `Binary pin conflict — ${lines.join('; ')}. Bakin never overwrites a binary another owner pins. `
       + `Recovery: remove the owner that is not changing, install/upgrade this one, then reinstall it `
       + `(or move both owners to the same pin).`
@@ -110,8 +119,11 @@ export function findBinPinConflicts(
     if (!download) continue
     const target = binTargetPath(bin.name)
     const declaredSha256 = download.sha256.toLowerCase()
+    const declaredMember = download.archive?.member
     for (const owner of otherBinOwners(target, self)) {
-      if (owner.sha256 !== declaredSha256) conflicts.push({ name: bin.name, target, declaredSha256, owner })
+      if (!samePin(owner, { sha256: declaredSha256, member: declaredMember })) {
+        conflicts.push({ name: bin.name, target, declaredSha256, ...(declaredMember ? { declaredMember } : {}), owner })
+      }
     }
   }
   return conflicts

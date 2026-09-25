@@ -38,6 +38,7 @@ import { parseGithubSource } from '@bakin/core/plugins/source'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
 import { SOURCE_TREE_SHA_ALGO, compareStoredSourceTreeSha } from './source-tree-sha'
 import { replacePluginDir } from './replace-transaction'
+import { toInstalledBins } from '@/core/agent-packages/bin-installer'
 import {
   type UpgradeOptions,
   type UpgradeResult,
@@ -206,7 +207,7 @@ async function upgradeLocal(
         manifestSha,
         permissions: gate.newPerms,
         installedSkills: assets.installedSkills,
-        installedBins: bins.length > 0 ? bins.map((bin) => ({ name: bin.name, sha256: bin.sha256 })) : undefined,
+        installedBins: toInstalledBins(bins),
       }))
     },
   })

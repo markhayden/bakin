@@ -37,8 +37,11 @@ mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info() {
 import {
   BACKUP_PREFIX,
   INSTALL_SENTINEL,
+  backupPluginDir,
+  journalPath,
   pluginBackupDir,
   replacePluginDir,
+  type ReplaceJournal,
   type ReplacePluginDirArgs,
 } from '../../../src/core/plugins/replace-transaction'
 import { isLoadableUserPluginDir, recoverInterruptedPluginOps } from '../../../src/core/plugins/install-recovery'
@@ -95,10 +98,20 @@ function run(overrides: Partial<ReplacePluginDirArgs>) {
   }))
 }
 
-/** Rename the live dir aside the way the transaction does: `.bakin-backup-<id>/plugin`. */
-function fabricateRenameAside(): void {
+/** The journal the transaction writes before its first rename (in-flight unless overridden). */
+function writeJournal(over: Partial<ReplaceJournal> = {}): void {
   mkdirSync(pluginBackupDir(pluginsRoot(), ID), { recursive: true })
-  renameSync(pluginDir(), join(pluginBackupDir(pluginsRoot(), ID), 'plugin'))
+  const journal: ReplaceJournal = {
+    op: 'upgrade', id: ID, startedAt: '2026-09-25T00:00:00.000Z', pid: 1, backup: true,
+    intendedBins: [], replacedBins: [], ledgerBefore: readPluginLockfile().plugins[ID] ?? null, committed: false, ...over,
+  }
+  writeFileSync(journalPath(pluginBackupDir(pluginsRoot(), ID)), JSON.stringify(journal))
+}
+
+/** Journal, then rename the live dir aside — exactly the transaction's first two steps. */
+function fabricateRenameAside(over: Partial<ReplaceJournal> = {}): void {
+  writeJournal(over)
+  renameSync(pluginDir(), backupPluginDir(pluginBackupDir(pluginsRoot(), ID)))
 }
 
 function expectPristine(before: { tree: Record<string, string>; row: PluginLockEntry | undefined }): void {
@@ -264,14 +277,39 @@ describe('boot recovery from interrupted operations', () => {
     expectPristine(before)
   })
 
-  it('died between the sentinel removal and the backup deletion → the committed dir stays, the backup goes', () => {
+  it('died between creating the empty target and writing its sentinel → the previous dir comes back, never an empty one', () => {
+    // The review's reproduction: without a journal this state looked like a
+    // committed upgrade and recovery deleted the backup.
     seedPrevious()
-    cpSync(pluginDir(), join(pluginBackupDir(pluginsRoot(), ID), 'plugin'), { recursive: true })
+    const before = { tree: treeDigest(pluginDir()), row: readPluginLockfile().plugins[ID] }
+    fabricateRenameAside()
+    mkdirSync(pluginDir()) // target exists, no sentinel yet
+    expect(recoverInterruptedPluginOps(pluginsRoot()).recovered).toEqual([ID])
+    expectPristine(before)
+  })
+
+  it('died after the bin landed but before its marker → the journaled intent removes the stray executable', () => {
+    seedPrevious()
+    const before = { tree: treeDigest(pluginDir()), row: readPluginLockfile().plugins[ID] }
+    fabricateRenameAside({ intendedBins: ['one'] })
+    mkdirSync(pluginDir())
+    mkdirSync(join(testDir, 'bin'), { recursive: true })
+    writeFileSync(binPath('one'), ONE, { mode: 0o755 }) // renamed into place, marker never written
+    expect(recoverInterruptedPluginOps(pluginsRoot()).recovered).toEqual([ID])
+    expectPristine(before)
+  })
+
+  it('died between the commit point and the backup deletion → the committed dir stays, the backup goes', () => {
+    seedPrevious()
+    cpSync(pluginDir(), backupPluginDir(pluginBackupDir(pluginsRoot(), ID)), { recursive: true })
+    writeJournal({ committed: true })
     placeV2(pluginDir())
     const committed = treeDigest(pluginDir())
+    writeFileSync(join(pluginDir(), INSTALL_SENTINEL), '{}') // crash beat the sentinel removal too
     expect(recoverInterruptedPluginOps(pluginsRoot()).recovered).toEqual([ID])
     expect(treeDigest(pluginDir())).toEqual(committed)
     expect(existsSync(pluginBackupDir(pluginsRoot(), ID))).toBe(false)
+    expect(existsSync(join(pluginDir(), INSTALL_SENTINEL))).toBe(false)
   })
 
   it('a new operation on the same id first clears leftovers from an interrupted one', async () => {
@@ -283,10 +321,11 @@ describe('boot recovery from interrupted operations', () => {
     expect(existsSync(join(pluginDir(), INSTALL_SENTINEL))).toBe(false)
   })
 
-  it('an unreadable sentinel still rolls the directory back to its backup', () => {
+  it('an unreadable journal still rolls the directory back to its backup', () => {
     seedPrevious()
     const before = { tree: treeDigest(pluginDir()), row: readPluginLockfile().plugins[ID] }
     fabricateRenameAside()
+    writeFileSync(journalPath(pluginBackupDir(pluginsRoot(), ID)), '{not json')
     mkdirSync(pluginDir())
     writeFileSync(join(pluginDir(), INSTALL_SENTINEL), '{not json')
     writeFileSync(join(pluginDir(), 'half.ts'), 'partial')

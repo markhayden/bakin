@@ -34,11 +34,11 @@ const A = 'a'.repeat(64)
 const B = 'b'.repeat(64)
 const PLATFORM = 'darwin-arm64' as const
 
-function pinsPack(id: string, name: string, sha: string): void {
+function pinsPack(id: string, name: string, sha: string, member?: string): void {
   const lock = readLockfile()
   lock.packages[id] = {
     kind: 'skill-pack', version: '1.0.0', source: `github:x/${id}`, ref: '', commitSha: '', installedAt: new Date().toISOString(),
-    projections: [{ kind: 'bin', target: binTargetPath(name), sha256: sha }],
+    projections: [{ kind: 'bin', target: binTargetPath(name), sha256: sha, ...(member ? { member } : {}) }],
   }
   writeLockfile(lock)
 }
@@ -52,6 +52,9 @@ function pinsPlugin(id: string, name: string, sha: string): void {
 
 const declares = (name: string, sha: string): BinRequirement => ({
   name, version: '1', install: { [PLATFORM]: { url: 'https://example.com/x', sha256: sha } },
+})
+const declaresArchive = (name: string, sha: string, member: string): BinRequirement => ({
+  name, version: '1', install: { [PLATFORM]: { url: 'https://example.com/x.tar.gz', sha256: sha, archive: { format: 'tar.gz', member } } },
 })
 
 beforeEach(() => { rmSync(testDir, { recursive: true, force: true }); mkdirSync(join(testDir, 'bin'), { recursive: true }) })
@@ -106,6 +109,16 @@ describe('pin conflicts', () => {
   it('checks in both directions: a pack declaring against a plugin pin', () => {
     pinsPlugin('terminal', 'tmux', A)
     expect(findBinPinConflicts([declares('tmux', B)], { kind: 'package', id: 'ocr' }, PLATFORM)).toHaveLength(1)
+  })
+
+  it('the same archive with a different member is a DIFFERENT binary — a conflict, not sharing', () => {
+    pinsPack('ocr', 'tool', A, 'bin/tool-a')
+    expect(findBinPinConflicts([declaresArchive('tool', A, 'bin/tool-a')], { kind: 'plugin', id: 'terminal' }, PLATFORM)).toEqual([])
+    const conflicts = findBinPinConflicts([declaresArchive('tool', A, 'bin/tool-b')], { kind: 'plugin', id: 'terminal' }, PLATFORM)
+    expect(conflicts).toHaveLength(1)
+    expect(BinPinConflictError.describe(conflicts, { kind: 'plugin', id: 'terminal' })).toMatch(/member bin\/tool-a.*member bin\/tool-b/)
+    // A raw pin against an archive pin at the same sha is a conflict too (different bytes on disk).
+    expect(findBinPinConflicts([declares('tool', A)], { kind: 'plugin', id: 'terminal' }, PLATFORM)).toHaveLength(1)
   })
 
   it('bins with no download for this platform are not judged here', () => {

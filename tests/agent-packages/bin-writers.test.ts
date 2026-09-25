@@ -22,7 +22,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 mock.module('@/core/logger', () => ({ createLogger: () => ({ info() {}, warn() {}, error() {}, debug() {} }) }))
 
 import { installManifestBins, installPluginBins } from '../../src/core/agent-packages/bin-installer'
-import { acquireInstallLock, releaseInstallLock } from '../../src/core/install-core/install-lock'
+import { releaseInstallLock, withInstallLock } from '../../src/core/install-core/install-lock'
 import { BinPinConflictError } from '../../src/core/plugins/bin-owners'
 import { readLockfile, writeLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { addPlugin, readPluginLockfile, writePluginLockfile } from '../../packages/core/src/plugins/lockfile'
@@ -76,8 +76,7 @@ describe('installManifestBins (every pack writer)', () => {
 
   it('refuses a pin a plugin holds differently — before any download', async () => {
     pluginPins('terminal', 'b'.repeat(64))
-    acquireInstallLock()
-    await expect(installManifestBins(packManifest([bin()]), packMarker, { projections: [] })).rejects.toThrow(BinPinConflictError)
+    await expect(withInstallLock(() => installManifestBins(packManifest([bin()]), packMarker, { projections: [] }))).rejects.toThrow(BinPinConflictError)
     expect(hits).toBe(0)
     expect(existsSync(target())).toBe(false)
   })
@@ -85,9 +84,8 @@ describe('installManifestBins (every pack writer)', () => {
   it('shares an identical pin with a plugin, and a pack never conflicts with its own older lock key', async () => {
     pluginPins('terminal', sha256(SCRIPT))
     packPins('ocr@0.9.0', 'c'.repeat(64)) // the same pack's previous version — must not block its own upgrade
-    acquireInstallLock()
     const result = { projections: [] as Array<{ kind: string; target: string; sha256?: string }> }
-    await installManifestBins(packManifest([bin()]), packMarker, result as never)
+    await withInstallLock(() => installManifestBins(packManifest([bin()]), packMarker, result as never))
     expect(existsSync(target())).toBe(true)
     expect(result.projections.map((p) => p.kind)).toEqual(['bin'])
   })
@@ -101,7 +99,7 @@ describe('installPluginBins', () => {
   })
 
   it('installs with a plugin:<id> marker, reports created, and skips (created:false) on re-run', async () => {
-    acquireInstallLock()
+    await withInstallLock(async () => {
     const first = await installPluginBins([bin()], identity)
     expect(first).toEqual([{ name: 'fixturebin', sha256: sha256(SCRIPT), target: target(), created: true }])
     expect(readFileSync(target(), 'utf-8')).toBe(SCRIPT)
@@ -109,12 +107,12 @@ describe('installPluginBins', () => {
     const second = await installPluginBins([bin()], identity)
     expect(second[0]?.created).toBe(false)
     expect(hits).toBe(1)
+    })
   })
 
   it('refuses a pin a pack holds differently — before any download', async () => {
     packPins('ocr@1.0.0', 'b'.repeat(64))
-    acquireInstallLock()
-    await expect(installPluginBins([bin()], identity)).rejects.toThrow(/package "ocr".*plugin "terminal"/)
+    await expect(withInstallLock(() => installPluginBins([bin()], identity))).rejects.toThrow(/package "ocr".*plugin "terminal"/)
     expect(hits).toBe(0)
   })
 

@@ -424,6 +424,9 @@ describe('plugin-assets — binaries', () => {
 
   it('a pin another owner holds differently fails THAT plugin\'s repair loudly and writes nothing', async () => {
     const pluginDir = makePluginWithBin('term')
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'term', {
+      source: pluginDir, type: 'local', ref: '', commitSha: '', installedAt: '2026-09-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'a'.repeat(64),
+    }))
     writePluginLockfile(addPlugin(readPluginLockfile(), 'otherplug', {
       source: '/x', type: 'local', ref: '', commitSha: '', installedAt: '2026-09-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'b'.repeat(64),
       installedBins: [{ name: 'tool', sha256: sha256(TOOL_V2) }],
@@ -435,9 +438,32 @@ describe('plugin-assets — binaries', () => {
     expect(existsSync(binPath())).toBe(false)
   })
 
+  it('a plugin with no ledger row never gets binaries installed by the repair', async () => {
+    const pluginDir = makePluginWithBin('unledgered')
+    const installed = await installPluginAssets([{ id: 'unledgered', path: pluginDir }])
+    expect(installed.bins).toEqual({ installed: [], unchanged: [], failed: [] })
+    expect(existsSync(binPath())).toBe(false)
+  })
+
+  it('discovery is committed installs only: abandoned staging dirs and unledgered copies never reach the installer', async () => {
+    // Both declare a binary; neither has a lockfile row — the review's
+    // temporary-home probe. A `.staging-*` dir is also dot-prefixed.
+    makePluginWithBin('.staging-1727000000000', { root: join(bakinHome, 'plugins') })
+    makePluginWithBin('stray', { root: join(bakinHome, 'plugins') })
+    const check = await pluginAssetsComponent.check()
+    expect(check.status).toBe('ok')
+    expect(check.message).toMatch(/0 plugin assets/)
+    const install = await pluginAssetsComponent.install({ interactive: false, autoApprove: true, json: false, checkOnly: false, force: false })
+    expect(install.status).toBe('noop')
+    expect(existsSync(binPath())).toBe(false)
+  })
+
   it('the component names missing binaries, repairs them, and reports a conflict as a failed install', async () => {
-    // Under bakinHome/plugins so discoverPlugins() finds it.
-    makePluginWithBin('term', { root: join(bakinHome, 'plugins') })
+    // Under bakinHome/plugins WITH a ledger row — a committed install.
+    const pluginDir = makePluginWithBin('term', { root: join(bakinHome, 'plugins') })
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'term', {
+      source: pluginDir, type: 'local', ref: '', commitSha: '', installedAt: '2026-09-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'a'.repeat(64),
+    }))
     const check = await pluginAssetsComponent.check()
     expect(check.status).toBe('warn')
     expect(check.message).toMatch(/1 binary missing: tool \(term\)/)

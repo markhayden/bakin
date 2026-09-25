@@ -10,11 +10,15 @@
  * creates the file or fails with EEXIST — never check-then-write. A file
  * whose recorded pid is dead is reclaimed. Only the holder pid releases.
  *
- * Ownership model: the OUTER operation acquires (`withInstallLock` is
- * reentrant within the process, so a sync called from an update does not
- * try to lock twice); inner writers call `assertInstallLockHeld(name)` and
- * never acquire.
+ * Ownership model: the OUTER operation acquires via `withInstallLock`, which
+ * is reentrant only within THAT operation's async continuation
+ * (AsyncLocalStorage — a sync called from an update does not lock twice, but
+ * an unrelated request arriving while the lock is held contends exactly like
+ * a second process and is refused). Inner writers call
+ * `assertInstallLockHeld(name)`, which is satisfied only inside a
+ * `withInstallLock` body, and never acquire.
  */
+import { AsyncLocalStorage } from 'async_hooks'
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from 'fs'
 import { dirname, join } from 'path'
 import { getContentDir } from '../content-dir'
@@ -29,6 +33,9 @@ interface LockContents {
 
 /** True while THIS process holds the lock (set by acquire, cleared by release). */
 let heldByThisProcess = false
+
+/** The async operation that holds the lock — set for the continuation of a `withInstallLock` body only. */
+const holdingOperation = new AsyncLocalStorage<{ readonly token: symbol }>()
 
 export function getInstallLockPath(): string {
   return join(getContentDir(), 'install.lock')
@@ -133,22 +140,29 @@ export function isInstallLockHeld(): boolean {
   return holder ? isProcessAlive(holder.pid) : true
 }
 
-/** Inner writers (bin installers, projections) call this instead of acquiring. */
+/**
+ * Inner writers (bin installers, projections) call this instead of
+ * acquiring. It is satisfied only inside the async continuation of the
+ * `withInstallLock` body that holds the lock — never by a sibling operation
+ * that merely observes the process-wide flag.
+ */
 export function assertInstallLockHeld(writer: string): void {
-  if (!heldByThisProcess) {
+  if (!holdingOperation.getStore()) {
     throw new Error(`${writer} requires the install lock — the outer operation must acquire it (withInstallLock)`)
   }
 }
 
 /**
- * Run `fn` under the install lock. Reentrant: when this process already
- * holds it, `fn` runs directly and the outer holder keeps the lock.
+ * Run `fn` under the install lock. Reentrant within the SAME operation
+ * (nested calls in the holder's async continuation run directly); a second
+ * independent operation in this process is refused while the first holds
+ * the lock, exactly as a second process would be.
  */
 export async function withInstallLock<T>(fn: () => Promise<T>): Promise<T> {
-  if (heldByThisProcess) return fn()
+  if (holdingOperation.getStore()) return fn()
   acquireInstallLock()
   try {
-    return await fn()
+    return await holdingOperation.run({ token: Symbol('install-lock') }, fn)
   } finally {
     releaseInstallLock()
   }

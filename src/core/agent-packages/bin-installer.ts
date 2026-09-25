@@ -45,6 +45,8 @@ export function binPlatformKey(): BinPlatformKey | null {
 }
 
 export interface BinInstallResult {
+  /** Archive-sourced: the extracted member. */
+  member?: string
   /** Absolute path of the installed binary inside the Bakin bin dir. */
   target: string
   /** sha256 of the installed bytes (== the manifest pin). */
@@ -91,8 +93,8 @@ export async function installBinRequirement(
   const verdict = verifyInstalledBin(target, download)
   if (verdict.status === 'installed') {
     log.info(`Binary "${bin.name}" already installed at pinned sha — skipping download`)
-    writeInstalledBy(target, { ...installedBy, sha256: pin, ...(download.archive ? { extractedSha256: verdict.onDiskSha256 } : {}) })
-    return { target, sha256: pin, skipped: true }
+    writeInstalledBy(target, { ...installedBy, sha256: pin, ...(download.archive ? { extractedSha256: verdict.onDiskSha256, member: download.archive.member } : {}) })
+    return { target, sha256: pin, ...(download.archive ? { member: download.archive.member } : {}), skipped: true }
   }
 
   // Download → (extract) → verify-then-commit all ride the shared primitive
@@ -147,10 +149,10 @@ export async function installBinRequirement(
   writeInstalledBy(target, {
     ...installedBy,
     sha256: pin,
-    ...(download.archive ? { extractedSha256: await sha256File(target) } : {}),
+    ...(download.archive ? { extractedSha256: await sha256File(target), member: download.archive.member } : {}),
   })
   log.info(`Installed binary "${bin.name}" ${bin.version} → ${target}`)
-  return { target, sha256: pin, skipped: false }
+  return { target, sha256: pin, ...(download.archive ? { member: download.archive.member } : {}), skipped: false }
 }
 
 /**
@@ -184,7 +186,7 @@ export async function installManifestBins(
         item: bin.name, current: index + 1, total: bins.length, receivedBytes, totalBytes,
       }),
     })
-    result.projections.push({ kind: 'bin', target: installed.target, sha256: installed.sha256 })
+    result.projections.push({ kind: 'bin', target: installed.target, sha256: installed.sha256, ...(installed.member ? { member: installed.member } : {}) })
   }
 }
 
@@ -200,6 +202,8 @@ export interface PluginBinInstall {
   name: string
   /** Pinned download sha (what the lockfile records). */
   sha256: string
+  /** Archive-sourced: the extracted member (recorded with the pin — identity for shared ownership). */
+  member?: string
   target: string
   /** False when the pinned file was already in place (shared or re-run) — rollback must not delete it. */
   created: boolean
@@ -214,11 +218,7 @@ export interface PluginBinInstall {
 export async function installPluginBins(
   bins: readonly BinRequirement[],
   identity: PluginBinIdentity,
-  options: {
-    progress?: import('./install-progress').InstallProgressFn
-    /** Called as each bin lands — the caller's transaction records created targets for rollback BEFORE a later bin can fail. */
-    onInstalled?: (installed: PluginBinInstall) => void
-  } = {},
+  options: { progress?: import('./install-progress').InstallProgressFn } = {},
 ): Promise<PluginBinInstall[]> {
   if (bins.length === 0) return []
   assertInstallLockHeld('installPluginBins')
@@ -240,9 +240,13 @@ export async function installPluginBins(
         stage: 'bins', message, item: bin.name, current: index + 1, total: bins.length, receivedBytes, totalBytes,
       }),
     })
-    const record: PluginBinInstall = { name: bin.name, sha256: installed.sha256, target: binTargetPath(bin.name), created: !installed.skipped }
-    out.push(record)
-    options.onInstalled?.(record)
+    out.push({ name: bin.name, sha256: installed.sha256, ...(installed.member ? { member: installed.member } : {}), target: binTargetPath(bin.name), created: !installed.skipped })
   }
   return out
+}
+
+/** What the plugin lockfile records for installed binaries: name + pin (+ archive member). */
+export function toInstalledBins(results: readonly PluginBinInstall[]): Array<{ name: string; sha256: string; member?: string }> | undefined {
+  if (results.length === 0) return undefined
+  return results.map((bin) => ({ name: bin.name, sha256: bin.sha256, ...(bin.member ? { member: bin.member } : {}) }))
 }

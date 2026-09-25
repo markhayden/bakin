@@ -32,10 +32,7 @@ import { fetchSourceAsync, sourceSpecWithRef, type FetchedSource } from './sourc
 import { projectPackage, unprojectPackage } from './projector'
 import { installManifestRequirements, modelDest, npmPayloadDir } from './requirements-installer'
 import { withoutSharedArtifacts } from './uninstaller'
-import {
-  acquireInstallLock,
-  releaseInstallLock,
-} from '../install-core/install-lock'
+import { withInstallLock } from '../install-core/install-lock'
 import { validatePackageContributionIntegrity } from './package-integrity'
 import { assertRuntimePlatformCompatible } from './installer'
 
@@ -59,8 +56,11 @@ export interface UpdateResult {
  * commit SHA hasn't moved.
  */
 export async function updatePackageById(options: UpdateOptions): Promise<UpdateResult> {
-  acquireInstallLock()
+  // ONE install lock around the whole operation; inner writers assert it.
+  return withInstallLock(() => updatePackageByIdLocked(options))
+}
 
+async function updatePackageByIdLocked(options: UpdateOptions): Promise<UpdateResult> {
   let fetched: FetchedSource | null = null
 
   try {
@@ -238,8 +238,6 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
       }
     }
     throw err
-  } finally {
-    releaseInstallLock()
   }
 }
 

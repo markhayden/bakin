@@ -61,10 +61,7 @@ import {
   type ProjectorResult,
 } from './projector'
 import { getAgentState } from './agent-state'
-import {
-  acquireInstallLock,
-  releaseInstallLock,
-} from '../install-core/install-lock'
+import { withInstallLock } from '../install-core/install-lock'
 import { getAppServices } from '../app-services'
 import { readFileSync } from 'fs'
 import { join } from 'path'
@@ -313,8 +310,11 @@ function manifestToCreateAgent(manifest: Manifest): AdapterCreateAgentInput {
 // ─── Main install function ───────────────────────────────────────────────────
 
 export async function installPackage(options: InstallOptions): Promise<InstallResult> {
-  acquireInstallLock()
+  // ONE install lock around the whole operation; inner writers assert it.
+  return withInstallLock(() => installPackageLocked(options))
+}
 
+async function installPackageLocked(options: InstallOptions): Promise<InstallResult> {
   let topFetched: FetchedSource | null = null
   const depFetched: FetchedSource[] = []
   const projected: { resolvedId: string; result: ProjectorResult }[] = []
@@ -717,8 +717,6 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
       }
     }
     throw err
-  } finally {
-    releaseInstallLock()
   }
 }
 

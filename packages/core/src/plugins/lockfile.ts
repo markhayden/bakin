@@ -174,6 +174,8 @@ export const PluginLockEntrySchema = z.object({
   installedBins: z.array(z.object({
     name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/i),
     sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+    /** Archive-sourced bins: the extracted member (identity for shared ownership). */
+    member: z.string().optional(),
   })).optional(),
   /**
    * Phase 2 (#171). True when this entry was registered via

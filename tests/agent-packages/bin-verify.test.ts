@@ -52,16 +52,20 @@ describe('verifyInstalledBin — raw download', () => {
 describe('verifyInstalledBin — archive download', () => {
   const download = { url: 'https://example.com/tool.tar.gz', sha256: sha('archive bytes'), archive: { format: 'tar.gz' as const, member: 'tool' } }
   it('installed when the marker pins the archive and the file hash equals the recorded extracted hash', () => {
-    writeFileSync(BIN, 'extracted'); writeInstalledBy(BIN, marker({ sha256: download.sha256, extractedSha256: sha('extracted') }))
+    writeFileSync(BIN, 'extracted'); writeInstalledBy(BIN, marker({ sha256: download.sha256, extractedSha256: sha('extracted'), member: 'tool' }))
     expect(verifyInstalledBin(BIN, download).status).toBe('installed')
   })
   it('drifted when the bytes change under an untouched marker', () => {
-    writeFileSync(BIN, 'extracted'); writeInstalledBy(BIN, marker({ sha256: download.sha256, extractedSha256: sha('extracted') }))
+    writeFileSync(BIN, 'extracted'); writeInstalledBy(BIN, marker({ sha256: download.sha256, extractedSha256: sha('extracted'), member: 'tool' }))
     writeFileSync(BIN, 'swapped')
     expect(verifyInstalledBin(BIN, download).status).toBe('drifted')
   })
+  it('drifted when the marker records a different member of the same archive — another owner\'s binary under our name', () => {
+    writeFileSync(BIN, 'extracted'); writeInstalledBy(BIN, marker({ sha256: download.sha256, extractedSha256: sha('extracted'), member: 'other-tool' }))
+    expect(verifyInstalledBin(BIN, download)).toMatchObject({ status: 'drifted', reason: 'member-mismatch' })
+  })
   it('drifted when the marker pins a different archive (a newer pin) or is missing', () => {
-    writeFileSync(BIN, 'extracted'); writeInstalledBy(BIN, marker({ sha256: sha('other archive'), extractedSha256: sha('extracted') }))
+    writeFileSync(BIN, 'extracted'); writeInstalledBy(BIN, marker({ sha256: sha('other archive'), extractedSha256: sha('extracted'), member: 'tool' }))
     expect(verifyInstalledBin(BIN, download).status).toBe('drifted')
     rmSync(join(testDir, 'bin', 'tool.installedBy'), { force: true })
     expect(verifyInstalledBin(BIN, download).status).toBe('drifted')

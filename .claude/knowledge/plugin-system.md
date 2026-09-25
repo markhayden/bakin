@@ -298,35 +298,54 @@ THE one way `~/.bakin/plugins/<id>/` changes. Install and every upgrade
 lane run `replacePluginDir(...)` under the install lock:
 
 ```
-backup → sentinel → place → build → bins → ledger → commit
+journal → backup → sentinel → place → build → bins → ledger → commit
 ```
 
+- **journal**: `.bakin-backup-<id>/journal.json` is written atomically
+  (tmp + rename) BEFORE anything moves — the authority for recovery. It is
+  root-relative (bin NAMES, `backup: boolean`, `ledgerBefore` — the previous
+  lockfile row or null, `committed`), so a moved home still recovers.
 - **backup**: the existing directory is renamed aside to
-  `.bakin-backup-<id>/plugin` (same filesystem, atomic); a pre-existing
-  target of any declared bin (a re-pin, or a shared bin whose marker the
-  installer re-stamps) is copied to `.bakin-backup-<id>/bin/<name>` with
-  its marker.
-- **sentinel**: `.bakin-install.json` inside the target, written before any
-  content lands and rewritten as each bin is created. It is root-relative
-  (bin NAMES, `backup: boolean`, `replacedBins`, `ledgerBefore` — the
-  previous lockfile row or null) so a moved home still recovers.
-- **place / build / bins / ledger** are the lane's steps; bins ride
-  `installPluginBins` (skips identically pinned targets — shared bins are
-  never re-downloaded or deleted) with `stage: 'bins'` progress.
-- **commit**: sentinel removed, backup deleted.
+  `.bakin-backup-<id>/plugin` (same filesystem, atomic).
+- **sentinel**: `.bakin-install.json` inside the target is a COPY of the
+  journal that exists only so the loader hides the in-flight directory;
+  recovery reads the journal when both exist.
+- **place / build** are the lane's steps.
+- **bins**: BEFORE the installer writes anything, every declared bin is
+  journaled — an existing target (a re-pin, or a shared bin whose marker
+  the installer re-stamps) is copied to `.bakin-backup-<id>/bin/<name>`
+  with its marker (`replacedBins`); one that does not exist yet is recorded
+  as `intendedBins`. Only then `installPluginBins` runs (skips identically
+  pinned targets — shared bins are never re-downloaded or deleted) with
+  `stage: 'bins'` progress. A crash between the installer's rename and its
+  marker write is covered: the intent was journaled first.
+- **ledger**, then **commit**: the journal is rewritten with
+  `committed: true` (the durable commit point), then the sentinel and the
+  backup dir are removed.
 
-Any failure calls `restoreFromSentinel` — created bins and markers
-deleted (marker FIRST: an extension-less path reads as a directory to the
-sidecar helper once the file is gone), replaced bins moved back, target
+Any failure calls `restoreFromJournal` — intended bins deleted (marker
+FIRST: an extension-less path reads as a directory to the sidecar helper
+once the file is gone), replaced bins and markers moved back, target
 removed, backup renamed back, ledger row restored (or removed for a first
 install). The SAME routine runs at boot (`install-recovery.ts`,
-`recoverInterruptedPluginOps`) BEFORE user-plugin discovery, resolving
-every state a killed process can leave: backup with no target (died between
-rename-aside and sentinel), sentinel-bearing target (died anywhere before
-commit), committed target with a stale backup (died before backup
-deletion). The loader (`isLoadableUserPluginDir`) additionally skips
-dot-prefixed entries (backups, staging clones) and any dir still carrying a
-sentinel. A new operation on an id first recovers that id's leftovers.
+`recoverInterruptedPluginOps`) BEFORE user-plugin discovery. Because the
+journal precedes the first rename and `committed` precedes the backup
+deletion, no on-disk state is ambiguous: a backup dir with a committed
+journal ⇒ finish the cleanup; a backup dir with an in-flight (or
+unreadable) journal ⇒ full restore — including the window between creating
+the empty target and writing its sentinel; a sentinel-bearing target with
+no backup dir ⇒ restore from the sentinel. The loader
+(`isLoadableUserPluginDir`) additionally skips dot-prefixed entries
+(backups, staging clones) and any dir still carrying a sentinel. A new
+operation on an id first recovers that id's leftovers.
+
+**Install lock:** `~/.bakin/install.lock` is ONE atomic (O_EXCL) lock. The
+outer operation acquires it with `withInstallLock`, which is reentrant only
+within that operation's async continuation (AsyncLocalStorage) — a second
+request arriving while the lock is held is refused like a second process.
+Inner writers (`installPluginBins`, `installManifestBins`,
+`replacePluginDir`) call `assertInstallLockHeld`, which only the holding
+operation satisfies.
 
 ### Signature Policy
 

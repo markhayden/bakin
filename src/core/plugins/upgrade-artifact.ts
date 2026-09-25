@@ -20,6 +20,7 @@ import { materializeArtifact } from '@/core/whiskit/consumer-install'
 import { isExternalsContractCompatible, PROVENANCE_FILENAME } from '@/core/whiskit/provenance'
 import { createLogger } from '@/core/logger'
 import { moveContents, replacePluginDir } from './replace-transaction'
+import { toInstalledBins } from '@/core/agent-packages/bin-installer'
 import {
   type UpgradeOptions,
   type UpgradeResult,
@@ -137,7 +138,7 @@ export async function upgradeArtifact(
           manifestSha,
           permissions: gate.newPerms,
           installedSkills: assets.installedSkills,
-          installedBins: bins.length > 0 ? bins.map((bin) => ({ name: bin.name, sha256: bin.sha256 })) : undefined,
+          installedBins: toInstalledBins(bins),
         }))
       },
     })

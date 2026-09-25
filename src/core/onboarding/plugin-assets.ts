@@ -28,13 +28,12 @@ import { createHash } from 'crypto'
 import {
   existsSync,
   readFileSync,
-  readdirSync,
 } from 'fs'
 import { join } from 'path'
 import { listPluginDefaultFiles, type PluginResourceFile } from '../plugin-resources'
 import { createAppServices, getAppServices, maybeGetAppServices } from '../app-services'
 import { createLogger } from '../logger'
-import { binPlatformKey, installPluginBins } from '../agent-packages/bin-installer'
+import { binPlatformKey, installPluginBins, toInstalledBins } from '../agent-packages/bin-installer'
 import { verifyInstalledBin } from '../agent-packages/bin-verify'
 import { withInstallLock } from '../install-core/install-lock'
 import { binTargetPath } from '../plugins/bin-owners'
@@ -42,10 +41,12 @@ import type { RuntimeSkill } from '@bakin/core/adapters/runtime'
 import { BinRequirementsSchema, type BinRequirement } from '@bakin/core/plugins/bin-requirement'
 import {
   type PluginLockfile,
+  isLinked,
   readPluginLockfile,
   updatePlugin,
   writePluginLockfile,
 } from '../../../packages/core/src/plugins/lockfile'
+import { isLoadableUserPluginDir } from '../plugins/install-recovery'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
 const log = createLogger('onboarding:plugin-assets')
@@ -317,12 +318,18 @@ export async function installPluginAssets(plugins: PluginEntry[]): Promise<Insta
     const installable = bins.filter((bin) => platform && bin.install[platform])
     if (installable.length === 0) continue
     const entry = readLockEntry(plugin.id)
+    if (!entry) {
+      // Core plugins never declare bins; a user plugin without a ledger row
+      // was never consented to — the repair does not install for it.
+      log.warn('Skipping binaries of a plugin with no lockfile entry', { pluginId: plugin.id })
+      continue
+    }
     try {
       const results = await withInstallLock(() => installPluginBins(installable, {
         pluginId: plugin.id,
-        version: entry?.version ?? '0.0.0',
-        ref: entry?.ref ?? '',
-        commitSha: entry?.commitSha ?? '',
+        version: entry.version,
+        ref: entry.ref,
+        commitSha: entry.commitSha,
       }))
       for (const result of results) {
         const ref: BinRef = { pluginId: plugin.id, name: result.name }
@@ -333,7 +340,7 @@ export async function installPluginAssets(plugins: PluginEntry[]): Promise<Insta
           report.bins.unchanged.push(ref)
         }
       }
-      if (entry) syncLockfileInstalledBins(plugin.id, results.map((r) => ({ name: r.name, sha256: r.sha256 })))
+      syncLockfileInstalledBins(plugin.id, toInstalledBins(results) ?? [])
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
       log.error('Plugin binary install failed', err as Error, { pluginId: plugin.id })
@@ -354,7 +361,7 @@ function readLockEntry(pluginId: string): PluginLockfile['plugins'][string] | un
 }
 
 /** Record what the repair laid down — the lockfile is the ownership authority for `~/.bakin/bin`. */
-function syncLockfileInstalledBins(pluginId: string, installedBins: Array<{ name: string; sha256: string }>): void {
+function syncLockfileInstalledBins(pluginId: string, installedBins: Array<{ name: string; sha256: string; member?: string }>): void {
   try {
     const lock = readPluginLockfile()
     if (!lock.plugins[pluginId]) return
@@ -390,25 +397,22 @@ function discoverPlugins(): PluginEntry[] {
     log.warn('Failed to read bakin.config for plugin discovery', { error: String(err) })
   }
 
-  // User plugins under ~/.bakin/plugins/{id}/bakin-plugin.json
+  // User plugins: ONLY committed installs — a lockfile row (provenance) AND a
+  // loadable directory (no sentinel, not a dot-prefixed backup/staging dir).
+  // Anything else under ~/.bakin/plugins/ (an abandoned `.staging-*`, a
+  // half-written install, a stray copy) was never consented to and must
+  // never feed the repair's bin installer.
   try {
     const { getContentDir } = require('../content-dir') as typeof import('../content-dir')
     const userPluginsDir = join(getContentDir(), 'plugins')
-    if (existsSync(userPluginsDir)) {
-      for (const entry of readdirSync(userPluginsDir, { withFileTypes: true })) {
-        if (!entry.isDirectory()) continue
-        const manifestPath = join(userPluginsDir, entry.name, 'bakin-plugin.json')
-        if (!existsSync(manifestPath)) continue
-        try {
-          const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
-          plugins.push({ id: manifest.id || entry.name, path: join(userPluginsDir, entry.name) })
-        } catch {
-          /* skip malformed manifest */
-        }
-      }
+    for (const [id, entry] of Object.entries(readPluginLockfile().plugins)) {
+      if (isLinked(entry)) continue // dev-linked source trees are the author's territory
+      if (!isLoadableUserPluginDir(userPluginsDir, id)) continue
+      if (!existsSync(join(userPluginsDir, id, 'bakin-plugin.json'))) continue
+      plugins.push({ id, path: join(userPluginsDir, id) })
     }
-  } catch {
-    /* getContentDir not available; skip user-plugin discovery */
+  } catch (err) {
+    log.warn('User-plugin discovery skipped', { error: err instanceof Error ? err.message : String(err) })
   }
 
   return plugins

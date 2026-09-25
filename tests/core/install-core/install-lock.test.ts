@@ -64,10 +64,16 @@ describe('install lock — single path, holder semantics', () => {
     rmSync(getInstallLockPath(), { force: true })
   })
 
-  it('assertInstallLockHeld names the writer when the outer operation forgot the lock', () => {
+  it('assertInstallLockHeld names the writer when the outer operation forgot the lock', async () => {
     expect(() => assertInstallLockHeld('installManifestBins')).toThrow(/installManifestBins.*install lock/)
+    await withInstallLock(async () => {
+      expect(() => assertInstallLockHeld('installManifestBins')).not.toThrow()
+    })
+  })
+
+  it('a bare acquire does not satisfy inner writers — only the holding operation does', () => {
     acquireInstallLock()
-    expect(() => assertInstallLockHeld('installManifestBins')).not.toThrow()
+    expect(() => assertInstallLockHeld('installManifestBins')).toThrow(/install lock/)
   })
 })
 
@@ -85,6 +91,21 @@ describe('withInstallLock', () => {
 
   it('releases when the body throws', async () => {
     await expect(withInstallLock(async () => { throw new Error('boom') })).rejects.toThrow('boom')
+    expect(isInstallLockHeld()).toBe(false)
+  })
+
+  it('a second independent operation in the same process is refused while the first holds the lock — reentrancy is scoped to the operation', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    let siblingSawHeld: boolean | null = null
+    const first = withInstallLock(async () => { await gate })
+    // A sibling request arriving mid-operation contends exactly like a second process would.
+    await expect(withInstallLock(async () => { siblingSawHeld = true })).rejects.toThrow(/Another install is in progress/)
+    expect(siblingSawHeld).toBeNull()
+    // …and cannot pass the inner-writer assertion by merely observing the process flag.
+    expect(() => assertInstallLockHeld('replacePluginDir')).toThrow(/install lock/)
+    release()
+    await first
     expect(isInstallLockHeld()).toBe(false)
   })
 })
