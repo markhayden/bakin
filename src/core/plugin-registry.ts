@@ -6,7 +6,6 @@ import {
   existsSync,
   readFileSync,
   readdirSync,
-  statSync,
 } from 'fs'
 import { join } from 'path'
 import type { ZodRawShape } from 'zod'
@@ -49,6 +48,7 @@ import { addExecTool, removeExecToolsByPlugin } from './exec-tools/registry'
 import { runMigrations } from './migrations'
 import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
+import { isLoadableUserPluginDir, recoverInterruptedPluginOps } from './plugins/install-recovery'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { getPluginSkills as skillRegistry, clearPluginSkills, removePluginSkillsByPlugin } from '@bakin/core/skills/plugin-skill-registry'
 import { getContentTypes, purgeContentType, unregisterContentTypesByPlugin } from './search-registry'
@@ -124,14 +124,6 @@ const log = createLogger('plugin-registry')
 
 function resolveAppServices(services?: AppServices): AppServices {
   return services ?? getAppServices()
-}
-
-function isPluginDirectoryEntry(parentDir: string, name: string): boolean {
-  try {
-    return statSync(join(parentDir, name)).isDirectory()
-  } catch {
-    return false
-  }
 }
 
 // The hook-registry singleton + getHookRegistry now live in the dependency-free
@@ -1042,11 +1034,18 @@ class PluginRegistryImpl {
       return
     }
 
+    // Interrupted installs/upgrades are rolled back BEFORE discovery, so the
+    // loader only ever sees committed directories (replace-transaction.ts).
+    const recovery = recoverInterruptedPluginOps(userPluginsDir)
+    if (recovery.recovered.length > 0) {
+      log.warn('Recovered interrupted plugin operations at boot', { plugins: recovery.recovered })
+    }
+
     try {
       const dirEntries = readdirSync(userPluginsDir, { withFileTypes: true })
       const entries: PluginLoadEntry[] = []
       for (const entry of dirEntries) {
-        if (!isPluginDirectoryEntry(userPluginsDir, entry.name)) continue
+        if (!isLoadableUserPluginDir(userPluginsDir, entry.name)) continue
 
         const manifestPath = join(userPluginsDir, entry.name, 'bakin-plugin.json')
         if (!existsSync(manifestPath)) continue

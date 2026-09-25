@@ -39,6 +39,8 @@ export const InstalledByMarkerSchema = z.object({
    * on-disk binary) needs this second hash.
    */
   extractedSha256: z.string().optional(),
+  /** Archive-sourced bins: the member extracted. Two owners pinning the same archive but different members are NOT sharing one binary. */
+  member: z.string().optional(),
   /** sha256 of the source file (or directory Merkle root for skill dirs). */
   sha256: z.string().min(1),
   installedAt: z.string().min(1),

@@ -73,7 +73,7 @@ import { checkSearchConsistency, searchConsistencyRepair } from './lib/system-ch
 import { checkSearchSpin, searchSpinRepair } from './lib/system-checks/search-spin'
 import { checkSearchCanary, checkSearchEngineBurn, searchCanaryRepair, searchConsistencyRestartRepair, searchEngineBurnRepair } from './lib/system-checks/search-engine-watch'
 import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
-import { checkPluginAssets } from './lib/system-checks/plugin-assets'
+import { checkPluginAssets, installPluginAssetsRepair } from './lib/system-checks/plugin-assets'
 import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
 import { checkPluginRegistry } from './lib/system-checks/plugin-registry'
 import { checkSpendPolicyAvailable } from './lib/system-checks/spend-policy'
@@ -1089,10 +1089,11 @@ const healthPlugin: BakinPlugin = definePlugin({
       maxAgeMs: 900_000,
       run: () => checkAndSyncSkill(process.cwd(), ctx.runtime),
     })
+    ctx.registerHealthRepairAction(installPluginAssetsRepair())
     ctx.registerHealthCheck({
       id: 'plugin-assets',
-      name: 'Plugin-shipped runtime skills install state',
-      description: 'Checks installation and drift for runtime skills shipped by plugins.',
+      name: 'Plugin assets install state',
+      description: 'Checks installation and drift for runtime skills and sha256-pinned binaries shipped by plugins.',
       group: pluginsGroup,
       maxAgeMs: 900_000,
       run: () => checkPluginAssets(),

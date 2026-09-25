@@ -41,12 +41,36 @@ const PERMISSION_HINTS: Record<string, string> = {
   'storage.write': 'Write Bakin content files',
 }
 
+/** A binary the plugin will download into ~/.bakin/bin (spec plugin-managed-binaries §2.5). */
+export interface ConsentBinRow {
+  name: string
+  version: string
+  sha256: string
+  sizeBytes?: number
+}
+
 export interface ConsentRequest {
   id: string
   version: string
   permissions: string[]
+  /** Declared binary downloads for this platform; consent-worthy even when `permissions` is empty. */
+  bins?: ConsentBinRow[]
   consentToken: string
   manifestChanged?: boolean
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function downloadSummary(bin: ConsentBinRow): string {
+  const parts = [] as string[]
+  if (bin.sizeBytes !== undefined) parts.push(formatBytes(bin.sizeBytes))
+  parts.push(bin.sha256 ? `sha256 ${bin.sha256.slice(0, 12)}…` : 'no build for this platform')
+  parts.push('into ~/.bakin/bin')
+  return parts.join(' · ')
 }
 
 export function ConsentDialog({
@@ -61,38 +85,57 @@ export function ConsentDialog({
   onDecline: () => void
 }) {
   if (!consent) return null
+  const bins = consent.bins ?? []
+  const hasBins = bins.length > 0
   return (
     <Dialog busy={busy} open={consent !== null} onOpenChange={(open) => { if (!open) onDecline() }}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
-            {consent.id} v{consent.version} wants permission to:
+            {consent.id} v{consent.version} {hasBins && consent.permissions.length === 0 ? 'wants to download:' : 'wants permission to:'}
           </DialogTitle>
           <DialogDescription>
-            Installing this plugin grants it the capabilities below. Decline to install nothing.
+            {hasBins
+              ? 'Installing this plugin grants it the capabilities below and downloads the listed binaries, sha256-verified, into ~/.bakin/bin. Decline to install nothing.'
+              : 'Installing this plugin grants it the capabilities below. Decline to install nothing.'}
           </DialogDescription>
         </DialogHeader>
 
         {consent.manifestChanged ? (
           <Alert tone="attention" data-testid="manifest-changed-notice">
             <ShieldAlert aria-hidden="true" />
-            <AlertTitle>Permissions changed</AlertTitle>
+            <AlertTitle>{hasBins ? 'Permissions or downloads changed' : 'Permissions changed'}</AlertTitle>
             <AlertDescription>
-              The plugin changed its permission request since the preview. Review the updated list before accepting.
+              The plugin changed its {hasBins ? 'permission or download request' : 'permission request'} since the preview. Review the updated list before accepting.
             </AlertDescription>
           </Alert>
         ) : null}
 
         {/* Permission id → what it grants. Unknown ids keep their raw id and
             render an em dash for the description — honest, never hidden. */}
-        <KeyValue
-          layout="columns"
-          data-testid="consent-permission-list"
-          items={consent.permissions.map((permission) => ({
-            label: <code className="font-bakin-typography-family-mono">{permission}</code>,
-            value: PERMISSION_HINTS[permission] ?? null,
-          }))}
-        />
+        {consent.permissions.length > 0 || !hasBins ? (
+          <KeyValue
+            layout="columns"
+            data-testid="consent-permission-list"
+            items={consent.permissions.map((permission) => ({
+              label: <code className="font-bakin-typography-family-mono">{permission}</code>,
+              value: PERMISSION_HINTS[permission] ?? null,
+            }))}
+          />
+        ) : null}
+
+        {/* Binary downloads — name + version, then size · pinned sha · target dir.
+            Same KeyValue composition as the permission list; nothing is hidden. */}
+        {hasBins ? (
+          <KeyValue
+            layout="columns"
+            data-testid="consent-download-list"
+            items={bins.map((bin) => ({
+              label: <code className="font-bakin-typography-family-mono">{bin.name} {bin.version}</code>,
+              value: downloadSummary(bin),
+            }))}
+          />
+        ) : null}
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onDecline} disabled={busy}>

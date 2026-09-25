@@ -211,6 +211,36 @@ export interface PluginManifestSignature {
 }
 
 /** The `bakin-plugin.json` manifest. Required for every plugin. */
+/** Platform keys follow `process.platform-process.arch`. */
+export type PluginBinPlatform = 'darwin-arm64' | 'darwin-x64' | 'linux-x64' | 'linux-arm64'
+
+/** One pinned, sha256-verified download of a required binary. */
+export interface PluginBinDownload {
+  /** https URL (loopback http allowed for local fixtures). */
+  url: string
+  /** Hex sha256 of the download (the archive when `archive` is set). */
+  sha256: string
+  /** Present when the download is a tarball; `member` is the file extracted as the binary. */
+  archive?: { format: 'tar.gz'; member: string }
+  /** Download size in bytes, shown in consent/install UIs when present. */
+  sizeBytes?: number
+}
+
+/**
+ * A binary Bakin installs into `~/.bakin/bin` with the plugin — disclosed at
+ * install consent, verified by the doctor, removed with the plugin unless
+ * another owner still pins it.
+ */
+export interface PluginBinRequirement {
+  /** Name as invoked from PATH. */
+  name: string
+  version: string
+  /** Per-platform downloads; a platform without an entry fails install preflight on that platform. */
+  install: Partial<Record<PluginBinPlatform, PluginBinDownload>>
+  /** Args for the verify-then-commit probe run (e.g. `["-V"]`). */
+  verifyArgs?: string[]
+}
+
 export interface PluginManifest {
   /** Removal must run the loaded plugin's beforeUninstall hook successfully. */
   uninstallPreflightRequired?: boolean
@@ -246,6 +276,8 @@ export interface PluginManifest {
   devWatch?: string[]
   /** Optional Ed25519 signature for authenticity. */
   signature?: PluginManifestSignature
+  /** Binaries Bakin installs with the plugin (`requires.bins`). */
+  requires?: { bins?: PluginBinRequirement[] }
 }
 
 // ---------------------------------------------------------------------------

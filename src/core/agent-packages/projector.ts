@@ -611,11 +611,13 @@ export async function unprojectPackage(
     }
     if (!existsSync(p.target)) continue
     if (isUserEdited(p.target)) continue
+    // Marker FIRST: an extension-less target (a bin) reads as a directory to
+    // the sidecar helper once the file is gone, which would orphan the marker.
+    removeInstalledBy(p.target)
     if (statSync(p.target).isDirectory()) {
       rmSync(p.target, { recursive: true, force: true })
     } else {
       unlinkSync(p.target)
     }
-    removeInstalledBy(p.target)
   }
 }

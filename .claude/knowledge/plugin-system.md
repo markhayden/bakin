@@ -219,6 +219,11 @@ PluginLockEntry {
   installedSkills? // runtime skill names this plugin shipped — the
                   // authoritative allowlist for uninstall (defeats fake
                   // .installedBy markers per #119 hardening)
+  installedBins?   // [{ name, sha256 }] — binaries this plugin installed into
+                  // ~/.bakin/bin (spec plugin-managed-binaries). Together with
+                  // the packages lockfile's `bin` projections this is THE
+                  // ownership authority for the shared bin dir (bin-owners.ts);
+                  // on-disk .installedBy markers are informational only.
 }
 ```
 
@@ -242,8 +247,13 @@ commit submits source B):
    `accepted`).
 2. Server parses `@ref` for shorthand sources or accepts `--ref` as the
    request-body `ref`, rejects conflicts, clones to staging at that ref,
-   validates manifest + permissions, parses the manifest version, and
-   computes `manifestSha`.
+   validates manifest + permissions + `requires.bins`, parses the manifest
+   version, and computes `manifestSha`. **Bin preflight** runs here, before
+   consent and before any mutation (`src/core/plugins/bin-preflight.ts`):
+   every declared bin needs a download for this platform (400) and no
+   other owner — pack or plugin — may pin the same `~/.bakin/bin` target
+   at a different sha (409, both owners named). A doomed install is
+   refused without asking the user to consent to it.
    Before any target-dir copy/build, it also validates `dependencies`:
    each dependency must be a core plugin, an installed user plugin, or
    in the selected recommended-plugin install plan. Missing deps return
@@ -252,10 +262,13 @@ commit submits source B):
    phase verifies `bakin-plugin.json.signature` against
    `settings.plugins.trustedSigners`; unsigned, untrusted, or tampered
    manifests fail with `plugin.install.rejected`.
-3. If permissions are non-empty AND `accepted !== true`, server returns
-   `{ awaitingConsent: true, id, version, permissions, consentToken }`
-   and tears down staging. The token is HMAC-SHA256 over
-   `{source identity, manifestSha, permissions, expiresAt}` with a
+3. If permissions OR declared bins are non-empty AND `accepted !== true`,
+   server returns `{ awaitingConsent: true, id, version, permissions,
+   bins, consentToken }` and tears down staging. `bins` is the
+   platform-resolved disclosure (`consentBinsOf`: name, version, pinned
+   sha, size hint) — Explore's consent dialog and the CLI prompt print it
+   ("Downloads into ~/.bakin/bin"). The token is HMAC-SHA256 over
+   `{source identity, manifestSha, permissions, bins, expiresAt}` with a
    process-lifetime key (5-minute TTL). The source identity includes
    the requested ref when one was supplied, so preflight and commit
    cannot silently swap refs.
@@ -264,15 +277,78 @@ commit submits source B):
    consentToken }`. Server re-clones, recomputes `manifestSha`, then:
    - Verifies the token signature + expiry.
    - Asserts `token.source === source identity` (refuses on mismatch).
-   - Asserts `token.manifestSha === fresh manifestSha` (if the manifest
-     changed between preflight and commit, returns awaitingConsent
-     again with `manifestChanged: true` + a fresh token + the new diff).
-   - On full match, runs `buildUserPlugin()` and writes the lockfile
-     entry.
+   - Asserts `token.manifestSha === fresh manifestSha` and the same bins
+     (if the manifest or a bin declaration changed between preflight and
+     commit, returns awaitingConsent again with `manifestChanged: true` +
+     a fresh token + the new diff).
+   - On full match, commits through the **replace transaction** (below):
+     place files → `buildUserPlugin()` → download + verify bins → write
+     the lockfile entry. With `?async=1` the commit runs as an install
+     job (`startInstallJob`, kind `plugin`) and answers 202 + `jobId`;
+     the `bins` stage rides the shared `packages.install_*` progress
+     events, which is how Explore shows download progress.
 
-Zero-permission plugins skip the consent gate (no token needed).
-`--yes` short-circuits the prompt for scripted/CI installs but the
+Plugins with no permissions and no bins skip the consent gate (no token
+needed). `--yes` short-circuits the prompt for scripted/CI installs but the
 token round-trip still runs for the binding check.
+
+### Replace transaction + boot recovery — `src/core/plugins/replace-transaction.ts`
+
+THE one way `~/.bakin/plugins/<id>/` changes. Install and every upgrade
+lane run `replacePluginDir(...)` under the install lock:
+
+```
+journal → backup → sentinel → place → build → bins → ledger → commit
+```
+
+- **journal**: `.bakin-backup-<id>/journal.json` is written atomically
+  (tmp + rename) BEFORE anything moves — the authority for recovery. It is
+  root-relative (bin NAMES, `backup: boolean`, `ledgerBefore` — the previous
+  lockfile row or null, `committed`), so a moved home still recovers.
+- **backup**: the existing directory is renamed aside to
+  `.bakin-backup-<id>/plugin` (same filesystem, atomic).
+- **sentinel**: `.bakin-install.json` inside the target is a COPY of the
+  journal that exists only so the loader hides the in-flight directory;
+  recovery reads the journal when both exist.
+- **place / build** are the lane's steps.
+- **bins**: BEFORE the installer writes anything, every declared bin is
+  journaled — an existing target (a re-pin, or a shared bin whose marker
+  the installer re-stamps) is copied to `.bakin-backup-<id>/bin/<name>`
+  with its marker (`replacedBins`); one that does not exist yet is recorded
+  as `intendedBins`. Only then `installPluginBins` runs (skips identically
+  pinned targets — shared bins are never re-downloaded or deleted) with
+  `stage: 'bins'` progress. A crash between the installer's rename and its
+  marker write is covered: the intent was journaled first.
+- **ledger**, then **commit**: the journal is rewritten with
+  `committed: true` (the durable commit point), then the sentinel and the
+  backup dir are removed.
+
+Any failure calls `restoreFromJournal` — intended bins deleted (marker
+FIRST: an extension-less path reads as a directory to the sidecar helper
+once the file is gone), replaced bins and markers moved back, target
+removed, backup renamed back, ledger row restored (or removed for a first
+install). The SAME routine runs at boot (`install-recovery.ts`,
+`recoverInterruptedPluginOps`) BEFORE user-plugin discovery. Because the
+journal precedes the first rename and `committed` precedes the backup
+deletion, no on-disk state is ambiguous: a backup dir with a committed
+journal ⇒ finish the cleanup; a backup dir with an in-flight (or
+unreadable) journal ⇒ full restore — including the window between creating
+the empty target and writing its sentinel, while `backup: true` without a
+`backup/plugin` dir means the rename never happened and the target IS the
+previous install (kept, never removed); a sentinel-bearing target with no
+backup dir ⇒ restore from the sentinel. The loader
+(`isLoadableUserPluginDir`) additionally skips dot-prefixed entries
+(backups, staging clones) and any dir still carrying a sentinel. A new
+operation on an id first recovers that id's leftovers.
+
+**Install lock:** `~/.bakin/install.lock` is ONE atomic (O_EXCL) lock. The
+outer operation acquires it with `withInstallLock`, which is reentrant only
+within that operation's async continuation (AsyncLocalStorage) — a second
+request arriving while the lock is held is refused like a second process
+(`InstallLockBusyError`, mapped to **409** by the install, upgrade and
+remove routes). Inner writers (`installPluginBins`, `installManifestBins`,
+`replacePluginDir`) call `assertInstallLockHeld`, which only the holding
+operation satisfies.
 
 ### Signature Policy
 
@@ -427,36 +503,64 @@ trusted signed source. Then it determines source type:
      plugin could rename to `tasks` and clobber a core plugin after
      restart).
   6. Verify the remote manifest signature when required.
-  7. Compute permission diff. If widened AND `!opts.yes` → return
-     `{ awaitingConsent: true, newPermissions }` WITHOUT mutating disk
-     or lockfile.
-  8. Force-push detection via `git merge-base --is-ancestor` then
-     `git merge --ff-only`. Build. Project the upgraded plugin's
-     `defaults/runtime-skills/` assets into the runtime skill store.
-     Unexpected asset install errors fail the upgrade; `.userEdited`
-     skills are skipped and reported. Write lockfile.
+  7. Run the ONE consent gate (`gateUpgradeConsent`, below).
+  8. Force-push detection via `git merge-base --is-ancestor` (read-only,
+     BEFORE the transaction), then inside the replace transaction: copy
+     the backed-up clone in, `git merge --ff-only`, build, install the
+     new manifest's bins, project the upgraded plugin's
+     `defaults/runtime-skills/` assets into the runtime skill store, write
+     the lockfile (incl. `installedBins`). Unexpected asset install errors
+     fail the upgrade and restore the previous state; `.userEdited` skills
+     are skipped and reported. After the ledger write, bins the new
+     manifest dropped are deleted with zero remaining owners
+     (`sweepDroppedBins`, audited `plugin.upgrade.bins_dropped`).
 
 - **local**: re-resolve recorded source path; error if missing.
   Compute deterministic source-tree sha (skip `node_modules`/`dist`/
   `.git`, content + path only — no mtimes). No-op if unchanged.
   Read source manifest directly (no copy yet), assert manifest.id
-  stable, verify signature when required, compute permission diff, run
-  consent gate. Only then wipe + cpSync + rebuild + project plugin
-  runtime-skill assets + write lockfile.
+  stable, verify signature when required, run the consent gate. Only
+  then, inside the replace transaction: cpSync + rebuild + bins +
+  runtime-skill assets + lockfile; then the dropped-bin sweep.
 
-Permission widening: if the new manifest declares permissions not in
-the lockfile entry AND `--yes` is unset, return
-`{ awaitingConsent: true, newPermissions: [...] }` without updating
-the lockfile. CLI runs the upgrade prompt; on accept, recursively
-re-invokes with `yes: true` to commit.
+- **github subpath** and **Whiskit artifact** lanes: same gate, same
+  transaction (`place` copies the staging clone's subpath / moves the
+  extracted artifact in; the artifact lane has no build step).
+
+**Consent gate (`gateUpgradeConsent`, `upgrade-gate.ts`)** — one function
+for all four lanes, run BEFORE any mutation: bin preflight (platform +
+pin conflicts, fail closed → `UpgradeRefusedError`), then the widening
+diff over permissions AND binaries (`diffNewBins`: a bin the lockfile
+doesn't record, one re-pinned at a different sha for this platform, or a
+different archive member — `ConsentBin.member` is part of the consent
+identity the token binds).
+`UpgradeOptions.yes` is gone; the option is `accepted: UpgradeConsent`
+(`{ manifestSha, permissions, bins }` — the declaration the route verified
+out of a token). Widening without `accepted` → `{ awaitingConsent: true,
+newPermissions, newBins, consent }`; `accepted` that no longer matches the
+target → `awaitingConsent` + `manifestChanged: true`; otherwise proceed. A
+narrowing (dropped permission or bin) needs no consent.
+
+**Route — two-phase like install.** `POST /api/plugins/upgrade
+{ pluginId }` previews; on widening it answers `{ ok: false,
+awaitingConsent: true, newPermissions, newBins, consentToken }` with the
+token bound to `upgrade:<id>` + `manifestSha` + full permissions + bins.
+`{ pluginId, accepted: true, consentToken }` commits only while the target
+still matches (else bounce + fresh token). Tokens for another plugin,
+forged or expired tokens → 400. `?async=1` runs the whole upgrade as an
+install job. Callers round-trip the token: the CLI (`--yes` accepts the
+preview in place of the prompt; a changed target re-prompts, bounded to 3
+rounds) and the Health inventory's "Approve update" button (which lists
+the downloads).
 
 All upgrade branches read the target manifest BEFORE committed disk
 mutation so a declined upgrade leaves the plugin dir + lockfile
-exactly as they were.
+exactly as they were, and a FAILED upgrade restores them byte for byte
+(directory, binaries, markers, ledger row — S14).
 
 Committed upgrades return a `pluginAssets` report with installed,
-unchanged, and `.userEdited`-skipped runtime skills. No-op and
-awaiting-consent responses do not project assets.
+unchanged, and `.userEdited`-skipped runtime skills, plus `droppedBins`.
+No-op and awaiting-consent responses do not project assets.
 
 ### Upgrade-available detection — `bakin plugins list --check`
 
@@ -489,8 +593,11 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
 
 1. Refuse if `isCorePlugin(id)` (returns `{ core: true }` per CLI
    contract)
-2. Call `plugin.onUninstall(ctx)` if defined — log + audit + continue
-   on error (a buggy hook must not trap the user)
+2. Take the install lock for the WHOLE teardown (steps 2–7); a busy lock
+   refuses the removal with 409 before any hook, snapshot or deactivation
+   runs — a concurrent install can never leave a plugin deactivated but
+   installed. Then call `plugin.onUninstall(ctx)` if defined — log +
+   audit + continue on error (a buggy hook must not trap the user)
 3. Plan runtime skill cleanup — partition by the lockfile entry's
    `installedSkills` allowlist (the authoritative record of what this
    plugin actually installed) intersected with on-disk
@@ -511,9 +618,16 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
      checks, repair actions, and cached snapshots
    - `purgeContentType(table)` for every content type the plugin
      registered — atomic Antfly `dropTable`
-6. Filesystem deletes: skill dirs (per plan), `~/.bakin/plugin-
-   settings/<id>.json`, plugin dir
-7. Remove lockfile entry, drop in-memory plugin state
+6. Filesystem deletes — skill dirs (per plan),
+   `~/.bakin/plugin-settings/<id>.json`, plugin dir
+7. Remove lockfile entry, then delete the binaries the entry's
+   `installedBins` named that no owner in EITHER lockfile still pins
+   (`deleteBinsWithoutOwners` — the S6 rule shared with the upgrade
+   sweep and the pack uninstaller; ledger first so the removed plugin no
+   longer counts as an owner). Audited `plugin.uninstall.bins`
+   `{ removed, kept }`; the response carries `bins: { removed, kept }`.
+   The snapshot's `plugin-lock/<id>.json` still lists them (bytes are
+   re-downloadable, not archived).
 8. Audit log entry with sweep counts + snapshot path
 
 Restart still required for the plugin's modules to be released from
@@ -809,6 +923,9 @@ interface PluginManifest {
   }>
   dependencies?: string[]      // other plugin IDs — drives topological sort
   permissions?: Permission[]   // strict Zod enum — see PermissionSchema. Empty/missing → []
+  requires?: {                 // binaries Bakin installs into ~/.bakin/bin for this plugin
+    bins?: PluginBinRequirement[]  // { name, version, install: { <platform>: { url, sha256, sizeBytes?, archive? } }, verifyArgs? }
+  }                            // ONE schema with capability packs: packages/core/src/plugins/bin-requirement.ts
   runtimeCapabilities?: RuntimeCapability[]  // runtime features the plugin needs
   devWatch?: string[]          // file globs that trigger hot reload in dev
   signature?: {

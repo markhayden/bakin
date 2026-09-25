@@ -31,7 +31,7 @@ mock.module('@/core/logger', () => ({
 }))
 
 import { binPlatformKey, installBinRequirement } from '../../src/core/agent-packages/bin-installer'
-import type { BinRequirement } from '../../packages/core/src/agent-packages/manifest'
+import type { BinRequirement } from '../../packages/core/src/plugins/bin-requirement'
 
 // A real executable: POSIX sh script. --version exits 0; anything else exits 1.
 const GOOD_SCRIPT = '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "fixture 1.0.0"; exit 0; fi\nexit 1\n'

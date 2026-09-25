@@ -15,12 +15,19 @@
  */
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs'
-import { createHash } from 'crypto'
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'fs'
+
 import { join } from 'path'
 import { tmpdir } from 'os'
-import type { BinPlatformKey, BinRequirement, Manifest } from '../../../packages/core/src/agent-packages/manifest'
-import { readInstalledBy, writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
+import { verifyInstalledBin } from './bin-verify'
+import { binPlatformKey } from './bin-platform'
+
+export { binPlatformKey } from './bin-platform'
+import { assertInstallLockHeld } from '../install-core/install-lock'
+import { assertNoBinPinConflict, binTargetPath } from '../plugins/bin-owners'
+import type { Manifest } from '../../../packages/core/src/agent-packages/manifest'
+import type { BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
+import { writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
 import { commitFileAtomic, downloadToFile, extractTarMember, sha256File } from '../../../packages/core/src/net/download'
 import type { ProjectorResult } from './projector'
 import { getBakinPaths } from '@/core/content-dir'
@@ -32,15 +39,10 @@ const execFileAsync = promisify(execFile)
 const DOWNLOAD_TIMEOUT_MS = 120_000
 const VERIFY_TIMEOUT_MS = 15_000
 
-/** Map this process's platform/arch onto a manifest platform key. */
-export function binPlatformKey(): BinPlatformKey | null {
-  const os = process.platform === 'darwin' ? 'darwin' : process.platform === 'linux' ? 'linux' : null
-  const arch = process.arch === 'arm64' ? 'arm64' : process.arch === 'x64' ? 'x64' : null
-  if (!os || !arch) return null
-  return `${os}-${arch}` as BinPlatformKey
-}
 
 export interface BinInstallResult {
+  /** Archive-sourced: the extracted member. */
+  member?: string
   /** Absolute path of the installed binary inside the Bakin bin dir. */
   target: string
   /** sha256 of the installed bytes (== the manifest pin). */
@@ -82,17 +84,13 @@ export async function installBinRequirement(
   // the pin. Archives: the pin names the TARBALL, so the marker must match
   // the pin AND the on-disk bytes must match the marker's extracted hash —
   // a corrupted binary under a surviving sidecar still self-heals.
-  if (existsSync(target)) {
-    const onDisk = createHash('sha256').update(readFileSync(target)).digest('hex')
-    const marker = readInstalledBy(target)
-    const matches = download.archive
-      ? marker?.sha256?.toLowerCase() === pin && marker?.extractedSha256 === onDisk
-      : onDisk === pin
-    if (matches) {
-      log.info(`Binary "${bin.name}" already installed at pinned sha — skipping download`)
-      writeInstalledBy(target, { ...installedBy, sha256: pin, ...(download.archive ? { extractedSha256: onDisk } : {}) })
-      return { target, sha256: pin, skipped: true }
-    }
+  // ONE predicate with the readiness scan (bin-verify.ts): whatever the
+  // doctor would report as installed, the installer skips — and vice versa.
+  const verdict = verifyInstalledBin(target, download)
+  if (verdict.status === 'installed') {
+    log.info(`Binary "${bin.name}" already installed at pinned sha — skipping download`)
+    writeInstalledBy(target, { ...installedBy, sha256: pin, ...(download.archive ? { extractedSha256: verdict.onDiskSha256, member: download.archive.member } : {}) })
+    return { target, sha256: pin, ...(download.archive ? { member: download.archive.member } : {}), skipped: true }
   }
 
   // Download → (extract) → verify-then-commit all ride the shared primitive
@@ -147,10 +145,10 @@ export async function installBinRequirement(
   writeInstalledBy(target, {
     ...installedBy,
     sha256: pin,
-    ...(download.archive ? { extractedSha256: await sha256File(target) } : {}),
+    ...(download.archive ? { extractedSha256: await sha256File(target), member: download.archive.member } : {}),
   })
   log.info(`Installed binary "${bin.name}" ${bin.version} → ${target}`)
-  return { target, sha256: pin, skipped: false }
+  return { target, sha256: pin, ...(download.archive ? { member: download.archive.member } : {}), skipped: false }
 }
 
 /**
@@ -169,8 +167,13 @@ export async function installManifestBins(
   options: { progress?: import('./install-progress').InstallProgressFn } = {},
 ): Promise<void> {
   if (manifest.kind !== 'skill-pack' || !manifest.requires?.bins?.length) return
-  const progress = options.progress ?? (() => {})
   const bins = manifest.requires.bins
+  // Every pack writer (install, update, sync/repair) passes through here, so
+  // this is where the shared-bin contract is enforced: under the install
+  // lock, and never overwriting a target another owner pins differently.
+  assertInstallLockHeld('installManifestBins')
+  assertNoBinPinConflict(bins, { kind: 'package', id: installedBy.package }, binPlatformKey())
+  const progress = options.progress ?? (() => {})
   for (const [index, bin] of bins.entries()) {
     progress({ stage: 'bins', message: `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`, item: bin.name, current: index + 1, total: bins.length })
     const installed = await installBinRequirement(bin, installedBy, {
@@ -179,6 +182,67 @@ export async function installManifestBins(
         item: bin.name, current: index + 1, total: bins.length, receivedBytes, totalBytes,
       }),
     })
-    result.projections.push({ kind: 'bin', target: installed.target, sha256: installed.sha256 })
+    result.projections.push({ kind: 'bin', target: installed.target, sha256: installed.sha256, ...(installed.member ? { member: installed.member } : {}) })
   }
+}
+
+export interface PluginBinIdentity {
+  pluginId: string
+  version: string
+  /** Git provenance when known; empty strings for local/artifact installs (honest, like packs). */
+  ref: string
+  commitSha: string
+}
+
+export interface PluginBinInstall {
+  name: string
+  /** Pinned download sha (what the lockfile records). */
+  sha256: string
+  /** Archive-sourced: the extracted member (recorded with the pin — identity for shared ownership). */
+  member?: string
+  target: string
+  /** False when the pinned file was already in place (shared or re-run) — rollback must not delete it. */
+  created: boolean
+}
+
+/**
+ * Install a plugin's `requires.bins` (spec plugin-managed-binaries §2.6).
+ * Same installer, same bin dir, same marker schema as packs — identity
+ * `plugin:<id>`. Caller holds the install lock and has already run platform
+ * preflight; conflicts are re-checked here because the ledger may have moved.
+ */
+export async function installPluginBins(
+  bins: readonly BinRequirement[],
+  identity: PluginBinIdentity,
+  options: { progress?: import('./install-progress').InstallProgressFn } = {},
+): Promise<PluginBinInstall[]> {
+  if (bins.length === 0) return []
+  assertInstallLockHeld('installPluginBins')
+  assertNoBinPinConflict(bins, { kind: 'plugin', id: identity.pluginId }, binPlatformKey())
+  const progress = options.progress ?? (() => {})
+  const installedBy: Omit<InstalledByMarker, 'sha256'> = {
+    package: `plugin:${identity.pluginId}`,
+    version: identity.version,
+    ref: identity.ref,
+    commitSha: identity.commitSha,
+    installedAt: new Date().toISOString(),
+  }
+  const out: PluginBinInstall[] = []
+  for (const [index, bin] of bins.entries()) {
+    const message = `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`
+    progress({ stage: 'bins', message, item: bin.name, current: index + 1, total: bins.length })
+    const installed = await installBinRequirement(bin, installedBy, {
+      onProgress: (receivedBytes, totalBytes) => progress({
+        stage: 'bins', message, item: bin.name, current: index + 1, total: bins.length, receivedBytes, totalBytes,
+      }),
+    })
+    out.push({ name: bin.name, sha256: installed.sha256, ...(installed.member ? { member: installed.member } : {}), target: binTargetPath(bin.name), created: !installed.skipped })
+  }
+  return out
+}
+
+/** What the plugin lockfile records for installed binaries: name + pin (+ archive member). */
+export function toInstalledBins(results: readonly PluginBinInstall[]): Array<{ name: string; sha256: string; member?: string }> | undefined {
+  if (results.length === 0) return undefined
+  return results.map((bin) => ({ name: bin.name, sha256: bin.sha256, ...(bin.member ? { member: bin.member } : {}) }))
 }

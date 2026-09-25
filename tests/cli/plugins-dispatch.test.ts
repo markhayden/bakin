@@ -52,7 +52,7 @@ describe('bakin plugins binary dispatch', () => {
       'http://localhost:3737/api/plugins/upgrade',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ pluginId: 'tasks', yes: true }),
+        body: JSON.stringify({ pluginId: 'tasks' }),
       }),
     )
   })

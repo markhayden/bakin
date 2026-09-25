@@ -8,9 +8,13 @@
  *   4. Deactivate the plugin in memory: onShutdown, hooks, exec tools,
  *      workflow nodes, notification channels, health checks, search
  *      content types, runtime skills, and registry state
- *   5. Deletes: runtime skills (honors .userEdited), settings
- *      JSON, plugin dir
+ *   5. Deletes: runtime skills (honors .userEdited), settings JSON,
+ *      plugin dir — steps 2–7 run under the install lock; a busy lock
+ *      refuses the removal (409) BEFORE any teardown
  *   6. Remove lockfile entry
+ *   7. Delete the binaries this plugin installed that no other owner in
+ *      either lockfile still pins (spec plugin-managed-binaries S6);
+ *      audit `plugin.uninstall.bins`
  */
 import { existsSync, rmSync, readFileSync } from 'fs'
 import { readPluginManifestJson } from '@bakin/core/plugins/manifest'
@@ -33,11 +37,21 @@ import {
   writePluginLockfile,
 } from '@bakin/core/plugins/lockfile'
 import { notifyPluginRemoved } from '@/core/plugins/live-lifecycle'
+import { isInstallLockBusy, withInstallLock } from '@/core/install-core/install-lock'
+import { deleteBinsWithoutOwners } from '@/core/plugins/bin-owners'
 
 const log = createLogger('plugin-remove')
 
 interface RemoveBody {
   pluginId: string
+}
+
+interface RemovalOutcome {
+  snapshotPath: string | null
+  sweepReport: Awaited<ReturnType<typeof pluginRegistry.deactivatePlugin>>
+  skillsResult: { removed: number; kept: number; missingFromDisk: string[] }
+  binsRemoved: string[]
+  binsKept: string[]
 }
 
 export async function post(req: Request, _url: URL): Promise<Response> {
@@ -102,113 +116,148 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     }
   }
 
-  // ─── 1. onUninstall hook ───────────────────────────────────────────────────
-  // Run BEFORE registry sweep so the plugin still has the full context. Errors
-  // logged + audited but do not block the rest of the cleanup — a buggy
-  // onUninstall must not trap the user.
+  // The WHOLE teardown — onUninstall hook, snapshot, registry deactivation,
+  // filesystem deletes, ledger, bin sweep — runs under the install lock, so a
+  // concurrent install can never leave a plugin deactivated but installed.
+  let outcome: RemovalOutcome
   try {
-    const plugin = pluginRegistry.getPlugin?.(pluginId)
-    if (plugin?.onUninstall) {
-      const ctx = pluginRegistry.getPluginContext?.(pluginId)
-      if (ctx) {
-        await plugin.onUninstall(ctx)
-        log.info('plugin onUninstall complete', { pluginId })
-      } else {
-        log.warn('plugin defined onUninstall but no ctx available — skipping', { pluginId })
+    outcome = await withInstallLock(async (): Promise<RemovalOutcome> => {
+    // ─── 1. onUninstall hook ───────────────────────────────────────────────────
+    // Run BEFORE registry sweep so the plugin still has the full context. Errors
+    // logged + audited but do not block the rest of the cleanup — a buggy
+    // onUninstall must not trap the user.
+    try {
+      const plugin = pluginRegistry.getPlugin?.(pluginId)
+      if (plugin?.onUninstall) {
+        const ctx = pluginRegistry.getPluginContext?.(pluginId)
+        if (ctx) {
+          await plugin.onUninstall(ctx)
+          log.info('plugin onUninstall complete', { pluginId })
+        } else {
+          log.warn('plugin defined onUninstall but no ctx available — skipping', { pluginId })
+        }
+      }
+    } catch (err) {
+      log.error('plugin onUninstall failed', err as Error, { pluginId })
+      appendAudit(getContentDir(), 'plugin.uninstall.error', 'system', {
+        kind: 'security',
+        pluginId,
+        error: err instanceof Error ? err.message : String(err),
+      }, 'system')
+    }
+
+    // ─── 2. Plan runtime skill cleanup BEFORE snapshot ───────────────────────
+    // We snapshot the to-remove skill content into the tarball, then actually
+    // delete it. Capturing the plan first lets the snapshot include exactly
+    // what the cleanup step will delete.
+    //
+    // Authority: the LOCKFILE entry's installedSkills allowlist, NOT the
+    // on-disk `.installedBy` markers. This defeats the fake-marker
+    // scorched-earth attack — a malicious plugin that wrote
+    // `{pluginId: <self>}` into other plugins' .installedBy can't trick us
+    // into deleting them, because the lockfile entry only records skills
+    // this plugin actually installed.
+    const ownedSkills = lockBeforeRemove.plugins[pluginId]?.installedSkills ?? []
+    const assetsPlan = await planPluginAssetsRemoval(pluginId, ownedSkills)
+
+    // ─── 3. Snapshot ───────────────────────────────────────────────────────────
+    let snapshotPath: string | null = null
+    try {
+      const result = await snapshotUninstall({
+        pluginId,
+        pluginDir,
+        settingsFile: existsSync(settingsFile) ? settingsFile : undefined,
+        lockEntry: lockBeforeRemove.plugins[pluginId],
+        removedSkills: assetsPlan.snapshots,
+      })
+      snapshotPath = result.tarballPath
+    } catch (err) {
+      log.error('plugin uninstall snapshot failed', err as Error, { pluginId })
+      appendAudit(getContentDir(), 'plugin.uninstall.snapshot_error', 'system', {
+        kind: 'security',
+        pluginId,
+        error: err instanceof Error ? err.message : String(err),
+      }, 'system')
+      // Snapshot failure is logged but we continue with cleanup — the user
+      // asked for the plugin to be removed; refusing to remove it because
+      // the safety-net failed would be the wrong tradeoff.
+    }
+
+    // ─── 4. Registry deactivation ─────────────────────────────────────────────
+    const sweepReport = await pluginRegistry.deactivatePlugin(pluginId, {
+      callShutdown: true,
+      removeState: true,
+    })
+
+    // ─── 5–7. Filesystem deletes, ledger, bins ───────────────────────────────
+    let skillsResult: { removed: number; kept: number; missingFromDisk: string[] } = { removed: 0, kept: 0, missingFromDisk: [] }
+    const ownedBins = lockBeforeRemove.plugins[pluginId]?.installedBins ?? []
+    let binsRemoved: string[] = []
+    {
+      try {
+        const r = await removePluginAssets(pluginId, ownedSkills, assetsPlan)
+        skillsResult = { removed: r.removed, kept: r.kept, missingFromDisk: r.missingFromDisk }
+        if (r.missingFromDisk.length > 0) {
+          log.warn('lockfile claimed ownership of skills not present on disk', {
+            pluginId,
+            missing: r.missingFromDisk,
+          })
+        }
+      } catch (err) {
+        log.warn('removePluginAssets failed', err, { pluginId })
+      }
+
+      if (existsSync(settingsFile)) {
+        try {
+          rmSync(settingsFile, { force: true })
+        } catch (err) {
+          log.warn('plugin-settings rm failed', err, { pluginId, settingsFile })
+        }
+      }
+
+      if (existsSync(pluginDir)) {
+        try {
+          rmSync(pluginDir, { recursive: true, force: true })
+        } catch (err) {
+          log.warn('plugin dir rm failed', err, { pluginId, pluginDir })
+        }
+      }
+
+      // Ledger BEFORE the bin sweep: once the row is gone this plugin no
+      // longer counts as an owner, so the zero-owner rule reads true state.
+      try {
+        const lock = readPluginLockfile()
+        if (lock.plugins[pluginId]) {
+          writePluginLockfile(removePlugin(lock, pluginId))
+        }
+      } catch (err) {
+        log.warn('lockfile entry removal failed', err, { pluginId })
+      }
+
+      try {
+        binsRemoved = deleteBinsWithoutOwners(ownedBins)
+      } catch (err) {
+        log.warn('bin sweep failed — binaries left in ~/.bakin/bin', err, { pluginId })
       }
     }
-  } catch (err) {
-    log.error('plugin onUninstall failed', err as Error, { pluginId })
-    appendAudit(getContentDir(), 'plugin.uninstall.error', 'system', {
-      kind: 'security',
-      pluginId,
-      error: err instanceof Error ? err.message : String(err),
-    }, 'system')
-  }
-
-  // ─── 2. Plan runtime skill cleanup BEFORE snapshot ───────────────────────
-  // We snapshot the to-remove skill content into the tarball, then actually
-  // delete it. Capturing the plan first lets the snapshot include exactly
-  // what the cleanup step will delete.
-  //
-  // Authority: the LOCKFILE entry's installedSkills allowlist, NOT the
-  // on-disk `.installedBy` markers. This defeats the fake-marker
-  // scorched-earth attack — a malicious plugin that wrote
-  // `{pluginId: <self>}` into other plugins' .installedBy can't trick us
-  // into deleting them, because the lockfile entry only records skills
-  // this plugin actually installed.
-  const ownedSkills = lockBeforeRemove.plugins[pluginId]?.installedSkills ?? []
-  const assetsPlan = await planPluginAssetsRemoval(pluginId, ownedSkills)
-
-  // ─── 3. Snapshot ───────────────────────────────────────────────────────────
-  let snapshotPath: string | null = null
-  try {
-    const result = await snapshotUninstall({
-      pluginId,
-      pluginDir,
-      settingsFile: existsSync(settingsFile) ? settingsFile : undefined,
-      lockEntry: lockBeforeRemove.plugins[pluginId],
-      removedSkills: assetsPlan.snapshots,
-    })
-    snapshotPath = result.tarballPath
-  } catch (err) {
-    log.error('plugin uninstall snapshot failed', err as Error, { pluginId })
-    appendAudit(getContentDir(), 'plugin.uninstall.snapshot_error', 'system', {
-      kind: 'security',
-      pluginId,
-      error: err instanceof Error ? err.message : String(err),
-    }, 'system')
-    // Snapshot failure is logged but we continue with cleanup — the user
-    // asked for the plugin to be removed; refusing to remove it because
-    // the safety-net failed would be the wrong tradeoff.
-  }
-
-  // ─── 4. Registry deactivation ─────────────────────────────────────────────
-  const sweepReport = await pluginRegistry.deactivatePlugin(pluginId, {
-    callShutdown: true,
-    removeState: true,
-  })
-
-  // ─── 5. Filesystem deletes ─────────────────────────────────────────────────
-  let skillsResult: { removed: number; kept: number; missingFromDisk: string[] } = { removed: 0, kept: 0, missingFromDisk: [] }
-  try {
-    const r = await removePluginAssets(pluginId, ownedSkills, assetsPlan)
-    skillsResult = { removed: r.removed, kept: r.kept, missingFromDisk: r.missingFromDisk }
-    if (r.missingFromDisk.length > 0) {
-      log.warn('lockfile claimed ownership of skills not present on disk', {
+    const binsKept = ownedBins.map((bin) => bin.name).filter((name) => !binsRemoved.includes(name))
+    if (ownedBins.length > 0) {
+      appendAudit(getContentDir(), 'plugin.uninstall.bins', 'system', {
         pluginId,
-        missing: r.missingFromDisk,
-      })
+        removed: binsRemoved,
+        kept: binsKept,
+      }, 'system')
     }
+
+    return { snapshotPath, sweepReport, skillsResult, binsRemoved, binsKept }
+    })
   } catch (err) {
-    log.warn('removePluginAssets failed', err, { pluginId })
-  }
-
-  if (existsSync(settingsFile)) {
-    try {
-      rmSync(settingsFile, { force: true })
-    } catch (err) {
-      log.warn('plugin-settings rm failed', err, { pluginId, settingsFile })
+    if (isInstallLockBusy(err)) {
+      return Response.json({ ok: false, error: `Cannot remove "${pluginId}" right now: ${err.message}` }, { status: 409 })
     }
+    throw err
   }
-
-  if (existsSync(pluginDir)) {
-    try {
-      rmSync(pluginDir, { recursive: true, force: true })
-    } catch (err) {
-      log.warn('plugin dir rm failed', err, { pluginId, pluginDir })
-    }
-  }
-
-  // ─── 6. Lockfile entry removal ─────────────────────────────────────────────
-  try {
-    const lock = readPluginLockfile()
-    if (lock.plugins[pluginId]) {
-      writePluginLockfile(removePlugin(lock, pluginId))
-    }
-  } catch (err) {
-    log.warn('lockfile entry removal failed', err, { pluginId })
-  }
+  const { snapshotPath, sweepReport, skillsResult, binsRemoved, binsKept } = outcome
 
   notifyPluginRemoved(pluginId)
 
@@ -217,12 +266,15 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     sweepReport,
     skillsRemoved: skillsResult.removed,
     skillsKept: skillsResult.kept,
+    binsRemoved,
+    binsKept,
     snapshot: snapshotPath,
   })
   appendAudit(getContentDir(), 'plugin.uninstall', 'system', {
     pluginId,
     sweepReport,
     skills: skillsResult,
+    bins: { removed: binsRemoved, kept: binsKept },
     snapshot: snapshotPath,
   }, 'system')
 
@@ -231,6 +283,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     id: pluginId,
     skills: { removed: skillsResult.removed, kept: skillsResult.kept },
     skillsMissing: skillsResult.missingFromDisk,
+    bins: { removed: binsRemoved, kept: binsKept },
     sweep: sweepReport,
     snapshot: snapshotPath,
     message: `Removed "${pluginId}" and deactivated it.`,

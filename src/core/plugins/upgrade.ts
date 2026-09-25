@@ -22,10 +22,11 @@
  * - `./upgrade-check` — the read-only `--check` probe (batched lockfile write)
  * - `./source-tree-sha` — local source-tree hashing
  */
-import { existsSync, cpSync, rmSync } from 'fs'
+import { existsSync, cpSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { isCorePlugin } from '@/core/plugin-registry'
+import { withInstallLock } from '@/core/install-core/install-lock'
 import {
   type PluginLockEntry,
   isLinked,
@@ -36,6 +37,8 @@ import {
 import { parseGithubSource } from '@bakin/core/plugins/source'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
 import { SOURCE_TREE_SHA_ALGO, compareStoredSourceTreeSha } from './source-tree-sha'
+import { replacePluginDir } from './replace-transaction'
+import { toInstalledBins } from '@/core/agent-packages/bin-installer'
 import {
   type UpgradeOptions,
   type UpgradeResult,
@@ -43,16 +46,16 @@ import {
   auditUpgradeRejected,
   assertManifestIdStable,
   assertManifestSignaturePolicy,
-  diffNewPermissions,
+  gateUpgradeConsent,
   installUpgradedPluginAssets,
-  manifestPermissions,
   manifestVersion,
   readManifest,
+  sweepDroppedBins,
 } from './upgrade-gate'
 import { isArtifactInstall, upgradeArtifact } from './upgrade-artifact'
 import { upgradeGithub, upgradeGithubSubpath } from './upgrade-github'
 
-export { type UpgradeOptions, type UpgradeResult, UpgradeRefusedError } from './upgrade-gate'
+export { type UpgradeConsent, type UpgradeOptions, type UpgradeResult, UpgradeRefusedError } from './upgrade-gate'
 export { runChecks, type UpgradeAvailability } from './upgrade-check'
 export { isArtifactInstall } from './upgrade-artifact'
 export { computeSourceTreeSha } from './source-tree-sha'
@@ -65,6 +68,18 @@ export { computeSourceTreeSha } from './source-tree-sha'
 export async function upgradePlugin(
   id: string,
   opts: UpgradeOptions = {},
+): Promise<UpgradeResult> {
+  opts.progress?.({ stage: 'fetch-source', message: `Checking ${id} for a newer version…` })
+  // ONE install lock around the whole upgrade — the lanes' replace
+  // transactions and bin writers assert it rather than acquiring their own.
+  const result = await withInstallLock(() => upgradePluginResolved(id, opts))
+  opts.progress?.({ stage: 'finalize', message: result.noop ? `${id} is already up to date` : `Upgraded ${id}` })
+  return result
+}
+
+async function upgradePluginResolved(
+  id: string,
+  opts: UpgradeOptions,
 ): Promise<UpgradeResult> {
   if (isCorePlugin(id)) {
     auditUpgradeRejected('core_plugin', id)
@@ -154,6 +169,7 @@ async function upgradeLocal(
       after: before,
       noop: true,
       newPermissions: [],
+      newBins: [],
       awaitingConsent: false,
     }
   }
@@ -165,49 +181,47 @@ async function upgradeLocal(
   assertManifestIdStable(manifest, id)
   assertManifestSignaturePolicy(manifest, id)
   const newVersion = manifestVersion(manifest, entry.version)
-  const newPerms = manifestPermissions(manifest, id)
-  const widened = diffNewPermissions(entry.permissions, newPerms)
+  const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: '' } })
+  if (!gate.proceed) return gate.result
 
-  if (widened.length > 0 && !opts.yes) {
-    // Consent required — exit BEFORE mutating disk or lockfile.
-    return {
-      id,
-      before,
-      after: { version: newVersion, commitSha: '' },
-      noop: false,
-      newPermissions: widened,
-      awaitingConsent: true,
-    }
-  }
-
-  // Consent accepted (or unnecessary). Now safe to wipe + re-copy the
-  // plugin dir. Wipe first so deletions in the source are reflected
-  // (plain cpSync would only overlay, leaving stale files).
-  rmSync(pluginDir, { recursive: true, force: true })
-  cpSync(sourcePath, pluginDir, { recursive: true, dereference: false })
-
-  await buildUserPlugin(pluginDir)
-
-  const assets = await installUpgradedPluginAssets(id, pluginDir)
-
-  const updated = updatePlugin(readPluginLockfile(), id, {
-    upgradedAt: new Date().toISOString(),
-    version: newVersion,
-    manifestSha,
-    permissions: newPerms,
-    sourceTreeSha: newTreeSha,
-    sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO,
-    installedSkills: assets.installedSkills,
+  // Consent accepted (or unnecessary). Replace the plugin dir inside the
+  // transaction — the previous install (directory, binaries, ledger row)
+  // comes back byte for byte on any failure. Bins the new manifest dropped
+  // go only AFTER the ledger write, and only with zero remaining owners.
+  let assets!: Awaited<ReturnType<typeof installUpgradedPluginAssets>>
+  const { installedBins } = await replacePluginDir({
+    id,
+    op: 'upgrade',
+    place: (dir) => cpSync(sourcePath, dir, { recursive: true, dereference: false }),
+  build: buildUserPlugin,
+    bins: gate.bins,
+    binIdentity: { pluginId: id, version: newVersion, ref: '', commitSha: '' },
+    progress: opts.progress,
+    ledger: async (bins) => {
+      assets = await installUpgradedPluginAssets(id, pluginDir)
+      writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
+        upgradedAt: new Date().toISOString(),
+        version: newVersion,
+      sourceTreeSha: newTreeSha,
+      sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO,
+        manifestSha,
+        permissions: gate.newPerms,
+        installedSkills: assets.installedSkills,
+        installedBins: toInstalledBins(bins),
+      }))
+    },
   })
-  writePluginLockfile(updated)
+  const droppedBins = sweepDroppedBins(id, entry.installedBins, installedBins.map((bin) => bin.name))
 
   return {
     id,
     before,
     after: { version: newVersion, commitSha: '' },
     noop: false,
-    newPermissions: widened,
+    newPermissions: gate.widened,
+    newBins: gate.newBins,
     awaitingConsent: false,
     pluginAssets: assets.pluginAssets,
+    droppedBins,
   }
 }

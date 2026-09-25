@@ -97,7 +97,7 @@ const CommitShaSchema = z.string().refine(
   { message: 'commitSha must be empty or a 40-char lowercase hex sha' },
 )
 
-const PluginLockEntrySchema = z.object({
+export const PluginLockEntrySchema = z.object({
   /** Original install source — git URL for github, absolute path for local. */
   source: SourceStringSchema,
   type: PluginTypeSchema,
@@ -165,6 +165,18 @@ const PluginLockEntrySchema = z.object({
    * this field existed.
    */
   installedSkills: z.array(z.string().regex(/^[A-Za-z0-9._-]+$/)).optional(),
+  /**
+   * Binaries this plugin installed into `~/.bakin/bin` from `requires.bins`
+   * at install/upgrade time, with the pinned download sha. Authoritative for
+   * removal (like installedSkills) and for cross-owner conflict checks with
+   * capability packs (`src/core/plugins/bin-owners.ts`).
+   */
+  installedBins: z.array(z.object({
+    name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/i),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+    /** Archive-sourced bins: the extracted member (identity for shared ownership). */
+    member: z.string().optional(),
+  })).optional(),
   /**
    * Phase 2 (#171). True when this entry was registered via
    * `bakin plugins link <localPath>` — i.e. the plugin dir at

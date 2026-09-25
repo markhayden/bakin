@@ -166,6 +166,35 @@ describe('capability-pack bins survive projection passes', () => {
     expect(hits['/v2']).toBe(1)
   })
 
+  it('update refuses when a plugin pins fixturebin at another sha — old binary untouched', async () => {
+    const { addPlugin, readPluginLockfile, writePluginLockfile } = await import('../../packages/core/src/plugins/lockfile')
+    const src = seedCapabilityPack('1.0.0', '/v1', SCRIPT_V1)
+    await installPackage({ source: src })
+    const before = readFileSync(binTarget(), 'utf-8')
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'terminal', {
+      source: 'github:x/terminal', type: 'github', ref: '', commitSha: '', installedAt: new Date().toISOString(),
+      version: '0.2.0', permissions: [], manifestSha: 'm', installedBins: [{ name: 'fixturebin', sha256: 'b'.repeat(64) }],
+    }))
+    seedCapabilityPack('1.1.0', '/v2', SCRIPT_V2)
+    await expect(updatePackageById({ packageId: 'websearch@1.0.0' })).rejects.toThrow(/plugin "terminal"/)
+    expect(readFileSync(binTarget(), 'utf-8')).toBe(before)
+  })
+
+  it('repairPackLocally never overwrites on the same conflict — bytes and the previous bin row are kept (repair is best-effort, readiness reports)', async () => {
+    const { repairPackLocally } = await import('../../src/core/agent-packages/sync')
+    const { addPlugin, readPluginLockfile, writePluginLockfile } = await import('../../packages/core/src/plugins/lockfile')
+    const src = seedCapabilityPack('1.0.0', '/v1', SCRIPT_V1)
+    await installPackage({ source: src })
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'terminal', {
+      source: 'github:x/terminal', type: 'github', ref: '', commitSha: '', installedAt: new Date().toISOString(),
+      version: '0.2.0', permissions: [], manifestSha: 'm', installedBins: [{ name: 'fixturebin', sha256: 'b'.repeat(64) }],
+    }))
+    const before = readFileSync(binTarget(), 'utf-8')
+    await repairPackLocally('websearch@1.0.0')
+    expect(readFileSync(binTarget(), 'utf-8')).toBe(before)
+    expect(lockBins().map((p) => p.target)).toEqual([binTarget()])
+  })
+
   it('repairPackLocally restores a deleted binary', async () => {
     const src = seedCapabilityPack('1.0.0', '/v1', SCRIPT_V1)
     await installPackage({ source: src })

@@ -54,6 +54,7 @@ import { unmarkUserEdited } from '../../../packages/core/src/agent-packages/mark
 import { PackageNotInstalledError } from './errors'
 import { projectPackage, type ProjectorResult } from './projector'
 import { installManifestRequirements } from './requirements-installer'
+import { withInstallLock } from '../install-core/install-lock'
 import { updatePackageById } from './updater'
 import { checkPackageUpdateAsync } from './checker'
 import {
@@ -193,7 +194,13 @@ async function reclaimTargets(
  * re-downloaded best-effort (bytes that aren't on disk can't be restored
  * locally); an unchanged on-disk bin never touches the network.
  */
+/** Re-project a pack from its installed source. Writes projections and bins,
+ *  so it runs under the install lock (reentrant when an update/install holds it). */
 async function applyLocalProjection(packageId: string): Promise<ProjectorResult> {
+  return withInstallLock(() => applyLocalProjectionLocked(packageId))
+}
+
+async function applyLocalProjectionLocked(packageId: string): Promise<ProjectorResult> {
   const lock = readLockfile()
   const entry = lock.packages[packageId]
   if (!entry) throw new PackageNotInstalledError(packageId)

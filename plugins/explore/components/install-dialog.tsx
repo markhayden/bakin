@@ -261,6 +261,7 @@ export function InstallDialog({
     id?: string
     version?: string
     permissions?: string[]
+    bins?: ConsentRequest['bins']
     consentToken?: string
     capability?: Parameters<typeof keyStepFrom>[0]['capability']
   }
@@ -272,6 +273,7 @@ export function InstallDialog({
         id: responseBody.id ?? source,
         version: responseBody.version ?? '?',
         permissions: responseBody.permissions ?? [],
+        bins: responseBody.bins ?? [],
         consentToken: responseBody.consentToken,
         manifestChanged: responseBody.manifestChanged === true,
       })
@@ -304,51 +306,36 @@ export function InstallDialog({
     setSubmitting(true)
     setError(null)
 
-    // Packages/agents run as install JOBS (#895): the POST returns a job
-    // handle immediately, staged progress rides the SSE bus (poll as the
-    // net), and the terminal body comes from the status endpoint. Plugins
-    // keep the blocking path — their consent flow is a two-phase POST.
-    if (kind !== 'plugin') {
-      try {
-        const res = await fetch(`${endpointFor(kind)}?async=1`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(SECRET_TIMEOUT_MS),
-        })
-        const started = (await res.json()) as { ok?: boolean; jobId?: string; error?: string }
-        if (res.status === 202 && started.jobId) {
-          settledJobRef.current = null
-          setJob({ id: started.jobId, startedAt: Date.now(), history: [], current: null })
-          // Immediate status check: fast installs settle in one round trip
-          // instead of waiting for the first SSE event or poll tick.
-          void resolveJob(started.jobId)
-          return // submitting stays true until the job settles
-        }
-        setError(started.error ?? `HTTP ${res.status}`)
-        setSubmitting(false)
-        return
-      } catch (err) {
-        setError(describeRequestError(err))
-        setSubmitting(false)
-        return
-      }
-    }
-
+    // Every install runs as an install JOB (#895): the POST asks for
+    // `?async=1`, a 202 hands back a job handle, staged progress rides the
+    // SSE bus (poll as the net), and the terminal body comes from the status
+    // endpoint. Anything but a 202 IS the outcome — the plugin preflight
+    // (consent request) answers synchronously with the token, as do
+    // validation errors, so one handler covers both shapes.
     try {
-      const res = await fetch(endpointFor(kind), {
+      const res = await fetch(`${endpointFor(kind)}?async=1`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(INSTALL_TIMEOUT_MS),
       })
-      const responseBody = (await res.json()) as InstallResponseBody
+      const responseBody = (await res.json()) as InstallResponseBody & { jobId?: string }
+      if (res.status === 202 && responseBody.jobId) {
+        settledJobRef.current = null
+        // The consent modal's job is done once the commit is accepted — the
+        // main dialog carries the staged progress (files → binaries → ledger).
+        setConsent(null)
+        setJob({ id: responseBody.jobId, startedAt: Date.now(), history: [], current: null })
+        // Immediate status check: fast installs settle in one round trip
+        // instead of waiting for the first SSE event or poll tick.
+        void resolveJob(responseBody.jobId)
+        return // submitting stays true until the job settles
+      }
       handleInstallOutcome(responseBody, res.ok, res.status)
     } catch (err) {
       setError(describeRequestError(err))
-    } finally {
-      if (kind === 'plugin') setSubmitting(false)
     }
+    setSubmitting(false)
   }
 
   /** Resolve a finished job through the status endpoint (single source of truth). */

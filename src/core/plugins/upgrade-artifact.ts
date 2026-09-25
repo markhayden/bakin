@@ -18,8 +18,9 @@ import { downloadText } from '@/core/whiskit/download'
 import { parseArtifactsIndex, INDEX_FILENAME } from '@/core/whiskit/artifacts-index'
 import { materializeArtifact } from '@/core/whiskit/consumer-install'
 import { isExternalsContractCompatible, PROVENANCE_FILENAME } from '@/core/whiskit/provenance'
-import { acquireLock, releaseLock } from '@/core/install-core/install-lock'
-import { commitStaging } from '@/core/install-core/transaction'
+import { createLogger } from '@/core/logger'
+import { moveContents, replacePluginDir } from './replace-transaction'
+import { toInstalledBins } from '@/core/agent-packages/bin-installer'
 import {
   type UpgradeOptions,
   type UpgradeResult,
@@ -27,12 +28,14 @@ import {
   auditUpgradeRejected,
   assertManifestIdStable,
   assertManifestSignaturePolicy,
-  diffNewPermissions,
+  gateUpgradeConsent,
   installUpgradedPluginAssets,
-  manifestPermissions,
   manifestVersion,
   readManifest,
+  sweepDroppedBins,
 } from './upgrade-gate'
+
+const log = createLogger('plugin-upgrade-artifact')
 
 /**
  * True when the installed plugin dir came from a published Whiskit artifact
@@ -58,7 +61,7 @@ export async function latestPublishedVersion(source: string): Promise<{ pluginId
  * artifact: resolve the immutable index → compare versions → consent-gate
  * the new manifest's permissions → checksum-verify + safe-extract → check
  * externals-contract compatibility → atomically replace the install dir.
- * Mirrors the live-install path (same lock, same staging, same commit).
+ * Runs under the caller's install lock (upgradePlugin).
  */
 export async function upgradeArtifact(
   id: string,
@@ -81,89 +84,86 @@ export async function upgradeArtifact(
       after: before,
       noop: true,
       newPermissions: [],
+      newBins: [],
       awaitingConsent: false,
     }
   }
 
   const contentDir = getContentDir()
-  const lockPath = join(contentDir, 'plugins', '.install.lock')
   const stagingRoot = join(contentDir, '.whiskit-staging')
   const platform = `${process.platform}-${process.arch}`
 
-  acquireLock(lockPath)
+  const materialized = await materializeArtifact(gh.resolver, gh.pluginId, latest, platform, stagingRoot)
   try {
-    const materialized = await materializeArtifact(gh.resolver, gh.pluginId, latest, platform, stagingRoot)
-    try {
-      const { manifest, manifestSha } = readManifest(materialized.stagingDir)
-      assertManifestIdStable(manifest, id)
-      assertManifestSignaturePolicy(manifest, id)
-      const newVersion = manifestVersion(manifest, latest)
-      const newCommitSha = materialized.provenance.sourceCommitSha || ''
-      const newPerms = manifestPermissions(manifest, id)
-      const widened = diffNewPermissions(entry.permissions, newPerms)
+    const { manifest, manifestSha } = readManifest(materialized.stagingDir)
+    assertManifestIdStable(manifest, id)
+    assertManifestSignaturePolicy(manifest, id)
+    const newVersion = manifestVersion(manifest, latest)
+    const newCommitSha = materialized.provenance.sourceCommitSha || ''
+    const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: newCommitSha } })
+    if (!gate.proceed) return gate.result
 
-      if (widened.length > 0 && !opts.yes) {
-        // Consent required — exit BEFORE mutating disk or lockfile.
-        return {
-          id,
-          before,
-          after: { version: newVersion, commitSha: newCommitSha },
-          noop: false,
-          newPermissions: widened,
-          awaitingConsent: true,
-        }
-      }
-
-      // The host must still provide the externals the new artifact was
-      // built for; an incompatible artifact means Bakin itself is behind.
-      if (!isExternalsContractCompatible(materialized.provenance)) {
-        auditUpgradeRejected('externals_contract_incompatible', id, {
-          artifactVersion: latest,
-          externalsContract: materialized.provenance.externalsContract,
-        })
-        throw new UpgradeRefusedError(
-          `${id}: published artifact ${latest} targets a different host contract ` +
-          `("${materialized.provenance.externalsContract}"). Update Bakin, then retry.`,
-        )
-      }
-
-      // Atomic replace of ~/.bakin/plugins/<id> (same-filesystem rename).
-      commitStaging(materialized.stagingDir, pluginDir)
-
-      const assets = await installUpgradedPluginAssets(id, pluginDir)
-
-      const updated = updatePlugin(readPluginLockfile(), id, {
-        upgradedAt: new Date().toISOString(),
-        version: newVersion,
-        commitSha: newCommitSha,
-        manifestSha,
-        permissions: newPerms,
-        installedSkills: assets.installedSkills,
-        remoteArtifactVersion: latest,
+    // The host must still provide the externals the new artifact was
+    // built for; an incompatible artifact means Bakin itself is behind.
+    if (!isExternalsContractCompatible(materialized.provenance)) {
+      auditUpgradeRejected('externals_contract_incompatible', id, {
+        artifactVersion: latest,
+        externalsContract: materialized.provenance.externalsContract,
       })
-      writePluginLockfile(updated)
+      throw new UpgradeRefusedError(
+        `${id}: published artifact ${latest} targets a different host contract ` +
+        `("${materialized.provenance.externalsContract}"). Update Bakin, then retry.`,
+      )
+    }
 
-      return {
-        id,
-        before,
-        after: { version: newVersion, commitSha: newCommitSha },
-        noop: false,
-        newPermissions: widened,
-        awaitingConsent: false,
-        pluginAssets: assets.pluginAssets,
-      }
-    } finally {
-      // commitStaging renamed the extracted dir out on success; this clears
-      // the leftover work dir (downloaded tarball) only.
-      materialized.cleanup()
+    // Consent accepted (or unnecessary). Replace the plugin dir inside the
+    // transaction — the previous install (directory, binaries, ledger row)
+    // comes back byte for byte on any failure. Bins the new manifest dropped
+    // go only AFTER the ledger write, and only with zero remaining owners.
+    let assets!: Awaited<ReturnType<typeof installUpgradedPluginAssets>>
+    const { installedBins } = await replacePluginDir({
+      id,
+      op: 'upgrade',
+      place: (dir) => moveContents(materialized.stagingDir, dir),
+      bins: gate.bins,
+      binIdentity: { pluginId: id, version: newVersion, ref: '', commitSha: newCommitSha },
+      progress: opts.progress,
+      ledger: async (bins) => {
+        assets = await installUpgradedPluginAssets(id, pluginDir)
+        writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
+          upgradedAt: new Date().toISOString(),
+          version: newVersion,
+        commitSha: newCommitSha,
+        remoteArtifactVersion: latest,
+          manifestSha,
+          permissions: gate.newPerms,
+          installedSkills: assets.installedSkills,
+          installedBins: toInstalledBins(bins),
+        }))
+      },
+    })
+    const droppedBins = sweepDroppedBins(id, entry.installedBins, installedBins.map((bin) => bin.name))
+
+    return {
+      id,
+      before,
+      after: { version: newVersion, commitSha: newCommitSha },
+      noop: false,
+      newPermissions: gate.widened,
+      newBins: gate.newBins,
+      awaitingConsent: false,
+      pluginAssets: assets.pluginAssets,
+      droppedBins,
     }
   } finally {
-    releaseLock(lockPath)
+    // Clears the work dir (downloaded tarball + whatever the transaction did
+    // not move out).
+    materialized.cleanup()
     if (existsSync(stagingRoot)) {
       try {
         rmSync(stagingRoot, { recursive: true, force: true })
-      } catch {
-        // best-effort
+      } catch (err) {
+        log.warn('Could not remove artifact staging root', { stagingRoot, error: err instanceof Error ? err.message : String(err) })
       }
     }
   }

@@ -100,6 +100,42 @@ rollback, receipts) with two additions:
   (`repairPackLocally` / `bakin packages sync`, which always re-projects
   locally) restores deleted binaries best-effort — offline, skills still
   repair and previous bin rows stay lockfile-tracked.
+- **Shared ownership with plugins (spec plugin-managed-binaries).** Plugin
+  manifests declare binaries with the SAME schema (`requires.bins`,
+  `packages/core/src/plugins/bin-requirement.ts` — one Zod module, imported
+  by both manifest parsers) and install them through the same
+  `bin-installer.ts` into the same `~/.bakin/bin`. Ownership is read from
+  BOTH lockfiles (`src/core/plugins/bin-owners.ts`: pack `bin` projections
+  + plugin `installedBins`); on-disk `.installedBy` markers are
+  informational. **Conflict policy:** any owner pinning the same target at
+  a DIFFERENT sha is refused before mutation, naming both owners
+  ("tmux is pinned at sha A by pack `ocr`; plugin `terminal` declares sha
+  B" + the recovery sequence) — `assertNoBinPinConflict` runs inside
+  `installManifestBins` (every pack writer) and `installPluginBins`, so
+  repairs can never alternate versions; identical pins share the file. A
+  pin's identity is the sha PLUS the archive `member` when there is one
+  (recorded on pack `bin` projections, plugin `installedBins` and the
+  `.installedBy` marker; `verifyInstalledBin` reports `member-mismatch` as
+  drift) — two owners extracting different members from the same tarball
+  are not sharing one binary. Pack `bin` projections written before
+  `member` existed are completed at read time from the pack's INSTALLED
+  manifest under `~/.bakin/packages/` (`legacyPackBinMember`), so two
+  packs sharing an unchanged archive never read as conflicting pins.
+  **Zero-owner delete:** `deleteBinsWithoutOwners` is the ONE S6 rule —
+  plugin remove, plugin upgrade (dropped bins) and the pack uninstaller
+  (`withoutSharedArtifacts` also consults plugin pins) all keep a binary
+  any remaining owner pins. **One lock:** `~/.bakin/install.lock` is a
+  single atomic (O_EXCL) lock the OUTER operation acquires
+  (`withInstallLock` — pack install/update/remove, plugin install/upgrade/
+  remove, the plugin-assets repair; reentrant only within that operation's
+  async continuation, so a concurrent request is refused like a second
+  process); inner writers assert it (`assertInstallLockHeld`) rather than
+  acquiring their own. **Committed provenance only:** the plugin-assets
+  repair discovers user plugins from the lockfile (a row + a loadable dir),
+  never from directory listings — abandoned staging dirs and unledgered
+  copies can never feed the bin installer; an unreadable ledger is a
+  FAILED inspection (`PluginDiscoveryError` → check `error`, doctor
+  `unknown`), never "nothing to install".
 - **Guided key step** — `POST /api/packages/install` resolves bare names
   from the curated catalog (`sourceWithRef` pin) and returns the pack's
   readiness; the CLI (`bakin packages install <name>`, consent + `--yes`)

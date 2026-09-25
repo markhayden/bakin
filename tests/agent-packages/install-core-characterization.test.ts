@@ -59,7 +59,7 @@ import {
   acquireInstallLock,
   releaseInstallLock,
   isInstallLockHeld,
-} from '../../src/core/agent-packages/install-lock'
+} from '../../src/core/install-core/install-lock'
 
 let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
 

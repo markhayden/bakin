@@ -7,10 +7,11 @@
  */
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { execFileSync } from 'child_process'
-import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs'
+import { mkdirSync, rmSync, existsSync, writeFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
+import { treeDigest } from '../../helpers/tree-digest'
 
 const testDir = join(tmpdir(), `bakin-test-upgrade-integration-${Date.now()}-${randomUUID()}`)
 process.env.BAKIN_HOME = testDir
@@ -40,9 +41,11 @@ mock.module('@/core/logger', () => ({
 mock.module('@/core/plugin-registry', () => ({
   isCorePlugin: () => false,
 }))
+// Flag-driven builder: the restore tests below make the build step fail.
+const builder = { fail: false }
 mock.module(
   '../../../packages/host/src/plugin-host/user-plugin-builder',
-  () => ({ buildUserPlugin: async () => {} }),
+  () => ({ buildUserPlugin: async () => { if (builder.fail) throw new Error('build exploded') } }),
 )
 
 import {
@@ -164,6 +167,69 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     expect(updated?.upgradedAt).toBeTruthy()
   })
 
+  it('S14: a failed build restores the previous clone byte for byte and keeps the ledger row', async () => {
+    const repo = createBareRepo(testDir, 'restore-fixture', fixturePluginFiles({ id: 'restore', version: '1.0.0' }))
+    cloneRepoIntoPluginsDir({ pluginId: 'restore', cloneUrl: repo.cloneUrl })
+    const pluginDir = join(testDir, 'plugins', 'restore')
+    const installedSha = headSha(pluginDir)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'restore', makeLockEntry({
+      cloneUrl: repo.cloneUrl, ref: 'main', commitSha: installedSha, version: '1.0.0',
+    })))
+    pushCommit(repo.workingClonePath, fixturePluginFiles({ id: 'restore', version: '1.1.0' }), 'bump')
+    // Working tree only: the read-only `git fetch` that precedes the
+    // transaction legitimately adds objects under .git/ (HEAD is pinned below).
+    const workingTree = (dir: string) => Object.fromEntries(Object.entries(treeDigest(dir)).filter(([k]) => !k.startsWith('.git/')))
+    const treeBefore = workingTree(pluginDir)
+    const rowBefore = readPluginLockfile().plugins['restore']
+
+    builder.fail = true
+    try {
+      await expect(upgradePlugin('restore')).rejects.toThrow('build exploded')
+    } finally {
+      builder.fail = false
+    }
+    expect(workingTree(pluginDir)).toEqual(treeBefore)
+    expect(headSha(pluginDir)).toBe(installedSha)
+    expect(readPluginLockfile().plugins['restore']).toEqual(rowBefore)
+    expect(existsSync(join(testDir, 'plugins', '.bakin-backup-restore'))).toBe(false)
+    expect(existsSync(join(pluginDir, '.bakin-install.json'))).toBe(false)
+
+    // The retry succeeds against the same fetched objects.
+    const result = await upgradePlugin('restore')
+    expect(result.after.version).toBe('1.1.0')
+  })
+
+  it('S14 (subpath lane): a failed build restores the previous copy byte for byte', async () => {
+    const nested = (files: Record<string, string>) => Object.fromEntries(Object.entries(files).map(([k, v]) => [`plugins/sub/${k}`, v]))
+    const repo = createBareRepo(testDir, 'sub-restore-fixture', nested(fixturePluginFiles({ id: 'subrestore', version: '1.0.0' })))
+    const pluginDir = join(testDir, 'plugins', 'subrestore')
+    mkdirSync(pluginDir, { recursive: true })
+    for (const [name, body] of Object.entries(fixturePluginFiles({ id: 'subrestore', version: '1.0.0' }))) writeFileSync(join(pluginDir, name), body)
+    const installedSha = headSha(repo.workingClonePath)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'subrestore', makeLockEntry({
+      cloneUrl: `${repo.cloneUrl}#plugins/sub`, ref: 'main', commitSha: installedSha, version: '1.0.0',
+    })))
+    pushCommit(repo.workingClonePath, nested(fixturePluginFiles({ id: 'subrestore', version: '1.1.0' })), 'bump')
+    const treeBefore = treeDigest(pluginDir)
+    const rowBefore = readPluginLockfile().plugins['subrestore']
+
+    builder.fail = true
+    try {
+      await expect(upgradePlugin('subrestore')).rejects.toThrow('build exploded')
+    } finally {
+      builder.fail = false
+    }
+    expect(treeDigest(pluginDir)).toEqual(treeBefore)
+    expect(readPluginLockfile().plugins['subrestore']).toEqual(rowBefore)
+    expect(existsSync(join(testDir, 'plugins', '.bakin-backup-subrestore'))).toBe(false)
+    expect(existsSync(join(pluginDir, '.bakin-install.json'))).toBe(false)
+    // No staging clone left behind either.
+    expect(readdirSync(join(testDir, 'plugins')).filter((n) => n.startsWith('.upgrade-staging'))).toEqual([])
+
+    const result = await upgradePlugin('subrestore')
+    expect(result.after.version).toBe('1.1.0')
+  })
+
   it('refuses to upgrade when remote history was rewritten (force-push)', async () => {
     const repo = createBareRepo(testDir, 'rewind-fixture', fixturePluginFiles({ id: 'rewind', version: '1.0.0' }))
     cloneRepoIntoPluginsDir({ pluginId: 'rewind', cloneUrl: repo.cloneUrl })
@@ -203,8 +269,8 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     expect(lockAfter?.version).toBe('1.0.0')
     expect(lockAfter?.permissions).toEqual(['storage.read'])
 
-    // Re-run with yes:true to commit the upgrade.
-    const result2 = await upgradePlugin('widen', { yes: true })
+    // Commit with the consent the preview handed back.
+    const result2 = await upgradePlugin('widen', { accepted: result.consent })
     expect(result2.awaitingConsent).toBe(false)
     expect(result2.noop).toBe(false)
     const lockFinal = readPluginLockfile().plugins['widen']
@@ -232,7 +298,7 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     pushCommit(repo.workingClonePath,
       fixturePluginFiles({ id: 'tasks', version: '1.1.0' }), 'masquerade as core')
 
-    await expect(upgradePlugin('rename', { yes: true })).rejects.toThrow(UpgradeRefusedError)
+    await expect(upgradePlugin('rename')).rejects.toThrow(UpgradeRefusedError)
 
     // Lockfile entry must be untouched after the refused upgrade.
     const after = readPluginLockfile().plugins['rename']
@@ -270,7 +336,7 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
       fixturePluginFiles({ id: 'pinme', version: '1.1.0' }), 'legitimate update')
 
     // Upgrade — must pull from repo A, not the tampered repo B.
-    const result = await upgradePlugin('pinme', { yes: true })
+    const result = await upgradePlugin('pinme')
     expect(result.after.version).toBe('1.1.0')
 
     // Origin should now be reset to the lockfile URL.

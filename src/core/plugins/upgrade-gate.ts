@@ -11,6 +11,12 @@ import { createHash } from 'crypto'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { appendAudit } from '@/core/audit'
+import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
+import { BinRequirementsSchema, type BinRequirement } from '@bakin/core/plugins/bin-requirement'
+import type { PluginLockEntry } from '@bakin/core/plugins/lockfile'
+import { deleteBinsWithoutOwners, samePin } from './bin-owners'
+import { preflightPluginBins } from './bin-preflight'
+import { consentBinsOf, sameBins, type ConsentBin } from './consent-bins'
 import { getSettings } from '@bakin/core/settings'
 import { parseManifestPermissions, type Permission } from '@bakin/core/plugins/permissions'
 import { verifyPluginManifestSignature } from '@bakin/core/plugins/signatures'
@@ -22,9 +28,22 @@ import {
 
 const log = createLogger('plugin-upgrade')
 
+/**
+ * The exact declaration the user consented to — what the route verified out
+ * of the consent token. An upgrade commits only when the target manifest
+ * still matches it (spec plugin-managed-binaries §2.5, S17).
+ */
+export interface UpgradeConsent {
+  manifestSha: string
+  permissions: string[]
+  bins: ConsentBin[]
+}
+
 export interface UpgradeOptions {
-  /** Skip consent prompt even when permissions widen. */
-  yes?: boolean
+  /** Staged progress for install jobs (fetch-source / project / bins / finalize). */
+  progress?: InstallProgressFn
+  /** Consent verified from the preview token; absent = preview only. */
+  accepted?: UpgradeConsent
 }
 
 export interface UpgradeResult {
@@ -35,15 +54,21 @@ export interface UpgradeResult {
   noop: boolean
   /** Permissions present in the new manifest that weren't in the lockfile entry. */
   newPermissions: string[]
+  /** Binaries the new manifest adds or re-pins for this platform. */
+  newBins: ConsentBin[]
   /**
-   * True when the new manifest declares permissions not present in the
-   * lockfile entry AND the caller did not pass `--yes`. Caller is expected
-   * to surface a consent prompt (C9) and re-invoke with `yes: true` once
-   * the user accepts.
+   * True when the new manifest widens permissions or binaries and no matching
+   * consent was passed. `consent` carries the declaration to bind into the
+   * token; the caller re-invokes with `accepted` once the user agrees.
    */
   awaitingConsent: boolean
+  consent?: UpgradeConsent
+  /** Set when `accepted` was passed but the target changed since the preview — re-consent. */
+  manifestChanged?: boolean
   /** Runtime skills projected from defaults/runtime-skills during a committed upgrade. */
   pluginAssets?: InstallReport
+  /** Binaries the previous manifest declared that this upgrade dropped and deleted (zero remaining owners). */
+  droppedBins?: string[]
 }
 
 /** Tag for refusal errors so the API layer can map them to HTTP 400. */
@@ -160,10 +185,94 @@ export async function installUpgradedPluginAssets(
   if (installedSkills.length === 0) {
     return {
       installedSkills,
-      pluginAssets: { installed: [], unchanged: [], skipped: [] },
+      pluginAssets: { installed: [], unchanged: [], skipped: [], bins: { installed: [], unchanged: [], failed: [] } },
     }
   }
 
   const pluginAssets = await installPluginAssets([{ id, path: pluginDir }])
   return { installedSkills, pluginAssets }
+}
+
+/** `requires.bins` of a raw manifest, schema-validated; invalid ⇒ refusal. */
+export function manifestBins(manifest: Record<string, unknown>, id: string): BinRequirement[] {
+  const raw = (manifest.requires as { bins?: unknown } | undefined)?.bins
+  if (raw === undefined) return []
+  const parsed = BinRequirementsSchema.safeParse(raw)
+  if (!parsed.success) {
+    throw new UpgradeRefusedError(`${id}: requires.bins is invalid — ${parsed.error.issues.map((i) => i.message).join('; ')}`)
+  }
+  return parsed.data
+}
+
+/** Bins the new manifest adds or re-pins (for this platform) relative to what the lockfile records — the consent diff. */
+export function diffNewBins(prev: PluginLockEntry['installedBins'], next: readonly BinRequirement[]): ConsentBin[] {
+  const before = new Map((prev ?? []).map((b) => [b.name, b]))
+  return consentBinsOf(next).filter((bin) => {
+    const recorded = before.get(bin.name)
+    // A re-pin OR a different member of the same archive is a new binary.
+    return !recorded || !samePin(recorded, bin)
+  })
+}
+
+export type UpgradeConsentGate =
+  | { proceed: true; newPerms: Permission[]; newBins: ConsentBin[]; widened: Permission[]; bins: BinRequirement[] }
+  | { proceed: false; result: UpgradeResult }
+
+/**
+ * ONE consent gate for every upgrade lane. Runs BEFORE any mutation:
+ * platform/conflict preflight for the declared bins (fail closed), then the
+ * widening diff (permissions OR bins). Widening without consent ⇒ the
+ * awaiting result carrying the declaration to sign; consent that no longer
+ * matches the target ⇒ awaiting + `manifestChanged` (S17); otherwise proceed.
+ */
+export function gateUpgradeConsent(args: {
+  id: string
+  entry: PluginLockEntry
+  manifest: Record<string, unknown>
+  manifestSha: string
+  opts: UpgradeOptions
+  before: { version: string; commitSha: string }
+  after: { version: string; commitSha: string }
+}): UpgradeConsentGate {
+  const { id, entry, manifest, manifestSha, opts, before, after } = args
+  const newPerms = manifestPermissions(manifest, id)
+  const bins = manifestBins(manifest, id)
+  const preflight = preflightPluginBins(id, bins)
+  if (!preflight.ok) throw new UpgradeRefusedError(`${id}: ${preflight.error}`)
+  const widened = diffNewPermissions(entry.permissions, newPerms) as Permission[]
+  const newBins = diffNewBins(entry.installedBins, bins)
+  const consent: UpgradeConsent = { manifestSha, permissions: newPerms, bins: consentBinsOf(bins) }
+  const awaiting = (manifestChanged: boolean): UpgradeConsentGate => ({
+    proceed: false,
+    result: {
+      id, before, after, noop: false, newPermissions: widened, newBins, awaitingConsent: true, consent,
+      ...(manifestChanged ? { manifestChanged: true } : {}),
+    },
+  })
+  if (widened.length > 0 || newBins.length > 0) {
+    if (!opts.accepted) return awaiting(false)
+    const accepted = opts.accepted
+    const samePerms = accepted.permissions.length === newPerms.length && accepted.permissions.every((p) => (newPerms as string[]).includes(p))
+    if (accepted.manifestSha !== manifestSha || !samePerms || !sameBins(accepted.bins, consent.bins)) return awaiting(true)
+  }
+  return { proceed: true, newPerms, newBins, widened, bins }
+}
+
+/**
+ * After a committed upgrade: delete binaries the previous manifest declared
+ * that the new one dropped — only with zero remaining owners in either
+ * lockfile (spec §2.4 / S6 rule). Runs AFTER the ledger write, so this
+ * plugin no longer counts as an owner of what it dropped.
+ */
+export function sweepDroppedBins(id: string, previous: PluginLockEntry['installedBins'], kept: readonly string[]): string[] {
+  const dropped = deleteBinsWithoutOwners(previous ?? [], new Set(kept))
+  if (dropped.length > 0) {
+    log.info('Removed binaries the upgraded manifest no longer declares', { id, dropped })
+    try {
+      appendAudit(getContentDir(), 'plugin.upgrade.bins_dropped', 'system', { pluginId: id, bins: dropped }, 'system')
+    } catch (err) {
+      log.warn('bins_dropped audit failed', { id, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+  return dropped
 }

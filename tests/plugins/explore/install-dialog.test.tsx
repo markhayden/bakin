@@ -120,9 +120,9 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 /**
- * Job-aware stub (#895): non-plugin installs POST ?async=1 → 202 + jobId,
- * then read the terminal body from /api/install-jobs/:id. `finalBody` is
- * what the blocking endpoint would have returned.
+ * Job-aware stub (#895): installs POST ?async=1 → 202 + jobId, then read
+ * the terminal body from /api/install-jobs/:id. `finalBody` is what the
+ * blocking endpoint would have returned.
  */
 function jobAwareFetch(finalBody: unknown = { ok: true }, finalStatus = 200): ReturnType<typeof mock> {
   return mock((url: string) => {
@@ -227,6 +227,75 @@ describe('InstallDialog', () => {
     expect(body.accepted).toBe(true)
     expect(body.consentToken).toBe(consentToken)
     expect(body.type).toBe('github')
+  })
+
+  it('plugin commit follows a 202 install job and shows staged progress (bins) before settling', async () => {
+    const jobState = { status: 'running' as 'running' | 'done' }
+    fetchMock = mock((url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.startsWith('/api/install-jobs/')) {
+        // Running on first look — SSE progress drives the UI; done after the done event.
+        return Promise.resolve(jsonResponse({ ok: true, job: jobState.status === 'done'
+          ? { status: 'done', resultStatus: 200, result: { ok: true, id: 'terminal' } }
+          : { status: 'running', lastUpdate: { stage: 'bins', message: 'Downloading tmux…', item: 'tmux' } } }))
+      }
+      const body = JSON.parse(String(init?.body)) as { accepted?: boolean }
+      if (body.accepted !== true) {
+        return Promise.resolve(jsonResponse({
+          ok: false, awaitingConsent: true, id: 'terminal', version: '0.2.0', permissions: [],
+          bins: [{ name: 'tmux', version: '3.5a', sha256: 'c'.repeat(64) }], consentToken: 'token-job',
+        }))
+      }
+      expect(u).toBe('/api/plugins/install?async=1')
+      return Promise.resolve(jsonResponse({ ok: true, jobId: 'job-plugin' }, 202))
+    })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const onInstalled = mock()
+    render(<InstallDialog open onOpenChange={mock()} entry={pluginEntry} onInstalled={onInstalled} />)
+    fireEvent.click(screen.getByTestId('install-submit'))
+    await waitFor(() => expect(screen.getByTestId('consent-download-list')).toBeTruthy())
+    await act(async () => { fireEvent.click(screen.getByTestId('consent-accept')) })
+
+    // Consent modal closes; the main dialog carries the staged progress.
+    await waitFor(() => expect(screen.getByText('Downloading tmux…')).toBeTruthy())
+    expect(screen.queryByTestId('consent-accept')).toBeNull()
+    expect(onInstalled).not.toHaveBeenCalled()
+
+    jobState.status = 'done'
+    await act(async () => { emitPluginEvent({ event: 'packages.install_done', jobId: 'job-plugin' }) })
+    await waitFor(() => expect(onInstalled).toHaveBeenCalled())
+  })
+
+  it('binary-only consent (zero permissions) shows the download list and accepts with the token', async () => {
+    const consentToken = 'token-bins'
+    fetchMock = mock((_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { accepted?: boolean; consentToken?: string }
+      if (body.accepted !== true) {
+        return Promise.resolve(jsonResponse({
+          ok: false, awaitingConsent: true, id: 'terminal', version: '0.2.0',
+          permissions: [],
+          bins: [{ name: 'tmux', version: '3.7c', sha256: 'a'.repeat(64), sizeBytes: 2_100_000 }],
+          consentToken,
+        }))
+      }
+      return Promise.resolve(jsonResponse({ ok: true, id: 'terminal' }))
+    })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const onInstalled = mock()
+    render(<InstallDialog open onOpenChange={mock()} entry={pluginEntry} onInstalled={onInstalled} />)
+    fireEvent.click(screen.getByTestId('install-submit'))
+
+    await waitFor(() => expect(screen.getByTestId('consent-download-list')).toBeTruthy())
+    expect(screen.getByText('tmux 3.7c')).toBeTruthy()
+    expect(screen.getByText(/2\.0 MB · sha256 aaaaaaaaaaaa… · into ~\/\.bakin\/bin/)).toBeTruthy()
+    expect(screen.getByText(/wants to download:/)).toBeTruthy()
+    expect(screen.queryByTestId('consent-permission-list')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('consent-accept'))
+    await waitFor(() => expect(onInstalled).toHaveBeenCalled())
+    expect(lastCall().body.consentToken).toBe(consentToken)
   })
 
   it('declining consent installs nothing — no second POST', async () => {

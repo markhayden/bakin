@@ -48,8 +48,8 @@ export async function materializeArtifact(
   platform: string,
   /**
    * Root for the materialization work dir. Defaults to the OS temp dir; the
-   * live-install layer passes a dir UNDER the content dir so the subsequent
-   * commit is a same-filesystem rename (a cross-device rename would EXDEV-fail).
+   * artifact upgrade lane passes a dir UNDER the content dir so the replace
+   * transaction can move the tree in with same-filesystem renames.
    */
   workRoot: string = tmpdir(),
 ): Promise<MaterializedArtifact> {

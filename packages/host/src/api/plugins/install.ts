@@ -36,16 +36,19 @@ import { existsSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
+import { startInstallJob } from '@/core/agent-packages/install-progress'
+import { isInstallLockBusy } from '@/core/install-core/install-lock'
 import { type InstallBody, validateInstallBody } from './install/body'
 import { handleDevInstall } from './install/dev-install'
 import { stageInstallSource } from './install/resolve-source'
 import { validateStagedManifest } from './install/validate-manifest'
-import { evaluateConsentGate } from './install/consent-gate'
+import { consentBinsOf, evaluateConsentGate } from './install/consent-gate'
+import { binPreflightResponse, preflightPluginBins } from '@/core/plugins/bin-preflight'
 import { commitInstall } from './install/commit'
 
 const log = createLogger('plugin-install')
 
-export async function post(req: Request, _url: URL): Promise<Response> {
+export async function post(req: Request, url: URL): Promise<Response> {
   let body: InstallBody
   try {
     body = await req.json()
@@ -76,17 +79,45 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       if (!validatedResult.ok) return validatedResult.response
       const { validated } = validatedResult
 
+      // Binaries: platform + conflict preflight BEFORE consent — never ask the
+      // user to consent to an install that cannot succeed here.
+      const preflight = binPreflightResponse(preflightPluginBins(validated.id, validated.bins))
+      if (preflight) {
+        rmSync(stagingDir, { recursive: true, force: true })
+        return preflight
+      }
+
       const consentResponse = evaluateConsentGate({
         body,
         requestedRef: staged.requestedRef,
         id: validated.id,
         manifest: validated.manifest,
         parsedPermissions: validated.parsedPermissions,
+        bins: consentBinsOf(validated.bins),
         stagedManifestSha: validated.stagedManifestSha,
       })
       if (consentResponse) {
         rmSync(stagingDir, { recursive: true, force: true })
         return consentResponse
+      }
+
+      // Consent satisfied. With ?async=1 the commit (files, binaries, ledger)
+      // runs as an install job so the UI shows staged progress — the same
+      // runner, events and status route packages use (#895).
+      if (url.searchParams.get('async') === '1') {
+        const job = startInstallJob({
+          kind: 'plugin',
+          title: validated.id,
+          run: async (progress) => {
+            try {
+              const res = await commitInstall({ body, stagingDir, pluginsRoot, staged, validated, progress })
+              return { body: await res.json(), status: res.status }
+            } finally {
+              rmSync(stagingDir, { recursive: true, force: true })
+            }
+          },
+        })
+        return Response.json({ ok: true, jobId: job.id }, { status: 202 })
       }
 
       return await commitInstall({ body, stagingDir, pluginsRoot, staged, validated })
@@ -95,6 +126,9 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       throw err
     }
   } catch (err) {
+    if (isInstallLockBusy(err)) {
+      return Response.json({ ok: false, error: err.message }, { status: 409 })
+    }
     const message = err instanceof Error ? err.message : String(err)
     log.error('Plugin install failed', err as Error, { source: body.source })
     return Response.json({ ok: false, error: message }, { status: 500 })

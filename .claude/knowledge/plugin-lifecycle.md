@@ -59,6 +59,10 @@ const PluginLockEntrySchema = z.object({
   remoteHeadSha: z.string().optional(),  // last seen remote HEAD sha (github only)
   sourceTreeSha: z.string().optional(),  // last seen local source tree sha (local only)
   sourceTreeShaAlgo: z.number().int().optional(), // absent = legacy algo 1; 2 = canonical whiskit hashSourceTree
+  installedSkills: z.array(z.string()).optional(), // runtime skills this plugin projected — uninstall allowlist
+  installedBins: z.array(z.object({ name, sha256 })).optional(), // binaries this plugin installed into ~/.bakin/bin
+                                     // — ownership authority for the shared bin dir (with the packages lockfile);
+                                     // absent = none (never written as [])
 })
 
 export const PluginLockfileSchema = z.object({
@@ -228,16 +232,18 @@ No retention. Tarballs accumulate. Follow-up issue tracks expiry policy.
   - `git fetch origin <ref>` in `~/.bakin/plugins/<id>/`
   - Compare local HEAD sha to remote → if equal: `"<id> v<version>: already up to date"`
   - Fast-forward; on failure: `"<id>: cannot fast-forward (remote history rewritten?). Remove and reinstall."`
-  - Read new manifest; validate; compute permission diff
-  - **If permissions widened**: prompt (unless `--yes`):
+  - Read new manifest; validate; compute the widening diff over permissions AND binaries (`requires.bins` added or re-pinned)
+  - **If widened**: the preview answers `awaitingConsent` + a consent token bound to the target (`manifestSha` + permissions + bins); the CLI prompts (unless `--yes`) and commits with `{ accepted: true, consentToken }`. A target that changed since the preview re-prompts; a narrowing needs no consent:
     ```
     Upgrading: my-pomodoro v1.2.0 → v1.3.0
     NEW permissions requested:
       + network.fetch  Make outbound HTTP requests
+    NEW downloads (installed into ~/.bakin/bin, sha256-pinned):
+      + tmux 3.5a (2.0 MB)
     Continue? [y/N]
     ```
-  - Run `buildUserPlugin()`
-  - Update lockfile (`upgradedAt`, `version`, `commitSha`, `manifestSha`, `permissions`)
+  - Inside the replace transaction (`src/core/plugins/replace-transaction.ts` — previous dir, binaries and ledger row restored byte for byte on any failure): `buildUserPlugin()`, install the new manifest's bins, project runtime skills
+  - Update lockfile (`upgradedAt`, `version`, `commitSha`, `manifestSha`, `permissions`, `installedBins`); then delete dropped bins with zero remaining owners
   - Exit: `"Upgraded <id> v<old> → v<new> (sha <old8>...<new8>). Restart Bakin to activate the change: bakin stop && bakin start"`
 - **Local plugins:**
   - Read recorded `source` path; missing → error: `"Original source path <path> no longer exists. Reinstall with: bakin plugins install <new-path>"`
@@ -265,7 +271,7 @@ No retention. Tarballs accumulate. Follow-up issue tracks expiry policy.
    - `rm ~/.bakin/plugin-settings/<id>.json` (if exists)
    - `rm -rf ~/.bakin/plugins/<id>/`
 6. Move tarball tmp → `~/.bakin/.uninstalled/<id>-<ISO>.tar.gz`
-7. Remove lockfile entry
+7. Remove lockfile entry, then delete the entry's `installedBins` that no pack or other plugin still pins (`deleteBinsWithoutOwners`; audit `plugin.uninstall.bins`) — steps 5–7 run under the install lock
 8. Exit:
    ```
    Removed plugin: <id>

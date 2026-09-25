@@ -12,7 +12,8 @@
  * is directly unit-testable; the caller owns staging-dir teardown.
  */
 import type { PluginLockEntry } from '@bakin/core/plugins/lockfile'
-import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
+import { signConsentToken, verifyConsentToken, type ConsentBin } from '@/core/plugins/consent-token'
+import { sameBins } from '@/core/plugins/consent-bins'
 import { auditInstallRejected } from './audit'
 import type { InstallBody } from './body'
 
@@ -23,6 +24,8 @@ import type { InstallBody } from './body'
 export function consentSourceIdentity(source: string, ref: string): string {
   return ref ? JSON.stringify({ source, ref }) : source
 }
+
+export { consentBinsOf } from '@/core/plugins/consent-bins'
 
 /**
  * Evaluate the consent gate for a validated staged install. Returns the
@@ -37,16 +40,19 @@ export function evaluateConsentGate(args: {
   id: string
   manifest: Record<string, unknown>
   parsedPermissions: PluginLockEntry['permissions']
+  /** Declared binary downloads for this platform (consentBinsOf) — consent-worthy even with zero permissions. */
+  bins: ConsentBin[]
   stagedManifestSha: string
 }): Response | null {
-  const { body, requestedRef, id, manifest, parsedPermissions, stagedManifestSha } = args
+  const { body, requestedRef, id, manifest, parsedPermissions, bins, stagedManifestSha } = args
+  const needsConsent = parsedPermissions.length > 0 || bins.length > 0
 
   // #142 layer 2 — if the manifest declares permissions and the caller
   // hasn't accepted yet, return awaitingConsent with the diff. CLI
   // surfaces the prompt and re-invokes with accepted:true. We tear
   // down the staging dir here so the second attempt is clean —
   // re-cloning is cheap relative to the cost of staging cleanup bugs.
-  if (parsedPermissions.length > 0 && body.accepted !== true) {
+  if (needsConsent && body.accepted !== true) {
     const versionForPrompt = typeof manifest.version === 'string' ? manifest.version : '0.0.0'
     // C13 binding — the token captures (source, manifestSha,
     // permissions). Commit must echo it back; server re-validates
@@ -58,6 +64,7 @@ export function evaluateConsentGate(args: {
       source: consentSource,
       manifestSha: stagedManifestSha,
       permissions: parsedPermissions,
+      bins,
     })
     return Response.json({
       ok: false,
@@ -65,6 +72,7 @@ export function evaluateConsentGate(args: {
       id,
       version: versionForPrompt,
       permissions: parsedPermissions,
+      bins,
       consentToken,
     })
   }
@@ -73,7 +81,7 @@ export function evaluateConsentGate(args: {
   // set was declared at preflight, validate the consent token. Without
   // a valid token, the server has no proof the user actually saw and
   // approved this exact manifest's permissions.
-  if (parsedPermissions.length > 0 && body.accepted === true) {
+  if (needsConsent && body.accepted === true) {
     if (!body.consentToken) {
       auditInstallRejected('consent_token_missing', body.source, { id })
       return Response.json({
@@ -101,12 +109,13 @@ export function evaluateConsentGate(args: {
     // commit. If so, the user's consent was for a different permission
     // set; bounce back to awaitingConsent with the NEW diff so they
     // can decide again.
-    if (token.manifestSha !== stagedManifestSha) {
+    if (token.manifestSha !== stagedManifestSha || !sameBins(token.bins, bins)) {
       const versionForPrompt = typeof manifest.version === 'string' ? manifest.version : '0.0.0'
       const freshToken = signConsentToken({
         source: consentSource,
         manifestSha: stagedManifestSha,
         permissions: parsedPermissions,
+        bins,
       })
       return Response.json({
         ok: false,
@@ -115,6 +124,7 @@ export function evaluateConsentGate(args: {
         id,
         version: versionForPrompt,
         permissions: parsedPermissions,
+        bins,
         consentToken: freshToken,
       })
     }

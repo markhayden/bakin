@@ -15,6 +15,10 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { SOURCE_TREE_SHA_ALGO, computeSourceTreeSha } from '@/core/plugins/source-tree-sha'
 import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
+import { isInstallLockBusy, withInstallLock } from '@/core/install-core/install-lock'
+import { replacePluginDir } from '@/core/plugins/replace-transaction'
+import { toInstalledBins } from '@/core/agent-packages/bin-installer'
+import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
 import {
   activateUserPluginDir,
   isLiveActivationUnavailable,
@@ -56,9 +60,14 @@ export function recordInstall(args: {
   type: 'github' | 'local'
   permissions: PluginLockEntry['permissions']
   gitProvenance?: { ref: string; commitSha: string }
+  /** Binaries this install placed (or found identically pinned) — the removal/ownership authority. */
+  installedBins?: PluginLockEntry['installedBins']
 }): void {
   const { id, targetDir, manifestSha, manifest, source, type } = args
-  try {
+  // A ledger write that fails is a FAILED install: the caller rolls the
+  // directory and created bins back. Never swallow it — an installed dir
+  // with no ledger row is exactly the orphan state the loader can't explain.
+  {
     const { ref, commitSha } = args.gitProvenance ?? resolveGitProvenance(targetDir, type)
 
     let version: string
@@ -104,12 +113,11 @@ export function recordInstall(args: {
       sourceTreeSha,
       ...(sourceTreeSha ? { sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO } : {}),
       installedSkills,
+      ...(args.installedBins?.length ? { installedBins: args.installedBins } : {}),
     }
 
     const lock = readPluginLockfile()
     writePluginLockfile(addPlugin(lock, id, entry))
-  } catch (err) {
-    log.error('failed to record plugin install in lockfile', err as Error, { id })
   }
 }
 
@@ -124,62 +132,74 @@ export async function commitInstall(args: {
   pluginsRoot: string
   staged: StagedSource
   validated: ValidatedManifest
+  progress?: InstallProgressFn
 }): Promise<Response> {
-  const { body, stagingDir, pluginsRoot, staged, validated } = args
+  // The whole commit — files, binaries, ledger — is ONE operation under the
+  // install lock (reentrant when a job runner already holds it).
+  return withInstallLock(() => commitInstallLocked(args))
+}
+
+async function commitInstallLocked(args: {
+  body: InstallBody
+  stagingDir: string
+  pluginsRoot: string
+  staged: StagedSource
+  validated: ValidatedManifest
+  progress?: InstallProgressFn
+}): Promise<Response> {
+  const { body, stagingDir, staged, validated, progress } = args
   const { effectivePluginDir, requestedRef, gitProvenance, installedFromArtifact } = staged
   const { id, manifest, parsedPermissions, stagedManifestSha } = validated
 
-  const targetDir = join(pluginsRoot, id)
-  if (existsSync(targetDir)) {
-    rmSync(targetDir, { recursive: true, force: true })
-  }
-  // Copy from the effective plugin dir (the subpath for monorepo
-  // installs, the staging root otherwise). This intentionally drops
-  // the rest of the cloned repo + its `.git/` for subpath installs;
-  // the subpath upgrade flow re-clones to staging since there's no
-  // local `.git/` to fetch into.
-  cpSync(effectivePluginDir, targetDir, { recursive: true, dereference: false })
-  rmSync(stagingDir, { recursive: true, force: true })
-
-  // Compile the plugin to dist/ so the runtime loader (Phase F) and
-  // the server-side dynamic import (plugin-registry) have built
-  // artifacts ready on next boot. Failures here are fatal for the
-  // install request — shipping an installed-but-unbuilt plugin would
-  // crash startup instead of surfacing the error to the user now.
-  //
-  // A Whiskit artifact install is already built (dist/ shipped + verified),
-  // so the build step is skipped entirely.
-  if (!installedFromArtifact) {
-    try {
-      await buildSourceInstall(targetDir)
-    } catch (buildErr) {
-      // Build failed — clean up the installed files so the install
-      // appears atomic from the user's perspective.
-      rmSync(targetDir, { recursive: true, force: true })
-      const message = buildErr instanceof Error ? buildErr.message : String(buildErr)
-      log.error('Plugin install build step failed', buildErr as Error, { id })
-      return Response.json({
-        ok: false,
-        error: `Installed "${id}" but failed to build it: ${message}`,
-      }, { status: 500 })
-    }
-  }
-
-  // For local installs, record the resolved absolute source path so the
-  // upgrade flow can re-resolve it deterministically from any cwd.
   const recordedSource = body.type === 'local'
     ? (isAbsolute(body.source) ? body.source : resolve(process.cwd(), body.source))
     : body.source
-  recordInstall({
-    id,
-    targetDir,
-    manifestSha: stagedManifestSha,
-    manifest,
-    source: recordedSource,
-    type: body.type,
-    permissions: parsedPermissions,
-    gitProvenance,
-  })
+  const version = typeof manifest.version === 'string' ? manifest.version : '0.0.0'
+
+  // ONE transaction: place → build → bins → ledger, restored byte for byte on
+  // any failure (replace-transaction.ts). A pre-existing directory under the
+  // same id is backed up and comes back if this install fails.
+  let targetDir: string
+  try {
+    const result = await replacePluginDir({
+      id,
+      op: 'install',
+      // Copy from the effective plugin dir (the subpath for monorepo installs,
+      // the staging root otherwise). This intentionally drops the rest of the
+      // cloned repo + its `.git/` for subpath installs; the subpath upgrade
+      // flow re-clones to staging since there's no local `.git/` to fetch into.
+      place: (dir) => {
+        cpSync(effectivePluginDir, dir, { recursive: true, dereference: false })
+        rmSync(stagingDir, { recursive: true, force: true })
+      },
+      // Compile the plugin to dist/ so the runtime loader and the server-side
+      // dynamic import have built artifacts ready. A Whiskit artifact install
+      // is already built (dist/ shipped + verified) — FW1.7 skips only those.
+      build: installedFromArtifact ? undefined : buildSourceInstall,
+      bins: validated.bins,
+      binIdentity: { pluginId: id, version, ...(gitProvenance ?? resolveGitProvenance(effectivePluginDir, body.type)) },
+      progress,
+      ledger: (installedBins) => recordInstall({
+        id,
+        targetDir: join(args.pluginsRoot, id),
+        manifestSha: stagedManifestSha,
+        manifest,
+        source: recordedSource,
+        type: body.type,
+        permissions: parsedPermissions,
+        gitProvenance,
+        installedBins: toInstalledBins(installedBins),
+      }),
+    })
+    targetDir = result.targetDir
+  } catch (err) {
+    if (isInstallLockBusy(err)) {
+      return Response.json({ ok: false, error: `Could not install "${id}": ${err.message}` }, { status: 409 })
+    }
+    const message = err instanceof Error ? err.message : String(err)
+    log.error('Plugin install failed — rolled back', err as Error, { id })
+    return Response.json({ ok: false, error: `Could not install "${id}": ${message}` }, { status: 500 })
+  }
 
   let runtimeVersion: number | undefined
   let activated = false

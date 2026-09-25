@@ -93,6 +93,8 @@ const ProjectionEntrySchema = z.object({
   target: z.string().min(1),
   /** sha256 of file contents (or directory Merkle root for skills). Absent for marker entries. */
   sha256: z.string().optional(),
+  /** `bin` entries from an archive: the extracted member — part of the binary's identity for shared ownership. */
+  member: z.string().optional(),
   /**
    * Workspace-file entries: sha256 of the composed managed-block body as last
    * projected. Compared against the freshly derived expected composition to

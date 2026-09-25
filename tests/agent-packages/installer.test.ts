@@ -207,7 +207,7 @@ function installRuntimeMock(): void {
 import { installPackage } from '../../src/core/agent-packages/installer'
 import { readLockfile, writeLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { extractBlock, hasBlock } from '../../packages/core/src/agent-packages/managed-blocks'
-import { isInstallLockHeld } from '../../src/core/agent-packages/install-lock'
+import { isInstallLockHeld } from '../../src/core/install-core/install-lock'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -767,6 +767,33 @@ describe('installPackage — capability-pack bins', () => {
 
     await removePackageById({ packageId: 'web-a@1.0.0' })
     expect(existsSync(binPath)).toBe(false)
+  })
+
+  it('#930-class contract: refuses when a plugin pins capbin at another sha — nothing written, lock released', async () => {
+    const { addPlugin, readPluginLockfile, writePluginLockfile } = await import('../../packages/core/src/plugins/lockfile')
+    const { isInstallLockHeld } = await import('../../src/core/install-core/install-lock')
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'terminal', {
+      source: 'github:x/terminal', type: 'github', ref: '', commitSha: '', installedAt: new Date().toISOString(),
+      version: '0.2.0', permissions: [], manifestSha: 'm', installedBins: [{ name: 'capbin', sha256: 'b'.repeat(64) }],
+    }))
+    await expect(installPackage({ source: seedCapabilityPack('web-conflict') })).rejects.toThrow(/plugin "terminal"/)
+    expect(existsSync(join(testDir, 'bin', 'capbin'))).toBe(false)
+    const lock = readJson(join(testDir, 'packages', 'lock.json')) as { packages: Record<string, unknown> }
+    expect(lock.packages['web-conflict@1.0.0']).toBeUndefined()
+    expect(isInstallLockHeld()).toBe(false)
+  })
+
+  it('keeps a bin a plugin still pins when the pack is removed', async () => {
+    const { removePackageById } = await import('../../src/core/agent-packages/uninstaller')
+    const { addPlugin, readPluginLockfile, writePluginLockfile } = await import('../../packages/core/src/plugins/lockfile')
+    await installPackage({ source: seedCapabilityPack('web-shared') })
+    const binPath = join(testDir, 'bin', 'capbin')
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'terminal', {
+      source: 'github:x/terminal', type: 'github', ref: '', commitSha: '', installedAt: new Date().toISOString(),
+      version: '0.2.0', permissions: [], manifestSha: 'm', installedBins: [{ name: 'capbin', sha256: sha256(CAP_SCRIPT) }],
+    }))
+    await removePackageById({ packageId: 'web-shared@1.0.0' })
+    expect(existsSync(binPath)).toBe(true)
   })
 
   it('rolls back the whole install on a checksum mismatch', async () => {

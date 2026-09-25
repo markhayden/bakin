@@ -17,6 +17,8 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { parseGithubSource } from '@bakin/core/plugins/source'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
+import { replacePluginDir } from './replace-transaction'
+import { toInstalledBins } from '@/core/agent-packages/bin-installer'
 import {
   type UpgradeOptions,
   type UpgradeResult,
@@ -24,12 +26,12 @@ import {
   auditUpgradeRejected,
   assertManifestIdStable,
   assertManifestSignaturePolicy,
-  diffNewPermissions,
+  gateUpgradeConsent,
   installUpgradedPluginAssets,
-  manifestPermissions,
   manifestVersion,
   readManifest,
   run,
+  sweepDroppedBins,
 } from './upgrade-gate'
 
 /**
@@ -110,6 +112,7 @@ export async function upgradeGithub(
       after: before,
       noop: true,
       newPermissions: [],
+      newBins: [],
       awaitingConsent: false,
     }
   }
@@ -120,24 +123,11 @@ export async function upgradeGithub(
   assertManifestIdStable(manifest, id)
   assertManifestSignaturePolicy(manifest, id)
   const newVersion = manifestVersion(manifest, entry.version)
-  const newPerms = manifestPermissions(manifest, id)
-  const widened = diffNewPermissions(entry.permissions, newPerms)
+  const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: remoteSha } })
+  if (!gate.proceed) return gate.result
 
-  if (widened.length > 0 && !opts.yes) {
-    // Consent required — exit BEFORE mutating disk or lockfile.
-    return {
-      id,
-      before,
-      after: { version: newVersion, commitSha: remoteSha },
-      noop: false,
-      newPermissions: widened,
-      awaitingConsent: true,
-    }
-  }
-
-  // Consent accepted (or unnecessary). Now safe to mutate working tree.
-  // The merge-base check inside the helper still defends against a force-push
-  // that landed between fetch and merge.
+  // The merge-base check runs BEFORE the transaction (read-only on the
+  // fetched objects) so a force-push refusal never touches the working tree.
   if (localSha !== remoteSha) {
     try {
       execFileSync('git', ['merge-base', '--is-ancestor', localSha, remoteSha], {
@@ -155,31 +145,51 @@ export async function upgradeGithub(
         `${id}: cannot fast-forward (remote history rewritten?). Remove and reinstall.`,
       )
     }
-    run('git', ['merge', '--ff-only', `origin/${entry.ref}`], pluginDir)
   }
 
-  await buildUserPlugin(pluginDir)
-
-  const assets = await installUpgradedPluginAssets(id, pluginDir)
-
-  const updated = updatePlugin(readPluginLockfile(), id, {
-    upgradedAt: new Date().toISOString(),
-    version: newVersion,
-    commitSha: remoteSha,
-    manifestSha,
-    permissions: newPerms,
-    installedSkills: assets.installedSkills,
+  // Consent accepted (or unnecessary). Replace the plugin dir inside the
+  // transaction — the previous install (directory, binaries, ledger row)
+  // comes back byte for byte on any failure. Bins the new manifest dropped
+  // go only AFTER the ledger write, and only with zero remaining owners.
+  let assets!: Awaited<ReturnType<typeof installUpgradedPluginAssets>>
+  const { installedBins } = await replacePluginDir({
+    id,
+    op: 'upgrade',
+    place: (dir, previousDir) => {
+    // In-place lane: the new tree is the OLD clone (with the fetched
+    // objects) fast-forwarded — copy the backup in and merge on top.
+    cpSync(previousDir!, dir, { recursive: true, dereference: false })
+    if (localSha !== remoteSha) run('git', ['merge', '--ff-only', `origin/${entry.ref}`], dir)
+  },
+  build: buildUserPlugin,
+    bins: gate.bins,
+    binIdentity: { pluginId: id, version: newVersion, ref: entry.ref, commitSha: remoteSha },
+    progress: opts.progress,
+    ledger: async (bins) => {
+      assets = await installUpgradedPluginAssets(id, pluginDir)
+      writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
+        upgradedAt: new Date().toISOString(),
+        version: newVersion,
+      commitSha: remoteSha,
+        manifestSha,
+        permissions: gate.newPerms,
+        installedSkills: assets.installedSkills,
+        installedBins: toInstalledBins(bins),
+      }))
+    },
   })
-  writePluginLockfile(updated)
+  const droppedBins = sweepDroppedBins(id, entry.installedBins, installedBins.map((bin) => bin.name))
 
   return {
     id,
     before,
     after: { version: newVersion, commitSha: remoteSha },
     noop: false,
-    newPermissions: widened,
+    newPermissions: gate.widened,
+    newBins: gate.newBins,
     awaitingConsent: false,
     pluginAssets: assets.pluginAssets,
+    droppedBins,
   }
 }
 
@@ -232,6 +242,7 @@ export async function upgradeGithubSubpath(
         after: before,
         noop: true,
         newPermissions: [],
+        newBins: [],
         awaitingConsent: false,
       }
     }
@@ -253,49 +264,47 @@ export async function upgradeGithubSubpath(
     assertManifestIdStable(manifest, id)
     assertManifestSignaturePolicy(manifest, id)
     const newVersion = manifestVersion(manifest, entry.version)
-    const newPerms = manifestPermissions(manifest, id)
-    const widened = diffNewPermissions(entry.permissions, newPerms)
+    const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: remoteSha } })
+    if (!gate.proceed) return gate.result
 
-    if (widened.length > 0 && !opts.yes) {
-      // Consent required — exit BEFORE mutating disk or lockfile.
-      return {
-        id,
-        before,
-        after: { version: newVersion, commitSha: remoteSha },
-        noop: false,
-        newPermissions: widened,
-        awaitingConsent: true,
-      }
-    }
-
-    // Consent accepted (or unnecessary). Replace the on-disk plugin with
-    // the subpath contents. Wipe first so deletions in the source are
-    // reflected (cpSync would only overlay, leaving stale files).
-    rmSync(pluginDir, { recursive: true, force: true })
-    cpSync(subpathDir, pluginDir, { recursive: true, dereference: false })
-
-    await buildUserPlugin(pluginDir)
-
-    const assets = await installUpgradedPluginAssets(id, pluginDir)
-
-    const updated = updatePlugin(readPluginLockfile(), id, {
-      upgradedAt: new Date().toISOString(),
-      version: newVersion,
-      commitSha: remoteSha,
-      manifestSha,
-      permissions: newPerms,
-      installedSkills: assets.installedSkills,
+    // Consent accepted (or unnecessary). Replace the plugin dir inside the
+    // transaction — the previous install (directory, binaries, ledger row)
+    // comes back byte for byte on any failure. Bins the new manifest dropped
+    // go only AFTER the ledger write, and only with zero remaining owners.
+    let assets!: Awaited<ReturnType<typeof installUpgradedPluginAssets>>
+    const { installedBins } = await replacePluginDir({
+      id,
+      op: 'upgrade',
+      place: (dir) => cpSync(subpathDir, dir, { recursive: true, dereference: false }),
+    build: buildUserPlugin,
+      bins: gate.bins,
+      binIdentity: { pluginId: id, version: newVersion, ref: entry.ref, commitSha: remoteSha },
+      progress: opts.progress,
+      ledger: async (bins) => {
+        assets = await installUpgradedPluginAssets(id, pluginDir)
+        writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
+          upgradedAt: new Date().toISOString(),
+          version: newVersion,
+        commitSha: remoteSha,
+          manifestSha,
+          permissions: gate.newPerms,
+          installedSkills: assets.installedSkills,
+          installedBins: toInstalledBins(bins),
+        }))
+      },
     })
-    writePluginLockfile(updated)
+    const droppedBins = sweepDroppedBins(id, entry.installedBins, installedBins.map((bin) => bin.name))
 
     return {
       id,
       before,
       after: { version: newVersion, commitSha: remoteSha },
       noop: false,
-      newPermissions: widened,
+      newPermissions: gate.widened,
+      newBins: gate.newBins,
       awaitingConsent: false,
       pluginAssets: assets.pluginAssets,
+      droppedBins,
     }
   } finally {
     rmSync(stagingDir, { recursive: true, force: true })

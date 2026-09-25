@@ -11,10 +11,11 @@
  * at it. Mandatory isolation mocks per project rule.
  */
 import { describe, it, expect, afterAll, afterEach, beforeEach, mock } from 'bun:test'
-import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'fs'
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, renameSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
+import { treeDigest } from '../../helpers/tree-digest'
 
 const testDir = join(tmpdir(), `bakin-test-upgrade-artifact-${Date.now()}-${randomUUID()}`)
 const openClawDir = join(testDir, 'openclaw')
@@ -40,6 +41,13 @@ mock.module('../../../src/core/logger', () => ({
 mock.module('@/core/plugin-registry', () => ({
   isCorePlugin: () => false,
 }))
+// Flag-driven post-content projection: the restore test makes the ledger
+// step (runtime-skill projection) fail AFTER the new tree is in place.
+const assets = { fail: false }
+mock.module('@/core/onboarding/plugin-assets', () => ({
+  findSkillsForPlugin: () => (assets.fail ? [{ name: 'boom' }] : []),
+  installPluginAssets: async () => { throw new Error('skill projection failed') },
+}))
 // Point the github resolver at the local artifact host. `currentBaseUrl` is
 // set per-test after the ephemeral server starts.
 let currentBaseUrl = ''
@@ -63,7 +71,9 @@ import {
   readArtifactsIndex,
   writeArtifactsIndex,
 } from '../../../src/core/whiskit/artifacts-index'
-import { installArtifact } from '../../../src/core/whiskit/live-install'
+import { materializeArtifact } from '../../../src/core/whiskit/consumer-install'
+import { addPlugin, writePluginLockfile } from '../../../packages/core/src/plugins/lockfile'
+import { parseManifestPermissions } from '../../../packages/core/src/plugins/permissions'
 import { httpIndexResolver } from '../../../src/core/whiskit/resolver'
 import { readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
 import { isArtifactInstall, runChecks, upgradePlugin } from '../../../src/core/plugins/upgrade'
@@ -127,15 +137,24 @@ async function publishVersion(v: string, permissions: string[] = ['storage.read'
   writeArtifactsIndex(indexPath, index)
 }
 
-/** Install messaging@<v> the way the live consumer path does. */
+/** Lay down messaging@<v> as an artifact install: extracted tree + provenance + lockfile row. */
 async function installVersion(v: string): Promise<string> {
-  const { installDir } = await installArtifact({
-    resolver: httpIndexResolver(host!.origin, 'github'),
+  const materialized = await materializeArtifact(httpIndexResolver(host!.origin, 'github'), 'messaging', v, PLATFORM, join(testDir, 'materialize'))
+  const installDir = join(testDir, 'plugins', 'messaging')
+  mkdirSync(join(testDir, 'plugins'), { recursive: true })
+  renameSync(materialized.stagingDir, installDir)
+  materialized.cleanup()
+  const manifest = JSON.parse(readFileSync(join(installDir, 'bakin-plugin.json'), 'utf-8')) as { permissions?: unknown }
+  writePluginLockfile(addPlugin(readPluginLockfile(), 'messaging', {
     source: SOURCE,
-    pluginId: 'messaging',
-    version: v,
-    platform: PLATFORM,
-  })
+    type: 'github',
+    ref: '',
+    commitSha: materialized.provenance.sourceCommitSha || '',
+    installedAt: new Date().toISOString(),
+    version: materialized.provenance.pluginVersion,
+    permissions: parseManifestPermissions(manifest.permissions),
+    manifestSha: materialized.provenance.manifestSha,
+  }))
   return installDir
 }
 
@@ -188,6 +207,29 @@ describe('artifact-lane upgrade (upgradePlugin)', () => {
     expect(entry.remoteArtifactVersion).toBe('0.2.0')
   })
 
+  it('S14: a failure after the new tree landed restores the previous artifact install byte for byte', async () => {
+    await publishVersion('0.1.0')
+    const installDir = await installVersion('0.1.0')
+    await publishVersion('0.2.0')
+    const treeBefore = treeDigest(installDir)
+    const rowBefore = readPluginLockfile().plugins['messaging']
+
+    assets.fail = true
+    try {
+      await expect(upgradePlugin('messaging')).rejects.toThrow('skill projection failed')
+    } finally {
+      assets.fail = false
+    }
+    expect(treeDigest(installDir)).toEqual(treeBefore)
+    expect(readPluginLockfile().plugins['messaging']).toEqual(rowBefore)
+    expect(existsSync(join(testDir, 'plugins', '.bakin-backup-messaging'))).toBe(false)
+    expect(existsSync(join(installDir, '.bakin-install.json'))).toBe(false)
+    expect(existsSync(join(testDir, '.whiskit-staging'))).toBe(false)
+
+    const result = await upgradePlugin('messaging')
+    expect(result.after.version).toBe('0.2.0')
+  })
+
   it('is a no-op when already on the latest published version', async () => {
     await publishVersion('0.1.0')
     await installVersion('0.1.0')
@@ -212,7 +254,7 @@ describe('artifact-lane upgrade (upgradePlugin)', () => {
     expect(readPluginLockfile().plugins['messaging'].version).toBe('0.1.0')
 
     // Consent accepted — upgrade lands, permissions recorded.
-    const accepted = await upgradePlugin('messaging', { yes: true })
+    const accepted = await upgradePlugin('messaging', { accepted: pending.consent })
     expect(accepted.awaitingConsent).toBe(false)
     expect(accepted.after.version).toBe('0.2.0')
     const entry = readPluginLockfile().plugins['messaging']

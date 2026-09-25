@@ -12,7 +12,7 @@
  */
 import { existsSync, rmSync } from 'fs'
 import { createLogger } from '../logger'
-import { getContentDir } from '../content-dir'
+import { getBakinPaths, getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
 import {
   decrementRefCount,
@@ -26,10 +26,9 @@ import {
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
 import { PackageNotInstalledError, PackageStillRequiredError } from './errors'
 import { unprojectPackage } from './projector'
-import {
-  acquireInstallLock,
-  releaseInstallLock,
-} from './install-lock'
+import { join } from 'path'
+import { readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
+import { withInstallLock } from '../install-core/install-lock'
 import { getAppServices } from '../app-services'
 
 const log = createLogger('agent-pkg:uninstall')
@@ -89,6 +88,12 @@ export function withoutSharedArtifacts(
       if (SHARED_ARTIFACT_KINDS.has(p.kind)) otherTargets.add(p.target)
     }
   }
+  // Plugins share ~/.bakin/bin: a binary a plugin still pins survives the
+  // pack's removal (spec plugin-managed-binaries §2.4).
+  const binDir = getBakinPaths().bin
+  for (const entry of Object.values(readPluginLockfile().plugins)) {
+    for (const bin of entry.installedBins ?? []) otherTargets.add(join(binDir, bin.name))
+  }
   return projections.filter((p) => !SHARED_ARTIFACT_KINDS.has(p.kind) || !otherTargets.has(p.target))
 }
 
@@ -96,9 +101,12 @@ export function withoutSharedArtifacts(
  * Remove a package + its orphaned dependencies.
  */
 export async function removePackageById(options: RemoveOptions): Promise<RemoveResult> {
-  acquireInstallLock()
+  // ONE install lock around the whole operation; inner writers assert it.
+  return withInstallLock(() => removePackageByIdLocked(options))
+}
 
-  try {
+async function removePackageByIdLocked(options: RemoveOptions): Promise<RemoveResult> {
+  {
     let lock = readLockfile()
     const entry = lock.packages[options.packageId]
     if (!entry) {
@@ -229,8 +237,6 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
       deletedAgent,
       ...(deleteAgentError ? { deleteAgentError } : {}),
     }
-  } finally {
-    releaseInstallLock()
   }
 }
 

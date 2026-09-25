@@ -47,6 +47,7 @@ import {
   removePluginAssets,
 } from '../../../src/core/onboarding/plugin-assets'
 import { snapshotUninstall } from '../../../src/core/plugins/uninstall-snapshot'
+import { unprojectPackage } from '../../../src/core/agent-packages/projector'
 
 type TestGlobal = typeof globalThis & {
   __bakinAppServices?: { runtime: AgentRuntimeAdapter }
@@ -207,5 +208,17 @@ describe('snapshotUninstall', () => {
     })
     expect(existsSync(result.tarballPath)).toBe(true)
     expect(result.capturedPaths.length).toBe(0)
+  })
+})
+
+describe('unprojectPackage — bin projections', () => {
+  it('removes the marker together with the binary (an extension-less target must not orphan its sidecar)', async () => {
+    const target = join(testDir, 'bin', 'ocrit')
+    mkdirSync(join(testDir, 'bin'), { recursive: true })
+    writeFileSync(target, '#!/bin/sh\n', { mode: 0o755 })
+    writeFileSync(`${target}.installedBy`, JSON.stringify({ package: 'ocr', version: '1', ref: '', commitSha: '', sha256: 'a'.repeat(64), installedAt: '2026-09-01T00:00:00.000Z' }))
+    await unprojectPackage([{ kind: 'bin', target, sha256: 'a'.repeat(64) }])
+    expect(existsSync(target)).toBe(false)
+    expect(existsSync(`${target}.installedBy`)).toBe(false)
   })
 })

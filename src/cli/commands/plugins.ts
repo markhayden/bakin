@@ -27,6 +27,7 @@ import {
   type PluginImportInstallRequest,
 } from '../../core/plugins/import-export'
 import type { Permission } from '@bakin/core/plugins/permissions'
+import type { ConsentBin } from '../../core/plugins/consent-token'
 import { renderInkReport } from '../../core/cli/ui/render-report'
 import type {
   PluginActionData,
@@ -277,7 +278,7 @@ async function installImportedPluginLegacy(
 
   for (let attempt = 0; attempt < 3 && result.awaitingConsent; attempt++) {
     if (!opts.yes) {
-      throw new Error(`plugin "${request.id}" requires permission consent; rerun with --yes or install it directly`)
+      throw new Error(`plugin "${request.id}" requires consent (permissions and/or binary downloads); rerun with --yes or install it directly`)
     }
     result = await apiPost('/api/plugins/install', {
       source: request.source,
@@ -343,10 +344,20 @@ async function cmdPluginsRemove(pluginId: string, opts: { json?: boolean } = {})
 }
 
 async function cmdPluginsUpgrade(pluginId: string, opts: { yes?: boolean; json?: boolean } = {}): Promise<void> {
+  // Two-phase round trip (spec plugin-managed-binaries S17): preview, then
+  // commit with the consent token. `--yes` accepts the preview in place of
+  // the prompt; a target that changed between preview and commit re-prompts
+  // (bounded — a source that keeps changing is an error, not a loop).
+  const MAX_CONSENT_ROUNDS = 3
   if (opts.json) {
     let response: Awaited<ReturnType<typeof apiPostJson>>
     try {
-      response = await apiPostJson('/api/plugins/upgrade', { pluginId, yes: opts.yes === true })
+      response = await apiPostJson('/api/plugins/upgrade', { pluginId })
+      for (let round = 0; round < MAX_CONSENT_ROUNDS; round++) {
+        const result = jsonObject(response.data) ?? {}
+        if (result.awaitingConsent !== true || !opts.yes || typeof result.consentToken !== 'string') break
+        response = await apiPostJson('/api/plugins/upgrade', { pluginId, accepted: true, consentToken: result.consentToken })
+      }
     } catch (err) {
       print({ ok: false, error: err instanceof Error ? err.message : String(err) })
       process.exit(1)
@@ -362,7 +373,7 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes?: boolean; json?:
 
   let result: Record<string, unknown>
   try {
-    result = await apiPost('/api/plugins/upgrade', { pluginId, yes: opts.yes === true }) as Record<string, unknown>
+    result = await apiPost('/api/plugins/upgrade', { pluginId }) as Record<string, unknown>
   } catch (err) {
     if (process.stdout.isTTY) {
       await printPluginActionTui({
@@ -374,8 +385,7 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes?: boolean; json?:
     }
     throw err
   }
-  const failed = result.core === true || Boolean(result.error)
-  if (!opts.json && result.awaitingConsent === true) {
+  for (let round = 0; round < MAX_CONSENT_ROUNDS && result.awaitingConsent === true && typeof result.consentToken === 'string'; round++) {
     const { promptUpgradeConsent } = await import('../../core/cli/consent-prompt')
     const before = result.before && typeof result.before === 'object' ? result.before as Record<string, unknown> : {}
     const after = result.after && typeof result.after === 'object' ? result.after as Record<string, unknown> : {}
@@ -384,6 +394,7 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes?: boolean; json?:
       fromVersion: String(before.version ?? '?'),
       toVersion: String(after.version ?? '?'),
       newPermissions: Array.isArray(result.newPermissions) ? result.newPermissions as Permission[] : [],
+      newBins: Array.isArray(result.newBins) ? result.newBins as ConsentBin[] : [],
       yes: opts.yes === true,
     })
     if (!accepted) {
@@ -394,8 +405,9 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes?: boolean; json?:
       })
       process.exit(1)
     }
-    result = await apiPost('/api/plugins/upgrade', { pluginId, yes: true }) as Record<string, unknown>
+    result = await apiPost('/api/plugins/upgrade', { pluginId, accepted: true, consentToken: result.consentToken }) as Record<string, unknown>
   }
+  const failed = result.core === true || Boolean(result.error) || result.awaitingConsent === true
 
   if (process.stdout.isTTY) {
     await printPluginActionTui({
@@ -404,7 +416,7 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes?: boolean; json?:
       result,
     })
     if (result.core === true) process.exit(2)
-    if (result.error) process.exit(1)
+    if (failed) process.exit(1)
     return
   }
 

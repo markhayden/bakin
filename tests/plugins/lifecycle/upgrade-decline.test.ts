@@ -140,6 +140,52 @@ describe('upgrade decline path — github', () => {
   })
 })
 
+describe('upgrade consent binding — local (S17)', () => {
+  it('consent for preview A does not commit target B: re-prompts with manifestChanged and touches nothing', async () => {
+    const fs = require('fs') as typeof import('fs')
+    const sourcePath = join(testDir, 'src-stale')
+    const pluginDir = join(testDir, 'plugins', 'stalec')
+    mkdirSync(sourcePath, { recursive: true })
+    mkdirSync(pluginDir, { recursive: true })
+    const v1 = fixturePluginFiles({ id: 'stalec', version: '1.0.0', permissions: ['storage.read'] })
+    for (const [name, content] of Object.entries(v1)) {
+      fs.writeFileSync(join(sourcePath, name), content, 'utf-8')
+      fs.writeFileSync(join(pluginDir, name), content, 'utf-8')
+    }
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'stalec', {
+      source: sourcePath, type: 'local', ref: '', commitSha: '', installedAt: '2026-04-25T00:00:00Z',
+      version: '1.0.0', permissions: ['storage.read'], manifestSha: 'fixture-sha', sourceTreeSha: 'old-tree-sha',
+    } as PluginLockEntry))
+
+    // Preview A: 1.1.0 widens to events.emit.
+    for (const [name, content] of Object.entries(fixturePluginFiles({ id: 'stalec', version: '1.1.0', permissions: ['storage.read', 'events.emit'] }))) {
+      fs.writeFileSync(join(sourcePath, name), content, 'utf-8')
+    }
+    const previewA = await upgradePlugin('stalec')
+    expect(previewA.awaitingConsent).toBe(true)
+    expect(previewA.consent?.permissions.sort()).toEqual(['events.emit', 'storage.read'])
+
+    // The source moves on to B (1.2.0, a different widening) before the user accepts A.
+    for (const [name, content] of Object.entries(fixturePluginFiles({ id: 'stalec', version: '1.2.0', permissions: ['storage.read', 'storage.write'] }))) {
+      fs.writeFileSync(join(sourcePath, name), content, 'utf-8')
+    }
+    const beforeLock = readPluginLockfile().plugins['stalec']
+    const stale = await upgradePlugin('stalec', { accepted: previewA.consent })
+    expect(stale.awaitingConsent).toBe(true)
+    expect(stale.manifestChanged).toBe(true)
+    expect(stale.newPermissions).toEqual(['storage.write'])
+    expect(stale.consent?.manifestSha).not.toBe(previewA.consent?.manifestSha)
+    expect(readManifestVersion(pluginDir)).toBe('1.0.0')
+    expect(readPluginLockfile().plugins['stalec']).toEqual(beforeLock)
+
+    // Consent for B commits B.
+    const committed = await upgradePlugin('stalec', { accepted: stale.consent })
+    expect(committed.awaitingConsent).toBe(false)
+    expect(committed.after.version).toBe('1.2.0')
+    expect(readManifestVersion(pluginDir)).toBe('1.2.0')
+  })
+})
+
 describe('upgrade decline path — local', () => {
   it('declined widened-perms upgrade leaves plugin dir + lockfile unchanged', async () => {
     const sourcePath = join(testDir, 'src-decline')

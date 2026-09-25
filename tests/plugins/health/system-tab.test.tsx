@@ -828,6 +828,39 @@ describe('performSearchReindex', () => {
     expect(invalidPluginConfirmation.message).toContain('could not confirm the result')
   })
 
+  it('returns the consent preview (token, permissions, downloads) when the update needs approval', async () => {
+    globalThis.fetch = mock(async () => new Response(JSON.stringify({
+      ok: false,
+      awaitingConsent: true,
+      noop: false,
+      newPermissions: ['storage.write'],
+      newBins: [{ name: 'tmux', version: '3.5a', sha256: 'c'.repeat(64), sizeBytes: 2_100_000 }],
+      consentToken: 'tok-preview',
+    }), { status: 200, headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch
+
+    const result = await performPluginUpgrade('terminal')
+
+    expect(result.awaitingConsent).toBe(true)
+    expect(result.consentToken).toBe('tok-preview')
+    expect(result.permissions).toEqual(['storage.write'])
+    expect(result.bins).toEqual([{ name: 'tmux', version: '3.5a', sha256: 'c'.repeat(64), sizeBytes: 2_100_000 }])
+    expect(result.message).toBe('This update requests new permissions and downloads binaries.')
+  })
+
+  it('approving re-posts the preview token as accepted consent', async () => {
+    const fetchMock = mock(async () => new Response(JSON.stringify({
+      ok: true, noop: false, awaitingConsent: false, newPermissions: ['storage.write'], newBins: [],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const result = await performPluginUpgrade('terminal', 'tok-preview')
+
+    expect(result.awaitingConsent).toBe(false)
+    expect(result.message).toBe('terminal was updated and reactivated.')
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(String(init.body))).toEqual({ pluginId: 'terminal', accepted: true, consentToken: 'tok-preview' })
+  })
+
   it('reports a no-op plugin update as already current', async () => {
     globalThis.fetch = mock(async () => new Response(JSON.stringify({
       ok: true,
