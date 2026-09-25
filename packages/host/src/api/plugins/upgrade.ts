@@ -13,6 +13,7 @@
  * The upgraded plugin is activated immediately after a successful rebuild.
  */
 import { createLogger } from '@/core/logger'
+import { startInstallJob, type InstallProgressFn } from '@/core/agent-packages/install-progress'
 import { upgradePlugin, UpgradeRefusedError } from '@/core/plugins/upgrade'
 import { isCorePlugin } from '@/core/plugin-registry'
 import { appendAudit } from '@/core/audit'
@@ -27,7 +28,7 @@ interface UpgradeBody {
   yes?: boolean
 }
 
-export async function post(req: Request, _url: URL): Promise<Response> {
+export async function post(req: Request, url: URL): Promise<Response> {
   let body: UpgradeBody
   try {
     body = await req.json()
@@ -65,8 +66,23 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     }, { status: 400 })
   }
 
+  if (url.searchParams.get('async') === '1') {
+    const job = startInstallJob({
+      kind: 'plugin',
+      title: pluginId,
+      run: async (progress) => {
+        const res = await runUpgrade(pluginId, body, progress)
+        return { body: await res.json(), status: res.status }
+      },
+    })
+    return Response.json({ ok: true, jobId: job.id }, { status: 202 })
+  }
+  return runUpgrade(pluginId, body, undefined)
+}
+
+async function runUpgrade(pluginId: string, body: UpgradeBody, progress: InstallProgressFn | undefined): Promise<Response> {
   try {
-    const result = await upgradePlugin(pluginId, { yes: body.yes === true })
+    const result = await upgradePlugin(pluginId, { yes: body.yes === true, progress })
     let runtimeVersion: number | undefined
     if (!result.noop && !result.awaitingConsent) {
       try {

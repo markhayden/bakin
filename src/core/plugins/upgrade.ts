@@ -66,6 +66,16 @@ export async function upgradePlugin(
   id: string,
   opts: UpgradeOptions = {},
 ): Promise<UpgradeResult> {
+  opts.progress?.({ stage: 'fetch-source', message: `Checking ${id} for a newer version…` })
+  const result = await upgradePluginResolved(id, opts)
+  opts.progress?.({ stage: 'finalize', message: result.noop ? `${id} is already up to date` : `Upgraded ${id}` })
+  return result
+}
+
+async function upgradePluginResolved(
+  id: string,
+  opts: UpgradeOptions,
+): Promise<UpgradeResult> {
   if (isCorePlugin(id)) {
     auditUpgradeRejected('core_plugin', id)
     throw new UpgradeRefusedError(

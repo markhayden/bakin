@@ -11,6 +11,7 @@ import { createHash } from 'crypto'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { appendAudit } from '@/core/audit'
+import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
 import { getSettings } from '@bakin/core/settings'
 import { parseManifestPermissions, type Permission } from '@bakin/core/plugins/permissions'
 import { verifyPluginManifestSignature } from '@bakin/core/plugins/signatures'
@@ -23,6 +24,8 @@ import {
 const log = createLogger('plugin-upgrade')
 
 export interface UpgradeOptions {
+  /** Staged progress for install jobs (fetch-source / project / bins / finalize). */
+  progress?: InstallProgressFn
   /** Skip consent prompt even when permissions widen. */
   yes?: boolean
 }
