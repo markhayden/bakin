@@ -29,7 +29,13 @@ mock.module('@bakin/core/main-agent', () => ({
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
+  getBakinPaths: () => ({ workflows: join(testDir, 'workflows'), bin: join(testDir, 'bin') }),
+}))
+// The plugin lockfile module resolves its own path through the packages/core
+// facade — mock both (CLAUDE.md rule) or discovery reads a failed ledger.
+mock.module('@bakin/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ workflows: join(testDir, 'workflows'), bin: join(testDir, 'bin') }),
 }))
 // Isolate plugin discovery from the live core-plugin set: this smoke test
 // asserts the "nothing ships" branch, which must not depend on whether a

@@ -98,8 +98,11 @@ describe('POST /api/plugins/remove — bin sweep', () => {
     // The snapshot keeps the lock-entry copy, bins included (bytes are re-downloadable).
     const tarballs = readdirSync(join(testDir, '.uninstalled')).filter((name) => name.startsWith(`${ID}-`) && name.endsWith('.tar.gz'))
     expect(tarballs).toHaveLength(1)
-    const listing = execFileSync('tar', ['-xzOf', join(testDir, '.uninstalled', tarballs[0]!), `plugin-lock/${ID}.json`], { encoding: 'utf-8' })
-    expect(JSON.parse(listing).installedBins.map((bin: { name: string }) => bin.name)).toEqual(['solo', 'packshared', 'pluginshared'])
+    const extracted = join(testDir, 'extracted')
+    mkdirSync(extracted, { recursive: true })
+    execFileSync('tar', ['-xzf', join(testDir, '.uninstalled', tarballs[0]!), '-C', extracted])
+    const lockCopy = execFileSync('find', [extracted, '-name', `${ID}.json`, '-path', '*plugin-lock*'], { encoding: 'utf-8' }).trim().split('\n')[0]!
+    expect(JSON.parse(readFileSync(lockCopy, 'utf-8')).installedBins.map((bin: { name: string }) => bin.name)).toEqual(['solo', 'packshared', 'pluginshared'])
   })
 })
 

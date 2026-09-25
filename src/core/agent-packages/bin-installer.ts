@@ -20,10 +20,13 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { verifyInstalledBin } from './bin-verify'
+import { binPlatformKey } from './bin-platform'
+
+export { binPlatformKey } from './bin-platform'
 import { assertInstallLockHeld } from '../install-core/install-lock'
 import { assertNoBinPinConflict, binTargetPath } from '../plugins/bin-owners'
 import type { Manifest } from '../../../packages/core/src/agent-packages/manifest'
-import type { BinPlatformKey, BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
+import type { BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
 import { writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
 import { commitFileAtomic, downloadToFile, extractTarMember, sha256File } from '../../../packages/core/src/net/download'
 import type { ProjectorResult } from './projector'
@@ -36,13 +39,6 @@ const execFileAsync = promisify(execFile)
 const DOWNLOAD_TIMEOUT_MS = 120_000
 const VERIFY_TIMEOUT_MS = 15_000
 
-/** Map this process's platform/arch onto a manifest platform key. */
-export function binPlatformKey(): BinPlatformKey | null {
-  const os = process.platform === 'darwin' ? 'darwin' : process.platform === 'linux' ? 'linux' : null
-  const arch = process.arch === 'arm64' ? 'arm64' : process.arch === 'x64' ? 'x64' : null
-  if (!os || !arch) return null
-  return `${os}-${arch}` as BinPlatformKey
-}
 
 export interface BinInstallResult {
   /** Archive-sourced: the extracted member. */
