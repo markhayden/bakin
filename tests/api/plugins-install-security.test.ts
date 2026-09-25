@@ -101,6 +101,7 @@ function gateArgs(overrides: {
     id: 'hello',
     manifest: { id: 'hello', version: '1.2.3' },
     parsedPermissions: (overrides.permissions ?? ['exec-tools']) as never,
+    bins: [],
     stagedManifestSha: overrides.stagedManifestSha ?? SHA_A,
   }
 }
@@ -121,6 +122,7 @@ describe('evaluateConsentGate — consent-token manifestSha binding (C13)', () =
       source: consentSourceIdentity('github:user/repo', ''),
       manifestSha: SHA_A,
       permissions: ['exec-tools'],
+      bins: [],
     })
     const res = evaluateConsentGate(gateArgs({
       body: { accepted: true, consentToken: token },
@@ -134,6 +136,7 @@ describe('evaluateConsentGate — consent-token manifestSha binding (C13)', () =
       source: consentSourceIdentity('github:user/repo', ''),
       manifestSha: SHA_A,
       permissions: ['exec-tools'],
+      bins: [],
     })
     const res = evaluateConsentGate(gateArgs({
       body: { accepted: true, consentToken: token },
@@ -171,6 +174,7 @@ describe('evaluateConsentGate — consent-token manifestSha binding (C13)', () =
       source: consentSourceIdentity('github:evil/other', ''),
       manifestSha: SHA_A,
       permissions: ['exec-tools'],
+      bins: [],
     })
     const res = evaluateConsentGate(gateArgs({
       body: { accepted: true, consentToken: token },

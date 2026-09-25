@@ -84,6 +84,17 @@ describe('renderInstallPrompt', () => {
     const text = renderInstallPrompt({ pluginId: 'p', version: '1.0.0', permissions: [] })
     expect(text).toContain('(none)')
   })
+
+  it('discloses declared binary downloads (name, version, size, target dir)', () => {
+    const text = renderInstallPrompt({
+      pluginId: 'terminal', version: '0.2.0', permissions: [],
+      bins: [{ name: 'tmux', version: '3.7c', sha256: 'a'.repeat(64), sizeBytes: 2_100_000 }],
+    })
+    expect(text).toContain('Downloads (installed into ~/.bakin/bin, sha256-pinned):')
+    expect(text).toContain('tmux 3.7c')
+    expect(text).toContain('2.0 MB')
+    expect(text).toContain('Continue? [y/N]')
+  })
 })
 
 describe('renderUpgradePrompt', () => {
@@ -97,6 +108,28 @@ describe('renderUpgradePrompt', () => {
     expect(text).toContain('Upgrading: p v1.0.0 → v1.1.0')
     expect(text).toContain('NEW permissions requested:')
     expect(text).toContain('+ storage.write')
+  })
+
+  it('lists NEW or changed binary downloads on upgrade', () => {
+    const text = renderUpgradePrompt({
+      pluginId: 'terminal', fromVersion: '0.1.3', toVersion: '0.2.0', newPermissions: [],
+      newBins: [{ name: 'tmux', version: '3.7c', sha256: 'a'.repeat(64) }],
+    })
+    expect(text).toContain('NEW downloads (installed into ~/.bakin/bin, sha256-pinned):')
+    expect(text).toContain('+ tmux 3.7c')
+  })
+})
+
+describe('promptUpgradeConsent with binaries only', () => {
+  it('prompts when the only change is a new binary download', async () => {
+    const { promptUpgradeConsent } = await import('../../../src/core/cli/consent-prompt')
+    const { io, output } = makeIO('n\n')
+    const accepted = await promptUpgradeConsent({
+      pluginId: 'terminal', fromVersion: '0.1.3', toVersion: '0.2.0', newPermissions: [],
+      newBins: [{ name: 'tmux', version: '3.7c', sha256: 'a'.repeat(64) }], io,
+    })
+    expect(accepted).toBe(false)
+    expect(output()).toContain('NEW downloads')
   })
 })
 

@@ -277,7 +277,7 @@ async function installImportedPluginLegacy(
 
   for (let attempt = 0; attempt < 3 && result.awaitingConsent; attempt++) {
     if (!opts.yes) {
-      throw new Error(`plugin "${request.id}" requires permission consent; rerun with --yes or install it directly`)
+      throw new Error(`plugin "${request.id}" requires consent (permissions and/or binary downloads); rerun with --yes or install it directly`)
     }
     result = await apiPost('/api/plugins/install', {
       source: request.source,

@@ -11,6 +11,8 @@
  */
 import type { Permission } from '@bakin/core/plugins/permissions'
 import { PERMISSION_DESCRIPTIONS } from '@bakin/core/plugins/permissions'
+import type { ConsentBin } from '../plugins/consent-token'
+import { formatBytes } from '../../cli/output'
 
 export interface PromptIO {
   stdin: NodeJS.ReadStream
@@ -23,6 +25,8 @@ export interface InstallConsentInput {
   pluginId: string
   version: string
   permissions: Permission[]
+  /** Binary downloads the manifest declares (spec plugin-managed-binaries §2.5). */
+  bins?: ConsentBin[]
   io?: PromptIO
   /** Skip the prompt and accept. Used by --yes / scripted installs. */
   yes?: boolean
@@ -37,8 +41,17 @@ export interface UpgradeConsentInput {
    * trigger the prompt — removed permissions don't (no security concern).
    */
   newPermissions: Permission[]
+  /** Binary downloads the new manifest adds or re-pins. */
+  newBins?: ConsentBin[]
   io?: PromptIO
   yes?: boolean
+}
+
+const BIN_DIR_NOTE = 'installed into ~/.bakin/bin, sha256-pinned'
+
+function binLine(bin: ConsentBin, prefix = '  '): string {
+  const size = bin.sizeBytes !== undefined ? ` (${formatBytes(bin.sizeBytes)})` : ''
+  return `${prefix}${bin.name} ${bin.version}${size}`
 }
 
 /** Render the install prompt body. Exported for tests / introspection. */
@@ -56,6 +69,10 @@ export function renderInstallPrompt(input: InstallConsentInput): string {
       lines.push(`  ${p.padEnd(widest)}    ${PERMISSION_DESCRIPTIONS[p]}`)
     }
   }
+  if (input.bins?.length) {
+    lines.push(`Downloads (${BIN_DIR_NOTE}):`)
+    for (const bin of input.bins) lines.push(binLine(bin))
+  }
   lines.push(`Continue? [y/N] `)
   return lines.join('\n')
 }
@@ -63,13 +80,17 @@ export function renderInstallPrompt(input: InstallConsentInput): string {
 /** Render the upgrade prompt body — only the *added* permissions. */
 export function renderUpgradePrompt(input: UpgradeConsentInput): string {
   const { pluginId, fromVersion, toVersion, newPermissions } = input
-  const lines = [
-    `Upgrading: ${pluginId} v${fromVersion} → v${toVersion}`,
-    `NEW permissions requested:`,
-  ]
-  const widest = newPermissions.reduce((w, p) => Math.max(w, p.length), 0)
-  for (const p of newPermissions) {
-    lines.push(`  + ${p.padEnd(widest)}  ${PERMISSION_DESCRIPTIONS[p]}`)
+  const lines = [`Upgrading: ${pluginId} v${fromVersion} → v${toVersion}`]
+  if (newPermissions.length > 0) {
+    lines.push(`NEW permissions requested:`)
+    const widest = newPermissions.reduce((w, p) => Math.max(w, p.length), 0)
+    for (const p of newPermissions) {
+      lines.push(`  + ${p.padEnd(widest)}  ${PERMISSION_DESCRIPTIONS[p]}`)
+    }
+  }
+  if (input.newBins?.length) {
+    lines.push(`NEW downloads (${BIN_DIR_NOTE}):`)
+    for (const bin of input.newBins) lines.push(binLine(bin, '  + '))
   }
   lines.push(`Continue? [y/N] `)
   return lines.join('\n')
@@ -94,7 +115,7 @@ export async function promptInstallConsent(input: InstallConsentInput): Promise<
  */
 export async function promptUpgradeConsent(input: UpgradeConsentInput): Promise<boolean> {
   if (input.yes) return true
-  if (input.newPermissions.length === 0) return true
+  if (input.newPermissions.length === 0 && !input.newBins?.length) return true
   const io = input.io ?? defaultIO()
   io.stdout.write(renderUpgradePrompt(input))
   return readYesNo(io)

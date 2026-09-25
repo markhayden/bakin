@@ -269,6 +269,8 @@ export async function buildSkillPreview(input: string): Promise<PreviewResult> {
       source: staged.ref,
       manifestSha: staged.contentSha,
       permissions: summarizeConsent(staged.preview),
+      // Hub skills never declare binaries; the token shape is shared with plugin installs.
+      bins: [],
     })
     return { ok: true, preview: { ...staged.preview, consentToken } }
   } catch (err) {
@@ -367,7 +369,9 @@ export async function confirmSkillInstall(input: string, token: string): Promise
         source: staged.ref,
         manifestSha: staged.contentSha,
         permissions: summarizeConsent(staged.preview),
-      })
+      // Hub skills never declare binaries; the token shape is shared with plugin installs.
+      bins: [],
+    })
       return { status: 'drift', preview: { ...staged.preview, consentToken: freshToken } }
     }
 

@@ -8,6 +8,7 @@
  * tears down the staging dir and returns the exact error Response the
  * monolithic handler produced.
  */
+import type { PluginBinRequirement } from '@makinbakin/sdk/types'
 import { existsSync, readFileSync, rmSync, statSync } from 'fs'
 import { join, basename } from 'path'
 import { createHash } from 'crypto'
@@ -44,6 +45,8 @@ export interface ValidatedManifest {
   id: string
   manifest: Record<string, unknown> & { id: string; version: string }
   parsedPermissions: PluginLockEntry['permissions']
+  /** `requires.bins` as parsed by readPluginManifestJson (already schema-validated). */
+  bins: PluginBinRequirement[]
   /**
    * sha256 of the staged manifest bytes — bound into the consent token AND
    * re-checked at commit time. Same hash function `recordInstall` uses.
@@ -210,5 +213,6 @@ export function validateStagedManifest(
   // re-checked at commit time. Same hash function recordInstall uses.
   const stagedManifestSha = createHash('sha256').update(readFileSync(manifestPath)).digest('hex')
 
-  return { ok: true, validated: { id, manifest, parsedPermissions, stagedManifestSha } }
+  const bins = ((manifest as { requires?: { bins?: PluginBinRequirement[] } }).requires?.bins ?? [])
+  return { ok: true, validated: { id, manifest, parsedPermissions, bins, stagedManifestSha } }
 }

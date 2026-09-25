@@ -1,3 +1,4 @@
+import { formatBytes } from '../../../../cli/output'
 import { Box, Text } from 'ink'
 import { DataTable, FindingRows, ScreenHeader, Section, StatusTable, SummaryStrip, type FindingRow } from '../tui'
 import type { TuiStatus } from '../style-tokens'
@@ -105,7 +106,9 @@ function pluginActionMessage(action: PluginActionData): string {
   if (message) return message
   if (objectField(payload, 'awaitingConsent') === true) {
     const nextAction = actionName === 'upgraded' ? 'upgrade' : 'install'
-    return `Plugin ${target} requires permission consent before ${nextAction}.`
+    const declaredBins = objectField(payload, 'bins')
+    const hasBins = Array.isArray(declaredBins) && declaredBins.length > 0
+    return `Plugin ${target} requires consent for ${hasBins ? 'permissions and binary downloads' : 'permissions'} before ${nextAction}.`
   }
   if (objectField(payload, 'noop') === true) return `Plugin ${target} is already up to date.`
   if (actionName === 'imported') {
@@ -129,6 +132,17 @@ function pluginActionMessage(action: PluginActionData): string {
 function pluginPermissionsDetail(value: unknown): string[] {
   if (!Array.isArray(value) || value.length === 0) return []
   return [`Permissions: ${value.length} requested`]
+}
+
+/** Binary downloads the manifest declares (consent disclosure, spec plugin-managed-binaries §2.5). */
+function pluginBinsDetail(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length === 0) return []
+  const names = value.map((bin) => {
+    if (!isPlainRecord(bin)) return valueText(bin)
+    const size = typeof bin.sizeBytes === 'number' ? ` (${formatBytes(bin.sizeBytes)})` : ''
+    return `${valueText(bin.name)} ${valueText(bin.version)}${size}`
+  })
+  return [`Downloads into ~/.bakin/bin: ${names.join(', ')}`]
 }
 
 function pluginActionDetail(action: PluginActionData): string {
@@ -190,6 +204,7 @@ function pluginActionDetail(action: PluginActionData): string {
     }).join(', ')}`)
   }
   details.push(...pluginPermissionsDetail(objectField(payload, 'permissions')))
+  details.push(...pluginBinsDetail(objectField(payload, 'bins')))
   if (next.length > 0) details.push(`Next: ${next.map(item => valueText(item)).join(' && ')}`)
 
   return details.filter(Boolean).join('\n')

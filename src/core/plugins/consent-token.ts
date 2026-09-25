@@ -30,6 +30,14 @@ function key(): Buffer {
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000  // 5 minutes — long enough for a real prompt
 
+/** A declared binary download the user consented to (name + version + pinned sha for THIS platform). */
+export interface ConsentBin {
+  name: string
+  version: string
+  sha256: string
+  sizeBytes?: number
+}
+
 export interface ConsentTokenPayload {
   /** What the user typed at preflight — must match the commit body. */
   source: string
@@ -37,6 +45,8 @@ export interface ConsentTokenPayload {
   manifestSha: string
   /** The exact permissions list the user consented to. */
   permissions: string[]
+  /** The exact binary downloads the user consented to (spec plugin-managed-binaries §2.5). */
+  bins: ConsentBin[]
   /** Epoch millis when this token stops verifying. */
   expiresAt: number
 }
@@ -84,5 +94,6 @@ export function verifyConsentToken(token: string): ConsentTokenPayload | null {
   if (typeof payload.expiresAt !== 'number' || Date.now() > payload.expiresAt) return null
   if (typeof payload.source !== 'string' || typeof payload.manifestSha !== 'string') return null
   if (!Array.isArray(payload.permissions)) return null
+  if (!Array.isArray(payload.bins)) return null
   return payload
 }

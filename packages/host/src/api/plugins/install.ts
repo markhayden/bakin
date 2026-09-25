@@ -40,7 +40,7 @@ import { type InstallBody, validateInstallBody } from './install/body'
 import { handleDevInstall } from './install/dev-install'
 import { stageInstallSource } from './install/resolve-source'
 import { validateStagedManifest } from './install/validate-manifest'
-import { evaluateConsentGate } from './install/consent-gate'
+import { consentBinsOf, evaluateConsentGate } from './install/consent-gate'
 import { commitInstall } from './install/commit'
 
 const log = createLogger('plugin-install')
@@ -82,6 +82,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         id: validated.id,
         manifest: validated.manifest,
         parsedPermissions: validated.parsedPermissions,
+        bins: consentBinsOf(validated.bins),
         stagedManifestSha: validated.stagedManifestSha,
       })
       if (consentResponse) {
