@@ -7,7 +7,8 @@
  *   backup → sentinel → place → build → bins → ledger → commit
  *
  * - **backup**: the existing directory (if any) is renamed aside to
- *   `.bakin-backup-<id>` — same filesystem, atomic, byte-preserving.
+ *   `.bakin-backup-<id>/plugin` — same filesystem, atomic, byte-preserving;
+ *   binaries the new manifest re-pins are copied to `.bakin-backup-<id>/bin`.
  * - **sentinel**: `.bakin-install.json` is written into the fresh target
  *   BEFORE any content lands. While it exists the loader ignores the dir,
  *   and it records everything recovery needs: whether a backup exists, the
@@ -25,8 +26,8 @@
  *
  * The caller holds the install lock; this module asserts it.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
+import { dirname, join } from 'path'
 import { z } from 'zod'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
@@ -34,7 +35,7 @@ import { assertInstallLockHeld } from '@/core/install-core/install-lock'
 import { installPluginBins, type PluginBinIdentity, type PluginBinInstall } from '@/core/agent-packages/bin-installer'
 import { binTargetPath } from '@/core/plugins/bin-owners'
 import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
-import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
+import { installedByPath, removeInstalledBy } from '@bakin/core/agent-packages/markers'
 import type { BinRequirement } from '@bakin/core/plugins/bin-requirement'
 import {
   PluginLockEntrySchema,
@@ -57,10 +58,12 @@ export const ReplaceSentinelSchema = z.object({
   id: z.string().min(1),
   startedAt: z.string(),
   pid: z.number().int(),
-  /** True when the previous directory was renamed aside to `.bakin-backup-<id>`; false on a first install. */
+  /** True when the previous directory was renamed aside to `.bakin-backup-<id>/plugin`; false on a first install. */
   backup: z.boolean(),
   /** Names of the `~/.bakin/bin` binaries THIS operation created — recovery deletes exactly these (paths resolve against the CURRENT home, so a moved home still recovers). */
   createdBins: z.array(z.string()),
+  /** Names of binaries that existed before and were copied to `.bakin-backup-<id>/bin/` — a re-pin rolls back to the OLD bytes and marker. */
+  replacedBins: z.array(z.string()),
   /** The ledger row before the operation; null when there was none. */
   ledgerBefore: PluginLockEntrySchema.nullable(),
 })
@@ -96,6 +99,10 @@ export function pluginsRootDir(): string {
 export function pluginBackupDir(pluginsRoot: string, id: string): string {
   return join(pluginsRoot, `${BACKUP_PREFIX}${id}`)
 }
+/** The previous plugin directory inside the backup. */
+const backupPluginDir = (backupDir: string): string => join(backupDir, 'plugin')
+/** Previous bytes + marker of a binary this operation replaced. */
+const backupBinPath = (backupDir: string, name: string): string => join(backupDir, 'bin', name)
 
 export function readSentinel(pluginDir: string): ReplaceSentinel | null {
   const path = join(pluginDir, INSTALL_SENTINEL)
@@ -126,7 +133,7 @@ export function moveContents(from: string, to: string): void {
  * path and boot recovery both call it, so what a crash leaves behind is
  * exactly what a caught error leaves behind.
  */
-export function restoreFromSentinel(pluginsRoot: string, id: string, sentinel: Pick<ReplaceSentinel, 'backup' | 'createdBins'> & { ledgerBefore?: PluginLockEntry | null }): void {
+export function restoreFromSentinel(pluginsRoot: string, id: string, sentinel: Pick<ReplaceSentinel, 'backup' | 'createdBins' | 'replacedBins'> & { ledgerBefore?: PluginLockEntry | null }): void {
   const targetDir = join(pluginsRoot, id)
   const backupDir = pluginBackupDir(pluginsRoot, id)
   for (const name of sentinel.createdBins) {
@@ -139,10 +146,20 @@ export function restoreFromSentinel(pluginsRoot: string, id: string, sentinel: P
     }
     rmSync(target, { force: true })
   }
-  rmSync(targetDir, { recursive: true, force: true })
-  if (sentinel.backup && existsSync(backupDir)) {
-    renameSync(backupDir, targetDir)
+  for (const name of sentinel.replacedBins) {
+    const saved = backupBinPath(backupDir, name)
+    if (!existsSync(saved)) continue
+    const target = binTargetPath(name)
+    mkdirSync(dirname(target), { recursive: true })
+    renameSync(saved, target)
+    const savedMarker = installedByPath(saved)
+    if (existsSync(savedMarker)) renameSync(savedMarker, installedByPath(target))
   }
+  rmSync(targetDir, { recursive: true, force: true })
+  if (sentinel.backup && existsSync(backupPluginDir(backupDir))) {
+    renameSync(backupPluginDir(backupDir), targetDir)
+  }
+  rmSync(backupDir, { recursive: true, force: true })
   if (sentinel.ledgerBefore !== undefined) {
     const lock = readPluginLockfile()
     const current = lock.plugins[id]
@@ -174,7 +191,7 @@ export function recoverPluginDir(pluginsRoot: string, id: string): boolean {
 
   if (existsSync(sentinelPath)) {
     const sentinel = readSentinel(targetDir)
-    restoreFromSentinel(pluginsRoot, id, sentinel ?? { backup: existsSync(backupDir), createdBins: [] })
+    restoreFromSentinel(pluginsRoot, id, sentinel ?? { backup: existsSync(backupPluginDir(backupDir)), createdBins: [], replacedBins: [] })
     log.warn('Recovered an interrupted plugin operation', { id, op: sentinel?.op ?? 'unknown', startedAt: sentinel?.startedAt })
     return true
   }
@@ -183,7 +200,10 @@ export function recoverPluginDir(pluginsRoot: string, id: string): boolean {
       rmSync(backupDir, { recursive: true, force: true })
       log.info('Dropped a backup left by a completed plugin operation', { id })
     } else {
-      renameSync(backupDir, targetDir)
+      // Died between the rename-aside and the sentinel write: nothing but
+      // the directory moved, so moving it back is the whole recovery.
+      if (existsSync(backupPluginDir(backupDir))) renameSync(backupPluginDir(backupDir), targetDir)
+      rmSync(backupDir, { recursive: true, force: true })
       log.warn('Restored a plugin directory from its backup', { id })
     }
     return true
@@ -201,7 +221,8 @@ export async function replacePluginDir(args: ReplacePluginDirArgs): Promise<Repl
   const targetDir = join(pluginsRoot, id)
   const backupDir = pluginBackupDir(pluginsRoot, id)
   const hadPrevious = existsSync(targetDir)
-  if (hadPrevious) renameSync(targetDir, backupDir)
+  mkdirSync(backupDir, { recursive: true })
+  if (hadPrevious) renameSync(targetDir, backupPluginDir(backupDir))
 
   const sentinel: ReplaceSentinel = {
     op: args.op,
@@ -210,6 +231,7 @@ export async function replacePluginDir(args: ReplacePluginDirArgs): Promise<Repl
     pid: process.pid,
     backup: hadPrevious,
     createdBins: [],
+    replacedBins: [],
     ledgerBefore: readPluginLockfile().plugins[id] ?? null,
   }
   mkdirSync(targetDir, { recursive: true })
@@ -217,11 +239,25 @@ export async function replacePluginDir(args: ReplacePluginDirArgs): Promise<Repl
 
   try {
     progress?.({ stage: 'project', message: `Placing ${id} files…` })
-    await args.place(targetDir, hadPrevious ? backupDir : null)
+    await args.place(targetDir, hadPrevious ? backupPluginDir(backupDir) : null)
     if (args.build) {
       progress?.({ stage: 'project', message: `Building ${id}…` })
       await args.build(targetDir)
     }
+    // A declared bin that already exists (a re-pin, or a shared bin whose
+    // marker the installer re-stamps) is saved first so rollback restores
+    // the OLD bytes and marker, not just deletes the new ones.
+    for (const bin of args.bins) {
+      const target = binTargetPath(bin.name)
+      if (!existsSync(target)) continue
+      const saved = backupBinPath(backupDir, bin.name)
+      mkdirSync(dirname(saved), { recursive: true })
+      copyFileSync(target, saved)
+      const marker = installedByPath(target)
+      if (existsSync(marker)) copyFileSync(marker, installedByPath(saved))
+      sentinel.replacedBins.push(bin.name)
+    }
+    writeSentinel(targetDir, sentinel)
     const installedBins = await installPluginBins(args.bins, args.binIdentity, {
       progress,
       // Durable as each bin lands: a crash or a later failure rolls back
@@ -237,7 +273,7 @@ export async function replacePluginDir(args: ReplacePluginDirArgs): Promise<Repl
     await args.ledger(installedBins)
 
     rmSync(join(targetDir, INSTALL_SENTINEL), { force: true })
-    if (hadPrevious) rmSync(backupDir, { recursive: true, force: true })
+    rmSync(backupDir, { recursive: true, force: true })
     return { targetDir, installedBins }
   } catch (err) {
     restoreFromSentinel(pluginsRoot, id, sentinel)

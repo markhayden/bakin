@@ -42,7 +42,7 @@ import { handleDevInstall } from './install/dev-install'
 import { stageInstallSource } from './install/resolve-source'
 import { validateStagedManifest } from './install/validate-manifest'
 import { consentBinsOf, evaluateConsentGate } from './install/consent-gate'
-import { binPreflightResponse, preflightPluginBins } from './install/preflight-bins'
+import { binPreflightResponse, preflightPluginBins } from '@/core/plugins/bin-preflight'
 import { commitInstall } from './install/commit'
 
 const log = createLogger('plugin-install')

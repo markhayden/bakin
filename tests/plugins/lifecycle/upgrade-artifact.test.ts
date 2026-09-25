@@ -254,7 +254,7 @@ describe('artifact-lane upgrade (upgradePlugin)', () => {
     expect(readPluginLockfile().plugins['messaging'].version).toBe('0.1.0')
 
     // Consent accepted — upgrade lands, permissions recorded.
-    const accepted = await upgradePlugin('messaging', { yes: true })
+    const accepted = await upgradePlugin('messaging', { accepted: pending.consent })
     expect(accepted.awaitingConsent).toBe(false)
     expect(accepted.after.version).toBe('0.2.0')
     const entry = readPluginLockfile().plugins['messaging']

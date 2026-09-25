@@ -27,11 +27,11 @@ import {
   auditUpgradeRejected,
   assertManifestIdStable,
   assertManifestSignaturePolicy,
-  diffNewPermissions,
+  gateUpgradeConsent,
   installUpgradedPluginAssets,
-  manifestPermissions,
   manifestVersion,
   readManifest,
+  sweepDroppedBins,
 } from './upgrade-gate'
 
 const log = createLogger('plugin-upgrade-artifact')
@@ -83,6 +83,7 @@ export async function upgradeArtifact(
       after: before,
       noop: true,
       newPermissions: [],
+      newBins: [],
       awaitingConsent: false,
     }
   }
@@ -98,20 +99,8 @@ export async function upgradeArtifact(
     assertManifestSignaturePolicy(manifest, id)
     const newVersion = manifestVersion(manifest, latest)
     const newCommitSha = materialized.provenance.sourceCommitSha || ''
-    const newPerms = manifestPermissions(manifest, id)
-    const widened = diffNewPermissions(entry.permissions, newPerms)
-
-    if (widened.length > 0 && !opts.yes) {
-      // Consent required — exit BEFORE mutating disk or lockfile.
-      return {
-        id,
-        before,
-        after: { version: newVersion, commitSha: newCommitSha },
-        noop: false,
-        newPermissions: widened,
-        awaitingConsent: true,
-      }
-    }
+    const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: newCommitSha } })
+    if (!gate.proceed) return gate.result
 
     // The host must still provide the externals the new artifact was
     // built for; an incompatible artifact means Bakin itself is behind.
@@ -126,38 +115,44 @@ export async function upgradeArtifact(
       )
     }
 
-    // Already built + verified: the transaction moves the extracted tree in
-    // (same-filesystem renames) with no build step.
+    // Consent accepted (or unnecessary). Replace the plugin dir inside the
+    // transaction — the previous install (directory, binaries, ledger row)
+    // comes back byte for byte on any failure. Bins the new manifest dropped
+    // go only AFTER the ledger write, and only with zero remaining owners.
     let assets!: Awaited<ReturnType<typeof installUpgradedPluginAssets>>
-    await replacePluginDir({
+    const { installedBins } = await replacePluginDir({
       id,
       op: 'upgrade',
       place: (dir) => moveContents(materialized.stagingDir, dir),
-      bins: [],
+      bins: gate.bins,
       binIdentity: { pluginId: id, version: newVersion, ref: '', commitSha: newCommitSha },
       progress: opts.progress,
-      ledger: async () => {
+      ledger: async (bins) => {
         assets = await installUpgradedPluginAssets(id, pluginDir)
         writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
           upgradedAt: new Date().toISOString(),
           version: newVersion,
-          commitSha: newCommitSha,
+        commitSha: newCommitSha,
+        remoteArtifactVersion: latest,
           manifestSha,
-          permissions: newPerms,
+          permissions: gate.newPerms,
           installedSkills: assets.installedSkills,
-          remoteArtifactVersion: latest,
+          installedBins: bins.length > 0 ? bins.map((bin) => ({ name: bin.name, sha256: bin.sha256 })) : undefined,
         }))
       },
     })
+    const droppedBins = sweepDroppedBins(id, entry.installedBins, installedBins.map((bin) => bin.name))
 
     return {
       id,
       before,
       after: { version: newVersion, commitSha: newCommitSha },
       noop: false,
-      newPermissions: widened,
+      newPermissions: gate.widened,
+      newBins: gate.newBins,
       awaitingConsent: false,
       pluginAssets: assets.pluginAssets,
+      droppedBins,
     }
   } finally {
     // Clears the work dir (downloaded tarball + whatever the transaction did

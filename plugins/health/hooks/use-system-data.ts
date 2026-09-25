@@ -35,11 +35,22 @@ export const SYSTEM_MUTATION_OPERATION_TIMEOUT_MS = 5 * 60_000
 
 export type SystemMutationStatus = 'idle' | 'pending' | 'success' | 'error' | 'confirmation' | 'outcome-unknown'
 
+/** A binary download an upgrade asks consent for (name, version, pinned sha, size hint). */
+export interface PluginUpgradeBin {
+  name: string
+  version: string
+  sha256: string
+  sizeBytes?: number
+}
+
 export interface SystemMutationState {
   status: SystemMutationStatus
   message: string | null
   target: string | null
   permissions?: string[]
+  bins?: PluginUpgradeBin[]
+  /** Preview token to echo on approval — the server commits only while the target still matches it. */
+  consentToken?: string
 }
 
 export interface SearchReindexResult {
@@ -50,6 +61,8 @@ export interface PluginUpgradeResult {
   message: string
   awaitingConsent: boolean
   permissions: string[]
+  bins: PluginUpgradeBin[]
+  consentToken?: string
   noop: boolean
 }
 
@@ -206,9 +219,19 @@ export async function performSearchReindex(
   }
 }
 
+function isUpgradeBin(value: unknown): value is PluginUpgradeBin {
+  return isRecord(value) && typeof value.name === 'string' && typeof value.version === 'string' && typeof value.sha256 === 'string'
+}
+
+/**
+ * Two-phase upgrade (spec plugin-managed-binaries S17): the preview answers
+ * `awaitingConsent` + a token when permissions or binaries widen; approving
+ * re-posts with that token and the server commits only while the target
+ * still matches it.
+ */
 export async function performPluginUpgrade(
   pluginId: string,
-  approvePermissions = false,
+  consentToken?: string,
   timeouts: SystemMutationTimeouts = {},
 ): Promise<PluginUpgradeResult> {
   const operationMs = timeouts.operationMs ?? SYSTEM_MUTATION_OPERATION_TIMEOUT_MS
@@ -218,38 +241,52 @@ export async function performPluginUpgrade(
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pluginId, ...(approvePermissions ? { yes: true } : {}) }),
+      body: JSON.stringify({ pluginId, ...(consentToken ? { accepted: true, consentToken } : {}) }),
     },
     operationMs,
     'The plugin update is taking longer than expected. The server may still be updating it; refresh live data to confirm the result.',
   )
   const confirmationUnknown = 'The plugin update returned success headers, but Bakin could not read its confirmation. The server may have completed the update; refresh live data to confirm the result.'
   const body = await mutationResponseJson(response, responseBodyMs, confirmationUnknown)
+  if (isRecord(body) && body.awaitingConsent === true && typeof body.consentToken === 'string') {
+    const permissions = Array.isArray(body.newPermissions) ? body.newPermissions.filter((p): p is string => typeof p === 'string') : []
+    const bins = Array.isArray(body.newBins) ? body.newBins.filter(isUpgradeBin) : []
+    return {
+      awaitingConsent: true,
+      permissions,
+      bins,
+      consentToken: body.consentToken,
+      noop: false,
+      message: body.manifestChanged === true
+        ? 'This update changed since you previewed it. Review it again.'
+        : bins.length > 0 && permissions.length === 0
+          ? 'This update downloads binaries.'
+          : bins.length > 0
+            ? 'This update requests new permissions and downloads binaries.'
+            : 'This update requests new permissions.',
+    }
+  }
   if (!response.ok || (isRecord(body) && body.ok === false)) {
     throw responseError(response, body, 'Plugin update failed')
   }
   if (!isRecord(body)
     || body.ok !== true
     || typeof body.noop !== 'boolean'
-    || typeof body.awaitingConsent !== 'boolean'
     || !Array.isArray(body.newPermissions)
     || !body.newPermissions.every((permission) => typeof permission === 'string')) {
     throw new SystemMutationOutcomeUnknownError(
       'The plugin update returned success headers, but Bakin could not confirm the result. Refresh live data before trying again.',
     )
   }
-  const awaitingConsent = body.awaitingConsent
-  const permissions = body.newPermissions
   const noop = body.noop
   return {
-    awaitingConsent,
-    permissions,
+    awaitingConsent: false,
+    permissions: body.newPermissions,
+    bins: [],
     noop,
     message: noop
       ? `${pluginId} is already current.`
-      : awaitingConsent
-        ? 'This update requests new permissions.'
-        : `${pluginId} was updated and reactivated.`,
+      : `${pluginId} was updated and reactivated.`,
   }
 }
 
@@ -264,7 +301,7 @@ export interface UseSystemDataResult {
   pluginMutation: SystemMutationState
   reindexSearch: (table?: string) => Promise<void>
   checkPluginUpdates: () => Promise<SystemPluginManifestData | null>
-  upgradePlugin: (pluginId: string, approvePermissions?: boolean) => Promise<void>
+  upgradePlugin: (pluginId: string, consentToken?: string) => Promise<void>
   refreshSystemDetails: () => Promise<void>
 }
 
@@ -333,16 +370,18 @@ export function useSystemData(): UseSystemDataResult {
 
   const checkPluginUpdates = useCallback(() => pluginManifestRefresh('explicit'), [pluginManifestRefresh])
 
-  const upgradePlugin = useCallback(async (pluginId: string, approvePermissions = false) => {
+  const upgradePlugin = useCallback(async (pluginId: string, consentToken?: string) => {
     setPluginMutation({ status: 'pending', message: null, target: pluginId })
     try {
-      const result = await performPluginUpgrade(pluginId, approvePermissions)
+      const result = await performPluginUpgrade(pluginId, consentToken)
       if (result.awaitingConsent) {
         setPluginMutation({
           status: 'confirmation',
           message: result.message,
           target: pluginId,
           permissions: result.permissions,
+          bins: result.bins,
+          consentToken: result.consentToken,
         })
         return
       }

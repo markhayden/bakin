@@ -3,12 +3,12 @@
  * plugin-managed-binaries §2.1/§2.4/§2.6):
  *   - every declared bin needs a download for the running platform;
  *   - no other owner (pack or plugin) may pin the same target differently.
- * Shared by install and the upgrade paths so a doomed install is refused
- * without asking the user to consent to it first.
+ * Shared by the install route and every upgrade lane so a doomed operation
+ * is refused without asking the user to consent to it first.
  */
 import type { PluginBinRequirement } from '@makinbakin/sdk/types'
 import { binPlatformKey } from '@/core/agent-packages/bin-installer'
-import { BinPinConflictError, findBinPinConflicts } from '@/core/plugins/bin-owners'
+import { BinPinConflictError, findBinPinConflicts } from './bin-owners'
 
 export type BinPreflightVerdict =
   | { ok: true }

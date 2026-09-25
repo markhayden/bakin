@@ -30,6 +30,25 @@ import {
 import { focusSystemElement } from './system-navigation'
 import { HealthTableSort, useHealthTableSort } from './health-table-sort'
 
+/** Plain-words disclosure of what an upgrade preview asks consent for. */
+function upgradeConsentSummary(mutation: { permissions?: string[]; bins?: { name: string; version: string; sizeBytes?: number }[] }): string {
+  const parts: string[] = []
+  if (mutation.permissions?.length) parts.push(`Requested permissions: ${mutation.permissions.join(', ')}.`)
+  if (mutation.bins?.length) {
+    const names = mutation.bins.map((bin) => `${bin.name} ${bin.version}${bin.sizeBytes !== undefined ? ` (${formatBinSize(bin.sizeBytes)})` : ''}`)
+    parts.push(`Downloads into ~/.bakin/bin: ${names.join(', ')}.`)
+  }
+  return parts.length > 0 ? parts.join(' ') : 'No permission or download details were returned.'
+}
+
+function formatBinSize(bytes: number): string {
+  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`
+  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`
+  if (bytes >= 1_000) return `${Math.round(bytes / 1_000)} KB`
+  return `${bytes} B`
+}
+
+
 function CheckTable({ checks, label, groupKey }: { checks: HealthCheckState[]; label: string; groupKey: string }) {
   const columns: ReadonlyArray<DataTableColumn<HealthCheckState>> = [
     { key: 'name', header: 'Check', narrow: 'primary', sortable: true, sortValue: check => check.checkName, cellClassName: 'whitespace-normal', cell: check => <div data-check-id={check.checkId} className="rounded-bakin-control focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-bakin-focus-ring">
@@ -65,7 +84,7 @@ export interface SystemInventoryProps {
   pluginSearch: string
   onPluginSearchChange: (value: string) => void
   onCheckUpdates: () => void | Promise<unknown>
-  onUpgrade: (pluginId: string, approvePermissions?: boolean) => void | Promise<void>
+  onUpgrade: (pluginId: string, consentToken?: string) => void | Promise<void>
 }
 
 export interface SystemInventoryHandle {
@@ -285,15 +304,13 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
           headingLevel={3}
           title={pluginMutation.status === 'confirmation' ? 'Update needs approval' : 'Plugin inventory update'}
           description={pluginMutation.status === 'confirmation'
-            ? `${pluginMutation.message} Requested permissions: ${pluginMutation.permissions?.length
-              ? pluginMutation.permissions.join(', ')
-              : 'No permission names were returned.'}`
+            ? `${pluginMutation.message} ${upgradeConsentSummary(pluginMutation)}`
             : pluginMutation.message}
-          action={pluginMutation.status === 'confirmation' && pluginMutation.target ? (
+          action={pluginMutation.status === 'confirmation' && pluginMutation.target && pluginMutation.consentToken ? (
             <Button
               size="sm"
               variant="warning"
-              onClick={() => void onUpgrade(pluginMutation.target!, true)}
+              onClick={() => void onUpgrade(pluginMutation.target!, pluginMutation.consentToken)}
             >
               Approve update
             </Button>

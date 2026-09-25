@@ -95,6 +95,12 @@ function run(overrides: Partial<ReplacePluginDirArgs>) {
   }))
 }
 
+/** Rename the live dir aside the way the transaction does: `.bakin-backup-<id>/plugin`. */
+function fabricateRenameAside(): void {
+  mkdirSync(pluginBackupDir(pluginsRoot(), ID), { recursive: true })
+  renameSync(pluginDir(), join(pluginBackupDir(pluginsRoot(), ID), 'plugin'))
+}
+
 function expectPristine(before: { tree: Record<string, string>; row: PluginLockEntry | undefined }): void {
   expect(treeDigest(pluginDir())).toEqual(before.tree)
   expect(readPluginLockfile().plugins[ID] ?? null).toEqual<unknown>(before.row ?? null)
@@ -161,6 +167,23 @@ describe('replacePluginDir', () => {
     const before = { tree: treeDigest(pluginDir()), row: readPluginLockfile().plugins[ID] }
     await expect(run({ build: async () => { throw new Error('tsc exploded') } })).rejects.toThrow('tsc exploded')
     expectPristine(before)
+  })
+
+  it('a re-pinned bin rolls back to its OLD bytes and marker (S14: binaries byte for byte)', async () => {
+    seedPrevious()
+    const OLD = '#!/bin/sh\necho old-one\n'
+    mkdirSync(join(testDir, 'bin'), { recursive: true })
+    writeFileSync(binPath('one'), OLD, { mode: 0o755 })
+    writeFileSync(`${binPath('one')}.installedBy`, JSON.stringify({ package: `plugin:${ID}`, version: '1.0.0', ref: '', commitSha: '', sha256: sha256(OLD), installedAt: '2026-09-01T00:00:00.000Z' }))
+    const markerBefore = readFileSync(`${binPath('one')}.installedBy`, 'utf-8')
+    const before = { tree: treeDigest(pluginDir()), row: readPluginLockfile().plugins[ID] }
+
+    // `one` is re-pinned to NEW bytes (ONE) and downloaded, then the ledger fails.
+    await expect(run({ bins: [bin('one', ONE)], ledger: () => { throw new Error('ledger down') } })).rejects.toThrow('ledger down')
+    expect(treeDigest(pluginDir())).toEqual(before.tree)
+    expect(readFileSync(binPath('one'), 'utf-8')).toBe(OLD)
+    expect(readFileSync(`${binPath('one')}.installedBy`, 'utf-8')).toBe(markerBefore)
+    expect(existsSync(pluginBackupDir(pluginsRoot(), ID))).toBe(false)
   })
 
   it('a failure on the second bin removes the first created bin but never a pre-existing identically pinned one', async () => {
@@ -236,14 +259,14 @@ describe('boot recovery from interrupted operations', () => {
   it('died between the rename-aside and the sentinel write → the backup comes back', () => {
     seedPrevious()
     const before = { tree: treeDigest(pluginDir()), row: readPluginLockfile().plugins[ID] }
-    renameSync(pluginDir(), pluginBackupDir(pluginsRoot(), ID))
+    fabricateRenameAside()
     expect(recoverInterruptedPluginOps(pluginsRoot()).recovered).toEqual([ID])
     expectPristine(before)
   })
 
   it('died between the sentinel removal and the backup deletion → the committed dir stays, the backup goes', () => {
     seedPrevious()
-    cpSync(pluginDir(), pluginBackupDir(pluginsRoot(), ID), { recursive: true })
+    cpSync(pluginDir(), join(pluginBackupDir(pluginsRoot(), ID), 'plugin'), { recursive: true })
     placeV2(pluginDir())
     const committed = treeDigest(pluginDir())
     expect(recoverInterruptedPluginOps(pluginsRoot()).recovered).toEqual([ID])
@@ -253,7 +276,7 @@ describe('boot recovery from interrupted operations', () => {
 
   it('a new operation on the same id first clears leftovers from an interrupted one', async () => {
     seedPrevious()
-    renameSync(pluginDir(), pluginBackupDir(pluginsRoot(), ID))
+    fabricateRenameAside()
     await run({})
     expect(readPluginLockfile().plugins[ID]?.version).toBe('2.0.0')
     expect(existsSync(pluginBackupDir(pluginsRoot(), ID))).toBe(false)
@@ -263,7 +286,7 @@ describe('boot recovery from interrupted operations', () => {
   it('an unreadable sentinel still rolls the directory back to its backup', () => {
     seedPrevious()
     const before = { tree: treeDigest(pluginDir()), row: readPluginLockfile().plugins[ID] }
-    renameSync(pluginDir(), pluginBackupDir(pluginsRoot(), ID))
+    fabricateRenameAside()
     mkdirSync(pluginDir())
     writeFileSync(join(pluginDir(), INSTALL_SENTINEL), '{not json')
     writeFileSync(join(pluginDir(), 'half.ts'), 'partial')

@@ -26,9 +26,9 @@
 - [ ] Checkpoint B (injected failures only): isolated-server install of a fixture plugin (local http bin) — consent shows download; job stream shows `bins`; artifacts present; injected 2nd-bin failure leaves nothing. Review with Mark.
 
 ## Phase C — Upgrade and remove
-- [ ] T7a: `replace-transaction.ts` (sentinel → backup → place → build → assets+bins → ledger → commit; restore on failure) + `install-recovery.ts` (boot sweep before discovery; loader skips sentinel dirs) adopted by install `commit.ts` AND `upgrade.ts`, `upgrade-github.ts`, `upgrade-artifact.ts`
+- [x] T7a: `replace-transaction.ts` (sentinel → backup → place → build → assets+bins → ledger → commit; restore on failure) + `install-recovery.ts` (boot sweep before discovery; loader skips sentinel dirs) adopted by install `commit.ts` AND `upgrade.ts`, `upgrade-github.ts`, `upgrade-artifact.ts`
   - Verify: existing lifecycle tests + restore-on-failure per path + recovery from trees captured after 1st bin / after replacement / after ledger commit
-- [ ] T7b: upgrades install changed bins, drop undeclared ones (zero-owner rule); upgrade API is preview → token (manifestSha + permissions + bins) → commit; CLI/UI callers round-trip the token; `--yes` = preview then commit
+- [x] T7b: upgrades install changed bins, drop undeclared ones (zero-owner rule); upgrade API is preview → token (manifestSha + permissions + bins) → commit; CLI/UI callers round-trip the token; `--yes` = preview then commit
   - Verify: preview A → source becomes B → accept A re-prompts with no mutation; `tests/plugins/lifecycle/upgrade-*.test.ts`
 - [ ] T8: remove deletes owned bins with zero remaining owners; audit `plugin.uninstall.bins`; snapshot manifest lists bins
   - Verify: `bun test tests/plugins/lifecycle/remove-smoke.test.ts --isolate`

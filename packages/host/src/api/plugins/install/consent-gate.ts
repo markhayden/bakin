@@ -13,8 +13,7 @@
  */
 import type { PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { signConsentToken, verifyConsentToken, type ConsentBin } from '@/core/plugins/consent-token'
-import { binPlatformKey } from '@/core/agent-packages/bin-installer'
-import type { PluginBinRequirement } from '@makinbakin/sdk/types'
+import { sameBins } from '@/core/plugins/consent-bins'
 import { auditInstallRejected } from './audit'
 import type { InstallBody } from './body'
 
@@ -26,30 +25,7 @@ export function consentSourceIdentity(source: string, ref: string): string {
   return ref ? JSON.stringify({ source, ref }) : source
 }
 
-/**
- * The downloads a manifest asks this machine to consent to: one row per
- * declared bin with the sha pinned for the running platform. A bin without a
- * build for this platform still appears (sha '') — preflight refuses it; the
- * user should see what was asked for.
- */
-export function consentBinsOf(bins: readonly PluginBinRequirement[] | undefined): ConsentBin[] {
-  if (!bins?.length) return []
-  const platform = binPlatformKey()
-  return bins.map((bin) => {
-    const download = platform ? bin.install[platform] : undefined
-    return {
-      name: bin.name,
-      version: bin.version,
-      sha256: download?.sha256.toLowerCase() ?? '',
-      ...(download?.sizeBytes !== undefined ? { sizeBytes: download.sizeBytes } : {}),
-    }
-  })
-}
-
-function sameBins(a: readonly ConsentBin[], b: readonly ConsentBin[]): boolean {
-  if (a.length !== b.length) return false
-  return a.every((x, i) => x.name === b[i]!.name && x.version === b[i]!.version && x.sha256 === b[i]!.sha256)
-}
+export { consentBinsOf } from '@/core/plugins/consent-bins'
 
 /**
  * Evaluate the consent gate for a validated staged install. Returns the

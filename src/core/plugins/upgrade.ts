@@ -45,16 +45,16 @@ import {
   auditUpgradeRejected,
   assertManifestIdStable,
   assertManifestSignaturePolicy,
-  diffNewPermissions,
+  gateUpgradeConsent,
   installUpgradedPluginAssets,
-  manifestPermissions,
   manifestVersion,
   readManifest,
+  sweepDroppedBins,
 } from './upgrade-gate'
 import { isArtifactInstall, upgradeArtifact } from './upgrade-artifact'
 import { upgradeGithub, upgradeGithubSubpath } from './upgrade-github'
 
-export { type UpgradeOptions, type UpgradeResult, UpgradeRefusedError } from './upgrade-gate'
+export { type UpgradeConsent, type UpgradeOptions, type UpgradeResult, UpgradeRefusedError } from './upgrade-gate'
 export { runChecks, type UpgradeAvailability } from './upgrade-check'
 export { isArtifactInstall } from './upgrade-artifact'
 export { computeSourceTreeSha } from './source-tree-sha'
@@ -168,6 +168,7 @@ async function upgradeLocal(
       after: before,
       noop: true,
       newPermissions: [],
+      newBins: [],
       awaitingConsent: false,
     }
   }
@@ -179,54 +180,47 @@ async function upgradeLocal(
   assertManifestIdStable(manifest, id)
   assertManifestSignaturePolicy(manifest, id)
   const newVersion = manifestVersion(manifest, entry.version)
-  const newPerms = manifestPermissions(manifest, id)
-  const widened = diffNewPermissions(entry.permissions, newPerms)
-
-  if (widened.length > 0 && !opts.yes) {
-    // Consent required — exit BEFORE mutating disk or lockfile.
-    return {
-      id,
-      before,
-      after: { version: newVersion, commitSha: '' },
-      noop: false,
-      newPermissions: widened,
-      awaitingConsent: true,
-    }
-  }
+  const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: '' } })
+  if (!gate.proceed) return gate.result
 
   // Consent accepted (or unnecessary). Replace the plugin dir inside the
-  // transaction: the previous install comes back byte for byte if the copy,
-  // build or ledger write fails.
+  // transaction — the previous install (directory, binaries, ledger row)
+  // comes back byte for byte on any failure. Bins the new manifest dropped
+  // go only AFTER the ledger write, and only with zero remaining owners.
   let assets!: Awaited<ReturnType<typeof installUpgradedPluginAssets>>
-  await replacePluginDir({
+  const { installedBins } = await replacePluginDir({
     id,
     op: 'upgrade',
     place: (dir) => cpSync(sourcePath, dir, { recursive: true, dereference: false }),
-    build: buildUserPlugin,
-    bins: [],
+  build: buildUserPlugin,
+    bins: gate.bins,
     binIdentity: { pluginId: id, version: newVersion, ref: '', commitSha: '' },
     progress: opts.progress,
-    ledger: async () => {
+    ledger: async (bins) => {
       assets = await installUpgradedPluginAssets(id, pluginDir)
       writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
         upgradedAt: new Date().toISOString(),
         version: newVersion,
+      sourceTreeSha: newTreeSha,
+      sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO,
         manifestSha,
-        permissions: newPerms,
-        sourceTreeSha: newTreeSha,
-        sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO,
+        permissions: gate.newPerms,
         installedSkills: assets.installedSkills,
+        installedBins: bins.length > 0 ? bins.map((bin) => ({ name: bin.name, sha256: bin.sha256 })) : undefined,
       }))
     },
   })
+  const droppedBins = sweepDroppedBins(id, entry.installedBins, installedBins.map((bin) => bin.name))
 
   return {
     id,
     before,
     after: { version: newVersion, commitSha: '' },
     noop: false,
-    newPermissions: widened,
+    newPermissions: gate.widened,
+    newBins: gate.newBins,
     awaitingConsent: false,
     pluginAssets: assets.pluginAssets,
+    droppedBins,
   }
 }

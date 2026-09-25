@@ -4,17 +4,27 @@
  * lockfile entry. Refuses core plugins (defense in depth — `upgradePlugin`
  * also enforces this).
  *
- * Body: { pluginId: string, yes?: boolean }
+ * Two-phase, like install (spec plugin-managed-binaries §2.5 / S17):
+ *   preview  { pluginId }                                → widened permissions
+ *            or binaries ⇒ { ok:false, awaitingConsent:true, newPermissions,
+ *            newBins, consentToken } — the token binds the target manifest
+ *            sha, its full permission list and its bins for this platform.
+ *   commit   { pluginId, accepted:true, consentToken }   → the upgrade lands
+ *            only while the target still matches the token; a changed target
+ *            bounces to awaitingConsent + manifestChanged with a fresh token.
  *
  * Response shape:
- *   { ok: true, id, before, after, noop, awaitingConsent, newPermissions, pluginAssets? }
+ *   { ok: true, id, before, after, noop, awaitingConsent:false, newPermissions, newBins, pluginAssets?, droppedBins? }
+ *   { ok: false, awaitingConsent: true, ..., consentToken, manifestChanged? }
  *   { ok: false, error: string, core?: boolean }    on refusal/4xx
  *
  * The upgraded plugin is activated immediately after a successful rebuild.
  */
 import { createLogger } from '@/core/logger'
 import { startInstallJob, type InstallProgressFn } from '@/core/agent-packages/install-progress'
-import { upgradePlugin, UpgradeRefusedError } from '@/core/plugins/upgrade'
+import { upgradePlugin, UpgradeRefusedError, type UpgradeConsent } from '@/core/plugins/upgrade'
+import { auditUpgradeRejected } from '@/core/plugins/upgrade-gate'
+import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
 import { isCorePlugin } from '@/core/plugin-registry'
 import { appendAudit } from '@/core/audit'
 import { getContentDir } from '@/core/content-dir'
@@ -25,8 +35,12 @@ const log = createLogger('plugin-upgrade')
 
 interface UpgradeBody {
   pluginId: string
-  yes?: boolean
+  accepted?: boolean
+  consentToken?: string
 }
+
+/** Token identity for an upgrade: the plugin being upgraded (install binds source+ref). */
+const upgradeConsentSource = (pluginId: string): string => `upgrade:${pluginId}`
 
 export async function post(req: Request, url: URL): Promise<Response> {
   let body: UpgradeBody
@@ -81,8 +95,31 @@ export async function post(req: Request, url: URL): Promise<Response> {
 }
 
 async function runUpgrade(pluginId: string, body: UpgradeBody, progress: InstallProgressFn | undefined): Promise<Response> {
+  let accepted: UpgradeConsent | undefined
+  if (body.accepted === true) {
+    if (!body.consentToken) {
+      auditUpgradeRejected('consent_token_missing', pluginId)
+      return Response.json({ ok: false, error: 'upgrade commit requires a consentToken from the preview (re-run upgrade)' }, { status: 400 })
+    }
+    const token = verifyConsentToken(body.consentToken)
+    if (!token) {
+      auditUpgradeRejected('consent_token_invalid', pluginId)
+      return Response.json({ ok: false, error: 'consentToken is invalid or expired (re-run upgrade to re-prompt)' }, { status: 400 })
+    }
+    if (token.source !== upgradeConsentSource(pluginId)) {
+      auditUpgradeRejected('consent_source_mismatch', pluginId, { tokenSource: token.source })
+      return Response.json({ ok: false, error: 'consentToken was issued for a different operation — re-run upgrade' }, { status: 400 })
+    }
+    accepted = { manifestSha: token.manifestSha, permissions: token.permissions, bins: token.bins }
+  }
+
   try {
-    const result = await upgradePlugin(pluginId, { yes: body.yes === true, progress })
+    const result = await upgradePlugin(pluginId, { accepted, progress })
+    if (result.awaitingConsent && result.consent) {
+      const { consent, ...rest } = result
+      const consentToken = signConsentToken({ source: upgradeConsentSource(pluginId), ...consent })
+      return Response.json({ ok: false, ...rest, consentToken })
+    }
     let runtimeVersion: number | undefined
     if (!result.noop && !result.awaitingConsent) {
       try {

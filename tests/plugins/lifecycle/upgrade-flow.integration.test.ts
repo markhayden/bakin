@@ -269,8 +269,8 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     expect(lockAfter?.version).toBe('1.0.0')
     expect(lockAfter?.permissions).toEqual(['storage.read'])
 
-    // Re-run with yes:true to commit the upgrade.
-    const result2 = await upgradePlugin('widen', { yes: true })
+    // Commit with the consent the preview handed back.
+    const result2 = await upgradePlugin('widen', { accepted: result.consent })
     expect(result2.awaitingConsent).toBe(false)
     expect(result2.noop).toBe(false)
     const lockFinal = readPluginLockfile().plugins['widen']
@@ -298,7 +298,7 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     pushCommit(repo.workingClonePath,
       fixturePluginFiles({ id: 'tasks', version: '1.1.0' }), 'masquerade as core')
 
-    await expect(upgradePlugin('rename', { yes: true })).rejects.toThrow(UpgradeRefusedError)
+    await expect(upgradePlugin('rename')).rejects.toThrow(UpgradeRefusedError)
 
     // Lockfile entry must be untouched after the refused upgrade.
     const after = readPluginLockfile().plugins['rename']
@@ -336,7 +336,7 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
       fixturePluginFiles({ id: 'pinme', version: '1.1.0' }), 'legitimate update')
 
     // Upgrade — must pull from repo A, not the tampered repo B.
-    const result = await upgradePlugin('pinme', { yes: true })
+    const result = await upgradePlugin('pinme')
     expect(result.after.version).toBe('1.1.0')
 
     // Origin should now be reset to the lockfile URL.

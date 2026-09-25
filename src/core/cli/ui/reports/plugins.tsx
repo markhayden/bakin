@@ -106,7 +106,7 @@ function pluginActionMessage(action: PluginActionData): string {
   if (message) return message
   if (objectField(payload, 'awaitingConsent') === true) {
     const nextAction = actionName === 'upgraded' ? 'upgrade' : 'install'
-    const declaredBins = objectField(payload, 'bins')
+    const declaredBins = objectField(payload, 'bins') ?? objectField(payload, 'newBins')
     const hasBins = Array.isArray(declaredBins) && declaredBins.length > 0
     return `Plugin ${target} requires consent for ${hasBins ? 'permissions and binary downloads' : 'permissions'} before ${nextAction}.`
   }
@@ -204,7 +204,7 @@ function pluginActionDetail(action: PluginActionData): string {
     }).join(', ')}`)
   }
   details.push(...pluginPermissionsDetail(objectField(payload, 'permissions')))
-  details.push(...pluginBinsDetail(objectField(payload, 'bins')))
+  details.push(...pluginBinsDetail(objectField(payload, 'bins') ?? objectField(payload, 'newBins')))
   if (next.length > 0) details.push(`Next: ${next.map(item => valueText(item)).join(' && ')}`)
 
   return details.filter(Boolean).join('\n')
