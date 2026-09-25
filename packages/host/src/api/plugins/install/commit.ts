@@ -3,7 +3,7 @@
  * compile it (source installs only — never execute a shipped dist/),
  * record the lockfile entry, and live-activate when the registry is up.
  */
-import { existsSync, cpSync, rmSync } from 'fs'
+import { existsSync, cpSync, rmSync, writeFileSync } from 'fs'
 import { join, resolve, isAbsolute } from 'path'
 import { createLogger } from '@/core/logger'
 import { buildUserPlugin } from '../../../plugin-host/user-plugin-builder'
@@ -15,6 +15,10 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { SOURCE_TREE_SHA_ALGO, computeSourceTreeSha } from '@/core/plugins/source-tree-sha'
 import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
+import { installPluginBins, type PluginBinInstall } from '@/core/agent-packages/bin-installer'
+import { withInstallLock } from '@/core/install-core/install-lock'
+import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
+import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
 import {
   activateUserPluginDir,
   isLiveActivationUnavailable,
@@ -56,9 +60,14 @@ export function recordInstall(args: {
   type: 'github' | 'local'
   permissions: PluginLockEntry['permissions']
   gitProvenance?: { ref: string; commitSha: string }
+  /** Binaries this install placed (or found identically pinned) — the removal/ownership authority. */
+  installedBins?: PluginLockEntry['installedBins']
 }): void {
   const { id, targetDir, manifestSha, manifest, source, type } = args
-  try {
+  // A ledger write that fails is a FAILED install: the caller rolls the
+  // directory and created bins back. Never swallow it — an installed dir
+  // with no ledger row is exactly the orphan state the loader can't explain.
+  {
     const { ref, commitSha } = args.gitProvenance ?? resolveGitProvenance(targetDir, type)
 
     let version: string
@@ -104,13 +113,35 @@ export function recordInstall(args: {
       sourceTreeSha,
       ...(sourceTreeSha ? { sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO } : {}),
       installedSkills,
+      ...(args.installedBins?.length ? { installedBins: args.installedBins } : {}),
     }
 
     const lock = readPluginLockfile()
     writePluginLockfile(addPlugin(lock, id, entry))
-  } catch (err) {
-    log.error('failed to record plugin install in lockfile', err as Error, { id })
   }
+}
+
+/** Durable transaction sentinel: present ⇒ the install is in flight or died mid-way; the loader must ignore the dir. */
+export const INSTALL_SENTINEL = '.bakin-install.json'
+
+interface InstallSentinel {
+  startedAt: string
+  pid: number
+  /** ~/.bakin/bin targets THIS install created — recovery deletes exactly these. */
+  createdBins: string[]
+}
+
+function writeSentinel(targetDir: string, sentinel: InstallSentinel): void {
+  writeFileSync(join(targetDir, INSTALL_SENTINEL), JSON.stringify(sentinel, null, 2), 'utf-8')
+}
+
+/** Undo everything this install placed: the plugin dir and the bins it created (never a shared, pre-existing bin). */
+export function rollbackInstall(targetDir: string, created: readonly string[]): void {
+  for (const target of created) {
+    try { rmSync(target, { force: true }) } catch { /* best effort */ }
+    try { removeInstalledBy(target) } catch { /* best effort */ }
+  }
+  rmSync(targetDir, { recursive: true, force: true })
 }
 
 /**
@@ -124,8 +155,22 @@ export async function commitInstall(args: {
   pluginsRoot: string
   staged: StagedSource
   validated: ValidatedManifest
+  progress?: InstallProgressFn
 }): Promise<Response> {
-  const { body, stagingDir, pluginsRoot, staged, validated } = args
+  // The whole commit — files, binaries, ledger — is ONE operation under the
+  // install lock (reentrant when a job runner already holds it).
+  return withInstallLock(() => commitInstallLocked(args))
+}
+
+async function commitInstallLocked(args: {
+  body: InstallBody
+  stagingDir: string
+  pluginsRoot: string
+  staged: StagedSource
+  validated: ValidatedManifest
+  progress?: InstallProgressFn
+}): Promise<Response> {
+  const { body, stagingDir, pluginsRoot, staged, validated, progress } = args
   const { effectivePluginDir, requestedRef, gitProvenance, installedFromArtifact } = staged
   const { id, manifest, parsedPermissions, stagedManifestSha } = validated
 
@@ -140,6 +185,8 @@ export async function commitInstall(args: {
   // local `.git/` to fetch into.
   cpSync(effectivePluginDir, targetDir, { recursive: true, dereference: false })
   rmSync(stagingDir, { recursive: true, force: true })
+  const sentinel: InstallSentinel = { startedAt: new Date().toISOString(), pid: process.pid, createdBins: [] }
+  writeSentinel(targetDir, sentinel)
 
   // Compile the plugin to dist/ so the runtime loader (Phase F) and
   // the server-side dynamic import (plugin-registry) have built
@@ -155,7 +202,7 @@ export async function commitInstall(args: {
     } catch (buildErr) {
       // Build failed — clean up the installed files so the install
       // appears atomic from the user's perspective.
-      rmSync(targetDir, { recursive: true, force: true })
+      rollbackInstall(targetDir, sentinel.createdBins)
       const message = buildErr instanceof Error ? buildErr.message : String(buildErr)
       log.error('Plugin install build step failed', buildErr as Error, { id })
       return Response.json({
@@ -167,19 +214,58 @@ export async function commitInstall(args: {
 
   // For local installs, record the resolved absolute source path so the
   // upgrade flow can re-resolve it deterministically from any cwd.
+  // Declared binaries (spec §2.6): download + verify into ~/.bakin/bin. Any
+  // failure rolls back the directory and every bin THIS install created.
+  let installedBins: PluginBinInstall[] = []
+  if (validated.bins.length > 0) {
+    try {
+      const version = typeof manifest.version === 'string' ? manifest.version : '0.0.0'
+      const provenance = gitProvenance ?? resolveGitProvenance(targetDir, body.type)
+      installedBins = await installPluginBins(
+        validated.bins,
+        { pluginId: id, version, ref: provenance.ref, commitSha: provenance.commitSha },
+        {
+          progress: (update) => { progress?.(update) },
+          // Durable as each bin lands: a crash or a later failure rolls back
+          // exactly what THIS install created — never a shared, pre-existing bin.
+          onInstalled: (installed) => {
+            if (installed.created) {
+              sentinel.createdBins.push(installed.target)
+              writeSentinel(targetDir, sentinel)
+            }
+          },
+        },
+      )
+    } catch (binErr) {
+      rollbackInstall(targetDir, sentinel.createdBins)
+      const message = binErr instanceof Error ? binErr.message : String(binErr)
+      log.error('Plugin install binary step failed — rolled back', binErr as Error, { id })
+      return Response.json({ ok: false, error: `Could not install "${id}": ${message}` }, { status: 500 })
+    }
+  }
+
   const recordedSource = body.type === 'local'
     ? (isAbsolute(body.source) ? body.source : resolve(process.cwd(), body.source))
     : body.source
-  recordInstall({
-    id,
-    targetDir,
-    manifestSha: stagedManifestSha,
-    manifest,
-    source: recordedSource,
-    type: body.type,
-    permissions: parsedPermissions,
-    gitProvenance,
-  })
+  try {
+    recordInstall({
+      id,
+      targetDir,
+      manifestSha: stagedManifestSha,
+      manifest,
+      source: recordedSource,
+      type: body.type,
+      permissions: parsedPermissions,
+      gitProvenance,
+      installedBins: installedBins.map((bin) => ({ name: bin.name, sha256: bin.sha256 })),
+    })
+  } catch (ledgerErr) {
+    rollbackInstall(targetDir, sentinel.createdBins)
+    const message = ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr)
+    log.error('Plugin install ledger write failed — rolled back', ledgerErr as Error, { id })
+    return Response.json({ ok: false, error: `Could not record "${id}" in the plugin ledger: ${message}` }, { status: 500 })
+  }
+  rmSync(join(targetDir, INSTALL_SENTINEL), { force: true })
 
   let runtimeVersion: number | undefined
   let activated = false

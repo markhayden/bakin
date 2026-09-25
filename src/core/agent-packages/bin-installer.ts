@@ -214,7 +214,11 @@ export interface PluginBinInstall {
 export async function installPluginBins(
   bins: readonly BinRequirement[],
   identity: PluginBinIdentity,
-  options: { progress?: import('./install-progress').InstallProgressFn } = {},
+  options: {
+    progress?: import('./install-progress').InstallProgressFn
+    /** Called as each bin lands — the caller's transaction records created targets for rollback BEFORE a later bin can fail. */
+    onInstalled?: (installed: PluginBinInstall) => void
+  } = {},
 ): Promise<PluginBinInstall[]> {
   if (bins.length === 0) return []
   assertInstallLockHeld('installPluginBins')
@@ -236,7 +240,9 @@ export async function installPluginBins(
         stage: 'bins', message, item: bin.name, current: index + 1, total: bins.length, receivedBytes, totalBytes,
       }),
     })
-    out.push({ name: bin.name, sha256: installed.sha256, target: binTargetPath(bin.name), created: !installed.skipped })
+    const record: PluginBinInstall = { name: bin.name, sha256: installed.sha256, target: binTargetPath(bin.name), created: !installed.skipped }
+    out.push(record)
+    options.onInstalled?.(record)
   }
   return out
 }

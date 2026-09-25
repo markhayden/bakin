@@ -41,6 +41,7 @@ import { handleDevInstall } from './install/dev-install'
 import { stageInstallSource } from './install/resolve-source'
 import { validateStagedManifest } from './install/validate-manifest'
 import { consentBinsOf, evaluateConsentGate } from './install/consent-gate'
+import { binPreflightResponse, preflightPluginBins } from './install/preflight-bins'
 import { commitInstall } from './install/commit'
 
 const log = createLogger('plugin-install')
@@ -75,6 +76,14 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       const validatedResult = validateStagedManifest(body, stagingDir, staged.effectivePluginDir)
       if (!validatedResult.ok) return validatedResult.response
       const { validated } = validatedResult
+
+      // Binaries: platform + conflict preflight BEFORE consent — never ask the
+      // user to consent to an install that cannot succeed here.
+      const preflight = binPreflightResponse(preflightPluginBins(validated.id, validated.bins))
+      if (preflight) {
+        rmSync(stagingDir, { recursive: true, force: true })
+        return preflight
+      }
 
       const consentResponse = evaluateConsentGate({
         body,
