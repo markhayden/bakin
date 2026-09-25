@@ -261,6 +261,7 @@ export function InstallDialog({
     id?: string
     version?: string
     permissions?: string[]
+    bins?: ConsentRequest['bins']
     consentToken?: string
     capability?: Parameters<typeof keyStepFrom>[0]['capability']
   }
@@ -272,6 +273,7 @@ export function InstallDialog({
         id: responseBody.id ?? source,
         version: responseBody.version ?? '?',
         permissions: responseBody.permissions ?? [],
+        bins: responseBody.bins ?? [],
         consentToken: responseBody.consentToken,
         manifestChanged: responseBody.manifestChanged === true,
       })
