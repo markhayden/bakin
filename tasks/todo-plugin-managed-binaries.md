@@ -37,7 +37,7 @@
 ## Phase D — Readiness
 - [x] T9: plugin-assets scans/installs bins via the predicate + installer under the lock; CLI output; health check resolution becomes a `repair`; `install-plugin-assets` action registered
   - Verify: `bun test tests/core/onboarding/plugin-assets.test.ts tests/plugins/health --isolate`
-- [ ] Checkpoint D: `bun run test`, typecheck, lint, check:cycles, docs:check, FULL `bun run ui:conformance`; explore `test:ui` report inspected (stories: overlays/dialog CanonicalUsage, feedback/alert CanonicalUsage)
+- [x] Checkpoint D: `bun run test`, typecheck, lint, check:cycles, docs:check, FULL `bun run ui:conformance`; explore `test:ui` report inspected (stories: overlays/dialog CanonicalUsage, feedback/alert CanonicalUsage)
 
 ## Phase E — Docs + PR
 - [x] T10: knowledge docs (plugin-system, plugin-lifecycle, capability-packs), CLAUDE.md, CHANGELOG
