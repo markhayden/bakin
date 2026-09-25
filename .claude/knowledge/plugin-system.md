@@ -333,8 +333,10 @@ journal precedes the first rename and `committed` precedes the backup
 deletion, no on-disk state is ambiguous: a backup dir with a committed
 journal ⇒ finish the cleanup; a backup dir with an in-flight (or
 unreadable) journal ⇒ full restore — including the window between creating
-the empty target and writing its sentinel; a sentinel-bearing target with
-no backup dir ⇒ restore from the sentinel. The loader
+the empty target and writing its sentinel, while `backup: true` without a
+`backup/plugin` dir means the rename never happened and the target IS the
+previous install (kept, never removed); a sentinel-bearing target with no
+backup dir ⇒ restore from the sentinel. The loader
 (`isLoadableUserPluginDir`) additionally skips dot-prefixed entries
 (backups, staging clones) and any dir still carrying a sentinel. A new
 operation on an id first recovers that id's leftovers.
@@ -342,8 +344,9 @@ operation on an id first recovers that id's leftovers.
 **Install lock:** `~/.bakin/install.lock` is ONE atomic (O_EXCL) lock. The
 outer operation acquires it with `withInstallLock`, which is reentrant only
 within that operation's async continuation (AsyncLocalStorage) — a second
-request arriving while the lock is held is refused like a second process.
-Inner writers (`installPluginBins`, `installManifestBins`,
+request arriving while the lock is held is refused like a second process
+(`InstallLockBusyError`, mapped to **409** by the install, upgrade and
+remove routes). Inner writers (`installPluginBins`, `installManifestBins`,
 `replacePluginDir`) call `assertInstallLockHeld`, which only the holding
 operation satisfies.
 
@@ -528,7 +531,9 @@ trusted signed source. Then it determines source type:
 for all four lanes, run BEFORE any mutation: bin preflight (platform +
 pin conflicts, fail closed → `UpgradeRefusedError`), then the widening
 diff over permissions AND binaries (`diffNewBins`: a bin the lockfile
-doesn't record, or one re-pinned at a different sha for this platform).
+doesn't record, one re-pinned at a different sha for this platform, or a
+different archive member — `ConsentBin.member` is part of the consent
+identity the token binds).
 `UpgradeOptions.yes` is gone; the option is `accepted: UpgradeConsent`
 (`{ manifestSha, permissions, bins }` — the declaration the route verified
 out of a token). Widening without `accepted` → `{ awaitingConsent: true,
@@ -588,8 +593,11 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
 
 1. Refuse if `isCorePlugin(id)` (returns `{ core: true }` per CLI
    contract)
-2. Call `plugin.onUninstall(ctx)` if defined — log + audit + continue
-   on error (a buggy hook must not trap the user)
+2. Take the install lock for the WHOLE teardown (steps 2–7); a busy lock
+   refuses the removal with 409 before any hook, snapshot or deactivation
+   runs — a concurrent install can never leave a plugin deactivated but
+   installed. Then call `plugin.onUninstall(ctx)` if defined — log +
+   audit + continue on error (a buggy hook must not trap the user)
 3. Plan runtime skill cleanup — partition by the lockfile entry's
    `installedSkills` allowlist (the authoritative record of what this
    plugin actually installed) intersected with on-disk
@@ -610,7 +618,7 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
      checks, repair actions, and cached snapshots
    - `purgeContentType(table)` for every content type the plugin
      registered — atomic Antfly `dropTable`
-6. Under the install lock: filesystem deletes — skill dirs (per plan),
+6. Filesystem deletes — skill dirs (per plan),
    `~/.bakin/plugin-settings/<id>.json`, plugin dir
 7. Remove lockfile entry, then delete the binaries the entry's
    `installedBins` named that no owner in EITHER lockfile still pins

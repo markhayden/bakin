@@ -15,6 +15,23 @@ const CHECK_ID = 'health.plugin-assets'
 export async function checkPluginAssets(): Promise<HealthCheckRunInput> {
   try {
     const result = await pluginAssetsComponent.check()
+    if (result.status === 'error') {
+      // Discovery failed (unreadable ledger): the state is UNKNOWN — never a
+      // clean bill, never an "install assets" repair over a broken ledger.
+      return healthObserved([healthUnknown({
+        key: 'runtime-assets',
+        summary: result.message,
+        detail: result.remediation,
+        incident: {
+          key: 'inspection-failed',
+          title: 'Plugin asset status is unknown',
+          impact: 'Health cannot confirm whether plugin-provided runtime skills and binaries are current.',
+          disposition: 'watch',
+          resources: [{ kind: 'asset', id: 'plugin-runtime-assets', label: 'Plugin assets' }],
+          resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+        },
+      })])
+    }
     if (result.status === 'ok') {
       return healthObserved([healthHealthy({
         key: 'runtime-assets',

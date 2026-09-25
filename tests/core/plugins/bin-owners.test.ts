@@ -29,6 +29,8 @@ import {
   findBinPinConflicts,
 } from '../../../src/core/plugins/bin-owners'
 import type { BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
+import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
+import { binPlatformKey } from '../../../src/core/agent-packages/bin-installer'
 
 const A = 'a'.repeat(64)
 const B = 'b'.repeat(64)
@@ -119,6 +121,20 @@ describe('pin conflicts', () => {
     expect(BinPinConflictError.describe(conflicts, { kind: 'plugin', id: 'terminal' })).toMatch(/member bin\/tool-a.*member bin\/tool-b/)
     // A raw pin against an archive pin at the same sha is a conflict too (different bytes on disk).
     expect(findBinPinConflicts([declares('tool', A)], { kind: 'plugin', id: 'terminal' }, PLATFORM)).toHaveLength(1)
+  })
+
+  it('a legacy pack record without a member is completed from the installed manifest — an unchanged shared archive never conflicts', () => {
+    pinsPack('ocr', 'tool', A) // written before `member` existed
+    const dir = getPackageSourceDir(testDir, 'skill-pack', 'ocr', '1.0.0')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify({
+      requires: { bins: [{ name: 'tool', version: '1', install: { [binPlatformKey()!]: { url: 'https://example.com/x.tar.gz', sha256: A, archive: { format: 'tar.gz', member: 'bin/tool-a' } } } }] },
+    }))
+    expect(binTargetOwners(binTargetPath('tool'))).toEqual([{ kind: 'package', id: 'ocr', sha256: A, member: 'bin/tool-a' }])
+    const same = { name: 'tool', version: '1', install: { [binPlatformKey()!]: { url: 'https://example.com/x.tar.gz', sha256: A, archive: { format: 'tar.gz' as const, member: 'bin/tool-a' } } } }
+    const other = { ...same, install: { [binPlatformKey()!]: { ...same.install[binPlatformKey()!]!, archive: { format: 'tar.gz' as const, member: 'bin/tool-b' } } } }
+    expect(findBinPinConflicts([same], { kind: 'plugin', id: 'terminal' }, binPlatformKey())).toEqual([])
+    expect(findBinPinConflicts([other], { kind: 'plugin', id: 'terminal' }, binPlatformKey())).toHaveLength(1)
   })
 
   it('bins with no download for this platform are not judged here', () => {

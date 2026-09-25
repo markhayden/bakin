@@ -23,13 +23,14 @@ export function consentBinsOf(bins: readonly BinRequirement[] | undefined): Cons
       name: bin.name,
       version: bin.version,
       sha256: download?.sha256.toLowerCase() ?? '',
+      ...(download?.archive ? { member: download.archive.member } : {}),
       ...(download?.sizeBytes !== undefined ? { sizeBytes: download.sizeBytes } : {}),
     }
   })
 }
 
-/** Same declaration, in order: name + version + pinned sha. */
+/** Same declaration, in order: name + version + pinned sha + archive member. */
 export function sameBins(a: readonly ConsentBin[], b: readonly ConsentBin[]): boolean {
   if (a.length !== b.length) return false
-  return a.every((x, i) => x.name === b[i]!.name && x.version === b[i]!.version && x.sha256 === b[i]!.sha256)
+  return a.every((x, i) => x.name === b[i]!.name && x.version === b[i]!.version && x.sha256 === b[i]!.sha256 && (x.member ?? null) === (b[i]!.member ?? null))
 }

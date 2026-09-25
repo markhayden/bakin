@@ -31,6 +31,18 @@ interface LockContents {
   acquiredAt: string
 }
 
+/** Thrown when another operation (this process or another) holds the lock — routes map it to 409. */
+export class InstallLockBusyError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'InstallLockBusyError'
+  }
+}
+
+export function isInstallLockBusy(err: unknown): err is InstallLockBusyError {
+  return err instanceof InstallLockBusyError
+}
+
 /** True while THIS process holds the lock (set by acquire, cleared by release). */
 let heldByThisProcess = false
 
@@ -83,7 +95,7 @@ export function acquireInstallLock(): void {
     // server) contend exactly like two processes do — same refusal, same
     // words; inner writers of a held operation never reach here (they assert).
     const holder = readHolder(lockPath)
-    throw new Error(
+    throw new InstallLockBusyError(
       `Another install is in progress (pid ${process.pid}, since ${holder?.acquiredAt ?? 'now'}). ` +
         'Wait for it to finish.',
     )
@@ -98,7 +110,7 @@ export function acquireInstallLock(): void {
     }
     const holder = readHolder(lockPath)
     if (holder && isProcessAlive(holder.pid)) {
-      throw new Error(
+      throw new InstallLockBusyError(
         `Another install is in progress (pid ${holder.pid}, since ${holder.acquiredAt}). ` +
           `Wait for it to finish, or remove ${lockPath} if the holding process is gone.`,
       )
@@ -110,7 +122,7 @@ export function acquireInstallLock(): void {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
     }
   }
-  throw new Error(`Could not acquire the install lock at ${lockPath} (contended)`)
+  throw new InstallLockBusyError(`Could not acquire the install lock at ${lockPath} (contended)`)
 }
 
 export function releaseInstallLock(): void {

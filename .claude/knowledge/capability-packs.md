@@ -117,7 +117,10 @@ rollback, receipts) with two additions:
   (recorded on pack `bin` projections, plugin `installedBins` and the
   `.installedBy` marker; `verifyInstalledBin` reports `member-mismatch` as
   drift) — two owners extracting different members from the same tarball
-  are not sharing one binary.
+  are not sharing one binary. Pack `bin` projections written before
+  `member` existed are completed at read time from the pack's INSTALLED
+  manifest under `~/.bakin/packages/` (`legacyPackBinMember`), so two
+  packs sharing an unchanged archive never read as conflicting pins.
   **Zero-owner delete:** `deleteBinsWithoutOwners` is the ONE S6 rule —
   plugin remove, plugin upgrade (dropped bins) and the pack uninstaller
   (`withoutSharedArtifacts` also consults plugin pins) all keep a binary
@@ -130,7 +133,9 @@ rollback, receipts) with two additions:
   acquiring their own. **Committed provenance only:** the plugin-assets
   repair discovers user plugins from the lockfile (a row + a loadable dir),
   never from directory listings — abandoned staging dirs and unledgered
-  copies can never feed the bin installer.
+  copies can never feed the bin installer; an unreadable ledger is a
+  FAILED inspection (`PluginDiscoveryError` → check `error`, doctor
+  `unknown`), never "nothing to install".
 - **Guided key step** — `POST /api/packages/install` resolves bare names
   from the curated catalog (`sourceWithRef` pin) and returns the pack's
   readiness; the CLI (`bakin packages install <name>`, consent + `--yes`)

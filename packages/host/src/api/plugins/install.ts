@@ -37,6 +37,7 @@ import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { startInstallJob } from '@/core/agent-packages/install-progress'
+import { isInstallLockBusy } from '@/core/install-core/install-lock'
 import { type InstallBody, validateInstallBody } from './install/body'
 import { handleDevInstall } from './install/dev-install'
 import { stageInstallSource } from './install/resolve-source'
@@ -125,6 +126,9 @@ export async function post(req: Request, url: URL): Promise<Response> {
       throw err
     }
   } catch (err) {
+    if (isInstallLockBusy(err)) {
+      return Response.json({ ok: false, error: err.message }, { status: 409 })
+    }
     const message = err instanceof Error ? err.message : String(err)
     log.error('Plugin install failed', err as Error, { source: body.source })
     return Response.json({ ok: false, error: message }, { status: 500 })

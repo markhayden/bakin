@@ -197,9 +197,16 @@ export function restoreFromJournal(
     const savedMarker = installedByPath(saved)
     if (existsSync(savedMarker)) renameSync(savedMarker, installedByPath(target))
   }
-  rmSync(targetDir, { recursive: true, force: true })
-  if (journal.backup && existsSync(backupPluginDir(backupDir))) {
-    renameSync(backupPluginDir(backupDir), targetDir)
+  // `backup` is INTENT (a previous directory existed when the journal was
+  // written); the rename-aside is COMPLETED only when `backup/plugin` exists.
+  // A crash between writing the journal and renaming leaves the target as
+  // the only copy of the previous install — it must not be removed.
+  const renamedAside = journal.backup && existsSync(backupPluginDir(backupDir))
+  if (renamedAside || !journal.backup) {
+    rmSync(targetDir, { recursive: true, force: true })
+    if (renamedAside) renameSync(backupPluginDir(backupDir), targetDir)
+  } else {
+    rmSync(join(targetDir, INSTALL_SENTINEL), { force: true })
   }
   rmSync(backupDir, { recursive: true, force: true })
   if (journal.ledgerBefore !== undefined) {
@@ -224,7 +231,9 @@ export function restoreFromJournal(
  *    sentinel (if the crash beat its removal) and the backup dir.
  *  - backup dir with an in-flight (or unreadable) journal → died anywhere
  *    before commit — including between creating the empty target and
- *    writing its sentinel: full restore from the journal.
+ *    writing its sentinel: full restore from the journal. When the journal
+ *    intended a backup but `backup/plugin` does not exist, the rename never
+ *    happened and the target IS the previous install: it stays.
  *  - target with a sentinel but no backup dir → a stray in-flight copy:
  *    restore from the sentinel.
  */

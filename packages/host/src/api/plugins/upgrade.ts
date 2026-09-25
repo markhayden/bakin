@@ -25,6 +25,7 @@ import { startInstallJob, type InstallProgressFn } from '@/core/agent-packages/i
 import { upgradePlugin, UpgradeRefusedError, type UpgradeConsent } from '@/core/plugins/upgrade'
 import { auditUpgradeRejected } from '@/core/plugins/upgrade-gate'
 import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
+import { isInstallLockBusy } from '@/core/install-core/install-lock'
 import { isCorePlugin } from '@/core/plugin-registry'
 import { appendAudit } from '@/core/audit'
 import { getContentDir } from '@/core/content-dir'
@@ -138,6 +139,9 @@ async function runUpgrade(pluginId: string, body: UpgradeBody, progress: Install
   } catch (err) {
     if (err instanceof UpgradeRefusedError) {
       return Response.json({ ok: false, error: err.message }, { status: 400 })
+    }
+    if (isInstallLockBusy(err)) {
+      return Response.json({ ok: false, error: err.message }, { status: 409 })
     }
     const message = err instanceof Error ? err.message : String(err)
     log.error('Plugin upgrade failed', err as Error, { pluginId })

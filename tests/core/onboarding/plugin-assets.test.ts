@@ -438,6 +438,18 @@ describe('plugin-assets — binaries', () => {
     expect(existsSync(binPath())).toBe(false)
   })
 
+  it('an unreadable ledger is a FAILED inspection, never a clean bill', async () => {
+    makePluginWithBin('term', { root: join(bakinHome, 'plugins') })
+    mkdirSync(join(bakinHome, 'plugins'), { recursive: true })
+    writeFileSync(join(bakinHome, 'plugins', 'lock.json'), '{not json')
+    const check = await pluginAssetsComponent.check()
+    expect(check.status).toBe('error')
+    expect(check.message).toMatch(/could not be inspected/)
+    const install = await pluginAssetsComponent.install({ interactive: false, autoApprove: true, json: false, checkOnly: false, force: false })
+    expect(install.status).toBe('failed')
+    expect(existsSync(binPath())).toBe(false)
+  })
+
   it('a plugin with no ledger row never gets binaries installed by the repair', async () => {
     const pluginDir = makePluginWithBin('unledgered')
     const installed = await installPluginAssets([{ id: 'unledgered', path: pluginDir }])

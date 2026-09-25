@@ -277,6 +277,17 @@ describe('boot recovery from interrupted operations', () => {
     expectPristine(before)
   })
 
+  it('died between writing the journal and renaming the previous dir aside → the target is the only copy and stays', () => {
+    // Round-2 reproduction: `backup: true` is intent; without `backup/plugin`
+    // the rename never happened, so removing the target would delete the
+    // previous install.
+    seedPrevious()
+    const before = { tree: treeDigest(pluginDir()), row: readPluginLockfile().plugins[ID] }
+    writeJournal() // backup intended, nothing renamed yet
+    expect(recoverInterruptedPluginOps(pluginsRoot()).recovered).toEqual([ID])
+    expectPristine(before)
+  })
+
   it('died between creating the empty target and writing its sentinel → the previous dir comes back, never an empty one', () => {
     // The review's reproduction: without a journal this state looked like a
     // committed upgrade and recovery deleted the backup.

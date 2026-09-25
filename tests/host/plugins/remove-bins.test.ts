@@ -25,9 +25,10 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
   resetOpenClawHome: () => {},
 }))
 mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info() {}, warn() {}, error() {}, debug() {} }) }))
+const registry = { deactivations: 0 }
 mock.module('../../../src/core/plugin-registry', () => ({
   isCorePlugin: () => false,
-  pluginRegistry: { getPlugin: () => undefined, getPluginContext: () => undefined, deactivatePlugin: async () => ({ hooks: 0 }) },
+  pluginRegistry: { getPlugin: () => undefined, getPluginContext: () => undefined, deactivatePlugin: async () => { registry.deactivations += 1; return { hooks: 0 } } },
 }))
 mock.module('../../../src/core/plugins/live-lifecycle', () => ({ notifyPluginRemoved: () => {} }))
 mock.module('../../../src/core/onboarding/plugin-assets', () => ({
@@ -39,6 +40,7 @@ import { post as removePOST } from '../../../packages/host/src/api/plugins/remov
 import { addPlugin, readPluginLockfile, writePluginLockfile } from '../../../packages/core/src/plugins/lockfile'
 import { readLockfile, writeLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { writeInstalledBy } from '../../../packages/core/src/agent-packages/markers'
+import { withInstallLock } from '../../../src/core/install-core/install-lock'
 
 const ID = 'binplug'
 const SHA = 'c'.repeat(64)
@@ -98,5 +100,24 @@ describe('POST /api/plugins/remove — bin sweep', () => {
     expect(tarballs).toHaveLength(1)
     const listing = execFileSync('tar', ['-xzOf', join(testDir, '.uninstalled', tarballs[0]!), `plugin-lock/${ID}.json`], { encoding: 'utf-8' })
     expect(JSON.parse(listing).installedBins.map((bin: { name: string }) => bin.name)).toEqual(['solo', 'packshared', 'pluginshared'])
+  })
+})
+
+describe('POST /api/plugins/remove — install lock', () => {
+  it('refuses with 409 BEFORE any teardown while another operation holds the lock; the plugin stays installed and active', async () => {
+    registry.deactivations = 0
+    let release!: () => void
+    const held = withInstallLock(() => new Promise<void>((resolve) => { release = resolve }))
+    const res = await removePOST(new Request('http://localhost/api/plugins/remove', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pluginId: ID }),
+    }), new URL('http://localhost/api/plugins/remove'))
+    expect(res.status).toBe(409)
+    expect(String((await res.json() as { error: string }).error)).toMatch(/Another install is in progress/)
+    expect(registry.deactivations).toBe(0)
+    expect(existsSync(join(testDir, 'plugins', ID))).toBe(true)
+    expect(readPluginLockfile().plugins[ID]).toBeDefined()
+    expect(existsSync(binPath('solo'))).toBe(true)
+    release()
+    await held
   })
 })

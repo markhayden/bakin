@@ -1144,6 +1144,20 @@ describe('checkPluginAssets', () => {
   })
 })
 
+describe('checkPluginAssets — discovery failure', () => {
+  it('a failed inspection is unknown with a rerun resolution — never healthy, never an install repair over a broken ledger', async () => {
+    mockPluginAssetsResult = {
+      name: 'plugin-assets',
+      status: 'error' as unknown as 'ok',
+      message: 'Plugin assets could not be inspected — plugin lockfile could not be read',
+    }
+    const results = observed(await checkPluginAssets())
+    expect(results[0].status).toBe('unknown')
+    expect(results[0].incident?.key).toBe('inspection-failed')
+    expect(results[0].incident?.resolution.type).toBe('rerun')
+  })
+})
+
 describe('installPluginAssetsRepair', () => {
   const target = { scope: 'check' as const, checkId: 'health.plugin-assets' } as unknown as Parameters<ReturnType<typeof installPluginAssetsRepair>['plan']>[0]
 

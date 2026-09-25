@@ -12,12 +12,15 @@
  * Callers run these checks under the install lock (the outer operation
  * acquires it); see install-core/install-lock.
  */
-import { rmSync } from 'fs'
+import { existsSync, readFileSync, rmSync } from 'fs'
 import { basename, join } from 'path'
 import { getBakinPaths } from '../content-dir'
-import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
+import { readLockfile, type PackageEntry } from '../../../packages/core/src/agent-packages/lockfile'
+import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
+import { getContentDir } from '../content-dir'
+import { binPlatformKey } from '../agent-packages/bin-installer'
 import { readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
-import type { BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
+import { BinRequirementsSchema, type BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
 import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
 
 export type BinOwnerKind = 'package' | 'plugin'
@@ -47,13 +50,39 @@ export function bareOwnerId(kind: BinOwnerKind, id: string): string {
   return at > 0 ? id.slice(0, at) : id
 }
 
+/**
+ * The archive member a legacy pack projection (written before `member` was
+ * recorded) extracted, read from the pack's INSTALLED manifest — trusted
+ * content Bakin placed under ~/.bakin/packages/. Undefined when the manifest
+ * is missing or the bin is a raw download.
+ */
+function legacyPackBinMember(lockKey: string, entry: PackageEntry, target: string): string | undefined {
+  const id = bareOwnerId('package', lockKey)
+  const manifestPath = join(getPackageSourceDir(getContentDir(), entry.kind, id, entry.version), 'bakin-package.json')
+  if (!existsSync(manifestPath)) return undefined
+  try {
+    const raw = (JSON.parse(readFileSync(manifestPath, 'utf-8')) as { requires?: { bins?: unknown } }).requires?.bins
+    const bins = BinRequirementsSchema.safeParse(raw ?? [])
+    if (!bins.success) return undefined
+    const bin = bins.data.find((b) => binTargetPath(b.name) === target)
+    const platform = binPlatformKey()
+    return platform ? bin?.install[platform]?.archive?.member : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** Every owner currently pinning `target`, across both lockfiles. */
 export function binTargetOwners(target: string): BinOwner[] {
   const owners: BinOwner[] = []
   for (const [id, entry] of Object.entries(readLockfile().packages)) {
     for (const projection of entry.projections ?? []) {
       if (projection.kind === 'bin' && projection.target === target && projection.sha256) {
-        owners.push({ kind: 'package', id: bareOwnerId('package', id), sha256: projection.sha256.toLowerCase(), ...(projection.member ? { member: projection.member } : {}) })
+        // Records written before `member` existed are completed from the
+        // installed manifest so an unchanged shared archive never reads as
+        // two conflicting pins.
+        const member = projection.member ?? legacyPackBinMember(id, entry, target)
+        owners.push({ kind: 'package', id: bareOwnerId('package', id), sha256: projection.sha256.toLowerCase(), ...(member ? { member } : {}) })
       }
     }
   }

@@ -378,6 +378,14 @@ function syncLockfileInstalledBins(pluginId: string, installedBins: Array<{ name
  * plugins from `bakin.config.ts` plus any user plugins under
  * `~/.bakin/plugins/`. Tests inject their own list directly.
  */
+/** Discovery could not establish which plugins exist — the check must report it, not a clean slate. */
+export class PluginDiscoveryError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PluginDiscoveryError'
+  }
+}
+
 function discoverPlugins(): PluginEntry[] {
   const plugins: PluginEntry[] = []
   // Built-in plugins from bakin.config.ts. We require() it lazily so
@@ -402,17 +410,21 @@ function discoverPlugins(): PluginEntry[] {
   // Anything else under ~/.bakin/plugins/ (an abandoned `.staging-*`, a
   // half-written install, a stray copy) was never consented to and must
   // never feed the repair's bin installer.
+  // A ledger that cannot be read is a FAILED inspection, never "no user
+  // plugins": the caller reports error/unknown instead of a false healthy.
+  const { getContentDir } = require('../content-dir') as typeof import('../content-dir')
+  const userPluginsDir = join(getContentDir(), 'plugins')
+  let lock: PluginLockfile
   try {
-    const { getContentDir } = require('../content-dir') as typeof import('../content-dir')
-    const userPluginsDir = join(getContentDir(), 'plugins')
-    for (const [id, entry] of Object.entries(readPluginLockfile().plugins)) {
-      if (isLinked(entry)) continue // dev-linked source trees are the author's territory
-      if (!isLoadableUserPluginDir(userPluginsDir, id)) continue
-      if (!existsSync(join(userPluginsDir, id, 'bakin-plugin.json'))) continue
-      plugins.push({ id, path: join(userPluginsDir, id) })
-    }
+    lock = readPluginLockfile()
   } catch (err) {
-    log.warn('User-plugin discovery skipped', { error: err instanceof Error ? err.message : String(err) })
+    throw new PluginDiscoveryError(`plugin lockfile could not be read: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  for (const [id, entry] of Object.entries(lock.plugins)) {
+    if (isLinked(entry)) continue // dev-linked source trees are the author's territory
+    if (!isLoadableUserPluginDir(userPluginsDir, id)) continue
+    if (!existsSync(join(userPluginsDir, id, 'bakin-plugin.json'))) continue
+    plugins.push({ id, path: join(userPluginsDir, id) })
   }
 
   return plugins
@@ -434,7 +446,18 @@ const binLabel = (ref: BinRef): string => `${ref.name} (${ref.pluginId})`
 
 async function check(): Promise<CheckResult> {
   await ensureAppServices()
-  const plugins = discoverPlugins()
+  let plugins: PluginEntry[]
+  try {
+    plugins = discoverPlugins()
+  } catch (err) {
+    if (!(err instanceof PluginDiscoveryError)) throw err
+    return {
+      name: 'plugin-assets',
+      status: 'error',
+      message: `Plugin assets could not be inspected — ${err.message}`,
+      remediation: 'Repair ~/.bakin/plugins/lock.json, then re-run the check.',
+    }
+  }
   const report = await scanPluginAssets(plugins)
   const { bins } = report
   const skillsPending = report.missing.length + report.drifted.length
@@ -487,7 +510,13 @@ async function check(): Promise<CheckResult> {
 async function install(_opts: OnboardingOptions): Promise<InstallResult> {
   await ensureAppServices()
   const start = Date.now()
-  const plugins = discoverPlugins()
+  let plugins: PluginEntry[]
+  try {
+    plugins = discoverPlugins()
+  } catch (err) {
+    if (!(err instanceof PluginDiscoveryError)) throw err
+    return { name: 'plugin-assets', status: 'failed', message: `Plugin assets could not be inspected — ${err.message}`, error: err, durationMs: Date.now() - start }
+  }
   const report = await installPluginAssets(plugins)
   const durationMs = Date.now() - start
   const { bins } = report

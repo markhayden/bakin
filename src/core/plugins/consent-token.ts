@@ -35,6 +35,8 @@ export interface ConsentBin {
   name: string
   version: string
   sha256: string
+  /** Archive downloads: the member extracted — part of the binary's identity (a member change is a new binary). */
+  member?: string
   sizeBytes?: number
 }
 

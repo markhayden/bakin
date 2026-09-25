@@ -14,7 +14,7 @@ import { appendAudit } from '@/core/audit'
 import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
 import { BinRequirementsSchema, type BinRequirement } from '@bakin/core/plugins/bin-requirement'
 import type { PluginLockEntry } from '@bakin/core/plugins/lockfile'
-import { deleteBinsWithoutOwners } from './bin-owners'
+import { deleteBinsWithoutOwners, samePin } from './bin-owners'
 import { preflightPluginBins } from './bin-preflight'
 import { consentBinsOf, sameBins, type ConsentBin } from './consent-bins'
 import { getSettings } from '@bakin/core/settings'
@@ -206,8 +206,12 @@ export function manifestBins(manifest: Record<string, unknown>, id: string): Bin
 
 /** Bins the new manifest adds or re-pins (for this platform) relative to what the lockfile records — the consent diff. */
 export function diffNewBins(prev: PluginLockEntry['installedBins'], next: readonly BinRequirement[]): ConsentBin[] {
-  const before = new Map((prev ?? []).map((b) => [b.name, b.sha256.toLowerCase()]))
-  return consentBinsOf(next).filter((bin) => before.get(bin.name) !== bin.sha256.toLowerCase())
+  const before = new Map((prev ?? []).map((b) => [b.name, b]))
+  return consentBinsOf(next).filter((bin) => {
+    const recorded = before.get(bin.name)
+    // A re-pin OR a different member of the same archive is a new binary.
+    return !recorded || !samePin(recorded, bin)
+  })
 }
 
 export type UpgradeConsentGate =

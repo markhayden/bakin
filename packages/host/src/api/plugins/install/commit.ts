@@ -15,7 +15,7 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { SOURCE_TREE_SHA_ALGO, computeSourceTreeSha } from '@/core/plugins/source-tree-sha'
 import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
-import { withInstallLock } from '@/core/install-core/install-lock'
+import { isInstallLockBusy, withInstallLock } from '@/core/install-core/install-lock'
 import { replacePluginDir } from '@/core/plugins/replace-transaction'
 import { toInstalledBins } from '@/core/agent-packages/bin-installer'
 import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
@@ -193,6 +193,9 @@ async function commitInstallLocked(args: {
     })
     targetDir = result.targetDir
   } catch (err) {
+    if (isInstallLockBusy(err)) {
+      return Response.json({ ok: false, error: `Could not install "${id}": ${err.message}` }, { status: 409 })
+    }
     const message = err instanceof Error ? err.message : String(err)
     log.error('Plugin install failed — rolled back', err as Error, { id })
     return Response.json({ ok: false, error: `Could not install "${id}": ${message}` }, { status: 500 })
