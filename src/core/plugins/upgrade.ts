@@ -22,10 +22,11 @@
  * - `./upgrade-check` — the read-only `--check` probe (batched lockfile write)
  * - `./source-tree-sha` — local source-tree hashing
  */
-import { existsSync, cpSync, rmSync } from 'fs'
+import { existsSync, cpSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { isCorePlugin } from '@/core/plugin-registry'
+import { withInstallLock } from '@/core/install-core/install-lock'
 import {
   type PluginLockEntry,
   isLinked,
@@ -36,6 +37,7 @@ import {
 import { parseGithubSource } from '@bakin/core/plugins/source'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
 import { SOURCE_TREE_SHA_ALGO, compareStoredSourceTreeSha } from './source-tree-sha'
+import { replacePluginDir } from './replace-transaction'
 import {
   type UpgradeOptions,
   type UpgradeResult,
@@ -67,7 +69,9 @@ export async function upgradePlugin(
   opts: UpgradeOptions = {},
 ): Promise<UpgradeResult> {
   opts.progress?.({ stage: 'fetch-source', message: `Checking ${id} for a newer version…` })
-  const result = await upgradePluginResolved(id, opts)
+  // ONE install lock around the whole upgrade — the lanes' replace
+  // transactions and bin writers assert it rather than acquiring their own.
+  const result = await withInstallLock(() => upgradePluginResolved(id, opts))
   opts.progress?.({ stage: 'finalize', message: result.noop ? `${id} is already up to date` : `Upgraded ${id}` })
   return result
 }
@@ -190,26 +194,31 @@ async function upgradeLocal(
     }
   }
 
-  // Consent accepted (or unnecessary). Now safe to wipe + re-copy the
-  // plugin dir. Wipe first so deletions in the source are reflected
-  // (plain cpSync would only overlay, leaving stale files).
-  rmSync(pluginDir, { recursive: true, force: true })
-  cpSync(sourcePath, pluginDir, { recursive: true, dereference: false })
-
-  await buildUserPlugin(pluginDir)
-
-  const assets = await installUpgradedPluginAssets(id, pluginDir)
-
-  const updated = updatePlugin(readPluginLockfile(), id, {
-    upgradedAt: new Date().toISOString(),
-    version: newVersion,
-    manifestSha,
-    permissions: newPerms,
-    sourceTreeSha: newTreeSha,
-    sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO,
-    installedSkills: assets.installedSkills,
+  // Consent accepted (or unnecessary). Replace the plugin dir inside the
+  // transaction: the previous install comes back byte for byte if the copy,
+  // build or ledger write fails.
+  let assets!: Awaited<ReturnType<typeof installUpgradedPluginAssets>>
+  await replacePluginDir({
+    id,
+    op: 'upgrade',
+    place: (dir) => cpSync(sourcePath, dir, { recursive: true, dereference: false }),
+    build: buildUserPlugin,
+    bins: [],
+    binIdentity: { pluginId: id, version: newVersion, ref: '', commitSha: '' },
+    progress: opts.progress,
+    ledger: async () => {
+      assets = await installUpgradedPluginAssets(id, pluginDir)
+      writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
+        upgradedAt: new Date().toISOString(),
+        version: newVersion,
+        manifestSha,
+        permissions: newPerms,
+        sourceTreeSha: newTreeSha,
+        sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO,
+        installedSkills: assets.installedSkills,
+      }))
+    },
   })
-  writePluginLockfile(updated)
 
   return {
     id,

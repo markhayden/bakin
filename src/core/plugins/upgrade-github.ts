@@ -17,6 +17,7 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { parseGithubSource } from '@bakin/core/plugins/source'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
+import { replacePluginDir } from './replace-transaction'
 import {
   type UpgradeOptions,
   type UpgradeResult,
@@ -135,9 +136,9 @@ export async function upgradeGithub(
     }
   }
 
-  // Consent accepted (or unnecessary). Now safe to mutate working tree.
-  // The merge-base check inside the helper still defends against a force-push
-  // that landed between fetch and merge.
+  // Consent accepted (or unnecessary). The merge-base check runs BEFORE the
+  // transaction (read-only on the fetched objects) so a force-push refusal
+  // never touches the working tree.
   if (localSha !== remoteSha) {
     try {
       execFileSync('git', ['merge-base', '--is-ancestor', localSha, remoteSha], {
@@ -155,22 +156,34 @@ export async function upgradeGithub(
         `${id}: cannot fast-forward (remote history rewritten?). Remove and reinstall.`,
       )
     }
-    run('git', ['merge', '--ff-only', `origin/${entry.ref}`], pluginDir)
   }
 
-  await buildUserPlugin(pluginDir)
-
-  const assets = await installUpgradedPluginAssets(id, pluginDir)
-
-  const updated = updatePlugin(readPluginLockfile(), id, {
-    upgradedAt: new Date().toISOString(),
-    version: newVersion,
-    commitSha: remoteSha,
-    manifestSha,
-    permissions: newPerms,
-    installedSkills: assets.installedSkills,
+  // In-place lane: the new tree is the OLD clone (with the fetched objects)
+  // fast-forwarded, so `place` copies the backup in and merges on top.
+  let assets!: Awaited<ReturnType<typeof installUpgradedPluginAssets>>
+  await replacePluginDir({
+    id,
+    op: 'upgrade',
+    place: (dir, previousDir) => {
+      cpSync(previousDir!, dir, { recursive: true, dereference: false })
+      if (localSha !== remoteSha) run('git', ['merge', '--ff-only', `origin/${entry.ref}`], dir)
+    },
+    build: buildUserPlugin,
+    bins: [],
+    binIdentity: { pluginId: id, version: newVersion, ref: entry.ref, commitSha: remoteSha },
+    progress: opts.progress,
+    ledger: async () => {
+      assets = await installUpgradedPluginAssets(id, pluginDir)
+      writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
+        upgradedAt: new Date().toISOString(),
+        version: newVersion,
+        commitSha: remoteSha,
+        manifestSha,
+        permissions: newPerms,
+        installedSkills: assets.installedSkills,
+      }))
+    },
   })
-  writePluginLockfile(updated)
 
   return {
     id,
@@ -268,25 +281,30 @@ export async function upgradeGithubSubpath(
       }
     }
 
-    // Consent accepted (or unnecessary). Replace the on-disk plugin with
-    // the subpath contents. Wipe first so deletions in the source are
-    // reflected (cpSync would only overlay, leaving stale files).
-    rmSync(pluginDir, { recursive: true, force: true })
-    cpSync(subpathDir, pluginDir, { recursive: true, dereference: false })
-
-    await buildUserPlugin(pluginDir)
-
-    const assets = await installUpgradedPluginAssets(id, pluginDir)
-
-    const updated = updatePlugin(readPluginLockfile(), id, {
-      upgradedAt: new Date().toISOString(),
-      version: newVersion,
-      commitSha: remoteSha,
-      manifestSha,
-      permissions: newPerms,
-      installedSkills: assets.installedSkills,
+    // Consent accepted (or unnecessary). Replace the on-disk plugin with the
+    // subpath contents inside the transaction (the previous install returns
+    // byte for byte on any failure).
+    let assets!: Awaited<ReturnType<typeof installUpgradedPluginAssets>>
+    await replacePluginDir({
+      id,
+      op: 'upgrade',
+      place: (dir) => cpSync(subpathDir, dir, { recursive: true, dereference: false }),
+      build: buildUserPlugin,
+      bins: [],
+      binIdentity: { pluginId: id, version: newVersion, ref: entry.ref, commitSha: remoteSha },
+      progress: opts.progress,
+      ledger: async () => {
+        assets = await installUpgradedPluginAssets(id, pluginDir)
+        writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
+          upgradedAt: new Date().toISOString(),
+          version: newVersion,
+          commitSha: remoteSha,
+          manifestSha,
+          permissions: newPerms,
+          installedSkills: assets.installedSkills,
+        }))
+      },
     })
-    writePluginLockfile(updated)
 
     return {
       id,

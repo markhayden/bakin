@@ -6,6 +6,7 @@
  * (hermetic git, force-push detection, widened-permissions prompt) lands
  * with C10's `upgrade-flow.integration.test.ts`.
  */
+import { treeDigest } from '../../helpers/tree-digest'
 import { describe, it, expect, afterAll, beforeEach, mock } from 'bun:test'
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
@@ -338,9 +339,17 @@ describe('upgradePlugin (local)', () => {
     services.runtime.skills.write = async () => {
       throw new Error('runtime store unavailable')
     }
+    const treeBefore = treeDigest(pluginDir)
+    const rowBefore = readPluginLockfile().plugins['fail-assets']
 
     await expect(upgradePlugin('fail-assets')).rejects.toThrow(/runtime store unavailable/)
 
+    // S14: the previous install is back byte for byte — directory AND ledger
+    // row — with no backup or sentinel left behind.
+    expect(treeDigest(pluginDir)).toEqual(treeBefore)
+    expect(readPluginLockfile().plugins['fail-assets']).toEqual(rowBefore)
+    expect(existsSync(join(testDir, 'plugins', '.bakin-backup-fail-assets'))).toBe(false)
+    expect(existsSync(join(pluginDir, '.bakin-install.json'))).toBe(false)
     const lockEntry = readPluginLockfile().plugins['fail-assets']
     expect(lockEntry?.version).toBe('1.0.0')
     expect(lockEntry?.sourceTreeSha).toBe(initialSha)

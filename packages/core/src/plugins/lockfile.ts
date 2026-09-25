@@ -97,7 +97,7 @@ const CommitShaSchema = z.string().refine(
   { message: 'commitSha must be empty or a 40-char lowercase hex sha' },
 )
 
-const PluginLockEntrySchema = z.object({
+export const PluginLockEntrySchema = z.object({
   /** Original install source — git URL for github, absolute path for local. */
   source: SourceStringSchema,
   type: PluginTypeSchema,

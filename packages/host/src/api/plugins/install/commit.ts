@@ -3,7 +3,7 @@
  * compile it (source installs only — never execute a shipped dist/),
  * record the lockfile entry, and live-activate when the registry is up.
  */
-import { existsSync, cpSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, cpSync, rmSync } from 'fs'
 import { join, resolve, isAbsolute } from 'path'
 import { createLogger } from '@/core/logger'
 import { buildUserPlugin } from '../../../plugin-host/user-plugin-builder'
@@ -15,9 +15,8 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { SOURCE_TREE_SHA_ALGO, computeSourceTreeSha } from '@/core/plugins/source-tree-sha'
 import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
-import { installPluginBins, type PluginBinInstall } from '@/core/agent-packages/bin-installer'
 import { withInstallLock } from '@/core/install-core/install-lock'
-import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
+import { replacePluginDir } from '@/core/plugins/replace-transaction'
 import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
 import {
   activateUserPluginDir,
@@ -121,32 +120,6 @@ export function recordInstall(args: {
   }
 }
 
-/** Durable transaction sentinel: present ⇒ the install is in flight or died mid-way; the loader must ignore the dir. */
-export const INSTALL_SENTINEL = '.bakin-install.json'
-
-interface InstallSentinel {
-  startedAt: string
-  pid: number
-  /** ~/.bakin/bin targets THIS install created — recovery deletes exactly these. */
-  createdBins: string[]
-}
-
-function writeSentinel(targetDir: string, sentinel: InstallSentinel): void {
-  writeFileSync(join(targetDir, INSTALL_SENTINEL), JSON.stringify(sentinel, null, 2), 'utf-8')
-}
-
-/** Undo everything this install placed: the plugin dir and the bins it created (never a shared, pre-existing bin). */
-export function rollbackInstall(targetDir: string, created: readonly string[]): void {
-  for (const target of created) {
-    // Marker FIRST: `~/.bakin/bin/<name>` has no extension, so once the
-    // binary is gone the sidecar helper reads the path as a directory and
-    // the marker would be left orphaned (Checkpoint B finding).
-    try { removeInstalledBy(target) } catch { /* best effort */ }
-    try { rmSync(target, { force: true }) } catch { /* best effort */ }
-  }
-  rmSync(targetDir, { recursive: true, force: true })
-}
-
 /**
  * Commit a validated, consented install: copy into `~/.bakin/plugins/<id>/`,
  * tear down staging, build (source installs), record the lockfile entry,
@@ -173,102 +146,56 @@ async function commitInstallLocked(args: {
   validated: ValidatedManifest
   progress?: InstallProgressFn
 }): Promise<Response> {
-  const { body, stagingDir, pluginsRoot, staged, validated, progress } = args
+  const { body, stagingDir, staged, validated, progress } = args
   const { effectivePluginDir, requestedRef, gitProvenance, installedFromArtifact } = staged
   const { id, manifest, parsedPermissions, stagedManifestSha } = validated
-
-  const targetDir = join(pluginsRoot, id)
-  if (existsSync(targetDir)) {
-    rmSync(targetDir, { recursive: true, force: true })
-  }
-  // Copy from the effective plugin dir (the subpath for monorepo
-  // installs, the staging root otherwise). This intentionally drops
-  // the rest of the cloned repo + its `.git/` for subpath installs;
-  // the subpath upgrade flow re-clones to staging since there's no
-  // local `.git/` to fetch into.
-  cpSync(effectivePluginDir, targetDir, { recursive: true, dereference: false })
-  rmSync(stagingDir, { recursive: true, force: true })
-  const sentinel: InstallSentinel = { startedAt: new Date().toISOString(), pid: process.pid, createdBins: [] }
-  writeSentinel(targetDir, sentinel)
-
-  // Compile the plugin to dist/ so the runtime loader (Phase F) and
-  // the server-side dynamic import (plugin-registry) have built
-  // artifacts ready on next boot. Failures here are fatal for the
-  // install request — shipping an installed-but-unbuilt plugin would
-  // crash startup instead of surfacing the error to the user now.
-  //
-  // A Whiskit artifact install is already built (dist/ shipped + verified),
-  // so the build step is skipped entirely.
-  if (!installedFromArtifact) {
-    try {
-      await buildSourceInstall(targetDir)
-    } catch (buildErr) {
-      // Build failed — clean up the installed files so the install
-      // appears atomic from the user's perspective.
-      rollbackInstall(targetDir, sentinel.createdBins)
-      const message = buildErr instanceof Error ? buildErr.message : String(buildErr)
-      log.error('Plugin install build step failed', buildErr as Error, { id })
-      return Response.json({
-        ok: false,
-        error: `Installed "${id}" but failed to build it: ${message}`,
-      }, { status: 500 })
-    }
-  }
-
-  // For local installs, record the resolved absolute source path so the
-  // upgrade flow can re-resolve it deterministically from any cwd.
-  // Declared binaries (spec §2.6): download + verify into ~/.bakin/bin. Any
-  // failure rolls back the directory and every bin THIS install created.
-  let installedBins: PluginBinInstall[] = []
-  if (validated.bins.length > 0) {
-    try {
-      const version = typeof manifest.version === 'string' ? manifest.version : '0.0.0'
-      const provenance = gitProvenance ?? resolveGitProvenance(targetDir, body.type)
-      installedBins = await installPluginBins(
-        validated.bins,
-        { pluginId: id, version, ref: provenance.ref, commitSha: provenance.commitSha },
-        {
-          progress: (update) => { progress?.(update) },
-          // Durable as each bin lands: a crash or a later failure rolls back
-          // exactly what THIS install created — never a shared, pre-existing bin.
-          onInstalled: (installed) => {
-            if (installed.created) {
-              sentinel.createdBins.push(installed.target)
-              writeSentinel(targetDir, sentinel)
-            }
-          },
-        },
-      )
-    } catch (binErr) {
-      rollbackInstall(targetDir, sentinel.createdBins)
-      const message = binErr instanceof Error ? binErr.message : String(binErr)
-      log.error('Plugin install binary step failed — rolled back', binErr as Error, { id })
-      return Response.json({ ok: false, error: `Could not install "${id}": ${message}` }, { status: 500 })
-    }
-  }
 
   const recordedSource = body.type === 'local'
     ? (isAbsolute(body.source) ? body.source : resolve(process.cwd(), body.source))
     : body.source
+  const version = typeof manifest.version === 'string' ? manifest.version : '0.0.0'
+
+  // ONE transaction: place → build → bins → ledger, restored byte for byte on
+  // any failure (replace-transaction.ts). A pre-existing directory under the
+  // same id is backed up and comes back if this install fails.
+  let targetDir: string
   try {
-    recordInstall({
+    const result = await replacePluginDir({
       id,
-      targetDir,
-      manifestSha: stagedManifestSha,
-      manifest,
-      source: recordedSource,
-      type: body.type,
-      permissions: parsedPermissions,
-      gitProvenance,
-      installedBins: installedBins.map((bin) => ({ name: bin.name, sha256: bin.sha256 })),
+      op: 'install',
+      // Copy from the effective plugin dir (the subpath for monorepo installs,
+      // the staging root otherwise). This intentionally drops the rest of the
+      // cloned repo + its `.git/` for subpath installs; the subpath upgrade
+      // flow re-clones to staging since there's no local `.git/` to fetch into.
+      place: (dir) => {
+        cpSync(effectivePluginDir, dir, { recursive: true, dereference: false })
+        rmSync(stagingDir, { recursive: true, force: true })
+      },
+      // Compile the plugin to dist/ so the runtime loader and the server-side
+      // dynamic import have built artifacts ready. A Whiskit artifact install
+      // is already built (dist/ shipped + verified) — FW1.7 skips only those.
+      build: installedFromArtifact ? undefined : buildSourceInstall,
+      bins: validated.bins,
+      binIdentity: { pluginId: id, version, ...(gitProvenance ?? resolveGitProvenance(effectivePluginDir, body.type)) },
+      progress,
+      ledger: (installedBins) => recordInstall({
+        id,
+        targetDir: join(args.pluginsRoot, id),
+        manifestSha: stagedManifestSha,
+        manifest,
+        source: recordedSource,
+        type: body.type,
+        permissions: parsedPermissions,
+        gitProvenance,
+        installedBins: installedBins.map((bin) => ({ name: bin.name, sha256: bin.sha256 })),
+      }),
     })
-  } catch (ledgerErr) {
-    rollbackInstall(targetDir, sentinel.createdBins)
-    const message = ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr)
-    log.error('Plugin install ledger write failed — rolled back', ledgerErr as Error, { id })
-    return Response.json({ ok: false, error: `Could not record "${id}" in the plugin ledger: ${message}` }, { status: 500 })
+    targetDir = result.targetDir
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    log.error('Plugin install failed — rolled back', err as Error, { id })
+    return Response.json({ ok: false, error: `Could not install "${id}": ${message}` }, { status: 500 })
   }
-  rmSync(join(targetDir, INSTALL_SENTINEL), { force: true })
 
   let runtimeVersion: number | undefined
   let activated = false
