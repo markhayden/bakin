@@ -1496,6 +1496,45 @@
                         },
                         "source": {
                           "type": "string"
+                        },
+                        "partial": {
+                          "type": "boolean"
+                        },
+                        "tables": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "table": {
+                                "type": "string"
+                              },
+                              "hits": {
+                                "type": "number"
+                              },
+                              "took_ms": {
+                                "type": "number"
+                              },
+                              "budget": {
+                                "type": "string",
+                                "enum": [
+                                  "degraded",
+                                  "omitted"
+                                ]
+                              },
+                              "facets": {
+                                "type": "string",
+                                "enum": [
+                                  "omitted"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "table",
+                              "hits",
+                              "took_ms"
+                            ],
+                            "additionalProperties": false
+                          }
                         }
                       },
                       "required": [
@@ -30728,6 +30767,45 @@
                         },
                         "source": {
                           "type": "string"
+                        },
+                        "partial": {
+                          "type": "boolean"
+                        },
+                        "tables": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "table": {
+                                "type": "string"
+                              },
+                              "hits": {
+                                "type": "number"
+                              },
+                              "took_ms": {
+                                "type": "number"
+                              },
+                              "budget": {
+                                "type": "string",
+                                "enum": [
+                                  "degraded",
+                                  "omitted"
+                                ]
+                              },
+                              "facets": {
+                                "type": "string",
+                                "enum": [
+                                  "omitted"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "table",
+                              "hits",
+                              "took_ms"
+                            ],
+                            "additionalProperties": false
+                          }
                         }
                       },
                       "required": [
@@ -33629,6 +33707,45 @@
                         },
                         "source": {
                           "type": "string"
+                        },
+                        "partial": {
+                          "type": "boolean"
+                        },
+                        "tables": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "table": {
+                                "type": "string"
+                              },
+                              "hits": {
+                                "type": "number"
+                              },
+                              "took_ms": {
+                                "type": "number"
+                              },
+                              "budget": {
+                                "type": "string",
+                                "enum": [
+                                  "degraded",
+                                  "omitted"
+                                ]
+                              },
+                              "facets": {
+                                "type": "string",
+                                "enum": [
+                                  "omitted"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "table",
+                              "hits",
+                              "took_ms"
+                            ],
+                            "additionalProperties": false
+                          }
                         }
                       },
                       "required": [

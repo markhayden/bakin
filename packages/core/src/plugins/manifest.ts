@@ -15,6 +15,7 @@ import type {
   SecretDeclaration,
   SettingsContribution,
 } from '@makinbakin/sdk/types'
+import { BinRequirementsSchema } from './bin-requirement'
 
 export const PLUGIN_ID_RE = /^[a-z][a-z0-9-]{0,39}$/
 
@@ -448,6 +449,32 @@ function parseSignature(raw: unknown): PluginManifestSignature | undefined {
   }
 }
 
+const PLUGIN_REQUIRES_KEYS = new Set(['bins'])
+
+/**
+ * `requires.bins` — binaries Bakin downloads, verifies and installs with the
+ * plugin (spec: plugin-managed-binaries). Plugins get the `bins` lane only;
+ * npm/models/prereqs remain capability-pack concerns.
+ */
+function parseRequires(raw: unknown): PluginManifest['requires'] {
+  if (raw === undefined) return undefined
+  if (!isRecord(raw)) throw new PluginManifestError('requires must be an object')
+  for (const key of Object.keys(raw)) {
+    if (!PLUGIN_REQUIRES_KEYS.has(key)) {
+      throw new PluginManifestError(`requires.${key} is not supported on plugins (only requires.bins)`)
+    }
+  }
+  if (raw.bins === undefined) return undefined
+  const parsed = BinRequirementsSchema.safeParse(raw.bins)
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]
+    const path = issue?.path ?? []
+    const location = path.length > 0 ? `requires.bins[${String(path[0])}]${path.slice(1).map((p) => `.${String(p)}`).join('')}` : 'requires.bins'
+    throw new PluginManifestError(`${location}: ${issue?.message ?? 'invalid'}`)
+  }
+  return { bins: parsed.data as NonNullable<PluginManifest['requires']>['bins'] }
+}
+
 export function parsePluginManifest(raw: unknown): PluginManifest {
   if (!isRecord(raw)) {
     throw new PluginManifestError('bakin-plugin.json must contain a JSON object')
@@ -502,6 +529,7 @@ export function parsePluginManifest(raw: unknown): PluginManifest {
     contributes: parseContributions(raw.contributes),
     devWatch: stringArrayField(raw, 'devWatch'),
     signature: parseSignature(raw.signature),
+    ...(parseRequires(raw.requires) ? { requires: parseRequires(raw.requires) } : {}),
   }
 }
 

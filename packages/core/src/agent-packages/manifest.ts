@@ -10,6 +10,7 @@
  * caller that turns a parsed manifest into projected files.
  */
 import { z } from 'zod'
+import { BIN_PLATFORM_KEYS, BinDownloadSchema, BinRequirementSchema } from '../plugins/bin-requirement'
 
 // ─── Identifiers + sources ───────────────────────────────────────────────────
 
@@ -69,47 +70,6 @@ const CapabilitySlugSchema = z
   .regex(/^[a-z0-9][a-z0-9-]{0,39}$/, {
     message: 'capability must be a lowercase slug',
   })
-
-/** Platform keys follow process.platform-process.arch (antfly pin convention). */
-export const BIN_PLATFORM_KEYS = ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64'] as const
-export type BinPlatformKey = (typeof BIN_PLATFORM_KEYS)[number]
-
-const BinDownloadSchema = z.object({
-  // https only — except loopback (test fixtures / local dev registries).
-  url: z
-    .string()
-    .url()
-    .refine(
-      (u) => u.startsWith('https://') || /^http:\/\/(127\.0\.0\.1|localhost)[:/]/.test(u),
-      { message: 'bin download url must be https' },
-    ),
-  sha256: z.string().regex(/^[a-f0-9]{64}$/i, { message: 'sha256 must be 64 hex chars' }),
-  /**
-   * Set when the download is an archive rather than the raw binary
-   * (GitHub releases commonly ship tarballs). The sha256 pins the ARCHIVE;
-   * `member` is the file extracted as the binary.
-   */
-  archive: z
-    .object({
-      format: z.literal('tar.gz'),
-      member: z.string().min(1).refine((m) => !m.startsWith('/') && !m.startsWith('-') && !m.split('/').includes('..'), {
-        message: 'archive member must be a relative path inside the archive (no leading - or /)',
-      }),
-    })
-    .optional(),
-})
-
-const BinRequirementSchema = z.object({
-  /** Binary name as invoked from PATH (installed into the Bakin bin dir). */
-  name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/i, { message: 'bin name must be a safe slug' }),
-  version: z.string().min(1),
-  /** Pinned per-platform downloads. Missing key ⇒ unsupported platform (honest readiness failure). */
-  install: z
-    .partialRecord(z.enum(BIN_PLATFORM_KEYS), BinDownloadSchema)
-    .refine((m) => Object.keys(m).length > 0, { message: 'at least one platform download required' }),
-  /** Args for the verify-then-commit run (e.g. ["--version"]). Absent → no verify run. */
-  verifyArgs: z.array(z.string()).optional(),
-})
 
 /** Pack-relative path: no absolute paths, no traversal above the pack root. */
 const packRelativePath = (label: string) =>
@@ -403,8 +363,6 @@ export type Manifest = z.infer<typeof ManifestSchema>
 export type Dependency = z.infer<typeof DependencySchema>
 export type SecretDeclaration = z.infer<typeof SecretDeclarationSchema>
 export type PackageKind = Manifest['kind']
-export type BinRequirement = z.infer<typeof BinRequirementSchema>
-export type BinDownload = z.infer<typeof BinDownloadSchema>
 export type NpmRequirement = z.infer<typeof NpmRequirementSchema>
 export type ModelRequirement = z.infer<typeof ModelRequirementSchema>
 export type PrereqRequirement = z.infer<typeof PrereqRequirementSchema>

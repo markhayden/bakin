@@ -98,6 +98,7 @@ skip version satisfaction; test compatibility with stamped versions too.
 | `contributes` | Public API, UI, CLI, settings, exec tool, and docs metadata. |
 | `devWatch` | Extra plugin-local paths to watch during development. |
 | `signature` | Optional Ed25519 manifest signature. Enforced only when `settings.plugins.requireSignatures` is `true`. |
+| `requires.bins` | Binaries the plugin needs. Each entry pins a `name`, `version`, per-platform `{ url, sha256, archive?, sizeBytes? }` downloads and optional `verifyArgs`. Bakin discloses them at install consent, downloads and sha256-verifies them into `~/.bakin/bin`, reports drift through `bakin check plugin-assets` and the doctor, and removes them with the plugin unless another owner still pins the same file. A platform without a download fails the install before anything is written. |
 
 </div>
 
