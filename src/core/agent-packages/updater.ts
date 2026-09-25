@@ -35,7 +35,7 @@ import { withoutSharedArtifacts } from './uninstaller'
 import {
   acquireInstallLock,
   releaseInstallLock,
-} from './install-lock'
+} from '../install-core/install-lock'
 import { validatePackageContributionIntegrity } from './package-integrity'
 import { assertRuntimePlatformCompatible } from './installer'
 

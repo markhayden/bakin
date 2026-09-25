@@ -53,7 +53,3 @@ export function getStagingDir(contentDir: string, label: string): string {
   return join(getPackagesRoot(contentDir), `.staging-${label}`)
 }
 
-/** Resolve the advisory install lockfile (per-process install lock, not lockfile.json). */
-export function getInstallLockFile(contentDir: string): string {
-  return join(getPackagesRoot(contentDir), '.lock')
-}

@@ -1,19 +1,23 @@
 /**
- * Advisory install-lock primitive for the install core.
+ * THE install lock — one file, `~/.bakin/install.lock`, for every writer of
+ * Bakin's install state: capability packs (install/update/sync/remove),
+ * plugins (install/upgrade/remove) and the plugin-assets repair. They share
+ * `~/.bakin/bin`, so they must exclude each other; two lock paths (packs
+ * had `packages/.lock`, artifact upgrades had `plugins/.install.lock`) never
+ * did.
  *
- * A per-path lock file holding the owner's pid + timestamp. Acquiring while a
- * LIVE process holds the lock throws; a stale lock (holder pid gone, or an
- * unparseable file) is claimed with a warning. Release is best-effort and
- * idempotent. Process exit drops the lock implicitly because it is held only
- * across a single acquire→release pair, never across requests.
+ * Acquisition is atomic across processes: `openSync(path, 'wx')` (O_EXCL)
+ * creates the file or fails with EEXIST — never check-then-write. A file
+ * whose recorded pid is dead is reclaimed. Only the holder pid releases.
  *
- * Extracted from the agent-package install lock — the proven reference — so the
- * plugin install path can take the same concurrency guarantee in Phase 6
- * (plugins currently have no install lock). Part of the Whiskit shared install
- * core (Phase 5).
+ * Ownership model: the OUTER operation acquires (`withInstallLock` is
+ * reentrant within the process, so a sync called from an update does not
+ * try to lock twice); inner writers call `assertInstallLockHeld(name)` and
+ * never acquire.
  */
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs'
-import { dirname } from 'path'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from 'fs'
+import { dirname, join } from 'path'
+import { getContentDir } from '../content-dir'
 import { createLogger } from '../logger'
 
 const log = createLogger('install-core:lock')
@@ -23,9 +27,15 @@ interface LockContents {
   acquiredAt: string
 }
 
+/** True while THIS process holds the lock (set by acquire, cleared by release). */
+let heldByThisProcess = false
+
+export function getInstallLockPath(): string {
+  return join(getContentDir(), 'install.lock')
+}
+
 function isProcessAlive(pid: number): boolean {
   try {
-    // Signal 0 is a no-op delivery check; throws ESRCH if the pid is gone.
     process.kill(pid, 0)
     return true
   } catch (err) {
@@ -33,54 +43,113 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-/**
- * Acquire the advisory lock at `lockPath`. Creates the parent dir. Throws if
- * another live process holds it; claims (with a warning) if the existing lock
- * is stale or unparseable.
- */
-export function acquireLock(lockPath: string): void {
+function readHolder(lockPath: string): LockContents | null {
+  try {
+    const parsed = JSON.parse(readFileSync(lockPath, 'utf-8')) as Partial<LockContents>
+    return typeof parsed.pid === 'number' ? { pid: parsed.pid, acquiredAt: String(parsed.acquiredAt ?? '') } : null
+  } catch {
+    return null
+  }
+}
+
+function tryCreateExclusive(lockPath: string): boolean {
+  let fd: number
+  try {
+    fd = openSync(lockPath, 'wx')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return false
+    throw err
+  }
+  try {
+    const contents: LockContents = { pid: process.pid, acquiredAt: new Date().toISOString() }
+    writeSync(fd, JSON.stringify(contents, null, 2))
+  } finally {
+    closeSync(fd)
+  }
+  return true
+}
+
+export function acquireInstallLock(): void {
+  const lockPath = getInstallLockPath()
+  if (heldByThisProcess) {
+    // Two operations in ONE process (e.g. two concurrent REST installs in the
+    // server) contend exactly like two processes do — same refusal, same
+    // words; inner writers of a held operation never reach here (they assert).
+    const holder = readHolder(lockPath)
+    throw new Error(
+      `Another install is in progress (pid ${process.pid}, since ${holder?.acquiredAt ?? 'now'}). ` +
+        'Wait for it to finish.',
+    )
+  }
   mkdirSync(dirname(lockPath), { recursive: true })
 
-  if (existsSync(lockPath)) {
-    let parsed: LockContents | null = null
-    try {
-      parsed = JSON.parse(readFileSync(lockPath, 'utf-8'))
-    } catch {
-      // Malformed lock file — treat as stale and overwrite.
+  // Bounded: a stale file is reclaimed once; a live holder is refused.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (tryCreateExclusive(lockPath)) {
+      heldByThisProcess = true
+      return
     }
-    if (parsed && isProcessAlive(parsed.pid)) {
+    const holder = readHolder(lockPath)
+    if (holder && isProcessAlive(holder.pid)) {
       throw new Error(
-        `Another install is in progress (pid ${parsed.pid}, since ${parsed.acquiredAt}). ` +
+        `Another install is in progress (pid ${holder.pid}, since ${holder.acquiredAt}). ` +
           `Wait for it to finish, or remove ${lockPath} if the holding process is gone.`,
       )
     }
-    log.warn('Stale install lock found — claiming it', {
-      stalePid: parsed?.pid ?? 'unparseable',
-      lockPath,
-    })
+    log.warn('Stale install lock found — claiming it', { stalePid: holder?.pid ?? 'unparseable', lockPath })
+    try {
+      unlinkSync(lockPath)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+    }
   }
-
-  const contents: LockContents = {
-    pid: process.pid,
-    acquiredAt: new Date().toISOString(),
-  }
-  writeFileSync(lockPath, JSON.stringify(contents, null, 2), 'utf-8')
+  throw new Error(`Could not acquire the install lock at ${lockPath} (contended)`)
 }
 
-/** Release the lock at `lockPath`. Idempotent; best-effort on failure. */
-export function releaseLock(lockPath: string): void {
-  if (!existsSync(lockPath)) return
+export function releaseInstallLock(): void {
+  const lockPath = getInstallLockPath()
+  if (!existsSync(lockPath)) {
+    heldByThisProcess = false
+    return
+  }
+  const holder = readHolder(lockPath)
+  if (holder && holder.pid !== process.pid && isProcessAlive(holder.pid)) {
+    log.warn('Refusing to release an install lock held by another live process', { holderPid: holder.pid, lockPath })
+    return
+  }
   try {
     unlinkSync(lockPath)
   } catch (err) {
-    log.warn('Failed to release install lock', {
-      lockPath,
-      error: err instanceof Error ? err.message : String(err),
-    })
+    log.warn('Failed to release install lock', { lockPath, error: err instanceof Error ? err.message : String(err) })
+  }
+  heldByThisProcess = false
+}
+
+/** True when SOME live process holds the lock (this one or another). */
+export function isInstallLockHeld(): boolean {
+  const lockPath = getInstallLockPath()
+  if (!existsSync(lockPath)) return false
+  const holder = readHolder(lockPath)
+  return holder ? isProcessAlive(holder.pid) : true
+}
+
+/** Inner writers (bin installers, projections) call this instead of acquiring. */
+export function assertInstallLockHeld(writer: string): void {
+  if (!heldByThisProcess) {
+    throw new Error(`${writer} requires the install lock — the outer operation must acquire it (withInstallLock)`)
   }
 }
 
-/** True iff a lock file exists at `lockPath` (held by any process, alive or stale). */
-export function isLockHeld(lockPath: string): boolean {
-  return existsSync(lockPath)
+/**
+ * Run `fn` under the install lock. Reentrant: when this process already
+ * holds it, `fn` runs directly and the outer holder keeps the lock.
+ */
+export async function withInstallLock<T>(fn: () => Promise<T>): Promise<T> {
+  if (heldByThisProcess) return fn()
+  acquireInstallLock()
+  try {
+    return await fn()
+  } finally {
+    releaseInstallLock()
+  }
 }

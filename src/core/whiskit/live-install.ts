@@ -26,7 +26,7 @@ import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
 import { readPluginManifestJson } from '@bakin/core/plugins/manifest'
 import { checkBakinRangeCompatibility } from '@bakin/core/plugins/compat'
 import type { PluginManifest } from '@makinbakin/sdk/types'
-import { acquireLock, releaseLock } from '@/core/install-core/install-lock'
+import { acquireInstallLock, releaseInstallLock } from '@/core/install-core/install-lock'
 import { commitStaging } from '@/core/install-core/transaction'
 import { materializeArtifact } from './consumer-install'
 import { isExternalsContractCompatible } from './provenance'
@@ -71,10 +71,9 @@ export interface InstallArtifactResult {
 export async function installArtifact(opts: InstallArtifactOptions): Promise<InstallArtifactResult> {
   const contentDir = getContentDir()
   const pluginsDir = join(contentDir, 'plugins')
-  const lockPath = join(pluginsDir, '.install.lock')
   const stagingRoot = join(contentDir, '.whiskit-staging')
 
-  acquireLock(lockPath)
+  acquireInstallLock()
   try {
     const materialized = await materializeArtifact(
       opts.resolver,
@@ -141,7 +140,7 @@ export async function installArtifact(opts: InstallArtifactOptions): Promise<Ins
       materialized.cleanup()
     }
   } finally {
-    releaseLock(lockPath)
+    releaseInstallLock()
     if (existsSync(stagingRoot)) {
       try {
         rmSync(stagingRoot, { recursive: true, force: true })

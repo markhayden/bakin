@@ -207,7 +207,7 @@ function installRuntimeMock(): void {
 import { installPackage } from '../../src/core/agent-packages/installer'
 import { readLockfile, writeLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { extractBlock, hasBlock } from '../../packages/core/src/agent-packages/managed-blocks'
-import { isInstallLockHeld } from '../../src/core/agent-packages/install-lock'
+import { isInstallLockHeld } from '../../src/core/install-core/install-lock'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })

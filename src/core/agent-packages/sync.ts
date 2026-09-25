@@ -54,6 +54,7 @@ import { unmarkUserEdited } from '../../../packages/core/src/agent-packages/mark
 import { PackageNotInstalledError } from './errors'
 import { projectPackage, type ProjectorResult } from './projector'
 import { installManifestRequirements } from './requirements-installer'
+import { withInstallLock } from '../install-core/install-lock'
 import { updatePackageById } from './updater'
 import { checkPackageUpdateAsync } from './checker'
 import {
@@ -523,6 +524,16 @@ export async function repairPackLocally(packageKey: string): Promise<ProjectorRe
  * file — the response IS the receipt.
  */
 export async function syncPack(
+  packageId: string,
+  opts: { check?: boolean } = {},
+): Promise<PackSyncReceipt> {
+  // Writes bins/projections — the outer operation owns the install lock
+  // (reentrant when an update already holds it).
+  if (!opts.check) return withInstallLock(() => syncPackLocked(packageId, opts))
+  return syncPackLocked(packageId, opts)
+}
+
+async function syncPackLocked(
   packageId: string,
   opts: { check?: boolean } = {},
 ): Promise<PackSyncReceipt> {

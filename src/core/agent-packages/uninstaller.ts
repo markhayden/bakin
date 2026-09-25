@@ -29,7 +29,7 @@ import { unprojectPackage } from './projector'
 import {
   acquireInstallLock,
   releaseInstallLock,
-} from './install-lock'
+} from '../install-core/install-lock'
 import { getAppServices } from '../app-services'
 
 const log = createLogger('agent-pkg:uninstall')

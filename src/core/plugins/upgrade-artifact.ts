@@ -18,7 +18,7 @@ import { downloadText } from '@/core/whiskit/download'
 import { parseArtifactsIndex, INDEX_FILENAME } from '@/core/whiskit/artifacts-index'
 import { materializeArtifact } from '@/core/whiskit/consumer-install'
 import { isExternalsContractCompatible, PROVENANCE_FILENAME } from '@/core/whiskit/provenance'
-import { acquireLock, releaseLock } from '@/core/install-core/install-lock'
+import { acquireInstallLock, releaseInstallLock } from '@/core/install-core/install-lock'
 import { commitStaging } from '@/core/install-core/transaction'
 import {
   type UpgradeOptions,
@@ -86,11 +86,10 @@ export async function upgradeArtifact(
   }
 
   const contentDir = getContentDir()
-  const lockPath = join(contentDir, 'plugins', '.install.lock')
   const stagingRoot = join(contentDir, '.whiskit-staging')
   const platform = `${process.platform}-${process.arch}`
 
-  acquireLock(lockPath)
+  acquireInstallLock()
   try {
     const materialized = await materializeArtifact(gh.resolver, gh.pluginId, latest, platform, stagingRoot)
     try {
@@ -158,7 +157,7 @@ export async function upgradeArtifact(
       materialized.cleanup()
     }
   } finally {
-    releaseLock(lockPath)
+    releaseInstallLock()
     if (existsSync(stagingRoot)) {
       try {
         rmSync(stagingRoot, { recursive: true, force: true })

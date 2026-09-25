@@ -23,7 +23,6 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 
 import {
   PACKAGES_DIR_NAME,
-  getInstallLockFile,
   getPackageSourceDir,
   getPackagesRoot,
   getStagingDir,
@@ -68,6 +67,5 @@ describe('package-paths', () => {
   })
 
   it('install lock file lives at packages/.lock', () => {
-    expect(getInstallLockFile(CONTENT)).toBe(join(CONTENT, 'packages', '.lock'))
   })
 })

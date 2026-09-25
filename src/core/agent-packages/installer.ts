@@ -64,7 +64,7 @@ import { getAgentState } from './agent-state'
 import {
   acquireInstallLock,
   releaseInstallLock,
-} from './install-lock'
+} from '../install-core/install-lock'
 import { getAppServices } from '../app-services'
 import { readFileSync } from 'fs'
 import { join } from 'path'
