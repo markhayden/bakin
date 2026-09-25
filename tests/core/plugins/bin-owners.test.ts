@@ -61,13 +61,19 @@ describe('binTargetOwners', () => {
     expect(binTargetOwners(binTargetPath('tmux'))).toEqual([])
   })
 
-  it('reads pack projections and plugin installedBins into one owner list', () => {
-    pinsPack('ocr', 'tmux', A)
+  it('reads pack projections (bare id — lock keys carry @version) and plugin installedBins into one owner list', () => {
+    pinsPack('ocr@1.0.0', 'tmux', A)
     pinsPlugin('terminal', 'tmux', A)
     expect(binTargetOwners(binTargetPath('tmux'))).toEqual([
       { kind: 'package', id: 'ocr', sha256: A },
       { kind: 'plugin', id: 'terminal', sha256: A },
     ])
+  })
+
+  it('a pack upgrading its own pin is not in conflict with its older lock key', () => {
+    pinsPack('ocr@1.0.0', 'tmux', A)
+    expect(findBinPinConflicts([declares('tmux', B)], { kind: 'package', id: 'ocr' }, PLATFORM)).toEqual([])
+    expect(findBinPinConflicts([declares('tmux', B)], { kind: 'package', id: 'ocr@1.1.0' }, PLATFORM)).toEqual([])
   })
 })
 

@@ -36,13 +36,20 @@ export function binTargetPath(name: string): string {
   return join(getBakinPaths().bin, name)
 }
 
+/** Package lockfile keys are `<id>@<version>`; ownership is by bare id, so a pack upgrading itself never conflicts with its own older key. */
+export function bareOwnerId(kind: BinOwnerKind, id: string): string {
+  if (kind !== 'package') return id
+  const at = id.lastIndexOf('@')
+  return at > 0 ? id.slice(0, at) : id
+}
+
 /** Every owner currently pinning `target`, across both lockfiles. */
 export function binTargetOwners(target: string): BinOwner[] {
   const owners: BinOwner[] = []
   for (const [id, entry] of Object.entries(readLockfile().packages)) {
     for (const projection of entry.projections ?? []) {
       if (projection.kind === 'bin' && projection.target === target && projection.sha256) {
-        owners.push({ kind: 'package', id, sha256: projection.sha256.toLowerCase() })
+        owners.push({ kind: 'package', id: bareOwnerId('package', id), sha256: projection.sha256.toLowerCase() })
       }
     }
   }
@@ -57,7 +64,8 @@ export function binTargetOwners(target: string): BinOwner[] {
 
 /** Owners of `target` other than `self`. */
 export function otherBinOwners(target: string, self: BinOwnerIdentity): BinOwner[] {
-  return binTargetOwners(target).filter((owner) => !(owner.kind === self.kind && owner.id === self.id))
+  const selfId = bareOwnerId(self.kind, self.id)
+  return binTargetOwners(target).filter((owner) => !(owner.kind === self.kind && owner.id === selfId))
 }
 
 export interface BinPinConflict {

@@ -20,6 +20,8 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { verifyInstalledBin } from './bin-verify'
+import { assertInstallLockHeld } from '../install-core/install-lock'
+import { assertNoBinPinConflict, binTargetPath } from '../plugins/bin-owners'
 import type { Manifest } from '../../../packages/core/src/agent-packages/manifest'
 import type { BinPlatformKey, BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
 import { writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
@@ -167,8 +169,13 @@ export async function installManifestBins(
   options: { progress?: import('./install-progress').InstallProgressFn } = {},
 ): Promise<void> {
   if (manifest.kind !== 'skill-pack' || !manifest.requires?.bins?.length) return
-  const progress = options.progress ?? (() => {})
   const bins = manifest.requires.bins
+  // Every pack writer (install, update, sync/repair) passes through here, so
+  // this is where the shared-bin contract is enforced: under the install
+  // lock, and never overwriting a target another owner pins differently.
+  assertInstallLockHeld('installManifestBins')
+  assertNoBinPinConflict(bins, { kind: 'package', id: installedBy.package }, binPlatformKey())
+  const progress = options.progress ?? (() => {})
   for (const [index, bin] of bins.entries()) {
     progress({ stage: 'bins', message: `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`, item: bin.name, current: index + 1, total: bins.length })
     const installed = await installBinRequirement(bin, installedBy, {
@@ -179,4 +186,57 @@ export async function installManifestBins(
     })
     result.projections.push({ kind: 'bin', target: installed.target, sha256: installed.sha256 })
   }
+}
+
+export interface PluginBinIdentity {
+  pluginId: string
+  version: string
+  /** Git provenance when known; empty strings for local/artifact installs (honest, like packs). */
+  ref: string
+  commitSha: string
+}
+
+export interface PluginBinInstall {
+  name: string
+  /** Pinned download sha (what the lockfile records). */
+  sha256: string
+  target: string
+  /** False when the pinned file was already in place (shared or re-run) — rollback must not delete it. */
+  created: boolean
+}
+
+/**
+ * Install a plugin's `requires.bins` (spec plugin-managed-binaries §2.6).
+ * Same installer, same bin dir, same marker schema as packs — identity
+ * `plugin:<id>`. Caller holds the install lock and has already run platform
+ * preflight; conflicts are re-checked here because the ledger may have moved.
+ */
+export async function installPluginBins(
+  bins: readonly BinRequirement[],
+  identity: PluginBinIdentity,
+  options: { progress?: import('./install-progress').InstallProgressFn } = {},
+): Promise<PluginBinInstall[]> {
+  if (bins.length === 0) return []
+  assertInstallLockHeld('installPluginBins')
+  assertNoBinPinConflict(bins, { kind: 'plugin', id: identity.pluginId }, binPlatformKey())
+  const progress = options.progress ?? (() => {})
+  const installedBy: Omit<InstalledByMarker, 'sha256'> = {
+    package: `plugin:${identity.pluginId}`,
+    version: identity.version,
+    ref: identity.ref,
+    commitSha: identity.commitSha,
+    installedAt: new Date().toISOString(),
+  }
+  const out: PluginBinInstall[] = []
+  for (const [index, bin] of bins.entries()) {
+    const message = `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`
+    progress({ stage: 'bins', message, item: bin.name, current: index + 1, total: bins.length })
+    const installed = await installBinRequirement(bin, installedBy, {
+      onProgress: (receivedBytes, totalBytes) => progress({
+        stage: 'bins', message, item: bin.name, current: index + 1, total: bins.length, receivedBytes, totalBytes,
+      }),
+    })
+    out.push({ name: bin.name, sha256: installed.sha256, target: binTargetPath(bin.name), created: !installed.skipped })
+  }
+  return out
 }

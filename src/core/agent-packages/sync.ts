@@ -194,7 +194,13 @@ async function reclaimTargets(
  * re-downloaded best-effort (bytes that aren't on disk can't be restored
  * locally); an unchanged on-disk bin never touches the network.
  */
+/** Re-project a pack from its installed source. Writes projections and bins,
+ *  so it runs under the install lock (reentrant when an update/install holds it). */
 async function applyLocalProjection(packageId: string): Promise<ProjectorResult> {
+  return withInstallLock(() => applyLocalProjectionLocked(packageId))
+}
+
+async function applyLocalProjectionLocked(packageId: string): Promise<ProjectorResult> {
   const lock = readLockfile()
   const entry = lock.packages[packageId]
   if (!entry) throw new PackageNotInstalledError(packageId)
@@ -524,16 +530,6 @@ export async function repairPackLocally(packageKey: string): Promise<ProjectorRe
  * file — the response IS the receipt.
  */
 export async function syncPack(
-  packageId: string,
-  opts: { check?: boolean } = {},
-): Promise<PackSyncReceipt> {
-  // Writes bins/projections — the outer operation owns the install lock
-  // (reentrant when an update already holds it).
-  if (!opts.check) return withInstallLock(() => syncPackLocked(packageId, opts))
-  return syncPackLocked(packageId, opts)
-}
-
-async function syncPackLocked(
   packageId: string,
   opts: { check?: boolean } = {},
 ): Promise<PackSyncReceipt> {
