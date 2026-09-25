@@ -166,6 +166,16 @@ const PluginLockEntrySchema = z.object({
    */
   installedSkills: z.array(z.string().regex(/^[A-Za-z0-9._-]+$/)).optional(),
   /**
+   * Binaries this plugin installed into `~/.bakin/bin` from `requires.bins`
+   * at install/upgrade time, with the pinned download sha. Authoritative for
+   * removal (like installedSkills) and for cross-owner conflict checks with
+   * capability packs (`src/core/plugins/bin-owners.ts`).
+   */
+  installedBins: z.array(z.object({
+    name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/i),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+  })).optional(),
+  /**
    * Phase 2 (#171). True when this entry was registered via
    * `bakin plugins link <localPath>` — i.e. the plugin dir at
    * `~/.bakin/plugins/<id>/` is a symlink to a developer-owned source

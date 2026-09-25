@@ -15,13 +15,14 @@
  */
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs'
-import { createHash } from 'crypto'
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'fs'
+
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { verifyInstalledBin } from './bin-verify'
 import type { Manifest } from '../../../packages/core/src/agent-packages/manifest'
 import type { BinPlatformKey, BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
-import { readInstalledBy, writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
+import { writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
 import { commitFileAtomic, downloadToFile, extractTarMember, sha256File } from '../../../packages/core/src/net/download'
 import type { ProjectorResult } from './projector'
 import { getBakinPaths } from '@/core/content-dir'
@@ -83,17 +84,13 @@ export async function installBinRequirement(
   // the pin. Archives: the pin names the TARBALL, so the marker must match
   // the pin AND the on-disk bytes must match the marker's extracted hash —
   // a corrupted binary under a surviving sidecar still self-heals.
-  if (existsSync(target)) {
-    const onDisk = createHash('sha256').update(readFileSync(target)).digest('hex')
-    const marker = readInstalledBy(target)
-    const matches = download.archive
-      ? marker?.sha256?.toLowerCase() === pin && marker?.extractedSha256 === onDisk
-      : onDisk === pin
-    if (matches) {
-      log.info(`Binary "${bin.name}" already installed at pinned sha — skipping download`)
-      writeInstalledBy(target, { ...installedBy, sha256: pin, ...(download.archive ? { extractedSha256: onDisk } : {}) })
-      return { target, sha256: pin, skipped: true }
-    }
+  // ONE predicate with the readiness scan (bin-verify.ts): whatever the
+  // doctor would report as installed, the installer skips — and vice versa.
+  const verdict = verifyInstalledBin(target, download)
+  if (verdict.status === 'installed') {
+    log.info(`Binary "${bin.name}" already installed at pinned sha — skipping download`)
+    writeInstalledBy(target, { ...installedBy, sha256: pin, ...(download.archive ? { extractedSha256: verdict.onDiskSha256 } : {}) })
+    return { target, sha256: pin, skipped: true }
   }
 
   // Download → (extract) → verify-then-commit all ride the shared primitive
