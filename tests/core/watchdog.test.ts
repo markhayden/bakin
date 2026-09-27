@@ -187,6 +187,16 @@ mock.module('../../src/core/spend-observer', () => ({
   observeSpend: async () => undefined,
 }))
 
+// Same class: the main-agent alert path awaits resolveSystemRoute, which
+// dynamic-imports the hook-registry singleton. bun ≥ 1.4 settles every
+// dynamic import on a macrotask, so the send would land after the
+// assertion. Routing is its own unit (tests/core/system-route.test.ts) — stub
+// it to the inherit route.
+mock.module('../../src/core/system-route', () => ({
+  resolveSystemRoute: async () => ({ source: 'inherit' }),
+  routeSendArgs: () => ({}),
+}))
+
 // Budget gate probe (Fix: budget-held steps must not log TIMEOUT spam).
 let budgetGateDecision: { action: string } = { action: 'allow' }
 const budgetGateSpy = mock(async (..._args: unknown[]) => budgetGateDecision)
