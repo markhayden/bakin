@@ -75,6 +75,10 @@ describe('source switch', () => {
   })
 
   it('a plugin root that does not exist (the compiled-binary shape) resolves from the embedded copies', () => {
+    // A /$bunfs/ root is embedded by PREFIX, not by stat: bun ≥ 1.4 reports
+    // /$bunfs/root as a real directory inside a binary. The compiled-binary
+    // test (tests/integration/plugins/compiled-plugin-defaults.test.ts) is
+    // the teeth for that; this pins the pure decision.
     expect(pluginDefaultsSource('/$bunfs/root')).toBe('embedded')
     expect(pluginDefaultsSource(join(testDir, 'plugins', 'missing'))).toBe('embedded')
     expect(pluginDefaultsSource(undefined)).toBe('embedded')
