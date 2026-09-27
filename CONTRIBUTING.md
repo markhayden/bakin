@@ -4,7 +4,7 @@ Thanks for helping improve Bakin'. This file is the quick source-tree setup and 
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) `>= 1.2.0`
+- [Bun](https://bun.sh) at the version in [`.bun-version`](./.bun-version) — the repo pins it (1.3.13 today) and CI reads that file, so a newer local bun is not "fine": the test runner and `bun build --compile` both change between minors. Bumping the pin follows the matrix in `.claude/knowledge/test-suite-health.md` § 5.
 - Git
 
 Install Bun:
@@ -15,10 +15,10 @@ curl -fsSL https://bun.sh/install | bash
 brew install oven-sh/bun/bun
 ```
 
-Verify:
+Verify it matches the pin:
 
 ```sh
-bun --version
+bun --version   # must equal the contents of .bun-version
 ```
 
 No separate Node.js, pnpm, yarn, or Vite install is needed for normal repo work.
