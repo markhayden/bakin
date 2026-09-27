@@ -53,7 +53,7 @@ cannot move cleanly is deferred with an issue (§3).
 | `@storybook/addon-vitest` ≥10.6.1 ↔ `vitest` 5 | 10.6.0 does not admit vitest 5 |
 | `@astrojs/starlight` ↔ `astro` ↔ `@astrojs/react` ↔ vite | 0.42 needs astro ≥7.2.10 needs vite 8; `@astrojs/react` 7 needs astro 7 |
 | docs `js-yaml ^4` ↔ root `js-yaml ^5` | two majors on purpose: Starlight default-imports js-yaml and Astro 7's prerender resolves that external from `docs/dist`, i.e. from the docs workspace — keep a 4.x copy declared in `docs/package.json` until Starlight moves to named imports; the app itself is on 5 (named imports only) |
-| `@types/bun` ↔ `.bun-version` | same minor line as the pinned runtime |
+| `@types/bun` ↔ `.bun-version` | same minor line as the pinned runtime (1.4.x today); Bits pins the same file — companion PR |
 | `typescript` <6.1 ↔ `typescript-eslint` 8.x | TS 7 blocked (see §3) |
 | `@happy-dom/global-registrator` ↔ `happy-dom` core ↔ Base UI | registrator pulls core by caret; core ≥20.12 ships `getAnimations`, which flips Base UI closes to async — the suite runs with `globalThis.BASE_UI_ANIMATIONS_DISABLED = true` (`tests/setup.ts`) and a teeth test pins it; bisect the core with `overrides` + `rm -rf node_modules` per probe (`test-suite-health.md § Toolchain`) |
 | browser deps ↔ `packages/host/src/api/_embedded-assets-static.ts` | vendor chunk hashes change → regenerate (`build:host` + `build:assets-manifest`) and commit in the same PR |
@@ -63,7 +63,7 @@ cannot move cleanly is deferred with an issue (§3).
 | Package | Blocked by | Re-check when |
 |---|---|---|
 | typescript 7.x | no compiler API until 7.1 (nine `scripts/ui/*` + `scripts/docs/lib/sdk-reference.ts` use it); typescript-eslint peer `<6.1.0` | TS 7.1 ships; typescript-eslint widens its peer |
-| bun 1.4.x | not a peer block — the #755 TDZ regression was 1.3.14's and is fixed upstream in 1.4.0; the isolation matrix in `test-suite-health.md § Toolchain` must be re-run first | before any repin |
+| bun 1.4.x | #755/#756 fixed upstream in 1.4.0 and the tree is 1.4-ready (matrix run 2026-09-27, `test-suite-health.md § 5`), but 1.4.0–1.4.2's `--parallel` runner segfaults CI's shard 2 every run (oven-sh/bun#41357 class; clean on the 1.4.3 canary) | 1.4.3 release: re-run the matrix incl. the three CI shards + a compiled binary, then repin (#965) |
 | eslint-plugin-react | removed in #760 (zero rules were enabled; broken at runtime on ESLint 10; unmaintained). React lint coverage is a separate decision (`@eslint-react/eslint-plugin`) | if we want React lint rules |
 
 ## 4. Unused-dependency audit
