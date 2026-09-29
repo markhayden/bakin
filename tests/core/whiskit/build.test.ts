@@ -99,13 +99,14 @@ describe('resolveSdkEntrypoints', () => {
     const fake = freshDir('fakesdk')
     // Complete fake package layout
     writeFileSync(join(fake, 'index.js'), 'export const x = 1\n')
-    for (const sub of ['ui', 'layout', 'patterns', 'charts', 'conversation', 'content', 'hooks', 'components', 'slots', 'types', 'utils', 'metadata', 'routing', 'navigation']) {
+    for (const sub of ['ui', 'layout', 'patterns', 'charts', 'conversation', 'content', 'hooks', 'components', 'slots', 'types', 'utils', 'routing', 'navigation']) {
       mkdirSync(join(fake, sub), { recursive: true })
       writeFileSync(join(fake, sub, 'index.js'), 'export const x = 1\n')
     }
     process.env.BAKIN_SDK_PATH = fake
     const sdk = resolveSdkEntrypoints(freshDir('plugindir'))
     expect(sdk.source).toBe('env')
+    expect(sdk.entrypoints['@makinbakin/sdk/metadata']).toBeUndefined()
     expect(sdk.entrypoints['@makinbakin/sdk/ui']).toBe(join(fake, 'ui', 'index.js'))
 
     // Incomplete root → hard error, not silent fallback
@@ -329,3 +330,32 @@ describe('buildPluginInProcess (dev fast path)', () => {
     expect(client).toContain('@makinbakin/sdk')
   }, 30_000)
 })
+
+// Both backends share validation, including client-only imports that Bun would
+// otherwise leave external because the root SDK specifier matches all subpaths.
+for (const build of [buildPluginWithSystemBun, buildPluginInProcess]) {
+  describe(`${build.name} retired SDK imports`, () => {
+    for (const entry of ['index.ts', 'client.tsx']) {
+      for (const [specifier, declared] of [
+        ['@makinbakin/sdk/metadata', false],
+        ['@makinbakin/sdk/metadata', true],
+        ['@makinbakin/sdk/metadata/index.js', true],
+      ] as const) {
+        it(`rejects ${specifier} in ${entry} (declared SDK: ${declared}) before building`, async () => {
+          const dir = seedPlugin()
+          writeFileSync(join(dir, entry), `export { defineHookContract } from '${specifier}'`)
+          if (declared) {
+            writeFileSync(join(dir, 'package.json'), JSON.stringify({
+              peerDependencies: { '@makinbakin/sdk': '*' },
+            }))
+          }
+          await expect(build({ pluginDir: dir })).rejects.toMatchObject({
+            stage: 'validate',
+            message: expect.stringContaining(`${specifier} is no longer supported`),
+          })
+          expect(existsSync(join(dir, 'dist'))).toBe(false)
+        })
+      }
+    }
+  })
+}

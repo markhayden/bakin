@@ -32,5 +32,7 @@ describe('generated SDK Health reference', () => {
     // not resurrect it or its migration-only framing.
     expect(reference).not.toContain('@makinbakin/sdk/components')
     expect(reference.toLowerCase()).not.toContain('migration-only')
+    expect(reference).not.toContain('@makinbakin/sdk/metadata')
+    expect(reference).toContain('## `@makinbakin/sdk/routing`')
   })
 })

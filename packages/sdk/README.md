@@ -107,7 +107,6 @@ The public npm package exposes these sub-paths:
 | `@makinbakin/sdk/slots` | Slot runtime and provider |
 | `@makinbakin/sdk/types` | TypeScript contract types |
 | `@makinbakin/sdk/utils` | Shared utilities |
-| `@makinbakin/sdk/metadata` | Docs-aware contract metadata helpers |
 | `@makinbakin/sdk/routing` | Typed declarative route helpers |
 | `@makinbakin/sdk/navigation` | Browser links, URL state, history, and dirty-exit guards |
 | `@makinbakin/sdk/testing/ui` | Deterministic browser fixture host for plugin pages and slots |

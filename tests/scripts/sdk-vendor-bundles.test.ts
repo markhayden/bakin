@@ -74,6 +74,7 @@ describe('split SDK vendor build', () => {
     for (const target of SDK_VENDOR_TARGETS) {
       expect(files).toContain(`${target.name}.js`)
     }
+    expect(files).not.toContain('sdk-metadata.js')
     const chunks = files.filter((f) => f.startsWith('sdk-shared-') && f.endsWith('.js'))
     expect(chunks.length).toBeGreaterThan(0)
     expect(files.filter((f) => f.endsWith('.css'))).toEqual([])

@@ -50,7 +50,6 @@ export const SDK_EXPORTS: SdkExportEntry[] = [
   { exportPath: './slots', source: 'packages/sdk/src/slots/index.tsx', importPath: './slots/index.js', typesPath: './slots/index.d.ts' },
   { exportPath: './types', source: 'packages/sdk/src/types/index.ts', importPath: './types/index.js', typesPath: './types/index.d.ts' },
   { exportPath: './utils', source: 'packages/sdk/src/utils/index.ts', importPath: './utils/index.js', typesPath: './utils/index.d.ts' },
-  { exportPath: './metadata', source: 'packages/sdk/src/metadata/index.ts', importPath: './metadata/index.js', typesPath: './metadata/index.d.ts' },
   { exportPath: './routing', source: 'packages/sdk/src/routing/index.ts', importPath: './routing/index.js', typesPath: './routing/index.d.ts' },
   { exportPath: './navigation', source: 'packages/sdk/src/navigation/index.ts', importPath: './navigation/index.js', typesPath: './navigation/index.d.ts' },
   { exportPath: './testing', source: 'packages/sdk/src/testing/index.ts', importPath: './testing/index.js', typesPath: './testing/index.d.ts' },
@@ -155,7 +154,7 @@ function mapSdkModule(rest: string): string | null {
   if (rest === 'index') return 'index'
   if (rest === 'register') return 'register'
   if (rest.endsWith('/index')) return rest
-  if (rest === 'types' || rest === 'routing' || rest === 'ui' || rest === 'layout' || rest === 'patterns' || rest === 'charts' || rest === 'conversation' || rest === 'content' || rest === 'hooks' || rest === 'slots' || rest === 'utils' || rest === 'metadata' || rest === 'testing' || rest === 'testing/ui' || rest === 'testing/ui/conformance' || rest === 'internal') {
+  if (rest === 'types' || rest === 'routing' || rest === 'ui' || rest === 'layout' || rest === 'patterns' || rest === 'charts' || rest === 'conversation' || rest === 'content' || rest === 'hooks' || rest === 'slots' || rest === 'utils' || rest === 'testing' || rest === 'testing/ui' || rest === 'testing/ui/conformance' || rest === 'internal') {
     return `${rest}/index`
   }
   // Public entry declarations retain relative references to their SDK leaf

@@ -72,6 +72,17 @@ describe('focused public SDK entrypoint contract', () => {
     expect(FOCUSED_SUBPATHS).not.toContain('components' as never)
   })
 
+  it('retires metadata from source, npm, browser, and plugin-build contracts', () => {
+    expect(readJson('packages/sdk/package.json').exports['./metadata']).toBeUndefined()
+    expect(readJson('tsconfig.json').compilerOptions.paths['@makinbakin/sdk/metadata']).toBeUndefined()
+    expect(SDK_EXPORTS.some(entry => entry.exportPath === './metadata')).toBe(false)
+    expect(SDK_VENDOR_TARGETS.some(entry => entry.specifier === '@makinbakin/sdk/metadata')).toBe(false)
+    expect(browserImportMap()['@makinbakin/sdk/metadata']).toBeUndefined()
+    expect(SDK_EXTERNALS).not.toContain('@makinbakin/sdk/metadata')
+    expect(SDK_SUBPATHS).not.toContain('metadata')
+    expect(existsSync(join(REPO_ROOT, 'packages/sdk/src/metadata'))).toBe(false)
+  })
+
   it('keeps React, SDK modules, and the canonical stylesheet single at host runtime', () => {
     const html = readFileSync(join(REPO_ROOT, 'packages/host/public/index.html'), 'utf8')
     const sdk = readJson('packages/sdk/package.json')

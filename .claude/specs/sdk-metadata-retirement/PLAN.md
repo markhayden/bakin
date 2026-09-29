@@ -49,7 +49,7 @@ Work in these small edit groups; they land in one retirement commit because a
 partly removed public entrypoint is not a useful rollback state:
 
 1. SDK facade/package export/root JSDoc, `tsconfig.json`, npm build target and
-   the obsolete `mapSdkModule` metadata case.
+   the obsolete `mapSdkModule` metadata case, and the release SDK smoke import list.
 2. Vendor build target, host import map, SDK external list and resolver subpaths.
 3. Retired-import validation and the new artifact family in existing Whiskit code.
 4. Current SDK documentation and generator; regenerate SDK reference.
@@ -168,3 +168,29 @@ Checkpoint A passed: 47 tests, including CLI publishing and external package
 consumption. `/routing` reproduces the documented Bun in-process test builder's
 Zod `EISDIR` failure; the public, dependency-free `/types` constant preserves
 observable runtime inlining there. No builder or SDK workaround was added.
+
+Retirement assertions were observed failing before implementation. Checkpoint B
+then passed 151 of 152 tests; its existing release-smoke inventory check caught
+the workflow's bare `metadata` loop item. Removing that item brought its three
+tests to green. Typecheck, lint (three existing warnings), docs validation,
+quick UI conformance (229 architecture tests), and the browser performance
+ratchet passed. The rebuilt asset manifest contains 76 entries instead of 77;
+the retired vendor entry is absent (362 bytes in the recorded performance
+ledger), with the remaining entries intact.
+
+The local install was stale against the committed lockfile. `bun install
+--frozen-lockfile` restored the locked dependencies without changing manifests
+or the lockfile. The vendor deduplication test then passed unchanged.
+
+Official Bits at `15508f7` passes typecheck, 677 tests (17 existing skips), and
+all three plugin builds against the candidate SDK. Independent review approved
+both source changes with no actionable findings and separately passed 32 tests.
+
+Production build passed for Darwin arm64 and Linux x64/arm64; the Darwin binary
+reported its version with isolated runtime homes. The first full CI-equivalent
+run passed 10,478 tests with one local-environment failure: its Pi store check
+found four obsolete installed package copies alongside the locked 1.0.2 copy.
+Those obsolete copies were moved outside `node_modules`; the affected five tests
+then passed. Full conformance's fresh repository run passed 10,479 tests with
+19 existing skips. Its payload step required installing the pinned Bits
+checkout's locked dependencies; remaining conformance steps resume from there.

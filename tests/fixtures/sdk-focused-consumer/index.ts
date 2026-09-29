@@ -95,3 +95,6 @@ export interface FocusedSdkProps {
   fixtureConfig: TestingUiConformance.PluginUiConformanceConfig
   button: Ui.ButtonProps
 }
+
+// @ts-expect-error — metadata was retired without a compatibility export.
+export type { HookContract } from '@makinbakin/sdk/metadata'

@@ -26,7 +26,7 @@ Documentation and test evidence must describe the actual work honestly.
 | Area | Required change |
 | --- | --- |
 | Source SDK | Delete `packages/sdk/src/metadata/index.ts`; remove its package export, TypeScript alias, and root JSDoc listing. |
-| npm build | Remove the `SDK_EXPORTS` entry and `mapSdkModule` metadata case; emitted JS, declarations, and package exports must all omit the path. |
+| npm build | Remove the `SDK_EXPORTS` entry, `mapSdkModule` metadata case, and release smoke import; emitted JS, declarations, and package exports must all omit the path. |
 | Browser | Remove the vendor target and host import-map entry; regenerate embedded assets after a complete build so no stale `sdk-metadata.js` ships. |
 | Plugin builds | Remove the entry from `SDK_EXTERNALS` and `SDK_SUBPATHS`; reject `/metadata` and `/metadata/...` before declared-dependency acceptance, including Bun's root-prefix external matching. |
 | Artifact contract | Use a new family, `react19-sdk-focused-v1`, through the existing compatibility mechanism. An additive `v3` would incorrectly continue accepting the family that promised `/metadata`. No new compatibility machinery. |

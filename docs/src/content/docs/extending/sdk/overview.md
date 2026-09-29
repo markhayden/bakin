@@ -1,6 +1,6 @@
 ---
 title: SDK
-description: Use @makinbakin/sdk to build plugins with supported registration, routing, UI, hooks, slots, types, utilities, and metadata helpers.
+description: Use @makinbakin/sdk to build plugins with supported registration, routing, UI, hooks, slots, types, and utilities.
 ---
 
 `@makinbakin/sdk` is the plugin-author surface. It exists so external plugins can typecheck and run without importing Bakin host internals. If a plugin needs something that is not exported here, treat that as an SDK design question before reaching into `src` or another package.
@@ -22,7 +22,6 @@ description: Use @makinbakin/sdk to build plugins with supported registration, r
 | `@makinbakin/sdk/slots` | slot registry and `<Slot>` primitive |
 | `@makinbakin/sdk/types` | public TypeScript contract types |
 | `@makinbakin/sdk/utils` | shared utilities |
-| `@makinbakin/sdk/metadata` | docs-aware contract helper types and compatibility exports |
 | `@makinbakin/sdk/routing` | typed declarative route helpers re-exported from the canonical routing package |
 | `@makinbakin/sdk/navigation` | browser links, router hooks, URL state, history, and dirty-exit protection |
 | `@makinbakin/sdk/testing/ui` | deterministic browser fixture host for registered plugin pages and slots |
@@ -179,9 +178,9 @@ import { conversationThreadId, createTurnRecorder } from '@makinbakin/sdk/utils'
 
 Do not replay an entire plugin-stored transcript into every prompt when a durable runtime thread is available. Store `ConversationMessage` rows for UI hydration and search, but let the active runtime adapter map repeated `agentId + threadId` calls to the same provider session.
 
-## Metadata Helpers
+## HTTP Route Contracts
 
-`@makinbakin/sdk/metadata` re-exports docs-aware contract types and helper functions. New HTTP APIs should use `defineRoute()` from `@makinbakin/sdk` or `@makinbakin/sdk/routing`; older metadata helpers remain for compatibility with existing contracts.
+Use `defineRoute()` from `@makinbakin/sdk` or `@makinbakin/sdk/routing` for typed HTTP APIs. Internal documentation contract helpers are not part of the public SDK.
 
 ## Stability Rule
 

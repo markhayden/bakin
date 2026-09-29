@@ -487,7 +487,6 @@ export function renderSdkReference(): string {
   // Utils
   renderSimpleTable(lines, bySubpath.get('@makinbakin/sdk/utils'), 'Utility')
   // Metadata
-  renderSimpleTable(lines, bySubpath.get('@makinbakin/sdk/metadata'), 'Contract helper')
   // Routing
   renderSimpleTable(lines, bySubpath.get('@makinbakin/sdk/routing'), 'Routing')
   // Browser navigation

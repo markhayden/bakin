@@ -50,7 +50,6 @@ import asset_vendor_sdk_shared_00scs7ax_js from '../../public/vendor/sdk-shared-
 import asset_vendor_sdk_slots_js from '../../public/vendor/sdk-slots.js' with { type: 'file' }
 import asset_vendor_sdk_shared_9dxnk2vq_js from '../../public/vendor/sdk-shared-9dxnk2vq.js' with { type: 'file' }
 import asset_vendor_sdk_patterns_js from '../../public/vendor/sdk-patterns.js' with { type: 'file' }
-import asset_vendor_sdk_metadata_js from '../../public/vendor/sdk-metadata.js' with { type: 'file' }
 import asset_vendor_sdk_shared_s2n4vqx3_js from '../../public/vendor/sdk-shared-s2n4vqx3.js' with { type: 'file' }
 import asset_vendor_sdk_hooks_js from '../../public/vendor/sdk-hooks.js' with { type: 'file' }
 import asset_vendor_tanstack_router_js from '../../public/vendor/tanstack-router.js' with { type: 'file' }
@@ -132,7 +131,6 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/vendor/sdk-slots.js', asset_vendor_sdk_slots_js],
   ['/vendor/sdk-shared-9dxnk2vq.js', asset_vendor_sdk_shared_9dxnk2vq_js],
   ['/vendor/sdk-patterns.js', asset_vendor_sdk_patterns_js],
-  ['/vendor/sdk-metadata.js', asset_vendor_sdk_metadata_js],
   ['/vendor/sdk-shared-s2n4vqx3.js', asset_vendor_sdk_shared_s2n4vqx3_js],
   ['/vendor/sdk-hooks.js', asset_vendor_sdk_hooks_js],
   ['/vendor/tanstack-router.js', asset_vendor_tanstack_router_js],
@@ -176,4 +174,4 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/data/curated-catalog.json', asset_data_curated_catalog_json],
 ])
 
-export const EMBEDDED_ASSET_COUNT = 77
+export const EMBEDDED_ASSET_COUNT = 76

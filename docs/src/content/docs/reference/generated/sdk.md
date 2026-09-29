@@ -683,34 +683,6 @@ Source: `packages/sdk/src/utils/index.ts`.
 | `pluginFetchJson` | `pluginFetch` + JSON parse under a hard deadline (the plain-function twin of `usePluginJsonFetch`'s `timeoutMs`). |
 | `PluginFetchJsonOptions` | `pluginFetch` + JSON parse under a hard deadline (the plain-function twin of `usePluginJsonFetch`'s `timeoutMs`). |
 
-## `@makinbakin/sdk/metadata`
-
-Source: `packages/sdk/src/metadata/index.ts`.
-
-| Contract helper | Description |
-| --- | --- |
-| `ContractMetadata` | `@makinbakin/sdk/metadata` — docs-aware contract helpers. |
-| `ContractStability` | `@makinbakin/sdk/metadata` — docs-aware contract helpers. |
-| `ContractVisibility` | `@makinbakin/sdk/metadata` — docs-aware contract helpers. |
-| `CliCommandContract` | `@makinbakin/sdk/metadata` — docs-aware contract helpers. |
-| `DocsAwareAPIRoute` | `@makinbakin/sdk/metadata` — docs-aware contract helpers. |
-| `DocsExample` | `@makinbakin/sdk/metadata` — docs-aware contract helpers. |
-| `ExecToolContract` | `@makinbakin/sdk/metadata` — docs-aware contract helpers. |
-| `HookContract` | `@makinbakin/sdk/metadata` — docs-aware contract helpers. |
-| `HookKind` | `@makinbakin/sdk/metadata` — docs-aware contract helpers. |
-| `PublicContract` | `@makinbakin/sdk/metadata` — docs-aware contract helpers. |
-| `RouteContract` | `@makinbakin/sdk/metadata` — docs-aware contract helpers. |
-| `SchemaLike` | `@makinbakin/sdk/metadata` — docs-aware contract helpers. |
-| `SlotContract` | `@makinbakin/sdk/metadata` — docs-aware contract helpers. |
-| `SourceLocation` | `@makinbakin/sdk/metadata` — docs-aware contract helpers. |
-| `defineApiRoute` | Legacy: declare an API route with docs metadata. Prefer `defineRoute` from `/routing`. |
-| `defineCliCommandContract` | Define a CLI command contract for documentation. |
-| `defineExecToolContract` | Define an MCP exec tool contract for documentation. |
-| `defineHookContract` | Define a cross-plugin hook contract for documentation. |
-| `definePluginRoute` | Legacy: declare a plugin route with docs metadata. Prefer `defineRoute` from `/routing`. |
-| `defineRouteContract` | Define a generic route contract (shared shape for API + plugin routes). |
-| `defineSlotContract` | Define a UI slot contract for documentation. |
-
 ## `@makinbakin/sdk/routing`
 
 Source: `packages/sdk/src/routing/index.ts`.
