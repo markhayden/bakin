@@ -9,7 +9,8 @@ Spec: [SPEC.md](./SPEC.md). Branch: `chore/retire-sdk-metadata`.
 
 Migrate the two consumer fixture server entries and the fixture strings in
 `tests/core/whiskit/{build,publish-build}.test.ts` to an observable supported SDK
-runtime import, preferably `defineRoute` from `/routing`. Keep the system-Bun,
+runtime import: `defineRoute` from `/routing` for CLI/published-package coverage,
+and `HEALTH_INCIDENT_CLASSES` from `/types` for in-process build fixtures. Keep the system-Bun,
 in-process, published-package, API build, and lifecycle assertions intact.
 Prove the replacement builds with current code before removing the entrypoint.
 If the in-process harness exposes the documented heavier-dependency problem,
@@ -160,3 +161,10 @@ Independent review confirmed the new contract family and narrow scope. Its two
 findings are incorporated above: remove the declaration mapper's metadata branch,
 and reject nested retired paths as well as the exact entrypoint. No unresolved
 scope or architecture finding remains. The user approved this proposal with “do it”.
+
+## Implementation evidence
+
+Checkpoint A passed: 47 tests, including CLI publishing and external package
+consumption. `/routing` reproduces the documented Bun in-process test builder's
+Zod `EISDIR` failure; the public, dependency-free `/types` constant preserves
+observable runtime inlining there. No builder or SDK workaround was added.

@@ -63,6 +63,8 @@ Fixture conversion must retain an observable runtime use of the imported API.
 Removing an import or replacing it with a type-only import does not prove SDK
 inlining. Existing comments about the in-process builder's dependency handling
 are a risk to verify, not a reason to keep the retired API or weaken coverage.
+Use `/routing` in subprocess/package consumers and the public `/types` runtime
+constant in in-process fixtures, whose Bun test builder cannot read Zod reliably.
 
 ## Documentation and browser evidence
 

@@ -58,14 +58,14 @@ function seedPlugin(opts: { withClient?: boolean; css?: string } = {}): string {
   writeFileSync(join(dir, 'index.ts'), [
     `import type { NavItem } from '@makinbakin/sdk/types'`,
     // A runtime SDK import so inlining is observable in the output bundle.
-    // /metadata is lean (no third-party deps) — the root barrel drags
-    // @bakin/core/docs → zod, which the in-process build can't read under
-    // the test harness. Barrel server-safety has its own system-bun pin test.
-    `import { defineHookContract } from '@makinbakin/sdk/metadata'`,
+    // This public runtime constant keeps inlining observable without pulling
+    // Zod into Bun's in-process test builder (which errors reading it).
+    // Routing is exercised by the CLI publish and built-SDK consumer tests.
+    `import { HEALTH_INCIDENT_CLASSES } from '@makinbakin/sdk/types'`,
     `export default {`,
     `  id: 'demo', name: 'Demo', version: '0.1.0',`,
     `  nav: [] as NavItem[],`,
-    `  activate() { return defineHookContract },`,
+    `  activate() { return HEALTH_INCIDENT_CLASSES },`,
     `}`,
     '',
   ].join('\n'))
@@ -169,7 +169,7 @@ describe('buildPluginWithSystemBun', () => {
 
     const server = readFileSync(join(dir, 'dist', 'index.js'), 'utf-8')
     expect(server).not.toContain('from "@makinbakin/sdk') // inlined
-    expect(server).toContain('defineHookContract')          // SDK code present
+    expect(server).toContain('HEALTH_INCIDENT_CLASSES')          // SDK code present
 
     const client = readFileSync(join(dir, 'dist', 'client.js'), 'utf-8')
     expect(client).toContain('@makinbakin/sdk')              // stays external
@@ -324,7 +324,7 @@ describe('buildPluginInProcess (dev fast path)', () => {
 
     const server = readFileSync(join(dir, 'dist', 'index.js'), 'utf-8')
     expect(server).not.toContain('from "@makinbakin/sdk')
-    expect(server).toContain('defineHookContract')
+    expect(server).toContain('HEALTH_INCIDENT_CLASSES')
     const client = readFileSync(join(dir, 'dist', 'client.js'), 'utf-8')
     expect(client).toContain('@makinbakin/sdk')
   }, 30_000)
