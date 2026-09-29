@@ -99,6 +99,8 @@ For source setup and contribution workflow, see [CONTRIBUTING.md](./CONTRIBUTING
 
 ## Development
 
+Bun is pinned in [`.bun-version`](./.bun-version); install that exact version first (CI reads the same file).
+
 ```sh
 git clone git@github.com:markhayden/bakin.git
 cd bakin
