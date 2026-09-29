@@ -1,6 +1,7 @@
 # Implementation plan — SDK metadata retirement
 
-Status: approved by the user with “do it”; implementation in progress.
+Status: implemented and independently reviewed. Final check results are recorded
+in [Bakin PR #971](https://github.com/markhayden/bakin/pull/971).
 Spec: [SPEC.md](./SPEC.md). Branch: `chore/retire-sdk-metadata`.
 
 ## Order and checkpoints
@@ -194,3 +195,15 @@ Those obsolete copies were moved outside `node_modules`; the affected five tests
 then passed. Full conformance's fresh repository run passed 10,479 tests with
 19 existing skips. Its payload step required installing the pinned Bits
 checkout's locked dependencies; remaining conformance steps resume from there.
+
+
+Both pull requests are open: [Bakin #971](https://github.com/markhayden/bakin/pull/971)
+and [official Bits #117](https://github.com/markhayden/bakin-bits-official/pull/117).
+The pinned Bits payload check, deterministic public Storybook build, route-docs
+validation, and 50-page docs site build passed. Final browser outcomes and CI
+receipts are kept in the PR descriptions/checks. Local browser verification
+required downloading the repository's locked Playwright browser and Docker image;
+no visual baseline, API ledger, token artifact, or performance ceiling was changed.
+
+Verification was performed October 4, 2026. Git dates alone use September 29 as
+requested. No artifacts were published and no live service was restarted.

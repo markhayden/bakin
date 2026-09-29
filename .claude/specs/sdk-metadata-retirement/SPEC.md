@@ -1,6 +1,7 @@
 # Retire the SDK metadata entrypoint — #805
 
-Status: approved by the user with “do it”; implementation in progress.
+Status: implemented and independently reviewed. Final check results are recorded
+in [Bakin PR #971](https://github.com/markhayden/bakin/pull/971).
 Issue: https://github.com/markhayden/bakin/issues/805
 
 ## Objective and decisions
