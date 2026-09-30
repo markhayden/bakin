@@ -12,6 +12,9 @@ bun install
 bun run dev
 ```
 
+Bun is pinned in the repo's `.bun-version` file and CI installs exactly that version. Match it locally before `bun install`; a newer bun changes the test runner and the compiled-binary filesystem, and both are checked before the pin ever moves.
+
+
 The dev server builds the host, watches linked plugins, and runs the local Bakin app. Use `BAKIN_URL` only when a CLI command should talk to a server somewhere other than `http://localhost:3737`.
 
 ## Choose a Loop
