@@ -34,10 +34,33 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 import {
-  checkAntflyDependency,
-  installAntflyDependency,
+  checkAntflyDependency as checkDependency,
+  installAntflyDependency as installDependency,
 } from '../../../packages/adapter-antfly/src/installer'
+import { DEFAULT_SETTINGS } from '../../../packages/adapter-antfly/src/defaults'
+import { launchdPlistPath, renderLaunchdPlist, buildServiceArgv, servicePaths, type ServiceIo } from '../../../packages/adapter-antfly/src/service'
 import { antflyPlatformKey, type AntflyPin } from '../../../packages/adapter-antfly/src/pin'
+
+let loaded = false
+let occupied = false
+const commands: string[][] = []
+const serviceIo: ServiceIo = {
+  platform: 'darwin', env: { HOME: join(testDir, 'os-home') },
+  hasCommand: () => true, modelReady: () => false, tempRoots: [],
+  portsReleased: async () => !occupied,
+  exec: async (cmd, args) => {
+    commands.push([cmd, ...args])
+    if (args[0] === 'print') return { code: loaded ? 0 : 113, stdout: '', stderr: '' }
+    if (args[0] === 'bootout') loaded = false
+    if (args[0] === 'bootstrap') loaded = true
+    return { code: 0, stdout: '', stderr: '' }
+  },
+}
+const installAntflyDependency: typeof installDependency = (opts, logger, pin, timings, settings) =>
+  installDependency(opts, logger, pin, { readyBudgetMs: 100, pollMs: 1, ...timings, io: serviceIo }, settings)
+const checkAntflyDependency = (pin: AntflyPin) => checkDependency(pin, DEFAULT_SETTINGS, serviceIo)
+mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => join(testDir, 'openclaw'), getOpenClawPath: (...p: string[]) => join(testDir, 'openclaw', ...p), resetOpenClawHome: () => {} }))
+mock.module('../../../packages/core/src/logger', () => ({ createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }) }))
 
 const PIN_VERSION = '0.2.0-rc.9'
 const platformKey = antflyPlatformKey()
@@ -77,7 +100,8 @@ function mockDownloadFetch(handler?: (url: string) => Response | Promise<Respons
     if (url.endsWith('.tar.gz')) {
       return new Response(tarballBytes.slice().buffer as ArrayBuffer, { status: 200 })
     }
-    throw new Error(`connection refused: ${url}`)
+    if (url.endsWith('/readyz')) return new Response('ok')
+    throw new Error(`unexpected URL: ${url}`)
   }) as unknown as typeof fetch
 }
 
@@ -110,6 +134,11 @@ beforeEach(() => {
   process.env.ANTFLY_HOME = antflyHomeDir
   delete process.env.ANTFLY_PATH
   fetchCalls = []
+  loaded = false
+  occupied = false
+  commands.length = 0
+  serviceIo.tempRoots = []
+  rmSync(join(testDir, 'os-home'), { recursive: true, force: true })
   mockDownloadFetch()
 })
 
@@ -130,8 +159,10 @@ describe('checkAntflyDependency', () => {
     expect(result.remediation).toContain('bakin install search')
   })
 
-  it('reports ok for a pinned-version binary', async () => {
+  it('reports ok for a pinned-version binary with an owned unit', async () => {
     writeBinary(managedBinary, PIN_VERSION)
+    mkdirSync(join(launchdPlistPath(serviceIo), '..'), { recursive: true })
+    writeFileSync(launchdPlistPath(serviceIo), renderLaunchdPlist(buildServiceArgv(DEFAULT_SETTINGS, servicePaths(), { modelReady: () => false }), servicePaths().logFile))
     const result = await checkAntflyDependency(makePin())
     expect(result.status).toBe('ok')
     expect(result.message).toContain(PIN_VERSION)
@@ -139,10 +170,10 @@ describe('checkAntflyDependency', () => {
     expect(result.details?.version).toBe(PIN_VERSION)
   })
 
-  it('reports error with remediation for a wrong-version binary', async () => {
+  it('reports broken with remediation for a wrong-version binary', async () => {
     writeBinary(managedBinary, '0.1.1')
     const result = await checkAntflyDependency(makePin())
-    expect(result.status).toBe('error')
+    expect(result.status).toBe('broken')
     expect(result.message).toContain('v0.1.1')
     expect(result.message).toContain(`needs v${PIN_VERSION}`)
     expect(result.remediation).toContain('bakin install search')
@@ -203,14 +234,13 @@ describe('installAntflyDependency', () => {
     expect(result.status).toBe('installed')
     const check = await checkAntflyDependency(makePin())
     expect(check.status).toBe('ok')
-    // The guard probed readyz before downloading.
+    // Readiness is checked after the verified binary is installed.
     expect(fetchCalls.some(u => u.endsWith('/readyz'))).toBe(true)
   })
 
   it('never swaps under a live NON-managed server (D3: managed services are stopped instead)', async () => {
-    // child mode: stopService is a no-op (no launchctl/systemctl exec from
-    // tests), so the still-responding instance reads as non-managed and the
-    // installer must refuse rather than swap underneath it.
+    // Even an unready listener is detected by the port-release boundary.
+    occupied = true
     process.env.BAKIN_SEARCH_SERVICE_MODE = 'child'
     try {
       writeBinary(managedBinary, '0.1.1')
@@ -221,7 +251,7 @@ describe('installAntflyDependency', () => {
 
       const result = await installAntflyDependency(optsAutoYes, undefined, makePin())
       expect(result.status).toBe('failed')
-      expect(result.message).toContain('Stop it manually')
+      expect(result.message).toContain('Stop the unrelated listener manually')
       // Old binary untouched.
       expect(readFileSync(managedBinary, 'utf-8')).toContain('0.1.1')
     } finally {
@@ -237,10 +267,7 @@ describe('installAntflyDependency', () => {
       mockDownloadFetch(async (url) => {
         if (url.endsWith('/readyz')) {
           readyzCalls += 1
-          // 1: pre-swap probe (responding → managed stop path). 2: post-stop
-          // still-responding check (must be down or the install refuses).
-          // 3+: the post-start readiness gate — the engine never comes back.
-          if (readyzCalls === 1) return new Response('ok', { status: 200 })
+          // These are all post-start probes; staging/stopping never relies on readiness.
           throw new Error('connection refused')
         }
         return new Response(tarballBytes.slice().buffer as ArrayBuffer, { status: 200 })
@@ -363,4 +390,58 @@ describe('antflyPlatformKey', () => {
     expect(antflyPlatformKey('darwin', 'x64')).toBeNull()
     expect(antflyPlatformKey('win32', 'x64')).toBeNull()
   })
+})
+
+// Ownership regressions exercise the real installer and fake only supervisor/network boundaries.
+it('pinned binary alone is not a complete managed installation', async () => {
+  writeBinary(managedBinary, PIN_VERSION)
+  expect((await checkAntflyDependency(makePin())).status).toBe('missing')
+})
+it('fresh install provisions a unit and starts it before success', async () => {
+  const result = await installAntflyDependency(optsAutoYes, undefined, makePin())
+  expect(result.status).toBe('installed')
+  expect(existsSync(launchdPlistPath(serviceIo))).toBe(true)
+  expect(loaded).toBe(true)
+})
+it('temporary install refuses before downloading or changing the shared binary', async () => {
+  serviceIo.tempRoots = [testDir]
+  const result = await installAntflyDependency(optsAutoYes, undefined, makePin())
+  expect(result.status).toBe('failed')
+  expect(fetchCalls).toEqual([])
+  expect(commands).toEqual([])
+  expect(existsSync(managedBinary)).toBe(false)
+})
+
+it('a failed download leaves an installed service running and its binary intact', async () => {
+  writeBinary(managedBinary, '0.1.1')
+  loaded = true
+  mockDownloadFetch(() => new Response('unavailable', { status: 503 }))
+  expect((await installAntflyDependency(optsAutoYes, undefined, makePin())).status).toBe('failed')
+  expect(loaded).toBe(true)
+  expect(commands).toEqual([])
+  expect(readFileSync(managedBinary, 'utf8')).toContain('0.1.1')
+})
+
+it('a current override cannot conceal the missing executable the service launches', async () => {
+  const override = join(testDir, 'current-override')
+  writeBinary(override, PIN_VERSION)
+  process.env.ANTFLY_PATH = override
+  const result = await installAntflyDependency(optsAutoYes, undefined, makePin())
+  expect(result.status).toBe('failed')
+  expect(result.message).toContain('ANTFLY_PATH')
+  expect(fetchCalls).toEqual([])
+  expect(commands).toEqual([])
+})
+
+it('guest setup requires no local binary or model installation and refuses reset', async () => {
+  const { createAntflySearchSetup } = await import('../../../packages/adapter-antfly/src/setup')
+  const setup = createAntflySearchSetup(undefined, { ...DEFAULT_SETTINGS, url: 'http://isolated:9000' })
+  expect((await setup.dependency.check()).status).toBe('ok')
+  expect((await setup.dependency.install(optsAutoYes)).status).toBe('noop')
+  expect((await setup.models!.check()).status).toBe('ok')
+  expect((await setup.models!.install(optsAutoYes)).status).toBe('noop')
+  expect((await setup.resetEngineData!()).status).toBe('failed')
+  expect(fetchCalls).toEqual([])
+  expect(commands).toEqual([])
+  expect(existsSync(managedBinary)).toBe(false)
 })

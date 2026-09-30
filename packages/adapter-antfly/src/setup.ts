@@ -1,5 +1,6 @@
 import type { SearchAdapterSetup } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
+import { isLocalDefaultUrl } from './service'
 import { DEFAULT_SETTINGS, type AntflySettings } from './defaults'
 import { checkAntflyDependency, installAntflyDependency, resetAntflyEngineData } from './installer'
 import { checkInferenceModels, installInferenceModels, requiredModelsForSettings } from './models'
@@ -29,14 +30,14 @@ export function createAntflySearchSetup(
   return {
     dependency: {
       name: 'antfly',
-      check: () => checkAntflyDependency(),
-      install: (opts) => installAntflyDependency(opts, logger),
+      check: () => checkAntflyDependency(undefined, settings),
+      install: (opts) => installAntflyDependency(opts, logger, undefined, {}, settings),
     },
     models: {
       name: 'models',
-      check: () => checkInferenceModels(models),
-      install: (opts) => installInferenceModels(opts, logger, models),
+      check: () => isLocalDefaultUrl(settings.url) ? checkInferenceModels(models) : Promise.resolve({ name: 'models', status: 'ok', message: 'Search models are managed at the configured external endpoint.' }),
+      install: (opts) => isLocalDefaultUrl(settings.url) ? installInferenceModels(opts, logger, models) : Promise.resolve({ name: 'models', status: 'noop', message: 'Search models are managed at the configured external endpoint.', durationMs: 0 }),
     },
-    resetEngineData: () => resetAntflyEngineData(logger),
+    resetEngineData: () => resetAntflyEngineData(logger, settings),
   }
 }
