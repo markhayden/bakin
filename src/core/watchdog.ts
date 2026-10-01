@@ -1,14 +1,12 @@
 /**
- * Watchdog — detects stuck in-progress tasks, auto-recovers when agent is stale,
- * and detects agents bypassing rules.
+ * Watchdog — detects stuck in-progress tasks, recovers stranded ones (no live
+ * run in the execution ledger — spec D3), and detects agents bypassing rules.
  */
-import { readFileSync, existsSync } from 'fs'
-import { join } from 'path'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { broadcast } from './sse'
 import { appendAudit } from './audit'
-import { isStale } from '../lib/format'
+import { assessWorkflowRuns, type WorkflowActiveAgent } from './task-liveness'
 import { getAppServices } from './app-services'
 import { meterAgentTurn } from './agent-cost'
 import { resolveSystemRoute, routeSendArgs } from './system-route'
@@ -89,23 +87,6 @@ function latestLogIsManualRecoveryHold(task: { log?: Array<{ timestamp: string; 
     }
   }
   return latest?.data?.restartRecovery === 'manual'
-}
-
-function isAgentHeartbeatStale(contentDir: string, agent: string | undefined): boolean {
-  if (!agent) return true
-
-  // Agent-written heartbeat file. A runtime liveness signal should be added
-  // as an explicit adapter capability instead of hidden registry state.
-  const heartbeatPath = join(contentDir, 'heartbeats', `${agent}.json`)
-  try {
-    if (!existsSync(heartbeatPath)) return true
-    const data = JSON.parse(readFileSync(heartbeatPath, 'utf-8'))
-    const ts = data.timestamp || data.ts
-    if (!ts) return true
-    return isStale(ts, 15 * 60 * 1000)
-  } catch {
-    return true
-  }
 }
 
 function countAutoRecoveries(task: { log?: { message: string }[] }): number {
@@ -220,28 +201,39 @@ export function start(contentDir: string): void {
 
         const minutesStuck = Math.round(stuckMs / 60000)
 
-        // For workflow tasks, check the workflow step's assigned agent — not the card's task.agent
-        const wfTask = task as typeof task & { workflowId?: string }
-        let effectiveAgent = task.agent
-        if (wfTask.workflowId) {
-          const activeAgents = await hooks().invoke<Array<{ agent: string; stepId: string }>>('workflows.getActiveAgents', { taskId: task.id }) ?? []
-          if (activeAgents.length > 0) {
-            effectiveAgent = activeAgents[0].agent
+        // Liveness comes from the ledger only. A plain task holds at most one
+        // live run; a workflow task's active steps each hold their own run,
+        // keyed by the (possibly nested-child) task id + step id.
+        let stranded: boolean
+        let liveRun: ReturnType<typeof getLiveRun> = null
+        try {
+          if (task.workflowId) {
+            const activeAgents = await hooks().invoke<WorkflowActiveAgent[]>('workflows.getActiveAgents', { taskId: task.id }) ?? []
+            const runs = assessWorkflowRuns(task.id, activeAgents)
+            stranded = runs.live.length === 0
+            // Supersede-by-task reaches only runs keyed on THIS task id;
+            // child-keyed steps belong to the child's own board task.
+            if (!stranded) liveRun = getLiveRun(task.id)
+          } else {
+            liveRun = getLiveRun(task.id)
+            stranded = liveRun === null
           }
+        } catch (err) {
+          log.error('Ledger liveness read failed — skipping this task this tick (fail closed)', err, { id: task.id })
+          continue
         }
-        const agentStale = isAgentHeartbeatStale(contentDir, effectiveAgent)
 
-        if (settings.watchdog.autoRecover && agentStale) {
-          // Supersede-first: the ledger arbitrates recovery. A live run with
-          // a fresh heartbeat means the agent is genuinely working (it
-          // replaces the old 60s updatedAt guard — heartbeats are the real
-          // signal the file mtime was a proxy for). Zero live runs = a
-          // stranded task, recover as before. A stale run is superseded
-          // transactionally — of N racing recovery actors exactly one wins;
-          // losers skip. Ledger failure = fail closed (no blind recovery).
-          try {
-            const liveRun = getLiveRun(task.id)
-            if (liveRun) {
+        if (settings.watchdog.autoRecover) {
+          if (!stranded) {
+            if (!liveRun) {
+              log.debug('Skipping auto-recovery: a workflow step holds a live run', { id: task.id })
+              continue
+            }
+            // Supersede-first: the ledger arbitrates recovery. A live run with
+            // a fresh heartbeat means the agent is genuinely working. A stale
+            // run is superseded transactionally — of N racing recovery actors
+            // exactly one wins; losers skip. Ledger failure = fail closed.
+            try {
               const supersede = supersedeStaleRun(task.id, now - settings.watchdog.stuckThresholdMs)
               if (!supersede.superseded) {
                 log.debug('Skipping auto-recovery: live run heartbeat is fresh', { id: task.id, runId: liveRun.runId })
@@ -261,19 +253,19 @@ export function start(contentDir: string): void {
               // workflow-step siblings share a taskId and a healthy working
               // step must not be killed for its stale sibling (review F2).
               abortTurnsByRunIds(supersede.runIds, 'superseded')
+            } catch (err) {
+              log.error('Ledger supersede failed — skipping auto-recovery this tick (fail closed)', err, { id: task.id })
+              continue
             }
-          } catch (err) {
-            log.error('Ledger supersede failed — skipping auto-recovery this tick (fail closed)', err, { id: task.id })
-            continue
           }
 
-          // Both task and agent are stale — auto-recover
+          // Stranded (or just superseded) — auto-recover
           const recoveryCount = countAutoRecoveries(task)
 
           if (recoveryCount >= settings.watchdog.maxAutoRecoveries) {
             // Escalate to blocked
             try {
-              await blockTask(task.id, `Auto-recovery limit reached (${recoveryCount} attempts). Agent "${task.agent || 'unassigned'}" appears offline.`)
+              await blockTask(task.id, `Auto-recovery limit reached (${recoveryCount} attempts). No live run for this task.`)
               await addTaskLog(task.id, 'watchdog', `Escalated to blocked: ${recoveryCount} auto-recoveries exhausted. Manual intervention required.`)
               appendAudit(contentDir, 'task.auto_recovery_exhausted', 'watchdog', { id: task.id, title: task.title, agent: task.agent, recoveryCount })
               log.warn('Task escalated to blocked after max recoveries', { id: task.id, title: task.title, recoveryCount })
@@ -283,7 +275,7 @@ export function start(contentDir: string): void {
           } else {
             // Move back to todo for re-dispatch
             try {
-              await addTaskLog(task.id, 'watchdog', `Auto-recovered: no agent heartbeat or task log for ${minutesStuck}+ minutes. Moved back to Todo for re-dispatch.`)
+              await addTaskLog(task.id, 'watchdog', `Auto-recovered: no live run and no task log for ${minutesStuck}+ minutes. Moved back to Todo for re-dispatch.`)
               await moveTask(task.id, 'todo')
               appendAudit(contentDir, 'task.auto_recovered', 'watchdog', { id: task.id, title: task.title, agent: task.agent, minutesStuck })
               log.info('Task auto-recovered to todo', { id: task.id, title: task.title, minutesStuck })
@@ -292,13 +284,17 @@ export function start(contentDir: string): void {
             }
           }
         } else {
-          // Agent is alive but task is stale — alert only
-          const alertMsg = `Task stuck: "${task.title}" (@${task.agent || 'unassigned'}) — no log update in ${minutesStuck} minutes${agentStale ? ' (agent offline)' : ' (agent online)'}`
+          // Alert-only mode. A live run with a fresh heartbeat is working —
+          // nothing to say. Anything else is worth a human's eyes.
+          const heartbeatFresh = liveRun !== null && liveRun.heartbeatAt >= now - settings.watchdog.stuckThresholdMs
+          if (!stranded && (heartbeatFresh || !liveRun)) continue
+          const liveness = stranded ? '(no live run)' : '(live run heartbeat stale)'
+          const alertMsg = `Task stuck: "${task.title}" (@${task.agent || 'unassigned'}) — no log update in ${minutesStuck} minutes ${liveness}`
 
           broadcast({ type: 'alert', title: task.title, agent: task.agent, message: alertMsg })
 
           try {
-            await addTaskLog(task.id, 'watchdog', `ALERT: No progress logged in ${minutesStuck}+ minutes`)
+            await addTaskLog(task.id, 'watchdog', `ALERT: No progress logged in ${minutesStuck}+ minutes ${liveness}`)
           } catch (err) {
             log.warn('Failed to log watchdog alert on task', err)
           }
@@ -307,13 +303,13 @@ export function start(contentDir: string): void {
           if (notificationChannel) {
             sendWatchdogChannelMessage(
               notificationChannel,
-              `⚠️ **Watchdog Alert**: Task "${task.title}" (@${task.agent || 'unassigned'}) has had no progress log in ${minutesStuck}+ minutes.`
+              `⚠️ **Watchdog Alert**: Task "${task.title}" (@${task.agent || 'unassigned'}) has had no progress log in ${minutesStuck}+ minutes ${liveness}.`
             ).catch(err => {
               log.error('Watchdog channel alert failed', err)
             })
           }
 
-          log.warn('Stuck task detected', { title: task.title, agent: task.agent, minutesStuck, agentStale })
+          log.warn('Stuck task detected', { title: task.title, agent: task.agent, minutesStuck, stranded })
         }
       }
       // ─── MCP 5xx error-rate alert ────────────────────────────────────

@@ -1,2 +1,2 @@
 // Re-export from @bakin/core
-export { formatAge, formatSize, isStale } from '../../packages/core/src/format'
+export { formatAge, formatSize } from '../../packages/core/src/format'
