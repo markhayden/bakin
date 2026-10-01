@@ -329,7 +329,7 @@ reaches `task-service`, `dispatch-turns`, `watchdog`, `restart-recovery` or
   rows alive across tests (`SQLITE_IOERR_VNODE` is the symptom).
 - **In-memory fake** (`tests/core/continuation.test.ts`, `task-service.test.ts`):
   a `Set` of live task ids behind `getLiveRun`. Every ledger fake must also
-  stub `getLiveRunByKey`, `bumpHeartbeat` and `bumpHeartbeatByTaskAgent`
+  stub `getLiveRunByKey`, `listLiveRuns`, `bumpHeartbeat` and `bumpHeartbeatByTaskAgent`
   (ESM named-export linking fails at import time otherwise — the error names
   the missing export).
 

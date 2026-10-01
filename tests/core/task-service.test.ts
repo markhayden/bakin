@@ -40,6 +40,7 @@ const ledgerMock = () => ({
   getLiveRunByKey: () => null,
   bumpHeartbeat: () => {},
   bumpHeartbeatByTaskAgent: (taskId: string, agent: string) => mockBumpHeartbeat(taskId, agent),
+  listLiveRuns: () => [],
 })
 mock.module('@/core/execution-ledger', ledgerMock)
 mock.module('../../src/core/execution-ledger', ledgerMock)

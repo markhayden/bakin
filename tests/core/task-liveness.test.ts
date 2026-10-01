@@ -135,8 +135,26 @@ describe('stepExecKey + assessWorkflowRuns', () => {
     expect(result.missing).toEqual(['wf-parent:publish'])
   })
 
-  it('no active agents means nothing expected and nothing live', () => {
-    expect(assessWorkflowRuns('wf-empty', [])).toEqual({ expected: [], live: [], missing: [] })
+  it('no active agents means nothing expected, nothing live, stranded', () => {
+    expect(assessWorkflowRuns('wf-empty', [])).toEqual({ expected: [], live: [], missing: [], otherLive: [], stranded: true })
+  })
+
+  it('a running row outside the expected steps counts as other live execution (review P1)', () => {
+    const task = 'wf-transition'
+    expect(claimRun({ runId: `task:${task}:step:previous:d1`, taskId: task, execKey: stepExecKey(task, 'previous'), seq: 1, agent: 'pixel', bootId: BOOT })).toEqual({ claimed: true })
+
+    const result = assessWorkflowRuns(task, [{ agent: 'patch', stepId: 'next' }])
+    expect(result.live).toEqual([])
+    expect(result.missing).toEqual(['wf-transition:next'])
+    expect(result.otherLive.map((r) => r.execKey)).toEqual(['wf-transition:previous'])
+    expect(result.stranded).toBe(false)
+  })
+
+  it('expected steps live and nothing else: not stranded, no other rows', () => {
+    const task = 'wf-steady'
+    expect(claimRun({ runId: `task:${task}:step:a:d1`, taskId: task, execKey: stepExecKey(task, 'a'), seq: 1, agent: 'ada', bootId: BOOT })).toEqual({ claimed: true })
+    const result = assessWorkflowRuns(task, [{ agent: 'ada', stepId: 'a' }])
+    expect(result).toMatchObject({ live: ['wf-steady:a'], missing: [], otherLive: [], stranded: false })
   })
 })
 

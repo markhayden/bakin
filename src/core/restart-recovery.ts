@@ -152,8 +152,10 @@ async function assessWorkflowTask(
   }
 
   // Steps claim runs keyed by their (possibly nested-child) task id + step id.
+  // A still-running previous-step row (the engine advanced before that turn
+  // settled) is execution too — never stranded, never manual (review P1).
   const runs = assessWorkflowRuns(task.id, activeAgents)
-  if (runs.missing.length === 0) return null
+  if (runs.missing.length === 0 || (runs.live.length === 0 && runs.otherLive.length > 0)) return null
 
   if (runs.live.length > 0) {
     return {

@@ -41,6 +41,7 @@ mock.module('../../../src/core/execution-ledger', () => ({
   getLiveRunByKey: () => null,
   bumpHeartbeat: () => {},
   bumpHeartbeatByTaskAgent: () => false,
+  listLiveRuns: () => [],
   recordMilestoneCrossings: (inputs: Array<Record<string, unknown>>) => inputs.map((input) => {
     const row = { ...input, id: milestoneRows.length + 1, eventId: `evt-${milestoneRows.length + 1}`, coveredBy: null, notifiedAt: null, acknowledgedAt: null }
     milestoneRows.push(row)

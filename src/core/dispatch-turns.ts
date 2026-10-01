@@ -18,7 +18,7 @@ import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { getAppServices } from './app-services-store'
 import { RuntimeError, RuntimeTurnError, type AgentRuntimeAdapter, type ChatChunk, type MessageResult } from '@bakin/core/adapters/runtime'
-import { claimNextRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, findOpenCapIncident, type ClaimNextRunResult } from './execution-ledger'
+import { claimNextRun, getLiveRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, findOpenCapIncident, type ClaimNextRunResult } from './execution-ledger'
 import { bumpRunHeartbeat, stepExecKey } from './task-liveness'
 import { meterAgentTurn } from './agent-cost'
 import { classifyDispatchWorkClass, resolveTurnModel, type DispatchWorkClass, type ResolvedTurn, type RouteSource, type RoutingConfig, type WorkClass } from './model-routing'
@@ -855,8 +855,13 @@ export function fireDispatchTurn(opts: {
       const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing, abort.signal, onActivity, executionWorkspace ?? runWorkspace)
       // Free the live-run slot FIRST — the settle reconciliation below (and
       // any ladder re-dispatch it schedules) must be able to claim anew.
+      // `ownedRun` is this attempt's proof of ownership: false means the row
+      // was already superseded/lost (the watchdog refired the task) and this
+      // is a late settle that must not touch task state (review P2). A
+      // ledger error leaves ownership unknown — fail closed, no mutation.
+      let ownedRun = false
       try {
-        settleRun(opts.threadId, 'ok')
+        ownedRun = settleRun(opts.threadId, 'ok')
       } catch (err) {
         log.error('Failed to settle run in ledger', err, { threadId: opts.threadId })
       }
@@ -898,27 +903,38 @@ export function fireDispatchTurn(opts: {
       //     agent or to a team mid-turn; nothing is executing it any more, so
       //     it queues for the new owner instead of idling in progress until
       //     the watchdog notices (found live on margo: 35-minute stalls).
-      if (opts.dispatchKind === 'regular') {
-        const fresh = findDispatchTaskSnapshot(opts.task.id)
-        if (fresh?.column === 'inProgress') {
+      // Only an attempt that still owned its run may move the task, and only
+      // while no replacement run is live — a superseded turn whose send
+      // resolved late must never park the task its replacement is executing
+      // (review P2). Checked and applied under the state lock, where claims
+      // and the other settle reconciliations serialize.
+      if (opts.dispatchKind === 'regular' && ownedRun) {
+        await withStateLock(async () => {
+          const fresh = findDispatchTaskSnapshot(opts.task.id)
+          if (fresh?.column !== 'inProgress') return
           const owner = fresh.task.agent
           const handedOffTo = owner && owner !== opts.targetAgent
             ? owner
             : !owner && fresh.task.team ? `team ${fresh.task.team}` : null
-          if (completedDecomposition || handedOffTo) {
-            try {
-              await moveStoredTask(opts.task.id, 'todo', 'inProgress')
-              if (completedDecomposition) {
-                await tryAddTaskLog(opts.task.id, 'system', 'Decomposition complete — parked in Todo until the subtask chain finishes (dependency gate), then re-dispatched for final assembly.')
-              } else {
-                await tryAddTaskLog(opts.task.id, 'system', `Handed off to ${handedOffTo}; queued for dispatch.`)
-                appendAudit(opts.contentDir, 'task.handed_off', 'system', { id: opts.task.id, title: opts.task.title, from: opts.targetAgent, to: handedOffTo })
-              }
-            } catch (err) {
-              log.warn('Failed to park task in todo at settle', err, { id: opts.task.id, decomposition: completedDecomposition, handedOffTo })
+          if (!completedDecomposition && !handedOffTo) return
+          try {
+            if (getLiveRun(opts.task.id)) {
+              log.debug('Skipping park at settle: a replacement run is live', { id: opts.task.id })
+              return
             }
+            await moveStoredTask(opts.task.id, 'todo', 'inProgress')
+            if (completedDecomposition) {
+              await tryAddTaskLog(opts.task.id, 'system', 'Decomposition complete — parked in Todo until the subtask chain finishes (dependency gate), then re-dispatched for final assembly.')
+            } else {
+              await tryAddTaskLog(opts.task.id, 'system', `Handed off to ${handedOffTo}; queued for dispatch.`)
+              appendAudit(opts.contentDir, 'task.handed_off', 'system', { id: opts.task.id, title: opts.task.title, from: opts.targetAgent, to: handedOffTo })
+            }
+          } catch (err) {
+            log.warn('Failed to park task in todo at settle', err, { id: opts.task.id, decomposition: completedDecomposition, handedOffTo })
           }
-        }
+        })
+      } else if (opts.dispatchKind === 'regular' && !ownedRun) {
+        log.debug('Late settle: this attempt no longer owns its run — no task mutation', { id: opts.task.id, threadId: opts.threadId })
       }
       opts.onSettled?.('ok')
     })

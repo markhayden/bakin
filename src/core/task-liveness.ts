@@ -12,7 +12,7 @@
  * path knows the exact run id; the exec-tool and progress paths know only
  * task + agent and bump only when that pair resolves to exactly one row.
  */
-import { bumpHeartbeat, bumpHeartbeatByTaskAgent, getLiveRun, getLiveRunByKey } from './execution-ledger'
+import { bumpHeartbeat, bumpHeartbeatByTaskAgent, getLiveRun, getLiveRunByKey, listLiveRuns, type RunRow } from './execution-ledger'
 import { createLogger } from './logger'
 
 const log = createLogger('task-liveness')
@@ -42,6 +42,15 @@ export interface WorkflowRunAssessment {
   live: string[]
   /** `expected` minus `live`. */
   missing: string[]
+  /**
+   * Running rows on this task (or its active nested-child ids) whose exec key
+   * is NOT an expected step — e.g. the previous step's turn still settling
+   * after the engine advanced the workflow (review P1). Execution remains, so
+   * the task is not stranded even when no expected step has started yet.
+   */
+  otherLive: RunRow[]
+  /** No execution remains anywhere: no expected step live and no other live row. */
+  stranded: boolean
 }
 
 /** Which of a workflow task's active steps hold a live run, keyed the way dispatch claims them. */
@@ -49,7 +58,16 @@ export function assessWorkflowRuns(taskId: string, active: readonly WorkflowActi
   const expected = active.map((entry) => stepExecKey(entry.effectiveTaskId ?? taskId, entry.stepId))
   const live = expected.filter((key) => getLiveRunByKey(key) !== null)
   const liveSet = new Set(live)
-  return { expected, live, missing: expected.filter((key) => !liveSet.has(key)) }
+  const expectedSet = new Set(expected)
+  const taskIds = new Set([taskId, ...active.map((entry) => entry.effectiveTaskId).filter((id): id is string => !!id)])
+  const otherLive = listLiveRuns().filter((run) => taskIds.has(run.taskId) && !expectedSet.has(run.execKey))
+  return {
+    expected,
+    live,
+    missing: expected.filter((key) => !liveSet.has(key)),
+    otherLive,
+    stranded: live.length === 0 && otherLive.length === 0,
+  }
 }
 
 /** Exact-run bump for the streaming path (the dispatch threadId IS the run id). Advisory. */

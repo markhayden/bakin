@@ -55,6 +55,7 @@ mock.module('../../../src/core/execution-ledger', () => ({
   getLiveRunByKey: () => null,
   bumpHeartbeat: () => {},
   bumpHeartbeatByTaskAgent: () => false,
+  listLiveRuns: () => [],
   // Model-availability evidence (#852) — inert here.
   recordModelRejection: () => ({ opened: false, id: 0 }),
   resolveModelRejection: () => false,

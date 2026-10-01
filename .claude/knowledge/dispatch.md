@@ -268,7 +268,13 @@ still `inProgress`, the settle handler re-reads the task and parks it in
 Workflow step turns never park: a card owner and a step agent legitimately
 differ (`dispatch-workflow.ts`), parallel steps share one task, and nested
 parents settle their children's steps (plan review R3; pinned by
-`tests/core/dispatch-handoff.test.ts`). A triage turn that neither assigns
+`tests/core/dispatch-handoff.test.ts`). Only an attempt that still OWNED its
+run may park: `settleRun` returning false means the row was already
+superseded/lost (the watchdog refired the task) and the late settle mutates
+nothing; and the park is skipped while `getLiveRun(taskId)` shows a
+replacement run — both checked and applied under `withStateLock` (PR #937
+review P2: a superseded Jessica turn whose send resolved late must never
+park the task Patch's replacement run is executing). A triage turn that neither assigns
 nor completes is NOT parked (it would re-triage every cycle) — the watchdog
 remains the backstop.
 

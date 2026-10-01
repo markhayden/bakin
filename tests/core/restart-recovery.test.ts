@@ -256,6 +256,26 @@ describe('restart recovery', () => {
     expect(await findRestartRecoveryCandidates(tempDir)).toHaveLength(0)
   })
 
+  it('a previous step still running after the engine advanced is execution — not a candidate (review P1)', async () => {
+    liveRun('task-4b', 'pixel', 'previous')
+    setColumns({
+      inProgress: [{ id: 'task-4b', title: 'Step transition', workflowId: 'video' }],
+    })
+    mockHookInvoke.mockImplementation(async (hook: unknown) => {
+      if (hook === 'workflows.loadInstance') return { status: 'in_progress' }
+      if (hook === 'workflows.getActiveAgents') return [{ agent: 'patch', stepId: 'next' }]
+      return undefined
+    })
+
+    const candidates = await findRestartRecoveryCandidates(tempDir)
+    const result = await runRestartRecovery(tempDir)
+
+    expect(candidates).toHaveLength(0)
+    expect(result.recovered + result.blocked + result.skipped).toBe(0)
+    expect(mockMoveTask).not.toHaveBeenCalled()
+    expect(mockAddTaskLog).not.toHaveBeenCalled()
+  })
+
   it('reports partial live steps as manual instead of redispatching live agents', async () => {
     liveRun('task-5', 'pixel', 'design')
     setColumns({

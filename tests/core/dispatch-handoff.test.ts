@@ -4,7 +4,9 @@
  * different agent (triage re-assigned it) or to a team (agent cleared), the
  * task is parked in todo so the next dispatch cycle fires the new owner.
  * Workflow step turns never park — a card owner and a step agent legitimately
- * differ there.
+ * differ there. Only an attempt that still OWNED its ledger run may park, and
+ * never while a replacement run is live (review P2) — parking cases claim
+ * their run first, exactly as every production dispatch does.
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, mock } from 'bun:test'
 import { mkdtempSync, rmSync } from 'fs'
@@ -138,6 +140,8 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 import { fireDispatchTurn, awaitDispatchIdle } from '../../src/core/dispatch-turns'
+import { claimRun, getLiveRun, supersedeStaleRun } from '../../src/core/execution-ledger'
+import { abortTurnsByRunIds } from '../../src/core/dispatch-registry'
 import { closeDb } from '../../packages/core/src/storage/db'
 import { waitUntil, settleFor } from '../helpers/wait'
 
@@ -187,8 +191,58 @@ afterAll(() => {
 })
 
 describe('settle-time hand-off', () => {
+  it('a superseded attempt whose send resolves late never parks the task its replacement is executing (review P2)', async () => {
+    setColumns({ inProgress: [{ id: 'late-handoff', title: 'Late handoff', agent: 'jessica' }] })
+    claimRun({ runId: 'task:late-handoff:d1', taskId: 'late-handoff', seq: 1, agent: 'jessica', bootId: 'review', now: 1 })
+    fireTurn('late-handoff', 'jessica')
+    await turnStarted('jessica')
+
+    // Watchdog supersedes jessica's stale run and aborts her turn; patch
+    // claims the replacement and now owns the card.
+    expect(supersedeStaleRun('late-handoff', Date.now())).toMatchObject({ superseded: true })
+    abortTurnsByRunIds(['task:late-handoff:d1'], 'superseded')
+    findTask('late-handoff')!.agent = 'patch'
+    expect(claimRun({ runId: 'task:late-handoff:d2', taskId: 'late-handoff', seq: 2, agent: 'patch', bootId: 'review' })).toEqual({ claimed: true })
+
+    // Jessica's send still resolves successfully during cancellation.
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+
+    expect(getLiveRun('late-handoff')?.agent).toBe('patch')
+    expect(mockStoreMoveTask).not.toHaveBeenCalled()
+    expect(auditEvents.some((e) => e.event === 'task.handed_off')).toBe(false)
+  })
+
+  it('an attempt that lost its run never parks, even with no replacement claimed (review P2)', async () => {
+    setColumns({ inProgress: [{ id: 'lost-handoff', title: 'Lost handoff', agent: 'jessica' }] })
+    claimRun({ runId: 'task:lost-handoff:d1', taskId: 'lost-handoff', seq: 1, agent: 'jessica', bootId: 'review', now: 1 })
+    fireTurn('lost-handoff', 'jessica')
+    await turnStarted('jessica')
+
+    expect(supersedeStaleRun('lost-handoff', Date.now())).toMatchObject({ superseded: true })
+    findTask('lost-handoff')!.agent = 'patch'
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+    await settleFor(50, 'a park would have happened during settle; none expected')
+
+    expect(mockStoreMoveTask).not.toHaveBeenCalled()
+  })
+
+  it('an owning attempt still parks when its run is settled by its own settle (baseline for the P2 guard)', async () => {
+    setColumns({ inProgress: [{ id: 'owned-handoff', title: 'Owned handoff', agent: 'jessica' }] })
+    claimRun({ runId: 'task:owned-handoff:d1', taskId: 'owned-handoff', seq: 1, agent: 'jessica', bootId: 'review' })
+    fireTurn('owned-handoff', 'jessica')
+    await turnStarted('jessica')
+    findTask('owned-handoff')!.agent = 'patch'
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+
+    expect(mockStoreMoveTask).toHaveBeenCalledWith('owned-handoff', 'todo', 'inProgress')
+  })
+
   it('parks a task re-assigned to another agent during the turn, logs it, audits it', async () => {
     setColumns({ inProgress: [{ id: 't-handoff', title: 'Triage me', agent: 'jessica' }] })
+    claimRun({ runId: 'task:t-handoff:d1', taskId: 't-handoff', seq: 1, agent: 'jessica', bootId: 'review' })
     fireTurn('t-handoff', 'jessica')
     await turnStarted('jessica')
 
@@ -204,6 +258,7 @@ describe('settle-time hand-off', () => {
 
   it('parks a task handed to a team (agent cleared) during the turn', async () => {
     setColumns({ inProgress: [{ id: 't-team', title: 'Route me', agent: 'jessica' }] })
+    claimRun({ runId: 'task:t-team:d1', taskId: 't-team', seq: 1, agent: 'jessica', bootId: 'review' })
     fireTurn('t-team', 'jessica')
     await turnStarted('jessica')
 

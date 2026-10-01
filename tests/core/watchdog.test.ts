@@ -396,6 +396,23 @@ describe('watchdog', () => {
       expect(mockStoreMoveTask).not.toHaveBeenCalled()
     })
 
+    it('a still-running prior workflow step prevents task recovery after the engine advanced (review P1)', async () => {
+      setWatchdogColumns({ inProgress: [{ id: 'wf-transition', title: 'Workflow transition', agent: 'pixel', workflowId: 'wf', log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }] }] })
+      hookInvokeImpl = async (name) => name === 'workflows.loadInstance'
+        ? { status: 'in_progress' }
+        : name === 'workflows.getActiveAgents' ? [{ agent: 'patch', stepId: 'next' }] : undefined
+      // Step "previous" still holds a fresh running row; the engine already
+      // advanced the workflow to "next", which has not claimed yet.
+      claimRun({ runId: 'wf-old-run', taskId: 'wf-transition', execKey: 'wf-transition:previous', seq: 1, agent: 'pixel', bootId: 'boot-wd', now: Date.now() })
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(getLiveRun('wf-transition')?.status).toBe('running')
+      expect(mockStoreMoveTask).not.toHaveBeenCalled()
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+    })
+
     it('auto-recovers a stranded task (no live run) with stale logs', async () => {
       setWatchdogColumns({
         inProgress: [

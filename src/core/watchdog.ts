@@ -210,9 +210,11 @@ export function start(contentDir: string): void {
           if (task.workflowId) {
             const activeAgents = await hooks().invoke<WorkflowActiveAgent[]>('workflows.getActiveAgents', { taskId: task.id }) ?? []
             const runs = assessWorkflowRuns(task.id, activeAgents)
-            stranded = runs.live.length === 0
-            // Supersede-by-task reaches only runs keyed on THIS task id;
-            // child-keyed steps belong to the child's own board task.
+            // Stranded only when NO execution remains — a previous step's
+            // turn still settling after the engine advanced counts as live
+            // (review P1). Supersede-by-task reaches only runs keyed on THIS
+            // task id; child-keyed steps belong to the child's own board task.
+            stranded = runs.stranded
             if (!stranded) liveRun = getLiveRun(task.id)
           } else {
             liveRun = getLiveRun(task.id)
