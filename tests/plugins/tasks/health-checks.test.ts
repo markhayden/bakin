@@ -220,7 +220,7 @@ describe('checkTaskboard', () => {
 
 describe('checkTaskConsistency', () => {
   it('reports ok when the Bakin task store is available and empty', async () => {
-    const results = await checkTaskConsistency(testDir)
+    const results = await checkTaskConsistency()
     if (results.outcome !== 'observed') throw new Error('expected observations')
     expect(results.observations).toHaveLength(1)
     expect(results.observations[0].status).toBe('healthy')
@@ -228,7 +228,7 @@ describe('checkTaskConsistency', () => {
   })
 
   it('reports ok when no inProgress / done tasks exist', async () => {
-    const results = await checkTaskConsistency(testDir)
+    const results = await checkTaskConsistency()
     if (results.outcome !== 'observed') throw new Error('expected observations')
     expect(results.observations).toHaveLength(1)
     expect(results.observations[0].status).toBe('healthy')
@@ -237,45 +237,31 @@ describe('checkTaskConsistency', () => {
 
   it('flags an in-progress task assigned to an unknown agent', async () => {
     storeBoard.columns.inProgress.push({ id: 't1', title: 'Build something', agent: 'ghost', log: [{}] })
-    // Heartbeat exists so we don't ALSO flag heartbeat
-    mkdirSync(pathJoin(testDir, 'heartbeats'), { recursive: true })
-    writeFileSync(pathJoin(testDir, 'heartbeats', 'ghost.json'), '{}')
 
-    const results = await checkTaskConsistency(testDir)
+    const results = await checkTaskConsistency()
     if (results.outcome !== 'observed') throw new Error('expected observations')
     expect(results.observations.some(r => r.status === 'warning' && r.summary.includes('unknown agent “ghost”'))).toBe(true)
   })
 
-  it('flags an in-progress task with no heartbeat file', async () => {
-    storeBoard.columns.inProgress.push({ id: 't2', title: 'Heartbeatless work', agent: 'patch', log: [{}] })
-    const results = await checkTaskConsistency(testDir)
-    if (results.outcome !== 'observed') throw new Error('expected observations')
-    expect(results.observations.some(r => r.status === 'warning' && r.key === 'heartbeat-missing:t2')).toBe(true)
-  })
-
   it('flags an in-progress task with zero log entries', async () => {
     storeBoard.columns.inProgress.push({ id: 't3', title: 'No logs', agent: 'patch', log: [] })
-    mkdirSync(pathJoin(testDir, 'heartbeats'), { recursive: true })
-    writeFileSync(pathJoin(testDir, 'heartbeats', 'patch.json'), '{}')
-    const results = await checkTaskConsistency(testDir)
+    const results = await checkTaskConsistency()
     if (results.outcome !== 'observed') throw new Error('expected observations')
     expect(results.observations.some(r => r.status === 'warning' && r.key === 'progress-missing:t3')).toBe(true)
   })
 
   it('flags an agent overloaded with > 3 concurrent in-progress tasks', async () => {
-    mkdirSync(pathJoin(testDir, 'heartbeats'), { recursive: true })
-    writeFileSync(pathJoin(testDir, 'heartbeats', 'patch.json'), '{}')
     storeBoard.columns.inProgress.push(...Array.from({ length: 4 }, (_, i) => ({
       id: `t${i}`, title: `Task ${i}`, agent: 'patch', log: [{}],
     })))
-    const results = await checkTaskConsistency(testDir)
+    const results = await checkTaskConsistency()
     if (results.outcome !== 'observed') throw new Error('expected observations')
     expect(results.observations.some(r => r.status === 'warning' && r.key === 'overloaded:patch')).toBe(true)
   })
 
   it('offers an explicit repair for orphaned dependsOn on a done task', async () => {
     storeBoard.columns.done.push({ id: 'd1', title: 'Stale dep', dependsOn: 'old-task' })
-    const results = await checkTaskConsistency(testDir)
+    const results = await checkTaskConsistency()
     if (results.outcome !== 'observed') throw new Error('expected observations')
     const finding = results.observations.find(r => r.key === 'orphaned-dependency:d1')
     expect(finding?.status).toBe('warning')
@@ -284,7 +270,7 @@ describe('checkTaskConsistency', () => {
 
   it('does not clear orphaned dependsOn during diagnostics', async () => {
     storeBoard.columns.done.push({ id: 'd2', title: 'Auto-clear', dependsOn: 'orphan' })
-    const results = await checkTaskConsistency(testDir)
+    const results = await checkTaskConsistency()
     if (results.outcome !== 'observed') throw new Error('expected observations')
     expect(results.observations.some(r => r.key === 'orphaned-dependency:d2')).toBe(true)
     expect(clearedDependencies).toEqual([])

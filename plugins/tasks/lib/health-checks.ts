@@ -1,6 +1,4 @@
 /** Canonical Health checks and repair actions owned by the Tasks plugin. */
-import { existsSync } from 'fs'
-import { join } from 'path'
 import { selectRuntimeMainAgent, type AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import type {
@@ -70,7 +68,6 @@ export function checkTaskboard(): HealthCheckRunInput {
 
 /** Detect task assignments and state that need operator attention. */
 export async function checkTaskConsistency(
-  contentDir: string,
   agentReader?: RuntimeAgentReader,
 ): Promise<HealthCheckRunInput> {
   const observations: HealthObservationInput[] = []
@@ -100,24 +97,6 @@ export async function checkTaskConsistency(
             disposition: 'action_required',
             resources: [taskResource, { kind: 'agent', id: task.agent, label: task.agent }],
             resolution: { key: 'review-task', type: 'navigate', label: 'Review task assignment', href: '/tasks' },
-          },
-        }))
-      }
-
-      const agentId = task.agent ?? 'unassigned'
-      const heartbeatPath = join(contentDir, 'heartbeats', `${task.agent ?? 'unknown'}.json`)
-      if (!existsSync(heartbeatPath)) {
-        observations.push(healthWarning({
-          key: `heartbeat-missing:${task.id}`,
-          summary: `In-progress task “${task.title}” has no heartbeat for “${agentId}”.`,
-          evidence: { taskId: task.id, agentId },
-          incident: {
-            key: `heartbeat-missing:${task.id}`,
-            title: 'A running task has no agent heartbeat',
-            impact: 'Work may be stalled even though the task is still marked in progress.',
-            disposition: 'watch',
-            resources: [taskResource, { kind: 'agent', id: agentId, label: agentId }],
-            resolution: { key: 'review-task', type: 'navigate', label: 'Review running task', href: '/tasks' },
           },
         }))
       }

@@ -1,7 +1,7 @@
 {
   "id": "health",
   "name": "Health",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "bakin": ">=1.0.0",
   "description": "Action-first system health, Search readiness, diagnostics, and repair",
   "contentFiles": [],
