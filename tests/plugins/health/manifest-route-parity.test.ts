@@ -26,7 +26,7 @@ describe('Health manifest parity', () => {
   })
 
   it('aligns version, Search mutation permission, and live settings', () => {
-    expect(healthPlugin.version).toBe('1.4.0')
+    expect(healthPlugin.version).toBe('1.4.1')
     expect(manifest.version).toBe(healthPlugin.version)
     expect(manifest.permissions).toContain('search.write')
     expect(healthPlugin.settingsSchema?.fields.map((field) => field.key)).toEqual(['usageHistoryScanMinutes'])
