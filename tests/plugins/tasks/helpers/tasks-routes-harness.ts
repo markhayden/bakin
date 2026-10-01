@@ -37,7 +37,7 @@ export const ledgerMock = () => ({
     const run = mockLiveRuns[taskId]
     return run ? { ...run, taskId, status: 'running' } : null
   },
-  bumpHeartbeatByTask: () => {},
+  bumpHeartbeatByTaskAgent: () => false,
   listRunsByTask: (taskId: string, limit = 50) => (mockTaskRuns[taskId] ?? []).slice(0, limit),
   // Model-availability evidence (#852) — inert here; covered by
   // tests/core/model-rejections-ledger.test.ts + model-availability-wrapper.test.ts.
