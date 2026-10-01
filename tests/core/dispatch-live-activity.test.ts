@@ -114,7 +114,9 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 import { fireDispatchTurn, awaitDispatchIdle } from '../../src/core/dispatch-turns'
+import { claimRun, getLiveRun } from '../../src/core/execution-ledger'
 import { closeDb } from '../../packages/core/src/storage/db'
+import { waitUntil } from '../helpers/wait'
 
 let tempDir: string
 const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms))
@@ -177,6 +179,37 @@ afterAll(() => {
 })
 
 describe('dispatch live turn activity (ephemeral SSE)', () => {
+  it('stream chunks bump the exact run heartbeat, throttled to one bump per 30s', async () => {
+    const realNow = Date.now
+    const t0 = realNow()
+    setColumns({ inProgress: [{ id: 'hb-stream', title: 'Task hb-stream' }] })
+    expect(claimRun({ runId: 'task:hb-stream:d1', taskId: 'hb-stream', seq: 1, agent: 'jessica', bootId: 'boot-x', now: t0 })).toEqual({ claimed: true })
+    fireTurn('hb-stream')
+    await waitUntil(() => capturedTaps.length > 0, { label: 'send captured the activity tap' })
+    const tap = capturedTaps[0]!
+
+    // Take over the clock only for the chunk assertions — the fire chain
+    // above ran under real time.
+    let clock = t0 + 1_000
+    Date.now = () => clock
+    try {
+      tap({ type: 'status', content: 'thinking' })
+      expect(getLiveRun('hb-stream')?.heartbeatAt).toBe(t0 + 1_000)
+
+      clock = t0 + 5_000 // inside the throttle window: no write
+      tap({ type: 'text', content: 'still going' })
+      expect(getLiveRun('hb-stream')?.heartbeatAt).toBe(t0 + 1_000)
+
+      clock = t0 + 40_000 // past the window: bumps again
+      tap({ type: 'text', content: 'more' })
+      expect(getLiveRun('hb-stream')?.heartbeatAt).toBe(t0 + 40_000)
+    } finally {
+      Date.now = realNow
+      releaseSend('jessica')
+      await awaitDispatchIdle()
+    }
+  })
+
   it('passes onActivity to messaging.send and broadcasts turn-activity with the full shape', async () => {
     setColumns({ inProgress: [{ id: 't-live', title: 'Task t-live' }] })
     fireTurn('t-live')

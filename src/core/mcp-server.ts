@@ -37,6 +37,7 @@ import {
 } from './request-body'
 import { recordUsage } from '@/core/usage'
 import { getAllExecTools, getExecTool, getToolContext } from './exec-tools/registry'
+import { bumpTaskRunHeartbeat } from './task-liveness'
 import {
   describeMcpToolDenial,
   isToolAllowedByPolicy,
@@ -140,6 +141,8 @@ export function registerTools(server: McpServer, getAgent: () => string, verifie
         const activityClass = tool.activityClass ?? 'user'
         const taskId = (params as Record<string, unknown>).taskId as string | undefined
         log.info('Exec tool called', { tool: tool.name, agent, taskId })
+        // A tool call on a task is live activity — bump the agent's run heartbeat (advisory).
+        bumpTaskRunHeartbeat(taskId, agent)
 
         const start = Date.now()
         if (!isToolAllowedByPolicy(policy, tool.name)) {

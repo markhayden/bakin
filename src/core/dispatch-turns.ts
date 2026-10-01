@@ -19,6 +19,7 @@ import { appendAudit } from './audit'
 import { getAppServices } from './app-services-store'
 import { RuntimeError, RuntimeTurnError, type AgentRuntimeAdapter, type ChatChunk, type MessageResult } from '@bakin/core/adapters/runtime'
 import { claimNextRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, findOpenCapIncident, type ClaimNextRunResult } from './execution-ledger'
+import { bumpRunHeartbeat } from './task-liveness'
 import { meterAgentTurn } from './agent-cost'
 import { classifyDispatchWorkClass, resolveTurnModel, type DispatchWorkClass, type ResolvedTurn, type RouteSource, type RoutingConfig, type WorkClass } from './model-routing'
 import { getModelEligibility, resolveCatalogId, type EligibilityReport, type IneligibleReason } from './model-eligibility'
@@ -36,6 +37,9 @@ import { reconcileRejectedDispatch } from './dispatch-session-death'
 import { allocateRunWorkspace, readRunSidecar, removeRunWorkspace, setRunWorkspaceRepo, settleRunWorkspace } from './run-workspace'
 import { addRunWorktree, removeRunWorktree } from './git-worktree'
 import { resolveRepoBinding } from './repo-binding'
+
+/** Stream chunks bump the run heartbeat at most once per window (one ledger write, not one per token). */
+const STREAM_HEARTBEAT_INTERVAL_MS = 30_000
 
 const log = createLogger('dispatch-turns')
 const hooks = () => getHookRegistry()
@@ -826,9 +830,18 @@ export function fireDispatchTurn(opts: {
       // nothing broadcasts. The registry is threadId-keyed, so this lookup
       // is structurally this attempt's own entry: a retry under the same
       // marker can never broadcast a zombie chunk under a stale runId.
+      let lastHeartbeatBumpAt = 0
       const onActivity = (chunk: ChatChunk): void => {
         if (chunk.type === 'done' || chunk.type === 'error') return
         if (!getInFlightTurn(opts.threadId)) return
+        // Streamed output is live activity. Bump the exact run's heartbeat
+        // (the threadId IS the run id), throttled so a chatty stream is one
+        // ledger write per window instead of one per token.
+        const now = Date.now()
+        if (now - lastHeartbeatBumpAt >= STREAM_HEARTBEAT_INTERVAL_MS) {
+          lastHeartbeatBumpAt = now
+          bumpRunHeartbeat(opts.threadId, now)
+        }
         broadcastTurnActivity({
           type: 'turn-activity',
           taskId: opts.task.id,
