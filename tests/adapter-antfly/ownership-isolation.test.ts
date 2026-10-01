@@ -6,7 +6,7 @@
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync, symlinkSync } from 'fs'
 import { tmpdir } from 'os'
-import { dirname, join } from 'path'
+import { dirname, join, relative } from 'path'
 
 const sandbox = mkdtempSync(join(tmpdir(), 'bakin-test-search-ownership-'))
 const savedEnv = {
@@ -123,6 +123,22 @@ function seedForeignUnit(mode: 'launchd' | 'systemd', io: ServiceIo, ownerHome =
 
 describe('#826 service ownership isolation', () => {
   for (const mode of ['launchd', 'systemd'] as const) {
+    it(`${mode}: installing from a relative home remains owned on the next boot`, async () => {
+      activeHome = relative(process.cwd(), activeHome)
+      const { io, commands } = fakeSupervisor(mode)
+      const unitPath = mode === 'launchd' ? launchdPlistPath(io) : systemdUnitPath(io)
+
+      expect((await ensureProvisioned(DEFAULT_SETTINGS, io, { intent: 'install' })).action).toBe('provisioned')
+      const installed = readFileSync(unitPath, 'utf8')
+      commands.length = 0
+      const boot = await ensureProvisioned(DEFAULT_SETTINGS, io)
+
+      expect(boot.action).toBe('unchanged')
+      expect(readFileSync(unitPath, 'utf8')).toBe(installed)
+      expect(commands).toHaveLength(1)
+      expect(commands[0]).toContain(mode === 'launchd' ? 'print' : 'is-active')
+    })
+
     for (const loaded of [true, false]) {
       it(`${mode}: boot preserves a foreign ${loaded ? 'loaded' : 'unloaded'} unit without supervisor calls or new data`, async () => {
         const { io, commands } = fakeSupervisor(mode, loaded)

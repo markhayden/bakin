@@ -156,9 +156,9 @@ export async function installAntflyDependency(
   try {
     const access = getServiceAccess(settings, io)
     if (access.mode === 'guest') return { name: 'antfly', status: 'noop' as const, message: access.detail, durationMs: Date.now() - start }
-    if ((!access.allowed && !access.ownership?.claimable) || access.reason === 'busy') return failed(access.detail)
+    if ((!access.allowed && (!access.ownership?.claimable || (access.reason !== 'unclaimed-home' && !opts.allowServiceClaim))) || access.reason === 'busy') return failed(access.detail)
   } catch (err) { return failed(err) }
-  const intent = { intent: 'install' as const }
+  const intent = { intent: opts.allowServiceClaim ? 'install' as const : 'setup' as const }
   const finish = async () => {
     await startService(settings, io, intent)
     if (!await waitForEngineReady(settings, readyBudgetMs, pollMs)) throw new Error(ENGINE_DEAD_AFTER_START(readyBudgetMs))
@@ -182,6 +182,7 @@ export async function installAntflyDependency(
   if (existing && existingVersion === pin.version) {
     try {
       return await withServiceOperation(settings, io, intent, async () => {
+        if (await antflyBinaryVersion(targetPath) !== pin.version) throw new Error('The shared engine binary changed during installation. Retry bakin install search.')
         await stopService(settings, io, intent)
         await finish()
         return { name: 'antfly', status: 'noop' as const, message: `Antfly v${pin.version} is already installed at ${existing}; service provisioned and running. Restart Bakin if it started with search unavailable.`, durationMs: Date.now() - start }
@@ -283,7 +284,10 @@ export async function installAntflyDependency(
     }
 
     return await withServiceOperation(settings, io, intent, async () => {
-      // Staging is complete. Stop even an unready engine before shared mutations.
+      // Staging did not hold the lock: another home may have installed meanwhile.
+      const previousVersion = existsSync(targetPath) ? await antflyBinaryVersion(targetPath) : null
+      const hadBinary = existsSync(targetPath)
+      // Stop even an unready engine before shared mutations.
       await stopService(settings, io, intent)
       const extractedShare = join(tmpDir, 'share')
       if (existsSync(extractedShare)) {
@@ -303,11 +307,11 @@ export async function installAntflyDependency(
       // reindex regenerate the tables instead of trusting an in-place
       // engine-side format migration ever again.
       let dataCleared = false
-      if (existing && existingVersion !== pin.version) {
+      if (hadBinary && previousVersion !== pin.version) {
         const dataDir = servicePaths().dataDir
         if (existsSync(dataDir)) {
           logger.info('Engine version changed — clearing derived engine data for a clean rebuild', {
-            from: existingVersion ?? 'unknown',
+            from: previousVersion ?? 'unknown',
             to: pin.version,
             dataDir,
           })

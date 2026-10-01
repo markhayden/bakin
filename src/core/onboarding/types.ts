@@ -31,6 +31,8 @@ export interface InstallResult {
 }
 
 export interface OnboardingOptions {
+  /** Explicit service-transfer authority; generic onboarding must leave this false. */
+  allowServiceClaim?: boolean
   /** TTY prompts are allowed. False implies --yes or --json. */
   interactive: boolean
   /** --yes flag. Skip confirmation prompts, auto-approve installs. */

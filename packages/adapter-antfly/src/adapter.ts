@@ -25,15 +25,17 @@ import type {
   TableConfig,
   TransformFn,
 } from '@bakin/core/adapters/search'
+import { SearchEngineUnavailableError } from '@bakin/core/adapters/search/errors'
 import { AntflySearchClient } from './client'
 import { mergeSettings, type AntflySettings } from './defaults'
 import { createEngineStatusProbe } from './engine-status'
-import { detectServiceMode, ensureProvisioned, restartService, startChild, stopChild } from './service'
+import { defaultServiceIo, getServiceAccess, childPid, detectServiceMode, ensureProvisioned, restartService, startService, stopChild, type ServiceIo } from './service'
 
 const log = createLogger('antfly-adapter')
 
 export interface AntflyAdapterOptions {
   settings?: Record<string, unknown>
+  serviceIo?: ServiceIo
 }
 
 export class AntflyAdapter implements SearchAdapter {
@@ -43,33 +45,56 @@ export class AntflyAdapter implements SearchAdapter {
 
   private settings: AntflySettings
   private client: AntflySearchClient
+  private readonly io: ServiceIo
+  private initialized = false
 
   constructor(options: AntflyAdapterOptions = {}) {
     this.settings = mergeSettings(options.settings)
-    this.client = new AntflySearchClient(this.settings)
+    this.io = options.serviceIo ?? defaultServiceIo()
+    this.client = this.createClient()
+    this.engineProbe = createEngineStatusProbe(() => this.settings, this.io)
+  }
+
+  private createClient(): AntflySearchClient {
+    const settings = this.settings
+    const client: AntflySearchClient = new AntflySearchClient(settings, { requestGuard: () => {
+      if (client !== this.client) throw new SearchEngineUnavailableError('Search configuration changed; retry the operation.')
+      if (!settings.enabled) throw new SearchEngineUnavailableError('Search is disabled.')
+      let access: ReturnType<typeof getServiceAccess>
+      try { access = getServiceAccess(settings, this.io) } catch (err) {
+        throw new SearchEngineUnavailableError('Cannot verify search service access.', err)
+      }
+      if (!access.allowed) throw new SearchEngineUnavailableError(access.detail)
+      if (access.mode !== 'guest' && !this.initialized) throw new SearchEngineUnavailableError('Search initialization did not succeed. Repair the service and restart Bakin.')
+      if (access.mode === 'child' && !childPid()) throw new SearchEngineUnavailableError('Search child is not running.')
+    } })
+    return client
   }
 
   async initialize(opts?: AdapterInitOpts): Promise<void> {
-    if (opts?.settings) {
-      this.settings = mergeSettings(opts.settings)
-      this.client = new AntflySearchClient(this.settings)
-    }
+    this.initialized = false
+    if (opts?.settings) this.settings = mergeSettings(opts.settings)
+    this.client = this.createClient()
     if (!this.settings.enabled) return
     try {
-      const mode = detectServiceMode(this.settings)
-      if (mode === 'child') {
-        startChild(this.settings)
-      } else if (mode !== 'guest') {
-        const result = await ensureProvisioned(this.settings)
-        log.info('antfly service ensured', { mode: result.mode, action: result.action })
+      const result = await ensureProvisioned(this.settings, this.io)
+      if (result.action.startsWith('refused-')) {
+        log.warn('Search unavailable for this home', { action: result.action, detail: result.detail })
+        return
       }
+      if (result.mode === 'child') {
+        await startService(this.settings, this.io)
+      }
+      this.initialized = true
+      log.info('antfly service ensured', { mode: result.mode, action: result.action })
     } catch (err) {
       log.error('antfly service provisioning failed — search degrades until repaired', err instanceof Error ? err : undefined)
     }
   }
 
   async shutdown(): Promise<void> {
-    if (detectServiceMode(this.settings) === 'child') stopChild()
+    this.initialized = false
+    if (detectServiceMode(this.settings, this.io) === 'child') stopChild()
   }
 
   available(): Promise<boolean> {
@@ -88,7 +113,7 @@ export class AntflyAdapter implements SearchAdapter {
   // Engine-process introspection for the doctor's burn watchdog. One probe
   // per adapter — it holds the previous CPU sample + log offset, so each
   // call reports the rate/signals since the last one.
-  private engineProbe = createEngineStatusProbe(() => this.settings)
+  private engineProbe: ReturnType<typeof createEngineStatusProbe>
 
   engineStatus() {
     if (!this.settings.enabled) return Promise.resolve(null)
@@ -97,7 +122,7 @@ export class AntflyAdapter implements SearchAdapter {
 
   /** Graceful supervised restart (doctor repair for a wedged engine). */
   restartEngine(): Promise<void> {
-    return restartService(this.settings)
+    return restartService(this.settings, this.io)
   }
 
   tables = {

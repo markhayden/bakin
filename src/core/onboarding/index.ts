@@ -245,7 +245,7 @@ async function runComponent(
 
   try {
     opts.onProgress?.(`Installing ${component.name}`)
-    const install = await component.install(opts)
+    const install = await component.install({ ...opts, allowServiceClaim: false })
     const durationMs = Date.now() - start
     switch (install.status) {
       case 'installed':

@@ -4,7 +4,7 @@
  *
  *   - macOS: a LaunchAgent (`~/Library/LaunchAgents/io.bakin.antfly.plist`,
  *     KeepAlive=true) managed via launchctl bootstrap/kickstart/bootout
- *     (legacy load/unload fallback for older macOS).
+ *     with ownership checked before all lifecycle changes.
  *   - Linux: a systemd user unit (`~/.config/systemd/user/bakin-antfly.service`,
  *     Restart=always) via systemctl --user.
  *   - No service manager (Docker rig, CI, tests): strict attached child —
@@ -22,11 +22,11 @@ import { spawn, type ChildProcess } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, openSync } from 'fs'
 import { homedir, tmpdir } from 'os'
 import { createConnection } from 'net'
-import { dirname, join } from 'path'
+import { dirname, join, resolve } from 'path'
 import { createLogger } from '@bakin/core/logger'
 import { getBakinPaths } from '@bakin/core/content-dir'
 import { atomicWriteText } from '@bakin/core/storage/atomic-write'
-import { evaluateOwnership, type ServiceOwnership, type OwnershipKind } from './service-ownership'
+import { canonicalPath, evaluateOwnership, type ServiceOwnership, type OwnershipKind } from './service-ownership'
 import { withServiceLock, serviceLockBusy } from './service-lock'
 import { antflyBinaryPath, antflyHome, inferenceModelsRoot } from './paths'
 import { modelStructurallyComplete } from './model-pins'
@@ -126,13 +126,13 @@ export interface ServicePaths {
 }
 
 export function servicePaths(): ServicePaths {
-  const bakin = getBakinPaths()
+  const home = canonicalPath(getBakinPaths().home)
   return {
-    binary: antflyBinaryPath(),
-    dataDir: join(bakin.home, 'antfly'),
-    modelsDir: inferenceModelsRoot(),
+    binary: resolve(antflyBinaryPath()),
+    dataDir: join(home, 'antfly'),
+    modelsDir: resolve(inferenceModelsRoot()),
     // Same file the log-tail annotation pipeline (server-logs.ts) reads.
-    logFile: join(bakin.home, 'logs', 'antfly.log'),
+    logFile: join(home, 'logs', 'antfly.log'),
   }
 }
 
@@ -264,7 +264,7 @@ export interface ServiceAccess {
   remediation?: 'install' | 'configure-endpoint' | 'retry'
   unitPath?: string
 }
-export interface ServiceIntent { intent?: 'install' }
+export interface ServiceIntent { intent?: 'install' | 'setup' }
 
 function supervisedMode(io: ServiceIo): 'launchd' | 'systemd' | undefined {
   if (io.env.BAKIN_SEARCH_SERVICE_MODE === 'launchd') return 'launchd'
@@ -285,6 +285,10 @@ export function getServiceAccess(settings: AntflySettings, io: ServiceIo = defau
     home: getBakinPaths().home, mode: supervisor, unitPath,
     tempRoots: io.tempRoots ?? ['/tmp', '/private/tmp', '/var/tmp', io.env.TMPDIR ?? tmpdir()],
   })
+  if (mode === 'child' && supervisor) {
+    const detail = 'A child-mode override cannot manage the native search service. Unset BAKIN_SEARCH_SERVICE_MODE or configure an isolated guest endpoint.'
+    return { mode, unitPath, allowed: false, ownership: { ...ownership, claimable: false }, reason: 'unknown-owner', remediation: 'configure-endpoint', detail }
+  }
   const access: ServiceAccess = {
     mode, ownership, unitPath, allowed: ownership.kind === 'owner',
     detail: ownership.detail,
@@ -306,7 +310,9 @@ function serviceLockPath(access: ServiceAccess): string {
 
 function assertAccess(access: ServiceAccess, opts: ServiceIntent): void {
   if (access.allowed) return
-  if (opts.intent === 'install' && access.ownership?.claimable && access.reason !== 'busy') return
+  if (access.ownership?.claimable && access.reason !== 'busy') {
+    if (opts.intent === 'install' || (opts.intent === 'setup' && access.reason === 'unclaimed-home')) return
+  }
   throw new Error(access.detail)
 }
 
@@ -435,7 +441,12 @@ export async function stopService(settings: AntflySettings, io: ServiceIo = defa
 export async function startService(settings: AntflySettings, io: ServiceIo = defaultServiceIo(), opts: ServiceIntent = {}): Promise<void> {
   return withServiceOperation(settings, io, opts, async () => {
     const mode = detectServiceMode(settings, io)
-    if (mode === 'child') { await assertServicePortsReleased(io); startChild(settings, io); return }
+    if (mode === 'child') {
+      if (childPid()) return
+      await assertServicePortsReleased(io)
+      startChild(settings, io)
+      return
+    }
     const ensured = await ensureProvisioned(settings, io, opts)
     if (ensured.action.startsWith('refused-')) throw new Error(ensured.detail)
   })

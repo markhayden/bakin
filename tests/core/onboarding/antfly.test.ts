@@ -445,3 +445,52 @@ it('guest setup requires no local binary or model installation and refuses reset
   expect(commands).toEqual([])
   expect(existsSync(managedBinary)).toBe(false)
 })
+
+it('native child override refuses installation before changing shared state', async () => {
+  serviceIo.env.BAKIN_SEARCH_SERVICE_MODE = 'child'
+  try {
+    writeBinary(managedBinary, '0.1.1')
+    const result = await installAntflyDependency(optsAutoYes, undefined, makePin())
+    expect(result.status).toBe('failed')
+    expect(fetchCalls).toEqual([])
+    expect(commands).toEqual([])
+    expect(readFileSync(managedBinary, 'utf8')).toContain('0.1.1')
+  } finally {
+    delete serviceIo.env.BAKIN_SEARCH_SERVICE_MODE
+  }
+})
+
+it('rechecks the shared binary after staging before deciding whether indexes need rebuilding', async () => {
+  const marker = join(testDir, 'antfly', 'concurrent-version-data')
+  mockDownloadFetch((url) => {
+    if (url.endsWith('.tar.gz')) {
+      // Another allowed install completes while this caller stages its download.
+      writeBinary(managedBinary, '0.1.1')
+      mkdirSync(join(marker, '..'), { recursive: true })
+      writeFileSync(marker, 'derived from the concurrent version')
+      return new Response(tarballBytes.slice().buffer as ArrayBuffer)
+    }
+    return new Response('ok')
+  })
+  expect((await installAntflyDependency(optsAutoYes, undefined, makePin())).status).toBe('installed')
+  expect(existsSync(marker)).toBe(false)
+})
+
+it('generic setup cannot claim an owner that appeared while its binary was downloading', async () => {
+  let foreignUnit = ''
+  mockDownloadFetch((url) => {
+    if (url.endsWith('.tar.gz')) {
+      const otherPaths = { ...servicePaths(), dataDir: join(testDir, 'other-home', 'antfly') }
+      foreignUnit = renderLaunchdPlist(buildServiceArgv(DEFAULT_SETTINGS, otherPaths, { modelReady: () => false }), otherPaths.logFile)
+      mkdirSync(join(launchdPlistPath(serviceIo), '..'), { recursive: true })
+      writeFileSync(launchdPlistPath(serviceIo), foreignUnit)
+      return new Response(tarballBytes.slice().buffer as ArrayBuffer)
+    }
+    return new Response('ok')
+  })
+  const result = await installAntflyDependency(optsAutoYes, undefined, makePin())
+  expect(result.status).toBe('failed')
+  expect(readFileSync(launchdPlistPath(serviceIo), 'utf8')).toBe(foreignUnit)
+  expect(commands).toEqual([])
+  expect(existsSync(managedBinary)).toBe(false)
+})
