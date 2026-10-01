@@ -169,14 +169,10 @@ function requireTask(identifier: string): BakinTask {
   return task
 }
 
-function getColumnTaskCount(col: ColumnId): number {
-  return getSharedBakinTaskStore().countByColumnSync(col)
-}
-
 function columnPatch(col: ColumnId): BakinTaskPatch {
   const patch: BakinTaskPatch = {
     column: col,
-    order: getColumnTaskCount(col),
+    order: getSharedBakinTaskStore().nextOrderSync(col),
   }
 
   if (col === 'inProgress' || col === 'review' || col === 'done' || col === 'archived') {
@@ -306,7 +302,7 @@ export function createTask(
       dueAt: options?.dueAt,
       source: options?.source,
       column: colId,
-      order: getColumnTaskCount(colId),
+      order: store.nextOrderSync(colId),
     })
 
     const patch: BakinTaskPatch = {}

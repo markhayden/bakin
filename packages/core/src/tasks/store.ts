@@ -166,8 +166,13 @@ export interface SyncBakinTaskStore extends BakinTaskStore {
   addCommentSync(id: string, comment: TaskComment): void
   setDependenciesSync(id: string, deps: TaskDependencyPatch): BakinTask
   markPendingDeleteSync(id: string, pending: boolean): BakinTask
-  /** Index-backed column count (excludes pendingDelete, matching listSync). Zero file reads. */
-  countByColumnSync(column: string): number
+  /**
+   * Index-backed next order value for a column: max(order) + 1, 0 when empty.
+   * Pending-delete rows count (a cancelled delete must not collide). Zero
+   * file reads — orders ride the index. A count-based value collides as soon
+   * as a column has a gap; max+1 never does (tasks.order-integrity, #434).
+   */
+  nextOrderSync(column: string): number
 }
 
 export function createEmptyBakinTask(input: CreateBakinTaskInput, now = new Date().toISOString()): BakinTask {
@@ -205,15 +210,17 @@ interface TaskIndexEntry {
   path: string
   column: string
   pendingDelete: boolean
+  order: number
 }
 
 export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
   const listeners = new Set<(event: BakinTaskStoreEvent) => void>()
 
-  // In-memory index: id → {path, column, pendingDelete} plus column → id buckets.
-  // Holds NO task content — content reads always hit disk, so external content
-  // edits are picked up on read. Self-heals on miss (targeted rescan + repair)
-  // and on externally-deleted files (existence validated before trusting).
+  // In-memory index: id → {path, column, pendingDelete, order} plus column →
+  // id buckets. Holds NO task content beyond those keys — content reads
+  // always hit disk, so external content edits are picked up on read.
+  // Self-heals on miss (targeted rescan + repair) and on externally-deleted
+  // files (existence validated before trusting).
   const idToEntry = new Map<string, TaskIndexEntry>()
   const columnBuckets = new Map<string, Set<string>>()
   let indexBuilt = false
@@ -236,7 +243,7 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
     if (prev && prev.column !== task.column) {
       columnBuckets.get(prev.column)?.delete(task.id)
     }
-    idToEntry.set(task.id, { path, column: task.column, pendingDelete: task.pendingDelete === true })
+    idToEntry.set(task.id, { path, column: task.column, pendingDelete: task.pendingDelete === true, order: typeof task.order === 'number' ? task.order : 0 })
     let bucket = columnBuckets.get(task.column)
     if (!bucket) {
       bucket = new Set()
@@ -346,8 +353,8 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
       if (entry) {
         const task = readFile(entry.path)
         if (task) {
-          // Refresh column/pendingDelete picked up from external content edits.
-          if (task.column !== entry.column || (task.pendingDelete === true) !== entry.pendingDelete) {
+          // Refresh column/pendingDelete/order picked up from external content edits.
+          if (task.column !== entry.column || (task.pendingDelete === true) !== entry.pendingDelete || task.order !== entry.order) {
             indexUpsert(task, entry.path)
           }
           return task
@@ -417,26 +424,26 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
       return sortTasks(tasks)
     },
 
-    countByColumnSync(column) {
+    nextOrderSync(column) {
       ensureIndex()
-      let count = 0
+      let max = -1
       const ghosts: string[] = []
       for (const id of columnBuckets.get(column) ?? []) {
         const entry = idToEntry.get(id)
-        if (!entry || entry.pendingDelete) continue
+        if (!entry) continue
         // Cheap stat (no read/parse) — tolerates externally deleted files.
-        // Intentional divergence from listSync({column}): an external hand-
-        // edit that re-columns a task is only noticed by reads that parse
-        // content (getSync/listSync heal it); a count never re-reads files.
-        // Acceptable: the store is the single writer (spec decision, #434).
+        // An external hand-edit that re-columns or re-orders a task is only
+        // noticed by reads that parse content (getSync/listSync heal it);
+        // this never re-reads files. Acceptable: the store is the single
+        // writer (spec decision, #434).
         if (!existsSync(entry.path)) {
           ghosts.push(id)
           continue
         }
-        count++
+        if (entry.order > max) max = entry.order
       }
       for (const id of ghosts) indexRemove(id)
-      return count
+      return max + 1
     },
 
     updateSync(id, patch) {

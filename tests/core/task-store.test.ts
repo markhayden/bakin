@@ -876,11 +876,66 @@ describe('order-based ordering', () => {
     expect(task.order).toBe(0)
   })
 
-  it('new task appends with order = count', async () => {
+  it('new task appends with order = max + 1', async () => {
     const t1 = await createTask('task-one', 'todo')
     const t2 = await createTask('task-two', 'todo')
     expect(t1.order).toBe(0)
     expect(t2.order).toBe(1)
+  })
+
+  it('a gap left by a delete never produces a duplicate order on the next create', async () => {
+    const t1 = await createTask('keep-1', 'todo')
+    const t2 = await createTask('drop', 'todo')
+    const t3 = await createTask('keep-3', 'todo')
+    expect([t1.order, t2.order, t3.order]).toEqual([0, 1, 2])
+    await deleteTask(t2.id)
+    const t4 = await createTask('after-gap', 'todo')
+    // Count-based assignment would hand out 2 again (two tasks remain) and
+    // collide with keep-3; max+1 hands out 3.
+    expect(t4.order).toBe(3)
+    const orders = readTaskboard().columns.todo.map((t) => t.order)
+    expect(new Set(orders).size).toBe(orders.length)
+  })
+
+  it('a move into a column with a gap never duplicates an existing order', async () => {
+    const a = await createTask('a', 'inProgress')
+    const b = await createTask('b', 'inProgress')
+    const c = await createTask('c', 'inProgress')
+    expect([a.order, b.order, c.order]).toEqual([0, 1, 2])
+    await moveTask(b.id, 'done', 'inProgress', 'human')
+    const d = await createTask('d', 'todo')
+    await moveTask(d.id, 'inProgress', 'todo', 'human')
+    expect(getTask(d.id)?.order).toBe(3)
+    const orders = readTaskboard().columns.inProgress.map((t) => t.order)
+    expect(new Set(orders).size).toBe(orders.length)
+  })
+
+  it('500 scripted creates/moves/deletes leave every column with unique orders', async () => {
+    const columns = ['backlog', 'todo', 'inProgress', 'review', 'done', 'blocked'] as const
+    const ids: string[] = []
+    let seed = 7
+    const next = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed }
+    for (let i = 0; i < 500; i++) {
+      const roll = next() % 10
+      if (roll < 4 || ids.length === 0) {
+        const t = await createTask(`churn-${i}`, columns[next() % columns.length])
+        ids.push(t.id)
+      } else if (roll < 8) {
+        const id = ids[next() % ids.length]
+        const to = columns[next() % columns.length]
+        if (getTaskWithColumn(id)?.column !== to) await moveTask(id, to, undefined, 'human')
+      } else {
+        const idx = next() % ids.length
+        await deleteTask(ids[idx])
+        ids.splice(idx, 1)
+      }
+    }
+    const board = readTaskboard()
+    for (const column of columns) {
+      const orders = board.columns[column].map((t) => t.order)
+      expect(orders.every((o) => typeof o === 'number')).toBe(true)
+      expect(new Set(orders).size).toBe(orders.length)
+    }
   })
 
   it('tasks returned in order (ascending)', async () => {
