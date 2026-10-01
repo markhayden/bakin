@@ -234,6 +234,8 @@ There are 40 direct first-party plugin registration sites after the two approved
 
 Health's local IDs are `content-dir`, `media.sharp` (#889 — image processing; one-click store install repair `media-install-store`), `capabilities`, `github-readiness`, `service`, `runtime`, `session-store`, `channel-approvals`, `channel-aliases`, `restart-recovery`, `execution-safety`, `context.startup-size`, `spend.policy-available`, `usage.agent-burn`, `search`, `search-consistency`, `search-spin`, `search-canary`, `search-engine-burn`, `skill`, `plugin-assets`, `plugin-artifacts`, and `plugin-registry`.
 
+`restart-recovery` raises the `stale-tasks` incident ("In-progress tasks have no live run") from the ledger-only stranded predicate in `src/core/task-liveness.ts` — a task with a live run is never listed, so a repair task running the doctor can no longer flag itself (the 2026-09-28 margo false positive). The tasks plugin's file-based `heartbeat-missing` observation was deleted with it; heartbeat files are Team-page status notes.
+
 Health registers six local repair actions: journal revival, consistency rebuild, spin rebuild, canary restart, engine-burn restart, and runtime skill sync. Other plugin owners register their own actions beside their checks — the spend plugin owns `spend-evidence-refresh-pricing` and `accept-unattributed-history` next to its `budget` check (whose "no limits" state is healthy, never a nag — spec S8).
 
 The Brands `integrity` check uses the same `plugins/brands/lib/integrity.ts` scan as the brand integrity route. It reports unreadable manifests, dangling assets, tasks blocked by missing/draft brands, and stale drafts as structured observations and incidents; no consumer parses its summary text.
