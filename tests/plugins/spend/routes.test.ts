@@ -36,6 +36,11 @@ const incidentResolves: Array<Record<string, unknown>> = []
 // In-memory milestone rows (the real verbs are pinned in tests/core/budget-milestones-ledger.test.ts).
 const milestoneRows: Array<Record<string, unknown> & { id: number; acknowledgedAt: number | null }> = []
 mock.module('../../../src/core/execution-ledger', () => ({
+  // Liveness stubs: the dispatch graph the status route reaches imports these.
+  getLiveRun: () => null,
+  getLiveRunByKey: () => null,
+  bumpHeartbeat: () => {},
+  bumpHeartbeatByTaskAgent: () => false,
   recordMilestoneCrossings: (inputs: Array<Record<string, unknown>>) => inputs.map((input) => {
     const row = { ...input, id: milestoneRows.length + 1, eventId: `evt-${milestoneRows.length + 1}`, coveredBy: null, notifiedAt: null, acknowledgedAt: null }
     milestoneRows.push(row)
