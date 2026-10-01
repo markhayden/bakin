@@ -14,10 +14,11 @@ import { createLogger } from './logger'
 import { appendAudit } from './audit'
 import { clearDispatchMarker, dispatchSingleTask } from './dispatch'
 import { addTaskLog, clearDependency, moveTask, readTaskboard } from './task-store'
+import { isStrandedInProgress } from './task-liveness'
 
 const log = createLogger('continuation')
 
-type DependentTask = { id: string; title: string; agent?: string; dependsOn?: string }
+type DependentTask = { id: string; title: string; agent?: string; workflowId?: string; dependsOn?: string }
 
 export async function checkAndContinueDependents(
   completedTaskId: string,
@@ -48,11 +49,29 @@ export async function checkAndContinueDependents(
   for (const { task, column } of dependents) {
     await clearDependency(task.id)
 
-    // Active work in flight — the agent will see the completion through its
-    // own task context; re-dispatching would double-run the task.
     if (column === 'inProgress') {
-      log.info('Skipping continuation — task already in progress', { id: task.id, title: task.title })
-      continue
+      // The workflow engine owns step flow for its own tasks; a gate-held
+      // instance is legitimately idle without a run.
+      if (task.workflowId) {
+        log.info('Skipping continuation — workflow task is in progress', { id: task.id, title: task.title })
+        continue
+      }
+      // Active work in flight — the agent sees the completion through its
+      // own task context; re-dispatching would double-run the task.
+      if (!isStrandedInProgress({ id: task.id, column: 'inProgress' })) {
+        log.info('Skipping continuation — task holds a live run', { id: task.id, title: task.title })
+        continue
+      }
+      // In progress with NO live run: the parent delegated and its turn
+      // ended, so nobody is executing it (found live on margo — the Daily
+      // Scramble parent idled until watchdog recovery). Re-queue it.
+      try {
+        await moveTask(task.id, 'todo', 'inProgress')
+        await addTaskLog(task.id, 'system', `Dependency "${completedTitle}" completed — no live run, re-queued for dispatch.`)
+      } catch (err) {
+        log.error('Continuation failed to re-queue idle dependent task', err, { id: task.id })
+        continue
+      }
     }
 
     if (column === 'blocked') {
