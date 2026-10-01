@@ -10,8 +10,6 @@
  */
 import type { SessionDeathState } from '../../../src/core/dispatch-types'
 
-export const FIXTURE_CONTENT_DIR = '/fixture/bakin-home'
-
 export const CORRECTIVE_RECOVERY: SessionDeathState = {
   stage: 'corrective',
   deaths: 1,

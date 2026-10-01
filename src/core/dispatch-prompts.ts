@@ -185,7 +185,6 @@ export interface PromptSection {
 export function buildDispatchSections(
   task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
   agentName: string,
-  contentDir: string,
   // Resolved orchestrator id (P2.6): callers resolve via getRuntimeMainAgentId
   // — never a baked 'main' default in the builder.
   mainAgentId: string,
@@ -292,7 +291,6 @@ Tool reference + dependency pattern: "Bakin Execution Tools" in your AGENTS.md.`
 export function buildDispatchMessage(
   task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
   agentName: string,
-  contentDir: string,
   mainAgentId: string,
   lessonBlock = '',
   continuation: DispatchContinuationContext = {},
@@ -301,7 +299,7 @@ export function buildDispatchMessage(
   assetsBlock = '',
   brand?: { brandId: string; block: string },
 ): string {
-  return buildDispatchSections(task, agentName, contentDir, mainAgentId, lessonBlock, continuation, recovery, roster, assetsBlock, brand)
+  return buildDispatchSections(task, agentName, mainAgentId, lessonBlock, continuation, recovery, roster, assetsBlock, brand)
     .map((s) => s.text)
     .join('')
 }

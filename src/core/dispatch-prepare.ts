@@ -111,7 +111,7 @@ export async function prepareRegularDispatch(input: {
     const brand = brandBlock.status === 'ready' ? { brandId: brandBlock.brandId, block: brandBlock.block } : undefined
     const message = recovery?.stage === 'decomposition'
       ? buildDecompositionMessage(task, targetAgent, recovery)
-      : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, continuation, recovery, runtimeRoster, assetsBlock, brand)
+      : buildDispatchMessage(task, targetAgent, mainAgentId, lessonBlock, continuation, recovery, runtimeRoster, assetsBlock, brand)
     const initialLogCount = task.log?.length ?? 0
 
     // Move to inProgress BEFORE the turn fires to eliminate the race where a

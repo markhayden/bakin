@@ -68,7 +68,7 @@ function fakeRuntime(stats: WorkspaceStat[] | null | 'absent') {
   } as never
 }
 
-const DEPS = { contentDir: testDir, mainAgentId: 'main' }
+const DEPS = { mainAgentId: 'main' }
 
 describe('buildAgentContextReport', () => {
   it('measures static dispatch sections via the real builders with chars/4 estimates', async () => {

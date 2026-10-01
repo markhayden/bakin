@@ -19,7 +19,6 @@
  */
 import { createLogger } from './logger'
 import { getSettings } from './settings'
-import { getContentDir } from './content-dir'
 import { buildDispatchSections } from './dispatch-prompts'
 import { buildWorkflowDispatchSections, resolveWorkflowContextBudget } from './dispatch-workflow'
 import { resolveBrandContextBudget } from './dispatch-context-blocks'
@@ -96,7 +95,6 @@ export interface AgentContextReport {
 
 export interface ContextReportDeps {
   runtime: Pick<AgentRuntimeAdapter, 'agents'>
-  contentDir: string
   mainAgentId: string
 }
 
@@ -123,11 +121,10 @@ function totals(sections: SectionEstimate[]): { totalBytes: number; totalApproxT
 export function estimateDispatchSections(
   agentId: string,
   mainAgentId: string,
-  contentDir: string,
 ): { task: SectionEstimate[]; workflow: SectionEstimate[] } {
   const syntheticTask = { id: SYNTHETIC_TASK_ID, title: '', agent: agentId }
   return {
-    task: estimate(buildDispatchSections(syntheticTask, agentId, contentDir, mainAgentId)),
+    task: estimate(buildDispatchSections(syntheticTask, agentId, mainAgentId)),
     workflow: estimate(
       buildWorkflowDispatchSections(syntheticTask, { stepId: 'step', label: '' }, agentId),
     ),
@@ -173,10 +170,9 @@ export interface TaskDispatchEstimate {
 export function estimateMaxTaskDispatchBytes(
   agentId: string,
   mainAgentId: string,
-  contentDir: string,
 ): TaskDispatchEstimate {
   const sections = estimate(
-    buildDispatchSections({ id: SYNTHETIC_TASK_ID, title: '', agent: agentId }, agentId, contentDir, mainAgentId),
+    buildDispatchSections({ id: SYNTHETIC_TASK_ID, title: '', agent: agentId }, agentId, mainAgentId),
   )
   const caps = configuredDynamicCaps().filter((c) => c.appliesTo !== 'workflow')
   const components = [
@@ -238,10 +234,9 @@ export async function buildAgentContextReport(
 ): Promise<AgentContextReport> {
   const runtime =
     deps.runtime ?? (await import('./app-services')).getAppServices().runtime
-  const contentDir = deps.contentDir ?? getContentDir()
   const mainAgentId = deps.mainAgentId ?? (await getRuntimeMainAgentId(runtime as AgentRuntimeAdapter))
 
-  const sections = estimateDispatchSections(agentId, mainAgentId, contentDir)
+  const sections = estimateDispatchSections(agentId, mainAgentId)
   const dynamicCaps = configuredDynamicCaps()
   const task = { sections: sections.task, ...totals(sections.task) }
 
@@ -253,7 +248,7 @@ export async function buildAgentContextReport(
       task,
       workflow: { sections: sections.workflow, ...totals(sections.workflow) },
       dynamicCaps,
-      estimatedMaxTaskBytes: estimateMaxTaskDispatchBytes(agentId, mainAgentId, contentDir).totalBytes,
+      estimatedMaxTaskBytes: estimateMaxTaskDispatchBytes(agentId, mainAgentId).totalBytes,
     },
     workspace: await collectWorkspace(runtime, agentId),
     observed: { label: OBSERVED_LABEL, runs: collectObserved(agentId) },

@@ -105,26 +105,26 @@ describe('buildDispatchMessage — precomputed assets block', () => {
 
   it('includes the block for agent-assigned tasks', () => {
     const task = { id: 'task-1', title: 'Design banner', agent: 'pixel' }
-    const msg = buildDispatchMessage(task, 'pixel', testDir, 'main', '', {}, undefined, [], assetsBlock)
+    const msg = buildDispatchMessage(task, 'pixel', 'main', '', {}, undefined, [], assetsBlock)
     expect(msg).toContain('## Attached Assets')
     expect(msg).toContain('2026-04-reference-aaaa1111')
   })
 
   it('includes the block in triage messages (no agent)', () => {
     const task = { id: 'task-1', title: 'Triage with asset' }
-    const msg = buildDispatchMessage(task, 'main', testDir, 'main', '', {}, undefined, [], assetsBlock)
+    const msg = buildDispatchMessage(task, 'main', 'main', '', {}, undefined, [], assetsBlock)
     expect(msg).toContain('## Attached Assets')
   })
 
   it('includes the block for main-assigned tasks', () => {
     const task = { id: 'task-1', title: 'My task', agent: 'main' }
-    const msg = buildDispatchMessage(task, 'main', testDir, 'main', '', {}, undefined, [], assetsBlock)
+    const msg = buildDispatchMessage(task, 'main', 'main', '', {}, undefined, [], assetsBlock)
     expect(msg).toContain('## Attached Assets')
   })
 
   it('omits the block when none is provided', () => {
     const task = { id: 'task-no-assets', title: 'Simple task', agent: 'pixel' }
-    const msg = buildDispatchMessage(task, 'pixel', testDir, 'main')
+    const msg = buildDispatchMessage(task, 'pixel', 'main')
     expect(msg).not.toContain('## Attached Assets')
   })
 
@@ -133,7 +133,6 @@ describe('buildDispatchMessage — precomputed assets block', () => {
     const msg = buildDispatchMessage(
       task,
       'pixel',
-      testDir,
       'main',
       '## Relevant Package Lessons\n\nSelected lesson body.',
     )

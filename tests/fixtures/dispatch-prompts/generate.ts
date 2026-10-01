@@ -13,7 +13,6 @@ import { join } from 'path'
 import { buildDispatchMessage } from '../../../src/core/dispatch-prompts'
 import { buildWorkflowDispatchMessage } from '../../../src/core/dispatch-workflow'
 import {
-  FIXTURE_CONTENT_DIR,
   MAIN_AGENT,
   SPECIALIST_BRANDED,
   SPECIALIST_FULL,
@@ -30,13 +29,12 @@ const out = (name: string, content: string) => {
   console.log(`${name}.txt ${content.length} bytes`)
 }
 
-out('specialist-plain', buildDispatchMessage(SPECIALIST_PLAIN.task, SPECIALIST_PLAIN.agentName, FIXTURE_CONTENT_DIR, 'main'))
+out('specialist-plain', buildDispatchMessage(SPECIALIST_PLAIN.task, SPECIALIST_PLAIN.agentName, 'main'))
 out(
   'specialist-full',
   buildDispatchMessage(
     SPECIALIST_FULL.task,
     SPECIALIST_FULL.agentName,
-    FIXTURE_CONTENT_DIR,
     SPECIALIST_FULL.mainAgentId,
     SPECIALIST_FULL.lessonBlock,
     SPECIALIST_FULL.continuation,
@@ -47,9 +45,9 @@ out(
 )
 out(
   'triage',
-  buildDispatchMessage(TRIAGE.task, TRIAGE.agentName, FIXTURE_CONTENT_DIR, 'main', '', {}, undefined, [...TRIAGE.roster]),
+  buildDispatchMessage(TRIAGE.task, TRIAGE.agentName, 'main', '', {}, undefined, [...TRIAGE.roster]),
 )
-out('main-agent', buildDispatchMessage(MAIN_AGENT.task, MAIN_AGENT.agentName, FIXTURE_CONTENT_DIR, 'main'))
+out('main-agent', buildDispatchMessage(MAIN_AGENT.task, MAIN_AGENT.agentName, 'main'))
 out(
   'workflow-full',
   buildWorkflowDispatchMessage(
@@ -71,7 +69,6 @@ out(
   buildDispatchMessage(
     SPECIALIST_BRANDED.task,
     SPECIALIST_BRANDED.agentName,
-    FIXTURE_CONTENT_DIR,
     'main', '', {}, undefined, [], '',
     SPECIALIST_BRANDED.brand,
   ),
@@ -81,7 +78,6 @@ out(
   buildDispatchMessage(
     TRIAGE_BRANDED.task,
     TRIAGE_BRANDED.agentName,
-    FIXTURE_CONTENT_DIR,
     'main', '', {}, undefined, [...TRIAGE_BRANDED.roster], '',
     TRIAGE_BRANDED.brand,
   ),
