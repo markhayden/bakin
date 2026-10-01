@@ -1,17 +1,16 @@
 /**
- * Restart recovery — one-shot boot repair for orphaned in-progress tasks.
+ * Restart recovery — one-shot boot repair for stranded in-progress tasks.
  *
- * The runtime adapter owns live execution. Bakin owns task state. On server
- * restart, any task still marked inProgress but whose active agent heartbeat is
- * missing/stale can be returned to todo so normal dispatch can pick it up.
+ * The runtime adapter owns live execution. Bakin owns task state. The
+ * execution ledger is the only liveness authority (spec D3): the boot sweep
+ * marks every prior-boot run lost first, so any task still in progress with
+ * no running row is stranded and can be returned to todo for re-dispatch.
  */
-import { existsSync, readFileSync } from 'fs'
-import { join } from 'path'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
-import { isStale } from '../lib/format'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
+import { assessWorkflowRuns, isStrandedInProgress, type WorkflowActiveAgent } from './task-liveness'
 import {
   addTaskLog,
   blockTask,
@@ -22,18 +21,17 @@ import {
 const log = createLogger('restart-recovery')
 const hooks = () => getHookRegistry()
 
-const HEARTBEAT_STALE_MS = 15 * 60 * 1000
 const RESTART_RECOVERY_PREFIX = 'Restart recovery:'
 const WATCHDOG_RECOVERY_PREFIX = 'Auto-recovered:'
 
 type RecoveryAction = 'recover' | 'block' | 'manual'
 
 type RecoveryReason =
-  | 'plain-agent-stale'
-  | 'workflow-agent-stale'
+  | 'no-live-run'
+  | 'workflow-no-live-run'
   | 'workflow-instance-missing'
   | 'workflow-no-active-agents'
-  | 'workflow-partial-agent-stale'
+  | 'workflow-partial-live-run'
   | 'workflow-not-running'
 
 type RecoveryTask = {
@@ -48,19 +46,15 @@ type WorkflowInstanceLike = {
   status?: string
 }
 
-type WorkflowAgent = {
-  agent: string
-  stepId?: string
-  effectiveTaskId?: string
-}
-
 export interface RestartRecoveryCandidate {
   id: string
   title: string
   agent?: string
   workflowId?: string
+  /** Agents the task (or its active workflow steps) is assigned to. */
   effectiveAgents: string[]
-  staleAgents: string[]
+  /** Exec keys the ledger holds no running row for (`taskId` or `taskId:stepId`). */
+  missingRuns: string[]
   recoveryCount: number
   reason: RecoveryReason
   action: RecoveryAction
@@ -71,21 +65,6 @@ export interface RestartRecoveryResult {
   blocked: number
   skipped: number
   candidates: RestartRecoveryCandidate[]
-}
-
-function isAgentHeartbeatStale(contentDir: string, agent: string | undefined): boolean {
-  if (!agent) return true
-
-  const heartbeatPath = join(contentDir, 'heartbeats', `${agent}.json`)
-  try {
-    if (!existsSync(heartbeatPath)) return true
-    const data = JSON.parse(readFileSync(heartbeatPath, 'utf-8'))
-    const ts = data.timestamp || data.ts
-    if (!ts) return true
-    return isStale(ts, HEARTBEAT_STALE_MS)
-  } catch {
-    return true
-  }
 }
 
 function countRecoveries(task: RecoveryTask): number {
@@ -129,7 +108,7 @@ async function assessWorkflowTask(
   if (!instance) {
     return withActionForRecoveryLimit(task, {
       effectiveAgents: uniq([task.agent]),
-      staleAgents: uniq([task.agent]),
+      missingRuns: [task.id],
       reason: 'workflow-instance-missing',
     })
   }
@@ -145,54 +124,55 @@ async function assessWorkflowTask(
       agent: task.agent,
       workflowId: task.workflowId,
       effectiveAgents: [],
-      staleAgents: [],
+      missingRuns: [],
       recoveryCount,
       reason: 'workflow-not-running',
       action: 'manual',
     }
   }
 
-  const activeAgents = await hooks().invoke<WorkflowAgent[]>('workflows.getActiveAgents', {
+  const activeAgents = await hooks().invoke<WorkflowActiveAgent[]>('workflows.getActiveAgents', {
     taskId: task.id,
     contentDir,
   }) ?? []
   const effectiveAgents = uniq(activeAgents.map((entry) => entry.agent))
 
-  if (effectiveAgents.length === 0) {
+  if (activeAgents.length === 0) {
     return {
       id: task.id,
       title: task.title,
       agent: task.agent,
       workflowId: task.workflowId,
       effectiveAgents: [],
-      staleAgents: [],
+      missingRuns: [],
       recoveryCount,
       reason: 'workflow-no-active-agents',
       action: 'manual',
     }
   }
 
-  const staleAgents = effectiveAgents.filter((agent) => isAgentHeartbeatStale(contentDir, agent))
-  if (staleAgents.length === 0) return null
+  // Steps claim runs keyed by their (possibly nested-child) task id + step id.
+  const runs = assessWorkflowRuns(task.id, activeAgents)
+  if (runs.missing.length === 0) return null
 
-  if (staleAgents.length !== effectiveAgents.length) {
+  if (runs.live.length > 0) {
     return {
       id: task.id,
       title: task.title,
       agent: task.agent,
       workflowId: task.workflowId,
       effectiveAgents,
-      staleAgents,
+      missingRuns: runs.missing,
       recoveryCount,
-      reason: 'workflow-partial-agent-stale',
+      reason: 'workflow-partial-live-run',
       action: 'manual',
     }
   }
 
   return withActionForRecoveryLimit(task, {
     effectiveAgents,
-    staleAgents,
-    reason: 'workflow-agent-stale',
+    missingRuns: runs.missing,
+    reason: 'workflow-no-live-run',
   })
 }
 
@@ -201,12 +181,12 @@ async function assessTask(task: RecoveryTask, contentDir: string): Promise<Resta
     return assessWorkflowTask(task, contentDir)
   }
 
-  if (!isAgentHeartbeatStale(contentDir, task.agent)) return null
+  if (!isStrandedInProgress({ id: task.id, column: 'inProgress' })) return null
 
   return withActionForRecoveryLimit(task, {
     effectiveAgents: uniq([task.agent]),
-    staleAgents: uniq([task.agent]),
-    reason: 'plain-agent-stale',
+    missingRuns: [task.id],
+    reason: 'no-live-run',
   })
 }
 
@@ -256,7 +236,7 @@ export async function runRestartRecovery(contentDir: string): Promise<RestartRec
         await addTaskLog(
           candidate.id,
           'system',
-          `Manual recovery hold: ${candidate.reason} (stale: ${candidate.staleAgents.join(', ') || 'unknown'}). Left in progress for manual attention; the watchdog will not auto-recover while this is the latest log entry.`,
+          `Manual recovery hold: ${candidate.reason} (no live run: ${candidate.missingRuns.join(', ') || 'unknown'}). Left in progress for manual attention; the watchdog will not auto-recover while this is the latest log entry.`,
           { restartRecovery: 'manual' },
         )
       } catch (err) {
@@ -270,7 +250,7 @@ export async function runRestartRecovery(contentDir: string): Promise<RestartRec
       if (candidate.action === 'block') {
         await blockTask(
           candidate.id,
-          `Restart recovery limit reached (${candidate.recoveryCount} attempts). Active agent heartbeat is missing or stale.`,
+          `Restart recovery limit reached (${candidate.recoveryCount} attempts). No live run in the execution ledger.`,
         )
         await addTaskLog(
           candidate.id,
@@ -297,7 +277,7 @@ export async function runRestartRecovery(contentDir: string): Promise<RestartRec
       await addTaskLog(
         candidate.id,
         'system',
-        `${RESTART_RECOVERY_PREFIX} inactive agent heartbeat after server restart; returned to Todo for re-dispatch.`,
+        `${RESTART_RECOVERY_PREFIX} no live run after server restart; returned to Todo for re-dispatch.`,
       )
       await moveTask(candidate.id, 'todo', 'inProgress')
       appendAudit(contentDir, 'task.restart_recovered', 'system', {
