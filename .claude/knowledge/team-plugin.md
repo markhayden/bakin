@@ -274,7 +274,7 @@ Layout uses `min-h-[calc(100vh-260px)]` so the markdown surface fills the viewpo
 
 There are *two* heartbeat surfaces in the codebase that should not be confused:
 
-- `~/.bakin/heartbeats/<id>.json` — structured status JSON written by the `bakin_exec_heartbeat` MCP tool. Used by the watchdog and online-status detection. Not surfaced in the UI.
+- `~/.bakin/heartbeats/<id>.json` — structured status JSON written by the `bakin_exec_heartbeat` MCP tool. A Team-page status note (last activity) ONLY: liveness for the watchdog, restart recovery and the `restart-recovery` health check comes from the execution ledger (`src/core/task-liveness.ts`, spec D3, 2026-10-01). Not surfaced in the UI beyond status.
 - `<workspace>/HEARTBEAT.md` — markdown narrative the agent maintains for human consumption. This is what the Heartbeat tab shows.
 
 ### Active Context: Latest Session Transcript
