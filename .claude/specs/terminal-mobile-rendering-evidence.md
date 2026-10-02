@@ -20,11 +20,11 @@ Both repositories use `feat/terminal-mobile-rendering`.
 
 | Checkpoint | Repository / commit | Scope |
 | --- | --- | --- |
-| C0 | Bakin `a482c5bf6` | Approved spec/plan |
-| C0a | Bakin `f9f06ac18` | Six audited compatibility metadata fields |
+| C0 | Bakin `341995578` | Approved spec/plan |
+| C0a | Bakin `f6d63f119` | Six audited compatibility metadata fields |
 | C1 | Bits `c894a9b` | WebGL lifecycle, dependency, renderer tests |
-| C2 | Bakin `07ac503cb` | Shared workspace contract and stories |
-| C2 visuals | Bakin `8e8a8c73f` | Four approved visual baselines |
+| C2 | Bakin `a3bf76a2a` | Shared workspace contract and stories |
+| C2 visuals | Bakin `82e12d375` | Four approved visual baselines |
 | C3 encoding | Bits `06ef8bf` | Pure key protocol and tests |
 | C3 adoption | Bits `e6063d9` | Mobile controls and input integration |
 | C4 | Bakin — this evidence commit | Evidence and cross-repository guidance |
@@ -252,3 +252,16 @@ was changed as part of these fixes. The canonical centered review captures are
 are review attachments, not adopted baselines. Local logs: `/private/tmp/terminal-fixes-*`,
 `/private/tmp/terminal-header-{red,green}.log`, and
 `/private/tmp/terminal-dpr-{red,green}.log`.
+
+### Updated-main full gate
+
+The Bakin branch was rebased onto `eb6cbebd2`, including the upstream spend-test
+fixture correction. The full conformance command now passes quick checks, lint,
+stylesheet build, **10,234 repository tests (19 skipped, zero failures)**, vendor
+build, core-plugin build, and host-shell build. It stops at the unchanged payload
+ratchet. Current measurements include Terminal **689,867 B**, SDK shared chunks
+**945,993 B**, and patterns reachable **622,444 B**. These supersede the earlier
+pre-fix measurements for payload review; no ceiling was raised. Subsequent full
+stages did not run in this invocation. Focused browser/story/installed-package
+verification above passed; the earlier complete matrices remain historical
+evidence. Full log: `/private/tmp/terminal-fixes-full.log`.
