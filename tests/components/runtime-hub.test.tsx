@@ -213,7 +213,15 @@ describe('RuntimesTab', () => {
             unmappedModels: [], preserved: [{ agentId: 'scout', sourceModel: 'openai/gpt-5.5-mini' }], failed: [],
           },
           workspaces: { carried: [{ agentId: 'main', files: 3, bytes: 100 }], skills: [], skippedExisting: [], failed: [] },
-          cron: { adopted: ['daily-report'], skipped: [], failed: [] },
+          cron: {
+            adopted: ['daily-report'], skipped: [],
+            refused: [{ jobId: 'dream', name: 'dream', reason: 'not a task prompt — a schedule needs a prompt an agent can act on' }],
+            failed: [],
+            listing: [
+              { jobId: 'daily-report', name: 'Daily report', outcome: 'adopt', commandPreview: 'Post the daily report' },
+              { jobId: 'dream', name: 'dream', outcome: 'refuse', commandPreview: '__openclaw_memory_core_short_term_promotion_dream__', reason: 'not a task prompt — a schedule needs a prompt an agent can act on' },
+            ],
+          },
           cantCarry: [{ concern: 'sessions', detail: 'runtime session context resets' }],
           credentials: { llmProviders: [] }, sync: null,
         }), { status: 200 })
@@ -244,6 +252,13 @@ describe('RuntimesTab', () => {
     // Summary card + attention card content
     expect(screen.getByText('Preview: pi → openclaw')).toBeTruthy()
     expect(screen.getByText(/would be adopted/)).toBeTruthy()
+    // Refusals are first-class: a tile, an attention line, and a per-job listing with a status per row.
+    expect(screen.getByText('cron jobs refused')).toBeTruthy()
+    expect(screen.getByText(/cron dream: refused/)).toBeTruthy()
+    const listing = screen.getByTestId('switch-cron-listing')
+    expect(within(listing).getByText('Adopted')).toBeTruthy()
+    expect(within(listing).getByText('Refused')).toBeTruthy()
+    expect(within(listing).getByText('__openclaw_memory_core_short_term_promotion_dream__')).toBeTruthy()
     expect(screen.getByText(/subagent model 'openai\/gpt-5.5-mini' preserved/)).toBeTruthy()
     expect(screen.getByText(/no model providers configured/)).toBeTruthy()
     expect(screen.getByText('Stays behind')).toBeTruthy()

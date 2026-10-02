@@ -77,6 +77,9 @@ function ProgressSteps({ steps }: { steps: SwitchStepRow[] }) {
   )
 }
 
+const CRON_OUTCOME_TONE = { adopt: 'success', skip: 'neutral', refuse: 'attention', failed: 'danger' } as const
+const CRON_OUTCOME_LABEL = { adopt: 'Adopted', skip: 'Already Bakin', refuse: 'Refused', failed: 'Failed' } as const
+
 function ResultCards({ result, onProceed, busy = false }: { result: SwitchResultPayload; onProceed?: () => void; busy?: boolean }) {
   const verb = result.dryRun ? 'Would carry' : 'Carried'
   const attention: string[] = []
@@ -92,6 +95,7 @@ function ResultCards({ result, onProceed, busy = false }: { result: SwitchResult
   }
   for (const f of result.workspaces?.failed ?? []) attention.push(`${f.agentId} (${f.path}): ${f.error}`)
   for (const f of result.cron?.failed ?? []) attention.push(`cron ${f.jobId}: ${f.error}`)
+  for (const r of result.cron?.refused ?? []) attention.push(`cron ${r.name}: refused — ${r.reason}; it stays native`)
   if (result.credentials && result.credentials.llmProviders.length === 0) {
     attention.push(`${result.to} has no model providers configured — carried agents cannot run turns until you log in on the target.`)
   }
@@ -133,7 +137,24 @@ function ResultCards({ result, onProceed, busy = false }: { result: SwitchResult
                 <StatTile label={`already on ${result.to}`} value={result.roster?.existing.length ?? 0} />
                 <StatTile label={`files + skills ${verb.toLowerCase()}`} value={workspaceFiles + workspaceSkills} />
                 <StatTile label={`cron jobs ${result.dryRun ? 'would be adopted' : 'adopted'}`} value={result.cron ? result.cron.adopted.length : '—'} />
+                <StatTile label="cron jobs refused" value={result.cron ? result.cron.refused.length : '—'} />
               </StatGroup>
+              {result.cron && result.cron.listing.length > 0 && (
+                <DisclosurePanel summary="Cron jobs" summaryMeta={`${result.cron.listing.length} in the source runtime`} data-testid="switch-cron-listing">
+                  <ul className="m-0 grid list-none gap-bakin-2 p-0">
+                    {result.cron.listing.map((row) => (
+                      <li key={row.jobId} className="min-w-0">
+                        <Inline gap="dense" align="center" wrap>
+                          <StatusBadge tone={CRON_OUTCOME_TONE[row.outcome]} variant="solid" size="xs">{CRON_OUTCOME_LABEL[row.outcome]}</StatusBadge>
+                          <Text size="body" className="min-w-0 break-words">{row.name}</Text>
+                          {row.commandPreview ? <Text size="meta" tone="muted" mono className="min-w-0 break-all">{row.commandPreview}</Text> : null}
+                        </Inline>
+                        {row.reason ? <Text size="meta" tone="muted" as="p" className="min-w-0 break-words">{row.reason}</Text> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </DisclosurePanel>
+              )}
               {result.dryRun && onProceed && (
                 <>
                   <Separator />
