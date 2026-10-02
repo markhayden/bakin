@@ -146,7 +146,7 @@ const mockRepairApply = {
   }],
   affectedCheckIds: ['tasks.taskboard'],
   verifiedReportId: freshReport.id,
-  verifiedIncidentIds: [],
+  remainingIncidentIds: [],
   report: freshReport,
 }
 const planDoctorRepairMock = mock(async () => mockRepairPlan)

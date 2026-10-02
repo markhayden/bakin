@@ -78,7 +78,7 @@ const applied = {
   }],
   affectedCheckIds: ['team.agent-sync'],
   verifiedReportId: 'health-report-2',
-  verifiedIncidentIds: [],
+  remainingIncidentIds: [],
   report: healthyReport,
 }
 

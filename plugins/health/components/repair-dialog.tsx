@@ -93,7 +93,7 @@ export function RepairDialog({
     const failed = result.results.filter((item) => item.status === 'failed').length
     setAnnouncement(failed > 0
       ? `${failed} repair${failed === 1 ? '' : 's'} failed. Verification completed.`
-      : result.verifiedIncidentIds.length === 0
+      : result.remainingIncidentIds.length === 0
         ? 'Repairs applied and the selected issue no longer appears in fresh evidence.'
         : 'Repairs applied, but verification found that the issue still needs attention.')
     onApplied?.()
@@ -195,12 +195,12 @@ export function RepairDialog({
                 <div><p className="font-bakin-typography-weight-medium capitalize">{item.status}</p><p className="text-bakin-text-muted">{item.message}</p></div>
               </div>
             ))}
-            <Alert tone={repair.result.verifiedIncidentIds.length === 0 ? 'success' : 'attention'}>
+            <Alert tone={repair.result.remainingIncidentIds.length === 0 ? 'success' : 'attention'}>
               <AlertTitle>Verification</AlertTitle>
               <AlertDescription>
-                {repair.result.verifiedIncidentIds.length === 0
+                {repair.result.remainingIncidentIds.length === 0
                   ? 'Fresh checks no longer show the selected issue.'
-                  : `The repair ran, but ${repair.result.verifiedIncidentIds.length} related incident${repair.result.verifiedIncidentIds.length === 1 ? '' : 's'} remain.`}
+                  : `The repair ran, but ${repair.result.remainingIncidentIds.length} related incident${repair.result.remainingIncidentIds.length === 1 ? '' : 's'} remain.`}
               </AlertDescription>
             </Alert>
           </div>

@@ -86,7 +86,7 @@ const repairApply = {
   }],
   affectedCheckIds: ['tasks.taskboard'],
   verifiedReportId: repairedReport.id,
-  verifiedIncidentIds: [],
+  remainingIncidentIds: [],
   report: repairedReport,
 }
 

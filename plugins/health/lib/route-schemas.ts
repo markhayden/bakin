@@ -461,7 +461,7 @@ export const healthRepairApplyReportSchema = z.object({
   results: z.array(healthRepairApplyResultSchema),
   affectedCheckIds: z.array(nonEmptyString),
   verifiedReportId: nonEmptyString,
-  verifiedIncidentIds: z.array(nonEmptyString),
+  remainingIncidentIds: z.array(nonEmptyString),
   report: healthReportSchema,
 }).strict()
 

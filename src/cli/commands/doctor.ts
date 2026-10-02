@@ -29,7 +29,7 @@ interface CliDoctorRepairApply {
   results: HealthRepairApplyResult[]
   affectedCheckIds: string[]
   verifiedReportId: string
-  verifiedIncidentIds: string[]
+  remainingIncidentIds: string[]
   report: HealthReport
 }
 
@@ -447,7 +447,7 @@ function printDoctorRepairApply(report: CliDoctorRepairApply): void {
   const skipped = report.results.filter(result => result.status === 'skipped').length
   const failed = report.results.filter(result => result.status === 'failed').length
   console.log(`\n${applied} applied, ${skipped} skipped, ${failed} failed`)
-  console.log(`${report.verifiedIncidentIds.length} selected incident(s) remain after verification`)
+  console.log(`${report.remainingIncidentIds.length} selected incident(s) remain after verification`)
 }
 
 function printDoctorDelegatePreview(incidents: readonly HealthIncident[]): void {

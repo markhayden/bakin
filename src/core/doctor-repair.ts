@@ -48,7 +48,7 @@ export interface DoctorRepairApplyReport {
   results: HealthRepairApplyResult[]
   affectedCheckIds: string[]
   verifiedReportId: string
-  verifiedIncidentIds: string[]
+  remainingIncidentIds: string[]
   report: HealthReport
 }
 
@@ -246,7 +246,7 @@ export async function applyDoctorRepair(options: DoctorRepairApplyOptions): Prom
     .map((observation) => observation.checkId)
   const affectedCheckIds = [...new Set([...inferredCheckIds, ...results.flatMap((result) => result.affectedCheckIds)])].sort()
   const report = await runTargetedDiagnostics(affectedCheckIds)
-  const verifiedIncidentIds = report.incidents
+  const remainingIncidentIds = report.incidents
     .filter((incident) => incident.observationIds.some((id) => selectedObservationIds.has(id)))
     .map((incident) => incident.id)
     .sort()
@@ -262,7 +262,7 @@ export async function applyDoctorRepair(options: DoctorRepairApplyOptions): Prom
     planId: options.planId,
     reportId: report.id,
     affectedCheckIds,
-    remainingIncidentIds: verifiedIncidentIds,
+    remainingIncidentIds,
   })
 
   return {
@@ -271,7 +271,7 @@ export async function applyDoctorRepair(options: DoctorRepairApplyOptions): Prom
     results,
     affectedCheckIds,
     verifiedReportId: report.id,
-    verifiedIncidentIds,
+    remainingIncidentIds,
     report,
   }
 }

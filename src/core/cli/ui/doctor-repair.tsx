@@ -29,7 +29,7 @@ export interface DoctorRepairApplyData {
   results: HealthRepairApplyResult[]
   affectedCheckIds: string[]
   verifiedReportId: string
-  verifiedIncidentIds: string[]
+  remainingIncidentIds: string[]
   report: HealthReport
 }
 
@@ -211,8 +211,8 @@ function applySummary(report: DoctorRepairApplyData): SummaryItem[] {
     { label: 'failed', value: failed, status: failed > 0 ? 'fail' : 'ok' },
     {
       label: 'remaining',
-      value: report.verifiedIncidentIds.length,
-      status: report.verifiedIncidentIds.length > 0 ? 'warn' : 'ok',
+      value: report.remainingIncidentIds.length,
+      status: report.remainingIncidentIds.length > 0 ? 'warn' : 'ok',
     },
   ]
 }
@@ -227,7 +227,7 @@ function resultRows(results: readonly HealthRepairApplyResult[]): FindingRow[] {
 }
 
 function verificationRows(report: DoctorRepairApplyData): FindingRow[] {
-  if (report.verifiedIncidentIds.length === 0) {
+  if (report.remainingIncidentIds.length === 0) {
     return [{
       status: 'done',
       label: report.verifiedReportId,
@@ -235,7 +235,7 @@ function verificationRows(report: DoctorRepairApplyData): FindingRow[] {
     }]
   }
   const byId = new Map(report.report.incidents.map(incident => [incident.id, incident]))
-  return report.verifiedIncidentIds.map((id) => {
+  return report.remainingIncidentIds.map((id) => {
     const incident = byId.get(id)
     return incident
       ? incidentRows([incident])[0]!
