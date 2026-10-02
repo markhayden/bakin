@@ -58,8 +58,30 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       description: 'Runtime channel ID for watchdog alerts, MCP/REST outage alerts, and gate approval reminders. Leave blank for in-app alerts only.',
       default: '',
     },
-    // Gate approval alerts are owned by the workflows plugin
-    // (approvalChannelAlerts in its plugin settings), not by system settings.
+    // ── Approvals (spec D6–D8) ────────────────────────────────────────
+    // ONE primitive behind workflow gates and Health repairs; the channel
+    // rendering is opt-in. Moved out of the workflows plugin settings.
+    {
+      key: 'approvals.channelAlerts',
+      type: 'boolean',
+      label: 'Approval cards on the runtime channel',
+      description: 'Render every pending approval (workflow gates, Health repairs) as a card with buttons on the runtime channel below. Decisions from the card and from the board resolve the same record. Off: approvals live on the task board only.',
+      default: false,
+    },
+    {
+      key: 'approvals.channel',
+      type: 'string',
+      label: 'Approval channel',
+      description: 'Runtime channel id, or a notifications.channelAliases alias, that receives approval cards. Default general.',
+      default: 'general',
+    },
+    {
+      key: 'approvals.requireRejectReason',
+      type: 'boolean',
+      label: 'Require a reject reason',
+      description: 'The Bakin UI and the fallback decision page demand a typed reason to reject or dismiss; channel button rejects record a default reason.',
+      default: true,
+    },
     // ── Discord integration (#669) ────────────────────────────────────
     // Non-secret bridge config. The bot token lives in the secret store
     // (Settings → Integrations & Keys), never here. List fields are edited
@@ -184,6 +206,13 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
         { value: 'quiet', label: 'Quiet — notify only for action-required' },
       ],
       default: 'standard',
+    },
+    {
+      key: 'doctor.escalation',
+      type: 'boolean',
+      label: 'Escalate Health incidents to the board',
+      description: 'Every doctor cycle: apply safe repairs directly, turn destructive repairs and operator-only findings into approval tasks in the review column, and delegate what is left to the main agent as one repair task. Off keeps Health dashboard-only. Default on.',
+      default: true,
     },
     // ── Agent token burn (#385) ───────────────────────────────────────
     {

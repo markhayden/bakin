@@ -111,6 +111,18 @@ const eventBus = new BakinEventBus(broadcast)
 ;(async () => {
   // Initialize the adapter/task service spine before plugin activation.
   const appServices = await createAppServices()
+  // One-shot approvals upgrades (spec D8, plan review R5): workflows plugin
+  // approval settings → settings.approvals (+ doctor.escalation boolean) and
+  // legacy gate records → the core store. Before plugin init so workflows
+  // activates against the new keys and records. Never block boot.
+  try {
+    const { upgradeApprovalSettings } = await import('./src/core/approvals/settings-upgrade')
+    const { upgradeApprovalRecords } = await import('./src/core/approvals/records-upgrade')
+    upgradeApprovalSettings()
+    upgradeApprovalRecords()
+  } catch (err) {
+    log.error('Approvals upgrade failed at boot — continuing without it', err)
+  }
 
   // Provision the runtime's tool-access wiring (OpenClaw writes per-agent MCP
   // server entries; Pi is a no-op). This is a config WRITE, so it lives here

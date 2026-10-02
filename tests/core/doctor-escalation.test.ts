@@ -14,7 +14,7 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-let mode: 'off' | 'notify' | 'task' = 'task'
+let mode = true
 let cooldownMs = 6 * 60 * 60_000
 let staleAfterMs = 12 * 60 * 60_000
 let requests: Array<{
@@ -120,7 +120,7 @@ function coveringRequest(
 }
 
 beforeEach(() => {
-  mode = 'task'
+  mode = true
   cooldownMs = 6 * 60 * 60_000
   staleAfterMs = 12 * 60 * 60_000
   requests = []
@@ -298,19 +298,20 @@ describe('canonical Health escalation', () => {
     )).resolves.toBeUndefined()
   })
 
-  it('notifies instead of delegating in notify mode and skips onboarding-only state', async () => {
-    mode = 'notify'
+  it('does nothing when escalation is off, and skips onboarding-only state when on', async () => {
+    mode = false
     await escalateCronIncidents(report([incident()]), '/tmp/content', '/tmp/project')
-    expect(send).toHaveBeenCalledTimes(1)
+    expect(send).not.toHaveBeenCalled()
     expect(delegate).not.toHaveBeenCalled()
 
-    send.mockClear()
+    mode = true
     await escalateCronIncidents(
       report([incident({ id: 'core:system:onboarding-required' })]),
       '/tmp/content',
       '/tmp/project',
     )
     expect(send).not.toHaveBeenCalled()
+    expect(delegate).not.toHaveBeenCalled()
   })
 })
 

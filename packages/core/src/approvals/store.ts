@@ -82,6 +82,17 @@ export function createApprovalRecord(input: CreateApprovalRecordInput, contentDi
   }, contentDir)
 }
 
+/**
+ * Import a complete record as-is (status, deliveries, response preserved) —
+ * the one-shot migration path for records written by the old plugin store.
+ * Returns false when a record with that id already exists.
+ */
+export function importApprovalRecord(record: ApprovalRecord, contentDir = getContentDir()): boolean {
+  if (existsSync(approvalPath(record.approvalId, contentDir))) return false
+  writeRecord(record, contentDir)
+  return true
+}
+
 export function getApprovalRecord(approvalId: string, contentDir = getContentDir()): ApprovalRecord | null {
   return readRecord(approvalPath(approvalId, contentDir))
 }

@@ -8,7 +8,7 @@ let settings = {
     intervalMs: 60_000,
     checkTimeoutMs: 30_000,
     requireOnboard: false,
-    escalation: 'off' as const,
+    escalation: false,
     escalationCooldownMs: 60_000,
   },
 }
@@ -43,7 +43,7 @@ beforeEach(() => {
       intervalMs: 60_000,
       checkTimeoutMs: 30_000,
       requireOnboard: false,
-      escalation: 'off',
+      escalation: false,
       escalationCooldownMs: 60_000,
     },
   }

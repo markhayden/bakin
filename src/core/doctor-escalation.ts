@@ -130,20 +130,15 @@ export async function escalateCronIncidents(
   projectRoot: string,
 ): Promise<void> {
   const {
-    escalation = 'off',
+    escalation = true,
     escalationCooldownMs = DEFAULT_ESCALATION_COOLDOWN_MS,
     escalationStaleAfterMs = DEFAULT_ESCALATION_STALE_AFTER_MS,
   } = getSettings().doctor
-  if (escalation === 'off') return
+  if (!escalation) return
   const incidents = freshActionRequiredIncidents(report)
   if (incidents.length === 0 || onboardingOnly(incidents)) return
 
   try {
-    if (escalation === 'notify') {
-      await notifyActionRequiredIncidents(report)
-      return
-    }
-
     const incidentIds = incidents.map((incident) => incident.id).sort()
     const { listDoctorRepairRequests } = await import('./doctor-repair-store')
     const { getTaskDetails } = await import('./task-service')
@@ -205,7 +200,7 @@ export async function escalateCronIncidents(
       target: { type: 'incidents', reportId: report.id, ids: incidentIds as [string, ...string[]] },
     })
   } catch (error) {
-    log.error('Health escalation failed', error, { mode: escalation, incidentIds: incidents.map((incident) => incident.id) })
+    log.error('Health escalation failed', error, { incidentIds: incidents.map((incident) => incident.id) })
   }
 }
 
