@@ -7,7 +7,7 @@
  * recovered by the next pass; a reopen during an in-flight delivery is
  * never swallowed; the memo never serves pre-write totals.
  */
-import { dayStartMs } from '../../src/core/budget'
+import { dayStartMs, monthStartMs } from '../../src/core/budget'
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -39,9 +39,11 @@ let currentAgent = 'nobody'
 let duringFacetRead: (() => void) | null = null
 // Anchored to TODAY (same day-start key as the real `Date.now()` the boot
 // subscription observes with) — a fixed calendar date turned this file into
-// a time-of-day bomb once the UTC day rolled past the pinned one.
+// a time-of-day bomb once the UTC day rolled past the pinned one. The month
+// window is derived from the same clock: a pinned September start became a
+// month-boundary bomb on 2026-10-01 (nine failures on main).
 const NOW = dayStartMs(Date.now()) + 12 * 3_600_000
-const MONTH_START = new Date(2026, 8, 1).getTime()
+const MONTH_START = monthStartMs(NOW)
 mock.module('../../src/core/budget-spend', () => ({
   assembleBudgetSpend: async (now: number) => {
     facetReads++

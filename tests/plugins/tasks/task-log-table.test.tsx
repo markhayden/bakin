@@ -6,6 +6,7 @@ import { rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import '../../rtl-settle'
 
 const testDir = join(tmpdir(), `bakin-test-task-log-table-${process.pid}-${Date.now()}`)
@@ -56,16 +57,24 @@ describe('TaskLogTable', () => {
       onTaskEdit={onTaskEdit} onTaskDuplicate={onTaskDuplicate} onTaskDelete={onTaskDelete} />)
     const table = await screen.findByRole('table', { name: 'Task log' })
     const list = screen.getByRole('list', { name: 'Task log' })
+    // Real pointer sequence (pointerdown → mousedown → focus → pointerup →
+    // mouseup → click): the menu trigger composes floating-ui's click AND
+    // focus interactions, which a bare synthetic click can race (#918 class;
+    // the first open never happened on a stamped-host CI shard, 2026-10-01).
+    const user = userEvent.setup()
     for (const surface of [table, list]) {
       expect(within(surface).queryByRole('button', { name: 'Actions for Historical task' })).toBeNull()
       for (const action of ['Edit', 'Duplicate', 'Delete']) {
-        await act(async () => { fireEvent.click(within(surface).getByRole('button', { name: 'Actions for Live task' })) })
+        const trigger = within(surface).getByRole('button', { name: 'Actions for Live task' })
+        await user.click(trigger)
         const item = await screen.findByRole('menuitem', { name: action })
-        await act(async () => { fireEvent.click(item) })
+        await user.click(item)
         // The menu closes on the click; re-opening while that close is still
         // in flight toggles it shut again and the next findByRole starves
-        // (#918 — seen only under CI contention). Wait for the item to go.
+        // (#918 — seen only under CI contention). Wait for the item to go AND
+        // for the trigger to report closed before the next open.
         await waitFor(() => expect(screen.queryByRole('menuitem', { name: action })).toBeNull())
+        await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('false'))
       }
     }
     expect(onTaskEdit).toHaveBeenCalledTimes(2)
