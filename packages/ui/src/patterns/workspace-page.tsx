@@ -3,13 +3,17 @@ import * as React from 'react'
 import { PageShell, type PageShellProps } from '../layout/page-shell'
 import { cn } from '../utils'
 import { PageHeaderOverflowMenu } from './page-header'
+import { useWorkspaceViewport } from './use-workspace-viewport'
 
 export type WorkspacePageMode = 'contained' | 'immersive'
 
 const WorkspacePageContext = React.createContext<{
   mode: WorkspacePageMode
   flow: boolean
-}>({ mode: 'contained', flow: false })
+  visual: boolean
+  compact: boolean
+  setCompact(value: boolean): void
+}>({ mode: 'contained', flow: false, visual: false, compact: false, setCompact: () => {} })
 
 export type WorkspacePageProps = Omit<
   PageShellProps,
@@ -34,6 +38,8 @@ export type WorkspacePageProps = Omit<
    * scrolling.
    */
   flow?: boolean
+  /** Opt in to the visible viewport (including a software keyboard) for bounded workspaces. */
+  viewport?: 'host' | 'visual'
 }
 
 /**
@@ -48,15 +54,20 @@ export function WorkspacePage({
   className,
   flow = false,
   mode = 'contained',
+  viewport = 'host',
   ...props
 }: WorkspacePageProps) {
-  const context = React.useMemo(() => ({ mode, flow }), [mode, flow])
-  return (
-    <WorkspacePageContext.Provider value={context}>
+  const visual = viewport === 'visual' && !flow
+  const [compact, setCompact] = React.useState(false)
+  const context = React.useMemo(() => ({ mode, flow, visual, compact, setCompact }), [mode, flow, visual, compact])
+  const visible = useWorkspaceViewport(visual)
+  const shell = (
       <PageShell
         {...props}
         className={cn(
           'h-full [--bakin-workspace-compact-header-height:3.5rem]',
+          // Override PageShell's host-filling minimum only for this opt-in.
+          visual && 'min-h-0! flex-none! h-[var(--bakin-workspace-viewport-height,100%)] w-[var(--bakin-workspace-viewport-width,100%)]! mt-[var(--bakin-workspace-viewport-top,0px)] ml-[var(--bakin-workspace-viewport-left,0px)]',
           // Flow lets the content box GROW past the shell so sticky children
           // hold against the whole document; bounded canvases pin it to the
           // shell height so percentage-height bodies resolve.
@@ -74,6 +85,10 @@ export function WorkspacePage({
       >
         {children}
       </PageShell>
+  )
+  return (
+    <WorkspacePageContext.Provider value={context}>
+      {visual ? <div ref={visible} data-slot="workspace-viewport" className="h-full min-h-0 w-full min-w-0 overflow-hidden">{shell}</div> : shell}
     </WorkspacePageContext.Provider>
   )
 }
@@ -85,11 +100,13 @@ export function WorkspacePageHeader({
   className,
   ...props
 }: WorkspacePageHeaderProps) {
-  const { mode } = React.useContext(WorkspacePageContext)
+  const { mode, visual, compact } = React.useContext(WorkspacePageContext)
 
   return (
     <div
       {...props}
+      inert={visual && compact ? true : props.inert}
+      aria-hidden={visual && compact ? true : props['aria-hidden']}
       data-slot="workspace-page-header"
       className={cn(
         'min-w-0 shrink-0 px-bakin-4 pt-bakin-4 pb-bakin-4 @md/page-shell:px-bakin-6 @md/page-shell:pt-bakin-6 @xl/page-shell:px-bakin-8 @xl/page-shell:pt-bakin-8',
@@ -137,7 +154,7 @@ export function WorkspacePageCompactHeader({
   title,
   ...props
 }: WorkspacePageCompactHeaderProps) {
-  const { flow } = React.useContext(WorkspacePageContext)
+  const { flow, visual, setCompact } = React.useContext(WorkspacePageContext)
   // Desktop shows this row only once it is actually stuck (the full header
   // has scrolled away) — pre-scroll it would duplicate the identity and
   // actions. Mobile keeps it always visible: the immersive full header
@@ -158,6 +175,16 @@ export function WorkspacePageCompactHeader({
     let observer: IntersectionObserver | null = null
     // @md/page-shell — the container width where the pre-stick row hides.
     const MD_CONTAINER_PX = 448
+    const update = () => {
+      if (!root.clientHeight) return
+      // Nonintersection alone cannot distinguish a sentinel below a short
+      // keyboard viewport from one that has scrolled above it. Measure on
+      // scroll too: jumping from below to above can skip an IO transition.
+      const inset = !flow && root.clientWidth >= MD_CONTAINER_PX ? 57 : 1
+      const above = sentinel.getBoundingClientRect().bottom < root.getBoundingClientRect().top + inset
+      setStuck(above)
+      if (visual) setCompact(above)
+    }
     const arm = () => {
       observer?.disconnect()
       // Viewport-fit (non-flow) desktop reserves NO flow box for the row, so
@@ -168,7 +195,7 @@ export function WorkspacePageCompactHeader({
       // inset makes the knife edge unambiguous on fractional pixels.
       const overlay = !flow && root.clientWidth >= MD_CONTAINER_PX
       observer = new IntersectionObserver(
-        ([entry]) => setStuck(!entry.isIntersecting),
+        update,
         {
           root,
           // scrollHeight rounds fractional header heights; keep the same 1px
@@ -178,15 +205,19 @@ export function WorkspacePageCompactHeader({
         },
       )
       observer.observe(sentinel)
+      update()
     }
     arm()
+    root.addEventListener('scroll', update, { passive: true })
     const resize = new ResizeObserver(() => arm())
     resize.observe(root)
     return () => {
       observer?.disconnect()
       resize.disconnect()
+      root.removeEventListener('scroll', update)
+      if (visual) setCompact(false)
     }
-  }, [flow])
+  }, [flow, visual, setCompact])
   return (
     <>
     <div ref={sentinelRef} aria-hidden="true" className="h-px w-full shrink-0" />
@@ -233,6 +264,8 @@ export function WorkspacePageCompactHeader({
       ) : null}
       <div
         data-slot="workspace-page-compact-title"
+        role={visual && stuck ? 'heading' : undefined}
+        aria-level={visual && stuck ? 1 : undefined}
         className={cn(
           // Arbitrary-length, not the `text-bakin-typography-size-*` shorthand:
           // the size and the colour are both `text-*`, so tailwind-merge kept
@@ -290,7 +323,10 @@ export function WorkspacePageMetrics({
   )
 }
 
-export type WorkspacePageBodyProps = React.ComponentPropsWithoutRef<'div'>
+export type WorkspacePageBodyProps = React.ComponentPropsWithoutRef<'div'> & {
+  /** Persistent controls after the flexible canvas; the body owns safe-area clearance. */
+  inputAccessory?: React.ReactNode
+}
 
 /**
  * Flush remaining canvas. The mobile activity trigger lives in the host nav,
@@ -302,6 +338,8 @@ export type WorkspacePageBodyProps = React.ComponentPropsWithoutRef<'div'>
  */
 export function WorkspacePageBody({
   className,
+  children,
+  inputAccessory,
   ...props
 }: WorkspacePageBodyProps) {
   const { mode, flow } = React.useContext(WorkspacePageContext)
@@ -312,7 +350,10 @@ export function WorkspacePageBody({
       data-slot="workspace-page-body"
       data-flow={flow ? '' : undefined}
       className={cn(
-        'flex min-w-0 pb-[env(safe-area-inset-bottom)] @md/page-shell:pb-0',
+        'flex min-w-0',
+        inputAccessory != null
+          ? 'flex-col pb-[var(--bakin-workspace-safe-area-bottom,env(safe-area-inset-bottom))]'
+          : 'pb-[env(safe-area-inset-bottom)] @md/page-shell:pb-0',
         flow
           // flex-1 (not flex-none): the shell content box is a min-h-full
           // column, so growing here is what carries a short flow page to
@@ -323,6 +364,11 @@ export function WorkspacePageBody({
           'h-[calc(100%-var(--bakin-workspace-compact-header-height))] min-h-[calc(100%-var(--bakin-workspace-compact-header-height))] flex-none',
         className,
       )}
-    />
+    >
+      {inputAccessory != null ? <>
+        <div data-slot="workspace-page-canvas" className="flex min-h-0 min-w-0 flex-1 overflow-hidden">{children}</div>
+        <div data-slot="workspace-page-input-accessory" className="min-h-0 min-w-0 shrink-0">{inputAccessory}</div>
+      </> : children}
+    </div>
   )
 }

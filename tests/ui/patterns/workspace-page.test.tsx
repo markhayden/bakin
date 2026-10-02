@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, spyOn } from 'bun:test'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
+import { actRender } from '../../rtl-settle'
 
 import {
   PageHeader,
@@ -15,6 +16,49 @@ import { DropdownMenuItem } from '@makinbakin/sdk/ui'
 afterEach(() => cleanup())
 
 describe('workspace page recipe', () => {
+  it('releases viewport subscriptions and measured properties on unmount', async () => {
+    const previous = Object.getOwnPropertyDescriptor(window, 'visualViewport')
+    const viewport = Object.assign(new EventTarget(), { width: 320, height: 400, offsetTop: 0, offsetLeft: 0 })
+    const add = spyOn(viewport, 'addEventListener')
+    const remove = spyOn(viewport, 'removeEventListener')
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport })
+    try {
+      const mounted = await actRender(() => render(<WorkspacePage viewport="visual"><WorkspacePageBody>Editor</WorkspacePageBody></WorkspacePage>))
+      const owner = mounted.container.querySelector<HTMLElement>('[data-slot="workspace-viewport"]')!
+      expect(add.mock.calls.map(call => call[0])).toEqual(['resize', 'scroll'])
+      await act(async () => { viewport.dispatchEvent(new Event('resize')); mounted.unmount() })
+      expect(remove.mock.calls).toEqual(add.mock.calls)
+      expect(owner.style.getPropertyValue('--bakin-workspace-viewport-height')).toBe('')
+    } finally {
+      if (previous) Object.defineProperty(window, 'visualViewport', previous)
+      else Reflect.deleteProperty(window, 'visualViewport')
+    }
+  })
+
+  it('reserves an input accessory after the flexible canvas', async () => {
+    const { container } = await actRender(() => render(
+      <WorkspacePage viewport="visual">
+        <WorkspacePageBody inputAccessory={<button>Complete</button>}>
+          <textarea aria-label="Editor" />
+        </WorkspacePageBody>
+      </WorkspacePage>,
+    ))
+    const canvas = container.querySelector('[data-slot="workspace-page-canvas"]')
+    const accessory = container.querySelector('[data-slot="workspace-page-input-accessory"]')
+    expect(canvas?.contains(screen.getByRole('textbox'))).toBe(true)
+    expect(accessory?.contains(screen.getByRole('button', { name: 'Complete' }))).toBe(true)
+    expect(canvas!.compareDocumentPosition(accessory!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(container.querySelector('[data-slot="workspace-viewport"]')).toBeTruthy()
+  })
+
+  it('preserves host geometry and the direct body children by default', async () => {
+    const { container } = await actRender(() => render(
+      <WorkspacePage><WorkspacePageBody><textarea aria-label="Editor" /></WorkspacePageBody></WorkspacePage>,
+    ))
+    expect(container.querySelector('[data-slot="workspace-viewport"]')).toBeNull()
+    expect(screen.getByRole('textbox').parentElement?.dataset.slot).toBe('workspace-page-body')
+  })
+
   it('opens secondary actions through the compact header public props', async () => {
     render(
       <WorkspacePage mode="immersive">
