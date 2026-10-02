@@ -85,7 +85,11 @@ mock.module('../../../plugins/tasks/components/block-reason-dialog', () => ({ Bl
 mock.module('../../../plugins/tasks/components/task-metrics', () => ({ TaskMetrics: () => null }))
 mock.module('../../../plugins/tasks/components/task-filters', () => ({ TaskFilters: () => null }))
 mock.module('../../../plugins/tasks/components/task-log-table', () => ({ TaskLogTable: () => null }))
-mock.module('../../../plugins/tasks/hooks/use-gate-status', () => ({ useGateStatus: () => ({}) }))
+mock.module('../../../plugins/tasks/hooks/use-workflow-child-tasks', () => ({ useWorkflowChildTasks: () => ({}) }))
+mock.module('../../../plugins/tasks/hooks/use-task-approvals', () => ({
+  useTaskApprovals: () => ({ byTask: {}, loading: false, failed: false, refresh: async () => {} }),
+  approvalLabelFor: () => undefined,
+}))
 mock.module('../../../plugins/tasks/hooks/use-budget-status', () => ({ useBudgetStatus: () => null, budgetHoldReason: () => null, pickTaskHold: () => null }))
 mock.module('../../../plugins/tasks/hooks/use-model-holds', () => ({ useModelHolds: () => ({}) }))
 mock.module('../../../plugins/tasks/hooks/use-brand-status', () => ({ useBrandStatus: () => null, brandHoldReason: () => null }))

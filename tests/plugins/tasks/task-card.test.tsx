@@ -86,7 +86,7 @@ describe('TaskCardContent hierarchy', () => {
           workflowId: 'approval-copy',
         })}
         columnId="review"
-        gateLabel="Approve final copy"
+        approvalLabel="Approve final copy"
         onOpen={onOpen}
       />,
     )

@@ -137,8 +137,12 @@ mock.module('../../../plugins/tasks/components/task-filters', () => ({
 mock.module('../../../plugins/tasks/components/task-log-table', () => ({
   TaskLogTable: () => null,
 }))
-mock.module('../../../plugins/tasks/hooks/use-gate-status', () => ({
-  useGateStatus: () => ({}),
+mock.module('../../../plugins/tasks/hooks/use-workflow-child-tasks', () => ({
+  useWorkflowChildTasks: () => ({}),
+}))
+mock.module('../../../plugins/tasks/hooks/use-task-approvals', () => ({
+  useTaskApprovals: () => ({ byTask: {}, loading: false, failed: false, refresh: async () => {} }),
+  approvalLabelFor: () => undefined,
 }))
 
 // The board's 15s polling hooks must be static in tests: on a slow CI

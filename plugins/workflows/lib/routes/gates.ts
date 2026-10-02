@@ -220,23 +220,17 @@ const pendingGatesHandler = async (_req: Request, _ctx: PluginContextLite) => {
   return Response.json({ gates })
 }
 
-// GET /gates/status — batch check gate status for tasks
+// GET /gates/status — which child task each in-progress nested-workflow step
+// waits on. Pending approvals are NOT reported here: the board reads them from
+// /api/approvals (spec D7).
 const gateStatusHandler = async (req: Request, _ctx: PluginContextLite) => {
   const url = new URL(req.url)
   const taskIds = (url.searchParams.get('taskIds') || '').split(',').filter(Boolean)
 
-  const result: Record<string, { stepId: string; label: string; description?: string; childTaskId?: string } | null> = {}
+  const result: Record<string, { stepId: string; label: string; childTaskId: string } | null> = {}
   for (const taskId of taskIds) {
     const instance = loadInstance(taskId)
-    if (instance && instance.status === 'pending_approval') {
-      const def = loadDefinition(instance.workflowId)
-      const gateStep = def?.steps.find(s => s.id === instance.currentStepId)
-      result[taskId] = {
-        stepId: instance.currentStepId,
-        label: gateStep?.label || instance.currentStepId,
-        description: (gateStep as { description?: string })?.description,
-      }
-    } else if (instance && instance.status === 'in_progress') {
+    if (instance && instance.status === 'in_progress') {
       const childEntry = Object.entries(instance.stepStates).find(
         ([, state]) => state.status === 'in_progress' && state.childTaskId
       )
@@ -246,7 +240,7 @@ const gateStatusHandler = async (req: Request, _ctx: PluginContextLite) => {
         result[taskId] = {
           stepId: childEntry[0],
           label: step?.label || childEntry[0],
-          childTaskId: childEntry[1].childTaskId,
+          childTaskId: childEntry[1].childTaskId!,
         }
       } else {
         result[taskId] = null
@@ -265,5 +259,5 @@ export const gateRoutes = [
   defineRoute({ path: '/gates/:taskId/decision', method: 'GET', description: 'Render a durable Bakin gate approval fallback page', summary: 'Render a durable Bakin gate approval fallback page', params: z.object({ taskId: z.string() }), responses: { 200: htmlResponseWf, 400: htmlResponseWf, 404: htmlResponseWf }, handler: gateDecisionPageHandler }),
   defineRoute({ path: '/gates/:taskId/decision', method: 'POST', description: 'Approve or reject a gate through the durable Bakin approval fallback page', summary: 'Approve or reject a gate through the durable Bakin approval fallback page', params: z.object({ taskId: z.string() }), responses: { 200: htmlResponseWf, 400: htmlResponseWf, 404: htmlResponseWf, 409: htmlResponseWf }, handler: gateDecisionActionHandler }),
   defineRoute({ path: '/gates/pending', method: 'GET', description: 'List all gates awaiting approval', summary: 'List all gates awaiting approval', responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: pendingGatesHandler }),
-  defineRoute({ path: '/gates/status', method: 'GET', activityClass: 'routine', description: 'Batch check gate status for tasks', summary: 'Batch check gate status for tasks', responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: gateStatusHandler }),
+  defineRoute({ path: '/gates/status', method: 'GET', activityClass: 'routine', description: 'Batch map of nested-workflow parents to the child task their current step waits on', summary: 'Batch map of nested-workflow parents to the child task their current step waits on', responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: gateStatusHandler }),
 ]
