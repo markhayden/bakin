@@ -31,7 +31,7 @@ const log = createLogger('tasks')
 const tasksPlugin: BakinPlugin = definePlugin({
   id: 'tasks',
   name: 'Tasks',
-  version: '2.4.0',
+  version: '2.5.0',
   routes: tasksRoutes,
 
   settingsSchema: {

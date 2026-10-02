@@ -35,7 +35,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
   routes: [...definitionRoutes, ...instanceRoutes, ...gateRoutes] as unknown as Parameters<typeof definePlugin>[0]['routes'],
   id: 'workflows',
   name: 'Workflows',
-  version: '2.0.0',
+  version: '2.2.0',
 
   settingsSchema: {
     fields: [

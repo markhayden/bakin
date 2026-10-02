@@ -83,7 +83,11 @@ runDiagnostics() / runTargetedDiagnostics()
 
 Key files:
 
-- `src/core/doctor.ts` — cron, full/targeted coordination, audit, optional notification
+- `src/core/doctor.ts` — cron (`runCycle` = sweep → escalation → auto-close), full/targeted coordination, audit
+- `src/core/doctor-escalation.ts` — per-incident cover + the escalation policy (auto-apply / approval tasks / delegate)
+- `src/core/doctor-approvals.ts` — `health-repair` / `health-navigate` approval kinds, review-task opening, interrupted-apply recovery
+- `src/core/doctor-autoclose.ts` — fresh-verification auto-close of repair requests (shared by the manual verify)
+- `src/core/doctor-repair-store.ts` — durable repair requests (`kind`, `status`, `checkIds`, `approvalId`, frozen `proposal`)
 - `src/core/doctor-checks.ts` — isolated check execution and validation
 - `src/core/doctor-report-cache.ts` — per-check current/last-valid state and report revisions
 - `src/core/health-report.ts` — incident merge, placement, sorting, counts, overall precedence
@@ -262,19 +266,25 @@ Do not create a route-specific compatibility mapper or parse a diagnostic messag
 
 Every usage-recorder producer declares `activityClass: 'user' | 'system' | 'routine'`. Successful routine work is excluded from default Health Activity; routine failures always remain. See `.claude/knowledge/usage-recording.md`.
 
-## Audit, notification, and escalation
+## Audit, escalation, and auto-close
 
-Each completed full sweep appends `doctor.run` with report ID, registered count, incident counts, and overall status. Notification/escalation considers fresh `action_required` incidents and deduplicates by stable incident ID. It does not classify issues from severity text or whether an old row advertised an inline fix.
+Each completed full sweep appends `doctor.run` with report ID, registered count, incident counts, and overall status. Escalation considers fresh effective-`action_required` incidents (not stale, not acked/snoozed) by stable incident ID — never severity text. The old "notify the main agent" mode is gone: an agent is told about an incident only through a delegated repair task.
 
-The doctor cron retains its global settings under `settings.doctor`:
+`settings.doctor`:
 
 - `intervalMs` — full-sweep cadence
 - `requireOnboard` — whether the core onboarding check applies
-- `escalation` — `off`, stable-ID notification, or delegated repair task
-- `escalationCooldownMs` — minimum interval before a closed/missing covering request may be replaced
-- `escalationStaleAfterMs` — maximum age for an open covering task to suppress a still-burning incident set
+- `escalation` — boolean (default true); legacy `off|notify|task` strings coerce until the one-shot upgrade is deleted
+- `escalationCooldownMs` — any repair request younger than this covers its incidents (no one-task-per-cycle churn)
+- `escalationStaleAfterMs` — how long an open todo/inProgress task covers a still-burning incident
 
-Task escalation compares exact incident IDs. A fresh open task that covers every current action-required incident suppresses duplication. `done` and `archived` tasks are closed, while an open task older than `escalationStaleAfterMs` is treated as stalled and re-escalated after the normal cooldown. Scanning continues past a stale request so a newer fresh covering task still wins. Delivery and delegation failures are logged without aborting the doctor cron; failed notifications release their reservation so the next run can retry.
+**Cover is per incident** (`coveredIncidentIds`): a request whose task sits in `blocked` or `review` covers indefinitely (a human owns the next step); `todo`/`inProgress` cover until `escalationStaleAfterMs`; `done`/`archived`/missing never cover; the cooldown covers regardless of column. Only uncovered incidents proceed.
+
+**Policy per cycle** (`escalateCronIncidents`, spec D3–D5): plan once for the uncovered set; `safe` items are applied immediately (`applyDoctorRepair`) and the incidents they fix never become tasks; incidents with a NON-SAFE proposal → ONE review task holding a `health-repair` approval whose proposal is frozen (`openRepairApproval`); `navigate` incidents → one review task + `health-navigate` approval each; everything else (instructions, rerun, repair without a plan item) → ONE delegated task for the main agent (`delegateDoctorRepair`, brief with sanctioned fixes + integrity rules). Planning failure degrades to delegation; nothing is dropped silently. Review tasks have no assignee: dispatch pulls from `todo` only and liveness checks read `inProgress` only, so they are never dispatched nor stranded.
+
+**Repair requests** (`doctor/repair-requests-v2/`): `kind: delegate | approval-repair | approval-navigate`, `status: planned → sent → (applying →) completed | verified | failed | dismissed`, `checkIds` (the fresh-verification target), `approvalId`, frozen `proposal`. `applying` is written BEFORE any mutation so a crash mid-apply is recovered at boot (`recoverInterruptedApplies`: clean checks → verified + task done, else failed + task blocked; the pending record is withdrawn).
+
+**Auto-close** (`reconcileRepairRequests`, spec D2 / plan review R4): after every cycle and, debounced 30 s, whenever the report's incident set changes, each open request (not `applying`/`verified`/`dismissed`, task not done/archived, older than 60 s) re-runs its originating checks (`runTargetedDiagnostics(checkIds)`) and closes ONLY when every one of them **evaluated healthy on that run** (`checkEvaluatedHealthy`: observed outcome, snapshot from that execution, every observation healthy and current) AND none of its incidents remain. Unknown, failed, timed-out, stale or unregistered checks keep the task open — an absent incident alone never closes anything. Closing = request `verified` + task log + done (`skipDoneGuard`, channel system) + pending approval cancelled `resolved`. The manual verify route/CLI (`verifyDoctorRepairRequest`) runs a full sweep then the SAME judgement, completing the task on a pass. Decisions themselves (Apply / Dismiss) are documented in `.claude/knowledge/approvals.md`.
 
 ## Authoring checklist
 
@@ -297,7 +307,9 @@ Task escalation compares exact incident IDs. A fresh open task that covers every
 - `tests/core/health-report.test.ts` — report merge, sort, precedence, IDs
 - `tests/core/doctor-cache.test.ts` — snapshot retention, TTL, flights, events
 - `tests/core/doctor-repair-plans.test.ts` / `doctor-repair.test.ts` — targeting, confirmation, staleness, verification
-- `tests/core/doctor-delegate.test.ts` / `doctor-escalation.test.ts` — structured downstream consumers
+- `tests/core/doctor-delegate.test.ts` / `doctor-escalation.test.ts` — delegation brief, per-incident cover, policy partition
+- `tests/core/doctor-approvals.test.ts` — health-repair / health-navigate kinds (frozen proposal, plan-changed, dismiss, interrupted apply)
+- `tests/core/doctor-autoclose.test.ts` — every evidence state that keeps a repair task open; the one that closes it
 - `tests/plugins/{owner}/health-checks.test.ts` — direct producer branches
 - `tests/architecture/health-contract.test.ts` — retired vocabulary and planes
 

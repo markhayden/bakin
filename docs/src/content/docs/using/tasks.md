@@ -62,6 +62,16 @@ Move to `Done` and add a one-line summary. The summary is what shows up in memor
 
 Use the trash icon in the detail panel. Task deletes remove the task from the board; `bakin trash` is only for asset recovery.
 
+## Approvals
+
+The board is your inbox for decisions. Whenever something needs a human — a workflow gate, a Health repair that changes state, an incident only you can fix — Bakin puts the task in **Review**, marks the card **Needs approval**, and toasts you (plus an OS notification) if you are not already looking at it. Open the task and decide in the panel:
+
+- **Workflow gate** — Approve to advance, or Reject with a typed reason to rewind.
+- **Health repair** — review the exact changes Bakin proposes, then **Apply repair** (a confirmation lists every change) or **Dismiss** (snoozes the incident for 7 days). Apply re-checks that nothing moved since the proposal; if the fix needed has changed, the panel says so and a fresh proposal replaces it on the same task.
+- **Health incident needing you** — **Open** the place that needs attention, or **Dismiss**.
+
+Repair tasks close themselves once Health verifies the fix with fresh checks, so a task you fixed by hand disappears on its own. With channel alerts on (`System & Alerts → Approvals`), every approval also lands on your runtime channel with buttons; the task stays the source of truth.
+
 ## Filtering and searching
 
 <figure class="screenshot-frame">
@@ -82,7 +92,7 @@ The seven columns and what they mean:
 | Todo | Approved and queued for work |
 | Blocked | Can't progress, needs input or dependency resolution |
 | In Progress | Actively being worked |
-| Review | Work done, waiting for human approval |
+| Review | Work done or a decision waiting for you (workflow gates, Health repairs) |
 | Done | Approved and complete |
 | Archived | Cleared off the active board, history preserved |
 

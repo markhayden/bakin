@@ -41,6 +41,28 @@ description: Generated reference for Bakin core settings defaults.
   </tbody>
 </table>
 
+## Approvals
+
+<table class="settings-defaults-table">
+  <thead>
+    <tr><th>Key</th><th>Default</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>approvals.channel</code></td>
+      <td><code>&quot;general&quot;</code></td>
+    </tr>
+    <tr>
+      <td><code>approvals.channelAlerts</code></td>
+      <td><code>false</code></td>
+    </tr>
+    <tr>
+      <td><code>approvals.requireRejectReason</code></td>
+      <td><code>true</code></td>
+    </tr>
+  </tbody>
+</table>
+
 ## Burn
 
 <table class="settings-defaults-table">
@@ -180,7 +202,7 @@ description: Generated reference for Bakin core settings defaults.
     </tr>
     <tr>
       <td><code>doctor.escalation</code></td>
-      <td><code>&quot;task&quot;</code></td>
+      <td><code>true</code></td>
     </tr>
     <tr>
       <td><code>doctor.escalationCooldownMs</code></td>
@@ -519,5 +541,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Sep 25, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 1, 2026 · Bakin 0.0.0-dev</span>
 </aside>

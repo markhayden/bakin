@@ -51,7 +51,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Health<br/><span>Action-first system health, Search readiness, diagnostics, and repair</span></td>
       <td><code>health</code></td>
       <td>Core</td>
-      <td><code>1.4.0</code></td>
+      <td><code>1.5.0</code></td>
       <td>none</td>
     </tr>
     <tr>
@@ -107,7 +107,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Tasks<br/><span>Kanban task management with Bakin task-store persistence, agent assignment, and dependency tracking</span></td>
       <td><code>tasks</code></td>
       <td>Core</td>
-      <td><code>2.3.0</code></td>
+      <td><code>2.5.0</code></td>
       <td>none</td>
     </tr>
     <tr>
@@ -128,7 +128,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Workflows<br/><span>Workflow runtime — enforces step-by-step agent execution with gated delivery, parallel steps, human gates, and output validation</span></td>
       <td><code>workflows</code></td>
       <td>Core</td>
-      <td><code>2.1.0</code></td>
+      <td><code>2.2.0</code></td>
       <td><code>tasks</code></td>
     </tr>
   </tbody>

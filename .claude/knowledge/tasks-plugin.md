@@ -166,7 +166,10 @@ archived   → done, todo
 | `plugins/tasks/client.tsx` | Client entry — calls `registerPlugin({ id: 'tasks', navItems, slots: { 'page:/tasks': KanbanBoard } })` |
 | `plugins/tasks/components/kanban-board.tsx` | Main kanban view — fetches from `/api/plugins/tasks/`, re-fetches on `usePluginEvent('taskboard', …)` |
 | `plugins/tasks/components/kanban-column.tsx` | Single column rendering with task cards and footer |
-| `plugins/tasks/components/task-card.tsx` | Individual task card (avatar, title, status badge, log count, budget-deferred badge) |
+| `plugins/tasks/components/task-card.tsx` | Individual task card (avatar, title, status badge, log count, budget-deferred badge, "Needs approval" signal via `approvalLabel`) |
+| `plugins/tasks/hooks/use-task-approvals.ts` | ONE fetch of the pending approval set (`/api/approvals?status=pending`), refreshed on `approval.*`/`taskboard`/`bakin.reconcile` — no polling. Drives the board signal and the detail panel for every approval kind (spec D7) |
+| `plugins/tasks/hooks/use-workflow-child-tasks.ts` | 15s poll of `/api/plugins/workflows/gates/status` — nested-workflow parents → the child task their step waits on |
+| `plugins/tasks/components/approval-panel.tsx` | Presentational decision cards per approval kind (gate approve/reject with typed reason + prior output; repair Dismiss / Apply behind a danger ConfirmDialog listing every frozen change; navigate Open + Dismiss) with loading / failed+retry / busy / inline-error states; connected by `TaskApprovalsPanel` in `task-workflow-panels.tsx`, resolved via `POST /api/approvals/:id/resolve` from `use-task-detail.ts` |
 | `plugins/tasks/hooks/use-budget-status.ts` | 15s poll of the spend plugin's side-effect-free `/api/plugins/spend/status` (cost-control v2; a definitive 404 = the spend plugin is down ⇒ every todo task shows "Limits unavailable" → Health, since the gate fails closed). Todo tasks whose agent (or the kill switch) is currently deferring dispatch get a red "Budget-deferred" card badge — derived state, no task metadata writes |
 | `plugins/tasks/components/task-detail-dialog.tsx` | Slide-out drawer for viewing/editing task details |
 | `plugins/tasks/components/delete-task-dialog.tsx` | Confirmation dialog for task deletion |
@@ -385,10 +388,12 @@ Everything bookmark-worthy on `/tasks` rides the URL (`.claude/knowledge/url-sta
 - Filters/view: `view`, `q`, `agent`, `scheduled`, `status[]`, `brand[]` — replace-mode.
 - **`taskId` is the detail drawer's open state.** Opening a card (kanban or table) PUSHES `?taskId=<id>` so Back closes the drawer; close / delete / dismiss REPLACE it away; refresh reopens it. The param resolves against the UNFILTERED board once the first fetch has landed (filters never hide a deep link; the empty initial board never eats one). The drawer shows a snapshot taken once per id — `useTaskDetail` re-initializes its form on task identity, so re-deriving from every board refresh would reset an in-progress edit — and the snapshot only counts while it matches the URL. A stale `?taskId=` (task deleted) renders "Task not found" + Dismiss in the board's feedback slot (schedule composition); it is never a toast and never a silent URL rewrite.
 - The create-new drawer (`editing && !task`) is component-level by design — not URL state.
-- Producers: the ⌘K hit renderer (`client.tsx`), scheduled-events (`lib/scheduled-events.ts`), brands' task button, workflows' gate attention + notifications — all `/tasks?taskId=`. The `/` route redirects to `/tasks` WITHOUT forwarding search, so never build `/?taskId=`.
+- Producers: the ⌘K hit renderer (`client.tsx`), scheduled-events (`lib/scheduled-events.ts`), brands' task button, the host approvals attention provider (every approval kind) + gate channel messages — all `/tasks?taskId=`. The `/` route redirects to `/tasks` WITHOUT forwarding search, so never build `/?taskId=`.
 
 
 Tasks' nav dot covers blocked tasks (red) and Review tasks (yellow), including
-pending workflow approvals. Snapshot reads reconcile on taskboard events and
-connection/resume, reject superseded results, and retain last-known state on
-failure with bounded retries. Workflows does not duplicate the approval dot.
+tasks holding pending approvals of any kind. Snapshot reads reconcile on
+taskboard events and connection/resume, reject superseded results, and retain
+last-known state on failure with bounded retries. Announcing a NEW pending
+approval (toast + OS notification) is the host's `ApprovalsAttentionProvider`,
+not a plugin badge provider.

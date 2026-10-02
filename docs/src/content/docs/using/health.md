@@ -69,6 +69,17 @@ Plans are short-lived and tied to the evidence they were created from. If the af
 
 Some incidents provide navigation, resolution steps, or a re-check instead of deterministic repair. Technical evidence is collapsed by default and remains available when you need it.
 
+## Escalation and repair tasks
+
+Between your visits, the doctor cycle acts on every incident that needs attention and is not already covered by an open repair task:
+
+- **Safe repairs run on their own.** Deterministic, non-destructive fixes are applied right away; the incident never becomes a task.
+- **Destructive repairs ask first.** One task lands in **Review** with the exact proposed changes; approve it from the task panel, the Health card or a channel button (see [Tasks → Approvals](/docs/using/tasks/#approvals)).
+- **Operator-only incidents** (an expired key, a setting only you can change) get a Review task that opens the right place and can be dismissed.
+- **Everything else** becomes one task for your main agent with the sanctioned fix spelled out.
+
+Repair tasks close automatically once Health re-runs their checks and they pass — never merely because an incident stopped appearing. A task whose repair failed is blocked with the reason so you decide what happens next. Escalation can be turned off entirely in `System & Alerts → Doctor`.
+
 ## Agents
 
 Agents consolidates usage and outcomes around one 24-hour, 7-day, or 30-day window:

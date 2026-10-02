@@ -816,7 +816,7 @@ const routes = [
 const healthPlugin: BakinPlugin = definePlugin({
   id: 'health',
   name: 'Health',
-  version: '1.4.1',
+  version: '1.5.0',
   routes,
 
   settingsSchema: {
