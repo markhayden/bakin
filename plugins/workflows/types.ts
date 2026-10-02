@@ -3,7 +3,6 @@
  */
 
 import type { ApprovalActor } from '@bakin/core/plugin-types'
-import type { ApprovalRenderRef } from '@bakin/core/adapters/runtime'
 import type { WorkflowDefinition } from '@bakin/core/workflows/definition-types'
 import type { WorkflowSkillDriftReport } from './lib/workflow-skill-drift'
 
@@ -135,8 +134,6 @@ export interface StepState {
   code?: StepErrorCode
   /** Human-readable failure detail accompanying `code` */
   error?: string
-  /** Runtime-rendered gate approval reference used to resolve the rendered approval after a decision */
-  approvalRef?: ApprovalRenderRef
   /** Gate decision metadata — set when a gate enters pending_approval and when a decision is recorded */
   requestedAt?: string
   decidedAt?: string

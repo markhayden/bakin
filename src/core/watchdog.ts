@@ -489,10 +489,9 @@ export function start(contentDir: string): void {
         log.error('Workflow step timeout check failed', err)
       }
 
-      // Gate approval notifications are owned by the workflows plugin: it posts
-      // a rich context message + native approval card to the approvals channel
-      // at gate-fire time (sendGateApprovalRequest). The watchdog no longer
-      // pings the general channel per gate.
+      // Gate approvals are core approval records (src/core/approvals): the
+      // workflow-gate kind renders the context message + native card at
+      // gate-fire time. The watchdog no longer pings the general channel per gate.
     } catch (err) {
       log.error('Watchdog error', err)
     }

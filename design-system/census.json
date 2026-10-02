@@ -18,11 +18,11 @@
     ]
   },
   "summary": {
-    "total": 107,
+    "total": 106,
     "byKind": {
       "host-route": 27,
       "plugin-route": 12,
-      "plugin-slot": 33,
+      "plugin-slot": 32,
       "plugin-template": 2,
       "shared-component": 33,
       "sdk-ui-export": 0
@@ -1897,36 +1897,6 @@
       ]
     },
     {
-      "id": "plugin-slot:workflows:nav-badge-providers",
-      "kind": "plugin-slot",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "workflows"
-      },
-      "identity": {
-        "slot": "nav-badge-providers"
-      },
-      "sourcePath": "plugins/workflows/client.tsx",
-      "symbols": [
-        "ApprovalsBadgeProvider"
-      ],
-      "exportStatus": "not-applicable",
-      "classification": "embedded-surface",
-      "evidence": [
-        {
-          "type": "manifest-slot",
-          "path": "plugins/workflows/bakin-plugin.json",
-          "detail": "contributes.slots[0]"
-        },
-        {
-          "type": "client-registration",
-          "path": "plugins/workflows/client.tsx",
-          "detail": "registerPlugin slots \"nav-badge-providers\" -> ApprovalsBadgeProvider"
-        }
-      ]
-    },
-    {
       "id": "plugin-slot:workflows:page:/workflows",
       "kind": "plugin-slot",
       "owner": {
@@ -1948,7 +1918,7 @@
         {
           "type": "manifest-slot",
           "path": "plugins/workflows/bakin-plugin.json",
-          "detail": "contributes.slots[1]"
+          "detail": "contributes.slots[0]"
         },
         {
           "type": "client-registration",
@@ -1979,7 +1949,7 @@
         {
           "type": "manifest-slot",
           "path": "plugins/workflows/bakin-plugin.json",
-          "detail": "contributes.slots[2]"
+          "detail": "contributes.slots[1]"
         },
         {
           "type": "client-registration",
@@ -2010,7 +1980,7 @@
         {
           "type": "manifest-slot",
           "path": "plugins/workflows/bakin-plugin.json",
-          "detail": "contributes.slots[4]"
+          "detail": "contributes.slots[3]"
         },
         {
           "type": "client-registration",
@@ -2041,7 +2011,7 @@
         {
           "type": "manifest-slot",
           "path": "plugins/workflows/bakin-plugin.json",
-          "detail": "contributes.slots[3]"
+          "detail": "contributes.slots[2]"
         },
         {
           "type": "client-registration",

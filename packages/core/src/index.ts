@@ -109,7 +109,6 @@ export type {
   CronJob,
   CronRun,
   DeliveryResult,
-  DurableApprovalRecord,
   EditApprovalArgs,
   MessageArgs,
   MessageResult,

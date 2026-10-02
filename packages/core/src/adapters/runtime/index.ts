@@ -52,7 +52,6 @@ export type {
   CronJob,
   CronRun,
   DeliveryResult,
-  DurableApprovalRecord,
   EditApprovalArgs,
   EditChannelMessageArgs,
   InboundChannelAttachment,
