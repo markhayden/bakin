@@ -265,3 +265,26 @@ pre-fix measurements for payload review; no ceiling was raised. Subsequent full
 stages did not run in this invocation. Focused browser/story/installed-package
 verification above passed; the earlier complete matrices remain historical
 evidence. Full log: `/private/tmp/terminal-fixes-full.log`.
+
+## Ready-for-review CI alignment (2026-10-02)
+
+The operator's go-ahead to open PR #943 as non-draft and make CI pass adopts the
+four previously reviewed centered TerminalInput captures and the measured payload
+changes described above. Only the four TerminalInput baselines were regenerated,
+using the pinned Linux Playwright image; mobile and desktop compact/expanded
+captures were inspected. The payload record now matches the three affected SDK
+reachable bundles, the shared chunk set, and Terminal's 689,867-byte client.
+Other ceilings and the existing tolerance are unchanged.
+
+CI had cloned an older official Bits revision despite recording the current
+fleet metadata and stylesheet. The compatibility pin now targets companion PR
+#114's pushed commit `c2e97be37f4f771cd1c4a14984efa1fdb7fdff3c`, aligning the
+census and SDK stylesheet sources with the reviewed plugin. Local census,
+performance, and quick conformance checks pass with this pin.
+
+The first non-draft CI run passed both story shards, all three browser behavior
+suites, and all existing visual baselines including CalendarGrid. Its four visual
+failures were the approved centered TerminalInput changes. SDK packaging failed
+against the obsolete Bits sources; a separate plugin-upgrade rollback test also
+failed once and is being verified on the corrected head. Physical iPhone/Android
+keyboard verification remains outstanding.
