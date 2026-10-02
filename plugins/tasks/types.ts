@@ -7,6 +7,8 @@ export type { TaskLogEntry }
 // re-exports are erased at build). A local copy here had already drifted
 // (it was missing `version`) — pinned by tests/architecture/type-single-home.
 export type { Task, TaskColumns, TaskBoard, ColumnId, TaskSource } from '../../src/core/task-store'
+/** A pending approval record as the board and task detail read it (spec D7). */
+export type { ApprovalRecord as TaskApproval } from '@bakin/core/approvals'
 
 /** Task-level terminal outcome, derived from the completion ledger + task column.
  *  Mirrored client-side in src/hooks/use-task-run-history.ts — keep in sync. */

@@ -130,7 +130,7 @@ describe('targeted canonical doctor repair', () => {
     expect(result.results[0].status).toBe('applied')
     expect(result.verifiedReportId).toBe(result.report.id)
     expect(result.report.observations.find((row) => row.checkId === 'repair-test.search')?.status).toBe('healthy')
-    expect(result.verifiedIncidentIds).toEqual([])
+    expect(result.remainingIncidentIds).toEqual([])
   })
 
   it('turns malformed apply output into a payload-free failure and still verifies the mutation', async () => {

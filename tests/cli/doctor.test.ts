@@ -36,7 +36,7 @@ describe('doctor CLI canonical report', () => {
     expect(fetchMock.mock.calls[0][0]).toContain('/api/plugins/health/doctor/run')
     expect(fetchMock.mock.calls[0][1]).toMatchObject({
       method: 'POST',
-      body: JSON.stringify({ notifyAgent: false }),
+      body: JSON.stringify({}),
     })
     expect(JSON.parse(String(harness.log.mock.calls[0][0]))).toEqual(advisoryHealthReport)
     expect(harness.output()).not.toContain('"command": "doctor"')

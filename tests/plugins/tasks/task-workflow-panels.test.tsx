@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 
 import {
-  GateApprovalPanel,
   WorkflowPreview,
   WorkflowProgressPanel,
 } from '../../../plugins/tasks/components/task-workflow-panels'
@@ -47,13 +46,6 @@ function model(overrides: Record<string, unknown> = {}): TaskDetail {
     outputUnavailable: false,
     priorStepOutput: null,
     fetchPriorOutput: mock(),
-    showRejectInput: false,
-    setShowRejectInput: mock(),
-    rejectReason: '',
-    setRejectReason: mock(),
-    gateLoading: false,
-    handleRejectGate: mock(),
-    handleApproveGate: mock(),
     ...overrides,
   } as unknown as TaskDetail
 }
@@ -71,25 +63,5 @@ describe('task workflow drawer panels', () => {
     rerender(<WorkflowPreview m={m} />)
     expect(document.querySelector('[data-workflow-step-list]')?.getAttribute('data-orientation')).toBe('vertical')
     expect(screen.getByText('Draft, review, and approve launch copy.')).toBeTruthy()
-  })
-
-  it('uses the canonical attention alert and explicit gate actions', () => {
-    const m = model()
-    render(<GateApprovalPanel m={m} />)
-
-    expect(screen.getByRole('status').getAttribute('data-tone')).toBe('attention')
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
-    expect(m.handleApproveGate).toHaveBeenCalledTimes(1)
-    fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
-    expect(m.setShowRejectInput).toHaveBeenCalledWith(true)
-  })
-
-  it('associates the rejection reason label with its textarea', () => {
-    const m = model({ showRejectInput: true, rejectReason: 'Clarify the approval copy.' })
-    render(<GateApprovalPanel m={m} />)
-
-    expect((screen.getByRole('textbox', { name: 'Rejection reason' }) as HTMLTextAreaElement).value).toBe(
-      'Clarify the approval copy.',
-    )
   })
 })

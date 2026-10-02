@@ -14,7 +14,7 @@ mock.module('@makinbakin/sdk/content', () => ({
 }))
 
 mock.module('../../../plugins/tasks/components/task-workflow-panels', () => ({
-  GateApprovalPanel: () => null,
+  TaskApprovalsPanel: () => null,
   WorkflowProgressPanel: () => null,
   WorkflowPreview: () => null,
   MapChildrenPanel: () => null,
@@ -62,11 +62,6 @@ function taskDetail(overrides: Partial<TaskDetail> = {}): TaskDetail {
     isCreate: true,
     wfInstance: null,
     wfDefinition: null,
-    rejectReason: '',
-    setRejectReason: mock(),
-    showRejectInput: false,
-    setShowRejectInput: mock(),
-    gateLoading: false,
     isGatePending: false,
     gateStep: undefined,
     activeWorkflowId: 'approval-copy',
@@ -91,8 +86,13 @@ function taskDetail(overrides: Partial<TaskDetail> = {}): TaskDetail {
     handleDescriptionPaste: mock(),
     handleSave: mock(),
     handleAddLog: mock(),
-    handleApproveGate: mock(),
-    handleRejectGate: mock(),
+    approvals: [],
+    approvalsLoading: false,
+    approvalsFailed: false,
+    refreshApprovals: mock(async () => {}),
+    approvalBusyId: null,
+    approvalError: null,
+    resolveApproval: mock(async () => {}),
     ...overrides,
   } as TaskDetail
 }

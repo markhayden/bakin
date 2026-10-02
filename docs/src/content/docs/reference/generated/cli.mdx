@@ -240,16 +240,15 @@ bakin trash [list|restore|empty] ...
 <p class="cli-section-description">Diagnostics commands expose the information needed when something is not behaving as expected: logs, resolved paths, health checks, API docs, and generated agent rules.</p>
 
 <div class="cli-command-list">
-<CliCommandCard id="doctor" name="doctor" summary="Run health checks." description="Runs local offline diagnostics by default. Pass --full to include server-backed plugin, task, workflow, search, and runtime checks. Pass --notify-agent with --full to send fresh action-required incidents to the runtime main agent. Pass --fix to plan deterministic repairs or --delegate to create a linked repair task for the main agent; add --yes to execute either repair path. Ack verbs quiet an incident you have seen without hiding it (action_required incidents are snooze-only and re-fire on any evidence change).">
+<CliCommandCard id="doctor" name="doctor" summary="Run health checks." description="Runs local offline diagnostics by default. Pass --full to include server-backed plugin, task, workflow, search, and runtime checks. Pass --fix to plan deterministic repairs or --delegate to create a linked repair task for the main agent; add --yes to execute either repair path. Ack verbs quiet an incident you have seen without hiding it (action_required incidents are snooze-only and re-fire on any evidence change).">
 ```sh frame="terminal"
-bakin doctor [--json] [--full] [--notify-agent] [--fix|--delegate] [--yes] | doctor acks | doctor ack <incidentId> | doctor snooze <incidentId> [--for 24h|7d] | doctor unack <incidentId>
+bakin doctor [--json] [--full] [--fix|--delegate] [--yes] | doctor acks | doctor ack <incidentId> | doctor snooze <incidentId> [--for 24h|7d] | doctor unack <incidentId>
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
       <tr><td><code>[--full]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
-      <tr><td><code>[--notify-agent]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
       <tr><td><code>[--fix]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
       <tr><td><code>[--delegate]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
       <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
@@ -1092,5 +1091,5 @@ bakin brands remove <id> [--yes]
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Sep 25, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 1, 2026 · Bakin 0.0.0-dev</span>
 </aside>

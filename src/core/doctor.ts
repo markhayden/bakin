@@ -1,4 +1,4 @@
-/** Canonical Health facade: diagnostics plus notification and cron escalation. */
+/** Canonical Health facade: diagnostics plus cron escalation. */
 import type { HealthReport } from '../../packages/core/src/plugin-types'
 import {
   getLastReport,
@@ -21,22 +21,23 @@ const log = createLogger('doctor')
 let doctorTimer: NodeJS.Timeout | null = null
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 let stopRefresh: (() => void) | null = null
+let stopAutoClose: (() => void) | null = null
+
+/** One doctor cycle: full sweep → escalation → auto-close of verified repair tasks. */
+async function runCycle(contentDir: string, projectRoot: string): Promise<void> {
+  const report = await runDiagnostics(contentDir, projectRoot)
+  const { escalateCronIncidents } = await import('./doctor-escalation')
+  await escalateCronIncidents(report, contentDir, projectRoot)
+  const { reconcileRepairRequests } = await import('./doctor-autoclose')
+  await reconcileRepairRequests(contentDir)
+}
 
 function doctorIntervalMs(): number {
   return getSettings().doctor.intervalMs
 }
 
-export async function runDiagnostics(
-  contentDir: string,
-  projectRoot: string,
-  options: { notifyAgent?: boolean } = {},
-): Promise<HealthReport> {
-  const report = await executeDiagnostics(contentDir, projectRoot)
-  if (options.notifyAgent) {
-    const { notifyActionRequiredIncidents } = await import('./doctor-escalation')
-    await notifyActionRequiredIncidents(report)
-  }
-  return report
+export async function runDiagnostics(contentDir: string, projectRoot: string): Promise<HealthReport> {
+  return executeDiagnostics(contentDir, projectRoot)
 }
 
 export function start(contentDir: string, projectRoot: string): void {
@@ -63,20 +64,13 @@ export function start(contentDir: string, projectRoot: string): void {
     void refresh.tick(Date.now()).catch((error) => log.error('Health projection failed', error))
   }, 1000)
   refreshTimer.unref?.()
-  runDiagnostics(contentDir, projectRoot)
-    .then(async (report) => {
-      const { escalateCronIncidents } = await import('./doctor-escalation')
-      return escalateCronIncidents(report, contentDir, projectRoot)
-    })
-    .catch((error) => log.error('Doctor startup check failed', error))
+  runCycle(contentDir, projectRoot).catch((error) => log.error('Doctor startup check failed', error))
+  import('./doctor-autoclose')
+    .then(({ startAutoCloseWatcher }) => { stopAutoClose = startAutoCloseWatcher(contentDir) })
+    .catch((error) => log.error('Doctor auto-close watcher failed to start', error))
 
   doctorTimer = setInterval(() => {
-    runDiagnostics(contentDir, projectRoot)
-      .then(async (report) => {
-        const { escalateCronIncidents } = await import('./doctor-escalation')
-        return escalateCronIncidents(report, contentDir, projectRoot)
-      })
-      .catch((error) => log.error('Doctor periodic check failed', error))
+    runCycle(contentDir, projectRoot).catch((error) => log.error('Doctor periodic check failed', error))
   }, doctorIntervalMs())
   log.info('Doctor started', { intervalMs: doctorIntervalMs() })
 }
@@ -84,6 +78,8 @@ export function start(contentDir: string, projectRoot: string): void {
 export function stop(): void {
   stopRefresh?.()
   stopRefresh = null
+  stopAutoClose?.()
+  stopAutoClose = null
   if (refreshTimer) clearInterval(refreshTimer)
   refreshTimer = null
   if (!doctorTimer) return

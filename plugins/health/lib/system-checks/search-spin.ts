@@ -82,13 +82,10 @@ export function detectSpins(
 
 // Doctor-cadence sample (module-level, like search-consistency's throttle).
 let sample: SpinSampleState | null = null
-// Tables named by the most recent spin finding — the repair's target list.
-let lastSpinTables: string[] = []
 
 /** Test-only. */
 export function resetSpinStateForTests(): void {
   sample = null
-  lastSpinTables = []
 }
 
 export async function checkSearchSpin(): Promise<HealthCheckRunInput> {
@@ -138,7 +135,6 @@ export async function checkSearchSpin(): Promise<HealthCheckRunInput> {
   sample = nextState
 
   if (spins.length === 0) {
-    lastSpinTables = []
     if (inspectionErrors.length > 0) {
       return healthObserved([spinUnknown(inspectionErrors.join('; '))])
     }
@@ -150,7 +146,6 @@ export async function checkSearchSpin(): Promise<HealthCheckRunInput> {
     })])
   }
   const tables = Array.from(new Set(spins.map((s) => s.logical)))
-  lastSpinTables = tables
   const observations: HealthObservationInput[] = [healthError({
     key: 'indexes.spin',
     summary: `Backfill spin detected in ${tables.length} Search table${tables.length === 1 ? '' : 's'}.`,
@@ -181,11 +176,18 @@ export async function checkSearchSpin(): Promise<HealthCheckRunInput> {
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
 }
 
+/**
+ * The plan names every table concretely (one change per table, read from the
+ * CURRENT report's spin evidence) and apply rebuilds exactly the tables the
+ * approved items name — never a module-level "last seen" list, so a frozen
+ * approval (plan review R1 follow-up) cannot drift to a different table.
+ */
 export function searchSpinRepair(): HealthRepairActionDefinition {
   return {
     id: 'search-spin-rebuild',
     name: 'Rebuild spinning Search indexes',
     async plan(target) {
+      const tables = await spinningTablesFromReport()
       return [{
         id: 'rebuild-spinning-indexes',
         actionId: 'search-spin-rebuild',
@@ -193,18 +195,18 @@ export function searchSpinRepair(): HealthRepairActionDefinition {
         reason: 'One or more building index legs made no progress for a full watchdog window with no queued writes.',
         safety: 'destructive',
         ...repairTargetSelection(target),
-        changes: [{
-          kind: 'other',
-          target: 'search tables',
-          action: 'update',
-          description: 'Backfill fresh physical tables from source data and flip on convergence; queries keep answering from the current tables throughout.',
-        }],
+        changes: tables.map((table) => ({
+          kind: 'other' as const,
+          target: table,
+          action: 'update' as const,
+          description: 'Backfill a fresh physical table from source data and flip on convergence; queries keep answering from the current table throughout.',
+        })),
       }]
     },
     async apply(items) {
       if (items.length === 0) return []
       const { rebuildRegisteredTables } = await import('../../../../src/core/search-registry')
-      const targets = [...lastSpinTables]
+      const targets = rebuildTargets(items)
       const outcomes: string[] = []
       let failed = 0
       try {
@@ -234,6 +236,19 @@ export function searchSpinRepair(): HealthRepairActionDefinition {
       }
     },
   }
+}
+
+/** Tables the current report's spin observation names (bounded like its resources). */
+async function spinningTablesFromReport(): Promise<string[]> {
+  const { getHealthReport } = await import('../../../../src/core/doctor-report-cache')
+  const observation = getHealthReport().observations.find((row) => row.checkId === 'health.search-spin' && row.status === 'error')
+  const tables = observation?.evidence?.tables
+  return Array.isArray(tables) ? tables.filter((table): table is string => typeof table === 'string').slice(0, 50) : []
+}
+
+/** The concrete tables the approved/selected items name — the ONLY apply targets. */
+export function rebuildTargets(items: ReadonlyArray<{ changes: ReadonlyArray<{ target: string }> }>): string[] {
+  return [...new Set(items.flatMap((item) => item.changes.map((change) => change.target)))]
 }
 
 function spinUnknown(error: unknown) {

@@ -22,7 +22,7 @@ import { Inline, Section } from '@makinbakin/sdk/layout'
 interface KanbanColumnProps {
   id: ColumnId
   tasks: Task[]
-  gateLabels?: Record<string, string>
+  approvalLabels?: Record<string, string>
   childTaskLabels?: Record<string, string>
   budgetHolds?: Record<string, BudgetHold>
   brandHolds?: Record<string, BrandHold>
@@ -40,7 +40,7 @@ interface KanbanColumnProps {
   onHeaderClick?: () => void
 }
 
-export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHolds, brandHolds, liveActivity, warnUnbranded, scoreMap, onDelete, onTaskClick, onAddTask, footer, compact, totalCount, showScheduled = true, onHeaderClick }: KanbanColumnProps) {
+export function KanbanColumn({ id, tasks, approvalLabels, childTaskLabels, budgetHolds, brandHolds, liveActivity, warnUnbranded, scoreMap, onDelete, onTaskClick, onAddTask, footer, compact, totalCount, showScheduled = true, onHeaderClick }: KanbanColumnProps) {
   const { ref, isDropTarget } = useDroppable({
     id,
     accept: 'item',
@@ -120,7 +120,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
                   task={task}
                   columnId={id}
                   index={tasks.findIndex(item => item.id === task.id)}
-                  gateLabel={gateLabels?.[task.id]}
+                  approvalLabel={approvalLabels?.[task.id]}
                   childTaskId={childTaskLabels?.[task.id]}
                   budgetHold={budgetHolds?.[task.id]}
                   brandHold={brandHolds?.[task.id]}
@@ -155,7 +155,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
                       task={task}
                       columnId={id}
                       index={tasks.findIndex(item => item.id === task.id)}
-                      gateLabel={gateLabels?.[task.id]}
+                      approvalLabel={approvalLabels?.[task.id]}
                       childTaskId={childTaskLabels?.[task.id]}
                       budgetHold={budgetHolds?.[task.id]}
                       brandHold={brandHolds?.[task.id]}

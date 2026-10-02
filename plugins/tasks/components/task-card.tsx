@@ -108,7 +108,7 @@ interface TaskCardContentProps {
   task: Task
   columnId: string
   className?: string
-  gateLabel?: string
+  approvalLabel?: string
   childTaskId?: string
   budgetHold?: BudgetHold
   brandHold?: BrandHold
@@ -124,7 +124,7 @@ export function TaskCardContent({
   task,
   columnId,
   className,
-  gateLabel,
+  approvalLabel,
   childTaskId,
   budgetHold,
   brandHold,
@@ -153,7 +153,7 @@ export function TaskCardContent({
   const hasMetadata = Boolean(task.workflowId || task.projectId || task.brandId || (!task.brandId && warnUnbranded && !isComplete))
   const hasFooter = Boolean(task.agent || task.team || task.date)
   const hasSignals = Boolean(
-    budgetHold || gateLabel || (liveActivity && columnId === 'inProgress' && !isComplete)
+    budgetHold || approvalLabel || (liveActivity && columnId === 'inProgress' && !isComplete)
       || childTaskId || task.dependsOn || task.blockedReason || dispatchFailure || brandHold
       || (isFutureScheduled && task.availableAt),
   )
@@ -280,9 +280,9 @@ export function TaskCardContent({
             </PluginLink>
           ) : null}
 
-          {gateLabel ? (
+          {approvalLabel ? (
             <KanbanCardSignal tone="attention" label="Needs approval" icon={AlertTriangle}>
-              {gateLabel}
+              {approvalLabel}
             </KanbanCardSignal>
           ) : null}
 
@@ -390,7 +390,7 @@ interface TaskCardProps {
   task: Task
   columnId: string
   index?: number
-  gateLabel?: string
+  approvalLabel?: string
   childTaskId?: string
   budgetHold?: BudgetHold
   brandHold?: BrandHold
@@ -401,7 +401,7 @@ interface TaskCardProps {
   onClick: (task: Task, columnId: ColumnId) => void
 }
 
-export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, budgetHold, brandHold, warnUnbranded, scoreInfo, liveActivity, onDelete, onClick }: TaskCardProps) {
+export function TaskCard({ task, columnId, index = 0, approvalLabel, childTaskId, budgetHold, brandHold, warnUnbranded, scoreInfo, liveActivity, onDelete, onClick }: TaskCardProps) {
   const { ref, isDragging } = useSortable({
     id: task.id,
     group: columnId,
@@ -422,7 +422,7 @@ export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, bu
       <TaskCardContent
         task={task}
         columnId={columnId}
-        gateLabel={gateLabel}
+        approvalLabel={approvalLabel}
         childTaskId={childTaskId}
         budgetHold={budgetHold}
         brandHold={brandHold}

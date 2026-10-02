@@ -264,7 +264,6 @@ export type {
   CancelApprovalArgs,
   ResolveApprovalArgs,
   ApprovalResolveEvent,
-  DurableApprovalRecord,
   InboundChannelAttachment,
   InboundChannelMessage,
   RuntimeChannelSurface,

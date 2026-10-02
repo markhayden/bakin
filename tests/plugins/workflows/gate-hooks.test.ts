@@ -78,6 +78,7 @@ import {
   createInstance,
   loadInstance,
 } from '@bakin/workflows/lib/runtime'
+import { getApprovalRecord, listApprovalRecords } from '@bakin/core/approvals'
 import { createConversationTurnService } from '../../../src/core/conversation-turns'
 
 const gateWorkflow = `name: Gate Hook Test
@@ -204,9 +205,11 @@ describe('workflows gate hooks', () => {
     expect(hooks.has('workflows.reopenFromStep')).toBe(true)
   })
 
-  it('workflows.approveGate resolves a pending gate and returns approveGate result shape', async () => {
+  it('workflows.approveGate decides the gate through its pending approval record', async () => {
     const hooks = await activateWithHooks()
     createPendingGate('task-approve-hook')
+    const pending = listApprovalRecords({ status: 'pending', taskIds: ['task-approve-hook'] })
+    expect(pending).toHaveLength(1)
 
     const result = await hooks.get('workflows.approveGate')!({
       taskId: 'task-approve-hook',
@@ -215,14 +218,14 @@ describe('workflows gate hooks', () => {
       approver: { id: 'mark', source: 'web' },
     }) as Record<string, unknown>
 
-    expect(result.success).toBe(true)
-    expect(result.decision).toMatchObject({ gateLabel: 'Review', approver: { id: 'mark', source: 'web' } })
+    expect(result).toEqual({ success: true, approvalId: pending[0]!.approvalId })
+    expect(getApprovalRecord(pending[0]!.approvalId)).toMatchObject({ status: 'approved', response: { actor: { id: 'mark' } } })
     const instance = loadInstance('task-approve-hook', testDir)!
     expect(instance.currentStepId).toBe('publish')
     expect(instance.status).toBe('in_progress')
   })
 
-  it('workflows.rejectGate rejects a pending gate and returns rejectGate result shape', async () => {
+  it('workflows.rejectGate rejects through the record and rewinds the instance', async () => {
     const hooks = await activateWithHooks()
     createPendingGate('task-reject-hook')
 
@@ -235,8 +238,7 @@ describe('workflows gate hooks', () => {
     }) as Record<string, unknown>
 
     expect(result.success).toBe(true)
-    expect(result.rewoundTo).toBe('draft')
-    expect(result.decision).toMatchObject({ gateLabel: 'Review', reason: 'Needs a tighter CTA' })
+    expect(getApprovalRecord(result.approvalId as string)).toMatchObject({ status: 'rejected', response: { comment: 'Needs a tighter CTA' } })
     const instance = loadInstance('task-reject-hook', testDir)!
     expect(instance.currentStepId).toBe('draft')
     expect(instance.stepStates.draft.status).toBe('in_progress')
@@ -252,7 +254,7 @@ describe('workflows gate hooks', () => {
       contentDir: testDir,
     }) as Record<string, unknown>
     expect(missingTask.success).toBe(false)
-    expect(missingTask.errors).toEqual(['Workflow instance not found'])
+    expect(missingTask.errors).toEqual(['No pending approval for gate "review" on task missing-task'])
 
     const missingStep = await hooks.get('workflows.rejectGate')!({
       taskId: 'task-error-hook',
@@ -261,7 +263,7 @@ describe('workflows gate hooks', () => {
       contentDir: testDir,
     }) as Record<string, unknown>
     expect(missingStep.success).toBe(false)
-    expect((missingStep.errors as string[])[0]).toContain('not a gate')
+    expect((missingStep.errors as string[])[0]).toContain('No pending approval for gate "missing-step"')
   })
 
   it('workflows.createInstance routes through the unified recursive start validator (#510)', async () => {

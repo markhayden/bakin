@@ -21402,22 +21402,14 @@
         "tags": [
           "Health"
         ],
-        "description": "Explicitly starts or joins a fresh diagnostic sweep and optionally notifies the configured agent.",
+        "description": "Explicitly starts or joins a fresh diagnostic sweep. Escalation (auto-repair, approval tasks, delegation) only ever runs from the doctor cycle, never from this route.",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "notifyAgent": {
-                    "default": false,
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "notifyAgent"
-                ],
+                "properties": {},
                 "additionalProperties": false
               }
             }
@@ -21979,7 +21971,7 @@
                       "type": "string",
                       "minLength": 1
                     },
-                    "verifiedIncidentIds": {
+                    "remainingIncidentIds": {
                       "type": "array",
                       "items": {
                         "type": "string",
@@ -26458,7 +26450,7 @@
                     "results",
                     "affectedCheckIds",
                     "verifiedReportId",
-                    "verifiedIncidentIds",
+                    "remainingIncidentIds",
                     "report"
                   ],
                   "additionalProperties": false
@@ -41456,6 +41448,17 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -41610,7 +41613,7 @@
     "/api/plugins/workflows/gates/status": {
       "get": {
         "operationId": "workflows.get.gates-status",
-        "summary": "Batch check gate status for tasks",
+        "summary": "Batch map of nested-workflow parents to the child task their current step waits on",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -41735,7 +41738,7 @@
         "tags": [
           "Workflows"
         ],
-        "description": "Batch check gate status for tasks",
+        "description": "Batch map of nested-workflow parents to the child task their current step waits on",
         "x-bakin-full-path": "/api/plugins/workflows/gates/status"
       }
     },

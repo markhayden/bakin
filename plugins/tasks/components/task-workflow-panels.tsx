@@ -7,16 +7,11 @@ import {
   Badge,
   Button,
   DrawerSection,
-  Field,
-  FieldControl,
-  FieldLabel,
-  Spinner,
   Text,
-  Textarea,
 } from '@makinbakin/sdk/ui'
 import { ListRow, ListRowActions, ListRows, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
-import { AlertTriangle, Check, Hourglass, RefreshCw, X } from 'lucide-react'
-import { StepOutputViewer } from './step-output-viewer'
+import { AlertTriangle, Hourglass, RefreshCw, X } from 'lucide-react'
+import { ApprovalPanel } from './approval-panel'
 import type { TaskDetail } from './use-task-detail'
 import { Inline } from '@makinbakin/sdk/layout'
 
@@ -253,120 +248,37 @@ export function WorkflowStateUnavailableNotice({ m }: { m: TaskDetail }) {
   )
 }
 
-/** Approval-gate decision panel, including the prior step's normalized output. */
-export function GateApprovalPanel({ m }: { m: TaskDetail }) {
+/**
+ * Every pending decision on the task — workflow gate, Health repair, operator
+ * action — rendered by the one ApprovalPanel over core approval records
+ * (spec D7). The hook owns fetch/busy/error/mutation; a gate also gets the
+ * prior step's output from the workflow instance.
+ */
+export function TaskApprovalsPanel({ m }: { m: TaskDetail }) {
   const {
-    isGatePending,
-    gateStep,
+    approvals,
+    approvalsLoading,
+    approvalsFailed,
+    refreshApprovals,
+    approvalBusyId,
+    approvalError,
+    resolveApproval,
+    priorStepOutput,
     outputLoading,
     outputUnavailable,
-    priorStepOutput,
     fetchPriorOutput,
-    showRejectInput,
-    setShowRejectInput,
-    rejectReason,
-    setRejectReason,
-    gateLoading,
-    handleRejectGate,
-    handleApproveGate,
   } = m
-  if (!isGatePending || !gateStep) return null
-
   return (
-    <Alert tone="attention">
-      <Hourglass aria-hidden="true" />
-      <AlertTitle>Approval required: {gateStep.label || gateStep.id}</AlertTitle>
-      <AlertDescription>
-        {outputLoading ? (
-          <p role="status" className="inline-flex items-center gap-bakin-2">
-            <Spinner size="sm" />
-            Loading step output…
-          </p>
-        ) : null}
-
-        {outputUnavailable && !priorStepOutput ? (
-          <Inline gap="dense">
-            <span>Step output unavailable.</span>
-            <Button type="button" variant="link" size="xs" onClick={() => { void fetchPriorOutput() }}>
-              <RefreshCw aria-hidden="true" /> Retry
-            </Button>
-          </Inline>
-        ) : null}
-
-        {priorStepOutput ? (
-          <section aria-label="Prior step output" className="mt-bakin-3 grid min-w-0 gap-bakin-2">
-            <h4>
-              Prior step output
-            </h4>
-            <StepOutputViewer output={priorStepOutput} />
-          </section>
-        ) : null}
-
-        {showRejectInput ? (
-          <div className="mt-bakin-3 grid min-w-0 gap-bakin-3">
-            <Field name="rejectReason">
-              <FieldLabel requirement="required">Rejection reason</FieldLabel>
-              <FieldControl
-                render={(
-                  <Textarea
-                    value={rejectReason}
-                    onChange={event => setRejectReason(event.target.value)}
-                    placeholder="Describe what needs to change…"
-                    rows={3}
-                    autoFocus
-                  />
-                )}
-              />
-            </Field>
-            <div className="flex flex-wrap justify-end gap-bakin-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setShowRejectInput(false)
-                  setRejectReason('')
-                }}
-                disabled={gateLoading}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                onClick={() => { void handleRejectGate() }}
-                disabled={gateLoading || !rejectReason.trim()}
-              >
-                <X aria-hidden="true" />
-                {gateLoading ? 'Rejecting…' : 'Reject'}
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="mt-bakin-3 flex flex-wrap justify-end gap-bakin-2">
-            <Button
-              type="button"
-              variant="danger"
-              size="sm"
-              onClick={() => setShowRejectInput(true)}
-              disabled={gateLoading}
-            >
-              <X aria-hidden="true" /> Reject
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => { void handleApproveGate() }}
-              disabled={gateLoading}
-            >
-              <Check aria-hidden="true" />
-              {gateLoading ? 'Approving…' : 'Approve'}
-            </Button>
-          </div>
-        )}
-      </AlertDescription>
-    </Alert>
+    <ApprovalPanel
+      approvals={approvals}
+      loading={approvalsLoading}
+      failed={approvalsFailed}
+      busyApprovalId={approvalBusyId}
+      error={approvalError}
+      onResolve={(approval, option, comment) => { void resolveApproval(approval, option, comment) }}
+      onRetry={() => { void refreshApprovals() }}
+      gate={{ priorStepOutput, outputLoading, outputUnavailable, fetchPriorOutput: () => { void fetchPriorOutput() } }}
+    />
   )
 }
 

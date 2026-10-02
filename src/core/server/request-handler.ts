@@ -35,6 +35,7 @@ import * as agentsAvatarRoute from '../../../packages/host/src/api/agents/avatar
 import * as agentsHealthRoute from '../../../packages/host/src/api/agents/health'
 import * as agentsSettingsRoute from '../../../packages/host/src/api/agents/settings'
 import * as secretsRoute from '../../../packages/host/src/api/secrets'
+import * as approvalsRoute from '../../../packages/host/src/api/approvals'
 import * as agentsActionRoute from '../../../packages/host/src/api/agents/[action]'
 import * as memoryLogRoute from '../../../packages/host/src/api/memory/log'
 import * as pluginSettingsIdRoute from '../../../packages/host/src/api/plugin-settings/[pluginId]'
@@ -333,6 +334,16 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
         dispatchWebHandler(req, res, secretsRoute.del)
         return
       }
+    }
+
+    // Approvals (core): the board's inbox reads pending records and resolves them here (spec D7)
+    if (url.pathname === '/api/approvals' && req.method === 'GET') {
+      dispatchWebHandler(req, res, approvalsRoute.get)
+      return
+    }
+    if (req.method === 'POST' && approvalsRoute.approvalIdFromPath(url.pathname)) {
+      dispatchWebHandler(req, res, approvalsRoute.resolve)
+      return
     }
 
     // Task dependency continuation

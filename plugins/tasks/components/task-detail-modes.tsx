@@ -36,7 +36,7 @@ import { COLUMN_CONFIG } from '../constants'
 import type { Task, ColumnId } from '../types'
 import { TaskRunHistory } from './task-run-history'
 import { TaskNotesSection } from './task-notes-section'
-import { GateApprovalPanel, WorkflowProgressPanel, WorkflowPreview, MapChildrenPanel, WorkflowStateUnavailableNotice } from './task-workflow-panels'
+import { TaskApprovalsPanel, WorkflowProgressPanel, WorkflowPreview, MapChildrenPanel, WorkflowStateUnavailableNotice } from './task-workflow-panels'
 import type { TaskDetail } from './use-task-detail'
 import { TaskActionsMenu } from './task-actions-menu'
 
@@ -272,7 +272,7 @@ export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit 
         {/* Workflow preview box */}
         <WorkflowPreview m={m} />
         <WorkflowStateUnavailableNotice m={m} />
-        <GateApprovalPanel m={m} />
+        <TaskApprovalsPanel m={m} />
         <MapChildrenPanel m={m} />
 
         {!isCreate && task && <Slot name="task-brand" taskId={task.id} />}
@@ -358,7 +358,7 @@ export function TaskDetailView({ m, task, columnId, open, onClose, onEdit, onDel
         </div>
 
         <WorkflowStateUnavailableNotice m={m} />
-        <GateApprovalPanel m={m} />
+        <TaskApprovalsPanel m={m} />
 
         <WorkflowProgressPanel m={m} />
 

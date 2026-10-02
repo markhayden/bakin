@@ -340,15 +340,67 @@ an id from `runtime.channels.list()`. Legacy
 
 ## Runtime Gate Approvals
 
-Workflow gate channel approvals are Bakin-owned durable records, not provider-owned state. `plugins/workflows/lib/approval-store.ts` persists records under `~/.bakin/workflows/approvals/` before `runtime.channels.createApproval()` renders provider messages.
+A gate is an approval (spec D6): when the engine reaches a gate step it calls
+`requestGateApproval` (`lib/notifications.ts`) → core `requestApproval` with
+owner `{ kind: 'workflow-gate', taskId, workflowId, runId, stepId }` and the
+deterministic id `workflow-gate:<task>:<step>:<run>:<requestedAt>`. The record
+lives in the core store (`~/.bakin/approvals/`), the board and the host
+attention provider learn of it through `approval.pending`, and it is rendered
+on the runtime channel only when `settings.approvals.channelAlerts` is on.
+Workflows keeps ZERO approval settings (`settings.approvals` owns channel,
+alerts and `requireRejectReason`). Deep reference: `.claude/knowledge/approvals.md`.
 
-The approval record contains the `approvalId`, workflow/run/task/step owner, request body/options/context, delivery refs, response data, and timestamps. Runtime channel message ids are stored only as delivery refs. Channel interaction payloads carry `approvalId`; the workflows plugin loads the durable record and gets task/step identity from Bakin state before approving or rejecting a gate.
+`lib/approval-kind.ts` registers the `workflow-gate` kind at activation:
 
-Gate delivery resolves `approvalChannel` through `resolveRuntimeChannelRef` (`src/core/channel-aliases.ts` — the same resolver as `bakin_exec_post_channel`), so the setting may be a `notifications.channelAliases` alias, a `provider:target` ref, or a bare runtime channel id. Resolution failure logs at error level and skips delivery; the durable record is created first so rehydration can retry after a config fix.
+- `ownerState` — `live` while the instance (same `runId`) is `pending_approval`
+  at that step; `orphaned` once it moved on or was re-run; `unknown` (never
+  cancelled) when the instance file is missing.
+- `onResolve` — `approve` → `approveGate` + `gate.approved` audit (actor
+  source) + re-index + dispatch kick; `reject` → `rejectGate` with the typed
+  comment (web rejects need one while `requireRejectReason` is on → 400;
+  channel rejects fall back to the default reason) + `gate.rejected`. A gate
+  that already moved on refuses with 400 and leaves the record for
+  rehydration. Both post the decision receipt (`sendGateDecisionSummary`)
+  when channel alerts are on.
+- `render` — context first, buttons second: the native card is capped at 256
+  chars upstream, so the reviewable substance rides rich messages
+  (`sendGateContextMessage`). With `channels.createThread`/`editMessage`
+  (OpenClaw) the channel gets ONE compact root card, a thread with the full
+  labeled output + media (assetIds resolved via `assets.resolveServe`), and
+  the native button card routed into the thread (`context.threadId`); on
+  decision the root card is edited into a receipt and the summary posts in
+  the thread. Without threads everything is one flat message. Context
+  deliveries are persisted BEFORE the button card so a `createApproval`
+  failure never re-renders a duplicate root at rehydration. Delivery refs
+  encode the structure: `message:<id>` (root), `thread:<id>`,
+  `openclaw-plugin-approval:<id>` (native card).
+- `decideGate(taskId, stepId, option, actor, comment?)` — the ONE entry for
+  the plugin's own surfaces: `POST /gates/:taskId/{approve,reject}`, the
+  `workflows.approveGate`/`rejectGate` hooks. The durable decision page
+  (`GET/POST /gates/:taskId/decision`; links omit the approvalId, GET resolves
+  the newest pending record) POSTs the EXACT record its form named through
+  `resolveApproval`; `onResolve` refuses an older generation (409) once a
+  newer request exists for the same gate. Typed refusals map through core's
+  `approvalErrorStatus`.
+- `ensurePendingGateApprovals()` runs at `onReady`: every instance waiting at a
+  gate without a pending record gets one (idempotent) — gates reached before
+  approvals lived in core become decidable on the board.
 
-Channel approval requests include a Bakin-owned fallback URL in the request context. Provider-native buttons may expire or fail independently of the workflow gate; the fallback page posts back to the workflows plugin and uses the same durable approval record, audit trail, summary notification, and render resolution path as the Bakin UI. Native buttons render regardless of `requireRejectReason`: a button reject records the default reason `Rejected via runtime channel (no reason provided)`, while the Bakin UI and fallback page require a typed reason unconditionally.
+`/gates/status` now only maps nested-workflow parents to the child task their
+step waits on; pending approvals are read from `/api/approvals`.
 
-Startup calls `rehydratePendingApprovals()` from `plugins/workflows/lib/approval-rehydration.ts`. It garbage-collects first (resolved records older than 30 days are deleted; orphaned pending records whose instance is gone or no longer pending at that gate are cancelled), then reattaches stored delivery refs to pending workflow instances and retries `runtime.channels.createApproval()` for pending records that were written before rendering completed. Duplicate render windows are tolerated; the durable Bakin approval record remains the source of truth. Deep reference: `.claude/knowledge/workflow-approvals.md`.
+OpenClaw native-request hardening lives in `packages/adapter-openclaw/src/runtime.ts`:
+`allowedDecisions: ['allow-once', 'deny']` (never "Always allow"), pre-resolved
+decisions are suppressed in favour of the rendered message + Bakin link, and
+`turnSourceTo` must be a fully qualified `discord:channel:<id>` alias or the
+prompt falls back to approver DMs. On Pi the Discord delivery bridge serves the
+same surface (`.claude/knowledge/delivery-bridge.md`). `BAKIN_URL` should be a
+network-reachable host or links render as localhost.
+
+Decision records: `history[]` + `stepStates[stepId]` (`requestedAt`, `decidedAt`,
+`approver`, `rejectionReason`) on the instance file, `gate.approved` /
+`gate.rejected` audit rows (`taskId, stepId, gateLabel, approver, requestedAt,
+decidedAt, durationMs[, reason]`), and the core approval record's `response`.
 
 ### Cross-Plugin Gate Resolution Hooks
 
@@ -356,11 +408,12 @@ Plugins that own their own review UI resolve workflow gates through
 HookRegistry, never by importing workflow runtime internals or calling the
 workflows REST routes from inside the server process:
 
-- `workflows.approveGate` takes `{ taskId, stepId, approver?, contentDir? }`
-  and returns the same result shape as `approveGate()`.
-- `workflows.rejectGate` takes `{ taskId, stepId, reason, approver?,
-  rewindTo?, contentDir? }` and returns the same result shape as
-  `rejectGate()`.
+- `workflows.approveGate` takes `{ taskId, stepId, approver? }` and decides
+  the gate's pending approval record through core (`decideGate`); it returns
+  `{ success: true, approvalId }` or `{ success: false, errors }` — no pending
+  record (gate not waiting) is a clean error, never a throw.
+- `workflows.rejectGate` takes `{ taskId, stepId, reason, approver? }` and
+  returns the same shape; the reason rides as the approval comment.
 - `workflows.reopenFromStep` takes `{ taskId, stepId?, reason, actor?,
   contentDir? }` and reopens the same workflow instance/task at an actionable
   step. If `stepId` is a gate, the runtime resolves the gate's reject target or
@@ -505,9 +558,8 @@ Same non-negotiable rules as the rest of the codebase:
 | File | Purpose |
 |------|---------|
 | `plugins/workflows/lib/runtime.ts` | Workflow execution, step ownership, and active-workflow tool authorization |
-| `plugins/workflows/lib/approval-store.ts` | File-backed durable workflow approval records |
-| `plugins/workflows/lib/approval-rehydration.ts` | Startup reattachment/retry for pending workflow approvals |
-| `plugins/workflows/lib/notifications.ts` | Runtime channel notifications and gate approval rendering |
+| `plugins/workflows/lib/approval-kind.ts` | The `workflow-gate` approval kind (ownerState / onResolve / render), `decideGate`, `ensurePendingGateApprovals` |
+| `plugins/workflows/lib/notifications.ts` | UI event bus, `requestGateApproval` (core record), gate context message + thread, decision receipt |
 | `plugins/workflows/lib/parser.ts` | `loadDefinition`, `listDefinitions`, and semantic validation of the runtime-supported workflow contract |
 | `plugins/workflows/lib/source-registry.ts` | Per-id source index with user > agent-package > plugin precedence |
 | `plugins/workflows/lib/node-type-registry.ts` | Zod schemas + form metadata for the 5 builtins |

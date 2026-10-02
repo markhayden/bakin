@@ -33,7 +33,7 @@ interface RepairApplyResponse {
   results: HealthRepairApplyResult[]
   affectedCheckIds: string[]
   verifiedReportId: string
-  verifiedIncidentIds: string[]
+  remainingIncidentIds: string[]
   report: HealthReport
 }
 

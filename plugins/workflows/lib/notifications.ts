@@ -5,25 +5,21 @@
  * through the active runtime adapter's channel surface so provider-specific
  * API details stay behind the adapter boundary.
  */
-import type { AgentRuntimeAdapter, ApprovalDelivery, ApprovalRenderRef, CreateApprovalArgs } from '@bakin/core/adapters/runtime'
+import type { AgentRuntimeAdapter, ApprovalDelivery } from '@bakin/core/adapters/runtime'
+import type { RuntimeChannelSurface } from '@bakin/core/adapters/runtime/channels'
+import type { ApprovalRecord, ApprovalRequest } from '@bakin/core/approvals'
 import type { ApprovalActor, EventBus } from '@bakin/core/plugin-types'
 import type { WorkflowInstance } from '../types'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
+import { bakinBaseUrl, requestApproval, taskUrl } from '../../../src/core/approvals'
 import { createLogger } from '../../../src/core/logger'
 import { resolveRuntimeChannelRef } from '../../../src/core/channel-aliases'
-import { createApprovalRecord, resolveApprovalRecord, updateApprovalDeliveries } from './approval-store'
+import { getSettings } from '../../../src/core/settings'
 
 const log = createLogger('workflow-notifications')
 
 let eventBus: EventBus | null = null
 let runtime: AgentRuntimeAdapter | null = null
-let gateSettings: GateNotificationSettings | null = null
-
-export interface GateNotificationSettings {
-  approvalChannelAlerts: boolean
-  approvalChannel: string
-  requireRejectReason: boolean
-}
 
 export function setEventBus(bus: EventBus): void {
   eventBus = bus
@@ -33,32 +29,13 @@ export function setNotificationRuntime(adapter: AgentRuntimeAdapter): void {
   runtime = adapter
 }
 
-export function setGateNotificationSettings(settings: GateNotificationSettings): void {
-  gateSettings = settings
-}
-
-export function getGateNotificationSettings(): GateNotificationSettings | null {
-  return gateSettings
-}
-
-export function buildGateApprovalId(taskId: string, stepId: string, runId?: string, requestKey?: string): string {
-  const parts = ['workflow-gate', encodeURIComponent(taskId), encodeURIComponent(stepId)]
-  if (runId) parts.push(encodeURIComponent(runId))
-  if (requestKey) parts.push(encodeURIComponent(requestKey))
-  return parts.join(':')
-}
-
-export function parseGateApprovalId(approvalId: string): { taskId: string; stepId: string } | null {
-  const parts = approvalId.split(':')
-  if ((parts.length !== 3 && parts.length !== 4 && parts.length !== 5) || parts[0] !== 'workflow-gate') return null
-  try {
-    return {
-      taskId: decodeURIComponent(parts[1]),
-      stepId: decodeURIComponent(parts[2]),
-    }
-  } catch {
-    return null
-  }
+/**
+ * A gate approval's id IS the gate's identity: task + step + run + the
+ * moment it was requested. Deterministic, so re-requesting the same gate
+ * (boot reconcile, replayed advance) lands on the same record.
+ */
+export function buildGateApprovalId(taskId: string, stepId: string, runId: string, requestedAt: string): string {
+  return ['workflow-gate', taskId, stepId, runId, requestedAt].map(encodeURIComponent).join(':')
 }
 
 /**
@@ -197,34 +174,20 @@ export function notifyStepDispatched(
   })
 }
 
-export async function sendGateApprovalRequest(
+/** The approval request a gate records — rendered on channels and read by the task detail. */
+export function buildGateApprovalRequest(
   instance: WorkflowInstance,
   stepId: string,
   label: string,
   priorOutput: Record<string, unknown> | undefined,
-  settings: GateNotificationSettings,
-): Promise<ApprovalRenderRef | null> {
-  if (!settings.approvalChannelAlerts) return null
-  // Optional capability (P2.1): no runtime OR no channel layer → the gate
-  // still exists and is approvable in the Bakin UI; only the channel alert
-  // vehicle is absent.
-  const channels = runtime?.channels
-  if (!channels) {
-    log.warn('Runtime channel layer unavailable; skipping gate approval alert (approve in the Bakin UI)')
-    return null
-  }
-
-  const requestedAt = instance.stepStates[stepId]?.requestedAt ?? instance.updatedAt ?? instance.createdAt
-  const approvalId = buildGateApprovalId(instance.taskId, stepId, instance.instanceId, requestedAt)
-  const channel = settings.approvalChannel || 'general'
+): ApprovalRequest {
   const body = [
     `Workflow ${instance.workflowId} has reached a gate and needs approval.`,
     `Task: ${instance.taskId}`,
     `Step: ${stepId}`,
     renderPriorOutput(priorOutput),
   ].filter(Boolean).join('\n\n')
-
-  const request: CreateApprovalArgs['request'] = {
+  return {
     title: `Gate: ${label}`,
     body,
     options: [
@@ -236,66 +199,31 @@ export async function sendGateApprovalRequest(
       workflowId: instance.workflowId,
       taskId: instance.taskId,
       stepId,
-      requireRejectReason: settings.requireRejectReason,
+      requireRejectReason: getSettings().approvals.requireRejectReason,
       approvalUrl: buildGateApprovalUrl(instance.taskId, stepId),
     },
   }
+}
 
-  createApprovalRecord({
-    approvalId,
-    owner: {
-      workflowId: instance.workflowId,
-      runId: instance.instanceId,
-      stepId,
-      taskId: instance.taskId,
-    },
-    request,
+/**
+ * Record the gate's approval through core (spec D6): ONE durable record per
+ * gate whatever the runtime, announced to the board and attention provider,
+ * and rendered on the runtime channel by the `workflow-gate` kind when
+ * `settings.approvals.channelAlerts` is on. Idempotent by approval id.
+ */
+export function requestGateApproval(
+  instance: WorkflowInstance,
+  stepId: string,
+  label: string,
+  priorOutput: Record<string, unknown> | undefined,
+): ApprovalRecord {
+  const requestedAt = instance.stepStates[stepId]?.requestedAt ?? instance.updatedAt ?? instance.createdAt
+  return requestApproval({
+    approvalId: buildGateApprovalId(instance.taskId, stepId, instance.instanceId, requestedAt),
+    owner: { kind: 'workflow-gate', taskId: instance.taskId, workflowId: instance.workflowId, runId: instance.instanceId, stepId },
+    request: buildGateApprovalRequest(instance, stepId, label, priorOutput),
     createdAt: requestedAt,
   })
-
-  let resolvedChannel: string
-  try {
-    resolvedChannel = (await resolveRuntimeChannelRef({ channels }, channel)).resolved
-  } catch (err) {
-    log.error('Gate approval channel resolution failed', err, { approvalId, channel })
-    return null
-  }
-
-  // Context first, buttons second: the native approval card is capped at 256
-  // chars upstream, so the reviewable substance (gate description, prior
-  // output, generated media) rides normal rich messages. When the adapter
-  // supports threads, the channel gets ONE compact card and everything else
-  // (full output, media, buttons) lives in a thread anchored to it.
-  // Best-effort — context failures never block the approval.
-  const gateThread = await sendGateContextMessage(instance, stepId, label, priorOutput, resolvedChannel, request.context)
-  if (gateThread?.threadId) {
-    request.context = { ...(request.context ?? {}), threadId: gateThread.threadId }
-  }
-  // Persist context deliveries BEFORE the button card is attempted: if
-  // createApproval throws, the already-posted root card must be on the
-  // record or the next rehydration re-renders a duplicate gate card.
-  if (gateThread && gateThread.deliveries.length > 0) {
-    updateApprovalDeliveries(approvalId, gateThread.deliveries)
-  }
-
-  try {
-    const result = await channels.createApproval({
-      approvalId,
-      channels: [resolvedChannel],
-      request,
-    })
-    const deliveries = [...(gateThread?.deliveries ?? []), ...result.deliveries]
-    updateApprovalDeliveries(approvalId, deliveries)
-    log.info(`Gate approval alert sent for ${instance.taskId}:${stepId}`, {
-      approvalId,
-      deliveryCount: deliveries.length,
-      threaded: Boolean(gateThread?.threadId),
-    })
-    return { approvalId, deliveries }
-  } catch (err) {
-    log.warn('Gate approval alert failed', err)
-    return null
-  }
 }
 
 /** Recursively collect assetId-ish string values from a step output object. */
@@ -323,7 +251,7 @@ interface ResolvedAssetFile {
   mimeType?: string
 }
 
-interface GateThreadInfo {
+export interface GateThreadInfo {
   deliveries: ApprovalDelivery[]
   threadId?: string
 }
@@ -335,16 +263,15 @@ interface GateThreadInfo {
  * media in a thread anchored to it (the button card follows into the thread
  * via context.threadId). Otherwise: one flat message with everything.
  */
-async function sendGateContextMessage(
+export async function sendGateContextMessage(
+  channels: RuntimeChannelSurface,
   instance: WorkflowInstance,
   stepId: string,
   label: string,
   priorOutput: Record<string, unknown> | undefined,
   resolvedChannel: string,
-  context: CreateApprovalArgs['request']['context'],
+  context: ApprovalRequest['context'],
 ): Promise<GateThreadInfo | null> {
-  const channels = runtime?.channels
-  if (!channels) return null
   try {
     const files: Array<{ name: string; path: string; contentType?: string }> = []
     for (const assetId of extractAssetIds(priorOutput)) {
@@ -359,8 +286,7 @@ async function sendGateContextMessage(
     }
 
     const approvalUrl = typeof context?.approvalUrl === 'string' ? context.approvalUrl : buildGateApprovalUrl(instance.taskId, stepId)
-    // /tasks, not / — the root route redirects to /tasks and drops the search string.
-    const taskUrl = `${bakinBaseUrl()}/tasks?taskId=${encodeURIComponent(instance.taskId)}`
+    const taskLink = taskUrl(instance.taskId)
 
     const header = [
       '🚦 **Task Needs Review**',
@@ -368,7 +294,7 @@ async function sendGateContextMessage(
       `**${label}** — \`${instance.workflowId}\``,
       `Task \`${instance.taskId}\` | Step \`${stepId}\``,
     ].join('\n')
-    const links = `**[Review & Approve in Bakin](${approvalUrl})** · [View Task](${taskUrl})`
+    const links = `**[Review & Approve in Bakin](${approvalUrl})** · [View Task](${taskLink})`
     const fullOutput = renderPriorOutput(priorOutput, { markdown: true })
 
     const metadata = {
@@ -466,46 +392,10 @@ async function sendGateContextMessage(
 // Deliberately short: the native approval card caps descriptions at 256 chars
 // (upstream), so every character spent on the URL is context lost. The page
 // resolves the pending approval from task + step; no approvalId needed.
-function bakinBaseUrl(): string {
-  return process.env.BAKIN_URL || 'http://localhost:3737'
-}
-
 function buildGateApprovalUrl(taskId: string, stepId: string): string {
   const url = new URL(`/api/plugins/workflows/gates/${encodeURIComponent(taskId)}/decision`, bakinBaseUrl())
   url.searchParams.set('stepId', stepId)
   return url.toString()
-}
-
-export async function resolveGateApproval(
-  approvalRef: ApprovalRenderRef | undefined,
-  decision: 'approved' | 'rejected',
-  approver: ApprovalActor,
-  decidedAt: string,
-  reason?: string,
-): Promise<void> {
-  const channels = runtime?.channels
-  if (!channels || !approvalRef) return
-
-  const response = {
-    selectedOption: decision === 'approved' ? 'approve' : 'reject',
-    respondedAt: decidedAt,
-    actor: {
-      type: 'human' as const,
-      id: approver.id,
-      displayName: approver.displayName ?? approver.id,
-    },
-    ...(reason ? { comment: reason } : {}),
-  }
-  resolveApprovalRecord(approvalRef.approvalId, response)
-
-  try {
-    await channels.resolveApproval({
-      ...approvalRef,
-      response,
-    })
-  } catch (err) {
-    log.warn('Gate approval resolve notification failed', err)
-  }
 }
 
 /**
@@ -521,10 +411,10 @@ export async function sendGateDecisionSummary(
   requestedAt: string | undefined,
   decidedAt: string,
   reason: string | undefined,
-  settings: GateNotificationSettings,
-  approvalRef?: ApprovalRenderRef,
+  deliveries: ApprovalDelivery[],
 ): Promise<void> {
-  if (!settings.approvalChannelAlerts) return
+  const settings = getSettings().approvals
+  if (!settings.channelAlerts) return
   const channels = runtime?.channels
   if (!channels) return
 
@@ -562,8 +452,8 @@ export async function sendGateDecisionSummary(
   // (and independent of) settings-channel resolution — and ONLY when a thread
   // marker proves threaded mode: in flat mode the single message ref IS the
   // gate's full context, and rewriting it would erase the reviewed content.
-  const rootDelivery = approvalRef?.deliveries.find((d) => d.ref.startsWith('message:'))
-  const threadDelivery = approvalRef?.deliveries.find((d) => d.ref.startsWith('thread:'))
+  const rootDelivery = deliveries.find((d) => d.ref.startsWith('message:'))
+  const threadDelivery = deliveries.find((d) => d.ref.startsWith('thread:'))
   if (rootDelivery && threadDelivery && typeof channels.editMessage === 'function') {
     const rootBody = [
       `🚦 **${gateLabel}** — \`${instance.workflowId}\``,
@@ -582,7 +472,7 @@ export async function sendGateDecisionSummary(
   // into the thread; without one, resolve the configured summary channel.
   let summaryChannel = threadDelivery?.channelId
   if (!summaryChannel) {
-    const channel = settings.approvalChannel || 'general'
+    const channel = settings.channel || 'general'
     try {
       summaryChannel = (await resolveRuntimeChannelRef({ channels }, channel)).resolved
     } catch (err) {

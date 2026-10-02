@@ -45,7 +45,8 @@ import { TaskFilters } from './task-filters'
 import { TaskLogTable } from './task-log-table'
 import { filterBoardColumns, useTaskFilters } from '../hooks/use-task-filters'
 import { countVisibleTasks } from '../lib/scheduled'
-import { useGateStatus } from '../hooks/use-gate-status'
+import { useWorkflowChildTasks } from '../hooks/use-workflow-child-tasks'
+import { approvalLabelFor, useTaskApprovals } from '../hooks/use-task-approvals'
 import { useBudgetStatus, pickTaskHold, type BudgetHold } from '../hooks/use-budget-status'
 import { useModelHolds } from '../hooks/use-model-holds'
 import { useBrandStatus, brandHoldReason, type BrandHold } from '../hooks/use-brand-status'
@@ -278,23 +279,27 @@ export function KanbanBoard() {
     }
     return ids
   }, [columns])
-  const gateStatuses = useGateStatus(workflowTaskIds)
+  const childTasks = useWorkflowChildTasks(workflowTaskIds)
 
-  const gateLabels = useMemo(() => {
+  // "Needs approval" rides pending approval records of every kind (workflow
+  // gates, Health repairs, operator actions) — the board is the inbox (D7).
+  const { byTask: pendingApprovals } = useTaskApprovals()
+  const approvalLabels = useMemo(() => {
     const labels: Record<string, string> = {}
-    for (const [taskId, status] of Object.entries(gateStatuses)) {
-      if (status && !status.childTaskId) labels[taskId] = status.label
+    for (const [taskId, approvals] of Object.entries(pendingApprovals)) {
+      const label = approvalLabelFor(approvals)
+      if (label) labels[taskId] = label
     }
     return labels
-  }, [gateStatuses])
+  }, [pendingApprovals])
 
   const childTaskLabels = useMemo(() => {
     const labels: Record<string, string> = {}
-    for (const [taskId, status] of Object.entries(gateStatuses)) {
-      if (status?.childTaskId) labels[taskId] = status.childTaskId
+    for (const [taskId, child] of Object.entries(childTasks)) {
+      if (child?.childTaskId) labels[taskId] = child.childTaskId
     }
     return labels
-  }, [gateStatuses])
+  }, [childTasks])
 
   // Budget-deferred badges (cost-control v2): todo tasks whose dispatch the
   // spend gate is currently holding — derived from the side-effect-free
@@ -737,7 +742,7 @@ export function KanbanBoard() {
                     key={colId}
                     id={colId}
                     tasks={colId === 'archived' ? [] : filteredColumns[colId]}
-                    gateLabels={gateLabels}
+                    approvalLabels={approvalLabels}
                     childTaskLabels={childTaskLabels}
                     budgetHolds={budgetHolds}
                     brandHolds={brandHolds}

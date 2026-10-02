@@ -149,23 +149,6 @@ export interface ApprovalResolveEvent {
   channelId: string
 }
 
-export interface DurableApprovalRecord {
-  approvalId: string
-  owner: {
-    workflowId: string
-    runId: string
-    stepId: string
-    taskId?: string
-  }
-  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired'
-  request: CreateApprovalArgs['request']
-  deliveries: ApprovalDelivery[]
-  response?: ApprovalResponse
-  createdAt: string
-  updatedAt: string
-  resolvedAt?: string
-}
-
 /** An inbound attachment already materialized to a LOCAL file by the provider. */
 export interface InboundChannelAttachment {
   name: string

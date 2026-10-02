@@ -9,6 +9,9 @@
  *   2. dispatch.start + watchdog.start run in a `finally` so they start even if
  *      restart recovery throws.
  *   3. doctor.start runs in a `finally` after the post-recovery dispatch.
+ *   4. Approval kinds (doctor + plugins) exist before bootApprovals rehydrates
+ *      records and opens the channel subscription; interrupted repairs are
+ *      recovered first.
  *
  * Fire-and-forget from the listen callback (`void runStartupRecovery(...)`);
  * every step swallows its own errors so boot is never blocked.
@@ -76,6 +79,23 @@ export async function runStartupRecovery(contentDir: string, port: number): Prom
     log.error('Post-recovery dispatch failed', err)
   } finally {
     doctor.start(contentDir, process.cwd())
+  }
+
+  // Approvals (spec D6): every kind handler is registered by now (plugins at
+  // activation, the doctor at start) — rehydrate pending records and open the
+  // ONE runtime-channel decision subscription. Board-only until the next boot
+  // if this fails; never blocks startup.
+  try {
+    const { registerDoctorApprovalKinds, recoverInterruptedApplies } = await import('../doctor-approvals')
+    registerDoctorApprovalKinds({ contentDir, projectRoot: process.cwd() })
+    // A repair interrupted mid-apply by the previous process is verified or
+    // failed honestly BEFORE rehydration looks at its (still pending) record.
+    await recoverInterruptedApplies(contentDir)
+    const { bootApprovals } = await import('../approvals')
+    const { getAppServices } = await import('../app-services-store')
+    await bootApprovals(getAppServices().runtime)
+  } catch (err) {
+    log.error('Approvals boot failed — pending approvals stay board-only until restart', err)
   }
 
   if (process.env.BAKIN_SEED_USAGE === '1') {

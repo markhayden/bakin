@@ -146,12 +146,26 @@ const mockRepairApply = {
   }],
   affectedCheckIds: ['tasks.taskboard'],
   verifiedReportId: freshReport.id,
-  verifiedIncidentIds: [],
+  remainingIncidentIds: [],
   report: freshReport,
 }
 const planDoctorRepairMock = mock(async () => mockRepairPlan)
 const applyDoctorRepairMock = mock(async () => mockRepairApply)
 
+let coveringApproval: { approvalId: string } | null = null
+const resolveApprovalWithResultMock = mock(async () => ({ record: { approvalId: 'health-repair:req-1', status: 'approved' }, result: mockRepairApply }))
+mock.module('../../../src/core/doctor-approvals', () => ({
+  pendingRepairApprovalFor: (observationIds: string[]) => (coveringApproval && observationIds.includes('tasks.taskboard:columns') ? coveringApproval : null),
+}))
+mock.module('../../../src/core/approvals', () => ({
+  resolveApprovalWithResult: resolveApprovalWithResultMock,
+  approvalErrorStatus: () => null,
+}))
+mock.module('../../../src/core/doctor-repair-plans', () => ({
+  DoctorRepairStalePlanError: class DoctorRepairStalePlanError extends Error { code = 'STALE_PLAN' },
+  DoctorRepairConfirmationError: class DoctorRepairConfirmationError extends Error { code = 'CONFIRMATION_REQUIRED'; itemIds: string[] = [] },
+  getStoredRepairPlan: (planId: string) => (planId === mockRepairPlan.planId ? mockRepairPlan : undefined),
+}))
 mock.module('../../../src/core/doctor-repair', () => ({
   planDoctorRepair: planDoctorRepairMock,
   applyDoctorRepair: applyDoctorRepairMock,
@@ -1024,12 +1038,10 @@ describe('Health Plugin Routes', () => {
     it('runs fresh diagnostics only through the explicit JSON POST route', async () => {
       const route = findRoute(activated.routes, 'POST', '/doctor/run')!
 
-      const { status, body } = await callRoute(route, activated.ctx, {
-        body: { notifyAgent: true },
-      })
+      const { status, body } = await callRoute(route, activated.ctx, { body: {} })
       expect(status).toBe(200)
       expect(body.id).toBe(freshReport.id)
-      expect(runDiagnosticsMock).toHaveBeenCalledWith(testDir, process.cwd(), { notifyAgent: true })
+      expect(runDiagnosticsMock).toHaveBeenCalledWith(testDir, process.cwd())
     })
   })
 
@@ -1059,6 +1071,23 @@ describe('Health Plugin Routes', () => {
       expect(status).toBe(400)
       expect(body.error).toBe('invalid input')
       expect(applyDoctorRepairMock).not.toHaveBeenCalled()
+    })
+
+    it('applies through the covering approval record when a review task already holds this repair (one approval, one execution)', async () => {
+      const route = findRoute(activated.routes, 'POST', '/doctor/repair/apply')!
+      coveringApproval = { approvalId: 'health-repair:req-1' }
+      resolveApprovalWithResultMock.mockClear()
+      try {
+        const { status, body } = await callRoute(route, activated.ctx, {
+          body: { planId: mockRepairPlan.planId, itemIds: [mockRepairPlan.items[0].id], confirmedItemIds: [] },
+        })
+        expect(status).toBe(200)
+        expect(body.results).toEqual(mockRepairApply.results)
+        expect(resolveApprovalWithResultMock).toHaveBeenCalledWith('health-repair:req-1', expect.objectContaining({ option: 'apply', actor: expect.objectContaining({ source: 'web' }) }))
+        expect(applyDoctorRepairMock).not.toHaveBeenCalled()
+      } finally {
+        coveringApproval = null
+      }
     })
 
     it('applies selected items from a server-held repair plan', async () => {

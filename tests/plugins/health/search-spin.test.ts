@@ -17,7 +17,23 @@ const contentDirMock = () => ({
 mock.module('../../../src/core/content-dir', contentDirMock)
 mock.module('../../../packages/core/src/content-dir', contentDirMock)
 
-import { detectSpins, type SpinLegSnapshot } from '../../../plugins/health/lib/system-checks/search-spin'
+let reportTables: string[] = []
+let scarredTables: string[] = []
+mock.module('../../../src/core/doctor-report-cache', () => ({
+  getHealthReport: () => ({
+    observations: [
+      ...(reportTables.length > 0 ? [{ checkId: 'health.search-spin', key: 'indexes.spin', status: 'error', evidence: { tables: reportTables } }] : []),
+      ...(scarredTables.length > 0 ? [{ checkId: 'health.search', key: 'indexes.scars', status: 'warning', evidence: { scarredTables } }] : []),
+    ],
+  }),
+}))
+const rebuilt: string[] = []
+mock.module('../../../src/core/search-registry', () => ({
+  rebuildRegisteredTables: async (logical: string) => { rebuilt.push(logical); return [{ table: logical, result: 'migrated', indexed: 1 }] },
+}))
+
+import { detectSpins, rebuildTargets, searchSpinRepair, type SpinLegSnapshot } from '../../../plugins/health/lib/system-checks/search-spin'
+import { searchScarRepair } from '../../../plugins/health/lib/system-checks/search'
 
 const WINDOW = 10 * 60 * 1000
 const leg = (over: Partial<SpinLegSnapshot> = {}): SpinLegSnapshot => ({
@@ -97,5 +113,41 @@ describe('detectSpins', () => {
     // window rolls at WINDOW: the newcomer was recorded at 10 mid-window
     const end = detectSpins(mid.nextState, WINDOW, [leg({ indexedCount: 10 })], WINDOW)
     expect(end.spins).toHaveLength(1)
+  })
+})
+
+describe('searchSpinRepair — concrete targets (frozen proposals must name real tables)', () => {
+  it('plan emits one change per spinning table from the CURRENT report, not a vague "search tables"', async () => {
+    reportTables = ['bakin_tasks', 'bakin_assets']
+    const [item] = await searchSpinRepair().plan({ type: 'all_actionable', reportId: 'r1' })
+    expect(item!.changes.map((change) => change.target)).toEqual(['bakin_tasks', 'bakin_assets'])
+    reportTables = []
+    const [none] = await searchSpinRepair().plan({ type: 'all_actionable', reportId: 'r1' })
+    expect(none!.changes).toEqual([])
+  })
+
+  it('apply rebuilds exactly the tables the approved items name — never whatever the check last saw', async () => {
+    reportTables = ['bakin_assets']
+    rebuilt.length = 0
+    const item = {
+      id: 'search-spin-rebuild:rebuild-spinning-indexes', actionId: 'search-spin-rebuild', title: 'Rebuild', reason: 'spin', safety: 'destructive' as const,
+      incidentIds: [], observationIds: [], preconditions: [],
+      changes: [{ kind: 'other' as const, target: 'bakin_tasks', action: 'update' as const, description: 'rebuild' }],
+    }
+    expect(rebuildTargets([item])).toEqual(['bakin_tasks'])
+    const [result] = await searchSpinRepair().apply([item])
+    expect(rebuilt).toEqual(['bakin_tasks'])
+    expect(result).toMatchObject({ status: 'applied', message: 'bakin_tasks: migrated' })
+  })
+})
+
+describe('searchScarRepair — concrete targets', () => {
+  it('plans one change per scarred table from the report and rebuilds only the approved items\' targets', async () => {
+    scarredTables = ['bakin_assets', 'bakin_chats']
+    const [item] = await searchScarRepair().plan({ type: 'all_actionable', reportId: 'r1' })
+    expect(item!.changes.map((change) => change.target)).toEqual(['bakin_assets', 'bakin_chats'])
+    rebuilt.length = 0
+    await searchScarRepair().apply([{ ...item!, changes: [item!.changes[1]!] }])
+    expect(rebuilt).toEqual(['bakin_chats'])
   })
 })

@@ -148,13 +148,6 @@ export function useSSE() {
             if (data.event.startsWith('workflow.gate') || data.event === 'workflow.complete') {
               initialize()
             }
-            // Browser notification for gates needing approval
-            if (data.event === 'workflow.gate_reached') {
-              sendBrowserNotification(
-                'Approval needed',
-                data.label || 'A workflow gate needs your review'
-              )
-            }
             // Synthesize an audit entry so other consumers see it
             appendAuditEntry({
               ts: data.timestamp || new Date().toISOString(),
@@ -172,6 +165,13 @@ export function useSSE() {
               taskId: data.taskId,
               eventName: data.event,
             })
+          }
+
+          // Approvals (core, spec D7): a pending/resolved record changes the
+          // board's "Needs approval" signal — refresh the surfaces. Toast + OS
+          // notification are the host ApprovalsAttentionProvider's job.
+          if (data.type === 'plugin-event' && typeof data.event === 'string' && data.event.startsWith('approval.')) {
+            initialize()
           }
 
           // Budget incidents (cost-control v2): browser notification (same

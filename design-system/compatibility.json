@@ -7,10 +7,10 @@
   ],
   "repositories": {
     "bakin": {
-      "ref": "2afd895233f5681fb4667f10f7c1cf7fb4eb915b"
+      "ref": "4b8c7f21b27eb64f0a9aa406736eea71dec543fc"
     },
     "bakin-bits-official": {
-      "ref": "c2e97be37f4f771cd1c4a14984efa1fdb7fdff3c"
+      "ref": "6b5c1fa7740759e8bf955284eb5b06f586a9ceb0"
     }
   },
   "sdk": {
@@ -67,7 +67,7 @@
     "terminal": {
       "repository": "bakin-bits-official",
       "role": "official-plugin",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "bakinRange": ">=0.0.1-rc.40",
       "routes": {
         "total": 2,

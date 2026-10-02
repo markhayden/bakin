@@ -268,16 +268,19 @@ export interface BakinSettings {
      */
     requireOnboard: boolean
     /**
-     * What the PERIODIC doctor does when a cycle produces ERROR findings:
-     * 'task' creates ONE deduplicated delegated-repair task for the main
-     * agent (skipped while a covering repair task is open and younger than
-     * escalationStaleAfterMs, and rate-limited by escalationCooldownMs);
-     * 'notify' messages the main agent; 'off'
-     * keeps the old dashboard-only behavior. Manual `bakin doctor` runs are
-     * never affected. Both agent-facing modes cost an agent turn and ride
-     * the normal budget gates.
+     * Whether the PERIODIC doctor escalates fresh action-required incidents
+     * (spec D1/D6): safe deterministic repairs are applied directly,
+     * destructive repairs and operator-only resolutions become approval
+     * tasks in the review column, and anything left is delegated to the
+     * main agent as ONE deduplicated repair task (skipped while a covering
+     * task is open — blocked/review cover indefinitely, todo/in-progress
+     * until escalationStaleAfterMs — and rate-limited by
+     * escalationCooldownMs). false keeps the dashboard-only behavior.
+     * Manual `bakin doctor` runs are never affected. The old string modes
+     * ('off' | 'notify' | 'task') are coerced on load: 'off' → false, else
+     * true (the one-shot upgrade rewrites the file).
      */
-    escalation: 'off' | 'notify' | 'task'
+    escalation: boolean
     /** Minimum gap before re-escalating the SAME error set as a new task. */
     escalationCooldownMs: number
     /**
@@ -312,6 +315,19 @@ export interface BakinSettings {
    * (the System & Alerts renderer has no array field type) and normalize to
    * string arrays.
    */
+  /**
+   * Approvals (spec D6–D8): ONE primitive behind workflow gates and Health
+   * repairs. `channelAlerts` renders approval cards on the runtime channel
+   * (`channel` = channel id or notifications.channelAliases alias);
+   * `requireRejectReason` makes the Bakin UI and fallback page demand a
+   * typed reason (channel button rejects record a default one). Moved here
+   * from the workflows plugin's settings by the one-shot approvals upgrade.
+   */
+  approvals: {
+    channelAlerts: boolean
+    channel: string
+    requireRejectReason: boolean
+  }
   integrations: {
     discord: DiscordIntegrationSettings
   }
@@ -458,7 +474,7 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     checkTimeoutMs: 30_000,
     sensitivity: 'standard',
     requireOnboard: true,
-    escalation: 'task',
+    escalation: true,
     escalationCooldownMs: 6 * 60 * 60 * 1000, // 6 hours
     escalationStaleAfterMs: 12 * 60 * 60 * 1000, // 12 hours
   },
@@ -475,6 +491,11 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     channel: '',
     target: '',
     channelAliases: {},
+  },
+  approvals: {
+    channelAlerts: false,
+    channel: 'general',
+    requireRejectReason: true,
   },
   integrations: {
     discord: {
@@ -557,7 +578,21 @@ function normalizeDoctorSettings(input: BakinSettings['doctor']): BakinSettings[
   const sensitivity = input.sensitivity === 'developer' || input.sensitivity === 'standard' || input.sensitivity === 'quiet'
     ? input.sensitivity
     : DEFAULT_SETTINGS.doctor.sensitivity
-  return { ...input, sensitivity }
+  // Legacy string modes coerce until the one-shot approvals upgrade has
+  // rewritten the file: 'off' → false, 'notify' | 'task' → true.
+  const raw: unknown = input.escalation
+  const escalation = typeof raw === 'boolean' ? raw : raw === 'off' ? false : raw === 'notify' || raw === 'task' ? true : DEFAULT_SETTINGS.doctor.escalation
+  return { ...input, sensitivity, escalation }
+}
+
+function normalizeApprovalsSettings(input: BakinSettings['approvals'] | undefined): BakinSettings['approvals'] {
+  const defaults = DEFAULT_SETTINGS.approvals
+  const channel = typeof input?.channel === 'string' && input.channel.trim() !== '' ? input.channel.trim() : defaults.channel
+  return {
+    channelAlerts: typeof input?.channelAlerts === 'boolean' ? input.channelAlerts : defaults.channelAlerts,
+    channel,
+    requireRejectReason: typeof input?.requireRejectReason === 'boolean' ? input.requireRejectReason : defaults.requireRejectReason,
+  }
 }
 
 /**
@@ -609,6 +644,7 @@ function normalizeSettings(settings: BakinSettings): BakinSettings {
     ...settings,
     diagnostics: normalizeDiagnosticsSettings(settings.diagnostics),
     doctor: normalizeDoctorSettings(settings.doctor),
+    approvals: normalizeApprovalsSettings(settings.approvals),
     integrations: normalizeIntegrationsSettings(settings.integrations),
     plugins: normalizePluginSettings(settings.plugins),
   }

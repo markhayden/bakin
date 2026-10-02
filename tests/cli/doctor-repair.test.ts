@@ -82,7 +82,7 @@ const mockApply = {
   }],
   affectedCheckIds: ['tasks.taskboard'],
   verifiedReportId: repairedReport.id,
-  verifiedIncidentIds: [],
+  remainingIncidentIds: [],
   report: repairedReport,
 }
 

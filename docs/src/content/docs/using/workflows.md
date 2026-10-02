@@ -44,7 +44,7 @@ Agents creating a task pick the workflow that fits, or skip with a reason. Bakin
 
 ### Approve a gate
 
-Gates pause the workflow until you decide. The task's detail panel shows the gate and the prior step's output for context. Approve and the workflow advances; reject and it rewinds. If notifications are configured, they ping you when one's waiting. Runtime channels that support interactive approvals can approve or reject straight from the message; a button reject records a default reason, and typed reject reasons are collected by the Bakin approval link included in every gate alert (provider button expiry never expires the workflow gate).
+Gates pause the workflow until you decide. Every gate is an approval on its task: the card shows **Needs approval**, Bakin toasts you when one is waiting, and the task's detail panel shows the gate with the prior step's output for context. Approve and the workflow advances; reject (with a typed reason) and it rewinds. Approval alerts on your runtime channel are a global setting — `System & Alerts → Approvals` (channel alerts, channel, require a reject reason) — and apply to Health decisions too. Runtime channels that support interactive approvals can approve or reject straight from the message; a button reject records a default reason, and typed reject reasons are collected by the Bakin approval link included in every gate alert (provider button expiry never expires the workflow gate). See [Tasks → Approvals](/docs/using/tasks/#approvals).
 
 ### Cancel a workflow
 
@@ -82,10 +82,6 @@ Definitions and instances both index into search (table `bakin_workflows`) on na
 | --- | --- | --- | --- |
 | Gate timeout (hours) | `number` | `24` | Auto-reject gates not approved within this time |
 | Max concurrent steps | `number` | `3` | Maximum steps running in parallel per workflow |
-| Notify on gate | `boolean` | `true` | Send notification when a gate needs approval |
-| Channel gate alerts | `boolean` | `false` | Send runtime channel approvals when gates need review |
-| Gate approval channel | `string` | `general` | Runtime channel id or notifications.channelAliases alias for gate approval messages |
-| Require reject reason | `boolean` | `true` | Require a typed reason in the Bakin UI and fallback page; channel button rejects record a default reason |
 
 </div>
 <!-- /docs:settings -->

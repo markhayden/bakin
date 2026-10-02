@@ -22,9 +22,9 @@
     "byKind": {
       "host-route": 27,
       "plugin-route": 12,
-      "plugin-slot": 33,
+      "plugin-slot": 32,
       "plugin-template": 2,
-      "shared-component": 32,
+      "shared-component": 33,
       "sdk-ui-export": 0
     },
     "nonVisualAliases": 3
@@ -1897,36 +1897,6 @@
       ]
     },
     {
-      "id": "plugin-slot:workflows:nav-badge-providers",
-      "kind": "plugin-slot",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "workflows"
-      },
-      "identity": {
-        "slot": "nav-badge-providers"
-      },
-      "sourcePath": "plugins/workflows/client.tsx",
-      "symbols": [
-        "ApprovalsBadgeProvider"
-      ],
-      "exportStatus": "not-applicable",
-      "classification": "embedded-surface",
-      "evidence": [
-        {
-          "type": "manifest-slot",
-          "path": "plugins/workflows/bakin-plugin.json",
-          "detail": "contributes.slots[0]"
-        },
-        {
-          "type": "client-registration",
-          "path": "plugins/workflows/client.tsx",
-          "detail": "registerPlugin slots \"nav-badge-providers\" -> ApprovalsBadgeProvider"
-        }
-      ]
-    },
-    {
       "id": "plugin-slot:workflows:page:/workflows",
       "kind": "plugin-slot",
       "owner": {
@@ -1948,7 +1918,7 @@
         {
           "type": "manifest-slot",
           "path": "plugins/workflows/bakin-plugin.json",
-          "detail": "contributes.slots[1]"
+          "detail": "contributes.slots[0]"
         },
         {
           "type": "client-registration",
@@ -1979,7 +1949,7 @@
         {
           "type": "manifest-slot",
           "path": "plugins/workflows/bakin-plugin.json",
-          "detail": "contributes.slots[2]"
+          "detail": "contributes.slots[1]"
         },
         {
           "type": "client-registration",
@@ -2010,7 +1980,7 @@
         {
           "type": "manifest-slot",
           "path": "plugins/workflows/bakin-plugin.json",
-          "detail": "contributes.slots[4]"
+          "detail": "contributes.slots[3]"
         },
         {
           "type": "client-registration",
@@ -2041,7 +2011,7 @@
         {
           "type": "manifest-slot",
           "path": "plugins/workflows/bakin-plugin.json",
-          "detail": "contributes.slots[3]"
+          "detail": "contributes.slots[2]"
         },
         {
           "type": "client-registration",
@@ -2093,6 +2063,30 @@
           "type": "manifest-template",
           "path": "examples/reference-plugin/bakin-plugin.json",
           "detail": "Bakin reference plugin author contract"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/attention/approvals-attention-provider",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/attention/approvals-attention-provider"
+      },
+      "sourcePath": "packages/host/src/components/attention/approvals-attention-provider.tsx",
+      "symbols": [
+        "ApprovalsAttentionProvider"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/attention/approvals-attention-provider.tsx",
+          "detail": "exported values discovered from TSX source"
         }
       ]
     },

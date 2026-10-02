@@ -29,7 +29,7 @@ interface CliDoctorRepairApply {
   results: HealthRepairApplyResult[]
   affectedCheckIds: string[]
   verifiedReportId: string
-  verifiedIncidentIds: string[]
+  remainingIncidentIds: string[]
   report: HealthReport
 }
 
@@ -357,10 +357,8 @@ async function runOfflineDoctor(): Promise<HealthReport> {
   }
 }
 
-async function runFullDoctor(options: { notifyAgent?: boolean } = {}): Promise<HealthReport> {
-  return await apiPost('/api/plugins/health/doctor/run', {
-    notifyAgent: options.notifyAgent === true,
-  }) as HealthReport
+async function runFullDoctor(): Promise<HealthReport> {
+  return await apiPost('/api/plugins/health/doctor/run', {}) as HealthReport
 }
 
 function doctorExitCode(report: Pick<HealthReport, 'overallStatus'>): DoctorExitCode {
@@ -447,7 +445,7 @@ function printDoctorRepairApply(report: CliDoctorRepairApply): void {
   const skipped = report.results.filter(result => result.status === 'skipped').length
   const failed = report.results.filter(result => result.status === 'failed').length
   console.log(`\n${applied} applied, ${skipped} skipped, ${failed} failed`)
-  console.log(`${report.verifiedIncidentIds.length} selected incident(s) remain after verification`)
+  console.log(`${report.remainingIncidentIds.length} selected incident(s) remain after verification`)
 }
 
 function printDoctorDelegatePreview(incidents: readonly HealthIncident[]): void {
@@ -804,7 +802,6 @@ async function cmdDoctorAck(args: string[], opts: { json: boolean }): Promise<vo
 async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> {
   const json = args.includes('--json')
   const full = args.includes('--full')
-  const notifyAgent = args.includes('--notify-agent')
   const fix = args.includes('--fix')
   const delegate = args.includes('--delegate')
   const yes = args.includes('--yes')
@@ -827,7 +824,7 @@ async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> 
   }
 
   const mode: DoctorMode = full ? 'full' : 'offline'
-  const report = full ? await runFullDoctor({ notifyAgent }) : await runOfflineDoctor()
+  const report = full ? await runFullDoctor() : await runOfflineDoctor()
   const exitCode = doctorExitCode(report)
   if (json) {
     console.log(JSON.stringify(report, null, 2))

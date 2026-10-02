@@ -111,8 +111,8 @@ local temp files (CDN semantics never cross the boundary; failed downloads
 degrade to text-only).
 
 The chat plugin consumes it (`plugins/chat/lib/channel-inbound.ts`,
-mirroring workflows' approval wiring — feature-detected at activate,
-unsubscribed on shutdown): each channel binds to a chat via
+mirroring core's approvals channel wiring (`bootApprovals`) — feature-detected
+at activate, unsubscribed on shutdown): each channel binds to a chat via
 `ChatSummary.externalKey` (delete-resilient; a Discord thread is its own
 channel id, so threads get their own chats for free), turns run through
 the ONE conversation turn engine (work class `chat`, queue-when-busy,
