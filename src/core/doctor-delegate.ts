@@ -58,8 +58,6 @@ function describeSanctionedFix(incident: HealthIncident): string[] {
         `  Sanctioned fix: ${resolution.label}${resolution.command ? ` — run \`${resolution.command}\`` : ''}`,
         ...resolution.steps.slice(0, 4).map((step) => `    • ${step}`),
       ]
-    case 'navigate':
-      return [`  Sanctioned fix: operator action at ${resolution.href} ("${resolution.label}") — report readiness; do not attempt a workaround.`]
     case 'rerun':
       return [`  Sanctioned fix: re-run the check ("${resolution.label}") after addressing the cause.`]
     default:

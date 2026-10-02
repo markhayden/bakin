@@ -236,9 +236,7 @@ const USAGE_HISTORY_WINDOW_MS: Record<'24h' | '7d' | '30d', number> = {
 
 const doctorReadQuery = z.object({}).strict()
 
-const doctorRunBody = z.object({
-  notifyAgent: z.boolean().default(false),
-}).strict()
+const doctorRunBody = z.object({}).strict()
 
 const acceptedBody = z.object({
   accepted: z.boolean(),
@@ -620,12 +618,12 @@ const routes = [
     path: '/doctor/run',
     method: 'POST',
     summary: 'Run fresh Health diagnostics',
-    description: 'Explicitly starts or joins a fresh diagnostic sweep and optionally notifies the configured agent.',
+    description: 'Explicitly starts or joins a fresh diagnostic sweep. Escalation (auto-repair, approval tasks, delegation) only ever runs from the doctor cycle, never from this route.',
     body: doctorRunBody,
     responses: { 200: healthReportSchema, 500: healthErrorResponseSchema },
-    handler: async (_req, _ctx, { body }) => {
+    handler: async () => {
       try {
-        const report = await runDiagnostics(getContentDir(), process.cwd(), { notifyAgent: body.notifyAgent })
+        const report = await runDiagnostics(getContentDir(), process.cwd())
         return Response.json(report)
       } catch (err) {
         log.error('Health diagnostics run failed', err)

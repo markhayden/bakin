@@ -1,4 +1,4 @@
-/** Canonical Health facade: diagnostics plus notification and cron escalation. */
+/** Canonical Health facade: diagnostics plus cron escalation. */
 import type { HealthReport } from '../../packages/core/src/plugin-types'
 import {
   getLastReport,
@@ -26,17 +26,8 @@ function doctorIntervalMs(): number {
   return getSettings().doctor.intervalMs
 }
 
-export async function runDiagnostics(
-  contentDir: string,
-  projectRoot: string,
-  options: { notifyAgent?: boolean } = {},
-): Promise<HealthReport> {
-  const report = await executeDiagnostics(contentDir, projectRoot)
-  if (options.notifyAgent) {
-    const { notifyActionRequiredIncidents } = await import('./doctor-escalation')
-    await notifyActionRequiredIncidents(report)
-  }
-  return report
+export async function runDiagnostics(contentDir: string, projectRoot: string): Promise<HealthReport> {
+  return executeDiagnostics(contentDir, projectRoot)
 }
 
 export function start(contentDir: string, projectRoot: string): void {

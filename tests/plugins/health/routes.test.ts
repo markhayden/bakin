@@ -1024,12 +1024,10 @@ describe('Health Plugin Routes', () => {
     it('runs fresh diagnostics only through the explicit JSON POST route', async () => {
       const route = findRoute(activated.routes, 'POST', '/doctor/run')!
 
-      const { status, body } = await callRoute(route, activated.ctx, {
-        body: { notifyAgent: true },
-      })
+      const { status, body } = await callRoute(route, activated.ctx, { body: {} })
       expect(status).toBe(200)
       expect(body.id).toBe(freshReport.id)
-      expect(runDiagnosticsMock).toHaveBeenCalledWith(testDir, process.cwd(), { notifyAgent: true })
+      expect(runDiagnosticsMock).toHaveBeenCalledWith(testDir, process.cwd())
     })
   })
 

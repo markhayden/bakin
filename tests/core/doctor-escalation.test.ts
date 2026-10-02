@@ -1,11 +1,15 @@
+/**
+ * Health escalation policy (plan PR 2 T8): per-incident cover rules, safe
+ * repairs auto-applied, non-safe repairs → ONE review task with a
+ * health-repair approval, navigate incidents → one health-navigate approval
+ * each, everything else delegated. Planning/apply/approval/delegate are
+ * mocked — the policy's decisions are what this file pins.
+ */
 import { afterEach, beforeEach, describe, expect, it, mock, setSystemTime } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import type { HealthIncident, HealthReport } from '@makinbakin/sdk/types'
+import type { HealthIncident, HealthReport, HealthRepairPlanItem } from '@makinbakin/sdk/types'
 
-// Isolation: escalation itself is fully mocked below, but the system-route
-// path (route resolution before the relay send) transits core modules that
-// must never see the real home dirs.
 const testDir = join(tmpdir(), `bakin-test-doctor-escalation-${Date.now()}`)
 const contentDirMock = () => ({
   getContentDir: () => testDir,
@@ -17,47 +21,37 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 let mode = true
 let cooldownMs = 6 * 60 * 60_000
 let staleAfterMs = 12 * 60 * 60_000
-let requests: Array<{
-  id: string
-  incidentIds: string[]
-  taskId?: string
-  createdAt: string
-}> = []
+let requests: Array<{ id: string; incidentIds: string[]; taskId?: string; createdAt: string }> = []
 let taskColumns: Record<string, string> = {}
+let planItems: HealthRepairPlanItem[] = []
+let planThrows = false
+/** Incident ids the (mocked) safe apply leaves burning. */
+let afterApplyIncidents: HealthIncident[] | null = null
 
-const send = mock(async (_input: { agentId: string; content: string }) => ({ id: 'message-1' }))
 const delegate = mock(async () => ({ status: 'sent' }))
+const openRepairApproval = mock(async (_input: { incidents: HealthIncident[]; items: HealthRepairPlanItem[] }) => ({ taskId: 'task-repair-approval' }))
+const openNavigateApproval = mock(async (_input: { incident: HealthIncident }) => ({ taskId: `task-nav-${openNavigateApproval.mock.calls.length}` }))
+const applyDoctorRepair = mock(async () => ({ report: report(afterApplyIncidents ?? []), results: [], affectedCheckIds: [], remainingIncidentIds: [], verifiedReportId: 'health-report-2', planId: 'plan-1', basedOnReportId: 'health-report-1' }))
+const planDoctorRepair = mock(async () => {
+  if (planThrows) throw new Error('action unregistered')
+  return { planId: 'plan-1', basedOnReportId: 'health-report-1', target: { type: 'incidents', reportId: 'health-report-1', ids: ['x'] }, createdAt: '', expiresAt: '', items: planItems }
+})
 
 mock.module('../../src/core/settings', () => ({
-  getSettings: () => ({
-    doctor: {
-      escalation: mode,
-      escalationCooldownMs: cooldownMs,
-      escalationStaleAfterMs: staleAfterMs,
-    },
-  }),
+  getSettings: () => ({ doctor: { escalation: mode, escalationCooldownMs: cooldownMs, escalationStaleAfterMs: staleAfterMs } }),
 }))
-mock.module('../../src/core/app-services', () => ({
-  getAppServices: () => ({ runtime: { messaging: { send } } }),
-}))
-mock.module('../../src/core/agent-cost', () => ({ meterAgentTurn: async () => {} }))
-mock.module('@bakin/core/adapters/runtime', () => ({ getRuntimeMainAgentId: async () => 'main' }))
 mock.module('../../src/core/doctor-repair-store', () => ({ listDoctorRepairRequests: () => requests }))
 mock.module('../../src/core/task-service', () => ({
   getTaskDetails: async (taskId: string) => taskId in taskColumns ? { column: taskColumns[taskId] } : null,
 }))
 mock.module('../../src/core/doctor-delegate', () => ({ delegateDoctorRepair: delegate }))
+mock.module('../../src/core/doctor-approvals', () => ({ openRepairApproval, openNavigateApproval }))
+mock.module('../../src/core/doctor-repair', () => ({ planDoctorRepair, applyDoctorRepair }))
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }),
 }))
 
-import {
-  clearNotifiedIssues,
-  escalateCronIncidents,
-  freshActionRequiredIncidents,
-  notifyActionRequiredIncidents,
-} from '../../src/core/doctor-escalation'
-import { waitUntil } from '../helpers/wait'
+import { coveredIncidentIds, escalateCronIncidents, freshActionRequiredIncidents } from '../../src/core/doctor-escalation'
 
 function incident(overrides: Partial<HealthIncident> = {}): HealthIncident {
   return {
@@ -69,7 +63,7 @@ function incident(overrides: Partial<HealthIncident> = {}): HealthIncident {
     title: 'Search is unavailable',
     impact: 'Search requests fail.',
     resources: [],
-    resolution: { key: 'review', type: 'navigate', label: 'Review', href: '/health?tab=system' },
+    resolution: { key: 'restart', type: 'instructions', label: 'Restart search', steps: ['bakin install search'] },
     observationIds: ['health.search:engine'],
     observedAt: '2026-07-13T12:00:00.000Z',
     staleAt: '2026-07-13T12:10:00.000Z',
@@ -77,6 +71,15 @@ function incident(overrides: Partial<HealthIncident> = {}): HealthIncident {
     ...overrides,
   }
 }
+
+const repairIncident = (id = 'health:search:index-corrupt') => incident({ id, title: 'Search index is corrupt', resolution: { key: 'rebuild', type: 'repair', label: 'Rebuild', actionId: 'search.rebuild' }, observationIds: ['health.search:index'] })
+const navigateIncident = (id = 'health:runtime:auth-expired') => incident({ id, title: 'Auth expired', resolution: { key: 'login', type: 'navigate', label: 'Renew', href: '/settings?tab=integrations' } })
+const item = (overrides: Partial<HealthRepairPlanItem>): HealthRepairPlanItem => ({
+  id: 'search.rebuild:rebuild', actionId: 'search.rebuild', title: 'Rebuild', reason: 'Corrupt.', safety: 'destructive',
+  incidentIds: ['health:search:index-corrupt'], observationIds: ['health.search:index'], preconditions: [],
+  changes: [{ kind: 'file', target: 'index', action: 'delete', description: 'Drop the index.' }],
+  ...overrides,
+})
 
 function report(incidents: HealthIncident[]): HealthReport {
   return {
@@ -89,35 +92,19 @@ function report(incidents: HealthIncident[]): HealthReport {
     checks: [],
     observations: [],
     incidents,
-    subsystems: {
-      search: {
-        status: 'unknown',
-        summary: 'Unknown.',
-        observedAt: null,
-        staleAt: null,
-        stages: [],
-        incidentIds: [],
-      },
-    },
+    subsystems: { search: { status: 'unknown', summary: 'Unknown.', observedAt: null, staleAt: null, stages: [], incidentIds: [] } },
     summary: {
       checks: { registered: 0, completed: 0, failed: 0, invalid: 0, notApplicable: 0 },
-      incidents: { actionRequired: incidents.length, watching: 0, advisory: 0, unknown: 0, acknowledged: 0},
+      incidents: { actionRequired: incidents.length, watching: 0, advisory: 0, unknown: 0, acknowledged: 0 },
     },
   }
 }
 
-function coveringRequest(
-  ageMs: number,
-  overrides: Partial<(typeof requests)[number]> = {},
-): (typeof requests)[number] {
-  return {
-    id: 'repair-1',
-    incidentIds: ['health:search:unavailable'],
-    taskId: 'task-1',
-    createdAt: new Date(Date.now() - ageMs).toISOString(),
-    ...overrides,
-  }
+function coveringRequest(ageMs: number, overrides: Partial<(typeof requests)[number]> = {}): (typeof requests)[number] {
+  return { id: 'repair-1', incidentIds: ['health:search:unavailable'], taskId: 'task-1', createdAt: new Date(Date.now() - ageMs).toISOString(), ...overrides }
 }
+
+const escalate = (incidents: HealthIncident[]) => escalateCronIncidents(report(incidents), '/tmp/content', '/tmp/project')
 
 beforeEach(() => {
   mode = true
@@ -125,9 +112,10 @@ beforeEach(() => {
   staleAfterMs = 12 * 60 * 60_000
   requests = []
   taskColumns = {}
-  send.mockClear()
-  delegate.mockClear()
-  clearNotifiedIssues()
+  planItems = []
+  planThrows = false
+  afterApplyIncidents = null
+  for (const fn of [delegate, openRepairApproval, openNavigateApproval, applyDoctorRepair, planDoctorRepair]) fn.mockClear()
   setSystemTime(new Date('2026-07-15T12:00:00.000Z'))
 })
 
@@ -135,7 +123,7 @@ afterEach(() => {
   setSystemTime()
 })
 
-describe('canonical Health escalation', () => {
+describe('fresh incident selection', () => {
   it('selects only fresh action-required incident IDs', () => {
     expect(freshActionRequiredIncidents(report([
       incident(),
@@ -145,104 +133,52 @@ describe('canonical Health escalation', () => {
   })
 
   it('a sensitivity-demoted incident never escalates (#690)', () => {
+    expect(freshActionRequiredIncidents(report([incident({ id: 'demoted', effectiveDisposition: 'watch' })]))).toEqual([])
+  })
+
+  it('snoozed action_required incidents never escalate — quiet means quiet', () => {
     expect(freshActionRequiredIncidents(report([
-      // Raw action_required, but the projection demoted it.
-      incident({ id: 'demoted', effectiveDisposition: 'watch' }),
-    ]))).toEqual([])
+      incident(),
+      incident({ ackState: 'snoozed' }),
+    ]))).toHaveLength(1)
   })
+})
 
-  it('deduplicates notifications by incident ID, not message copy', async () => {
-    await notifyActionRequiredIncidents(report([incident()]))
-    await notifyActionRequiredIncidents(report([incident({ title: 'Copy changed' })]))
-
-    expect(send).toHaveBeenCalledTimes(1)
-    expect(send.mock.calls[0]?.[0].content).toContain('health:search:unavailable')
-  })
-
-  it('retries an incident when the previous notification could not be delivered', async () => {
-    send.mockImplementationOnce(async () => { throw new Error('runtime unavailable') })
-
-    await notifyActionRequiredIncidents(report([incident()]))
-    await notifyActionRequiredIncidents(report([incident()]))
-
-    expect(send).toHaveBeenCalledTimes(2)
-  })
-
-  it('coalesces concurrent notification attempts for the same incident', async () => {
-    let releaseSend!: () => void
-    send.mockImplementationOnce(() => new Promise<{ id: string }>((resolve) => {
-      releaseSend = () => resolve({ id: 'message-1' })
-    }))
-
-    const first = notifyActionRequiredIncidents(report([incident()]))
-    const second = notifyActionRequiredIncidents(report([incident()]))
-    // The send sits behind route resolution's async hops — poll for it rather
-    // than guessing how many hops that is today.
-    await waitUntil(() => send.mock.calls.length > 0,
-      { label: 'the escalation send to fire after route resolution' })
-    expect(send).toHaveBeenCalledTimes(1)
-
-    releaseSend()
-    await Promise.all([first, second])
-    expect(send).toHaveBeenCalledTimes(1)
-  })
-
-  it('allows the same incident to notify again after the configured cooldown', async () => {
-    cooldownMs = 60_000
-    await notifyActionRequiredIncidents(report([incident()]))
-
-    setSystemTime(new Date('2026-07-15T12:00:59.999Z'))
-    await notifyActionRequiredIncidents(report([incident()]))
-    expect(send).toHaveBeenCalledTimes(1)
-
-    setSystemTime(new Date('2026-07-15T12:01:00.000Z'))
-    await notifyActionRequiredIncidents(report([incident()]))
-    expect(send).toHaveBeenCalledTimes(2)
-  })
-
-  it('delegates exact fresh incidents in task mode', async () => {
-    await escalateCronIncidents(report([incident()]), '/tmp/content', '/tmp/project')
-
-    expect(delegate).toHaveBeenCalledWith(expect.objectContaining({
-      accepted: true,
-      target: { type: 'incidents', reportId: 'health-report-1', ids: ['health:search:unavailable'] },
-    }))
-  })
-
+describe('per-incident cover', () => {
   it('skips while a fresh open repair task covers every current incident', async () => {
     requests = [coveringRequest(7 * 60 * 60_000)]
-    taskColumns = { 'task-1': 'doing' }
-
-    await escalateCronIncidents(report([incident()]), '/tmp/content', '/tmp/project')
-
+    taskColumns = { 'task-1': 'inProgress' }
+    await escalate([incident()])
     expect(delegate).not.toHaveBeenCalled()
   })
 
-  it('treats an archived covering task as closed once cooldown has passed', async () => {
+  it('treats a done or archived covering task as closed once cooldown has passed', async () => {
     requests = [coveringRequest(7 * 60 * 60_000)]
     taskColumns = { 'task-1': 'archived' }
-
-    await escalateCronIncidents(report([incident()]), '/tmp/content', '/tmp/project')
-
+    await escalate([incident()])
     expect(delegate).toHaveBeenCalledTimes(1)
   })
 
-  it('re-escalates when a covering open task is stale and incidents are still burning', async () => {
+  it('a task the human owns (blocked / review) covers indefinitely', async () => {
+    requests = [coveringRequest(10 * 24 * 60 * 60_000, { id: 'r-blocked', taskId: 't-blocked' }), coveringRequest(10 * 24 * 60 * 60_000, { id: 'r-review', taskId: 't-review', incidentIds: ['health:runtime:auth-expired'] })]
+    taskColumns = { 't-blocked': 'blocked', 't-review': 'review' }
+    await escalate([incident(), navigateIncident()])
+    expect(delegate).not.toHaveBeenCalled()
+    expect(openNavigateApproval).not.toHaveBeenCalled()
+  })
+
+  it('re-escalates when a covering active task is stale and incidents are still burning', async () => {
     requests = [coveringRequest(34 * 60 * 60_000)]
-    taskColumns = { 'task-1': 'doing' }
-
-    await escalateCronIncidents(report([incident()]), '/tmp/content', '/tmp/project')
-
+    taskColumns = { 'task-1': 'inProgress' }
+    await escalate([incident()])
     expect(delegate).toHaveBeenCalledTimes(1)
   })
 
-  it('still honors the task cooldown when a custom stale threshold is shorter', async () => {
+  it('still honors the cooldown when a custom stale threshold is shorter', async () => {
     staleAfterMs = 60 * 60_000
     requests = [coveringRequest(2 * 60 * 60_000)]
-    taskColumns = { 'task-1': 'doing' }
-
-    await escalateCronIncidents(report([incident()]), '/tmp/content', '/tmp/project')
-
+    taskColumns = { 'task-1': 'inProgress' }
+    await escalate([incident()])
     expect(delegate).not.toHaveBeenCalled()
   })
 
@@ -251,75 +187,117 @@ describe('canonical Health escalation', () => {
       coveringRequest(34 * 60 * 60_000, { id: 'repair-old', taskId: 'task-old' }),
       coveringRequest(60_000, { id: 'repair-new', taskId: 'task-new' }),
     ]
-    taskColumns = { 'task-old': 'doing', 'task-new': 'todo' }
-
-    await escalateCronIncidents(report([incident()]), '/tmp/content', '/tmp/project')
-
+    taskColumns = { 'task-old': 'inProgress', 'task-new': 'todo' }
+    await escalate([incident()])
     expect(delegate).not.toHaveBeenCalled()
   })
 
-  it('skips inside the cooldown window even when the previous task is done', async () => {
-    requests = [coveringRequest(60_000)]
+  it('skips inside the cooldown window even when the previous task is done or missing', async () => {
+    requests = [coveringRequest(60_000), coveringRequest(60_000, { id: 'r2', taskId: 'gone', incidentIds: ['health:runtime:auth-expired'] })]
     taskColumns = { 'task-1': 'done' }
-
-    await escalateCronIncidents(report([incident()]), '/tmp/content', '/tmp/project')
-
+    await escalate([incident(), navigateIncident()])
     expect(delegate).not.toHaveBeenCalled()
+    expect(openNavigateApproval).not.toHaveBeenCalled()
   })
 
   it('delegates after cooldown when the previous task is done', async () => {
     requests = [coveringRequest(7 * 60 * 60_000)]
     taskColumns = { 'task-1': 'done' }
-
-    await escalateCronIncidents(report([incident()]), '/tmp/content', '/tmp/project')
-
+    await escalate([incident()])
     expect(delegate).toHaveBeenCalledTimes(1)
   })
 
-  it('does not treat a request covering only some current incidents as a cover', async () => {
+  it('covers incident by incident: a request covering one of two incidents only suppresses that one', async () => {
     requests = [coveringRequest(60_000)]
-    taskColumns = { 'task-1': 'doing' }
-
-    await escalateCronIncidents(report([
-      incident(),
-      incident({ id: 'health:runtime:unavailable' }),
-    ]), '/tmp/content', '/tmp/project')
-
+    taskColumns = { 'task-1': 'inProgress' }
+    await escalate([incident(), incident({ id: 'health:runtime:unavailable' })])
     expect(delegate).toHaveBeenCalledTimes(1)
+    expect(delegate).toHaveBeenCalledWith(expect.objectContaining({
+      target: { type: 'incidents', reportId: 'health-report-1', ids: ['health:runtime:unavailable'] },
+    }))
+    expect(await coveredIncidentIds('/tmp/content', Date.now(), cooldownMs, staleAfterMs)).toEqual(new Set(['health:search:unavailable']))
+  })
+})
+
+describe('policy', () => {
+  it('delegates exact fresh instruction/rerun incidents', async () => {
+    const outcome = await escalate([incident(), incident({ id: 'health:x:rerun', resolution: { key: 'again', type: 'rerun', label: 'Re-run' } })])
+    expect(delegate).toHaveBeenCalledWith(expect.objectContaining({
+      accepted: true,
+      target: { type: 'incidents', reportId: 'health-report-1', ids: ['health:search:unavailable', 'health:x:rerun'] },
+    }))
+    expect(outcome?.delegatedIncidentIds).toEqual(['health:search:unavailable', 'health:x:rerun'])
+    expect(openRepairApproval).not.toHaveBeenCalled()
+  })
+
+  it('auto-applies safe repair items and never opens a task for the incidents they fix', async () => {
+    planItems = [item({ id: 'search.restart:restart', actionId: 'search.restart', safety: 'safe', incidentIds: ['health:search:index-corrupt'] })]
+    afterApplyIncidents = []
+    const outcome = await escalate([repairIncident()])
+    expect(applyDoctorRepair).toHaveBeenCalledWith(expect.objectContaining({ planId: 'plan-1', itemIds: ['search.restart:restart'], confirmedItemIds: [] }))
+    expect(outcome?.autoApplied).toEqual(['health:search:index-corrupt'])
+    expect(openRepairApproval).not.toHaveBeenCalled()
+    expect(delegate).not.toHaveBeenCalled()
+  })
+
+  it('a safe repair that leaves the incident burning falls through to the rest of the policy on the fresh report', async () => {
+    planItems = [item({ id: 'search.restart:restart', actionId: 'search.restart', safety: 'safe' })]
+    afterApplyIncidents = [repairIncident()]
+    const outcome = await escalate([repairIncident()])
+    expect(applyDoctorRepair).toHaveBeenCalledTimes(1)
+    expect(outcome?.autoApplied).toEqual([])
+    // No non-safe proposal for it → delegated, against the post-apply report.
+    expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ ids: ['health:search:index-corrupt'] }) }))
+  })
+
+  it('non-safe repair proposals become ONE review task with a health-repair approval holding only those items', async () => {
+    planItems = [item({}), item({ id: 'search.restart:restart', actionId: 'search.restart', safety: 'safe', incidentIds: ['health:search:other'], observationIds: ['health.search:other'] })]
+    afterApplyIncidents = [repairIncident()]
+    const outcome = await escalate([repairIncident()])
+    expect(openRepairApproval).toHaveBeenCalledTimes(1)
+    const call = openRepairApproval.mock.calls[0]![0]
+    expect(call.incidents.map((row) => row.id)).toEqual(['health:search:index-corrupt'])
+    expect(call.items.map((row) => row.id)).toEqual(['search.rebuild:rebuild'])
+    expect(outcome?.repairApprovalTaskId).toBe('task-repair-approval')
+    expect(delegate).not.toHaveBeenCalled()
+  })
+
+  it('navigate incidents get one health-navigate approval each; the rest is delegated in the same cycle', async () => {
+    planItems = [item({})]
+    const outcome = await escalate([repairIncident(), navigateIncident(), navigateIncident('health:runtime:auth-expired-2'), incident()])
+    expect(openRepairApproval).toHaveBeenCalledTimes(1)
+    expect(openNavigateApproval).toHaveBeenCalledTimes(2)
+    expect(outcome?.navigateApprovalTaskIds).toHaveLength(2)
+    expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ ids: ['health:search:unavailable'] }) }))
+  })
+
+  it('a repair incident with no plan item is delegated, not silently dropped', async () => {
+    planItems = []
+    await escalate([repairIncident()])
+    expect(openRepairApproval).not.toHaveBeenCalled()
+    expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ ids: ['health:search:index-corrupt'] }) }))
+  })
+
+  it('planning failure degrades to delegation for everything uncovered', async () => {
+    planThrows = true
+    await escalate([repairIncident(), incident()])
+    expect(applyDoctorRepair).not.toHaveBeenCalled()
+    expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ ids: ['health:search:index-corrupt', 'health:search:unavailable'] }) }))
   })
 
   it('contains delegation failures so cron diagnostics still complete', async () => {
     delegate.mockImplementationOnce(async () => { throw new Error('delegate unavailable') })
-
-    await expect(escalateCronIncidents(
-      report([incident()]),
-      '/tmp/content',
-      '/tmp/project',
-    )).resolves.toBeUndefined()
+    await expect(escalate([incident()])).resolves.toBeDefined()
   })
 
   it('does nothing when escalation is off, and skips onboarding-only state when on', async () => {
     mode = false
-    await escalateCronIncidents(report([incident()]), '/tmp/content', '/tmp/project')
-    expect(send).not.toHaveBeenCalled()
+    expect(await escalate([incident()])).toBeNull()
     expect(delegate).not.toHaveBeenCalled()
 
     mode = true
-    await escalateCronIncidents(
-      report([incident({ id: 'core:system:onboarding-required' })]),
-      '/tmp/content',
-      '/tmp/project',
-    )
-    expect(send).not.toHaveBeenCalled()
+    expect(await escalate([incident({ id: 'core:system:onboarding-required' })])).toBeNull()
     expect(delegate).not.toHaveBeenCalled()
-  })
-})
-
-describe('ack suppression (health trust overhaul)', () => {
-  it('snoozed action_required incidents never relay — quiet means quiet', () => {
-    expect(freshActionRequiredIncidents(report([
-      incident({ disposition: 'action_required', effectiveDisposition: 'action_required' }),
-      incident({ disposition: 'action_required', effectiveDisposition: 'action_required', ackState: 'snoozed' }),
-    ]))).toHaveLength(1)
+    expect(planDoctorRepair).not.toHaveBeenCalled()
   })
 })
