@@ -12,6 +12,9 @@ import {
 import type { Task, ColumnId } from '../types'
 import type { WorkflowInstance as SdkWorkflowInstance, WorkflowDefinition as SdkWorkflowDefinition } from '@makinbakin/sdk/types'
 import { createShortClientId } from '../lib/client-id'
+import { useTaskApprovals } from '../hooks/use-task-approvals'
+import type { TaskApproval } from '../types'
+import type { ApprovalPanelError } from './approval-panel'
 
 export interface Workflow {
   filename: string
@@ -118,9 +121,12 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
       setWfStateUnavailable(true)
     }
   }, [])
-  const [rejectReason, setRejectReason] = useState('')
-  const [showRejectInput, setShowRejectInput] = useState(false)
-  const [gateLoading, setGateLoading] = useState(false)
+  // Pending decisions on this task (spec D7) — every kind rides one record set.
+  const taskApprovalIds = useMemo(() => (task ? [task.id] : []), [task])
+  const { byTask: approvalsByTask, loading: approvalsLoading, failed: approvalsFailed, refresh: refreshApprovals } = useTaskApprovals(taskApprovalIds, Boolean(open && task && !editing))
+  const approvals = useMemo<TaskApproval[]>(() => (task ? approvalsByTask[task.id] ?? [] : []), [approvalsByTask, task])
+  const [approvalBusyId, setApprovalBusyId] = useState<string | null>(null)
+  const [approvalError, setApprovalError] = useState<ApprovalPanelError | null>(null)
 
   // Prior step output for gate review
   const [priorStepOutput, setPriorStepOutput] = useState<Record<string, unknown> | null>(null)
@@ -179,8 +185,7 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
       setBrandId(task.brandId || '')
       setDirty(false)
       setLogMessage('')
-      setShowRejectInput(false)
-      setRejectReason('')
+      setApprovalError(null)
       setWfInstance(null)
       setWfDefinition(null)
       setWfStateUnavailable(false)
@@ -549,63 +554,36 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
     setAddingLog(false)
   }
 
-  async function handleApproveGate() {
-    if (!wfInstance) return
-    setGateLoading(true)
+  /**
+   * ONE decision path for every approval kind: POST the option to core, show
+   * a typed refusal (409 already decided / plan changed, 400 reason required)
+   * inline on that approval, and let the approval + workflow events refresh
+   * the record set and the instance.
+   */
+  const resolveApproval = useCallback(async (approval: TaskApproval, option: string, comment?: string) => {
+    setApprovalBusyId(approval.approvalId)
+    setApprovalError(null)
     try {
-      const res = await fetch(`/api/plugins/workflows/gates/${task!.id}/approve`, {
+      const res = await fetch(`/api/approvals/${encodeURIComponent(approval.approvalId)}/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskId: task!.id,
-          stepId: wfInstance.currentStepId,
-        }),
+        body: JSON.stringify({ option, ...(comment ? { comment } : {}) }),
       })
       if (res.ok) {
-        toast('Gate approved — workflow advancing', 'success')
-        const d = await fetch(`/api/plugins/workflows/instances/${task!.id}`).then(r => r.ok ? r.json() : null)
-        if (d?.instance) setWfInstance(d.instance)
-        else setWfInstance(null)
+        toast(decisionToast(approval, option), 'success')
+        await refreshApprovals()
+        if (approval.owner.kind === 'workflow-gate') await refreshWfInstance(approval.owner.taskId)
       } else {
-        const data = await res.json().catch(() => ({ error: 'Unknown error' }))
-        toast(data.error || 'Failed to approve gate', 'error')
+        const data = await res.json().catch(() => ({ error: 'Unknown error' })) as { error?: string }
+        setApprovalError({ approvalId: approval.approvalId, message: data.error || 'The decision could not be applied.' })
+        await refreshApprovals()
       }
     } catch {
-      toast('Network error', 'error')
+      setApprovalError({ approvalId: approval.approvalId, message: 'Network error — the decision did not reach the server.' })
+    } finally {
+      setApprovalBusyId(null)
     }
-    setGateLoading(false)
-  }
-
-  async function handleRejectGate() {
-    if (!wfInstance || !rejectReason.trim()) return
-    setGateLoading(true)
-    try {
-      const res = await fetch(`/api/plugins/workflows/gates/${task!.id}/reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskId: task!.id,
-          stepId: wfInstance.currentStepId,
-          reason: rejectReason.trim(),
-        }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        toast(`Gate rejected — rewinding to ${data.rewoundTo}`, 'success')
-        setShowRejectInput(false)
-        setRejectReason('')
-        const d = await fetch(`/api/plugins/workflows/instances/${task!.id}`).then(r => r.ok ? r.json() : null)
-        if (d?.instance) setWfInstance(d.instance)
-        else setWfInstance(null)
-      } else {
-        const data = await res.json().catch(() => ({ error: 'Unknown error' }))
-        toast(data.error || 'Failed to reject gate', 'error')
-      }
-    } catch {
-      toast('Network error', 'error')
-    }
-    setGateLoading(false)
-  }
+  }, [refreshApprovals, refreshWfInstance])
 
   // Derived render inputs
   const gateStep = wfDefinition?.steps.find(s => s.id === wfInstance?.currentStepId)
@@ -625,18 +603,25 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
     logMessage, setLogMessage, addingLog, showAllNotes, setShowAllNotes,
     isCreate,
     // workflow / gate
-    wfInstance, wfDefinition, rejectReason, setRejectReason, showRejectInput, setShowRejectInput,
-    gateLoading, isGatePending, gateStep, activeWorkflowId,
+    wfInstance, wfDefinition, isGatePending, gateStep, activeWorkflowId,
     wfStateUnavailable, handleRetryWorkflowState,
     priorStepOutput, outputLoading, outputUnavailable, fetchPriorOutput,
+    // approvals (every kind — spec D7)
+    approvals, approvalsLoading, approvalsFailed, refreshApprovals, approvalBusyId, approvalError, resolveApproval,
     // map fan-out
     mapStepId, mapChildren, mapActionLoading, handleMapChildAction,
     failedStep, handleReopenWorkflow,
     // agent
     taskAgentMeta, agentOptions, teamOptions,
     // handlers
-    markDirty, handleDescriptionPaste, handleSave, handleAddLog, handleApproveGate, handleRejectGate,
+    markDirty, handleDescriptionPaste, handleSave, handleAddLog,
   }
 }
 
 export type TaskDetail = ReturnType<typeof useTaskDetail>
+
+function decisionToast(approval: TaskApproval, option: string): string {
+  if (approval.owner.kind === 'workflow-gate') return option === 'approve' ? 'Gate approved — workflow advancing' : 'Gate rejected — rewinding'
+  if (option === 'dismiss') return 'Dismissed — snoozed for 7 days'
+  return 'Repair applied'
+}
