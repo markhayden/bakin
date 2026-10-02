@@ -179,3 +179,39 @@ devices are available. Production state and user sessions were not used.
 The owned live preview was stopped. Its private tmux service and the two
 recorded failed-start services all report not running. Maintainer Storybook
 remains available at `http://127.0.0.1:6006` for review.
+
+
+## Imitation-crab review corrections (2026-10-02)
+
+The review server was restarted in its existing isolated home on port 3747.
+The old app listener stopped responding and ignored SIGTERM; only that review
+PID was force-stopped. The correct Tailscale address is `100.127.173.79`.
+The review instance remains running; production homes/services were untouched.
+
+The operator reproduced a blank terminal using desktop mobile emulation.
+Chromium reported DPR 2.625 but physical canvas size 366×564, while the GPU
+viewport was 960×1480. Text was present in xterm's accessibility tree while the
+visible canvas was blank. This is why text-only rendering assertions missed it.
+The renderer now monitors public browser pixel measurements, tolerates ordinary
+one-pixel rounding, and disposes WebGL on a scale mismatch. Native-scale WebGL
+and existing GPU-unavailable/context-loss fallbacks remain covered. No private
+xterm API or global browser override is used.
+
+The operator also requested centered keys. The public TerminalInput recipe and
+plugin now center compact, wrapped, and expanded groups using Inline's existing
+justify contract. Four canonical replacement captures were rendered and inspected;
+the old baselines remain unchanged pending explicit approval of these four images.
+
+Verification: seven focused units; four Chromium and four isolated WebKit
+renderer cases, now asserting actual screenshot pixels as well as text/input;
+Bits typecheck/lint; root quick conformance; TerminalInput Storybook interaction;
+and installed-package plugin UI conformance all pass. Full-host WebKit's scaled
+case painted and accepted input but reported an unrelated `/api/events` access
+control error; the complete renderer suite passes in the isolated Terminal
+fixture. That fixture was stopped after verification. Live review screenshots
+of the reported session visibly show output and centered controls.
+
+Evidence: `test-results/terminal-mobile-rendering/review-fixes/`.
+The previous full-suite debt, payload approval, and physical-phone limitations
+remain as recorded above. The generated embedded-asset manifest is retained as
+a local dev-startup artifact while the imitation-crab review server runs.

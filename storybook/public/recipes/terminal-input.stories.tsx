@@ -9,7 +9,7 @@ const meta = {
   parameters: {
     layout: 'fullscreen',
     bakinCoverage: ['desktop', 'mobile-320', 'overflow', 'interaction', 'scroll-ownership'],
-    docs: { description: { component: 'Compose large Button targets in wrapping Inline groups, with persistent compact keys and an optional bounded Panel above. Use WorkspacePage viewport="visual" and WorkspacePageBody inputAccessory to reserve their space above a software keyboard. Preserve editor focus on pointer activation with onMouseDown preventDefault; send once on click. Keep normal keyboard and assistive activation. The consumer owns availability, semantic key mapping and one-shot modifier reset on input, blur, disconnection or session change. Show the strip on narrow or coarse-pointer devices; hide it on wide pointer-only desktops.' } },
+    docs: { description: { component: 'Compose large Button targets in centered, wrapping Inline groups, with persistent compact keys and an optional bounded Panel above. Use WorkspacePage viewport="visual" and WorkspacePageBody inputAccessory to reserve their space above a software keyboard. Preserve editor focus on pointer activation with onMouseDown preventDefault; send once on click. Keep normal keyboard and assistive activation. The consumer owns availability, semantic key mapping and one-shot modifier reset on input, blur, disconnection or session change. Show the strip on narrow or coarse-pointer devices; hide it on wide pointer-only desktops.' } },
   },
 } satisfies Meta<typeof TerminalInputFixture>
 export default meta

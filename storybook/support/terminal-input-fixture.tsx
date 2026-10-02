@@ -23,18 +23,18 @@ export function TerminalInputFixture() {
       <WorkspacePageBody inputAccessory={
         <Stack gap="dense" className="border-t border-bakin-border-subtle bg-bakin-canvas-default p-bakin-3" role="group" aria-label="Terminal keys">
           {expanded && <Panel id={panelId} scroll padding="compact" aria-label="More terminal keys" className="max-h-[min(12rem,calc(var(--bakin-workspace-viewport-height,100dvh)*0.2))]">
-            <Inline gap="dense">
+            <Inline gap="dense" justify="center">
               {editing.map(key => <Button key={key} size="lg" variant="outline" disabled={disabled} onMouseDown={preserveFocus} onClick={() => send(key)}>{key}</Button>)}
               {shortcuts.map(key => <Button key={key} size="lg" variant="outline" disabled={disabled} onMouseDown={preserveFocus} onClick={() => { setCtrl(false); setLastKey(`Ctrl+${key}`) }}>Ctrl+{key}</Button>)}
             </Inline>
           </Panel>}
-          <Inline gap="dense" justify="between">
-            <Inline gap="dense" role="group" aria-label="Modifiers and completion">
+          <Inline gap="dense" justify="center">
+            <Inline gap="dense" justify="center" role="group" aria-label="Modifiers and completion">
               {['Esc', 'Tab'].map(key => <Button key={key} size="lg" variant="outline" disabled={disabled} onMouseDown={preserveFocus} onClick={() => send(key)}>{key}</Button>)}
               <Button size="lg" variant={ctrl ? 'primary' : 'outline'} aria-pressed={ctrl} disabled={disabled} onMouseDown={preserveFocus} onClick={() => setCtrl(value => !value)}>Ctrl</Button>
               <Button size="lg" variant="outline" aria-expanded={expanded} aria-controls={expanded ? panelId : undefined} onMouseDown={preserveFocus} onClick={() => setExpanded(value => !value)}>More</Button>
             </Inline>
-            <Inline gap="dense" role="group" aria-label="Cursor keys">
+            <Inline gap="dense" justify="center" role="group" aria-label="Cursor keys">
               {([['Left', ArrowLeft], ['Down', ArrowDown], ['Up', ArrowUp], ['Right', ArrowRight]] as const).map(([key, Icon]) => <Button key={key} size="icon-lg" variant="outline" aria-label={key} disabled={disabled} onMouseDown={preserveFocus} onClick={() => send(key)}><Icon aria-hidden="true" /></Button>)}
             </Inline>
           </Inline>

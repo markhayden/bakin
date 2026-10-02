@@ -88,10 +88,14 @@ or new public export is needed. Existing workspaces retain host sizing.
 ## Mobile input and rendering
 
 Terminal loads the matching xterm WebGL addon after opening the terminal.
+Inconsistent physical pixel measurements (including Chromium device emulation)
+switch back to the DOM renderer, preventing a scaled GPU viewport from clipping
+the terminal output.
 Unavailable GPU contexts and context loss dispose the addon and restore the
 normal renderer. Each terminal mount owns its renderer and event cleanup.
 
-Narrow and touch-capable layouts reserve a persistent Esc/Tab/Ctrl/arrow strip.
+Narrow and touch-capable layouts reserve a persistent, centered Esc/Tab/Ctrl/arrow
+strip. Wrapped rows and expanded keys are centered as well.
 More expands an in-place, bounded panel with editing, navigation, and common
 Ctrl combinations. Kit buttons preserve existing editor focus on pointer taps;
 keyboard activation remains native. Ctrl is one-shot and cancellable. Paste,
