@@ -400,3 +400,9 @@ never proves a selected value unavailable. Mark confirmed unavailable values
 with FieldError and explicit recovery. Compact summaries retain an editable
 query and access to every selected value in the popup. Escape closes an open
 popup; Base UI's closed-popup Escape shortcut clears the selection.
+
+## Keyboard-aware workspaces
+
+Use `WorkspacePage viewport="visual"` and `WorkspacePageBody inputAccessory` for persistent input controls above a software keyboard. The kit owns visible-viewport measurement, listener cleanup, host intersection, and safe-area padding. Default host geometry and flow pages keep their existing behavior. The editor owns its internal scroll.
+
+Public references: `pages/workspace-page.stories.tsx — KeyboardAwareInput` and `recipes/terminal-input.stories.tsx — CompactAndExpanded`. Compose `/ui` Button, `/layout` Inline/Stack/Panel, and `/patterns` WorkspacePage; terminal byte encoding and ownership stay in the plugin. Keep 44px compact key targets, normal keyboard traversal, one click per action, and pointer focus preservation. Expanded keys use a bounded scrollable Panel above the compact groups. Do not set global viewport/body styles or overlay the editor with controls.
