@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
+import type { RepairProposal } from '@bakin/core/approvals'
 import type { HealthRepairPlan } from '../../packages/core/src/plugin-types'
 
 /** Typed absence — routes map to 404 by instanceof, never message text. */
@@ -11,7 +12,22 @@ export class DoctorRepairRequestNotFoundError extends Error {
   }
 }
 
-export type DoctorRepairRequestStatus = 'planned' | 'sent' | 'completed' | 'verified' | 'failed'
+/**
+ * How a request resolves its incidents (spec D6/D7):
+ *   delegate          — a repair task dispatched to the main agent
+ *   approval-repair   — a review task holding a `health-repair` approval for a
+ *                       frozen non-safe repair proposal (plan review R1)
+ *   approval-navigate — a review task holding a `health-navigate` approval
+ *                       (operator-only action; Dismiss is the one decision)
+ */
+export type DoctorRepairRequestKind = 'delegate' | 'approval-repair' | 'approval-navigate'
+
+/**
+ * planned → sent → (applying →) completed | verified | failed | dismissed.
+ * `applying` is written BEFORE a repair mutates anything so a crash mid-apply
+ * is recoverable (R1); `verified` means fresh targeted checks passed (R4).
+ */
+export type DoctorRepairRequestStatus = 'planned' | 'sent' | 'applying' | 'completed' | 'verified' | 'failed' | 'dismissed'
 
 export interface DoctorRepairRequestEvent {
   ts: string
@@ -23,15 +39,22 @@ export interface DoctorRepairRequestEvent {
 export interface DoctorRepairRequest {
   version: 2
   id: string
-  kind: 'delegate'
+  kind: DoctorRepairRequestKind
   status: DoctorRepairRequestStatus
   createdAt: string
   updatedAt: string
-  plan: HealthRepairPlan
+  /** The plan at creation (informational); absent for navigate requests. */
+  plan?: HealthRepairPlan
   incidentIds: string[]
   observationIds: string[]
+  /** Check ids behind `observationIds` at creation — the fresh-verification target (R4). */
+  checkIds: string[]
   taskId?: string
   agentId?: string
+  /** approval-* kinds: the current (or last) approval record id. */
+  approvalId?: string
+  /** approval-repair: the frozen proposal the approval was granted for (R1). */
+  proposal?: RepairProposal
   events: DoctorRepairRequestEvent[]
 }
 
@@ -62,7 +85,8 @@ function requestPath(contentDir: string, request: Pick<DoctorRepairRequest, 'id'
 function readRequestFile(path: string): DoctorRepairRequest {
   const parsed = JSON.parse(readFileSync(path, 'utf-8')) as DoctorRepairRequest
   if (parsed.version !== 2) throw new Error('Unsupported doctor repair request version')
-  return parsed
+  // Requests written before approvals lived in core carry neither field.
+  return { ...parsed, kind: parsed.kind ?? 'delegate', checkIds: parsed.checkIds ?? [] }
 }
 
 function findRequestPath(contentDir: string, requestId: string): string | null {
@@ -75,27 +99,39 @@ function findRequestPath(contentDir: string, requestId: string): string | null {
   return null
 }
 
+const CREATED_MESSAGE: Record<DoctorRepairRequestKind, string> = {
+  delegate: 'Delegated Health repair request planned.',
+  'approval-repair': 'Health repair proposal awaiting approval.',
+  'approval-navigate': 'Health incident awaiting operator action.',
+}
+
 export function createDoctorRepairRequest(
   contentDir: string,
   input: {
-    plan: HealthRepairPlan
+    kind?: DoctorRepairRequestKind
+    plan?: HealthRepairPlan
     incidentIds: string[]
     observationIds: string[]
+    checkIds?: string[]
+    proposal?: RepairProposal
     events?: DoctorRepairRequestEvent[]
   },
 ): DoctorRepairRequest {
   const ts = nowIso()
+  const kind = input.kind ?? 'delegate'
   const request: DoctorRepairRequest = {
     version: 2,
     id: `repair-${crypto.randomUUID()}`,
-    kind: 'delegate',
+    kind,
     status: 'planned',
     createdAt: ts,
     updatedAt: ts,
-    plan: structuredClone(input.plan),
+    ...(input.plan ? { plan: structuredClone(input.plan) } : {}),
     incidentIds: [...new Set(input.incidentIds)].sort(),
     observationIds: [...new Set(input.observationIds)].sort(),
-    events: input.events ?? [{ ts, type: 'created', message: 'Delegated Health repair request planned.' }],
+    checkIds: [...new Set(input.checkIds ?? [])].sort(),
+    ...(input.proposal ? { proposal: structuredClone(input.proposal) } : {}),
+    events: input.events ?? [{ ts, type: 'created', message: CREATED_MESSAGE[kind] }],
   }
   atomicWriteJson(requestPath(contentDir, request), request)
   return request
