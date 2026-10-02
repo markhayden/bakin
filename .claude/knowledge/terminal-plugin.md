@@ -68,7 +68,7 @@ session, terminating, and deleting completed output. Confirmations retain the
 target session ID and show its title, and API errors remain in the dialog for
 retry. Deleting output does not delete metadata or retained worktrees.
 Completion/deletion actions live in DropdownMenu, alongside Reconnect terminal
-and the explicit Send Tab to terminal checkbox. Reconnect only reattaches the
+and the explicit Capture Tab checkbox. Reconnect only reattaches the
 output stream; it does not restart the process. Connection and ownership status
 share the title header, with no separate output toolbar. The terminal has a kit
 16px inset, and xterm's theme plus unused viewport match its canvas background.
@@ -79,6 +79,35 @@ readiness, and reconnect when this browser owns input. There is no Fit control.
 Read-only viewers never resize an agent-controlled PTY. Agent assignment uses
 the full-width kit `AgentSelect` with registered display names, portraits, and
 accent colors; terminal access policy still determines disabled choices.
-No public API or design exception was
-added. Shared kit fixes cover fractional-height compact-header activation,
-viewport-bounded tooltips, and conformance of focusable disabled buttons.
+The approved public workspace extension adds `viewport="visual"` and the
+`WorkspacePageBody inputAccessory` slot. Its contract is exercised by
+`pages/workspace-page.stories.tsx — KeyboardAwareInput` and
+`recipes/terminal-input.stories.tsx — CompactAndExpanded`. No design exception
+or new public export is needed. Existing workspaces retain host sizing.
+
+## Mobile input and rendering
+
+Terminal loads the matching xterm WebGL addon after opening the terminal.
+Unavailable GPU contexts and context loss dispose the addon and restore the
+normal renderer. Each terminal mount owns its renderer and event cleanup.
+
+Narrow and touch-capable layouts reserve a persistent Esc/Tab/Ctrl/arrow strip.
+More expands an in-place, bounded panel with editing, navigation, and common
+Ctrl combinations. Kit buttons preserve existing editor focus on pointer taps;
+keyboard activation remains native. Ctrl is one-shot and cancellable. Paste,
+IME composition, focus leaving the interaction, disconnection, and session or
+ownership changes reset it; routine resize does not. Cursor sequences follow
+xterm's current normal/application mode. Every action uses the existing ordered
+input queue and generation/ownership checks.
+
+The kit measures the intersection of the host pane and VisualViewport, keeps
+the accessory above the keyboard, and owns bottom safe-area clearance. It does
+not resize the host or alter global document styles. A collapsed opted-in
+workspace exposes only its compact header to assistive technology and keyboard
+navigation. The full header becomes available again when scrolled into view.
+The canvas has no fixed minimum height; human-owned PTYs can fit down to one
+row. Read-only viewers never resize the shared PTY.
+
+Implementation and verification: `.claude/specs/terminal-mobile-rendering-evidence.md`.
+Physical iPhone Safari and Android Chrome keyboard verification remains
+outstanding; automated Chromium/WebKit checks are not a native-phone result.

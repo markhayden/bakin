@@ -24,7 +24,8 @@ the existing single-user installation; compatibility shims are not a goal.
 Accepted 2026-10-01. Provide compact access to Tab, Escape, Ctrl, and arrows,
 with an expandable area for Home/End, Page Up/Down, and common Ctrl shortcuts.
 Cover the main terminal use cases first; additional keys can follow later.
-Exact arrangement, modifier behavior, and expanded key inventory remain draft.
+The final arrangement, modifier behavior, and expanded inventory below were
+approved with the implementation plan.
 
 ### D2: Persistent compact controls
 
@@ -206,7 +207,7 @@ controls, their relationship to an on-screen keyboard, or preserving terminal
 input focus while pressing them. Existing buttons and layout primitives cover
 the visual ingredients, but do not establish that combined behavior.
 
-### Proposed reusable extension — approval required
+### Approved reusable extension
 
 Extend the existing workspace pattern with two opt-in capabilities, through
 the already-supported `/patterns` entrypoint:
@@ -380,12 +381,15 @@ The user must approve the implementation plan before build work begins.
 
 ## Remaining approvals and verification dependencies
 
-1. Explicit approval of the proposed workspace extension, final spec, and plan.
-2. Exact visual-baseline review after candidate images exist.
+1. Workspace extension, final spec, and plan approved on 2026-10-01.
+2. Four TerminalInput visual baselines approved on 2026-10-01.
 3. Record the actual phone/browser used for the real-keyboard acceptance check;
    availability of a device is verification evidence, not an assumed pass.
 4. The original mobile-controls issue reference remains unlocated. This does
    not block implementation; do not create or close tickets without instruction.
+5. The measured build-size budget increase awaits its separate explicit
+   approval. Current verification and remaining limits are recorded in
+   `terminal-mobile-rendering-evidence.md`.
 
 ## Sources
 

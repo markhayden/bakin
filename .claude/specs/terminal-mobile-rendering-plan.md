@@ -2,7 +2,8 @@
 
 Status: Approved for implementation on 2026-10-01, including the specific
 workspace extension. User response: “sure” to the final spec/plan/extension
-approval question. Exact visual baseline approval remains a later checkpoint.
+approval question. The four exact TerminalInput visual baselines were approved
+on 2026-10-01. Implementation results are in `terminal-mobile-rendering-evidence.md`.
 Date: 2026-10-01
 Spec: `terminal-mobile-rendering.md` (accepted interview decisions D1–D4).
 
@@ -20,9 +21,8 @@ semantic token, or xterm dependency to Bakin. The plugin owns key encoding,
 modifier state, session ownership, and ordered writes. Standard kit buttons,
 layout, and bounded panels own presentation.
 
-This is a draft plan conditional on explicit approval of that extension and the
-spec. Apply the kickoff build/test workflows after approval. Perform the work
-sequentially; no parallel agents are needed for these shared files.
+The extension, spec, and plan are approved. Execute the kickoff build/test
+workflows sequentially; no parallel agents are needed for these shared files.
 
 ## Dependency order and feasibility gates
 
@@ -300,7 +300,10 @@ replacing the root's test SDK or modifying workspace package dependencies.
 mkdir -p "$terminal_review_root/plugin"
 rsync -a --exclude=node_modules --exclude=dist --exclude=test-results plugins/terminal/ "$terminal_review_root/plugin/"
 cd "$terminal_review_root/plugin"
-bun add --dev "$terminal_review_root/sdk"
+npm pack --pack-destination "$terminal_review_root" "$terminal_review_root/sdk"
+# Set the disposable package's @makinbakin/sdk devDependency to the resulting
+# .tgz, then install. A packed artifact matches the published package boundary.
+bun install
 TERMINAL_PREVIEW_PORT=3798 bun tests/dev-server.ts
 ```
 
@@ -415,6 +418,8 @@ been run for the proposed feature; those require implementation.
 
 - [x] User approves final spec and explicit workspace extension (2026-10-01).
 - [x] User approves this task/commit/verification plan (2026-10-01).
-- [ ] Implementation and evidence are complete (all tasks above).
-- [ ] Exact visual candidates are approved and full conformance passes.
-- [ ] Device evidence is complete or its remaining limit is explicitly recorded.
+- [x] Implementation and evidence are complete; verification limits are recorded.
+- [x] Exact visual candidates are approved (four TerminalInput images only).
+- [ ] Full conformance passes; the full command currently stops at nine
+  untouched spend-observer failures, also reproduced in isolation.
+- [x] The unavailable physical-device check is explicitly recorded.

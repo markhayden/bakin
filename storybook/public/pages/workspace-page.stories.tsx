@@ -231,4 +231,3 @@ export const KeyboardAwareInput = {
     await expect(canvasArea.getBoundingClientRect().bottom).toBeLessThanOrEqual(accessory.getBoundingClientRect().top + 1)
   },
 } satisfies Story
-
