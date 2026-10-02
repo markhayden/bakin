@@ -17,6 +17,7 @@ import { approvalErrorStatus } from '../../../../src/core/approvals'
 import { loadInstance, listInstances } from '../runtime'
 import { loadDefinition } from '../parser'
 import { decideGate, pendingGateApproval } from '../approval-kind'
+import { resolveApproval } from '../../../../src/core/approvals'
 import { formValue, gateDecisionHtmlResponse, escapeHtml } from '../gate-html'
 import { passthroughWf, errorResponseWf, htmlResponseWf } from '../route-schemas'
 
@@ -166,7 +167,9 @@ const gateDecisionActionHandler = async (req: Request, _ctx: PluginContextLite) 
 
   const reason = formValue(form, 'reason')?.trim()
   try {
-    await decideGate(taskId, stepId, decision, webApprover(), reason)
+    // The EXACT record the form named — never "the newest pending for this
+    // gate": a superseded generation must refuse, not decide its successor.
+    await resolveApproval(approvalRecord.approvalId, { option: decision, actor: webApprover(), ...(reason ? { comment: reason } : {}) })
   } catch (err) {
     const status = approvalErrorStatus(err)
     if (status === null) throw err

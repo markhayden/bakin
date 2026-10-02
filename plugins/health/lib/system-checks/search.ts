@@ -336,7 +336,6 @@ export async function checkSearchIndexObservations(
     const scarredTables = health.tables.filter(
       (table) => table.healthy && table.legs.some((leg) => leg.scar),
     )
-    lastScarTables = scarredTables.map((table) => table.logical)
     const scarObservations = scarredTables.length > 0
       ? [healthWarning({
           key: 'indexes.scars',
@@ -434,19 +433,25 @@ async function safeOutboxObservations(): Promise<HealthObservationInput[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Scar repair (#845) — same blue/green rebuild engine as the spin repair,
-// driven by the tables the LAST check run observed as scarred (mirrors the
-// spin repair's lastSpinTables pattern; a repair fired from a scar incident
-// must rebuild the scarred tables, not whatever the spin watchdog last saw).
+// Scar repair (#845) — same blue/green rebuild engine as the spin repair. The
+// plan names every scarred table concretely from the CURRENT report's scar
+// observation, and apply rebuilds exactly the tables the approved items name —
+// a frozen approval can never drift to a different table.
 // ---------------------------------------------------------------------------
 
-let lastScarTables: string[] = []
+async function scarredTablesFromReport(): Promise<string[]> {
+  const { getHealthReport } = await import('../../../../src/core/doctor-report-cache')
+  const observation = getHealthReport().observations.find((row) => row.checkId === 'health.search' && row.key === 'indexes.scars')
+  const tables = observation?.evidence?.scarredTables
+  return Array.isArray(tables) ? tables.filter((table): table is string => typeof table === 'string') : []
+}
 
 export function searchScarRepair(): HealthRepairActionDefinition {
   return {
     id: 'search-scar-rebuild',
     name: 'Rebuild scarred Search indexes',
     async plan(target) {
+      const tables = await scarredTablesFromReport()
       return [{
         id: 'rebuild-scarred-indexes',
         actionId: 'search-scar-rebuild',
@@ -454,18 +459,19 @@ export function searchScarRepair(): HealthRepairActionDefinition {
         reason: 'Converged legs carry historical enrichment failure counters; a fresh generation clears them.',
         safety: 'destructive',
         ...repairTargetSelection(target),
-        changes: [{
-          kind: 'other',
-          target: 'search tables',
-          action: 'update',
-          description: 'Backfill fresh physical tables from source data and flip on convergence; queries keep answering from the current tables throughout.',
-        }],
+        changes: tables.map((table) => ({
+          kind: 'other' as const,
+          target: table,
+          action: 'update' as const,
+          description: 'Backfill a fresh physical table from source data and flip on convergence; queries keep answering from the current table throughout.',
+        })),
       }]
     },
     async apply(items) {
       if (items.length === 0) return []
       const { rebuildRegisteredTables } = await import('../../../../src/core/search-registry')
-      const targets = [...lastScarTables]
+      const { rebuildTargets } = await import('./search-spin')
+      const targets = rebuildTargets(items)
       const outcomes: string[] = []
       let failed = 0
       try {

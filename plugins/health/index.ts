@@ -27,13 +27,17 @@ import {
   DEFAULT_SCAN_MINUTES,
 } from '../../src/core/usage-history-timer'
 import { DoctorRepairRequestNotFoundError } from '../../src/core/doctor-repair-store'
+import { userInfo } from 'os'
 import { getContentDir } from '../../src/core/content-dir'
 import { applyDoctorRepair, planDoctorRepair } from '../../src/core/doctor-repair'
 import { HealthContractError } from '../../src/core/health-contract'
 import {
   DoctorRepairConfirmationError,
   DoctorRepairStalePlanError,
+  getStoredRepairPlan,
 } from '../../src/core/doctor-repair-plans'
+import { pendingRepairApprovalFor, type RepairApplyOutcome } from '../../src/core/doctor-approvals'
+import { approvalErrorStatus, resolveApprovalWithResult } from '../../src/core/approvals'
 import { delegateDoctorRepair, verifyDoctorRepairRequest } from '../../src/core/doctor-delegate'
 import { getDoctorRepairRequest, listDoctorRepairRequests } from '../../src/core/doctor-repair-store'
 import {
@@ -666,6 +670,21 @@ const routes = [
     responses: { 200: healthRepairApplyReportSchema, 409: healthErrorResponseSchema, 500: healthErrorResponseSchema },
     handler: async (_req, _ctx, { body }) => {
       try {
+        // A pending approval task already holds this repair (spec D7): the
+        // Health page's Apply IS that decision — resolve the record so the
+        // approval lock makes it one execution, and the task closes with it.
+        const plan = getStoredRepairPlan(body.planId)
+        const selected = plan?.items.filter((item) => body.itemIds.includes(item.id)) ?? []
+        const covering = pendingRepairApprovalFor(selected.flatMap((item) => item.observationIds))
+        if (covering) {
+          const { username } = userInfo()
+          const { result } = await resolveApprovalWithResult(covering.approvalId, {
+            option: 'apply',
+            actor: { source: 'web', id: username, displayName: username },
+          })
+          if (!result) return Response.json({ error: 'The repair failed before verification; the linked task carries the reason.', code: 'APPROVAL_DECISION' }, { status: 500 })
+          return Response.json(result as RepairApplyOutcome)
+        }
         const report = await applyDoctorRepair({
           contentDir: getContentDir(),
           projectRoot: process.cwd(),
@@ -675,6 +694,10 @@ const routes = [
         })
         return Response.json(report)
       } catch (err) {
+        const approvalStatus = approvalErrorStatus(err)
+        if (approvalStatus !== null) {
+          return Response.json({ error: err instanceof Error ? err.message : String(err), code: 'APPROVAL_DECISION' }, { status: approvalStatus === 404 || approvalStatus === 503 ? 500 : approvalStatus })
+        }
         if (err instanceof DoctorRepairStalePlanError) {
           return Response.json({ error: err.message, code: err.code }, { status: 409 })
         }

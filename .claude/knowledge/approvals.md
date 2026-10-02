@@ -96,8 +96,11 @@ modal collects a real reason.
   one card per kind — and resolves through `/api/approvals/:id/resolve`;
   typed refusals render inline on that approval.
 - Workflows plugin: `plugins/workflows/lib/approval-kind.ts` (kind handler,
-  `decideGate`, `ensurePendingGateApprovals` at `onReady`), gate routes and
-  the durable decision page are thin wrappers over `decideGate`. Gate
+  `decideGate`, `ensurePendingGateApprovals` at `onReady`); gate routes and
+  hooks go through `decideGate` (newest pending record for the gate), the
+  durable decision page resolves the EXACT record its form named, and the
+  kind refuses an older generation (409) once a newer request exists for
+  the same gate. Gate
   rendering detail: `.claude/knowledge/workflows-plugin.md` § Runtime Gate
   Approvals.
 - Doctor: `src/core/doctor-approvals.ts` — `openRepairApproval` /
@@ -107,6 +110,17 @@ modal collects a real reason.
 
 ## Health decisions
 
+- **One approval, one execution.** The Health page's `/doctor/repair/apply`
+  checks `pendingRepairApprovalFor(selected observationIds)` first: when a
+  review task already holds the repair, the page's Apply RESOLVES that record
+  (`resolveApprovalWithResult` returns the kind's apply report) instead of
+  running a second plan — the service's in-flight guard makes a Health-page
+  click and a task-panel/Discord click one execution (review P1, 2026-10-02).
+- **Targets are concrete.** A repair action's `plan()` must name every real
+  target (search-spin / search-scar emit one change per table read from the
+  CURRENT report's evidence) and its `apply(items)` must act on the items'
+  change targets only — never module-level "last seen" state — or the frozen
+  change-set comparison cannot protect anything.
 - **Apply** (health-repair): re-plan against the current report for the
   frozen proposal's observations; apply only when the fresh change set
   (`actionId|kind|target|action`, order-independent) equals the frozen one.
@@ -115,7 +129,10 @@ modal collects a real reason.
   and refuses with 409; nothing left to repair withdraws and leaves the task
   for auto-close. The request is `applying` BEFORE any mutation; passing
   targeted checks → `verified` + task done; failed steps / incidents still
-  burning → `failed` + task blocked with the reason.
+  burning → `failed` + task blocked with the reason. "Passing" is
+  `judgeRequest` (the auto-close rule): every originating check EVALUATED
+  healthy on the fresh run — an absent incident (unknown / failed /
+  unregistered check) never verifies, here or in interrupted-apply recovery.
 - **Dismiss** (both kinds): snooze 7 d on action_required incidents (the ack
   store refuses a permanent ack on that tier), ack on lower tiers; request
   `dismissed`; task done.

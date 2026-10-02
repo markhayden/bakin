@@ -242,6 +242,28 @@ describe('workflow-gate approval kind', () => {
     expect(pendingRecordFor('t-7').status).toBe('pending')
   })
 
+  it('an older generation refuses (409) once a newer request exists for the same gate; the newer one decides', async () => {
+    const instance = reachGate('t-7b')
+    const current = pendingRecordFor('t-7b')
+    const older = createApprovalRecord({
+      approvalId: 'older-generation',
+      owner: { kind: 'workflow-gate', taskId: 't-7b', workflowId: 'gate', runId: 'previous-run', stepId: 'review-gate' },
+      request: current.request,
+      createdAt: '2020-01-01T00:00:00.000Z',
+    })
+    // Make the current record the newest by touching it after the old one.
+    expect(Date.parse(current.updatedAt)).toBeGreaterThanOrEqual(Date.parse(older.createdAt))
+    const { resolveApproval } = await import('../../../src/core/approvals/service')
+    const err = await resolveApproval('older-generation', { option: 'approve', actor: web }).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(ApprovalResolveError)
+    expect((err as ApprovalResolveError).status).toBe(409)
+    expect(loadInstance('t-7b', testDir)!.status).toBe('pending_approval')
+    expect(getApprovalRecord('older-generation')?.status).toBe('pending')
+    expect(instance.instanceId).toBe(current.owner.kind === 'workflow-gate' ? current.owner.runId : '')
+    await resolveApproval(current.approvalId, { option: 'approve', actor: web })
+    expect(loadInstance('t-7b', testDir)!.currentStepId).toBe('publish')
+  })
+
   it('decideGate with no pending record is a typed 400, never a throw into the route', async () => {
     const err = await decideGate('nobody', 'review-gate', 'approve', web).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(ApprovalResolveError)

@@ -184,6 +184,17 @@ describe('gate decision page', () => {
     expect(getApprovalRecord('workflow-gate:task-42:review-gate:wf_abc123:t1')?.status).toBe('pending')
   })
 
+  it('POST decides EXACTLY the submitted record, never the newest pending one for the gate', async () => {
+    seedPendingRecord('workflow-gate:task-42:review-gate:wf_old:t0', '2026-04-11T09:00:00Z')
+    seedPendingRecord('workflow-gate:task-42:review-gate:wf_abc123:t2', '2026-04-11T11:00:00Z')
+    const res = await actionRoute.handler(postRequest({ stepId: 'review-gate', decision: 'approve', approvalId: 'workflow-gate:task-42:review-gate:wf_old:t0' }), ctx, routeParams)
+    expect(res.status).toBe(200)
+    expect(onResolve).toHaveBeenCalledTimes(1)
+    expect((onResolve.mock.calls[0]?.[0] as { approvalId: string }).approvalId).toBe('workflow-gate:task-42:review-gate:wf_old:t0')
+    expect(getApprovalRecord('workflow-gate:task-42:review-gate:wf_old:t0')?.status).toBe('approved')
+    expect(getApprovalRecord('workflow-gate:task-42:review-gate:wf_abc123:t2')?.status).toBe('pending')
+  })
+
   it('POST on a decided record says so instead of deciding again; bad decisions are 400; missing records 404', async () => {
     seedPendingRecord()
     await actionRoute.handler(postRequest({ stepId: 'review-gate', decision: 'approve' }), ctx, routeParams)

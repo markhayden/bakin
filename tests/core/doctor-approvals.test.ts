@@ -10,7 +10,7 @@ import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
-import { healthError, healthHealthy, healthObserved } from '@makinbakin/sdk/utils'
+import { healthError, healthHealthy, healthObserved, healthUnknown } from '@makinbakin/sdk/utils'
 import type { HealthRepairPlanItem } from '@makinbakin/sdk/types'
 
 const testDir = join(tmpdir(), `bakin-test-doctor-approvals-${Date.now()}-${randomUUID()}`)
@@ -75,6 +75,7 @@ import {
   healthRepairApprovalKind,
   openNavigateApproval,
   openRepairApproval,
+  pendingRepairApprovalFor,
   recoverInterruptedApplies,
   registerDoctorApprovalKinds,
   sameChangeSet,
@@ -85,6 +86,8 @@ let navigateUnhealthy = true
 let planTarget = 'search-index'
 let applyThrows: string | null = null
 let applyLeavesUnhealthy = false
+/** After apply the search check answers this way instead of healthy (R4 probes). */
+let postApplyMode: 'unknown' | 'throw' | null = null
 const applyAction = mock(async (items: HealthRepairPlanItem[]) => {
   if (applyThrows) throw new Error(applyThrows)
   if (!applyLeavesUnhealthy) unhealthy = false
@@ -113,10 +116,14 @@ async function seed() {
   })
   registerPluginHealthCheck('approvals-test', {
     id: 'search', name: 'Search index', description: 'Checks the search index.', group: { key: 'search', label: 'Search' },
-    run: async () => healthObserved(unhealthy ? [healthError({
+    run: async () => {
+      if (postApplyMode === 'throw') throw new Error('engine timed out')
+      if (postApplyMode === 'unknown') return healthObserved([healthUnknown({ key: 'index', summary: 'Cannot read the index.', incident: { key: 'unreadable', title: 'Search index state unknown', impact: 'Unknown.', disposition: 'watch', resolution: { key: 'rerun', type: 'rerun', label: 'Re-run' } } })])
+      return healthObserved(unhealthy ? [healthError({
       key: 'index', summary: 'Search index is corrupt.',
       incident: { key: 'corrupt', title: 'Search index is corrupt', impact: 'Search returns nothing.', disposition: 'action_required', resolution: { key: 'rebuild', type: 'repair', label: 'Rebuild', actionId: 'rebuild-index' } },
-    })] : [healthHealthy({ key: 'index', summary: 'Search index is ready.' })]),
+    })] : [healthHealthy({ key: 'index', summary: 'Search index is ready.' })])
+    },
   }, 'Approvals Test')
   registerPluginHealthCheck('approvals-test', {
     id: 'auth', name: 'Provider auth', description: 'Checks provider credentials.', group: { key: 'runtime', label: 'Runtime' },
@@ -150,6 +157,7 @@ beforeEach(async () => {
   planTarget = 'search-index'
   applyThrows = null
   applyLeavesUnhealthy = false
+  postApplyMode = null
   applyAction.mockClear()
   createTaskWithEffects.mockClear()
   await seed()
@@ -274,7 +282,37 @@ describe('health-repair: apply', () => {
     expect(request.status).toBe('failed')
     expect(request.events.map((e) => e.type)).toContain('applied')
     expect(tasks.get('task-1')!.column).toBe('blocked')
-    expect(tasks.get('task-1')!.blockedReason).toContain('still reproduce')
+    expect(tasks.get('task-1')!.blockedReason).toContain('did not evaluate healthy')
+  })
+
+  it('an absent incident is NOT a pass: a fresh check answering unknown after the repair marks it failed, never verified (R4)', async () => {
+    const opened = await openRepair()
+    postApplyMode = 'unknown'
+    const resolved = await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+    expect(resolved.status).toBe('approved')
+    // The original action_required incident is gone from the report (the check
+    // now says unknown) — still not a verification.
+    expect(getHealthReport().incidents.find((row) => row.id === opened.incident.id)).toBeUndefined()
+    const request = getDoctorRepairRequest(testDir, opened.request.id)!
+    expect(request.status).toBe('failed')
+    expect(tasks.get('task-1')).toMatchObject({ column: 'blocked' })
+    expect(tasks.get('task-1')!.blockedReason).toContain('did not evaluate healthy')
+  })
+
+  it('a fresh check that FAILS after the repair keeps the request failed, never verified (R4)', async () => {
+    const opened = await openRepair()
+    postApplyMode = 'throw'
+    await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+    expect(getDoctorRepairRequest(testDir, opened.request.id)!.status).toBe('failed')
+    expect(tasks.get('task-1')!.column).toBe('blocked')
+  })
+
+  it('pendingRepairApprovalFor finds the approval whose frozen proposal covers an observation', async () => {
+    const opened = await openRepair()
+    expect(pendingRepairApprovalFor(['approvals-test.search:index'])?.approvalId).toBe(opened.approval.approvalId)
+    expect(pendingRepairApprovalFor(['approvals-test.auth:openai'])).toBeNull()
+    await resolveApproval(opened.approval.approvalId, { option: 'dismiss', actor: web })
+    expect(pendingRepairApprovalFor(['approvals-test.search:index'])).toBeNull()
   })
 
   it('simultaneous Health-card and Discord clicks: one applies, the other is refused, the action runs once', async () => {
@@ -328,6 +366,18 @@ describe('dismiss', () => {
 })
 
 describe('recoverInterruptedApplies', () => {
+  it('an unregistered originating check never verifies an interrupted apply (R4)', async () => {
+    const opened = await openRepair()
+    updateDoctorRepairRequest(testDir, opened.request.id, (r) => ({ ...r, status: 'applying' }))
+    unregisterPluginHealthChecks('approvals-test')
+    // The incident is absent now (no check) — still failed + blocked, never verified.
+    const summary = await recoverInterruptedApplies(testDir)
+    expect(summary).toEqual({ recovered: 1, verified: 0, failed: 1 })
+    expect(getDoctorRepairRequest(testDir, opened.request.id)!.status).toBe('failed')
+    expect(tasks.get(opened.taskId)!.blockedReason).toContain('did not evaluate healthy')
+    expect(getApprovalRecord(opened.approval.approvalId)?.status).toBe('cancelled')
+  })
+
   it('verifies a request stuck in applying: clean checks → verified + done; still burning → failed + blocked; the approval is withdrawn', async () => {
     const clean = await openRepair()
     updateDoctorRepairRequest(testDir, clean.request.id, (r) => ({ ...r, status: 'applying' }))

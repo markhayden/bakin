@@ -115,6 +115,11 @@ const inFlight = new Set<string>()
  * resolve the record (compare-and-set), tell the channel, and publish.
  */
 export async function resolveApproval(approvalId: string, decision: ApprovalDecision): Promise<ApprovalRecord> {
+  return (await resolveApprovalWithResult(approvalId, decision)).record
+}
+
+/** `resolveApproval` plus whatever the kind handler returned (e.g. an apply report). */
+export async function resolveApprovalWithResult(approvalId: string, decision: ApprovalDecision): Promise<{ record: ApprovalRecord; result: unknown }> {
   const record = getApprovalRecord(approvalId)
   if (!record) throw new ApprovalNotFoundError(approvalId)
   if (record.status !== 'pending') throw new ApprovalNotPendingError(approvalId, record.status)
@@ -124,7 +129,7 @@ export async function resolveApproval(approvalId: string, decision: ApprovalDeci
 
   inFlight.add(approvalId)
   try {
-    await handler.onResolve(record, decision)
+    const result = await handler.onResolve(record, decision)
     const response: ApprovalResponse = {
       selectedOption: decision.option,
       respondedAt: decision.respondedAt ?? new Date().toISOString(),
@@ -142,7 +147,7 @@ export async function resolveApproval(approvalId: string, decision: ApprovalDeci
     }
     publishResolved(resolved)
     log.info('Approval resolved', { approvalId, kind: record.owner.kind, option: decision.option, by: decision.actor.source })
-    return resolved
+    return { record: resolved, result }
   } finally {
     inFlight.delete(approvalId)
   }

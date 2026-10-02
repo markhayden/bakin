@@ -29,7 +29,7 @@ import { ConfirmDialog } from '@makinbakin/sdk/patterns'
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { Inline } from '@makinbakin/sdk/layout'
-import { AlertTriangle, Check, ExternalLink, Hourglass, RefreshCw, Wrench, X } from 'lucide-react'
+import { AlertTriangle, Check, Hourglass, RefreshCw, X } from 'lucide-react'
 import { StepOutputViewer } from './step-output-viewer'
 import type { TaskApproval } from '../types'
 
@@ -180,7 +180,7 @@ function RepairApproval({ approval, busy, error, onResolve }: {
 
   return (
     <Alert tone="attention" data-approval-kind="health-repair">
-      <Wrench aria-hidden="true" />
+      <AlertTriangle aria-hidden="true" />
       <AlertTitle>{approval.request.title}</AlertTitle>
       <AlertDescription>
         <MarkdownContent content={approval.request.body} />
@@ -190,7 +190,6 @@ function RepairApproval({ approval, busy, error, onResolve }: {
             Dismiss
           </Button>
           <Button type="button" variant="danger" size="sm" onClick={() => setConfirming(true)} disabled={busy}>
-            <Wrench aria-hidden="true" />
             {busy ? 'Applying…' : 'Apply repair'}
           </Button>
         </div>
@@ -241,7 +240,7 @@ function NavigateApproval({ approval, busy, error, onResolve }: {
             {busy ? 'Dismissing…' : 'Dismiss'}
           </Button>
           <PluginLink to={href} className={buttonVariants({ size: 'sm' })}>
-            <ExternalLink aria-hidden="true" /> Open
+            Open
           </PluginLink>
         </div>
       </AlertDescription>

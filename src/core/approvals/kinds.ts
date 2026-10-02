@@ -37,8 +37,10 @@ export interface ApprovalKindHandler<K extends ApprovalKind = ApprovalKind> {
   /**
    * Apply the decision. Throw a typed ApprovalResolveError to refuse it — the
    * record then stays pending and the caller gets the error's HTTP status.
+   * A returned value rides back to callers of `resolveApprovalWithResult`
+   * (e.g. a repair's apply report) and is never persisted on the record.
    */
-  onResolve(record: RecordOf<K>, decision: ApprovalDecision): Promise<void>
+  onResolve(record: RecordOf<K>, decision: ApprovalDecision): Promise<unknown>
   /**
    * Render the approval on a runtime channel. Default: one `createApproval`
    * card. Kinds with richer context (gates post output + a thread) override.

@@ -90,6 +90,12 @@ async function onResolve(record: GateRecord, decision: ApprovalDecision): Promis
   const approver: ApprovalActor = decision.actor
   const source = decision.actor.source
   const ctx = getWorkflowPluginContext()
+  // A gate reached again (re-run, reopen) gets a fresh record; an older
+  // generation's buttons/form must refuse rather than decide the current one.
+  const current = pendingGateApproval(taskId, stepId)
+  if (current && current.approvalId !== record.approvalId) {
+    throw new ApprovalResolveError('A newer approval request superseded this one for the same gate; decide the current request instead.', 409)
+  }
 
   if (decision.option === 'approve') {
     const result = approveGate(taskId, stepId, { approver })

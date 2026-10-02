@@ -18,7 +18,7 @@
  * Task-service/task-store are imported lazily (same as escalation) to keep
  * this module out of their import cycles.
  */
-import type { ApprovalRecord, RepairProposal } from '@bakin/core/approvals'
+import { findPendingApproval, type ApprovalRecord, type RepairProposal } from '@bakin/core/approvals'
 import type { ApprovalActor } from '@bakin/core/plugin-types'
 import type {
   HealthIncident,
@@ -39,7 +39,7 @@ import {
   type RecordOf,
 } from './approvals'
 import { acknowledgeHealthIncident, getHealthReport } from './doctor-report-cache'
-import { originatingCheckIds } from './doctor-autoclose'
+import { judgeRequest, originatingCheckIds } from './doctor-autoclose'
 import { runTargetedDiagnostics } from './doctor-execution'
 import { applyDoctorRepair, planDoctorRepair } from './doctor-repair'
 import {
@@ -344,7 +344,13 @@ async function planChanged(request: DoctorRepairRequest, record: RecordOf<'healt
   throw new ApprovalResolveError('The proposed repair changed since this approval was requested; a fresh proposal is waiting on the task.', 409)
 }
 
-async function applyApprovedRepair(request: DoctorRepairRequest, record: RecordOf<'health-repair'>, decision: ApprovalDecision): Promise<void> {
+export type RepairApplyOutcome = Awaited<ReturnType<typeof applyDoctorRepair>>
+
+/**
+ * Apply a granted proposal. Returns the apply report (the Health page's
+ * direct apply goes through here too, so one approval = one execution).
+ */
+async function applyApprovedRepair(request: DoctorRepairRequest, record: RecordOf<'health-repair'>, decision: ApprovalDecision): Promise<RepairApplyOutcome | null> {
   const { contentDir, projectRoot } = requireContext()
   const proposal = record.owner.proposal
   const report = getHealthReport()
@@ -361,7 +367,7 @@ async function applyApprovedRepair(request: DoctorRepairRequest, record: RecordO
   appendEvents(contentDir, request.id, [event('applying', `Approved by ${by}; applying ${itemIds.length} repair item(s).`, { planId: plan.planId, itemIds, actor: decision.actor })], { status: 'applying' })
   await taskLog(request.taskId, `Approved by ${by}. Applying ${describeProposedChanges(proposal).length} change(s)…`)
 
-  let result: Awaited<ReturnType<typeof applyDoctorRepair>>
+  let result: RepairApplyOutcome
   try {
     result = await applyDoctorRepair({ contentDir, projectRoot, planId: plan.planId, itemIds, confirmedItemIds: itemIds })
   } catch (err) {
@@ -369,29 +375,46 @@ async function applyApprovedRepair(request: DoctorRepairRequest, record: RecordO
     appendEvents(contentDir, request.id, [event('apply-failed', `Repair failed before verification: ${message}`)], { status: 'failed' })
     await taskLog(request.taskId, `Repair failed: ${message}`)
     await blockTaskWithReason(request.taskId, `Repair failed: ${message}`)
-    return
+    // The decision WAS made and acted on; the outcome lives on the task.
+    return null
   }
 
   const failed = result.results.filter((row) => row.status === 'failed')
-  const stillOpen = new Set(result.report.incidents.map((incident) => incident.id))
-  const remaining = request.incidentIds.filter((id) => stillOpen.has(id))
+  // The SAME judgement as auto-close (R4): every originating check must have
+  // evaluated healthy on the fresh run — an absent incident alone is not a pass.
+  const checkIds = [...new Set([...originatingCheckIds(request, result.report), ...result.affectedCheckIds])].sort()
+  const verification = judgeRequest(request, result.report, checkIds)
   const applied = event('applied', `Applied ${result.results.filter((row) => row.status === 'applied').length}/${result.results.length} repair item(s).`, {
     planId: plan.planId,
     results: result.results.map((row) => ({ itemId: row.itemId, status: row.status, message: row.message })),
     verifiedReportId: result.verifiedReportId,
   })
-  if (failed.length === 0 && remaining.length === 0) {
-    appendEvents(contentDir, request.id, [applied, event('verified', 'Fresh targeted checks pass; the incidents no longer reproduce.', { reportId: result.verifiedReportId, checkIds: result.affectedCheckIds })], { status: 'verified' })
-    await taskLog(request.taskId, `Repair applied and verified: ${result.affectedCheckIds.join(', ')} healthy; incidents resolved.`)
+  if (failed.length === 0 && verification.verified) {
+    appendEvents(contentDir, request.id, [applied, event('verified', 'Fresh targeted checks pass; the incidents no longer reproduce.', { reportId: result.verifiedReportId, checkIds })], { status: 'verified' })
+    await taskLog(request.taskId, `Repair applied and verified: ${checkIds.join(', ')} healthy; incidents resolved.`)
     await completeTask(request.taskId)
-    return
+    return result
   }
   const reason = failed.length > 0
     ? `${failed.length} repair step(s) failed: ${failed.map((row) => row.message).join('; ')}`
-    : `${remaining.length} incident(s) still reproduce after the repair: ${remaining.join(', ')}`
-  appendEvents(contentDir, request.id, [applied, event('apply-failed', reason, { remainingIncidentIds: remaining })], { status: 'failed' })
+    : verification.unhealthyCheckIds.length > 0
+      ? `${verification.unhealthyCheckIds.length} originating check(s) did not evaluate healthy after the repair: ${verification.unhealthyCheckIds.join(', ')}`
+      : `${verification.remainingIncidentIds.length} incident(s) still reproduce after the repair: ${verification.remainingIncidentIds.join(', ')}`
+  appendEvents(contentDir, request.id, [applied, event('apply-failed', reason, { ...verification })], { status: 'failed' })
   await taskLog(request.taskId, `Repair did not resolve the incidents. ${reason}`)
   await blockTaskWithReason(request.taskId, reason)
+  return result
+}
+
+/**
+ * The pending repair approval (if any) whose frozen proposal covers one of
+ * these observations. The Health page's apply route goes through it so a
+ * decision made there is the same decision — one approval, one execution.
+ */
+export function pendingRepairApprovalFor(observationIds: readonly string[]): ApprovalRecord | null {
+  const wanted = new Set(observationIds)
+  return findPendingApproval((record) =>
+    record.owner.kind === 'health-repair' && record.owner.proposal.observationIds.some((id) => wanted.has(id)))
 }
 
 export const healthRepairApprovalKind: ApprovalKindHandler<'health-repair'> = {
@@ -434,19 +457,23 @@ export async function recoverInterruptedApplies(contentDir: string): Promise<{ r
   for (const request of listDoctorRepairRequests(contentDir).filter((row) => row.status === 'applying')) {
     summary.recovered += 1
     try {
-      const report = await runTargetedDiagnostics(originatingCheckIds(request, getHealthReport()))
-      const stillOpen = new Set(report.incidents.map((incident) => incident.id))
-      const remaining = request.incidentIds.filter((id) => stillOpen.has(id))
+      const checkIds = originatingCheckIds(request, getHealthReport())
+      const report = await runTargetedDiagnostics(checkIds)
+      // Same judgement as auto-close (R4): the checks must EVALUATE healthy.
+      const verification = judgeRequest(request, report, checkIds)
       if (request.approvalId) await cancelApproval(request.approvalId, 'interrupted')
-      if (remaining.length === 0) {
+      if (verification.verified) {
         summary.verified += 1
-        appendEvents(contentDir, request.id, [event('recovered', 'Apply was interrupted by a restart; fresh targeted checks pass.', { reportId: report.id })], { status: 'verified' })
+        appendEvents(contentDir, request.id, [event('recovered', 'Apply was interrupted by a restart; fresh targeted checks pass.', { reportId: report.id, checkIds })], { status: 'verified' })
         await taskLog(request.taskId, 'The repair was interrupted by a restart, but fresh Health checks pass — incidents resolved.')
         await completeTask(request.taskId)
       } else {
         summary.failed += 1
-        const reason = `Repair was interrupted by a restart; ${remaining.length} incident(s) still reproduce: ${remaining.join(', ')}`
-        appendEvents(contentDir, request.id, [event('interrupted', reason, { remainingIncidentIds: remaining, reportId: report.id })], { status: 'failed' })
+        const why = verification.unhealthyCheckIds.length > 0
+          ? `${verification.unhealthyCheckIds.length} originating check(s) did not evaluate healthy: ${verification.unhealthyCheckIds.join(', ')}`
+          : `${verification.remainingIncidentIds.length} incident(s) still reproduce: ${verification.remainingIncidentIds.join(', ')}`
+        const reason = `Repair was interrupted by a restart; ${why}`
+        appendEvents(contentDir, request.id, [event('interrupted', reason, { ...verification, reportId: report.id })], { status: 'failed' })
         await taskLog(request.taskId, reason)
         await blockTaskWithReason(request.taskId, reason)
       }

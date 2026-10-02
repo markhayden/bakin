@@ -376,10 +376,12 @@ alerts and `requireRejectReason`). Deep reference: `.claude/knowledge/approvals.
   `openclaw-plugin-approval:<id>` (native card).
 - `decideGate(taskId, stepId, option, actor, comment?)` — the ONE entry for
   the plugin's own surfaces: `POST /gates/:taskId/{approve,reject}`, the
-  durable decision page (`GET/POST /gates/:taskId/decision`, links omit the
-  approvalId and resolve the newest pending record) and the
-  `workflows.approveGate`/`rejectGate` hooks. Typed refusals map through
-  core's `approvalErrorStatus`.
+  `workflows.approveGate`/`rejectGate` hooks. The durable decision page
+  (`GET/POST /gates/:taskId/decision`; links omit the approvalId, GET resolves
+  the newest pending record) POSTs the EXACT record its form named through
+  `resolveApproval`; `onResolve` refuses an older generation (409) once a
+  newer request exists for the same gate. Typed refusals map through core's
+  `approvalErrorStatus`.
 - `ensurePendingGateApprovals()` runs at `onReady`: every instance waiting at a
   gate without a pending record gets one (idempotent) — gates reached before
   approvals lived in core become decidable on the board.
