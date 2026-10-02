@@ -2,6 +2,34 @@ import { expect, test } from 'playwright/test'
 
 const story = '/iframe.html?id=recipes-terminalinput--compact-and-expanded&viewMode=story'
 
+test('a short keyboard viewport keeps the visible full header accessible', async ({ page }) => {
+  await page.addInitScript(() => {
+    const viewport = Object.assign(new EventTarget(), { height: 320, width: 740, offsetTop: 0, offsetLeft: 0, scale: 1 })
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport })
+  })
+  await page.setViewportSize({ width: 740, height: 320 })
+  await page.goto('/iframe.html?id=components-pages-workspacepage--keyboard-aware-input&viewMode=story')
+  await expect(page.getByRole('textbox', { name: 'Workspace note' })).toHaveValue('Write a note here. ✓')
+  const workspace = page.locator('[data-archetype="workspace"]')
+  const identity = page.locator('[data-slot="workspace-page-header"]')
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '200%'
+    Object.assign(window.visualViewport!, { height: 120 })
+    window.visualViewport!.dispatchEvent(new Event('resize'))
+  })
+  await expect.poll(() => workspace.evaluate(el => el.clientHeight)).toBe(120)
+  expect(await workspace.evaluate(el => el.scrollTop)).toBe(0)
+  await expect(identity).not.toHaveAttribute('inert')
+  await expect(identity).not.toHaveAttribute('aria-hidden')
+  await expect(identity.getByRole('heading', { name: 'Workspace notes' })).toBeVisible()
+  // Once the full identity actually scrolls above the viewport, switch to
+  // the compact heading, then restore the full heading on return.
+  await workspace.evaluate(el => { el.scrollTop = el.scrollHeight })
+  await expect(identity).toHaveAttribute('inert', '')
+  await workspace.evaluate(el => { el.scrollTop = 0 })
+  await expect(identity).not.toHaveAttribute('inert')
+})
+
 test('a collapsed keyboard-aware workspace exposes one header to keyboard navigation', async ({ page }) => {
   await page.goto('/iframe.html?id=components-pages-workspacepage--keyboard-aware-input&viewMode=story')
   await expect(page.getByRole('textbox', { name: 'Workspace note' })).toHaveValue('Write a note here. ✓')

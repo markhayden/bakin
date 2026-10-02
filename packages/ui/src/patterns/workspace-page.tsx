@@ -175,6 +175,16 @@ export function WorkspacePageCompactHeader({
     let observer: IntersectionObserver | null = null
     // @md/page-shell — the container width where the pre-stick row hides.
     const MD_CONTAINER_PX = 448
+    const update = () => {
+      if (!root.clientHeight) return
+      // Nonintersection alone cannot distinguish a sentinel below a short
+      // keyboard viewport from one that has scrolled above it. Measure on
+      // scroll too: jumping from below to above can skip an IO transition.
+      const inset = !flow && root.clientWidth >= MD_CONTAINER_PX ? 57 : 1
+      const above = sentinel.getBoundingClientRect().bottom < root.getBoundingClientRect().top + inset
+      setStuck(above)
+      if (visual) setCompact(above)
+    }
     const arm = () => {
       observer?.disconnect()
       // Viewport-fit (non-flow) desktop reserves NO flow box for the row, so
@@ -185,10 +195,7 @@ export function WorkspacePageCompactHeader({
       // inset makes the knife edge unambiguous on fractional pixels.
       const overlay = !flow && root.clientWidth >= MD_CONTAINER_PX
       observer = new IntersectionObserver(
-        ([entry]) => {
-          setStuck(!entry.isIntersecting)
-          if (visual) setCompact(!entry.isIntersecting)
-        },
+        update,
         {
           root,
           // scrollHeight rounds fractional header heights; keep the same 1px
@@ -198,13 +205,16 @@ export function WorkspacePageCompactHeader({
         },
       )
       observer.observe(sentinel)
+      update()
     }
     arm()
+    root.addEventListener('scroll', update, { passive: true })
     const resize = new ResizeObserver(() => arm())
     resize.observe(root)
     return () => {
       observer?.disconnect()
       resize.disconnect()
+      root.removeEventListener('scroll', update)
       if (visual) setCompact(false)
     }
   }, [flow, visual, setCompact])

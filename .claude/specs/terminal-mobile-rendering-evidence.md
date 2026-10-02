@@ -215,3 +215,40 @@ Evidence: `test-results/terminal-mobile-rendering/review-fixes/`.
 The previous full-suite debt, payload approval, and physical-phone limitations
 remain as recorded above. The generated embedded-asset manifest is retained as
 a local dev-startup artifact while the imitation-crab review server runs.
+
+## Code-review fixes (2026-10-02)
+
+Both P2 findings have failing-before/passing-after browser regressions:
+
+- A mounted terminal now observes resolution-media-query changes as well as
+  element size. It obtains fresh physical pixel measurements before deciding
+  whether to fall back, so genuine display changes keep WebGL while conflicting
+  emulated DPR changes recover visible output. The resolution listener is
+  rearmed and removed with the renderer. A unit test covers both paths and cleanup.
+- The compact header checks whether its marker is above the workspace. A marker
+  below a short viewport no longer hides or disables the visible full header.
+  Scroll events also update the state, because a jump from below to above can
+  leave IntersectionObserver nonintersecting at both ends. The browser regression
+  combines 200% text, a 120px visible viewport, and scrolling in both directions.
+
+Verification after these fixes: 42 Terminal unit tests pass (17 opt-in skips),
+all five Chromium renderer cases pass with screenshot-pixel assertions, all
+15 workspace browser checks pass across Chromium/Firefox/WebKit, six workspace
+units and five public Storybook interactions pass, and quick conformance,
+typecheck, lint, and fresh installed-SDK plugin UI conformance pass. The installed
+report and mobile/desktop screenshots were inspected. An independent review of
+the final fixes found no remaining findings.
+
+The review instance's `patch` agent is disabled, so its ownership/reconnect live
+test could not reach the controls; this run is not counted as passing. The
+completion/history/application-cursor/interrupt/focus/short-viewport live test
+passed. Original isolated-fixture ownership evidence is recorded above.
+
+Centered replacement baselines, payload budgets, and physical-device keyboard
+checks remain outstanding; the pull requests are drafts. No baseline or budget
+was changed as part of these fixes. The canonical centered review captures are
+[compact mobile](terminal-mobile-rendering-review/compact-mobile.png) and
+[expanded mobile](terminal-mobile-rendering-review/expanded-mobile.png); these
+are review attachments, not adopted baselines. Local logs: `/private/tmp/terminal-fixes-*`,
+`/private/tmp/terminal-header-{red,green}.log`, and
+`/private/tmp/terminal-dpr-{red,green}.log`.

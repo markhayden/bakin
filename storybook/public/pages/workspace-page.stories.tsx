@@ -219,7 +219,7 @@ export const ImmersiveCanvas = {
 
 export const KeyboardAwareInput = {
   render: () => <WorkspaceInputFixture />,
-  parameters: { docs: { description: { story: 'Opt in with viewport="visual" for a bounded editor. inputAccessory reserves the trailing controls and the body owns safe-area clearance. The editor owns its scrolling. Pointer controls preserve editor focus; keyboard activation follows ordinary button semantics. Flow workspaces continue to use host geometry.' } } },
+  parameters: { docs: { description: { story: 'Opt in with viewport="visual" for a bounded editor. inputAccessory reserves the trailing controls and the body owns safe-area clearance. The editor owns its scrolling. The full header stays accessible until it scrolls above the visible area, including with enlarged text and a short keyboard viewport. Pointer controls preserve editor focus; keyboard activation follows ordinary button semantics. Flow workspaces continue to use host geometry.' } } },
   play: async ({ canvas, userEvent }) => {
     const editor = canvas.getByRole('textbox', { name: 'Workspace note' })
     await userEvent.click(editor)
