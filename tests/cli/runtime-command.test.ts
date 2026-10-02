@@ -194,6 +194,55 @@ describe('bakin runtime use', () => {
     expect(out).not.toContain('Restart required')
   })
 
+  it('--adopt-cron prints one line per source cron job with its outcome (adopt / skip / refuse / failed)', async () => {
+    postResponse = {
+      ok: true,
+      dryRun: true,
+      from: 'openclaw',
+      to: 'pi',
+      backupPath: null,
+      roster: { carried: [], existing: ['main'], unmappedModels: [], failed: [] },
+      workspaces: null,
+      cantCarry: [{ concern: 'cron', detail: '1 runtime cron job(s) would be adopted into Bakin schedules; 3 stay(s) behind (2 refused: not a task prompt)', count: 4 }],
+      credentials: { llmProviders: ['openai-codex'] },
+      sync: null,
+      capabilities: CAPABILITIES,
+      toolAccess: null,
+      restartRequired: false,
+      cron: {
+        adopted: ['daily-report'],
+        skipped: ['weekly-clean'],
+        refused: [
+          { jobId: 'dream', name: 'dream', reason: 'not a task prompt — a schedule needs a prompt an agent can act on' },
+          { jobId: 'hb', name: 'heartbeat', reason: 'not a task prompt — a schedule needs a prompt an agent can act on' },
+        ],
+        failed: [{ jobId: 'broken', name: 'broken', error: 'sidecar unwritable' }],
+        listing: [
+          { jobId: 'daily-report', name: 'Daily report', outcome: 'adopt', commandPreview: 'Post the daily report' },
+          { jobId: 'weekly-clean', name: 'Weekly clean', outcome: 'skip', commandPreview: 'Clean up' },
+          { jobId: 'dream', name: 'dream', outcome: 'refuse', commandPreview: '__openclaw_memory_core_short_term_promotion_dream__', reason: 'not a task prompt — a schedule needs a prompt an agent can act on' },
+          { jobId: 'hb', name: 'heartbeat', outcome: 'refuse', commandPreview: '', reason: 'not a task prompt — a schedule needs a prompt an agent can act on' },
+          { jobId: 'broken', name: 'broken', outcome: 'failed', commandPreview: 'Do it', reason: 'sidecar unwritable' },
+        ],
+      },
+    }
+    const restore = captureConsole()
+    try {
+      await run(['runtime', 'use', 'pi', '--dry-run', '--adopt-cron'])
+    } finally {
+      restore()
+    }
+    expect(postCalls).toEqual([{ path: '/api/runtime/switch', body: { target: 'pi', dryRun: true, adoptCron: true } }])
+    const out = logLines.join('\n')
+    expect(out).toContain('Cron: would adopt 1, already Bakin 1, refused 2, failed 1')
+    expect(out).toContain('✓ adopt  Daily report (daily-report)')
+    expect(out).toContain('○ skip   Weekly clean (weekly-clean) — already a Bakin schedule')
+    expect(out).toContain('✗ refuse dream — not a task prompt; stays native (command: __openclaw_memory_core_short_term_promotion_dream__)')
+    expect(out).toContain('✗ refuse heartbeat (hb) — not a task prompt; stays native')
+    expect(out).toContain('✗ failed broken: sidecar unwritable')
+    expect(out).toContain('✗ cron (4): 1 runtime cron job(s) would be adopted into Bakin schedules; 3 stay(s) behind (2 refused: not a task prompt)')
+  })
+
   it('--no-copy-workspaces posts copyWorkspaces: false; flags may precede the target', async () => {
     postResponse = {
       ok: true, from: 'openclaw', to: 'pi', backupPath: null,

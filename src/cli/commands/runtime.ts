@@ -130,11 +130,24 @@ async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags)
       console.log(`  ⚠ ${d.label} (${d.ref}) uses '${d.model}' — ${d.detail}${d.proposal.to ? `; proposed: ${d.proposal.to}` : ''}`)
     }
   }
-  const cron = result.cron as { adopted: string[]; skipped: string[]; failed: Array<{ jobId: string; error: string }> } | null
+  const cron = result.cron as {
+    adopted: string[]
+    skipped: string[]
+    refused: Array<{ jobId: string; name: string; reason: string }>
+    failed: Array<{ jobId: string; error: string }>
+    listing: Array<{ jobId: string; name: string; outcome: 'adopt' | 'skip' | 'refuse' | 'failed'; commandPreview: string; reason?: string }>
+  } | null
   if (cron) {
-    console.log(`Cron: ${flags.dryRun ? 'would adopt' : 'adopted'} ${cron.adopted.length}, already Bakin ${cron.skipped.length}, failed ${cron.failed.length}`)
-    for (const failure of cron.failed) {
-      console.log(`  ✗ ${failure.jobId}: ${failure.error}`)
+    console.log(`Cron: ${flags.dryRun ? 'would adopt' : 'adopted'} ${cron.adopted.length}, already Bakin ${cron.skipped.length}, refused ${cron.refused.length}, failed ${cron.failed.length}`)
+    // One line per source job — the operator sees exactly what each cron became.
+    for (const row of cron.listing) {
+      const label = `${row.name}${row.name === row.jobId ? '' : ` (${row.jobId})`}`
+      switch (row.outcome) {
+        case 'adopt': console.log(`  ✓ adopt  ${label}`); break
+        case 'skip': console.log(`  ○ skip   ${label} — already a Bakin schedule`); break
+        case 'refuse': console.log(`  ✗ refuse ${label} — not a task prompt; stays native${row.commandPreview ? ` (command: ${row.commandPreview})` : ''}`); break
+        case 'failed': console.log(`  ✗ failed ${label}: ${row.reason ?? 'unknown error'}`); break
+      }
     }
   }
   if (roster) {
