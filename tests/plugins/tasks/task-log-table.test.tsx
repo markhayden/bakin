@@ -59,13 +59,18 @@ describe('TaskLogTable', () => {
     for (const surface of [table, list]) {
       expect(within(surface).queryByRole('button', { name: 'Actions for Historical task' })).toBeNull()
       for (const action of ['Edit', 'Duplicate', 'Delete']) {
-        await act(async () => { fireEvent.click(within(surface).getByRole('button', { name: 'Actions for Live task' })) })
+        const trigger = within(surface).getByRole('button', { name: 'Actions for Live task' })
+        await act(async () => { fireEvent.click(trigger) })
         const item = await screen.findByRole('menuitem', { name: action })
         await act(async () => { fireEvent.click(item) })
         // The menu closes on the click; re-opening while that close is still
         // in flight toggles it shut again and the next findByRole starves
-        // (#918 — seen only under CI contention). Wait for the item to go.
+        // (#918 — seen only under CI contention). Wait for the item to go AND
+        // for the trigger to report closed: Radix returns focus to the trigger
+        // asynchronously after unmounting the content, and a click that lands
+        // inside that window re-toggles the menu (recurred 2026-10-01, #938).
         await waitFor(() => expect(screen.queryByRole('menuitem', { name: action })).toBeNull())
+        await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('false'))
       }
     }
     expect(onTaskEdit).toHaveBeenCalledTimes(2)
