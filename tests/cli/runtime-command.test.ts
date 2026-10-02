@@ -78,6 +78,8 @@ describe('bakin runtime', () => {
     expect(out).toContain('Active runtime: pi')
     expect(out).toContain('openclaw, pi')
     expect(out).toContain('native (in-process)')
+    expect(out).toContain('same-agent turns serialized')
+    expect(out).not.toContain('[object Object]')
     expect(out).toContain('delivery')
     expect(out).toContain('unavailable')
     expect(out).toContain('Tool access:    ok')

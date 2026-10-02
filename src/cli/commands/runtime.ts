@@ -67,6 +67,11 @@ function printCapabilityReport(report: CapabilityReportPayload): void {
   console.log(`  ${'toolCalling'.padEnd(16)} native (${access?.style ?? 'unknown'})`)
   for (const [name, value] of Object.entries(report.capabilities)) {
     if (name === 'input' || name === 'toolCalling') continue
+    if (name === 'concurrency') {
+      const turns = (value as { sameAgentTurns?: string } | undefined)?.sameAgentTurns ?? 'unknown'
+      console.log(`  ${name.padEnd(16)} same-agent turns ${turns}`)
+      continue
+    }
     const mode = (value as { mode?: string })?.mode ?? String(value)
     console.log(`  ${name.padEnd(16)} ${mode}`)
   }
