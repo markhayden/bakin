@@ -70,7 +70,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
     ctx.hooks.register('schedule.ensureBakinJob', (data: Record<string, unknown>) => ensureBakinJob(ctx, data), {
       hookKind: 'rpc',
       label: 'Ensure Bakin schedule',
-      summary: 'Create or update a Bakin-managed runtime cron job and return the provider job id.',
+      summary: 'Create or update a Bakin-owned schedule keyed by the caller\'s logical id and return its job id. The effective prompt (taskPrompt, else command) must be a task prompt — a sentence an agent can act on, never a bare marker token (spec D5).',
     })
 
     ctx.hooks.register('schedule.adoptCronJobs', (data: unknown) => adoptCronJobs(ctx, data as AdoptCronJobsInput), {

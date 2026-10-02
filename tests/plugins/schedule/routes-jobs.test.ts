@@ -306,7 +306,7 @@ describe('schedule routes', () => {
     it('rejects agentId + teamId together with 400 (#189)', async () => {
       const route = findRoute(plugin.routes, 'POST', '/')!
       const { status, body } = await callRoute(route, plugin.ctx, {
-        body: { name: 'Bad', schedule: '0 9 * * *', agentId: 'chef', teamId: 'development' },
+        body: { name: 'Bad', schedule: '0 9 * * *', agentId: 'chef', teamId: 'development', taskPrompt: 'Do the thing' },
       })
       expect(status).toBe(400)
       expect(String(body.error)).toContain('both')
@@ -315,7 +315,7 @@ describe('schedule routes', () => {
     it('rejects an unknown teamId with 400 (#189)', async () => {
       const route = findRoute(plugin.routes, 'POST', '/')!
       const { status, body } = await callRoute(route, plugin.ctx, {
-        body: { name: 'Bad', schedule: '0 9 * * *', teamId: 'ghost-team' },
+        body: { name: 'Bad', schedule: '0 9 * * *', teamId: 'ghost-team', taskPrompt: 'Do the thing' },
       })
       expect(status).toBe(400)
       expect(String(body.error)).toContain('Unknown team')
@@ -369,10 +369,21 @@ describe('schedule routes', () => {
     it('defaults owner to the main agent', async () => {
       const route = findRoute(plugin.routes, 'POST', '/')!
       const { body } = await callRoute(route, plugin.ctx, {
-        body: { name: 'No Owner', schedule: '0 9 * * *' },
+        body: { name: 'No Owner', schedule: '0 9 * * *', taskPrompt: 'Do the thing' },
       })
       const meta = getJob(body.jobId as string)
       expect(meta!.owner).toBe('main')
+    })
+
+    it('refuses a schedule without a task prompt, or with a single marker token (spec D5)', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/')!
+      for (const taskPrompt of [undefined, '', '   ', '__openclaw_memory_core_short_term_promotion_dream__']) {
+        const { status, body } = await callRoute(route, plugin.ctx, {
+          body: { name: 'Marker', schedule: '0 9 * * *', ...(taskPrompt === undefined ? {} : { taskPrompt }) },
+        })
+        expect(status).toBe(400)
+        expect(String(body.error)).toContain('not a task prompt')
+      }
     })
 
     it('respects provided optional fields', async () => {
@@ -407,6 +418,19 @@ describe('schedule routes', () => {
   // PUT /:jobId — update a job
   // -----------------------------------------------------------------------
   describe('PUT /:jobId', () => {
+    it('refuses an update that would leave the job without a task prompt, and writes nothing (spec D5)', async () => {
+      upsertJob(makeMeta({ jobId: 'keep-prompt', taskPrompt: 'Generate the report' }))
+      const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'keep-prompt' },
+        body: { taskPrompt: 'heartbeat', displayName: 'Renamed' },
+      })
+      expect(status).toBe(400)
+      expect(String(body.error)).toContain('not a task prompt')
+      expect(getJob('keep-prompt')).toMatchObject({ taskPrompt: 'Generate the report' })
+      expect(getJob('keep-prompt')!.displayName).not.toBe('Renamed')
+    })
+
     it('updates sidecar fields for an existing job', async () => {
       upsertJob(makeMeta({ jobId: 'job-123' }))
 
@@ -598,6 +622,20 @@ describe('schedule routes', () => {
   // POST /:jobId/adopt and /:jobId/restore-native
   // -----------------------------------------------------------------------
   describe('POST /:jobId/adopt', () => {
+    it('refuses to adopt a native cron whose command is a bare marker and no prompt is supplied (spec D5)', async () => {
+      mockRuntimeCronJobs.push({ id: 'dream', name: 'dream', schedule: '0 3 * * *', command: '__openclaw_memory_core_short_term_promotion_dream__', enabled: true })
+      const route = findRoute(plugin.routes, 'POST', '/:jobId/adopt')!
+      const { status, body } = await callRoute(route, plugin.ctx, { searchParams: { jobId: 'dream' }, body: {} })
+      expect(status).toBe(400)
+      expect(String(body.error)).toContain('not a task prompt')
+      expect(getJob('dream')?.isBakinJob).toBeFalsy()
+      expect(mockCronRemove).not.toHaveBeenCalledWith('dream')
+
+      // A real prompt from the operator makes the same cron adoptable.
+      const ok = await callRoute(route, plugin.ctx, { searchParams: { jobId: 'dream' }, body: { taskPrompt: 'Promote short-term memories to long-term notes' } })
+      expect(ok.status).toBe(200)
+    })
+
     it('adopts a native runtime cron into a Bakin schedule while preserving the raw snapshot', async () => {
       mockRuntimeCronJobs.push({
         id: 'native-1',
