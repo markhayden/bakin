@@ -51,3 +51,21 @@ export function checkSchedulePrompt(prompt: string | undefined): PromptWarning[]
 
   return []
 }
+
+// ---------------------------------------------------------------------------
+// Task-prompt predicate (health-escalation spec D5)
+// ---------------------------------------------------------------------------
+
+/**
+ * A Bakin schedule fires a TASK, so its prompt must be something an agent can
+ * act on. One structural rule, no provider marker list: empty, or a single
+ * whitespace-free token (`__openclaw_memory_core_short_term_promotion_dream__`,
+ * `heartbeat`, …) is not a task prompt. Switch-time adoption refuses such
+ * native crons with `NOT_A_PROMPT_REASON`; create/update/adopt reject them.
+ */
+export function isTaskPrompt(command: string | null | undefined): boolean {
+  const trimmed = (command ?? '').trim()
+  return trimmed.length > 0 && /\s/.test(trimmed)
+}
+
+export const NOT_A_PROMPT_REASON = 'not a task prompt — a schedule needs a prompt an agent can act on (a sentence, not an empty value or a single marker token)'
