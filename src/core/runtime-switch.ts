@@ -44,7 +44,7 @@ import { enumerateSelections, evaluateSelections, proposeRepairs, computeRevisio
 import type { RoutingConfig } from './model-routing'
 import { getSettings, updateSettings } from './settings'
 import { snapshotAgentContent, carryAgentContent, previewWorkspaceCarry, type AgentContentSnapshot, type WorkspaceCarryReport } from './workspace-carry'
-import { snapshotSourceCapabilities, buildCantCarryReport, type CantCarryLine, type SourceCapabilitySnapshot } from './switch-report'
+import { snapshotSourceCapabilities, buildCantCarryReport, type CantCarryLine, type SourceCapabilitySnapshot, type CronAdoptionOutcome, type SnapshottedCronJob } from './switch-report'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 
 const log = createLogger('runtime-switch')
@@ -110,7 +110,7 @@ export interface RuntimeSwitchResult {
   capabilities: CapabilitySet | null
   toolAccess: ToolAccessProvisioningStatus | null
   /** Opt-in cron adoption outcome (null when not requested / nothing to adopt). */
-  cron: { adopted: string[]; skipped: string[]; failed: Array<{ jobId: string; error: string }> } | null
+  cron: CronAdoptionOutcome | null
   /** What stays behind, honestly (capability diff + counts; null when the phase didn't run). */
   cantCarry: CantCarryLine[] | null
   /** The TARGET's credential presence — a carried roster with no provider auth dispatches nothing. */
@@ -205,32 +205,48 @@ async function runCronAdoption(
     })
     if (!outcome) {
       emit({ phase: 'adopt-cron', status: 'error', detail: 'schedule plugin hook unavailable — jobs NOT adopted (adopt individually from the Schedule page)' })
-      return { adopted: [], skipped: [], failed: jobs.map((j) => ({ jobId: j.job.id, error: 'schedule.adoptCronJobs hook unavailable' })) }
+      return allFailed(jobs, 'schedule.adoptCronJobs hook unavailable')
     }
     emit({
       phase: 'adopt-cron',
       status: 'ok',
-      detail: `${dryRun ? 'would adopt' : 'adopted'} ${outcome.adopted.length}, already Bakin ${outcome.skipped.length}, failed ${outcome.failed.length}`,
+      detail: `${dryRun ? 'would adopt' : 'adopted'} ${outcome.adopted.length}, already Bakin ${outcome.skipped.length}, refused ${outcome.refused.length} (not task prompts), failed ${outcome.failed.length}`,
     })
     return outcome
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     emit({ phase: 'adopt-cron', status: 'error', detail: message })
-    return { adopted: [], skipped: [], failed: jobs.map((j) => ({ jobId: j.job.id, error: message })) }
+    return allFailed(jobs, message)
   }
 }
 
-/** Fold the adoption outcome into the cron can't-carry line, honestly. */
+function allFailed(jobs: SnapshottedCronJob[], error: string): CronAdoptionResult {
+  return {
+    adopted: [],
+    skipped: [],
+    refused: [],
+    failed: jobs.map((j) => ({ jobId: j.job.id, error })),
+    listing: jobs.map((j) => ({ jobId: j.job.id, name: j.job.name || j.job.id, outcome: 'failed' as const, commandPreview: (j.job.command ?? '').slice(0, 80), reason: error })),
+  }
+}
+
+/**
+ * Fold the adoption outcome into the cron can't-carry line, honestly: what
+ * was adopted, what was refused (not a task prompt — stays native) and what
+ * else stays behind. A refusal-only outcome still rewrites the line.
+ */
 function adjustCantCarryForAdoption(lines: CantCarryLine[], cron: CronAdoptionResult | null, dryRun: boolean): CantCarryLine[] {
-  if (!cron || cron.adopted.length === 0) return lines
+  if (!cron || (cron.adopted.length === 0 && cron.refused.length === 0)) return lines
   return lines.map((line) => {
     if (line.concern !== 'cron') return line
     const verb = dryRun ? 'would be adopted' : 'adopted'
-    const remaining = (line.count ?? cron.adopted.length + cron.failed.length) - cron.adopted.length - cron.skipped.length
+    const total = line.count ?? cron.adopted.length + cron.skipped.length + cron.refused.length + cron.failed.length
+    const remaining = Math.max(0, total - cron.adopted.length - cron.skipped.length)
+    const refusedNote = cron.refused.length > 0 ? ` (${cron.refused.length} refused: not a task prompt)` : ''
     return {
       ...line,
       detail: remaining > 0
-        ? `${cron.adopted.length} runtime cron job(s) ${verb} into Bakin schedules; ${remaining} stay(s) behind`
+        ? `${cron.adopted.length} runtime cron job(s) ${verb} into Bakin schedules; ${remaining} stay(s) behind${refusedNote}`
         : `runtime cron jobs ${verb} into Bakin schedules — nothing stays behind`,
     }
   })
