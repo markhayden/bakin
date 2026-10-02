@@ -45,6 +45,7 @@ import {
   unregisterPlugin,
 } from '@makinbakin/sdk/internal'
 import { Slot } from '@makinbakin/sdk/slots'
+import { ApprovalsAttentionProvider } from '../components/attention/approvals-attention-provider'
 import { Banner, Button, Spinner, SystemState, Text } from '@makinbakin/sdk/ui'
 import { assertReactInstance } from '../lib/react-identity'
 import { findShadowingHostPaths } from '../lib/route-shadow'
@@ -731,12 +732,14 @@ export function PluginHost({ children }: { children: ReactNode }) {
   }
   // Plugins can contribute background hook runners (rendered null,
   // mounted purely so their hooks run while the plugin is registered)
-  // via the well-known `nav-badge-providers` slot. Currently used by
-  // messaging's PlansBadgeProvider; available to any plugin that needs
+  // via the well-known `nav-badge-providers` slot (health, chat, tasks badges;
+  // any plugin that needs one). The approvals attention provider is host-owned
+  // (spec D6/D7: ONE toast + OS path for every approval kind) and mounts beside it, available to any plugin that needs
   // to keep registry state live without a visible UI surface.
   return (
     <>
       {children}
+      <ApprovalsAttentionProvider />
       <Slot name="nav-badge-providers" />
       {boot.failedPlugins.length > 0 && !failuresDismissed && (
         <PluginFailureBanner

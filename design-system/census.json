@@ -18,13 +18,13 @@
     ]
   },
   "summary": {
-    "total": 106,
+    "total": 107,
     "byKind": {
       "host-route": 27,
       "plugin-route": 12,
       "plugin-slot": 33,
       "plugin-template": 2,
-      "shared-component": 32,
+      "shared-component": 33,
       "sdk-ui-export": 0
     },
     "nonVisualAliases": 3
@@ -2093,6 +2093,30 @@
           "type": "manifest-template",
           "path": "examples/reference-plugin/bakin-plugin.json",
           "detail": "Bakin reference plugin author contract"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/attention/approvals-attention-provider",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/attention/approvals-attention-provider"
+      },
+      "sourcePath": "packages/host/src/components/attention/approvals-attention-provider.tsx",
+      "symbols": [
+        "ApprovalsAttentionProvider"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/attention/approvals-attention-provider.tsx",
+          "detail": "exported values discovered from TSX source"
         }
       ]
     },
