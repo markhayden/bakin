@@ -276,6 +276,42 @@ describe('restart recovery', () => {
     expect(mockAddTaskLog).not.toHaveBeenCalled()
   })
 
+  it('a completed nested child whose final turn is still running keeps the parent out of recovery (review round 2)', async () => {
+    liveRun('inner-done', 'pixel', 'final')
+    setColumns({ inProgress: [{ id: 'outer-done', title: 'Outer', workflowId: 'outer' }] })
+    mockHookInvoke.mockImplementation(async (hook: unknown, data: unknown) => {
+      const taskId = (data as { taskId?: string } | undefined)?.taskId
+      if (hook === 'workflows.loadInstance') {
+        return taskId === 'outer-done'
+          ? { status: 'in_progress', stepStates: { nested: { status: 'complete', childTaskId: 'inner-done' }, next: { status: 'in_progress' } } }
+          : { status: 'complete', stepStates: {} }
+      }
+      if (hook === 'workflows.getActiveAgents') return [{ agent: 'patch', stepId: 'next' }]
+      return undefined
+    })
+
+    expect(await findRestartRecoveryCandidates(tempDir)).toHaveLength(0)
+    const result = await runRestartRecovery(tempDir)
+    expect(result.recovered + result.blocked + result.skipped).toBe(0)
+  })
+
+  it('a joined map child whose final turn is still running keeps the parent out of recovery (review round 2)', async () => {
+    liveRun('map-p--fan-1', 'pixel', 'write')
+    setColumns({ inProgress: [{ id: 'map-p', title: 'Map parent', workflowId: 'fanout' }] })
+    mockHookInvoke.mockImplementation(async (hook: unknown, data: unknown) => {
+      const taskId = (data as { taskId?: string } | undefined)?.taskId
+      if (hook === 'workflows.loadInstance') {
+        return taskId === 'map-p'
+          ? { status: 'in_progress', stepStates: { fan: { status: 'complete', children: [{ index: 0, childTaskId: 'map-p--fan-0', status: 'complete' }, { index: 1, childTaskId: 'map-p--fan-1', status: 'complete' }] }, assemble: { status: 'in_progress' } } }
+          : { status: 'complete', stepStates: {} }
+      }
+      if (hook === 'workflows.getActiveAgents') return [{ agent: 'patch', stepId: 'assemble' }]
+      return undefined
+    })
+
+    expect(await findRestartRecoveryCandidates(tempDir)).toHaveLength(0)
+  })
+
   it('reports partial live steps as manual instead of redispatching live agents', async () => {
     liveRun('task-5', 'pixel', 'design')
     setColumns({

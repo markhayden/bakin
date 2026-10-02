@@ -46,6 +46,7 @@ import {
   assessWorkflowRuns,
   bumpRunHeartbeat,
   bumpTaskRunHeartbeat,
+  collectWorkflowDescendantTaskIds,
 } from '../../src/core/task-liveness'
 
 const BOOT = 'boot-liveness-1'
@@ -150,11 +151,43 @@ describe('stepExecKey + assessWorkflowRuns', () => {
     expect(result.stranded).toBe(false)
   })
 
+  it('a completed nested child whose final turn is still running counts as other live execution (review round 2)', () => {
+    expect(claimRun({ runId: 'task:inner-done:step:final:d1', taskId: 'inner-done', execKey: stepExecKey('inner-done', 'final'), seq: 1, agent: 'pixel', bootId: BOOT })).toEqual({ claimed: true })
+
+    const withoutDescendants = assessWorkflowRuns('outer-done', [{ agent: 'patch', stepId: 'next' }])
+    expect(withoutDescendants.stranded).toBe(true)
+
+    const withDescendants = assessWorkflowRuns('outer-done', [{ agent: 'patch', stepId: 'next' }], ['inner-done'])
+    expect(withDescendants.otherLive.map((r) => r.taskId)).toEqual(['inner-done'])
+    expect(withDescendants.stranded).toBe(false)
+  })
+
   it('expected steps live and nothing else: not stranded, no other rows', () => {
     const task = 'wf-steady'
     expect(claimRun({ runId: `task:${task}:step:a:d1`, taskId: task, execKey: stepExecKey(task, 'a'), seq: 1, agent: 'ada', bootId: BOOT })).toEqual({ claimed: true })
     const result = assessWorkflowRuns(task, [{ agent: 'ada', stepId: 'a' }])
     expect(result).toMatchObject({ live: ['wf-steady:a'], missing: [], otherLive: [], stranded: false })
+  })
+})
+
+describe('collectWorkflowDescendantTaskIds', () => {
+  it('walks nested children and map children of every step status, recursively, with a cycle guard', async () => {
+    const instances: Record<string, { stepStates: Record<string, { childTaskId?: string; children?: Array<{ childTaskId: string }> }> }> = {
+      outer: { stepStates: {
+        nested: { childTaskId: 'child-a' },                 // completed nested step
+        fan: { children: [{ childTaskId: 'm-1' }, { childTaskId: 'm-2' }] }, // joined map step
+        next: {},
+      } },
+      'child-a': { stepStates: { deeper: { childTaskId: 'grandchild' } } },
+      grandchild: { stepStates: { loop: { childTaskId: 'outer' } } }, // cycle back to the root
+      'm-1': { stepStates: {} },
+    }
+    const ids = await collectWorkflowDescendantTaskIds('outer', async (id) => instances[id] ?? null)
+    expect(ids).toEqual(['child-a', 'm-1', 'm-2', 'grandchild'])
+  })
+
+  it('an unknown instance yields no descendants', async () => {
+    expect(await collectWorkflowDescendantTaskIds('nope', async () => null)).toEqual([])
   })
 })
 

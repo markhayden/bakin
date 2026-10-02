@@ -6,7 +6,7 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { broadcast } from './sse'
 import { appendAudit } from './audit'
-import { assessWorkflowRuns, type WorkflowActiveAgent } from './task-liveness'
+import { assessWorkflowRuns, collectWorkflowDescendantTaskIds, type WorkflowActiveAgent, type WorkflowInstanceLike } from './task-liveness'
 import { getAppServices } from './app-services'
 import { meterAgentTurn } from './agent-cost'
 import { resolveSystemRoute, routeSendArgs } from './system-route'
@@ -209,11 +209,14 @@ export function start(contentDir: string): void {
         try {
           if (task.workflowId) {
             const activeAgents = await hooks().invoke<WorkflowActiveAgent[]>('workflows.getActiveAgents', { taskId: task.id }) ?? []
-            const runs = assessWorkflowRuns(task.id, activeAgents)
+            const descendants = await collectWorkflowDescendantTaskIds(task.id, (id) =>
+              hooks().invoke<WorkflowInstanceLike | null>('workflows.loadInstance', { taskId: id }))
+            const runs = assessWorkflowRuns(task.id, activeAgents, descendants)
             // Stranded only when NO execution remains — a previous step's
             // turn still settling after the engine advanced counts as live
-            // (review P1). Supersede-by-task reaches only runs keyed on THIS
-            // task id; child-keyed steps belong to the child's own board task.
+            // (review P1), as does a completed nested/map child's final turn
+            // (review round 2). Supersede-by-task reaches only runs keyed on
+            // THIS task id; child-keyed steps belong to the child's own task.
             stranded = runs.stranded
             if (!stranded) liveRun = getLiveRun(task.id)
           } else {

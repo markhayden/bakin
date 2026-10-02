@@ -413,6 +413,46 @@ describe('watchdog', () => {
       expect(mockStoreBlockTask).not.toHaveBeenCalled()
     })
 
+    it('a completed nested child whose final turn is still running keeps the parent out of recovery (review round 2)', async () => {
+      setWatchdogColumns({
+        inProgress: [{ id: 'outer-review', title: 'Outer workflow', agent: 'pixel', workflowId: 'outer', log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }] }],
+        done: [{ id: 'inner-review', title: 'Completed child', agent: 'pixel', workflowId: 'inner' }],
+      })
+      hookInvokeImpl = async (name) => name === 'workflows.loadInstance'
+        ? { status: 'in_progress', currentStepId: 'next', stepStates: { nested: { status: 'complete', childTaskId: 'inner-review' }, next: { status: 'in_progress' } } }
+        : name === 'workflows.getActiveAgents' ? [{ agent: 'patch', stepId: 'next' }] : undefined
+      claimRun({ runId: 'inner-final-run', taskId: 'inner-review', execKey: 'inner-review:final', seq: 1, agent: 'pixel', bootId: 'boot-wd', now: Date.now() })
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(getLiveRun('inner-review')?.status).toBe('running')
+      expect(mockStoreMoveTask).not.toHaveBeenCalled()
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+    })
+
+    it('a joined map child whose final turn is still running keeps the parent out of recovery (review round 2)', async () => {
+      setWatchdogColumns({
+        inProgress: [{ id: 'map-parent', title: 'Map workflow', agent: 'pixel', workflowId: 'fanout', log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }] }],
+      })
+      hookInvokeImpl = async (name, data) => {
+        const taskId = (data as { taskId?: string } | undefined)?.taskId
+        if (name === 'workflows.loadInstance') {
+          return taskId === 'map-parent'
+            ? { status: 'in_progress', currentStepId: 'assemble', stepStates: { fan: { status: 'complete', children: [{ index: 0, childTaskId: 'map-parent--fan-0', status: 'complete' }, { index: 1, childTaskId: 'map-parent--fan-1', status: 'complete' }] }, assemble: { status: 'in_progress' } } }
+            : { status: 'complete', stepStates: {} }
+        }
+        return name === 'workflows.getActiveAgents' ? [{ agent: 'patch', stepId: 'assemble' }] : undefined
+      }
+      claimRun({ runId: 'fan-1-final', taskId: 'map-parent--fan-1', execKey: 'map-parent--fan-1:write', seq: 1, agent: 'pixel', bootId: 'boot-wd', now: Date.now() })
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(getLiveRun('map-parent--fan-1')?.status).toBe('running')
+      expect(mockStoreMoveTask).not.toHaveBeenCalled()
+    })
+
     it('auto-recovers a stranded task (no live run) with stale logs', async () => {
       setWatchdogColumns({
         inProgress: [

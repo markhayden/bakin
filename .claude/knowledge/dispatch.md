@@ -426,8 +426,11 @@ normal dispatch/watchdog loops:
 - Workflow-backed tasks ask the workflow plugin for `workflows.loadInstance`
   and `workflows.getActiveAgents`; each active step is checked by its claim
   key (`stepExecKey(effectiveTaskId ?? taskId, stepId)` — nested workflows
-  claim on the child task id). No live step ⇒ `workflow-no-live-run`
-  (recover); some live ⇒ `workflow-partial-live-run` (manual). The candidate
+  claim on the child task id). Descendant task ids come from the persisted instance (nested
+  `childTaskId`s + map `children`, any status, recursive) so a completed
+  child's still-settling final turn counts as execution. No live step and no
+  other live row ⇒ `workflow-no-live-run` (recover); some live ⇒
+  `workflow-partial-live-run` (manual). The candidate
   carries `missingRuns` (exec keys) and `effectiveAgents`.
 - `pending_approval`, `complete`, and `cancelled` workflow instances are left
   alone.

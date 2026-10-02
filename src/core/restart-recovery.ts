@@ -10,7 +10,7 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
-import { assessWorkflowRuns, isStrandedInProgress, type WorkflowActiveAgent } from './task-liveness'
+import { assessWorkflowRuns, collectWorkflowDescendantTaskIds, isStrandedInProgress, type WorkflowActiveAgent, type WorkflowInstanceLike as LivenessInstance } from './task-liveness'
 import {
   addTaskLog,
   blockTask,
@@ -42,7 +42,7 @@ type RecoveryTask = {
   log?: Array<{ message?: string; timestamp?: string }>
 }
 
-type WorkflowInstanceLike = {
+type WorkflowInstanceLike = LivenessInstance & {
   status?: string
 }
 
@@ -153,8 +153,11 @@ async function assessWorkflowTask(
 
   // Steps claim runs keyed by their (possibly nested-child) task id + step id.
   // A still-running previous-step row (the engine advanced before that turn
-  // settled) is execution too — never stranded, never manual (review P1).
-  const runs = assessWorkflowRuns(task.id, activeAgents)
+  // settled) is execution too — never stranded, never manual (review P1) —
+  // including a completed nested/map child's final turn (review round 2).
+  const descendants = await collectWorkflowDescendantTaskIds(task.id, (id) =>
+    hooks().invoke<WorkflowInstanceLike | null>('workflows.loadInstance', { taskId: id, contentDir }))
+  const runs = assessWorkflowRuns(task.id, activeAgents, descendants)
   if (runs.missing.length === 0 || (runs.live.length === 0 && runs.otherLive.length > 0)) return null
 
   if (runs.live.length > 0) {
