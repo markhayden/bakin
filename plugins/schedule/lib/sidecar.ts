@@ -48,7 +48,7 @@ const DEFAULTS = {
   requireTriage: false,
 } as const
 
-function getSidecarPath(): string {
+export function getSidecarPath(): string {
   return `${getContentDir()}/schedule/sidecar.json`
 }
 
