@@ -11,8 +11,6 @@ import {
   loadInstance,
   saveInstance,
   deleteInstance,
-  approveGate,
-  rejectGate,
   reopenFromStep,
   listInstances,
   getCurrentStep,
@@ -28,6 +26,8 @@ import {
   recordStepTeamResolution,
   type WorkflowToolUseAction,
 } from './runtime'
+import { approvalErrorStatus } from '../../../src/core/approvals'
+import { decideGate } from './approval-kind'
 import { createValidatedInstance } from './start-validation'
 import { matchWorkflow } from './matcher'
 import { listDefinitions, loadDefinition } from './parser'
@@ -35,6 +35,27 @@ import { workflowDefinitionNameFromHookInput } from './hook-input'
 import { validateStepOutput } from './schema-validator'
 import { clearSkillCache } from './skill-loader'
 import { listNotificationChannels, getNotificationChannel } from '@bakin/core/workflows/notification-channel-registry'
+
+/**
+ * Gate hooks decide through the gate's pending approval record (core
+ * resolves, audits ride the kind handler) and fold typed approval errors into
+ * the hook's `{ success, errors }` shape — a hook caller never sees a throw.
+ */
+async function decideGateViaHook(
+  taskId: string,
+  stepId: string,
+  option: 'approve' | 'reject',
+  approver: ApprovalActor | undefined,
+  reason?: string,
+): Promise<{ success: boolean; approvalId?: string; errors?: string[] }> {
+  try {
+    const record = await decideGate(taskId, stepId, option, approver ?? { source: 'system', id: 'workflows-hook' }, reason)
+    return { success: true, approvalId: record.approvalId }
+  } catch (err) {
+    if (approvalErrorStatus(err) === null) throw err
+    return { success: false, errors: [(err as Error).message] }
+  }
+}
 
 export function registerWorkflowHooks(ctx: PluginContext): void {
   ctx.hooks.register('workflows.loadInstance', (d: Record<string, unknown>) => loadInstance(d.taskId as string, d.contentDir as string | undefined), { label: 'Load workflow instance.', summary: 'Loads the workflow instance attached to a task. Use it when a plugin needs current workflow state without reading workflow files directly.', hookKind: 'rpc' })
@@ -47,15 +68,8 @@ export function registerWorkflowHooks(ctx: PluginContext): void {
     d.resolution as { agentId: string; team: string; reason: string },
     d.contentDir as string | undefined,
   ), { label: 'Record step team resolution.', summary: 'Persists a sticky team:<id> step resolution on the workflow instance (#611); first write wins and the effective resolution is returned. Use it from dispatch after the team plugin picks a member for a team-targeted step.', hookKind: 'rpc' })
-  ctx.hooks.register('workflows.approveGate', (d: Record<string, unknown>) => approveGate(d.taskId as string, d.stepId as string, {
-    approver: d.approver as ApprovalActor | undefined,
-    contentDir: d.contentDir as string | undefined,
-  }), { label: 'Approve workflow gate.', summary: 'Approves a pending workflow gate and advances the instance. Use it from plugins that own an external review surface for workflow-backed tasks.', hookKind: 'rpc' })
-  ctx.hooks.register('workflows.rejectGate', (d: Record<string, unknown>) => rejectGate(d.taskId as string, d.stepId as string, String(d.reason ?? ''), {
-    approver: d.approver as ApprovalActor | undefined,
-    rewindTo: d.rewindTo as string | undefined,
-    contentDir: d.contentDir as string | undefined,
-  }), { label: 'Reject workflow gate.', summary: 'Rejects a pending workflow gate, records the reason, and rewinds the instance per the workflow gate policy. Use it from plugins that own an external review surface for workflow-backed tasks.', hookKind: 'rpc' })
+  ctx.hooks.register('workflows.approveGate', (d: Record<string, unknown>) => decideGateViaHook(d.taskId as string, d.stepId as string, 'approve', d.approver as ApprovalActor | undefined), { label: 'Approve workflow gate.', summary: 'Approves the pending approval of a workflow gate through core and advances the instance. Use it from plugins that own an external review surface for workflow-backed tasks.', hookKind: 'rpc' })
+  ctx.hooks.register('workflows.rejectGate', (d: Record<string, unknown>) => decideGateViaHook(d.taskId as string, d.stepId as string, 'reject', d.approver as ApprovalActor | undefined, d.reason === undefined ? undefined : String(d.reason)), { label: 'Reject workflow gate.', summary: 'Rejects the pending approval of a workflow gate through core, records the reason, and rewinds the instance per the workflow gate policy. Use it from plugins that own an external review surface for workflow-backed tasks.', hookKind: 'rpc' })
   ctx.hooks.register('workflows.reopenFromStep', (d: Record<string, unknown>) => reopenFromStep(d.taskId as string, {
     instanceId: d.instanceId as string | undefined,
     stepId: d.stepId as string | undefined,

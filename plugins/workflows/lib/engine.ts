@@ -26,8 +26,7 @@ import {
   notifyStepDispatched,
   notifyStepComplete,
   notifyGateReached,
-  sendGateApprovalRequest,
-  getGateNotificationSettings,
+  requestGateApproval,
 } from './notifications'
 import { getContentDir } from './content-dir'
 import { isPluginKind } from '@bakin/core/workflows/node-type-registry'
@@ -632,21 +631,11 @@ export function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinit
     const priorOutput = priorStep ? instance.stepStates[priorStep.id]?.output : undefined
     notifyGateReached(instance, nextStep.id, nextStep.label || nextStep.id, priorOutput)
 
-    // Send a runtime-rendered gate approval alert (fire-and-forget).
-    const channelSettings = getGateNotificationSettings()
-    if (channelSettings?.approvalChannelAlerts) {
-      sendGateApprovalRequest(instance, nextStep.id, nextStep.label || nextStep.id, priorOutput, channelSettings)
-        .then((approvalRef) => {
-          if (!approvalRef) return
-          // Reload instance from disk to avoid overwriting concurrent changes.
-          const fresh = loadInstance(instance.taskId, contentDir)
-          if (fresh) {
-            fresh.stepStates[nextStep.id].approvalRef = approvalRef
-            saveInstance(fresh, contentDir)
-          }
-        })
-        .catch((err) => { log.warn('Gate approval alert failed', err) })
-    }
+    // ONE durable approval record per gate, through core (spec D6): the board
+    // and attention provider learn of it now; the channel card renders
+    // asynchronously when channel alerts are on. The caller saves this
+    // instance synchronously right after advancing, before any render reads it.
+    requestGateApproval(instance, nextStep.id, nextStep.label || nextStep.id, priorOutput)
 
     // Move the task to the review column while awaiting approval.
     moveWorkflowTaskToReview(instance.taskId).catch((err) => {

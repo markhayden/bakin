@@ -20,23 +20,16 @@ import { registerWorkflowSearch } from './lib/search-sync'
 import { definitionRoutes } from './lib/routes/definitions'
 import { instanceRoutes } from './lib/routes/instances'
 import { gateRoutes } from './lib/routes/gates'
-import { setGateSettings } from './lib/gate-settings'
 import { registerWorkflowExecTools } from './lib/exec-tools'
 import { registerWorkflowHooks } from './lib/register-hooks'
-import { wireChannelApprovals } from './lib/channel-approvals'
+import { ensurePendingGateApprovals, registerWorkflowGateApprovalKind } from './lib/approval-kind'
 import { createLogger } from '../../src/core/logger'
 import { getContentDir } from '../../src/core/content-dir'
 import { pluginRootFromModuleUrl, shippedWorkflowFiles } from '../../src/core/plugin-resources'
 import { checkShippedDefaults, recordShippedDefaults } from './lib/shipped-defaults'
-import {
-  setEventBus,
-  setGateNotificationSettings,
-  setNotificationRuntime,
-  type GateNotificationSettings,
-} from './lib/notifications'
+import { setEventBus, setNotificationRuntime } from './lib/notifications'
 
 const log = createLogger('workflows')
-let unsubscribeApprovalResponses: (() => void) | null = null
 
 const workflowsPlugin: BakinPlugin = definePlugin({
   routes: [...definitionRoutes, ...instanceRoutes, ...gateRoutes] as unknown as Parameters<typeof definePlugin>[0]['routes'],
@@ -48,10 +41,6 @@ const workflowsPlugin: BakinPlugin = definePlugin({
     fields: [
       { key: 'gateTimeout', type: 'number', label: 'Gate timeout (hours)', description: 'Auto-reject gates not approved within this time', default: 24 },
       { key: 'maxConcurrentSteps', type: 'number', label: 'Max concurrent steps', description: 'Maximum steps running in parallel per workflow', default: 3 },
-      { key: 'notifyOnGate', type: 'boolean', label: 'Notify on gate', description: 'Send notification when a gate needs approval', default: true },
-      { key: 'approvalChannelAlerts', type: 'boolean', label: 'Channel gate alerts', description: 'Send runtime channel approvals when gates need review', default: false },
-      { key: 'approvalChannel', type: 'string', label: 'Gate approval channel', description: 'Runtime channel id or notifications.channelAliases alias for gate approval messages', default: 'general' },
-      { key: 'requireRejectReason', type: 'boolean', label: 'Require reject reason', description: 'Require a typed reason in the Bakin UI and fallback page; channel button rejects record a default reason', default: true },
     ],
   },
 
@@ -86,17 +75,10 @@ const workflowsPlugin: BakinPlugin = definePlugin({
     setEventBus(ctx.events)
     setNotificationRuntime(ctx.runtime)
 
-    const pluginSettings = ctx.getSettings<Record<string, unknown>>()
-    const initialGateSettings: GateNotificationSettings = {
-      approvalChannelAlerts: pluginSettings.approvalChannelAlerts as boolean ?? false,
-      approvalChannel: pluginSettings.approvalChannel as string ?? 'general',
-      requireRejectReason: pluginSettings.requireRejectReason as boolean ?? true,
-    }
-    setGateSettings(initialGateSettings)
-    setGateNotificationSettings(initialGateSettings)
-
-    unsubscribeApprovalResponses?.()
-    unsubscribeApprovalResponses = await wireChannelApprovals(ctx)
+    // Gates are approvals (spec D6): core owns the record, rehydration and the
+    // channel subscription; this plugin owns what a gate decision means.
+    // Approval settings live in settings.approvals, not here.
+    registerWorkflowGateApprovalKind()
 
     registerWorkflowHooks(ctx)
 
@@ -146,6 +128,15 @@ const workflowsPlugin: BakinPlugin = definePlugin({
     if (active.length > 0) {
       log.info(`Ready — ${active.length} active workflow instance(s)`)
     }
+    // Every gate waiting on a decision has a pending record before the board
+    // reads them (plan review R5a). Runs before core's rehydration/channel
+    // wiring, which happens after every plugin is ready.
+    try {
+      const ensured = ensurePendingGateApprovals()
+      if (ensured.created > 0) log.info(`Recorded ${ensured.created} pending gate approval(s) that had no record`, ensured)
+    } catch (err) {
+      log.error('Pending gate approval reconciliation failed', err)
+    }
     reconcilePendingApprovalTaskColumns()
       .then((result) => {
         if (result.moved > 0) {
@@ -167,18 +158,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
     log.info(`Ready — ${defs.length} workflow definition(s) loaded`)
   },
 
-  async onSettingsChange(newSettings: Record<string, unknown>) {
-    const updated: GateNotificationSettings = {
-      approvalChannelAlerts: newSettings.approvalChannelAlerts as boolean ?? false,
-      approvalChannel: newSettings.approvalChannel as string ?? 'general',
-      requireRejectReason: newSettings.requireRejectReason as boolean ?? true,
-    }
-    setGateNotificationSettings(updated)
-  },
-
   onShutdown() {
-    unsubscribeApprovalResponses?.()
-    unsubscribeApprovalResponses = null
     const active = listInstances().filter(i => i.status === 'in_progress')
     if (active.length > 0) {
       log.warn(`Shutting down with ${active.length} active workflow instance(s)`)

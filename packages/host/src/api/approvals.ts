@@ -10,13 +10,7 @@
 import { userInfo } from 'os'
 import { z } from 'zod'
 import { listApprovalRecords, type ApprovalStatus } from '@bakin/core/approvals'
-import {
-  ApprovalKindUnavailableError,
-  ApprovalNotFoundError,
-  ApprovalNotPendingError,
-  ApprovalResolveError,
-  resolveApproval,
-} from '@/core/approvals'
+import { approvalErrorStatus, resolveApproval } from '@/core/approvals'
 
 const statusSchema = z.enum(['pending', 'approved', 'rejected', 'cancelled', 'expired'])
 const resolveBody = z.object({
@@ -66,10 +60,8 @@ export async function resolve(req: Request, url: URL): Promise<Response> {
     })
     return Response.json({ ok: true, approval: record })
   } catch (err) {
-    if (err instanceof ApprovalNotFoundError) return Response.json({ ok: false, error: err.message }, { status: 404 })
-    if (err instanceof ApprovalNotPendingError) return Response.json({ ok: false, error: err.message, status: err.status }, { status: 409 })
-    if (err instanceof ApprovalResolveError) return Response.json({ ok: false, error: err.message }, { status: err.status })
-    if (err instanceof ApprovalKindUnavailableError) return Response.json({ ok: false, error: err.message }, { status: 503 })
-    throw err
+    const status = approvalErrorStatus(err)
+    if (status === null) throw err
+    return Response.json({ ok: false, error: (err as Error).message }, { status })
   }
 }
