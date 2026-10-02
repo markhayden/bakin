@@ -117,3 +117,37 @@ describe('adoptCronJobs', () => {
     expect(auditCalls).toEqual([])
   })
 })
+
+describe('adoptCronJobs — refusals (spec D5)', () => {
+  const marker = { job: { id: 'dream', name: 'dream', schedule: '0 3 * * *', command: '__openclaw_memory_core_short_term_promotion_dream__', enabled: true }, raw: { blob: 'm' } }
+  const empty = { job: { id: 'heartbeat', name: 'heartbeat', schedule: '*/30 * * * *', command: '', enabled: true }, raw: { blob: 'h' } }
+
+  it('refuses native crons whose command is not a task prompt — nothing written, named in the report', async () => {
+    const result = await adoptCronJobs(ctx, { provider: 'openclaw', jobs: [...jobs, marker, empty] })
+    expect(result.adopted.sort()).toEqual(['daily-report', 'weekly-clean'])
+    expect(result.refused.map((r) => r.jobId)).toEqual(['dream', 'heartbeat'])
+    expect(result.refused[0]!.reason).toContain('not a task prompt')
+    expect(getJob('dream')).toBeNull()
+    expect(getJob('heartbeat')).toBeNull()
+    expect(auditCalls.filter((c) => c.event === 'job.adopted')).toHaveLength(2)
+  })
+
+  it('lists every source job in order with its outcome, so the switch report prints one line per job', async () => {
+    upsertJob({ jobId: 'weekly-clean', isBakinJob: true, createdAt: 'x', updatedAt: 'x' } as never)
+    const result = await adoptCronJobs(ctx, { provider: 'openclaw', jobs: [...jobs, marker] })
+    expect(result.listing.map((row) => [row.jobId, row.outcome])).toEqual([
+      ['daily-report', 'adopt'],
+      ['weekly-clean', 'skip'],
+      ['dream', 'refuse'],
+    ])
+    expect(result.listing[2]).toMatchObject({ name: 'dream', commandPreview: '__openclaw_memory_core_short_term_promotion_dream__' })
+  })
+
+  it('a dry run refuses identically and writes nothing', async () => {
+    const result = await adoptCronJobs(ctx, { provider: 'openclaw', jobs: [marker, ...jobs], dryRun: true })
+    expect(result.refused.map((r) => r.jobId)).toEqual(['dream'])
+    expect(result.adopted.sort()).toEqual(['daily-report', 'weekly-clean'])
+    expect(getJob('daily-report')).toBeNull()
+    expect(getJob('dream')).toBeNull()
+  })
+})
