@@ -39,6 +39,7 @@ import {
   type RecordOf,
 } from './approvals'
 import { acknowledgeHealthIncident, getHealthReport } from './doctor-report-cache'
+import { originatingCheckIds } from './doctor-autoclose'
 import { runTargetedDiagnostics } from './doctor-execution'
 import { applyDoctorRepair, planDoctorRepair } from './doctor-repair'
 import {
@@ -421,15 +422,6 @@ export function registerDoctorApprovalKinds(ctx: DoctorApprovalContext): void {
 }
 
 // ─── Boot recovery ───────────────────────────────────────────────────────────
-
-/** Fresh-verification target for a request: stored check ids, else derived from the report. */
-export function originatingCheckIds(request: Pick<DoctorRepairRequest, 'checkIds' | 'observationIds'>, report: HealthReport): string[] {
-  if (request.checkIds.length > 0) return [...request.checkIds]
-  const fromReport = checkIdsForObservations(report, request.observationIds)
-  if (fromReport.length > 0) return fromReport
-  // Observation ids are `${checkId}:${key}`; keys never contain ':'.
-  return [...new Set(request.observationIds.map((id) => id.slice(0, id.lastIndexOf(':'))).filter(Boolean))].sort()
-}
 
 /**
  * A request left in `applying` was interrupted between mutation and its

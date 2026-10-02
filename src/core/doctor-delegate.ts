@@ -156,26 +156,25 @@ export async function delegateDoctorRepair(options: DoctorDelegateOptions): Prom
   return { status: 'sent', request: sent, incidents }
 }
 
+/**
+ * Manual verify (route/CLI): a fresh full sweep, then the SAME judgement the
+ * cycle auto-close uses (plan review R4) — verified only when every
+ * originating check evaluated healthy and no incident remains; a pass
+ * completes the linked task and withdraws any pending approval.
+ */
 export async function verifyDoctorRepairRequest(
   options: Pick<DoctorDelegateOptions, 'contentDir' | 'projectRoot'> & { requestId: string },
 ): Promise<DoctorDelegateVerificationReport> {
   const request = getDoctorRepairRequest(options.contentDir, options.requestId)
   if (!request) throw new DoctorRepairRequestNotFoundError(options.requestId)
   const report = await runDiagnostics(options.contentDir, options.projectRoot)
-  const active = new Set(report.incidents.map((incident) => incident.id))
-  const remainingIncidentIds = request.incidentIds.filter((id) => active.has(id))
-  const verified = remainingIncidentIds.length === 0
-  const updated = updateDoctorRepairRequest(options.contentDir, request.id, (current) => ({
-    ...current,
-    status: verified ? 'verified' : current.status,
-    events: [...current.events, {
-      ts: new Date().toISOString(),
-      type: 'verified',
-      message: verified
-        ? 'Original Health incidents no longer reproduce.'
-        : `${remainingIncidentIds.length} original Health incident(s) still reproduce.`,
-      data: { remainingIncidentIds, reportId: report.id },
-    }],
-  }))
-  return { request: updated, remainingIncidentIds, verified, reportId: report.id }
+  const { originatingCheckIds, recordVerification } = await import('./doctor-autoclose')
+  const checkIds = originatingCheckIds(request, report)
+  if (request.status === 'verified' || request.status === 'dismissed' || request.status === 'applying') {
+    const open = new Set(report.incidents.map((incident) => incident.id))
+    const remainingIncidentIds = request.incidentIds.filter((id) => open.has(id))
+    return { request, remainingIncidentIds, verified: request.status === 'verified', reportId: report.id }
+  }
+  const { request: updated, verification } = await recordVerification(options.contentDir, request, report, checkIds)
+  return { request: updated, remainingIncidentIds: verification.remainingIncidentIds, verified: verification.verified, reportId: report.id }
 }
