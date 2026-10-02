@@ -21,6 +21,7 @@ import {
   Field,
   FieldControl,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
   Form,
@@ -31,7 +32,7 @@ import {
 } from '@makinbakin/sdk/ui'
 import { useAgentList, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
 import { ScheduleInput } from './schedule-input'
-import { checkSchedulePrompt } from '../lib/prompt-guard'
+import { checkSchedulePrompt, isTaskPrompt } from '../lib/prompt-guard'
 
 export interface JobFormData {
   name: string
@@ -111,7 +112,11 @@ export function JobForm({
     setOwner((previous) => previous || mainAgentId)
   }, [initial, mainAgentId])
 
-  const canSubmit = Boolean(name.trim() && schedule.trim() && parsedOk && !submitting)
+  // A schedule fires a task: the prompt must be something an agent can act on
+  // (spec D5) — the server refuses anything else, so the form never offers it.
+  const promptOk = isTaskPrompt(prompt)
+  const promptInvalid = prompt.trim().length > 0 && !promptOk
+  const canSubmit = Boolean(name.trim() && schedule.trim() && parsedOk && promptOk && !submitting)
   const promptWarnings = checkSchedulePrompt(prompt)
   const labels = {
     create: { submit: 'Create job', submitting: 'Creating…' },
@@ -179,9 +184,9 @@ export function JobForm({
           />
         </Field>
 
-        <Field name="taskPrompt">
-          <FieldLabel htmlFor="schedule-job-prompt">Task prompt</FieldLabel>
-          <FieldDescription>What should the assigned agent do when this job fires?</FieldDescription>
+        <Field name="taskPrompt" invalid={promptInvalid}>
+          <FieldLabel htmlFor="schedule-job-prompt" requirement="required">Task prompt</FieldLabel>
+          <FieldDescription>What should the assigned agent do when this job fires? A sentence the agent can act on — not a single marker token.</FieldDescription>
           <FieldControl
             render={(
               <Textarea
@@ -194,6 +199,9 @@ export function JobForm({
               />
             )}
           />
+          {promptInvalid ? (
+            <FieldError match>A task prompt needs more than one word — describe what the agent should do.</FieldError>
+          ) : null}
           {promptWarnings.length ? (
             <Alert tone="attention">
               <AlertDescription>
