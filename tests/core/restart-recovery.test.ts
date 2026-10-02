@@ -1,27 +1,33 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+/**
+ * Restart recovery decides on the execution ledger (spec D3): an in-progress
+ * task with no running row is stranded; a live run is never a candidate.
+ * Real ledger in a temp dir — heartbeat files play no part.
+ */
+import { describe, it, expect, beforeEach, afterEach, afterAll, mock } from 'bun:test'
+import { mkdtempSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { randomUUID } from 'crypto'
 
-const contentDirMockPath = join(tmpdir(), `bakin-restart-recovery-test-${Date.now()}`)
-
-mock.module('../../src/core/content-dir', () => ({
+const contentDirMockPath = join(tmpdir(), `bakin-restart-recovery-test-${Date.now()}-${randomUUID()}`)
+mkdirSync(contentDirMockPath, { recursive: true })
+const contentDirMock = () => ({
   getContentDir: () => contentDirMockPath,
-  getBakinPaths: () => ({ root: contentDirMockPath }),
-}))
-mock.module('../../packages/core/src/content-dir', () => ({
-  getContentDir: () => contentDirMockPath,
-  getBakinPaths: () => ({ root: contentDirMockPath }),
-}))
+  getBakinPaths: () => ({ root: contentDirMockPath, home: contentDirMockPath, db: join(contentDirMockPath, 'bakin.db') }),
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-mock.module('../../src/core/logger', () => ({
+const loggerMock = () => ({
   createLogger: () => ({
     info: mock(),
     warn: mock(),
     error: mock(),
     debug: mock(),
   }),
-}))
+})
+mock.module('../../src/core/logger', loggerMock)
+mock.module('../../packages/core/src/logger', loggerMock)
 
 const mockGetSettings = mock(() => ({
   watchdog: {
@@ -97,6 +103,28 @@ import {
   runRestartRecovery,
 } from '../../src/core/restart-recovery'
 import { checkRestartRecovery } from '../../plugins/health/lib/system-checks/restart-recovery'
+import { claimRun, markPriorBootRunsLost } from '../../src/core/execution-ledger'
+import { stepExecKey } from '../../src/core/task-liveness'
+import { closeDb } from '../../packages/core/src/storage/db'
+
+const BOOT = 'boot-recovery-1'
+
+function liveRun(taskId: string, agent = 'pixel', stepId?: string): void {
+  const claimed = claimRun({
+    runId: stepId ? `task:${taskId}:step:${stepId}:d1` : `task:${taskId}:d1`,
+    taskId,
+    ...(stepId ? { execKey: stepExecKey(taskId, stepId) } : {}),
+    seq: 1,
+    agent,
+    bootId: BOOT,
+  })
+  if (!claimed.claimed) throw new Error(`could not claim ${taskId}`)
+}
+
+afterAll(() => {
+  closeDb()
+  rmSync(contentDirMockPath, { recursive: true, force: true })
+})
 
 describe('restart recovery', () => {
   let tempDir: string
@@ -121,7 +149,7 @@ describe('restart recovery', () => {
     mock.restore()
   })
 
-  it('recovers a plain in-progress task with a missing heartbeat even when logs are recent', async () => {
+  it('recovers a plain in-progress task with no live run even when logs are recent', async () => {
     setColumns({
       inProgress: [{
         id: 'task-1',
@@ -137,31 +165,43 @@ describe('restart recovery', () => {
     expect(mockAddTaskLog).toHaveBeenCalledWith(
       'task-1',
       'system',
-      expect.stringContaining('Restart recovery: inactive agent heartbeat'),
+      expect.stringContaining('Restart recovery: no live run after server restart'),
     )
     expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'todo', 'inProgress')
     expect(mockAppendAudit).toHaveBeenCalledWith(
       tempDir,
       'task.restart_recovered',
       'system',
-      expect.objectContaining({ id: 'task-1', reason: 'plain-agent-stale' }),
+      expect.objectContaining({ id: 'task-1', reason: 'no-live-run' }),
     )
   })
 
-  it('skips plain in-progress tasks when the assigned agent heartbeat is fresh', async () => {
-    mkdirSync(join(tempDir, 'heartbeats'), { recursive: true })
-    writeFileSync(
-      join(tempDir, 'heartbeats', 'pixel.json'),
-      JSON.stringify({ timestamp: new Date().toISOString() }),
-    )
+  it('a task with a live run is never a candidate, however old its logs are', async () => {
+    liveRun('task-2')
     setColumns({
-      inProgress: [{ id: 'task-2', title: 'Still active', agent: 'pixel' }],
+      inProgress: [{
+        id: 'task-2',
+        title: 'Still active',
+        agent: 'pixel',
+        log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }],
+      }],
     })
 
     const candidates = await findRestartRecoveryCandidates(tempDir)
 
     expect(candidates).toHaveLength(0)
     expect(mockMoveTask).not.toHaveBeenCalled()
+  })
+
+  it('becomes a candidate once the boot sweep marks its prior-boot run lost', async () => {
+    liveRun('task-2b')
+    setColumns({ inProgress: [{ id: 'task-2b', title: 'Survived a restart', agent: 'pixel' }] })
+    expect(await findRestartRecoveryCandidates(tempDir)).toHaveLength(0)
+
+    markPriorBootRunsLost('boot-recovery-2')
+
+    const candidates = await findRestartRecoveryCandidates(tempDir)
+    expect(candidates).toEqual([expect.objectContaining({ id: 'task-2b', reason: 'no-live-run', action: 'recover' })])
   })
 
   it('skips workflow tasks that are legitimately waiting on approval', async () => {
@@ -180,7 +220,7 @@ describe('restart recovery', () => {
     expect(mockMoveTask).not.toHaveBeenCalled()
   })
 
-  it('uses workflow active agents instead of the card assignee', async () => {
+  it('uses workflow active steps instead of the card assignee', async () => {
     setColumns({
       inProgress: [{ id: 'task-4', title: 'Workflow task', agent: 'trainer', workflowId: 'video' }],
     })
@@ -198,16 +238,82 @@ describe('restart recovery', () => {
       tempDir,
       'task.restart_recovered',
       'system',
-      expect.objectContaining({ id: 'task-4', effectiveAgents: ['pixel'], reason: 'workflow-agent-stale' }),
+      expect.objectContaining({ id: 'task-4', effectiveAgents: ['pixel'], reason: 'workflow-no-live-run' }),
     )
   })
 
-  it('reports partial workflow heartbeat loss as manual instead of redispatching live agents', async () => {
-    mkdirSync(join(tempDir, 'heartbeats'), { recursive: true })
-    writeFileSync(
-      join(tempDir, 'heartbeats', 'pixel.json'),
-      JSON.stringify({ timestamp: new Date().toISOString() }),
-    )
+  it('a nested workflow step live on the CHILD task id keeps the parent out of recovery', async () => {
+    liveRun('task-4-child', 'pixel', 'clip')
+    setColumns({
+      inProgress: [{ id: 'task-4-parent', title: 'Nested parent', agent: 'trainer', workflowId: 'video' }],
+    })
+    mockHookInvoke.mockImplementation(async (hook: unknown) => {
+      if (hook === 'workflows.loadInstance') return { status: 'in_progress' }
+      if (hook === 'workflows.getActiveAgents') return [{ agent: 'pixel', stepId: 'clip', effectiveTaskId: 'task-4-child' }]
+      return undefined
+    })
+
+    expect(await findRestartRecoveryCandidates(tempDir)).toHaveLength(0)
+  })
+
+  it('a previous step still running after the engine advanced is execution — not a candidate (review P1)', async () => {
+    liveRun('task-4b', 'pixel', 'previous')
+    setColumns({
+      inProgress: [{ id: 'task-4b', title: 'Step transition', workflowId: 'video' }],
+    })
+    mockHookInvoke.mockImplementation(async (hook: unknown) => {
+      if (hook === 'workflows.loadInstance') return { status: 'in_progress' }
+      if (hook === 'workflows.getActiveAgents') return [{ agent: 'patch', stepId: 'next' }]
+      return undefined
+    })
+
+    const candidates = await findRestartRecoveryCandidates(tempDir)
+    const result = await runRestartRecovery(tempDir)
+
+    expect(candidates).toHaveLength(0)
+    expect(result.recovered + result.blocked + result.skipped).toBe(0)
+    expect(mockMoveTask).not.toHaveBeenCalled()
+    expect(mockAddTaskLog).not.toHaveBeenCalled()
+  })
+
+  it('a completed nested child whose final turn is still running keeps the parent out of recovery (review round 2)', async () => {
+    liveRun('inner-done', 'pixel', 'final')
+    setColumns({ inProgress: [{ id: 'outer-done', title: 'Outer', workflowId: 'outer' }] })
+    mockHookInvoke.mockImplementation(async (hook: unknown, data: unknown) => {
+      const taskId = (data as { taskId?: string } | undefined)?.taskId
+      if (hook === 'workflows.loadInstance') {
+        return taskId === 'outer-done'
+          ? { status: 'in_progress', stepStates: { nested: { status: 'complete', childTaskId: 'inner-done' }, next: { status: 'in_progress' } } }
+          : { status: 'complete', stepStates: {} }
+      }
+      if (hook === 'workflows.getActiveAgents') return [{ agent: 'patch', stepId: 'next' }]
+      return undefined
+    })
+
+    expect(await findRestartRecoveryCandidates(tempDir)).toHaveLength(0)
+    const result = await runRestartRecovery(tempDir)
+    expect(result.recovered + result.blocked + result.skipped).toBe(0)
+  })
+
+  it('a joined map child whose final turn is still running keeps the parent out of recovery (review round 2)', async () => {
+    liveRun('map-p--fan-1', 'pixel', 'write')
+    setColumns({ inProgress: [{ id: 'map-p', title: 'Map parent', workflowId: 'fanout' }] })
+    mockHookInvoke.mockImplementation(async (hook: unknown, data: unknown) => {
+      const taskId = (data as { taskId?: string } | undefined)?.taskId
+      if (hook === 'workflows.loadInstance') {
+        return taskId === 'map-p'
+          ? { status: 'in_progress', stepStates: { fan: { status: 'complete', children: [{ index: 0, childTaskId: 'map-p--fan-0', status: 'complete' }, { index: 1, childTaskId: 'map-p--fan-1', status: 'complete' }] }, assemble: { status: 'in_progress' } } }
+          : { status: 'complete', stepStates: {} }
+      }
+      if (hook === 'workflows.getActiveAgents') return [{ agent: 'patch', stepId: 'assemble' }]
+      return undefined
+    })
+
+    expect(await findRestartRecoveryCandidates(tempDir)).toHaveLength(0)
+  })
+
+  it('reports partial live steps as manual instead of redispatching live agents', async () => {
+    liveRun('task-5', 'pixel', 'design')
     setColumns({
       inProgress: [{ id: 'task-5', title: 'Partial workflow', workflowId: 'parallel' }],
     })
@@ -229,9 +335,9 @@ describe('restart recovery', () => {
       expect.objectContaining({
         id: 'task-5',
         action: 'manual',
-        reason: 'workflow-partial-agent-stale',
+        reason: 'workflow-partial-live-run',
         effectiveAgents: ['pixel', 'rolo'],
-        staleAgents: ['rolo'],
+        missingRuns: ['task-5:copy'],
       }),
     ])
     expect(result.skipped).toBe(1)
@@ -309,8 +415,23 @@ describe('restart recovery', () => {
         key: 'candidates',
         status: 'warning',
         detail: expect.stringContaining('Health candidate'),
-        incident: expect.objectContaining({ disposition: 'action_required' }),
+        incident: expect.objectContaining({ key: 'stale-tasks', title: 'In-progress tasks have no live run', disposition: 'action_required' }),
       }),
+    ])
+  })
+
+  it('the health check reports healthy while every in-progress task has a live run', async () => {
+    liveRun('task-9')
+    setColumns({
+      inProgress: [{ id: 'task-9', title: 'Live and well', agent: 'pixel' }],
+    })
+
+    const result = await checkRestartRecovery()
+
+    expect(result.outcome).toBe('observed')
+    if (result.outcome !== 'observed') throw new Error('expected observations')
+    expect(result.observations).toEqual([
+      expect.objectContaining({ key: 'candidates', status: 'healthy', summary: 'No stranded in-progress tasks.' }),
     ])
   })
 })

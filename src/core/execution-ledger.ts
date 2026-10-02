@@ -7,7 +7,7 @@ export {
   supersedeStaleRun,
   markPriorBootRunsLost,
   bumpHeartbeat,
-  bumpHeartbeatByTask,
+  bumpHeartbeatByTaskAgent,
   getLiveRun,
   getLiveRunByKey,
   getRunStatus,

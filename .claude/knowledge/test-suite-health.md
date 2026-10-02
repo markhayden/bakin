@@ -314,3 +314,28 @@ Note `bunfig.toml` has **no `[test.env]` section**: bun 1.3.13 does not read one
 there arrives `undefined`; `NODE_ENV=test` appears only because `bun test` sets it itself.
 Test-run env belongs in the `tests/setup.ts` preload, which actually executes, and uses
 `??=` so a shell override always wins.
+
+## 8. Ledger-backed tests (2026-10-01)
+
+Liveness is the ledger (`src/core/task-liveness.ts`), so any module graph that
+reaches `task-service`, `dispatch-turns`, `watchdog`, `restart-recovery` or
+`continuation` touches `src/core/execution-ledger`. Two patterns:
+
+- **Real ledger in a temp dir** (`tests/core/task-liveness.test.ts`,
+  `restart-recovery.test.ts`, `watchdog.test.ts`): BOTH `getBakinPaths` mocks
+  carry a `db` key, `claimRun(...)` seeds live runs (step runs with
+  `execKey: stepExecKey(taskId, stepId)`), and `closeDb()` runs BEFORE the
+  `rmSync` of the temp dir. A cached handle over a deleted inode keeps stale
+  rows alive across tests (`SQLITE_IOERR_VNODE` is the symptom).
+- **In-memory fake** (`tests/core/continuation.test.ts`, `task-service.test.ts`):
+  a `Set` of live task ids behind `getLiveRun`. Every ledger fake must also
+  stub `getLiveRunByKey`, `listLiveRuns`, `bumpHeartbeat` and `bumpHeartbeatByTaskAgent`
+  (ESM named-export linking fails at import time otherwise — the error names
+  the missing export).
+
+Two lessons from the PR 1 build: the `/tmp/none`-style content dir no longer
+exists on prompt builders (they take no `contentDir`), and the watchdog tick
+awaits a dynamic import of the spend observer that NEVER resolves under the
+fake-timer shim — stub `src/core/spend-observer` in watchdog tests, or the
+board scan silently never runs (nine tests passed vacuously on main until
+2026-10-01).

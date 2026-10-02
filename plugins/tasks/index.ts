@@ -31,7 +31,7 @@ const log = createLogger('tasks')
 const tasksPlugin: BakinPlugin = definePlugin({
   id: 'tasks',
   name: 'Tasks',
-  version: '2.1.0',
+  version: '2.4.0',
   routes: tasksRoutes,
 
   settingsSchema: {
@@ -128,7 +128,7 @@ const tasksPlugin: BakinPlugin = definePlugin({
       description: 'Finds stale assignments, missing progress, overloaded agents, and completed-task dependencies.',
       group: { key: 'tasks', label: 'Tasks' },
       maxAgeMs: 5 * 60_000,
-      run: () => checkTaskConsistency(getContentDir(), ctx.runtime.agents),
+      run: () => checkTaskConsistency(ctx.runtime.agents),
     })
     ctx.registerHealthCheck({
       id: 'order-integrity',

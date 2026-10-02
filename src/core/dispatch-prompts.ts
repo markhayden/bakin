@@ -12,7 +12,6 @@
  * tool-access section can never drift; every builder also accepts the access
  * descriptor explicitly for pure/testable use.
  */
-import { join } from 'path'
 // Namespace import: suites mock.module() app-services with partial export
 // sets; a named import would break the whole import graph under those mocks.
 import * as appServices from './app-services-store'
@@ -186,7 +185,6 @@ export interface PromptSection {
 export function buildDispatchSections(
   task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
   agentName: string,
-  contentDir: string,
   // Resolved orchestrator id (P2.6): callers resolve via getRuntimeMainAgentId
   // — never a baked 'main' default in the builder.
   mainAgentId: string,
@@ -210,8 +208,6 @@ export function buildDispatchSections(
   const continuationBlock = continuation.completedDependency
     ? `\n\n## Completed Dependency\nYour dependency task "${continuation.completedDependency.title}" (task ${continuation.completedDependency.id}) is now done. Review its outcome before resuming: \`bakin_exec_tasks_get taskId=${continuation.completedDependency.id}\` shows its log and completion summary, and its saved assets are linked to that task. Continue this task from where it left off.`
     : ''
-  const contactsRef = `Reference info is in ${join(contentDir, 'team/CONTACTS.md')}.`
-
   const { access, mc } = toolHelpers(agentName)
 
   if (!task.agent) {
@@ -228,7 +224,7 @@ export function buildDispatchSections(
     // Brand one-liner only — triage decides routing, not content (#419).
     add('brand', brand ? `\n\n**Brand:** ${brand.brandId} — this task's output must follow this brand.` : '')
     add('lessons', lessonSection)
-    add('triage-instructions', `\n\nEither handle it yourself or assign it to the right agent${rosterText} via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``)
+    add('triage-instructions', `\n\nEither handle it yourself or assign it to the right agent${rosterText} via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`.\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``)
     return sections
   }
 
@@ -239,7 +235,7 @@ export function buildDispatchSections(
     add('assets', assetsBlock)
     add('brand', brand?.block ? `\n\n${brand.block}` : '')
     add('lessons', lessonSection)
-    add('main-instructions', `\n\n${contactsRef} When done: \`${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``)
+    add('main-instructions', `\n\nWhen done: \`${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``)
     return sections
   }
 
@@ -295,7 +291,6 @@ Tool reference + dependency pattern: "Bakin Execution Tools" in your AGENTS.md.`
 export function buildDispatchMessage(
   task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
   agentName: string,
-  contentDir: string,
   mainAgentId: string,
   lessonBlock = '',
   continuation: DispatchContinuationContext = {},
@@ -304,7 +299,7 @@ export function buildDispatchMessage(
   assetsBlock = '',
   brand?: { brandId: string; block: string },
 ): string {
-  return buildDispatchSections(task, agentName, contentDir, mainAgentId, lessonBlock, continuation, recovery, roster, assetsBlock, brand)
+  return buildDispatchSections(task, agentName, mainAgentId, lessonBlock, continuation, recovery, roster, assetsBlock, brand)
     .map((s) => s.text)
     .join('')
 }

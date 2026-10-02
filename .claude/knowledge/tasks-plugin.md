@@ -195,7 +195,7 @@ The board follows the official multi-list pattern:
 
 **Filtered board caveat.** When search/agent filters are active, drag reorder operates on the visible subset first and then merges that visible order back into the full column order so hidden tasks keep their relative positions.
 
-**Ordering.** Tasks are ordered explicitly by `task.order` (zero-indexed, contiguous within each column). Reads sort by `order ASC, updatedAt DESC`. New tasks and cross-column moves append with `order = count`; `/reorder` writes the final zero-indexed order snapshot.
+**Ordering.** Tasks are ordered explicitly by `task.order` (unique within each column; gaps are fine). Reads sort by `order ASC, updatedAt DESC`. New tasks and cross-column moves append with `order = max + 1` from the store index (`nextOrderSync`, zero file reads — the index carries each task's order); `/reorder` writes a contiguous zero-indexed snapshot. The old `order = count` rule collided as soon as a column had a gap, which is why `tasks.order-integrity` regenerated after every rebuild (margo, 2026-09); the check and its `reorder-columns` repair stay for legacy data.
 
 **Scheduled grouping.** Tasks with future `availableAt` stay in their real
 column but render at the bottom under a Scheduled divider. The board has a

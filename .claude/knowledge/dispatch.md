@@ -104,8 +104,10 @@ the whole board behind one slow agent). Mechanics in
   buffer and carries no event id, so a long turn can't evict durable events
   from the reconnect window or advance a client's Last-Event-ID.
   **Ephemeral by design** — never persisted: no task
-  log, no audit row, no heartbeat bump; `done`/`error` chunk types are
-  filtered defensively. Late chunks after settle are dropped by gating on the
+  log, no audit row; `done`/`error` chunk types are filtered defensively.
+  The one durable side effect is liveness: each chunk bumps the exact run's
+  ledger heartbeat (`bumpRunHeartbeat(threadId)`, throttled to one write per
+  30 s per turn) so a streaming turn with no tool calls is never superseded. Late chunks after settle are dropped by gating on the
   EXACT in-flight registry entry (`getInFlightTurn` + threadId match). No
   extra throttling — tool chunks are naturally sparse and `thinking` status
   is once-gated per turn in both adapters (OpenClaw's tap gate mirrors Pi's
@@ -246,6 +248,36 @@ Task logs and audit entries use short sanitized summaries derived from
 RuntimeError kinds; do not write raw prompts, local paths, tokens, or full
 runtime trajectories to task logs.
 
+### Park-in-todo at settle (regular turns only)
+
+When a `dispatchKind: 'regular'` turn settles SUCCESSFULLY and the task is
+still `inProgress`, the settle handler re-reads the task and parks it in
+`todo` in two cases (one rule, two log lines):
+
+- **Decomposition** — the turn ended with the agent creating the subtask
+  chain and stopping (no `tasks_complete`, by design); the `dependsOn` gate
+  holds the parent in todo until the chain completes, then continuation
+  re-dispatches it for final assembly.
+- **Hand-off** — triage (or the agent) re-assigned the task to another agent
+  (`task.agent !== targetAgent`) or to a team (agent cleared, `team` set).
+  Nothing is executing it any more, so it queues for the new owner instead
+  of idling in progress until the watchdog notices (margo: 35-minute stalls
+  on every triaged scheduled task). Log line `Handed off to <agent|team x>;
+  queued for dispatch.` + audit `task.handed_off { id, from, to }`.
+
+Workflow step turns never park: a card owner and a step agent legitimately
+differ (`dispatch-workflow.ts`), parallel steps share one task, and nested
+parents settle their children's steps (plan review R3; pinned by
+`tests/core/dispatch-handoff.test.ts`). Only an attempt that still OWNED its
+run may park: `settleRun` returning false means the row was already
+superseded/lost (the watchdog refired the task) and the late settle mutates
+nothing; and the park is skipped while `getLiveRun(taskId)` shows a
+replacement run — both checked and applied under `withStateLock` (PR #937
+review P2: a superseded Jessica turn whose send resolved late must never
+park the task Patch's replacement run is executing). A triage turn that neither assigns
+nor completes is NOT parked (it would re-triage every cycle) — the watchdog
+remains the backstop.
+
 ## Continuation
 
 When a dependency completes, `src/core/continuation.ts` routes dependents
@@ -253,8 +285,12 @@ through a FULL re-dispatch (`dispatchSingleTask(source: 'continuation')`):
 fresh `d<seq>` session and a self-contained prompt carrying a
 `## Completed Dependency` block. (The old bare "resume your task" nudge only
 worked because it landed in the shared session that still held the original
-context.) Blocked dependents are moved to `todo` first; in-progress
-dependents are skipped.
+context.) Blocked dependents are moved to `todo` first. In-progress
+dependents are ledger-aware: a live run ⇒ skipped (the agent sees the
+completion in its own context); NO live run ⇒ the parent delegated and its
+turn ended, so it is parked in `todo` with a log line and re-dispatched
+(margo: the Daily Scramble parent idled 32 min until watchdog recovery).
+Workflow tasks in progress stay with the engine.
 
 ## Task Eligibility
 
@@ -383,14 +419,22 @@ dispatch loop. After plugins are active and the HTTP server is listening,
 `server.ts` runs one recovery pass over Bakin's task store before starting the
 normal dispatch/watchdog loops:
 
-- Plain `inProgress` tasks recover when their assigned agent heartbeat is
-  missing or stale.
+- Liveness comes from the execution ledger only (`src/core/task-liveness.ts`,
+  spec D3): the boot sweep has already marked prior-boot runs `lost`, so a
+  plain `inProgress` task with no running row is stranded (`no-live-run`) and
+  recovers; a task with a live run is never a candidate.
 - Workflow-backed tasks ask the workflow plugin for `workflows.loadInstance`
-  and `workflows.getActiveAgents`; recovery uses active workflow agents, not
-  the card assignee.
+  and `workflows.getActiveAgents`; each active step is checked by its claim
+  key (`stepExecKey(effectiveTaskId ?? taskId, stepId)` — nested workflows
+  claim on the child task id). Descendant task ids come from the persisted instance (nested
+  `childTaskId`s + map `children`, any status, recursive) so a completed
+  child's still-settling final turn counts as execution. No live step and no
+  other live row ⇒ `workflow-no-live-run` (recover); some live ⇒
+  `workflow-partial-live-run` (manual). The candidate
+  carries `missingRuns` (exec keys) and `effectiveAgents`.
 - `pending_approval`, `complete`, and `cancelled` workflow instances are left
   alone.
-- Partial parallel staleness and workflow states with no active agents are
+- Partial live steps and workflow states with no active agents are
   reported for manual attention instead of redispatching live work. The
   manual path writes a structured hold marker
   (`addTaskLog(..., { restartRecovery: 'manual' })`, message prefixed

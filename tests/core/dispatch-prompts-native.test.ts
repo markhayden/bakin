@@ -43,7 +43,6 @@ describe('tool invocation styles', () => {
     const msg = buildDispatchMessage(
       { id: 't1', title: 'Do the thing', agent: 'rolo' },
       'rolo',
-      '/tmp/none',
       'main',
     )
     expect(msg).toContain('call these tools directly')
@@ -62,7 +61,6 @@ describe('tool invocation styles', () => {
     const msg = buildDispatchMessage(
       { id: 't1', title: 'Do the thing', agent: 'rolo' },
       'rolo',
-      '/tmp/none',
       'main',
     )
     expect(msg).toContain('native MCP tools (server `bakin-rolo`)')

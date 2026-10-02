@@ -608,12 +608,26 @@ export function bumpHeartbeat(runId: string, now?: number): void {
   })
 }
 
-/** Heartbeat by task — the progress path knows taskId, not runId. */
-export function bumpHeartbeatByTask(taskId: string, now?: number): void {
-  guard(`bumpHeartbeatByTask(${taskId})`, () => {
-    ledger()
-      .prepare('UPDATE runs SET heartbeat_at = ? WHERE task_id = ? AND status = \'running\'')
-      .run(now ?? Date.now(), taskId)
+/**
+ * Heartbeat by task + agent — the exec-tool and progress paths know the
+ * task and the calling agent, never the run id. The bump lands ONLY when
+ * exactly one running row matches: zero rows is nothing to bump, and two
+ * or more (same-agent parallel steps) is ambiguous — bumping them all would
+ * let one live step keep a dead sibling looking alive (plan review R6).
+ * Returns whether a row was bumped.
+ */
+export function bumpHeartbeatByTaskAgent(taskId: string, agent: string, now?: number): boolean {
+  return guard(`bumpHeartbeatByTaskAgent(${taskId}, ${agent})`, () => {
+    const db = ledger()
+    const matches = db
+      .prepare<{ n: number }, [string, string]>(
+        'SELECT COUNT(*) AS n FROM runs WHERE task_id = ? AND agent = ? AND status = \'running\'',
+      )
+      .get(taskId, agent)
+    if (!matches || matches.n !== 1) return false
+    db.prepare('UPDATE runs SET heartbeat_at = ? WHERE task_id = ? AND agent = ? AND status = \'running\'')
+      .run(now ?? Date.now(), taskId, agent)
+    return true
   })
 }
 

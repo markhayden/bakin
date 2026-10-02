@@ -21,6 +21,7 @@ import { recordUsage } from '../usage'
 // Namespace import: several suites mock.module() the registry with partial
 // export sets; named imports would fail the whole import graph.
 import * as registry from './registry'
+import { bumpTaskRunHeartbeat } from '../task-liveness'
 
 const log = createLogger('exec-tool-provider')
 
@@ -56,6 +57,8 @@ export function createRuntimeExecToolProvider(): RuntimeExecToolProvider {
       const start = Date.now()
       const taskId = params.taskId as string | undefined
       log.info('Exec tool called (runtime-native)', { tool: name, agent: agentId, taskId })
+      // A tool call on a task is live activity — bump the agent's run heartbeat (advisory).
+      bumpTaskRunHeartbeat(taskId, agentId)
       // Parity with the MCP path, where the SDK zod-parses params against the
       // declared shape before the handler runs. Handlers are typed
       // `z.infer<ZodObject<Shape>>` — without this parse that typing would be

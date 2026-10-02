@@ -376,6 +376,8 @@ describe('recovery ladder — interplay with generic failures', () => {
     // The decomposition turn's success must bounce the parent to todo.
     const moveCalls = mockStoreMoveTask.mock.calls.filter((c) => c[0] === 't-480' && c[1] === 'todo')
     expect(moveCalls.length).toBeGreaterThanOrEqual(1)
+    // The decomposition park keeps its own log line — distinct from a hand-off.
+    expect(mockStoreAddTaskLog).toHaveBeenCalledWith('t-480', 'system', expect.stringContaining('Decomposition complete'))
     expect(readState().failedDispatches['t-480']).toBeUndefined()
   })
 

@@ -11,14 +11,29 @@ mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
 }))
 
-mock.module('../../src/core/logger', () => ({
+const loggerMock = () => ({
   createLogger: () => ({
     info: mock(),
     warn: mock(),
     error: mock(),
     debug: mock(),
   }),
-}))
+})
+mock.module('../../src/core/logger', loggerMock)
+mock.module('../../packages/core/src/logger', loggerMock)
+
+// In-memory liveness fake — continuation only needs "does this task hold a
+// live run"; ledger semantics are covered by tests/core/task-liveness.test.ts.
+const liveRuns = new Set<string>()
+const ledgerMock = () => ({
+  getLiveRun: (taskId: string) => (liveRuns.has(taskId) ? { runId: `task:${taskId}:d1`, taskId, status: 'running' } : null),
+  getLiveRunByKey: () => null,
+  bumpHeartbeat: () => {},
+  bumpHeartbeatByTaskAgent: () => false,
+  listLiveRuns: () => [],
+})
+mock.module('@/core/execution-ledger', ledgerMock)
+mock.module('../../src/core/execution-ledger', ledgerMock)
 
 mock.module('../../src/core/audit', () => ({
   appendAudit: mock(),
@@ -68,6 +83,7 @@ describe('continuation (full re-dispatch semantics)', () => {
   beforeEach(() => {
     mock.clearAllMocks()
     currentColumns = {}
+    liveRuns.clear()
   })
 
   function mockColumns(columns: typeof currentColumns) {
@@ -101,7 +117,8 @@ describe('continuation (full re-dispatch semantics)', () => {
     )
   })
 
-  it('skips a dependent already in progress (active work — no double-run)', async () => {
+  it('skips an in-progress dependent that holds a live run (active work — no double-run)', async () => {
+    liveRuns.add('t5')
     mockColumns({
       inProgress: [{ id: 't5', title: 'Already Running', agent: 'pixel', dependsOn: 'completed-1' }],
     })
@@ -109,7 +126,37 @@ describe('continuation (full re-dispatch semantics)', () => {
     await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', { port: 3737 })
 
     expect(mockDispatchSingleTask).not.toHaveBeenCalled()
+    expect(mockMoveTask).not.toHaveBeenCalled()
     expect(mockClearDependency).toHaveBeenCalledWith('t5')
+  })
+
+  it('re-queues an in-progress dependent with NO live run (the parent idled after delegating)', async () => {
+    mockColumns({
+      inProgress: [{ id: 't5b', title: 'Waiting Parent', agent: 'main', dependsOn: 'completed-1' }],
+    })
+
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', { port: 3737 })
+
+    expect(mockMoveTask).toHaveBeenCalledWith('t5b', 'todo', 'inProgress')
+    expect(mockAddTaskLog).toHaveBeenCalledWith('t5b', 'system', expect.stringContaining('no live run'))
+    expect(mockDispatchSingleTask).toHaveBeenCalledWith(
+      't5b',
+      '/tmp/test',
+      3737,
+      'continuation',
+      { completedDependency: { id: 'completed-1', title: 'Done Task' } },
+    )
+  })
+
+  it('leaves an in-progress WORKFLOW dependent to the engine even without a live run', async () => {
+    mockColumns({
+      inProgress: [{ id: 't5c', title: 'Workflow Parent', agent: 'main', workflowId: 'publish', dependsOn: 'completed-1' }],
+    })
+
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', { port: 3737 })
+
+    expect(mockDispatchSingleTask).not.toHaveBeenCalled()
+    expect(mockMoveTask).not.toHaveBeenCalled()
   })
 
   it('unblocks a blocked dependent (move to todo + log) before re-dispatching', async () => {

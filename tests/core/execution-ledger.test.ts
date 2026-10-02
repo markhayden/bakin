@@ -40,7 +40,7 @@ import {
   supersedeStaleRun,
   markPriorBootRunsLost,
   bumpHeartbeat,
-  bumpHeartbeatByTask,
+  bumpHeartbeatByTaskAgent,
   getLiveRun,
   getLiveRunByKey,
   listRunsByTask,
@@ -142,10 +142,26 @@ describe('runs — one live run per task', () => {
   it('heartbeat bumps protect a live run from supersede', () => {
     const t0 = 2_000_000
     expect(claim('t5', 1, { now: t0 })).toEqual({ claimed: true })
-    bumpHeartbeatByTask('t5', t0 + 500)
+    expect(bumpHeartbeatByTaskAgent('t5', 'tester', t0 + 500)).toBe(true)
     expect(supersedeStaleRun('t5', t0 + 100)).toEqual({ superseded: false })
     bumpHeartbeat('task:t5:d1', t0 + 900)
     expect(supersedeStaleRun('t5', t0 + 901)).toEqual({ superseded: true, runIds: ['task:t5:d1'] })
+  })
+
+  it('bumpHeartbeatByTaskAgent only moves a row when exactly one running row matches', () => {
+    const t0 = 2_500_000
+    expect(claim('t5b', 1, { agent: 'ada', now: t0 })).toEqual({ claimed: true })
+    // Wrong agent: no match, nothing moves.
+    expect(bumpHeartbeatByTaskAgent('t5b', 'bo', t0 + 100)).toBe(false)
+    expect(getLiveRun('t5b')?.heartbeatAt).toBe(t0)
+    // A second running row for the same task+agent (parallel step) makes the target ambiguous.
+    expect(claimRun({ runId: 'task:t5b:step:x:d2', taskId: 't5b', execKey: 't5b:x', seq: 2, agent: 'ada', bootId: BOOT, now: t0 })).toEqual({ claimed: true })
+    expect(bumpHeartbeatByTaskAgent('t5b', 'ada', t0 + 200)).toBe(false)
+    expect(getLiveRun('t5b')?.heartbeatAt).toBe(t0)
+    settleRun('task:t5b:step:x:d2', 'ok')
+    expect(bumpHeartbeatByTaskAgent('t5b', 'ada', t0 + 300)).toBe(true)
+    expect(getLiveRun('t5b')?.heartbeatAt).toBe(t0 + 300)
+    settleRun('task:t5b:d1', 'ok')
   })
 
   it('getLiveRun returns the running row', () => {

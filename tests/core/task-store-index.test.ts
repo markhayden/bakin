@@ -60,29 +60,30 @@ function writeExternalTask(id: string, column = 'todo', createdAt = new Date().t
 }
 
 describe('index consistency', () => {
-  it('counts by column across create/move/delete', () => {
-    store.createSync({ id: 'a', title: 'a', column: 'todo' })
-    store.createSync({ id: 'b', title: 'b', column: 'todo' })
-    store.createSync({ id: 'c', title: 'c', column: 'inProgress' })
+  it('nextOrderSync hands out max + 1 per column across create/move/delete', () => {
+    store.createSync({ id: 'a', title: 'a', column: 'todo', order: 0 })
+    store.createSync({ id: 'b', title: 'b', column: 'todo', order: 1 })
+    store.createSync({ id: 'c', title: 'c', column: 'inProgress', order: 0 })
 
-    expect(store.countByColumnSync('todo')).toBe(2)
-    expect(store.countByColumnSync('inProgress')).toBe(1)
+    expect(store.nextOrderSync('todo')).toBe(2)
+    expect(store.nextOrderSync('inProgress')).toBe(1)
+    expect(store.nextOrderSync('blocked')).toBe(0)
 
-    store.updateSync('a', { column: 'inProgress' })
-    expect(store.countByColumnSync('todo')).toBe(1)
-    expect(store.countByColumnSync('inProgress')).toBe(2)
+    store.updateSync('a', { column: 'inProgress', order: 5 })
+    expect(store.nextOrderSync('todo')).toBe(2) // b still holds 1
+    expect(store.nextOrderSync('inProgress')).toBe(6)
 
     store.removeSync('b')
-    expect(store.countByColumnSync('todo')).toBe(0)
+    expect(store.nextOrderSync('todo')).toBe(0)
   })
 
-  it('matches listSync({column}).length including pendingDelete exclusion', () => {
-    store.createSync({ id: 'a', title: 'a', column: 'todo' })
-    store.createSync({ id: 'b', title: 'b', column: 'todo' })
+  it('nextOrderSync counts pending-delete rows so a cancelled delete cannot collide', () => {
+    store.createSync({ id: 'a', title: 'a', column: 'todo', order: 0 })
+    store.createSync({ id: 'b', title: 'b', column: 'todo', order: 1 })
     store.markPendingDeleteSync('b', true)
 
-    expect(store.countByColumnSync('todo')).toBe(store.listSync({ column: 'todo' }).length)
-    expect(store.countByColumnSync('todo')).toBe(1)
+    expect(store.listSync({ column: 'todo' })).toHaveLength(1)
+    expect(store.nextOrderSync('todo')).toBe(2)
   })
 
   it('createSync rejects duplicate ids via the index', () => {
@@ -95,19 +96,19 @@ describe('self-healing', () => {
   it('getSync finds an externally-written task file and repairs the index', () => {
     // Warm the index first so the external write is genuinely unseen.
     store.createSync({ id: 'seed', title: 'seed' })
-    expect(store.countByColumnSync('todo')).toBe(1)
+    expect(store.listSync({ column: 'todo' })).toHaveLength(1)
 
     writeExternalTask('ext-1', 'todo')
     const found = store.getSync('ext-1')
     expect(found?.id).toBe('ext-1')
-    // Repaired into the index: now counted.
-    expect(store.countByColumnSync('todo')).toBe(2)
+    // Repaired into the index: now listed.
+    expect(store.listSync({ column: 'todo' })).toHaveLength(2)
   })
 
   it('tolerates external deletion of a task file', () => {
     store.createSync({ id: 'gone', title: 'gone', column: 'todo' })
     store.createSync({ id: 'stays', title: 'stays', column: 'todo' })
-    expect(store.countByColumnSync('todo')).toBe(2)
+    expect(store.listSync({ column: 'todo' })).toHaveLength(2)
 
     const raw = store.getSync('gone')
     expect(raw).not.toBeNull()
@@ -119,12 +120,14 @@ describe('self-healing', () => {
     }
 
     expect(store.getSync('gone')).toBeNull()
-    expect(store.countByColumnSync('todo')).toBe(1)
+    expect(store.listSync({ column: 'todo' })).toHaveLength(1)
+    // nextOrderSync prunes the ghost without a read: only 'stays' (order 0) remains.
+    expect(store.nextOrderSync('todo')).toBe(1)
   })
 
   it('picks up an external column edit on read', () => {
     store.createSync({ id: 'moved', title: 'moved', column: 'todo' })
-    expect(store.countByColumnSync('todo')).toBe(1)
+    expect(store.listSync({ column: 'todo' })).toHaveLength(1)
 
     // Hand-edit the column on disk.
     for (const shard of fs.readdirSync(root, { withFileTypes: true })) {
@@ -139,8 +142,26 @@ describe('self-healing', () => {
 
     expect(store.getSync('moved')?.column).toBe('blocked')
     // Index refreshed from the read.
-    expect(store.countByColumnSync('todo')).toBe(0)
-    expect(store.countByColumnSync('blocked')).toBe(1)
+    expect(store.nextOrderSync('todo')).toBe(0)
+    expect(store.nextOrderSync('blocked')).toBe(1)
+  })
+
+  it('picks up an external order edit on read', () => {
+    store.createSync({ id: 'reordered', title: 'reordered', column: 'todo', order: 0 })
+    expect(store.nextOrderSync('todo')).toBe(1)
+
+    for (const shard of fs.readdirSync(root, { withFileTypes: true })) {
+      if (!shard.isDirectory()) continue
+      const p = join(root, shard.name, 'task-reordered.json')
+      if (fs.existsSync(p)) {
+        const task = JSON.parse(fs.readFileSync(p, 'utf-8')) as BakinTask
+        task.order = 41
+        writeFileSync(p, JSON.stringify(task, null, 2), 'utf-8')
+      }
+    }
+
+    expect(store.getSync('reordered')?.order).toBe(41)
+    expect(store.nextOrderSync('todo')).toBe(42)
   })
 })
 
@@ -187,13 +208,13 @@ describe('IO regression — no full scans on hot ops', () => {
     dirSpy.mockRestore()
   })
 
-  it('countByColumnSync performs zero file reads', () => {
-    for (let i = 0; i < 10; i++) store.createSync({ id: `c${i}`, title: `c${i}` })
-    store.countByColumnSync('todo') // warm
+  it('nextOrderSync performs zero file reads', () => {
+    for (let i = 0; i < 10; i++) store.createSync({ id: `c${i}`, title: `c${i}`, order: i })
+    store.nextOrderSync('todo') // warm
 
     const readSpy = spyOn(fs, 'readFileSync')
     readSpy.mockClear()
-    expect(store.countByColumnSync('todo')).toBe(10)
+    expect(store.nextOrderSync('todo')).toBe(10)
     expect(readSpy.mock.calls.length).toBe(0)
     readSpy.mockRestore()
   })

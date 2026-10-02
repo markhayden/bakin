@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs'
+import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -180,6 +180,13 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   }),
 }))
 
+// The tick awaits a dynamic import of the spend observer; under the fake
+// timer shim that import never resolves inside advanceTimersByTimeAsync, so
+// the board scan silently never runs. The observer is its own unit — stub it.
+mock.module('../../src/core/spend-observer', () => ({
+  observeSpend: async () => undefined,
+}))
+
 // Budget gate probe (Fix: budget-held steps must not log TIMEOUT spam).
 let budgetGateDecision: { action: string } = { action: 'allow' }
 const budgetGateSpy = mock(async (..._args: unknown[]) => budgetGateDecision)
@@ -187,14 +194,10 @@ mock.module('../../src/core/dispatch-turns', () => ({
   budgetGate: (...args: unknown[]) => budgetGateSpy(...args),
 }))
 
-mock.module('../../src/lib/format', () => ({
-  isStale: mock().mockReturnValue(false),
-}))
-
 import { start, stop, getNotificationChannel } from '../../src/core/watchdog'
 import { appendAudit } from '../../src/core/audit'
 import { broadcast } from '../../src/core/sse'
-import { isStale } from '../../src/lib/format'
+import { getSettings } from '../../src/core/settings'
 import { claimRun, getLiveRun, recordCompletion, supersedeStaleRun } from '../../src/core/execution-ledger'
 import { closeDb } from '../../packages/core/src/storage/db'
 
@@ -313,18 +316,11 @@ describe('watchdog', () => {
           },
         ],
       })
-      vi.mocked(isStale).mockReturnValue(false)
-      mkdirSync(join(tempDir, 'heartbeats'), { recursive: true })
-      writeFileSync(
-        join(tempDir, 'heartbeats', 'pixel.json'),
-        JSON.stringify({ timestamp: new Date().toISOString() }),
-      )
-
       start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
-      // The stuck-task alert still fired despite the sweep throwing.
-      expect(vi.mocked(broadcast)).toHaveBeenCalled()
+      // The stranded task was still recovered despite the sweep throwing.
+      expect(mockStoreMoveTask).toHaveBeenCalledWith('task-1', 'todo')
     })
   })
 
@@ -351,7 +347,35 @@ describe('watchdog', () => {
       expect(vi.mocked(broadcast)).not.toHaveBeenCalled()
     })
 
-    it('alerts on stuck task with stale log', async () => {
+    it('a live run with a fresh heartbeat and ancient logs is left alone — no alert, no recovery', async () => {
+      setWatchdogColumns({
+        inProgress: [
+          {
+            id: 'task-1',
+            title: 'Quiet but working',
+            agent: 'pixel',
+            log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }],
+          },
+        ],
+      })
+      claimRun({ runId: 'task:task-1:d1', taskId: 'task-1', seq: 1, agent: 'pixel', bootId: 'boot-wd', now: Date.now() })
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(vi.mocked(broadcast)).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'alert' }))
+      expect(mockStoreMoveTask).not.toHaveBeenCalled()
+      expect(mockStoreAddTaskLog).not.toHaveBeenCalledWith('task-1', 'watchdog', expect.stringContaining('ALERT'))
+    })
+
+    it('with autoRecover off, a stranded task only alerts', async () => {
+      // start() reads settings once up front and the tick re-reads them.
+      const alertOnly = {
+        watchdog: { intervalMs: 1000, stuckThresholdMs: 30 * 60 * 1000, autoRecover: false, maxAutoRecoveries: 3 },
+        workflow: { stepTimeoutMs: 60 * 60 * 1000, maxRedispatches: 3 },
+        notifications: { channel: '', target: '', gateAlerts: true, channelAliases: {} },
+      } as never
+      vi.mocked(getSettings).mockReturnValueOnce(alertOnly).mockReturnValueOnce(alertOnly)
       setWatchdogColumns({
         inProgress: [
           {
@@ -362,25 +386,74 @@ describe('watchdog', () => {
           },
         ],
       })
-      // Agent is alive (not stale) — should alert but not auto-recover
-      vi.mocked(isStale).mockReturnValue(false)
-
-      // Write a heartbeat so isAgentHeartbeatStale returns false
-      mkdirSync(join(tempDir, 'heartbeats'), { recursive: true })
-      writeFileSync(
-        join(tempDir, 'heartbeats', 'pixel.json'),
-        JSON.stringify({ timestamp: new Date().toISOString() }),
-      )
 
       start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
       expect(vi.mocked(broadcast)).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'alert' }),
+        expect.objectContaining({ type: 'alert', message: expect.stringContaining('(no live run)') }),
       )
+      expect(mockStoreMoveTask).not.toHaveBeenCalled()
     })
 
-    it('auto-recovers when agent heartbeat is stale', async () => {
+    it('a still-running prior workflow step prevents task recovery after the engine advanced (review P1)', async () => {
+      setWatchdogColumns({ inProgress: [{ id: 'wf-transition', title: 'Workflow transition', agent: 'pixel', workflowId: 'wf', log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }] }] })
+      hookInvokeImpl = async (name) => name === 'workflows.loadInstance'
+        ? { status: 'in_progress' }
+        : name === 'workflows.getActiveAgents' ? [{ agent: 'patch', stepId: 'next' }] : undefined
+      // Step "previous" still holds a fresh running row; the engine already
+      // advanced the workflow to "next", which has not claimed yet.
+      claimRun({ runId: 'wf-old-run', taskId: 'wf-transition', execKey: 'wf-transition:previous', seq: 1, agent: 'pixel', bootId: 'boot-wd', now: Date.now() })
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(getLiveRun('wf-transition')?.status).toBe('running')
+      expect(mockStoreMoveTask).not.toHaveBeenCalled()
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+    })
+
+    it('a completed nested child whose final turn is still running keeps the parent out of recovery (review round 2)', async () => {
+      setWatchdogColumns({
+        inProgress: [{ id: 'outer-review', title: 'Outer workflow', agent: 'pixel', workflowId: 'outer', log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }] }],
+        done: [{ id: 'inner-review', title: 'Completed child', agent: 'pixel', workflowId: 'inner' }],
+      })
+      hookInvokeImpl = async (name) => name === 'workflows.loadInstance'
+        ? { status: 'in_progress', currentStepId: 'next', stepStates: { nested: { status: 'complete', childTaskId: 'inner-review' }, next: { status: 'in_progress' } } }
+        : name === 'workflows.getActiveAgents' ? [{ agent: 'patch', stepId: 'next' }] : undefined
+      claimRun({ runId: 'inner-final-run', taskId: 'inner-review', execKey: 'inner-review:final', seq: 1, agent: 'pixel', bootId: 'boot-wd', now: Date.now() })
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(getLiveRun('inner-review')?.status).toBe('running')
+      expect(mockStoreMoveTask).not.toHaveBeenCalled()
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+    })
+
+    it('a joined map child whose final turn is still running keeps the parent out of recovery (review round 2)', async () => {
+      setWatchdogColumns({
+        inProgress: [{ id: 'map-parent', title: 'Map workflow', agent: 'pixel', workflowId: 'fanout', log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }] }],
+      })
+      hookInvokeImpl = async (name, data) => {
+        const taskId = (data as { taskId?: string } | undefined)?.taskId
+        if (name === 'workflows.loadInstance') {
+          return taskId === 'map-parent'
+            ? { status: 'in_progress', currentStepId: 'assemble', stepStates: { fan: { status: 'complete', children: [{ index: 0, childTaskId: 'map-parent--fan-0', status: 'complete' }, { index: 1, childTaskId: 'map-parent--fan-1', status: 'complete' }] }, assemble: { status: 'in_progress' } } }
+            : { status: 'complete', stepStates: {} }
+        }
+        return name === 'workflows.getActiveAgents' ? [{ agent: 'patch', stepId: 'assemble' }] : undefined
+      }
+      claimRun({ runId: 'fan-1-final', taskId: 'map-parent--fan-1', execKey: 'map-parent--fan-1:write', seq: 1, agent: 'pixel', bootId: 'boot-wd', now: Date.now() })
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(getLiveRun('map-parent--fan-1')?.status).toBe('running')
+      expect(mockStoreMoveTask).not.toHaveBeenCalled()
+    })
+
+    it('auto-recovers a stranded task (no live run) with stale logs', async () => {
       setWatchdogColumns({
         inProgress: [
           {
@@ -392,14 +465,11 @@ describe('watchdog', () => {
         ],
       })
 
-      // Agent heartbeat is stale (no heartbeat file)
-      vi.mocked(isStale).mockReturnValue(true)
-
       start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
       // Should have called moveTask to recover
-      expect(mockStoreAddTaskLog).toHaveBeenCalledWith('task-2', 'watchdog', expect.stringContaining('Auto-recovered'))
+      expect(mockStoreAddTaskLog).toHaveBeenCalledWith('task-2', 'watchdog', expect.stringContaining('Auto-recovered: no live run'))
       expect(mockStoreMoveTask).toHaveBeenCalledWith('task-2', 'todo')
       expect(vi.mocked(appendAudit)).toHaveBeenCalledWith(
         tempDir,
@@ -419,7 +489,7 @@ describe('watchdog', () => {
             log: [
               { message: 'Started', timestamp: '2020-01-01T00:00:00Z' },
               {
-                message: 'Manual recovery hold: workflow-partial-agent-stale; left in progress.',
+                message: 'Manual recovery hold: workflow-partial-live-run; left in progress.',
                 timestamp: '2020-01-01T01:00:00Z',
                 data: { restartRecovery: 'manual' },
               },
@@ -428,9 +498,8 @@ describe('watchdog', () => {
         ],
       })
 
-      // Stale heartbeat + ancient timestamps — without the hold marker this
+      // No live run + ancient timestamps — without the hold marker this
       // would auto-recover on the first tick.
-      vi.mocked(isStale).mockReturnValue(true)
 
       start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
@@ -454,7 +523,7 @@ describe('watchdog', () => {
             agent: 'pixel',
             log: [
               {
-                message: 'Manual recovery hold: workflow-partial-agent-stale; left in progress.',
+                message: 'Manual recovery hold: workflow-partial-live-run; left in progress.',
                 timestamp: '2020-01-01T00:00:00Z',
                 data: { restartRecovery: 'manual' },
               },
@@ -463,8 +532,6 @@ describe('watchdog', () => {
           },
         ],
       })
-
-      vi.mocked(isStale).mockReturnValue(true)
 
       start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
@@ -488,8 +555,6 @@ describe('watchdog', () => {
           },
         ],
       })
-
-      vi.mocked(isStale).mockReturnValue(true)
 
       start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
@@ -523,7 +588,6 @@ describe('watchdog', () => {
 
     it('skips recovery while the live run heartbeat is fresh (replaces the updatedAt guard)', async () => {
       setWatchdogColumns({ inProgress: [staleTask('hb-fresh')] })
-      vi.mocked(isStale).mockReturnValue(true) // agent heartbeat file stale
 
       // Live run claimed with a CURRENT heartbeat — agent is genuinely working.
       claimRun({ runId: 'task:hb-fresh:d1', taskId: 'hb-fresh', seq: 1, agent: 'pixel', bootId: 'boot-wd', now: Date.now() })
@@ -538,7 +602,6 @@ describe('watchdog', () => {
 
     it('supersedes a stale run exactly once, audits it, then recovers', async () => {
       setWatchdogColumns({ inProgress: [staleTask('hb-stale')] })
-      vi.mocked(isStale).mockReturnValue(true)
 
       // Heartbeat far older than stuckThresholdMs (30min in the settings mock).
       claimRun({ runId: 'task:hb-stale:d1', taskId: 'hb-stale', seq: 1, agent: 'pixel', bootId: 'boot-wd', now: Date.now() - 60 * 60 * 1000 })

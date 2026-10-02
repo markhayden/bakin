@@ -1,9 +1,10 @@
 /**
- * System check — restart recovery candidates.
+ * System check — stranded in-progress tasks.
  *
- * Reports in-progress tasks that appear recoverable on next startup recovery
- * pass, plus workflow states that need manual attention because Bakin cannot
- * safely infer the right active agent.
+ * Reports in-progress tasks the execution ledger holds no running row for
+ * (the restart-recovery predicate — a live run is never a candidate), plus
+ * workflow states that need manual attention because Bakin cannot safely
+ * infer the right active step.
  */
 import { findRestartRecoveryCandidates } from '../../../../src/core/restart-recovery'
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
@@ -17,7 +18,7 @@ export async function checkRestartRecovery(): Promise<HealthCheckRunInput> {
     if (candidates.length === 0) {
       return healthObserved([healthHealthy({
         key: 'candidates',
-        summary: 'No stale in-progress tasks need recovery.',
+        summary: 'No stranded in-progress tasks.',
         evidence: { candidateCount: 0 },
       })])
     }
@@ -34,7 +35,7 @@ export async function checkRestartRecovery(): Promise<HealthCheckRunInput> {
 
     return healthObserved([healthWarning({
       key: 'candidates',
-      summary: `${candidates.length} in-progress task${candidates.length === 1 ? '' : 's'} need recovery attention.`,
+      summary: `${candidates.length} in-progress task${candidates.length === 1 ? '' : 's'} ha${candidates.length === 1 ? 's' : 've'} no live run.`,
       detail: `${recoverable} recoverable, ${exhausted} exhausted, ${manual} manual. ${examples}`,
       evidence: {
         candidateCount: candidates.length,
@@ -50,8 +51,8 @@ export async function checkRestartRecovery(): Promise<HealthCheckRunInput> {
       },
       incident: {
         key: 'stale-tasks',
-        title: 'In-progress tasks need restart recovery',
-        impact: 'Affected work may remain stalled until recovery runs or an operator chooses the correct next state.',
+        title: 'In-progress tasks have no live run',
+        impact: 'Nothing is executing these tasks; they stay stalled until recovery re-queues them or an operator chooses the next state.',
         disposition: 'action_required',
         resources: candidates.slice(0, 50).map((candidate) => ({
           kind: 'task' as const,

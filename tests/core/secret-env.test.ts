@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { rmSync } from 'fs'
-import { join, delimiter } from 'path'
+import { delimiter, dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { resetContentDir, getBakinPaths } from '../../src/core/content-dir'
 import { setStoredSecret } from '../../packages/core/src/media/secret-store'
-import { ensureBakinBinOnPath, injectIntegrationEnv, type EnvSecretMapping } from '../../src/core/secret-env'
+import { ensureBinDirsOnPath, injectIntegrationEnv, type EnvSecretMapping } from '../../src/core/secret-env'
 
 describe('secret-env boot injection', () => {
   let testDir: string
@@ -53,16 +53,28 @@ describe('secret-env boot injection', () => {
     expect(injected).toEqual([])
   })
 
-  it('exposes a bin path under the content dir and prepends it to PATH once', () => {
-    const expected = getBakinPaths().bin
-    expect(expected).toBe(join(testDir, 'bin'))
+  it('prepends the Bakin bin dir and the running binary\'s dir to PATH once', () => {
+    const bin = getBakinPaths().bin
+    expect(bin).toBe(join(testDir, 'bin'))
+    const execDir = dirname(process.execPath)
 
     process.env.PATH = '/usr/bin'
-    ensureBakinBinOnPath()
-    expect(process.env.PATH).toBe(`${expected}${delimiter}/usr/bin`)
+    ensureBinDirsOnPath()
+    expect(process.env.PATH).toBe(`${bin}${delimiter}${execDir}${delimiter}/usr/bin`)
 
-    // Idempotent — a second call must not duplicate the segment.
-    ensureBakinBinOnPath()
-    expect(process.env.PATH!.split(delimiter).filter(p => p === expected)).toHaveLength(1)
+    // Idempotent — a second call must not duplicate either segment.
+    ensureBinDirsOnPath()
+    const segments = process.env.PATH!.split(delimiter)
+    expect(segments.filter((p) => p === bin)).toHaveLength(1)
+    expect(segments.filter((p) => p === execDir)).toHaveLength(1)
+  })
+
+  it('adds only the missing segment when the exec dir is already on PATH', () => {
+    const bin = getBakinPaths().bin
+    const execDir = dirname(process.execPath)
+
+    process.env.PATH = `/usr/bin${delimiter}${execDir}`
+    ensureBinDirsOnPath()
+    expect(process.env.PATH).toBe(`${bin}${delimiter}/usr/bin${delimiter}${execDir}`)
   })
 })

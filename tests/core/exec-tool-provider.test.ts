@@ -30,8 +30,11 @@ mock.module('../../src/core/audit', () => ({
 
 import { addExecTool, getExecTool } from '../../src/core/exec-tools/registry'
 import { createRuntimeExecToolProvider } from '../../src/core/exec-tools/provider'
+import { claimRun, getLiveRun } from '../../src/core/execution-ledger'
+import { closeDb } from '../../packages/core/src/storage/db'
 
 afterAll(() => {
+  closeDb()
   rmSync(testDir, { recursive: true, force: true })
 })
 
@@ -62,6 +65,22 @@ describe('runtime exec-tool provider', () => {
     expect(schema.properties.message.type).toBe('string')
     expect(schema.required).toContain('message')
     expect(schema.required ?? []).not.toContain('times')
+  })
+
+  test('invoke() with a taskId bumps the calling agent\'s live run heartbeat (R6)', async () => {
+    const t0 = 4_000_000
+    expect(claimRun({ runId: 'task:hb-task:d1', taskId: 'hb-task', seq: 1, agent: 'agent-7', bootId: 'boot-x', now: t0 })).toEqual({ claimed: true })
+    const before = Date.now()
+    const result = await provider.invoke('bakin_exec_test_echo', { message: 'hi', taskId: 'hb-task' }, 'agent-7')
+    expect(result.ok).toBe(true)
+    expect(getLiveRun('hb-task')?.heartbeatAt).toBeGreaterThanOrEqual(before)
+  })
+
+  test('invoke() by another agent leaves the live run heartbeat alone', async () => {
+    const t0 = 4_100_000
+    expect(claimRun({ runId: 'task:hb-other:d1', taskId: 'hb-other', seq: 1, agent: 'agent-7', bootId: 'boot-x', now: t0 })).toEqual({ claimed: true })
+    await provider.invoke('bakin_exec_test_echo', { message: 'hi', taskId: 'hb-other' }, 'agent-9')
+    expect(getLiveRun('hb-other')?.heartbeatAt).toBe(t0)
   })
 
   test('invoke() runs the handler with agent binding and records usage + audit', async () => {

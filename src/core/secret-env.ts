@@ -16,7 +16,7 @@
  * CLI paths must not mutate the process environment.
  */
 import { existsSync, readFileSync } from 'fs'
-import { delimiter, join } from 'path'
+import { delimiter, dirname, join } from 'path'
 import { getStoredSecret, parseSecretSlot } from '@bakin/core/media'
 import { SKILL_SECRET_PROVIDER } from '../../packages/core/src/agent-packages/skill-secret-slot'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
@@ -148,14 +148,20 @@ export function injectSecretEnvForSlot(provider: string, name: string): string[]
 }
 
 /**
- * Prepend Bakin's bin dir (`~/.bakin/bin`) to PATH so pack-installed
- * binaries resolve in agent shell commands. Idempotent.
+ * Prepend Bakin's bin dirs to PATH so agent shell commands resolve both the
+ * pack-installed binaries (`~/.bakin/bin`) and the `bakin` CLI itself: the
+ * directory holding the running executable — the compiled binary's install
+ * dir (margo: `~/.local/bin`, absent from the launchd PATH, so agents got
+ * `bakin: command not found`), or bun's own dir under `bun run`, which is
+ * also where `bun link` places a dev `bakin`. Idempotent: a segment already
+ * present is left where it is.
  */
-export function ensureBakinBinOnPath(): void {
-  const bin = getBakinPaths().bin
+export function ensureBinDirsOnPath(): void {
   const segments = (process.env.PATH ?? '').split(delimiter).filter(Boolean)
-  if (segments.includes(bin)) return
-  process.env.PATH = [bin, ...segments].join(delimiter)
+  const wanted = [getBakinPaths().bin, dirname(process.execPath)]
+  const missing = wanted.filter((dir) => !segments.includes(dir))
+  if (missing.length === 0) return
+  process.env.PATH = [...missing, ...segments].join(delimiter)
 }
 
 /**

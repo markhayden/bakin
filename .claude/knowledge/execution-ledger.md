@@ -179,8 +179,9 @@ exactly preserving legacy threadId semantics.
 | Completion gate | `task-service.moveTaskWithEffects` done-branch (`reportComplete` flows through it) + `task-service.syncLedgerForStoreMove` (the workflow engine's ledger-aware store move — `moveTaskInStore` routes ALL workflow moves through it, #482) | `recordCompletion`, `deleteCompletion` (via `reopenIfLeavingDone`), `hasCompletion` |
 | Block guard | `task-service.blockTaskWithEffects` — completion row ⇒ `{ alreadyComplete: true }`, no side effects; move route maps it to 409, MCP block to the soft payload (#482) | `hasCompletion` |
 | Dispatch claims | `dispatch.ts` all 3 paths via `claimDispatchRun` | `claimNextRun` (atomic mint+claim), `settleRun`, `loseRun`, `currentSeq` |
-| Watchdog | supersede-first recovery | `getLiveRun`, `supersedeStaleRun` (transactional; N racing actors → 1 winner) |
-| Liveness | `task-service.logProgress` (advisory) | `bumpHeartbeatByTask` |
+| Watchdog | supersede-first recovery; stranded = no running row (via `task-liveness`) | `getLiveRun`, `supersedeStaleRun` (transactional; N racing actors → 1 winner) |
+| Liveness authority | `src/core/task-liveness.ts` — the ONE predicate behind restart recovery, the `restart-recovery` health check, continuation and the settle-time hand-off: in progress with no running row ⇒ stranded. Workflow steps are checked by their claim key (`stepExecKey`, child task id for nested workflows); `assessWorkflowRuns` also reports `otherLive` — running rows on the task OR any descendant task id (`collectWorkflowDescendantTaskIds` walks the persisted instance's nested `childTaskId`s and map `children` in every step status, recursively, via the `workflows.loadInstance` hook) outside the expected step keys, i.e. a previous step still settling after the engine advanced (PR #937 review P1) or a completed nested/map child's final turn (review round 2) — and a workflow task is `stranded` only when neither leg is live. | `getLiveRun`, `getLiveRunByKey`, `listLiveRuns` |
+| Heartbeat bumps (advisory) | `task-liveness.bumpRunHeartbeat` on stream chunks (exact run id, ≤1 write / 30 s per turn); `bumpTaskRunHeartbeat` on every exec-tool call (MCP + runtime-native) and on `logProgress` — by task + agent, and ONLY when exactly one running row matches (plan review R6: a by-task bump would keep a dead sibling step alive) | `bumpHeartbeat`, `bumpHeartbeatByTaskAgent` |
 | Boot | `server.ts` before restart recovery: run sweep, then completion backfill (`backfillMissingCompletionRows` — synthetic rows for done-without-row tasks, idempotent every boot) | `markPriorBootRunsLost(bootId)`, `recordCompletion` |
 | Money ops | `plugins/images` `runBilledImageCall` | `getIdempotent`, `putIdempotent` |
 | Edit safety | `plugins/tasks` `taskEditGuard` | `hasCompletion` |
@@ -234,11 +235,20 @@ row and no-ops silently, **by design**. The abort's durable trace is the
   ladder can claim anew; superseded runs that turn out alive may still
   complete (first-completion-wins decides); durable idempotency makes the
   loser's identical money ops $0.
-- **Watchdog:** recovery requires superseding the live run (heartbeat
-  staleness vs `settings.watchdog.stuckThresholdMs`); a fresh heartbeat
-  skips recovery (replaced the old 60s updatedAt guard, issue #114); zero
-  live runs = stranded task, recovered as before; ledger error = skip
-  (fail closed, no blind recovery).
+- **Liveness authority (spec D3, 2026-10-01):** the ledger is the ONLY
+  liveness signal. A task in progress with no `running` row is stranded; a
+  task with a live run is never a recovery candidate, however old its logs.
+  The agent-written `~/.bakin/heartbeats/<agent>.json` files are Team-page
+  status notes and gate nothing (both private file-based predicates were
+  deleted). The boot sweep marks prior-boot runs `lost` BEFORE restart
+  recovery runs, so the predicate is exact at boot.
+- **Watchdog:** past the quiet window, a live run with a fresh heartbeat is
+  skipped silently (it is working); a live run with a stale heartbeat is
+  superseded transactionally (N racing actors → 1 winner) and its turns
+  aborted by run id; a stranded task (no live run) recovers or blocks after
+  `maxAutoRecoveries`; a ledger error skips the task that tick (fail closed,
+  no blind recovery). Alert-only mode (`autoRecover: false`) alerts for
+  stranded or stale-heartbeat tasks and stays quiet for a fresh live run.
 
 ## Audit events
 

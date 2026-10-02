@@ -13,7 +13,6 @@
  * timing — this check is about what a fresh agent SESSION costs.
  */
 import { getSettings } from '../../../../src/core/settings'
-import { getContentDir } from '../../../../src/core/content-dir'
 import { estimateMaxTaskDispatchBytes } from '../../../../src/core/context-report'
 import { getRuntimeMainAgentId } from '../../../../packages/core/src/adapters/runtime'
 import { stableKeyPart } from './key'
@@ -70,11 +69,10 @@ export async function checkStartupContextSize(runtime: AgentRuntimeAdapter): Pro
       },
     })])
   }
-  const contentDir = getContentDir()
   const observations: HealthObservationInput[] = []
   for (const agent of agents) {
     const agentLabel = agent.id.slice(0, 120)
-    const est = estimateMaxTaskDispatchBytes(agent.id, mainAgentId, contentDir)
+    const est = estimateMaxTaskDispatchBytes(agent.id, mainAgentId)
     if (est.totalBytes > budget) {
       const top = [...est.components]
         .sort((a, b) => b.bytes - a.bytes)

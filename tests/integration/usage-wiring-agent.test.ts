@@ -55,7 +55,10 @@ const ledgerMock = () => ({
   hasCompletion: () => false,
   deleteCompletion: () => false,
   getLiveRun: () => null,
-  bumpHeartbeatByTask: () => {},
+  getLiveRunByKey: () => null,
+  bumpHeartbeat: () => {},
+  bumpHeartbeatByTaskAgent: () => false,
+  listLiveRuns: () => [],
   claimNextRun: (input: { runIdFor: (seq: number) => string }) => {
     fakeSeq += 1
     return { claimed: true as const, runId: input.runIdFor(fakeSeq), seq: fakeSeq }

@@ -89,7 +89,10 @@ rollback, receipts) with two additions:
   sha256 verify against the pin (refuse on mismatch) → chmod 0755 →
   verify-then-commit (`verifyArgs` run against the temp file) → atomic
   rename into `getBakinPaths().bin` (`~/.bakin/bin`, prepended to PATH at
-  server boot by `src/core/secret-env.ts`). Bins are `bin` lockfile
+  server boot by `src/core/secret-env.ts`'s `ensureBinDirsOnPath`, which
+  also prepends the running binary's own directory so agent shells resolve
+  `bakin` itself — margo's compiled binary lives in `~/.local/bin`, absent
+  from the launchd PATH). Bins are `bin` lockfile
   projections: install-failure rollback and uninstall ride the standard
   lifecycle; the uninstaller keeps a bin any other installed package still
   projects (refcount-aware). Idempotent: an on-disk bin matching the pin
