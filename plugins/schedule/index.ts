@@ -49,7 +49,7 @@ const log = createLogger('schedule')
 const schedulePlugin: BakinPlugin = definePlugin({
   id: 'schedule',
   name: 'Schedule',
-  version: '2.0.0',
+  version: '1.3.0',
   routes: scheduleRoutes,
 
   settingsSchema: {

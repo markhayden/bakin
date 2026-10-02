@@ -64,7 +64,7 @@ verb), never occurrences of the Bakin scheduler.
 
 ## Native OpenClaw crons (read-only)
 
-The crons the runtime/agents create for themselves are surfaced **read-only**. `lib/jobs-reader.ts` unions two sources: runtime crons (`cron.list()`) and store-owned Bakin schedules (synthesized from the stored schedule when they have no runtime cron). Mutating a non-Bakin job (PUT / pause / skip / delete, route + exec tool) is rejected with 403 / `ok:false` and guidance to **adopt** it first. `adopt` copies the expr into a Bakin schedule and removes the native cron; `restore-native` puts it back. The reader never auto-deletes a Bakin record (a read must not mutate the store) — only genuinely-orphaned non-Bakin sidecar entries are swept.
+The crons the runtime/agents create for themselves are surfaced **read-only**. `lib/jobs-reader.ts` unions two sources: runtime crons (`cron.list()`) and store-owned Bakin schedules (synthesized from the stored schedule when they have no runtime cron). Mutating a non-Bakin job (PUT / pause / skip / delete, route + exec tool) is rejected with 403 / `ok:false` and guidance to **adopt** it first. `adopt` copies the expr into a Bakin schedule and removes the native cron; `restore-native` puts it back. **Adoption refuses a native cron whose command is not a task prompt** (`isTaskPrompt`, spec D5 — OpenClaw's own `heartbeat` / `__…_dream__` markers): the per-job route answers 400 with `NOT_A_PROMPT_REASON`, switch-time adoption lists it as `refuse`, and the job stays native. A marker never becomes a Bakin schedule that fails on every fire. The reader never auto-deletes a Bakin record (a read must not mutate the store) — only genuinely-orphaned non-Bakin sidecar entries are swept.
 
 ## Run history & skip visibility
 
@@ -80,15 +80,20 @@ Skips are **visible**: every `skipFire()` in `runClaimedFire` (overlap / paused 
 
 `schedule-cutover` doctor check (`lib/health-checks.ts`): flags any Bakin schedule still backed by an OpenClaw cron job (incomplete cutover → rogue-fire risk). Its repair runs the same idempotent `migrateBakinSchedulesOffOpenClawCron`. It's a plugin-registered health check, so it's surfaced by `bakin doctor --full` and completed by `bakin doctor --fix` (NOT `bakin check`, which only routes the fixed onboarding checks). The cutover also runs automatically on every `activate()`, so this is the explicit verify/repair path for when OpenClaw was unreachable at boot.
 
-`schedule-sync` doctor check (same file, registered since PR1 of the #191 hardening): flags native runtime cron jobs that aren't tracked in the schedule sidecar (e.g. created by an agent directly in the runtime). Detection is read-only; the repair records `requireTriage: true` sidecar entries only — it NEVER writes runtime cron state, which is what got the legacy sync check removed (double-fire risk). Cron-less runtimes (Pi) get an unconditional OK with no repair surface. The registration guard test in `tests/plugins/schedule/health-checks.test.ts` pins this invariant.
+`schedule-sync` doctor check (same file, registered since PR1 of the #191 hardening): flags native runtime cron jobs that aren't tracked in the schedule sidecar (e.g. created by an agent directly in the runtime). `orphanRuntimeJobs(cron)` splits the untracked set with the same predicate: jobs whose command IS a task prompt are the orphans to track; the rest are reported as a healthy `runtime-internal` observation (the runtime's own markers — never an incident, never offered for tracking). Detection is read-only; the `track-runtime-cron` repair records `requireTriage: true` sidecar entries only — it NEVER writes runtime cron state, which is what got the legacy sync check removed (double-fire risk). Cron-less runtimes (Pi) get an unconditional OK with no repair surface. The registration guard test in `tests/plugins/schedule/health-checks.test.ts` pins this invariant.
+
+`schedule-prompts` doctor check (same file, health-escalation spec D5): ONE `action_required` incident (class `cleanup_backlog`, resource `{ kind: 'schedule', id }`) per Bakin-owned schedule whose `taskPrompt` fails `isTaskPrompt` — such a job creates an unactionable task on every fire and keeps firing. Its resolution is the destructive `remove-unrunnable-jobs` repair ("Remove job"): `plan()` freezes ONE `{ kind: 'file', target: <jobId>, action: 'delete' }` change per job, and `apply(items)` removes only the ids present in the items it receives that are STILL Bakin jobs failing the predicate (anything else is `skipped`, never touched) — a job that appears after the plan is never swept up by it (plan review R2). Because the repair is destructive, escalation routes it through a `health-repair` approval task on the board (see `approvals.md`); apply audits `job.deleted { via: 'health-repair' }` and drops the search row.
 
 ## Retention (cron_fires is bounded)
 
 `pruneCronFires` (ledger verb, `packages/core/src/execution/ledger.ts`) bounds fire history: settled rows (`created`/`skipped`/`seeded`) older than **30 days** are pruned, always keeping the **newest 20 per job**; `pending` rows are untouchable (live claims the healer may consume) and nothing newer than `max(catchUpWindowMinutes, 7 days)` is ever deleted, so re-claims inside the dedup horizon still collide with their original row (test-pinned: `tests/core/ledger-retention.test.ts`). The scheduler loop sweeps at most once per 24h (`maybeRunRetentionSweep` in `scheduler-loop.ts`, in-memory cadence cell — restarts re-sweep, idempotent); sweeps that pruned rows emit a `schedule.retention_swept` audit event — history deletion is never silent.
 
-## Prompt danger-zone guard
+## Prompt guards
 
-`lib/prompt-guard.ts` (`checkSchedulePrompt`): flags a schedule prompt that tells the agent to keep a single large message and not split near the channel transport limit (~2000 chars) — the shape that caused "Invalid Form Body" + split/repair loops. Surfaced live in the job form and returned as `warnings` from create/update routes + exec tools.
+`lib/prompt-guard.ts` owns two rules:
+
+- **Task-prompt predicate** (`isTaskPrompt`, spec D5): a Bakin schedule fires a TASK, so its prompt must be something an agent can act on — trimmed non-empty AND containing whitespace. No provider marker list: `heartbeat`, `__openclaw_memory_core_short_term_promotion_dream__` and an empty command all fail structurally. Enforced everywhere a Bakin schedule is minted — `createScheduleJob`, `updateScheduleJob` (the candidate prompt is checked BEFORE the write), `ensureBakinJob` (hook callers), the per-job adopt route (400), switch-time adoption (`refuse`) — and in the job form (`canSubmit` requires it; inline field error). The `schedule-prompts` check catches anything already in the sidecar. Trade-off: a legitimate one-word prompt is refused; the operator adds a second word.
+- **Danger-zone warning** (`checkSchedulePrompt`): flags a prompt that tells the agent to keep a single large message and not split near the channel transport limit (~2000 chars) — the shape that caused "Invalid Form Body" + split/repair loops. Surfaced live in the job form and returned as `warnings` from create/update routes + exec tools.
 
 ## What was removed
 
@@ -116,7 +121,15 @@ Pi. Leaving a cron-bearing runtime: `bakin runtime use <t> --adopt-cron`
 hook (`plugins/schedule/lib/cron-adoption.ts`) turns each into a Bakin job —
 `source: 'adopted'`, `originalRuntimeCron` snapshot preserved, idempotent
 per job id, dry-run previewable. Mirrors the per-job REST adopt handler
-minus live cron calls (the source runtime is already gone).
+minus live cron calls (the source runtime is already gone). The result is
+`{ adopted, skipped, refused, failed, listing }`: `refused` names every
+source job whose command is not a task prompt (refusal happens BEFORE the
+dry-run branch so a preview tells the truth), and `listing` carries one row
+per source job (`outcome: adopt | skip | refuse | failed`, bounded
+`commandPreview`, `reason`) that the CLI prints line by line and the runtime
+hub renders as a "Cron jobs" disclosure. Refused jobs stay native: on
+OpenClaw they keep firing as the runtime's own business, and the switch
+report's can't-carry cron line counts them.
 
 **Adopted jobs keep their native timezone.** Adapters hoist the provider
 schedule tz into `CronJob.metadata.tz`; both adoption paths prefer it
@@ -129,7 +142,10 @@ hours.
 - **Switch survival:** `tests/integration/schedule-switch-survival.test.ts`
   runs real `switchRuntime` both directions over temp homes and proves
   schedules keep firing exactly once per occurrence (sidecar + ledger are
-  runtime-independent), and that `--adopt-cron` yields a firing Bakin job.
+  runtime-independent), that `--adopt-cron` adopts the real cron and REFUSES
+  the `heartbeat` / dream markers (dry run and real, nothing written for a
+  marker), and that switching back runs the cutover — the adopted job's
+  native cron is removed, the markers stay native, every schedule fires once.
 - **Cron conformance:** the runtime-conformance suite pins the optional
   `cron` member — presence-by-declaration (`cron: 'present' | 'absent'`
   suite option; openclaw present, pi + minimal mock absent) and a CRUD

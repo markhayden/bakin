@@ -93,7 +93,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Schedule<br/><span>Cron job scheduling through the runtime adapter with task creation</span></td>
       <td><code>schedule</code></td>
       <td>Core</td>
-      <td><code>1.2.0</code></td>
+      <td><code>1.3.0</code></td>
       <td><code>tasks</code></td>
     </tr>
     <tr>
@@ -121,7 +121,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Terminal<br/><span>Persistent shared terminals with per-agent access and retained coding worktrees.</span></td>
       <td><code>terminal</code></td>
       <td>Official</td>
-      <td><code>0.2.0</code></td>
+      <td><code>0.3.0</code></td>
       <td><code>git</code></td>
     </tr>
     <tr>
@@ -135,5 +135,5 @@ description: Generated catalog of official plugins supported by Bakin.
 </table>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 1, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 2, 2026 · Bakin 0.0.0-dev</span>
 </aside>

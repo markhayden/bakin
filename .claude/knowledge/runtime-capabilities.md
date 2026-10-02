@@ -318,8 +318,14 @@ allowlist — see the contract doc, born of the P5.3 conflation below).
   `reconcile-roster`) hands them to the schedule plugin's
   `schedule.adoptCronJobs` hook: Bakin jobs with `source: 'adopted'` +
   `originalRuntimeCron` snapshot, idempotent per job id, dry-run previews.
-  `RuntimeSwitchResult.cron = { adopted, skipped, failed }`; the can't-carry
-  cron line folds the outcome in.
+  `RuntimeSwitchResult.cron = { adopted, skipped, refused, failed, listing }`
+  (`CronAdoptionOutcome` in `src/core/switch-report.ts`; the plugin satisfies
+  it structurally): a native cron whose command is not a task prompt (spec
+  D5 — the runtime's own markers) is `refused` and stays native, and
+  `listing` has one row per source job (`adopt | skip | refuse | failed` +
+  bounded command preview). `bakin runtime use` prints one line per job, the
+  runtime hub shows a "cron jobs refused" tile + a per-job disclosure, and
+  the can't-carry cron line folds adopted/refused counts in.
 - **Extension trust lane (WS4)** — `extensions?: RuntimeExtensionsAccess`
   optional contract member (inert `list()`; Pi implements, mock/OpenClaw
   omit). Trust mutations live in ONE engine (`src/core/runtime-extensions.ts`)
