@@ -7,7 +7,7 @@ import { definePlugin } from '@bakin/core/routing'
 import { readMergedJobs } from './lib/jobs-reader'
 import { readSidecar, resumeDuePauses } from './lib/sidecar'
 import { runStartupCatchUp } from './lib/scheduler'
-import { checkScheduleCutover, scheduleCutoverRepair, checkScheduleSync, scheduleSyncRepair } from './lib/health-checks'
+import { checkScheduleCutover, scheduleCutoverRepair, checkScheduleSync, scheduleSyncRepair, checkSchedulePrompts, scheduleUnrunnableJobsRepair } from './lib/health-checks'
 import { setPluginCtx, getPluginCtx } from './lib/plugin-context'
 import {
   MISSED_WINDOW_REASON,
@@ -34,7 +34,6 @@ import { adoptCronJobs, type AdoptCronJobsInput } from './lib/cron-adoption'
 import { registerScheduleExecTools } from './lib/exec-tools'
 import { scheduleRoutes } from './lib/routes/jobs'
 import { createLogger } from '../../src/core/logger'
-import { getContentDir } from '../../src/core/content-dir'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 
 const log = createLogger('schedule')
@@ -50,7 +49,7 @@ const log = createLogger('schedule')
 const schedulePlugin: BakinPlugin = definePlugin({
   id: 'schedule',
   name: 'Schedule',
-  version: '2.0.0',
+  version: '1.3.0',
   routes: scheduleRoutes,
 
   settingsSchema: {
@@ -70,7 +69,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
     ctx.hooks.register('schedule.ensureBakinJob', (data: Record<string, unknown>) => ensureBakinJob(ctx, data), {
       hookKind: 'rpc',
       label: 'Ensure Bakin schedule',
-      summary: 'Create or update a Bakin-managed runtime cron job and return the provider job id.',
+      summary: 'Create or update a Bakin-owned schedule keyed by the caller\'s logical id and return its job id. The effective prompt (taskPrompt, else command) must be a task prompt — a sentence an agent can act on, never a bare marker token (spec D5).',
     })
 
     ctx.hooks.register('schedule.adoptCronJobs', (data: unknown) => adoptCronJobs(ctx, data as AdoptCronJobsInput), {
@@ -155,22 +154,35 @@ const schedulePlugin: BakinPlugin = definePlugin({
     // it NEVER writes runtime cron state, so it cannot reintroduce the
     // pre-#473 double-fire the legacy sync check was removed for.
     const syncCron = ctx.runtime.cron
-    const syncContentDir = getContentDir()
     if (syncCron) {
       ctx.registerHealthRepairAction(
-        scheduleSyncRepair(syncContentDir, syncCron, () => getRuntimeMainAgentId(ctx.runtime)),
+        scheduleSyncRepair(syncCron, () => getRuntimeMainAgentId(ctx.runtime)),
       )
     }
     ctx.registerHealthCheck({
       id: 'schedule-sync',
       name: 'Runtime cron jobs tracked in Bakin sidecar',
-      description: 'Checks that native runtime cron jobs are visible in Bakin schedule ownership and marked for triage when needed.',
+      description: 'Checks that native runtime cron jobs with a task prompt are visible in Bakin schedule ownership; runtime-internal markers stay native.',
       group: scheduleGroup,
       maxAgeMs: 2 * 60_000,
-      run: async () => checkScheduleSync(
-        syncContentDir,
-        syncCron,
-      ),
+      run: async () => checkScheduleSync(syncCron),
+    })
+
+    // Bakin schedules that can never run (spec D5): a job whose prompt is not a
+    // task prompt fails on every fire. The repair removes EXACTLY the job ids
+    // frozen into its plan (plan review R2) — it rides the approval flow as a
+    // destructive repair.
+    ctx.registerHealthRepairAction(scheduleUnrunnableJobsRepair((jobId) => {
+      ctx.activity.audit('job.deleted', 'system', { jobId, via: 'health-repair' })
+      ctx.search.remove(jobId).catch(() => {})
+    }))
+    ctx.registerHealthCheck({
+      id: 'schedule-prompts',
+      name: 'Bakin schedules carry a runnable prompt',
+      description: 'Flags Bakin-owned schedules whose task prompt is empty or a bare marker token — they fail on every fire — with a scoped Remove-job repair.',
+      group: scheduleGroup,
+      maxAgeMs: 2 * 60_000,
+      run: async () => checkSchedulePrompts(),
     })
 
     // Fire (or block) anything missed while the server was down, then start the

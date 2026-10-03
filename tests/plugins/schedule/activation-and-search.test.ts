@@ -318,6 +318,7 @@ describe('schedule plugin activation', () => {
       name: 'Plugin nightly sync',
       schedule: '*/5 * * * *',
       command: 'bakin:reports:refresh',
+      taskPrompt: 'Refresh the reports',
       metadata: { pluginId: 'reports' },
     })
 
@@ -343,14 +344,26 @@ describe('schedule plugin activation', () => {
     }
     const handler = registerMock.mock.calls.find(([name]) => name === 'schedule.ensureBakinJob')![1]
 
-    await handler({ jobId: 'r5-job', name: 'R5', schedule: '*/5 * * * *', command: 'x', agentId: 'chef' })
+    await handler({ jobId: 'r5-job', name: 'R5', schedule: '*/5 * * * *', command: 'x', taskPrompt: 'Do x now', agentId: 'chef' })
     expect(getJob('r5-job')).toEqual(expect.objectContaining({ agentId: 'chef' }))
 
-    const result = await handler({ jobId: 'r5-job', name: 'R5', schedule: '*/5 * * * *', command: 'x', teamId: 'development' })
+    const result = await handler({ jobId: 'r5-job', name: 'R5', schedule: '*/5 * * * *', command: 'x', taskPrompt: 'Do x now', teamId: 'development' })
     expect(result.ok).toBe(true)
     const meta = getJob('r5-job')!
     expect(meta.teamId).toBe('development')
     expect(meta.agentId).toBeUndefined() // never both (review R5)
+  })
+
+  it('ensureBakinJob: a marker command with no taskPrompt is refused before any write (spec D5)', async () => {
+    const activated = await activatePlugin(schedulePlugin, testDir)
+    const registerMock = activated.ctx.hooks.register as unknown as {
+      mock: { calls: Array<[string, (data: Record<string, unknown>) => Promise<Record<string, unknown>>, Record<string, unknown>]> }
+    }
+    const handler = registerMock.mock.calls.find(([name]) => name === 'schedule.ensureBakinJob')![1]
+    const result = await handler({ jobId: 'marker-job', name: 'Marker', schedule: '*/5 * * * *', command: 'bakin:reports:refresh' })
+    expect(result).toMatchObject({ ok: false })
+    expect(String((result as { error?: string }).error)).toContain('not a task prompt')
+    expect(getJob('marker-job')).toBeNull()
   })
 
   it('ensureBakinJob: rejects agentId + teamId together (review R5)', async () => {
@@ -360,7 +373,7 @@ describe('schedule plugin activation', () => {
     }
     const handler = registerMock.mock.calls.find(([name]) => name === 'schedule.ensureBakinJob')![1]
 
-    const result = await handler({ jobId: 'r5-both', name: 'R5', schedule: '*/5 * * * *', command: 'x', agentId: 'chef', teamId: 'development' })
+    const result = await handler({ jobId: 'r5-both', name: 'R5', schedule: '*/5 * * * *', command: 'x', taskPrompt: 'Do x now', agentId: 'chef', teamId: 'development' })
     expect(result.ok).toBe(false)
     expect(String(result.error)).toContain('both')
     expect(getJob('r5-both')).toBeNull()
@@ -373,7 +386,7 @@ describe('schedule plugin activation', () => {
     }
     const handler = registerMock.mock.calls.find(([name]) => name === 'schedule.ensureBakinJob')![1]
 
-    const result = await handler({ jobId: 'r5-ghost', name: 'R5', schedule: '*/5 * * * *', command: 'x', teamId: 'ghost-team' })
+    const result = await handler({ jobId: 'r5-ghost', name: 'R5', schedule: '*/5 * * * *', command: 'x', taskPrompt: 'Do x now', teamId: 'ghost-team' })
     expect(result.ok).toBe(false)
     expect(String(result.error)).toContain('Unknown team')
     expect(getJob('r5-ghost')).toBeNull()
@@ -393,6 +406,7 @@ describe('schedule plugin activation', () => {
       name: 'Plugin nightly sync',
       schedule: '*/5 * * * *',
       command: 'bakin:reports:refresh',
+      taskPrompt: 'Refresh the reports',
       metadata: { pluginId: 'reports' },
     })
     expect(first.jobId).toBe('plugin-nightly-sync')
@@ -405,6 +419,7 @@ describe('schedule plugin activation', () => {
       name: 'Plugin nightly sync renamed',
       schedule: '0 2 * * *',
       command: 'bakin:reports:refresh',
+      taskPrompt: 'Refresh the reports',
       metadata: { pluginId: 'reports' },
     })
 
@@ -444,6 +459,7 @@ describe('schedule plugin activation', () => {
       name: 'Plugin nightly sync',
       schedule: '*/5 * * * *',
       command: 'bakin:reports:refresh',
+      taskPrompt: 'Refresh the reports',
       metadata: { pluginId: 'reports' },
     })
 

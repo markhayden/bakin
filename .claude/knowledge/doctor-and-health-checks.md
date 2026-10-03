@@ -227,18 +227,20 @@ Overview always displays the four stages. System owns detailed indexes, migratio
 
 ## First-party producer inventory
 
-There are 40 direct first-party plugin registration sites after the two approved Search consolidations, the addition of GitHub readiness and runtime-cron tracking, and the work-class routing check:
+There are 41 direct first-party plugin registration sites after the two approved Search consolidations, the addition of GitHub readiness and runtime-cron tracking, the work-class routing check, and the schedule prompt check:
 
 - Health: 22 system/runtime/work-cost/Search/plugin checks
 - Team: 4
 - Tasks: 4
 - Workflows: 3
-- Schedule: 2
+- Schedule: 3
 - Assets, Brands, Git, Images, Models, Spend: 1 each (Spend's `spend.budget` moved out of Health in the spend ownership series; Health gained `spend.policy-available`, which names the gate's fail-closed state when the spend plugin is not answering — a plugin cannot report its own activation failure)
 
 Health's local IDs are `content-dir`, `media.sharp` (#889 — image processing; one-click store install repair `media-install-store`), `capabilities`, `github-readiness`, `service`, `runtime`, `session-store`, `channel-approvals`, `channel-aliases`, `restart-recovery`, `execution-safety`, `context.startup-size`, `spend.policy-available`, `usage.agent-burn`, `search`, `search-consistency`, `search-spin`, `search-canary`, `search-engine-burn`, `skill`, `plugin-assets`, `plugin-artifacts`, and `plugin-registry`.
 
 `restart-recovery` raises the `stale-tasks` incident ("In-progress tasks have no live run") from the ledger-only stranded predicate in `src/core/task-liveness.ts` — a task with a live run is never listed, so a repair task running the doctor can no longer flag itself (the 2026-09-28 margo false positive). The tasks plugin's file-based `heartbeat-missing` observation was deleted with it; heartbeat files are Team-page status notes.
+
+Schedule registers `schedule-cutover`, `schedule-sync` and `schedule-prompts` (`plugins/schedule/lib/health-checks.ts`). `schedule-sync` applies the schedule plugin's task-prompt predicate to untracked native crons: only jobs with a real prompt are orphans to track (`track-runtime-cron`); the runtime's own marker crons surface as a healthy `runtime-internal` observation. `schedule-prompts` raises one `action_required` incident (class `cleanup_backlog`, resource `{ kind: 'schedule', id }`) per Bakin-owned schedule whose prompt is not a task prompt, resolved by the destructive `remove-unrunnable-jobs` repair ("Remove job") whose plan freezes exactly one change per job id and whose apply deletes only those still-unrunnable ids — escalation routes it through a `health-repair` approval task like any other destructive repair. See `.claude/knowledge/bakin-owned-scheduler.md`.
 
 Health registers six local repair actions: journal revival, consistency rebuild, spin rebuild, canary restart, engine-burn restart, and runtime skill sync. Other plugin owners register their own actions beside their checks — the spend plugin owns `spend-evidence-refresh-pricing` and `accept-unattributed-history` next to its `budget` check (whose "no limits" state is healthy, never a nag — spec S8).
 

@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { defineRoute, searchRoute } from '@bakin/core/routing'
 import type { BakinJobMeta } from '../../types'
 import { getJob, upsertJob } from '../sidecar'
+import { isTaskPrompt, NOT_A_PROMPT_REASON } from '../prompt-guard'
 import { parseSchedule } from '../cron-parser'
 import { getSystemTimezone, json, nativeCronTz } from '../schedule-util'
 import { readRuns } from '../runs-reader'
@@ -289,6 +290,9 @@ export const scheduleRoutes = [
       const displayName = body.name || existing?.displayName || runtimeJob.name
       const owner = (body.owner ?? undefined) || existing?.owner || await getRuntimeMainAgentId(ctx.runtime)
       const taskPrompt = (body.taskPrompt ?? undefined) || existing?.taskPrompt || runtimeJob.command
+      // A native cron whose command is a bare marker (no prompt) cannot become
+      // a Bakin schedule as-is (spec D5): the operator supplies a real prompt.
+      if (!isTaskPrompt(taskPrompt)) return json({ error: NOT_A_PROMPT_REASON }, 400)
 
       // Assignment merge + exclusion, mirroring ensureBakinJob (round-3):
       // a body-provided side wins and clears the other; validated before

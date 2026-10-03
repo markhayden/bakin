@@ -14,6 +14,20 @@ export interface CantCarryLine {
   count?: number
 }
 
+/**
+ * What switch-time adoption did with every source cron job. The schedule
+ * plugin's `schedule.adoptCronJobs` hook satisfies this structurally; core
+ * never imports the plugin. `refused` = not a task prompt (spec D5): the job
+ * stays native and is named in the report, never silently dropped.
+ */
+export interface CronAdoptionOutcome {
+  adopted: string[]
+  skipped: string[]
+  refused: Array<{ jobId: string; name: string; reason: string }>
+  failed: Array<{ jobId: string; error: string }>
+  listing: Array<{ jobId: string; name: string; outcome: 'adopt' | 'skip' | 'refuse' | 'failed'; commandPreview: string; reason?: string }>
+}
+
 /** A source cron job captured pre-teardown for switch-time adoption. */
 export interface SnapshottedCronJob {
   job: CronJob

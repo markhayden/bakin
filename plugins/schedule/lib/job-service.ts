@@ -26,7 +26,7 @@ import type { ParseResult } from '../types'
 function oneShotInPast(parsed: ParseResult, now = Date.now()): boolean {
   return parsed.kind === 'at' && Date.parse(parsed.expr) <= now
 }
-import { checkSchedulePrompt, type PromptWarning } from './prompt-guard'
+import { checkSchedulePrompt, isTaskPrompt, NOT_A_PROMPT_REASON, type PromptWarning } from './prompt-guard'
 import { getLastRun } from './runs-reader'
 import { getSystemTimezone } from './schedule-util'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
@@ -88,6 +88,9 @@ export async function ensureBakinJob(ctx: PluginContext, input: Record<string, u
   // Idempotent provisioning keyed by the caller-owned logical id. Bakin owns
   // the schedule outright now — no OpenClaw cron is created.
   const existing = getJob(logicalId) ?? getJobByLogicalJobId(logicalId)
+  // The prompt the job will fire with (spec D5) — judged BEFORE any write.
+  const effectivePrompt = typeof input.taskPrompt === 'string' ? input.taskPrompt : existing?.taskPrompt ?? command
+  if (!isTaskPrompt(effectivePrompt)) return { ok: false, error: NOT_A_PROMPT_REASON }
   const jobId = existing?.jobId ?? logicalId
   const owner = typeof input.owner === 'string' && input.owner.trim()
     ? input.owner.trim()
@@ -169,6 +172,8 @@ export async function createScheduleJob(
   const parsed = parseSchedule(input.schedule, { tz })
   if (!parsed) return { ok: false, error: 'Could not parse schedule expression' }
   if (oneShotInPast(parsed)) return { ok: false, error: `One-shot schedule is in the past (${parsed.expr})` }
+  // A schedule fires a task: it must carry a prompt an agent can act on (D5).
+  if (!isTaskPrompt(input.taskPrompt)) return { ok: false, error: NOT_A_PROMPT_REASON }
 
   // Assignment validation lives HERE, not at each surface (round-4 review):
   // every caller — REST, exec tool, future bulk/import — inherits it.
@@ -268,6 +273,12 @@ export async function updateScheduleJob(
   } catch (err) {
     if (err instanceof TaskValidationError) return { ok: false, error: err.message }
     throw err
+  }
+  // Judge the prompt the job WOULD fire with before touching the record (D5):
+  // an update that leaves the prompt alone keeps the existing one.
+  if (fields.includes('taskPrompt')) {
+    const candidate = updates.taskPrompt !== undefined ? updates.taskPrompt : meta.taskPrompt
+    if (!isTaskPrompt(typeof candidate === 'string' ? candidate : undefined)) return { ok: false, error: NOT_A_PROMPT_REASON }
   }
   if (updates.schedule && typeof updates.schedule === 'string') {
     const tz = typeof updates.tz === 'string' && updates.tz ? updates.tz : meta.tz

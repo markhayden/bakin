@@ -211,7 +211,7 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 Label: Get a health check.
 Purpose: Returns canonical metadata for one registered Health check by stable id without executing it.
 Kind: rpc
-Source: plugins/health/index.ts:846
+Source: plugins/health/index.ts:869
 
 Example:
 
@@ -229,7 +229,7 @@ const result = await ctx.hooks.invoke(
 Label: List health checks.
 Purpose: Returns canonical metadata for registered Health checks without executing them.
 Kind: rpc
-Source: plugins/health/index.ts:845
+Source: plugins/health/index.ts:868
 
 Example:
 
@@ -349,7 +349,7 @@ await ctx.hooks.callAll(
 Label: Adopt runtime cron jobs
 Purpose: Adopt snapshotted runtime cron jobs into Bakin schedules during a runtime switch (opt-in, idempotent per job id).
 Kind: rpc
-Source: plugins/schedule/index.ts:76
+Source: plugins/schedule/index.ts:75
 
 Example:
 
@@ -363,9 +363,9 @@ const result = await ctx.hooks.invoke(
 ### schedule.ensureBakinJob
 
 Label: Ensure Bakin schedule
-Purpose: Create or update a Bakin-managed runtime cron job and return the provider job id.
+Purpose: Create or update a Bakin-owned schedule keyed by the caller's logical id and return its job id. The effective prompt (taskPrompt, else command) must be a task prompt — a sentence an agent can act on, never a bare marker token (spec D5).
 Kind: rpc
-Source: plugins/schedule/index.ts:70
+Source: plugins/schedule/index.ts:69
 
 Example:
 

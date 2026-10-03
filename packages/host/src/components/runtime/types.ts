@@ -64,7 +64,13 @@ export interface SwitchResultPayload {
     skippedExisting: string[]
     failed: Array<{ agentId: string; path: string; error: string }>
   } | null
-  cron: { adopted: string[]; skipped: string[]; failed: Array<{ jobId: string; error: string }> } | null
+  cron: {
+    adopted: string[]
+    skipped: string[]
+    refused: Array<{ jobId: string; name: string; reason: string }>
+    failed: Array<{ jobId: string; error: string }>
+    listing: Array<{ jobId: string; name: string; outcome: 'adopt' | 'skip' | 'refuse' | 'failed'; commandPreview: string; reason?: string }>
+  } | null
   /** Persisted model selections the target cannot run (#907) — report only, never rewritten by a switch. */
   deadSelections?: { dead: Array<{ ref: string; label: string; model: string; detail: string; proposal: { to: string | null } }> } | null
   cantCarry: Array<{ concern: string; detail: string; count?: number }> | null

@@ -23,6 +23,10 @@ As close to telling the future as it gets. Four view modes from the header: **Li
 
 `+ New Job` opens a side drawer. Type the cadence in plain English ("every day at 9am", "weekdays at noon", "first of the month") and Bakin translates it into cron. Or drop in a raw cron expression if you've got one. Pick the agent who runs it — or a team, in which case Bakin routes each occurrence to the best-suited member at fire time (see [Tasks → Assign to a team](/docs/using/tasks/#assign-to-a-team)) — give the task a title and a prompt, optionally attach a workflow.
 
+### The prompt has to be a task
+
+A schedule fires a real task, so its prompt must be something an agent can act on. The one rule: the prompt is not empty and has more than one word. `Post the daily recipe to #kitchen` is a task prompt; `heartbeat`, `__openclaw_memory_core_short_term_promotion_dream__` and a blank field are not — those are the kind of internal marker a runtime schedules for itself, and a Bakin task built from one fails on every fire. The form refuses to submit without a task prompt, every create / update / adopt path rejects one, and the `schedule-prompts` health check catches any that slipped in earlier (see [Health checks](#health-checks)). A legitimate one-word prompt just needs a second word.
+
 ### Pause, run now, duplicate
 
 Each row's menu has the day-to-day controls:
@@ -45,29 +49,56 @@ Runtime-native cron jobs may also show a `Cron tools` field. That comes from the
 
 If a runtime-native or legacy cron job has no allowlist, Schedule flags it as missing cron tools. Treat that as an audit prompt, not an automatic fix: choose the smallest tool set the native job needs before changing the runtime cron.
 
-Bakin-owned schedules are different. They use runtime cron as a timer, then create Bakin tasks. The eventual agent task's MCP permissions are not controlled by cron `toolsAllow`; that belongs to Bakin MCP tool scoping.
+Bakin-owned schedules are different. Bakin fires them itself and creates Bakin tasks; runtime cron is not involved. The eventual agent task's MCP permissions are not controlled by cron `toolsAllow`; that belongs to Bakin MCP tool scoping.
 
 ## How it works
 
-Schedule splits ownership: the runtime owns the cron, Bakin owns everything around it.
+Bakin owns its schedules end to end. Nothing about a Bakin schedule depends on which runtime is active.
 
-- **The runtime owns the cron itself.** The actual cron daemon, expressions, and run logs live in the runtime home directory. Bakin asks the runtime adapter to add, edit, remove, or fire them.
-- **Bakin owns sidecar metadata.** Display name, owner, agent assignment, task title and prompt, workflow link, and pause/failure state live in `~/.bakin/schedule/sidecar.json`.
+- **Bakin owns the schedule.** The cron expression (or one-shot instant), timezone, enabled state, agent or team, task title and prompt, workflow link, and pause/failure state all live in `~/.bakin/schedule/sidecar.json`.
+- **Bakin fires it.** A scheduler tick (every 30 seconds by default) computes which occurrences are due, claims each one in the execution ledger, and on a fresh claim creates the task, optionally starts the workflow, and dispatches to the assigned agent. The ledger claim is what makes every occurrence fire exactly once, through restarts and across runtime switches.
+- **Downtime is handled honestly.** After an outage, the single most recent missed occurrence per job fires normally if it falls inside the missed-fire safety window; an older one lands in Blocked for you to triage, labeled by the date it should have run.
 
-When a cron fires, the runtime records a run. While Bakin is running, Schedule polls runtime run history, reconciles each new successful run, creates a real task, optionally starts a workflow, and dispatches the work to the assigned agent. The bridge endpoint still exists for runtimes that deliver signed webhook callbacks, but OpenClaw schedules use the reconciler path.
+The crons a runtime or its agents create for themselves (OpenClaw's native cron, for example) show up in the same list, read-only. Pausing, editing or deleting one from Bakin is refused until you **adopt** it — adoption copies its cadence into a Bakin schedule and removes the native cron so it has exactly one fire path. `Restore native` puts it back.
+
+## Migrating between runtimes
+
+Bakin schedules survive a runtime switch untouched: the sidecar and the ledger belong to Bakin, so `bakin runtime use pi` (or back to OpenClaw) changes nothing about when or whether they fire.
+
+Native cron jobs are a different story — they belong to the runtime you are leaving. Pass `--adopt-cron` to `bakin runtime use` (or tick the option on the Runtime page) and Bakin turns each native job into a Bakin schedule before the old runtime is torn down. The switch report prints one line per source job:
+
+```
+✓ adopt  Daily recipe (native-daily)
+○ skip   Weekly digest (sch_…) — already a Bakin schedule
+✗ refuse heartbeat — not a task prompt; stays native (command: heartbeat)
+✗ refuse dream — not a task prompt; stays native (command: __openclaw_memory_core_short_term_promotion_dream__)
+```
+
+A native job whose command is not a task prompt is **refused**, not adopted: it is the runtime's own internal marker, and a Bakin task built from it would fail every time. Refused jobs stay native. `--dry-run` shows the same per-job listing without writing anything, so you can see what a switch would adopt and refuse before committing to it.
+
+Switching back to OpenClaw runs the cutover automatically: any adopted schedule whose native cron still exists has that native cron removed, so the job keeps firing once, from Bakin.
 
 ## Failure handling
 
 Each job tracks consecutive failures. Past `maxFailures`, the job auto-pauses with a cooldown so a broken job doesn't fire indefinitely. Resume from the row menu once you've fixed the underlying issue.
 
+## Health checks
+
+Schedule contributes three checks to [Health](/docs/using/health/):
+
+- **Bakin schedules cut over from runtime cron** (`schedule-cutover`) flags a Bakin schedule that still has a duplicate native cron fire path. Its repair completes the cutover.
+- **Runtime cron jobs tracked in Bakin sidecar** (`schedule-sync`) flags native crons with a real task prompt that Bakin does not know about, and offers to track them for triage. The runtime's own marker jobs are reported as runtime-internal and left alone.
+- **Bakin schedules carry a runnable prompt** (`schedule-prompts`) raises one action-required incident per Bakin schedule whose prompt is not a task prompt. Its **Remove job** repair is destructive, so it arrives as an approval task on the board: the task names exactly the jobs it will remove, and approving it removes those jobs and nothing else.
+
 ## Where jobs live
 
 ```
 ~/.bakin/schedule/
-  sidecar.json           # per-job display + ownership metadata
+  sidecar.json           # every Bakin schedule: cadence, tz, owner, prompt, state
+~/.bakin/bakin.db        # execution ledger: one row per fired occurrence (run history)
 ```
 
-Cron expressions and run logs live in the runtime home. Bakin reads them; the runtime writes them.
+Native runtime crons live in the runtime home. Bakin reads them; the runtime writes them.
 
 ## Settings
 

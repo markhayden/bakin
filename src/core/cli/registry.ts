@@ -56,13 +56,14 @@ export const CLI_COMMANDS = [
   }),
   cli({
     name: 'runtime',
-    usage: 'bakin runtime [use <openclaw|pi>] [--dry-run] [--no-copy-workspaces]',
+    usage: 'bakin runtime [use <openclaw|pi>] [--dry-run] [--no-copy-workspaces] [--adopt-cron]',
     group: 'Lifecycle',
     summary: 'Show the runtime capability report or switch runtime adapters.',
-    description: 'Without arguments, prints the active runtime adapter and its capability report (native/shimmed/unavailable per capability, tool-access status). `bakin runtime use <adapter>` runs the orchestrated switch: settings backup, tool-access deprovision/provision, roster carry-over with model + subagent-model mapping and an honest unmapped report, workspace content carry for switch-created agents (soul/memory verbatim, agent-authored skills to the target\'s skill location; `--no-copy-workspaces` opts out), honest stays-behind lines (channels, runtime crons, session context, provider config) plus the target\'s credential status, and drift-gated agent re-projection. `--dry-run` previews the entire report with zero writes. A completed switch requires `bakin restart` so plugins rebind.',
+    description: 'Without arguments, prints the active runtime adapter and its capability report (native/shimmed/unavailable per capability, tool-access status). `bakin runtime use <adapter>` runs the orchestrated switch: settings backup, tool-access deprovision/provision, roster carry-over with model + subagent-model mapping and an honest unmapped report, workspace content carry for switch-created agents (soul/memory verbatim, agent-authored skills to the target\'s skill location; `--no-copy-workspaces` opts out), honest stays-behind lines (channels, runtime crons, session context, provider config) plus the target\'s credential status, and drift-gated agent re-projection. `--adopt-cron` turns the source runtime\'s native cron jobs into Bakin schedules before teardown and prints one line per source job (adopt / skip / refuse / failed); a cron whose command is not a task prompt — the runtime\'s own marker jobs — is refused and stays native. `--dry-run` previews the entire report with zero writes. A completed switch requires `bakin restart` so plugins rebind.',
     examples: [
       { title: 'Show the capability report', code: 'bakin runtime', test: 'illustrative', reason: 'Requires a running local server.' },
       { title: 'Preview a switch (zero writes)', code: 'bakin runtime use pi --dry-run', test: 'illustrative', reason: 'Requires a running local server.' },
+      { title: 'Preview a switch that adopts native cron jobs', code: 'bakin runtime use pi --dry-run --adopt-cron', test: 'illustrative', reason: 'Requires a running local server.' },
       { title: 'Switch to the Pi runtime', code: 'bakin runtime use pi', test: 'illustrative', reason: 'Mutates settings and runtime state; requires a restart.' },
     ],
   }),

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { checkSchedulePrompt } from '@bakin/schedule/lib/prompt-guard'
+import { checkSchedulePrompt, isTaskPrompt, NOT_A_PROMPT_REASON } from '@bakin/schedule/lib/prompt-guard'
 
 describe('schedule/prompt-guard', () => {
   it('flags a no-split instruction near the transport limit', () => {
@@ -41,5 +41,27 @@ describe('schedule/prompt-guard', () => {
 
   it('does not flag a modest cap with splitting allowed', () => {
     expect(checkSchedulePrompt('Keep messages under 800 chars.')).toEqual([])
+  })
+})
+
+describe('schedule/isTaskPrompt (spec D5)', () => {
+  it.each([
+    ['', false],
+    ['   ', false],
+    [undefined, false],
+    [null, false],
+    ['__openclaw_memory_core_short_term_promotion_dream__', false],
+    ['heartbeat', false],
+    ['bakin:reports:refresh', false],
+    ['Refresh the reports', true],
+    ['  Summarize yesterday.  ', true],
+    ['ping\tpong', true],
+    ['two\nlines', true],
+  ])('%p → %p', (command, expected) => {
+    expect(isTaskPrompt(command as string | null | undefined)).toBe(expected)
+  })
+
+  it('states the rule in the refusal reason', () => {
+    expect(NOT_A_PROMPT_REASON).toContain('not a task prompt')
   })
 })
