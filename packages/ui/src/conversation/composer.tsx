@@ -16,6 +16,7 @@ import {
 
 import { usePersistedLeadingEdgeResize } from '../behaviors/use-persisted-leading-edge-resize'
 import { Button } from '../primitives/button'
+import { InputGroup, InputGroupTextarea } from '../primitives/input-group'
 import { cn } from '../utils'
 import { RemoveIcon, SpinnerIcon } from './glyphs'
 import { ResizeHandle } from '../behaviors/resize-handle'
@@ -380,11 +381,14 @@ export function Composer({
       />
 
       <div className="px-bakin-4 pb-bakin-3">
-        <div
+        <InputGroup
           className={cn(
-            'min-w-0 rounded-bakin-overlay border border-bakin-border-subtle bg-bakin-surface-default/40',
+            'block h-auto min-h-0 min-w-0 rounded-bakin-overlay border border-bakin-border-subtle bg-bakin-surface-default/40',
             'transition-[background-color,border-color] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard',
-            'focus-within:border-bakin-focus-ring',
+            // Disable each control independently so Stop remains usable while typing is disabled.
+            'has-[[data-slot=input-group-control]:disabled]:pointer-events-auto has-[[data-slot=input-group-control]:disabled]:opacity-100',
+            // The rounded shell owns input focus; toolbar buttons keep their own ring.
+            'has-[:is(input,textarea):focus-visible]:-outline-offset-2',
             dropActive && 'border-bakin-signal-accent bg-bakin-signal-accent/10',
           )}
         >
@@ -440,8 +444,9 @@ export function Composer({
             </div>
           ) : null}
 
-          <textarea
+          <InputGroupTextarea
             ref={textareaRef}
+            rows={2}
             value={value}
             onChange={(event) => {
               historyPositionRef.current = null
@@ -457,9 +462,9 @@ export function Composer({
             disabled={disabled}
             maxLength={maxLength}
             className={cn(
-              'block w-full min-w-0 resize-none border-0 bg-transparent px-bakin-3 pt-bakin-3',
+              'block w-full min-w-0 resize-none border-0 bg-transparent px-bakin-3 pb-0 pt-bakin-3',
               'font-bakin-typography-family-ui text-base leading-relaxed text-bakin-text-primary md:text-[length:var(--bakin-typography-size-body)]',
-              'outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring placeholder:text-bakin-text-muted disabled:cursor-not-allowed disabled:opacity-[var(--bakin-state-opacity-disabled)]',
+              'outline-none placeholder:text-bakin-text-muted disabled:cursor-not-allowed disabled:opacity-[var(--bakin-state-opacity-disabled)]',
             )}
           />
 
@@ -566,7 +571,7 @@ export function Composer({
               </Button>
             )}
           </div>
-        </div>
+        </InputGroup>
 
         <div id={descriptionId} className="flex min-h-bakin-4 items-start justify-between gap-bakin-3 pt-bakin-1 text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
           <span aria-live="polite">

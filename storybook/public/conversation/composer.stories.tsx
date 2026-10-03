@@ -23,7 +23,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'Composer is the canonical persistent conversation input. It keeps typing available during replies, handles Enter/Shift+Enter/IME/history consistently, and presents consumer-owned attachment capabilities honestly.',
+        component: 'Composer is the canonical persistent conversation input. It keeps typing available during replies, handles Enter/Shift+Enter/IME/history consistently, and presents consumer-owned attachment capabilities honestly. Its neutral rounded shell owns the single input-focus outline; the textarea has no separate outline, and toolbar buttons retain their own keyboard-focus indicators.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'keyboard', 'non-color', 'reduced-motion', 'busy', 'disabled', 'error', 'dense-data', 'attachments'],

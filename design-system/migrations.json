@@ -25,7 +25,7 @@
       "raw-palette": 4,
       "arbitrary-size": 77,
       "raw-scale": 423,
-      "raw-control": 18,
+      "raw-control": 17,
       "inline-style": 33,
       "generic-token": 72,
       "unscoped-css": 0,
@@ -667,7 +667,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "raw-scale": 5,
-        "raw-control": 2
+        "raw-control": 1
       }
     },
     {
