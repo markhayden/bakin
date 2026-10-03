@@ -1567,6 +1567,12 @@ Pass presentation-ready identity through `agent` or `resolveAgent`. The focused 
 
 Put `Composer` inside `PageComposer`, outside the named message log. Give it a stable, opaque `storageKey` for the current thread; the component uses that key only for browser-local draft, input-history, and resize preferences. Do not put secrets in the key, and do not use it as routed or server-side conversation identity.
 
+The composer has a neutral border at rest. While its textarea is focused, the
+rounded shell owns one inset focus outline around the entire input and toolbar.
+Do not add a second outline to the textarea or a focus border in the consumer.
+Attachment and send controls retain their own keyboard-focus indicators; focusing
+them does not highlight the whole composer.
+
 ```tsx
 import {
   Composer,
