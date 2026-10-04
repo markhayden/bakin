@@ -42,7 +42,6 @@ const nativeFetch = (Bun as unknown as { fetch: typeof fetch }).fetch
 const binary = resolveAntflyBinary()
 
 if (!binary) {
-  // eslint-disable-next-line no-console
   console.warn('⚠ antfly workaround-regression pins SKIPPED — no antfly binary (see tasks/evidence-search-rebuild.md P0.1)')
   describe.skip('antfly workaround pins (no binary)', () => {})
 } else {

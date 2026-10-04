@@ -39,7 +39,6 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const binary = resolveAntflyBinary()
 
 if (!binary) {
-  // eslint-disable-next-line no-console
   console.warn('⚠ search-conformance/antfly SKIPPED — no antfly binary (set BAKIN_ANTFLY_BIN or build the dev worktree; see tasks/evidence-search-rebuild.md P0.1)')
   describe.skip('search conformance: antfly (no binary)', () => {})
 } else {

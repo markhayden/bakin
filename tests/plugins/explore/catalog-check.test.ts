@@ -36,7 +36,6 @@ const SHA_B = 'b'.repeat(40)
 const runChecksMock = mock(async (ids: readonly string[]) => {
   // Simulate the real behavior: persist a fresh remote marker for messaging.
   expect(ids).toEqual(['messaging'])
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const lockPath = join(testDir, 'plugins', 'lock.json')
   const lock = JSON.parse(require('fs').readFileSync(lockPath, 'utf-8'))
   lock.plugins.messaging.remoteHeadSha = SHA_B
