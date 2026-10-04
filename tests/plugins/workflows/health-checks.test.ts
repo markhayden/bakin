@@ -269,12 +269,17 @@ steps:
 `,
     )
     const results = observations(await checkWorkflowDefinitions(testDir))
-    expect(results.some(r =>
+    // zod reports a step's unknown key inside an `invalid_union` issue (the
+    // step schema is a union); the check must surface the member issue with
+    // the step's path, not the union's generic "Invalid input".
+    const drift = results.filter(r =>
       r.status === 'warning' &&
       r.summary.includes('stale-fields') &&
       r.summary.includes('unknown YAML keys') &&
       r.summary.includes('on_approve'),
-    )).toBe(true)
+    )
+    expect(drift).toHaveLength(1)
+    expect(drift[0].summary).toContain('at steps.1')
   })
 
   it('warns when a definition references a missing nested workflow (#374)', async () => {
