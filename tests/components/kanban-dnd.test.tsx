@@ -142,9 +142,18 @@ mock.module('@dnd-kit/dom', () => {
 
   class MockKeyboardSensor {}
 
+  // dnd-kit ≥0.4 configures drag feedback through this plugin; the card's
+  // `plugins` function must append its descriptor after the sortable defaults.
+  class MockFeedback {
+    static configure(options: Record<string, any>) {
+      return { plugin: 'Feedback', options }
+    }
+  }
+
   return {
     PointerSensor: MockPointerSensor,
     KeyboardSensor: MockKeyboardSensor,
+    Feedback: MockFeedback,
   }
 })
 
@@ -1017,8 +1026,22 @@ describe('TaskCard rendering', () => {
     expect(container.querySelector('[data-slot="card"]')).toBeTruthy()
     expect(container.querySelector('.cursor-grab')).toBeTruthy()
     expect(mockUseSortable).toHaveBeenCalledWith(expect.objectContaining({
-      feedback: 'clone',
+      plugins: expect.any(Function),
     }))
+  })
+
+  it('configures clone drag feedback through the Feedback plugin, keeping the sortable defaults', () => {
+    mockUseSortable.mockReturnValue({
+      handleRef: mock(), ref: mock(), sourceRef: mock(), targetRef: mock(),
+      isDragging: false, isDropping: false, isDragSource: false, isDropTarget: false,
+    })
+    const { TaskCard } = require('../../plugins/tasks/components/task-card') as typeof import('../../plugins/tasks/components/task-card')
+    render(<TaskCard task={makeTask('t-feedback', 'Feedback card')} columnId="todo" onDelete={mock()} onClick={mock()} />)
+
+    const input = mockUseSortable.mock.calls.at(-1)?.[0] as { plugins?: (defaults: unknown[]) => unknown[] }
+    expect(typeof input.plugins).toBe('function')
+    const defaults = [{ plugin: 'default-a' }, { plugin: 'default-b' }]
+    expect(input.plugins!(defaults)).toEqual([...defaults, { plugin: 'Feedback', options: { feedback: 'clone' } }])
   })
 
   it('keeps the sortable element free of an explicit handle so nested actions remain interactive', async () => {
