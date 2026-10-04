@@ -58,6 +58,8 @@ const AVAILABLE_TTL_MS = 3_000
 export interface AntflyClientOpts {
   /** Injectable for unit tests. */
   fetchImpl?: typeof fetch
+  /** Adapter authorization; throws before transport, including cached availability. */
+  requestGuard?: () => void
 }
 
 export class AntflySearchClient implements SearchAdapter {
@@ -67,11 +69,13 @@ export class AntflySearchClient implements SearchAdapter {
 
   private readonly settings: AntflySettings
   private readonly fetchImpl: typeof fetch
+  private readonly requestGuard?: () => void
   private availableCache: { value: boolean; at: number } | null = null
 
   constructor(settings: AntflySettings, opts?: AntflyClientOpts) {
     this.settings = settings
     this.fetchImpl = opts?.fetchImpl ?? fetch
+    this.requestGuard = opts?.requestGuard
   }
 
   private headers(): Record<string, string> {
@@ -90,6 +94,7 @@ export class AntflySearchClient implements SearchAdapter {
    * no server-side cancellation, so timeouts ABANDON the request.
    */
   private async request(method: string, path: string, body?: unknown, timeoutMs = WRITE_TIMEOUT_MS): Promise<Response> {
+    this.requestGuard?.()
     let response: Response
     try {
       response = await this.fetchImpl(`${this.settings.url}${path}`, {
@@ -133,6 +138,7 @@ export class AntflySearchClient implements SearchAdapter {
   async shutdown(): Promise<void> {}
 
   async available(): Promise<boolean> {
+    try { this.requestGuard?.() } catch { this.availableCache = null; return false }
     const now = Date.now()
     if (this.availableCache && now - this.availableCache.at < AVAILABLE_TTL_MS) return this.availableCache.value
     let value = false

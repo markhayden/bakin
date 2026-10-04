@@ -115,6 +115,8 @@ export interface SearchAdapterSetupInstallResult {
 }
 
 export interface SearchAdapterSetupOptions {
+  /** Explicit service-transfer authority; generic onboarding must leave this false. */
+  allowServiceClaim?: boolean
   interactive: boolean
   autoApprove: boolean
   json: boolean

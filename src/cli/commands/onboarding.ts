@@ -194,6 +194,7 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
     json,
     checkOnly: false,
     force: false,
+    allowServiceClaim: target === 'search',
   }
   const result = await withTtyRuntimeLogsSilenced({ isTTY, verbose }, async () => {
     const component = await componentMap[target]()

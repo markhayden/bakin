@@ -23,14 +23,19 @@ mock.module('../../../packages/core/src/content-dir', () => ({
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
+let seenSettings: Record<string, unknown> | undefined
+let installFails = false
+mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => join(testDir, 'openclaw'), getOpenClawPath: (...p: string[]) => join(testDir, 'openclaw', ...p), resetOpenClawHome: () => {} }))
 mock.module('../../../src/core/search-adapter-factory', () => ({
-  getSearchAdapterSetup: () => ({
+  getSearchAdapterSetup: (_adapter: string, _log: unknown, settings: Record<string, unknown>) => {
+    seenSettings = settings
+    return ({
     dependency: {
       name: 'antfly',
       check: async () => ({ name: 'antfly', status: 'ok', message: 'stub' }),
-      install: async () => ({ name: 'antfly', status: 'installed', message: 'stub install', durationMs: 1 }),
+      install: async () => ({ name: 'antfly', status: installFails ? 'failed' : 'installed', message: 'stub install', durationMs: 1 }),
     },
-  }),
+  }) },
 }))
 
 // Dynamic imports AFTER mock.module registration: search.ts captures the
@@ -58,6 +63,8 @@ function readSettingsFile(): Record<string, unknown> {
 }
 
 beforeEach(() => {
+  installFails = false
+  seenSettings = undefined
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   resetSettingsCache()
@@ -124,4 +131,16 @@ describe('search component legacy URL correction', () => {
     expect(result.status).toBe('installed')
     expect(result.message).not.toContain('Updated settings.json')
   })
+})
+
+it('resolves active settings and normalizes legacy URLs before setup without early persistence', async () => {
+  writeSettings({ search: { settings: { url: 'http://localhost:8080/api/v1' } } })
+  expect((await searchComponent.check()).status).toBe('broken')
+  expect(seenSettings?.url).toBe('http://127.0.0.1:3738')
+  installFails = true
+  expect((await searchComponent.install(optsAutoYes)).status).toBe('failed')
+  expect(JSON.stringify(readSettingsFile())).toContain('http://localhost:8080/api/v1')
+  writeSettings({ search: { settings: { url: 'http://isolated:9000' } } })
+  await searchComponent.check()
+  expect(seenSettings?.url).toBe('http://isolated:9000')
 })

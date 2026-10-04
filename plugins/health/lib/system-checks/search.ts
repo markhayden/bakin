@@ -17,7 +17,7 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
   const searchSettings = settings.search.settings
   // Lazy import keeps adapter helper setup off the cold path when the
   // check returns early (matches the original migration's pattern).
-  const { isSearchAdapterInstalled } = await import('../../../../src/core/search-adapter-factory')
+  const { isSearchAdapterInstalled, getSearchAdapterServiceStatus } = await import('../../../../src/core/search-adapter-factory')
 
   if (!searchSettings.enabled) {
     return healthObserved([healthError({
@@ -48,41 +48,71 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
   }
 
   const observations: HealthObservationInput[] = []
-  if (!isSearchAdapterInstalled(adapter)) {
-    observations.push(healthError({
-      key: 'engine.binary',
-      summary: 'Search engine binary is missing.',
-      evidence: { adapter, installed: false },
+  let service: import('../../../../src/core/search-adapter-factory').SearchAdapterServiceStatus
+  try {
+    service = getSearchAdapterServiceStatus(adapter, searchSettings)
+  } catch (err) {
+    return healthObserved([healthUnknown({
+      key: 'engine.supervision', summary: 'Search service ownership could not be verified.',
+      detail: err instanceof Error ? err.message : String(err),
+      incident: { key: 'supervision-unknown', title: 'Search service ownership is unknown', impact: 'Health cannot verify safe engine access.', disposition: 'watch', resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }], resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' } },
+    }), ...await safeOutboxObservations(true)])
+  }
+  if (service.refusal) {
+    const { reason, detail, remediation } = service.refusal
+    const label = remediation === 'install' ? 'Install Search for this home' : remediation === 'retry' ? 'Wait for the service change' : 'Configure isolated search'
+    return healthObserved([healthError({
+      key: 'engine.supervision', summary: 'Search is unavailable for this home.', detail,
+      evidence: { mode: service.mode, provisioned: false, reason },
       incident: {
-        key: 'binary-missing',
-        title: 'Search engine is not installed',
-        impact: 'Search cannot start or answer queries without its configured engine binary.',
-        disposition: 'action_required',
+        key: 'service-ownership', title: 'Search service access needs attention',
+        class: 'policy_denial', disposition: 'action_required',
+        impact: 'Queries are unavailable; queued writes remain in this home’s durable journal.',
         resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
         resolution: {
-          key: 'install-search',
-          type: 'instructions',
-          label: 'Install Search',
-          steps: ['Install the configured Search engine and its managed service, then rerun Health.'],
-          command: 'bakin install search',
+          key: 'search-service-access', type: 'instructions', label,
+          steps: [detail, ...(remediation === 'install'
+            ? ['An explicit claim moves the shared service to this permanent home. Stop the previous Bakin process first, run `bakin install search` with this home’s BAKIN_HOME, then restart Bakin.']
+            : remediation === 'configure-endpoint' ? ['Set search.settings.url to an independently managed isolated endpoint, then restart Bakin.'] : ['Retry after the service change finishes.'])],
         },
       },
-    }))
-    observations.push(...await safeOutboxObservations())
-    return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
+    }), ...await safeOutboxObservations(true)])
   }
-  observations.push(healthHealthy({
-    key: 'engine.binary',
-    summary: 'Search engine binary is installed.',
-    evidence: { adapter, installed: true },
-  }))
+  if (service.mode !== 'guest') {
+    if (!isSearchAdapterInstalled(adapter)) {
+      observations.push(healthError({
+        key: 'engine.binary',
+        summary: 'Search engine binary is missing.',
+        evidence: { adapter, installed: false },
+        incident: {
+          key: 'binary-missing',
+          title: 'Search engine is not installed',
+          impact: 'Search cannot start or answer queries without its configured engine binary.',
+          disposition: 'action_required',
+          resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
+          resolution: {
+            key: 'install-search',
+            type: 'instructions',
+            label: 'Install Search',
+            steps: ['Install the configured Search engine and its managed service, then rerun Health.'],
+            command: 'bakin install search',
+          },
+        },
+      }))
+      observations.push(...await safeOutboxObservations())
+      return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
+    }
+    observations.push(healthHealthy({
+      key: 'engine.binary',
+      summary: 'Search engine binary is installed.',
+      evidence: { adapter, installed: true },
+    }))
+  }
 
   // Supervision status (D3): who keeps the engine alive, and is the unit
   // provisioned? A missing unit means nothing restarts the engine after a
   // crash — `bakin install search` provisions it.
   try {
-    const { getSearchAdapterServiceStatus } = await import('../../../../src/core/search-adapter-factory')
-    const service = getSearchAdapterServiceStatus(adapter, searchSettings)
     if (!service.provisioned) {
       observations.push(healthWarning({
         key: 'engine.supervision',
@@ -107,7 +137,7 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
     } else {
       observations.push(healthHealthy({
         key: 'engine.supervision',
-        summary: `Search engine is supervised via ${service.mode}.`,
+        summary: service.mode === 'guest' ? 'Search engine is externally managed.' : `Search engine is supervised via ${service.mode}.`,
         detail: service.detail,
         evidence: { mode: service.mode, provisioned: true },
       }))
@@ -157,7 +187,8 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
             key: 'inspect-engine',
             type: 'instructions',
             label: 'Restore the Search engine',
-            steps: [
+            steps: service.mode === 'guest' ? ['Check the configured external search endpoint where it runs, then rerun Health.'] : [
+              'If Search was installed after Bakin started, restart Bakin to retry initialization.',
               'Run `bakin install search` — it re-provisions the service unit and starts the engine if it is dark (safe to run repeatedly).',
               'Still unreachable? Check `~/.bakin/logs/antfly.log` for crash loops — a broken model or corrupt data dir shows up there.',
               'Last resort: `bakin search:reset` stops the engine, wipes its derived index data (content and models untouched), starts clean, and rebuilds.',
@@ -412,9 +443,9 @@ export async function checkSearchIndexObservations(
   }
 }
 
-async function safeOutboxObservations(): Promise<HealthObservationInput[]> {
+async function safeOutboxObservations(accessRefused = false): Promise<HealthObservationInput[]> {
   try {
-    return await checkSearchOutboxObservations()
+    return await checkSearchOutboxObservations({ accessRefused })
   } catch (err) {
     return [healthUnknown({
       key: 'journal.status',

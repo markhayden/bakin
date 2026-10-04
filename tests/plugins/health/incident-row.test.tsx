@@ -19,7 +19,7 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({ root: testDir }),
 }))
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 import type { HealthIncident } from '@makinbakin/sdk/types'
 import { IncidentRow } from '@bakin/health/components/incident-row'
@@ -52,6 +52,17 @@ function item(overrides: Partial<HealthIncident> = {}): OverviewIncident {
 }
 
 describe('IncidentRow (#690)', () => {
+  it('exposes commandless ownership recovery through the existing instruction disclosure', () => {
+    render(<IncidentRow item={item({
+      status: 'error', class: 'policy_denial', disposition: 'action_required', effectiveDisposition: 'action_required',
+      resolution: { key: 'search-service-access', type: 'instructions', label: 'Configure isolated search',
+        steps: ['This temporary home cannot claim the shared service.', 'Configure an isolated endpoint, then restart Bakin.'] },
+    })} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Configure isolated search' }))
+    expect(screen.getByText('Configure an isolated endpoint, then restart Bakin.')).toBeTruthy()
+    expect(document.querySelector('code')).toBeNull()
+  })
+
   it.each(['acked', 'snoozed'] as const)('keeps %s incident metadata soft beside the solid primary status', (ackState) => {
     const incident = item({ class: 'cleanup_backlog', effectiveDisposition: 'advisory', ackState })
     incident.freshness = 'stale'

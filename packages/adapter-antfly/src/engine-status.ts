@@ -25,6 +25,7 @@ import {
   childPid,
   defaultServiceIo,
   detectServiceMode,
+  getServiceAccess,
   servicePaths,
   type ServiceIo,
 } from './service'
@@ -156,7 +157,10 @@ export function createEngineStatusProbe(
   return async (): Promise<SearchEngineStatus | null> => {
     const settings = getSettings()
     const mode = detectServiceMode(settings, io)
-    if (mode === 'guest') return null // externally managed — not ours to measure
+    if (mode === 'guest' || !getServiceAccess(settings, io).allowed) {
+      state = null
+      return null // foreign/refused processes and logs are not ours to measure
+    }
 
     const now = Date.now()
     const pid = await resolvePid(settings, io)

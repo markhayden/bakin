@@ -4,7 +4,7 @@
  *
  *   - macOS: a LaunchAgent (`~/Library/LaunchAgents/io.bakin.antfly.plist`,
  *     KeepAlive=true) managed via launchctl bootstrap/kickstart/bootout
- *     (legacy load/unload fallback for older macOS).
+ *     with ownership checked before all lifecycle changes.
  *   - Linux: a systemd user unit (`~/.config/systemd/user/bakin-antfly.service`,
  *     Restart=always) via systemctl --user.
  *   - No service manager (Docker rig, CI, tests): strict attached child —
@@ -19,12 +19,16 @@
  * old sidecar fingerprint + adoption lattice wholesale.
  */
 import { spawn, type ChildProcess } from 'child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, openSync } from 'fs'
-import { homedir } from 'os'
-import { dirname, join } from 'path'
+import { existsSync, mkdirSync, readFileSync, rmSync, openSync } from 'fs'
+import { homedir, tmpdir } from 'os'
+import { createConnection } from 'net'
+import { dirname, join, resolve } from 'path'
 import { createLogger } from '@bakin/core/logger'
 import { getBakinPaths } from '@bakin/core/content-dir'
-import { antflyBinaryPath, inferenceModelsRoot } from './paths'
+import { atomicWriteText } from '@bakin/core/storage/atomic-write'
+import { canonicalPath, evaluateOwnership, type ServiceOwnership, type OwnershipKind } from './service-ownership'
+import { withServiceLock, serviceLockBusy } from './service-lock'
+import { antflyBinaryPath, antflyHome, inferenceModelsRoot } from './paths'
 import { modelStructurallyComplete } from './model-pins'
 import type { AntflySettings } from './defaults'
 
@@ -47,6 +51,8 @@ export interface ServiceIo {
    *  Injectable so unit-rendering tests are independent of local model
    *  state; defaults to the real on-disk check. */
   modelReady?: (model: string) => boolean
+  tempRoots?: readonly string[]
+  portsReleased?: () => Promise<boolean>
 }
 
 async function realExec(cmd: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -88,7 +94,8 @@ export function isAntflyInstalled(): boolean {
 
 /** The default private-instance URL — anything else is guest mode. */
 export function isLocalDefaultUrl(url: string): boolean {
-  return url === 'http://127.0.0.1:3738' || url === 'http://localhost:3738'
+  const origin = new URL(url).origin
+  return origin === 'http://127.0.0.1:3738' || origin === 'http://localhost:3738'
 }
 
 export function detectServiceMode(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): ServiceMode {
@@ -119,13 +126,13 @@ export interface ServicePaths {
 }
 
 export function servicePaths(): ServicePaths {
-  const bakin = getBakinPaths()
+  const home = canonicalPath(getBakinPaths().home)
   return {
-    binary: antflyBinaryPath(),
-    dataDir: join(bakin.home, 'antfly'),
-    modelsDir: inferenceModelsRoot(),
+    binary: resolve(antflyBinaryPath()),
+    dataDir: join(home, 'antfly'),
+    modelsDir: resolve(inferenceModelsRoot()),
     // Same file the log-tail annotation pipeline (server-logs.ts) reads.
-    logFile: join(bakin.home, 'logs', 'antfly.log'),
+    logFile: join(home, 'logs', 'antfly.log'),
   }
 }
 
@@ -213,7 +220,12 @@ ${args}
 }
 
 export function renderSystemdUnit(argv: string[], logFile: string): string {
-  const exec = argv.map((a) => (a.includes(' ') ? `"${a}"` : a)).join(' ')
+  // systemd.service(5): $$ and %% preserve literal expansion characters.
+  const exec = argv.map((a) => {
+    if (/[\r\n\0]/.test(a)) throw new Error('Unsupported control character in service argument')
+    const escaped = a.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('$', () => '$$').replaceAll('%', '%%')
+    return /[\s"'\\$%]/.test(a) ? `"${escaped}"` : escaped
+  }).join(' ')
   return `# Managed by Bakin — do not edit (bakin install search rewrites this file).
 [Unit]
 Description=Bakin private antfly search engine
@@ -223,8 +235,8 @@ ExecStart=${exec}
 Restart=always
 RestartSec=2
 LimitNOFILE=65536
-StandardOutput=append:${logFile}
-StandardError=append:${logFile}
+StandardOutput=append:${logFile.replaceAll('%', '%%')}
+StandardError=append:${logFile.replaceAll('%', '%%')}
 
 [Install]
 WantedBy=default.target
@@ -243,207 +255,226 @@ export function systemdUnitPath(io: ServiceIo = defaultServiceIo()): string {
 // Provisioning + control
 // ---------------------------------------------------------------------------
 
-export interface AntflyServiceStatus {
+export interface ServiceAccess {
   mode: ServiceMode
-  /** Unit file present for the detected service mode (n/a modes are true). */
-  provisioned: boolean
-  detail?: string
+  allowed: boolean
+  ownership?: ServiceOwnership
+  reason?: OwnershipKind | 'busy'
+  detail: string
+  remediation?: 'install' | 'configure-endpoint' | 'retry'
+  unitPath?: string
+}
+export interface ServiceIntent { intent?: 'install' | 'setup' }
+
+function supervisedMode(io: ServiceIo): 'launchd' | 'systemd' | undefined {
+  if (io.env.BAKIN_SEARCH_SERVICE_MODE === 'launchd') return 'launchd'
+  if (io.env.BAKIN_SEARCH_SERVICE_MODE === 'systemd') return 'systemd'
+  // Unit tests must inject a native mode explicitly; never inspect real units.
+  if (io.env.NODE_ENV === 'test' || io.env.VITEST) return undefined
+  if (io.platform === 'darwin' && io.hasCommand('launchctl')) return 'launchd'
+  if (io.platform === 'linux' && io.hasCommand('systemctl')) return 'systemd'
+  return undefined
 }
 
-/** Cheap, read-only: one stat per call. Doctor/status surfaces only. */
-export function getAntflyServiceStatus(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): AntflyServiceStatus {
+export function getServiceAccess(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): ServiceAccess {
   const mode = detectServiceMode(settings, io)
-  if (mode === 'guest') return { mode, provisioned: true, detail: `externally managed (${settings.url})` }
-  if (mode === 'child') return { mode, provisioned: true, detail: 'strict child (ephemeral environment)' }
-  const unitPath = mode === 'launchd' ? launchdPlistPath(io) : systemdUnitPath(io)
-  const provisioned = existsSync(unitPath)
-  return { mode, provisioned, ...(provisioned ? {} : { detail: `unit file missing: ${unitPath}` }) }
+  if (mode === 'guest') return { mode, allowed: true, detail: `Externally managed (${settings.url}).` }
+  const supervisor = supervisedMode(io)
+  const unitPath = supervisor === 'launchd' ? launchdPlistPath(io) : supervisor === 'systemd' ? systemdUnitPath(io) : undefined
+  const ownership = evaluateOwnership({
+    home: getBakinPaths().home, mode: supervisor, unitPath,
+    tempRoots: io.tempRoots ?? ['/tmp', '/private/tmp', '/var/tmp', io.env.TMPDIR ?? tmpdir()],
+  })
+  if (mode === 'child' && supervisor) {
+    const detail = 'A child-mode override cannot manage the native search service. Unset BAKIN_SEARCH_SERVICE_MODE or configure an isolated guest endpoint.'
+    return { mode, unitPath, allowed: false, ownership: { ...ownership, claimable: false }, reason: 'unknown-owner', remediation: 'configure-endpoint', detail }
+  }
+  const access: ServiceAccess = {
+    mode, ownership, unitPath, allowed: ownership.kind === 'owner',
+    detail: ownership.detail,
+    ...(ownership.kind === 'owner' ? {} : {
+      reason: ownership.kind,
+      remediation: ownership.claimable ? 'install' : 'configure-endpoint',
+    } as const),
+  }
+  // A refusal requires no more shared-state reads, let alone writes.
+  if (access.allowed && serviceLockBusy(serviceLockPath(access))) {
+    return { ...access, allowed: false, reason: 'busy', remediation: 'retry', detail: `Search service change in progress (${serviceLockPath(access)}). Retry when it finishes; after a crash, stop all service-changing processes before clearing the lock.` }
+  }
+  return access
+}
+
+function serviceLockPath(access: ServiceAccess): string {
+  return access.unitPath ? `${access.unitPath}.lock` : join(antflyHome(), 'service.lock')
+}
+
+function assertAccess(access: ServiceAccess, opts: ServiceIntent): void {
+  if (access.allowed) return
+  if (access.ownership?.claimable && access.reason !== 'busy') {
+    if (opts.intent === 'install' || (opts.intent === 'setup' && access.reason === 'unclaimed-home')) return
+  }
+  throw new Error(access.detail)
+}
+
+/** The outer installer/reset holds this across every nested control and data mutation. */
+export async function withServiceOperation<T>(settings: AntflySettings, io: ServiceIo, opts: ServiceIntent, fn: () => Promise<T>): Promise<T> {
+  const access = getServiceAccess(settings, io)
+  if (access.mode === 'guest') throw new Error(`Search is externally managed (${settings.url}); manage it at its endpoint.`)
+  assertAccess(access, opts)
+  return withServiceLock(serviceLockPath(access), async () => {
+    assertAccess(getServiceAccess(settings, io), opts)
+    return fn()
+  })
+}
+
+export interface AntflyServiceStatus {
+  mode: ServiceMode
+  provisioned: boolean
+  detail?: string
+  refusal?: { reason: string; detail: string; remediation: 'install' | 'configure-endpoint' | 'retry' }
+}
+
+export function getAntflyServiceStatus(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): AntflyServiceStatus {
+  const access = getServiceAccess(settings, io)
+  return {
+    mode: access.mode, provisioned: access.allowed, detail: access.detail,
+    ...(!access.allowed ? { refusal: { reason: access.reason!, detail: access.detail, remediation: access.remediation! } } : {}),
+  }
 }
 
 export interface EnsureResult {
   mode: ServiceMode
-  /** 'reloaded' = config was already right but the unit was NOT loaded
-   *  (a bootout survivor) — ensure re-loaded it (#859 self-heal). */
-  action: 'unchanged' | 'provisioned' | 'restarted' | 'reloaded' | 'skipped'
+  action: 'unchanged' | 'provisioned' | 'restarted' | 'reloaded' | 'skipped' | `refused-${OwnershipKind | 'busy'}`
+  detail?: string
 }
 
-/** The --data-dir argument in a rendered plist/unit, for repoint detection. */
-function extractDataDir(unitContent: string): string | null {
-  const plist = /<string>--data-dir<\/string>\s*<string>([^<]+)<\/string>/.exec(unitContent)
-  if (plist) return plist[1]
-  const flat = /--data-dir\s+(\S+)/.exec(unitContent)
-  return flat ? flat[1] : null
+const launchdTarget = () => `gui/${typeof process.getuid === 'function' ? process.getuid() : 501}`
+async function checkedExec(io: ServiceIo, cmd: string, args: string[]): Promise<void> {
+  const result = await io.exec(cmd, args)
+  if (result.code !== 0) throw new Error(`${cmd} ${args.join(' ')} failed (${result.code}): ${result.stderr || result.stdout}`)
 }
 
-/**
- * The OS service is MACHINE-GLOBAL but its data dir follows whichever
- * BAKIN_HOME ran the install — an isolated/dev home can silently hijack the
- * service away from the production home. Rewrites that change the data dir
- * get a loud warning naming both sides so the repoint is never invisible.
- */
-function warnOnDataDirRepoint(current: string | null, nextDataDir: string): void {
-  if (current === null) return
-  const previous = extractDataDir(current)
-  if (previous && previous !== nextDataDir) {
-    log.warn('search service data-dir REPOINTED — the OS service is machine-global and now serves a different Bakin home', {
-      from: previous,
-      to: nextDataDir,
-      hint: 'run `bakin install search` from the home that should own the service to point it back',
+/** No readiness probe can prove a port is free: an unready engine still binds it. */
+export async function assertServicePortsReleased(io: ServiceIo = defaultServiceIo()): Promise<void> {
+  if (io.portsReleased) {
+    if (!await io.portsReleased()) throw new Error('Search API/health ports are still occupied. Stop the unrelated listener manually before installing search.')
+    return
+  }
+  for (const port of [3738, 3739]) {
+    await new Promise<void>((resolve, reject) => {
+      const socket = createConnection({ host: '127.0.0.1', port })
+      socket.setTimeout(1500)
+      socket.once('connect', () => { socket.destroy(); reject(new Error(`Search port ${port} is still occupied. Stop the unrelated listener manually before installing search.`)) })
+      socket.once('timeout', () => { socket.destroy(); reject(new Error(`Could not establish whether search port ${port} is free.`)) })
+      socket.once('error', (err: NodeJS.ErrnoException) => { socket.destroy(); if (err.code === 'ECONNREFUSED') resolve(); else reject(err) })
     })
   }
 }
 
-/**
- * Idempotent provisioning: byte-compare the rendered unit with on-disk.
- * Identical → nothing (the whole boot-time cost is one file read). Drift →
- * rewrite + restart. Never blocks long; failures degrade honestly (search
- * unavailable → outbox queues, doctor reports).
- */
-export async function ensureProvisioned(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): Promise<EnsureResult> {
-  const mode = detectServiceMode(settings, io)
-  if (mode === 'guest' || mode === 'child') return { mode, action: 'skipped' }
-
-  const paths = servicePaths()
-  const argv = buildServiceArgv(settings, paths, { modelReady: io.modelReady })
-  mkdirSync(dirname(paths.logFile), { recursive: true })
-  mkdirSync(paths.dataDir, { recursive: true })
-
+async function stopSupervised(mode: ServiceMode, io: ServiceIo): Promise<void> {
   if (mode === 'launchd') {
-    const plistPath = launchdPlistPath(io)
-    const desired = renderLaunchdPlist(argv, paths.logFile)
-    const current = existsSync(plistPath) ? readFileSync(plistPath, 'utf-8') : null
-    const uidUnchanged = typeof process.getuid === 'function' ? process.getuid() : 501
+    const target = `${launchdTarget()}/${LAUNCHD_LABEL}`
+    const stopped = await io.exec('launchctl', ['bootout', target])
+    if (stopped.code !== 0) {
+      const state = await io.exec('launchctl', ['print', target])
+      if (state.code !== 113) throw new Error(`Cannot stop search service: ${stopped.stderr || state.stderr}`)
+    }
+  } else if (mode === 'systemd') {
+    const stopped = await io.exec('systemctl', ['--user', 'stop', SYSTEMD_UNIT])
+    if (stopped.code !== 0) {
+      const state = await io.exec('systemctl', ['--user', 'show', SYSTEMD_UNIT, '--property=LoadState', '--value'])
+      if (state.code !== 0 || state.stdout.trim() !== 'not-found') throw new Error(`Cannot stop search service: ${stopped.stderr || state.stderr}`)
+    }
+  } else await stopChildAndWait()
+  await assertServicePortsReleased(io)
+}
+
+export async function ensureProvisioned(settings: AntflySettings, io: ServiceIo = defaultServiceIo(), opts: ServiceIntent = {}): Promise<EnsureResult> {
+  const access = getServiceAccess(settings, io)
+  if (access.mode === 'guest') return { mode: access.mode, action: 'skipped' }
+  try { assertAccess(access, opts) } catch {
+    log.warn('Search service ownership refused', { ...access })
+    return { mode: access.mode, action: `refused-${access.reason!}`, detail: access.detail }
+  }
+  return withServiceOperation(settings, io, opts, async () => {
+    const mode = detectServiceMode(settings, io)
+    if (mode === 'child') return { mode, action: 'skipped' }
+    const paths = servicePaths()
+    const argv = buildServiceArgv(settings, paths, { modelReady: io.modelReady })
+    const unitPath = mode === 'launchd' ? launchdPlistPath(io) : systemdUnitPath(io)
+    const desired = mode === 'launchd' ? renderLaunchdPlist(argv, paths.logFile) : renderSystemdUnit(argv, paths.logFile)
+    const current = existsSync(unitPath) ? readFileSync(unitPath, 'utf8') : null
     if (current === desired) {
-      // A correct plist on disk says nothing about launchd state: the
-      // installer's stop (bootout) or a human unload leaves the unit
-      // UNLOADED with identical bytes — the exact hole that shipped a
-      // green install with the engine down (#859). One read-only probe
-      // makes 'unchanged' honest; heal by bootstrapping the same plist.
-      const probe = await io.exec('launchctl', ['print', `gui/${uidUnchanged}/${LAUNCHD_LABEL}`])
-      if (probe.code === 0) return { mode, action: 'unchanged' }
-      const boot = await io.exec('launchctl', ['bootstrap', `gui/${uidUnchanged}`, plistPath])
-      if (boot.code !== 0) {
-        log.error('launchd unit was unloaded and re-bootstrap failed', undefined, { stderr: boot.stderr })
-      } else {
-        log.info('launchd unit was unloaded with a correct plist — re-bootstrapped', { plistPath })
+      const state = mode === 'launchd'
+        ? await io.exec('launchctl', ['print', `${launchdTarget()}/${LAUNCHD_LABEL}`])
+        : await io.exec('systemctl', ['--user', 'is-active', SYSTEMD_UNIT])
+      if (state.code === 0 || (mode === 'systemd' && state.stdout.trim() === 'activating')) return { mode, action: 'unchanged' }
+      // Only a known unloaded/stopped state is recoverable, not permission/transport failures.
+      if (mode === 'launchd' && state.code !== 113) throw new Error(`Cannot inspect search service: ${state.stderr}`)
+      if (mode === 'systemd' && !['inactive', 'failed', 'unknown'].includes(state.stdout.trim())) throw new Error(`Cannot inspect search service: ${state.stderr}`)
+      await assertServicePortsReleased(io)
+      if (mode === 'launchd') await checkedExec(io, 'launchctl', ['bootstrap', launchdTarget(), unitPath])
+      else {
+        // A previous attempt may have published this unit but failed to reload
+        // or enable it. Never restart with the manager's cached previous owner.
+        await checkedExec(io, 'systemctl', ['--user', 'daemon-reload'])
+        await checkedExec(io, 'systemctl', ['--user', 'enable', '--now', SYSTEMD_UNIT])
       }
       return { mode, action: 'reloaded' }
     }
-    warnOnDataDirRepoint(current, paths.dataDir)
-    mkdirSync(dirname(plistPath), { recursive: true })
-    writeFileSync(plistPath, desired)
-    const uid = typeof process.getuid === 'function' ? process.getuid() : 501
-    if (current !== null) {
-      await io.exec('launchctl', ['bootout', `gui/${uid}/${LAUNCHD_LABEL}`])
+    // Stop BEFORE publishing new ownership. A healthy old engine is never proof of a successful claim.
+    await stopSupervised(mode, io)
+    mkdirSync(dirname(paths.logFile), { recursive: true })
+    mkdirSync(paths.dataDir, { recursive: true })
+    atomicWriteText(unitPath, desired)
+    if (mode === 'launchd') await checkedExec(io, 'launchctl', ['bootstrap', launchdTarget(), unitPath])
+    else {
+      await checkedExec(io, 'systemctl', ['--user', 'daemon-reload'])
+      await checkedExec(io, 'systemctl', ['--user', 'enable', '--now', SYSTEMD_UNIT])
     }
-    const bootstrap = await io.exec('launchctl', ['bootstrap', `gui/${uid}`, plistPath])
-    if (bootstrap.code !== 0) {
-      // Older macOS: fall back to the legacy subcommands.
-      await io.exec('launchctl', ['unload', plistPath])
-      const load = await io.exec('launchctl', ['load', plistPath])
-      if (load.code !== 0) {
-        log.error('launchd provisioning failed', undefined, { stderr: `${bootstrap.stderr} ${load.stderr}`.trim() })
-      }
+    if (access.ownership?.ownerHome && access.ownership.kind === 'foreign-home') {
+      log.info('Search service explicitly claimed', { from: access.ownership.ownerHome, to: access.ownership.home, unitPath })
     }
     return { mode, action: current === null ? 'provisioned' : 'restarted' }
-  }
+  })
+}
 
-  // systemd user unit
-  const unitPath = systemdUnitPath(io)
-  const desired = renderSystemdUnit(argv, paths.logFile)
-  const current = existsSync(unitPath) ? readFileSync(unitPath, 'utf-8') : null
-  if (current === desired) {
-    // Same honesty as launchd (#859): a byte-identical unit file can still
-    // be stopped. `is-active` exits 0 only when active; 'activating' (exit 3
-    // with that stdout) is a unit already on its way up — don't double-start.
-    const probe = await io.exec('systemctl', ['--user', 'is-active', SYSTEMD_UNIT])
-    if (probe.code === 0 || probe.stdout.trim() === 'activating') return { mode, action: 'unchanged' }
-    const start = await io.exec('systemctl', ['--user', 'start', SYSTEMD_UNIT])
-    if (start.code !== 0) {
-      log.error('systemd unit was stopped and restart failed', undefined, { stderr: start.stderr })
-    } else {
-      log.info('systemd unit was stopped with a correct unit file — started', { unitPath })
+export async function stopService(settings: AntflySettings, io: ServiceIo = defaultServiceIo(), opts: ServiceIntent = {}): Promise<void> {
+  return withServiceOperation(settings, io, opts, () => stopSupervised(detectServiceMode(settings, io), io))
+}
+
+export async function startService(settings: AntflySettings, io: ServiceIo = defaultServiceIo(), opts: ServiceIntent = {}): Promise<void> {
+  return withServiceOperation(settings, io, opts, async () => {
+    const mode = detectServiceMode(settings, io)
+    if (mode === 'child') {
+      if (childPid()) return
+      await assertServicePortsReleased(io)
+      startChild(settings, io)
+      return
     }
-    return { mode, action: 'reloaded' }
-  }
-  warnOnDataDirRepoint(current, paths.dataDir)
-  mkdirSync(dirname(unitPath), { recursive: true })
-  writeFileSync(unitPath, desired)
-  await io.exec('systemctl', ['--user', 'daemon-reload'])
-  const enable = await io.exec('systemctl', ['--user', 'enable', '--now', SYSTEMD_UNIT])
-  if (current !== null) {
-    await io.exec('systemctl', ['--user', 'restart', SYSTEMD_UNIT])
-  }
-  if (enable.code !== 0) {
-    log.error('systemd provisioning failed', undefined, { stderr: enable.stderr, hint: 'headless boxes may need: loginctl enable-linger' })
-  }
-  return { mode, action: current === null ? 'provisioned' : 'restarted' }
+    const ensured = await ensureProvisioned(settings, io, opts)
+    if (ensured.action.startsWith('refused-')) throw new Error(ensured.detail)
+  })
 }
 
-/** Stop the supervised service (upgrades: stop → swap binary → start). */
-export async function stopService(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): Promise<void> {
-  const mode = detectServiceMode(settings, io)
-  if (mode === 'launchd') {
-    const uid = typeof process.getuid === 'function' ? process.getuid() : 501
-    await io.exec('launchctl', ['bootout', `gui/${uid}/${LAUNCHD_LABEL}`])
-  } else if (mode === 'systemd') {
-    await io.exec('systemctl', ['--user', 'stop', SYSTEMD_UNIT])
-  } else if (mode === 'child') {
-    stopChild()
-  }
-}
-
-export async function startService(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): Promise<void> {
-  const mode = detectServiceMode(settings, io)
-  if (mode === 'launchd') {
-    const uid = typeof process.getuid === 'function' ? process.getuid() : 501
-    const kick = await io.exec('launchctl', ['kickstart', '-k', `gui/${uid}/${LAUNCHD_LABEL}`])
-    if (kick.code !== 0) {
-      // kickstart cannot start an UNLOADED unit (the post-bootout upgrade
-      // window, #859) — bootstrap the existing plist directly. Only when
-      // that also fails (plist missing/invalid) fall back to a full
-      // re-provision; ensureProvisioned's unchanged fast path would no-op
-      // on a byte-identical plist, which is exactly the state kickstart
-      // just failed in. start = make it run; ensure = make the config right.
-      const boot = await io.exec('launchctl', ['bootstrap', `gui/${uid}`, launchdPlistPath(io)])
-      if (boot.code !== 0) await ensureProvisioned(settings, io)
-    }
-  } else if (mode === 'systemd') {
-    await io.exec('systemctl', ['--user', 'start', SYSTEMD_UNIT])
-  } else if (mode === 'child') {
-    startChild(settings)
-  }
-}
-
-/**
- * Gracefully restart the supervised engine (doctor repair for a wedged
- * engine). SIGTERM first so the engine can flush — a hard kill mid-write
- * is exactly what seeds the startup catch-up spin on the next boot.
- */
 export async function restartService(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): Promise<void> {
-  const mode = detectServiceMode(settings, io)
-  if (mode === 'guest') {
-    throw new Error(`engine is externally managed (${settings.url}) — restart it where it runs`)
-  }
-  if (mode === 'launchd') {
-    const uid = typeof process.getuid === 'function' ? process.getuid() : 501
-    // SIGTERM + KeepAlive=true → launchd respawns the service cleanly.
-    const kill = await io.exec('launchctl', ['kill', 'SIGTERM', `gui/${uid}/${LAUNCHD_LABEL}`])
-    // Not loaded (or older macOS) — the one start path owns the fallbacks.
-    if (kill.code !== 0) await startService(settings, io)
-    return
-  }
-  if (mode === 'systemd') {
-    const restart = await io.exec('systemctl', ['--user', 'restart', SYSTEMD_UNIT])
-    if (restart.code !== 0) await ensureProvisioned(settings, io)
-    return
-  }
-  // Strict child: wait for the old process to actually release the port —
-  // spawning immediately races the dying engine for the 3738 bind, and a
-  // bind-failure exit is never respawned (strict child, no restart ladder),
-  // which would convert a wedged engine into a dead one (review finding).
-  await stopChildAndWait()
-  startChild(settings)
+  return withServiceOperation(settings, io, {}, async () => {
+    await stopService(settings, io)
+    await startService(settings, io)
+  })
+}
+
+export async function removeService(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): Promise<void> {
+  return withServiceOperation(settings, io, {}, async () => {
+    const mode = detectServiceMode(settings, io)
+    await stopService(settings, io)
+    if (mode === 'launchd') rmSync(launchdPlistPath(io), { force: true })
+    if (mode === 'systemd') {
+      await checkedExec(io, 'systemctl', ['--user', 'disable', SYSTEMD_UNIT])
+      rmSync(systemdUnitPath(io), { force: true })
+      await checkedExec(io, 'systemctl', ['--user', 'daemon-reload'])
+    }
+  })
 }
 
 /**
@@ -477,22 +508,6 @@ export function childPid(): number | null {
   return child && child.exitCode === null ? child.pid ?? null : null
 }
 
-/** Remove the service entirely (uninstall path). */
-export async function removeService(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): Promise<void> {
-  const mode = detectServiceMode(settings, io)
-  if (mode === 'launchd') {
-    const uid = typeof process.getuid === 'function' ? process.getuid() : 501
-    await io.exec('launchctl', ['bootout', `gui/${uid}/${LAUNCHD_LABEL}`])
-    rmSync(launchdPlistPath(io), { force: true })
-  } else if (mode === 'systemd') {
-    await io.exec('systemctl', ['--user', 'disable', '--now', SYSTEMD_UNIT])
-    rmSync(systemdUnitPath(io), { force: true })
-    await io.exec('systemctl', ['--user', 'daemon-reload'])
-  } else if (mode === 'child') {
-    stopChild()
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Strict child fallback (ephemeral environments only)
 // ---------------------------------------------------------------------------
@@ -500,7 +515,8 @@ export async function removeService(settings: AntflySettings, io: ServiceIo = de
 // globalThis so HMR/module re-eval never leaks a second child.
 const g = globalThis as { __bakinAntflyChild?: ChildProcess | null }
 
-export function startChild(settings: AntflySettings): void {
+export function startChild(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): void {
+  assertAccess(getServiceAccess(settings, io), {})
   if (g.__bakinAntflyChild && g.__bakinAntflyChild.exitCode === null) return
   const paths = servicePaths()
   if (!existsSync(paths.binary)) {
@@ -509,7 +525,7 @@ export function startChild(settings: AntflySettings): void {
   }
   mkdirSync(dirname(paths.logFile), { recursive: true })
   mkdirSync(paths.dataDir, { recursive: true })
-  const argv = buildServiceArgv(settings, paths)
+  const argv = buildServiceArgv(settings, paths, { modelReady: io.modelReady })
   const logFd = openSync(paths.logFile, 'a')
   const child = spawn(argv[0], argv.slice(1), { stdio: ['ignore', logFd, logFd] })
   g.__bakinAntflyChild = child

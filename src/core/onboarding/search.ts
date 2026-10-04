@@ -5,7 +5,6 @@ import { askYesNo } from './prompts'
 import type { OnboardingComponent } from './types'
 
 const log = createLogger('onboarding:search')
-const setup = getSearchAdapterSetup('antfly', log)
 
 /**
  * Pre-0.2 default URLs that may linger in settings.json. ONLY these exact
@@ -22,6 +21,12 @@ const LEGACY_DEFAULT_URLS = new Set([
 ])
 
 const CURRENT_DEFAULT_URL = 'http://127.0.0.1:3738'
+
+function setup() {
+  const settings = getSettings().search.settings
+  const legacy = typeof settings.url === 'string' && LEGACY_DEFAULT_URLS.has(settings.url)
+  return { legacy, setup: getSearchAdapterSetup('antfly', log, legacy ? { ...settings, url: CURRENT_DEFAULT_URL } : settings) }
+}
 
 function correctLegacySettingsUrl(): string | null {
   try {
@@ -44,8 +49,12 @@ function correctLegacySettingsUrl(): string | null {
 
 export const searchComponent: OnboardingComponent = {
   name: 'search',
-  check: () => setup.dependency.check().then((result) => ({ ...result, name: 'search' })),
-  install: (opts) => setup.dependency.install({
+  check: async () => {
+    const current = setup()
+    const result = await current.setup.dependency.check()
+    return { ...result, name: 'search', ...(current.legacy && result.status === 'ok' ? { status: 'broken' as const, message: 'Search URL needs correction during installation.' } : {}) }
+  },
+  install: (opts) => setup().setup.dependency.install({
     ...opts,
     autoApprove: opts.autoApprove || opts.approvedComponents?.includes('search') === true,
     askYesNo,

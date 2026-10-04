@@ -3,5 +3,5 @@ import { definePluginUiConformance } from '@makinbakin/sdk/testing/ui/conformanc
 export default definePluginUiConformance({
   pluginId: 'health',
   fixtureEntry: './tests/ui.fixture.tsx',
-  readySelector: '[data-testid="installed-plugin-table-scroll"] [data-slot="data-table"]',
+  readySelector: '[data-incident-id="search-ownership"] button[data-variant="outline"][aria-expanded="true"]',
 })

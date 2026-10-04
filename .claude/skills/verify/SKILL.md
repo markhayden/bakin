@@ -10,11 +10,10 @@ Never verify against it. Boot a throwaway instance instead:
 
 ```bash
 VHOME=$(mktemp -d /tmp/bakin-verify-XXXXXX)
-# CRITICAL: guest-mode search URL BEFORE boot. A default-settings home makes
-# the antfly adapter provision the MACHINE-GLOBAL io.bakin.antfly LaunchAgent
-# pointed at $VHOME — which you then delete (2026-07-12 incident: production
-# search served a deleted temp dir). Any non-default URL = guest mode =
-# never provisions/spawns/rewrites the OS service.
+# Keep verification on an explicit isolated endpoint. Ownership guards now
+# refuse a temporary/default-home boot without touching the shared service
+# or sending it HTTP; search would remain unavailable. A different origin
+# is guest mode, so Bakin never manages that endpoint's service or files.
 echo '{"search":{"settings":{"url":"http://127.0.0.1:39999"}}}' > "$VHOME/settings.json"
 BAKIN_HOME=$VHOME BAKIN_SKIP_ONBOARDING_CHECK=1 PORT=3799 BAKIN_DISABLE_FILE_LOG=1 \
   nohup bun run server.ts serve > /tmp/bakin-verify-server.log 2>&1 &
@@ -22,7 +21,7 @@ sleep 4 && curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3799/api/pl
 ```
 
 Gotchas (learned the hard way — see memory files):
-- The guest-URL settings line above is NON-OPTIONAL (launchd-clobber guard).
+- Keep the guest-URL settings line for explicit verification isolation. Port 39999 is intentionally unavailable; use a dedicated test engine there when verifying search.
 - Runtime turns can't be driven here: the OpenClaw adapter's gateway port is
   hardcoded (18789) and whatever owns it (production gateway / dockerized rig)
   will reject or, worse, execute them. Use `bun run instance dev --mode isolated`

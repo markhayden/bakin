@@ -76,10 +76,15 @@ async function readMockTableStats() {
   if (mockTableStatsError) throw mockTableStatsError
   return mockTableStats
 }
-const mockServiceStatus = { mode: 'launchd' as const, provisioned: true }
+let mockServiceStatus: import('../../../src/core/search-adapter-factory').SearchAdapterServiceStatus = { mode: 'launchd', provisioned: true }
+let mockServiceStatusError: Error | null = null
+let searchProbeCalls = 0
 mock.module('../../../src/core/search-adapter-factory', () => ({
   isSearchAdapterInstalled: () => mockSearchInstalled,
-  getSearchAdapterServiceStatus: () => mockServiceStatus,
+  getSearchAdapterServiceStatus: () => {
+    if (mockServiceStatusError) throw mockServiceStatusError
+    return mockServiceStatus
+  },
 }))
 
 // New-check seams: outbox facade + blue/green table states. Mutable so the
@@ -211,19 +216,19 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 mock.module('../../../src/core/app-services', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats, list: readMockEngineTables }, capabilities: () => mockSearchCapabilities },
+    search: { available: async () => { searchProbeCalls++; return mockSearchAvailable }, tables: { stats: readMockTableStats, list: readMockEngineTables }, capabilities: () => mockSearchCapabilities },
     tasks: {},
     health: {},
   }),
   maybeGetAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable },
+    search: { available: async () => { searchProbeCalls++; return mockSearchAvailable } },
     tasks: {},
     health: {},
   }),
   createAppServices: async () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable },
+    search: { available: async () => { searchProbeCalls++; return mockSearchAvailable } },
     tasks: {},
     health: {},
   }),
@@ -231,19 +236,19 @@ mock.module('../../../src/core/app-services', () => ({
 mock.module('../../../src/core/app-services-store', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats, list: readMockEngineTables }, capabilities: () => mockSearchCapabilities },
+    search: { available: async () => { searchProbeCalls++; return mockSearchAvailable }, tables: { stats: readMockTableStats, list: readMockEngineTables }, capabilities: () => mockSearchCapabilities },
     tasks: {},
     health: {},
   }),
   maybeGetAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable },
+    search: { available: async () => { searchProbeCalls++; return mockSearchAvailable } },
     tasks: {},
     health: {},
   }),
   createAppServices: async () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable },
+    search: { available: async () => { searchProbeCalls++; return mockSearchAvailable } },
     tasks: {},
     health: {},
   }),
@@ -251,19 +256,19 @@ mock.module('../../../src/core/app-services-store', () => ({
 mock.module('../../../src/core/app-services.ts', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats, list: readMockEngineTables }, capabilities: () => mockSearchCapabilities },
+    search: { available: async () => { searchProbeCalls++; return mockSearchAvailable }, tables: { stats: readMockTableStats, list: readMockEngineTables }, capabilities: () => mockSearchCapabilities },
     tasks: {},
     health: {},
   }),
   maybeGetAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable },
+    search: { available: async () => { searchProbeCalls++; return mockSearchAvailable } },
     tasks: {},
     health: {},
   }),
   createAppServices: async () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable },
+    search: { available: async () => { searchProbeCalls++; return mockSearchAvailable } },
     tasks: {},
     health: {},
   }),
@@ -271,19 +276,19 @@ mock.module('../../../src/core/app-services.ts', () => ({
 mock.module('@/core/app-services', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats, list: readMockEngineTables }, capabilities: () => mockSearchCapabilities },
+    search: { available: async () => { searchProbeCalls++; return mockSearchAvailable }, tables: { stats: readMockTableStats, list: readMockEngineTables }, capabilities: () => mockSearchCapabilities },
     tasks: {},
     health: {},
   }),
   maybeGetAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable },
+    search: { available: async () => { searchProbeCalls++; return mockSearchAvailable } },
     tasks: {},
     health: {},
   }),
   createAppServices: async () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable },
+    search: { available: async () => { searchProbeCalls++; return mockSearchAvailable } },
     tasks: {},
     health: {},
   }),
@@ -291,19 +296,19 @@ mock.module('@/core/app-services', () => ({
 mock.module('@/core/app-services-store', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats, list: readMockEngineTables }, capabilities: () => mockSearchCapabilities },
+    search: { available: async () => { searchProbeCalls++; return mockSearchAvailable }, tables: { stats: readMockTableStats, list: readMockEngineTables }, capabilities: () => mockSearchCapabilities },
     tasks: {},
     health: {},
   }),
   maybeGetAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable },
+    search: { available: async () => { searchProbeCalls++; return mockSearchAvailable } },
     tasks: {},
     health: {},
   }),
   createAppServices: async () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable },
+    search: { available: async () => { searchProbeCalls++; return mockSearchAvailable } },
     tasks: {},
     health: {},
   }),
@@ -404,6 +409,9 @@ function searchConsistencyIncidentTarget(logical: string): HealthRepairTarget {
 }
 
 beforeEach(() => {
+  mockServiceStatus = { mode: 'launchd', provisioned: true }
+  mockServiceStatusError = null
+  searchProbeCalls = 0
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   mockUsingBakinHome = true
@@ -1249,3 +1257,68 @@ describe('plugin registration', () => {
     }
   })
 })
+
+for (const installed of [false, true]) {
+  it(`ownership refusal takes precedence over binary/engine failures (binary installed: ${installed})`, async () => {
+    mockSearchEnabled = true
+    mockSearchInstalled = installed
+    mockSearchAvailable = false
+    mockServiceStatus = { mode: 'launchd', provisioned: false, refusal: {
+      reason: 'temporary-home', detail: 'Temporary home cannot claim shared search.', remediation: 'configure-endpoint',
+    } }
+    const rows = observed(await checkSearchAdapter())
+    const engineRows = rows.filter((r) => r.key.startsWith('engine.'))
+    expect(engineRows).toHaveLength(1)
+    expect(engineRows[0].incident?.class).toBe('policy_denial')
+    const { projectEffectiveDispositions } = await import('../../../src/core/health-report')
+    const row = engineRows[0]
+    const [incident] = projectEffectiveDispositions([{
+      ...row.incident!, resources: row.incident!.resources ?? [], id: 'ownership', status: row.status as 'error',
+      effectiveDisposition: row.incident!.disposition, observationIds: [],
+      observedAt: new Date().toISOString(), staleAt: '2099-01-01T00:00:00.000Z', stale: false,
+    }], 'standard')
+    expect(incident.effectiveDisposition).toBe('action_required')
+    expect(JSON.stringify(engineRows)).not.toContain('bakin install search')
+    expect(JSON.stringify(engineRows)).not.toContain('search:reset')
+    expect(rows.some((r) => r.key.startsWith('indexes.'))).toBe(false)
+    expect(searchProbeCalls).toBe(0)
+  })
+}
+it('guest Health skips local binary requirements and probes the configured adapter', async () => {
+  mockSearchEnabled = true
+  mockSearchInstalled = false
+  mockSearchAvailable = true
+  mockServiceStatus = { mode: 'guest', provisioned: true }
+  const rows = observed(await checkSearchAdapter())
+  expect(rows.some((r) => r.key === 'engine.binary')).toBe(false)
+  expect(rows.find((r) => r.key === 'engine.connection')?.status).toBe('healthy')
+  expect(searchProbeCalls).toBeGreaterThan(0)
+})
+
+it('unverifiable Search access reports retained journal counts without claiming delivery', async () => {
+  mockSearchEnabled = true
+  mockServiceStatusError = new Error('Cannot read the service lock')
+  mockOutboxStats = { pending: 3, inflight: 0, quarantined: 0, oldestPendingEnqueuedAt: Date.now() }
+  const rows = observed(await checkSearchAdapter())
+  expect(rows.find(row => row.key === 'engine.supervision')?.status).toBe('unknown')
+  expect(rows.find(row => row.key === 'journal.status')?.summary).toContain('retained locally')
+  expect(searchProbeCalls).toBe(0)
+})
+
+for (const age of [0, 20 * 60_000]) {
+  it(`refused Search reports retained journal counts without drain or repair advice (age ${age})`, async () => {
+    mockSearchEnabled = true
+    mockServiceStatus = { mode: 'launchd', provisioned: false, refusal: {
+      reason: 'foreign-home', detail: 'Another home owns search.', remediation: 'install',
+    } }
+    mockOutboxStats = { pending: 3, inflight: 0, quarantined: 1, oldestPendingEnqueuedAt: Date.now() - age }
+    const rows = observed(await checkSearchAdapter())
+    const journal = rows.filter(row => row.key.startsWith('journal.'))
+    expect(journal).toHaveLength(1)
+    expect(journal[0].summary).toContain('retained locally')
+    expect(journal[0].evidence).toMatchObject({ pending: 3, quarantined: 1 })
+    expect(journal[0].incident).toBeUndefined()
+    expect(JSON.stringify(journal)).not.toContain('draining normally')
+    expect(JSON.stringify(journal)).not.toContain('Restore the Search engine')
+  })
+}
