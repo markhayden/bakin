@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-export const CANONICAL_PLAYWRIGHT_IMAGE = 'mcr.microsoft.com/playwright:v1.60.0-noble'
+export const CANONICAL_PLAYWRIGHT_IMAGE = 'mcr.microsoft.com/playwright:v1.63.0-noble'
 const CANONICAL_PLAYWRIGHT_VERSION = CANONICAL_PLAYWRIGHT_IMAGE.match(/:v([0-9]+\.[0-9]+\.[0-9]+)-/)?.[1]
 const REPO_ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 
