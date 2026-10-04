@@ -24,6 +24,11 @@ const contentDirMock = () => ({
 })
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
+mock.module('@bakin/adapter-openclaw/home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
 
 const loggerMock = () => ({
   createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }),
@@ -46,7 +51,7 @@ import {
 } from '../../packages/core/src/search/tables'
 import { createMockSearchAdapter } from '../../packages/core/src/adapters/search/testing'
 import { SearchEngineUnavailableError, SearchRequestRejectedError } from '../../packages/core/src/adapters/search/errors'
-import { closeAllDbs } from '../../packages/core/src/storage/db'
+import { closeAllDbs, openNamedDb } from '../../packages/core/src/storage/db'
 import type { SearchAdapter } from '../../packages/core/src/adapters/search'
 import { settleFor } from '../helpers/wait'
 
@@ -120,6 +125,39 @@ describe('ensureTable', () => {
 })
 
 describe('createTableTolerant (exists-first, cutover fix)', () => {
+  for (const failure of ['stats-error', 'listed-null', 'list-error']) {
+    it(`does not recreate an existing physical when its status is ${failure}`, async () => {
+      const adapter = createMockSearchAdapter()
+      await ensureTable(adapter, makeDef(), 'fp-a')
+      const physical = queryTarget('bakin_notes')!
+      resetTablesForTests() // Existing engine table, interrupted local registration.
+      const create = mock(adapter.tables.create)
+      const batchIndex = mock(adapter.documents.batchIndex)
+      const uncertain: SearchAdapter = {
+        ...adapter,
+        tables: {
+          ...adapter.tables, create,
+          stats: async () => {
+            if (failure === 'stats-error') throw new Error('stats unavailable')
+            return null
+          },
+          list: async () => {
+            if (failure === 'list-error') throw new Error('listing unavailable')
+            return adapter.tables.list()
+          },
+        },
+        documents: { ...adapter.documents, batchIndex },
+      }
+
+      await expect(ensureTable(uncertain, makeDef(), 'fp-a')).rejects.toThrow()
+
+      expect(create).not.toHaveBeenCalled()
+      expect(batchIndex).not.toHaveBeenCalled()
+      expect(tableStatus('bakin_notes')).toBeNull()
+      expect((await adapter.tables.stats(physical))?.documents).toBe(2)
+    })
+  }
+
   it('never POSTs a create onto an existing physical; creates only when stats is null', async () => {
     const base = createMockSearchAdapter()
     // Pre-existing physical from a crashed first attempt (row insert lost).
@@ -162,6 +200,72 @@ describe('createTableTolerant (exists-first, cutover fix)', () => {
 })
 
 describe('blue/green migration', () => {
+  for (const failure of ['batch', 'enumerator', 'create', 'interrupted-backfill', 'rejected-items']) {
+    it(`recovers ${failure} without promoting a partial corpus or changing the recorded target`, async () => {
+      const adapter = createMockSearchAdapter()
+      await ensureTable(adapter, makeDef(), 'fp-a')
+      const blue = queryTarget('bakin_notes')!
+      const complete = makeDef({
+        reindex: async function* () {
+          for (let index = 0; index < 105; index++) yield { key: `row-${index}`, doc: { title: `row ${index}` } }
+        },
+      })
+      const interrupted = {
+        ...complete,
+        reindex: async function* () {
+          let emitted = 0
+          for await (const item of complete.reindex()) {
+            yield item
+            if (++emitted === 75 && failure === 'enumerator') throw new Error('enumerator failed')
+          }
+        },
+      }
+      let batches = 0
+      const failing: SearchAdapter = {
+        ...adapter,
+        tables: {
+          ...adapter.tables,
+          create: async (name, config) => {
+            if (failure === 'create') throw new Error('create failed')
+            return adapter.tables.create(name, config)
+          },
+        },
+        documents: {
+          ...adapter.documents,
+          batchIndex: async (name, items) => {
+            if (++batches === 2 && (failure === 'batch' || failure === 'interrupted-backfill')) throw new Error('batch failed')
+            if (batches === 2 && failure === 'rejected-items') {
+              await adapter.documents.batchIndex(name, items.slice(1))
+              return { indexed: items.length - 1, failed: [{ key: items[0].key, error: 'rejected-items failed' }] }
+            }
+            return adapter.documents.batchIndex(name, items)
+          },
+        },
+      }
+
+      await expect(rebuildTable(failing, interrupted, 'fp-a')).rejects.toThrow(`${failure === 'interrupted-backfill' ? 'batch' : failure} failed`)
+      const parked = tableStatus('bakin_notes')!
+      expect(parked.phase).toBe('parked')
+      expect(parked.backfillDone).toBeNull()
+      expect(queryTarget('bakin_notes')).toBe(blue)
+      expect(resolveDrainTargets('bakin_notes')).toEqual([blue, parked.migratingTo!])
+      if (failure === 'interrupted-backfill') {
+        // A crash/older process can leave the last successful chunk count.
+        openNamedDb('search', () => join(testDir, 'search.db')).db().prepare(
+          "UPDATE search_tables SET migration_phase = 'backfilling', backfill_done = 50 WHERE logical = 'bakin_notes'",
+        ).run()
+      }
+
+      const results = await resumeMigrations(adapter, [complete], 'fp-a', { onlyParked: failure !== 'interrupted-backfill' })
+      expect(results).toEqual([{ logical: 'bakin_notes', result: 'migrated' }])
+      expect(queryTarget('bakin_notes')).toBe(parked.migratingTo)
+      const keys = []
+      for await (const row of adapter.scan(parked.migratingTo!)) keys.push(row.key)
+      expect(keys.sort()).toEqual(Array.from({ length: 105 }, (_, index) => `row-${index}`).sort())
+      expect((await adapter.tables.stats(blue))?.documents).toBe(2)
+    })
+  }
+
   it('schemaVersion bump migrates: dual-write during backfill, flip only after converge, old dropped', async () => {
     const adapter = createMockSearchAdapter()
     await ensureTable(adapter, makeDef(), 'fp-a')
@@ -566,6 +670,8 @@ describe('2026-07-21 redesign: identity, progress-aware converge, chain split', 
         ...adapter.tables,
         stats: async (name) => {
           if (name === live) return { table: name, documents: 2 }
+          // Creation can establish absence; the outage starts at convergence.
+          if (await adapter.tables.stats(name) === null) return null
           throw new Error('stats unavailable')
         },
       },
@@ -761,6 +867,43 @@ describe('sweepOrphanEngineTables', () => {
 })
 
 describe('dominance flip (2026-07-22)', () => {
+  for (const evidence of ['stats-error', 'listed-null', 'list-error', 'missing']) {
+    it(`requires confirmed absence before promoting over old-index evidence ${evidence}`, async () => {
+      const adapter = createMockSearchAdapter()
+      await ensureTable(adapter, makeDef(), 'fp-a')
+      const blue = queryTarget('bakin_notes')!
+      if (evidence === 'missing') await adapter.tables.drop(blue)
+      const uncertain: SearchAdapter = {
+        ...adapter,
+        tables: {
+          ...adapter.tables,
+          stats: async name => {
+            if (name !== blue) return adapter.tables.stats(name)
+            if (evidence === 'stats-error') throw new Error('stats unavailable')
+            return null
+          },
+          list: async () => {
+            const tables = await adapter.tables.list()
+            if (evidence === 'list-error' && tables.some(table => table.name !== blue)) throw new Error('listing unavailable')
+            return tables
+          },
+          health: async () => [{ leg: 'sem', state: 'building', indexedCount: 0, pendingCount: 2 }],
+        },
+      }
+
+      const result = await ensureTable(uncertain, makeDef({ schemaVersion: 3 }), 'fp-a', { convergePollMs: 1, zeroProgressParkMs: 1 })
+
+      if (evidence === 'missing') {
+        expect(result).toBe('migrated')
+        expect(queryTarget('bakin_notes')).not.toBe(blue)
+      } else {
+        expect(result).toBe('parked')
+        expect(tableStatus('bakin_notes')?.phase).toBe('parked')
+        expect(queryTarget('bakin_notes')).toBe(blue)
+      }
+    })
+  }
+
   it('flips an unconverged green over an EMPTY old physical (strictly better)', async () => {
     const adapter = createMockSearchAdapter()
     await ensureTable(adapter, makeDef(), 'fp-a')

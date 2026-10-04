@@ -414,11 +414,17 @@ async function repairOneTable(
   if (state?.state === 'migrating') {
     const outcomes = await resumeVersionedMigrations(search, [vdef], fingerprint, ensureOpts)
     const outcome = outcomes.find((o) => o.logical === vdef.logical)
-    if (outcome && outcome.result !== 'skipped') return `resumed:${outcome.result}`
+    if (outcome && outcome.result !== 'skipped') return outcome.result
   }
   if (state) {
-    const stats = await search.tables.stats(state.physical).catch(() => null)
+    const stats = await search.tables.stats(state.physical)
     if (!stats) {
+      // A status 404 can be a dead shard in a listed table. Only a successful
+      // listing can distinguish that from an absent physical; errors propagate.
+      const listed = await search.tables.list()
+      if (listed.some(table => table.name === state.physical)) {
+        throw new Error(`Cannot read status for listed search table ${state.physical}; retry repair after the engine recovers.`)
+      }
       log.warn('registry physical missing engine-side — forcing a fresh generation', {
         logical: vdef.logical,
         physical: state.physical,
@@ -605,9 +611,9 @@ export async function pumpParkedMigrations(
       (tables) => new Set(tables.map((t) => t.name)),
       () => null,
     )
-    if (listed === null) return outcomes
     const deadShards: string[] = []
     for (const state of states.filter((s) => s.state === 'active')) {
+      if (listed === null) break // Still account for the parked attempts above.
       const def = defs.find((d) => d.logical === state.logical)
       if (!def) continue
       if (listed.has(state.physical)) {
@@ -636,7 +642,7 @@ export async function pumpParkedMigrations(
         })
       outcomes.push({ logical: state.logical, result })
     }
-    await handleDeadShards(search, deadShards)
+    if (listed !== null) await handleDeadShards(search, deadShards)
   }
 
   for (const outcome of outcomes) {
