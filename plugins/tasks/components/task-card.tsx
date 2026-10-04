@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { Feedback } from '@dnd-kit/dom'
 import { useSortable } from '@dnd-kit/react/sortable'
 import {
   Activity,
@@ -407,7 +408,9 @@ export function TaskCard({ task, columnId, index = 0, approvalLabel, childTaskId
     group: columnId,
     accept: 'item',
     type: 'item',
-    feedback: 'clone',
+    // dnd-kit 0.4 moved feedback onto the Feedback plugin; the function form
+    // keeps the sortable defaults (keyboard + optimistic sorting plugins).
+    plugins: (defaults) => [...defaults, Feedback.configure({ feedback: 'clone' })],
     index,
     data: { group: columnId, columnId, task },
   })
