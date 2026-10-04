@@ -214,13 +214,18 @@ const TYPE_DOMAIN_GROUPS: Record<string, string> = {
 
 export function readSdkExports(): SdkSubpath[] {
   const pkgPath = join(repoRoot, 'packages/sdk/package.json')
-  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { exports: Record<string, string> }
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
+    exports: Record<string, string | { types: string; default: string }>
+  }
 
   const subpathSources: Array<{ subpath: string; importPath: string; sourcePath: string }> = []
   for (const [subpath, source] of Object.entries(pkg.exports)) {
     // Host-shell plumbing, not author API — deliberately absent from the
     // generated SDK reference (see packages/sdk/src/internal/index.ts).
     if (subpath === './internal') continue
+    // The stylesheet export (types → an empty module declaration) has no API
+    // surface to document; only TypeScript sources enter the program.
+    if (typeof source !== 'string' || !/\.tsx?$/.test(source)) continue
     const importPath = subpath === '.' ? '@makinbakin/sdk' : `@makinbakin/sdk${subpath.slice(1)}`
     const sourcePath = join(repoRoot, 'packages/sdk', source.replace(/^\.\//, ''))
     subpathSources.push({ subpath, importPath, sourcePath })

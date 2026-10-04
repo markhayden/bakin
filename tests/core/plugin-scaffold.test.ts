@@ -64,6 +64,7 @@ describe('createPluginScaffold', () => {
       'index.ts',
       'client.tsx',
       'greeting.ts',
+      'env.d.ts',
       'tests/plugin.test.ts',
       '.gitignore',
       'README.md',
@@ -123,7 +124,24 @@ describe('createPluginScaffold', () => {
       moduleResolution: 'bundler',
       strict: true,
       noEmit: true,
+      // TypeScript 6 defaults `types` to [] — without this, `bun:test` in the
+      // starter test does not resolve.
+      types: ['bun'],
     })
+  })
+
+  it('declares side-effect stylesheet imports for TypeScript 6', () => {
+    // TypeScript 6 checks `import './x.css'` for resolvable declarations; the
+    // plugin builder handles the CSS, so the scaffold declares the module once.
+    expect(read('env.d.ts')).toContain("declare module '*.css'")
+  })
+
+  it('pins the toolchain the SDK is built against', () => {
+    const pkg = JSON.parse(read('package.json'))
+    expect(pkg.devDependencies.typescript).toBe('^6.0.3')
+    // zod 4 brands schema types with the literal minor; the plugin must share
+    // the SDK's minor, so the scaffold pins with a tilde.
+    expect(pkg.dependencies.zod).toBe('~4.6.5')
   })
 
   it('starter test drives the plugin through @makinbakin/sdk/testing', () => {

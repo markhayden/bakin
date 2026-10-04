@@ -142,7 +142,9 @@ export function createPluginScaffold(name: string): PluginScaffoldResult {
           private: true,
           type: 'module',
           dependencies: {
-            zod: '^4.3.0',
+            // zod 4 brands schema types with the literal minor; a plugin must
+            // share the SDK's minor, so the pin is a tilde.
+            zod: '~4.6.5',
           },
           devDependencies: {
             '@makinbakin/sdk': sdkDependency,
@@ -151,7 +153,7 @@ export function createPluginScaffold(name: string): PluginScaffoldResult {
             '@types/react-dom': '^19',
             react: '^19.0.0',
             'react-dom': '^19.0.0',
-            typescript: '^5.0.0',
+            typescript: '^6.0.3',
           },
         },
         null,
@@ -173,6 +175,8 @@ export function createPluginScaffold(name: string): PluginScaffoldResult {
             skipLibCheck: true,
             isolatedModules: true,
             forceConsistentCasingInFileNames: true,
+            // TypeScript 6 defaults `types` to []; the starter test imports bun:test.
+            types: ['bun'],
           },
           include: ['**/*.ts', '**/*.tsx'],
           exclude: ['dist', 'node_modules'],
@@ -180,6 +184,17 @@ export function createPluginScaffold(name: string): PluginScaffoldResult {
         null,
         2,
       ) + '\n',
+    )
+
+    writeFileSync(
+      join(root, 'env.d.ts'),
+      `/**
+ * Side-effect stylesheet imports (\`import './styles.css'\`) are bundled by
+ * Bakin's plugin builder. TypeScript 6 checks such imports for resolvable
+ * declarations, so declare the module shape once here.
+ */
+declare module '*.css'
+`,
     )
 
     writeFileSync(

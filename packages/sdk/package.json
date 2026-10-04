@@ -1,7 +1,7 @@
 {
   "name": "@makinbakin/sdk",
   "version": "0.0.0-workspace",
-  "description": "SDK for building Bakin plugins — UI components, slot types, hooks, and the runtime registerPlugin helper.",
+  "description": "SDK for building Bakin plugins \u2014 UI components, slot types, hooks, and the runtime registerPlugin helper.",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -24,11 +24,15 @@
     "./testing/ui": "./src/testing/ui/index.ts",
     "./testing/ui/conformance": "./src/testing/ui/conformance/index.ts",
     "./internal": "./src/internal/index.ts",
-    "./styles.css": "./styles.css"
+    "./styles.css": {
+      "types": "./styles.css.d.ts",
+      "default": "./styles.css"
+    }
   },
   "files": [
     "src",
     "styles.css",
+    "styles.css.d.ts",
     "README.md"
   ],
   "bin": {
