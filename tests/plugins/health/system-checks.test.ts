@@ -77,10 +77,14 @@ async function readMockTableStats() {
   return mockTableStats
 }
 let mockServiceStatus: import('../../../src/core/search-adapter-factory').SearchAdapterServiceStatus = { mode: 'launchd', provisioned: true }
+let mockServiceStatusError: Error | null = null
 let searchProbeCalls = 0
 mock.module('../../../src/core/search-adapter-factory', () => ({
   isSearchAdapterInstalled: () => mockSearchInstalled,
-  getSearchAdapterServiceStatus: () => mockServiceStatus,
+  getSearchAdapterServiceStatus: () => {
+    if (mockServiceStatusError) throw mockServiceStatusError
+    return mockServiceStatus
+  },
 }))
 
 // New-check seams: outbox facade + blue/green table states. Mutable so the
@@ -406,6 +410,7 @@ function searchConsistencyIncidentTarget(logical: string): HealthRepairTarget {
 
 beforeEach(() => {
   mockServiceStatus = { mode: 'launchd', provisioned: true }
+  mockServiceStatusError = null
   searchProbeCalls = 0
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
@@ -1288,6 +1293,16 @@ it('guest Health skips local binary requirements and probes the configured adapt
   expect(rows.some((r) => r.key === 'engine.binary')).toBe(false)
   expect(rows.find((r) => r.key === 'engine.connection')?.status).toBe('healthy')
   expect(searchProbeCalls).toBeGreaterThan(0)
+})
+
+it('unverifiable Search access reports retained journal counts without claiming delivery', async () => {
+  mockSearchEnabled = true
+  mockServiceStatusError = new Error('Cannot read the service lock')
+  mockOutboxStats = { pending: 3, inflight: 0, quarantined: 0, oldestPendingEnqueuedAt: Date.now() }
+  const rows = observed(await checkSearchAdapter())
+  expect(rows.find(row => row.key === 'engine.supervision')?.status).toBe('unknown')
+  expect(rows.find(row => row.key === 'journal.status')?.summary).toContain('retained locally')
+  expect(searchProbeCalls).toBe(0)
 })
 
 for (const age of [0, 20 * 60_000]) {

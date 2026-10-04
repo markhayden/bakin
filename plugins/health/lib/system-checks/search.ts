@@ -56,7 +56,7 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
       key: 'engine.supervision', summary: 'Search service ownership could not be verified.',
       detail: err instanceof Error ? err.message : String(err),
       incident: { key: 'supervision-unknown', title: 'Search service ownership is unknown', impact: 'Health cannot verify safe engine access.', disposition: 'watch', resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }], resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' } },
-    }), ...await safeOutboxObservations()])
+    }), ...await safeOutboxObservations(true)])
   }
   if (service.refusal) {
     const { reason, detail, remediation } = service.refusal
