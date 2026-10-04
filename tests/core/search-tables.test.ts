@@ -125,6 +125,39 @@ describe('ensureTable', () => {
 })
 
 describe('createTableTolerant (exists-first, cutover fix)', () => {
+  for (const failure of ['stats-error', 'listed-null', 'list-error']) {
+    it(`does not recreate an existing physical when its status is ${failure}`, async () => {
+      const adapter = createMockSearchAdapter()
+      await ensureTable(adapter, makeDef(), 'fp-a')
+      const physical = queryTarget('bakin_notes')!
+      resetTablesForTests() // Existing engine table, interrupted local registration.
+      const create = mock(adapter.tables.create)
+      const batchIndex = mock(adapter.documents.batchIndex)
+      const uncertain: SearchAdapter = {
+        ...adapter,
+        tables: {
+          ...adapter.tables, create,
+          stats: async () => {
+            if (failure === 'stats-error') throw new Error('stats unavailable')
+            return null
+          },
+          list: async () => {
+            if (failure === 'list-error') throw new Error('listing unavailable')
+            return adapter.tables.list()
+          },
+        },
+        documents: { ...adapter.documents, batchIndex },
+      }
+
+      await expect(ensureTable(uncertain, makeDef(), 'fp-a')).rejects.toThrow()
+
+      expect(create).not.toHaveBeenCalled()
+      expect(batchIndex).not.toHaveBeenCalled()
+      expect(tableStatus('bakin_notes')).toBeNull()
+      expect((await adapter.tables.stats(physical))?.documents).toBe(2)
+    })
+  }
+
   it('never POSTs a create onto an existing physical; creates only when stats is null', async () => {
     const base = createMockSearchAdapter()
     // Pre-existing physical from a crashed first attempt (row insert lost).
@@ -637,6 +670,8 @@ describe('2026-07-21 redesign: identity, progress-aware converge, chain split', 
         ...adapter.tables,
         stats: async (name) => {
           if (name === live) return { table: name, documents: 2 }
+          // Creation can establish absence; the outage starts at convergence.
+          if (await adapter.tables.stats(name) === null) return null
           throw new Error('stats unavailable')
         },
       },
@@ -832,6 +867,43 @@ describe('sweepOrphanEngineTables', () => {
 })
 
 describe('dominance flip (2026-07-22)', () => {
+  for (const evidence of ['stats-error', 'listed-null', 'list-error', 'missing']) {
+    it(`requires confirmed absence before promoting over old-index evidence ${evidence}`, async () => {
+      const adapter = createMockSearchAdapter()
+      await ensureTable(adapter, makeDef(), 'fp-a')
+      const blue = queryTarget('bakin_notes')!
+      if (evidence === 'missing') await adapter.tables.drop(blue)
+      const uncertain: SearchAdapter = {
+        ...adapter,
+        tables: {
+          ...adapter.tables,
+          stats: async name => {
+            if (name !== blue) return adapter.tables.stats(name)
+            if (evidence === 'stats-error') throw new Error('stats unavailable')
+            return null
+          },
+          list: async () => {
+            const tables = await adapter.tables.list()
+            if (evidence === 'list-error' && tables.some(table => table.name !== blue)) throw new Error('listing unavailable')
+            return tables
+          },
+          health: async () => [{ leg: 'sem', state: 'building', indexedCount: 0, pendingCount: 2 }],
+        },
+      }
+
+      const result = await ensureTable(uncertain, makeDef({ schemaVersion: 3 }), 'fp-a', { convergePollMs: 1, zeroProgressParkMs: 1 })
+
+      if (evidence === 'missing') {
+        expect(result).toBe('migrated')
+        expect(queryTarget('bakin_notes')).not.toBe(blue)
+      } else {
+        expect(result).toBe('parked')
+        expect(tableStatus('bakin_notes')?.phase).toBe('parked')
+        expect(queryTarget('bakin_notes')).toBe(blue)
+      }
+    })
+  }
+
   it('flips an unconverged green over an EMPTY old physical (strictly better)', async () => {
     const adapter = createMockSearchAdapter()
     await ensureTable(adapter, makeDef(), 'fp-a')

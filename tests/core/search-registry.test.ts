@@ -1072,6 +1072,30 @@ describe('rebuild pass semantics (2026-07-21 redesign)', () => {
     expect(await searchHarness.adapter.tables.stats(after.physical)).not.toBeNull()
   })
 
+  for (const failure of ['stats-error', 'listed-null', 'list-error']) {
+    it(`repair preserves the registry and content when index evidence is ${failure}`, async () => {
+      const def = makeDef('uncertain-index')
+      const enumerate = mock(def.reindex)
+      buildSearchAPI('uncertain-plugin').registerContentType({ ...def, reindex: enumerate })
+      await createRegisteredTables()
+      const before = tableStatus('bakin_uncertain-index')!
+      mock.clearAllMocks()
+      if (failure === 'stats-error') searchHarness.calls.tablesStats.mockRejectedValueOnce(new Error('stats unavailable'))
+      else searchHarness.setTableStats(before.physical, null)
+      if (failure === 'list-error') searchHarness.calls.tablesList.mockRejectedValue(new Error('listing unavailable'))
+
+      const outcomes = await rebuildRegisteredTables('bakin_uncertain-index')
+
+      expect(outcomes[0].result).toBe('failed')
+      expect(outcomes[0].error).toBeTruthy()
+      expect(tableStatus('bakin_uncertain-index')).toEqual(before)
+      expect(enumerate).not.toHaveBeenCalled()
+      expect(searchHarness.calls.tablesCreate).not.toHaveBeenCalled()
+      expect(searchHarness.calls.tablesDrop).not.toHaveBeenCalled()
+      expect(searchHarness.calls.documentsBatchIndex).not.toHaveBeenCalled()
+    })
+  }
+
   it('force pass mints a fresh generation even for a healthy table', async () => {
     buildSearchAPI('fc-plugin').registerContentType(makeDef('fcone'))
     await createRegisteredTables()

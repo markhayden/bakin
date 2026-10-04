@@ -417,8 +417,14 @@ async function repairOneTable(
     if (outcome && outcome.result !== 'skipped') return outcome.result
   }
   if (state) {
-    const stats = await search.tables.stats(state.physical).catch(() => null)
+    const stats = await search.tables.stats(state.physical)
     if (!stats) {
+      // A status 404 can be a dead shard in a listed table. Only a successful
+      // listing can distinguish that from an absent physical; errors propagate.
+      const listed = await search.tables.list()
+      if (listed.some(table => table.name === state.physical)) {
+        throw new Error(`Cannot read status for listed search table ${state.physical}; retry repair after the engine recovers.`)
+      }
       log.warn('registry physical missing engine-side — forcing a fresh generation', {
         logical: vdef.logical,
         physical: state.physical,

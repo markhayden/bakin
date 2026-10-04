@@ -263,8 +263,12 @@ async function createTableTolerant(adapter: SearchAdapter, physical: string, con
   // benign on the live engine (duplicate creates with embeddings indexes
   // hang/500 and poison the retry cycle — observed at the rc.17 cutover).
   // One cheap GET; the matching-row fast path above this never gets here.
-  const existing = await adapter.tables.stats(physical).catch(() => null)
+  const existing = await adapter.tables.stats(physical)
   if (existing) return
+  const listed = await adapter.tables.list()
+  if (listed.some(table => table.name === physical)) {
+    throw new Error(`Cannot read status for listed search table ${physical}; retry after the engine recovers.`)
+  }
   try {
     await adapter.tables.create(physical, config)
   } catch (err) {
@@ -688,8 +692,12 @@ async function convergeAndFlip(
     // A leg in 'error' still parks — that green may be structurally sick.
     const rowNow = getRow(def.logical)
     if (rowNow && rowNow.state === 'migrating' && rowNow.migrating_to === green && !snap.failedLeg) {
-      const oldStats = await adapter.tables.stats(rowNow.physical).catch(() => null)
-      const oldEmpty = oldStats === null || oldStats.documents === 0
+      const oldStats = await adapter.tables.stats(rowNow.physical).catch(() => undefined)
+      let oldEmpty = oldStats?.documents === 0
+      if (oldStats === null) {
+        const listed = await adapter.tables.list().catch(() => null)
+        oldEmpty = listed !== null && !listed.some(table => table.name === rowNow.physical)
+      }
       const countOk = snap.count !== null && (snap.count >= emitted || (prev !== null && prev.count !== null && snap.count === prev.count))
       if (oldEmpty && countOk && (snap.count ?? 0) > 0) {
         log.warn('flipping an unconverged green over an EMPTY old physical — strictly better on every leg', {
