@@ -29,8 +29,11 @@ bun run docs:check                 # docs-site PRs
 
 Then CI green → squash merge → fast-forward the live checkout, **`rm -rf node_modules && bun install`**
 (bun's isolated store keeps stale nested links across lockfile changes — a plain
-`bun install` left the MCP SDK on the old zod after PR 2), restart `bakin dev` on
-3737, verify `GET /api/plugins/manifest` is 200.
+`bun install` left the MCP SDK on the old zod after PR 2), **wait until the old
+server has actually exited** (poll `lsof -t -i :3737` + `pgrep -f scripts/dev.ts` for up
+to 15 s; `kill -9` if it lingers) — a relaunch that races the old process refuses to
+start against the live `server.lock` and leaves 3737 DOWN (happened after PR 7) — then
+restart `bakin dev` on 3737 and verify `GET /api/plugins/manifest` is 200.
 
 Targets are **latest on the day the PR is cut**. Nothing is forced past a
 declared peer range (`overrides` is banned for this purpose); a package that
