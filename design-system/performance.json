@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 191987,
+    "canonicalBytes": 193190,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -19,7 +19,7 @@
   },
   "hostInitialJs": {
     "path": "packages/host/dist/main.js",
-    "bytes": 237556
+    "bytes": 238611
   },
   "sdkUiBundles": [
     {
@@ -37,8 +37,8 @@
     {
       "name": "sdk-conversation",
       "path": "packages/host/public/vendor/sdk-conversation.js",
-      "bytes": 53806,
-      "reachableBytes": 716840
+      "bytes": 53872,
+      "reachableBytes": 716906
     },
     {
       "name": "sdk-layout",
@@ -92,7 +92,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-conversation.js",
-      "bytes": 53806
+      "bytes": 53872
     },
     {
       "path": "packages/host/public/vendor/sdk-hooks.js",
@@ -159,10 +159,6 @@
       "bytes": 1938
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-e26hka90.js",
-      "bytes": 29301
-    },
-    {
       "path": "packages/host/public/vendor/sdk-shared-h33dgs2r.js",
       "bytes": 280811
     },
@@ -199,6 +195,10 @@
       "bytes": 3337
     },
     {
+      "path": "packages/host/public/vendor/sdk-shared-zrqtq6px.js",
+      "bytes": 29301
+    },
+    {
       "path": "packages/host/public/vendor/sdk-slots.js",
       "bytes": 2275
     },
@@ -216,7 +216,7 @@
     },
     {
       "path": "packages/host/public/vendor/tanstack-router.js",
-      "bytes": 118784
+      "bytes": 98225
     }
   ],
   "pluginClients": [
@@ -290,7 +290,7 @@
       "repository": "bakin",
       "pluginId": "schedule",
       "path": "plugins/schedule/dist/client.js",
-      "bytes": 54012
+      "bytes": 54348
     },
     {
       "repository": "bakin",
@@ -308,13 +308,13 @@
       "repository": "bakin",
       "pluginId": "team",
       "path": "plugins/team/dist/client.js",
-      "bytes": 278124
+      "bytes": 282494
     },
     {
       "repository": "bakin",
       "pluginId": "workflows",
       "path": "plugins/workflows/dist/client.js",
-      "bytes": 613036
+      "bytes": 617395
     }
   ]
 }

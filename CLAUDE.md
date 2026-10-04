@@ -242,4 +242,5 @@ If a test does not mock the content-dir resolvers, it **will** eventually write 
 - **Agent-package authoring:** `docs/src/content/docs/extending/agents/packages.md`
 - **Specs:** `.claude/specs/` — detailed specs for each hardening phase
 - **Knowledge:** `.claude/knowledge/` — deep dives on every system above
+- **Dependency sweeps:** `.claude/knowledge/dependency-sweeps.md` — the order, per-PR gate, coupling ledger (zod minor ↔ Bits, pi-ai ↔ pi-coding-agent, sharp ↔ pin-data, playwright ↔ canonical image), peer-blocked ledger, and `bun scripts/audit-unused-deps.ts`. Read it before touching any `package.json`.
 - **Skills:** `.claude/skills/` — reusable Claude Code operations. Browser UI work must use `bakin-ui-conformance`; `create-plugin`, `audit-plugin`, and `add-component` delegate their UI decisions to it.

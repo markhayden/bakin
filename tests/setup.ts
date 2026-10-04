@@ -46,6 +46,26 @@ process.env.RTL_SKIP_AUTO_CLEANUP = 'true'
 GlobalRegistrator.register()
 
 // ---------------------------------------------------------------------------
+// Base UI animations are off in this harness.
+//
+// happy-dom 20.12.0 added Element.prototype.getAnimations(). Base UI
+// feature-detects exactly that (internals/useAnimationsFinished.js) and, when it
+// exists, defers every close/unmount through requestAnimationFrame → Promise →
+// flushSync. In a DOM that never runs CSS, that only moves the unmount past the
+// end of the test: the act gate fires and the --isolate worker wedges (#753
+// signature; observed 2026-10-03 on the happy-dom 20.14.5 bump, #760).
+//
+// This is Base UI's own test-environment switch (declared in its global.d.ts),
+// not a shim: it restores the synchronous path for every consumer. Animation
+// timing is a real-browser concern and lives in the Storybook/Playwright lanes.
+// tests/components/base-ui-animations-disabled.test.tsx is the teeth: it fails
+// if happy-dom stops shipping getAnimations (switch no longer load-bearing) or
+// if Base UI stops honoring the switch. Deep reference:
+// .claude/knowledge/test-suite-health.md § Toolchain.
+// ---------------------------------------------------------------------------
+globalThis.BASE_UI_ANIMATIONS_DISABLED = true
+
+// ---------------------------------------------------------------------------
 // The act gate.
 //
 // React reports every state update that lands outside act() while the act
