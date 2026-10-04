@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import yaml from 'js-yaml'
+import { load } from 'js-yaml'
 import { CLI_COMMANDS } from '../../src/core/cli/registry'
 import {
   EXTRACTED_PLUGINS,
@@ -54,8 +54,8 @@ function walkMarkdown(dir: string, files: string[] = []): string[] {
 function parseFrontmatter(file: string): Frontmatter {
   const text = readFileSync(file, 'utf8')
   const match = text.match(/^---\n([\s\S]*?)\n---/)
-  if (!match) return {}
-  return (yaml.load(match[1]) ?? {}) as Frontmatter
+  if (!match || match[1].trim() === '') return {}
+  return (load(match[1]) ?? {}) as Frontmatter
 }
 
 function fail(message: string): never {

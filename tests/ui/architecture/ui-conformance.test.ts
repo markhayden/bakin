@@ -11,7 +11,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import yaml from 'js-yaml'
+import { JSON_SCHEMA, load } from 'js-yaml'
 
 import {
   conformanceCommands,
@@ -221,9 +221,9 @@ describe('Claude and Codex UI skill discovery', () => {
   })
 
   it('publishes valid Codex interface metadata for the canonical skill', () => {
-    const config = yaml.load(
+    const config = load(
       readRepoFile('.claude/skills/bakin-ui-conformance/agents/openai.yaml'),
-      { schema: yaml.JSON_SCHEMA },
+      { schema: JSON_SCHEMA },
     ) as { interface?: { display_name?: string; short_description?: string; default_prompt?: string } }
 
     expect(config.interface?.display_name).toBe('Bakin UI Conformance')

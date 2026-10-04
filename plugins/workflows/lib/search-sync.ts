@@ -11,7 +11,7 @@
  */
 import { existsSync, readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
-import yaml from 'js-yaml'
+import { load } from 'js-yaml'
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { WorkflowDefinition, WorkflowInstance } from '../types'
 import type { DefinitionSource } from '@bakin/core/workflows/source-registry'
@@ -140,7 +140,7 @@ export function registerWorkflowSearch(ctx: PluginContext): void {
           : join(defsDir, `${name}.yaml`)
 
         if (existsSync(alternateUserPath)) {
-          const alternateDefinition = yaml.load(readFileSync(alternateUserPath, 'utf-8')) as WorkflowDefinition
+          const alternateDefinition = load(readFileSync(alternateUserPath, 'utf-8')) as WorkflowDefinition
           await ctx.search.index(
             `def:${name}`,
             definitionToSearchDoc(name, { ...alternateDefinition, source: 'user' }, 'user'),

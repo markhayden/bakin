@@ -4,7 +4,7 @@
  * line parser (lesson files). Previously the split regex was copy-pasted into
  * ~10 files, `parseSkillFile` verbatim into 3, and the lesson line parser into 4.
  */
-import yaml from 'js-yaml'
+import { load } from 'js-yaml'
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/
 
@@ -34,9 +34,11 @@ export interface ParsedFrontmatter {
  */
 export function parseFrontmatter(content: string): ParsedFrontmatter {
   const { raw, body } = splitFrontmatter(content)
-  if (raw === null) return { frontmatter: {}, body }
+  // js-yaml 5 throws on an empty document (4 returned undefined): an empty or
+  // whitespace-only block is simply no frontmatter.
+  if (raw === null || raw.trim() === '') return { frontmatter: {}, body }
   try {
-    return { frontmatter: (yaml.load(raw) as Record<string, unknown>) || {}, body }
+    return { frontmatter: (load(raw) as Record<string, unknown>) || {}, body }
   } catch {
     return { frontmatter: {}, body: content.trim() }
   }

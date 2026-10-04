@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import yaml from 'js-yaml'
+import { load } from 'js-yaml'
 
 const repoRoot = join(__dirname, '..', '..', '..')
 
@@ -12,7 +12,7 @@ function readWorkflow(path: string): string {
 describe('images workflow contract', () => {
   it('ships image-generation from the images plugin with the new tools', () => {
     const raw = readWorkflow('plugins/images/defaults/workflows/image-generation.yaml')
-    const parsed = yaml.load(raw) as { id: string; steps: Array<Record<string, unknown>> }
+    const parsed = load(raw) as { id: string; steps: Array<Record<string, unknown>> }
 
     expect(parsed.id).toBe('image-generation')
     expect(raw).toContain('bakin_exec_images_recommend')

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import yaml from 'js-yaml'
+import { dump, load } from 'js-yaml'
 
 const testDir = join(tmpdir(), `bakin-test-defs-crud-${Date.now()}`)
 const defsDir = join(testDir, 'workflows', 'definitions')
@@ -93,7 +93,7 @@ describe('workflows CRUD routes', () => {
 
       const onDisk = join(defsDir, 'new-demo.yaml')
       expect(existsSync(onDisk)).toBe(true)
-      const parsed = yaml.load(readFileSync(onDisk, 'utf-8')) as Record<string, unknown>
+      const parsed = load(readFileSync(onDisk, 'utf-8')) as Record<string, unknown>
       expect(parsed.name).toBe('New Demo')
     })
 
@@ -106,7 +106,7 @@ describe('workflows CRUD routes', () => {
       })
 
       expect(res.status).toBe(201)
-      const onDisk = yaml.load(readFileSync(join(defsDir, 'draft.yaml'), 'utf-8')) as Record<string, unknown>
+      const onDisk = load(readFileSync(join(defsDir, 'draft.yaml'), 'utf-8')) as Record<string, unknown>
       expect(onDisk.steps).toEqual([])
     })
 
@@ -125,7 +125,7 @@ describe('workflows CRUD routes', () => {
     })
 
     it('refuses to overwrite an existing user-owned id', async () => {
-      writeFileSync(join(defsDir, 'existing.yaml'), yaml.dump({ ...validDef, name: 'Original' }))
+      writeFileSync(join(defsDir, 'existing.yaml'), dump({ ...validDef, name: 'Original' }))
       const activated = await activatePlugin(workflowsPlugin, testDir)
       const route = findRoute(activated.routes, 'POST', '/definitions')!
 
@@ -135,7 +135,7 @@ describe('workflows CRUD routes', () => {
 
       expect(res.status).toBe(409)
       expect(res.body.error).toMatch(/already exists/i)
-      const onDisk = yaml.load(readFileSync(join(defsDir, 'existing.yaml'), 'utf-8')) as Record<string, unknown>
+      const onDisk = load(readFileSync(join(defsDir, 'existing.yaml'), 'utf-8')) as Record<string, unknown>
       expect(onDisk.name).toBe('Original')
     })
 
@@ -180,7 +180,7 @@ describe('workflows CRUD routes', () => {
     it('updates an existing user definition on disk', async () => {
       writeFileSync(
         join(defsDir, 'edit-me.yaml'),
-        yaml.dump({ ...validDef, name: 'Original' }),
+        dump({ ...validDef, name: 'Original' }),
       )
       const activated = await activatePlugin(workflowsPlugin, testDir)
       const route = findRoute(activated.routes, 'PUT', '/definitions/:name')!
@@ -192,7 +192,7 @@ describe('workflows CRUD routes', () => {
       })
 
       expect(res.status).toBe(200)
-      const onDisk = yaml.load(readFileSync(join(defsDir, 'edit-me.yaml'), 'utf-8')) as Record<string, unknown>
+      const onDisk = load(readFileSync(join(defsDir, 'edit-me.yaml'), 'utf-8')) as Record<string, unknown>
       expect(onDisk.name).toBe('Updated')
       expect(onDisk.description).toBe('updated description')
     })
@@ -213,7 +213,7 @@ describe('workflows CRUD routes', () => {
 
       expect(res.status).toBe(200)
       // The disk file is the user shadow — plugin entry is unchanged
-      const onDisk = yaml.load(readFileSync(join(defsDir, 'plug-only.yaml'), 'utf-8')) as Record<string, unknown>
+      const onDisk = load(readFileSync(join(defsDir, 'plug-only.yaml'), 'utf-8')) as Record<string, unknown>
       expect(onDisk.name).toBe('User Override')
 
       const listRoute = findRoute(activated.routes, 'GET', '/definitions')!
@@ -226,7 +226,7 @@ describe('workflows CRUD routes', () => {
     })
 
     it('returns 400 on invalid body', async () => {
-      writeFileSync(join(defsDir, 'edit-me.yaml'), yaml.dump(validDef))
+      writeFileSync(join(defsDir, 'edit-me.yaml'), dump(validDef))
       const activated = await activatePlugin(workflowsPlugin, testDir)
       const route = findRoute(activated.routes, 'PUT', '/definitions/:name')!
 
@@ -241,7 +241,7 @@ describe('workflows CRUD routes', () => {
 
     it('rejects unsafe workflow ids before updating disk', async () => {
       const outsidePath = join(testDir, 'workflows', 'escape.yaml')
-      writeFileSync(outsidePath, yaml.dump({ ...validDef, name: 'Outside' }))
+      writeFileSync(outsidePath, dump({ ...validDef, name: 'Outside' }))
       const activated = await activatePlugin(workflowsPlugin, testDir)
       const route = findRoute(activated.routes, 'PUT', '/definitions/:name')!
 
@@ -252,7 +252,7 @@ describe('workflows CRUD routes', () => {
       })
 
       expect(res.status).toBe(400)
-      const onDisk = yaml.load(readFileSync(outsidePath, 'utf-8')) as Record<string, unknown>
+      const onDisk = load(readFileSync(outsidePath, 'utf-8')) as Record<string, unknown>
       expect(onDisk.name).toBe('Outside')
     })
   })
@@ -327,7 +327,7 @@ describe('workflows CRUD routes', () => {
     })
 
     it('does not disable user-owned workflows', async () => {
-      writeFileSync(join(defsDir, 'user-only.yaml'), yaml.dump(validDef))
+      writeFileSync(join(defsDir, 'user-only.yaml'), dump(validDef))
       const activated = await activatePlugin(workflowsPlugin, testDir)
       const route = findRoute(activated.routes, 'PATCH', '/definitions/:name/availability')!
 
@@ -409,7 +409,7 @@ describe('workflows CRUD routes', () => {
     })
 
     it('does not match empty draft workflows', async () => {
-      writeFileSync(join(defsDir, 'draft-only.yaml'), yaml.dump({
+      writeFileSync(join(defsDir, 'draft-only.yaml'), dump({
         name: 'Draft Only',
         description: 'not ready to run',
         version: 1,
@@ -423,7 +423,7 @@ describe('workflows CRUD routes', () => {
 
   describe('DELETE /definitions/:name', () => {
     it('deletes a user definition from disk', async () => {
-      writeFileSync(join(defsDir, 'delete-me.yaml'), yaml.dump(validDef))
+      writeFileSync(join(defsDir, 'delete-me.yaml'), dump(validDef))
       const activated = await activatePlugin(workflowsPlugin, testDir)
       const route = findRoute(activated.routes, 'DELETE', '/definitions/:name')!
 
@@ -464,7 +464,7 @@ describe('workflows CRUD routes', () => {
 
     it('rejects unsafe workflow ids before deleting disk files', async () => {
       const outsidePath = join(testDir, 'workflows', 'escape.yaml')
-      writeFileSync(outsidePath, yaml.dump({ ...validDef, name: 'Outside' }))
+      writeFileSync(outsidePath, dump({ ...validDef, name: 'Outside' }))
       const activated = await activatePlugin(workflowsPlugin, testDir)
       const route = findRoute(activated.routes, 'DELETE', '/definitions/:name')!
 

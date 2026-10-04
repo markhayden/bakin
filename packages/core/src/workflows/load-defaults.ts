@@ -18,7 +18,7 @@
  */
 import { readdirSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
-import yaml from 'js-yaml'
+import { load } from 'js-yaml'
 import type { PluginContext } from '../plugin-types'
 import type { WorkflowDefinition } from './definition-types'
 import { validateDefinition } from './validate-definition'
@@ -51,7 +51,7 @@ export function loadDefaultWorkflowFiles(
     let definition: WorkflowDefinition
     try {
       const raw = readFileSync(path, 'utf-8')
-      definition = yaml.load(raw) as unknown as WorkflowDefinition
+      definition = load(raw) as unknown as WorkflowDefinition
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       result.skipped.push({ id, errors: [message] })

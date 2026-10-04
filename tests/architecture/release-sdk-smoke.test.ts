@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import yaml from 'js-yaml'
+import { load } from 'js-yaml'
 import { SDK_EXPORTS, SDK_STYLES_EXPORT } from '../../scripts/build-sdk-package'
 
 const repoRoot = resolve(import.meta.dir, '../..')
-const workflow = yaml.load(readFileSync(resolve(repoRoot, '.github/workflows/release.yml'), 'utf8')) as {
+const workflow = load(readFileSync(resolve(repoRoot, '.github/workflows/release.yml'), 'utf8')) as {
   jobs: Record<string, { steps: Array<{ name: string; run?: string }> }>
 }
 const smokeScript = workflow.jobs['smoke-sdk'].steps.find(

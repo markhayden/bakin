@@ -9,7 +9,7 @@
  */
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
-import yaml from 'js-yaml'
+import { dump } from 'js-yaml'
 import { z } from 'zod'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
@@ -64,7 +64,7 @@ const userDefinitionExists = (id: string): boolean => findExistingUserDefinition
 const writeUserDefinition = (id: string, def: unknown): void => {
   const dir = getDefinitionsDir()
   mkdirSync(dir, { recursive: true })
-  writeFileSync(findExistingUserDefinitionPath(id) ?? join(dir, `${id}.yaml`), yaml.dump(def), 'utf-8')
+  writeFileSync(findExistingUserDefinitionPath(id) ?? join(dir, `${id}.yaml`), dump(def), 'utf-8')
 }
 
 // ─── Handlers ─────────────────────────────────────────────────────────────

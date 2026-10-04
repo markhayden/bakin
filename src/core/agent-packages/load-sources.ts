@@ -28,7 +28,7 @@
  */
 import { existsSync, readFileSync, statSync } from 'fs'
 import { join, basename } from 'path'
-import yaml from 'js-yaml'
+import { load } from 'js-yaml'
 import { parseFrontmatter } from '@bakin/core/format/frontmatter'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
@@ -116,7 +116,7 @@ function loadWorkflowsForPackage(
     let definition: WorkflowDefinition
     try {
       const yamlText = readFileSync(abs, 'utf-8')
-      definition = yaml.load(yamlText) as WorkflowDefinition
+      definition = load(yamlText) as WorkflowDefinition
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       result.warnings.push({ packageId, message: `failed to parse ${rel}: ${message}` })
