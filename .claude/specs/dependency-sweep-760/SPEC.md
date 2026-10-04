@@ -351,3 +351,8 @@ Two things only the work can answer, recorded here so they are not forgotten:
 - Whether Astro 7's `compressHTML: 'jsx'` changes rendered whitespace in our
   Starlight overrides; `docs:build:combined` + a visual look at the built site
   decides whether to pin `compressHTML: true`.
+
+## Outcome (2026-10-04)
+
+Executed as 14 Bakin PRs (#947, #949, #951, #952, #954, #955, #956, #957, #959, #960, #961, #962, #963, #968) plus the Bits companion (bakin-bits-official#115). Deviations from the table above, all under the latest-today rule: the Pi SDK landed at **1.0.2** (not 1.0.1) and lucide gained a trailing **1.52.0** PR. The Pi bump needed one structural addition the spec did not foresee — `packages/adapter-pi` pins `undici` to pi-coding-agent's exact version because bun's isolated linker forks pi-ai per peer-resolution context (two module instances broke the compiled-binary OAuth registration); the Bits companion lost lucide's brand icons (removed in 1.x). D10's live check passed on 3737 (chat turn + agent-driven image generation on Pi 1.0.2). Residual `bun outdated` rows are all intentional: docs js-yaml 4 (Starlight), adapter-pi undici (pi lockstep), @types/bun (bun 1.3.13 line), TypeScript 7 (deferred). Follow-ups: #948, #964, #965, #966, #967. Full per-PR record: `.claude/knowledge/dependency-sweeps.md` § 5.
+
