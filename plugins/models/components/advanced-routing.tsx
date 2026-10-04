@@ -9,7 +9,7 @@
  * read-only.
  */
 import { useState } from 'react'
-import { Plus, Route, Wand2, X } from 'lucide-react'
+import { Plus, Route, WandSparkles, X } from 'lucide-react'
 import { Section, Stack } from '@makinbakin/sdk/layout'
 import { ConfirmDialog, DEFAULT_MODEL_VALUE, DataTable, GuideCard, KeyValue, ListRow, ListRows, ModelSelect, type DataTableColumn, type KeyValueItem, type ModelSelectOption } from '@makinbakin/sdk/patterns'
 import { Alert, Button, Field, FieldError, FieldLabel, Input, Text } from '@makinbakin/sdk/ui'
@@ -137,7 +137,7 @@ export function AdvancedRouting({ sel, modelOptions }: AdvancedRoutingProps) {
               <Text as="span" size="meta" tone="muted">No routes to suggest right now.</Text>
             ) : null}
             <Button type="button" variant="outline" size="sm" disabled={!perTurnModel || proposals.proposals.length === 0} onClick={() => setRoutesOpen(true)}>
-              <Wand2 className="size-bakin-4" />
+              <WandSparkles className="size-bakin-4" />
               Use recommended routes
             </Button>
           </>

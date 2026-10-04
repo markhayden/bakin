@@ -46,7 +46,7 @@ import {
   type FileInputHandle,
 } from '@makinbakin/sdk/ui'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
-import { Upload, LayoutGrid, List, Trash2, RotateCcw, X, FolderOpen, Pencil, Tags, ArrowLeft, Inbox, Sparkles } from 'lucide-react'
+import { Upload, LayoutGrid, List, Trash, RotateCcw, X, FolderOpen, Pencil, Tags, ArrowLeft, Inbox, Sparkles } from 'lucide-react'
 import { ASSET_TYPES } from '../../lib/constants'
 import { createSseRefetchScheduler } from './sse-refetch'
 import { AssetEditDrawer } from './AssetEditDrawer'
@@ -65,7 +65,7 @@ const VIEW_OPTIONS: Array<{ key: View; label: string; Icon: typeof LayoutGrid }>
   { key: 'list', label: 'List', Icon: List },
   { key: 'tags', label: 'Folders', Icon: FolderOpen },
   { key: 'import', label: 'Import', Icon: Inbox },
-  { key: 'trash', label: 'Trash', Icon: Trash2 },
+  { key: 'trash', label: 'Trash', Icon: Trash },
 ]
 
 // Type facet — derived from the canonical ASSET_TYPES taxonomy; icons reuse
@@ -585,7 +585,7 @@ export function VersionedAssetGrid() {
           <div className="flex flex-col gap-bakin-2" data-testid="trash-list">
             <div className="mb-bakin-1 flex justify-end">
               <Button size="sm" variant="ghost" className="text-bakin-signal-danger hover:text-bakin-signal-danger/80" onClick={emptyTrash} data-testid="empty-trash">
-                <Trash2 className="size-bakin-3" /> Empty trash
+                <Trash className="size-bakin-3" /> Empty trash
               </Button>
             </div>
             {/* Tabular facts read as a table (the tasks-Log ruling) — the

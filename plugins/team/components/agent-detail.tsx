@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowLeft, BookOpen, Calendar, Camera, Pencil, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, BookOpen, Calendar, Camera, Pencil, Sparkles, Trash } from 'lucide-react'
 import { Grid, Panel, Section } from '@makinbakin/sdk/layout'
 import { useHistoryBack, useRouter } from '@makinbakin/sdk/navigation'
 import {
@@ -293,7 +293,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
                 variant="danger"
                 onClick={() => setDeleteOpen(true)}
               >
-                <Trash2 aria-hidden="true" />
+                <Trash aria-hidden="true" />
                 Delete
               </DropdownMenuItem>
             ) : null}

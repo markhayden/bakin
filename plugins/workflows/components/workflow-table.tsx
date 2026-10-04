@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  AlertTriangle,
+  TriangleAlert,
   GitBranch,
   GitFork,
   Info,
@@ -213,7 +213,7 @@ export function WorkflowTable({
               )}
               {template.skillDrift && (
                 <Badge tone="attention" variant="solid" size="xs">
-                  <AlertTriangle />
+                  <TriangleAlert />
                   {template.skillDrift.count === 1 ? 'stale skill' : `${template.skillDrift.count} stale skills`}
                 </Badge>
               )}

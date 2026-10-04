@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash } from 'lucide-react'
 import { Inline, Section, Stack } from '@makinbakin/sdk/layout'
 import { AgentAvatar, ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import {
@@ -212,7 +212,7 @@ function BudgetRuleRow({
         aria-label={`Remove budget rule ${index + 1}`}
         onClick={() => m.setPendingRules(rules.filter((_, currentIndex) => currentIndex !== index))}
       >
-        <Trash2 />
+        <Trash />
       </Button>
     </ListRow>
   )

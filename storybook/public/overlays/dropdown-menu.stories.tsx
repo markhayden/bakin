@@ -15,7 +15,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@makinbakin/sdk/ui'
-import { Trash2 } from 'lucide-react'
+import { Trash } from 'lucide-react'
 import { expect, waitFor, within } from 'storybook/test'
 
 import { StorySection, StoryStage } from '../../support'
@@ -73,7 +73,7 @@ export const CanonicalUsage = {
 } satisfies Story
 
 function TaskMenu({ defaultOpen = false }: { defaultOpen?: boolean }) {
-  return <DropdownMenu defaultOpen={defaultOpen}><DropdownMenuTrigger render={<Button variant="outline" />}>Task actions</DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup><DropdownMenuLabel>Task</DropdownMenuLabel><DropdownMenuItem>Open details<DropdownMenuShortcut>↵</DropdownMenuShortcut></DropdownMenuItem><DropdownMenuItem>Duplicate<DropdownMenuShortcut>⌘D</DropdownMenuShortcut></DropdownMenuItem></DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuCheckboxItem defaultChecked>Watch updates</DropdownMenuCheckboxItem><DropdownMenuSwitchItem defaultChecked>Live refresh</DropdownMenuSwitchItem><DropdownMenuSub><DropdownMenuSubTrigger>Move to</DropdownMenuSubTrigger><DropdownMenuSubContent><DropdownMenuItem>Needs attention</DropdownMenuItem><DropdownMenuItem>Running</DropdownMenuItem><DropdownMenuItem>Blocked</DropdownMenuItem></DropdownMenuSubContent></DropdownMenuSub><DropdownMenuSeparator /><DropdownMenuItem variant="danger"><Trash2 /> Delete</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+  return <DropdownMenu defaultOpen={defaultOpen}><DropdownMenuTrigger render={<Button variant="outline" />}>Task actions</DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup><DropdownMenuLabel>Task</DropdownMenuLabel><DropdownMenuItem>Open details<DropdownMenuShortcut>↵</DropdownMenuShortcut></DropdownMenuItem><DropdownMenuItem>Duplicate<DropdownMenuShortcut>⌘D</DropdownMenuShortcut></DropdownMenuItem></DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuCheckboxItem defaultChecked>Watch updates</DropdownMenuCheckboxItem><DropdownMenuSwitchItem defaultChecked>Live refresh</DropdownMenuSwitchItem><DropdownMenuSub><DropdownMenuSubTrigger>Move to</DropdownMenuSubTrigger><DropdownMenuSubContent><DropdownMenuItem>Needs attention</DropdownMenuItem><DropdownMenuItem>Running</DropdownMenuItem><DropdownMenuItem>Blocked</DropdownMenuItem></DropdownMenuSubContent></DropdownMenuSub><DropdownMenuSeparator /><DropdownMenuItem variant="danger"><Trash /> Delete</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
 }
 
 export const Actions = {

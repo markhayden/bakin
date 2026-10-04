@@ -5,7 +5,7 @@
  * created on first send.
  */
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
-import { AlertTriangle, Pencil, Pin } from 'lucide-react'
+import { TriangleAlert, Pencil, Pin } from 'lucide-react'
 import { toast } from '@makinbakin/sdk/hooks'
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import {
@@ -442,7 +442,7 @@ export function DraftChatView({
       {error ? (
         <div className="px-bakin-4 pb-bakin-2">
           <Alert tone="danger">
-            <AlertTriangle />
+            <TriangleAlert />
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         </div>
@@ -572,7 +572,7 @@ export function ChatView({ chatId, onChanged, composerHandleRef }: {
         {sendError ? (
           <div className="px-bakin-4 pb-bakin-1">
             <Alert tone="danger">
-              <AlertTriangle />
+              <TriangleAlert />
               <AlertDescription>{sendError}</AlertDescription>
               <AlertAction>
                 <Button type="button" variant="link" size="xs" onClick={retry}>

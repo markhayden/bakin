@@ -11,7 +11,7 @@
  * and left alone (they self-heal).
  */
 import { useState } from 'react'
-import { Search, Send, CheckCircle2, AlertTriangle, Lock } from 'lucide-react'
+import { Search, Send, CircleCheck, TriangleAlert, Lock } from 'lucide-react'
 import {
   Alert,
   AlertDescription,
@@ -362,7 +362,7 @@ export function MemoryCleanup() {
             ))}
             <div>
               <Button variant="outline" size="sm" onClick={runVerify} disabled={busy === 'verify'}>
-                {busy === 'verify' ? <Spinner /> : <CheckCircle2 />}
+                {busy === 'verify' ? <Spinner /> : <CircleCheck />}
                 Verify
               </Button>
             </div>
@@ -380,7 +380,7 @@ export function MemoryCleanup() {
                 <StatusBadge
                   tone={r.clean ? 'success' : 'attention'}
                   variant="soft"
-                  icon={r.clean ? CheckCircle2 : AlertTriangle}
+                  icon={r.clean ? CircleCheck : TriangleAlert}
                 >
                   {r.clean ? 'Clean' : 'Remaining'}
                 </StatusBadge>

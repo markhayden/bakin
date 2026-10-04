@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useMemo, useState } from 'react'
 import { expect } from 'storybook/test'
-import { ArrowLeft, Download, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, Download, Sparkles, Trash } from 'lucide-react'
 
 import { Inline, Section, Stack } from '@makinbakin/sdk/layout'
 import {
@@ -441,7 +441,7 @@ function DetailExample() {
         overflowActions={(
           <>
             <DropdownMenuItem>Duplicate workflow</DropdownMenuItem>
-            <DropdownMenuItem variant="danger"><Trash2 /> Delete</DropdownMenuItem>
+            <DropdownMenuItem variant="danger"><Trash /> Delete</DropdownMenuItem>
           </>
         )}
         actions={<Button>Edit workflow</Button>}
@@ -577,7 +577,7 @@ export const DetailMedia = {
         overflowActions={(
           <>
             <DropdownMenuItem>Add version</DropdownMenuItem>
-            <DropdownMenuItem variant="danger"><Trash2 /> Delete</DropdownMenuItem>
+            <DropdownMenuItem variant="danger"><Trash /> Delete</DropdownMenuItem>
           </>
         )}
         actions={<Button>Edit asset</Button>}

@@ -72,8 +72,8 @@ import {
 } from '@makinbakin/sdk/ui'
 import { useQueryState, usePluginEvent, toast } from '@makinbakin/sdk/hooks'
 import {
-  ArrowLeft, Palette, Rocket, Pencil, Plus, Check, AlertTriangle, ExternalLink,
-  FileText, BookOpen, ImageIcon, Trash2, Sparkles, Info,
+  ArrowLeft, Palette, Rocket, Pencil, Plus, Check, TriangleAlert, ExternalLink,
+  FileText, BookOpen, ImageIcon, Trash, Sparkles, Info,
   File, Music, Play, Table2, Type,
 } from 'lucide-react'
 import type { BrandManifest, PaletteEntry, BrandDocInfo, BrandDetailResponse } from '../types'
@@ -574,7 +574,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
 
           <SectionCard
             title="Rules"
-            icon={AlertTriangle}
+            icon={TriangleAlert}
             description="Hard do's and don'ts — injected into every branded task, never optional."
             action={
               <Button variant="outline" size="sm" onClick={() => stage({ rules: [...(b.rules ?? []), ''] })} data-add-rule>
@@ -687,7 +687,7 @@ function RemoveBtn({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       aria-label="Remove"
     >
-      <Trash2 className="size-bakin-3" />
+      <Trash className="size-bakin-3" />
     </Button>
   )
 }
@@ -953,7 +953,7 @@ function OverviewTab({
         <Section divider="top" spacing="compact">
           <OverviewSectionHeader
             title="Rules & terminology"
-            icon={AlertTriangle}
+            icon={TriangleAlert}
             description="Non-negotiables that ride every branded task inline."
             action={<Button variant="ghost" size="xs" className="text-bakin-text-muted" onClick={() => onGoTo('identity')}><Pencil className="size-bakin-3" /> Edit</Button>}
           />
@@ -1250,7 +1250,7 @@ function DocsEditor({
                 onClick={() => setDeleting(d.name)}
                 aria-label={`Delete ${d.name}`}
               >
-                <Trash2 className="size-bakin-3" />
+                <Trash className="size-bakin-3" />
               </Button>
             </div>
           </ListRow>
@@ -1493,7 +1493,7 @@ function BrandAssetsSection({
                   }
                   aria-label={`Remove group ${group.name}`}
                 >
-                  <Trash2 className="size-bakin-3" />
+                  <Trash className="size-bakin-3" />
                 </Button>
               </CardAction>
             </CardHeader>
@@ -1626,7 +1626,7 @@ function AssetTile({
         onClick={onRemove}
         aria-label="Remove"
       >
-        <Trash2 className="size-bakin-3" />
+        <Trash className="size-bakin-3" />
       </Button>
 
       {/* pr-9 reserves the hover-trash gutter — the floating icon must never sit on the note text. */}
@@ -1933,7 +1933,7 @@ function BrandSettingsTab({
         )}
         {dangling.length > 0 && (
           <Alert tone="attention">
-            <AlertTriangle />
+            <TriangleAlert />
             <AlertDescription>
               <ul className="m-0 grid list-none gap-bakin-1 p-0">
                 {dangling.map((d) => <li key={d.assetId}>asset {d.assetId} is missing ({d.where}) — remove or replace it under Assets</li>)}

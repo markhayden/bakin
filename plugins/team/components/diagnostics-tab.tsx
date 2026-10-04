@@ -18,7 +18,7 @@
  * incidents and their structured agent resources.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, RefreshCw } from 'lucide-react'
+import { TriangleAlert, RefreshCw } from 'lucide-react'
 import { ChartExplainer, Sparkline } from '@makinbakin/sdk/charts'
 import { usePluginEvent, useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
 import { DisclosurePanel, Grid, Inline, Panel, Section, Stack } from '@makinbakin/sdk/layout'
@@ -199,7 +199,7 @@ export function DiagnosticsChipsView({ attention, onOpen }: { attention: AgentAt
               tone={chip.flagged ? 'attention' : 'neutral'}
               variant={chip.flagged ? 'solid' : 'soft'}
               size="xs"
-              icon={chip.flagged ? AlertTriangle : undefined}
+              icon={chip.flagged ? TriangleAlert : undefined}
             >
               {chip.label} · {state}
             </StatusBadge>

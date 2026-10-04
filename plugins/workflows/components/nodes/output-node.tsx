@@ -1,7 +1,7 @@
 'use client'
 
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { AlertTriangle, Radio } from 'lucide-react'
+import { TriangleAlert, Radio } from 'lucide-react'
 import { NodeCard } from '@makinbakin/sdk/patterns'
 import { Text } from '@makinbakin/sdk/ui'
 import { AgentAssignmentLabel } from './agent-assignment-label'
@@ -29,7 +29,7 @@ export function OutputNode({ data }: NodeProps) {
       attention={hasSkillDrift}
       badge={hasSkillDrift ? (
         <StaleSkillChip srLabel="This step uses a stale workflow skill">
-          <AlertTriangle className="size-bakin-3" />
+          <TriangleAlert className="size-bakin-3" />
           Stale
         </StaleSkillChip>
       ) : undefined}

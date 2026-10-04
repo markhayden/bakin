@@ -18,7 +18,7 @@ import {
   Spinner,
   SystemState,
 } from '@makinbakin/sdk/ui'
-import { AlertTriangle, CircleCheck, Wrench } from 'lucide-react'
+import { TriangleAlert, CircleCheck, Wrench } from 'lucide-react'
 import { useRepairPlan } from '../hooks/use-repair-plan'
 
 const SAFETY_TONE = {
@@ -172,7 +172,7 @@ export function RepairDialog({
                     )}
                     {nonSafe && (
                       <Alert tone="attention">
-                        <AlertTriangle aria-hidden="true" />
+                        <TriangleAlert aria-hidden="true" />
                         <AlertDescription>
                           Selecting this item is its individual confirmation. Review the described change first.
                         </AlertDescription>
@@ -191,7 +191,7 @@ export function RepairDialog({
               <div key={item.itemId} className="flex items-start gap-bakin-2 rounded-bakin-control border border-bakin-border-subtle p-bakin-3 text-bakin-typography-size-body">
                 {item.status === 'applied'
                   ? <CircleCheck className="mt-bakin-0 size-bakin-4 shrink-0 text-bakin-action-primary-background" aria-hidden="true" />
-                  : <AlertTriangle className="mt-bakin-0 size-bakin-4 shrink-0 text-bakin-signal-highlight" aria-hidden="true" />}
+                  : <TriangleAlert className="mt-bakin-0 size-bakin-4 shrink-0 text-bakin-signal-highlight" aria-hidden="true" />}
                 <div><p className="font-bakin-typography-weight-medium capitalize">{item.status}</p><p className="text-bakin-text-muted">{item.message}</p></div>
               </div>
             ))}

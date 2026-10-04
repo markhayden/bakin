@@ -1,6 +1,6 @@
 'use client'
 
-import { MoreHorizontal, Play, Pause, RotateCcw, Trash2, Pencil, Copy, SkipForward, CirclePlus, Undo2, ShieldAlert } from 'lucide-react'
+import { Ellipsis, Play, Pause, RotateCcw, Trash, Pencil, Copy, SkipForward, CirclePlus, Undo2, ShieldAlert } from 'lucide-react'
 import { ScoreOverlay, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Button,
@@ -123,7 +123,7 @@ export function JobActionsMenu({
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        <MoreHorizontal />
+        <Ellipsis />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-auto min-w-36 whitespace-nowrap" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <DropdownMenuItem onClick={onRunNow}>
@@ -169,7 +169,7 @@ export function JobActionsMenu({
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onDelete} variant="danger">
-          <Trash2 /> Delete
+          <Trash /> Delete
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

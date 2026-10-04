@@ -71,7 +71,7 @@ The header renders as a single row: `[Title] ... [actions] [X close]`
   actions={
     <DropdownMenu>
       <DropdownMenuTrigger className="p-1.5 rounded-md hover:bg-accent transition-colors">
-        <MoreHorizontal className="size-4" />
+        <Ellipsis className="size-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-36">
         <DropdownMenuItem onClick={handleDuplicate}>
@@ -79,7 +79,7 @@ The header renders as a single row: `[Title] ... [actions] [X close]`
           Duplicate
         </DropdownMenuItem>
         <DropdownMenuItem onClick={handleDelete} className="text-red-400 focus:text-red-400">
-          <Trash2 className="size-3.5 mr-2" />
+          <Trash className="size-3.5 mr-2" />
           Delete
         </DropdownMenuItem>
       </DropdownMenuContent>

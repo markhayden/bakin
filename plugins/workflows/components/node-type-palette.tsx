@@ -13,7 +13,7 @@ import { useState, type DragEvent } from 'react'
 import { usePluginJsonFetch } from '@makinbakin/sdk/hooks'
 import { Button, Overline, SystemState, Text } from '@makinbakin/sdk/ui'
 import {
-  CheckCircle2,
+  CircleCheck,
   ChevronLeft,
   ChevronRight,
   ClipboardPlus,
@@ -63,7 +63,7 @@ const BUILTIN_DISPLAY: Record<string, {
   gate: {
     label: 'Approval Gate',
     description: 'Pause the workflow until a person approves or rejects.',
-    icon: CheckCircle2,
+    icon: CircleCheck,
     toneClass: 'bg-bakin-signal-highlight/10 text-bakin-signal-highlight',
   },
   parallel: {

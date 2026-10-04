@@ -2,7 +2,7 @@
 
 import { Grid } from '@makinbakin/sdk/layout'
 import { StatTile } from '@makinbakin/sdk/patterns'
-import { Activity, AlertCircle, Bot, CheckCircle2 } from 'lucide-react'
+import { Activity, CircleAlert, Bot, CircleCheck } from 'lucide-react'
 import { isAttributedAgentRow } from '../lib/activity-feed-compat'
 import type { UsageFeedData } from '../types'
 
@@ -63,7 +63,7 @@ export function ActivityMetrics({
         sub={compatibilityLimited ? 'Partial data · restart Bakin for exact metrics' : interactionWindow}
       />
       <StatTile
-        icon={CheckCircle2}
+        icon={CircleCheck}
         label="Success rate"
         value={rate === null || compatibilityLimited ? '—' : formatPercent(rate)}
         valueTone={rate !== null && !compatibilityLimited ? successTone(data) : 'neutral'}
@@ -77,7 +77,7 @@ export function ActivityMetrics({
             : `${data.outcomes.succeeded.toLocaleString()} of ${data.totals.count.toLocaleString()} succeeded`}
       />
       <StatTile
-        icon={AlertCircle}
+        icon={CircleAlert}
         label="Hiccups"
         value={attention.toLocaleString()}
         valueTone={failed > 0 ? 'danger' : unverified > 0 ? 'attention' : 'neutral'}

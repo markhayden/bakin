@@ -6,7 +6,7 @@
  * contract (per-group labelled lists — refit T6.5).
  */
 import { useMemo, useState } from 'react'
-import { PanelLeftClose, Pin, Trash2 } from 'lucide-react'
+import { PanelLeftClose, Pin, Trash } from 'lucide-react'
 import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { useAgent, useAgentList } from '@makinbakin/sdk/hooks'
 import {
@@ -151,7 +151,7 @@ function ChatRow({
             onClick={onDelete}
             className="text-bakin-text-muted hover:bg-bakin-signal-danger/15 hover:text-bakin-signal-danger"
           >
-            <Trash2 />
+            <Trash />
           </TooltipTrigger>
           <TooltipContent>Delete chat</TooltipContent>
         </Tooltip>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState, type FormEvent } from 'react'
-import { Plus, Trash2, Users } from 'lucide-react'
+import { Plus, Trash, Users } from 'lucide-react'
 import { useRouter } from '@makinbakin/sdk/navigation'
 import { AgentSelect, ConfirmDialog, ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import {
@@ -193,7 +193,7 @@ export function TeamManager() {
                   aria-label={`Delete ${team.label}`}
                   onClick={() => setDeleteTarget(team.id)}
                 >
-                  <Trash2 aria-hidden="true" />
+                  <Trash aria-hidden="true" />
                 </Button>
               </ListRow>
             ))}

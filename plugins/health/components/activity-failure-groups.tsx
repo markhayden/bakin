@@ -5,7 +5,7 @@ import { Grid, Inline, Panel, Section } from '@makinbakin/sdk/layout'
 import { ListRows, Pagination, StatusBadge } from '@makinbakin/sdk/patterns'
 import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, Text } from '@makinbakin/sdk/ui'
 import { cn } from '@makinbakin/sdk/utils'
-import { AlertCircle, ChevronDown } from 'lucide-react'
+import { CircleAlert, ChevronDown } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { InteractionCoverage, UsageEntry, UsageFailureGroup, UsageFailureGroupPage, UsageFeedData } from '../types'
 import type { ActivityFailureSelection } from './activity-breakdown'
@@ -392,7 +392,7 @@ export function ActivityFailureGroups({
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-bakin-2">
         <div>
           <div className="flex items-center gap-bakin-2">
-            <AlertCircle className={`size-bakin-4 ${totalFailures > 0 ? 'text-bakin-signal-danger' : 'text-bakin-signal-highlight'}`} aria-hidden="true" />
+            <CircleAlert className={`size-bakin-4 ${totalFailures > 0 ? 'text-bakin-signal-danger' : 'text-bakin-signal-highlight'}`} aria-hidden="true" />
             <h3 id="activity-needs-attention-title">Hiccups</h3>
           </div>
           <Text size="body" tone="muted" as="p" className="mt-bakin-1">{description}</Text>
