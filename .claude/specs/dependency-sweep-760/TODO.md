@@ -8,7 +8,7 @@ Tick with the merge SHA. One PR in flight at a time. Post-merge checkpoint after
 | 2 | `chore/deps-02-zod-4.6` | zod ~4.6.5 (root, reference-plugin) + behavior audit · lockfile dedupe · workflows health-check union-issue fix · #948 filed | ✅ #949 | 1e1f41c83 |
 | 3 | `chore/deps-03-typescript-6` | typescript 6.0.3 · `*.css` ambient declaration · SDK stylesheet export types · scaffold env.d.ts + types:[bun] | ✅ #951 | 8452dbb33 |
 | 4 | `chore/deps-04-eslint-10` | eslint 10.12 · typescript-eslint 8.71 · remove eslint-plugin-react · 3 stale directives dropped | ✅ #952 | fb6beeda5 |
-| 5 | `chore/deps-05-react-19.3-ink-8` | react/react-dom/@types 19.3.0 (root + docs) · ink 8.0.0 | ☐ | |
+| 5 | `chore/deps-05-react-19.3-ink-8` | react/react-dom/@types 19.3.0 (root + docs) · ink 8.0.0 · react-devtools-core declared for the compiled binary | ✅ #954 | fd8a55672 |
 | 6 | `chore/deps-06-base-ui-1.8` | @base-ui/react 1.8.0 (root + packages/ui) + dialog/popover visual pass | ☐ | |
 | 7 | `chore/deps-07-lucide-1` | lucide-react 1.51 · 9 alias renames · a11y check · baselines | ☐ | |
 | 8 | `chore/deps-08-dagre-dndkit-jsyaml` | dagre 3.1.1 · dnd-kit 0.5.0 (Feedback plugin) · js-yaml 5.4.2 (named imports, empty guard, drop @types) | ☐ | |
