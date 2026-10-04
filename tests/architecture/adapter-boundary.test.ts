@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { readdirSync, readFileSync } from 'fs'
 import { join, relative } from 'path'
-import yaml from 'js-yaml'
+import { load } from 'js-yaml'
 import type { WorkflowDefinition, WorkflowStep } from '@bakin/workflows/types'
 
 const ROOT = process.cwd()
@@ -361,7 +361,7 @@ describe('adapter boundary architecture', () => {
       const rel = relative(ROOT, file)
       if (!WORKFLOW_DEFAULTS_RE.test(rel)) continue
 
-      const parsed = yaml.load(readFileSync(file, 'utf-8')) as WorkflowDefinition
+      const parsed = load(readFileSync(file, 'utf-8')) as WorkflowDefinition
       hits.push(...collectWorkflowAgentViolations(parsed, rel))
     }
 

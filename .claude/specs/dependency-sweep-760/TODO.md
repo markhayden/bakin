@@ -10,7 +10,7 @@ Tick with the merge SHA. One PR in flight at a time. Post-merge checkpoint after
 | 4 | `chore/deps-04-eslint-10` | eslint 10.12 · typescript-eslint 8.71 · remove eslint-plugin-react · 3 stale directives dropped | ✅ #952 | fb6beeda5 |
 | 5 | `chore/deps-05-react-19.3-ink-8` | react/react-dom/@types 19.3.0 (root + docs) · ink 8.0.0 · react-devtools-core declared for the compiled binary | ✅ #954 | fd8a55672 |
 | 6 | `chore/deps-06-base-ui-1.8` | @base-ui/react 1.8.0 (root + packages/ui) · visual pass (progress label fix surfaced) · vendor-chunk test per-module · WebKit abort wording | ✅ #955 | 9473af59c |
-| 7 | `chore/deps-07-lucide-1` | lucide-react 1.51 · 9 alias renames · a11y check · baselines | ☐ | |
+| 7 | `chore/deps-07-lucide-1` | lucide-react 1.51 · 9 alias renames (47 files) · a11y clean · list-rows snapshot | ✅ #956 | c389ac1af |
 | 8 | `chore/deps-08-dagre-dndkit-jsyaml` | dagre 3.1.1 · dnd-kit 0.5.0 (Feedback plugin) · js-yaml 5.4.2 (named imports, empty guard, drop @types) | ☐ | |
 | 9 | `chore/deps-09-sharp-0.35` | sharp 0.35.5 + pin-data regen + compile-and-run | ☐ | |
 | 10 | `chore/deps-10-vite-8-vitest-5-storybook-10.6` | vite 8.3.2 · vitest 5.0.3 · @vitest/browser-playwright 5.0.3 · storybook 10.6.1 | ☐ | |

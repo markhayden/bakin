@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'fs'
 import { splitFrontmatter } from '@bakin/core/format/frontmatter'
 import { basename, isAbsolute, normalize, relative, resolve } from 'path'
-import yaml from 'js-yaml'
+import { load } from 'js-yaml'
 import type { Manifest } from '../../../packages/core/src/agent-packages/manifest'
 import type { WorkflowDefinition } from '@bakin/core/workflows/definition-types'
 import { validateDefinition } from '@bakin/core/workflows/validate-definition'
@@ -92,7 +92,7 @@ function validateWorkflowFiles(stagingDir: string, packageId: string, rels: stri
 
     let definition: WorkflowDefinition
     try {
-      definition = yaml.load(readFileSync(abs, 'utf-8')) as WorkflowDefinition
+      definition = load(readFileSync(abs, 'utf-8')) as WorkflowDefinition
     } catch (err) {
       throw new Error(
         `Workflow source file is invalid: ${rel}: ${err instanceof Error ? err.message : String(err)}`,

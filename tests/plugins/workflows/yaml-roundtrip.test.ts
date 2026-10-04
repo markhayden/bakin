@@ -6,7 +6,7 @@
  *   2. Parse it via `workflowDefinitionSchema` — the schema used by the
  *      REST writer. Fails the suite if any shipped workflow no longer
  *      validates against the schema-of-record.
- *   3. Serialize the parsed definition back through `yaml.dump` — the
+ *   3. Serialize the parsed definition back through `dump` — the
  *      exact writer the canvas editor's save path hits via the REST
  *      route — and confirm it re-parses identically. That guarantees
  *      the canvas editor cannot silently drop fields when a user opens
@@ -17,7 +17,7 @@ import { describe, expect, it, mock } from 'bun:test'
 import { readdirSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import yaml from 'js-yaml'
+import { dump, load } from 'js-yaml'
 
 const testDir = join(tmpdir(), `bakin-test-yaml-roundtrip-${Date.now()}`)
 
@@ -153,7 +153,7 @@ describe('live workflow YAML round-trip', () => {
 
     it(`validates and round-trips ${relPath}`, () => {
       const raw = readFileSync(file, 'utf-8')
-      const parsed = yaml.load(raw) as unknown
+      const parsed = load(raw) as unknown
 
       const result = workflowDefinitionSchema.safeParse(parsed)
       expect(
@@ -165,8 +165,8 @@ describe('live workflow YAML round-trip', () => {
       if (!result.success) return
 
       // Re-dump and re-parse — must produce an equivalent object.
-      const dumped = yaml.dump(result.data)
-      const reparsed = yaml.load(dumped) as unknown
+      const dumped = dump(result.data)
+      const reparsed = load(dumped) as unknown
       const reValidated = workflowDefinitionSchema.safeParse(reparsed)
       expect(reValidated.success).toBe(true)
       if (!reValidated.success) return

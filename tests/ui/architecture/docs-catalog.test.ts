@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import yaml from 'js-yaml'
+import { JSON_SCHEMA, load } from 'js-yaml'
 
 import {
   integratePublicUiCatalog,
@@ -82,7 +82,7 @@ describe('combined docs and public UI catalog', () => {
       scripts: Record<string, string>
     }
     const docsWorkflowText = readFileSync(join(REPO_ROOT, '.github/workflows/docs-deploy.yml'), 'utf-8')
-    const docsWorkflow = yaml.load(docsWorkflowText, { schema: yaml.JSON_SCHEMA }) as {
+    const docsWorkflow = load(docsWorkflowText, { schema: JSON_SCHEMA }) as {
       jobs?: { deploy?: { steps?: Array<{ uses?: string; run?: string; with?: Record<string, string> }> } }
     }
     const steps = docsWorkflow.jobs?.deploy?.steps ?? []

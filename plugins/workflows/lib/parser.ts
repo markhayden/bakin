@@ -8,7 +8,7 @@
  */
 import { readFileSync, readdirSync, existsSync } from 'fs'
 import { join } from 'path'
-import yaml from 'js-yaml'
+import { load } from 'js-yaml'
 import type { WorkflowDefinition, WorkflowStep, ParallelStep } from '../types'
 import { getContentDir } from './content-dir'
 import {
@@ -66,7 +66,7 @@ function getDefinitionsDir(contentDir?: string): string {
  * Parse a YAML string into a WorkflowDefinition.
  */
 export function parseYAML(content: string): Record<string, unknown> {
-  return yaml.load(content) as Record<string, unknown>
+  return load(content) as Record<string, unknown>
 }
 
 // ─── Definition traversal helpers ───────────────────────────────────────────

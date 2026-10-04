@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import yaml from 'js-yaml'
+import { JSON_SCHEMA, load } from 'js-yaml'
 
 import { classifyUiImpact } from '../../../scripts/ui/ci-impact.mjs'
 
@@ -47,7 +47,7 @@ describe('reusable UI workflow', () => {
       '.github/workflows/ci-pr.yml',
       '.github/workflows/ci-main.yml',
       '.github/workflows/release.yml',
-    ].map((path) => yaml.load(readRepoFile(path), { schema: yaml.JSON_SCHEMA }) as {
+    ].map((path) => load(readRepoFile(path), { schema: JSON_SCHEMA }) as {
       on?: Record<string, unknown>
       jobs?: Record<string, { needs?: string[] }>
     })

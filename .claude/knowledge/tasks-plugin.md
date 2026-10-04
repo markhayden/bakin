@@ -190,7 +190,7 @@ The board follows the official multi-list pattern:
 
 - **Sortable IDs** are plain `task.id` (not composite), so tasks can move across columns.
 - **Columns are droppable only.** Columns themselves are not sortable.
-- **Task cards** use `useSortable({ id, group: columnId, type: 'item', feedback: 'clone' })`.
+- **Task cards** use `useSortable({ id, group: columnId, type: 'item', plugins: (defaults) => [...defaults, Feedback.configure({ feedback: 'clone' })] })` — dnd-kit ≥0.4 configures drag feedback through the `Feedback` plugin (`@dnd-kit/dom`); the function form keeps the sortable defaults (keyboard + optimistic sorting plugins).
 - **`handleDragOver`** applies `move(items, event)` into optimistic board state so what you see during drag is the order that will be persisted.
 - **`handleDragEnd`** persists that optimistic order. Same-column drops call `/reorder`; cross-column drops call `/move` and then `/reorder` for source and target columns.
 
