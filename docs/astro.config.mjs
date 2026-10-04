@@ -2,6 +2,7 @@ import { defineConfig, passthroughImageService } from 'astro/config'
 import starlight from '@astrojs/starlight'
 import react from '@astrojs/react'
 import rehypeExternalLinks from 'rehype-external-links'
+import { unified } from '@astrojs/markdown-remark'
 
 export default defineConfig({
   site: 'https://makinbakin.com',
@@ -9,16 +10,20 @@ export default defineConfig({
   image: {
     service: passthroughImageService(),
   },
+  // Astro 7 deprecates `markdown.rehypePlugins` in favour of a processor; the
+  // unified processor from @astrojs/markdown-remark keeps the same rehype plugin.
   markdown: {
-    rehypePlugins: [
-      [
-        rehypeExternalLinks,
-        {
-          target: '_blank',
-          rel: ['noopener', 'noreferrer'],
-        },
+    processor: unified({
+      rehypePlugins: [
+        [
+          rehypeExternalLinks,
+          {
+            target: '_blank',
+            rel: ['noopener', 'noreferrer'],
+          },
+        ],
       ],
-    ],
+    }),
   },
   integrations: [
     react(),

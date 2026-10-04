@@ -1,42 +1,5 @@
 ---
-import { readFileSync } from 'node:fs'
-
-type OpenApiSpec = {
-  openapi: string
-  info: { title: string; version: string; description?: string }
-  servers?: Array<{ url: string; description?: string }>
-  tags?: Array<{ name: string; description?: string }>
-  paths: Record<string, Record<string, OpenApiOperation>>
-}
-
-type OpenApiOperation = {
-  operationId?: string
-  tags?: string[]
-  summary?: string
-  description?: string
-  parameters?: OpenApiParameter[]
-  requestBody?: {
-    description?: string
-    required?: boolean
-    content?: Record<string, { schema?: unknown; example?: unknown }>
-  }
-  responses?: Record<string, {
-    description?: string
-    content?: Record<string, { schema?: unknown; example?: unknown }>
-  }>
-  security?: Array<Record<string, string[]>>
-  'x-bakin-visibility'?: string
-  'x-bakin-stability'?: string
-}
-
-type OpenApiParameter = {
-  name: string
-  in: string
-  required?: boolean
-  description?: string
-  schema?: unknown
-  example?: unknown
-}
+import { openApiSpec as spec, type OpenApiOperation, type OpenApiParameter } from '../lib/openapi-spec'
 
 type OperationView = {
   id: string
@@ -116,8 +79,6 @@ function responseTone(status: string): string {
   return 'neutral'
 }
 
-const specPath = new URL('../../public/openapi.json', import.meta.url)
-const spec = JSON.parse(readFileSync(specPath, 'utf8')) as OpenApiSpec
 const tagDescriptions = new Map((spec.tags ?? []).map(tag => [tag.name, tag.description]))
 const operations: OperationView[] = []
 
