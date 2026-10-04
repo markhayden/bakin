@@ -2,9 +2,9 @@
  * OS-service lifecycle — pure goldens + mocked exec. No real launchctl/
  * systemctl ever runs; the unit file byte-compare IS the fingerprint.
  */
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { tmpdir } from 'os'
-import { rmSync, readFileSync, existsSync } from 'fs'
+import { rmSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-antfly-service-${Date.now()}-${randomUUID()}`)
@@ -47,10 +47,12 @@ import {
   renderLaunchdPlist,
   renderSystemdUnit,
   restartService,
+  servicePaths,
   startService,
   systemdUnitPath,
   type ServiceIo,
 } from '../../packages/adapter-antfly/src/service'
+import { unitDataDir } from '../../packages/adapter-antfly/src/service-ownership'
 import { DEFAULT_SETTINGS } from '../../packages/adapter-antfly/src/defaults'
 
 beforeEach(() => rmSync(testDir, { recursive: true, force: true }))
@@ -181,7 +183,7 @@ describe('ensureProvisioned idempotence', () => {
     expect(bootstrap![3]).toBe(launchdPlistPath(io2))
   })
 
-  it('systemd: identical unit + active → one is-active probe, unchanged; inactive → start + reloaded', async () => {
+  it('systemd: identical unit + active → one is-active probe, unchanged; inactive → reload, enable and start', async () => {
     const io = fakeIo({ platform: 'linux' })
     await ensureProvisioned(DEFAULT_SETTINGS, io, { intent: 'install' }) // unit on disk
 
@@ -201,7 +203,8 @@ describe('ensureProvisioned idempotence', () => {
       },
     })
     expect(await ensureProvisioned(DEFAULT_SETTINGS, inactive)).toEqual({ mode: 'systemd', action: 'reloaded' })
-    expect(inactive.record).toContainEqual(['systemctl', '--user', 'start', 'bakin-antfly.service'])
+    expect(inactive.record).toContainEqual(['systemctl', '--user', 'daemon-reload'])
+    expect(inactive.record).toContainEqual(['systemctl', '--user', 'enable', '--now', 'bakin-antfly.service'])
   })
 
   it('systemd: activating counts as loaded — no redundant start', async () => {
@@ -270,6 +273,48 @@ describe('ensureProvisioned idempotence', () => {
   })
 
   for (const operation of ['daemon-reload', 'enable']) {
+    it(`systemd: retries a failed ${operation} with the new owner's configuration and autostart`, async () => {
+      const paths = servicePaths()
+      const previousDataDir = join(testDir, 'previous-owner', 'antfly')
+      let cachedDataDir = previousDataDir
+      let runningDataDir: string | null = previousDataDir
+      let enabled = false
+      let failing = true
+      const io = fakeIo({
+        platform: 'linux',
+        portsReleased: async () => runningDataDir === null,
+        exec: async (_command, args) => {
+          const command = args[1]
+          if (command === 'is-active') return { code: runningDataDir ? 0 : 3, stdout: runningDataDir ? 'active' : 'inactive', stderr: '' }
+          if (command === 'stop') runningDataDir = null
+          if (command === operation && failing) return { code: 1, stdout: '', stderr: `${operation} denied` }
+          if (command === 'daemon-reload') cachedDataDir = unitDataDir(readFileSync(systemdUnitPath(io), 'utf8'), 'systemd')
+          if (command === 'enable') enabled = true
+          if (command === 'start' || command === 'enable') runningDataDir = cachedDataDir
+          return { code: 0, stdout: '', stderr: '' }
+        },
+      })
+      const unitPath = systemdUnitPath(io)
+      mkdirSync(dirname(unitPath), { recursive: true })
+      writeFileSync(unitPath, renderSystemdUnit(buildServiceArgv(DEFAULT_SETTINGS, { ...paths, dataDir: previousDataDir }, { modelReady: io.modelReady }), paths.logFile))
+
+      await expect(ensureProvisioned(DEFAULT_SETTINGS, io, { intent: 'install' })).rejects.toThrow(`${operation} denied`)
+      const claimedUnit = readFileSync(unitPath, 'utf8')
+      expect(unitDataDir(claimedUnit, 'systemd')).toBe(paths.dataDir)
+      expect(runningDataDir).toBeNull()
+      // Identical on-disk configuration must not bypass a repeated failure.
+      await expect(ensureProvisioned(DEFAULT_SETTINGS, io)).rejects.toThrow(`${operation} denied`)
+      expect(runningDataDir).toBeNull()
+      expect(existsSync(`${unitPath}.lock`)).toBe(false)
+
+      failing = false
+      expect(await ensureProvisioned(DEFAULT_SETTINGS, io)).toEqual({ mode: 'systemd', action: 'reloaded' })
+      expect(runningDataDir).toBe(paths.dataDir)
+      expect(enabled).toBe(true)
+      expect(readFileSync(unitPath, 'utf8')).toBe(claimedUnit)
+      expect(existsSync(`${unitPath}.lock`)).toBe(false)
+    })
+
     it(`systemd: failed ${operation} cannot report a successful install`, async () => {
       const io = fakeIo({
         platform: 'linux',
@@ -368,7 +413,7 @@ describe('restartService preserves owned configuration', () => {
       expect(io.loaded()).toBe(true)
       expect(readFileSync(unitPath, 'utf8')).toBe(original)
       expect(io.record.some((command) => command.includes(platform === 'darwin' ? 'bootout' : 'stop'))).toBe(true)
-      expect(io.record.some((command) => command.includes(platform === 'darwin' ? 'bootstrap' : 'start'))).toBe(true)
+      expect(io.record.some((command) => command.includes(platform === 'darwin' ? 'bootstrap' : 'enable'))).toBe(true)
     })
   }
 

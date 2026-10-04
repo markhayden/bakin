@@ -414,7 +414,12 @@ export async function ensureProvisioned(settings: AntflySettings, io: ServiceIo 
       if (mode === 'systemd' && !['inactive', 'failed', 'unknown'].includes(state.stdout.trim())) throw new Error(`Cannot inspect search service: ${state.stderr}`)
       await assertServicePortsReleased(io)
       if (mode === 'launchd') await checkedExec(io, 'launchctl', ['bootstrap', launchdTarget(), unitPath])
-      else await checkedExec(io, 'systemctl', ['--user', 'start', SYSTEMD_UNIT])
+      else {
+        // A previous attempt may have published this unit but failed to reload
+        // or enable it. Never restart with the manager's cached previous owner.
+        await checkedExec(io, 'systemctl', ['--user', 'daemon-reload'])
+        await checkedExec(io, 'systemctl', ['--user', 'enable', '--now', SYSTEMD_UNIT])
+      }
       return { mode, action: 'reloaded' }
     }
     // Stop BEFORE publishing new ownership. A healthy old engine is never proof of a successful claim.

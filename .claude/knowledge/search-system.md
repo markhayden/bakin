@@ -89,6 +89,9 @@ target home's derived data when its installed engine version changes.
 managed launch target must be unset before managed installation.
 
 Owner boots retain the #859 unloaded-unit recovery (`action: 'reloaded'`).
+Systemd recovery reloads the unit and enables it with `--now` even when the
+file already matches, because a previous attempt may have failed after the
+atomic write but before updating the manager's cached configuration/autostart.
 Fresh, current-version, and upgrade installs all start and verify readiness
 (60 seconds for install; 30 seconds for reset). Failed/refused adapter
 initialization stays unavailable until successful reinitialization: after

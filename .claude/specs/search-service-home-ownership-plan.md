@@ -372,3 +372,21 @@ tests, and operating guidance are committed together on the issue branch. No
 unresolved findings remain from the scoped implementation reviews. The
 migration follow-up and the documented in-flight-request/manual-lock-recovery
 limitations remain as agreed in the spec.
+
+### Pre-PR review correction: systemd retry
+
+The fresh pre-PR review found a failed-transfer recovery gap: after publishing
+the new unit but failing `daemon-reload`, the byte-identical retry could start
+systemd's cached previous-owner configuration. Recovery now checks
+`daemon-reload` and `enable --now` before reporting success. This also restores
+autostart after a failed enable; active-owner behavior is unchanged.
+
+Stateful fake-supervisor regressions first failed (25 passed / 2 failed), then
+passed (27 passed / 0 failed). They cover failed reload and enable, repeated
+failure, actual started data directory, autostart, preserved unit contents,
+and lock release. The independent review's original reproduction also passed
+after accounting for the existing canonical-path behavior. All adapter and
+focused onboarding tests plus that reproduction passed: 194 tests, 655
+assertions, zero failures. Typecheck and focused lint passed. Independent
+review confirmed the P1 is closed and reported no additional findings.
+These checks follow the full verification above; no browser behavior changed.
