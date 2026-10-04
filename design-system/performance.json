@@ -302,7 +302,7 @@
       "repository": "bakin",
       "pluginId": "tasks",
       "path": "plugins/tasks/dist/client.js",
-      "bytes": 210136
+      "bytes": 213724
     },
     {
       "repository": "bakin",
@@ -314,7 +314,7 @@
       "repository": "bakin",
       "pluginId": "workflows",
       "path": "plugins/workflows/dist/client.js",
-      "bytes": 743340
+      "bytes": 749527
     }
   ]
 }
