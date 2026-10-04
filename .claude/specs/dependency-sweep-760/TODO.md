@@ -16,7 +16,7 @@ Tick with the merge SHA. One PR in flight at a time. Post-merge checkpoint after
 | 10 | `chore/deps-10-vite-8-vitest-5-storybook-10.6` | vite 8.3.2 · vitest 5.0.3 · @vitest/browser-playwright 5.0.3 · storybook 10.6.1 · tokens-reference snapshot · .vitest/ ignored | ✅ #960 | e6ff48a00 |
 | 11 | `chore/deps-11-playwright-1.63` | playwright 1.63.0 · canonical image v1.63.0-noble (workflow ×8, script, test) · 24 snapshots re-rendered | ✅ #961 | b1555352f |
 | 12 | `chore/deps-12-docs-astro-7` | astro 7.3.5 · starlight 0.42.5 · @astrojs/react 7.0.0 · markdown processor · remove docs zod/@xyflow · entry.id · openapi-spec module · docs js-yaml 4 | ✅ #962 | 217fcab7d |
-| 13 | `chore/deps-13-pi-sdk-1.0` | pi-coding-agent 1.0.1 + pi-ai ^1.0.1 lockstep · live chat + image check | ☐ | |
+| 13 | `chore/deps-13-pi-sdk-1.0` | pi-coding-agent 1.0.2 + pi-ai ^1.0.2 lockstep · undici peer context converged · live chat + image check PASSED | ✅ #963 | 31607fd5e |
 | B | bits `chore/deps-sweep-companion` | zod/lucide/js-yaml/typescript/eslint/playwright/@types/bun/happy-dom · SDK ref · manifest bumps | ☐ | |
 | F | — | issues: TS 7 · bun 1.4 matrix · @eslint-react · close #760 | ☐ | |
 
