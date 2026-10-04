@@ -24,6 +24,7 @@ const contentDirMock = () => ({
 })
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
+mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => testDir, getOpenClawPath: (...p: string[]) => join(testDir, ...p), resetOpenClawHome: () => {} }))
 const loggerMock = () => ({
   createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }),
 })
@@ -31,7 +32,7 @@ mock.module('../../src/core/logger', loggerMock)
 mock.module('../../packages/core/src/logger', loggerMock)
 
 import { createEngineStatusProbe, parsePsCpuTime, scanLogDelta } from '../../packages/adapter-antfly/src/engine-status'
-import { servicePaths, type ServiceIo } from '../../packages/adapter-antfly/src/service'
+import { servicePaths, launchdPlistPath, renderLaunchdPlist, buildServiceArgv, type ServiceIo } from '../../packages/adapter-antfly/src/service'
 import { DEFAULT_SETTINGS } from '../../packages/adapter-antfly/src/defaults'
 import { settleFor } from '../helpers/wait'
 
@@ -119,7 +120,8 @@ describe('createEngineStatusProbe', () => {
   function fakeIo(psTimes: string[], pid = 4242): ServiceIo & { record: string[][] } {
     const record: string[][] = []
     let psCall = 0
-    return {
+    const io: ServiceIo & { record: string[][] } = {
+      tempRoots: [],
       platform: 'darwin',
       hasCommand: () => true,
       env: { HOME: testDir },
@@ -131,6 +133,11 @@ describe('createEngineStatusProbe', () => {
       },
       record,
     }
+    const unit = launchdPlistPath(io as ServiceIo)
+    mkdirSync(join(unit, '..'), { recursive: true })
+    writeFileSync(unit, renderLaunchdPlist(buildServiceArgv(DEFAULT_SETTINGS, servicePaths(), { modelReady: () => false }), servicePaths().logFile))
+    return io as ServiceIo & { record: string[][] }
+
   }
 
   it('first sample has null utilization; the second reports the rate since the first', async () => {
@@ -155,9 +162,7 @@ describe('createEngineStatusProbe', () => {
 
   it('reports running=false when the supervisor has no pid', async () => {
     const io: ServiceIo = {
-      platform: 'darwin',
-      hasCommand: () => true,
-      env: { HOME: testDir },
+      ...fakeIo(['0:00.00']),
       exec: async () => ({ code: 113, stdout: '', stderr: 'not loaded' }),
     }
     const probe = createEngineStatusProbe(() => DEFAULT_SETTINGS, io)
@@ -184,4 +189,17 @@ describe('createEngineStatusProbe', () => {
     const second = await probe()
     expect(second!.wedgeSignals).toEqual(['startup-catchup-spin'])
   })
+})
+
+it('does not inspect a foreign process or logs as this home’s engine', async () => {
+  const { launchdPlistPath, renderLaunchdPlist, buildServiceArgv } = await import('../../packages/adapter-antfly/src/service')
+  const calls: string[][] = []
+  const io: ServiceIo = { platform: 'darwin', env: { HOME: join(testDir, 'foreign-os') }, tempRoots: [], hasCommand: () => true,
+    exec: async (cmd, args) => { calls.push([cmd, ...args]); return { code: 0, stdout: 'pid = 4242', stderr: '' } } }
+  const path = launchdPlistPath(io)
+  mkdirSync(join(path, '..'), { recursive: true })
+  const paths = { ...servicePaths(), dataDir: join(testDir, 'foreign', 'antfly') }
+  writeFileSync(path, renderLaunchdPlist(buildServiceArgv(DEFAULT_SETTINGS, paths, { modelReady: () => false }), paths.logFile))
+  expect(await createEngineStatusProbe(() => DEFAULT_SETTINGS, io)()).toBeNull()
+  expect(calls).toEqual([])
 })

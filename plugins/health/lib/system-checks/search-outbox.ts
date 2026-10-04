@@ -15,9 +15,17 @@ import { repairTargetSelection } from '@bakin/core/health/repair-support'
 /** Pending rows older than this suggest the engine has been down a while. */
 const STALE_PENDING_MS = 10 * 60 * 1000
 
-export async function checkSearchOutboxObservations(): Promise<HealthObservationInput[]> {
+export async function checkSearchOutboxObservations({ accessRefused = false } = {}): Promise<HealthObservationInput[]> {
   const { outboxStats, listQuarantined } = await import('../../../../src/core/search-outbox')
   const stats = outboxStats()
+  if (accessRefused) {
+    return [healthHealthy({
+      key: 'journal.status',
+      summary: `${stats.pending} queued search writes retained locally; ${stats.quarantined} previously quarantined.`,
+      detail: 'Restore Search access for this home before attempting delivery or retrying quarantined writes.',
+      evidence: { pending: stats.pending, quarantined: stats.quarantined, oldestPendingEnqueuedAt: stats.oldestPendingEnqueuedAt },
+    })]
+  }
   const observations: HealthObservationInput[] = []
 
   if (stats.quarantined > 0) {

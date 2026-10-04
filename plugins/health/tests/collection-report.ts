@@ -63,3 +63,15 @@ function report(): HealthReport {
 export const collectionReport = report()
 collectionReport.incidents = [{ id: 'search-timeout', status: 'warning', disposition: 'action_required', effectiveDisposition: 'action_required', title: 'Search verification needs review', impact: 'The verification query timed out; existing records remain available.', resources: [], resolution: { key: 'again', type: 'rerun', label: 'Check again' }, observationIds: [], observedAt: OBSERVED_AT, staleAt: STALE_AT, stale: false }]
 collectionReport.summary.incidents.actionRequired = 1
+collectionReport.incidents.push({
+  id: 'search-ownership', status: 'error', disposition: 'action_required', effectiveDisposition: 'action_required',
+  class: 'policy_denial', title: 'Search service access needs attention',
+  impact: 'Search is unavailable in /private/tmp/bakin-verification/a-long-disposable-home-for-isolated-verification. Queued writes remain local.',
+  resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
+  resolution: {
+    key: 'search-service-access', type: 'instructions', label: 'Configure isolated search',
+    steps: ['This temporary home cannot claim the shared service.', 'Set search.settings.url to an independently managed isolated endpoint, then restart Bakin.'],
+  },
+  observationIds: [], observedAt: OBSERVED_AT, staleAt: STALE_AT, stale: false,
+})
+collectionReport.summary.incidents.actionRequired = 2

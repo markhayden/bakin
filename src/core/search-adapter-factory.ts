@@ -43,6 +43,7 @@ export interface SearchAdapterServiceStatus {
   mode: 'launchd' | 'systemd' | 'child' | 'guest'
   provisioned: boolean
   detail?: string
+  refusal?: { reason: string; detail: string; remediation: 'install' | 'configure-endpoint' | 'retry' }
 }
 
 /** How the active adapter's engine process is supervised (doctor surface). */
