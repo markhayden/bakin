@@ -264,6 +264,38 @@ bun test tests/cli/readonly-logs.test.ts --isolate
 `.bun-version` is what CI reads. Change the local binary and that file **together**, or
 local and CI silently diverge.
 
+### happy-dom and the Web Animations API (2026-10, #760)
+
+happy-dom **20.12.0** added `Element.prototype.getAnimations()` / `animate()` (its only
+`lib/` change over 20.11.15 — PR capricorn86/happy-dom#2335). Base UI feature-detects that
+method in `internals/useAnimationsFinished.js`: when it exists, every close path (Dialog,
+Popover, Positioner, Tooltip, PreviewCard, ScrollArea) defers its unmount through
+`requestAnimationFrame → Promise.all(animations) → ReactDOM.flushSync`. In a happy-dom
+test that means the element is still in the DOM right after `fireEvent.click(close)`, and
+the deferred `flushSync` lands after the test returned — the act gate fires and the
+`--isolate` worker can wedge (observed: one worker spinning at 100 % CPU for 95 minutes,
+2026-10-03).
+
+The suite runs with **`globalThis.BASE_UI_ANIMATIONS_DISABLED = true`** in
+`tests/setup.ts` — Base UI's own test-environment switch (declared in its `global.d.ts`:
+"When `true`, disables animation-related code, even if supported by the runtime
+environment"; set in Base UI's own `test/setupVitest.ts`; there is no docs page yet —
+mui/base-ui#4313 is the open request), which restores the synchronous path for every
+consumer. Still present and identical in @base-ui/react 1.8.0.
+Animation timing is a real-browser concern and belongs to the Storybook/Playwright lanes,
+not to RTL unit tests. `tests/components/base-ui-animations-disabled.test.tsx` is the
+teeth: it asserts both that happy-dom still ships `getAnimations` (so the switch is
+load-bearing) and that a Base UI Dialog unmounts synchronously on close. If happy-dom
+ever removes the API or Base UI drops the switch, that file says so.
+
+Bisect gotcha, so nobody repeats it: `@happy-dom/global-registrator` depends on
+`happy-dom` with a **caret** range, so bumping the registrator alone always pulls the
+latest core. To bisect the core, pin it with `"overrides": { "happy-dom": "<v>" }`
+**and `rm -rf node_modules` between probes** — bun's isolated linker keeps the
+registrator's nested `node_modules/happy-dom` symlink pointing at whichever core was
+installed first (observed: lockfile said 20.12.0, the tests loaded 20.14.5). Verify the
+loaded version from inside the test process, never from the lockfile.
+
 ## 6. Debugging a flake
 
 The method that settled #687's "CI red, local green", in order:

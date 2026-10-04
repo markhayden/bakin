@@ -99,10 +99,11 @@ curl -s http://127.0.0.1:3737/api/plugins/health/summary | head -c 400          
 **Verification:** `bun install && bun run typecheck && bun run lint`; `grep -rn nodemailer --include=package.json .` → none.
 **Files:** `package.json`, `bun.lock`. **Size:** XS.
 
-### Task 1.3: happy-dom 20.14.5 (PR1 commit b)
+### Task 1.3: happy-dom 20.14.5 (PR1 commit b) — EXECUTED 2026-10-03, see finding below
 **Acceptance:** `@happy-dom/global-registrator` 20.14.5; `bun run test` green with zero act warnings and the completeness count unchanged (8.5k).
 **Verification:** full suite; compare tests-dispatched count to the pre-change run from Task 1.1.
-**Files:** `package.json`, `bun.lock`. **Size:** XS. **Risk:** the bun × happy-dom interaction of #755 — this is why it is alone.
+**Files:** `package.json`, `bun.lock`, `tests/setup.ts`, `tests/base-ui-global.d.ts`, `tests/components/base-ui-animations-disabled.test.tsx`. **Size:** S.
+**Finding (why this was not XS):** the bare bump produced 2 deterministic failures (`danger-zone`, health `overview-tab`), 2 bun segfaults at an 8.65 GB peak (`brand-settings-overview`, `workflow-canvas-editor`), and a worker spinning for 95 min on the first full run. Bisect of the happy-dom CORE package (registrator pulls it by caret; `overrides` + `rm -rf node_modules` per probe) → first bad **20.12.0**, whose only change is the Web Animations API (`Element.getAnimations`). Base UI feature-detects that and defers every close through rAF + Promise + flushSync. Fix: Base UI's own switch `globalThis.BASE_UI_ANIMATIONS_DISABLED = true` in the preload + a teeth test; all 4 files green. Details: `test-suite-health.md § Toolchain`.
 
 ### Task 1.4: Minor/patch batch (PR1 commit c)
 **Description:** `@modelcontextprotocol/sdk` 1.32.0, `@tanstack/react-router` 1.170.41, `@xyflow/react` 12.12.0, `ajv` 8.20.0, `cron-parser` 5.10.1, `discord-api-types` 0.38.56, `shadcn` 4.21.1, `tailwind-merge` 3.7.0, `zustand` 5.0.15, `tailwindcss` + `@tailwindcss/cli` + `@tailwindcss/postcss` 4.3.3, `postcss` 8.5.28, `@testing-library/react` 16.3.3, `@testing-library/user-event` 14.6.7, `axe-core` 4.13.0, `@fontsource/{inter,jetbrains-mono,space-grotesk}` 5.3.0 (root). NOT in this commit: react, ink, zod, playwright, storybook/vitest/vite, typescript, eslint, sharp (own PRs).

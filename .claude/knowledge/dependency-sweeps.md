@@ -49,6 +49,7 @@ cannot move cleanly is deferred with an issue (§3).
 | `@astrojs/starlight` ↔ `astro` ↔ `@astrojs/react` ↔ vite | 0.42 needs astro ≥7.2.10 needs vite 8; `@astrojs/react` 7 needs astro 7 |
 | `@types/bun` ↔ `.bun-version` | same minor line as the pinned runtime |
 | `typescript` <6.1 ↔ `typescript-eslint` 8.x | TS 7 blocked (see §3) |
+| `@happy-dom/global-registrator` ↔ `happy-dom` core ↔ Base UI | registrator pulls core by caret; core ≥20.12 ships `getAnimations`, which flips Base UI closes to async — the suite runs with `globalThis.BASE_UI_ANIMATIONS_DISABLED = true` (`tests/setup.ts`) and a teeth test pins it; bisect the core with `overrides` + `rm -rf node_modules` per probe (`test-suite-health.md § Toolchain`) |
 | browser deps ↔ `packages/host/src/api/_embedded-assets-static.ts` | vendor chunk hashes change → regenerate (`build:host` + `build:assets-manifest`) and commit in the same PR |
 
 ## 3. Peer-blocked / deferred ledger
@@ -76,4 +77,4 @@ delete first, then bump — nobody should spend a regression pass on dead weight
 
 | PR | What moved | Surprises |
 |---|---|---|
-| 1 | removals; happy-dom 20.14.5; minor/patch batch | _(filled in as the PR lands)_ |
+| 1 | removals; happy-dom 20.14.5; minor/patch batch | happy-dom 20.12.0 added the Web Animations API → Base UI closes went async → 2 deterministic failures + a wedged worker on the first full run. Fixed in the harness with Base UI's `BASE_UI_ANIMATIONS_DISABLED` switch + teeth test. Bisect lesson: wipe node_modules between `overrides` probes. |
