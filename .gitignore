@@ -12,7 +12,7 @@
 
 # testing
 /coverage
-/.vitest-attachments/
+/.vitest/
 
 # build output
 dist/
