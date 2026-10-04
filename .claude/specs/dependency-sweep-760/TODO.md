@@ -6,7 +6,7 @@ Tick with the merge SHA. One PR in flight at a time. Post-merge checkpoint after
 |---|---|---|---|---|
 | 1 | `chore/deps-01-housekeeping-and-minors` | remove nodemailer/@types/nodemailer/router-devtools · happy-dom 20.14.5 (+ Base UI harness switch) · minor/patch batch · regenerated artifacts · runbook doc + audit script | ✅ #947 | c7cdfac2f |
 | 2 | `chore/deps-02-zod-4.6` | zod ~4.6.5 (root, reference-plugin) + behavior audit · lockfile dedupe · workflows health-check union-issue fix · #948 filed | ✅ #949 | 1e1f41c83 |
-| 3 | `chore/deps-03-typescript-6` | typescript 6.0.3 + diagnostics | ☐ | |
+| 3 | `chore/deps-03-typescript-6` | typescript 6.0.3 · `*.css` ambient declaration · SDK stylesheet export types · scaffold env.d.ts + types:[bun] | ✅ #951 | 8452dbb33 |
 | 4 | `chore/deps-04-eslint-10` | eslint 10.12 · typescript-eslint 8.71 · remove eslint-plugin-react | ☐ | |
 | 5 | `chore/deps-05-react-19.3-ink-8` | react/react-dom/@types 19.3.0 (root + docs) · ink 8.0.0 | ☐ | |
 | 6 | `chore/deps-06-base-ui-1.8` | @base-ui/react 1.8.0 (root + packages/ui) + dialog/popover visual pass | ☐ | |
