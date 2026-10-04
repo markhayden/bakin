@@ -18,7 +18,7 @@ Bakin's plugin system is three things working in concert:
    runtime activation. The server build fails if the emitted bundle
    retains any host-provided browser external (react & friends) — client-only
    SDK subpaths (`slots`/`components`/`ui`/`hooks`) are rejected in server
-   entries; the root barrel + `routing`/`types`/`utils`/`metadata` are
+   entries; the root barrel + `routing`/`types`/`utils` are
    server-safe (the slots registry core is split into
    `packages/sdk/src/slots/registry.ts` precisely so the barrel stays
    react-free — guard: `assertServerBundleExternalsClean` in
@@ -28,6 +28,12 @@ Bakin's plugin system is three things working in concert:
    (`packages/host/public/index.html` + `scripts/build-vendors.ts`)
    points those specifiers at singleton vendor bundles, so every
    plugin shares one React and one SDK with the shell.
+
+Published artifacts record the externals family `react19-sdk-focused-v1` in
+their provenance. Retiring the metadata entrypoint required this new family:
+previous-family artifacts need a rebuild and are refused at install or marked
+`needs-update` by the host. Versions remain additive within a family; neither
+old hosts nor new hosts accept artifacts from a different family.
 
 Cross-plugin communication never goes through direct imports. On the
 server it goes through the HookRegistry
@@ -1030,7 +1036,7 @@ packages/host/public/vendor/
   sdk-index.js, sdk-ui.js, sdk-layout.js, sdk-patterns.js,
   sdk-charts.js, sdk-conversation.js, sdk-content.js,
   sdk-navigation.js, sdk-hooks.js, sdk-components.js,
-  sdk-slots.js, sdk-types.js, sdk-utils.js, sdk-metadata.js,
+  sdk-slots.js, sdk-types.js, sdk-utils.js,
   sdk-routing.js, sdk-internal.js
   sdk-shared-<hash>.js   ← code-split chunks shared by the SDK bundles
 ```

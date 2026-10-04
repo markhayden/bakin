@@ -138,6 +138,12 @@ export function validatePluginImports(pluginDir: string, pkg: PluginPackageJson)
         violations.push(`${file}: ${specifier} imports app internals; use @makinbakin/sdk or a declared plugin API`)
         continue
       }
+      // Bun's root SDK external matches subpaths too. Reject this retired path
+      // before a declared SDK dependency can allow an unusable browser import.
+      if (specifier === '@makinbakin/sdk/metadata' || specifier.startsWith('@makinbakin/sdk/metadata/')) {
+        violations.push(`${file}: ${specifier} is no longer supported; use @makinbakin/sdk/routing for HTTP routes`)
+        continue
+      }
       if (HOST_PROVIDED_IMPORTS.has(specifier)) continue
 
       const pkgName = packageName(specifier)

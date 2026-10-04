@@ -35,6 +35,8 @@ bakin plugins install github:owner/repo#plugins/my-plugin
 
 For a `#subpath` GitHub source, install prefers a published artifact: it reads `whiskit-artifacts.json` from the release's `releases/latest/download/` redirect (or `releases/download/<tag>/` when the source pins `@<tag>`), downloads the artifact, verifies the checksum, safely extracts it, and checks that the host supports the artifact's externals contract. Contract versions are additive within one family, so newer hosts can load artifacts built against an earlier compatible version. Only when no published artifact exists does install fall back to git clone + local build.
 
+The current contract family is `react19-sdk-focused-v1`. It removes the retired `@makinbakin/sdk/metadata` entrypoint. Artifacts built against the previous `react19-sdk-makinbakin` family must be rebuilt and republished with the current SDK and Bakin build tools; they are refused at install or marked `needs-update` by the host. Older hosts also refuse artifacts from the new family. There is no compatibility export for the retired path.
+
 ## Check and Upgrade
 
 Artifact installs are version-based — there is no remote git sha to compare.

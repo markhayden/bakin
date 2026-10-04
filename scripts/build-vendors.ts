@@ -64,7 +64,6 @@ export const SDK_VENDOR_TARGETS: ReadonlyArray<{ specifier: string; name: string
   { specifier: '@makinbakin/sdk/slots', name: 'sdk-slots', entrypoint: 'packages/sdk/src/slots/index.tsx' },
   { specifier: '@makinbakin/sdk/types', name: 'sdk-types', entrypoint: 'packages/sdk/src/types/index.ts' },
   { specifier: '@makinbakin/sdk/utils', name: 'sdk-utils', entrypoint: 'packages/sdk/src/utils/index.ts' },
-  { specifier: '@makinbakin/sdk/metadata', name: 'sdk-metadata', entrypoint: 'packages/sdk/src/metadata/index.ts' },
   { specifier: '@makinbakin/sdk/routing', name: 'sdk-routing', entrypoint: 'packages/sdk/src/routing/index.ts' },
   { specifier: '@makinbakin/sdk/navigation', name: 'sdk-navigation', entrypoint: 'packages/sdk/src/navigation/index.ts' },
   { specifier: '@makinbakin/sdk/internal', name: 'sdk-internal', entrypoint: 'packages/sdk/src/internal/index.ts' },
@@ -95,7 +94,7 @@ function patchNamespaceImports(dir: string): void {
 }
 
 /**
- * Build all nine @makinbakin/sdk/* vendor bundles in one splitting build.
+ * Build all @makinbakin/sdk/* vendor bundles in one splitting build.
  * Exported for the vendor-bundle tests, which run it against a temp outDir.
  */
 export async function buildSdkVendorBundles(opts: { outDir: string; production: boolean }): Promise<void> {

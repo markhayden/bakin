@@ -46,7 +46,6 @@ export const SDK_SUBPATHS = [
   'slots',
   'types',
   'utils',
-  'metadata',
   'routing',
   'navigation',
 ] as const
@@ -291,7 +290,7 @@ function assertServerBundleExternalsClean(plugin: ValidatedPlugin): void {
     retained.map((spec) => `"${spec}"`).join(', ') +
     `. These resolve only in the browser via the host import map — a binary install fails at activation. ` +
     `Server entries must not import client-only SDK subpaths (ui/layout/patterns/charts/conversation/slots/hooks); ` +
-    `the SDK root, routing, types, utils, and metadata are server-safe.`,
+    `the SDK root, routing, types, and utils are server-safe.`,
   )
 }
 

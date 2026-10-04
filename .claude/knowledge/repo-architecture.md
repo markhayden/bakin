@@ -113,8 +113,6 @@ packages/sdk/src/
 ├── hooks/                  ← useAgent, useSSE, useSearch, useQueryState, ...
 ├── components/             ← PluginHeader, FacetFilter, AgentAvatar, ...
 ├── slots/                  ← Slot, registerSlot primitive
-├── metadata/               ← docs-aware contract helpers (Route/CliCommand/Hook/
-│                             Slot/ExecTool contracts, re-exported from @bakin/core/docs)
 ├── routing/                ← typed route contracts (defineRoute, re-exported
 │                             from @bakin/core/routing)
 ├── types/                  ← CANONICAL contract types, self-contained, split into
@@ -142,7 +140,7 @@ Sub-paths are declared via `exports` in `packages/sdk/package.json`:
 `@makinbakin/sdk/content`, `@makinbakin/sdk/navigation`,
 `@makinbakin/sdk/hooks`,
 `@makinbakin/sdk/slots`, `@makinbakin/sdk/types`, `@makinbakin/sdk/utils`,
-`@makinbakin/sdk/metadata`, `@makinbakin/sdk/routing`.
+`@makinbakin/sdk/routing`.
 
 ### `packages/adapter-openclaw/` and `packages/adapter-antfly/`
 
@@ -344,7 +342,7 @@ the detailed command reference; the summary:
    standalone ESM bundles of `react`, `react-dom`, `react/jsx-runtime`,
    and every `@makinbakin/sdk/*` sub-path to
    `packages/host/public/vendor/*.js`. The import map in
-   `packages/host/public/index.html` points at these files. The nine SDK
+   `packages/host/public/index.html` points at these files. The SDK
    sub-paths are built in a single `bun build --splitting` invocation:
    code shared between sub-paths lands once in content-hashed
    `sdk-shared-<hash>.js` chunks instead of being inlined into every

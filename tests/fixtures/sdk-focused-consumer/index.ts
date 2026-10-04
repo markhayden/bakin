@@ -18,7 +18,7 @@ import { definePluginUiConformance } from '@makinbakin/sdk/testing/ui/conformanc
 import { Button } from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 import { Slot, registerSlot } from '@makinbakin/sdk/slots'
-import { defineHookContract } from '@makinbakin/sdk/metadata'
+import { defineRoute } from '@makinbakin/sdk/routing'
 import { useHorizontalResize } from '@makinbakin/sdk/hooks'
 
 // Each rejected import guards the emitted declarations. Restoring an export
@@ -76,7 +76,7 @@ export const focusedSdkValues = {
   pluginFetch,
   Slot,
   registerSlot,
-  defineHookContract,
+  defineRoute,
   AgentDot,
   AgentStatus,
   ColorPicker,
@@ -95,3 +95,6 @@ export interface FocusedSdkProps {
   fixtureConfig: TestingUiConformance.PluginUiConformanceConfig
   button: Ui.ButtonProps
 }
+
+// @ts-expect-error — metadata was retired without a compatibility export.
+export type { HookContract } from '@makinbakin/sdk/metadata'

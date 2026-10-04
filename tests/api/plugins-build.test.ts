@@ -183,6 +183,7 @@ describe('buildUserPlugin', () => {
 
   it('bundles SDK imports into dist/index.js for runtime activation', () => {
     const server = readFileSync(join(targetDir, 'dist', 'index.js'), 'utf-8')
+    expect(server).toContain('HEALTH_INCIDENT_CLASSES')
     expect(server).not.toMatch(/from\s+["']@makinbakin\/sdk/)
     expect(server).not.toMatch(/import\(["']@makinbakin\/sdk/)
   }, 60_000)

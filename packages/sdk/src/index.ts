@@ -22,7 +22,6 @@
  *   - `@makinbakin/sdk/hooks`      — React hooks (useAgent, useSSE, useSearch, ...)
  *   - `@makinbakin/sdk/slots`      — Slot + registerSlot primitive
  *   - `@makinbakin/sdk/types`      — full type re-exports
- *   - `@makinbakin/sdk/metadata`   — docs-aware contract helpers
  *   - `@makinbakin/sdk/testing`    — plugin test harness (createTestContext, ...)
  *   - `@makinbakin/sdk/styles.css` — canonical compiled design-system CSS
  *

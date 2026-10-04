@@ -38,7 +38,6 @@
       "@makinbakin/sdk/slots": ["./packages/sdk/src/slots/index.tsx"],
       "@makinbakin/sdk/types": ["./packages/sdk/src/types/index.ts"],
       "@makinbakin/sdk/utils": ["./packages/sdk/src/utils/index.ts"],
-      "@makinbakin/sdk/metadata": ["./packages/sdk/src/metadata/index.ts"],
       "@makinbakin/sdk/routing": ["./packages/sdk/src/routing/index.ts"],
       "@makinbakin/sdk/navigation": ["./packages/sdk/src/navigation/index.ts"],
       "@makinbakin/sdk/testing": ["./packages/sdk/src/testing/index.ts"],

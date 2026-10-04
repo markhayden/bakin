@@ -48,8 +48,8 @@ function seedUnbuiltPlugin(): string {
     id: 'pubdemo', name: 'Pub Demo', version: '0.2.0', bakin: '>=0.0.1',
     description: 'publish --build fixture',   }))
   writeFileSync(join(dir, 'index.ts'), [
-    `import { defineHookContract } from '@makinbakin/sdk/metadata'`,
-    `export default { id: 'pubdemo', name: 'Pub Demo', version: '0.2.0', activate() { return defineHookContract } }`,
+    `import { defineRoute } from '@makinbakin/sdk/routing'`,
+    `export default { id: 'pubdemo', name: 'Pub Demo', version: '0.2.0', activate() { return defineRoute } }`,
     '',
   ].join('\n'))
   writeFileSync(join(dir, 'client.tsx'), [

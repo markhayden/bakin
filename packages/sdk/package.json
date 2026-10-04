@@ -17,7 +17,6 @@
     "./slots": "./src/slots/index.tsx",
     "./types": "./src/types/index.ts",
     "./utils": "./src/utils/index.ts",
-    "./metadata": "./src/metadata/index.ts",
     "./routing": "./src/routing/index.ts",
     "./navigation": "./src/navigation/index.ts",
     "./testing": "./src/testing/index.ts",

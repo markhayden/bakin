@@ -34,7 +34,6 @@ export const SDK_EXTERNALS: string[] = [
   '@makinbakin/sdk/slots',
   '@makinbakin/sdk/types',
   '@makinbakin/sdk/utils',
-  '@makinbakin/sdk/metadata',
   '@makinbakin/sdk/routing',
   '@makinbakin/sdk/navigation',
   '@makinbakin/sdk/internal',
@@ -54,10 +53,11 @@ export const PLUGIN_SERVER_EXTERNALS: string[] = [...REACT_EXTERNALS]
 
 /**
  * Stable identifier for this externals contract, recorded in build provenance.
+ * The focused family retires /metadata; the previous family promised that entry.
  * Versions in this family are additive: a newer host can satisfy artifacts
  * built against any earlier version. Breaking changes require a new family.
  */
-export const EXTERNALS_CONTRACT = 'react19-sdk-makinbakin-v2'
+export const EXTERNALS_CONTRACT = 'react19-sdk-focused-v1'
 
 interface ParsedExternalsContract {
   family: string
