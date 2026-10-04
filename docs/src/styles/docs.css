@@ -63,7 +63,8 @@ html {
   background: #0f0e0e;
 }
 
-:global(.header:has(.bakin-site-header)) {
+/* A plain stylesheet is already global; `:global()` only exists in scoped Astro styles. */
+.header:has(.bakin-site-header) {
   border-bottom: 0;
   padding: 0;
   background: transparent;

@@ -7,20 +7,12 @@
  * docs/public/openapi.json. Every other page falls back to Starlight's
  * default TOC unchanged.
  */
-import { readFileSync } from 'node:fs'
 import MobileTableOfContents from 'virtual:starlight/components/MobileTableOfContents'
 import TableOfContents from 'virtual:starlight/components/TableOfContents'
+import { openApiSpec as spec } from '../lib/openapi-spec'
 
-type OpenApiSpec = {
-  paths: Record<string, Record<string, {
-    operationId?: string
-    tags?: string[]
-    summary?: string
-  }>>
-  tags?: Array<{ name: string }>
-}
-
-const slug = Astro.locals.starlightRoute.entry.slug
+// Astro 6 removed `entry.slug` on content-layer entries; `entry.id` carries the route path.
+const slug = Astro.locals.starlightRoute.entry.id
 const isApiPage = slug === 'reference/generated/api'
 
 type ApiOperation = {
@@ -62,8 +54,6 @@ function computeStem(path: string): string {
 
 let groups: TagGroup[] = []
 if (isApiPage) {
-  const specPath = new URL('../../public/openapi.json', import.meta.url)
-  const spec = JSON.parse(readFileSync(specPath, 'utf8')) as OpenApiSpec
   const operations: ApiOperation[] = []
   for (const [path, methods] of Object.entries(spec.paths)) {
     for (const [methodKey, op] of Object.entries(methods)) {
