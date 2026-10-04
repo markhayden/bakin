@@ -1,7 +1,6 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
-import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import noPluginTopLevelSideEffects from "./scripts/eslint-rules/no-plugin-top-level-side-effects.mjs";
 
@@ -88,16 +87,13 @@ const eslintConfig = defineConfig([
     languageOptions: {
       globals: bunGlobals,
     },
-    plugins: { react, "react-hooks": reactHooks },
-    settings: { react: { version: "detect" } },
+    plugins: { "react-hooks": reactHooks },
     rules: {
       "no-undef": "off",
       "no-control-regex": "off",
       "no-empty": "off",
       "no-useless-assignment": "off",
       "preserve-caught-error": "off",
-      "react/react-in-jsx-scope": "off",
-      "react/prop-types": "off",
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
       // The plugin and CLI surfaces intentionally use dynamic values and
