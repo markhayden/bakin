@@ -77,4 +77,4 @@ delete first, then bump — nobody should spend a regression pass on dead weight
 
 | PR | What moved | Surprises |
 |---|---|---|
-| 1 | removals; happy-dom 20.14.5; minor/patch batch | happy-dom 20.12.0 added the Web Animations API → Base UI closes went async → 2 deterministic failures + a wedged worker on the first full run. Fixed in the harness with Base UI's `BASE_UI_ANIMATIONS_DISABLED` switch + teeth test. Bisect lesson: wipe node_modules between `overrides` probes. |
+| 1 | removals; happy-dom 20.14.5; minor/patch batch | happy-dom 20.12.0 added the Web Animations API → Base UI closes went async → 2 deterministic failures + a wedged worker on the first full run. Fixed in the harness with Base UI's `BASE_UI_ANIMATIONS_DISABLED` switch + teeth test. Bisect lesson: wipe node_modules between `overrides` probes. cron-parser <5.6 silently skipped the DST spring-forward day for a daily job — the old test had encoded the bug; 5.10.1 fixed a real scheduler miss. Worktrees need `bun run build:plugins` before `build:assets-manifest` or the manifest silently drops every plugin asset. |
