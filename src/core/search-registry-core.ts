@@ -414,7 +414,7 @@ async function repairOneTable(
   if (state?.state === 'migrating') {
     const outcomes = await resumeVersionedMigrations(search, [vdef], fingerprint, ensureOpts)
     const outcome = outcomes.find((o) => o.logical === vdef.logical)
-    if (outcome && outcome.result !== 'skipped') return `resumed:${outcome.result}`
+    if (outcome && outcome.result !== 'skipped') return outcome.result
   }
   if (state) {
     const stats = await search.tables.stats(state.physical).catch(() => null)
@@ -605,9 +605,9 @@ export async function pumpParkedMigrations(
       (tables) => new Set(tables.map((t) => t.name)),
       () => null,
     )
-    if (listed === null) return outcomes
     const deadShards: string[] = []
     for (const state of states.filter((s) => s.state === 'active')) {
+      if (listed === null) break // Still account for the parked attempts above.
       const def = defs.find((d) => d.logical === state.logical)
       if (!def) continue
       if (listed.has(state.physical)) {

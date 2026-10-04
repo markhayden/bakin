@@ -17,6 +17,9 @@ No browser UI, dependency, service ownership, or deployment changes.
   parks that same target while retaining the active query target and dual
   writes. Explicit callers still receive the original failure. The update
   must not affect a removed or superseded target.
+- Returned per-item batch failures are failures too; never count a rejected
+  document as backfilled. Do not infer failure from the indexed count alone,
+  since replay/upsert accounting may differ between adapters.
 - Failed or crash-interrupted partial backfills replay the restartable source
   into the recorded target. A partial `backfill_done` count is not completion
   evidence. Completed backfills retain the existing convergence-only fast path.

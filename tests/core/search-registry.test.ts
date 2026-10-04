@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, afterAll, mock } from 'bun:test'
+import { rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { clearSearchAdapter, createSearchAdapterHarness, installSearchAdapter } from '../helpers/search-adapter'
@@ -14,6 +15,8 @@ mock.module('@bakin/core/main-agent', () => ({
 const contentDirFactory = () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
+    home: testDir,
+    db: join(testDir, 'bakin.db'),
     root: testDir,
     settings: join(testDir, 'settings.json'),
     pluginSettings: join(testDir, 'plugin-settings'),
@@ -26,6 +29,11 @@ mock.module('@/core/content-dir', contentDirFactory)
 // The search outbox reads packages/core/src/content-dir directly — mock BOTH
 // resolvers (CLAUDE.md § Testing Rules), else the real one hits ~/.bakin.
 mock.module('../../packages/core/src/content-dir', contentDirFactory)
+mock.module('@bakin/adapter-openclaw/home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
 
 mock.module('@/core/settings', () => ({
   resetSettingsCache: () => {},
@@ -89,6 +97,14 @@ import { tableStatus, sweepTombstones } from '@bakin/core/search/tables'
 import { enqueueIndex, outboxStats } from '@bakin/core/search/outbox'
 import { broadcast } from '@/core/sse'
 import { waitUntil } from '../helpers/wait'
+import { closeAllDbs } from '../../packages/core/src/storage/db'
+
+afterAll(() => {
+  stopMigrationPump()
+  clearSearchAdapter()
+  closeAllDbs()
+  rmSync(testDir, { recursive: true, force: true })
+})
 
 describe('search-registry', () => {
   let searchHarness: ReturnType<typeof createSearchAdapterHarness>
@@ -990,6 +1006,7 @@ describe('rebuild pass semantics (2026-07-21 redesign)', () => {
   let searchHarness: ReturnType<typeof createSearchAdapterHarness>
 
   beforeEach(() => {
+    stopMigrationPump()
     resetSearchRegistry()
     searchHarness = createSearchAdapterHarness()
     installSearchAdapter(searchHarness.adapter)
@@ -1096,6 +1113,50 @@ describe('rebuild pass semantics (2026-07-21 redesign)', () => {
     buildSearchAPI('np-plugin').registerContentType(makeDef('npone'))
     await createRegisteredTables()
     expect(await pumpParkedMigrations()).toEqual([])
+  })
+
+  it('parks failed backfills, lets unrelated work recover, and caps retries even when listing fails', async () => {
+    buildSearchAPI('failure-plugin').registerContentType(makeDef('failed-backfill'))
+    buildSearchAPI('other-plugin').registerContentType(makeDef('other-backfill'))
+    await createRegisteredTables()
+    searchHarness.calls.documentsBatchIndex.mockRejectedValue(new Error('engine lost during backfill'))
+    const failures = await rebuildRegisteredTables(undefined, { force: true })
+    expect(failures.every(result => result.result === 'failed')).toBe(true)
+    expect(tableStatus('bakin_failed-backfill')?.phase).toBe('parked')
+    const failedTarget = tableStatus('bakin_failed-backfill')!.migratingTo!
+    const otherTarget = tableStatus('bakin_other-backfill')!.migratingTo!
+    let attempts = 0
+    searchHarness.calls.documentsBatchIndex.mockImplementation(async (name, items) => {
+      if (name === failedTarget) {
+        attempts++
+        throw new Error('still unavailable')
+      }
+      for (const item of items) await searchHarness.adapter.documents.index(name, item.key, item.doc)
+      return { indexed: items.length, failed: [] }
+    })
+    // The pump's active-table inspection cannot erase prior attempt accounting.
+    searchHarness.calls.tablesList.mockRejectedValue(new Error('listing unavailable'))
+    const first = await pumpParkedMigrations()
+    expect(first).toContainEqual({ logical: 'bakin_failed-backfill', result: 'parked' })
+    expect(first).toContainEqual({ logical: 'bakin_other-backfill', result: 'migrated' })
+    expect(tableStatus('bakin_other-backfill')!.physical).toBe(otherTarget)
+    for (let cycle = 0; cycle < 6; cycle++) await pumpParkedMigrations()
+    expect(attempts).toBe(5)
+    expect(tableStatus('bakin_failed-backfill')!.migratingTo).toBe(failedTarget)
+    expect(tableStatus('bakin_failed-backfill')!.phase).toBe('parked')
+  })
+
+  it('a reindex job reports a resumed backfill failure as parked, never successful', async () => {
+    buildSearchAPI('job-failure-plugin').registerContentType(makeDef('job-failure'))
+    await createRegisteredTables()
+    searchHarness.calls.documentsBatchIndex.mockRejectedValue(new Error('backfill unavailable'))
+    await rebuildRegisteredTables('bakin_job-failure', { force: true })
+
+    const job = startReindexJob('bakin_job-failure')
+    await waitUntil(() => job.state !== 'running', { label: 'failed resume result' })
+    expect(job.ok).toBe(false)
+    expect(job.parked).toBe(1)
+    expect(job.tables?.[0].result).toBe('parked')
   })
 })
 
