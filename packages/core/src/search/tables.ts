@@ -263,8 +263,12 @@ async function createTableTolerant(adapter: SearchAdapter, physical: string, con
   // benign on the live engine (duplicate creates with embeddings indexes
   // hang/500 and poison the retry cycle — observed at the rc.17 cutover).
   // One cheap GET; the matching-row fast path above this never gets here.
-  const existing = await adapter.tables.stats(physical).catch(() => null)
+  const existing = await adapter.tables.stats(physical)
   if (existing) return
+  const listed = await adapter.tables.list()
+  if (listed.some(table => table.name === physical)) {
+    throw new Error(`Cannot read status for listed search table ${physical}; retry after the engine recovers.`)
+  }
   try {
     await adapter.tables.create(physical, config)
   } catch (err) {
@@ -297,7 +301,10 @@ async function backfill(adapter: SearchAdapter, def: TableEnsureDef, physical: s
     // an rc.18-era workaround — async docs drain through antfly 0.2.0's
     // provisioned catch-up loop at a paced ~4 docs/s (~20x slower than the
     // write path; measured, tasks/evidence-antfly-0.2.0.md).
-    await adapter.documents.batchIndex(physical, chunk)
+    const result = await adapter.documents.batchIndex(physical, chunk)
+    if (result.failed.length > 0) {
+      throw new Error(`Backfill batch failed for ${physical}: ${result.failed.length} rejected documents (${result.failed[0].key}: ${result.failed[0].error})`)
+    }
     noteSearchEngineProgress()
     emitted += chunk.length
     setPhase(def.logical, 'backfilling', emitted)
@@ -602,7 +609,8 @@ async function stageMigration(
   // count), re-running it would re-embed everything just to wait out
   // another converge window. Skip straight to converge; dual-write has
   // kept the green current in the meantime.
-  const priorEmitted = old.migrating_to === green ? old.backfill_done ?? 0 : 0
+  const backfillCompleted = old.migration_phase === 'converging' || old.migration_phase === 'parked'
+  const priorEmitted = old.migrating_to === green && backfillCompleted ? old.backfill_done ?? 0 : 0
   if (priorEmitted > 0) {
     const greenStats = await adapter.tables.stats(green).catch(() => null)
     if ((greenStats?.documents ?? 0) >= priorEmitted) {
@@ -684,8 +692,12 @@ async function convergeAndFlip(
     // A leg in 'error' still parks — that green may be structurally sick.
     const rowNow = getRow(def.logical)
     if (rowNow && rowNow.state === 'migrating' && rowNow.migrating_to === green && !snap.failedLeg) {
-      const oldStats = await adapter.tables.stats(rowNow.physical).catch(() => null)
-      const oldEmpty = oldStats === null || oldStats.documents === 0
+      const oldStats = await adapter.tables.stats(rowNow.physical).catch(() => undefined)
+      let oldEmpty = oldStats?.documents === 0
+      if (oldStats === null) {
+        const listed = await adapter.tables.list().catch(() => null)
+        oldEmpty = listed !== null && !listed.some(table => table.name === rowNow.physical)
+      }
       const countOk = snap.count !== null && (snap.count >= emitted || (prev !== null && prev.count !== null && snap.count === prev.count))
       if (oldEmpty && countOk && (snap.count ?? 0) > 0) {
         log.warn('flipping an unconverged green over an EMPTY old physical — strictly better on every leg', {
@@ -756,7 +768,19 @@ async function runMigration(
   opts?: EnsureOpts,
 ): Promise<'migrated' | 'parked' | 'unchanged'> {
   // Backfill holds the chain (bounds embed load); convergence does not.
-  const staged = await serialized(() => stageMigration(adapter, def, green, fp, baseFp, opts))
+  const staged = await serialized(async () => {
+    try {
+      return await stageMigration(adapter, def, green, fp, baseFp, opts)
+    } catch (err) {
+      // Preserve the recorded target and dual writes, but never let a partial
+      // chunk count qualify for the completed-backfill resume fast path.
+      db().prepare(
+        `UPDATE search_tables SET migration_phase = 'parked', backfill_done = NULL, updated_at = ?
+         WHERE logical = ? AND state = 'migrating' AND migrating_to = ?`,
+      ).run(Date.now(), def.logical, green)
+      throw err
+    }
+  })
   if (staged === 'unchanged') return 'unchanged'
   return coalescedConverge(def.logical, () => convergeAndFlip(adapter, def, green, staged.emitted, opts))
 }
@@ -911,8 +935,17 @@ export async function resumeMigrations(
       outcomes.push({ logical: row.logical, result: 'unchanged' })
       continue
     }
-    const result = await runMigration(adapter, def, desired, fp, baseFp, opts)
-    outcomes.push({ logical: row.logical, result })
+    try {
+      const result = await runMigration(adapter, def, desired, fp, baseFp, opts)
+      outcomes.push({ logical: row.logical, result })
+    } catch (err) {
+      const current = getRow(row.logical)
+      if (current?.state !== 'migrating' || current.migrating_to !== desired || current.migration_phase !== 'parked') throw err
+      log.warn('migration resume failed — target remains parked for retry', {
+        logical: row.logical, green: desired, error: err instanceof Error ? err.message : String(err),
+      })
+      outcomes.push({ logical: row.logical, result: 'parked' })
+    }
   }
   return outcomes
 }
