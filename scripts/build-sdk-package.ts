@@ -27,6 +27,7 @@ const SDK_PACKAGE_PATH = join(SDK_DIR, 'package.json')
 export const PUBLIC_SDK_PACKAGE_NAME = '@makinbakin/sdk'
 export const SDK_STYLES_EXPORT = './styles.css'
 export const SDK_STYLES_SPECIFIER = `${PUBLIC_SDK_PACKAGE_NAME}/styles.css`
+export const SDK_STYLES_TYPES_EXPORT = './styles.css.d.ts'
 const CANONICAL_SDK_STYLES_PATH = join(SDK_DIR, 'styles.css')
 const SDK_UI_TEST_BIN = 'bin/bakin-plugin-test-ui.js'
 
@@ -367,6 +368,8 @@ function buildCli(outDir: string): void {
 }
 
 function buildStylesheet(outDir: string): void {
+  // Empty module declaration for the stylesheet export (see writePackageJson).
+  writeFileSync(join(outDir, 'styles.css.d.ts'), '// Side-effect stylesheet import; no exports.\nexport {}\n', 'utf-8')
   const output = join(outDir, 'styles.css')
   const result = spawnSync('bun', [
     join(REPO_ROOT, 'node_modules/.bin/tailwindcss'),
@@ -482,7 +485,10 @@ function writePackageJson(outDir: string, version: string): void {
       types: entry.typesPath,
     },
   ]))
-  exportsMap[SDK_STYLES_EXPORT] = SDK_STYLES_EXPORT
+  // TypeScript 6 checks side-effect imports: point the stylesheet export's
+  // types at an empty module declaration so `import '@makinbakin/sdk/styles.css'`
+  // typechecks in consumers with no ambient `*.css` declaration of their own.
+  exportsMap[SDK_STYLES_EXPORT] = { types: SDK_STYLES_TYPES_EXPORT, default: SDK_STYLES_EXPORT }
 
   const pkg = {
     name: PUBLIC_SDK_PACKAGE_NAME,

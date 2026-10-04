@@ -140,3 +140,11 @@ declare module '*.md' {
   const path: string
   export default path
 }
+
+/**
+ * Side-effect stylesheet imports (`import './x.css'`) are handled by bun's and
+ * Vite's CSS loaders. TypeScript 6 checks side-effect imports for resolvable
+ * declarations by default (noUncheckedSideEffectImports), so declare the
+ * module shape once here instead of per file.
+ */
+declare module '*.css'

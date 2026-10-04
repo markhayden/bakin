@@ -45,7 +45,7 @@ describe('buildSdkPackage', () => {
       name: string
       version: string
       type: string
-      exports: Record<string, { import: string; types: string } | string>
+      exports: Record<string, { import: string; types: string } | { types: string; default: string } | string>
       sideEffects: string[]
       bin: Record<string, string>
       peerDependencies: Record<string, string>
@@ -81,7 +81,11 @@ describe('buildSdkPackage', () => {
     expect(pkg.dependencies['@types/mdast']).toBe('4.0.4')
     expect(pkg.dependencies.mdast).toBeUndefined()
     expect(SDK_STYLES_SPECIFIER).toBe('@makinbakin/sdk/styles.css')
-    expect(pkg.exports['./styles.css']).toBe('./styles.css')
+    // TypeScript 6 checks side-effect imports: the stylesheet export resolves
+    // its types to an empty module declaration so `import '@makinbakin/sdk/styles.css'`
+    // typechecks in a consumer with no ambient `*.css` declaration of its own.
+    expect(pkg.exports['./styles.css']).toEqual({ types: './styles.css.d.ts', default: './styles.css' })
+    expect(readFileSync(join(outDir, 'styles.css.d.ts'), 'utf-8')).toContain('export {}')
     expect(pkg.sideEffects).toEqual(['./styles.css'])
     expect(existsSync(join(outDir, 'styles.css'))).toBe(true)
     expect(readFileSync(join(outDir, 'styles.css'), 'utf-8')).toContain('--bakin-color-canvas-default')
@@ -92,7 +96,7 @@ describe('buildSdkPackage', () => {
     for (const entry of SDK_EXPORTS) {
       const exportConfig = pkg.exports[entry.exportPath]
       expect(exportConfig).toBeDefined()
-      if (typeof exportConfig === 'string') throw new Error(`${entry.exportPath} must be a JS/types export`)
+      if (typeof exportConfig === 'string' || !('import' in exportConfig)) throw new Error(`${entry.exportPath} must be a JS/types export`)
       expect(existsSync(join(outDir, exportConfig.import))).toBe(true)
       expect(existsSync(join(outDir, exportConfig.types))).toBe(true)
       expect(statSync(join(outDir, exportConfig.import)).size).toBeGreaterThan(0)
