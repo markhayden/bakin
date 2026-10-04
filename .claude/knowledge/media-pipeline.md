@@ -51,10 +51,11 @@ node_modules. Therefore the install:
    per platform (`@img/sharp-<p>`, `@img/sharp-libvips-<p>`), ~8 MB.
 2. Extracts them into a staging `node_modules` layout.
 3. **Bundles sharp's JS into ONE self-contained file** with in-binary
-   `Bun.build` (target `bun`, cjs; externals only for the never-installed
-   optional ids `@img/sharp-libvips-dev*` / `@img/sharp-wasm32*`).
+   `Bun.build` (target `bun`, cjs, from sharp's `dist/index.cjs`; externals are the
+   never-reached `@img/sharp-*` family — per-platform `sharp.node` fallbacks,
+   libvips-dev, wasm32 — while `@img/colour` and the other JS deps are inlined).
 4. Places the natives where sharp's own FIRST require candidate finds them —
-   `../src/build/Release/sharp-<p>.node` relative to the bundle — and the
+   `../src/build/Release/sharp-<p>-<version>.node` relative to the bundle — and the
    libvips lib dir where the `.node`'s rpath (`@loader_path/../../
    sharp-libvips-<p>/lib`, darwin) / RUNPATH (`$ORIGIN`-symmetric, linux)
    expects it.
@@ -71,7 +72,7 @@ Store layout:
 ~/.bakin/media/sharp/<version>/
   receipt.json                          — schema, sharpVersion, platform, entry, tarballs
   dist/index.js                         — bundled sharp (all JS deps inlined)
-  src/build/Release/sharp-<plat>.node   — native, via sharp's relative candidate
+  src/build/Release/sharp-<plat>-<version>.node   — native, via sharp's relative candidate
   src/sharp-libvips-<plat>/lib/…        — libvips, via the native's rpath/RUNPATH
 ```
 
@@ -118,6 +119,17 @@ report honestly as unsupported (component warn + advisory incident).
    version dirs are swept post-commit.
 5. `--check` mode reports drift between `pin-data.ts` and a fresh
    regeneration (manual/network — never wired into tests).
+
+Executed 2026-10-04 for 0.34.5 → 0.35.5 (#760 PR 9). What the compile-and-run test
+caught, in order: sharp 0.35 moved its JS to `dist/*.cjs|mjs` (the installer now bundles
+`dist/index.cjs`), its first native candidate became version-suffixed
+(`src/build/Release/sharp-<plat>-<version>.node` — `placeNatives` names the file from
+`SHARP_PIN.version`), and it carries STATIC `require("@img/sharp-<plat>/sharp.node")`
+fallbacks for every platform that the bundler must treat as external. The external
+pattern is `@img/sharp-*` and NOT `@img/*`: `@img/colour` is a plain JS dependency that
+must be inlined — with it external the probe still passed (the staging node_modules
+satisfied it) and the committed store failed to load (`Cannot find module '@img/colour'`).
+Probe-then-commit is the tripwire; the loader test after commit is the real proof.
 
 ## Tests that guard this
 
