@@ -10,10 +10,17 @@
  * `.node`'s rpath/RUNPATH expect them:
  *
  *   ~/.bakin/media/sharp/<version>/
- *     receipt.json                          — install receipt; the loader's trigger
- *     dist/index.js                         — bundled sharp (all JS deps inlined)
- *     src/build/Release/sharp-<plat>.node   — native, found via sharp's relative candidate
- *     src/sharp-libvips-<plat>/lib/…        — libvips, found via the native's rpath
+ *     receipt.json                                 — install receipt; the loader's trigger
+ *     dist/index.js                                — bundled sharp (all JS deps inlined; built
+ *                                                    from sharp's CJS entry dist/index.cjs)
+ *     src/build/Release/sharp-<plat>-<version>.node — native, found via sharp's FIRST relative
+ *                                                    candidate (version-suffixed since 0.35)
+ *     src/sharp-libvips-<plat>/lib/…               — libvips, found via the native's rpath
+ *
+ * sharp ≥0.35 also carries STATIC `require("@img/sharp-<plat>/sharp.node")`
+ * fallbacks for every platform; they stay external to the bundle (never
+ * reached — the relative candidate wins) so the bundler does not try to
+ * resolve a dozen uninstalled prebuilds.
  *
  * Everything is staged and PROBE-VERIFIED (a real resize) before an atomic
  * rename — a broken download or a future sharp layout change can never
@@ -132,7 +139,7 @@ export async function installMediaStore(options: MediaInstallOptions = {}): Prom
     // 2. Bundle sharp's JS into one self-contained file — compiled binaries
     //    cannot walk a disk node_modules for bare specifiers.
     const bundle = options.bundle ?? bundleSharp
-    await bundle(join(nodeModules, 'sharp', 'lib', 'index.js'), join(staging, 'dist'))
+    await bundle(join(nodeModules, 'sharp', 'dist', 'index.cjs'), join(staging, 'dist'))
 
     // 3. Place natives for sharp's relative candidate + the rpath/RUNPATH.
     placeNatives(staging, nodeModules, platform)
@@ -193,9 +200,13 @@ async function bundleSharp(entrypoint: string, outDir: string): Promise<void> {
       outdir: outDir,
       target: 'bun',
       format: 'cjs',
-      // Never-installed optional ids sharp requires inside try/catch; the
-      // real natives load through sharp's DYNAMIC candidate loop at runtime.
-      external: ['@img/sharp-libvips-dev', '@img/sharp-libvips-dev/*', '@img/sharp-wasm32', '@img/sharp-wasm32/*'],
+      // Every @img/sharp-* id sharp requires — the per-platform `sharp.node`
+      // fallbacks (static specifiers since 0.35), the libvips-dev headers and
+      // the wasm32 build — is either never installed or never reached: the
+      // real native loads through sharp's relative candidate at runtime.
+      // (@img/colour is a plain JS dependency and MUST be inlined — the
+      // staging node_modules that satisfies it is gone once the store commits.)
+      external: ['@img/sharp-*'],
     })
   } catch (err) {
     const logs = (err as { logs?: unknown[] }).logs ?? []
@@ -211,19 +222,20 @@ async function bundleSharp(entrypoint: string, outDir: string): Promise<void> {
 
 /**
  * Copy the native `.node` to sharp's first require candidate
- * (`../src/build/Release/sharp-<plat>.node`, relative to dist/) and the
+ * (`../src/build/Release/sharp-<plat>-<version>.node`, relative to dist/) and the
  * libvips lib dir to the rpath target (`@loader_path/../../sharp-libvips-…/lib`
  * on darwin, `$ORIGIN`-symmetric on linux — the linux leg is pinned by the
  * compile-and-run test on CI).
  */
 function placeNatives(staging: string, nodeModules: string, platform: MediaPlatformKey): void {
-  const nativeSource = join(nodeModules, `@img/sharp-${platform}`, 'lib', `sharp-${platform}.node`)
+  const nativeName = `sharp-${platform}-${SHARP_PIN.version}.node`
+  const nativeSource = join(nodeModules, `@img/sharp-${platform}`, 'lib', nativeName)
   if (!existsSync(nativeSource)) {
     throw new Error(`media store: native module missing from tarball layout (${nativeSource})`)
   }
   const release = join(staging, 'src', 'build', 'Release')
   mkdirSync(release, { recursive: true })
-  cpSync(nativeSource, join(release, `sharp-${platform}.node`))
+  cpSync(nativeSource, join(release, nativeName))
 
   const libvipsSource = join(nodeModules, `@img/sharp-libvips-${platform}`, 'lib')
   if (!existsSync(libvipsSource)) {

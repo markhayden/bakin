@@ -101,8 +101,9 @@ beforeAll(() => {
   })
   mkdirSync(testDir, { recursive: true })
 
-  const sharpTar = makeTarball('sharp', { 'lib/index.js': 'module.exports = () => {}\n' })
-  const nativeTar = makeTarball('native', { [`lib/sharp-${platform}.node`]: Buffer.from('fake-native') })
+  // sharp ≥0.35 layout: CJS entry under dist/, version-suffixed native.
+  const sharpTar = makeTarball('sharp', { 'dist/index.cjs': 'module.exports = () => {}\n' })
+  const nativeTar = makeTarball('native', { [`lib/sharp-${platform}-${pinData.version}.node`]: Buffer.from('fake-native') })
   const libvipsTar = makeTarball('libvips', { 'lib/libvips-fixture.dylib': Buffer.from('fake-libvips') })
   fixtures['/sharp.tgz'] = sharpTar
   fixtures['/native.tgz'] = nativeTar
@@ -141,7 +142,7 @@ describe('installMediaStore', () => {
     // Committed layout: bundle + natives at sharp's candidate paths; build
     // inputs pruned.
     expect(readFileSync(join(result.storeDir, 'dist', 'index.js'), 'utf-8')).toContain('bundled fixture')
-    expect(existsSync(join(result.storeDir, 'src', 'build', 'Release', `sharp-${platform}.node`))).toBe(true)
+    expect(existsSync(join(result.storeDir, 'src', 'build', 'Release', `sharp-${platform}-${pinData.version}.node`))).toBe(true)
     expect(existsSync(join(result.storeDir, 'src', `sharp-libvips-${platform}`, 'lib', 'libvips-fixture.dylib'))).toBe(true)
     expect(existsSync(join(result.storeDir, 'node_modules'))).toBe(false)
     expect(existsSync(join(result.storeDir, '.tarballs'))).toBe(false)
