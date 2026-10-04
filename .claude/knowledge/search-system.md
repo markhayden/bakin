@@ -40,53 +40,74 @@ adapter's release host (SHA256-verified against
 `~/.bakin/antfly/` and logs at `~/.bakin/logs/antfly.log`. Bakin is a pure
 HTTP client; the OS owns start, keep-alive, and crash-restart.
 
-`packages/adapter-antfly/src/service.ts` owns the lifecycle. Four modes,
-resolved by `detectServiceMode()` (env `BAKIN_SEARCH_SERVICE_MODE` override →
-platform detection):
+`packages/adapter-antfly/src/service.ts` owns lifecycle controls; the private
+`service-ownership.ts` and `service-lock.ts` implement ownership and serialized
+mutations. Four process modes remain:
 
 | Mode | When | Mechanism |
 |---|---|---|
-| `launchd` | macOS with `launchctl` | LaunchAgent `~/Library/LaunchAgents/io.bakin.antfly.plist`, `KeepAlive=true`, managed via `bootstrap`/`kickstart`/`bootout` (legacy `load`/`unload` fallback) |
-| `systemd` | Linux with `systemctl` | User unit `~/.config/systemd/user/bakin-antfly.service`, `Restart=always` |
-| `child` | No service manager (Docker rig, CI, tests) | Strict attached child: spawn on boot, kill on exit. No adoption, no sidecar, no restart ladder |
-| `guest` | Non-default `settings.url` | Externally managed engine — never provision, never spawn, never touch its disk |
+| `launchd` | macOS with `launchctl` | Per-user LaunchAgent `~/Library/LaunchAgents/io.bakin.antfly.plist`, `KeepAlive=true`, bootstrap/bootout |
+| `systemd` | Linux with `systemctl` | Per-user `~/.config/systemd/user/bakin-antfly.service`, `Restart=always` |
+| `child` | No service manager, permanent home | Attached child: spawn on boot, stop on exit; no adoption/restart ladder |
+| `guest` | Explicit different URL origin | Externally managed endpoint; no local binary/model installation or service control |
 
-> **Dev-rig invariant:** the LaunchAgent label + port 3738 are machine
-> singletons and the unit is a byte-compared fingerprint of `getBakinPaths()` —
-> a foreign BAKIN_HOME that reaches `ensureProvisioned` REWRITES the real unit
-> (this fired live on 2026-07-11 from a rig isolated home). Rig instances are
-> therefore pinned to guest mode via a non-default URL (`127.0.0.1:3838`) and
-> get a rig-spawned child instead; `BAKIN_SEARCH_SERVICE_MODE=child` is the
-> belt. See `.claude/knowledge/dev-rig.md` § Search isolation.
+**Ownership (#826):** the unit's `<home>/antfly` argument identifies its home.
+Ordinary boot can reconcile configuration and recover an unloaded service only
+for that owner. Missing, foreign, temporary, malformed, or unreadable ownership
+leaves search unavailable; boot continues and outbox writes stay pending.
+Foreign boots return `refused-foreign-home` without service mutations. Every
+HTTP request and cached availability result rechecks ownership; refused boots
+send zero requests to the shared engine. Process/CPU/log probes are guarded too.
+Reinitialization invalidates old clients, including deferred scans, so a new
+guest configuration cannot authorize an old client's shared-engine URL.
 
-**The unit file IS the fingerprint.** `ensureProvisioned()` renders the
-desired plist/unit (argv includes `--data-dir`, `--models-dir`, and one
-`--preload-model` per configured embedder so the first embed never races a
-cold model load) and byte-compares it with what's on disk. Identical → nothing
-to do (the entire boot-time cost is one file read). Drift — pin bump, embedder
-change, different preloads — → rewrite + restart. There is no sidecar state
-file and no adoption probing.
+Homes are canonicalized, including whole-home symlink aliases and relative
+paths. Redirecting only the `antfly` data leaf is refused because the owning
+home's metadata/outbox must stay with its derived indexes. Known system temp
+roots, including `/tmp`, `/private/tmp`, `/var/tmp`, and `TMPDIR`, cannot claim
+managed search, even with explicit installation. Directory-name guesses are
+not used; disposable homes outside those roots must use an isolated endpoint
+and must not deliberately claim the shared service.
 
-The adapter (`packages/adapter-antfly/src/adapter.ts`) calls
-`ensureProvisioned()` from `initialize()`; provisioning failures **never throw
-out of initialize** — search degrades honestly (writes queue, doctor reports)
-instead of blocking boot. `shutdown()` stops **only** a strict child:
-OS-supervised instances stay warm across Bakin restarts by design. Upgrades
-are `stopService()` → swap binary (verify-then-commit, `installer.ts`) →
-`startService()`. `ANTFLY_PATH` overrides binary discovery for dev builds.
+`bakin install search` is the explicit permanent-home claim path. Generic
+onboarding can create a missing service or update its owner, but cannot transfer
+another home's service, including when ownership changes after its initial
+check. A current binary alone is not a complete installation. A native-host
+`BAKIN_SEARCH_SERVICE_MODE=child` override cannot bypass supervised ownership;
+unset it or configure a guest endpoint. Equivalent managed URL spellings
+(trailing slash, hostname case, path/query) retain the ownership boundary.
 
-**Supervision honesty (#859, 2026-09-19):** a byte-identical unit file says
-nothing about supervisor state, so `ensureProvisioned`'s `unchanged` fast path
-performs ONE read-only probe (`launchctl print` / `systemctl is-active`,
-`activating` counts as up) and re-loads an unloaded unit — surfaced as
-`action: 'reloaded'`. `startService` bootstraps the on-disk plist directly
-when `kickstart` finds no unit (the post-`bootout` upgrade window that once
-shipped a green install with the engine down), falling back to full
-provisioning only if that bootstrap fails. Every installer path that
-(re)starts the service gates on `waitForEngineReady` (60 s upgrade/noop, 30 s
-reset) and returns `failed` — CLI exits non-zero — when the engine never
-answers; a "successful" install with a dead engine is impossible by
-construction.
+**Mutation ordering:** download/checksum/version verification precedes stopping.
+One exclusive operation lock beside the canonical service unit serializes
+boot, controls, install, and reset across homes. Re-read ownership and the
+installed binary version under that lock; stop the old service and confirm
+API/health ports are released before changing the unit/binary/target data.
+Units use atomic writes. Supervisor failures propagate; readiness from another
+listener cannot turn a failed operation into success. Upgrades clear only the
+target home's derived data when its installed engine version changes.
+`ANTFLY_PATH` may aid binary discovery, but an override different from the
+managed launch target must be unset before managed installation.
+
+Owner boots retain the #859 unloaded-unit recovery (`action: 'reloaded'`).
+Fresh, current-version, and upgrade installs all start and verify readiness
+(60 seconds for install; 30 seconds for reset). Failed/refused adapter
+initialization stays unavailable until successful reinitialization: after
+installing search for an already-running Bakin, restart that Bakin process.
+Health gives ownership-specific instructions and local journal status without
+probing a refused engine or proposing an automatic takeover. Enabled but
+refused Search is an error-level policy denial with visible instructions;
+journal counts describe retained writes rather than claiming normal draining.
+
+Stop the previous Bakin process before an intentional cross-home transfer:
+a local file guard cannot revoke a request already authorized/in flight.
+HTTP does not acquire the service lock. A lock left by an abrupt crash is
+reported with its path; stop all service-changing processes, inspect its
+holder, and only then remove the abandoned lock and retry. Empty/malformed
+locks stay occupied; no unsafe automatic stale-lock reclamation.
+
+The isolated rig keeps its own engine on 3838/3839 and an explicit guest URL.
+Ownership protection also covers a throwaway boot that loses that setting;
+it then has unavailable search. See `.claude/knowledge/dev-rig.md`.
 
 ## Architecture
 
@@ -770,7 +791,7 @@ the default `dimension`):
 | Key | Type | Purpose |
 |---|---|---|
 | `enabled` | `boolean` | Enable/disable the search integration |
-| `url` | `string` | Engine base URL, no path suffix (default `http://127.0.0.1:3738` — Bakin's private instance; `localhost` is normalized to `127.0.0.1` so the client dials exactly what the server binds). A non-default URL = guest mode (externally managed; never provisioned). |
+| `url` | `string` | Engine base URL, no path suffix (default `http://127.0.0.1:3738` — Bakin's private instance; `localhost` is normalized to `127.0.0.1` so the client dials exactly what the server binds). A different URL origin = guest mode (externally managed; never provisioned). Equivalent default-loopback spellings remain ownership guarded. |
 | `auth` | `object?` | Optional basic auth `{ username }` — the password lives in the secret store and is injected at adapter init, never stored in settings.json |
 | `search.strategy` | `string` | Default strategy (`rrf` \| `semantic_only` \| `full_text_only`) |
 | `search.fusionStrategy` | `string` | Hybrid fusion algorithm (`rrf` \| `rsf`, default `rrf`) |

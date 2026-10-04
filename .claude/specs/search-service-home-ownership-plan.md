@@ -1,9 +1,9 @@
 # Implementation plan: Search service home ownership (#826)
 
-Status: revised after source and independent review; ready for approval.
-No implementation started. Base inspected: `566c7a229`.
+Status: implemented, reviewed, and verified; all planned gates completed.
+Base inspected: `566c7a229`. User authorized implementation with “do it”.
 Spec: [search-service-home-ownership.md](search-service-home-ownership.md).
-Proposed branch: `fix/search-service-home-ownership-826`.
+Branch: `fix/search-service-home-ownership-826`.
 
 ## Result and scope
 
@@ -119,7 +119,10 @@ Keep standalone client tests transport-only. Do not add checks to every method.
 
 The managed adapter enables access only after successful initialize; a
 refusal/failure leaves it blocked until successful reinitialize. Rebuilding
-the client retains the guard and clears availability. Document restarting the
+the client retains the guard, invalidates deferred operations on the previous
+client, and clears availability. Each guard authorizes its own transport's
+settings. Strict-child initialization remains idempotent under the service
+lock and recognizes its own running child. Document restarting the
 current Bakin process after explicit installation if it started unavailable.
 An enabled adapter still rechecks unit ownership and the mutation lock before
 each fetch, revoking old-owner access after a transfer and refusing while a
@@ -147,6 +150,9 @@ checks: one policy-denial observation plus local outbox data, without remote
 probes, an engine-down duplicate, or reset/reindex advice. Guest checks skip
 local installation requirements and use the configured endpoint. Engine
 process/CPU/log probes also avoid attributing foreign state to the caller.
+The refusal uses error/action-required so normal sensitivity preserves the
+existing instruction disclosure. Local journal counts describe retained
+writes and offer no delivery/repair claims while access is refused.
 
 Reuse existing instruction resolutions: temporary homes get isolated-endpoint
 steps with no install command; permanent homes get deliberate claim guidance
@@ -278,8 +284,8 @@ Do not repeat green full checks without a relevant new edit/failure. Inspect
 generated artifacts; never update baselines merely to force green results.
 
 Baseline before implementation: service suite 20 passed, 0 failed, 61
-assertions. This is existing coverage, not proof of the fix. All new tests,
-build/UI results, and implementation review remain pending.
+assertions. This is existing coverage, not proof of the fix. Implementation
+and validation evidence is recorded below.
 
 ## Review disposition
 
@@ -293,10 +299,76 @@ It also removed directory-name guessing and unnecessary helper/test-only
 commits. One evaluator, one mutation lock, one request guard, and the existing
 status/presentation boundaries are sufficient. Keep migration recovery,
 generalized service orchestration, and engine-side client fencing out of this
-change. Implementation begins after approval of this concrete plan.
+change. Implementation was authorized after this review.
 
 Final consistency pass: recovery instructions, concurrency limits, acceptance
 coverage, and commit dependencies agree with the spec. T1 now has explicit
 internal execution steps because its combined service/installer checkpoint
 was too large to treat as a single coding task. No additional product scope
 or architecture change is required before implementation.
+
+## Implementation review and evidence
+
+T0 and T1 are committed as `5f1ea2083` and `8fbe1a9c2`; T2 is `47b292a78`
+and T3 is `c6055239c`. T2 includes the
+review corrections to setup authority, canonical paths, and under-lock binary
+revalidation, because they close access gaps discovered while integrating
+the request guard. T3 keeps diagnostics and its existing browser fixture
+together. T4 records operational guidance and the results below.
+The final T3 consistency correction is `f0218c958`: inability to read service
+access uses the same retained-journal reporting as an explicit refusal.
+
+Independent implementation review found and verified fixes for eight cases:
+native-host child overrides, version changes during staging, relative home
+paths, generic setup racing a new owner, deferred clients after settings
+changes, strict-child reinitialization, hidden Health instructions, and
+misleading journal-drain copy. Final scoped review reported no remaining
+findings. No migration implementation, dependency, public UI component,
+visual baseline, or service framework was added.
+
+Behavioral RED evidence was observed before fixes for foreign/missing/temp
+service provisioning, relative-home identity, adapter isolation, stale-client
+authorization, child reinitialization, Health sensitivity, and retained
+journal reporting. Tests use fake supervisors/processes and isolated homes;
+the adapter integration test uses a real isolated SQLite outbox and proves
+transient retention with zero quarantined writes and zero engine HTTP.
+
+The Health fixture passed desktop/mobile conformance after opening the
+existing explanation and commandless instruction disclosures. Both generated
+screenshots were inspected; the long home path and recovery steps fit.
+Reports: `plugins/health/test-results/bakin-ui/index.html` and
+`plugins/health/test-results/bakin-ui-agents/index.html` (generated, untracked).
+Patterns: `storybook/public/feedback/search-trust.stories.tsx` —
+`CanonicalUsage` / `AvailabilityAndEvidence`,
+`storybook/public/lists/list-rows.stories.tsx` — `CanonicalUsage`, and
+`storybook/public/feedback/status-badge.stories.tsx` — `CanonicalUsage`.
+Contract: `@makinbakin/sdk/patterns`, existing `/ui` and `/layout` disclosures.
+Story/style-guide update not needed; no deviation.
+
+Final verification uses Bun 1.3.13. The repository suite passed with 10,422
+passing, 19 skipped, zero failed tests across 1,088 files. Quick conformance,
+typecheck, lint (six pre-existing warnings, zero errors), frontend builds,
+payload limits, deterministic Storybook builds, and all 367 Storybook
+accessibility/interaction tests passed. `bun run build` produced all three
+supported binaries; the macOS ARM64 binary's `version` command passed with
+isolated Bakin/engine/runtime homes. Generated version/asset-hash churn was
+reviewed and excluded from the change. Full conformance passed, including
+318 unchanged Chromium visual baselines, all 171 Chromium/Firefox/WebKit
+behavior checks, plugin conformance checks (including seeded-failure checks),
+49-page docs validation, route-contract validation, and the combined published
+docs/catalog build (483 public UI stories). Generated docs date-only churn
+was excluded. `git diff --check` passed. No production service was restarted
+or repointed during this work.
+
+The final ownership-read-error case was reproduced (56 passed / 1 failed),
+fixed, and verified (57 Health tests passed / 0 failed), followed by another
+passing quick conformance/typecheck, focused lint, and complete binary build.
+Its independent review reported no findings. These targeted checks follow
+the full runner's completed repository-test stage; browser contracts are
+unchanged by this final server-side reporting correction.
+
+T0–T4 are complete. Owner/claim behavior, request isolation, diagnostics,
+tests, and operating guidance are committed together on the issue branch. No
+unresolved findings remain from the scoped implementation reviews. The
+migration follow-up and the documented in-flight-request/manual-lock-recovery
+limitations remain as agreed in the spec.

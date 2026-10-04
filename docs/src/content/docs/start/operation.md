@@ -122,34 +122,71 @@ Use `--rebuild` only when you want to drop the existing index and start fresh.
 
 Prefer the dashboard? The same controls live in the [Health plugin](/docs/using/health/).
 
+## Search service ownership and recovery
+
+The managed search service is shared by your OS user, and belongs to one
+Bakin home. Starting Bakin from another home cannot take it over. If the unit
+is missing or belongs to another home, Bakin starts with search unavailable
+and keeps queued index writes in that home's journal. Browsing source content
+continues to work.
+
+For the intended permanent home, run `bakin install search` with that home's
+`BAKIN_HOME`. This explicitly creates or transfers service ownership. Stop
+the previous Bakin process before a transfer, then restart Bakin from the
+chosen home after installation. For example, for a permanent custom home:
+
+```sh
+BAKIN_HOME="$HOME/bakin-work" bakin install search
+BAKIN_HOME="$HOME/bakin-work" bakin start
+```
+
+If Bakin for that home is already running, stop it before the `start` step.
+Generic onboarding can set up an unclaimed service, but never transfers one
+from another home. An existing engine binary alone does not complete setup.
+
+Temporary homes under system temporary roots (`/tmp`, `/private/tmp`,
+`/var/tmp`, or `TMPDIR`) cannot claim the shared service, even with `--yes` or
+`--force`. Give them an independently managed endpoint using
+`search.settings.url`, such as the isolated rig's `http://127.0.0.1:3838`.
+A trailing slash or hostname spelling change on the default endpoint does not
+make it isolated. Disposable directories elsewhere are also protected on
+ordinary boot; do not deliberately install the shared service from them.
+Whole-home symlinks are supported; linking only the engine data directory to
+another location is refused so indexes and home metadata remain together.
+
+The installer verifies downloads before stopping the old service, and reports
+failure if stopping, starting, or readiness verification fails. Failed
+operations after a stop may leave search offline: fix the reported problem,
+rerun installation from the intended permanent home, then restart Bakin.
+An unrelated process occupying the engine ports must be stopped by its owner.
+Bakin will not kill or adopt it. Clear an inconsistent `ANTFLY_PATH` override
+before managed installation; the service uses its managed executable.
+
+Service changes use one lock beside the unit. If an operation crashes and
+leaves the lock behind, the error names its path. Stop all processes that
+could change the service, inspect the lock's holder, then remove that specific
+abandoned lock and retry. Do not remove a lock while installation is running.
+
 ## Upgrading search from a pre-0.2 install
 
-Early Bakin builds installed Antfly via Homebrew and shared the global `~/.antfly` data directory. Antfly v0.2 changed its file formats and Bakin now runs its **own private instance** (data under `~/.bakin/antfly/`, port `3738`), so nothing from the old install carries over — and nothing needs to. The search index is derived data; it rebuilds from your markdown and logs.
-
-The guided path (recommended):
+Bakin downloads its pinned engine directly and uses `<BAKIN_HOME>/antfly`
+for derived indexes. Run:
 
 ```sh
 bakin stop
-bakin install search          # downloads the pinned v0.2 binary; detects old state
-bakin install search-models   # prefetches the embedding models (~1GB)
+bakin install search
+bakin install search-models
 bakin start
-bakin reindex                 # rebuilds the index from source
-bakin check search            # should report OK
+bakin reindex
+bakin check search
 ```
 
-`bakin install search` will list anything left over from the old world — the legacy `~/.termite` model cache, the pre-0.2 server state under `~/.antfly`, a brew-installed binary — and offer to reclaim the disk per item (interactive only, default No). One warning to take seriously: the old `~/.antfly` data directory was shared, so if you ever used Antfly for projects *outside* Bakin, decline that deletion and migrate your own tables with Antfly's backup/restore first.
-
-The fully-manual equivalent, if you'd rather do it yourself:
-
-```sh
-rm -rf ~/.antfly/data ~/.antfly/store ~/.antfly/metadata ~/.antfly/bakin-managed.yaml
-rm -rf ~/.termite
-brew uninstall antfly         # if it was brew-installed; Bakin never runs brew
-bakin install search && bakin install search-models
-bakin start && bakin reindex
-```
-
-If you skipped the model download and indexed content in the meantime, semantic indexing for that content is repaired by `bakin install search-models` followed by a plain `bakin reindex`.
+An engine version change rebuilds the chosen home's derived engine data;
+source content and the previous owner's data remain intact. Installation does
+not clean up unrelated legacy engine/model directories. Keep any data used by
+other projects and manage it with that engine's own backup/restore tools.
+If content was indexed before model installation, run `bakin install
+search-models` followed by `bakin reindex` to repair semantic indexing.
 
 ## Run as a service (macOS)
 

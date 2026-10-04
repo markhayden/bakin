@@ -83,14 +83,23 @@ compose, no `op`, no device pairing. Host modes share `dev/pi-home`; sandbox get
 
 ## Search isolation — the launchd-clobber guard
 
+Ordinary default-endpoint boots now require an existing unit owned by the
+current permanent home (#826). If an isolated home loses its guest URL, search
+is unavailable and its outbox waits; it cannot rewrite/bootstrap the host unit
+or send HTTP to the shared engine. Known temporary roots cannot claim it even
+with `bakin install search`. Generic onboarding cannot transfer ownership.
+Guest setup does not install local binaries/models: prepare the rig's engine
+through its existing rig setup, or install managed search from the intended
+permanent host home before using its binary. Keep the explicit 3838 endpoint.
+A host-side child-mode override alone is not a substitute for isolation.
+
 **History:** antfly's LaunchAgent (`io.bakin.antfly`) + port 3738 are machine
 singletons, and the unit file is a byte-compared fingerprint of `getBakinPaths()`.
 On 2026-07-11 a rig isolated boot reached `ensureProvisioned` and REWROTE the real
-unit to point at `dev/bakin-instances/isolated/home/antfly`. Three layers now make
-that structurally impossible:
+unit to point at `dev/bakin-instances/isolated/home/antfly`. The rig also retains three explicit isolation layers:
 
 1. **Guest-URL settings patch** (isolated, both runtimes): the throwaway home's
-   `search.settings.url` = `http://127.0.0.1:3838` — any non-default URL is guest
+   `search.settings.url` = `http://127.0.0.1:3838` — a different URL origin is guest
    mode (`isLocalDefaultUrl`), which never provisions, spawns, or touches disk.
    Re-applied by `instance dev` after onboarding (onboard can rewrite settings.json).
 2. **Rig-managed antfly child**: `instance dev --mode isolated` spawns the engine

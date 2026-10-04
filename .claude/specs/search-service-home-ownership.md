@@ -1,7 +1,9 @@
 # Spec: Search service home ownership (#826)
 
-Status: revised after source review and independent review; ready for approval.
-Implementation awaits plan approval. Created 2026-10-03 against `566c7a229`.
+Status: implemented, reviewed, and verified. Migration recovery remains a
+separate follow-up.
+Created 2026-10-03 against `566c7a229`. Implementation authorized by the user's
+“do it” after the spec and plan review.
 
 Plan: [search-service-home-ownership-plan.md](search-service-home-ownership-plan.md).
 
@@ -44,7 +46,7 @@ ownership policy, preserve source data, and avoid compatibility shims.
   migration recovery findings for a separate follow-up; do not modify the
   migration engine in this change.
 
-## Confirmed current behavior
+## Confirmed pre-change behavior
 
 1. `service.ts:ensureProvisioned` computes paths from `getBakinPaths()`,
    creates data/log directories, and compares the rendered unit with the
@@ -251,6 +253,11 @@ boots remains unconditional.
   gets one policy explanation plus local outbox information, without a second
   engine-down incident, reset/reindex advice, foreign log paths, or engine
   probes. Guest Health does not require the managed local binary.
+- Enabled Search being unavailable is an error-level policy denial with
+  action-required instructions. This preserves the existing disclosure under
+  normal Health sensitivity; warning-level policy denials would hide the
+  recovery steps in a title-only notice. Refused-home journal observations
+  show retained counts without claiming normal draining or suggesting repairs.
 - Engine process/CPU probes and reset/restart operations cannot observe and
   manage another home's engine as though it belonged to the caller.
 
@@ -454,7 +461,6 @@ migration review findings for a separate fix. Separate changes are appropriate
 because the fixes exercise different failure paths and have different rollback
 consequences.
 
-Requirements are resolved. The linked plan defines acceptance checks,
-documentation tasks, and commit/rollback checkpoints. Implementation starts
-after approval of that concrete plan; there are no remaining interview
-questions about product scope.
+Requirements are resolved and implementation is authorized. The linked plan
+records acceptance checks, documentation, commit/rollback checkpoints, and
+verification evidence. Migration recovery remains outside this change.
