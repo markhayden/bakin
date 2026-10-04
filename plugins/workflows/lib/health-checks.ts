@@ -1,6 +1,7 @@
 /** Canonical Workflows health checks and independently registered repairs. */
 import { existsSync, readFileSync, readdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
+import type { z } from 'zod'
 
 import { readTaskboard } from '../../../src/core/task-store'
 import type {
@@ -219,6 +220,33 @@ function workflowSkillRepairabilityLabel(repairability: WorkflowSkillDriftReport
 }
 
 /** Verify skill references, nested workflow references, and strict schema shape. */
+/**
+ * The unknown-key issues inside a definition parse, with full paths.
+ *
+ * A step is a union (builtin | plugin step), so zod reports a step's stray key
+ * as ONE `invalid_union` issue whose member issues sit under `errors` with
+ * paths relative to the step. Walk those, matching on the issue code (and the
+ * plugin-step schema's custom re-forwarded message) — never on the union's
+ * generic "Invalid input". Both union members report the same key, so the
+ * result is deduped by path + message.
+ */
+function unknownKeyIssues(issues: z.core.$ZodIssue[], basePath: PropertyKey[] = []): Array<{ path: PropertyKey[]; message: string }> {
+  const found = new Map<string, { path: PropertyKey[]; message: string }>()
+  for (const issue of issues) {
+    const path = [...basePath, ...issue.path]
+    if (issue.code === 'invalid_union') {
+      for (const member of issue.errors) {
+        for (const nested of unknownKeyIssues(member, path)) found.set(`${nested.path.join('.')}|${nested.message}`, nested)
+      }
+      continue
+    }
+    const isUnknownKey = issue.code === 'unrecognized_keys'
+      || (issue.code === 'custom' && issue.message.includes('Unrecognized key'))
+    if (isUnknownKey) found.set(`${path.join('.')}|${issue.message}`, { path, message: issue.message })
+  }
+  return [...found.values()]
+}
+
 export async function checkWorkflowDefinitions(contentDir: string): Promise<HealthCheckRunInput> {
   const observations: HealthObservationInput[] = []
   const skillsDir = join(contentDir, 'workflows', 'skills')
@@ -233,8 +261,7 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
       const { source: _source, pluginId: _pluginId, packageId: _packageId, ...bare } = definition
       const parsed = workflowDefinitionSchema.safeParse(bare)
       if (!parsed.success) {
-        parsed.error.issues.forEach((issue, index) => {
-          if (!issue.message.includes('Unrecognized key')) return
+        unknownKeyIssues(parsed.error.issues).forEach((issue, index) => {
           const at = issue.path.length ? ` at ${issue.path.join('.')}` : ''
           observations.push(workflowWarning({
             key: `schema-${workflowKey}-${index}`,

@@ -159,8 +159,8 @@
       "bytes": 1938
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-h33dgs2r.js",
-      "bytes": 280811
+      "path": "packages/host/public/vendor/sdk-shared-g7e601xh.js",
+      "bytes": 403294
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-hy34mvdh.js",
@@ -272,7 +272,7 @@
       "repository": "bakin",
       "pluginId": "health",
       "path": "plugins/health/dist/client.js",
-      "bytes": 502580
+      "bytes": 625115
     },
     {
       "repository": "bakin",
@@ -314,7 +314,7 @@
       "repository": "bakin",
       "pluginId": "workflows",
       "path": "plugins/workflows/dist/client.js",
-      "bytes": 617395
+      "bytes": 739991
     }
   ]
 }
