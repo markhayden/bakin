@@ -112,7 +112,7 @@
     "discord-api-types": "^0.38.56",
     "ink": "^8.0.0",
     "js-yaml": "^5.4.2",
-    "lucide-react": "^1.51.0",
+    "lucide-react": "^1.52.0",
     "pdf-parse": "^2.4.5",
     "postcss": "8.5.28",
     "react": "19.3.0",
