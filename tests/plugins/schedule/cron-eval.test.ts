@@ -81,15 +81,19 @@ describe('schedule/cron-eval', () => {
       const from = new Date('2026-03-06T00:00:00Z')
       const to = new Date('2026-03-10T17:00:00Z')
       const occ = occurrencesBetween('0 9 * * *', DENVER, from, to)
-      expect(occ.length).toBe(4) // Mar 7, 8, 9, 10
+      // Mar 6, 7, 8, 9, 10 — five local mornings fall inside the window. cron-parser
+      // <5.6 silently skipped the spring-forward day itself (Mar 8), so a daily job
+      // missed one run a year; the count and the explicit Mar 8 check pin the fix.
+      expect(occ.map(d => d.toISOString())).toEqual([
+        '2026-03-06T16:00:00.000Z', // MST, UTC-7
+        '2026-03-07T16:00:00.000Z',
+        '2026-03-08T15:00:00.000Z', // the DST day — MDT, UTC-6
+        '2026-03-09T15:00:00.000Z',
+        '2026-03-10T15:00:00.000Z',
+      ])
       for (const d of occ) {
         expect(localHM(d, DENVER)).toBe('09:00')
       }
-      // And the UTC offset really did shift across the boundary.
-      const mar7 = occ.find(d => d.toISOString().startsWith('2026-03-07'))!
-      const mar9 = occ.find(d => d.toISOString().startsWith('2026-03-09'))!
-      expect(mar7.toISOString()).toBe('2026-03-07T16:00:00.000Z') // MST, UTC-7
-      expect(mar9.toISOString()).toBe('2026-03-09T15:00:00.000Z') // MDT, UTC-6
     })
   })
 })

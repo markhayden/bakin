@@ -10,7 +10,7 @@
       "family": "Inter",
       "role": "sans",
       "package": "@fontsource/inter",
-      "version": "5.2.8",
+      "version": "5.3.0",
       "license": "OFL-1.1",
       "upstream": "https://github.com/rsms/inter",
       "distribution": "Fontsource Latin subsets bundled in the Storybook build"
@@ -20,7 +20,7 @@
       "family": "Space Grotesk",
       "role": "sans",
       "package": "@fontsource/space-grotesk",
-      "version": "5.2.10",
+      "version": "5.3.0",
       "license": "OFL-1.1",
       "upstream": "https://github.com/floriankarsten/space-grotesk",
       "distribution": "Fontsource Latin subsets bundled in the Storybook build"
@@ -30,7 +30,7 @@
       "family": "JetBrains Mono",
       "role": "mono",
       "package": "@fontsource/jetbrains-mono",
-      "version": "5.2.8",
+      "version": "5.3.0",
       "license": "OFL-1.1",
       "upstream": "https://github.com/JetBrains/JetBrainsMono",
       "distribution": "Fontsource Latin subsets bundled in the Storybook build"
