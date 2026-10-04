@@ -294,7 +294,10 @@ latest core. To bisect the core, pin it with `"overrides": { "happy-dom": "<v>" 
 **and `rm -rf node_modules` between probes** — bun's isolated linker keeps the
 registrator's nested `node_modules/happy-dom` symlink pointing at whichever core was
 installed first (observed: lockfile said 20.12.0, the tests loaded 20.14.5). Verify the
-loaded version from inside the test process, never from the lockfile.
+loaded version from inside the test process, never from the lockfile. The same stale link
+bit again in #760 PR 2: after hand-removing stale nested `zod` entries from `bun.lock`,
+`bun install` reported success but the MCP SDK's store link still pointed at the old zod —
+wipe `node_modules` after any lockfile surgery.
 
 ## 6. Debugging a flake
 
