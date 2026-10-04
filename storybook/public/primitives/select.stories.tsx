@@ -152,6 +152,11 @@ export const Behavior = {
     await userEvent.keyboard('{Home}{ArrowDown}{Enter}')
     await expect(trigger).toHaveTextContent('Pi')
     await waitFor(() => expect(trigger).toHaveFocus())
+    // The popup exits with a transition; the post-play axe scan must not
+    // race its focus guards (aria-hidden + tabindex) — wait for unmount.
+    await waitFor(() => {
+      expect(document.querySelector('[data-base-ui-focus-guard]')).toBeNull()
+    })
   },
 } satisfies Story
 
@@ -189,5 +194,10 @@ export const MultipleSelection = {
     await userEvent.click(await within(document.body).findByRole('option', { name: /^Managed runtime/ }))
     await expect(trigger).toHaveTextContent('Pi +2 more')
     await userEvent.keyboard('{Escape}')
+    // The popup exits with a transition; the post-play axe scan must not
+    // race its focus guards (aria-hidden + tabindex) — wait for unmount.
+    await waitFor(() => {
+      expect(document.querySelector('[data-base-ui-focus-guard]')).toBeNull()
+    })
   },
 } satisfies Story
