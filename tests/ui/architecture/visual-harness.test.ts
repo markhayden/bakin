@@ -15,7 +15,7 @@ function readRepoFile(path: string): string {
 
 describe('canonical Playwright visual harness', () => {
   it('pins the Playwright image and canonical desktop/mobile projects', () => {
-    expect(CANONICAL_PLAYWRIGHT_IMAGE).toBe('mcr.microsoft.com/playwright:v1.60.0-noble')
+    expect(CANONICAL_PLAYWRIGHT_IMAGE).toBe('mcr.microsoft.com/playwright:v1.63.0-noble')
     const config = readRepoFile('playwright.ui.config.ts')
 
     expect(config).toContain("name: 'chromium-desktop'")
@@ -36,7 +36,7 @@ describe('canonical Playwright visual harness', () => {
       architecture: 'x64',
       imageMarker: CANONICAL_PLAYWRIGHT_IMAGE,
       osRelease: 'ID=ubuntu\nVERSION_CODENAME=noble\n',
-      playwrightVersion: '1.60.0',
+      playwrightVersion: '1.63.0',
       ci: false,
     }
     expect(validateCanonicalEnvironment(canonical, 'render')).toEqual([])
@@ -56,7 +56,7 @@ describe('canonical Playwright visual harness', () => {
       architecture: 'arm64',
       imageMarker: '',
       osRelease: 'ID=macos\nVERSION_CODENAME=sequoia\n',
-      playwrightVersion: '1.60.0',
+      playwrightVersion: '1.63.0',
       ci: false,
     }, 'update')
 

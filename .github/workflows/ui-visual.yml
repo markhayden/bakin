@@ -25,13 +25,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     container:
-      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
       options: --init --ipc=host
     permissions:
       contents: read
     env:
       CI: true
-      BAKIN_UI_CANONICAL_IMAGE: mcr.microsoft.com/playwright:v1.60.0-noble
+      BAKIN_UI_CANONICAL_IMAGE: mcr.microsoft.com/playwright:v1.63.0-noble
       HOME: /root
     steps:
       - name: Checkout
@@ -85,13 +85,13 @@ jobs:
       matrix:
         shard: ['1/2', '2/2']
     container:
-      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
       options: --init --ipc=host
     permissions:
       contents: read
     env:
       CI: true
-      BAKIN_UI_CANONICAL_IMAGE: mcr.microsoft.com/playwright:v1.60.0-noble
+      BAKIN_UI_CANONICAL_IMAGE: mcr.microsoft.com/playwright:v1.63.0-noble
       HOME: /root
     steps:
       - name: Checkout
@@ -130,13 +130,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     container:
-      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
       options: --init --ipc=host
     permissions:
       contents: read
     env:
       CI: true
-      BAKIN_UI_CANONICAL_IMAGE: mcr.microsoft.com/playwright:v1.60.0-noble
+      BAKIN_UI_CANONICAL_IMAGE: mcr.microsoft.com/playwright:v1.63.0-noble
       HOME: /root
     steps:
       - name: Checkout
@@ -186,13 +186,13 @@ jobs:
           - browser: webkit
             workers: 2
     container:
-      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
       options: --init --ipc=host
     permissions:
       contents: read
     env:
       CI: true
-      BAKIN_UI_CANONICAL_IMAGE: mcr.microsoft.com/playwright:v1.60.0-noble
+      BAKIN_UI_CANONICAL_IMAGE: mcr.microsoft.com/playwright:v1.63.0-noble
       BAKIN_UI_BROWSER: ${{ matrix.browser }}
       BAKIN_UI_WORKERS: ${{ matrix.workers }}
       # Firefox refuses to launch when $HOME (/github/home) isn't owned by
