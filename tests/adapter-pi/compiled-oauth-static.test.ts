@@ -17,7 +17,7 @@
  * PI_AUTH_DIR temp dir and never touch ~/.bakin or ~/.pi.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
@@ -71,5 +71,25 @@ describe('compiled-binary pi OAuth (bun-static-modules)', () => {
   it('the adapter entry wires the registration as a side-effect import', () => {
     const source = readFileSync(join(repoRoot, 'packages', 'adapter-pi', 'src', 'index.ts'), 'utf-8')
     expect(source).toContain("import './bun-static-modules'")
+  })
+
+  // The registration only works when the adapter and pi-coding-agent share ONE
+  // pi-ai module instance. bun's isolated linker forks a package per
+  // peer-resolution context: with pi 1.0, openai's optional `undici` peer
+  // resolved to @discordjs/rest's 6.x at the root but to pi-coding-agent's own
+  // 8.x underneath it, which split pi-ai@1.0.2 into two store entries and sent
+  // the OAuth registration to the wrong one (same symptom as #886, other cause).
+  // packages/adapter-pi declares pi-coding-agent's undici so both contexts match.
+  it('pi-ai resolves to ONE store entry (peer context converged)', () => {
+    const entries = readdirSync(join(repoRoot, 'node_modules', '.bun')).filter((d) => d.startsWith('@earendil-works+pi-ai@'))
+    expect(entries).toHaveLength(1)
+  })
+
+  it('the adapter pins the undici pi-coding-agent ships (lockstep)', () => {
+    const adapterPkg = JSON.parse(readFileSync(join(repoRoot, 'packages', 'adapter-pi', 'package.json'), 'utf-8'))
+    const adapterDir = join(repoRoot, 'packages', 'adapter-pi')
+    const piPkg = JSON.parse(readFileSync(Bun.resolveSync('@earendil-works/pi-coding-agent/package.json', adapterDir), 'utf-8'))
+    expect(piPkg.dependencies.undici).toBeDefined()
+    expect(adapterPkg.dependencies.undici).toBe(piPkg.dependencies.undici)
   })
 })

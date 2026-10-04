@@ -18,7 +18,13 @@
  * `@earendil-works/pi-ai` must stay version-locked to pi-coding-agent's own
  * dependency so both resolve to ONE module instance — the registration has
  * to land in the exact loader module the agent consults. Bump the two
- * together (same rule as the PR #854 SDK bump).
+ * together (same rule as the PR #854 SDK bump). Same version is not enough
+ * under bun's isolated linker: a package is forked per peer-resolution
+ * context, and pi 1.0 split pi-ai in two because openai's optional `undici`
+ * peer resolved differently at the root (6.x via @discordjs/rest) than under
+ * pi-coding-agent (its own 8.x). packages/adapter-pi therefore declares the
+ * exact undici pi-coding-agent ships; tests/adapter-pi/compiled-oauth-static
+ * pins both the single store entry and the lockstep.
  */
 import { bedrockProviderModule } from '@earendil-works/pi-ai/bedrock-provider'
 import { registerBunOAuthFlows } from '@earendil-works/pi-ai/bun-oauth'
