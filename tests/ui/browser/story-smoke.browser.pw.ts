@@ -135,7 +135,7 @@ test('action and status family keeps responsive semantics across browsers', asyn
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -200,7 +200,7 @@ test('surface and content primitives keep disclosure and loading semantics acros
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -260,7 +260,7 @@ test('text fields keep native state, focus, and mobile-mode contracts across bro
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -322,7 +322,7 @@ test('selection controls keep keyboard, state, target, and overflow contracts ac
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -420,7 +420,7 @@ test('modal and side overlays keep focus, dismissal, motion, and viewport contra
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -511,7 +511,7 @@ test('anchored overlays keep collision, keyboard, focus, and labelling contracts
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -600,7 +600,7 @@ test('page and flow layout follows its container without document overflow', asy
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -642,7 +642,7 @@ test('grid recipes reflow by container and bound intrinsic overflow', async ({ p
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -687,7 +687,7 @@ test('canonical forms keep association, validation, submission, and mobile actio
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -773,7 +773,7 @@ test('system states keep recovery, announcement, motion, and responsive contract
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -834,7 +834,7 @@ test('list and detail recipes preserve page identity, state slots, and responsiv
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -933,7 +933,7 @@ test('settings and dashboard recipes preserve priority, named regions, and respo
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -1009,7 +1009,7 @@ test('conversation and inspector recipes preserve explicit scroll, state, and ac
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -1094,7 +1094,7 @@ test('workflow and action recipes preserve real graph interaction, bounded overf
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -1184,7 +1184,7 @@ test('destructive and dirty-state patterns preserve focus, exact intent, and mob
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -1268,7 +1268,7 @@ test('filter and navigation patterns preserve keyboard selection, meaning, and b
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -1415,7 +1415,7 @@ test('status and metric patterns preserve visible meaning, exact values, and nat
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -1498,7 +1498,7 @@ test('chart foundation preserves exact data, stable labels, gaps, and bounded ov
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -1588,7 +1588,7 @@ test('visual charts preserve honest marks, exact data, and local plot overflow',
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -1688,7 +1688,7 @@ test('conversation tool activity preserves disclosure, exact status, motion, and
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -1755,7 +1755,7 @@ test('conversation turns preserve identity, lifecycle, attachments, and containm
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -1818,7 +1818,7 @@ test('conversation timeline preserves page scroll ownership, bounded history, an
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -1892,7 +1892,7 @@ test('conversation composer preserves keyboard, persistence, attachment, and bus
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -1967,7 +1967,7 @@ test('conversation panel preserves bounded history, resize, read-only, and exact
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -2117,7 +2117,7 @@ test('agent identity and assignment preserve exact status, keyboard, and narrow-
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -2180,7 +2180,7 @@ test('asset, model, and color pickers preserve controlled state, keyboard, and n
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
@@ -2263,7 +2263,7 @@ test('plugin settings and single-turn output preserve validation, evidence, and 
   page.on('requestfailed', (request) => {
     const reason = request.failure()?.errorText ?? ''
     // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
-    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 

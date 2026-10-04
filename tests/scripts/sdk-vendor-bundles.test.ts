@@ -10,7 +10,9 @@
  *     multiple subpath bundles. Verified with a marker string from the
  *     shadcn form/label primitives, which the pre-splitting layout
  *     duplicated across sdk-ui.js and sdk-patterns.js.
- *     Base UI and React DOM remain single runtime modules as well.
+ *     Base UI modules each live in exactly one chunk (the splitter may
+ *     spread them across chunks, never duplicate them) and React DOM stays
+ *     external.
  *  2. The published entry contract holds: every stable sdk-*.js entry
  *     files exist and expose their representative exports, so the import
  *     map in packages/host/public/index.html keeps resolving every
@@ -45,7 +47,11 @@ import { SDK_VENDOR_TARGETS, buildSdkVendorBundles } from '../../scripts/build-v
  * files after temporarily reverting to per-subpath builds.
  */
 const SHARED_MARKER = 'peer-disabled:cursor-not-allowed'
-const BASE_UI_MARKER = 'data-base-ui'
+// One marker per Base UI module that must exist exactly once across the
+// chunk set. bun's splitting may place different Base UI modules in different
+// shared chunks (1.8 moved Tooltip beside the SDK primitives that use it);
+// what must never happen is the SAME module landing in two chunks.
+const BASE_UI_MODULE_MARKERS = ['data-base-ui-portal', 'data-base-ui-focus-guard', 'data-base-ui-tooltip-trigger']
 const BUNDLED_REACT_DOM_MARKER = '__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE'
 
 setDefaultTimeout(60_000)
@@ -80,10 +86,12 @@ describe('split SDK vendor build', () => {
     const files = readdirSync(outDir).filter((f) => f.endsWith('.js'))
     const sources = files.map((file) => ({ file, source: readFileSync(join(outDir, file), 'utf-8') }))
     const sharedImplementations = sources.filter(({ source }) => source.includes(SHARED_MARKER))
-    const baseUiImplementations = sources.filter(({ source }) => source.includes(BASE_UI_MARKER))
 
     expect(sharedImplementations).toHaveLength(1)
-    expect(baseUiImplementations).toHaveLength(1)
+    for (const marker of BASE_UI_MODULE_MARKERS) {
+      const chunksWithMarker = sources.filter(({ source }) => source.includes(marker)).map(({ file }) => file)
+      expect({ marker, chunksWithMarker }).toEqual({ marker, chunksWithMarker: [expect.any(String)] })
+    }
     expect(sources.filter(({ source }) => source.includes(BUNDLED_REACT_DOM_MARKER))).toEqual([])
     expect(sources.some(({ source }) => /from\s*["']react-dom["']/.test(source))).toBe(true)
   })
