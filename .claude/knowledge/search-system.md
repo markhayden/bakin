@@ -223,7 +223,12 @@ no state file — each content type declares its own `schemaVersion`.
   migrations counterpart of the outbox safety tick) resumes parked
   migrations automatically, attempt-capped at 5 per table before standing
   down to the doctor. `pumpParkedMigrations()` is also the doctor repair
-  path.
+  path. Failed target creation, source enumeration, thrown batches, and
+  per-document batch rejections also park the recorded target. Partial
+  backfill counts are cleared on failure and interrupted `backfilling` rows
+  replay the source; only a completed backfill qualifies for the resume fast
+  path. One failed resume does not block other tables or bypass attempt limits.
+  Unavailable table listings preserve the separate engine-restart cap too.
 - **Migration identity is PERSISTED:** the green's full fingerprint
   (including any rebuild nonce) is recorded as `migrating_fp` when the
   migration starts; resume replays `migrating_to`/`migrating_fp` verbatim
@@ -249,12 +254,18 @@ no state file — each content type declares its own `schemaVersion`.
   re-embed via the resume fast path), tables whose physical vanished
   engine-side (data-dir wipe) get a fresh nonce'd generation, drifted
   layouts migrate via plain ensure, and healthy tables are untouched.
+  A failed status read fails the repair without changing the index. Null
+  status requires a successful table listing confirming absence; listed but
+  unreadable indexes are not regenerated. The same evidence boundary protects
+  target creation and dominance promotion over an old index. Unknown old-index
+  evidence parks convergence instead of authorizing a flip.
   `--force` mints fresh generations for every targeted table (the old
   always-on behavior — it once churned a healthy table through five
   generations in one evening). Overlapping calls **single-flight** into the
   running pass. Progress broadcasts `search.rebuild.{start,progress,complete}`
   SSE events; the response reports `ok/errors/parked` per table. There is no
-  separate "reset" surface — rebuild IS the repair verb.
+  separate "reset" surface — rebuild IS the repair verb. Resumed work still
+  parked is reported as `parked`, so the job and CLI cannot report success.
 - **Engine version change = rebuild event:** `bakin install search`
   re-provisions the OS service unit unconditionally (argv must match the
   binary being installed) and, on a version change, CLEARS the derived

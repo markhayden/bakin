@@ -50,3 +50,41 @@ Commit: `docs(search): document migration failure recovery`.
 
 Baseline: 93 tests passed, 0 failed, 267 assertions across table and registry
 suites on Bun 1.3.13. Baseline success does not prove the missing failure cases.
+
+Implementation checkpoints:
+
+- `5ba478f7f`: backfill failure parking, safe source replay, per-table resume
+  isolation, and honest parked job outcomes. Six initial regressions failed;
+  the additional returned-item rejection test also failed before its guard.
+  The resulting focused suites passed 100 tests. Typecheck and focused lint
+  passed after correcting a nullable target type in a test assertion.
+- `b3b243bd0`: authoritative absence checks for repair, target creation, and
+  dominance promotion. Nine new evidence-failure regressions first failed;
+  110 focused tests then passed. The existing convergence-outage fixture now
+  injects its failure after creation, preserving what that test verifies.
+- `699eed04d`: independent review identified that failed listings reached the
+  dead-shard handler with an empty result, resetting its separate restart cap.
+  A regression reproduced four restarts instead of three; handling only
+  successful listings fixed it. The reviewer independently verified the fix
+  and reported no remaining actionable findings. Final focused suites:
+  111 passed, zero failed, 372 assertions.
+
+Typecheck, focused lint, repository lint (six existing warnings, zero errors),
+49-page docs validation, and `git diff --check` passed. The first full run was
+blocked by sandbox localhost restrictions, confirmed with a minimal server
+probe. With localhost permissions, 10,452 tests passed and one unrelated SDK
+inventory test exceeded the local 15-second timeout. Final verification uses
+the repository's canonical `bun run test:ci` command (existing 60-second test
+timeout), rather than changing a test or timeout configuration.
+
+Final verification passed: `bun run test:ci` completed with 10,453 passed,
+19 skipped, zero failures, and 39,650 assertions across 1,090 files. `bun run
+build` built macOS ARM64, Linux x64, and Linux ARM64 binaries; the macOS
+binary's version command passed with isolated Bakin/engine/runtime homes.
+The generated version stamp was inspected and excluded. No browser contracts
+changed, and no production service was restarted or index modified.
+
+All three plan slices are complete. Operating documentation now distinguishes
+default repair from a forced source rebuild and explains incomplete recovery.
+No new schema, dependencies, compatibility layer, or recovery framework was
+introduced. No actionable findings remain from the independent review.

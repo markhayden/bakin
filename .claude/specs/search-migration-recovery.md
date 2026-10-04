@@ -1,6 +1,6 @@
 # Spec: Search migration recovery
 
-Status: implementation authorized by “do the follow up”; based on merged
+Status: implemented, independently reviewed, and verified; based on merged
 ownership fix #950 at `3abef4e8c`. Plan: [search-migration-recovery-plan.md](search-migration-recovery-plan.md).
 
 ## Objective and scope

@@ -111,14 +111,28 @@ Shows where Bakin resolved its home directory, content dir, plugin paths, logs, 
 
 ## Reindex search
 
-If search results look stale, or you've edited `~/.bakin/` files outside the app:
+To repair interrupted migrations or missing search indexes:
 
 ```sh
 bakin reindex                # all tables
 bakin reindex --table=tasks  # one table
 ```
 
-Use `--rebuild` only when you want to drop the existing index and start fresh.
+The default repair resumes recorded work and leaves healthy indexes untouched.
+If the engine cannot report an index's status, repair reports the failure and
+preserves the index; retry after the engine recovers. Interrupted backfills
+remain queued for bounded automatic retries while queries use the previous
+index.
+
+To regenerate a healthy index from source, for example after bulk edits that
+were not indexed, use an explicit forced reindex:
+
+```sh
+bakin reindex --table=tasks --force
+```
+
+This builds a replacement index before switching queries to it. A parked or
+failed rebuild is reported as incomplete; inspect Health before retrying.
 
 Prefer the dashboard? The same controls live in the [Health plugin](/docs/using/health/).
 
