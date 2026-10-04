@@ -13,7 +13,8 @@
  * Resolution is a two-way switch, decided per plugin root:
  *   - the plugin root exists on disk (source checkouts, user plugins under
  *     ~/.bakin/plugins) → read the real `defaults/<kind>/` directory;
- *   - it does not (compiled binary) → read the copies the build embedded
+ *   - it does not, or the root is a `/$bunfs/` path (compiled binary — bun ≥ 1.4
+ *     stats that virtual root as a directory, so the prefix decides) → read the copies the build embedded
  *     under `plugin-defaults:<id>/<kind>/<relPath>` keys in the embedded
  *     asset map (scripts/generate-embedded-assets.ts walks every core
  *     plugin's `defaults/` at build time).
@@ -35,7 +36,8 @@ import { EMBEDDED_ASSETS } from '../../packages/host/src/api/_embedded-assets'
 export const PLUGIN_DEFAULTS_KEY_PREFIX = 'plugin-defaults:'
 
 /** True when this module runs from inside a compiled single-file binary. */
-export const RUNNING_FROM_BINARY = import.meta.url.startsWith('file:///$bunfs/')
+const BUNFS_PREFIX = '/$bunfs/'
+export const RUNNING_FROM_BINARY = import.meta.url.startsWith(`file://${BUNFS_PREFIX}`)
 
 /**
  * Repo root for resolving the RELATIVE plugin paths bakin.config.ts uses
@@ -97,7 +99,19 @@ function byRelPath(a: PluginResourceFile, b: PluginResourceFile): number {
 export function pluginDefaultsSource(pluginPath: string | undefined): PluginResourceSource {
   if (!pluginPath) return 'embedded'
   const root = resolvePluginRoot(pluginPath)
-  return root !== null && isDirectory(root) ? 'disk' : 'embedded'
+  if (root === null || isBunfsPath(root)) return 'embedded'
+  return isDirectory(root) ? 'disk' : 'embedded'
+}
+
+/**
+ * A `/$bunfs/...` path is the compiled binary's virtual filesystem, never a
+ * plugin checkout. bun ≥ 1.4 answers `statSync('/$bunfs/root').isDirectory()`
+ * with `true` and `readdirSync` with the embedded file list (1.3.x said
+ * ENOENT), so `isDirectory` alone would flip a core plugin's module-relative
+ * root to `disk` inside a binary and list zero defaults — the #926 failure.
+ */
+function isBunfsPath(path: string): boolean {
+  return path.startsWith(BUNFS_PREFIX)
 }
 
 function listEmbedded(pluginId: string, kind: string): PluginResourceFile[] {

@@ -241,28 +241,71 @@ repeated. Count **distinct** files, never a sum.
 
 ## 5. Toolchain
 
-**bun is pinned at 1.3.13. Do not upgrade without re-running the matrix below.**
+**bun is pinned at 1.3.13 (`.bun-version`, read by every CI job; `@types/bun` rides the
+same minor line). Do not move it without re-running the matrix below.**
 
-1.3.14 is a regression for this suite: **124 failures / 48 errors**, 88 fewer tests
-dispatched. Both classes are one ESM module-initialization (TDZ) bug:
+**State on 2026-09-27 (#965 — repin held):** 1.3.14's ESM module-initialization regression
+(`Cannot access 'Yoga' before initialization` ×62 from `ink/build/styles.js`, #755, and
+`'NativeResponse'` ×47 from the fake provider's top-level await, #756) is fixed upstream in
+1.4.0 — both canaries are green on 1.4.2. The matrix on 1.4.2 then surfaced three NEW 1.4
+behaviours, all absorbed in the tree so the eventual repin is a one-line change:
 
-- `Cannot access 'Yoga' before initialization` ×62 — `ink/build/styles.js:3` importing
-  `yoga-layout`. Third-party; kills every CLI TUI test. → #755
-- `Cannot access 'NativeResponse' before initialization` ×47 —
-  `tests/integration/pi/fake-provider.ts:25`, a **top-level await**. 1.3.14 runs module
-  functions before the TLA settles, which valid ESM forbids. Surfaces as the Pi
-  "Connection error." family. → #756
+- **Native fetch validates `signal`.** happy-dom's registrator replaces the global
+  `AbortController`/`AbortSignal`; every client that builds its own controller (the openai
+  SDK under pi-ai, `net/download`, the bin and media installers, whiskit's managed bun)
+  handed Bun's native fetch a happy-dom signal and 1.4 refused it
+  (`TypeError: signal is not of type AbortSignal`; 1.3.x accepted the duck type) — 116 of
+  118 failures. `tests/setup.ts` captures the natives before `GlobalRegistrator.register()`
+  and puts them back; happy-dom's own fetch does not care (its `Request` takes any
+  `init.signal`, internals use `window.AbortSignal` directly).
+- **`/$bunfs/root` stats as a real directory inside a compiled binary** (1.3.x: ENOENT), so
+  the plugin-defaults resolver's `isDirectory(root)` flipped a core plugin's module-relative
+  root to `disk` and listed zero shipped defaults — the #926 failure, caught by
+  `tests/integration/plugins/compiled-plugin-defaults.test.ts`. `src/core/plugin-resources.ts`
+  now decides `embedded` by the `/$bunfs/` prefix before touching the filesystem.
+- Dynamic `import()` settles on a macrotask in 1.4, so a fake-timer test that asserts right
+  after `advanceTimersByTimeAsync` misses anything behind one (watchdog's alert path →
+  `resolveSystemRoute`). The watchdog test stubs `system-route` the way it already stubbed
+  the spend observer.
+
+**Why the pin did not move:** with the fixes in, 1.4.2 passes the full suite locally
+(10,448 / 0 / 10,466 dispatched, 3× faster than 1.3.13) and compiles + boots a binary, but
+CI's shard 2 segfaults EVERY run under `--parallel` (`Segmentation fault at address 0x10`,
+`JSModuleLoader` promise settling during a timer-driven microtask drain, worker reported as
+"while running tests/plugins/assets/sse-refetch.test.ts"). Reproduced in an
+`oven/bun:1.4.2` Linux container 3/3 and locally with `--shard=2/3`; delta-debugged to three
+files (`tests/plugins/assets/{save-from-source-hook.test.ts,task-assets.test.tsx,sse-refetch.test.ts}`
+with `--parallel=2` — all three needed; activation alone does not trigger it; calling the
+plugin's `onShutdown` does not help). Serial `--isolate` and `--parallel=1` are clean, 2 and 4
+workers crash, 3 sometimes. Upstream class oven-sh/bun#41357; the 1.4.3 canary
+(`1.4.2-canary.20261004.1`, reports 1.4.3) runs the shard 3/3 and the full suite clean.
+**Repin when 1.4.3 ships** — the lockfile, `@types/bun`, the perf ratchet and the
+embedded-assets manifest all regenerate under the new bundler (host initial JS 245 → 148 KB
+on 1.4.2), and the Bits repo pins the same file (companion PR).
+
+Still true on 1.4.2: `bunfig.toml` `[test.env]` is not read (probed); the preload stays the
+place for test env.
 
 Repin procedure — run this **before** changing `.bun-version`, not after:
 
 ```bash
-# one variable at a time, on a file that exercises Ink
-bun test tests/cli/readonly-logs.test.ts --isolate
-# then the full suite; compare pass/fail AND the tests-dispatched count
+# Side-by-side binary, system bun untouched (GitHub release zip into a scratch dir).
+# NEVER `$BUN run test`: `bun run <script>` resolves the `bun` inside the script from PATH,
+# so the OLD binary runs the suite and reports green. Invoke the test runner directly:
+$BUN test tests/cli/readonly-logs.test.ts --isolate            # Ink canary (#755)
+$BUN test tests/integration/pi/turn.test.ts --isolate          # fake-provider canary (#756)
+$BUN test --parallel=4 --isolate --timeout 15000 --path-ignore-patterns "dev/**"   # full suite
+for s in 1 2 3; do $BUN test --parallel=4 --isolate --timeout 60000 --path-ignore-patterns "dev/**" --shard=$s/3; done  # CI's exact shards — the full-suite order can dodge a runner crash
+# Compare pass/fail AND the tests-dispatched count against the current pin; then compile
+# and run a binary (`bun run build`, `bakin version`) and the compiled teeth
+# (compiled-oauth-static, compiled-sharp-store, compiled-plugin-defaults): the compiled
+# lanes are where bun behaviour changes hide. A Linux check is one container away:
+# `docker run --rm -v "$PWD":/src:ro oven/bun:<ver>` (copy the tree, `bun install
+# --frozen-lockfile`, run the shard). In zsh, split a file list with `${=VAR}`.
 ```
 
-`.bun-version` is what CI reads. Change the local binary and that file **together**, or
-local and CI silently diverge.
+Change the local binary (`bun upgrade` / `~/.bun/bin/bun`) and `.bun-version` **together**,
+or local and CI silently diverge.
 
 ### happy-dom and the Web Animations API (2026-10, #760)
 

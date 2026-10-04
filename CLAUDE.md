@@ -176,9 +176,9 @@ Run the full suite with `bun run test` (local) or `bun run test:ci` (the ONE can
 
 **Waiting:** `tests/helpers/wait.ts`. Asserting something happened → `waitUntil(cond, { label })`, polling the state the assertion actually needs — a condition that is already true (`Boolean(someArray)`) is a vacuous poll, strictly worse than the sleep it replaced. Asserting something did NOT happen → `settleFor(ms, why)`, where `why` is required, because absence cannot be polled for.
 
-**Logger output is silenced** (`BAKIN_CONSOLE_FORMAT=silent`, set in the setup preload — `bunfig.toml`'s `[test.env]` is NOT read by bun 1.3.13). Debug one file with `BAKIN_CONSOLE_FORMAT=pretty bun test <file> --isolate`.
+**Logger output is silenced** (`BAKIN_CONSOLE_FORMAT=silent`, set in the setup preload — `bunfig.toml`'s `[test.env]` is NOT read by bun — probed on 1.3.13 and 1.4.2). Debug one file with `BAKIN_CONSOLE_FORMAT=pretty bun test <file> --isolate`.
 
-**bun is pinned at 1.3.13** (`.bun-version`, which CI reads). 1.3.14 is a regression — 124 failures from an ESM top-level-await/TDZ bug (#755, #756). Re-run the isolation matrix in the knowledge doc BEFORE repinning, and change the local binary and `.bun-version` together.
+**bun is pinned at 1.3.13** (`.bun-version`, which CI reads; `@types/bun` rides the same line). 1.3.14 regressed ESM module initialization (#755/#756 — fixed upstream in 1.4.0, verified by the matrix on 2026-09-27), but every 1.4.x release so far segfaults the `--parallel` test runner on one of our shard compositions (oven-sh/bun#41357 class; clean on the 1.4.3 canary) — the repin waits for that release (#965). The tree is already 1.4-ready: the preload keeps Bun's native `AbortController`/`AbortSignal` global under happy-dom (1.4's native fetch rejects the emulation), and `plugin-resources` decides embedded by the `/$bunfs/` prefix (1.4 stats that virtual root as a directory). Re-run the isolation matrix in the knowledge doc BEFORE repinning, compare the tests-dispatched count too, and change the local binary and `.bun-version` together.
 
 Integration tests that do REAL HTTP must use `Bun.fetch` — the happy-dom preload replaces global `fetch` with a browser emulation that breaks on real sockets.
 

@@ -20,10 +20,10 @@ import { afterEach, mock, setSystemTime, spyOn } from 'bun:test'
 // ---------------------------------------------------------------------------
 // Test-run environment.
 //
-// This lives here, not in bunfig.toml: bun 1.3.13 does not read a [test.env]
-// section (probed — a var set there arrives `undefined`; NODE_ENV shows up only
-// because `bun test` sets it itself). The preload is the earliest thing that
-// actually runs.
+// This lives here, not in bunfig.toml: bun does not read a [test.env] section
+// (probed on 1.3.13 and again on 1.4.2 — a var set there arrives `undefined`;
+// NODE_ENV shows up only because `bun test` sets it itself). The preload is the
+// earliest thing that actually runs.
 //
 // Logger chatter buried real failures under ~3,958 lines (1,641 from storage-db
 // alone) of an 11,885-line run. `silent` is a format the logger already supports,
@@ -43,7 +43,23 @@ process.env.BAKIN_CONSOLE_FORMAT ??= 'silent'
 // We own both, deliberately, in rtl-settle.
 process.env.RTL_SKIP_AUTO_CLEANUP = 'true'
 
+// Capture Bun's native fetch-family classes BEFORE happy-dom replaces them.
+// Tests that talk to a real socket restore `globalThis.fetch = Bun.fetch`
+// (the happy-dom emulation cannot open one), and bun ≥ 1.4 validates the
+// `signal` handed to that native fetch: it must be Bun's own AbortSignal, not
+// happy-dom's look-alike (`TypeError: signal is not of type AbortSignal`;
+// 1.3.x accepted the duck type). Every HTTP client that builds its own
+// controller — the openai SDK under pi-ai, the download primitive, the
+// bin/media installers — reads the GLOBAL AbortController, so the globals
+// stay native. happy-dom's own fetch does not care: its Request accepts any
+// `init.signal` object, and its internals use `window.AbortSignal` directly.
+const NativeAbortController = globalThis.AbortController
+const NativeAbortSignal = globalThis.AbortSignal
+
 GlobalRegistrator.register()
+
+globalThis.AbortController = NativeAbortController
+globalThis.AbortSignal = NativeAbortSignal
 
 // ---------------------------------------------------------------------------
 // Base UI animations are off in this harness.
