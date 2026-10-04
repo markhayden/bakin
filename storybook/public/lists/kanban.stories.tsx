@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import { expect } from 'storybook/test'
-import { Activity, AlertTriangle, GripVertical, Users, Workflow } from 'lucide-react'
+import { Activity, TriangleAlert, GripVertical, Users, Workflow } from 'lucide-react'
 
 import { PageShell, Stack } from '@makinbakin/sdk/layout'
 import {
@@ -201,7 +201,7 @@ function TaskBoardExample() {
             <KanbanColumn labelledBy="blocked-lane-heading">
               <LaneHeading id="blocked-lane-heading" title="Blocked" count={1} />
               <KanbanColumnBody>
-                <ExampleTask id="TASK-03" title="Publish launch announcement" description="The draft is ready, but delivery cannot continue yet." status="Blocked" tone="danger" owner="Pixel" team="creative" signal={{ label: 'Action required', detail: 'Runtime adapter unavailable', tone: 'danger', icon: AlertTriangle }} onOpen={setOpened} />
+                <ExampleTask id="TASK-03" title="Publish launch announcement" description="The draft is ready, but delivery cannot continue yet." status="Blocked" tone="danger" owner="Pixel" team="creative" signal={{ label: 'Action required', detail: 'Runtime adapter unavailable', tone: 'danger', icon: TriangleAlert }} onOpen={setOpened} />
               </KanbanColumnBody>
             </KanbanColumn>
 
@@ -215,7 +215,7 @@ function TaskBoardExample() {
             <KanbanColumn labelledBy="review-lane-heading">
               <LaneHeading id="review-lane-heading" title="Review" count={1} />
               <KanbanColumnBody>
-                <ExampleTask id="TASK-05" title="Approve final campaign copy" description="One explicit approval remains before publishing." status="Review" tone="attention" owner="Margo" workflow="approval-copy" signal={{ label: 'Needs approval', detail: 'Approve final copy', tone: 'attention', icon: AlertTriangle }} onOpen={setOpened} />
+                <ExampleTask id="TASK-05" title="Approve final campaign copy" description="One explicit approval remains before publishing." status="Review" tone="attention" owner="Margo" workflow="approval-copy" signal={{ label: 'Needs approval', detail: 'Approve final copy', tone: 'attention', icon: TriangleAlert }} onOpen={setOpened} />
               </KanbanColumnBody>
             </KanbanColumn>
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { AlertTriangle, GitBranch } from 'lucide-react'
+import { TriangleAlert, GitBranch } from 'lucide-react'
 import { NodeCard } from '@makinbakin/sdk/patterns'
 import { StaleSkillChip } from './stale-skill-chip'
 
@@ -27,7 +27,7 @@ export function ParallelNode({ data }: NodeProps) {
       attention={hasSkillDrift}
       badge={hasSkillDrift ? (
         <StaleSkillChip srLabel="This group includes a stale workflow skill">
-          <AlertTriangle className="size-bakin-3" />
+          <TriangleAlert className="size-bakin-3" />
           Stale
         </StaleSkillChip>
       ) : undefined}

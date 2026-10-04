@@ -7,7 +7,7 @@
  * agent-detail.tsx already needs OverviewTab.
  */
 import { useState } from 'react'
-import { Info, RefreshCw, Trash2 } from 'lucide-react'
+import { Info, RefreshCw, Trash } from 'lucide-react'
 import {
   Alert,
   AlertDescription,
@@ -231,7 +231,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
               }}
               aria-label="Delete or orphan agent package"
             >
-              <Trash2 aria-hidden="true" />
+              <Trash aria-hidden="true" />
               Delete
             </Button>
           )}

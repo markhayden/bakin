@@ -6,7 +6,7 @@
  * Extracted from node-config-drawer.tsx (FW4).
  */
 
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Plus, Trash } from 'lucide-react'
 import {
   Alert,
   AlertDescription,
@@ -125,7 +125,7 @@ export function ParallelChildrenEditor({
                   aria-label={`Remove child ${childId}`}
                   onClick={() => removeChild(index)}
                 >
-                  <Trash2 className="size-3.5" />
+                  <Trash className="size-3.5" />
                 </Button>
               </CardAction>
             </CardHeader>

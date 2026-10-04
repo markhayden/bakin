@@ -14,7 +14,7 @@ import {
 } from '@makinbakin/sdk/patterns'
 import { Badge, Banner, Button, DropdownMenuItem, Field, FieldLabel, Skeleton, Switch, SystemState } from '@makinbakin/sdk/ui'
 import { cn } from '@makinbakin/sdk/utils'
-import { ArrowLeft, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, Pencil, Trash } from 'lucide-react'
 import { WorkflowCanvas } from './workflow-canvas'
 import { StepDetailDrawer } from './step-detail-drawer'
 import { ManagedWorkflowCopyDialog } from './managed-workflow-copy-dialog'
@@ -488,7 +488,7 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
               setDeleteDialogOpen(true)
             }}
           >
-            <Trash2 aria-hidden="true" />
+            <Trash aria-hidden="true" />
             Delete
           </DropdownMenuItem>
         ) : undefined}
@@ -522,7 +522,7 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
               setDeleteDialogOpen(true)
             }}
           >
-            <Trash2 aria-hidden="true" />
+            <Trash aria-hidden="true" />
             Delete
           </DropdownMenuItem>
         ) : undefined}

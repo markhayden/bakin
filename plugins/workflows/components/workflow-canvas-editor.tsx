@@ -44,7 +44,7 @@ import {
   LayoutGrid,
   Pencil,
   Save,
-  Trash2,
+  Trash,
 } from 'lucide-react'
 import {
   PageHeader,
@@ -935,7 +935,7 @@ export function WorkflowCanvasEditor({
               setDeleteDialogOpen(true)
             }}
           >
-            <Trash2 aria-hidden="true" />
+            <Trash aria-hidden="true" />
             Delete
           </DropdownMenuItem>
         ) : undefined}
@@ -997,7 +997,7 @@ export function WorkflowCanvasEditor({
                   setDeleteDialogOpen(true)
                 }}
               >
-                <Trash2 aria-hidden="true" />
+                <Trash aria-hidden="true" />
                 Delete
               </DropdownMenuItem>
             ) : null}
@@ -1118,7 +1118,7 @@ export function WorkflowCanvasEditor({
                   onClick={deleteSelectedStep}
                   disabled={nodeDrawerDirty}
                 >
-                  <Trash2 className="size-3.5" />
+                  <Trash className="size-3.5" />
                 </Button>
               </NodeToolbar>
             )}

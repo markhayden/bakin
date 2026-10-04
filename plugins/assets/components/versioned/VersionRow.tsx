@@ -3,7 +3,7 @@
 import { Badge, Button, Text } from '@makinbakin/sdk/ui'
 import { ListRow, ListRowActions } from '@makinbakin/sdk/patterns'
 import { formatAge } from '@makinbakin/sdk/utils'
-import { Star, Trash2 } from 'lucide-react'
+import { Star, Trash } from 'lucide-react'
 import { AssetThumb, ProvenanceChips } from './atoms'
 import type { AssetVersion } from './types'
 import { Inline } from '@makinbakin/sdk/layout'
@@ -86,7 +86,7 @@ export function VersionRow({ assetId, assetType, version, isCurrent, isSelected,
             aria-label={`Delete version ${version.version}`}
             data-testid={`delete-version-${version.version}`}
           >
-            <Trash2 />
+            <Trash />
           </Button>
         </ListRowActions>
       )}

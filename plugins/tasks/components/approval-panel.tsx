@@ -29,7 +29,7 @@ import { ConfirmDialog } from '@makinbakin/sdk/patterns'
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { Inline } from '@makinbakin/sdk/layout'
-import { AlertTriangle, Check, Hourglass, RefreshCw, X } from 'lucide-react'
+import { TriangleAlert, Check, Hourglass, RefreshCw, X } from 'lucide-react'
 import { StepOutputViewer } from './step-output-viewer'
 import type { TaskApproval } from '../types'
 
@@ -63,7 +63,7 @@ function DecisionError({ error }: { error: ApprovalPanelError | null }) {
   if (!error) return null
   return (
     <Alert tone="danger" className="mt-bakin-3">
-      <AlertTriangle aria-hidden="true" />
+      <TriangleAlert aria-hidden="true" />
       <AlertTitle>Decision not applied</AlertTitle>
       <AlertDescription>{error.message}</AlertDescription>
     </Alert>
@@ -180,7 +180,7 @@ function RepairApproval({ approval, busy, error, onResolve }: {
 
   return (
     <Alert tone="attention" data-approval-kind="health-repair">
-      <AlertTriangle aria-hidden="true" />
+      <TriangleAlert aria-hidden="true" />
       <AlertTitle>{approval.request.title}</AlertTitle>
       <AlertDescription>
         <MarkdownContent content={approval.request.body} />
@@ -227,7 +227,7 @@ function NavigateApproval({ approval, busy, error, onResolve }: {
   const href = approval.owner.kind === 'health-navigate' ? approval.owner.href : '/health'
   return (
     <Alert tone="attention" data-approval-kind="health-navigate">
-      <AlertTriangle aria-hidden="true" />
+      <TriangleAlert aria-hidden="true" />
       <AlertTitle>{approval.request.title}</AlertTitle>
       <AlertDescription>
         {/* Plain prose, not Markdown: the body names the destination URL for
@@ -252,7 +252,7 @@ export function ApprovalPanel({ approvals, loading, failed, busyApprovalId, erro
   if (failed) {
     return (
       <Alert tone="danger" data-approval-panel="failed">
-        <AlertTriangle aria-hidden="true" />
+        <TriangleAlert aria-hidden="true" />
         <AlertTitle>Pending decisions could not load</AlertTitle>
         <AlertDescription>Anything waiting on this task stays undecided until the approvals service answers.</AlertDescription>
         <AlertAction>

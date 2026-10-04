@@ -17,7 +17,7 @@ import {
   Users,
   ShieldCheck,
   ArrowRight,
-  AlertTriangle,
+  TriangleAlert,
   Clock,
   Zap,
   Package,
@@ -402,7 +402,7 @@ function MapWorkflowStepDetail({ step }: { step: MapWorkflowStep }) {
           { label: <IconLabel icon={RefreshCw}>Child Workflow</IconLabel>, value: step.workflow_id, mono: true },
           { label: <IconLabel icon={Zap}>Source Array</IconLabel>, value: step.source, mono: true },
           { label: <IconLabel icon={Package}>Item Key</IconLabel>, value: step.item_key || 'item', mono: true },
-          { label: <IconLabel icon={AlertTriangle}>Max Children</IconLabel>, value: step.max_children ?? 32, mono: true, numeric: true },
+          { label: <IconLabel icon={TriangleAlert}>Max Children</IconLabel>, value: step.max_children ?? 32, mono: true, numeric: true },
         ]}
       />
 
@@ -528,7 +528,7 @@ function SkillDriftSection({
     <div className="space-y-3">
       {reports.map((report) => (
         <Alert key={report.skillName} tone="attention">
-          <AlertTriangle aria-hidden="true" />
+          <TriangleAlert aria-hidden="true" />
           <AlertTitle>
             <span className="flex flex-wrap items-center gap-2">
               This step is using old instructions

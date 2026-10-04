@@ -1,4 +1,4 @@
-import { MoreHorizontal } from 'lucide-react'
+import { Ellipsis } from 'lucide-react'
 
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@makinbakin/sdk/ui'
 
@@ -12,7 +12,7 @@ export function CollectionActions({ title, onAction }: { title: string; onAction
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button size="icon-xs" variant="ghost" />} aria-label={`More actions for ${title}`}>
-        <MoreHorizontal aria-hidden="true" />
+        <Ellipsis aria-hidden="true" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => onAction('rename', title)}>Rename</DropdownMenuItem>

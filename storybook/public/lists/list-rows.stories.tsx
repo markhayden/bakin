@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { AlertTriangle, CheckCircle2, FileText } from 'lucide-react'
+import { TriangleAlert, CircleCheck, FileText } from 'lucide-react'
 import { expect, fn, userEvent, within } from 'storybook/test'
 
 import { PageShell, Stack } from '@makinbakin/sdk/layout'
@@ -107,7 +107,7 @@ function ListVarietiesExample() {
               </ListRow>
               <ListRow className="bakin-lists-story__row">
                 <span className="bakin-lists-story__identity">
-                  <AlertTriangle aria-hidden="true" />
+                  <TriangleAlert aria-hidden="true" />
                   <span>
                     <strong>Health endpoint failure</strong>
                     <small>Endpoint not found (HTTP 404).</small>
@@ -128,7 +128,7 @@ function ListVarietiesExample() {
             <ListRows aria-label="Separated activity rows" variant="separated">
               <ListRow className="bakin-lists-story__row">
                 <span className="bakin-lists-story__identity">
-                  <CheckCircle2 aria-hidden="true" />
+                  <CircleCheck aria-hidden="true" />
                   <span>
                     <strong>Catalog refreshed</strong>
                     <small>24 records indexed without errors</small>
@@ -138,7 +138,7 @@ function ListVarietiesExample() {
               </ListRow>
               <ListRow className="bakin-lists-story__row">
                 <span className="bakin-lists-story__identity">
-                  <CheckCircle2 aria-hidden="true" />
+                  <CircleCheck aria-hidden="true" />
                   <span>
                     <strong>Agent package synced</strong>
                     <small>Managed content matches the installed package</small>

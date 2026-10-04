@@ -18,7 +18,7 @@ import {
 import { Panel } from '@makinbakin/sdk/layout'
 import { KeyValue, ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import { formatDateTime } from '@makinbakin/sdk/utils'
-import { AlertTriangle, Send } from 'lucide-react'
+import { TriangleAlert, Send } from 'lucide-react'
 import type { Task, TaskLogEntry } from '../types'
 import { compactDispatchFailureLabel, getDispatchFailureDetail, specificDispatchFailureLabel, type DispatchFailureDetail } from '../lib/dispatch-failure'
 
@@ -32,7 +32,7 @@ function DispatchFailureLogPanel({ detail }: { detail: DispatchFailureDetail }) 
 
   return (
     <Alert tone="danger" className="mt-bakin-2">
-      <AlertTriangle aria-hidden="true" />
+      <TriangleAlert aria-hidden="true" />
       <AlertTitle>{compactDispatchFailureLabel(detail)}</AlertTitle>
       <AlertDescription>
         <p>{specificDispatchFailureLabel(detail)}</p>

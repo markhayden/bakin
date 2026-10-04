@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react'
+import { Download, ShieldAlert, ShieldCheck, Trash } from 'lucide-react'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import { toast, useJsonFetch } from '@makinbakin/sdk/hooks'
 import {
@@ -429,7 +429,7 @@ export function HubSkillsSection() {
                     onClick={() => setRemoving({ skillName: row.skillName, packageId: row.packageId })}
                     aria-label={`Remove ${row.skillName}`}
                   >
-                    <Trash2 className="size-bakin-4" />
+                    <Trash className="size-bakin-4" />
                   </Button>
                 </ListRowActions>
               </ListRow>

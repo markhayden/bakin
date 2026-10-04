@@ -10,7 +10,7 @@ import {
   Text,
 } from '@makinbakin/sdk/ui'
 import { ListRow, ListRowActions, ListRows, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
-import { AlertTriangle, Hourglass, RefreshCw, X } from 'lucide-react'
+import { TriangleAlert, Hourglass, RefreshCw, X } from 'lucide-react'
 import { ApprovalPanel } from './approval-panel'
 import type { TaskDetail } from './use-task-detail'
 import { Inline } from '@makinbakin/sdk/layout'
@@ -129,7 +129,7 @@ export function MapChildrenPanel({ m }: { m: TaskDetail }) {
     const sourceStepId = (failedDefStep as { source?: string } | undefined)?.source?.split('.')[0]
     return (
       <Alert tone="danger">
-        <AlertTriangle aria-hidden="true" />
+        <TriangleAlert aria-hidden="true" />
         <AlertTitle>
           Fan-out failed
           <code className="ms-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta font-bakin-typography-weight-regular">
@@ -234,7 +234,7 @@ export function WorkflowStateUnavailableNotice({ m }: { m: TaskDetail }) {
 
   return (
     <Alert tone="danger">
-      <AlertTriangle aria-hidden="true" />
+      <TriangleAlert aria-hidden="true" />
       <AlertTitle>Workflow state unavailable</AlertTitle>
       <AlertDescription>
         <Inline gap="dense">

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Trash } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
 import { ConfirmDialog } from "@makinbakin/sdk/patterns"
 
@@ -83,7 +83,7 @@ export function WorkflowDeleteAction({
         }}
         disabled={disabled || deleting}
       >
-        <Trash2 aria-hidden="true" />
+        <Trash aria-hidden="true" />
       </Button>
 
       <WorkflowDeleteDialog

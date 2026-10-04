@@ -6,7 +6,7 @@ import { Panel } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { ListRow, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { Button, Popover, PopoverContent, PopoverTrigger, buttonVariants } from '@makinbakin/sdk/ui'
-import { AlertTriangle, BellOff, ChevronRight, CircleHelp, Wrench } from 'lucide-react'
+import { TriangleAlert, BellOff, ChevronRight, CircleQuestionMark, Wrench } from 'lucide-react'
 import type { OverviewIncident } from '../lib/health-view-model'
 
 export interface IncidentRowProps {
@@ -19,20 +19,20 @@ export interface IncidentRowProps {
 function incidentStatus(incident: HealthIncident): {
   label: string
   tone: StatusTone
-  icon: typeof AlertTriangle
+  icon: typeof TriangleAlert
 } {
   // Cards render EFFECTIVE urgency (#690) — error and unknown are never
   // demoted (evidence state is not a presentation choice), so Critical and
   // Verify keep precedence; a demoted or advisory incident reads calm.
-  if (incident.status === 'error') return { label: 'Critical', tone: 'danger', icon: AlertTriangle }
-  if (incident.status === 'unknown') return { label: 'Verify', tone: 'neutral', icon: CircleHelp }
+  if (incident.status === 'error') return { label: 'Critical', tone: 'danger', icon: TriangleAlert }
+  if (incident.status === 'unknown') return { label: 'Verify', tone: 'neutral', icon: CircleQuestionMark }
   if (incident.effectiveDisposition === 'advisory') {
-    return { label: 'Advisory', tone: 'neutral', icon: CircleHelp }
+    return { label: 'Advisory', tone: 'neutral', icon: CircleQuestionMark }
   }
   return {
     label: incident.effectiveDisposition === 'action_required' ? 'Action' : 'Watch',
     tone: 'attention',
-    icon: AlertTriangle,
+    icon: TriangleAlert,
   }
 }
 

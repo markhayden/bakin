@@ -6,9 +6,9 @@ import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { Banner, Button, Skeleton, Spinner, Text } from '@makinbakin/sdk/ui'
 import {
   Activity,
-  AlertTriangle,
+  TriangleAlert,
   Bot,
-  CheckCircle2,
+  CircleCheck,
   ChevronRight,
   Clock3,
   Search,
@@ -82,7 +82,7 @@ export function OverviewPlatformPulse({
   ].filter(Boolean).join(' · ')
   const overallTone: OverviewTone = error ? 'neutral' : model.overallTone
   const overallLabel = error ? 'Unable to verify' : model.overallLabel
-  const OverallIcon = overallTone === 'success' ? CheckCircle2 : AlertTriangle
+  const OverallIcon = overallTone === 'success' ? CircleCheck : TriangleAlert
   const recentFailures = model.rightNow.recentFailures
   const failureTone: OverviewTone = recentFailures === null
     ? 'neutral'

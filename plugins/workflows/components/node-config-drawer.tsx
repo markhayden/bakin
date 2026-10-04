@@ -15,7 +15,7 @@
  */
 
 import { useMemo, useState } from 'react'
-import { Trash2, X } from 'lucide-react'
+import { Trash, X } from 'lucide-react'
 import {
   Alert,
   AlertDescription,
@@ -181,7 +181,7 @@ export function NodeConfigDrawer({
         {onDelete && (
           <InspectorPanelFooter className="justify-start">
             <Button type="button" size="sm" variant="danger" onClick={onDelete}>
-              <Trash2 className="mr-1 size-3.5" />
+              <Trash className="mr-1 size-3.5" />
               Delete step
             </Button>
           </InspectorPanelFooter>
@@ -423,7 +423,7 @@ export function NodeConfigDrawer({
             variant="danger"
             onClick={onDelete}
           >
-            <Trash2 className="mr-1 size-3.5" />
+            <Trash className="mr-1 size-3.5" />
             Delete
           </Button>
         )}

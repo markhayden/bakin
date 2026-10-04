@@ -34,7 +34,7 @@ import {
   type FileInputHandle,
   Text,
 } from '@makinbakin/sdk/ui'
-import { ArrowLeft, Download, Pencil, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Download, Pencil, Trash, Upload, X } from 'lucide-react'
 import { AssetMetaSummary, AssetThumb } from './atoms'
 import { AssetEditDrawer } from './AssetEditDrawer'
 import { EnrichmentCard } from './EnrichmentCard'
@@ -288,7 +288,7 @@ export function VersionedAssetDetail() {
               }}
               data-testid="delete-asset"
             >
-              <Trash2 /> Delete
+              <Trash /> Delete
             </DropdownMenuItem>
           </>
         )}

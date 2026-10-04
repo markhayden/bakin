@@ -24,7 +24,7 @@ import {
 } from '@makinbakin/sdk/ui'
 import { Grid } from '@makinbakin/sdk/layout'
 import { ConfirmDialog } from '@makinbakin/sdk/patterns'
-import { FolderOpen, MoreVertical, Pencil, Trash2, } from 'lucide-react'
+import { FolderOpen, EllipsisVertical, Pencil, Trash, } from 'lucide-react'
 import { AssetThumb } from './atoms'
 import { TAGS_API } from './asset-urls'
 import { UNTAGGED } from './tag-filter'
@@ -89,14 +89,14 @@ function FolderCard({ folder, onOpen, onRename, onDelete }: {
               aria-label={`Folder actions for ${folder.label}`}
               data-testid={`folder-menu-${folder.tag}`}
             >
-              <MoreVertical className="size-bakin-3" />
+              <EllipsisVertical className="size-bakin-3" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
               <DropdownMenuItem onClick={onRename} data-testid={`folder-rename-${folder.tag}`}>
                 <Pencil className="size-bakin-3" /> Rename
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onDelete} variant="danger" data-testid={`folder-delete-${folder.tag}`}>
-                <Trash2 className="size-bakin-3" /> Delete
+                <Trash className="size-bakin-3" /> Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

@@ -79,7 +79,7 @@ Actions (SDK `Button` from `@makinbakin/sdk/ui`):
 - Icon + label for primary actions where an icon clarifies (lucide-react).
 
 Icons: `lucide-react` (available to plugins). Palette, Image, FileText, Sparkles,
-Upload, Plus, Check, AlertTriangle, ExternalLink, Pencil, etc. Keep to ~16px,
+Upload, Plus, Check, TriangleAlert, ExternalLink, Pencil, etc. Keep to ~16px,
 `text-muted-foreground` unless semantic.
 
 ## Layout system for a brand page

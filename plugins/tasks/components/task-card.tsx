@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import {
   Activity,
-  AlertTriangle,
+  TriangleAlert,
   Ban,
   CalendarClock,
   CircleDollarSign,
@@ -281,7 +281,7 @@ export function TaskCardContent({
           ) : null}
 
           {approvalLabel ? (
-            <KanbanCardSignal tone="attention" label="Needs approval" icon={AlertTriangle}>
+            <KanbanCardSignal tone="attention" label="Needs approval" icon={TriangleAlert}>
               {approvalLabel}
             </KanbanCardSignal>
           ) : null}
@@ -328,7 +328,7 @@ export function TaskCardContent({
             <KanbanCardSignal
               tone="danger"
               label={compactDispatchFailureLabel(dispatchFailure)}
-              icon={AlertTriangle}
+              icon={TriangleAlert}
             />
           ) : null}
 

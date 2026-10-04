@@ -1,7 +1,7 @@
 'use client'
 
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { CheckCircle2 } from 'lucide-react'
+import { CircleCheck } from 'lucide-react'
 import { NodeCard } from '@makinbakin/sdk/patterns'
 import { Text } from '@makinbakin/sdk/ui'
 
@@ -19,7 +19,7 @@ export function GateNode({ data }: NodeProps) {
       border="strong"
       centered
       typeLabel="Approval Gate"
-      icon={<CheckCircle2 className="size-bakin-3" />}
+      icon={<CircleCheck className="size-bakin-3" />}
       title={label}
     >
       {description && (

@@ -3,7 +3,7 @@
 import { PieChart, RankedBarChart, type ChartDatum } from '@makinbakin/sdk/charts'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { Alert, AlertDescription } from '@makinbakin/sdk/ui'
-import { AlertCircle, CheckCircle2 } from 'lucide-react'
+import { CircleAlert, CircleCheck } from 'lucide-react'
 import type { InteractionCoverage, UsageFeedData } from '../types'
 import { focusActivityElement } from './activity-navigation'
 import { INTERACTION_SOURCE_META } from './interaction-source-meta'
@@ -75,8 +75,8 @@ export function ActivityPulse({
       <div className="mb-bakin-3 flex min-w-0 flex-wrap items-center justify-between gap-bakin-2">
         <Inline gap="dense" wrap={false}>
           {needsAttention
-            ? <AlertCircle className={`size-bakin-4 shrink-0 ${hasFailures ? 'text-bakin-signal-danger' : 'text-bakin-signal-highlight'}`} aria-hidden="true" />
-            : <CheckCircle2 className="size-bakin-4 shrink-0 text-bakin-action-primary-background" aria-hidden="true" />}
+            ? <CircleAlert className={`size-bakin-4 shrink-0 ${hasFailures ? 'text-bakin-signal-danger' : 'text-bakin-signal-highlight'}`} aria-hidden="true" />
+            : <CircleCheck className="size-bakin-4 shrink-0 text-bakin-action-primary-background" aria-hidden="true" />}
           <h3 id="activity-pulse-title">Activity pulse</h3>
         </Inline>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-bakin-2 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">

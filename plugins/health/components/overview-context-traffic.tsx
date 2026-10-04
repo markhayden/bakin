@@ -6,7 +6,7 @@ import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { Button, Progress, Separator, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { formatSize } from '@makinbakin/sdk/utils'
-import { ArrowUpRight, Gauge, Layers3 } from 'lucide-react'
+import { ArrowUpRight, Gauge, Layers } from 'lucide-react'
 import { formatTokenCount } from '../lib/format'
 import type { OverviewTelemetry } from './overview-telemetry'
 
@@ -58,7 +58,7 @@ export function OverviewContextTraffic({
     <section className="min-w-0 p-bakin-4" data-testid="overview-context-traffic" aria-labelledby="overview-context-title">
       <div className="flex items-center justify-between gap-bakin-3">
         <div className="flex items-center gap-bakin-2">
-          <Layers3 className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
+          <Layers className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
           <h3 id="overview-context-title">Context &amp; cache</h3>
         </div>
         <PluginLink

@@ -4,7 +4,7 @@ import {
   CirclePlus,
   Clock,
   Copy,
-  MoreHorizontal,
+  Ellipsis,
   Pencil,
   Play,
   Power,
@@ -13,7 +13,7 @@ import {
   SkipForward,
   Terminal,
   Timer,
-  Trash2,
+  Trash,
   Undo2,
   Workflow,
 } from 'lucide-react'
@@ -144,7 +144,7 @@ export function JobDrawer({
               <Button type="button" variant="ghost" size="icon-sm" aria-label="Job actions" />
             )}
           >
-            <MoreHorizontal aria-hidden="true" />
+            <Ellipsis aria-hidden="true" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {job.isBakinJob ? (
@@ -166,7 +166,7 @@ export function JobDrawer({
             ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onDelete(job.id)} variant="danger">
-              <Trash2 aria-hidden="true" />
+              <Trash aria-hidden="true" />
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>

@@ -5,7 +5,7 @@
  * every path ends with the user looking at the brand they made.
  */
 import { useCallback, useState } from 'react'
-import { Globe, FolderDown, Wand2, } from 'lucide-react'
+import { Globe, FolderDown, WandSparkles, } from 'lucide-react'
 import { AgentSelect } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -42,10 +42,10 @@ import { cn, pluginFetch } from '@makinbakin/sdk/utils'
 
 export type CreatePath = 'build' | 'website' | 'import'
 
-export const CREATE_PATHS: Array<{ id: CreatePath; icon: typeof Wand2; title: string; description: string }> = [
+export const CREATE_PATHS: Array<{ id: CreatePath; icon: typeof WandSparkles; title: string; description: string }> = [
   {
     id: 'build',
-    icon: Wand2,
+    icon: WandSparkles,
     title: 'Build my brand',
     description: 'Answer a few quick questions and an agent drafts the whole kit for you to review.',
   },
