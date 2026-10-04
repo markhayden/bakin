@@ -1303,6 +1303,29 @@ describe('migration pump — dead shards inside a live engine (2026-07-21 field 
 
     expect(searchHarness.calls.restartEngine).not.toHaveBeenCalled()
   })
+
+  it('a failed listing does not reset the cap on ineffective engine restarts', async () => {
+    buildSearchAPI('restart-cap-plugin').registerContentType(makeDef('restart-cap'))
+    await createRegisteredTables()
+    searchHarness.setTableStats(tableStatus('bakin_restart-cap')!.physical, null)
+    const realNow = Date.now
+    let now = realNow()
+    Date.now = () => now
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        now += 60 * 60_000
+        await pumpParkedMigrations()
+      }
+      expect(searchHarness.calls.restartEngine).toHaveBeenCalledTimes(3)
+      now += 60 * 60_000
+      searchHarness.calls.tablesList.mockRejectedValueOnce(new Error('listing unavailable'))
+      await pumpParkedMigrations()
+      await pumpParkedMigrations()
+      expect(searchHarness.calls.restartEngine).toHaveBeenCalledTimes(3)
+    } finally {
+      Date.now = realNow
+    }
+  })
 })
 
 describe('reindex job (202 + poll contract)', () => {

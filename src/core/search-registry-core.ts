@@ -642,7 +642,7 @@ export async function pumpParkedMigrations(
         })
       outcomes.push({ logical: state.logical, result })
     }
-    await handleDeadShards(search, deadShards)
+    if (listed !== null) await handleDeadShards(search, deadShards)
   }
 
   for (const outcome of outcomes) {
