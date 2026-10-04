@@ -299,6 +299,17 @@ bit again in #760 PR 2: after hand-removing stale nested `zod` entries from `bun
 `bun install` reported success but the MCP SDK's store link still pointed at the old zod —
 wipe `node_modules` after any lockfile surgery.
 
+### ink and the compiled binary (2026-10, #760)
+
+ink loads its React DevTools bridge through `await import('./devtools.js')` guarded by
+`DEV=true`, and that module statically imports the optional peer `react-devtools-core`.
+`bun build --compile` follows the dynamic import, so the peer must resolve at build time
+— and it must also be *bundled*, because a compiled binary resolves `--external` imports
+eagerly at boot (the `--external react-devtools-core` experiment produced a binary that
+died on `--help`). The repo therefore declares `react-devtools-core` as a devDependency.
+ink 8 neither fixes nor worsens the yoga TDZ (`#755`): its loader is unchanged; that bug is
+bun 1.3.14's and is fixed in the 1.4 line.
+
 ## 6. Debugging a flake
 
 The method that settled #687's "CI red, local green", in order:
