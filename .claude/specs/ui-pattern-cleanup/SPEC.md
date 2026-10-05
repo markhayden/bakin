@@ -1,8 +1,9 @@
 # UI pattern ownership and settings-row composition — #807 / #808
 
 Status: independently reviewed and approved by the maintainer on 2026-10-04.
-#807 implemented and independently reviewed; canonical CI verification is pending.
-#808 remains the separate follow-up after #807 merges.
+#807 merged through PR #972 on 2026-10-05 after all 17 CI checks passed.
+#808 implemented and independently reviewed on `ddcc33441`; broad canonical
+CI verification is pending.
 Reviewed base: `7e92fb21a` on 2026-10-04.
 Issues: [#807](https://github.com/markhayden/bakin/issues/807),
 [#808](https://github.com/markhayden/bakin/issues/808).

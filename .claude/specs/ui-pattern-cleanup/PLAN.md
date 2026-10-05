@@ -1,8 +1,9 @@
 # Implementation plan — UI pattern cleanup
 
 Status: independently reviewed; [SPEC.md](./SPEC.md) and this plan approved by
-the maintainer on 2026-10-04. #807 is implemented and independently reviewed;
-canonical CI verification is pending. #808 follows separately after #807 merges.
+the maintainer on 2026-10-04. #807 merged through PR #972 on 2026-10-05;
+all 17 CI checks passed. #808 is implemented and independently reviewed;
+broad canonical CI verification is pending.
 PR 1 / #807 branch: `refactor/ui-pattern-ownership`.
 PR 2 / #808 branch: `refactor/settings-field-composition`, created from main
 after PR 1 merges. There is no functional dependency between the fixes; this
@@ -264,6 +265,43 @@ not a claim that implementation tests or browser checks have run.
   and focused navigation import; no outstanding findings.
 - Local Storybook interactions could not launch because the newly installed
   Playwright dependency has no matching Chromium binary in the local cache.
-  Canonical CI must supply the remaining story/browser/visual/conformance and
-  docs evidence and repeat final-commit checks before PR handoff. Do not report
-  the local full-conformance command as having passed end to end.
+  CI subsequently passed all 17 checks on `318c8e734`, including the remaining
+  story/browser/visual/conformance and docs gates (run `37253234722`). PR #972
+  merged as `ddcc33441`; #807 is closed. The local full command did not pass
+  end to end; canonical completion evidence comes from that CI run.
+
+
+## #808 implementation evidence
+
+- Based on merged main `ddcc33441`. Validation uses disposable Bakin/Bits
+  siblings, with Bits pinned to `6b5c1fa7740759e8bf955284eb5b06f586a9ceb0`.
+- Original focused baseline: 21 tests pass. The new architecture assertion
+  failed on the original descendant selectors; the implementation removes them.
+  All 23 focused tests then pass, including compact names, exact submitted
+  values, reset, unavailable controls, existing list validation and highlighting.
+- `CompactListComposition` supplies mixed controls, three booleans, required,
+  wrapping and unbroken labels, and incomplete grid rows. Canonical browser
+  coverage checks one/two/three columns, narrow containers in a wide viewport,
+  320px viewports, 200% text, packing, control-track alignment, no overlap,
+  containment, label activation and keyboard order.
+- Baseline Chromium geometry passed before implementation. Candidate geometry
+  passed Chromium, Firefox and WebKit. Existing desktop/mobile settings visual
+  baselines pass unchanged; canonical desktop and 320px/200% captures were
+  visually inspected. No snapshot, exception, API or payload ceiling changed.
+- Quick checks pass: 232 architecture tests, TypeScript, tokens, public API,
+  census, style/story/kit ratchets. Full local conformance passes lint,
+  10,483 repository tests (19 skips, zero failures; 1,091 files), builds,
+  payload limits, deterministic public Storybook and all 368 story interaction
+  tests (116 files; five internal-only entries skipped). The local full run was
+  stopped before broad visual execution to use the PR’s sharded canonical Linux
+  jobs for the remaining visuals/browser/plugin/docs gates. Completion evidence
+  belongs on the PR; the local full command did not pass end to end.
+- Candidate SDK package builds (302 files); all three pinned Bits plugins build
+  against it. Canonical CSS adds the two direct placement/subgrid utilities and
+  removes the broad-child and important descendant overrides.
+- Independent review found no production correctness or scope issues. Its one
+  test synchronization concern is resolved using the existing explicit story
+  completion marker before browser resizing and interaction.
+- Public Field composition guidance and the style-guide knowledge entry now
+  document whole-Field layout ownership. SDK/root README imports and the public
+  API inventory remain accurate; no additional updates are needed there.
