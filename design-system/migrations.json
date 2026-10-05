@@ -471,21 +471,6 @@
       }
     },
     {
-      "path": "packages/sdk/src/patterns/picker-patterns.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "host-route:__root",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 1
-      }
-    },
-    {
       "path": "packages/ui/src/charts/area-chart.tsx",
       "owner": {
         "repository": "bakin",
@@ -1037,6 +1022,21 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 6
+      }
+    },
+    {
+      "path": "packages/ui/src/patterns/picker-patterns.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T21-T35",
+      "archetype": "shared-ui",
+      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 1
       }
     },
     {

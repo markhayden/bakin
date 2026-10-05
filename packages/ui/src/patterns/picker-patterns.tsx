@@ -1,16 +1,18 @@
 'use client'
 
 import type { AriaAttributes, ComponentPropsWithoutRef, KeyboardEvent, ReactNode } from 'react'
+
+import { Alert, AlertDescription } from '../primitives/alert'
+import { Button } from '../primitives/button'
 import {
-  Alert,
-  AlertDescription,
-  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  Input,
+} from '../primitives/dialog'
+import { Input } from '../primitives/input'
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -18,11 +20,11 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-  Skeleton,
-  SystemState,
-  Text,
-} from '@bakin/ui'
-import { cn } from '@bakin/ui/utils'
+} from '../primitives/select'
+import { Skeleton } from '../primitives/skeleton'
+import { Text } from '../primitives/text'
+import { SystemState } from '../states/system-state'
+import { cn } from '../utils'
 
 import { safePresentationColor } from './presentation-color'
 

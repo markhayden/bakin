@@ -81,13 +81,13 @@ export type {
 } from './search-patterns'
 
 /** Present agent identity without importing a registry or host store. */
-export { AgentAvatar, AgentDot, AgentStatus, AgentSelect } from './agent-patterns'
+export { AgentAvatar, AgentDot, AgentStatus, AgentSelect } from '@bakin/ui/patterns'
 /** Stable assignment-value helpers shared by forms and workflow configuration. */
 export {
   TEAM_VALUE_PREFIX,
   isTeamValue,
   teamIdFromValue,
-} from './agent-patterns'
+} from '@bakin/ui/patterns'
 export type {
   AgentAvatarProps,
   AgentDotProps,
@@ -97,10 +97,10 @@ export type {
   AgentSelectProps,
   AgentStatusProps,
   AgentTeamOption,
-} from './agent-patterns'
+} from '@bakin/ui/patterns'
 
 /** Controlled asset, model, and color choices without app data ownership. */
-export { AssetPicker, ColorPicker, DEFAULT_MODEL_VALUE, ModelSelect } from './picker-patterns'
+export { AssetPicker, ColorPicker, DEFAULT_MODEL_VALUE, ModelSelect } from '@bakin/ui/patterns'
 export type {
   AssetPickerAsset,
   AssetPickerCollection,
@@ -111,7 +111,7 @@ export type {
   ColorPickerProps,
   ModelSelectOption,
   ModelSelectProps,
-} from './picker-patterns'
+} from '@bakin/ui/patterns'
 
 /** Freeform hex/color choice: a kit swatch over the platform color dialog. */
 export { ColorInput } from '@bakin/ui'

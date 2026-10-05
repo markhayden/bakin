@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { Button, FileInput, type FileInputHandle } from '@bakin/ui'
 
-import { AssetPicker, type AssetPickerCollection } from './picker-patterns'
+import { AssetPicker, type AssetPickerCollection } from '@bakin/ui/patterns'
 
 /** One asset in the versioned library listing. */
 export interface AssetLibraryAsset {

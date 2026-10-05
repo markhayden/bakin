@@ -84,6 +84,10 @@ parts internally; this task removes the consumer's dependence on those parts.
 - No export-inventory, snapshot, or payload-ceiling increase is assumed. Measure
   real build effects with pinned inputs; investigate differences before updating
   any reviewed artifact.
+- Carry the picker's existing exception scope and migration record to its new
+  path in `design-system/{exceptions,migrations}.json`. Keep all allowance counts,
+  approval evidence, and summary budgets unchanged. This is the same recorded
+  debt following its implementation, not a new exception or rebaseline.
 
 ## #808 design and acceptance
 

@@ -1,11 +1,10 @@
 'use client'
 
 import type { AriaAttributes } from 'react'
+
+import { Avatar, AvatarBadge, AvatarFallback, AvatarImage, type AvatarSize } from '../primitives/avatar'
+import type { ControlSize, ControlVariant } from '../primitives/control-styles'
 import {
-  Avatar,
-  AvatarBadge,
-  AvatarFallback,
-  AvatarImage,
   Select,
   SelectContent,
   SelectGroup,
@@ -13,18 +12,10 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-  ShimmerText,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-  type AvatarSize,
-  type ControlSize,
-  type ControlVariant,
-} from '@bakin/ui'
-
-// The kit's own merger: the sdk utils barrel also re-exports the
-// conversation recorder, which the payload ratchet keeps out of base UI.
-import { cn } from '@bakin/ui/utils'
+} from '../primitives/select'
+import { ShimmerText } from '../primitives/shimmer-text'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../primitives/tooltip'
+import { cn } from '../utils'
 
 import { safePresentationColor } from './presentation-color'
 

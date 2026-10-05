@@ -62,6 +62,9 @@ Perform these small edit groups, then verify the whole move:
 3. Change the settings renderer and `AssetLibraryPicker` to import private
    presentation from the UI patterns entry. Their behavior and data wiring stay
    unchanged. Update the architecture test's adapter import expectation.
+4. Move the existing picker exception scope/allowance key and migration entry to
+   its new file path. Preserve counts, approval metadata, and summary budgets;
+   retain sorted migration entries. The conformance checks exercise this mapping.
 
 - Acceptance: old SDK agent/picker/helper files are absent; public exports and
   types are unchanged; adapters keep their existing data ownership and callbacks.
