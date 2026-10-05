@@ -214,7 +214,7 @@ function ScalarField({
         orientation="horizontal"
         invalid={Boolean(error)}
         disabled={disabled}
-        className={HIGHLIGHT_CLASSES}
+        className={cn(HIGHLIGHT_CLASSES, compact && 'row-start-2 self-center')}
         {...highlight}
       >
         <Switch size="sm" checked={Boolean(value)} onCheckedChange={onChange} disabled={disabled} />
@@ -226,7 +226,13 @@ function ScalarField({
   }
 
   return (
-    <Field name={name} invalid={Boolean(error)} disabled={disabled} className={HIGHLIGHT_CLASSES} {...highlight}>
+    <Field
+      name={name}
+      invalid={Boolean(error)}
+      disabled={disabled}
+      className={cn(HIGHLIGHT_CLASSES, compact && 'row-span-2 grid-rows-subgrid')}
+      {...highlight}
+    >
       <FieldLabel requirement={field.required ? 'required' : undefined}>{field.label}</FieldLabel>
       {!compact && field.description ? <FieldDescription>{field.description}</FieldDescription> : null}
       {field.type === 'select' ? (
@@ -325,17 +331,19 @@ function ListField({ disabled, error, field, highlighted, highlightRef, onChange
               data-testid={`list-row-${field.key}-${rowIndex}`}
               className="@container/settings-row grid min-w-0 gap-bakin-3 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default/40 p-bakin-3"
             >
-              <div className="grid min-w-0 grid-cols-1 gap-bakin-3 @md/settings-row:grid-cols-2 @2xl/settings-row:grid-cols-3 *:row-span-2 *:grid-rows-subgrid [&>[data-orientation=horizontal]>[data-slot=switch]]:row-start-2! [&>[data-orientation=horizontal]>[data-slot=field-label]]:row-start-2!">
+              <div className="grid min-w-0 grid-cols-1 gap-bakin-3 @md/settings-row:grid-cols-2 @2xl/settings-row:grid-cols-3">
                 {entries.map(([key, subfield]) => (
-                  <ScalarField
-                    key={key}
-                    compact
-                    disabled={disabled}
-                    field={subfield}
-                    name={`${field.key}.${rowIndex}.${key}`}
-                    value={row?.[key]}
-                    onChange={(nextValue) => updateRow(rowIndex, key, nextValue)}
-                  />
+                  // Share label/control tracks; position the whole Field, not its parts.
+                  <div key={key} className="grid min-w-0 row-span-2 grid-rows-subgrid gap-bakin-2">
+                    <ScalarField
+                      compact
+                      disabled={disabled}
+                      field={subfield}
+                      name={`${field.key}.${rowIndex}.${key}`}
+                      value={row?.[key]}
+                      onChange={(nextValue) => updateRow(rowIndex, key, nextValue)}
+                    />
+                  </div>
                 ))}
               </div>
               <Button

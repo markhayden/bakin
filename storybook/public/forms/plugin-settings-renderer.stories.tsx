@@ -258,6 +258,47 @@ export const BusyAndUnavailable = {
   },
 } satisfies Story
 
+const compactSchema: PluginSettingsSchema = {
+  fields: [{
+    key: 'rules', type: 'list', label: 'Delivery rules', minItems: 1, maxItems: 2,
+    itemShape: {
+      enabled: { key: 'enabled', type: 'boolean', label: 'Enabled' },
+      title: { key: 'title', type: 'string', label: 'Name shown to collaborators before they approve delivery', required: true },
+      hours: { key: 'hours', type: 'number', label: 'Lead hours' },
+      approval: { key: 'approval', type: 'boolean', label: 'Require a decision from the content owner before delivery' },
+      asset: { key: 'asset', type: 'select', label: 'Asset', options: [{ value: 'none', label: 'None' }, { value: 'image', label: 'Image' }] },
+      identifier: { key: 'identifier', type: 'string', label: 'UnbrokenDeliveryIdentifierForCrossWorkspacePublishing', description: 'Compact rows omit this help text.' },
+      channel: { key: 'channel', type: 'string', label: 'Channel' },
+      notify: { key: 'notify', type: 'boolean', label: 'Notify collaborators after delivery' },
+    },
+  }],
+}
+
+export const CompactListComposition = {
+  args: {
+    schema: compactSchema,
+    values: { rules: [{ enabled: true, title: 'Campaign', hours: 24, approval: false, asset: 'none', identifier: 'campaign', channel: 'Editorial', notify: true }] },
+    onSubmit: () => {},
+  },
+  parameters: {
+    docs: { description: { story: 'List rows align whole Fields through renderer-owned layout cells. Mixed controls, toggles at the start/middle/end, wrapping and unbroken labels, and incomplete rows follow the available container width without styling control internals.' } },
+  },
+  render: (args) => (
+    <div data-testid="compact-settings-frame" style={{ inlineSize: '64rem', maxInlineSize: '100%' }}>
+      <PluginSettingsRenderer {...args} />
+    </div>
+  ),
+  play: async ({ canvas, canvasElement, userEvent }) => {
+    const enabled = canvas.getByRole('switch', { name: 'Enabled' })
+    await userEvent.click(canvas.getByText('Enabled', { exact: true }))
+    await expect(enabled).not.toBeChecked()
+    await expect(canvas.queryByText('Compact rows omit this help text.')).not.toBeInTheDocument()
+    await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }))
+    await expect(enabled).toBeChecked()
+    canvasElement.setAttribute('data-story-ready', 'true')
+  },
+} satisfies Story
+
 const accessRoster = [
   { id: 'main', name: 'Roscoe', color: '#22c55e' },
   { id: 'patch', name: 'Patch', color: '#6366f1' },

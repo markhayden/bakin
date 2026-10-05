@@ -838,6 +838,8 @@ export function WorkspaceSettings({ busy }: { busy: boolean }) {
 
 Put `name` on `Field` so `Form` can collect its value and return external `errors` to it. `Field` recognizes SDK `Input`, `Checkbox`, `Switch`, and `Select` controls directly. Use `FieldControl render={<Textarea />}` when a native control needs to join the same association and validation context.
 
+Compose compact settings grids with whole `Field` roots and non-interactive layout cells. `PluginSettingsRenderer` shares label/control tracks for vertical fields and places each horizontal boolean Field on the control track. Keep layout classes on those roots and cells; do not select a control's internal `data-slot` or override its label placement. See **Forms / Plugin settings renderer / CompactListComposition** for mixed controls, wrapping labels, and container-responsive rows. Compact list descriptions stay omitted and validation remains at the list level.
+
 The `requirement` label prop standardizes visible “Required” or “Optional” copy; it does not replace native behavior. A required value must also set `required` on its control. Likewise, `readOnly`, `disabled`, `type`, `inputMode`, and `autoComplete` remain real control attributes.
 
 Use `validate` on `Field` for domain validation, including asynchronous checks, and use the `errors` object on `Form` for server-returned errors keyed by field name. Prefer `onFormSubmit` to manual `preventDefault` handling. On a failed submission, keep a page- or form-level explanation near the form and put the actionable message in the affected `FieldError`; on success, announce concise confirmation without replacing the page.

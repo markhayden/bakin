@@ -56,6 +56,12 @@ may increase height.
 Form and Field do not supply inherited visual defaults. `Input.htmlSize`
 preserves the native numeric width hint; `size` always means presentation.
 
+Compact settings lists compose whole Field roots through neutral layout cells.
+The renderer owns shared label/control tracks; Field owns its switch/label
+alignment and associations. Do not reach into internal `data-slot` markup from
+a consumer grid. Public proof: `forms/plugin-settings-renderer.stories.tsx` —
+`CompactListComposition` (mixed controls, long labels, container widths, 200% text).
+
 Textarea defaults to three manually resizable rows. Opt into bounded growth
 with `autoSize`, `minRows` and `maxRows` (defaults 3 and 10); omit `rows` in
 that mode. Readonly values retain full text contrast, focus and copyability.
