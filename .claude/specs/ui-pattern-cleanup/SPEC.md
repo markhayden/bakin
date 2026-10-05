@@ -1,7 +1,8 @@
 # UI pattern ownership and settings-row composition — #807 / #808
 
 Status: independently reviewed and approved by the maintainer on 2026-10-04.
-#807 implementation in progress; #808 remains the separate follow-up.
+#807 implemented and independently reviewed; canonical CI verification is pending.
+#808 remains the separate follow-up after #807 merges.
 Reviewed base: `7e92fb21a` on 2026-10-04.
 Issues: [#807](https://github.com/markhayden/bakin/issues/807),
 [#808](https://github.com/markhayden/bakin/issues/808).
@@ -88,6 +89,12 @@ parts internally; this task removes the consumer's dependence on those parts.
   path in `design-system/{exceptions,migrations}.json`. Keep all allowance counts,
   approval evidence, and summary budgets unchanged. This is the same recorded
   debt following its implementation, not a new exception or rebaseline.
+- Import the dirty-exit dialog through its existing private focused subpath in
+  `packages/sdk/src/navigation/unsaved-changes-guard.tsx`. Validation showed the
+  broad private patterns barrel made the relocated controls reachable from
+  navigation (501,255 bytes against the existing 430,681-byte ceiling). The
+  existing focused dialog entry reduces this to 166,592 bytes without changing
+  navigation behavior, package exports, or budgets.
 
 ## #808 design and acceptance
 

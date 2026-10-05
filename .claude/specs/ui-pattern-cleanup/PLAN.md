@@ -1,7 +1,8 @@
 # Implementation plan — UI pattern cleanup
 
 Status: independently reviewed; [SPEC.md](./SPEC.md) and this plan approved by
-the maintainer on 2026-10-04. #807 is in progress; #808 follows separately.
+the maintainer on 2026-10-04. #807 is implemented and independently reviewed;
+canonical CI verification is pending. #808 follows separately after #807 merges.
 PR 1 / #807 branch: `refactor/ui-pattern-ownership`.
 PR 2 / #808 branch: `refactor/settings-field-composition`, created from main
 after PR 1 merges. There is no functional dependency between the fixes; this
@@ -106,6 +107,13 @@ build changes payloads, attribute the delta to its import/chunk graph first.
 The current ratchet ignores checkout-path comments and tolerates small build
 noise; the old issue's blanket rebaseline instruction is not an acceptance rule.
 
+Validation finding: the move exposed the navigation guard's broad private
+patterns import as a payload regression. Route that one import through the
+already-exported `@bakin/ui/patterns/unsaved-changes-dialog`, then rerun the
+navigation/dirty-exit contracts, package/vendor tests, typecheck, and production
+payload check. Keep this measured fix in a separate corrective checkpoint;
+reverting the move does not require reverting the narrower dialog import.
+
 ## PR 2 — #808: compose settings list rows
 
 ### B1. Record the current behavior and strengthen useful evidence
@@ -205,6 +213,7 @@ checkpoints. Do not create extra commits to meet a date or count target.
 | --- | --- | --- |
 | 807 / C1 `docs(ui): specify pattern ownership and field composition cleanup` | Approved SPEC/PLAN; verify links, commands, and scope against the tree. | Documentation-only revert. |
 | 807 / C2 `refactor(ui): own agent and picker presentation in the private kit` | Complete A1/A2 move, adapter/barrel updates, architecture assertions, affected ownership docs, and any necessary regenerated CSS; Checkpoint A green. | Revert the whole move commit, restoring implementations, consumers, and generated CSS together. |
+| 807 / C3 `fix(ui): keep navigation on the focused dirty-exit dialog import` | Existing focused import and architecture expectation, package/navigation/type checks, measured payload correction, and verification notes. | Independently reversible; reverting it while keeping C2 reintroduces the measured payload regression. |
 | 808 / C1 `refactor(forms): compose compact settings fields through owned layout cells` | B1/B2 code, regression/story/browser evidence, directly related guidance, and necessary regenerated CSS; Checkpoint B and canonical geometry green. | Revert the full composition commit and its CSS; #807 can remain merged. |
 | Each / optional final evidence or review fix | Only concrete review corrections or recorded validation/status updates; affected checks green. | Revert newest corrections first, then the underlying change if abandoning it. |
 
@@ -231,3 +240,30 @@ rollback unit. This plan now does so. The review also recommended explicit 200%
 text alignment/overlap coverage; it is included above. No remaining plan-level
 architecture or scope findings were reported. This is planning evidence only,
 not a claim that implementation tests or browser checks have run.
+
+## #807 implementation evidence
+
+- Original focused baseline: 22 passing tests. Ownership assertions first failed
+  in five expected places, then passed after relocation.
+- Package/component/architecture checkpoint: 37 tests pass; emitted SDK JS and
+  declarations build successfully (302 files). All three pinned Bits plugins
+  build against the candidate SDK.
+- Quick conformance passes: 231 architecture tests, TypeScript, public API
+  (7 entries / 317 values / 426 types), census, tokens, style, story, and kit gates.
+- Full conformance passed lint, then 10,481 tests / 19 skips / 0 failures across
+  1,091 files and all CSS/vendor/core-plugin/host builds. It exposed the navigation
+  payload regression documented above. The focused-import correction passes the
+  original complete payload gate (16 plugin clients, 37 vendor chunks, one CSS
+  copy); navigation reachability is 166,592 bytes. No ceiling increased.
+- Following that correction, SDK package/vendor tests passed; the obsolete broad
+  import expectation was updated, then all 11 navigation/dirty-state tests and
+  TypeScript passed. The candidate SDK and pinned Bits consumers were rebuilt.
+- Canonical CSS is byte-identical. Import-cycle check reports no new cycles.
+- Public Storybook builds twice with deterministic story and fixture manifests.
+- Independent review covered the relocation, exact governance-path migration,
+  and focused navigation import; no outstanding findings.
+- Local Storybook interactions could not launch because the newly installed
+  Playwright dependency has no matching Chromium binary in the local cache.
+  Canonical CI must supply the remaining story/browser/visual/conformance and
+  docs evidence and repeat final-commit checks before PR handoff. Do not report
+  the local full-conformance command as having passed end to end.
