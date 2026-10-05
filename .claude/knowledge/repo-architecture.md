@@ -2,10 +2,10 @@
 
 ## Overview
 
-Bakin is a single Bun workspace. The repo is five named packages under
-`packages/{core,sdk,host,adapter-openclaw,adapter-antfly}`, ten first-party
-plugins under `plugins/<id>/`, a small server-side core under `src/`, and a
-handful of scripts. The
+Bakin is a single Bun workspace. Shared code, the public SDK, the private UI
+kit, the host, and provider adapters live under `packages/`. First-party
+plugins live under `plugins/<id>/`, with server-side modules under `src/` and
+build infrastructure under `scripts/`. The
 whole thing compiles via `bun build --compile` into a single-file
 binary that ships per platform.
 
@@ -29,6 +29,7 @@ Bun.
 ├── packages/
 │   ├── core/                  ← @bakin/core — shared types, adapter contracts, settings
 │   ├── sdk/                   ← @makinbakin/sdk — plugin author SDK (published to npm)
+│   ├── ui/                    ← @bakin/ui — private presentation kit behind focused SDK exports
 │   ├── host/                  ← @bakin/host — client shell + API handlers
 │   ├── adapter-openclaw/      ← runtime adapter implementation
 │   └── adapter-antfly/        ← search adapter implementation
@@ -109,9 +110,10 @@ and the shell share one SDK instance.
 packages/sdk/src/
 ├── index.ts                ← registerPlugin, NavItem re-export
 ├── register.ts             ← registerPlugin + nav/slot browser-global registry
-├── ui/                     ← shadcn primitives (Button, Card, Dialog, ...)
+├── ui/                     ← focused exports of private UI primitives and forms
+├── layout/                 ← focused exports of private layout primitives
+├── patterns/               ← private kit re-exports plus schema/data-aware SDK adapters
 ├── hooks/                  ← useAgent, useSSE, useSearch, useQueryState, ...
-├── components/             ← PluginHeader, FacetFilter, AgentAvatar, ...
 ├── slots/                  ← Slot, registerSlot primitive
 ├── routing/                ← typed route contracts (defineRoute, re-exported
 │                             from @bakin/core/routing)
@@ -204,6 +206,18 @@ packages/adapter-antfly/src/
 (The old `server.ts` supervision lattice, `search.ts` monolith,
 `legacy-cleanup.ts`, and `query-translation.ts` were deleted in the 2026-07
 search rebuild — lifecycle is OS-owned, the client is a thin HTTP layer.)
+
+### `packages/ui/` — `@bakin/ui`
+
+Private implementation of the browser design system. Primitives, forms, layouts,
+and controlled presentation patterns live here, including agent identity and
+assignment plus asset/model/color pickers. Implementations import sibling modules
+directly, without importing the SDK or host. Public consumers use the focused
+`@makinbakin/sdk/*` entries, which re-export the same implementations.
+
+SDK adapters that own data or schema wiring remain in `packages/sdk/src/patterns/`:
+`AssetLibraryPicker` owns loading/upload integration, and `PluginSettingsRenderer`
+composes SDK settings schemas. Both consume private presentation from `@bakin/ui/patterns`.
 
 ### `packages/host/` — `@bakin/host`
 

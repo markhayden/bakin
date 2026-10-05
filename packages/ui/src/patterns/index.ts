@@ -1,3 +1,36 @@
+export {
+  AgentAvatar,
+  AgentDot,
+  AgentStatus,
+  AgentSelect,
+  TEAM_VALUE_PREFIX,
+  isTeamValue,
+  teamIdFromValue,
+} from './agent-patterns'
+export type {
+  AgentAvatarProps,
+  AgentDotProps,
+  AgentIdentity,
+  AgentPresenceStatus,
+  AgentSelectOption,
+  AgentSelectProps,
+  AgentStatusProps,
+  AgentTeamOption,
+} from './agent-patterns'
+
+export { AssetPicker, ColorPicker, DEFAULT_MODEL_VALUE, ModelSelect } from './picker-patterns'
+export type {
+  AssetPickerAsset,
+  AssetPickerCollection,
+  AssetPickerProps,
+  AssetPickerVariant,
+  AssetPickerView,
+  ColorPickerOption,
+  ColorPickerProps,
+  ModelSelectOption,
+  ModelSelectProps,
+} from './picker-patterns'
+
 export { PageHeader, PageHeaderOverflowMenu } from './page-header'
 export type {
   PageHeaderMeasure,
@@ -191,4 +224,3 @@ export type {
 
 export { Timeline, TimelineEntry } from './timeline'
 export type { TimelineEntryProps, TimelineProps } from './timeline'
-

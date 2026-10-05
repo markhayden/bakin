@@ -26,7 +26,7 @@ import {
   SystemState,
 } from '@bakin/ui'
 import { cn } from '@bakin/ui/utils'
-import { AgentAvatar, type AgentIdentity } from './agent-patterns'
+import { AgentAvatar, type AgentIdentity } from '@bakin/ui/patterns'
 import type {
   AgentTogglesSettingsField,
   BooleanSettingsField,

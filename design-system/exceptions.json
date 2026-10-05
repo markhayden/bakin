@@ -88,7 +88,7 @@
         "plugins/brands/components/new-brand-flows.tsx",
         "plugins/health/components/overview-agent-spend.tsx",
         "src/components/tasks/activity-feed.tsx",
-        "packages/sdk/src/patterns/picker-patterns.tsx",
+        "packages/ui/src/patterns/picker-patterns.tsx",
         "src/components/drawer.tsx",
         "plugins/workflows/components/workflow-canvas-editor.tsx",
         "packages/host/src/providers/AgentThemeProvider.tsx",
@@ -110,7 +110,7 @@
         "src/components/tasks/activity-feed.tsx": {
           "inline-style": 1
         },
-        "packages/sdk/src/patterns/picker-patterns.tsx": {
+        "packages/ui/src/patterns/picker-patterns.tsx": {
           "inline-style": 1
         },
         "src/components/drawer.tsx": {

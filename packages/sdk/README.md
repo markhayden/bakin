@@ -103,7 +103,6 @@ The public npm package exposes these sub-paths:
 | `@makinbakin/sdk/conversation` | Isolated conversation UI and models |
 | `@makinbakin/sdk/content` | Opt-in rich content rendering and editing |
 | `@makinbakin/sdk/hooks` | Shared React hooks |
-| `@makinbakin/sdk/components` | Migration-only legacy component barrel |
 | `@makinbakin/sdk/slots` | Slot runtime and provider |
 | `@makinbakin/sdk/types` | TypeScript contract types |
 | `@makinbakin/sdk/utils` | Shared utilities |
