@@ -30,6 +30,7 @@ mock.module('../../../src/core/logger', () => ({
 
 import type { RuntimeExecToolProvider } from '../../../packages/core/src/adapters/runtime'
 import { createPiRuntimeAdapter } from '../../../packages/adapter-pi/src/index'
+import { DeliveryError, type BridgeStatus, type ChannelBridge } from '../../../packages/core/src/delivery'
 import { resetPiHome } from '../../../packages/adapter-pi/src/home'
 import { resetModelRegistry } from '../../../packages/adapter-pi/src/models'
 import { startFakeProvider, type FakeProvider, type FakeTurnScript } from '../pi/fake-provider'
@@ -37,6 +38,22 @@ import { runRuntimeConformanceSuite, type RuntimeConformanceTarget } from './con
 
 let provider: FakeProvider | undefined
 const adapter = createPiRuntimeAdapter()
+
+/** The server always threads a bridge handle; unconfigured here (no token, no guilds). */
+const idleBridgeStatus: BridgeStatus = { state: 'idle', since: '2026-10-06T00:00:00.000Z', lastError: null, joinedGuildIds: [], guildResults: [], generation: 0 }
+const notConfigured = async () => { throw new DeliveryError('not_configured', 'Discord delivery bridge is disabled', { state: 'disabled' }) }
+const unconfiguredBridge: ChannelBridge = {
+  isConfigured: () => false,
+  status: () => idleBridgeStatus,
+  reconcile: async () => idleBridgeStatus,
+  subscribe: () => () => {},
+  shutdown: async () => {},
+  channels: {
+    list: notConfigured, sendNotification: notConfigured, sendMessage: notConfigured, deliverContent: notConfigured,
+    createApproval: notConfigured, editApproval: notConfigured, cancelApproval: notConfigured, resolveApproval: notConfigured,
+    subscribeApprovalResponses: () => () => {},
+  },
+}
 let threadSeq = 0
 
 // Minimal echo exec tool so toolCall provider scripts round-trip (mirrors
@@ -93,6 +110,10 @@ beforeAll(async () => {
     // Bakin's dispatch owns retries — disable Pi's inner retry layers so
     // failure cases settle immediately (same rationale as pi/turn.test.ts).
     settings: { retry: { enabled: false, provider: { maxRetries: 0 } } },
+    // An UNCONFIGURED bridge handle, as the server threads one: the surface
+    // must be permanent (#908 D5) while delivery honestly stays
+    // 'unavailable'.
+    channelBridge: unconfiguredBridge,
   })
   await adapter.provisionToolAccess() // seeds main (write-free initialize)
   await adapter.agents.update('main', { model: 'fakeai/fake-model' })
@@ -104,6 +125,7 @@ afterAll(() => {
 })
 
 const target: RuntimeConformanceTarget = {
+  channelBridgeThreaded: true,
   runtime: adapter,
   agentId: 'main',
   newThreadId: () => `conf:pi:${++threadSeq}`,
