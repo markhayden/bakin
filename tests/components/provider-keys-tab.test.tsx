@@ -8,7 +8,20 @@ import { ProviderKeysTab } from '../../src/components/provider-keys-tab'
 
 const json = (body: unknown) => ({ ok: true, json: async () => body }) as unknown as Response
 
-function mockFetch(stored: string[] = [], secrets: Record<string, string[]> = {}) {
+const SLOTS = [
+  {
+    provider: 'discord', name: 'botToken', label: 'Discord bot token', description: 'Bot token for the Bakin delivery bridge.',
+    envVar: 'DISCORD_BOT_TOKEN', injectEnv: false, owner: { label: 'Settings → Channels', href: '/settings?tab=channels' },
+    status: { present: false, source: null },
+  },
+  {
+    provider: 'brave', name: 'apiKey', label: 'Brave Search API key', description: 'Injected as BRAVE_SEARCH_API_KEY.',
+    envVar: 'BRAVE_SEARCH_API_KEY', injectEnv: true, owner: { label: 'Settings → Integrations & Keys', href: '/settings?tab=integrations' },
+    status: { present: true, source: 'store' },
+  },
+]
+
+function mockFetch(stored: string[] = [], secrets: Record<string, string[]> = {}, slots = SLOTS) {
   return spyOn(globalThis, 'fetch').mockImplementation((async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input)
     if (url.includes('/api/plugins/images/providers')) {
@@ -23,7 +36,7 @@ function mockFetch(stored: string[] = [], secrets: Record<string, string[]> = {}
     }
     if (url.includes('/api/secrets')) {
       if (init?.method === 'POST' || init?.method === 'DELETE') return json({ ok: true })
-      return json({ stored, secrets })
+      return json({ stored, secrets, slots })
     }
     return json({})
   }) as typeof fetch)
@@ -82,6 +95,47 @@ describe('ProviderKeysTab', () => {
     await waitFor(() =>
       expect(fetchSpy).toHaveBeenCalledWith('/api/secrets', expect.objectContaining({ method: 'POST' })),
     )
+  })
+
+  describe('known integrations section', () => {
+    it('renders every declared slot with its status and the owner link, and sets through POST', async () => {
+      const fetchSpy = mockFetch([], { brave: ['apiKey'] })
+      render(<ProviderKeysTab />)
+      const list = await screen.findByRole('list', { name: 'Known integrations' })
+      expect(within(list).getByText('Discord bot token')).toBeTruthy()
+      expect(within(list).getByText('Not set')).toBeTruthy()
+      expect(within(list).getByText('Brave Search API key')).toBeTruthy()
+      expect(within(list).getByText('Bakin store')).toBeTruthy()
+      expect(within(list).getByRole('link', { name: 'Settings → Channels' }).getAttribute('href')).toBe('/settings?tab=channels')
+
+      fireEvent.change(within(list).getByLabelText('Discord bot token value'), { target: { value: 'tok-9' } })
+      fireEvent.submit(within(list).getByRole('form', { name: 'Set Discord bot token' }))
+      await waitFor(() => {
+        const post = fetchSpy.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'POST')
+        expect(post).toBeTruthy()
+        expect(String((post![1] as RequestInit).body)).toContain('"provider":"discord"')
+        expect(String((post![1] as RequestInit).body)).toContain('"name":"botToken"')
+      })
+    })
+
+    it('clears a stored slot through DELETE with provider and name', async () => {
+      const fetchSpy = mockFetch([], { brave: ['apiKey'] })
+      render(<ProviderKeysTab />)
+      const list = await screen.findByRole('list', { name: 'Known integrations' })
+      fireEvent.click(within(list).getByRole('button', { name: 'Clear Brave Search API key' }))
+      await waitFor(() =>
+        expect(fetchSpy).toHaveBeenCalledWith('/api/secrets?provider=brave&name=apiKey', expect.objectContaining({ method: 'DELETE' })),
+      )
+    })
+
+    it('keeps the custom secret form behind a collapsed disclosure', async () => {
+      mockFetch([], {})
+      render(<ProviderKeysTab />)
+      await screen.findByRole('list', { name: 'Known integrations' })
+      const details = screen.getByRole('form', { name: 'Add integration secret' }).closest('details')
+      expect(details).not.toBeNull()
+      expect(details!.hasAttribute('open')).toBe(false)
+    })
   })
 
   describe('integration secrets section', () => {

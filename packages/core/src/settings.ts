@@ -759,9 +759,82 @@ export function updateSettings(partial: Record<string, unknown>): BakinSettings 
 
   // Invalidate cache
   setCachedSettings(null)
-  return getSettings()
+  const settings = getSettings()
+  notifySettingsChanged({ keys: Object.keys(partial) })
+  return settings
+}
+
+/**
+ * Replace ONE nested value wholesale (no merge). `deepMerge` keeps keys the
+ * patch omits, which makes deleting an entry from a map-valued setting
+ * (notifications.channelAliases) impossible through updateSettings — this
+ * is the explicit replace path for those writes. Intermediate objects are
+ * created; the path is dot-separated and must be non-empty.
+ */
+export function replaceSettingsValue(dottedPath: string, value: unknown): BakinSettings {
+  const segments = dottedPath.split('.').filter(Boolean)
+  if (segments.length === 0) throw new Error('replaceSettingsValue: empty path')
+  const settingsPath = getSettingsPath()
+  const dir = path.dirname(settingsPath)
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+
+  let current: Record<string, unknown> = {}
+  try {
+    if (fs.existsSync(settingsPath)) {
+      current = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+    }
+  } catch {
+    // start fresh
+  }
+
+  let cursor = current
+  for (const segment of segments.slice(0, -1)) {
+    const next = cursor[segment]
+    if (typeof next !== 'object' || next === null || Array.isArray(next)) {
+      cursor[segment] = {}
+    }
+    cursor = cursor[segment] as Record<string, unknown>
+  }
+  cursor[segments[segments.length - 1]] = value
+
+  relocateSecretsFromWrite(current)
+  fs.writeFileSync(settingsPath, JSON.stringify(current, null, 2), 'utf-8')
+  log.info('Settings value replaced', { path: dottedPath })
+
+  setCachedSettings(null)
+  const settings = getSettings()
+  notifySettingsChanged({ keys: [segments[0]] })
+  return settings
 }
 
 export function resetSettingsCache(): void {
   setCachedSettings(null)
+}
+
+export interface SettingsChange {
+  /** Top-level keys the write touched. */
+  keys: string[]
+}
+
+const settingsListeners = new Set<(change: SettingsChange) => void>()
+
+/**
+ * Subscribe to settings writes made through updateSettings /
+ * replaceSettingsValue in THIS process. Listeners are isolated from each
+ * other and from the write (a throwing listener is logged, never
+ * propagated). Returns the unsubscribe function.
+ */
+export function subscribeSettingsChanged(listener: (change: SettingsChange) => void): () => void {
+  settingsListeners.add(listener)
+  return () => { settingsListeners.delete(listener) }
+}
+
+function notifySettingsChanged(change: SettingsChange): void {
+  for (const listener of settingsListeners) {
+    try {
+      listener(change)
+    } catch (err) {
+      log.error('Settings change listener failed', err, { keys: change.keys })
+    }
+  }
 }

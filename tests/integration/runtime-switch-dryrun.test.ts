@@ -159,6 +159,12 @@ describe('switchRuntime — dry run is a full preview with ZERO writes', () => {
     expect(result.dryRun).toBe(true)
     expect(result.restartRequired).toBe(false)
     expect(result.backupPath).toBeNull()
+    // Channel ownership rides every switch report (#908 §4.9) — projected, never connected.
+    expect(result.channels).not.toBeNull()
+    expect(result.channels!.source.owner).toBe('runtime')
+    expect(result.channels!.target.owner).toBe('bridge')
+    expect(['disabled', 'missing_token', 'missing_guild', 'ready_to_connect']).toContain(result.channels!.target.projectedState)
+    expect(result.channels!.ownership).toContain("Bakin never reads the runtime's secret")
     // Pi has NO seeded main (write-free init) — all three would carry.
     expect(result.roster!.existing).toEqual([])
     expect(result.roster!.carried.map((c) => c.agentId).sort()).toEqual(['main', 'pixel', 'rolo'])

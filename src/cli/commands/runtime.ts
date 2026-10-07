@@ -196,6 +196,22 @@ async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags)
     }
   }
 
+  // #908 D9: the switch report's channels section — the same ownership copy
+  // the Runtimes tab shows, so a terminal switch is never blind to delivery.
+  const channels = result.channels as {
+    source: { owner: string; state: string }
+    target: { owner: string; projectedState: string; tokenSource: string | null }
+    setup: string[]
+    ownership: string
+  } | null
+  if (channels) {
+    console.log(`Channels: ${channels.ownership}`)
+    const stateLabel = channels.target.projectedState.replace(/_/g, ' ')
+    const ownerLabel = channels.target.owner === 'runtime' ? 'runtime-owned' : channels.target.owner === 'bridge' ? 'bridge-owned' : 'no channel surface'
+    console.log(`  now: ${channels.source.state.replace(/_/g, ' ')} (${channels.source.owner}) → on ${result.to}: ${stateLabel} (${ownerLabel})`)
+    for (const step of channels.setup) console.log(`  → ${step}`)
+  }
+
   const sync = result.sync as { drifted: boolean; syncedAgents: number } | null
   if (sync) console.log(sync.drifted ? `Agents re-projected: ${sync.syncedAgents}` : 'Agent projections already current')
   printCapabilityReport({

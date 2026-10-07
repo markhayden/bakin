@@ -289,6 +289,14 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
       .rejects.toThrow(/conformance violation: capabilities\(\) declares delivery 'shimmed' but the channels surface is absent/)
   })
 
+  it('fails capability honesty when a bridge handle was threaded but the channels surface is hidden (#908 D5)', async () => {
+    // The minimal default mock has NO channels; the target claims it threaded
+    // a bridge handle — the surface must then be permanent, configured or not.
+    const target = { ...honestTargetShell(createMockRuntimeAdapter()), channelBridgeThreaded: true }
+    await expect(runtimeConformanceChecks.capabilitiesAreHonest(target))
+      .rejects.toThrow(/conformance violation: a channel bridge handle was threaded but the channels surface is absent/)
+  })
+
   it('fails capability honesty on a lying-but-non-empty sessions stub', async () => {
     const runtime = createMockRuntimeAdapter()
     // Lie: list returns SOMETHING, but never the session the turn created —

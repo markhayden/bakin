@@ -35,6 +35,7 @@ import * as agentsAvatarRoute from '../../../packages/host/src/api/agents/avatar
 import * as agentsHealthRoute from '../../../packages/host/src/api/agents/health'
 import * as agentsSettingsRoute from '../../../packages/host/src/api/agents/settings'
 import * as secretsRoute from '../../../packages/host/src/api/secrets'
+import * as channelsRoute from '../../../packages/host/src/api/channels'
 import * as approvalsRoute from '../../../packages/host/src/api/approvals'
 import * as agentsActionRoute from '../../../packages/host/src/api/agents/[action]'
 import * as memoryLogRoute from '../../../packages/host/src/api/memory/log'
@@ -334,6 +335,12 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
         dispatchWebHandler(req, res, secretsRoute.del)
         return
       }
+    }
+
+    // Channel readiness (#908): ONE snapshot + reconnect / verify / routing
+    if (url.pathname === '/api/channels' || url.pathname.startsWith('/api/channels/')) {
+      dispatchWebHandler(req, res, channelsRoute.handler)
+      return
     }
 
     // Approvals (core): the board's inbox reads pending records and resolves them here (spec D7)

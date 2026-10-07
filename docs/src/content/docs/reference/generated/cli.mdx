@@ -320,14 +320,15 @@ bakin mkdir [--json]
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="check" name="check" summary="Run onboarding checks." description="Runs one or all first-run readiness checks.">
+<CliCommandCard id="check" name="check" summary="Run onboarding checks." description="Runs one or all first-run readiness checks. `check channels` speaks from the running server's readiness snapshot when one is reachable and says so when it is not (configuration-only). Pass --json for the structured result.">
 ```sh frame="terminal"
-bakin check <runtime|search|search-models|media|llm|models|channels|plugin-assets|agent-sync|recommended-plugins|recommended-agents|all>
+bakin check <runtime|search|search-models|media|llm|models|channels|plugin-assets|agent-sync|recommended-plugins|recommended-agents|all> [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;value&gt;</code><span class="cli-command__choices"><span>runtime</span><span>search</span><span>search-models</span><span>media</span><span>llm</span><span>models</span><span>channels</span><span>plugin-assets</span><span>agent-sync</span><span>recommended-plugins</span><span>recommended-agents</span><span>all</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -966,6 +967,39 @@ bakin diagnostics startup <status|on|off> [--slow-ms <ms>] [--json]
     </tbody>
   </table>
 </CliCommandCard>
+<CliCommandCard id="channels-status" name="channels status" summary="Show channel delivery readiness." description="Prints the ONE channel-readiness snapshot the Channels tab, the Discord health check, and the post tool all read: state, owner, token source (never the value), servers, channels, routing, and the next step. Exit 0 when deliverable, 2 otherwise.">
+```sh frame="terminal"
+bakin channels status [--json]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="channels-verify" name="channels verify" summary="Probe channel delivery without sending." description="Read-only probe: gateway identity, server membership and guild-level permissions, channel enumeration, routing targets, and a targeted Health rerun. Never posts a message. Exit 0 all pass, 1 any fail, 2 everything skipped.">
+```sh frame="terminal"
+bakin channels verify [--json]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="channels-reconnect" name="channels reconnect" summary="Reconnect the Discord delivery bridge." description="Asks the server to converge the bridge on the current settings and token, waits for it to settle, and prints the result. Exit 0 connected, 2 nothing to connect (disabled, missing token/guild, degraded), 1 failed or timed out; native runtimes exit 0 with an explanation.">
+```sh frame="terminal"
+bakin channels reconnect [--json]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
 <CliCommandCard id="models" name="models" summary="Recommended model plan; restore a Reset snapshot." description="plan prints the recommended two-lane model plan (agent model + background chores) with reasons and the changes that reach it; --apply submits them through the validated selections write path (never automatic). restore diffs a Models-page Reset snapshot (plugin-settings/models/snapshots/*.json) against the CURRENT selections and applies the difference under the current revision — undoes a Reset even after later edits.">
 ```sh frame="terminal"
 bakin models <plan [--apply]|restore <snapshot.json>> [--json]
@@ -1092,5 +1126,5 @@ bakin brands remove <id> [--yes]
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 4, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 6, 2026 · Bakin 0.0.0-dev</span>
 </aside>

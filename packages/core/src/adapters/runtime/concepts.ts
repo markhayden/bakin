@@ -385,13 +385,8 @@ export interface RuntimeCapabilities {
   audioInput: boolean
 }
 
-/**
- * One capability's provisioning state on a runtime:
- * - 'native'      — the runtime provides it directly.
- * - 'shimmed'     — the runtime doesn't, but a Bakin-owned shim fills it.
- * - 'unavailable' — neither; degrade honestly + surface in the UI.
- */
-export type CapabilityMode = 'native' | 'shimmed' | 'unavailable'
+import type { CapabilityMode } from './capabilities'
+export type { CapabilityMode } from './capabilities'
 
 /**
  * How agents on this runtime invoke Bakin exec tools:

@@ -57,6 +57,23 @@ describe('channel cache', () => {
     expect(calls).toBe(4)
   })
 
+  it('records a per-guild result: one failing guild (403) never hides the others', async () => {
+    const cache = createChannelCache({
+      guildIds: ['g1', 'g2'],
+      fetchGuildChannels: async (guildId) => {
+        if (guildId === 'g2') { const err = new Error('Missing Access') as Error & { status: number }; err.status = 403; throw err }
+        return [text('1', 'a')]
+      },
+    })
+    expect(cache.guildResults()).toEqual([])
+    const listed = await cache.list()
+    expect(listed.map(c => c.id)).toEqual(['discord:channel:1'])
+    expect(cache.guildResults()).toMatchObject([
+      { guildId: 'g1', channelCount: 1 },
+      { guildId: 'g2', channelCount: null, error: { kind: 'forbidden' } },
+    ])
+  })
+
   it('serves stale cache when a refresh fails, throws when never populated', async () => {
     let fail = false
     const cache = createChannelCache({

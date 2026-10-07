@@ -46,6 +46,7 @@ mock.module('@tanstack/react-router', () => ({
 }))
 
 import { Route } from '../../packages/host/src/routes/settings'
+import { CHANNELS_TAB_ID } from '@/components/channels-tab'
 import { PROVIDER_KEYS_TAB_ID } from '@/components/provider-keys-tab'
 import { SYSTEM_SETTINGS_TAB_ID } from '@/components/system-settings'
 
@@ -131,6 +132,7 @@ afterEach(() => {
 describe('/settings ?tab= category', () => {
   it('uses plain ids for the built-in categories', () => {
     expect(SYSTEM_SETTINGS_TAB_ID).toBe('system')
+    expect(CHANNELS_TAB_ID).toBe('channels')
     expect(PROVIDER_KEYS_TAB_ID).toBe('integrations')
   })
 
