@@ -153,7 +153,46 @@ function serverModeResult(readiness: ChannelReadiness, via: 'in-process' | 'http
   }
 }
 
-function configurationOnlyResult(): CheckResult {
+/**
+ * Native runtime, no server: the runtime's own channel configuration is
+ * still local, readable configuration (`credentialStatus().channels` —
+ * names only, never secrets), so the check keeps reporting it instead of
+ * reducing "the runtime owns delivery" to a content-free ok.
+ */
+async function nativeConfigurationOnlyResult(adapter: string, label: string, details: Record<string, unknown>): Promise<CheckResult> {
+  const runtime = await getRuntimeForCredentials()
+  let status: RuntimeCredentialStatus
+  try {
+    status = await runtime.credentialStatus()
+  } catch (err) {
+    log.warn('Failed to read runtime channel credential status', err)
+    return {
+      name: 'channels',
+      status: 'warn',
+      message: `${label} Could not read the runtime's channel configuration: ${err instanceof Error ? err.message : String(err)}`,
+      remediation: `Fix or regenerate runtime credentials. Docs: ${RUNTIME_DOCS}`,
+      details,
+    }
+  }
+  const channels = status.channels
+  if (channels.length === 0) {
+    return {
+      name: 'channels',
+      status: 'warn',
+      message: `${label} No messaging channel is configured in the runtime (${adapter}), which owns channel delivery.`,
+      remediation: `Configure at least one messaging channel via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
+      details: { ...details, channels },
+    }
+  }
+  return {
+    name: 'channels',
+    status: 'ok',
+    message: `${label} The runtime (${adapter}) owns channel delivery — configured: ${channels.join(', ')}.`,
+    details: { ...details, channels },
+  }
+}
+
+async function configurationOnlyResult(): Promise<CheckResult> {
   const settings = getSettings()
   const discord = settings.integrations.discord
   const token = resolveSecretSlotStatus(SECRET_SLOT.discordBotToken)
@@ -167,7 +206,7 @@ function configurationOnlyResult(): CheckResult {
   const details = { mode: 'configuration-only', projected, token, href: CHANNELS_SETTINGS_HREF }
   switch (projected) {
     case 'native':
-      return { name: 'channels', status: 'ok', message: `${label} The runtime (${settings.runtime.adapter}) owns channel delivery.`, details }
+      return nativeConfigurationOnlyResult(settings.runtime.adapter, label, details)
     case 'disabled':
       return { name: 'channels', status: 'ok', message: `${label} Discord delivery is disabled.`, details }
     case 'ready_to_connect':

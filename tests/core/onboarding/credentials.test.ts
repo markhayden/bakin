@@ -200,9 +200,28 @@ describe('channels.check() — ONE readiness engine, two modes (#908)', () => {
     expect(ready.message).not.toContain('connected')
 
     writeSettings({ runtime: { adapter: 'openclaw' }, integrations: { discord: { enabled: true, guildIds: [] } } })
+    channelNames = ['discord']
     const native = await channelsComponent.check()
     expect(native.status).toBe('ok')
-    expect(native.details).toMatchObject({ projected: 'native' })
+    expect(native.details).toMatchObject({ projected: 'native', channels: ['discord'] })
+  })
+
+  it('configuration-only mode on a native runtime still reads the runtime-owned channel config', async () => {
+    readinessStarted = false
+    writeSettings({ runtime: { adapter: 'openclaw' }, integrations: { discord: { enabled: false, guildIds: [] } } })
+
+    channelNames = []
+    const none = await channelsComponent.check()
+    expect(none.status).toBe('warn')
+    expect(none.message).toContain('No messaging channel')
+    expect(none.message).toContain('configuration only')
+    expect(none.details).toMatchObject({ mode: 'configuration-only', projected: 'native', channels: [] })
+
+    statusThrows = true
+    const broken = await channelsComponent.check()
+    expect(broken.status).toBe('warn')
+    expect(broken.message).toContain('status boom')
+    expect(broken.details).toMatchObject({ mode: 'configuration-only', projected: 'native' })
   })
 })
 
