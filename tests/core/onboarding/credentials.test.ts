@@ -11,6 +11,7 @@
  */
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { join } from 'path'
+import { mkdirSync, writeFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-onboarding-creds-${Date.now()}`)
@@ -48,7 +49,51 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
+let readinessStarted = false
+let readinessSnapshot: ChannelReadiness | null = null
+let fetchImpl: ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) | null = null
+mock.module('../../../src/core/delivery/readiness', () => ({
+  isChannelReadinessStarted: () => readinessStarted,
+  getChannelReadiness: () => {
+    if (!readinessSnapshot) throw new Error('test did not set readinessSnapshot')
+    return readinessSnapshot
+  },
+}))
+const realFetch = globalThis.fetch
+globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => (fetchImpl ? fetchImpl(input, init) : realFetch(input, init))) as typeof fetch
+
+function snapshot(state: ChannelReadinessState, over: Partial<ChannelReadiness> = {}): ChannelReadiness {
+  return {
+    runtime: { adapter: 'pi', deliveryMode: 'unavailable' },
+    owner: 'bridge',
+    enabled: state !== 'disabled',
+    token: { present: state !== 'missing_token', source: state !== 'missing_token' ? 'store' : null },
+    guilds: [{ id: 'g1', joined: state === 'connected', channelCount: state === 'connected' ? 1 : null }],
+    connection: { state, since: 'x', lastError: null },
+    channels: { items: [], source: 'none', collectedAt: null },
+    routing: {
+      alertChannel: { setting: 'notifications.channel', value: null, resolved: 'unset' },
+      approvalsChannel: { setting: 'approvals.channel', value: null, resolved: 'unset' },
+      approvalsEnabled: false,
+      aliases: [],
+    },
+    remediation: remediationForState(state, null),
+    generatedAt: 'x',
+    ...over,
+  }
+}
+
+function writeSettings(body: Record<string, unknown>): void {
+  mkdirSync(testDir, { recursive: true })
+  writeFileSync(join(testDir, 'settings.json'), JSON.stringify(body))
+  resetSettingsCache()
+}
+
 import { llmComponent, channelsComponent } from '../../../src/core/onboarding/credentials'
+import { resetSettingsCache } from '../../../packages/core/src/settings'
+import { setStoredSecret, unsetStoredSecret } from '../../../packages/core/src/media/secret-store'
+import { remediationForState } from '../../../packages/core/src/delivery/copy'
+import type { ChannelReadiness, ChannelReadinessState } from '../../../packages/core/src/delivery'
 
 const opts = { interactive: false, autoApprove: true, json: false, checkOnly: false, force: false }
 
@@ -57,6 +102,14 @@ beforeEach(() => {
   channelNames = []
   statusThrows = false
   hasChannelLayer = true
+  readinessStarted = false
+  readinessSnapshot = null
+  fetchImpl = async () => { throw new Error('fetch failed: ECONNREFUSED') }
+  delete process.env.DISCORD_BOT_TOKEN
+  rmSync(testDir, { recursive: true, force: true })
+  mkdirSync(testDir, { recursive: true })
+  unsetStoredSecret('discord', 'botToken')
+  resetSettingsCache()
 })
 
 describe('llm.check()', () => {
@@ -92,32 +145,64 @@ describe('llm.install()', () => {
   })
 })
 
-describe('channels.check()', () => {
-  it('warns when no channel has usable credentials', async () => {
-    const result = await channelsComponent.check()
-    expect(result.status).toBe('warn')
-    expect(result.message).toContain('No messaging channel')
-  })
-
-  it('reports ok listing the configured channels', async () => {
-    channelNames = ['discord', 'slack']
+describe('channels.check() — ONE readiness engine, two modes (#908)', () => {
+  it('server mode in-process: projects the collector snapshot directly', async () => {
+    readinessStarted = true
+    readinessSnapshot = snapshot('connected', { channels: { items: [{ id: 'discord:channel:1', platform: 'discord', label: '#general', capabilities: ['message'] }], source: 'bridge', collectedAt: 'x' } })
     const result = await channelsComponent.check()
     expect(result.status).toBe('ok')
-    expect(result.details?.channels).toEqual(['discord', 'slack'])
+    expect(result.message).toContain('Discord bridge connected')
+    expect(result.details).toMatchObject({ mode: 'server', via: 'in-process', state: 'connected', channels: ['discord:channel:1'] })
   })
 
-  it('reports ok-by-design on a runtime without a channel layer (P2.1)', async () => {
-    hasChannelLayer = false
-    const result = await channelsComponent.check()
-    expect(result.status).toBe('ok')
-    expect(result.message).toContain('no channel layer')
-  })
-
-  it('warns honestly when credentialStatus throws', async () => {
-    statusThrows = true
+  it('server mode in-process: a configuration gap warns with the copy-table remediation and the tab href', async () => {
+    readinessStarted = true
+    readinessSnapshot = snapshot('missing_token')
     const result = await channelsComponent.check()
     expect(result.status).toBe('warn')
-    expect(result.message).toContain('Could not read')
+    expect(result.message).toContain('bot token is missing')
+    expect(result.remediation).toContain('/settings?tab=channels')
+    expect(result.details).toMatchObject({ mode: 'server', state: 'missing_token' })
+  })
+
+  it('server mode over HTTP: a CLI process asks a reachable server and reports ITS truth', async () => {
+    readinessStarted = false
+    fetchImpl = async () => ({ ok: true, json: async () => snapshot('connected') }) as Response
+    const result = await channelsComponent.check()
+    expect(result.status).toBe('ok')
+    expect(result.details).toMatchObject({ mode: 'server', via: 'http', state: 'connected' })
+  })
+
+  it('native runtime is ok in server mode and never says "no channel layer"', async () => {
+    readinessStarted = true
+    readinessSnapshot = snapshot('native', { runtime: { adapter: 'openclaw', deliveryMode: 'native' }, owner: 'runtime', channels: { items: [{ id: 'discord', platform: 'discord', label: 'Discord', capabilities: ['message'] }], source: 'runtime', collectedAt: 'x' } })
+    const result = await channelsComponent.check()
+    expect(result.status).toBe('ok')
+    expect(result.message).toContain('owns channel delivery')
+    expect(result.message).not.toContain('no channel layer')
+  })
+
+  it('configuration-only mode (no server): says so, projects settings + the local slot, never claims connected', async () => {
+    readinessStarted = false
+    fetchImpl = async () => { throw new Error('fetch failed: ECONNREFUSED') }
+    writeSettings({ runtime: { adapter: 'pi' }, integrations: { discord: { enabled: true, guildIds: ['g1'] } } })
+    const missing = await channelsComponent.check()
+    expect(missing.status).toBe('warn')
+    expect(missing.message).toContain('Server not running — configuration only')
+    expect(missing.message).toContain('server-side environment token is not visible')
+    expect(missing.details).toMatchObject({ mode: 'configuration-only', projected: 'missing_token' })
+    expect(missing.message).not.toContain('no channel layer')
+
+    setStoredSecret('discord', 'botToken', 'tok')
+    const ready = await channelsComponent.check()
+    expect(ready.status).toBe('ok')
+    expect(ready.details).toMatchObject({ mode: 'configuration-only', projected: 'ready_to_connect' })
+    expect(ready.message).not.toContain('connected')
+
+    writeSettings({ runtime: { adapter: 'openclaw' }, integrations: { discord: { enabled: true, guildIds: [] } } })
+    const native = await channelsComponent.check()
+    expect(native.status).toBe('ok')
+    expect(native.details).toMatchObject({ projected: 'native' })
   })
 })
 

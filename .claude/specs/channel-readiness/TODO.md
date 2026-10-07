@@ -17,7 +17,7 @@ Branch: `feat/channel-readiness` (main checkout; 3737 serves it for the live tes
 - [x] CHECKPOINT B: delivery + api suites; isolated boot flip `disabled` → `missing_token` without restart (verified 2026-10-06 on an isolated Pi boot: POST /api/settings flipped GET /api/channels from disabled/enable to missing_token/add_token live)
 
 ## Phase 3 — Consumers
-- [ ] T5 Health projection, readiness-aware channel checks, targeted reruns, two-mode onboarding check (commit 6)
+- [x] T5 Health projection, readiness-aware channel checks, targeted reruns, two-mode onboarding check (commit 6)
 - [ ] T6 Post-channel memo-first retries, pre-flight, classified failures, outcome memo; alias resolver (commit 7)
 - [ ] T7 adapter-pi permanent surface, credential channels, conformance pin + teeth (commit 8)
 - [ ] T8 CLI `bakin channels` + `check --json` (commit 9)

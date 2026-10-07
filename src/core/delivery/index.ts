@@ -700,14 +700,6 @@ export function getBridgeRuntimeDeliveryMode(): CapabilityMode | null {
 }
 
 /**
- * Live transport status for the delivery.discord doctor check — retired by
- * the readiness projection (T5); kept so the check compiles unchanged here.
- */
-export function isDeliveryBridgeConnected(): boolean {
-  return status.state === 'connected' || status.state === 'degraded'
-}
-
-/**
  * D11: the bridge serves runtimes WITHOUT native delivery. The runtime's
  * delivery mode is read ONCE here (Pi's capabilities() probes models —
  * never per settings write) and cached for the loop. Callers: server boot,

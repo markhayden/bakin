@@ -321,6 +321,11 @@ export function stopChannelReadiness(): void {
   disarm = null
 }
 
+/** True inside a server process that has started the collector (onboarding picks its mode on this). */
+export function isChannelReadinessStarted(): boolean {
+  return started
+}
+
 /** Test seam. */
 export function resetChannelReadinessForTests(): void {
   stopChannelReadiness()
