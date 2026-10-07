@@ -9,12 +9,12 @@ Branch: `feat/channel-readiness` (main checkout; 3737 serves it for the live tes
 ## Phase 1 — Foundations
 - [x] T1 Core types, classifier, projector, DeliveryError, secret-slot registry, change subscriptions (commit 2 `a5191c74b`)
 - [x] T2 Secrets API slots + known-slot rows + shared secret field (commit 3)
-- [ ] CHECKPOINT A: lint, typecheck, touched tests, conformance quick
+- [x] CHECKPOINT A: lint, typecheck, touched tests, conformance quick (architecture-contract freeze test flake noted below)
 
 ## Phase 2 — Bridge and readiness
 - [x] T3 Bridge status model, reconciliation loop, per-guild cache, classification, ALL ChannelBridge fixtures migrated (commit 4)
-- [ ] T4 Readiness collector, /api/channels routes, SSE, fake transport gate (commit 5)
-- [ ] CHECKPOINT B: delivery + api suites; isolated boot flip `disabled` → `missing_token` without restart
+- [x] T4 Readiness collector, /api/channels routes, SSE, fake transport gate (commit 5)
+- [x] CHECKPOINT B: delivery + api suites; isolated boot flip `disabled` → `missing_token` without restart (verified 2026-10-06 on an isolated Pi boot: POST /api/settings flipped GET /api/channels from disabled/enable to missing_token/add_token live)
 
 ## Phase 3 — Consumers
 - [ ] T5 Health projection, readiness-aware channel checks, targeted reruns, two-mode onboarding check (commit 6)

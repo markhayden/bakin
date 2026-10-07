@@ -30,6 +30,7 @@ import { broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
 import { createAppServices } from './src/core/app-services'
 import { reconcileDeliveryBridge } from './src/core/delivery'
+import { startChannelReadiness } from './src/core/delivery/readiness'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import * as watcher from './src/core/watcher'
 import { runStartupRecovery } from './src/core/server/startup-recovery'
@@ -146,6 +147,9 @@ const eventBus = new BakinEventBus(broadcast)
   } catch (err) {
     log.warn('Discord delivery bridge reconcile failed at boot', err)
   }
+  // The readiness snapshot every channel surface projects from: follows the
+  // bridge, settings, and secret writes; pushes `channels.readiness` over SSE.
+  await startChannelReadiness()
   // The Bakin runtime skill previously only installed via the openclaw-gated
   // onboarding component, so fresh installs on other runtimes (Pi implements
   // skills too) never received it. Idempotent; render is deterministic per

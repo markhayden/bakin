@@ -28,6 +28,8 @@ export interface GuildChannelResult {
 export interface ChannelCache {
   list(): Promise<ChannelInfo[]>
   refresh(): Promise<ChannelInfo[]>
+  /** The cached list without fetching (null before the first successful refresh). */
+  peek(): ChannelInfo[] | null
   /** Per-guild outcome of the last refresh ([] before the first). */
   guildResults(): GuildChannelResult[]
 }
@@ -78,6 +80,7 @@ export function createChannelCache(deps: ChannelCacheDeps): ChannelCache {
       return refresh()
     },
     refresh,
+    peek: () => cached,
     guildResults: () => results,
   }
 }

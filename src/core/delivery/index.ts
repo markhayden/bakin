@@ -13,7 +13,7 @@
  * @discordjs.
  */
 import { createHash } from 'crypto'
-import type { ApprovalResolveEvent, CapabilityMode, InboundChannelMessage } from '@bakin/core/adapters/runtime'
+import type { ApprovalResolveEvent, CapabilityMode, ChannelInfo, InboundChannelMessage } from '@bakin/core/adapters/runtime'
 import {
   DeliveryError,
   summarizeDeliveryError,
@@ -73,11 +73,22 @@ export interface DiscordModules {
 
 let modulesPromise: Promise<DiscordModules> | null = null
 
+/** D15: a controllable fake transport for deterministic server-level tests. */
+export const FAKE_TRANSPORT_ENV = 'BAKIN_DELIVERY_TRANSPORT'
+
+function useFakeTransport(): boolean {
+  return process.env[FAKE_TRANSPORT_ENV] === 'fake'
+}
+
 async function loadDiscordModules(): Promise<DiscordModules> {
   if (modulesPromise) return modulesPromise
   const loading = (async () => {
+      const fake = useFakeTransport()
+      if (fake) {
+        log.warn(`${FAKE_TRANSPORT_ENV}=fake — the Discord transport is a FAKE (no sockets, no sends). Never run production this way.`)
+      }
       const [client, cache, send, approvals, inbound] = await Promise.all([
-        import('./discord/client'),
+        fake ? import('./discord/fake-transport') : import('./discord/client'),
         import('./discord/channel-cache'),
         import('./discord/send'),
         import('./discord/approvals'),
@@ -592,6 +603,86 @@ const bridge: ChannelBridge = {
 
 export function getDeliveryBridge(): ChannelBridge {
   return bridge
+}
+
+/** The applied transport's cached channel list, synchronously (null when not applied / never enumerated). */
+export function getAppliedChannels(): ChannelInfo[] | null {
+  return current?.cache.peek() ?? null
+}
+
+/** Permission bits the Verify probe checks at guild level (channel overrides are NOT computed). */
+export const VERIFY_GUILD_PERMISSION_BITS = {
+  viewChannels: BigInt(1) << BigInt(10),
+  sendMessages: BigInt(1) << BigInt(11),
+} as const
+
+export interface ProbeItem {
+  key: string
+  status: 'pass' | 'fail' | 'skipped'
+  summary: string
+  detail?: string
+  setting?: string
+}
+
+/**
+ * Read-only live probe of the APPLIED transport (spec §4.5, items 1–3):
+ * gateway identity, per-guild membership + guild-level permission bits via
+ * GET /users/@me/guilds, and a channel re-enumeration that also refreshes
+ * the cache. Never sends. Returns the items; the bridge status is updated
+ * from the fresh guild facts.
+ */
+export async function probeDeliveryBridge(): Promise<ProbeItem[]> {
+  const applied = current
+  const items: ProbeItem[] = []
+  if (!applied) {
+    items.push({ key: 'gateway', status: 'fail', summary: 'Discord gateway is not connected.' })
+    return items
+  }
+  const ts = applied.transport.status()
+  items.push(ts.phase === 'ready'
+    ? { key: 'gateway', status: 'pass', summary: `Gateway connected as ${ts.botUser?.name ?? 'the bot'}.`, detail: ts.botUser ? `Bot user id ${ts.botUser.id}` : undefined }
+    : { key: 'gateway', status: 'fail', summary: `Gateway is ${ts.phase}.`, detail: ts.lastError?.message })
+
+  const configured = readDiscordConfig().settings.guildIds
+  let liveGuilds: Map<string, { name: string; permissions: bigint }> | null = null
+  try {
+    const guilds = await applied.transport.api.users.getGuilds()
+    liveGuilds = new Map(guilds.map((guild) => [guild.id, { name: guild.name, permissions: BigInt(guild.permissions) }]))
+  } catch (err) {
+    items.push({ key: 'guilds', status: 'fail', summary: 'Could not list the servers the bot belongs to.', detail: err instanceof Error ? err.message : String(err) })
+  }
+  if (liveGuilds) {
+    for (const id of configured) {
+      const guild = liveGuilds.get(id)
+      if (!guild) {
+        items.push({ key: `guild:${id}`, status: 'fail', summary: `Bot is not a member of server ${id}.`, detail: 'Invite the bot to this server or remove the ID.', setting: 'integrations.discord.guildIds' })
+        continue
+      }
+      const missing: string[] = []
+      if ((guild.permissions & VERIFY_GUILD_PERMISSION_BITS.viewChannels) === BigInt(0)) missing.push('View Channels')
+      if ((guild.permissions & VERIFY_GUILD_PERMISSION_BITS.sendMessages) === BigInt(0)) missing.push('Send Messages')
+      items.push(missing.length === 0
+        ? { key: `guild:${id}`, status: 'pass', summary: `Member of ${guild.name} with guild-level View Channels + Send Messages.`, detail: 'Guild-level permissions only — channel overrides are not checked.' }
+        : { key: `guild:${id}`, status: 'fail', summary: `Member of ${guild.name} but missing guild-level ${missing.join(' + ')}.`, detail: 'Guild-level permissions only — channel overrides are not checked.', setting: 'integrations.discord.guildIds' })
+    }
+  }
+
+  try {
+    await applied.cache.refresh()
+  } catch (err) {
+    log.warn('Channel re-enumeration failed during verify', err)
+  }
+  for (const result of applied.cache.guildResults()) {
+    items.push(result.channelCount === null
+      ? { key: `channels:${result.guildId}`, status: 'fail', summary: `Could not list channels in server ${result.guildId}.`, detail: result.error?.message, setting: 'integrations.discord.guildIds' }
+      : { key: `channels:${result.guildId}`, status: 'pass', summary: `${result.channelCount} text channel${result.channelCount === 1 ? '' : 's'} in server ${result.guildId}.` })
+  }
+  if (current === applied) {
+    const joined = liveGuilds ? [...liveGuilds.keys()].filter((id) => configured.includes(id)) : status.joinedGuildIds
+    const guildResults = mergeGuildResults(configured, joined, applied.cache.guildResults())
+    publish({ state: settledState(guildResults), guildResults, joinedGuildIds: joined })
+  }
+  return items
 }
 
 export function getBridgeStatus(): BridgeStatus {

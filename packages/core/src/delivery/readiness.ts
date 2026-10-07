@@ -12,6 +12,18 @@
 import type { CapabilityMode } from '../adapters/runtime/capabilities'
 import type { ChannelInfo } from '../adapters/runtime/channels'
 
+/** One cause / next-step for a non-deliverable state (filled by ./copy). */
+export interface ReadinessRemediation {
+  /** One sentence: what is wrong. */
+  summary: string
+  /** One sentence: what to do. */
+  nextStep: string
+  /** Where to do it (app-relative). */
+  href: string
+  /** The action the Channels tab offers inline. */
+  action: 'enable' | 'add_token' | 'add_guild' | 'reconnect' | 'replace_token' | 'fix_intents' | 'wait' | null
+}
+
 export type DeliveryErrorKind =
   /** Disabled, no token, or no guild — the readiness state says which (`detail.state`). */
   | 'not_configured'
@@ -116,6 +128,8 @@ export interface ChannelReadiness {
     approvalsEnabled: boolean
     aliases: RoutingTarget[]
   }
+  /** The one cause/next-step for a non-deliverable state (copy table); null when ready. */
+  remediation: ReadinessRemediation | null
   generatedAt: string
 }
 
