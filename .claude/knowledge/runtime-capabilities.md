@@ -12,7 +12,7 @@ Every runtime adapter declares what it provides through
 | Capability | Modes | Notes |
 |---|---|---|
 | `toolCalling` | always `native` + a `RuntimeToolAccess` descriptor | every runtime must provide tool calling |
-| `delivery` | native / shimmed / unavailable | Pi: `shimmed` when the Discord delivery bridge is configured (#669, delegation via `AdapterInitOpts.channelBridge` — see `.claude/knowledge/delivery-bridge.md`), `unavailable` otherwise. Conformance pins surface-present for BOTH native and shimmed |
+| `delivery` | native / shimmed / unavailable | Pi: `shimmed` when the Discord delivery bridge is configured (#669, delegation via `AdapterInitOpts.channelBridge` — see `.claude/knowledge/delivery-bridge.md`), `unavailable` otherwise — but the `channels` surface is PERMANENT once a bridge is threaded (#908; delivering members throw typed `DeliveryError`s while down). Conformance pins surface-present for native, shimmed, AND threaded-bridge |
 | `imageGen` | native / shimmed / unavailable | Pi computes honestly: codex OAuth → native, Bakin provider key only → shimmed, neither → unavailable. OpenClaw is structurally native (`infer image` exists; provider config is per-provider data) |
 | `memory` / `sessions` / `workspaceFiles` | native / unavailable | |
 | `input` | `{ imageInput, audioInput }` | conservative model-catalog probe for the agent's effective model |

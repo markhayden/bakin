@@ -29,9 +29,9 @@ Branch: `feat/channel-readiness` (main checkout; 3737 serves it for the live tes
       Decision (2026-10-06): a host fixture entry in `scripts/ui/verify-plugin-conformance.ts` (`host-channels-tab` → `packages/host/tests/channels-tab.ui.fixture.tsx`, framed like the /settings route so the page has its h1/h2) — the runner takes any fixture entry and uses pluginId only as a label; it passed clean (overflow / axe / keyboard / console, desktop + mobile). No Playwright fallback needed. `capabilities-tab.tsx`'s "Add the key in Settings" link stays on Integrations & Keys — it is about pack secrets, not Discord.
 
 ## Phase 5 — Proof and docs
-- [ ] T12 Readiness-agreement integration test, deterministic fake transport (commit 12)
+- [x] T12 Readiness-agreement integration test, deterministic fake transport (commit 12)
       Decision (verified 2026-10-06 during T3's isolated boot): the Pi adapter boots in a throwaway `PI_HOME` with no auth (`BAKIN_RUNTIME_ADAPTER=pi`, manifest 200, idle line logged) → the spawned-server approach stands; no fallback needed.
-- [ ] T11 Docs sweep (commit 13)
+- [x] T11 Docs sweep (commit 13) — generated API reference lists only the declarative core families (no /api/secrets, /api/runtime either), so /api/channels is documented in the knowledge doc + Settings page
 - [ ] CHECKPOINT D: `bun run test` full → `bun run ui:conformance` full (sequential) → lint/typecheck/cycles
 - [ ] Owner live runbook on 3737 (SPEC §10) → PR → merge after approval
 

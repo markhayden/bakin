@@ -334,7 +334,8 @@ targets. Delivery tools resolve `#general`, `general`, and other labels through
 `settings.notifications.channelAliases` via `src/core/channel-aliases.ts`
 before they call `runtime.channels.*`. Use fully-qualified runtime targets such
 as `discord:<target>` in aliases. A bare value is accepted only when it matches
-an id from `runtime.channels.list()`. Legacy
+an enumerated channel id. Aliases are edited in Settings → Channels (Routing
+section, `PUT /api/channels/routing`, replace semantics). Legacy
 `notifications.channel` + `notifications.target` settings act as the default
 `general` alias only when no explicit `channelAliases.general` exists.
 

@@ -735,5 +735,5 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 4, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 6, 2026 · Bakin 0.0.0-dev</span>
 </aside>
