@@ -5,10 +5,12 @@ import { z } from 'zod'
 import { createHash } from 'crypto'
 import { existsSync, statSync } from 'fs'
 import { basename, dirname, extname, join } from 'path'
+import { DELIVERABLE_STATES, NOT_CONFIGURED_STATES, deliveryFailureCopy, isDeliveryError, type DeliveryErrorKind } from '@bakin/core/delivery'
 import { getAppServices } from '@/core/app-services'
 import { getIdempotent, putIdempotent, LedgerUnavailableError } from '@/core/execution-ledger'
 import { createLogger } from '@/core/logger'
 import { resolveRuntimeChannelRef } from '@/core/channel-aliases'
+import { getChannelReadiness } from '@/core/delivery/readiness'
 import { assertWorkflowToolAllowed } from '@/core/workflow-tool-authorization'
 import { addExport, getAssetManifest, resolveVersionFile } from '@/core/assets-bridge'
 import { succeed, fail } from './common'
@@ -124,15 +126,7 @@ export async function postChannel(
   }
 
   const requestedChannel = params.channel
-  let channel: string
-  try {
-    channel = (await resolveRuntimeChannelRef(
-      runtime,
-      normalizeChannelTarget(isTestMode() ? TEST_CHANNEL : requestedChannel),
-    )).resolved
-  } catch (err) {
-    return fail(err instanceof Error ? err.message : String(err))
-  }
+  const normalizedRequested = normalizeChannelTarget(isTestMode() ? TEST_CHANNEL : requestedChannel)
   const { content, imageAssetId, videoAssetId, embed, taskId } = params
 
   const files = [
@@ -140,16 +134,76 @@ export async function postChannel(
     filePayload(videoAssetId, await resolveAssetAbsPath(videoAssetId)),
   ].filter((file): file is { name: string; path: string } => Boolean(file))
 
-  // Identical-retry dedup runs FIRST: a verbatim retry of a post we already
-  // sent (client timeout — the caller never saw the success) must return
-  // the cached result, never a refusal whose error text invites repost=true.
-  const signature = postSignature({ ...params, channel, files })
+  // Identical-retry memo runs FIRST and is keyed on the REQUESTED channel (no
+  // channel-surface call, #908 §4.6): a verbatim retry of a post we already
+  // sent — or partially sent — must return the saved result, even while the
+  // bridge is down, never a fresh readiness failure that would hide evidence
+  // content already went out, and never a refusal whose text invites
+  // repost=true.
+  const signature = postSignature({ ...params, channel: normalizedRequested, files })
   const existing = postInflight.get(signature)
   if (existing) return existing
   const cached = postCompleted.get(signature)
   if (cached) {
     if (cached.expiresAt > Date.now()) return { ...cached.result, deduped: true }
     postCompleted.delete(signature)
+  }
+
+  // Everything from pre-flight on runs INSIDE the in-flight entry, so a
+  // concurrent identical post can never slip past the memo while an await
+  // (alias lookup) is pending.
+  const inflight = runPost(runtime, {
+    agent: params.agent,
+    content,
+    embed,
+    files,
+    normalizedRequested,
+    requestedChannel,
+    repost: params.repost ?? false,
+    signature,
+    taskId,
+    imageAssetId,
+    videoAssetId,
+  })
+  postInflight.set(signature, inflight)
+  try {
+    return await inflight
+  } finally {
+    if (postInflight.get(signature) === inflight) postInflight.delete(signature)
+  }
+}
+
+async function runPost(
+  runtime: AgentRuntimeAdapter,
+  input: {
+    agent: string
+    content: string
+    embed?: Record<string, unknown>
+    files: Array<{ name: string; path: string }>
+    normalizedRequested: string
+    requestedChannel: string
+    repost: boolean
+    signature: string
+    taskId?: string
+    imageAssetId?: string
+    videoAssetId?: string
+  },
+): Promise<ExecToolResult> {
+  // Pre-flight against the ONE readiness snapshot: a configuration gap or a
+  // down bridge fails here with the real cause and next step — nothing else
+  // runs (no alias lookup, no send) and nothing is memoized.
+  const preflight = preflightFailure(runtime)
+  if (preflight) return preflight
+
+  // Alias resolution — a typed delivery failure from the channel list is the
+  // real cause and surfaces as such (never "no alias configured").
+  let channel: string
+  try {
+    channel = (await resolveRuntimeChannelRef(runtime, input.normalizedRequested)).resolved
+  } catch (err) {
+    return isDeliveryError(err)
+      ? failWithCopy(err.kind, { state: err.detail.state, target: input.normalizedRequested, guildId: err.detail.guildId, message: err.message }, { chunksDelivered: 0 })
+      : fail(err instanceof Error ? err.message : String(err))
   }
 
   // A deliverable goes to a channel ONCE per task (live-test incident: the
@@ -159,11 +213,11 @@ export async function postChannel(
   // is the explicit escape hatch; only successful deliveries record a row.
   // Best-effort against concurrent different-caption posts (check-then-act);
   // the observed incident was sequential.
-  const deliveredAssetIds = [imageAssetId, videoAssetId].filter((id): id is string => Boolean(id))
-  const deliveryKeys = taskId
-    ? deliveredAssetIds.map(assetId => `channel-post:${taskId}:${channel}:${assetId}`)
+  const deliveredAssetIds = [input.imageAssetId, input.videoAssetId].filter((id): id is string => Boolean(id))
+  const deliveryKeys = input.taskId
+    ? deliveredAssetIds.map(assetId => `channel-post:${input.taskId}:${channel}:${assetId}`)
     : []
-  if (!params.repost) {
+  if (!input.repost) {
     for (const key of deliveryKeys) {
       let prior
       try {
@@ -179,44 +233,77 @@ export async function postChannel(
       if (prior) {
         const at = (prior.result as { at?: string } | null)?.at
         return fail(
-          `Asset already delivered to ${displayChannel(channel)} for task ${taskId}${at ? ` at ${at}` : ''}. A deliverable goes out once — if a second copy is genuinely intended, pass repost=true.`,
+          `Asset already delivered to ${displayChannel(channel)} for task ${input.taskId}${at ? ` at ${at}` : ''}. A deliverable goes out once — if a second copy is genuinely intended, pass repost=true.`,
         )
       }
     }
   }
 
-  const promise = deliverChannelPost(runtime, {
-    agent: params.agent,
+  const { result, attempted } = await deliverChannelPost(runtime, {
+    agent: input.agent,
     channel,
-    content,
-    embed,
-    files,
-    requestedChannel,
-    taskId,
+    content: input.content,
+    embed: input.embed,
+    files: input.files,
+    requestedChannel: input.requestedChannel,
+    taskId: input.taskId,
   })
-  postInflight.set(signature, promise)
-  try {
-    const result = await promise
-    // External sends are non-idempotent. Cache success and failure briefly so
-    // an agent retry caused by a client timeout or ambiguous adapter failure
-    // does not emit a second copy of the same message.
-    postCompleted.set(signature, { result, expiresAt: Date.now() + POST_IDEMPOTENCY_TTL_MS })
-    if (result.ok) {
-      for (const key of deliveryKeys) {
-        try {
-          putIdempotent(key, 'channel.post', { at: new Date().toISOString() })
-        } catch (err) {
-          // The message already went out — failing the call now would read as
-          // "post failed" and provoke a retry. Log; the TTL cache still
-          // covers verbatim retries for the next few minutes.
-          log.warn('Failed to record channel delivery in the ledger', { key, error: err instanceof Error ? err.message : String(err) })
-        }
+  // External sends are non-idempotent. Memoize by OUTCOME (#908 §4.6): a
+  // success, anything that was delivered (even partially), or an uncertain
+  // failure (the request may have reached Discord) is remembered so an
+  // agent retry caused by a client timeout never emits a second copy. A
+  // confidently unsent failure (deterministic refusal before any chunk
+  // landed) is NOT memoized — a retry after the fix must go through.
+  if (result.ok || attempted.delivered > 0 || attempted.uncertain) {
+    postCompleted.set(input.signature, { result, expiresAt: Date.now() + POST_IDEMPOTENCY_TTL_MS })
+  }
+  if (result.ok) {
+    for (const key of deliveryKeys) {
+      try {
+        putIdempotent(key, 'channel.post', { at: new Date().toISOString() })
+      } catch (err) {
+        // The message already went out — failing the call now would read as
+        // "post failed" and provoke a retry. Log; the TTL cache still
+        // covers verbatim retries for the next few minutes.
+        log.warn('Failed to record channel delivery in the ledger', { key, error: err instanceof Error ? err.message : String(err) })
       }
     }
-    return result
-  } finally {
-    if (postInflight.get(signature) === promise) postInflight.delete(signature)
   }
+  return result
+}
+
+function failWithCopy(
+  kind: DeliveryErrorKind,
+  detail: Parameters<typeof deliveryFailureCopy>[1],
+  extra: Record<string, unknown>,
+): ExecToolResult {
+  const copy = deliveryFailureCopy(kind, detail)
+  return { ...fail(`${copy.cause} ${copy.nextStep}`), kind, ...extra }
+}
+
+/**
+ * Pre-flight (#908 §4.6): on a bridge-owned runtime any non-deliverable
+ * readiness state fails with the copy table's cause + next step. "No
+ * channel layer" is reserved for a runtime that exposes no surface at all.
+ */
+function preflightFailure(runtime: AgentRuntimeAdapter): ExecToolResult | null {
+  const readiness = getChannelReadiness()
+  const state = readiness.connection.state
+  if (readiness.owner === 'bridge' && !DELIVERABLE_STATES.includes(state)) {
+    const kind: DeliveryErrorKind = NOT_CONFIGURED_STATES.includes(state) ? 'not_configured' : 'not_connected'
+    return failWithCopy(kind, { state, lastError: readiness.connection.lastError }, { state, chunksDelivered: 0 })
+  }
+  if (!runtime.channels) {
+    return fail(`Channel delivery is not available: the active runtime (${runtime.name}) has no channel layer.`)
+  }
+  return null
+}
+
+interface DeliveryAttempt {
+  delivered: number
+  total: number
+  /** A request may have reached Discord (timeout / transport / untyped throw). */
+  uncertain: boolean
 }
 
 async function deliverChannelPost(
@@ -230,15 +317,18 @@ async function deliverChannelPost(
     requestedChannel: string
     taskId?: string
   },
-): Promise<ExecToolResult> {
-  // Optional capability (P2.1): a runtime without a channel layer cannot
-  // deliver — honest tool failure, never a silent drop.
+): Promise<{ result: ExecToolResult; attempted: DeliveryAttempt }> {
   const channels = runtime.channels
+  const chunks = chunkChannelPostContent(input.content)
+  const attempted: DeliveryAttempt = { delivered: 0, total: chunks.length, uncertain: false }
   if (!channels) {
-    return fail(`Channel delivery is not available: the active runtime (${runtime.name}) has no channel layer.`)
+    return {
+      result: fail(`Channel delivery is not available: the active runtime (${runtime.name}) has no channel layer.`),
+      attempted,
+    }
   }
+  const testMode = isTestMode() && input.channel !== normalizeChannelTarget(input.requestedChannel)
   try {
-    const chunks = chunkChannelPostContent(input.content)
     const deliveries = []
     for (let i = 0; i < chunks.length; i += 1) {
       const result = await channels.deliverContent({
@@ -255,25 +345,49 @@ async function deliverChannelPost(
             resolvedChannel: input.channel,
             chunkIndex: i + 1,
             chunkCount: chunks.length,
-            ...(isTestMode() && input.channel !== normalizeChannelTarget(input.requestedChannel) ? { testMode: true } : {}),
+            ...(testMode ? { testMode: true } : {}),
           },
         },
       })
       deliveries.push(...result.deliveries)
+      attempted.delivered += 1
     }
 
-    return succeed({
-      deliveries,
-      channel: displayChannel(input.channel),
-      chunkCount: chunks.length,
-      taskId: input.taskId,
-      ...(isTestMode() && input.channel !== normalizeChannelTarget(input.requestedChannel) ? {
-        testMode: true,
-        requestedChannel: displayChannel(normalizeChannelTarget(input.requestedChannel)),
-      } : {}),
-    })
+    return {
+      result: succeed({
+        deliveries,
+        channel: displayChannel(input.channel),
+        chunkCount: chunks.length,
+        taskId: input.taskId,
+        ...(testMode ? {
+          testMode: true,
+          requestedChannel: displayChannel(normalizeChannelTarget(input.requestedChannel)),
+        } : {}),
+      }),
+      attempted,
+    }
   } catch (err) {
-    return fail(`Runtime channel delivery failed: ${err instanceof Error ? err.message : String(err)}`)
+    const typed = isDeliveryError(err) ? err : null
+    const kind: DeliveryErrorKind = typed?.kind ?? 'transport'
+    attempted.uncertain = !typed || kind === 'timeout' || kind === 'transport'
+    const partial = attempted.delivered > 0
+      ? ` ${attempted.delivered} of ${attempted.total} chunks were delivered before the failure — do not repost the whole message.`
+      : ''
+    const base = typed
+      ? failWithCopy(kind, { state: typed.detail.state, target: displayChannel(input.channel), guildId: typed.detail.guildId, message: typed.message }, {})
+      : fail(`Runtime channel delivery failed: ${err instanceof Error ? err.message : String(err)}`)
+    return {
+      result: {
+        ...base,
+        error: `${base.error}${partial}`,
+        kind,
+        channel: displayChannel(input.channel),
+        chunksDelivered: attempted.delivered,
+        chunkCount: attempted.total,
+        uncertain: attempted.uncertain,
+      },
+      attempted,
+    }
   }
 }
 

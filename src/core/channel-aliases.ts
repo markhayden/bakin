@@ -1,4 +1,5 @@
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+import { isDeliveryError } from '@bakin/core/delivery'
 import { getSettings } from './settings'
 
 export interface ChannelAliasResolution {
@@ -100,7 +101,12 @@ export async function resolveRuntimeChannelRef(
   let knownChannelIds: string[] = []
   try {
     knownChannelIds = (await runtime.channels?.list() ?? []).map((entry) => entry.id)
-  } catch {
+  } catch (err) {
+    // A typed delivery failure (bridge down, token rejected) IS the cause —
+    // it must surface as such, never be swallowed into "no alias
+    // configured" (#908). Untyped list failures still degrade to an empty
+    // known set.
+    if (isDeliveryError(err)) throw err
     knownChannelIds = []
   }
   return resolveChannelRef(channel, { knownChannelIds })

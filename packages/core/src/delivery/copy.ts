@@ -61,12 +61,19 @@ export interface DeliveryFailureCopy {
  */
 export function deliveryFailureCopy(
   kind: DeliveryErrorKind,
-  detail: { state?: ChannelReadinessState; target?: string; guildId?: string; message?: string } = {},
+  detail: {
+    state?: ChannelReadinessState
+    target?: string
+    guildId?: string
+    message?: string
+    /** The bridge's recorded cause (readiness `connection.lastError`) — what a `failed`/`disconnected` state is really about. */
+    lastError?: DeliveryErrorSummary | null
+  } = {},
 ): DeliveryFailureCopy {
   switch (kind) {
     case 'not_configured':
     case 'not_connected': {
-      const remediation = remediationForState(detail.state ?? 'failed', detail.message ? { kind, message: detail.message, at: '' } : null)
+      const remediation = remediationForState(detail.state ?? 'failed', detail.lastError ?? null)
       return { cause: remediation?.summary ?? 'Discord delivery is not ready.', nextStep: remediation?.nextStep ?? 'Open Settings → Channels.' }
     }
     case 'auth_failed':
