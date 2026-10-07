@@ -9,9 +9,35 @@
  * No I/O here. The app-side collector (`src/core/delivery/readiness.ts`)
  * gathers the facts and publishes the snapshot.
  */
-import type { CapabilityMode } from '../adapters/runtime/concepts'
+import type { CapabilityMode } from '../adapters/runtime/capabilities'
 import type { ChannelInfo } from '../adapters/runtime/channels'
-import type { DeliveryErrorSummary } from './errors'
+
+export type DeliveryErrorKind =
+  /** Disabled, no token, or no guild — the readiness state says which (`detail.state`). */
+  | 'not_configured'
+  /** Configured but the transport is not up (connecting/disconnected/failed — `detail.state`). */
+  | 'not_connected'
+  /** Discord rejected the bot token (REST 401 or gateway close 4004). */
+  | 'auth_failed'
+  /** Discord refused the gateway intents (close 4013/4014 — portal toggle missing). */
+  | 'intents'
+  /** The target channel/guild is unknown to a connected bridge (REST 404 or unjoined guild). */
+  | 'target_not_found'
+  /** The bot lacks permission on the target (REST 403). */
+  | 'forbidden'
+  /** Discord refused the request deterministically (other 4xx); no retry was attempted. */
+  | 'rejected'
+  /** READY or HTTP deadline elapsed. */
+  | 'timeout'
+  /** Network / 5xx / everything else, after retries where retries apply. */
+  | 'transport'
+
+/** Wire-safe summary (never carries the token or a stack). */
+export interface DeliveryErrorSummary {
+  kind: DeliveryErrorKind
+  message: string
+  at: string
+}
 
 export type ChannelReadinessState =
   | 'native'          // the runtime delivers natively — the Bakin bridge is idle by design

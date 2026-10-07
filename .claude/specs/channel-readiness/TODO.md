@@ -12,7 +12,7 @@ Branch: `feat/channel-readiness` (main checkout; 3737 serves it for the live tes
 - [ ] CHECKPOINT A: lint, typecheck, touched tests, conformance quick
 
 ## Phase 2 — Bridge and readiness
-- [ ] T3 Bridge status model, reconciliation loop, per-guild cache, classification, ALL ChannelBridge fixtures migrated (commit 4)
+- [x] T3 Bridge status model, reconciliation loop, per-guild cache, classification, ALL ChannelBridge fixtures migrated (commit 4)
 - [ ] T4 Readiness collector, /api/channels routes, SSE, fake transport gate (commit 5)
 - [ ] CHECKPOINT B: delivery + api suites; isolated boot flip `disabled` → `missing_token` without restart
 
@@ -30,7 +30,7 @@ Branch: `feat/channel-readiness` (main checkout; 3737 serves it for the live tes
 
 ## Phase 5 — Proof and docs
 - [ ] T12 Readiness-agreement integration test, deterministic fake transport (commit 12)
-      Decision at task start: Pi adapter in a throwaway home boots without auth? → record here.
+      Decision (verified 2026-10-06 during T3's isolated boot): the Pi adapter boots in a throwaway `PI_HOME` with no auth (`BAKIN_RUNTIME_ADAPTER=pi`, manifest 200, idle line logged) → the spawned-server approach stands; no fallback needed.
 - [ ] T11 Docs sweep (commit 13)
 - [ ] CHECKPOINT D: `bun run test` full → `bun run ui:conformance` full (sequential) → lint/typecheck/cycles
 - [ ] Owner live runbook on 3737 (SPEC §10) → PR → merge after approval

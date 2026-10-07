@@ -17,10 +17,21 @@ mock.module('../../src/core/logger', () => ({
 import type { ChannelBridge } from '../../packages/core/src/delivery'
 import { createPiRuntimeAdapter } from '../../packages/adapter-pi/src/index'
 
+const idleStatus = {
+  state: 'idle' as const,
+  since: '2026-10-06T00:00:00.000Z',
+  lastError: null,
+  joinedGuildIds: [],
+  guildResults: [],
+  generation: 0,
+}
+
 function fakeBridge(configured: boolean): ChannelBridge {
   return {
     isConfigured: () => configured,
-    boot: async () => {},
+    status: () => idleStatus,
+    reconcile: async () => idleStatus,
+    subscribe: () => () => {},
     shutdown: async () => {},
     channels: {
       list: async () => [{ id: 'discord:channel:1', platform: 'discord', label: '#general', capabilities: ['message'] }],

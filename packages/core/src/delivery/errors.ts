@@ -3,29 +3,11 @@
  *
  * Every failure the delivery bridge raises is a DeliveryError whose `kind`
  * is the ONLY thing consumers classify on — never the message text
- * (architecture rule R28 scans for `.message.includes(...)`).
+ * (architecture rule R28 scans for `.message.includes(...)`). The kind and
+ * summary types are wire types and live in ./readiness; this module only
+ * owns the class.
  */
-import type { ChannelReadinessState } from './readiness'
-
-export type DeliveryErrorKind =
-  /** Disabled, no token, or no guild — the readiness state says which (`detail.state`). */
-  | 'not_configured'
-  /** Configured but the transport is not up (connecting/disconnected/failed — `detail.state`). */
-  | 'not_connected'
-  /** Discord rejected the bot token (REST 401 or gateway close 4004). */
-  | 'auth_failed'
-  /** Discord refused the gateway intents (close 4013/4014 — portal toggle missing). */
-  | 'intents'
-  /** The target channel/guild is unknown to a connected bridge (REST 404 or unjoined guild). */
-  | 'target_not_found'
-  /** The bot lacks permission on the target (REST 403). */
-  | 'forbidden'
-  /** Discord refused the request deterministically (other 4xx); no retry was attempted. */
-  | 'rejected'
-  /** READY or HTTP deadline elapsed. */
-  | 'timeout'
-  /** Network / 5xx / everything else, after retries where retries apply. */
-  | 'transport'
+import type { ChannelReadinessState, DeliveryErrorKind, DeliveryErrorSummary } from './readiness'
 
 export interface DeliveryErrorDetail {
   /** Readiness state at the time of the failure (for not_configured / not_connected). */
@@ -36,13 +18,6 @@ export interface DeliveryErrorDetail {
   guildId?: string
   /** HTTP status or gateway close code, when one exists. */
   status?: number
-}
-
-/** Wire-safe summary (never carries the token or a stack). */
-export interface DeliveryErrorSummary {
-  kind: DeliveryErrorKind
-  message: string
-  at: string
 }
 
 export class DeliveryError extends Error {

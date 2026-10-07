@@ -34,6 +34,7 @@ import type { RuntimeAdapterName } from '@bakin/core/settings'
 import { createAppServices, maybeGetAppServices } from './app-services'
 import { createRuntimeAdapter, getSupportedRuntimeAdapterNames } from './runtime-adapter-factory'
 import { syncBakinRuntimeSkill } from './bakin-skill'
+import { reconcileDeliveryBridge } from './delivery'
 import { getContentDir } from './content-dir'
 import { getInFlightTurnCount } from './dispatch-registry'
 import { resetSameAgentTurnsModeCache } from './dispatch-turns'
@@ -404,6 +405,13 @@ export async function switchRuntime(
       } catch (err) {
         log.warn('re-provisioning the restored runtime failed; next server boot heals it', { error: String(err) })
       }
+      // The delivery bridge follows the restored runtime's delivery mode
+      // (native ⇒ teardown so two consumers never share the bot token).
+      try {
+        await reconcileDeliveryBridge(services.runtime, 'runtime')
+      } catch (err) {
+        log.warn('delivery bridge reconcile after restore failed', { error: String(err) })
+      }
       emit({ phase: 'restore', status: 'ok', detail: `restored ${from}` })
       return true
     } catch (err) {
@@ -493,6 +501,16 @@ export async function switchRuntime(
       log.warn('runtime skill sync failed during switch', { error: String(err) })
     }
     emit({ phase: 'provision', status: 'ok', ...(skillDetail ? { detail: skillDetail } : {}) })
+
+    // ── delivery bridge follows the target's delivery mode (#908 D2) ──────
+    // Native target ⇒ immediate teardown (no double-handling of the bot
+    // token); bridge-capable target ⇒ up now, plugin-bound surfaces follow
+    // at restart. Never fails a switch.
+    try {
+      await reconcileDeliveryBridge(newRuntime, 'runtime')
+    } catch (err) {
+      log.warn('delivery bridge reconcile after switch failed', { error: String(err) })
+    }
 
     // ── reconcile roster (best-effort carry) ──────────────────────────────
     emit({ phase: 'reconcile-roster', status: 'start' })
