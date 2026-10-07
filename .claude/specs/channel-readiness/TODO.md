@@ -7,8 +7,8 @@ Branch: `feat/channel-readiness` (main checkout; 3737 serves it for the live tes
 - [x] T0 Spec v3 amendments + PLAN/TODO (commit 1)
 
 ## Phase 1 — Foundations
-- [ ] T1 Core types, classifier, projector, DeliveryError, secret-slot registry, change subscriptions (commit 2)
-- [ ] T2 Secrets API slots + known-slot rows + shared secret field (commit 3)
+- [x] T1 Core types, classifier, projector, DeliveryError, secret-slot registry, change subscriptions (commit 2 `a5191c74b`)
+- [x] T2 Secrets API slots + known-slot rows + shared secret field (commit 3)
 - [ ] CHECKPOINT A: lint, typecheck, touched tests, conformance quick
 
 ## Phase 2 — Bridge and readiness
@@ -36,5 +36,6 @@ Branch: `feat/channel-readiness` (main checkout; 3737 serves it for the live tes
 - [ ] Owner live runbook on 3737 (SPEC §10) → PR → merge after approval
 
 ## Deferred / noticed, not touching
+- `tests/ui/architecture/sdk-public-api.test.ts` "matches the reviewed value and type inventory exactly" runs 4.5–5.3 s against a 5 s budget and fails ~2 of 3 `tests/ui/architecture` runs on this box (observed 2026-10-06 during T2's `ui:conformance --quick`; untouched by this branch). Pre-existing time bomb — needs its cost cut, not its timeout widened.
 - discord-bridge TODO items not folded in: editApproval embed patch, idempotency-row GC, reply-relay image attachments
 - Health repair task titles are generic ("Health repair: N incidents need attention") — separate issue candidate

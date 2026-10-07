@@ -18,13 +18,13 @@
     ]
   },
   "summary": {
-    "total": 106,
+    "total": 107,
     "byKind": {
       "host-route": 27,
       "plugin-route": 12,
       "plugin-slot": 32,
       "plugin-template": 2,
-      "shared-component": 33,
+      "shared-component": 34,
       "sdk-ui-export": 0
     },
     "nonVisualAliases": 3
@@ -2677,6 +2677,30 @@
         {
           "type": "source-export",
           "path": "src/components/provider-keys-tab.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/secret-slot-field",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/secret-slot-field"
+      },
+      "sourcePath": "src/components/secret-slot-field.tsx",
+      "symbols": [
+        "SecretSlotField"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/secret-slot-field.tsx",
           "detail": "exported values discovered from TSX source"
         }
       ]
