@@ -123,7 +123,7 @@ export async function cmdOnboardingSettingsInit(options: { json?: boolean } = {}
 
 async function cmdOnboardingCheckSingle(
   target: 'runtime' | 'search' | 'search-models' | 'media' | 'llm' | 'models' | 'channels' | 'plugin-assets' | 'agent-sync' | 'recommended-plugins' | 'recommended-agents' | 'capabilities',
-  options: { verbose?: boolean } = {},
+  options: { verbose?: boolean; json?: boolean } = {},
 ): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../../core/onboarding/types').CheckResult> }>> = {
     runtime: async () => (await import('../../core/onboarding/runtime')).runtimeComponent,
@@ -144,7 +144,9 @@ async function cmdOnboardingCheckSingle(
     const component = await componentMap[target]()
     return await component.check()
   })
-  if (isTTY) {
+  if (options.json) {
+    console.log(JSON.stringify(result, null, 2))
+  } else if (isTTY) {
     await printOnboardingCheckTui(result)
   } else {
     console.log(`${statusIcon(result.status)} ${result.message}`)
@@ -154,13 +156,15 @@ async function cmdOnboardingCheckSingle(
   if (result.status === 'warn') process.exit(2)
 }
 
-async function cmdOnboardingCheckAll(options: { verbose?: boolean } = {}): Promise<void> {
+async function cmdOnboardingCheckAll(options: { verbose?: boolean; json?: boolean } = {}): Promise<void> {
   const isTTY = Boolean(process.stdout.isTTY)
   const results = await withTtyRuntimeLogsSilenced({ isTTY, verbose: options.verbose }, async () => {
     const { checkAll } = await import('../../core/onboarding/index')
     return await checkAll()
   })
-  if (isTTY) {
+  if (options.json) {
+    console.log(JSON.stringify(results, null, 2))
+  } else if (isTTY) {
     await printOnboardingCheckAllTui(results)
   } else {
     for (const r of results) {
@@ -364,9 +368,9 @@ export async function run(args: string[]): Promise<void> {
     await cmdOnboardingMkdir({ json: args.includes('--json') })
   } else if (cmd === 'check') {
     if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'media' || sub === 'llm' || sub === 'models' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents' || sub === 'capabilities') {
-      await cmdOnboardingCheckSingle(sub, { verbose: args.includes('--verbose') })
+      await cmdOnboardingCheckSingle(sub, { verbose: args.includes('--verbose'), json: args.includes('--json') })
     } else if (sub === 'all') {
-      await cmdOnboardingCheckAll({ verbose: args.includes('--verbose') })
+      await cmdOnboardingCheckAll({ verbose: args.includes('--verbose'), json: args.includes('--json') })
     } else {
       await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'media', 'llm', 'models', 'channels', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents', 'capabilities', 'all'])
     }
