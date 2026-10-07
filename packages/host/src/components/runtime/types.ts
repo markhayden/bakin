@@ -74,6 +74,13 @@ export interface SwitchResultPayload {
   /** Persisted model selections the target cannot run (#907) — report only, never rewritten by a switch. */
   deadSelections?: { dead: Array<{ ref: string; label: string; model: string; detail: string; proposal: { to: string | null } }> } | null
   cantCarry: Array<{ concern: string; detail: string; count?: number }> | null
-  credentials: { llmProviders: string[] } | null
+  credentials: { llmProviders: string[]; channels?: string[] } | null
+  /** Channel ownership across the switch (#908 §4.9). */
+  channels?: {
+    source: { owner: 'runtime' | 'bridge' | 'none'; state: string }
+    target: { owner: 'runtime' | 'bridge' | 'none'; projectedState: string; tokenSource: 'env' | 'store' | null }
+    setup: string[]
+    ownership: string
+  } | null
   sync: { drifted: boolean; findings: number; syncedAgents: number } | null
 }

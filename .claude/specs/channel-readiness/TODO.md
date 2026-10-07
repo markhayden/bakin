@@ -21,8 +21,8 @@ Branch: `feat/channel-readiness` (main checkout; 3737 serves it for the live tes
 - [x] T6 Post-channel memo-first retries, pre-flight, classified failures, outcome memo; alias resolver (commit 7)
 - [x] T7 adapter-pi permanent surface, credential channels, conformance pin + teeth (commit 8)
 - [x] T8 CLI `bakin channels` + `check --json` (commit 9)
-- [ ] T9 Switch report channels section + runtime page (commit 10)
-- [ ] CHECKPOINT C: all touched suites; lint; typecheck; cycles
+- [x] T9 Switch report channels section + runtime page (commit 10)
+- [x] CHECKPOINT C: all touched suites; lint; typecheck; cycles (2026-10-06)
 
 ## Phase 4 — Channels tab
 - [ ] T10 Channels settings tab, routing fields moved, browser fixture (commit 11)

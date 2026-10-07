@@ -2495,7 +2495,8 @@
         "CheckStatusBadge",
         "MODE_LEGEND",
         "ModeBadge",
-        "capabilityStateCopy"
+        "capabilityStateCopy",
+        "deliveryReadinessCopy"
       ],
       "exportStatus": "private",
       "classification": "shared-ui",
