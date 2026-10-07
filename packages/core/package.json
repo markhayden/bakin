@@ -41,6 +41,8 @@
     "./settings": "./src/settings.ts",
     "./content-dir": "./src/content-dir.ts",
     "./delivery": "./src/delivery/index.ts",
+    "./secrets": "./src/secrets/slots.ts",
+    "./secrets/slot-value": "./src/secrets/slot-value.ts",
     "./plugin-types": "./src/plugin-types.ts",
     "./routing": "./src/routing/index.ts",
     "./openapi": "./src/openapi/index.ts",

@@ -18,6 +18,7 @@
 import { existsSync, readFileSync } from 'fs'
 import { delimiter, dirname, join } from 'path'
 import { getStoredSecret, parseSecretSlot } from '@bakin/core/media'
+import { SECRET_SLOTS, type SecretSlotDef } from '@bakin/core/secrets'
 import { SKILL_SECRET_PROVIDER } from '../../packages/core/src/agent-packages/skill-secret-slot'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { safeParseManifest } from '../../packages/core/src/agent-packages/manifest'
@@ -38,12 +39,14 @@ export interface EnvSecretMapping {
 
 /**
  * Static mappings for integrations Bakin knows about regardless of installed
- * packs. Capability packs add their own declarations (manifest `secrets[]`
- * with `secretSlot`, P2) — those are passed in by the caller at boot.
+ * packs: derived from the declared secret-slot registry (rows that opt into
+ * env injection — the Discord token deliberately does not). Capability packs
+ * add their own declarations (manifest `secrets[]` with `secretSlot`, P2) —
+ * those are passed in by the caller at boot.
  */
-export const STATIC_ENV_SECRET_MAPPINGS: EnvSecretMapping[] = [
-  { envVar: 'BRAVE_SEARCH_API_KEY', provider: 'brave', name: 'apiKey' },
-]
+export const STATIC_ENV_SECRET_MAPPINGS: EnvSecretMapping[] = SECRET_SLOTS
+  .filter((slot): slot is SecretSlotDef & { envVar: string } => slot.injectEnv && typeof slot.envVar === 'string')
+  .map((slot) => ({ envVar: slot.envVar, provider: slot.provider, name: slot.name }))
 
 /**
  * Populate UNSET env vars from the secret store. Returns the names of the

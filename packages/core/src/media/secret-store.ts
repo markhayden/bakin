@@ -19,8 +19,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, renameSync, rmSync } from 'fs'
 import { dirname, join } from 'path'
 import { getContentDir } from '../content-dir'
+import { createLogger } from '../logger'
 import { resolveDirectImageKey } from './direct-image-provider'
 import { type DirectImageProviderId } from './image-format'
+
+const log = createLogger('secret-store')
 
 /**
  * Named secrets per provider/integration. The historical shape
@@ -105,6 +108,34 @@ export function parseSecretSlot(slot: string): { provider: string; name: string 
   return { provider: slot.slice(0, dot), name: slot.slice(dot + 1) }
 }
 
+export interface SecretChange {
+  provider: string
+  name: string
+  action: 'set' | 'unset'
+}
+
+const secretListeners = new Set<(change: SecretChange) => void>()
+
+/**
+ * Subscribe to store mutations (set/unset of one named secret). Listeners
+ * are isolated from each other and from the write: a throwing listener is
+ * logged, never propagated. Returns the unsubscribe function.
+ */
+export function subscribeSecretChanged(listener: (change: SecretChange) => void): () => void {
+  secretListeners.add(listener)
+  return () => { secretListeners.delete(listener) }
+}
+
+function notifySecretChanged(change: SecretChange): void {
+  for (const listener of secretListeners) {
+    try {
+      listener(change)
+    } catch (err) {
+      log.error('Secret change listener failed', err, { provider: change.provider, name: change.name })
+    }
+  }
+}
+
 /** Read one named secret (store only — does not consult env). */
 export function getStoredSecret(providerId: string, name: string): string | null {
   return nonEmpty(readStore().providers[providerId]?.[name])
@@ -117,6 +148,7 @@ export function setStoredSecret(providerId: string, name: string, value: string)
   const store = readStore()
   store.providers[providerId] = { ...store.providers[providerId], [name]: value }
   writeStore(store)
+  notifySecretChanged({ provider: providerId, name, action: 'set' })
 }
 
 /**
@@ -130,6 +162,7 @@ export function unsetStoredSecret(providerId: string, name: string): boolean {
   delete secrets[name]
   if (Object.keys(secrets).length === 0) delete store.providers[providerId]
   writeStore(store)
+  notifySecretChanged({ provider: providerId, name, action: 'unset' })
   return true
 }
 
