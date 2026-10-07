@@ -64,6 +64,8 @@ interface CapabilityGridRow {
   meaning: string
 }
 
+const CHANNELS_FETCH_OPTIONS = { timeoutMs: 10_000 }
+
 /** The slice of GET /api/channels the Overview needs (#908). */
 interface ChannelReadinessSlice {
   connection?: { state?: string }
@@ -80,7 +82,7 @@ function CapabilityGrid({ report }: { report: CapabilityReport }) {
   // The Channel delivery row speaks from the ONE readiness snapshot (#908)
   // and follows it live; the capability mode alone cannot say "enabled but
   // the token is missing".
-  const channels = useJsonFetch<unknown>('/api/channels', { timeoutMs: 10_000 })
+  const channels = useJsonFetch<unknown>('/api/channels', CHANNELS_FETCH_OPTIONS)
   const readiness = readinessSlice(channels.data)
   usePluginEvent('channels.readiness', () => { void channels.refresh() })
   const rows: CapabilityGridRow[] = capabilityRows(report.capabilities)

@@ -94,6 +94,15 @@ const fixtures: TeethFixture[] = [
     expectedRules: [],
     expectedMessages: [],
   },
+  // Host-owned settings surface (#908): same runner, same browser passes
+  // (overflow / axe / keyboard / console) — the pluginId is only the label.
+  {
+    name: 'host-channels-tab',
+    pluginId: 'host-channels',
+    fixtureEntry: 'packages/host/tests/channels-tab.ui.fixture.tsx',
+    expectedRules: [],
+    expectedMessages: [],
+  },
 ]
 
 function manifestId(root: string, packageRoot: string): string | undefined {

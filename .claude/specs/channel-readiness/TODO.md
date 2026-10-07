@@ -25,8 +25,8 @@ Branch: `feat/channel-readiness` (main checkout; 3737 serves it for the live tes
 - [x] CHECKPOINT C: all touched suites; lint; typecheck; cycles (2026-10-06)
 
 ## Phase 4 — Channels tab
-- [ ] T10 Channels settings tab, routing fields moved, browser fixture (commit 11)
-      Decision at task start: host fixture entry in the conformance runner, or Playwright fallback → record here.
+- [x] T10 Channels settings tab, routing fields moved, browser fixture (commit 11)
+      Decision (2026-10-06): a host fixture entry in `scripts/ui/verify-plugin-conformance.ts` (`host-channels-tab` → `packages/host/tests/channels-tab.ui.fixture.tsx`, framed like the /settings route so the page has its h1/h2) — the runner takes any fixture entry and uses pluginId only as a label; it passed clean (overflow / axe / keyboard / console, desktop + mobile). No Playwright fallback needed. `capabilities-tab.tsx`'s "Add the key in Settings" link stays on Integrations & Keys — it is about pack secrets, not Discord.
 
 ## Phase 5 — Proof and docs
 - [ ] T12 Readiness-agreement integration test, deterministic fake transport (commit 12)

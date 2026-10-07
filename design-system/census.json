@@ -18,13 +18,13 @@
     ]
   },
   "summary": {
-    "total": 107,
+    "total": 109,
     "byKind": {
       "host-route": 27,
       "plugin-route": 12,
       "plugin-slot": 32,
       "plugin-template": 2,
-      "shared-component": 34,
+      "shared-component": 36,
       "sdk-ui-export": 0
     },
     "nonVisualAliases": 3
@@ -2552,6 +2552,57 @@
         {
           "type": "source-export",
           "path": "src/components/agent-avatar.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/channels-tab",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/channels-tab"
+      },
+      "sourcePath": "src/components/channels-tab.tsx",
+      "symbols": [
+        "CHANNELS_TAB_ID",
+        "ChannelsTab",
+        "fieldIdFor"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/channels-tab.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/channels/id-list-editor",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/channels/id-list-editor"
+      },
+      "sourcePath": "src/components/channels/id-list-editor.tsx",
+      "symbols": [
+        "IdListEditor",
+        "normalizeIdEntry"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/channels/id-list-editor.tsx",
           "detail": "exported values discovered from TSX source"
         }
       ]
