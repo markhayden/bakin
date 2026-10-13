@@ -45,6 +45,7 @@ bun run test                # full test suite (the flags CI uses live in package
 bun run test:watch          # test watch mode
 bun test <file> --isolate   # one file, fresh process
 bun run lint                # ESLint
+bun run check:cycles        # import-cycle ratchet (fails on any new cycle)
 bun run docs:check          # generate, validate, and build public docs
 ```
 
@@ -89,9 +90,12 @@ Run targeted tests while iterating, then run the broader checks before review:
 ```sh
 bun run typecheck
 bun run lint
+bun run check:cycles
 bun run test
 bun run docs:check
 ```
+
+CI runs the same `check:cycles` gate on every PR and on `main`. A new import cycle fails it; fix the cycle, or allowlist it deliberately in review (see `scripts/check-cycles.ts`). An allowlisted cycle that no longer exists also fails, so the list only shrinks.
 
 ## Releases
 
