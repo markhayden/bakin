@@ -268,6 +268,15 @@ export interface StepTeamResolutionArgs {
   /** Step instructions, forwarded (bounded) as router context. */
   instructions?: string
   contentDir: string
+  /**
+   * The dispatch state the CALLER holds under `withStateLock` (dispatchWorkflowTask
+   * runs inside the cycle/single lock). The ladder is read from and recorded
+   * into this object — never reloaded or re-locked here: a nested
+   * `withStateLock` from inside the lock holder deadlocks the whole
+   * dispatcher (#977 review), and a reload-and-save would be overwritten by
+   * the holder's own save anyway. The caller persists.
+   */
+  state: DispatchState
 }
 
 export type StepTeamResolutionOutcome =
@@ -284,7 +293,9 @@ const STEP_ROUTER_CONTEXT_BYTES = 1500
  * Same policy as task-level resolution: pre-claim, structural failures block
  * the PARENT task honestly, transient failures ride the failedDispatches
  * ladder (keyed `<contextTaskId>:<stepId>` — additive, never collides with
- * task-level records), pause/budget gates defer quietly outside the ladder.
+ * task-level records) IN THE CALLER'S `args.state`, pause/budget gates defer
+ * quietly outside the ladder. Runs under the caller's dispatch lock — it must
+ * never take `withStateLock` itself.
  * The pick is persisted STICKY on the workflow instance
  * (workflows.recordStepTeamResolution, first write wins) — retries and
  * revision cycles reuse it; the routing LLM bills at most once per step.
@@ -296,7 +307,7 @@ export async function resolveTeamAssignmentForStep(args: StepTeamResolutionArgs)
 
   const run = (async (): Promise<StepTeamResolutionOutcome> => {
     const registry = getHookRegistry()
-    const { task, teamId, stepId, stepLabel, contentDir } = args
+    const { task, teamId, stepId, stepLabel, contentDir, state } = args
 
     const blockWith = async (message: string): Promise<StepTeamResolutionOutcome> => {
       log.warn('Step team resolution blocked task', { id: task.id, stepId, team: teamId, message })
@@ -314,7 +325,6 @@ export async function resolveTeamAssignmentForStep(args: StepTeamResolutionArgs)
     }
 
     const settings = getSettings()
-    const state = loadDispatchState(contentDir)
     const { gate, count } = ladderGate(state, ladderKey, settings)
     if (gate === 'exhausted') {
       // Exhaustion uses its OWN sentinel (same rule as task-level): repeated
@@ -338,11 +348,9 @@ export async function resolveTeamAssignmentForStep(args: StepTeamResolutionArgs)
         id: task.id, title: task.title, team: teamId, stepId, kind: 'transient', message,
       })
       await addTaskLogOnce(task, `Team routing deferred for step "${stepLabel}" (will retry): ${message}`).catch((err) => log.debug('Could not append step routing-deferral detail', { id: task.id, err: String(err) }))
-      await withStateLock(async () => {
-        const fresh = loadDispatchState(contentDir)
-        recordTeamResolutionFailure(fresh, ladderKey)
-        saveDispatchState(contentDir, fresh)
-      })
+      // Into the lock holder's state — it saves. (Re-taking the lock here
+      // deadlocked every dispatch cycle that hit a transient routing failure.)
+      recordTeamResolutionFailure(state, ladderKey)
       return { status: 'skipped' }
     }
 

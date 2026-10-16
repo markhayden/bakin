@@ -107,6 +107,7 @@ export async function dispatchWorkflowTask(
         teamId: teamIdFromToken(agent),
         ...(ctx.instructions ? { instructions: ctx.instructions } : {}),
         contentDir,
+        state,
       })
       if (outcome.status === 'blocked') return // parent task is blocked — stop dispatching
       if (outcome.status !== 'resolved') continue

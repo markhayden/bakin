@@ -179,7 +179,12 @@ clears (only ABSENT preserves the existing value).
   `workflows.recordStepTeamResolution` hook — retries/revisions reuse it,
   the router bills at most once per step), structural failures block the
   PARENT task with the same sentinels, transient failures ride the
-  failedDispatches ladder keyed `<contextTaskId>:<stepId>`.
+  failedDispatches ladder keyed `<contextTaskId>:<stepId>` — recorded into
+  the CALLER's `state` (`StepTeamResolutionArgs.state`, the object
+  `dispatchWorkflowTask` holds under `withStateLock`), which the caller
+  saves. The resolver never takes the dispatch lock itself: it runs inside
+  the lock holder, and the nested `withStateLock` it used to take deadlocked
+  every cycle that hit a transient routing failure (#977 review).
   `resolveAgent(value, instance, stepId)` returns the sticky pick or passes
   the token through; `getCurrentStep` treats the token as the step identity
   pre-resolution (dispatch fetches step context with it), the member
