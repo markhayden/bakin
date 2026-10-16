@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import '../../rtl-settle'
 
 import { PluginSettingsRenderer } from '@makinbakin/sdk/patterns'
@@ -68,6 +68,30 @@ const values = {
 }
 
 describe('focused PluginSettingsRenderer', () => {
+  it('keeps compact field names, draft values, reset, and disabled controls intact', () => {
+    const onSubmit = mock()
+    const { rerender } = render(<PluginSettingsRenderer schema={schema} values={values} onSubmit={onSubmit} />)
+    const row = within(screen.getByRole('group', { name: 'Content types row 1' }))
+    const toggle = row.getByRole('switch', { name: 'Requires approval' })
+    const hours = row.getByRole('spinbutton', { name: 'Prep lead hours' })
+    expect(hours.getAttribute('name')).toBe('contentTypes.0.prepLeadHours')
+    fireEvent.click(toggle)
+    fireEvent.change(hours, { target: { value: '48' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+    expect(onSubmit).toHaveBeenCalledWith({
+      ...values, contentTypes: [{ ...values.contentTypes[0], prepLeadHours: 48, requiresApproval: false }],
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    expect((hours as HTMLInputElement).value).toBe('12')
+    for (const unavailable of [{ busy: true }, { disabled: true }]) {
+      rerender(<PluginSettingsRenderer schema={schema} values={values} onSubmit={onSubmit} {...unavailable} />)
+      expect(toggle.getAttribute('aria-disabled')).toBe('true')
+      expect((hours as HTMLInputElement).disabled).toBe(true)
+      expect(row.getByRole('combobox', { name: 'Asset requirement' }).hasAttribute('disabled')).toBe(true)
+    }
+  })
+
   it('associates every scalar control with its schema label and exposes consumer feedback', () => {
     render(
       <PluginSettingsRenderer

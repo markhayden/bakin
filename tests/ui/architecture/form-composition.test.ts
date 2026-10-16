@@ -9,6 +9,12 @@ const REPO_ROOT = resolve(import.meta.dir, '../../..')
 const read = (path: string) => readFileSync(resolve(REPO_ROOT, path), 'utf8')
 
 describe('canonical form ownership', () => {
+  it('keeps settings layout independent of Field and control internal slots', () => {
+    const renderer = read('packages/sdk/src/patterns/plugin-settings-renderer.tsx')
+    expect(renderer).not.toMatch(/\[data-slot\s*=/)
+    expect(renderer).not.toMatch(/\[data-orientation\s*=/)
+  })
+
   it('owns field, fieldset, and form composition in the private presentation package', () => {
     const files = [
       'packages/ui/src/forms/field.tsx',
