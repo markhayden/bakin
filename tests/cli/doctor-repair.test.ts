@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { HealthRepairPlan } from '@makinbakin/sdk/types'
 // Warm Ink before exercising the CLI's lazy TUI import under Bun's module-isolated runner.
 import 'ink'
@@ -107,6 +107,36 @@ const mockDelegate = {
   incidents: [actionableIncident],
 }
 
+/** The finished repair operation the server reports; its result body is the apply report (#895). */
+function repairOperation(over: Record<string, unknown> = {}) {
+  return {
+    id: 'op-repair-1', children: [], rev: 5, bootId: 'boot-1', kind: 'repair', owner: 'core', origin: 'cli',
+    title: 'Apply a Health repair', href: '/health', fingerprint: 'repair:x', resources: [], status: 'succeeded',
+    plan: { stages: [{ id: 'apply', kind: 'installing', label: 'Apply repairs' }, { id: 'verify', kind: 'verifying', label: 'Re-check Health' }], pointOfNoReturn: null },
+    stages: [
+      { id: 'apply', kind: 'installing', label: 'Apply repairs', status: 'done', startedAt: '2026-07-12T12:00:00.000Z', endedAt: '2026-07-12T12:00:02.000Z' },
+      { id: 'verify', kind: 'verifying', label: 'Re-check Health', status: 'done', startedAt: '2026-07-12T12:00:02.000Z', endedAt: '2026-07-12T12:00:03.000Z' },
+    ],
+    cancellable: false, startedAt: '2026-07-12T12:00:00.000Z', endedAt: '2026-07-12T12:00:03.000Z',
+    lastProgressAt: '2026-07-12T12:00:03.000Z', lastLivenessAt: '2026-07-12T12:00:03.000Z', log: [],
+    outcome: { code: 'ok', message: 'Applied and verified.' },
+    result: { httpStatus: 200, body: mockApply },
+    ...over,
+  }
+}
+
+/** Route the CLI's calls by URL: run, plan, apply (starts the operation), then the follow. */
+function serveRepair(operation = repairOperation()) {
+  fetchMock.mockImplementation(async (url: string) => {
+    if (url.includes('/doctor/run')) return response(actionableHealthReport)
+    if (url.includes('/repair/plan')) return response(mockPlan)
+    if (url.includes('/repair/apply')) return response({ operationId: 'op-repair-1', bootId: 'boot-1' })
+    if (url.includes('/api/events')) return { ok: false, status: 503 } as Response
+    if (url.includes('/api/operations/op-repair-1')) return response({ bootId: 'boot-1', operation, children: [] })
+    throw new Error(`unexpected request ${url}`)
+  })
+}
+
 const harness = setupTtyCliHarness({ exitMode: 'always-throws', defaultIsTTY: null })
 const { fetchMock, setStdoutIsTTY, output: loggedOutput } = harness
 
@@ -123,6 +153,9 @@ describe('canonical CLI doctor repair', () => {
     prompts = []
     nextQuestionAnswer = 'y'
   })
+
+  // serveRepair() installs a URL router; later tests sequence their own answers.
+  afterEach(() => { fetchMock.mockReset() })
 
   it('plans against the current report and does not mutate without confirmation', async () => {
     fetchMock
@@ -146,18 +179,16 @@ describe('canonical CLI doctor repair', () => {
     expect(body.data.plan.planId).toBe(mockPlan.planId)
   })
 
-  it('plans first and applies only safe item IDs with --yes', async () => {
-    fetchMock
-      .mockResolvedValueOnce(response(actionableHealthReport))
-      .mockResolvedValueOnce(response(mockPlan))
-      .mockResolvedValueOnce(response(mockApply))
+  it('plans first, starts the repair with only safe item IDs under --yes, and follows it to the report', async () => {
+    serveRepair()
     process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--fix', '--json', '--yes']
 
     const { main } = await import('../../cli/bakin')
     await main()
 
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/api/operations/op-repair-1'))).toBe(true)
     expect(fetchMock.mock.calls[2][0]).toContain('/api/plugins/health/doctor/repair/apply')
+    expect(fetchMock.mock.calls[2][1]?.headers).toMatchObject({ 'X-Bakin-Origin': 'cli' })
     expect(fetchMock.mock.calls[2][1]).toMatchObject({ method: 'POST' })
     expect(fetchMock.mock.calls[2][1]?.body).toBe(JSON.stringify({
       planId: mockPlan.planId,
@@ -204,10 +235,7 @@ describe('canonical CLI doctor repair', () => {
   })
 
   it('renders TTY repair application results with canonical verification', async () => {
-    fetchMock
-      .mockResolvedValueOnce(response(actionableHealthReport))
-      .mockResolvedValueOnce(response(mockPlan))
-      .mockResolvedValueOnce(response(mockApply))
+    serveRepair()
     setStdoutIsTTY(true)
     process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--fix', '--yes']
 
@@ -222,10 +250,7 @@ describe('canonical CLI doctor repair', () => {
   })
 
   it('keeps a single brand header across interactive plan and apply', async () => {
-    fetchMock
-      .mockResolvedValueOnce(response(actionableHealthReport))
-      .mockResolvedValueOnce(response(mockPlan))
-      .mockResolvedValueOnce(response(mockApply))
+    serveRepair()
     setStdoutIsTTY(true)
     process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--fix']
 
@@ -237,6 +262,17 @@ describe('canonical CLI doctor repair', () => {
     expect(output).toContain('Doctor repair plan')
     expect(output).toContain('Doctor repair results')
     expect(headerCount(output)).toBe(1)
+  })
+
+  it('a repair cancelled before anything changed exits 130 with the typed error', async () => {
+    serveRepair(repairOperation({ status: 'cancelled', outcome: { code: 'cancelled' }, result: undefined }))
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--fix', '--json', '--yes']
+
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:130')
+    const body = JSON.parse(String(harness.log.mock.calls[0][0]))
+    expect(body.error.code).toBe('REPAIR_CANCELLED')
+    expect(body.data.operation.id).toBe('op-repair-1')
   })
 
   it('does not apply when interactive confirmation is declined', async () => {
@@ -374,13 +410,12 @@ describe('canonical CLI doctor repair', () => {
       ...mockApply,
       results: [{ ...mockApply.results[0], status: 'failed', message: 'Repair action failed.' }],
     }
-    fetchMock
-      .mockResolvedValueOnce(response(actionableHealthReport))
-      .mockResolvedValueOnce(response(mockPlan))
-      .mockResolvedValueOnce(response(failedApply))
+    serveRepair(repairOperation({ status: 'failed', outcome: { code: 'apply_failed' }, result: { httpStatus: 200, body: failedApply } }))
     process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--fix', '--json', '--yes']
 
     const { main } = await import('../../cli/bakin')
     await expect(main()).rejects.toThrow('exit:1')
+    const body = JSON.parse(String(harness.log.mock.calls[0][0]))
+    expect(body.error.code).toBe('DOCTOR_REPAIR_FAILED')
   })
 })

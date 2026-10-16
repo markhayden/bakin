@@ -248,17 +248,17 @@ export const REBUILD_PLAN = {
 }
 
 /** Rebuilds each table in turn, reporting one item per table. */
-export async function rebuildTables(targets: readonly string[], op?: OperationContext): Promise<{ outcomes: string[]; failed: number }> {
+export async function rebuildTables(targets: readonly string[], op: OperationContext): Promise<{ outcomes: string[]; failed: number }> {
   const { rebuildRegisteredTables } = await import('../../../../src/core/search-registry')
   const outcomes: string[] = []
   let failed = 0
-  if (targets.length > 0) op?.stage('rebuild')
+  if (targets.length > 0) op.stage('rebuild')
   for (const logical of targets) {
-    op?.item('rebuild', { id: logical, label: logical, status: 'active' })
+    op.item('rebuild', { id: logical, label: logical, status: 'active' })
     const [result] = await rebuildRegisteredTables(logical)
     const bad = !result || Boolean(result.error) || result.result === 'parked'
     if (bad) failed++
-    op?.item('rebuild', { id: logical, label: logical, status: bad ? 'failed' : 'done', message: result?.error ?? result?.result ?? 'no registered definition' })
+    op.item('rebuild', { id: logical, label: logical, status: bad ? 'failed' : 'done', message: result?.error ?? result?.result ?? 'no registered definition' })
     outcomes.push(`${logical}: ${result?.error ?? result?.result ?? 'no registered definition'}`)
   }
   return { outcomes, failed }

@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
-import type { HealthRepairTarget } from '@makinbakin/sdk/types'
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
+import type { HealthRepairTarget, OperationView } from '@makinbakin/sdk/types'
+import { emitPluginEvent } from '@makinbakin/sdk/hooks'
 import '../../rtl-settle'
 import { RepairDialog } from '../../../plugins/health/components/repair-dialog'
 import { useRepairPlan } from '../../../plugins/health/hooks/use-repair-plan'
@@ -91,20 +92,98 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
+const OP_ID = 'op-repair-1'
+const NOW = Date.now()
+const iso = (msAgo: number) => new Date(NOW - msAgo).toISOString()
+
+/** The repair operation as the server would publish it. */
+function repairView(over: Partial<OperationView> = {}): OperationView {
+  return {
+    id: OP_ID,
+    children: ['op-child-1'],
+    rev: 1,
+    bootId: 'boot-1',
+    kind: 'repair',
+    owner: 'core',
+    origin: 'web',
+    title: 'Apply a Health repair',
+    href: '/health',
+    fingerprint: 'repair:x',
+    resources: [],
+    status: 'running',
+    plan: { stages: [{ id: 'apply', kind: 'installing', label: 'Apply repairs' }, { id: 'verify', kind: 'verifying', label: 'Re-check Health' }], pointOfNoReturn: null },
+    stages: [
+      { id: 'apply', kind: 'installing', label: 'Apply repairs', status: 'active', startedAt: iso(5_000) },
+      { id: 'verify', kind: 'verifying', label: 'Re-check Health', status: 'pending' },
+    ],
+    cancellable: true,
+    startedAt: iso(5_000),
+    lastProgressAt: iso(0),
+    lastLivenessAt: iso(0),
+    log: [],
+    ...over,
+  }
+}
+
+function childView(over: Partial<OperationView> = {}): OperationView {
+  return repairView({
+    id: 'op-child-1',
+    parentId: OP_ID,
+    children: [],
+    kind: 'repair:team.sync-agents',
+    title: 'Sync agents locally',
+    plan: { stages: [{ id: 'sync', kind: 'downloading', label: 'Download agent sources' }], pointOfNoReturn: null },
+    stages: [{ id: 'sync', kind: 'downloading', label: 'Download agent sources', status: 'active', startedAt: iso(5_000), bytes: { received: 2_000_000, total: 8_000_000 } }],
+    ...over,
+  })
+}
+
+let served: { operation: OperationView; children: OperationView[] } = { operation: repairView(), children: [childView()] }
+
+function finishedView(): OperationView {
+  return repairView({
+    rev: 9,
+    status: 'succeeded',
+    endedAt: iso(0),
+    cancellable: false,
+    stages: [
+      { id: 'apply', kind: 'installing', label: 'Apply repairs', status: 'done', startedAt: iso(5_000), endedAt: iso(1_000) },
+      { id: 'verify', kind: 'verifying', label: 'Re-check Health', status: 'done', startedAt: iso(1_000), endedAt: iso(0) },
+    ],
+    outcome: { code: 'ok', message: 'Applied and verified.' },
+    result: { httpStatus: 200, body: applied },
+  })
+}
+
+function publish(view: OperationView) {
+  act(() => emitPluginEvent({ event: 'operation.updated', view }))
+}
+
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
+
 beforeEach(() => {
   cleanup()
   fetchCalls = []
   staleApply = false
+  served = { operation: repairView(), children: [childView()] }
   globalThis.fetch = mock(async (url: RequestInfo | URL, init?: RequestInit) => {
-    fetchCalls.push({ url: String(url), init })
-    if (String(url).endsWith('/repair/plan')) return new Response(JSON.stringify(plan), { status: 200 })
-    if (String(url).endsWith('/repair/apply') && staleApply) {
-      return new Response(JSON.stringify({ error: 'Evidence changed.', code: 'STALE_PLAN' }), { status: 409 })
-    }
-    if (String(url).endsWith('/repair/apply')) return new Response(JSON.stringify(applied), { status: 200 })
-    return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+    const path = String(url)
+    fetchCalls.push({ url: path, init })
+    if (path.endsWith('/repair/plan')) return json(plan)
+    if (path.endsWith('/repair/apply') && staleApply) return json({ error: 'Evidence changed.', code: 'STALE_PLAN' }, 409)
+    if (path.endsWith('/repair/apply')) return json({ operationId: OP_ID, bootId: 'boot-1' }, 202)
+    if (path.endsWith(`/api/operations/${OP_ID}/cancel`)) return json({ bootId: 'boot-1', status: 'cancelling' }, 202)
+    if (path.includes(`/api/operations/${OP_ID}`)) return json({ bootId: 'boot-1', operation: served.operation, children: served.children })
+    return json({ error: 'not found' }, 404)
   }) as unknown as typeof fetch
 })
+
+async function startApply(labels: string[] = []) {
+  await screen.findByText('Sync agents locally')
+  for (const label of labels) fireEvent.click(screen.getByLabelText(label))
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Apply \d+ repairs?$/ })) })
+  await screen.findByRole('region', { name: 'Apply a Health repair' })
+}
 
 describe('RepairDialog', () => {
   it('plans only the selected incident and preselects safe items alone', async () => {
@@ -122,14 +201,10 @@ describe('RepairDialog', () => {
     expect(JSON.parse(String(request.init?.body))).toEqual({ target })
   })
 
-  it('sends plan id, selected items, and only individually confirmed non-safe ids', async () => {
+  it('starts the repair, shows its progress with each action as a child, then the rows and verification', async () => {
     const onApplied = mock(() => {})
     render(<RepairDialog open target={target} onOpenChange={() => {}} onApplied={onApplied} />)
-    await screen.findByText('Migrate legacy agent blocks')
-
-    fireEvent.click(screen.getByLabelText('Select and confirm repair: Migrate legacy agent blocks'))
-    fireEvent.click(screen.getByRole('button', { name: 'Apply 2 repairs' }))
-    await screen.findByText('Synced two agents.')
+    await startApply(['Select and confirm repair: Migrate legacy agent blocks'])
 
     const request = fetchCalls.find((call) => call.url.endsWith('/repair/apply'))!
     expect(JSON.parse(String(request.init?.body))).toEqual({
@@ -137,7 +212,16 @@ describe('RepairDialog', () => {
       itemIds: [plan.items[0].id, plan.items[1].id],
       confirmedItemIds: [plan.items[1].id],
     })
+    // Live progress: the child action and its download.
+    await screen.findByRole('list', { name: 'Apply a Health repair included operations' })
+    expect(screen.getByText('2.0 MB of 8.0 MB')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Close — it keeps running' })).toBeDefined()
+    expect(onApplied).not.toHaveBeenCalled()
+
+    publish(finishedView())
+    await screen.findByText('Synced two agents.')
     expect(screen.getByText('Fresh checks no longer show the selected issue.')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Done' })).toBeDefined()
     expect(onApplied).toHaveBeenCalledTimes(1)
   })
 
@@ -146,54 +230,61 @@ describe('RepairDialog', () => {
     render(<RepairDialog open target={target} onOpenChange={() => {}} />)
     await screen.findByText('Sync agents locally')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Apply 1 repair' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Apply 1 repair' })) })
     await screen.findByText('The evidence changed before apply.')
     expect(screen.getByRole('button', { name: 'Re-plan from fresh evidence' })).toBeDefined()
 
     staleApply = false
-    fireEvent.click(screen.getByRole('button', { name: 'Re-plan from fresh evidence' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Re-plan from fresh evidence' })) })
     await waitFor(() => expect(fetchCalls.filter((call) => call.url.endsWith('/repair/plan'))).toHaveLength(2))
   })
 
-  it('cannot be dismissed while an apply and verification request is in flight', async () => {
-    const pending = deferred<Response>()
-    const onOpenChange = mock(() => {})
-    globalThis.fetch = mock(async (url: RequestInfo | URL, init?: RequestInit) => {
-      fetchCalls.push({ url: String(url), init })
-      if (String(url).endsWith('/repair/plan')) return new Response(JSON.stringify(plan), { status: 200 })
-      if (String(url).endsWith('/repair/apply')) return pending.promise
-      return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-    }) as unknown as typeof fetch
-
+  it('can be closed while the repair runs — the repair keeps going on the server', async () => {
+    const onOpenChange = mock((_open: boolean) => {})
     render(<RepairDialog open target={target} onOpenChange={onOpenChange} />)
-    await screen.findByText('Sync agents locally')
-    fireEvent.click(screen.getByRole('button', { name: 'Apply 1 repair' }))
-
-    const cancel = await screen.findByRole('button', { name: 'Cancel' }) as HTMLButtonElement
-    expect(cancel.disabled).toBe(true)
-    fireEvent.keyDown(document, { key: 'Escape' })
-    expect(onOpenChange).not.toHaveBeenCalled()
-
-    await act(async () => { pending.resolve(new Response(JSON.stringify(applied), { status: 200 })) })
-    await screen.findByText('Fresh checks no longer show the selected issue.')
+    await startApply()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Close — it keeps running' })) })
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(fetchCalls.some((call) => call.url.endsWith('/cancel'))).toBe(false)
   })
 
-  it('ignores a late apply response after an external unmount', async () => {
+  it('cancels through the operations API while cancel is allowed', async () => {
+    render(<RepairDialog open target={target} onOpenChange={() => {}} />)
+    await startApply()
+    const region = screen.getByRole('region', { name: 'Apply a Health repair' })
+    await act(async () => { fireEvent.click(within(region).getByRole('button', { name: 'Cancel' })) })
+    await waitFor(() => expect(fetchCalls.some((call) => call.url.endsWith(`/api/operations/${OP_ID}/cancel`) && call.init?.method === 'POST')).toBe(true))
+  })
+
+  it('margo at the UI: a stalled download reads as stuck, then the failure keeps every row', async () => {
+    render(<RepairDialog open target={target} onOpenChange={() => {}} />)
+    await startApply()
+    publish(repairView({ rev: 2, lastProgressAt: iso(200_000), lastLivenessAt: iso(1_000) }))
+    publish(childView({ rev: 2, lastProgressAt: iso(200_000), stages: [{ id: 'sync', kind: 'downloading', label: 'Download agent sources', status: 'active', startedAt: iso(200_000), bytes: { received: 2_000_000, total: 8_000_000 }, attempt: { n: 2, of: 2, reason: 'stalled', detail: 'no bytes for 30s' } }] }))
+    await screen.findByText(/^No progress for/)
+
+    const failedBody = { ...applied, results: [{ ...applied.results[0]!, status: 'failed', message: 'Download stalled twice.' }], remainingIncidentIds: ['team:agents:drift'] }
+    publish(repairView({ rev: 9, status: 'failed', endedAt: iso(0), cancellable: false, outcome: { code: 'apply_failed', message: '1 repair item(s) failed.' }, result: { httpStatus: 200, body: failedBody } }))
+    await screen.findByText('Download stalled twice.')
+    expect(screen.getByText('The repair ran, but 1 related incident remain.')).toBeDefined()
+  })
+
+  it('ignores a late start answer after an external unmount', async () => {
     const pending = deferred<Response>()
     const onApplied = mock(() => {})
     globalThis.fetch = mock(async (url: RequestInfo | URL, init?: RequestInit) => {
       fetchCalls.push({ url: String(url), init })
-      if (String(url).endsWith('/repair/plan')) return new Response(JSON.stringify(plan), { status: 200 })
+      if (String(url).endsWith('/repair/plan')) return json(plan)
       if (String(url).endsWith('/repair/apply')) return pending.promise
-      return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      return json({ error: 'not found' }, 404)
     }) as unknown as typeof fetch
 
     const view = render(<RepairDialog open target={target} onOpenChange={() => {}} onApplied={onApplied} />)
     await screen.findByText('Sync agents locally')
-    fireEvent.click(screen.getByRole('button', { name: 'Apply 1 repair' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Apply 1 repair' })) })
     view.unmount()
 
-    await act(async () => { pending.resolve(new Response(JSON.stringify(applied), { status: 200 })) })
+    await act(async () => { pending.resolve(json({ operationId: OP_ID, bootId: 'boot-1' }, 202)) })
     expect(onApplied).not.toHaveBeenCalled()
   })
 
@@ -212,25 +303,5 @@ describe('RepairDialog', () => {
     expect(result.current.planning).toBe(false)
     expect(result.current.error).toContain('timed out')
     expect(signal?.aborted).toBe(true)
-  })
-
-  it('marks a stalled repair apply as an unknown outcome', async () => {
-    let applySignal: AbortSignal | undefined
-    globalThis.fetch = mock(async (url: RequestInfo | URL, init?: RequestInit) => {
-      if (String(url).endsWith('/repair/plan')) return new Response(JSON.stringify(plan), { status: 200 })
-      applySignal = init?.signal ?? undefined
-      return await new Promise<Response>(() => {})
-    }) as unknown as typeof fetch
-    const { result } = renderHook(() => useRepairPlan(target, { applyMs: 1 }))
-
-    await act(async () => { await result.current.planRepair() })
-    await act(async () => {
-      expect(await result.current.applyRepair([plan.items[0].id], [])).toBeNull()
-    })
-
-    expect(result.current.applying).toBe(false)
-    expect(result.current.outcomeUnknown).toBe(true)
-    expect(result.current.error).toContain('may still have completed')
-    expect(applySignal?.aborted).toBe(true)
   })
 })

@@ -96,7 +96,7 @@ export async function escalateCronIncidents(
     if (remaining.length === 0) return outcome
 
     // 1. Plan once for everything uncovered; apply the safe items now.
-    const { planDoctorRepair, applyDoctorRepair } = await import('./doctor-repair')
+    const { planDoctorRepair, startDoctorRepair, awaitDoctorRepair } = await import('./doctor-repair')
     let working = report
     let plan: HealthRepairPlan | null = null
     try {
@@ -110,13 +110,18 @@ export async function escalateCronIncidents(
     }
     const safeItems = plan?.items.filter((item) => item.safety === 'safe') ?? []
     if (plan && safeItems.length > 0) {
-      const applied = await applyDoctorRepair({
+      // The same repair operation every surface runs (#895), started by the
+      // system and awaited in-process — it shows in the tray like any other.
+      const started = await startDoctorRepair({
         contentDir,
         projectRoot,
         planId: plan.planId,
         itemIds: safeItems.map((item) => item.id),
         confirmedItemIds: [],
+        origin: 'system',
       })
+      const { view, report: applied } = await awaitDoctorRepair(started.operationId)
+      if (!applied) throw new Error(`Auto-repair ${view.status}: ${view.outcome?.message ?? 'no report'}`)
       working = applied.report
       const stillOpen = new Set(freshActionRequiredIncidents(working).map((incident) => incident.id))
       outcome.autoApplied = remaining.filter((incident) => !stillOpen.has(incident.id)).map((incident) => incident.id)

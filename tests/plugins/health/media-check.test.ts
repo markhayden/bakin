@@ -47,6 +47,7 @@ mock.module('../../../packages/core/src/media/sharp-loader', () => ({
 
 import { MEDIA_REPAIR_ACTION_ID, checkMediaSharp, mediaStoreRepair } from '../../../plugins/health/lib/system-checks/media'
 import type { MediaStoreStatus } from '../../../packages/core/src/media/installer'
+import { noopOp } from '../../helpers/operation-harness'
 
 type Observation = {
   status: string
@@ -129,7 +130,7 @@ describe('mediaStoreRepair', () => {
   it('apply runs the installer and reports applied', async () => {
     const repair = mediaStoreRepair()
     const plan = await repair.plan(target as never)
-    const results = await repair.apply(plan)
+    const results = await repair.apply(plan, noopOp())
     expect(installCalls).toBe(1)
     expect(lastInstallForce).toBe(false)
     expect(results[0]).toMatchObject({ status: 'applied' })
@@ -141,7 +142,7 @@ describe('mediaStoreRepair', () => {
     loaderLoads = false
     const repair = mediaStoreRepair()
     const plan = await repair.plan(target as never)
-    await repair.apply(plan)
+    await repair.apply(plan, noopOp())
     expect(lastInstallForce).toBe(true)
   })
 
@@ -158,7 +159,7 @@ describe('mediaStoreRepair', () => {
     installShouldFail = true
     const repair = mediaStoreRepair()
     const plan = await repair.plan(target as never)
-    const results = await repair.apply(plan)
+    const results = await repair.apply(plan, noopOp())
     expect(results[0]).toMatchObject({ status: 'failed' })
     expect(results[0]!.message).toContain('registry unreachable')
   })

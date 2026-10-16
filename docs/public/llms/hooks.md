@@ -211,7 +211,7 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 Label: Get a health check.
 Purpose: Returns canonical metadata for one registered Health check by stable id without executing it.
 Kind: rpc
-Source: plugins/health/index.ts:872
+Source: plugins/health/index.ts:865
 
 Example:
 
@@ -229,7 +229,7 @@ const result = await ctx.hooks.invoke(
 Label: List health checks.
 Purpose: Returns canonical metadata for registered Health checks without executing them.
 Kind: rpc
-Source: plugins/health/index.ts:871
+Source: plugins/health/index.ts:864
 
 Example:
 

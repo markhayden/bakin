@@ -63,9 +63,12 @@ export function describeCliTarget(target: CliTarget = CLI_TARGET): string {
   return `no server.lock with a live process in ${getContentDir()}`
 }
 
+/** Operations started by the CLI are attributed to it (#895 D14 attention routing). */
+export const CLI_ORIGIN_HEADER = { 'X-Bakin-Origin': 'cli' } as const
+
 /** `fetch` against this home's server — for callers that need the raw Response. */
 export function cliFetch(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${serverBaseUrl()}${path}`, init)
+  return fetch(`${serverBaseUrl()}${path}`, { ...init, headers: { ...CLI_ORIGIN_HEADER, ...init?.headers } })
 }
 
 export interface CliRoster {
@@ -81,6 +84,7 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...CLI_ORIGIN_HEADER,
       ...options?.headers,
     },
   })
@@ -152,7 +156,7 @@ export async function apiPostJson(
 ): Promise<{ ok: true; data: unknown } | { ok: false; data: Record<string, unknown> }> {
   const res = await fetch(`${serverBaseUrl()}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...CLI_ORIGIN_HEADER },
     body: body ? JSON.stringify(body) : undefined,
   })
   const text = await res.text()
@@ -305,6 +309,9 @@ export async function followOperation(
   opts.signal?.addEventListener('abort', () => end('detached'), { once: true })
   if (opts.signal?.aborted) end('detached')
   const timer = setInterval(() => { void reconcile() }, reconcileMs)
+  // The first snapshot never waits on the stream: a server whose events
+  // endpoint is down still shows the current state at once.
+  void reconcile()
   void stream()
   try {
     return await settled
@@ -316,7 +323,7 @@ export async function followOperation(
 /** Cancel through the server; returns the registry's answer (or `unreachable`). */
 export async function cancelOperationRemote(operationId: string, baseUrl?: string): Promise<OperationCancelResult | 'unreachable'> {
   try {
-    const res = await fetch(`${baseUrl ?? serverBaseUrl()}/api/operations/${encodeURIComponent(operationId)}/cancel`, { method: 'POST' })
+    const res = await fetch(`${baseUrl ?? serverBaseUrl()}/api/operations/${encodeURIComponent(operationId)}/cancel`, { method: 'POST', headers: CLI_ORIGIN_HEADER })
     const body = jsonObject(await res.json().catch(() => null))
     return typeof body?.status === 'string' ? body.status as OperationCancelResult : 'unreachable'
   } catch {

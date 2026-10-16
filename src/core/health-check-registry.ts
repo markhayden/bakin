@@ -84,7 +84,7 @@ export function registerHealthRepairAction(def: HealthRepairActionDef): void {
     id: def.localId,
     name: def.name,
     plan: def.plan,
-    ...(def.operationPlan ? { operationPlan: def.operationPlan } : {}),
+    operationPlan: def.operationPlan,
     ...(def.resources ? { resources: def.resources } : {}),
     apply: def.apply,
   })

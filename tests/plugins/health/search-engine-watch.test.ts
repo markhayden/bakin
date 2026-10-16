@@ -33,6 +33,7 @@ import type { SearchEngineStatus } from '../../../packages/core/src/adapters/sea
 import type { HealthCheckRunInput, HealthRepairTarget } from '@makinbakin/sdk'
 import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 import { parseHealthCheckRunInput } from '../../../src/core/health-contract'
+import { noopOp } from '../../helpers/operation-harness'
 
 // Mutable fixtures the mocked services read on every call.
 let searchAvailable = true
@@ -300,7 +301,7 @@ describe('engine restart repair', () => {
     restartEngine = async () => { restarted = true }
     canaryTables = [t(), t()] // post-restart probe answers clean
     const plan = await searchCanaryRepair().plan(repairTarget)
-    const [result] = await searchCanaryRepair().apply(plan)
+    const [result] = await searchCanaryRepair().apply(plan, noopOp())
     expect(restarted).toBe(true)
     expect(result.status).toBe('applied')
   })
@@ -310,13 +311,13 @@ describe('engine restart repair', () => {
     restartEngine = async () => { restarts++ }
     canaryTables = [t()]
     const canaryPlan = await searchCanaryRepair().plan(repairTarget)
-    await searchCanaryRepair().apply(canaryPlan)
+    await searchCanaryRepair().apply(canaryPlan, noopOp())
     const burnPlan = await searchEngineBurnRepair().plan({
       type: 'observations',
       reportId: 'report-test',
       ids: ['health.search-engine-burn:engine.burn'],
     })
-    const [second] = await searchEngineBurnRepair().apply(burnPlan)
+    const [second] = await searchEngineBurnRepair().apply(burnPlan, noopOp())
     expect(restarts).toBe(1) // one bounce serves both detections
     expect(second.status).toBe('applied')
     expect(second.message).toContain('skipped a duplicate bounce')
@@ -341,7 +342,7 @@ describe('engine restart repair', () => {
 
   it('fails honestly when the adapter cannot restart the engine', async () => {
     const plan = await searchCanaryRepair().plan(repairTarget)
-    const [result] = await searchCanaryRepair().apply(plan)
+    const [result] = await searchCanaryRepair().apply(plan, noopOp())
     expect(result.status).toBe('failed')
     expect(result.message).toContain('does not support')
   })

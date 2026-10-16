@@ -135,7 +135,7 @@ describe('applyHealthRepair', () => {
   it('refuses a core resource for a user plugin, as the host does', async () => {
     const harness = createTestContext('cache-tools')
     afterAll(() => harness.dispose())
-    harness.ctx.registerHealthRepairAction({ id: 'x', name: 'X', resources: ['media-store'], plan: async () => [], apply: async () => [] })
+    harness.ctx.registerHealthRepairAction({ id: 'x', name: 'X', resources: ['media-store'], operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }), plan: async () => [], apply: async () => [] })
     await expect(harness.applyHealthRepair('x', [])).rejects.toThrow('media-store')
   })
 })

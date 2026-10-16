@@ -62,3 +62,24 @@ export async function withOperationView<T>(opts: WithOperationOptions, fn: (op: 
 export async function withOperation<T>(opts: WithOperationOptions, fn: (op: OperationContext) => Promise<T>): Promise<T> {
   return (await withOperationView(opts, fn)).value
 }
+
+/**
+ * A do-nothing op context for unit tests that call a repair action's apply
+ * directly and assert only its rows. Holds every resource. Tests about what
+ * an action REPORTS use runRepairContract (tests/helpers/repair-contract.ts).
+ */
+export function noopOp(): OperationContext {
+  return {
+    id: 'noop-op',
+    signal: new AbortController().signal,
+    stage: () => {},
+    item: () => {},
+    bytes: () => {},
+    attempt: () => {},
+    output: () => {},
+    log: () => {},
+    skip: () => {},
+    throwIfCancelled: () => {},
+    holds: () => true,
+  }
+}

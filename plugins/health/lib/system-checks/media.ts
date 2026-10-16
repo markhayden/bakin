@@ -162,9 +162,7 @@ export function mediaStoreRepair(): HealthRepairActionDefinition {
         // Receipt present but unloadable = corrupt/fabricated store — the
         // idempotent fast path would skip it; force a clean reinstall.
         const force = checkMediaStore().status === 'ok' && (await loadSharp()) === null
-        const result = op
-          ? await installMediaStore(op, { force })
-          : await (await import('../../../../src/core/media-store-install')).installMediaStoreLocally({ force })
+        const result = await installMediaStore(op, { force })
         return items.map((item) => ({
           itemId: item.id,
           actionId: item.actionId,

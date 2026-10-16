@@ -55,7 +55,8 @@ mock.module('../../src/core/task-store', () => ({
 
 import { getApprovalRecord, listApprovalRecords } from '../../packages/core/src/approvals'
 import { clearApprovalKinds } from '../../src/core/approvals/kinds'
-import { resolveApproval } from '../../src/core/approvals/service'
+import { resolveApproval, settleApprovalFollowUps } from '../../src/core/approvals/service'
+import { _resetOperationRegistryForTests } from '../../src/core/operations'
 import { ApprovalNotPendingError, ApprovalResolveError } from '../../src/core/approvals/errors'
 import { applyHealthCheckRun, getHealthReport, resetHealthReportCache } from '../../src/core/doctor-report-cache'
 import { runHealthCheck } from '../../src/core/doctor-checks'
@@ -85,10 +86,12 @@ let unhealthy = true
 let navigateUnhealthy = true
 let planTarget = 'search-index'
 let applyThrows: string | null = null
+let applyGate: Promise<void> | null = null
 let applyLeavesUnhealthy = false
 /** After apply the search check answers this way instead of healthy (R4 probes). */
 let postApplyMode: 'unknown' | 'throw' | null = null
 const applyAction = mock(async (items: HealthRepairPlanItem[]) => {
+  if (applyGate) await applyGate
   if (applyThrows) throw new Error(applyThrows)
   if (!applyLeavesUnhealthy) unhealthy = false
   return items.map((item) => ({ itemId: item.id, actionId: item.actionId, status: 'applied' as const, message: 'Rebuilt the search index.', affectedCheckIds: ['approvals-test.search'], changes: item.changes }))
@@ -107,6 +110,7 @@ async function seed() {
   registerPluginHealthRepairAction('approvals-test', {
     id: 'rebuild-index',
     name: 'Rebuild search index',
+    operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
     plan: async () => [{
       id: 'rebuild', actionId: 'rebuild-index', title: 'Rebuild search index', reason: 'The index is corrupt.', safety: 'destructive',
       incidentIds: [], observationIds: [], preconditions: [],
@@ -156,6 +160,7 @@ beforeEach(async () => {
   navigateUnhealthy = true
   planTarget = 'search-index'
   applyThrows = null
+  applyGate = null
   applyLeavesUnhealthy = false
   postApplyMode = null
   applyAction.mockClear()
@@ -164,6 +169,7 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+  _resetOperationRegistryForTests()
   setSystemTime()
   unregisterPluginHealthChecks('approvals-test')
   unregisterHealthCheck('core.onboarded')
@@ -212,11 +218,13 @@ describe('health-repair: apply', () => {
     setSystemTime(new Date(Date.now() + PLAN_TTL_MS * 3))
 
     const resolved = await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+
+    await settleApprovalFollowUps()
     expect(resolved.status).toBe('approved')
     expect(applyAction).toHaveBeenCalledTimes(1)
     const request = getDoctorRepairRequest(testDir, opened.request.id)!
     expect(request.status).toBe('verified')
-    expect(request.events.map((e) => e.type)).toEqual(['created', 'task-created', 'approval-requested', 'applying', 'applied', 'verified'])
+    expect(request.events.map((e) => e.type)).toEqual(['created', 'task-created', 'approval-requested', 'applying', 'operation-started', 'applied', 'verified'])
     expect(request.events.findIndex((e) => e.type === 'applying')).toBeLessThan(request.events.findIndex((e) => e.type === 'applied'))
     expect(tasks.get('task-1')).toMatchObject({ column: 'done' })
     expect(tasks.get('task-1')!.logs.at(-1)).toContain('verified')
@@ -246,6 +254,7 @@ describe('health-repair: apply', () => {
     // The stale record is dead for good; the fresh one applies.
     await expect(resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })).rejects.toBeInstanceOf(ApprovalNotPendingError)
     await resolveApproval(request.approvalId!, { option: 'apply', actor: web })
+    await settleApprovalFollowUps()
     expect(applyAction).toHaveBeenCalledTimes(1)
     expect(getDoctorRepairRequest(testDir, opened.request.id)!.status).toBe('verified')
   })
@@ -268,6 +277,7 @@ describe('health-repair: apply', () => {
     const opened = await openRepair()
     applyThrows = 'disk is read-only'
     const resolved = await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+    await settleApprovalFollowUps()
     expect(resolved.status).toBe('approved')
     expect(getDoctorRepairRequest(testDir, opened.request.id)!.status).toBe('failed')
     // applyDoctorRepair folds an action's throw into a failed result; the kind reports it as a failed step.
@@ -278,6 +288,7 @@ describe('health-repair: apply', () => {
     const opened = await openRepair()
     applyLeavesUnhealthy = true
     await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+    await settleApprovalFollowUps()
     const request = getDoctorRepairRequest(testDir, opened.request.id)!
     expect(request.status).toBe('failed')
     expect(request.events.map((e) => e.type)).toContain('applied')
@@ -289,6 +300,7 @@ describe('health-repair: apply', () => {
     const opened = await openRepair()
     postApplyMode = 'unknown'
     const resolved = await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+    await settleApprovalFollowUps()
     expect(resolved.status).toBe('approved')
     // The original action_required incident is gone from the report (the check
     // now says unknown) — still not a verification.
@@ -303,6 +315,7 @@ describe('health-repair: apply', () => {
     const opened = await openRepair()
     postApplyMode = 'throw'
     await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+    await settleApprovalFollowUps()
     expect(getDoctorRepairRequest(testDir, opened.request.id)!.status).toBe('failed')
     expect(tasks.get('task-1')!.column).toBe('blocked')
   })
@@ -321,9 +334,28 @@ describe('health-repair: apply', () => {
       resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web }),
       resolveApproval(opened.approval.approvalId, { option: 'apply', actor: channel }),
     ])
+    await settleApprovalFollowUps()
     expect(outcomes.filter((o) => o.status === 'fulfilled')).toHaveLength(1)
     expect((outcomes.find((o) => o.status === 'rejected') as PromiseRejectedResult).reason).toBeInstanceOf(ApprovalNotPendingError)
     expect(applyAction).toHaveBeenCalledTimes(1)
+  })
+
+  it('decision first, outcome after (D24): the approval resolves while the repair still runs', async () => {
+    const opened = await openRepair()
+    let release!: () => void
+    applyGate = new Promise<void>((resolve) => { release = resolve })
+    const resolved = await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: channel })
+    // Saved and published before the repair has done anything.
+    expect(resolved.status).toBe('approved')
+    expect(broadcasts.some((b) => b.event === 'approval.resolved' && b.approvalId === opened.approval.approvalId)).toBe(true)
+    const midFlight = getDoctorRepairRequest(testDir, opened.request.id)!
+    expect(midFlight.status).toBe('applying')
+    const started = midFlight.events.find((e) => e.type === 'operation-started')!
+    expect(typeof (started.data as { operationId: string }).operationId).toBe('string')
+    release()
+    await settleApprovalFollowUps()
+    expect(getDoctorRepairRequest(testDir, opened.request.id)!.status).toBe('verified')
+    expect(tasks.get('task-1')).toMatchObject({ column: 'done' })
   })
 
   it('ownerState: live while the request waits, orphaned once decided, superseded or deleted', async () => {
@@ -366,6 +398,36 @@ describe('dismiss', () => {
 })
 
 describe('recoverInterruptedApplies', () => {
+  it('old-reader recovery over records the new flow writes: a mid-flight apply whose operation is gone is outcome unknown, re-checked; terminal records are untouched', async () => {
+    const opened = await openRepair()
+    let release!: () => void
+    applyGate = new Promise<void>((resolve) => { release = resolve })
+    await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+    // A restart: the in-memory operation is gone, the durable request says applying.
+    _resetOperationRegistryForTests()
+    unhealthy = false
+    const summary = await recoverInterruptedApplies(testDir)
+    expect(summary).toEqual({ recovered: 1, verified: 1, failed: 0 })
+    const request = getDoctorRepairRequest(testDir, opened.request.id)!
+    expect(request.status).toBe('verified')
+    expect(tasks.get(opened.taskId)!.logs.some((line: string) => line.includes('the outcome is unknown'))).toBe(true)
+    release()
+
+    // A finished request (verified) is never re-recovered.
+    expect(await recoverInterruptedApplies(testDir)).toEqual({ recovered: 0, verified: 0, failed: 0 })
+  })
+
+  it('a request whose repair operation is still live is left alone', async () => {
+    const opened = await openRepair()
+    let release!: () => void
+    applyGate = new Promise<void>((resolve) => { release = resolve })
+    await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+    expect(await recoverInterruptedApplies(testDir)).toEqual({ recovered: 0, verified: 0, failed: 0 })
+    release()
+    await settleApprovalFollowUps()
+    expect(getDoctorRepairRequest(testDir, opened.request.id)!.status).toBe('verified')
+  })
+
   it('an unregistered originating check never verifies an interrupted apply (R4)', async () => {
     const opened = await openRepair()
     updateDoctorRepairRequest(testDir, opened.request.id, (r) => ({ ...r, status: 'applying' }))

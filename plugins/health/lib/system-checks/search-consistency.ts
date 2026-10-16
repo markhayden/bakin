@@ -477,7 +477,7 @@ export function searchConsistencyRepair(): HealthRepairActionDefinition {
     async apply(items, op) {
       if (items.length === 0) return []
       try {
-        op?.stage('confirm')
+        op.stage('confirm')
         const { listTableStates } = await import('@bakin/core/search/tables')
         const { rebuildRegisteredTables } = await import('../../../../src/core/search-registry')
         const { getAppServices } = await import('../../../../src/core/app-services')
@@ -507,17 +507,17 @@ export function searchConsistencyRepair(): HealthRepairActionDefinition {
               needsRebuild = await confirmedMissing(search, table.physical)
             }
             if (!needsRebuild) {
-              op?.item('rebuild', { id: logical, label: logical, status: 'skipped', message: 'no longer needs rebuilding' })
+              op.item('rebuild', { id: logical, label: logical, status: 'skipped', message: 'no longer needs rebuilding' })
               outcomes.push(repairResult(item, 'skipped', `${logical} no longer needs rebuilding (or is unreadable rather than missing — restart the engine instead).`))
               continue
             }
 
-            op?.stage('rebuild')
-            op?.item('rebuild', { id: logical, label: logical, status: 'active' })
+            op.stage('rebuild')
+            op.item('rebuild', { id: logical, label: logical, status: 'active' })
             const [result] = await rebuildRegisteredTables(logical)
             const message = `${logical}: ${result?.error ?? result?.result ?? 'no registered definition'}`
             const failed = !result || Boolean(result.error) || result.result === 'parked' || result.result === 'failed'
-            op?.item('rebuild', { id: logical, label: logical, status: failed ? 'failed' : 'done', message: result?.error ?? result?.result })
+            op.item('rebuild', { id: logical, label: logical, status: failed ? 'failed' : 'done', message: result?.error ?? result?.result })
             outcomes.push(repairResult(item, failed ? 'failed' : 'applied', message))
           } catch (err) {
             outcomes.push(repairResult(item, 'failed', err instanceof Error ? err.message : String(err)))

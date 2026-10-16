@@ -186,6 +186,7 @@ import {
   taskOrderRepair,
 } from '../../../plugins/tasks/lib/health-checks'
 import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { noopOp } from '../../helpers/operation-harness'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -287,7 +288,7 @@ describe('checkTaskConsistency', () => {
     expect(plan).toHaveLength(1)
     expect(plan[0].id).toBe('clear-completed-task-dependencies')
 
-    const applied = await repair.apply(plan)
+    const applied = await repair.apply(plan, noopOp())
     expect(applied[0].status).toBe('applied')
     expect(applied[0].actionId).toBe('clear-done-depends-on')
     expect(clearedDependencies).toContain('d2')
@@ -362,7 +363,7 @@ describe('checkTaskPositionIntegrity', () => {
     const repair = taskOrderRepair()
     const plan = await repair.plan({ type: 'all_actionable', reportId: 'report-1' })
     expect(plan).toHaveLength(1)
-    const applied = await repair.apply(plan)
+    const applied = await repair.apply(plan, noopOp())
     expect(applied[0].status).toBe('applied')
     expect(newer.order).toBe(0)
     expect(older.order).toBe(1)

@@ -130,6 +130,7 @@ describe('health repair-action validation', () => {
     const input = {
       id: 'rebuild-index',
       name: 'Rebuild Search index',
+      operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
       plan: async () => [],
       apply: async () => [],
     }
@@ -168,6 +169,7 @@ describe('health repair-action validation', () => {
     expect(() => parseHealthRepairActionDefinition({
       id: rejected,
       name: 'Repair',
+      operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
       plan: async () => [],
       apply: async () => [],
     })).toThrow(HealthContractError)
@@ -175,6 +177,7 @@ describe('health repair-action validation', () => {
     const result = safeParseHealthRepairActionDefinition({
       id: rejected,
       name: 'Repair',
+      operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
       plan: async () => [],
       apply: async () => [],
     })

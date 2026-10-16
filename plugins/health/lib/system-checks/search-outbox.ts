@@ -119,9 +119,9 @@ export function searchOutboxRepair(): HealthRepairActionDefinition {
       if (items.length === 0) return []
       const { retryQuarantined, nudgeOutboxPump } = await import('../../../../src/core/search-outbox')
       try {
-        op?.stage('revive')
+        op.stage('revive')
         const revived = retryQuarantined()
-        op?.log(`Revived ${revived} quarantined write(s)`)
+        op.log(`Revived ${revived} quarantined write(s)`)
         await nudgeOutboxPump()
         return items.map((item) => ({
           itemId: item.id,

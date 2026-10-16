@@ -8,6 +8,7 @@
 
 export {
   CORE_RESOURCES,
+  isOperationFinished,
   OPERATION_QUIET_THRESHOLDS,
   OPERATION_STAGE_KINDS,
   operationQuietState,
@@ -76,6 +77,7 @@ export {
   type ResourceWait,
 } from './resources'
 export { runLocal } from './local'
+export { operationStartResponseSchema } from './schema'
 export { createMemoryResourceAcquirer } from './memory-resources'
 export { operationOriginFromRequest } from './origin'
 export { assertPluginResources, OperationResourceDeniedError, toPluginOperationInput } from './plugin'

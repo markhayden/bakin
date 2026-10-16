@@ -297,7 +297,7 @@ export function personaRepair(contentDir: string, runtime: RuntimeAgentReader): 
       try {
         const agentIds = (await runtime.list()).map(agent => agent.id).filter(Boolean)
         const personasDir = join(contentDir, 'team', 'personas')
-        op?.stage('create')
+        op.stage('create')
         mkdirSync(personasDir, { recursive: true })
         const existing = new Set(readdirSync(personasDir).filter(file => file.endsWith('.md')).map(file => file.replace('.md', '')))
         const changes: Array<{ kind: 'file'; target: string; action: 'create'; description: string }> = []
@@ -305,7 +305,7 @@ export function personaRepair(contentDir: string, runtime: RuntimeAgentReader): 
           if (existing.has(agent)) continue
           const path = join(personasDir, `${agent}.md`)
           writeFileSync(path, personaStub(agent), 'utf-8')
-          op?.item('create', { id: agent, label: agent, status: 'done' })
+          op.item('create', { id: agent, label: agent, status: 'done' })
           changes.push({ kind: 'file' as const, target: path, action: 'create' as const, description: `Created a persona stub for ${agent}.` })
         }
         return items.map(item => ({
@@ -497,11 +497,11 @@ export function agentSyncRepair(): HealthRepairActionDefinition {
     async apply(items, op) {
       if (items.length === 0) return []
       try {
-        op?.stage('context')
+        op.stage('context')
         refreshRoleContextBlocks()
-        op?.stage('sync')
+        op.stage('sync')
         const syncResults = await syncAllAgents({ fetch: false, trigger: 'system' }, (agentId, status, message) => {
-          op?.item('sync', { id: agentId, label: agentId, status, ...(message ? { message } : {}) })
+          op.item('sync', { id: agentId, label: agentId, status, ...(message ? { message } : {}) })
         })
         const failed = syncResults.filter(result => result.error)
         const changes = syncResults.filter(result => result.receipt).map(result => ({
@@ -566,10 +566,10 @@ export function agentSyncMigrationRepair(): HealthRepairActionDefinition {
     async apply(items, op) {
       if (items.length === 0) return []
       try {
-        op?.stage('migrate')
+        op.stage('migrate')
         const result = await migrateToManagedBlocks({ trigger: 'system' })
         for (const agent of result.agents) {
-          op?.item('migrate', { id: agent.agentId, label: agent.agentId, status: agent.error ? 'failed' : 'done', ...(agent.error ? { message: agent.error } : {}) })
+          op.item('migrate', { id: agent.agentId, label: agent.agentId, status: agent.error ? 'failed' : 'done', ...(agent.error ? { message: agent.error } : {}) })
         }
         const failed = result.agents.filter(agent => agent.error)
         const changes = result.agents.filter(agent => !agent.error).map(agent => ({

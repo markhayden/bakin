@@ -56,6 +56,7 @@ mock.module('../../../src/core/logger', () => ({
 import { checkScheduleSync, scheduleSyncRepair, checkScheduleCutover, checkSchedulePrompts, scheduleCutoverRepair, scheduleUnrunnableJobsRepair, unrunnableBakinJobs } from '../../../plugins/schedule/lib/health-checks'
 import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 import { getJob, upsertJob } from '../../../plugins/schedule/lib/sidecar'
+import { noopOp } from '../../helpers/operation-harness'
 
 const sidecarPath = join(testDir, 'schedule', 'sidecar.json')
 let runtimeJobs: CronJob[] = []
@@ -161,7 +162,7 @@ describe('checkScheduleSync - repair', () => {
     const repair = scheduleSyncRepair(cronReader, async () => 'boss')
     const plan = await repair.plan(repairTarget)
     expect(plan).toHaveLength(1)
-    const applied = await repair.apply(plan)
+    const applied = await repair.apply(plan, noopOp())
     expect(applied[0].status).toBe('applied')
     expect(applied[0].message).toMatch(/Tracked/)
 
@@ -181,7 +182,7 @@ describe('checkScheduleSync - repair', () => {
     expect(existsSync(join(testDir, 'schedule'))).toBe(false)
 
     const repair = scheduleSyncRepair(cronReader, async () => 'main')
-    await repair.apply(await repair.plan(repairTarget))
+    await repair.apply(await repair.plan(repairTarget), noopOp())
     expect(existsSync(sidecarPath)).toBe(true)
   })
 })
@@ -212,7 +213,7 @@ describe('checkScheduleSync - runtime-internal crons (spec D5)', () => {
     const repair = scheduleSyncRepair(cronReader, async () => 'main')
     const plan = await repair.plan(repairTarget)
     expect(plan[0]!.reason).toContain('1 runtime cron job(s)')
-    await repair.apply(plan)
+    await repair.apply(plan, noopOp())
     const updated = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
     expect(updated.jobs['orphan-1']).toBeDefined()
     expect(updated.jobs['dream']).toBeUndefined()
@@ -252,7 +253,7 @@ describe('checkSchedulePrompts + remove-unrunnable-jobs (spec D5, plan review R2
     bakinJob('C', 'dream')
     bakinJob('B', 'Now a real prompt')
 
-    const results = await repair.apply(plan)
+    const results = await repair.apply(plan, noopOp())
     expect(results[0]).toMatchObject({ status: 'applied', affectedCheckIds: ['schedule.schedule-prompts'] })
     expect(results[0]!.changes.map((c) => c.target)).toEqual(['A'])
     expect(results[0]!.message).toContain('Removed 1 schedule(s): A.')
@@ -267,7 +268,7 @@ describe('checkSchedulePrompts + remove-unrunnable-jobs (spec D5, plan review R2
     const next = await repair.plan(repairTarget)
     expect(next[0]!.changes.map((c) => c.target)).toEqual(['C'])
     // A re-applied stale plan (A already gone) is a skip, never an error.
-    const again = await repair.apply(plan)
+    const again = await repair.apply(plan, noopOp())
     expect(again[0]!.status).toBe('skipped')
   })
 })

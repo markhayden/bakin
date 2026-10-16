@@ -64,6 +64,7 @@ import {
 } from '../../../src/core/usage-history-timer'
 import type { HealthCheckRunInput } from '@makinbakin/sdk'
 import { parseHealthCheckRunInput } from '../../../src/core/health-contract'
+import { noopOp } from '../../helpers/operation-harness'
 
 const usageScanGlobal = globalThis as typeof globalThis & {
   __bakinUsageHistoryLastScan?: unknown
@@ -683,7 +684,7 @@ describe('spend evidence repair (spend-evidence-refresh-pricing)', () => {
   it('fails honestly when the models plugin is absent', async () => {
     refreshModelsRegistered = false
     const repair = spendEvidenceRepair()
-    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }), noopOp())
     expect(outcomes[0]).toMatchObject({ status: 'failed' })
     expect(outcomes[0]!.message).toContain('models plugin is not active')
   })
@@ -691,7 +692,7 @@ describe('spend evidence repair (spend-evidence-refresh-pricing)', () => {
   it('fails with the credentials pointer when the provider returns zero models', async () => {
     refreshModelsResult = { count: 0, live: true, error: null }
     const repair = spendEvidenceRepair()
-    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }), noopOp())
     expect(outcomes[0]).toMatchObject({ status: 'failed' })
     expect(outcomes[0]!.message).toContain('bakin check llm')
   })
@@ -699,7 +700,7 @@ describe('spend evidence repair (spend-evidence-refresh-pricing)', () => {
   it('surfaces the fetch error when the refresh itself fails', async () => {
     refreshModelsResult = { count: 0, live: false, error: 'gateway unreachable' }
     const repair = spendEvidenceRepair()
-    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }), noopOp())
     expect(outcomes[0]).toMatchObject({ status: 'failed' })
     expect(outcomes[0]!.message).toContain('gateway unreachable')
   })
@@ -829,7 +830,7 @@ describe('cutoff clamping and fossil gating (review findings)', () => {
     // covered at the models plugin level; here we pin the read-side clamp
     // (test above) and the repair writes today (below).
     const repair = acceptUnattributedHistoryRepair()
-    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }), noopOp())
     expect(outcomes[0]).toMatchObject({ status: 'applied' })
     expect(budgetPolicyPatches[0]!.acceptUnattributedBefore).toBe('2026-07-15')
   })

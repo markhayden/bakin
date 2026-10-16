@@ -199,16 +199,16 @@ export function deadSelectionRepair(deps: DeadSelectionDeps): HealthRepairAction
       }
       const byRevision = new Map<string, typeof live>()
       for (const entry of live) byRevision.set(entry.proposal.revision, [...(byRevision.get(entry.proposal.revision) ?? []), entry])
-      if (live.length > 0) op?.stage('repoint')
+      if (live.length > 0) op.stage('repoint')
       for (const batch of byRevision.values()) {
-        for (const { ref, proposal } of batch) op?.item('repoint', { id: ref, label: `${ref} → ${proposal.to}`, status: 'active' })
+        for (const { ref, proposal } of batch) op.item('repoint', { id: ref, label: `${ref} → ${proposal.to}`, status: 'active' })
         try {
           const result = await deps.apply(batch.map((b) => b.proposal))
           for (const { item, plannedId, ref, proposal } of batch) {
             planned.delete(plannedId)
             const ok = result.applied.includes(ref)
             const pending = result.pending.some((p) => p.ref === ref)
-            op?.item('repoint', { id: ref, label: `${ref} → ${proposal.to}`, status: ok || pending ? 'done' : 'failed', ...(pending ? { message: 'pending runtime confirmation' } : {}) })
+            op.item('repoint', { id: ref, label: `${ref} → ${proposal.to}`, status: ok || pending ? 'done' : 'failed', ...(pending ? { message: 'pending runtime confirmation' } : {}) })
             results.push({
               itemId: item.id,
               actionId: item.actionId,
@@ -225,7 +225,7 @@ export function deadSelectionRepair(deps: DeadSelectionDeps): HealthRepairAction
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           for (const { item, ref, proposal } of batch) {
-            op?.item('repoint', { id: ref, label: `${ref} → ${proposal.to}`, status: 'failed', message })
+            op.item('repoint', { id: ref, label: `${ref} → ${proposal.to}`, status: 'failed', message })
             results.push(failure(item, message))
           }
         }

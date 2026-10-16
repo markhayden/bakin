@@ -65,6 +65,7 @@ export async function callRoute(
     path?: string
     body?: unknown
     searchParams?: Record<string, string>
+    headers?: Record<string, string>
     rawResponse?: boolean
   } = {},
 ): Promise<{ status: number; body: Record<string, unknown>; response: Response }> {

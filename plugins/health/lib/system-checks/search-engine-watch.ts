@@ -455,13 +455,13 @@ function engineRestartRepair(
       const search = getAppServices().search
       const done = (status: 'applied' | 'failed', message: string) => repairResults(items, status, message, `health.${checkId}`)
       if (Date.now() - lastEngineRestartAt < RESTART_DEBOUNCE_MS) {
-        op?.skip('restart', 'the engine was restarted moments ago')
-        op?.skip('verify', 'the next doctor run re-verifies')
+        op.skip('restart', 'the engine was restarted moments ago')
+        op.skip('verify', 'the next doctor run re-verifies')
         return done('applied', 'Engine was already restarted moments ago by the companion check\'s repair — skipped a duplicate bounce; the next doctor run re-verifies')
       }
       if (!search.restartEngine) return done('failed', 'Adapter does not support engine restart — restart the engine where it runs')
       try {
-        op?.stage('restart')
+        op.stage('restart')
         await search.restartEngine()
         lastEngineRestartAt = Date.now()
       } catch (err) {
@@ -470,11 +470,11 @@ function engineRestartRepair(
       // Verify with the canary query, not the status probe: wait for the
       // engine to answer AND actually serve (not all tables omitted).
       const { crossTableSearch } = await import('../../../../src/core/search-registry')
-      op?.stage('verify')
+      op.stage('verify')
       const deadline = Date.now() + 30_000
       let serving = false
       while (Date.now() < deadline) {
-        op?.output('Waiting for the engine to serve a query')
+        op.output('Waiting for the engine to serve a query')
         if (await search.available()) {
           const probe = await crossTableSearch('doctor canary probe', { limit: 1 }).catch(() => null)
           const tables = probe?.meta.tables ?? []

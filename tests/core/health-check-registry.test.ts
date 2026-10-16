@@ -42,6 +42,7 @@ function action(id = 'restart') {
   return {
     id,
     name: 'Restart runtime',
+    operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
     plan: async () => [],
     apply: async () => [],
   }

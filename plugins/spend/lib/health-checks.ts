@@ -686,7 +686,7 @@ export function spendEvidenceRepair(): HealthRepairActionDefinition {
       }))
       if (items.length === 0) return []
       try {
-        op?.stage('refresh')
+        op.stage('refresh')
         const registry = getHookRegistry()
         if (!registry.has('models.refreshAvailableModels')) {
           return done('failed', 'The models plugin is not active — the catalog cannot be refreshed from here.')
@@ -754,7 +754,7 @@ export function acceptUnattributedHistoryRepair(): HealthRepairActionDefinition 
       }))
       if (items.length === 0) return []
       try {
-        op?.stage('record')
+        op.stage('record')
         const cutoff = toLocalDayKey(Date.now())
         const result = await getHookRegistry().invoke<{ ok: boolean; error?: string }>(
           'spend.updateBudgetPolicy',

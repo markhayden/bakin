@@ -176,12 +176,12 @@ export function workflowSkillDriftRepair(contentDir: string): HealthRepairAction
     },
     async apply(items, op) {
       const reports = scanWorkflowSkillDrift(contentDir)
-      op?.stage('replace')
+      op.stage('replace')
       return items.map(item => {
         const target = item.changes.find(change => change.kind === 'file')?.target
         const report = reports.find(candidate => candidate.filePath === target && candidate.repairable)
         if (!report) {
-          op?.item('replace', { id: item.id, label: item.title, status: 'skipped', message: 'no longer drifted' })
+          op.item('replace', { id: item.id, label: item.title, status: 'skipped', message: 'no longer drifted' })
           return {
             itemId: item.id,
             actionId: item.actionId,
@@ -192,7 +192,7 @@ export function workflowSkillDriftRepair(contentDir: string): HealthRepairAction
           }
         }
         const result = repairWorkflowSkillDrift({ contentDir, skillName: report.skillName, confirmKnownOld: true })
-        op?.item('replace', {
+        op.item('replace', {
           id: item.id,
           label: report.skillName,
           status: result.status === 'applied' ? 'done' : result.status === 'failed' ? 'failed' : 'skipped',
@@ -467,7 +467,7 @@ export function staleWorkflowInstancesRepair(contentDir: string): HealthRepairAc
     async apply(items, op) {
       if (items.length === 0) return []
       let orphans: WorkflowInstanceFinding[]
-      op?.stage('scan')
+      op.stage('scan')
       try { orphans = scanWorkflowInstances(contentDir).orphans } catch (error) {
         return items.map(item => ({
           itemId: item.id,
@@ -480,16 +480,16 @@ export function staleWorkflowInstancesRepair(contentDir: string): HealthRepairAc
       }
       const changes: Array<{ kind: 'file'; target: string; action: 'delete'; description: string }> = []
       const failures: string[] = []
-      if (orphans.length > 0) op?.stage('remove')
+      if (orphans.length > 0) op.stage('remove')
       for (const orphan of orphans) {
         const target = join(contentDir, 'workflows', 'instances', `${orphan.taskId}.json`)
         try {
           unlinkSync(target)
           changes.push({ kind: 'file' as const, target, action: 'delete' as const, description: `Deleted orphaned instance for ${orphan.taskId}.` })
-          op?.item('remove', { id: orphan.taskId, label: orphan.taskId, status: 'done' })
+          op.item('remove', { id: orphan.taskId, label: orphan.taskId, status: 'done' })
         } catch (error) {
           failures.push(`${orphan.taskId}: ${error instanceof Error ? error.message : String(error)}`)
-          op?.item('remove', { id: orphan.taskId, label: orphan.taskId, status: 'failed', message: error instanceof Error ? error.message : String(error) })
+          op.item('remove', { id: orphan.taskId, label: orphan.taskId, status: 'failed', message: error instanceof Error ? error.message : String(error) })
         }
       }
       return items.map(item => ({

@@ -35,6 +35,7 @@ mock.module('../../../src/core/search-registry', () => ({
 import { detectSpins, rebuildTargets, searchSpinRepair, type SpinLegSnapshot } from '../../../plugins/health/lib/system-checks/search-spin'
 import { searchScarRepair } from '../../../plugins/health/lib/system-checks/search'
 import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { noopOp } from '../../helpers/operation-harness'
 
 const WINDOW = 10 * 60 * 1000
 const leg = (over: Partial<SpinLegSnapshot> = {}): SpinLegSnapshot => ({
@@ -136,7 +137,7 @@ describe('searchSpinRepair — concrete targets (frozen proposals must name real
       changes: [{ kind: 'other' as const, target: 'bakin_tasks', action: 'update' as const, description: 'rebuild' }],
     }
     expect(rebuildTargets([item])).toEqual(['bakin_tasks'])
-    const [result] = await searchSpinRepair().apply([item])
+    const [result] = await searchSpinRepair().apply([item], noopOp())
     expect(rebuilt).toEqual(['bakin_tasks'])
     expect(result).toMatchObject({ status: 'applied', message: 'bakin_tasks: migrated' })
   })
@@ -148,7 +149,7 @@ describe('searchScarRepair — concrete targets', () => {
     const [item] = await searchScarRepair().plan({ type: 'all_actionable', reportId: 'r1' })
     expect(item!.changes.map((change) => change.target)).toEqual(['bakin_assets', 'bakin_chats'])
     rebuilt.length = 0
-    await searchScarRepair().apply([{ ...item!, changes: [item!.changes[1]!] }])
+    await searchScarRepair().apply([{ ...item!, changes: [item!.changes[1]!] }], noopOp())
     expect(rebuilt).toEqual(['bakin_chats'])
   })
 })

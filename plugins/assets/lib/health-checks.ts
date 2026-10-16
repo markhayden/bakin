@@ -501,15 +501,15 @@ export function assetRepair(contentDir: string): HealthRepairActionDefinition {
       if (items.length === 0) return []
       try {
         const assetsRoot = join(contentDir, 'assets')
-        op?.stage('dirs')
+        op.stage('dirs')
         mkdirSync(assetsRoot, { recursive: true })
         for (const dirName of REQUIRED_ASSET_DIRS) mkdirSync(join(assetsRoot, dirName), { recursive: true })
         const purged = expiredTrashEntries(join(assetsRoot, '.trash'))
-        if (purged.length > 0) op?.stage('purge')
-        else op?.skip('purge', 'no expired trash')
+        if (purged.length > 0) op.stage('purge')
+        else op.skip('purge', 'no expired trash')
         for (const file of purged) {
           rmSync(join(assetsRoot, '.trash', file), { recursive: true, force: true })
-          op?.item('purge', { id: file, label: file, status: 'done' })
+          op.item('purge', { id: file, label: file, status: 'done' })
         }
         const changes = items.flatMap(item => item.changes)
         return items.map(item => ({

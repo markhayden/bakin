@@ -248,12 +248,12 @@ export function recommendedRoutesRepair(
     async apply(items, op) {
       if (items.length === 0) return []
       try {
-        op?.stage('recommend')
+        op.stage('recommend')
         const { proposals } = await recommendRoutes(deps)
-        op?.stage('save')
-        for (const p of proposals) op?.item('save', { id: p.workClass, label: `${p.workClass} → ${p.model}`, status: 'active' })
+        op.stage('save')
+        for (const p of proposals) op.item('save', { id: p.workClass, label: `${p.workClass} → ${p.model}`, status: 'active' })
         await applyRoutes(proposals.map((p) => ({ workClass: p.workClass, model: p.model })))
-        for (const p of proposals) op?.item('save', { id: p.workClass, label: `${p.workClass} → ${p.model}`, status: 'done' })
+        for (const p of proposals) op.item('save', { id: p.workClass, label: `${p.workClass} → ${p.model}`, status: 'done' })
         return items.map((item) => ({
           itemId: item.id,
           actionId: item.actionId,

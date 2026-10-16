@@ -340,9 +340,9 @@ export interface HealthRepairActionDefinition {
   /** Bounded and local: no network, no engine calls. */
   plan(target: HealthRepairTarget): Promise<HealthRepairPlanItem[]>
   /** The stages applying these items will report. */
-  operationPlan?(items: HealthRepairPlanItem[]): OperationPlan
+  operationPlan(items: HealthRepairPlanItem[]): OperationPlan
   resources?: string[]
-  apply(items: HealthRepairPlanItem[], op?: OperationContext): Promise<HealthRepairApplyResult[]>
+  apply(items: HealthRepairPlanItem[], op: OperationContext): Promise<HealthRepairApplyResult[]>
 }
 
 // ---------------------------------------------------------------------------

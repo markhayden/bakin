@@ -55,6 +55,7 @@ mock.module('../../../src/core/logger', () => ({
 
 import { assetRepair, checkAssets, incompleteEnrichmentAssetIds } from '../../../plugins/assets/lib/health-checks'
 import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { noopOp } from '../../helpers/operation-harness'
 
 const assetsRoot = join(testDir, 'assets')
 const storeRoot = join(assetsRoot, 'store')
@@ -118,7 +119,7 @@ describe('checkAssets — store shape', () => {
     const repair = assetRepair(testDir)
     const plan = await repair.plan(repairTarget)
     expect(plan).toHaveLength(1)
-    const applied = await repair.apply(plan)
+    const applied = await repair.apply(plan, noopOp())
     expect(existsSync(assetsRoot)).toBe(true)
     expect(existsSync(join(assetsRoot, 'store'))).toBe(true)
     expect(existsSync(join(assetsRoot, 'inbox'))).toBe(true)

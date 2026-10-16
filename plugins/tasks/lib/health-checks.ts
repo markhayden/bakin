@@ -219,11 +219,11 @@ export function taskConsistencyRepair(): HealthRepairActionDefinition {
           columns: { done: Array<{ id: string; title: string; dependsOn?: string }> }
         }
         const affected = board.columns.done.filter((task): task is typeof task & { dependsOn: string } => !!task.dependsOn)
-        op?.stage('clear')
+        op.stage('clear')
         for (const task of affected) {
-          op?.item('clear', { id: task.id, label: task.title, status: 'active' })
+          op.item('clear', { id: task.id, label: task.title, status: 'active' })
           await clearDependency(task.id, task.dependsOn)
-          op?.item('clear', { id: task.id, label: task.title, status: 'done' })
+          op.item('clear', { id: task.id, label: task.title, status: 'done' })
         }
         return items.map((item) => ({
           itemId: item.id,
@@ -348,14 +348,14 @@ export function taskOrderRepair(): HealthRepairActionDefinition {
         const board = readTaskboard()
         const entries = Object.entries(board.columns) as Array<[ColumnId, Task[]]>
         const changes: HealthRepairChange[] = []
-        op?.stage('reorder')
+        op.stage('reorder')
         for (const [column, tasks] of entries) {
           const ordered = [...tasks]
             .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
             .map((task) => task.id)
-          op?.item('reorder', { id: column, label: column, status: 'active' })
+          op.item('reorder', { id: column, label: column, status: 'active' })
           await reorderTasks(column, ordered)
-          op?.item('reorder', { id: column, label: column, status: 'done', message: `${ordered.length} task(s)` })
+          op.item('reorder', { id: column, label: column, status: 'done', message: `${ordered.length} task(s)` })
           changes.push({
             kind: 'task' as const,
             target: column,

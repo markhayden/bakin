@@ -365,7 +365,7 @@ export function createTestContext(
       if (!action) throw new Error(`No repair action "${actionId}" was registered by ${pluginId}`)
       const resources = action.resources ?? []
       assertPluginResources(pluginId, options.core ?? false, resources)
-      const plan = action.operationPlan?.(items) ?? { stages: [{ id: 'apply', kind: 'installing' as const, label: action.name }], pointOfNoReturn: 'apply' }
+      const plan = action.operationPlan(items)
       let results: HealthRepairApplyResult[] = []
       const { operationId } = await operations.start({
         kind: `${pluginId}:repair:${action.id}`,
@@ -444,7 +444,7 @@ export function findTool(tools: ExecToolDefinition[], name: string): ExecToolDef
 /** Build a `Request` the way the host's router would. */
 export function makeRequest(
   path: string,
-  opts: { method?: string; body?: unknown; searchParams?: Record<string, string> } = {},
+  opts: { method?: string; body?: unknown; searchParams?: Record<string, string>; headers?: Record<string, string> } = {},
 ): Request {
   const url = new URL(`http://localhost${path}`)
   if (opts.searchParams) {
@@ -458,6 +458,7 @@ export function makeRequest(
     init.body = JSON.stringify(opts.body)
     init.headers = { 'Content-Type': 'application/json' }
   }
+  if (opts.headers) init.headers = { ...(init.headers as Record<string, string> | undefined), ...opts.headers }
   return new Request(url, init)
 }
 
@@ -478,6 +479,8 @@ export async function callRoute(
     path?: string
     body?: unknown
     searchParams?: Record<string, string>
+    /** Extra request headers (e.g. `X-Bakin-Origin: cli`). */
+    headers?: Record<string, string>
     rawResponse?: boolean
   } = {},
 ): Promise<{ status: number; body: Record<string, unknown>; response: Response }> {
@@ -503,6 +506,7 @@ export async function callRoute(
     method: route.method,
     body: opts.body,
     searchParams: queryEntries,
+    ...(opts.headers ? { headers: opts.headers } : {}),
   })
   const params = extractPathParams(route.path, callPath)
 

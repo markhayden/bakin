@@ -35,7 +35,7 @@ describe('CLI schedule commands', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining(path),
       expect.objectContaining({
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Bakin-Origin': 'cli' },
       })
     )
   }

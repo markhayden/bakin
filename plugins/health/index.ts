@@ -31,14 +31,11 @@ import {
 import { DoctorRepairRequestNotFoundError } from '../../src/core/doctor-repair-store'
 import { userInfo } from 'os'
 import { getContentDir } from '../../src/core/content-dir'
-import { applyDoctorRepair, planDoctorRepair } from '../../src/core/doctor-repair'
+import { planDoctorRepair, startDoctorRepair } from '../../src/core/doctor-repair'
+import { OperationRejectedError, operationOriginFromRequest, operationStartResponseSchema } from '@bakin/core/operations'
 import { HealthContractError } from '../../src/core/health-contract'
-import {
-  DoctorRepairConfirmationError,
-  DoctorRepairStalePlanError,
-  getStoredRepairPlan,
-} from '../../src/core/doctor-repair-plans'
-import { pendingRepairApprovalFor, type RepairApplyOutcome } from '../../src/core/doctor-approvals'
+import { getStoredRepairPlan } from '../../src/core/doctor-repair-plans'
+import { pendingRepairApprovalFor } from '../../src/core/doctor-approvals'
 import { approvalErrorStatus, resolveApprovalWithResult } from '../../src/core/approvals'
 import { delegateDoctorRepair, verifyDoctorRepairRequest } from '../../src/core/doctor-delegate'
 import { getDoctorRepairRequest, listDoctorRepairRequests } from '../../src/core/doctor-repair-store'
@@ -94,7 +91,6 @@ import {
   healthChecksResponseSchema,
   healthErrorResponseSchema,
   healthLiveSummarySchema,
-  healthRepairApplyReportSchema,
   healthRepairApplyRequestSchema,
   healthRepairPlanRequestSchema,
   healthRepairPlanSchema,
@@ -668,10 +664,10 @@ const routes = [
     path: '/doctor/repair/apply',
     method: 'POST',
     summary: 'Apply deterministic doctor repairs',
-    description: 'Applies selected server-held plan items after validating freshness and individual non-safe confirmations, then verifies affected checks.',
+    description: 'Starts the repair as an operation (#895): validates freshness and individual non-safe confirmations, then answers 202 { operationId, bootId } (200 when an identical apply is already running). Each selected action runs as a child operation, then the affected checks re-run; the operation result body is the apply report.',
     body: healthRepairApplyRequestSchema,
-    responses: { 200: healthRepairApplyReportSchema, 409: healthErrorResponseSchema, 500: healthErrorResponseSchema },
-    handler: async (_req, _ctx, { body }) => {
+    responses: { 200: operationStartResponseSchema, 202: operationStartResponseSchema, 409: healthErrorResponseSchema, 500: healthErrorResponseSchema },
+    handler: async (req, _ctx, { body }) => {
       try {
         // A pending approval task already holds this repair (spec D7): the
         // Health page's Apply IS that decision — resolve the record so the
@@ -685,29 +681,26 @@ const routes = [
             option: 'apply',
             actor: { source: 'web', id: username, displayName: username },
           })
-          if (!result) return Response.json({ error: 'The repair failed before verification; the linked task carries the reason.', code: 'APPROVAL_DECISION' }, { status: 500 })
-          return Response.json(result as RepairApplyOutcome)
+          const started = operationStartResponseSchema.safeParse(result)
+          if (!started.success) return Response.json({ error: 'The approved repair did not start; the linked task carries the reason.', code: 'APPROVAL_DECISION' }, { status: 500 })
+          return Response.json(started.data, { status: 202 })
         }
-        const report = await applyDoctorRepair({
+        const started = await startDoctorRepair({
           contentDir: getContentDir(),
           projectRoot: process.cwd(),
           planId: body.planId,
           itemIds: body.itemIds,
           confirmedItemIds: body.confirmedItemIds,
+          origin: operationOriginFromRequest(req),
         })
-        return Response.json(report)
+        return Response.json(started, { status: started.attached ? 200 : 202 })
       } catch (err) {
+        if (err instanceof OperationRejectedError) return Response.json(err.body, { status: err.httpStatus })
         const approvalStatus = approvalErrorStatus(err)
         if (approvalStatus !== null) {
           return Response.json({ error: err instanceof Error ? err.message : String(err), code: 'APPROVAL_DECISION' }, { status: approvalStatus === 404 || approvalStatus === 503 ? 500 : approvalStatus })
         }
-        if (err instanceof DoctorRepairStalePlanError) {
-          return Response.json({ error: err.message, code: err.code }, { status: 409 })
-        }
-        if (err instanceof DoctorRepairConfirmationError) {
-          return Response.json({ error: err.message, code: err.code, itemIds: err.itemIds }, { status: 409 })
-        }
-        log.error('Health repair apply failed', err)
+        log.error('Health repair apply failed to start', err)
         return Response.json({
           error: err instanceof Error ? err.message : String(err),
           ...(err instanceof HealthContractError ? { code: err.code } : {}),

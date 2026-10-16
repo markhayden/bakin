@@ -99,9 +99,9 @@ export function syncSkillRepair(
     async apply(items, op) {
       if (items.length === 0) return []
       try {
-        op?.stage('render')
+        op.stage('render')
         const renderedContent = renderBakinRuntimeSkill(projectRoot)
-        op?.stage('write')
+        op.stage('write')
         await runtime.skills.write({ name: 'bakin', instructions: renderedContent, metadata: { source: 'bakin-doctor' } })
         return items.map((item) => ({
           itemId: item.id,

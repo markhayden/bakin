@@ -126,7 +126,7 @@ export const healthRepairActionDefinitionSchema = z.object({
   id: stableKeySchema,
   name: nonBlankString(120, 'Repair action name'),
   plan: repairPlanCallableSchema,
-  operationPlan: repairOperationPlanCallableSchema.optional(),
+  operationPlan: repairOperationPlanCallableSchema,
   resources: z.array(nonBlankString(200, 'Repair resource')).max(16).optional(),
   apply: repairApplyCallableSchema,
 }).strict()
