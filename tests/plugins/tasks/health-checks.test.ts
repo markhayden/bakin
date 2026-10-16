@@ -104,9 +104,11 @@ mock.module('@/core/task-store', () => ({
   updateTask: () => undefined,
   moveTask: () => undefined,
   setDependency: () => undefined,
+  findTaskWithColumn: () => null,
   clearDependency: (taskId: string) => {
     if (clearDependencyShouldThrow) throw new Error('cleardep failed')
     clearedDependencies.push(taskId)
+    return true
   },
   reorderTasks: async (_column: string, orderedIds: string[]) => {
     const tasks = Object.values(storeBoard.columns).flat()

@@ -62,6 +62,7 @@ mock.module('@/core/task-store', () => ({
   updateTask: mock(() => Promise.resolve()),
   setDependency: mock(() => Promise.resolve()),
   clearDependency: mock(() => Promise.resolve()),
+  findTaskWithColumn: () => null,
   reorderTasks: mock(() => Promise.resolve()),
   moveTaskToInProgress: mock(() => Promise.resolve()),
   assignTaskToTeam: mock(() => Promise.resolve()),

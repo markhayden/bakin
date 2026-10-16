@@ -186,6 +186,23 @@ describe('bakin tasks … --as', () => {
     expect(apiPostSpy.mock.calls[1][1]).toEqual({ id: 't1', to: 'done', agent: 'patch' })
   })
 
+  // Code review round 3: the operator's summary log must carry the channel
+  // too, or a workflow task's step-ownership check refuses the log and the
+  // human-channel done move never happens.
+  it('complete --as human: the log is an operator note and the move an operator move', async () => {
+    await runTasks(['tasks', 'complete', 't1', 'shipped by hand', '--as=human'])
+    expect(apiPostSpy).toHaveBeenCalledTimes(2)
+    expect(apiPostSpy.mock.calls[0][1]).toEqual({ id: 't1', author: 'human', channel: 'human', message: 'Task complete: shipped by hand' })
+    expect(apiPostSpy.mock.calls[1][1]).toEqual({ id: 't1', to: 'done', agent: 'human', channel: 'human' })
+  })
+
+  it('log --as human carries the channel; an agent log does not', async () => {
+    await runTasks(['tasks', 'log', 't1', 'checked by hand', '--as=human'])
+    expect(lastBody()).toEqual({ id: 't1', author: 'human', channel: 'human', message: 'checked by hand' })
+    await runTasks(['tasks', 'log', 't1', 'progress', '--as', 'patch'])
+    expect(lastBody()).toEqual({ id: 't1', author: 'patch', message: 'progress' })
+  })
+
   it('create: createdBy is the actor', async () => {
     await runTasks(['tasks', 'create', 'Write the docs', '--as', 'patch'])
     expect(lastBody()).toMatchObject({ title: 'Write the docs', createdBy: 'patch' })

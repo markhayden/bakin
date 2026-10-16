@@ -101,11 +101,19 @@ const mockGetTaskWithColumn = mock((id: string) => {
   if (id !== 'task-1') return null
   return { task: { id: 'task-1', title: 'Test Task' }, column: 'inProgress' }
 })
+// The store resolves mutator identifiers by id OR title — the dependency
+// validator's source lookup goes through this path.
+const mockFindTaskWithColumn = mock((identifier: string) => {
+  if (identifier === 'task-a') return { task: { id: 'task-a', title: 'Source' }, column: 'inProgress' }
+  if (identifier === 'Target') return { task: { id: 'task-b', title: 'Target' }, column: 'todo' }
+  return mockGetTaskWithColumn(identifier)
+})
 
 const taskStoreMock = {
   addTaskLog: mockAddTaskLog,
   blockTask: mockBlockTask,
   createTask: mockCreateTask,
+  findTaskWithColumn: mockFindTaskWithColumn,
   getTasksByColumn: mock(() => []),
   getTaskWithColumn: mockGetTaskWithColumn,
   moveTask: mockMoveTask,
@@ -233,6 +241,24 @@ describe('task-service', () => {
 
       await expect(service.logProgress('task-1', 'pixel', 'test')).rejects.toThrow(/not the owner/)
       expect(mockBroadcast).not.toHaveBeenCalled()
+      expect(mockAddTaskLog).not.toHaveBeenCalled()
+    })
+
+    // Code review round 3: the operator owns no workflow step; the note that
+    // `bakin tasks complete … --as=human` writes must land like a board edit.
+    it('the operator (author human, channel human) is never asked for step ownership', async () => {
+      await service.logProgress('task-1', 'human', 'Task complete: shipped by hand', 'human')
+
+      expect(mockHookRegistry.invoke).not.toHaveBeenCalledWith('workflows.authorizeToolUse', expect.anything())
+      expect(mockAddTaskLog).toHaveBeenCalledWith('task-1', 'human', 'Task complete: shipped by hand')
+      expect(mockBroadcast).toHaveBeenCalledWith(expect.objectContaining({ agent: 'human', channel: 'human' }))
+    })
+
+    it('an agent naming the human channel is still checked', async () => {
+      mockHookRegistry.has.mockReturnValueOnce(true)
+      mockHookRegistry.invoke.mockResolvedValueOnce({ allowed: false, reason: 'Agent "pixel" is not the owner of the active workflow step' })
+
+      await expect(service.logProgress('task-1', 'pixel', 'test', 'human')).rejects.toThrow(/not the owner/)
       expect(mockAddTaskLog).not.toHaveBeenCalled()
     })
   })
@@ -669,6 +695,32 @@ describe('task-service', () => {
       expect(err).toBeInstanceOf(service.DependencyRejectedError)
       expect((err as InstanceType<typeof service.DependencyRejectedError>).reason).toBe('self')
       expect(mockGetTaskWithColumn).not.toHaveBeenCalled()
+      expect(mockSetDependency).not.toHaveBeenCalled()
+    })
+
+    // Code review round 3: the store resolves the source by title too, so the
+    // string compare alone let `depend "<title>" <its own id>` through.
+    it('refuses a self-dependency spelled as the source title', async () => {
+      boardWith('todo')
+      const err = await service.setDependencyWithEffects('Target', 'task-b').catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(service.DependencyRejectedError)
+      expect((err as InstanceType<typeof service.DependencyRejectedError>).reason).toBe('self')
+      expect(mockSetDependency).not.toHaveBeenCalled()
+    })
+
+    it('writes under the resolved source id, never the identifier typed', async () => {
+      boardWith('todo')
+      mockFindTaskWithColumn.mockImplementationOnce(() => ({ task: { id: 'task-a', title: 'Source' }, column: 'inProgress' }))
+      await service.setDependencyWithEffects('Source', 'task-b')
+      expect(mockSetDependency).toHaveBeenCalledWith('task-a', 'task-b')
+    })
+
+    it('a source that does not exist is a plain error, not a dependency refusal', async () => {
+      boardWith('todo')
+      const err = await service.setDependencyWithEffects('nobody', 'task-b').catch((e: unknown) => e)
+      expect(err).not.toBeInstanceOf(service.DependencyRejectedError)
+      expect((err as Error).message).toContain('Task not found: nobody')
       expect(mockSetDependency).not.toHaveBeenCalled()
     })
   })

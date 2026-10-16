@@ -271,6 +271,7 @@ const taskStoreMock = {
   moveTask: mock(async () => {}),
   recoverTask: mock(async () => {}),
   clearDependency: mock(async () => {}),
+  findTaskWithColumn: () => null,
   // context.startup-size check → context-report → dispatch-workflow graph
   // (which now reaches dispatch-team's task-store verbs, #611).
   updateTask: mock(async () => {}),

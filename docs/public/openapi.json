@@ -33013,6 +33013,9 @@
                   "message": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "channel": {
+                    "type": "string"
                   }
                 },
                 "required": [

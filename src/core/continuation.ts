@@ -55,7 +55,7 @@ async function reconcileDependents(completedTaskId: string, completedTitle: stri
       // The workflow engine owns step flow for its own tasks; a gate-held
       // instance is legitimately idle without a run.
       if (task.workflowId) {
-        await clearDependency(task.id)
+        await clearDependency(task.id, completedTaskId)
         log.info('Skipping continuation — workflow task is in progress', { id: task.id, title: task.title })
         continue
       }
@@ -72,7 +72,14 @@ async function reconcileDependents(completedTaskId: string, completedTitle: stri
       // ended, so nobody is executing it (found live on margo — the Daily
       // Scramble parent idled until watchdog recovery). Re-queue it.
       try {
-        await clearDependency(task.id)
+        // The snapshot is the board read above; every clear is conditional on
+        // the task STILL waiting on this completion (the dependency route
+        // takes no lock), so a replacement dependency is never erased and a
+        // task that moved on is left alone (code review round 3).
+        if (!(await clearDependency(task.id, completedTaskId))) {
+          log.info('Skipping continuation — dependency replaced since the board read', { id: task.id, title: task.title })
+          continue
+        }
         await moveTask(task.id, 'todo', 'inProgress')
         await addTaskLog(task.id, 'system', `Dependency "${completedTitle}" completed — no live run, re-queued for dispatch.`)
       } catch (err) {
@@ -81,15 +88,19 @@ async function reconcileDependents(completedTaskId: string, completedTitle: stri
       }
     } else if (column === 'blocked') {
       try {
-        await clearDependency(task.id)
+        if (!(await clearDependency(task.id, completedTaskId))) {
+          log.info('Skipping continuation — dependency replaced since the board read', { id: task.id, title: task.title })
+          continue
+        }
         await moveTask(task.id, 'todo', 'blocked')
         await addTaskLog(task.id, 'system', `Dependency "${completedTitle}" completed — unblocked for re-dispatch.`)
       } catch (err) {
         log.error('Continuation failed to unblock dependent task', err, { id: task.id })
         continue
       }
-    } else {
-      await clearDependency(task.id)
+    } else if (!(await clearDependency(task.id, completedTaskId))) {
+      log.info('Skipping continuation — dependency replaced since the board read', { id: task.id, title: task.title })
+      continue
     }
     toDispatch.push(task)
   }

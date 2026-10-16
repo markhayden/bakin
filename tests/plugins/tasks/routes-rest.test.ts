@@ -914,6 +914,32 @@ describe('POST /:taskId/log — Add Log Entry', () => {
     expect(mockLogProgress).toHaveBeenCalledWith('task-log', 'system', 'Auto log', 'rest')
   })
 
+  // Code review round 3: `bakin tasks complete … --as=human` logs before it
+  // moves; the operator's note must not need workflow step ownership.
+  it('passes the human channel through for an operator note (author human + channel human)', async () => {
+    mockLogProgress.mockResolvedValue(undefined)
+
+    const route = findRoute(activated.routes, 'POST', '/:taskId/log')!
+    await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-log' },
+      body: { message: 'Task complete: shipped by hand', author: 'human', channel: 'human' },
+    })
+
+    expect(mockLogProgress).toHaveBeenCalledWith('task-log', 'human', 'Task complete: shipped by hand', 'human')
+  })
+
+  it('downgrades channel=human to rest when the author is an agent', async () => {
+    mockLogProgress.mockResolvedValue(undefined)
+
+    const route = findRoute(activated.routes, 'POST', '/:taskId/log')!
+    await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-log' },
+      body: { message: 'pretending', author: 'pixel', channel: 'human' },
+    })
+
+    expect(mockLogProgress).toHaveBeenCalledWith('task-log', 'pixel', 'pretending', 'rest')
+  })
+
   it('returns 400 when message is missing', async () => {
     const route = findRoute(activated.routes, 'POST', '/:taskId/log')!
     const { status, body } = await callRoute(route, activated.ctx, {

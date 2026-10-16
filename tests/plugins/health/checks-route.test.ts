@@ -73,6 +73,7 @@ const taskStoreMock = {
   recoverTask: mock(async () => {}),
   setDependency: mock(async () => {}),
   clearDependency: mock(async () => {}),
+  findTaskWithColumn: () => null,
   reorderTasks: mock(async () => {}),
   moveTaskToInProgress: mock(async () => {}),
   assignTaskToTeam: mock(async () => {}),

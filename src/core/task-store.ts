@@ -234,6 +234,13 @@ export function getTaskWithColumn(id: string): { task: Task; column: ColumnId } 
   return { task: taskToView(task), column: asColumnId(task) }
 }
 
+/** Like getTaskWithColumn, but resolves the same id-or-title identifiers the mutators accept. */
+export function findTaskWithColumn(identifier: string): { task: Task; column: ColumnId } | null {
+  const task = findTask(identifier)
+  if (!task) return null
+  return { task: taskToView(task), column: asColumnId(task) }
+}
+
 export function getTasksByColumn(column: ColumnId): Task[] {
   return getSharedBakinTaskStore().listSync({ column }).map(taskToView)
 }
@@ -557,14 +564,22 @@ export function setDependency(taskId: string, dependsOnId: string): Promise<void
   }
 }
 
-export function clearDependency(taskId: string): Promise<void> {
+/**
+ * Clear a SATISFIED dependency: the one the caller saw complete. Read,
+ * compare and write are synchronous, so a dependency the task re-registered
+ * meanwhile (a replacement target registered through the REST route, which
+ * takes no dispatch lock) is never erased on the strength of a stale
+ * snapshot — the caller learns it cleared nothing and leaves the task waiting.
+ */
+export function clearDependency(taskId: string, dependsOn: string): Promise<boolean> {
   try {
     const task = requireTask(taskId)
+    if (task.dependsOn !== dependsOn) return Promise.resolve(false)
     getSharedBakinTaskStore().updateSync(task.id, {
       dependsOn: undefined,
       blockedBy: [],
     })
-    return Promise.resolve()
+    return Promise.resolve(true)
   } catch (err) {
     return Promise.reject(err)
   }

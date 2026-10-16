@@ -126,6 +126,7 @@ mock.module('../../../src/core/task-store', () => ({
   moveTask: async () => {},
   recoverTask: async () => {},
   clearDependency: async () => {},
+  findTaskWithColumn: () => null,
   addTaskLog: async () => {},
   updateTask: async () => {},
   blockTask: async () => {},

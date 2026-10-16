@@ -77,6 +77,7 @@ export const taskStoreMock = () => ({
   moveTask: (...args: unknown[]) => mockMoveTask(...args),
   setDependency: (...args: unknown[]) => mockSetDependency(...args),
   clearDependency: (...args: unknown[]) => mockClearDependency(...args),
+  findTaskWithColumn: () => null,
   reorderTasks: (...args: unknown[]) => mockReorderTasks(...args),
   getTask: (...args: unknown[]) => mockGetTask(...args),
   getTaskWithColumn: (...args: unknown[]) => mockGetTaskWithColumn(...(args as [string])),

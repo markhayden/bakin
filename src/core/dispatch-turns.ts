@@ -934,8 +934,15 @@ export function fireDispatchTurn(opts: {
             if (dependsOn) {
               const target = findDispatchTaskSnapshot(dependsOn)
               if (!target || isCompleteColumn(target.column)) {
-                await clearStoredDependency(opts.task.id)
-                await tryAddTaskLog(opts.task.id, 'system', `Dependency ${dependsOn} already complete — re-queued for dispatch.`)
+                // Clears only the dependency this settle saw satisfied: the
+                // dependency route takes no dispatch lock, so a replacement
+                // target registered since the snapshot stays recorded and
+                // the task keeps waiting on it (code review round 3).
+                if (await clearStoredDependency(opts.task.id, dependsOn)) {
+                  await tryAddTaskLog(opts.task.id, 'system', `Dependency ${dependsOn} already complete — re-queued for dispatch.`)
+                } else {
+                  log.debug('Settle park: dependency replaced since the snapshot — left waiting', { id: opts.task.id, dependsOn })
+                }
               } else {
                 await tryAddTaskLog(opts.task.id, 'system', `Waiting on ${dependsOn} — parked in Todo; re-dispatched when it completes.`)
               }

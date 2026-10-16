@@ -132,6 +132,7 @@ import {
   updateTask,
   setDependency,
   clearDependency,
+  findTaskWithColumn,
   reorderTasks,
   moveTaskToInProgress,
   recoverTask,
@@ -676,9 +677,34 @@ describe('setDependency / clearDependency', () => {
     let found = getTask(child.id)
     expect(found!.dependsOn).toBe(parent.id)
 
-    await clearDependency(child.id)
+    expect(await clearDependency(child.id, parent.id)).toBe(true)
     found = getTask(child.id)
     expect(found!.dependsOn).toBeUndefined()
+  })
+
+  // Code review round 3: the settle park and continuation clear from a
+  // snapshot; a dependency re-registered since must survive the clear.
+  it('clearDependency clears only the dependency the caller saw — a replacement stays', async () => {
+    const first = await createTask('First upstream')
+    const second = await createTask('Second upstream')
+    const child = await createTask('Child')
+    await setDependency(child.id, first.id)
+    await setDependency(child.id, second.id)
+
+    expect(await clearDependency(child.id, first.id)).toBe(false)
+    expect(getTask(child.id)!.dependsOn).toBe(second.id)
+    expect(readRawTask(child.id).blockedBy).toEqual([second.id])
+
+    expect(await clearDependency(child.id, second.id)).toBe(true)
+    expect(getTask(child.id)!.dependsOn).toBeUndefined()
+  })
+
+  it('findTaskWithColumn resolves an id or a title, like the mutators', async () => {
+    const task = await createTask('Write docs')
+    expect(findTaskWithColumn(task.id)?.task.id).toBe(task.id)
+    expect(findTaskWithColumn('Write docs')?.task.id).toBe(task.id)
+    expect(findTaskWithColumn(task.id)?.column).toBe('todo')
+    expect(findTaskWithColumn('ghost')).toBeNull()
   })
 })
 
@@ -886,7 +912,7 @@ describe('write operation error handling', () => {
   })
 
   it('clearDependency rejects on task not found', async () => {
-    await expect(clearDependency('ghost')).rejects.toThrow('Task not found')
+    await expect(clearDependency('ghost', 'other')).rejects.toThrow('Task not found')
   })
 })
 

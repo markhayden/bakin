@@ -261,11 +261,16 @@ still `inProgress`, the settle handler re-reads the task and parks it in
   30 minutes per cycle until the watchdog noticed). Target still open → log
   `Waiting on <id> — parked in Todo; re-dispatched when it completes.` and
   the dependency gate holds the task until continuation fires. Target
-  complete (`isCompleteColumn`) or missing → `clearDependency` + log
-  `Dependency <id> already complete — re-queued for dispatch.` and the next
-  cycle picks it up. The validator (D1) refuses registering on a complete
-  target, so the complete branch is the race where the target finished
-  DURING the turn — continuation leaves `dependsOn` to this park on live runs.
+  complete (`isCompleteColumn`) or missing → `clearDependency(id, dependsOn)`
+  + log `Dependency <id> already complete — re-queued for dispatch.` and the
+  next cycle picks it up. The clear is CONDITIONAL on the task still waiting
+  on that id (store-side, synchronous read-compare-write): the dependency
+  route takes no dispatch lock, so a replacement target registered since the
+  settle's snapshot survives and the task keeps waiting on it — the clear
+  returns false and no line is logged. The validator (D1) refuses registering
+  on a complete target, so the complete branch is the race where the target
+  finished DURING the turn — continuation leaves `dependsOn` to this park on
+  live runs.
 - **Decomposition** — the recovery turn ended with the agent creating the
   subtask chain and stopping (no `tasks_complete`, by design). Kept as its
   own trigger: the chain's last child may finish before the parent registers,
@@ -309,7 +314,9 @@ stopped — the settle-time park reads it, parks, and clears it itself); NO
 live run ⇒ the parent delegated and its turn ended, so it is parked in
 `todo` with a log line and re-dispatched (margo: the Daily Scramble parent
 idled 32 min until watchdog recovery). Workflow tasks in progress stay with
-the engine.
+the engine. Every clear names the completed id (`clearDependency(id,
+completedTaskId)`): a dependent that re-registered on another task since the
+board read is left alone — not cleared, not moved, not dispatched.
 
 ## Task Eligibility
 
@@ -472,7 +479,18 @@ normal dispatch/watchdog loops:
   hold) the candidate is re-read and re-assessed on the fresh row (spec D9)
   — a task the operator moved or reset while an earlier candidate was being
   written is skipped or recovered under its fresh count, never blocked on
-  the stale snapshot. Exhausted tasks move to `blocked`.
+  the stale snapshot. The re-assessment awaits workflow hooks, so after it
+  the row is read again and left alone if its `version` moved; and because
+  a workflow STEP claim writes only the ledger (the card is already in
+  progress), the ledger is re-checked synchronously over the scope the
+  assessment read (`assessWorkflowRuns` on the same active steps +
+  descendants) right before the recover/block write. Exhausted tasks move
+  to `blocked`. Known residual (both engines): a nested/map child spawned
+  AND claimed between the descendant walk and that synchronous check is not
+  in the scope; closing it needs the workflow engine to share the dispatch
+  state lock. Boot order matters here: `runStartupRecovery` runs inside the
+  `server.listen` callback, so HTTP (gate approvals, `/api/dispatch`) is
+  live during recovery.
 
 When recovery returns tasks to `todo`, `server.ts` starts the loops and then
 immediately triggers one dispatch cycle so recovered work does not wait for the

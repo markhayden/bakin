@@ -92,9 +92,21 @@ function withActionForRecoveryLimit(
   }
 }
 
+/**
+ * The ledger scope a workflow assessment read (active steps + fanned-out task
+ * ids). The assessment awaits hooks; the mutation boundary re-checks THIS
+ * scope synchronously against the ledger so a step claimed during the await
+ * is seen without another await (spec D9, code review round 3).
+ */
+interface RunScope {
+  activeAgents: WorkflowActiveAgent[]
+  descendants: string[]
+}
+
 async function assessWorkflowTask(
   task: RecoveryTask,
   contentDir: string,
+  scope: RunScope,
 ): Promise<RestartRecoveryCandidate | null> {
   const recoveryCount = countRecoveries(task)
   const instance = await hooks().invoke<WorkflowInstanceLike | null>('workflows.loadInstance', {
@@ -154,6 +166,8 @@ async function assessWorkflowTask(
   // including a completed nested/map child's final turn (review round 2).
   const descendants = await collectWorkflowDescendantTaskIds(task.id, (id) =>
     hooks().invoke<WorkflowInstanceLike | null>('workflows.loadInstance', { taskId: id, contentDir }))
+  scope.activeAgents = activeAgents
+  scope.descendants = descendants
   const runs = assessWorkflowRuns(task.id, activeAgents, descendants)
   if (runs.missing.length === 0 || (runs.live.length === 0 && runs.otherLive.length > 0)) return null
 
@@ -178,18 +192,30 @@ async function assessWorkflowTask(
   })
 }
 
-async function assessTask(task: RecoveryTask, contentDir: string): Promise<RestartRecoveryCandidate | null> {
+interface Assessment {
+  candidate: RestartRecoveryCandidate | null
+  /** Synchronous ledger re-check over the scope the assessment read — for the mutation boundary. */
+  stillStranded: () => boolean
+}
+
+async function assessTask(task: RecoveryTask, contentDir: string): Promise<Assessment> {
   if (task.workflowId) {
-    return assessWorkflowTask(task, contentDir)
+    const scope: RunScope = { activeAgents: [], descendants: [] }
+    const candidate = await assessWorkflowTask(task, contentDir, scope)
+    return { candidate, stillStranded: () => assessWorkflowRuns(task.id, scope.activeAgents, scope.descendants).stranded }
   }
 
-  if (!isStrandedInProgress({ id: task.id, column: 'inProgress' })) return null
+  const stillStranded = (): boolean => isStrandedInProgress({ id: task.id, column: 'inProgress' })
+  if (!stillStranded()) return { candidate: null, stillStranded }
 
-  return withActionForRecoveryLimit(task, {
-    effectiveAgents: uniq([task.agent]),
-    missingRuns: [task.id],
-    reason: 'no-live-run',
-  })
+  return {
+    candidate: withActionForRecoveryLimit(task, {
+      effectiveAgents: uniq([task.agent]),
+      missingRuns: [task.id],
+      reason: 'no-live-run',
+    }),
+    stillStranded,
+  }
 }
 
 export async function findRestartRecoveryCandidates(contentDir: string): Promise<RestartRecoveryCandidate[]> {
@@ -199,7 +225,7 @@ export async function findRestartRecoveryCandidates(contentDir: string): Promise
 
   for (const task of tasks) {
     try {
-      const candidate = await assessTask(task, contentDir)
+      const { candidate } = await assessTask(task, contentDir)
       if (candidate) candidates.push(candidate)
     } catch (err) {
       log.warn('Failed to assess restart recovery candidate', err, { id: task.id })
@@ -240,14 +266,15 @@ export async function runRestartRecovery(contentDir: string): Promise<RestartRec
       continue
     }
     let candidate: RestartRecoveryCandidate | null
+    let stillStranded: () => boolean
     try {
-      candidate = await assessTask({
+      ({ candidate, stillStranded } = await assessTask({
         id: snapshot.id,
         title: fresh.task.title,
         agent: fresh.task.agent,
         workflowId: fresh.task.workflowId,
         recoveries: fresh.task.recoveries,
-      }, contentDir)
+      }, contentDir))
     } catch (err) {
       log.warn('Failed to re-assess restart recovery candidate', err, { id: snapshot.id })
       result.skipped++
@@ -265,6 +292,16 @@ export async function runRestartRecovery(contentDir: string): Promise<RestartRec
     const again = getTaskWithColumn(snapshot.id)
     if (!again || again.column !== 'inProgress' || again.task.version !== fresh.task.version) {
       log.info('Restart recovery skipped a candidate written during re-assessment', { id: snapshot.id })
+      result.skipped++
+      continue
+    }
+    // A workflow step claim writes the ledger, not the task row (the card is
+    // already in progress), so `version` cannot see it. Re-check the ledger
+    // synchronously over the scope the assessment read; from here to the
+    // store write nothing awaits (code review round 3). A manual hold is a
+    // log line, not a mutation of the work — it still records.
+    if (candidate.action !== 'manual' && !stillStranded()) {
+      log.info('Restart recovery skipped a candidate whose run went live during re-assessment', { id: snapshot.id })
       result.skipped++
       continue
     }

@@ -80,6 +80,7 @@ mock.module('../../../src/core/task-store', () => ({
   readTaskboard: () => ({ columns: { todo: [{ id: 't-unassigned', title: 'Badge me' }] } }),
   // dispatch-turns (dynamically imported by /status) needs the facade shape at load.
   clearDependency: async () => {},
+  findTaskWithColumn: () => null,
   moveTask: async () => {},
   addTaskLog: async () => {},
   updateTask: async () => {},

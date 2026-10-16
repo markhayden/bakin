@@ -133,7 +133,7 @@ CLI moves and agent calls go through the same state machine.
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
-Same operations are available from the terminal when you'd rather not click. Add `--as=human` to act as the operator (a hand move that restarts the task's recovery budget), or `--as=<agent>` to act as an agent; run from inside an agent's dispatch run directory the acting agent is detected automatically.
+Same operations are available from the terminal when you'd rather not click. Add `--as=human` to act as the operator (a hand move that restarts the task's recovery budget, and a `complete` that finishes even a workflow task by hand, exactly like the board), or `--as=<agent>` to act as an agent; run from inside an agent's dispatch run directory the acting agent is detected automatically.
 
 <!-- docs:cli-commands tasks -->
 | Command | Purpose |

@@ -101,6 +101,8 @@ export const logEntryBody = z.object({
   author: z.string().optional(),
   agent: z.string().optional(),
   message: z.string().min(1),
+  /** 'human' with author 'human' marks an operator note (CLI `--as=human`); anything else logs as 'rest'. */
+  channel: z.string().optional(),
 })
 
 export const blockTaskBody = z.object({

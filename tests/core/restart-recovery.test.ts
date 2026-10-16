@@ -102,12 +102,20 @@ function columnOf(id: string): string | null {
   return null
 }
 
+// A test can act on the ledger at a specific row read — the only seam between
+// the awaited re-assessment and the synchronous mutation boundary.
+let onTaskRead: ((id: string, nth: number) => void) | null = null
+const taskReads = new Map<string, number>()
+
 // Fresh projections on every read, like the real store's taskToView.
 mock.module('../../src/core/task-store', () => ({
   readTaskboard: mock(() => ({
     columns: Object.fromEntries(Object.entries(currentColumns).map(([name, tasks]) => [name, tasks.map((t) => ({ ...t }))])) as RecoveryColumns,
   })),
   getTaskWithColumn: (id: string) => {
+    const nth = (taskReads.get(id) ?? 0) + 1
+    taskReads.set(id, nth)
+    onTaskRead?.(id, nth)
     const task = findColumnTask(id)
     const column = columnOf(id)
     return task && column ? { task: { ...task }, column } : null
@@ -166,6 +174,8 @@ describe('restart recovery', () => {
     mock.clearAllMocks()
     setColumns({})
     storeCallOrder.length = 0
+    onTaskRead = null
+    taskReads.clear()
     mockGetSettings.mockReturnValue({
       watchdog: {
         maxAutoRecoveries: 3,
@@ -512,6 +522,32 @@ describe('restart recovery', () => {
 
     expect(mockBlockTask).not.toHaveBeenCalled()
     expect(mockRecoverTask).not.toHaveBeenCalled()
+    expect(result.skipped).toBe(1)
+  })
+
+  // Code review round 3: a workflow step claim writes the ledger, not the task
+  // row (the card is already in progress), so the version compare cannot see
+  // it. The mutation boundary re-checks the ledger synchronously.
+  it('a workflow step claimed after the re-assessment, with the row unchanged, is left alone', async () => {
+    setColumns({
+      inProgress: [{ id: 'task-r8', title: 'Workflow', agent: 'pixel', workflowId: 'wf', version: 2 }],
+    })
+    mockHookInvoke.mockImplementation(async (hook: unknown, data?: unknown) => {
+      if ((data as { taskId?: string } | undefined)?.taskId !== 'task-r8') return undefined
+      if (hook === 'workflows.loadInstance') return { status: 'in_progress' }
+      if (hook === 'workflows.getActiveAgents') return [{ agent: 'pixel', stepId: 'design' }]
+      return undefined
+    })
+    // Reads: 1 = fresh (before re-assessment), 2 = again (after it). The
+    // engine claims the step between the re-assessment and the mutation.
+    onTaskRead = (id, nth) => {
+      if (id === 'task-r8' && nth === 2) liveRun('task-r8', 'pixel', 'design')
+    }
+
+    const result = await runRestartRecovery(tempDir)
+
+    expect(mockRecoverTask).not.toHaveBeenCalled()
+    expect(mockBlockTask).not.toHaveBeenCalled()
     expect(result.skipped).toBe(1)
   })
 

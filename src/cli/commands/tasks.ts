@@ -107,6 +107,11 @@ function actorFields(actor: CliActor): { agent: string; channel?: 'human' } {
   return { agent: actor.agent, ...(actor.channel ? { channel: actor.channel } : {}) }
 }
 
+/** The log route names its actor `author`; the operator's note carries the channel too (bypasses workflow step ownership). */
+function authorFields(actor: CliActor): { author: string; channel?: 'human' } {
+  return { author: actor.agent, ...(actor.channel ? { channel: actor.channel } : {}) }
+}
+
 async function cmdTasksMove(actor: CliActor, id: string, to: string): Promise<void> {
   const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to, ...actorFields(actor) })
   if (process.stdout.isTTY) {
@@ -121,7 +126,7 @@ async function cmdTasksMove(actor: CliActor, id: string, to: string): Promise<vo
 }
 
 async function cmdTasksLog(actor: CliActor, id: string, message: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: actor.agent, message })
+  const result = await apiPost(`/api/plugins/tasks/${id}/log`, { id, ...authorFields(actor), message })
   if (process.stdout.isTTY) {
     await printTaskActionTui({
       action: 'logged',
@@ -160,8 +165,11 @@ async function cmdTasksDepend(actor: CliActor, id: string, dependsOn: string): P
 }
 
 async function cmdTasksComplete(actor: CliActor, id: string, summary: string): Promise<void> {
-  // Log the summary, then move to done
-  await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: actor.agent, message: `Task complete: ${summary}` })
+  // Log the summary, then move to done. Both carry the actor: under --as human
+  // the log is an operator note (no workflow step ownership needed) and the
+  // move is an operator move, so a workflow task can be force-completed from
+  // the terminal exactly as from the board.
+  await apiPost(`/api/plugins/tasks/${id}/log`, { id, ...authorFields(actor), message: `Task complete: ${summary}` })
   const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to: 'done', ...actorFields(actor) })
   if (process.stdout.isTTY) {
     await printTaskActionTui({

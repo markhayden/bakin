@@ -111,12 +111,15 @@ function relocate(id: string, to: keyof Columns): void {
 
 const mockStoreMoveTask = mock(async (..._args: unknown[]) => undefined)
 const mockStoreAddTaskLog = mock(async (..._args: unknown[]) => undefined)
-const mockStoreClearDependency = mock(async (id: string) => {
+// Like the real store: clears only when the task still waits on THAT dependency.
+const mockStoreClearDependency = mock(async (id: string, dependsOn: string) => {
   const task = findTask(id)
-  if (task) delete task.dependsOn
+  if (!task || task.dependsOn !== dependsOn) return false
+  delete task.dependsOn
+  return true
 })
 const taskStoreMock = {
-  clearDependency: (id: string) => mockStoreClearDependency(id),
+  clearDependency: (id: string, dependsOn: string) => mockStoreClearDependency(id, dependsOn),
   readTaskboard: mock(() => ({ columns: currentColumns })),
   addTaskLog: (...args: unknown[]) => mockStoreAddTaskLog(...args),
   updateTask: mock(async () => undefined),
@@ -379,8 +382,33 @@ describe('settle-time hand-off', () => {
     await awaitDispatchIdle()
 
     expect(mockStoreMoveTask).toHaveBeenCalledWith('t-raced', 'todo', 'inProgress')
-    expect(mockStoreClearDependency).toHaveBeenCalledWith('t-raced')
+    expect(mockStoreClearDependency).toHaveBeenCalledWith('t-raced', 'dep-done')
+    expect(findTask('t-raced')!.dependsOn).toBeUndefined()
     expect(mockStoreAddTaskLog).toHaveBeenCalledWith('t-raced', 'system', 'Dependency dep-done already complete — re-queued for dispatch.')
+  })
+
+  // Code review round 3: the dependency route takes no dispatch lock, so a
+  // replacement target can land between the settle's snapshot and its clear.
+  it('never erases a dependency re-registered while the park was in flight', async () => {
+    setColumns({
+      inProgress: [{ id: 't-swap', title: 'Swapped', agent: 'jessica', dependsOn: 'dep-done' }],
+      done: [{ id: 'dep-done', title: 'Finished upstream', agent: 'patch' }],
+      todo: [{ id: 'dep-next', title: 'Next upstream', agent: 'patch' }],
+    })
+    claimRun({ runId: 'task:t-swap:d1', taskId: 't-swap', seq: 1, agent: 'jessica', bootId: 'review' })
+    // The REST route registers dep-next while the park's move is awaited.
+    mockStoreMoveTask.mockImplementationOnce(async () => {
+      findTask('t-swap')!.dependsOn = 'dep-next'
+      return undefined
+    })
+    fireTurn('t-swap', 'jessica')
+    await turnStarted('jessica')
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+
+    expect(mockStoreClearDependency).toHaveBeenCalledWith('t-swap', 'dep-done')
+    expect(findTask('t-swap')!.dependsOn).toBe('dep-next')
+    expect(mockStoreAddTaskLog).not.toHaveBeenCalledWith('t-swap', 'system', expect.stringContaining('already complete'))
   })
 
   it('treats a dependency target that no longer exists as complete (matches dispatch eligibility)', async () => {
@@ -392,7 +420,7 @@ describe('settle-time hand-off', () => {
     await awaitDispatchIdle()
 
     expect(mockStoreMoveTask).toHaveBeenCalledWith('t-ghost', 'todo', 'inProgress')
-    expect(mockStoreClearDependency).toHaveBeenCalledWith('t-ghost')
+    expect(mockStoreClearDependency).toHaveBeenCalledWith('t-ghost', 'ghost')
     expect(mockStoreAddTaskLog).toHaveBeenCalledWith('t-ghost', 'system', 'Dependency ghost already complete — re-queued for dispatch.')
   })
 
