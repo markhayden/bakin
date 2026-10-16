@@ -15,6 +15,8 @@ mock.module('../../packages/core/src/content-dir', () => ({
 
 import { groupAndSortSchemas, type PluginSchemaEntry } from '../../packages/host/src/routes/settings'
 import { SYSTEM_SETTINGS_TAB_ID } from '@/components/system-settings'
+import { CHANNELS_TAB_ID } from '@/components/channels-tab'
+import { PROVIDER_KEYS_TAB_ID } from '@/components/provider-keys-tab'
 
 const schema = { fields: [] }
 
@@ -37,6 +39,16 @@ describe('groupAndSortSchemas', () => {
     ])
     expect(out.core.map(p => p.id)).toEqual([SYSTEM_SETTINGS_TAB_ID, 'assets', 'tasks'])
     expect(out.extensions).toHaveLength(0)
+  })
+
+  it('pins Channels and Integrations & Keys right after System & Alerts, in that order (#908 D1)', () => {
+    const out = groupAndSortSchemas([
+      entry('assets', 'Assets', 'built-in'),
+      { id: PROVIDER_KEYS_TAB_ID, name: 'Integrations & Keys', schema, source: 'built-in' },
+      { id: CHANNELS_TAB_ID, name: 'Channels', schema, source: 'built-in' },
+      { id: SYSTEM_SETTINGS_TAB_ID, name: 'System & Alerts', schema, source: 'built-in' },
+    ])
+    expect(out.core.map(p => p.id)).toEqual([SYSTEM_SETTINGS_TAB_ID, CHANNELS_TAB_ID, PROVIDER_KEYS_TAB_ID, 'assets'])
   })
 
   it('sorts core plugins (excluding System) alphabetically, case-insensitive', () => {

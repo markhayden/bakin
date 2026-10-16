@@ -26,7 +26,38 @@ describe('/api/secrets', () => {
 
   it('starts empty', async () => {
     const res = await get(new Request(url()), url())
-    expect(await res.json()).toEqual({ stored: [], secrets: {} })
+    expect(await res.json()).toMatchObject({ stored: [], secrets: {} })
+  })
+
+  describe('declared slots', () => {
+    const originalToken = process.env.DISCORD_BOT_TOKEN
+    afterEach(() => {
+      if (originalToken === undefined) delete process.env.DISCORD_BOT_TOKEN
+      else process.env.DISCORD_BOT_TOKEN = originalToken
+    })
+
+    it('lists every declared slot with its status, never a value', async () => {
+      delete process.env.DISCORD_BOT_TOKEN
+      const listed = await (await get(new Request(url()), url())).json()
+      const discord = listed.slots.find((slot: { provider: string; name: string }) => slot.provider === 'discord' && slot.name === 'botToken')
+      expect(discord).toMatchObject({
+        label: 'Discord bot token',
+        envVar: 'DISCORD_BOT_TOKEN',
+        owner: { href: '/settings?tab=channels' },
+        status: { present: false, source: null },
+      })
+      expect(listed.slots.some((slot: { provider: string }) => slot.provider === 'brave')).toBe(true)
+
+      await post(new Request(url(), { method: 'POST', body: JSON.stringify({ provider: 'discord', name: 'botToken', value: 'tok-secret' }) }), url())
+      const afterStore = await (await get(new Request(url()), url())).json()
+      expect(afterStore.slots.find((slot: { provider: string }) => slot.provider === 'discord').status).toEqual({ present: true, source: 'store' })
+      expect(JSON.stringify(afterStore)).not.toContain('tok-secret')
+
+      process.env.DISCORD_BOT_TOKEN = 'tok-env'
+      const afterEnv = await (await get(new Request(url()), url())).json()
+      expect(afterEnv.slots.find((slot: { provider: string }) => slot.provider === 'discord').status).toEqual({ present: true, source: 'env' })
+      expect(JSON.stringify(afterEnv)).not.toContain('tok-env')
+    })
   })
 
   it('sets, lists (masked), and deletes a provider key', async () => {
@@ -38,13 +69,13 @@ describe('/api/secrets', () => {
 
     const listRes = await get(new Request(url()), url())
     const listed = await listRes.json()
-    expect(listed).toEqual({ stored: ['openai'], secrets: { openai: ['apiKey'] } })
+    expect(listed).toMatchObject({ stored: ['openai'], secrets: { openai: ['apiKey'] } })
     // The value is never returned.
     expect(JSON.stringify(listed)).not.toContain('sk-secret')
 
     const delRes = await del(new Request(url('?provider=openai'), { method: 'DELETE' }), url('?provider=openai'))
     expect(await delRes.json()).toMatchObject({ ok: true, removed: true })
-    expect(await (await get(new Request(url()), url())).json()).toEqual({ stored: [], secrets: {} })
+    expect(await (await get(new Request(url()), url())).json()).toMatchObject({ stored: [], secrets: {} })
   })
 
   it('rejects a set with a missing provider or key', async () => {
@@ -99,6 +130,6 @@ describe('/api/secrets', () => {
     expect(reserved.status).toBe(400)
     const oversized = await post(new Request(url(), { method: 'POST', body: JSON.stringify({ provider: 'openai', apiKey: 'a'.repeat(9000) }) }), url())
     expect(oversized.status).toBe(400)
-    expect(await (await get(new Request(url()), url())).json()).toEqual({ stored: [], secrets: {} })
+    expect(await (await get(new Request(url()), url())).json()).toMatchObject({ stored: [], secrets: {} })
   })
 })

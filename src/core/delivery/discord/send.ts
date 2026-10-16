@@ -17,10 +17,12 @@ import type {
   NotificationArgs,
   RuntimeMetadata,
 } from '@bakin/core/adapters/runtime'
+import { DeliveryError } from '@bakin/core/delivery'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { createLogger } from '@/core/logger'
 import { getIdempotent, putIdempotent } from '@/core/execution-ledger'
 import { auditDelivery } from '../audit'
+import { classifyRestError, isRetryableKind } from './errors'
 import { parseDiscordRef, discordChannelRef } from './refs'
 
 const log = createLogger('delivery-send')
@@ -125,37 +127,38 @@ export function createSendSurface(deps: SendSurfaceDeps): SendSurface {
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)))
 
   /**
-   * Deterministic client errors (unknown channel, missing permission) can't
-   * succeed on retry — fail fast. 429s never reach here (@discordjs/rest
-   * queues and honors rate limits internally).
+   * Every REST failure leaves here as a typed DeliveryError (#908 §4.3):
+   * 401 auth_failed, 403 forbidden, 404 target_not_found, other 4xx
+   * `rejected` — all deterministic, failed fast with ONE attempt; 5xx and
+   * network errors are `transport` and retried. 429s never reach here
+   * (@discordjs/rest queues and honors rate limits internally).
    */
-  function isNonRetryable(err: unknown): boolean {
-    const status = (err as { status?: unknown }).status
-    return typeof status === 'number' && status >= 400 && status < 500 && status !== 429
-  }
-
   async function withRetry<T>(label: string, channel: string, fn: () => Promise<T>): Promise<T> {
-    let lastErr: unknown
+    let lastErr: DeliveryError | null = null
+    let attempts = 0
     for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+      attempts = attempt
       try {
         return await fn()
       } catch (err) {
-        lastErr = err
-        if (isNonRetryable(err)) break
+        lastErr = classifyRestError(err, { target: channel })
+        if (!isRetryableKind(lastErr.kind)) break
         if (attempt < RETRY_ATTEMPTS) {
-          log.warn(`Discord ${label} failed (attempt ${attempt}/${RETRY_ATTEMPTS}) — retrying`, err, { channel })
+          log.warn(`Discord ${label} failed (attempt ${attempt}/${RETRY_ATTEMPTS}) — retrying`, lastErr, { channel })
           await sleep(RETRY_BASE_DELAY_MS * attempt)
         }
       }
     }
+    const failure = lastErr ?? new DeliveryError('transport', `Discord ${label} failed`, { target: channel })
     auditDelivery('delivery.send_failed', {
       surface: label,
       channel,
-      attempts: RETRY_ATTEMPTS,
-      error: lastErr instanceof Error ? lastErr.message : String(lastErr),
+      attempts,
+      kind: failure.kind,
+      error: failure.message,
     })
-    log.error(`Discord ${label} failed after ${RETRY_ATTEMPTS} attempts`, lastErr, { channel })
-    throw lastErr
+    log.error(`Discord ${label} failed after ${attempts} attempt${attempts === 1 ? '' : 's'}`, failure, { channel, kind: failure.kind })
+    throw failure
   }
 
   const resolveChannelId = createChannelIdResolver(deps.api)

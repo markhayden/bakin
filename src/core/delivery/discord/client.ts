@@ -3,20 +3,45 @@
  * discord.js framework, no native optional deps (pure-JS paths — required
  * for `bun build --compile`; verified by the A0 spike). Confined to
  * src/core/delivery/ by the adapter-boundary architecture test.
+ *
+ * Status model (channel-readiness #908): the transport OWNS its phase and
+ * emits typed events (ready / resumed / closed / error) the bridge folds
+ * into BridgeStatus. Shard listeners are attached at construction — the
+ * manager is an async event emitter that THROWS on an unhandled `error`
+ * and a fatal close (4004 bad token, 4014 disallowed intents) would
+ * otherwise leave `gateway.connect()` hanging until the READY timer. A
+ * fatal close rejects the READY gate immediately with the real cause.
  */
 import { Client, GatewayDispatchEvents, GatewayIntentBits } from '@discordjs/core'
 import { REST } from '@discordjs/rest'
-import { WebSocketManager } from '@discordjs/ws'
+import { WebSocketManager, WebSocketShardEvents } from '@discordjs/ws'
 import type { APIEmbed } from 'discord-api-types/v10'
+import { DeliveryError, summarizeDeliveryError, type DeliveryErrorSummary } from '@bakin/core/delivery'
 import { createLogger } from '@/core/logger'
 import type { ApiChannelLike } from './channel-info'
+import { classifyConnectFailure, closeMessage, isFatalCloseCode, FATAL_CLOSE_KINDS } from './errors'
 import type { SendApi } from './send'
 import type { ApprovalApi, RawInteraction } from './approvals'
 import type { RawInboundMessage } from './inbound'
 
 const log = createLogger('delivery-discord')
 
-const READY_TIMEOUT_MS = 30_000
+export const READY_TIMEOUT_MS = 30_000
+
+export interface TransportStatus {
+  phase: 'idle' | 'connecting' | 'ready' | 'disconnected' | 'closed'
+  botUser: { id: string; name: string } | null
+  /** Guild ids from the last READY payload. */
+  readyGuildIds: string[]
+  lastCloseCode: number | null
+  lastError: DeliveryErrorSummary | null
+}
+
+export type TransportEvent =
+  | { type: 'ready'; guildIds: string[]; botUser: { id: string; name: string } }
+  | { type: 'resumed' }
+  | { type: 'closed'; code: number; fatal: boolean }
+  | { type: 'error'; error: DeliveryError }
 
 export interface DiscordTransport {
   /** Typed REST surface (client.api.*) — sends, channel fetches, DMs. */
@@ -27,18 +52,27 @@ export interface DiscordTransport {
   botUserId(): string | null
   /** Application id (known after READY) — slash-command registration. */
   applicationId(): string | null
-  connect(): Promise<void>
+  /** Resolves on READY; rejects with a classified DeliveryError (and the manager destroyed). */
+  connect(opts?: { signal?: AbortSignal }): Promise<void>
+  /** Idempotent; always destroys the manager so nothing keeps identifying in the background. */
   destroy(): Promise<void>
+  status(): TransportStatus
+  subscribe(listener: (event: TransportEvent) => void): () => void
   fetchGuildChannels(guildId: string): Promise<ApiChannelLike[]>
 }
 
-export function createDiscordTransport(token: string): DiscordTransport {
+export interface TransportOptions {
+  readyTimeoutMs?: number
+}
+
+export function createDiscordTransport(token: string, options: TransportOptions = {}): DiscordTransport {
+  const readyTimeoutMs = options.readyTimeoutMs ?? READY_TIMEOUT_MS
   const rest = new REST({ version: '10' }).setToken(token)
   const gateway = new WebSocketManager({
     token,
     // Message intents exist for the inbound-chat consumer (B1). NOTE:
     // MessageContent is PRIVILEGED — a bot without the portal toggle gets a
-    // 4014 close at identify and the whole bridge fails; the delivery.discord
+    // 4014 close at identify; the bridge classifies it as `intents` and the
     // doctor remediation names the toggle.
     intents:
       GatewayIntentBits.Guilds |
@@ -48,62 +82,141 @@ export function createDiscordTransport(token: string): DiscordTransport {
     rest,
   })
   const client = new Client({ rest, gateway })
-  let botUserId: string | null = null
-  let applicationId: string | null = null
-  let connected = false
 
-  client.once(GatewayDispatchEvents.Ready, ({ data }) => {
-    botUserId = data.user.id
-    applicationId = data.application.id
-    log.info('Discord gateway ready', { user: data.user.username, guilds: data.guilds.length })
+  let phase: TransportStatus['phase'] = 'idle'
+  let botUser: TransportStatus['botUser'] = null
+  let applicationId: string | null = null
+  let readyGuildIds: string[] = []
+  let lastCloseCode: number | null = null
+  let lastError: DeliveryErrorSummary | null = null
+  let disposed = false
+  let readyGate: { resolve(): void; reject(err: DeliveryError): void } | null = null
+  const listeners = new Set<(event: TransportEvent) => void>()
+
+  const emit = (event: TransportEvent) => {
+    if (disposed) return
+    for (const listener of listeners) {
+      try {
+        listener(event)
+      } catch (err) {
+        log.error('Discord transport listener failed', err, { event: event.type })
+      }
+    }
+  }
+
+  const fail = (error: DeliveryError) => {
+    lastError = summarizeDeliveryError(error)
+    phase = 'closed'
+    readyGate?.reject(error)
+  }
+
+  // Attached at construction, BEFORE connect(): the `error` listener is
+  // load-bearing (see the module header).
+  gateway.on(WebSocketShardEvents.Closed, (code) => {
+    if (disposed) return
+    lastCloseCode = code
+    const fatal = isFatalCloseCode(code)
+    if (fatal) {
+      fail(new DeliveryError(FATAL_CLOSE_KINDS[code], closeMessage(code), { status: code }))
+    } else {
+      phase = 'disconnected'
+    }
+    emit({ type: 'closed', code, fatal })
   })
+  gateway.on(WebSocketShardEvents.Error, (error) => {
+    if (disposed) return
+    if (!isFatalCloseCode(lastCloseCode)) {
+      // The shard recovers from non-fatal errors itself; stay observable.
+      log.warn('Discord gateway error', error)
+      return
+    }
+    const typed = new DeliveryError(FATAL_CLOSE_KINDS[lastCloseCode], closeMessage(lastCloseCode), { status: lastCloseCode })
+    fail(typed)
+    emit({ type: 'error', error: typed })
+  })
+  gateway.on(WebSocketShardEvents.Ready, (data) => {
+    if (disposed) return
+    botUser = { id: data.user.id, name: data.user.username }
+    applicationId = data.application.id
+    readyGuildIds = data.guilds.map((guild) => guild.id)
+    phase = 'ready'
+    lastCloseCode = null
+    lastError = null
+    log.info('Discord gateway ready', { user: data.user.username, guilds: readyGuildIds.length })
+    readyGate?.resolve()
+    emit({ type: 'ready', guildIds: readyGuildIds, botUser })
+  })
+  gateway.on(WebSocketShardEvents.Resumed, () => {
+    if (disposed) return
+    phase = 'ready'
+    emit({ type: 'resumed' })
+  })
+
+  async function destroy(): Promise<void> {
+    if (disposed) return
+    disposed = true
+    phase = 'closed'
+    readyGate = null
+    try {
+      await gateway.destroy()
+      log.info('Discord gateway disconnected')
+    } catch (err) {
+      log.warn('Discord gateway teardown failed', err)
+    }
+  }
 
   return {
     api: client.api,
     client,
-    botUserId: () => botUserId,
+    botUserId: () => botUser?.id ?? null,
     applicationId: () => applicationId,
 
-    async connect() {
-      if (connected) return
-      let readyTimeout: ReturnType<typeof setTimeout> | undefined
-      const ready = new Promise<void>((resolve, reject) => {
-        readyTimeout = setTimeout(
-          () => reject(new Error(`Discord gateway not READY within ${READY_TIMEOUT_MS}ms`)),
-          READY_TIMEOUT_MS,
+    async connect(opts = {}) {
+      if (phase === 'ready') return
+      if (disposed) throw new DeliveryError('transport', 'Discord transport already destroyed')
+      phase = 'connecting'
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const onAbort = () => fail(new DeliveryError('transport', 'Discord connect aborted'))
+      const gate = new Promise<void>((resolve, reject) => {
+        readyGate = { resolve, reject }
+        timer = setTimeout(
+          () => fail(new DeliveryError('timeout', `Discord gateway not READY within ${readyTimeoutMs}ms`)),
+          readyTimeoutMs,
         )
-        client.once(GatewayDispatchEvents.Ready, () => {
-          clearTimeout(readyTimeout)
-          resolve()
-        })
+        if (opts.signal?.aborted) onAbort()
+        else opts.signal?.addEventListener('abort', onAbort, { once: true })
       })
       // Observe the rejection even when gateway.connect() throws first —
-      // otherwise the orphaned timeout fires 30s later as an unhandled
-      // promise rejection.
-      ready.catch(() => {})
+      // otherwise the orphaned gate rejects later as an unhandled rejection.
+      gate.catch(() => {})
       try {
-        await gateway.connect()
-        await ready
-        connected = true
+        // RACE, not sequence: gateway.connect() can reject (REST 401 from
+        // GET /gateway/bot on a bad token) or hang (fatal close during
+        // identify) — the gate is what carries the real cause.
+        await Promise.race([gateway.connect(), gate])
+        await gate
       } catch (err) {
+        const failure = classifyConnectFailure(err, lastCloseCode, token)
+        lastError = summarizeDeliveryError(failure)
         // A failed/timed-out connect must not leave a zombie WebSocketManager
         // retrying in the background (it would hold an identify session while
         // the doctor honestly reports "not connected").
-        clearTimeout(readyTimeout)
-        try {
-          await gateway.destroy()
-        } catch (destroyErr) {
-          log.warn('Gateway teardown after failed connect also failed', destroyErr)
-        }
-        throw err
+        await destroy()
+        throw failure
+      } finally {
+        clearTimeout(timer)
+        opts.signal?.removeEventListener('abort', onAbort)
+        readyGate = null
       }
     },
 
-    async destroy() {
-      if (!connected) return
-      connected = false
-      await gateway.destroy()
-      log.info('Discord gateway disconnected')
+    destroy,
+
+    status: () => ({ phase, botUser, readyGuildIds, lastCloseCode, lastError }),
+
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
     },
 
     async fetchGuildChannels(guildId: string) {
@@ -197,7 +310,9 @@ export async function downloadAttachment(url: string): Promise<Buffer> {
  * switch back). Global scope is required: guild commands are invisible in
  * DMs, and DM chats need /new-chat the most. Guild registrations from
  * earlier boots are cleared (they were bridge-owned only). Non-fatal: a
- * registration failure degrades to "no slash commands", never a failed boot.
+ * registration failure degrades to "no slash commands", never a failed
+ * connect. The bridge memoizes it per (application, guild set) and runs it
+ * post-apply so a reconnect never re-spends Discord's daily create budget.
  */
 export async function registerGlobalCommands(transport: DiscordTransport, guildIds: string[], commands: Array<{ name: string; description: string }>): Promise<void> {
   const applicationId = transport.applicationId()

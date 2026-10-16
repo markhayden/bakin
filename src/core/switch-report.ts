@@ -7,6 +7,8 @@
  * by discovering it broken.
  */
 import type { AgentRuntimeAdapter, CronJob } from '@bakin/core/adapters/runtime'
+import type { CapabilityMode } from '@bakin/core/adapters/runtime'
+import { projectChannelReadiness, CHANNELS_SETTINGS_HREF, type ChannelOwner, type ChannelReadinessState, type ProjectedChannelState } from '@bakin/core/delivery'
 
 export interface CantCarryLine {
   concern: 'channels' | 'cron' | 'sessions' | 'provider-config'
@@ -143,4 +145,76 @@ export function buildCantCarryReport(
   })
 
   return lines
+}
+
+// ── channel ownership across a switch (#908 §4.9) ────────────────────────
+
+export interface ChannelSwitchReport {
+  source: { owner: ChannelOwner; state: ChannelReadinessState }
+  target: { owner: ChannelOwner; projectedState: ProjectedChannelState; tokenSource: 'env' | 'store' | null }
+  /** Owner-facing steps; empty when nothing needs doing. */
+  setup: string[]
+  /** The explicit ownership copy, both directions. */
+  ownership: string
+}
+
+export interface ChannelSwitchInput {
+  source: { adapter: string; deliveryMode: CapabilityMode; state: ChannelReadinessState }
+  target: {
+    adapter: string
+    deliveryMode: CapabilityMode
+    enabled: boolean
+    tokenPresent: boolean
+    tokenSource: 'env' | 'store' | null
+    guildCount: number
+  }
+}
+
+function ownerFor(mode: CapabilityMode): ChannelOwner {
+  return mode === 'native' ? 'runtime' : 'bridge'
+}
+
+/**
+ * Pure: who owns channel delivery on each side, what the bridge WOULD be on
+ * the target (projection — never a connection outcome), and the setup the
+ * owner must do. Bakin never reads the runtime's own token (the issue's
+ * explicit non-goal): a runtime-owned token and a Bakin bridge token are
+ * separate responsibilities, and the copy says so in both directions.
+ */
+export function buildChannelSwitchReport(input: ChannelSwitchInput): ChannelSwitchReport {
+  const sourceOwner = ownerFor(input.source.deliveryMode)
+  const targetOwner = ownerFor(input.target.deliveryMode)
+  const projectedState = projectChannelReadiness({
+    deliveryMode: input.target.deliveryMode,
+    enabled: input.target.enabled,
+    tokenPresent: input.target.tokenPresent,
+    guildCount: input.target.guildCount,
+  })
+  const setup: string[] = []
+  let ownership: string
+
+  if (sourceOwner === 'runtime' && targetOwner === 'bridge') {
+    ownership = `${input.source.adapter}'s bot token stays in ${input.source.adapter}'s own config. ${input.target.adapter} delivers through Bakin's Discord bridge, which needs its OWN token in Settings → Channels — Bakin never reads the runtime's secret.`
+    if (projectedState === 'disabled') setup.push(`Enable Discord delivery in Settings → Channels (${CHANNELS_SETTINGS_HREF}) if you want channel alerts, approval cards, and inbound chat on ${input.target.adapter}.`)
+    if (projectedState === 'missing_token') setup.push(`Add the Discord bot token in Settings → Channels (${CHANNELS_SETTINGS_HREF}) — the bridge cannot connect without it.`)
+    if (projectedState === 'missing_guild') setup.push(`Add at least one Discord server (guild ID) in Settings → Channels (${CHANNELS_SETTINGS_HREF}).`)
+    if (projectedState === 'ready_to_connect') setup.push('Nothing to add: the bridge is configured in Bakin and connects when the switch completes (plugin-bound surfaces follow at restart).')
+  } else if (sourceOwner === 'bridge' && targetOwner === 'runtime') {
+    ownership = `Bakin's Discord bridge goes idle by design: ${input.target.adapter}'s own channel config owns delivery, and the token stored in Bakin stays unused until you switch back.`
+    setup.push(`Make sure ${input.target.adapter} has its own Discord configuration — Bakin's stored bot token is not shared with it.`)
+  } else if (targetOwner === 'bridge') {
+    ownership = `Both runtimes deliver through Bakin's Discord bridge; its configuration and token live in Settings → Channels and carry across unchanged.`
+    if (projectedState === 'missing_token') setup.push(`Add the Discord bot token in Settings → Channels (${CHANNELS_SETTINGS_HREF}).`)
+    if (projectedState === 'missing_guild') setup.push(`Add at least one Discord server (guild ID) in Settings → Channels (${CHANNELS_SETTINGS_HREF}).`)
+  } else {
+    ownership = `Both runtimes own channel delivery natively; each keeps its own channel configuration and token — nothing crosses.`
+    setup.push(`Make sure ${input.target.adapter} has its own channel configuration.`)
+  }
+
+  return {
+    source: { owner: sourceOwner, state: input.source.state },
+    target: { owner: targetOwner, projectedState, tokenSource: input.target.tokenSource },
+    setup,
+    ownership,
+  }
 }

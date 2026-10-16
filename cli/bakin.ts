@@ -52,6 +52,10 @@ export async function main(): Promise<void> {
         await (await import('../src/cli/commands/runtime')).run(args)
         break
 
+      case 'channels':
+        await (await import('../src/cli/commands/channels')).run(args)
+        break
+
       case 'tasks':
         await (await import('../src/cli/commands/tasks')).run(args)
         break

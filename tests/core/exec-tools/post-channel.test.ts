@@ -46,6 +46,28 @@ const ledgerMock = {
 mock.module('@/core/execution-ledger', () => ledgerMock)
 mock.module('../../../src/core/execution-ledger', () => ledgerMock)
 
+// ONE readiness snapshot (#908): pre-flight reads it before any send. Default
+// = native runtime (owner runtime) so delivery goes straight through.
+let mockReadinessState: string = 'native'
+let mockReadinessOwner: 'runtime' | 'bridge' | 'none' = 'runtime'
+let mockReadinessLastError: { kind: string; message: string; at: string } | null = null
+const readinessMock = {
+  getChannelReadiness: () => ({
+    runtime: { adapter: mockReadinessOwner === 'runtime' ? 'openclaw' : 'pi', deliveryMode: mockReadinessOwner === 'runtime' ? 'native' : 'unavailable' },
+    owner: mockReadinessOwner,
+    enabled: true,
+    token: { present: mockReadinessState !== 'missing_token', source: 'store' },
+    guilds: [],
+    connection: { state: mockReadinessState, since: 'x', lastError: mockReadinessLastError },
+    channels: { items: [], source: 'none', collectedAt: null },
+    routing: { alertChannel: { setting: 'notifications.channel', value: null, resolved: 'unset' }, approvalsChannel: { setting: 'approvals.channel', value: null, resolved: 'unset' }, approvalsEnabled: false, aliases: [] },
+    remediation: null,
+    generatedAt: 'x',
+  }),
+}
+mock.module('@/core/delivery/readiness', () => readinessMock)
+mock.module('../../../src/core/delivery/readiness', () => readinessMock)
+
 let mockWorkflowAuthorizationError: Error | null = null
 const mockAssertWorkflowToolAllowed = mock(async (..._args: unknown[]) => {
   if (mockWorkflowAuthorizationError) throw mockWorkflowAuthorizationError
@@ -58,6 +80,7 @@ mock.module('../../../src/core/workflow-tool-authorization', () => ({
 }))
 
 import { CHANNEL_POST_CHUNK_LIMIT, chunkChannelPostContent, postChannel, resetPostChannelIdempotencyForTests } from '../../../src/core/exec-tools/tools/post-channel'
+import { DeliveryError } from '../../../packages/core/src/delivery'
 
 describe('postChannel', () => {
   const originalEnv = { ...process.env }
@@ -80,6 +103,9 @@ describe('postChannel', () => {
     mockContentDir = tmpdir()
     idempotencyRows.clear()
     resetPostChannelIdempotencyForTests()
+    mockReadinessState = 'native'
+    mockReadinessOwner = 'runtime'
+    mockReadinessLastError = null
   })
 
   afterEach(() => {
@@ -457,4 +483,126 @@ describe('postChannel', () => {
     const [call] = deliverContent.mock.calls[0] as unknown as [Record<string, unknown> & { channels: unknown }]
     expect(call.channels).toEqual(['discord:test-channel'])
   })
+
+  describe('readiness pre-flight, memo-first retries, outcome memo (#908 §4.6)', () => {
+    const bridgeState = (state: string, lastError: { kind: string; message: string; at: string } | null = null) => {
+      mockReadinessOwner = 'bridge'
+      mockReadinessState = state
+      mockReadinessLastError = lastError
+    }
+
+    it('missing token: fails with the cause + next step before any alias lookup or send, and is NOT memoized', async () => {
+      bridgeState('missing_token')
+      const params = { channel: 'general', content: 'hello', agent: 'main', taskId: 'task-1' }
+      const first = await postChannel(params, runtime)
+      expect(first.ok).toBe(false)
+      expect(first.error).toContain('bot token is missing')
+      expect(first.error).toContain('Settings → Channels')
+      expect(first.kind).toBe('not_configured')
+      expect(first.chunksDelivered).toBe(0)
+      expect(listChannels).not.toHaveBeenCalled()
+      expect(deliverContent).not.toHaveBeenCalled()
+
+      bridgeState('connected')
+      const second = await postChannel(params, runtime)
+      expect(second.ok).toBe(true)
+      expect(second.deduped).toBeUndefined()
+      expect(deliverContent).toHaveBeenCalledTimes(1)
+    })
+
+    it('every non-deliverable bridge state maps to its copy', async () => {
+      const cases: Array<[string, { kind: string; message: string; at: string } | null, RegExp]> = [
+        ['disabled', null, /delivery is disabled/],
+        ['missing_guild', null, /no server is configured/],
+        ['connecting', null, /still connecting/],
+        ['disconnected', { kind: 'transport', message: 'gateway closed (code 1006)', at: 'x' }, /lost its connection/],
+        ['failed', { kind: 'auth_failed', message: 'Discord rejected the bot token (401)', at: 'x' }, /rejected the bot token/],
+        ['failed', { kind: 'intents', message: 'intents refused', at: 'x' }, /Message Content Intent/],
+      ]
+      for (const [state, lastError, pattern] of cases) {
+        bridgeState(state, lastError)
+        const result = await postChannel({ channel: 'general', content: `hello ${state}`, agent: 'main' }, runtime)
+        expect(result.ok).toBe(false)
+        expect(result.error).toMatch(pattern)
+      }
+      expect(deliverContent).not.toHaveBeenCalled()
+    })
+
+    it('a completed post retried verbatim while the bridge is down returns the saved result, not a readiness failure', async () => {
+      bridgeState('connected')
+      const params = { channel: 'general', content: 'sent once', agent: 'main', taskId: 'task-2' }
+      const first = await postChannel(params, runtime)
+      expect(first.ok).toBe(true)
+      bridgeState('disconnected', { kind: 'transport', message: 'gateway closed', at: 'x' })
+      const retry = await postChannel(params, runtime)
+      expect(retry.ok).toBe(true)
+      expect(retry.deduped).toBe(true)
+      expect(deliverContent).toHaveBeenCalledTimes(1)
+    })
+
+    it('a PARTIAL post (chunk 1 ok, chunk 2 auth_failed) is memoized: a verbatim retry while down never re-sends chunk 1', async () => {
+      bridgeState('connected')
+      deliverContent.mockImplementationOnce(async () => ({ deliveries: [{ channelId: 'discord:channel-123', ref: 'message:1', renderedAt: 'x' }] }))
+      deliverContent.mockImplementationOnce(async () => { throw new DeliveryError('auth_failed', 'Discord rejected the bot token (401)', { status: 401 }) })
+      const params = { channel: 'general', content: 'A'.repeat(CHANNEL_POST_CHUNK_LIMIT + 50), agent: 'main', taskId: 'task-3' }
+      const first = await postChannel(params, runtime)
+      expect(first.ok).toBe(false)
+      expect(first.kind).toBe('auth_failed')
+      expect(first.chunksDelivered).toBe(1)
+      expect(first.chunkCount).toBe(2)
+      expect(first.error).toContain('1 of 2 chunks were delivered')
+      expect(deliverContent).toHaveBeenCalledTimes(2)
+
+      bridgeState('failed', { kind: 'auth_failed', message: 'Discord rejected the bot token (401)', at: 'x' })
+      const retry = await postChannel(params, runtime)
+      expect(retry.ok).toBe(false)
+      expect(retry.deduped).toBe(true)
+      expect(retry.chunksDelivered).toBe(1)
+      expect(deliverContent).toHaveBeenCalledTimes(2)
+    })
+
+    it('a deterministic first-chunk refusal (forbidden) is NOT memoized: the retry after the fix goes through', async () => {
+      bridgeState('connected')
+      deliverContent.mockImplementationOnce(async () => { throw new DeliveryError('forbidden', 'Missing Access', { status: 403, target: 'discord:channel-123' }) })
+      const params = { channel: 'general', content: 'needs perms', agent: 'main' }
+      const first = await postChannel(params, runtime)
+      expect(first.ok).toBe(false)
+      expect(first.kind).toBe('forbidden')
+      expect(first.error).toContain('lacks permission')
+      expect(first.error).toContain('Fix the channel permissions in Discord')
+      const retry = await postChannel(params, runtime)
+      expect(retry.ok).toBe(true)
+      expect(retry.deduped).toBeUndefined()
+      expect(deliverContent).toHaveBeenCalledTimes(2)
+    })
+
+    it('target_not_found and rejected carry their next steps; rejected says no retry was attempted', async () => {
+      bridgeState('connected')
+      deliverContent.mockImplementationOnce(async () => { throw new DeliveryError('target_not_found', 'Unknown Channel', { status: 404 }) })
+      const missing = await postChannel({ channel: 'general', content: 'x1', agent: 'main' }, runtime)
+      expect(missing.error).toMatch(/not in a connected server.*Pick a channel from Settings → Channels/)
+      deliverContent.mockImplementationOnce(async () => { throw new DeliveryError('rejected', 'Invalid Form Body', { status: 400 }) })
+      const rejected = await postChannel({ channel: 'general', content: 'x2', agent: 'main' }, runtime)
+      expect(rejected.error).toContain('No retry was attempted')
+    })
+
+    it('a typed not_connected from the alias lookup surfaces as the real cause, never "no alias configured"', async () => {
+      bridgeState('connected')
+      listChannels.mockImplementationOnce(async () => { throw new DeliveryError('not_connected', 'Discord delivery bridge is failed', { state: 'failed' }) })
+      const result = await postChannel({ channel: 'daily', content: 'x', agent: 'main' }, runtime)
+      expect(result.ok).toBe(false)
+      expect(result.error).not.toContain('No channel alias configured')
+      expect(result.kind).toBe('not_connected')
+      expect(deliverContent).not.toHaveBeenCalled()
+    })
+
+    it('"no channel layer" is reserved for a runtime that exposes no surface at all', async () => {
+      mockReadinessOwner = 'none'
+      mockReadinessState = 'failed'
+      const result = await postChannel({ channel: 'discord:channel-1', content: 'x', agent: 'main' }, { name: 'bare' } as unknown as AgentRuntimeAdapter)
+      expect(result.ok).toBe(false)
+      expect(result.error).toContain('no channel layer')
+    })
+  })
+
 })

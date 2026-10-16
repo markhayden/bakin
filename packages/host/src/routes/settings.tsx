@@ -26,6 +26,7 @@ import {
   unflattenSystemSettings,
 } from '@/components/system-settings'
 import { ProviderKeysTab, PROVIDER_KEYS_TAB_ID } from '@/components/provider-keys-tab'
+import { ChannelsTab, CHANNELS_TAB_ID } from '@/components/channels-tab'
 import { responseError } from '../lib/request-error'
 import { Route as RootRoute } from './__root'
 
@@ -49,11 +50,13 @@ interface GroupedSchemas {
  */
 export function groupAndSortSchemas(schemas: PluginSchemaEntry[]): GroupedSchemas {
   const system: PluginSchemaEntry[] = []
+  const channels: PluginSchemaEntry[] = []
   const providerKeys: PluginSchemaEntry[] = []
   const core: PluginSchemaEntry[] = []
   const extensions: PluginSchemaEntry[] = []
   for (const entry of schemas) {
     if (entry.id === SYSTEM_SETTINGS_TAB_ID) system.push(entry)
+    else if (entry.id === CHANNELS_TAB_ID) channels.push(entry)
     else if (entry.id === PROVIDER_KEYS_TAB_ID) providerKeys.push(entry)
     else if (entry.source === 'built-in') core.push(entry)
     else extensions.push(entry)
@@ -62,8 +65,8 @@ export function groupAndSortSchemas(schemas: PluginSchemaEntry[]): GroupedSchema
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
   core.sort(alpha)
   extensions.sort(alpha)
-  // System & Alerts pinned first, then Integrations & Keys, then built-ins A-Z.
-  return { core: [...system, ...providerKeys, ...core], extensions }
+  // System & Alerts pinned first, then Channels, then Integrations & Keys, then built-ins A-Z.
+  return { core: [...system, ...channels, ...providerKeys, ...core], extensions }
 }
 
 function SettingsFrame({ children }: { children: React.ReactNode }) {
@@ -80,7 +83,7 @@ const ACTIVE_HEADING_ID = 'active-settings-heading'
 const REQUEST_TIMEOUT_MS = 15_000
 
 /** Ids the built-in categories own; a plugin declaring one is refused. */
-const RESERVED_CATEGORY_IDS: ReadonlySet<string> = new Set([SYSTEM_SETTINGS_TAB_ID, PROVIDER_KEYS_TAB_ID])
+const RESERVED_CATEGORY_IDS: ReadonlySet<string> = new Set([SYSTEM_SETTINGS_TAB_ID, CHANNELS_TAB_ID, PROVIDER_KEYS_TAB_ID])
 
 /**
  * A just-persisted form, tagged with the values URL it was saved against so it
@@ -97,9 +100,10 @@ function SettingsRoute() {
   // The active category is URL state (`?tab=`), so deep links and refresh
   // keep their place. `system` is the default and is omitted from the URL.
   const [tabParam, setTab] = useQueryState('tab', SYSTEM_SETTINGS_TAB_ID)
-  // `?field=<key>` highlights one field of a schema-rendered category. It is
-  // inert on Integrations & Keys (bespoke, not schema-rendered) and for keys
-  // the schema does not carry — an unknown field is not an error.
+  // `?field=<key>` highlights one field of a schema-rendered category (or
+  // focuses the owning control on Channels). It is inert on Integrations &
+  // Keys (bespoke, not schema-rendered) and for keys the schema does not
+  // carry — an unknown field is not an error.
   const [fieldParam, setField] = useQueryState('field', '')
   const pathname = usePathname()
   const [savedValues, setSavedValues] = useState<SavedValues | null>(null)
@@ -122,6 +126,7 @@ function SettingsRoute() {
     })
     return [
       { id: SYSTEM_SETTINGS_TAB_ID, name: 'System & Alerts', schema: SYSTEM_SETTINGS_SCHEMA, source: 'built-in' },
+      { id: CHANNELS_TAB_ID, name: 'Channels', schema: { fields: [] }, source: 'built-in' },
       { id: PROVIDER_KEYS_TAB_ID, name: 'Integrations & Keys', schema: { fields: [] }, source: 'built-in' },
       ...accepted,
     ]
@@ -144,7 +149,7 @@ function SettingsRoute() {
   // (core settings.json) instead of /api/plugin-settings/*; Integrations & Keys
   // manages its own data via /api/secrets + the images readiness route, so the
   // generic values fetch is skipped for it.
-  const valuesUrl = activePlugin === '' || activePlugin === PROVIDER_KEYS_TAB_ID
+  const valuesUrl = activePlugin === '' || activePlugin === PROVIDER_KEYS_TAB_ID || activePlugin === CHANNELS_TAB_ID
     ? null
     : activePlugin === SYSTEM_SETTINGS_TAB_ID
       ? '/api/settings'
@@ -275,6 +280,8 @@ function SettingsRoute() {
             <h2 id={ACTIVE_HEADING_ID}>{plugin.name}</h2>
             {activePlugin === PROVIDER_KEYS_TAB_ID ? (
               <ProviderKeysTab />
+            ) : activePlugin === CHANNELS_TAB_ID ? (
+              <ChannelsTab highlightKey={fieldParam || undefined} />
             ) : valuesLoading ? (
               <SystemState kind="loading" title="Loading settings" />
             ) : valuesError ? (

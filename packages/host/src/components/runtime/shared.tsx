@@ -76,3 +76,28 @@ export function CheckStatusBadge({ status }: { status: string }) {
       : 'danger'
   return <StatusBadge tone={tone} variant="soft" className="shrink-0">{status}</StatusBadge>
 }
+
+/**
+ * Plain-language line for the Channel delivery row from the readiness
+ * snapshot's state (#908): the state is the fact, the remediation is the
+ * next step — the capability mode alone cannot tell "enabled but the token
+ * is missing" from "connected".
+ */
+export function deliveryReadinessCopy(
+  state: string,
+  remediation: { summary?: string; nextStep?: string } | null,
+  adapter: string,
+): string {
+  switch (state) {
+    case 'native':
+      return "Messages, alerts, and approvals deliver through the runtime's channels."
+    case 'connected':
+      return 'Bakin delivers messages and approvals on behalf of the runtime — the Discord bridge is connected.'
+    case 'connecting':
+      return 'The Discord bridge is connecting.'
+    default:
+      return remediation?.summary
+        ? `${remediation.summary} ${remediation.nextStep ?? ''}`.trim()
+        : `Channel delivery is ${state.replace(/_/g, ' ')} on ${adapter}.`
+  }
+}

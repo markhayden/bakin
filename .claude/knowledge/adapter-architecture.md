@@ -445,9 +445,16 @@ Logical channel labels such as `general` or `#general` are not assumed to be
 runtime delivery targets. Exec tools that deliver content resolve labels through
 `settings.notifications.channelAliases` before calling the runtime adapter. A
 fully-qualified target such as `discord:<target>` passes through unchanged; a
-bare id is allowed only when it matches `runtime.channels.list()`. The
-`health.channel-aliases` check validates alias targets without sending a
-message. For backwards compatibility, a legacy
+bare id is allowed only when it matches the enumerated channel list. The
+resolver rethrows typed `DeliveryError`s instead of swallowing them and,
+on a `degraded` bridge, resolves against the joined guilds; every
+consumer that would otherwise probe `channels.list()` outside a send (the
+`health.channel-aliases` / `health.channel-approvals` checks, the
+post-channel tool's pre-flight) reads the ONE channel-readiness snapshot
+(`src/core/delivery/readiness.ts`, #908) so a delivery outage is one
+incident, not three. Routing targets (`notifications.channel`,
+`approvals.channel`, the alias map) are edited in Settings → Channels and
+written through `PUT /api/channels/routing` (replace semantics). A legacy
 `notifications.channel` + `notifications.target` pair supplies the default
 `general` alias only when `channelAliases.general` is not set.
 

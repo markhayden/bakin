@@ -19,7 +19,7 @@
   },
   "hostInitialJs": {
     "path": "packages/host/dist/main.js",
-    "bytes": 245134
+    "bytes": 269730
   },
   "sdkUiBundles": [
     {
@@ -109,10 +109,6 @@
     {
       "path": "packages/host/public/vendor/sdk-layout.js",
       "bytes": 4318
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-metadata.js",
-      "bytes": 362
     },
     {
       "path": "packages/host/public/vendor/sdk-navigation.js",

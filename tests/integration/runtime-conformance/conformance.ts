@@ -33,6 +33,13 @@ export interface RuntimeConformanceTarget {
   runtime: AgentRuntimeAdapter
   /** An agent that exists on this runtime and can complete turns. */
   agentId: string
+  /**
+   * The target threaded a channel bridge handle into this runtime
+   * (AdapterInitOpts.channelBridge). A runtime that serves delivery by
+   * delegation must then expose `channels` PERMANENTLY — configured or not
+   * (#908 D5) — because consumers feature-detect once at activation.
+   */
+  channelBridgeThreaded?: boolean
   /** Fresh, unique thread id per call. */
   newThreadId(): string
   /** Seed/prepare one ordinary successful turn (e.g. Pi seeds a provider script). */
@@ -771,6 +778,12 @@ export const runtimeConformanceChecks = {
     // consumers will call runtime.channels — absence makes the claim a lie.
     if (caps.delivery.mode === 'shimmed' && !target.runtime.channels) {
       fail("capabilities() declares delivery 'shimmed' but the channels surface is absent")
+    }
+    // A threaded bridge handle makes the surface permanent (#908 D5): hiding
+    // it while unconfigured would strand every consumer that feature-
+    // detected at activation when the token arrives later.
+    if (target.channelBridgeThreaded && !target.runtime.channels) {
+      fail('a channel bridge handle was threaded but the channels surface is absent (it must be permanent, configured or not)')
     }
     if (caps.sessions.mode === 'native' && opts?.sessionsPin !== false) {
       await target.prepareOkTurn?.()

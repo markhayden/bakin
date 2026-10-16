@@ -129,6 +129,15 @@ mock.module('../../../src/core/search-registry', () => ({
     return [{ table: logical, result: 'migrated', indexed: 1 }]
   },
 }))
+let mockReadiness: ChannelReadiness | null = null
+mock.module('../../../src/core/delivery/readiness', () => ({
+  getChannelReadiness: () => {
+    if (!mockReadiness) throw new Error('test did not set mockReadiness')
+    return mockReadiness
+  },
+  subscribeChannelReadiness: () => () => {},
+  CHANNEL_HEALTH_CHECK_IDS: ['health.delivery-discord', 'health.channel-aliases', 'health.channel-approvals'],
+}))
 let mockOrphanSweepError: Error | null = null
 let mockOrphanSweepCalls = 0
 mock.module('../../../src/core/search-orphan-sweep', () => ({
@@ -339,6 +348,7 @@ import { checkService } from '../../../plugins/health/lib/system-checks/service'
 import { checkRuntime } from '../../../plugins/health/lib/system-checks/runtime'
 import { checkChannelApprovals } from '../../../plugins/health/lib/system-checks/channel-approvals'
 import { checkChannelAliases } from '../../../plugins/health/lib/system-checks/channel-aliases'
+import type { ChannelReadiness } from '../../../packages/core/src/delivery'
 import { checkSearchAdapter } from '../../../plugins/health/lib/system-checks/search'
 import { checkSearchOutboxObservations, searchOutboxRepair } from '../../../plugins/health/lib/system-checks/search-outbox'
 import {
@@ -576,61 +586,75 @@ describe('checkRuntime', () => {
   })
 })
 
+// ─── channel checks read the ONE readiness snapshot (#908) ─────────────────
+
+type ReadinessChannel = { id: string; platform: string; label: string; capabilities: string[] }
+function readinessWith(items: ReadinessChannel[] | null, over: Partial<ChannelReadiness> = {}): ChannelReadiness {
+  return {
+    runtime: { adapter: 'pi', deliveryMode: 'shimmed' },
+    owner: 'bridge',
+    enabled: true,
+    token: { present: true, source: 'store' },
+    guilds: [{ id: 'g1', joined: true, channelCount: items?.length ?? null }],
+    connection: { state: 'connected', since: '2026-10-06T00:00:00.000Z', lastError: null },
+    channels: items
+      ? { items: items as ChannelReadiness['channels']['items'], source: 'bridge', collectedAt: '2026-10-06T00:00:00.000Z' }
+      : { items: [], source: 'bridge', collectedAt: null, error: { kind: 'transport', message: 'channel registry unavailable', at: 'x' } },
+    routing: {
+      alertChannel: { setting: 'notifications.channel', value: null, resolved: 'unset' },
+      approvalsChannel: { setting: 'approvals.channel', value: null, resolved: 'unset' },
+      approvalsEnabled: false,
+      aliases: [],
+    },
+    remediation: null,
+    generatedAt: '2026-10-06T00:00:00.000Z',
+    ...over,
+  }
+}
+
 // ─── checkChannelApprovals ────────────────────────────────────────────────
 
 describe('checkChannelApprovals', () => {
   it('reports ok when a runtime channel supports interactive approvals', async () => {
-    mockRuntime.channels!.list = async () => [{
-      id: 'discord',
-      platform: 'discord',
-      label: 'Discord',
-      capabilities: ['message', 'interactive-approval'],
-    }]
-
-    const results = observed(await checkChannelApprovals(mockRuntime))
+    mockReadiness = readinessWith([{ id: 'discord', platform: 'discord', label: 'Discord', capabilities: ['message', 'interactive-approval'] }])
+    const results = observed(await checkChannelApprovals())
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('healthy')
     expect(results[0].detail).toContain('Discord')
   })
 
   it('warns when channel approvals are render-only', async () => {
-    mockRuntime.channels!.list = async () => [{
-      id: 'discord',
-      platform: 'discord',
-      label: 'Discord',
-      capabilities: ['message', 'rich-content'],
-    }]
-
-    const results = observed(await checkChannelApprovals(mockRuntime))
+    mockReadiness = readinessWith([{ id: 'discord', platform: 'discord', label: 'Discord', capabilities: ['message', 'rich-content'] }])
+    const results = observed(await checkChannelApprovals())
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('warning')
     expect(results[0].summary).toMatch(/render-only/)
   })
 
   it('warns when channel capabilities cannot be inspected', async () => {
-    mockRuntime.channels!.list = async () => {
-      throw new Error('channel registry unavailable')
-    }
-
-    const results = observed(await checkChannelApprovals(mockRuntime))
+    mockReadiness = readinessWith(null)
+    const results = observed(await checkChannelApprovals())
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('unknown')
     expect(results[0].detail).toMatch(/channel registry unavailable/)
+  })
+
+  it('is not-applicable (no incident) while bridge delivery is unavailable — the Discord check owns that', async () => {
+    mockReadiness = readinessWith([], { connection: { state: 'missing_token', since: 'x', lastError: null }, channels: { items: [], source: 'none', collectedAt: null } })
+    const result = parseHealthCheckRunInput(await checkChannelApprovals())
+    expect(result.outcome).toBe('not_applicable')
+    expect(JSON.stringify(result)).toMatch(/unavailable \(missing_token\)/)
   })
 })
 
 // ─── checkChannelAliases ─────────────────────────────────────────────────
 
 describe('checkChannelAliases', () => {
-  it('reports ok when no aliases are configured', async () => {
-    mockRuntime.channels!.list = async () => [{
-      id: 'discord',
-      platform: 'discord',
-      label: 'Discord',
-      capabilities: ['message'],
-    }]
+  const discordOnly = [{ id: 'discord', platform: 'discord', label: 'Discord', capabilities: ['message'] }]
 
-    const results = observed(await checkChannelAliases(mockRuntime))
+  it('reports ok when no aliases are configured', async () => {
+    mockReadiness = readinessWith(discordOnly)
+    const results = observed(await checkChannelAliases())
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('healthy')
     expect(results[0].summary).toContain('No channel aliases')
@@ -638,14 +662,8 @@ describe('checkChannelAliases', () => {
 
   it('reports ok when aliases target available runtime channels', async () => {
     mockChannelAliases = { general: 'discord:channel-123' }
-    mockRuntime.channels!.list = async () => [{
-      id: 'discord',
-      platform: 'discord',
-      label: 'Discord',
-      capabilities: ['message'],
-    }]
-
-    const results = observed(await checkChannelAliases(mockRuntime))
+    mockReadiness = readinessWith(discordOnly)
+    const results = observed(await checkChannelAliases())
     expect(results[0].status).toBe('healthy')
     expect(results[0].summary).toContain('1 channel alias')
   })
@@ -656,25 +674,18 @@ describe('checkChannelAliases', () => {
     mockChannelAliases = { approvals: 'discord:channel:777' }
     mockNotificationChannel = 'discord'
     mockNotificationTarget = 'channel:888'
-    mockRuntime.channels!.list = async () => [
+    mockReadiness = readinessWith([
       { id: 'discord:channel:777', platform: 'discord', label: '#approvals', capabilities: ['message'] },
       { id: 'discord:channel:888', platform: 'discord', label: '#alerts', capabilities: ['message'] },
-    ]
-
-    const results = observed(await checkChannelAliases(mockRuntime))
+    ])
+    const results = observed(await checkChannelAliases())
     expect(results[0].status).toBe('healthy')
   })
 
   it('warns when an alias targets an unavailable runtime channel', async () => {
     mockChannelAliases = { general: 'slack:channel-123' }
-    mockRuntime.channels!.list = async () => [{
-      id: 'discord',
-      platform: 'discord',
-      label: 'Discord',
-      capabilities: ['message'],
-    }]
-
-    const results = observed(await checkChannelAliases(mockRuntime))
+    mockReadiness = readinessWith(discordOnly)
+    const results = observed(await checkChannelAliases())
     expect(results[0].status).toBe('warning')
     expect(results[0].detail).toContain('unavailable runtime channel')
   })
@@ -682,33 +693,27 @@ describe('checkChannelAliases', () => {
   it('reports ok when a legacy notification target supplies the general alias', async () => {
     mockNotificationChannel = 'discord'
     mockNotificationTarget = 'channel-123'
-    mockRuntime.channels!.list = async () => [{
-      id: 'discord',
-      platform: 'discord',
-      label: 'Discord',
-      capabilities: ['message'],
-    }]
-
-    const results = observed(await checkChannelAliases(mockRuntime))
+    mockReadiness = readinessWith(discordOnly)
+    const results = observed(await checkChannelAliases())
     expect(results[0].status).toBe('healthy')
     expect(results[0].summary).toContain('1 channel alias')
   })
 
-  it('warns when the configured alert channel is a missing alias', async () => {
+  it('warns when the configured alert channel is a missing alias and links to the Channels tab', async () => {
     mockNotificationChannel = 'general'
-    mockRuntime.channels!.list = async () => [{
-      id: 'discord',
-      platform: 'discord',
-      label: 'Discord',
-      capabilities: ['message'],
-    }]
-
-    const results = observed(await checkChannelAliases(mockRuntime))
+    mockReadiness = readinessWith(discordOnly)
+    const results = observed(await checkChannelAliases())
     expect(results[0].status).toBe('warning')
     expect(results[0].detail).toContain('notifications.channelAliases.general')
-    // The aliases live in settings.json with no form field yet, so the link
-    // lands on the System & Alerts category rather than a specific field.
-    expect(results[0].incident?.resolution).toMatchObject({ type: 'navigate', href: '/settings?tab=system' })
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'navigate', href: '/settings?tab=channels' })
+  })
+
+  it('is not-applicable while bridge delivery is unavailable — no second incident for one outage', async () => {
+    mockChannelAliases = { general: 'slack:channel-123' }
+    mockReadiness = readinessWith([], { connection: { state: 'failed', since: 'x', lastError: { kind: 'auth_failed', message: 'x', at: 'x' } }, channels: { items: [], source: 'none', collectedAt: null } })
+    const result = parseHealthCheckRunInput(await checkChannelAliases())
+    expect(result.outcome).toBe('not_applicable')
+    expect(JSON.stringify(result)).toMatch(/unavailable \(failed\)/)
   })
 })
 

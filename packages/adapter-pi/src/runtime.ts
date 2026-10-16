@@ -108,14 +108,26 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
   /**
    * Presence-only credential report (P2.2): provider names from Pi's
    * auth.json (never secret material). Pi keys credentials per-install, not
-   * per-agent, so `agentId` is irrelevant; no channel layer → no channels.
+   * per-agent, so `agentId` is irrelevant. Channels: the delivery bridge's
+   * enumerated channels once it is applied (#908) — an unconfigured or
+   * unconnected bridge reports none, honestly.
    */
   credentialStatus = async (_opts?: { agentId?: string }): Promise<RuntimeCredentialStatus> => {
     const llmCredentials = listAuthCredentials()
+    const bridge = this.initOpts?.channelBridge
+    const bridgeState = bridge?.status().state
+    let channels: string[] = []
+    if (bridge && (bridgeState === 'connected' || bridgeState === 'degraded')) {
+      try {
+        channels = (await bridge.channels.list()).map((channel) => channel.label || channel.id)
+      } catch (err) {
+        this.initOpts?.logger?.warn?.('Bridge channel list failed during credentialStatus', { error: err instanceof Error ? err.message : String(err) })
+      }
+    }
     return {
       llmProviders: llmCredentials.map((entry) => entry.provider),
       llmCredentials,
-      channels: [],
+      channels,
     }
   }
 
@@ -249,8 +261,12 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
    * Discord semantic; Pi knows only the neutral surface.
    */
   get channels(): AgentRuntimeAdapter['channels'] {
-    const bridge = this.initOpts?.channelBridge
-    return bridge?.isConfigured() ? bridge.channels : undefined
+    // PERMANENT whenever a bridge handle is threaded (#908 D5): consumers
+    // feature-detect once at activation (chat inbound, approvals wiring),
+    // so a token saved after boot must reach them through a surface that
+    // already existed. Delivering members throw a typed DeliveryError until
+    // the bridge is applied; subscribe members are always safe.
+    return this.initOpts?.channelBridge?.channels
   }
 
   skills: AgentRuntimeAdapter['skills'] = createSkillsSurface()

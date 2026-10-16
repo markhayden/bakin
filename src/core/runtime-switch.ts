@@ -23,6 +23,7 @@ import { getMcpCredential } from './mcp-credentials'
 import { z } from 'zod'
 
 import type {
+  CapabilityMode,
   AgentRuntimeAdapter,
   CapabilitySet,
   RuntimeAgent,
@@ -34,6 +35,9 @@ import type { RuntimeAdapterName } from '@bakin/core/settings'
 import { createAppServices, maybeGetAppServices } from './app-services'
 import { createRuntimeAdapter, getSupportedRuntimeAdapterNames } from './runtime-adapter-factory'
 import { syncBakinRuntimeSkill } from './bakin-skill'
+import { reconcileDeliveryBridge } from './delivery'
+import { getChannelReadiness } from './delivery/readiness'
+import { SECRET_SLOT, resolveSecretSlotStatus } from '@bakin/core/secrets'
 import { getContentDir } from './content-dir'
 import { getInFlightTurnCount } from './dispatch-registry'
 import { resetSameAgentTurnsModeCache } from './dispatch-turns'
@@ -44,7 +48,7 @@ import { enumerateSelections, evaluateSelections, proposeRepairs, computeRevisio
 import type { RoutingConfig } from './model-routing'
 import { getSettings, updateSettings } from './settings'
 import { snapshotAgentContent, carryAgentContent, previewWorkspaceCarry, type AgentContentSnapshot, type WorkspaceCarryReport } from './workspace-carry'
-import { snapshotSourceCapabilities, buildCantCarryReport, type CantCarryLine, type SourceCapabilitySnapshot, type CronAdoptionOutcome, type SnapshottedCronJob } from './switch-report'
+import { snapshotSourceCapabilities, buildCantCarryReport, buildChannelSwitchReport, type CantCarryLine, type ChannelSwitchReport, type SourceCapabilitySnapshot, type CronAdoptionOutcome, type SnapshottedCronJob } from './switch-report'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 
 const log = createLogger('runtime-switch')
@@ -115,6 +119,13 @@ export interface RuntimeSwitchResult {
   cantCarry: CantCarryLine[] | null
   /** The TARGET's credential presence — a carried roster with no provider auth dispatches nothing. */
   credentials: RuntimeCredentialStatus | null
+  /**
+   * Channel ownership across the switch (#908 §4.9): who delivers on each
+   * side, what Bakin's bridge WOULD be on the target (a projection — never
+   * a connection outcome), and the setup the owner must do. Null when the
+   * capabilities phase didn't run.
+   */
+  channels: ChannelSwitchReport | null
   /** True for a preview run: nothing was written anywhere. */
   dryRun?: boolean
   /** Plugins hold the old adapter until the server restarts. */
@@ -300,6 +311,7 @@ export async function switchRuntime(
     toolAccess: null,
     cantCarry: null,
     credentials: null,
+    channels: null,
     restartRequired: false,
   }
 
@@ -404,6 +416,13 @@ export async function switchRuntime(
       } catch (err) {
         log.warn('re-provisioning the restored runtime failed; next server boot heals it', { error: String(err) })
       }
+      // The delivery bridge follows the restored runtime's delivery mode
+      // (native ⇒ teardown so two consumers never share the bot token).
+      try {
+        await reconcileDeliveryBridge(services.runtime, 'runtime')
+      } catch (err) {
+        log.warn('delivery bridge reconcile after restore failed', { error: String(err) })
+      }
       emit({ phase: 'restore', status: 'ok', detail: `restored ${from}` })
       return true
     } catch (err) {
@@ -494,6 +513,16 @@ export async function switchRuntime(
     }
     emit({ phase: 'provision', status: 'ok', ...(skillDetail ? { detail: skillDetail } : {}) })
 
+    // ── delivery bridge follows the target's delivery mode (#908 D2) ──────
+    // Native target ⇒ immediate teardown (no double-handling of the bot
+    // token); bridge-capable target ⇒ up now, plugin-bound surfaces follow
+    // at restart. Never fails a switch.
+    try {
+      await reconcileDeliveryBridge(newRuntime, 'runtime')
+    } catch (err) {
+      log.warn('delivery bridge reconcile after switch failed', { error: String(err) })
+    }
+
     // ── reconcile roster (best-effort carry) ──────────────────────────────
     emit({ phase: 'reconcile-roster', status: 'start' })
     result.roster = await reconcileRoster(sourceRoster, newRuntime)
@@ -569,6 +598,7 @@ export async function switchRuntime(
     if (sourceCapabilities) {
       result.cantCarry = adjustCantCarryForAdoption(buildCantCarryReport(sourceCapabilities, newRuntime), result.cron, false)
     }
+    result.channels = channelSwitchReport(result.from, result.to, result.capabilities.delivery.mode)
     try {
       result.credentials = await newRuntime.credentialStatus()
     } catch (err) {
@@ -700,6 +730,7 @@ async function dryRunSwitch(
     if (sourceCapabilities) {
       result.cantCarry = adjustCantCarryForAdoption(buildCantCarryReport(sourceCapabilities, targetRuntime), result.cron, true)
     }
+    result.channels = channelSwitchReport(result.from, result.to, result.capabilities.delivery.mode)
     try {
       result.credentials = await targetRuntime.credentialStatus()
     } catch (err) {
@@ -717,4 +748,27 @@ async function dryRunSwitch(
       log.warn('secondary target shutdown failed after dry run', { error: String(err) })
     }
   }
+}
+
+/**
+ * Channel ownership for a switch (#908 §4.9): the source side is the live
+ * readiness snapshot; the target side is projected from settings + token
+ * PRESENCE (never the value) + the target's declared delivery mode. Never
+ * connects anything — dry runs and real runs read the same facts.
+ */
+function channelSwitchReport(from: RuntimeAdapterName, to: RuntimeAdapterName, targetDeliveryMode: CapabilityMode): ChannelSwitchReport {
+  const source = getChannelReadiness()
+  const discord = getSettings().integrations.discord
+  const token = resolveSecretSlotStatus(SECRET_SLOT.discordBotToken)
+  return buildChannelSwitchReport({
+    source: { adapter: from, deliveryMode: source.runtime.deliveryMode, state: source.connection.state },
+    target: {
+      adapter: to,
+      deliveryMode: targetDeliveryMode,
+      enabled: discord.enabled,
+      tokenPresent: token.present,
+      tokenSource: token.source,
+      guildCount: discord.guildIds.length,
+    },
+  })
 }

@@ -5,16 +5,19 @@
  * from — the active runtime, a Bakin env override, the Bakin secret store, or
  * nothing — with write-only store management (runtime-/env-sourced rows are
  * read-only status; readiness comes from the images plugin's /providers).
- * Integration secrets: every named secret in the Bakin store grouped by
- * integration (discord.botToken, brave.apiKey, …) with add/remove — the
- * standing home capability packs and doctor remediation links point at.
- * All edits go through the masked /api/secrets surface; values are never
- * rendered back.
+ * Known integrations: every DECLARED secret slot (the registry in
+ * @bakin/core/secrets — discord.botToken, brave.apiKey, …) with its presence
+ * and source, set/clear through the shared SecretSlotField, and a link to the
+ * surface that owns it. Integration secrets: every named secret in the Bakin
+ * store grouped by integration with remove, plus a collapsed custom-secret
+ * form for pack-declared slots. All edits go through the masked /api/secrets
+ * surface; values are never rendered back.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DataTable, ListRow, ListRows, StatusBadge, type DataTableColumn, type StatusBadgeVariant, type StatusTone } from '@makinbakin/sdk/patterns'
-import { Grid, Inline } from '@makinbakin/sdk/layout'
-import { Alert, AlertDescription, Button, Field, FieldLabel, Form, FormActions, Input, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import { DisclosurePanel, Grid, Inline, Stack } from '@makinbakin/sdk/layout'
+import { Alert, AlertDescription, Button, Field, FieldLabel, Form, FormActions, Input, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
+import { SecretSlotField, type SecretSlotRow } from './secret-slot-field'
 
 export const PROVIDER_KEYS_TAB_ID = 'integrations'
 
@@ -37,6 +40,7 @@ export function ProviderKeysTab() {
   const [runtimeName, setRuntimeName] = useState<string | null>(null)
   const [stored, setStored] = useState<string[]>([])
   const [secretNames, setSecretNames] = useState<Record<string, string[]>>({})
+  const [slots, setSlots] = useState<SecretSlotRow[]>([])
   const [addDraft, setAddDraft] = useState({ provider: '', name: '', value: '' })
   const [loading, setLoading] = useState(true)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -66,6 +70,7 @@ export function ProviderKeysTab() {
       setRuntimeName(typeof providers?.runtimeName === 'string' ? providers.runtimeName : null)
       setStored(Array.isArray(secrets?.stored) ? secrets.stored : [])
       setSecretNames(secrets?.secrets && typeof secrets.secrets === 'object' ? secrets.secrets : {})
+      setSlots(Array.isArray(secrets?.slots) ? secrets.slots : [])
       setLoadError(null)
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Settings could not be loaded.')
@@ -117,6 +122,13 @@ export function ProviderKeysTab() {
   const removeSecret = (provider: string, name: string) =>
     mutate(`${provider}.${name}`, () =>
       fetch(`/api/secrets?provider=${encodeURIComponent(provider)}&name=${encodeURIComponent(name)}`, { method: 'DELETE' }))
+
+  const setSlot = (slot: SecretSlotRow, value: string) =>
+    mutate(`${slot.provider}.${slot.name}`, () => fetch('/api/secrets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: slot.provider, name: slot.name, value }),
+    }))
 
   const addSecret = async () => {
     const provider = addDraft.provider.trim()
@@ -217,16 +229,38 @@ export function ProviderKeysTab() {
       })}
       </ListRows>
 
+      <Stack gap="dense" className="pt-bakin-4">
+        <Text as="h3" weight="medium">Known integrations</Text>
+        <Text size="meta" tone="muted" as="p">
+          Secrets Bakin itself knows how to use. Each shows where its value comes from; an environment
+          variable always wins over the Bakin store. Values are write-only and never leave the server.
+        </Text>
+        <ListRows aria-label="Known integrations" variant="separated">
+          {slots.map(slot => (
+            <ListRow key={`${slot.provider}.${slot.name}`}>
+              <SecretSlotField
+                slot={slot}
+                busy={busy !== null}
+                showOwner
+                onSet={value => setSlot(slot, value)}
+                onClear={() => removeSecret(slot.provider, slot.name)}
+              />
+            </ListRow>
+          ))}
+        </ListRows>
+      </Stack>
+
       <div className="pt-bakin-4 space-y-bakin-2">
         <h3 className="text-sm font-bakin-typography-weight-medium">Integration secrets</h3>
         <p className="text-xs text-bakin-text-muted">
-          Named secrets used by installed capabilities and integrations (e.g. a search API key or a bot
-          token). Values are write-only — they never leave the server. An environment variable with the
+          Every named secret in the Bakin store, including slots declared by installed capability packs.
+          Values are write-only — they never leave the server. An environment variable with the
           matching name always overrides a stored value.
         </p>
         {secrets.length > 0 ? <DataTable label="Integration secrets" columns={columns} rows={secrets}
           rowKey={row => JSON.stringify([row.provider, row.name])} collapseBelow="xl" listVariant="separated" />
           : <p className="text-sm text-bakin-text-muted">No named secrets stored.</p>}
+        <DisclosurePanel variant="soft" summary="Custom secret">
         <Form aria-label="Add integration secret" onSubmit={event => { event.preventDefault(); void addSecret() }}>
         <Grid layout="thirds" gap="item">
           <Field name="secret-provider" className="min-w-0 flex-1">
@@ -267,6 +301,7 @@ export function ProviderKeysTab() {
           </Button>
         </FormActions>
         </Form>
+        </DisclosurePanel>
       </div>
     </div>
   )

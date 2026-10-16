@@ -251,6 +251,26 @@ describe('review-hardening regressions', () => {
     idempotencyRows.clear()
   })
 
+  it('classifies REST failures into DeliveryError kinds by status (#908 §4.3)', async () => {
+    const { DeliveryError } = await import('../../../packages/core/src/delivery')
+    const failWith = (status: number) => makeApi({
+      createMessage: async () => { const err = new Error(`http ${status}`) as Error & { status: number }; err.status = status; throw err },
+    }).api
+    for (const [status, kind] of [[401, 'auth_failed'], [403, 'forbidden'], [404, 'target_not_found'], [400, 'rejected']] as const) {
+      const err = await makeSurface(failWith(status)).sendMessage({ channels: ['channel:1'], message: { body: 'x' } }).catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(DeliveryError)
+      expect((err as InstanceType<typeof DeliveryError>).kind).toBe(kind)
+      expect((err as InstanceType<typeof DeliveryError>).detail.status).toBe(status)
+    }
+    let attempts = 0
+    const flaky = makeApi({ createMessage: async () => { attempts += 1; const err = new Error('http 502') as Error & { status: number }; err.status = 502; throw err } }).api
+    const err = await makeSurface(flaky).sendMessage({ channels: ['channel:1'], message: { body: 'x' } }).catch((e: unknown) => e)
+    expect((err as InstanceType<typeof DeliveryError>).kind).toBe('transport')
+    expect(attempts).toBe(3)
+    const failed = auditEvents.filter(e => e.event === 'delivery.send_failed').at(-1)
+    expect(failed?.data).toMatchObject({ kind: 'transport', attempts: 3 })
+  })
+
   it('fails fast on deterministic 4xx errors (no retry)', async () => {
     let attempts = 0
     const { api } = makeApi({

@@ -3,14 +3,16 @@
  *
  * Non-secret config lives at `settings.integrations.discord` (broadcast by
  * GET /api/settings); the bot token lives in the secret store as
- * `discord.botToken` and is read env-first here — it is NEVER injected into
+ * `discord.botToken` (declared in the secret-slot registry) and is read
+ * env-first through the private slot-value path — it is NEVER injected into
  * `process.env` (agent shells inherit the server env; the antfly-password
  * pattern is the precedent).
  */
-import { getStoredSecret } from '@bakin/core/media'
+import { SECRET_SLOT } from '@bakin/core/secrets'
+import { readSecretSlotValue } from '@bakin/core/secrets/slot-value'
 import { getSettings, type DiscordIntegrationSettings } from '@/core/settings'
 
-export const DISCORD_TOKEN_ENV_VAR = 'DISCORD_BOT_TOKEN'
+export const DISCORD_TOKEN_ENV_VAR = SECRET_SLOT.discordBotToken.envVar
 
 export interface DiscordBridgeConfig {
   settings: DiscordIntegrationSettings
@@ -20,9 +22,7 @@ export interface DiscordBridgeConfig {
 
 export function readDiscordConfig(): DiscordBridgeConfig {
   const settings = getSettings().integrations.discord
-  const envToken = process.env[DISCORD_TOKEN_ENV_VAR]?.trim()
-  const token = envToken || getStoredSecret('discord', 'botToken')
-  return { settings, token: token || null }
+  return { settings, token: readSecretSlotValue(SECRET_SLOT.discordBotToken) }
 }
 
 /**

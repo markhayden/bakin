@@ -73,7 +73,10 @@ Boot order (`src/core/server/startup-recovery.ts`): plugins activate (kinds)
 ## Settings
 
 `settings.approvals = { channelAlerts: false, channel: 'general',
-requireRejectReason: true }` (System & Alerts). Workflows keeps ZERO approval
+requireRejectReason: true }` — `channelAlerts` + `channel` are routing and
+live in Settings → Channels (`PUT /api/channels/routing`, #908);
+`requireRejectReason` is approval policy and stays in System & Alerts.
+Workflows keeps ZERO approval
 settings. `requireRejectReason` binds surfaces that can collect a reason (UI
 and decision page: a web reject without a comment is refused 400 while on);
 channel-button rejects without a comment record the default reason

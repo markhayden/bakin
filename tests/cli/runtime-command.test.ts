@@ -174,6 +174,12 @@ describe('bakin runtime use', () => {
       workspaces: { carried: [{ agentId: 'pixel', files: 2, bytes: 64 }], skills: [], skippedExisting: [], failed: [] },
       cantCarry: [],
       credentials: { llmProviders: ['openai-codex'] },
+      channels: {
+        source: { owner: 'runtime', state: 'native' },
+        target: { owner: 'bridge', projectedState: 'missing_token', tokenSource: null },
+        setup: ['Add the Discord bot token in Settings → Channels.'],
+        ownership: "Bakin's Discord bridge takes over delivery on pi.",
+      },
       sync: null,
       capabilities: CAPABILITIES,
       toolAccess: null,
@@ -192,8 +198,38 @@ describe('bakin runtime use', () => {
     expect(out).toContain('Roster: would carry 1, existing 1, failed 0')
     expect(out).toContain('Workspace content: would carry 2 file(s)')
     expect(out).toContain('Target credentials: openai-codex')
+    // #908 D9: the channels section renders in the CLI too — ownership copy,
+    // the projected target state, and every setup step.
+    expect(out).toContain("Channels: Bakin's Discord bridge takes over delivery on pi.")
+    expect(out).toContain('on pi: missing token (bridge-owned)')
+    expect(out).toContain('  → Add the Discord bot token in Settings → Channels.')
     expect(out).toContain('Dry run — nothing was changed')
     expect(out).not.toContain('Restart required')
+  })
+
+  it('renders a native-target channels section with no setup steps', async () => {
+    postResponse = {
+      ok: true, dryRun: true, from: 'pi', to: 'openclaw', backupPath: null,
+      roster: { carried: [], existing: ['main'], unmappedModels: [], failed: [] },
+      workspaces: null, cantCarry: null, credentials: null, sync: null,
+      channels: {
+        source: { owner: 'bridge', state: 'connected' },
+        target: { owner: 'runtime', projectedState: 'native', tokenSource: 'store' },
+        setup: [],
+        ownership: "Bakin's Discord bridge goes idle by design: openclaw's own channel config owns delivery.",
+      },
+      capabilities: CAPABILITIES, toolAccess: null, restartRequired: false,
+    }
+    const restore = captureConsole()
+    try {
+      await run(['runtime', 'use', 'openclaw', '--dry-run'])
+    } finally {
+      restore()
+    }
+    const out = logLines.join('\n')
+    expect(out).toContain("Channels: Bakin's Discord bridge goes idle by design")
+    expect(out).toContain('on openclaw: native (runtime-owned)')
+    expect(out).not.toContain('  → ')
   })
 
   it('--adopt-cron prints one line per source cron job with its outcome (adopt / skip / refuse / failed)', async () => {

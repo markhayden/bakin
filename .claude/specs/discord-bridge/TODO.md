@@ -29,10 +29,10 @@ Plan: `.claude/specs/discord-bridge/PLAN.md`
 - [x] CHECKPOINT 2: owner live-validated (incl. /new-chat, any-file, ghost-ack fixes on the final tip) — PR #741 MERGED 2026-07-27. Initiative COMPLETE; deferred follow-ups above remain open
 
 ## Deferred (review suggestions, non-blocking)
-- [ ] Channel cache on-demand refresh (new channels invisible until restart)
+- [x] Channel cache on-demand refresh — folded into #908 (Verify refreshes per guild; `POST /api/channels/verify`)
 - [ ] editApproval body patch drops embed title/color (latent — no in-tree caller)
 - [ ] delivery:* idempotency rows have no TTL/GC (opt-in keys, no callers yet)
-- [ ] Settings-change-driven bridge teardown (today: interactions stop live, gateway disconnects at restart)
+- [x] Settings-change-driven bridge teardown — folded into #908 (reconciliation to the latest config; disable/clear-token/remove-guild tear down in-process)
 - [ ] Streaming replies via message edits (SPEC non-goal, revisit after B)
 - [ ] Reply relay: resolve /api/assets image markdown into real Discord attachments (deliverContent path exists; first live complaint candidate)
 - [ ] Bridge-down reply loss: chat.done relay failure is audited via send_failed only when the transport is up; add an audit for the not-connected path

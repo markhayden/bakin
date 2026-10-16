@@ -2,7 +2,7 @@
  * GET/POST/DELETE /api/secrets — manage the Bakin-owned integration secret store.
  *
  * Write-only / masked: GET reports only WHICH secret names each provider has
- * stored, never a value. POST sets one named secret (legacy `apiKey` body
+ * stored plus the declared slot registry with presence/source, never a value. POST sets one named secret (legacy `apiKey` body
  * shape targets the `apiKey` name); DELETE clears one. Provider ids and
  * secret names are validated (safe slug, not a reserved object key) and the
  * value length is bounded. env vars still override the store at resolution
@@ -17,6 +17,7 @@ import {
   setStoredSecret,
   unsetStoredSecret,
 } from '@bakin/core/media'
+import { SECRET_SLOTS, resolveSecretSlotStatus } from '@bakin/core/secrets'
 import { injectSecretEnvForSlot } from '@/core/secret-env'
 
 const secretValue = z.string().min(1).max(8192)
@@ -41,8 +42,13 @@ function badRequest(error: string): Response {
 export async function get(_req: Request, _url: URL): Promise<Response> {
   // Masked: the actual values never leave the server.
   // `stored` = providers with an apiKey (the images/providers view);
-  // `secrets` = every stored secret NAME per provider.
-  return Response.json({ stored: listStoredProviders(), secrets: listStoredSecrets() })
+  // `secrets` = every stored secret NAME per provider;
+  // `slots` = the declared registry with presence + source (env over store).
+  return Response.json({
+    stored: listStoredProviders(),
+    secrets: listStoredSecrets(),
+    slots: SECRET_SLOTS.map((slot) => ({ ...slot, status: resolveSecretSlotStatus(slot) })),
+  })
 }
 
 export async function post(req: Request, _url: URL): Promise<Response> {

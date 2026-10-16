@@ -223,6 +223,12 @@ describe('RuntimesTab', () => {
             ],
           },
           cantCarry: [{ concern: 'sessions', detail: 'runtime session context resets' }],
+          channels: {
+            source: { owner: 'runtime', state: 'native' },
+            target: { owner: 'bridge', projectedState: 'missing_token', tokenSource: null },
+            setup: ['Add the Discord bot token in Settings → Channels (/settings?tab=channels) — the bridge cannot connect without it.'],
+            ownership: "openclaw's bot token stays in openclaw's own config. pi delivers through Bakin's Discord bridge, which needs its OWN token in Settings → Channels — Bakin never reads the runtime's secret.",
+          },
           credentials: { llmProviders: [] }, sync: null,
         }), { status: 200 })
       }
@@ -262,6 +268,11 @@ describe('RuntimesTab', () => {
     expect(screen.getByText(/subagent model 'openai\/gpt-5.5-mini' preserved/)).toBeTruthy()
     expect(screen.getByText(/no model providers configured/)).toBeTruthy()
     expect(screen.getByText('Stays behind')).toBeTruthy()
+    // Channel ownership section + the setup step surfaces in "Needs your attention" (#908 §4.9).
+    expect(screen.getByTestId('switch-channels')).toBeTruthy()
+    expect(screen.getByText(/Bakin never reads the runtime's secret/)).toBeTruthy()
+    expect(screen.getByText(/Channels: Add the Discord bot token/)).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Open Settings → Channels' }).getAttribute('href')).toBe('/settings?tab=channels')
     // A dry-run result funnels back into the confirm dialog — the only
     // path to a real switch.
     await act(async () => { fireEvent.click(screen.getByTestId('switch-execute')) })

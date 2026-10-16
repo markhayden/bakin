@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DisclosurePanel, Inline, Stack } from '@makinbakin/sdk/layout'
+import { PluginLink } from '@makinbakin/sdk/navigation'
 import {
   ConfirmDialog,
   CopyButton,
@@ -99,6 +100,7 @@ function ResultCards({ result, onProceed, busy = false }: { result: SwitchResult
   if (result.credentials && result.credentials.llmProviders.length === 0) {
     attention.push(`${result.to} has no model providers configured — carried agents cannot run turns until you log in on the target.`)
   }
+  for (const step of result.channels?.setup ?? []) attention.push(`Channels: ${step}`)
 
   const workspaceFiles = (result.workspaces?.carried ?? []).reduce((sum, c) => sum + c.files, 0)
   const workspaceSkills = (result.workspaces?.skills ?? []).reduce((sum, s) => sum + s.carried, 0)
@@ -185,6 +187,23 @@ function ResultCards({ result, onProceed, busy = false }: { result: SwitchResult
             </ul>
           </CardContent>
         </Card>
+      )}
+
+      {result.channels && (
+        <DisclosurePanel
+          variant="soft"
+          summary="Channel delivery"
+          summaryMeta={`${result.channels.source.owner} → ${result.channels.target.owner} (${result.channels.target.projectedState.replace(/_/g, ' ')})`}
+          data-testid="switch-channels"
+        >
+          <Stack gap="dense">
+            <Text size="meta" tone="muted" as="p">{result.channels.ownership}</Text>
+            <Text size="meta" tone="muted" as="p">
+              Bakin token: {result.channels.target.tokenSource === null ? 'not set' : result.channels.target.tokenSource === 'env' ? 'environment variable' : 'Bakin store'}.{' '}
+              <PluginLink to="/settings?tab=channels">Open Settings → Channels</PluginLink>
+            </Text>
+          </Stack>
+        </DisclosurePanel>
       )}
 
       {(result.cantCarry?.length ?? 0) > 0 && (
@@ -315,6 +334,7 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
         cron: null,
         cantCarry: null,
         credentials: null,
+        channels: null,
         sync: null,
         ...(dryRun ? { dryRun: true } : {}),
       })

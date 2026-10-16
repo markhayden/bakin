@@ -5,13 +5,14 @@
  */
 import { useRef, useState } from 'react'
 import { Wrench } from 'lucide-react'
-import { toast } from '@makinbakin/sdk/hooks'
+import { toast, useJsonFetch, usePluginEvent } from '@makinbakin/sdk/hooks'
 import { Section, Stack } from '@makinbakin/sdk/layout'
+import { PluginLink } from '@makinbakin/sdk/navigation'
 import { ConfirmDialog, StatGroup, StatTile, type DataTableColumn } from '@makinbakin/sdk/patterns'
 import { RuntimeTable } from './runtime-table'
 import { Badge, Button, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { capabilityRows } from '../../lib/runtime-report'
-import { ModeBadge, MODE_LEGEND, CheckStatusBadge, capabilityStateCopy, type CapabilityMode } from './shared'
+import { ModeBadge, MODE_LEGEND, CheckStatusBadge, capabilityStateCopy, deliveryReadinessCopy, type CapabilityMode } from './shared'
 import type { CapabilityReport, OnboardingComponentStatus } from './types'
 
 function CredentialTiles({ report }: { report: CapabilityReport }) {
@@ -63,14 +64,36 @@ interface CapabilityGridRow {
   meaning: string
 }
 
+const CHANNELS_FETCH_OPTIONS = { timeoutMs: 10_000 }
+
+/** The slice of GET /api/channels the Overview needs (#908). */
+interface ChannelReadinessSlice {
+  connection?: { state?: string }
+  remediation?: { summary?: string; nextStep?: string } | null
+}
+
+function readinessSlice(value: unknown): ChannelReadinessSlice | null {
+  if (!value || typeof value !== 'object') return null
+  const slice = value as ChannelReadinessSlice
+  return typeof slice.connection?.state === 'string' ? slice : null
+}
+
 function CapabilityGrid({ report }: { report: CapabilityReport }) {
+  // The Channel delivery row speaks from the ONE readiness snapshot (#908)
+  // and follows it live; the capability mode alone cannot say "enabled but
+  // the token is missing".
+  const channels = useJsonFetch<unknown>('/api/channels', CHANNELS_FETCH_OPTIONS)
+  const readiness = readinessSlice(channels.data)
+  usePluginEvent('channels.readiness', () => { void channels.refresh() })
   const rows: CapabilityGridRow[] = capabilityRows(report.capabilities)
     .filter((row) => row.key !== 'toolCalling' && row.key !== 'input')
     .map((row) => ({
       key: row.key,
       label: row.label,
       mode: row.mode,
-      meaning: capabilityStateCopy(row.key, row.mode, report.adapter, row.detail),
+      meaning: row.key === 'delivery' && readiness
+        ? deliveryReadinessCopy(readiness.connection!.state!, readiness.remediation ?? null, report.adapter)
+        : capabilityStateCopy(row.key, row.mode, report.adapter, row.detail),
     }))
 
   const input = report.capabilities.input
@@ -108,7 +131,17 @@ function CapabilityGrid({ report }: { report: CapabilityReport }) {
       sortable: true,
       sortValue: (row) => row.meaning,
       cellClassName: 'whitespace-normal',
-      cell: (row) => <span className="text-bakin-text-muted">{row.meaning}</span>,
+      cell: (row) => (
+        <span className="text-bakin-text-muted">
+          {row.meaning}
+          {row.key === 'delivery' && (
+            <>
+              {' '}
+              <PluginLink to="/settings?tab=channels" data-testid="runtime-channels-link">Manage channels</PluginLink>
+            </>
+          )}
+        </span>
+      ),
     },
   ]
 

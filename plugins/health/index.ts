@@ -13,7 +13,9 @@ import {
 } from '@bakin/core/usage-history/store'
 import { LedgerUnavailableError, listLiveRuns } from '../../src/core/execution-ledger'
 import { buildAgentBurnReports, coverageCanFlagSessions, getAgentBurnWindowScope, type ScheduledJobEvidence } from '../../src/core/agent-burn'
-import { getLastReport, runDiagnostics } from '../../src/core/doctor'
+import { getLastReport, runDiagnostics, runTargetedDiagnostics } from '../../src/core/doctor'
+import { CHANNEL_HEALTH_CHECK_IDS, subscribeChannelReadiness } from '../../src/core/delivery/readiness'
+import { wireChannelHealthReruns } from './lib/channel-readiness-reruns'
 import { acknowledgeHealthIncident } from '../../src/core/doctor-report-cache'
 import { HealthAckNotFoundError, HealthAckStoreError, readAckRecords } from '../../src/core/health-acks'
 import { createLogger } from '../../src/core/logger'
@@ -142,6 +144,7 @@ async function fetchScheduledJobsEvidence(
 }
 const SEARCH_ENRICHMENT_STATS_TIMEOUT_MS = 250
 let usageHistoryRuntime: PluginContext['runtime'] | null = null
+let stopChannelHealthReruns: (() => void) | null = null
 
 class SearchEnrichmentStatsTimeoutError extends Error {
   constructor() {
@@ -994,7 +997,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Checks whether runtime channels can return workflow approval decisions.',
       group: runtimeGroup,
       maxAgeMs: 300_000,
-      run: () => checkChannelApprovals(ctx.runtime),
+      run: () => checkChannelApprovals(),
     })
     ctx.registerHealthCheck({
       id: 'channel-aliases',
@@ -1002,15 +1005,23 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Validates configured channel aliases and the alert channel against the active runtime.',
       group: runtimeGroup,
       maxAgeMs: 300_000,
-      run: () => checkChannelAliases(ctx.runtime),
+      run: () => checkChannelAliases(),
     })
     ctx.registerHealthCheck({
       id: 'delivery-discord',
       name: 'Discord delivery bridge',
-      description: 'Verifies the Discord bridge config (token, guilds, allowlists) and its gateway connection.',
+      description: 'Projects the channel-readiness snapshot: bridge config (token, guilds, allowlists), gateway connection, and reachable servers.',
       group: runtimeGroup,
       maxAgeMs: 300_000,
-      run: () => checkDeliveryDiscord(ctx.runtime),
+      run: () => checkDeliveryDiscord(),
+    })
+    // Readiness transitions rerun the three channel checks (debounced), so
+    // the Discord incident appears/clears within seconds (#908 D8).
+    stopChannelHealthReruns = wireChannelHealthReruns({
+      subscribe: subscribeChannelReadiness,
+      run: () => runTargetedDiagnostics(CHANNEL_HEALTH_CHECK_IDS),
+      checkIds: CHANNEL_HEALTH_CHECK_IDS,
+      onError: (err) => log.warn('Targeted channel health rerun failed', err),
     })
     ctx.registerHealthCheck({
       id: 'restart-recovery',
@@ -1160,6 +1171,8 @@ const healthPlugin: BakinPlugin = definePlugin({
   onShutdown() {
     stopUsageHistoryTimer()
     usageHistoryRuntime = null
+    stopChannelHealthReruns?.()
+    stopChannelHealthReruns = null
   },
 
   onReady() {

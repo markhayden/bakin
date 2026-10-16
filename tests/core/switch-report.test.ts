@@ -18,7 +18,7 @@ mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 
-import { buildCantCarryReport, snapshotSourceCapabilities } from '../../src/core/switch-report'
+import { buildCantCarryReport, buildChannelSwitchReport, snapshotSourceCapabilities } from '../../src/core/switch-report'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 const NO_SURFACES = {} as Pick<AgentRuntimeAdapter, 'channels' | 'cron'>
@@ -135,5 +135,52 @@ describe('snapshotSourceCapabilities — cron job capture (adoption)', () => {
     } as never
     const captured = await snapshotSourceCapabilities(source, { captureCronJobs: true })
     expect(captured.cronJobs).toEqual([{ job: jobs[1], raw: { blob: 'j2' } }])
+  })
+})
+
+describe('buildChannelSwitchReport (#908 §4.9)', () => {
+  const pi = { adapter: 'pi', deliveryMode: 'unavailable' as const }
+  const openclaw = { adapter: 'openclaw', deliveryMode: 'native' as const }
+
+  it('OpenClaw → Pi with no Bakin token: bridge owner, projected missing_token, explicit ownership copy, setup names the token', () => {
+    const report = buildChannelSwitchReport({
+      source: { ...openclaw, state: 'native' },
+      target: { ...pi, enabled: true, tokenPresent: false, tokenSource: null, guildCount: 1 },
+    })
+    expect(report.source).toEqual({ owner: 'runtime', state: 'native' })
+    expect(report.target).toEqual({ owner: 'bridge', projectedState: 'missing_token', tokenSource: null })
+    expect(report.ownership).toContain("openclaw's bot token stays in openclaw's own config")
+    expect(report.ownership).toContain('Bakin never reads the runtime\'s secret')
+    expect(report.setup).toHaveLength(1)
+    expect(report.setup[0]).toContain('Add the Discord bot token in Settings → Channels (/settings?tab=channels)')
+  })
+
+  it('OpenClaw → Pi with the token in the store: ready_to_connect, never a failure', () => {
+    const report = buildChannelSwitchReport({
+      source: { ...openclaw, state: 'native' },
+      target: { ...pi, enabled: true, tokenPresent: true, tokenSource: 'store', guildCount: 1 },
+    })
+    expect(report.target.projectedState).toBe('ready_to_connect')
+    expect(report.setup[0]).toContain('Nothing to add')
+  })
+
+  it('Pi → OpenClaw: the bridge goes idle, the runtime owns delivery, the stored token is not shared', () => {
+    const report = buildChannelSwitchReport({
+      source: { ...pi, state: 'connected' },
+      target: { ...openclaw, enabled: true, tokenPresent: true, tokenSource: 'store', guildCount: 1 },
+    })
+    expect(report.source.owner).toBe('bridge')
+    expect(report.target).toEqual({ owner: 'runtime', projectedState: 'native', tokenSource: 'store' })
+    expect(report.ownership).toContain('goes idle by design')
+    expect(report.setup[0]).toContain("openclaw has its own Discord configuration")
+  })
+
+  it('disabled bridge on the target projects disabled with an enable step', () => {
+    const report = buildChannelSwitchReport({
+      source: { ...openclaw, state: 'native' },
+      target: { ...pi, enabled: false, tokenPresent: false, tokenSource: null, guildCount: 0 },
+    })
+    expect(report.target.projectedState).toBe('disabled')
+    expect(report.setup[0]).toContain('Enable Discord delivery')
   })
 })
