@@ -56,6 +56,13 @@ export { useSidebar } from '@/hooks/use-sidebar'
 export { useSSE } from '@/hooks/use-sse'
 /** Subscribe to a server-pushed plugin event over the shell's single connection. */
 export { usePluginEvent, emitPluginEvent, type PluginEventPayload } from '@/hooks/use-plugin-event'
+/** Follow one server operation live (rev/boot guards, reconcile, expired vs restarted vs unreachable). */
+export { useOperation } from '@/hooks/use-operation'
+/** Call a converted long-running route and get its `{ operationId, bootId }`. */
+export { startOperation } from '@/hooks/use-operation'
+/** Thrown by `startOperation` when the route refuses; carries its status and JSON body. */
+export { OperationStartError } from '@/hooks/use-operation'
+export type { UseOperationOptions, UseOperationResult } from '@/hooks/use-operation'
 /** @deprecated Import history-aware back from `@makinbakin/sdk/navigation`. */
 export { useHistoryBack } from '@/hooks/use-history-back'
 /** Fire a toast notification (success/error/info). */
