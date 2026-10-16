@@ -357,6 +357,7 @@ import {
   searchConsistencyRepair,
 } from '../../../plugins/health/lib/system-checks/search-consistency'
 import { checkAndSyncSkill, syncSkillRepair } from '../../../plugins/health/lib/system-checks/sync-skill'
+import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 import { checkPluginAssets, installPluginAssetsRepair } from '../../../plugins/health/lib/system-checks/plugin-assets'
 import { createMockRuntimeAdapter, mockChannels } from '@bakin/core/adapters/runtime/testing'
 import type { AgentRuntimeAdapter, RuntimeSkill } from '@bakin/core/adapters/runtime'
@@ -1125,6 +1126,16 @@ describe('checkAndSyncSkill', () => {
     expect(applied[0].status).toBe('applied')
     expect(applied[0].message).toMatch(/synced/)
     expect(runtimeSkill?.instructions).toContain('<!-- bakin:exec-tools:start -->')
+  })
+
+  it('sync-skill passes the repair runtime contract (render → write)', async () => {
+    const projectRoot = pathJoin(testDir, 'project-contract')
+    mkdirSync(join(projectRoot, 'skill'), { recursive: true })
+    writeFileSync(join(projectRoot, 'skill', 'SKILL.md'), '# Bakin Skill\n<!-- bakin:exec-tools:start -->\n<!-- bakin:exec-tools:end -->\n')
+    const repair = syncSkillRepair(projectRoot, mockRuntime)
+    const run = await runRepairContract(repair, await repair.plan({ type: 'all_actionable', reportId: 'r' }))
+    expectRepairContract(repair, run)
+    expect(run.calls).toEqual(['stage:render', 'stage:write'])
   })
 })
 

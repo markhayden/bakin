@@ -72,6 +72,10 @@ export function runDirsSweepRepair(): HealthRepairActionDefinition {
   return {
     id: 'sweep-run-dirs',
     name: 'Sweep run workspaces',
+    operationPlan: () => ({
+      stages: [{ id: 'sweep', kind: 'cleanup', label: 'Remove expired run workspaces' }],
+      pointOfNoReturn: 'sweep',
+    }),
     async plan() {
       return [{
         id: 'sweep-run-dirs',
@@ -90,10 +94,11 @@ export function runDirsSweepRepair(): HealthRepairActionDefinition {
         }],
       }]
     },
-    async apply(items) {
+    async apply(items, op) {
       if (items.length === 0) return []
       try {
         const settings = getSettings()
+        op?.stage('sweep')
         const stats = await sweepRunWorkspaces({
           isTurnLive: (threadId) => getInFlightTurn(threadId) !== undefined,
           taskExists: (taskId) => Boolean(getTask(taskId)),
@@ -101,6 +106,7 @@ export function runDirsSweepRepair(): HealthRepairActionDefinition {
           maxTotalBytes: settings.dispatch.runDirMaxTotalGb * 1024 * 1024 * 1024,
           graceMs: settings.watchdog.intervalMs * 2,
         })
+        op?.log(`Swept ${stats?.sweptLastTick ?? 0} dir(s); ${stats?.count ?? 0} remain (${fmtBytes(stats?.sizeBytes ?? 0)})`)
         return items.map((item) => ({
           itemId: item.id,
           actionId: item.actionId,
