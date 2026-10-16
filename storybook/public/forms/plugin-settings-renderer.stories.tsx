@@ -284,9 +284,18 @@ export const CompactListComposition = {
     docs: { description: { story: 'List rows align whole Fields through renderer-owned layout cells. Mixed controls, toggles at the start/middle/end, wrapping and unbroken labels, and incomplete rows follow the available container width without styling control internals.' } },
   },
   render: (args) => (
-    <div data-testid="compact-settings-frame" style={{ inlineSize: '64rem', maxInlineSize: '100%' }}>
-      <PluginSettingsRenderer {...args} />
-    </div>
+    <PageShell width="wide" className="bakin-form-story">
+      <Stack gap="section">
+        <header className="bakin-form-story__intro">
+          <p className="bakin-form-story__eyebrow">Compact list rows</p>
+          <h1>Line up mixed controls across every row</h1>
+          <p>Each list item lays out whole Fields on shared label and control tracks. Columns follow the row&apos;s width, toggles sit on the control line, and long labels wrap without breaking alignment.</p>
+        </header>
+        <div data-testid="compact-settings-frame" style={{ inlineSize: '64rem', maxInlineSize: '100%' }}>
+          <PluginSettingsRenderer {...args} />
+        </div>
+      </Stack>
+    </PageShell>
   ),
   play: async ({ canvas, canvasElement, userEvent }) => {
     const enabled = canvas.getByRole('switch', { name: 'Enabled' })
