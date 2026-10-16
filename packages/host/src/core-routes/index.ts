@@ -97,10 +97,19 @@ const pluginsAndMiscRoutes = [
   defineCoreRoute({ path: '/api/dev/notify', method: 'POST', summary: 'Emit development notification', description: 'Development-only watcher bridge for browser rebuild notifications.', visibility: 'internal', body: z.object({ type: z.string(), payload: z.unknown() }), responses: { 200: okResponse }, handler: stub }),
 ]
 
+// ─── /api/operations (#895) ──────────────────────────────────────────────
+const operationView = z.object({ id: z.string(), rev: z.number(), bootId: z.string(), status: z.string() }).passthrough()
+const operationsRoutes = [
+  defineCoreRoute({ path: '/api/operations', method: 'GET', activityClass: 'routine', summary: 'List operations', description: 'Live and recently finished top-level operations (installs, repairs, reindex, …) with the server boot id.', responses: { 200: z.object({ bootId: z.string(), operations: z.array(operationView) }) }, handler: stub }),
+  defineCoreRoute({ path: '/api/operations/:id', method: 'GET', activityClass: 'routine', summary: 'Get an operation', description: 'The complete operation view; `children=1` inlines child views. A 404 carries the boot id so clients can tell expired from restarted.', params: z.object({ id: z.string() }), query: z.object({ children: z.literal('1').optional() }), responses: { 200: z.object({ bootId: z.string(), operation: operationView, children: z.array(operationView).optional() }), 404: z.object({ bootId: z.string(), error: z.literal('not_found') }) }, handler: stub }),
+  defineCoreRoute({ path: '/api/operations/:id/cancel', method: 'POST', summary: 'Cancel an operation', description: 'Allowed only before the operation\'s point of no return; terminal status is published after the work settles.', params: z.object({ id: z.string() }), body: { contentType: 'none' }, responses: { 202: z.object({ bootId: z.string(), status: z.literal('cancelling') }), 404: z.object({ bootId: z.string(), status: z.literal('not_found') }), 409: z.object({ bootId: z.string(), status: z.enum(['not_cancellable', 'already_finished']) }) }, handler: stub }),
+]
+
 // ─── Aggregate ────────────────────────────────────────────────────────────
 
 export const coreRoutes: ReadonlyArray<APIRoute<any, any, any, any>> = [
   ...agentsRoutes,
   ...dispatchAndPackagesRoutes,
   ...pluginsAndMiscRoutes,
+  ...operationsRoutes,
 ]

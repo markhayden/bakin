@@ -1,9 +1,9 @@
 import { spawn } from 'child_process'
-import { createHash } from 'crypto'
-import { chmodSync, existsSync, mkdirSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'fs'
+import { chmodSync, existsSync, mkdirSync, renameSync, rmdirSync, rmSync } from 'fs'
 import { dirname, join } from 'path'
 import type { SearchAdapterSetupOptions, SearchAdapterSetupCheckResult } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
+import { DownloadChecksumError, downloadToFile } from '@bakin/core/net/download'
 import { DEFAULT_SETTINGS, type AntflySettings } from './defaults'
 import { antflyBinaryPath, antflyHome } from './paths'
 import { ANTFLY_PIN, antflyDownloadUrl, antflyPlatformKey, type AntflyPin } from './pin'
@@ -219,32 +219,35 @@ export async function installAntflyDependency(
 
   try {
     logger.info('Downloading Antfly', { url, version: pin.version })
-    // A stalled CDN must not hang `bakin install search` forever; ~20MB
-    // binary, so 120s covers even a slow link with margin.
-    const res = await fetch(url, { signal: AbortSignal.timeout(120_000) })
-    if (!res.ok) {
-      return {
-        name: 'antfly',
-        status: 'failed' as const,
-        message: `Download failed: ${url} responded ${res.status}. Check connectivity, or whether the pinned release still exists upstream.`,
-        durationMs: Date.now() - start,
-      }
-    }
-    const bytes = new Uint8Array(await res.arrayBuffer())
-
-    const actualChecksum = createHash('sha256').update(bytes).digest('hex')
-    if (actualChecksum !== expectedChecksum) {
-      return {
-        name: 'antfly',
-        status: 'failed' as const,
-        message: `Checksum mismatch for ${url}: expected ${expectedChecksum}, got ${actualChecksum}. Refusing to install. The release may have been re-published or tampered with - verify upstream before retrying.`,
-        durationMs: Date.now() - start,
-      }
-    }
-
+    // Streams to disk through the shared primitive: stall guard, attempt
+    // deadline (~20MB binary, so 120s covers even a slow link), one fresh
+    // retry, and the sha256 pin verified before anything is extracted.
     mkdirSync(tmpDir, { recursive: true })
     const archivePath = join(tmpDir, 'antfly.tar.gz')
-    writeFileSync(archivePath, bytes)
+    try {
+      await downloadToFile(url, archivePath, {
+        sha256: expectedChecksum,
+        timeoutMs: 120_000,
+        label: 'Antfly',
+        // Resolved per call: the global fetch is the seam the installer tests stub.
+        fetchImpl: ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init)) as typeof fetch,
+      })
+    } catch (err) {
+      if (err instanceof DownloadChecksumError) {
+        return {
+          name: 'antfly',
+          status: 'failed' as const,
+          message: `Checksum mismatch for ${url}: expected ${err.expected}, got ${err.actual}. Refusing to install. The release may have been re-published or tampered with - verify upstream before retrying.`,
+          durationMs: Date.now() - start,
+        }
+      }
+      return {
+        name: 'antfly',
+        status: 'failed' as const,
+        message: `${err instanceof Error ? err.message : String(err)}. Check connectivity, or whether the pinned release still exists upstream.`,
+        durationMs: Date.now() - start,
+      }
+    }
 
     const tar = await runCommand('tar', ['-xzf', archivePath, '-C', tmpDir])
     if (tar.code !== 0) {

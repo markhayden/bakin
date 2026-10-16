@@ -37,6 +37,7 @@ import * as agentsSettingsRoute from '../../../packages/host/src/api/agents/sett
 import * as secretsRoute from '../../../packages/host/src/api/secrets'
 import * as channelsRoute from '../../../packages/host/src/api/channels'
 import * as approvalsRoute from '../../../packages/host/src/api/approvals'
+import * as operationsRoute from '../../../packages/host/src/api/operations'
 import * as agentsActionRoute from '../../../packages/host/src/api/agents/[action]'
 import * as memoryLogRoute from '../../../packages/host/src/api/memory/log'
 import * as pluginSettingsIdRoute from '../../../packages/host/src/api/plugin-settings/[pluginId]'
@@ -340,6 +341,20 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     // Channel readiness (#908): ONE snapshot + reconnect / verify / routing
     if (url.pathname === '/api/channels' || url.pathname.startsWith('/api/channels/')) {
       dispatchWebHandler(req, res, channelsRoute.handler)
+      return
+    }
+
+    // Operations (core, #895): list, follow and cancel every long-running flow
+    if (url.pathname === '/api/operations' && req.method === 'GET') {
+      dispatchWebHandler(req, res, operationsRoute.list)
+      return
+    }
+    if (req.method === 'GET' && operationsRoute.operationIdFromPath(url.pathname)) {
+      dispatchWebHandler(req, res, operationsRoute.get)
+      return
+    }
+    if (req.method === 'POST' && operationsRoute.cancelOperationIdFromPath(url.pathname)) {
+      dispatchWebHandler(req, res, operationsRoute.cancel)
       return
     }
 

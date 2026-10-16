@@ -14,6 +14,7 @@ import { shutdownDeliveryBridge } from './delivery'
 import { stopChannelReadiness } from './delivery/readiness'
 import { closeDb } from '../../packages/core/src/storage/db'
 import { releaseServerLock } from './server-lock'
+import { noteOperationsShutdown } from './operations'
 import { pluginRegistry } from './plugin-registry'
 
 const log = createLogger('lifecycle')
@@ -90,6 +91,10 @@ async function shutdown(signal: string, exitCode = 0): Promise<void> {
   forceExit.unref?.()
 
   try {
+    // Live operations learn the server is going away (D3: the next boot
+    // reports "restarted — outcome unknown"; nothing is audited here).
+    noteOperationsShutdown()
+
     // Shut down plugins first (reverse activation order)
     await pluginRegistry.shutdownAll()
 

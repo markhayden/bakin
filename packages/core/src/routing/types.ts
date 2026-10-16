@@ -12,6 +12,7 @@
 
 import type {
   APIRoute as SdkAPIRoute,
+  PluginOperationsAPI,
 } from '@makinbakin/sdk/types'
 import type { AgentRuntimeAdapter } from '../adapters/runtime'
 import type { StorageAdapter, EventBus, SearchAPI, ActivityAPI, HookAPI, AssetsAPI, PluginTaskService } from '../plugin-types'
@@ -64,6 +65,8 @@ export interface RouteContext {
 export interface PluginContextLite extends RouteContext {
   pluginId: string
   getSettings<T = Record<string, unknown>>(): T
+  /** Start long-running work as an operation and answer 202 (#895). */
+  operations: PluginOperationsAPI
 }
 
 /**

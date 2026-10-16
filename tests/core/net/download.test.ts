@@ -25,7 +25,18 @@ mock.module('../../../packages/core/src/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 
-import { commitFileAtomic, downloadToFile, extractTarMember, extractTarball, sha256File } from '../../../packages/core/src/net/download'
+import {
+  commitFileAtomic,
+  downloadText,
+  downloadToFile,
+  extractTarMember,
+  extractTarball,
+  opTransfer,
+  sha256File,
+  type DownloadEvent,
+} from '../../../packages/core/src/net/download'
+import type { OperationContext } from '@makinbakin/sdk/types'
+import { settleFor } from '../../helpers/wait'
 
 const sha256 = (s: string | Buffer) => createHash('sha256').update(s).digest('hex')
 
@@ -187,7 +198,7 @@ describe('downloadToFile stall hardening (margo 2026-09-21: installers hung fore
   it('reports progress with received bytes and the declared total', async () => {
     const seen: Array<[number, number | null]> = []
     await downloadToFile(url('/payload'), join(testDir, 'progress.txt'), {
-      fetchImpl: nativeFetch, onProgress: (received, total) => seen.push([received, total]),
+      fetchImpl: nativeFetch, onEvent: (e) => { if (e.type === 'bytes') seen.push([e.received, e.total]) },
     })
     expect(seen.length).toBeGreaterThan(0)
     expect(seen.at(-1)![0]).toBe(Buffer.byteLength(PAYLOAD))
@@ -300,5 +311,163 @@ describe('commitFileAtomic', () => {
       verify: async () => { throw new Error('verify run failed') },
     })).rejects.toThrow(/verify/i)
     expect(readFileSync(target, 'utf-8')).toBe('working install')
+  })
+})
+
+describe('download events (#895): attempt, bytes, stalled, retry', () => {
+  const kinds = (events: DownloadEvent[]) => events.filter((e) => e.type !== 'bytes')
+
+  it('reports the attempt and byte progress on success', async () => {
+    const events: DownloadEvent[] = []
+    await downloadToFile(url('/payload'), join(testDir, 'ev-ok.txt'), { fetchImpl: nativeFetch, onEvent: (e) => events.push(e) })
+    expect(events[0]).toEqual({ type: 'attempt', n: 1, of: 2 })
+    expect(events.at(-1)).toEqual({ type: 'bytes', received: Buffer.byteLength(PAYLOAD), total: Buffer.byteLength(PAYLOAD) })
+    expect(kinds(events)).toEqual([{ type: 'attempt', n: 1, of: 2 }])
+  })
+
+  it('reports a stall, then the retry with its reason, then the fresh attempt', async () => {
+    const events: DownloadEvent[] = []
+    await downloadToFile(url('/flaky-then-good'), join(testDir, 'ev-flaky.txt'), {
+      fetchImpl: nativeFetch, stallTimeoutMs: 300, retries: 1, onEvent: (e) => events.push(e),
+    })
+    expect(kinds(events)).toEqual([
+      { type: 'attempt', n: 1, of: 2 },
+      { type: 'stalled', afterMs: 300 },
+      { type: 'retry', n: 2, of: 2, reason: 'stalled', detail: expect.stringMatching(/no data/) },
+      { type: 'attempt', n: 2, of: 2 },
+    ])
+  })
+
+  it('classifies an attempt deadline without a stall event', async () => {
+    const events: DownloadEvent[] = []
+    await expect(downloadToFile(url('/stall'), join(testDir, 'ev-deadline.bin'), {
+      fetchImpl: nativeFetch, timeoutMs: 400, stallTimeoutMs: 10_000, retries: 1, onEvent: (e) => events.push(e),
+    })).rejects.toThrow(/deadline|timed out/i)
+    expect(kinds(events)).toEqual([
+      { type: 'attempt', n: 1, of: 2 },
+      { type: 'retry', n: 2, of: 2, reason: 'deadline', detail: expect.any(String) },
+      { type: 'attempt', n: 2, of: 2 },
+    ])
+  })
+
+  it('classifies an HTTP error as an http retry', async () => {
+    const events: DownloadEvent[] = []
+    await expect(downloadToFile(url('/missing'), join(testDir, 'ev-404.txt'), { fetchImpl: nativeFetch, onEvent: (e) => events.push(e) }))
+      .rejects.toThrow(/404/)
+    expect(kinds(events)).toContainEqual({ type: 'retry', n: 2, of: 2, reason: 'http', detail: expect.stringMatching(/404/) })
+  })
+
+  it('never retries a checksum mismatch', async () => {
+    const events: DownloadEvent[] = []
+    await expect(downloadToFile(url('/payload'), join(testDir, 'ev-pin.txt'), {
+      fetchImpl: nativeFetch, sha256: sha256('other'), retries: 3, onEvent: (e) => events.push(e),
+    })).rejects.toThrow(/checksum/i)
+    expect(kinds(events)).toEqual([{ type: 'attempt', n: 1, of: 4 }])
+  })
+
+  it('aborts mid-transfer without retrying, rethrows the abort reason and removes the partial', async () => {
+    const controller = new AbortController()
+    const events: DownloadEvent[] = []
+    const dest = join(testDir, 'ev-abort.bin')
+    const reason = new Error('cancelled by user')
+    await expect(downloadToFile(url('/stall'), dest, {
+      fetchImpl: nativeFetch, stallTimeoutMs: 10_000, retries: 3, signal: controller.signal,
+      onEvent: (e) => { events.push(e); if (e.type === 'bytes') controller.abort(reason) },
+    })).rejects.toBe(reason)
+    expect(kinds(events)).toEqual([{ type: 'attempt', n: 1, of: 4 }])
+    expect(hits['/stall']).toBe(1)
+    expect(existsSync(dest)).toBe(false)
+  })
+
+  it('refuses an already-aborted signal before any request', async () => {
+    const controller = new AbortController()
+    controller.abort(new Error('gone'))
+    await expect(downloadToFile(url('/payload'), join(testDir, 'ev-pre.txt'), { fetchImpl: nativeFetch, signal: controller.signal }))
+      .rejects.toThrow('gone')
+    expect(hits['/payload']).toBeUndefined()
+  })
+})
+
+describe('abandoned attempts', () => {
+  it('a fast failure whose directory the caller removes never surfaces a late sink error', async () => {
+    // The antfly installer's shape: an in-memory HTTP error (no socket, so it
+    // fails before the sink's async open completes), a fresh retry that fails
+    // the same way, then the caller removes its temp dir straight away.
+    for (let i = 0; i < 20; i++) {
+      const dir = join(testDir, `gone-soon-${i}`)
+      const notFound = (async () => new Response('gone', { status: 404 })) as unknown as typeof fetch
+      await expect(downloadToFile(url('/missing'), join(dir, 'a.tgz'), { fetchImpl: notFound, retries: 1 })).rejects.toThrow(/404/)
+      rmSync(dir, { recursive: true, force: true })
+    }
+    await settleFor(100, 'a late open error from an abandoned sink would surface as an unhandled rejection here')
+  })
+})
+
+describe('downloadText (#895: moved off the node:http copy)', () => {
+  it('returns the body as text through the same primitive', async () => {
+    const events: DownloadEvent[] = []
+    expect(await downloadText(url('/payload'), { fetchImpl: nativeFetch, onEvent: (e) => events.push(e) })).toBe(PAYLOAD)
+    expect(events[0]).toEqual({ type: 'attempt', n: 1, of: 2 })
+  })
+
+  it('stalls, retries and fails honestly like file downloads', async () => {
+    await expect(downloadText(url('/stall'), { fetchImpl: nativeFetch, stallTimeoutMs: 200, retries: 0 })).rejects.toThrow(/stalled/i)
+    await expect(downloadText(url('/missing'), { fetchImpl: nativeFetch, retries: 0 })).rejects.toThrow(/404/)
+  })
+
+  it('follows redirects (GitHub release assets 302 to a CDN)', async () => {
+    fixtures['/target'] = Buffer.from('redirected body')
+    const redirecting = ((input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).endsWith('/hop') ? Promise.resolve(Response.redirect(url('/target'), 302)) : nativeFetch(input, init)) as typeof fetch
+    expect(await downloadText(url('/hop'), { fetchImpl: redirecting, retries: 0 })).toBe('redirected body')
+    delete fixtures['/target']
+  })
+})
+
+describe('opTransfer', () => {
+  function fakeOp() {
+    const calls: unknown[][] = []
+    const op = {
+      bytes: (...args: unknown[]) => calls.push(['bytes', ...args]),
+      attempt: (...args: unknown[]) => calls.push(['attempt', ...args]),
+      log: (...args: unknown[]) => calls.push(['log', ...args]),
+    } as unknown as OperationContext
+    return { op, calls }
+  }
+
+  it('maps transfer events onto the operation context', () => {
+    const { op, calls } = fakeOp()
+    const onEvent = opTransfer(op, 'download', 'sharp.tgz')
+    onEvent({ type: 'attempt', n: 1, of: 2 })
+    onEvent({ type: 'bytes', received: 10, total: 100 })
+    onEvent({ type: 'stalled', afterMs: 30_000 })
+    onEvent({ type: 'retry', n: 2, of: 2, reason: 'stalled', detail: 'no data for 30s' })
+    onEvent({ type: 'attempt', n: 2, of: 2 })
+    expect(calls).toEqual([
+      ['bytes', 'download', { received: 10, total: 100 }, 'sharp.tgz'],
+      ['log', 'sharp.tgz: no data for 30s', 'warn'],
+      ['attempt', 'download', { n: 2, of: 2, reason: 'stalled', detail: 'no data for 30s' }],
+    ])
+  })
+})
+
+describe('extract signal and output (#895)', () => {
+  it('streams tar stderr lines to onOutput', async () => {
+    const src = join(testDir, 'tar-out-src')
+    mkdirSync(src, { recursive: true })
+    writeFileSync(join(src, 'present.txt'), 'x')
+    const tarPath = join(testDir, 'out.tar.gz')
+    execSync(`tar -czf ${JSON.stringify(tarPath)} -C ${JSON.stringify(src)} present.txt`)
+    const lines: string[] = []
+    const outDir = join(testDir, 'tar-out')
+    mkdirSync(outDir, { recursive: true })
+    await expect(extractTarMember(tarPath, 'absent.txt', outDir, { onOutput: (l) => lines.push(l) })).rejects.toThrow(/extraction failed/)
+    expect(lines.join('\n')).toMatch(/absent\.txt/)
+  })
+
+  it('refuses to start under an aborted signal', async () => {
+    const controller = new AbortController()
+    controller.abort(new Error('stop'))
+    await expect(extractTarball(join(testDir, 'none.tgz'), join(testDir, 'none'), { signal: controller.signal })).rejects.toThrow('stop')
   })
 })

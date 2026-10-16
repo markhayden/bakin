@@ -20,7 +20,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSy
 import { join } from 'path'
 import type { Manifest, NpmRequirement, ModelRequirement } from '../../../packages/core/src/agent-packages/manifest'
 import { readInstalledBy, writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
-import { commitFileAtomic, downloadToFile } from '../../../packages/core/src/net/download'
+import { commitFileAtomic, downloadToFile, type DownloadEvent } from '../../../packages/core/src/net/download'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { runSystemBun } from '../whiskit/command'
@@ -163,8 +163,8 @@ export interface ModelInstallResult {
 export interface ModelInstallOptions {
   /** Tests pass Bun.fetch — happy-dom's global fetch can't drive real sockets. */
   fetchImpl?: typeof fetch
-  /** Byte progress for the download leg (#895). */
-  onProgress?: (receivedBytes: number, totalBytes: number | null) => void
+  /** Transfer events for the download leg (#895). */
+  onEvent?: (event: DownloadEvent) => void
 }
 
 /**
@@ -208,7 +208,7 @@ export async function installModelRequirement(
     timeoutMs: MODEL_DOWNLOAD_TIMEOUT_MS,
     fetchImpl: options.fetchImpl,
     label: `Model "${req.name}"`,
-    onProgress: options.onProgress,
+    onEvent: options.onEvent,
   })
   await commitFileAtomic(tmp, target, {
     verify: async () => {
@@ -266,10 +266,13 @@ export async function installManifestRequirements(input: ManifestRequirementsInp
     progress({ stage: 'models', message: `Downloading model ${req.name} (${index + 1}/${models.length})…`, item: req.name, current: index + 1, total: models.length })
     const installed = await installModelRequirement(req, installedBy, {
       ...input.modelOptions,
-      onProgress: (receivedBytes, totalBytes) => progress({
-        stage: 'models', message: `Downloading model ${req.name} (${index + 1}/${models.length})…`,
-        item: req.name, current: index + 1, total: models.length, receivedBytes, totalBytes,
-      }),
+      onEvent: (event) => {
+        if (event.type !== 'bytes') return
+        progress({
+          stage: 'models', message: `Downloading model ${req.name} (${index + 1}/${models.length})…`,
+          item: req.name, current: index + 1, total: models.length, receivedBytes: event.received, totalBytes: event.total,
+        })
+      },
     })
     result.projections.push({ kind: 'model', target: installed.target, sha256: installed.sha256 })
   }

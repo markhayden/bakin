@@ -45929,6 +45929,337 @@
         "x-bakin-visibility": "internal",
         "x-bakin-full-path": "/api/dev/notify"
       }
+    },
+    "/api/operations": {
+      "get": {
+        "operationId": "core.get.api-operations",
+        "summary": "List operations",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "bootId": {
+                      "type": "string"
+                    },
+                    "operations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "rev": {
+                            "type": "number"
+                          },
+                          "bootId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "rev",
+                          "bootId",
+                          "status"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "bootId",
+                    "operations"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Core"
+        ],
+        "description": "Live and recently finished top-level operations (installs, repairs, reindex, …) with the server boot id.",
+        "x-bakin-full-path": "/api/operations"
+      }
+    },
+    "/api/operations/{id}": {
+      "get": {
+        "operationId": "core.get.api-operations-id",
+        "summary": "Get an operation",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "bootId": {
+                      "type": "string"
+                    },
+                    "operation": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "rev": {
+                          "type": "number"
+                        },
+                        "bootId": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "rev",
+                        "bootId",
+                        "status"
+                      ],
+                      "additionalProperties": {}
+                    },
+                    "children": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "rev": {
+                            "type": "number"
+                          },
+                          "bootId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "rev",
+                          "bootId",
+                          "status"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "bootId",
+                    "operation"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input — params, query, or body did not match the declared schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "bootId": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string",
+                      "const": "not_found"
+                    }
+                  },
+                  "required": [
+                    "bootId",
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Core"
+        ],
+        "description": "The complete operation view; `children=1` inlines child views. A 404 carries the boot id so clients can tell expired from restarted.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "children",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "const": "1"
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/operations/:id"
+      }
+    },
+    "/api/operations/{id}/cancel": {
+      "post": {
+        "operationId": "core.post.api-operations-id-cancel",
+        "summary": "Cancel an operation",
+        "responses": {
+          "202": {
+            "description": "Accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "bootId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "cancelling"
+                    }
+                  },
+                  "required": [
+                    "bootId",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input — params, query, or body did not match the declared schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "bootId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "not_found"
+                    }
+                  },
+                  "required": [
+                    "bootId",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "bootId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "not_cancellable",
+                        "already_finished"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "bootId",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Core"
+        ],
+        "description": "Allowed only before the operation's point of no return; terminal status is published after the work settles.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/operations/:id/cancel"
+      }
     }
   },
   "components": {

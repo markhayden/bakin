@@ -28,6 +28,8 @@ import { readPluginSettings, mergePluginSettings } from '@bakin/core/plugins/set
 import { appendAudit } from '../core/audit'
 import { buildSearchAPI } from '../core/search-registry'
 import { createConversationTurnService, type ConversationTurnServiceConfig } from '../core/conversation-turns'
+import { getOperationRegistry } from '../core/operations'
+import { toPluginOperationInput } from '@bakin/core/operations'
 import { wrapPluginContextPermissions } from './plugin-permissions'
 import {
   createPluginAssetsAPI,
@@ -138,6 +140,15 @@ export function buildPluginContext(opts: BuildPluginContextOptions): PluginConte
       registerRoute: registrars.registerRoute,
       ...(opts.skipFileBackedWiring ? { skipFileBackedWiring: true } : {}),
     }),
+    // ctx.operations (#895 D19): namespaced kind/fingerprint, owner
+    // plugin:<id>, origin from the triggering request, and core resources
+    // only for core plugins (`source` is the activation-time core/user fact
+    // isCorePlugin reports; plugin-registry imports this module, so the
+    // predicate cannot be imported here).
+    operations: {
+      start: async (input) => getOperationRegistry().start(toPluginOperationInput(pluginId, source === 'core', input)),
+      await: (operationId) => getOperationRegistry().await(operationId),
+    },
     // The SDK contract mirrors the engine's types with SDK runtime flavors
     // (the AgentRuntimeAdapter parallel-flavor pattern) — one structural
     // bridge here, engine types stay single-homed in src/core. Declarative

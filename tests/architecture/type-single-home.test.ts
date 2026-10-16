@@ -42,6 +42,10 @@ const SANCTIONED_HOMES: Record<string, string[]> = {
   AvailableModel: ['packages/sdk/src/types/services.ts'],
   AgentUsage: ['packages/sdk/src/types/services.ts'],
   PluginManifest: ['packages/sdk/src/types/manifest.ts'],
+  OperationView: ['packages/sdk/src/types/operations.ts'],
+  OperationContext: ['packages/sdk/src/types/operations.ts'],
+  OperationPlan: ['packages/sdk/src/types/operations.ts'],
+  OperationOutcome: ['packages/sdk/src/types/operations.ts'],
 }
 
 const SCAN_ROOTS = [

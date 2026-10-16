@@ -286,6 +286,28 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="core.get.api-operations">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/operations'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core.get.api-operations-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/operations/<id>?children=<children>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core.post.api-operations-id-cancel">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/operations/<id>/cancel'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="core.get.api-packages">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -2290,5 +2312,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 6, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 16, 2026 · Bakin 0.0.0-dev</span>
 </aside>
