@@ -101,6 +101,8 @@ export const logEntryBody = z.object({
   author: z.string().optional(),
   agent: z.string().optional(),
   message: z.string().min(1),
+  /** 'human' with author 'human' marks an operator note (CLI `--as=human`); anything else logs as 'rest'. */
+  channel: z.string().optional(),
 })
 
 export const blockTaskBody = z.object({
@@ -113,6 +115,8 @@ export const blockTaskBody = z.object({
 export const dependencyBody = z.object({
   id: z.string().optional(),
   dependsOn: z.string().min(1),
+  /** Acting agent (CLI `--as`, spec D12) — named in the audit and activity log. */
+  agent: z.string().optional(),
 })
 
 export const reorderBody = z.object({

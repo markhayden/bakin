@@ -241,6 +241,7 @@ function taskStoreMock() {
     blockTask: mock(async (..._args: unknown[]) => undefined),
     setDependency: mock(async (..._args: unknown[]) => undefined),
     clearDependency: mock(async (..._args: unknown[]) => undefined),
+    findTaskWithColumn: () => null,
     reorderTasks: mock(async (..._args: unknown[]) => undefined),
     assignTaskToTeam: mock(async (..._args: unknown[]) => undefined),
     recordTeamResolution: mock(async (..._args: unknown[]) => undefined),

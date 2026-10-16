@@ -161,7 +161,7 @@
       },
       {
         "name": "tasks create",
-        "usage": "bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow=<reason>]",
+        "usage": "bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow=<reason>] [--as=<actor>]",
         "summary": "Create a task.",
         "dispatch": {
           "type": "execTool",
@@ -170,7 +170,7 @@
       },
       {
         "name": "tasks move",
-        "usage": "bakin tasks move <id> <column>",
+        "usage": "bakin tasks move <id> <column> [--as=<actor>]",
         "summary": "Move a task.",
         "dispatch": {
           "type": "execTool",
@@ -179,12 +179,12 @@
       },
       {
         "name": "tasks log",
-        "usage": "bakin tasks log <id> <message>",
+        "usage": "bakin tasks log <id> <message> [--as=<actor>]",
         "summary": "Log task progress."
       },
       {
         "name": "tasks block",
-        "usage": "bakin tasks block <id> <reason>",
+        "usage": "bakin tasks block <id> <reason> [--as=<actor>]",
         "summary": "Block a task.",
         "dispatch": {
           "type": "execTool",
@@ -193,12 +193,12 @@
       },
       {
         "name": "tasks depend",
-        "usage": "bakin tasks depend <id> <dependsOn>",
+        "usage": "bakin tasks depend <id> <dependsOn> [--as=<actor>]",
         "summary": "Register a task dependency."
       },
       {
         "name": "tasks complete",
-        "usage": "bakin tasks complete <id> <summary>",
+        "usage": "bakin tasks complete <id> <summary> [--as=<actor>]",
         "summary": "Complete a task.",
         "dispatch": {
           "type": "execTool",

@@ -124,6 +124,9 @@ mock.module('../../../src/core/task-store', () => ({
   // facade shape at load — partial mocks break on missing exports.
   readTaskboard: () => ({ columns: { todo: todoTasks } }),
   moveTask: async () => {},
+  recoverTask: async () => {},
+  clearDependency: async () => {},
+  findTaskWithColumn: () => null,
   addTaskLog: async () => {},
   updateTask: async () => {},
   blockTask: async () => {},

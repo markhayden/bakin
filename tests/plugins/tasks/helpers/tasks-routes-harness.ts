@@ -77,6 +77,7 @@ export const taskStoreMock = () => ({
   moveTask: (...args: unknown[]) => mockMoveTask(...args),
   setDependency: (...args: unknown[]) => mockSetDependency(...args),
   clearDependency: (...args: unknown[]) => mockClearDependency(...args),
+  findTaskWithColumn: () => null,
   reorderTasks: (...args: unknown[]) => mockReorderTasks(...args),
   getTask: (...args: unknown[]) => mockGetTask(...args),
   getTaskWithColumn: (...args: unknown[]) => mockGetTaskWithColumn(...(args as [string])),
@@ -108,6 +109,14 @@ export class MockWorkflowTaskMoveError extends Error {
 export class MockTaskValidationError extends Error {
   constructor(message: string) { super(message); this.name = 'TaskValidationError' }
 }
+
+/** Mirrors the real typed class — the dependency route maps it to 409 by instanceof. */
+export class MockDependencyRejectedError extends Error {
+  constructor(readonly reason: 'missing' | 'self' | 'complete', readonly dependsOn: string) {
+    super(`mock dependency rejected: ${reason} ${dependsOn}`)
+    this.name = 'DependencyRejectedError'
+  }
+}
 export const mockValidateTeamRef = mock(async (teamId: string) => {
   if (!mockKnownTeams.has(teamId)) throw new MockTaskValidationError(`Unknown team: "${teamId}"`)
 })
@@ -135,6 +144,7 @@ export const taskServiceMock = () => ({
   validateTeamAssignment: (opts: { assignee?: string; team?: string }) => mockValidateTeamAssignment(opts),
   TaskValidationError: MockTaskValidationError,
   WorkflowTaskMoveError: MockWorkflowTaskMoveError,
+  DependencyRejectedError: MockDependencyRejectedError,
 })
 
 /**

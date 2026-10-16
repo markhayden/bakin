@@ -14,15 +14,13 @@ import { assessWorkflowRuns, collectWorkflowDescendantTaskIds, isStrandedInProgr
 import {
   addTaskLog,
   blockTask,
-  moveTask,
+  getTaskWithColumn,
   readTaskboard,
+  recoverTask,
 } from './task-store'
 
 const log = createLogger('restart-recovery')
 const hooks = () => getHookRegistry()
-
-const RESTART_RECOVERY_PREFIX = 'Restart recovery:'
-const WATCHDOG_RECOVERY_PREFIX = 'Auto-recovered:'
 
 type RecoveryAction = 'recover' | 'block' | 'manual'
 
@@ -39,7 +37,8 @@ type RecoveryTask = {
   title: string
   agent?: string
   workflowId?: string
-  log?: Array<{ message?: string; timestamp?: string }>
+  /** Persisted auto-recovery counter (spec D3); absent on legacy files ⇒ 0. */
+  recoveries?: number
 }
 
 type WorkflowInstanceLike = LivenessInstance & {
@@ -67,11 +66,9 @@ export interface RestartRecoveryResult {
   candidates: RestartRecoveryCandidate[]
 }
 
+/** Shared with the watchdog: the persisted field, never log-line prefixes. */
 function countRecoveries(task: RecoveryTask): number {
-  return (task.log ?? []).filter((entry) => {
-    const message = entry.message ?? ''
-    return message.startsWith(RESTART_RECOVERY_PREFIX) || message.startsWith(WATCHDOG_RECOVERY_PREFIX)
-  }).length
+  return task.recoveries ?? 0
 }
 
 function uniq(values: Array<string | undefined>): string[] {
@@ -95,9 +92,21 @@ function withActionForRecoveryLimit(
   }
 }
 
+/**
+ * The ledger scope a workflow assessment read (active steps + fanned-out task
+ * ids). The assessment awaits hooks; the mutation boundary re-checks THIS
+ * scope synchronously against the ledger so a step claimed during the await
+ * is seen without another await (spec D9, code review round 3).
+ */
+interface RunScope {
+  activeAgents: WorkflowActiveAgent[]
+  descendants: string[]
+}
+
 async function assessWorkflowTask(
   task: RecoveryTask,
   contentDir: string,
+  scope: RunScope,
 ): Promise<RestartRecoveryCandidate | null> {
   const recoveryCount = countRecoveries(task)
   const instance = await hooks().invoke<WorkflowInstanceLike | null>('workflows.loadInstance', {
@@ -157,6 +166,8 @@ async function assessWorkflowTask(
   // including a completed nested/map child's final turn (review round 2).
   const descendants = await collectWorkflowDescendantTaskIds(task.id, (id) =>
     hooks().invoke<WorkflowInstanceLike | null>('workflows.loadInstance', { taskId: id, contentDir }))
+  scope.activeAgents = activeAgents
+  scope.descendants = descendants
   const runs = assessWorkflowRuns(task.id, activeAgents, descendants)
   if (runs.missing.length === 0 || (runs.live.length === 0 && runs.otherLive.length > 0)) return null
 
@@ -181,18 +192,30 @@ async function assessWorkflowTask(
   })
 }
 
-async function assessTask(task: RecoveryTask, contentDir: string): Promise<RestartRecoveryCandidate | null> {
+interface Assessment {
+  candidate: RestartRecoveryCandidate | null
+  /** Synchronous ledger re-check over the scope the assessment read — for the mutation boundary. */
+  stillStranded: () => boolean
+}
+
+async function assessTask(task: RecoveryTask, contentDir: string): Promise<Assessment> {
   if (task.workflowId) {
-    return assessWorkflowTask(task, contentDir)
+    const scope: RunScope = { activeAgents: [], descendants: [] }
+    const candidate = await assessWorkflowTask(task, contentDir, scope)
+    return { candidate, stillStranded: () => assessWorkflowRuns(task.id, scope.activeAgents, scope.descendants).stranded }
   }
 
-  if (!isStrandedInProgress({ id: task.id, column: 'inProgress' })) return null
+  const stillStranded = (): boolean => isStrandedInProgress({ id: task.id, column: 'inProgress' })
+  if (!stillStranded()) return { candidate: null, stillStranded }
 
-  return withActionForRecoveryLimit(task, {
-    effectiveAgents: uniq([task.agent]),
-    missingRuns: [task.id],
-    reason: 'no-live-run',
-  })
+  return {
+    candidate: withActionForRecoveryLimit(task, {
+      effectiveAgents: uniq([task.agent]),
+      missingRuns: [task.id],
+      reason: 'no-live-run',
+    }),
+    stillStranded,
+  }
 }
 
 export async function findRestartRecoveryCandidates(contentDir: string): Promise<RestartRecoveryCandidate[]> {
@@ -202,7 +225,7 @@ export async function findRestartRecoveryCandidates(contentDir: string): Promise
 
   for (const task of tasks) {
     try {
-      const candidate = await assessTask(task, contentDir)
+      const { candidate } = await assessTask(task, contentDir)
       if (candidate) candidates.push(candidate)
     } catch (err) {
       log.warn('Failed to assess restart recovery candidate', err, { id: task.id })
@@ -230,13 +253,64 @@ export async function runRestartRecovery(contentDir: string): Promise<RestartRec
     return result
   }
 
-  for (const candidate of candidates) {
+  for (const snapshot of candidates) {
+    // Fresh validation at the mutation boundary (spec D9): the candidate list
+    // is one board read, but every mutation below awaits, so a task may have
+    // been moved, reset or claimed meanwhile. Re-read the row and re-assess
+    // it; act on the FRESH verdict (a reset counter recovers instead of
+    // blocking, a run that went live is left alone).
+    const fresh = getTaskWithColumn(snapshot.id)
+    if (!fresh || fresh.column !== 'inProgress') {
+      log.info('Restart recovery skipped a candidate that left in-progress meanwhile', { id: snapshot.id })
+      result.skipped++
+      continue
+    }
+    let candidate: RestartRecoveryCandidate | null
+    let stillStranded: () => boolean
+    try {
+      ({ candidate, stillStranded } = await assessTask({
+        id: snapshot.id,
+        title: fresh.task.title,
+        agent: fresh.task.agent,
+        workflowId: fresh.task.workflowId,
+        recoveries: fresh.task.recoveries,
+      }, contentDir))
+    } catch (err) {
+      log.warn('Failed to re-assess restart recovery candidate', err, { id: snapshot.id })
+      result.skipped++
+      continue
+    }
+    if (!candidate) {
+      log.info('Restart recovery skipped a candidate that gained a live run meanwhile', { id: snapshot.id })
+      result.skipped++
+      continue
+    }
+    // The re-assessment awaited workflow hooks; any write to the row in that
+    // window (operator move or reset, engine step advance, agent log) bumps
+    // `version` — leave such a task alone this pass rather than act on a
+    // verdict computed from the pre-await row.
+    const again = getTaskWithColumn(snapshot.id)
+    if (!again || again.column !== 'inProgress' || again.task.version !== fresh.task.version) {
+      log.info('Restart recovery skipped a candidate written during re-assessment', { id: snapshot.id })
+      result.skipped++
+      continue
+    }
+    // A workflow step claim writes the ledger, not the task row (the card is
+    // already in progress), so `version` cannot see it. Re-check the ledger
+    // synchronously over the scope the assessment read; from here to the
+    // store write nothing awaits (code review round 3). A manual hold is a
+    // log line, not a mutation of the work — it still records.
+    if (candidate.action !== 'manual' && !stillStranded()) {
+      log.info('Restart recovery skipped a candidate whose run went live during re-assessment', { id: snapshot.id })
+      result.skipped++
+      continue
+    }
+
     if (candidate.action === 'manual') {
       // Durable + visible hold: the structured marker makes the watchdog
       // skip this task while it is the latest log entry (any newer activity
-      // clears the hold naturally). Deliberately NOT prefixed with
-      // RESTART_RECOVERY_PREFIX — countRecoveries() matches that prefix and
-      // a manual hold must not count as a recovery attempt.
+      // clears the hold naturally). A hold is not an attempt — the counter
+      // is untouched.
       try {
         await addTaskLog(
           candidate.id,
@@ -260,7 +334,7 @@ export async function runRestartRecovery(contentDir: string): Promise<RestartRec
         await addTaskLog(
           candidate.id,
           'system',
-          `${RESTART_RECOVERY_PREFIX} recovery limit reached after ${candidate.recoveryCount} attempts; task moved to blocked for manual review.`,
+          `Restart recovery: recovery limit reached after ${candidate.recoveryCount} attempts; task moved to blocked for manual review.`,
         )
         appendAudit(contentDir, 'task.restart_recovery_exhausted', 'system', {
           id: candidate.id,
@@ -279,12 +353,13 @@ export async function runRestartRecovery(contentDir: string): Promise<RestartRec
         continue
       }
 
+      // ONE store write (todo + recoveries+1), THEN the log line.
+      await recoverTask(candidate.id)
       await addTaskLog(
         candidate.id,
         'system',
-        `${RESTART_RECOVERY_PREFIX} no live run after server restart; returned to Todo for re-dispatch.`,
+        `Restart recovery: no live run after server restart; returned to Todo for re-dispatch (attempt ${candidate.recoveryCount + 1} of ${settings.watchdog.maxAutoRecoveries}).`,
       )
-      await moveTask(candidate.id, 'todo', 'inProgress')
       appendAudit(contentDir, 'task.restart_recovered', 'system', {
         id: candidate.id,
         title: candidate.title,
@@ -292,6 +367,7 @@ export async function runRestartRecovery(contentDir: string): Promise<RestartRec
         workflowId: candidate.workflowId,
         effectiveAgents: candidate.effectiveAgents,
         reason: candidate.reason,
+        recoveryCount: candidate.recoveryCount + 1,
       })
       result.recovered++
       log.info('Restart recovery moved task to todo', {

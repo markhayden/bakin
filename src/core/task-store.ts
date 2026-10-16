@@ -39,6 +39,8 @@ export interface Task {
   description?: string
   log?: TaskLogEntry[]
   dependsOn?: string
+  /** Auto-recoveries since the last operator move (spec D3). Always set by taskToView; optional so hand-built views (UI fixtures) need not carry it. */
+  recoveries?: number
   parentId?: string
   workflowId?: string
   scheduleJobId?: string
@@ -144,6 +146,7 @@ function taskToView(task: BakinTask): Task {
     description: task.description,
     log: task.log,
     dependsOn: task.dependsOn,
+    recoveries: task.recoveries ?? 0,
     parentId: task.parentId ?? undefined,
     workflowId: task.workflowId,
     scheduleJobId: task.scheduleJobId,
@@ -227,6 +230,13 @@ export function getTask(id: string): Task | null {
 
 export function getTaskWithColumn(id: string): { task: Task; column: ColumnId } | null {
   const task = getSharedBakinTaskStore().getSync(id)
+  if (!task) return null
+  return { task: taskToView(task), column: asColumnId(task) }
+}
+
+/** Like getTaskWithColumn, but resolves the same id-or-title identifiers the mutators accept. */
+export function findTaskWithColumn(identifier: string): { task: Task; column: ColumnId } | null {
+  const task = findTask(identifier)
   if (!task) return null
   return { task: taskToView(task), column: asColumnId(task) }
 }
@@ -318,7 +328,13 @@ export function createTask(
   }
 }
 
-export function moveTask(identifier: string, to: string, _from?: string, channel?: string): Promise<void> {
+export function moveTask(
+  identifier: string,
+  to: string,
+  _from?: string,
+  channel?: string,
+  opts?: { /** Operator move (spec D4): the recovery budget restarts in the same write. */ resetRecoveries?: boolean },
+): Promise<void> {
   try {
     const toCol = normalizeColumn(to)
     if (!toCol) throw new Error(`Invalid column: ${to}`)
@@ -328,12 +344,36 @@ export function moveTask(identifier: string, to: string, _from?: string, channel
     const isHuman = channel === 'human'
     assertTransitionAllowed(task, toCol, isHuman)
 
-    getSharedBakinTaskStore().updateSync(task.id, columnPatch(toCol))
+    getSharedBakinTaskStore().updateSync(task.id, {
+      ...columnPatch(toCol),
+      ...(opts?.resetRecoveries ? { recoveries: 0 } : {}),
+    })
 
     if ((toCol === 'done' || toCol === 'blocked') && currentCol === 'inProgress') {
       void cancelWorkflowInstance(task.id)
     }
 
+    return Promise.resolve()
+  } catch (err) {
+    return Promise.reject(err)
+  }
+}
+
+/**
+ * Automatic recovery (watchdog / restart recovery): return a stranded task to
+ * todo AND count the attempt, in ONE write — a reset racing two separate
+ * writes could otherwise be overwritten by a stale increment (spec D3/D9).
+ * Legacy files without the field count from 0. Same transition table as a
+ * system moveTask.
+ */
+export function recoverTask(identifier: string): Promise<void> {
+  try {
+    const task = requireTask(identifier)
+    assertTransitionAllowed(task, 'todo', false)
+    getSharedBakinTaskStore().updateSync(task.id, {
+      ...columnPatch('todo'),
+      recoveries: (task.recoveries ?? 0) + 1,
+    })
     return Promise.resolve()
   } catch (err) {
     return Promise.reject(err)
@@ -524,14 +564,22 @@ export function setDependency(taskId: string, dependsOnId: string): Promise<void
   }
 }
 
-export function clearDependency(taskId: string): Promise<void> {
+/**
+ * Clear a SATISFIED dependency: the one the caller saw complete. Read,
+ * compare and write are synchronous, so a dependency the task re-registered
+ * meanwhile (a replacement target registered through the REST route, which
+ * takes no dispatch lock) is never erased on the strength of a stale
+ * snapshot — the caller learns it cleared nothing and leaves the task waiting.
+ */
+export function clearDependency(taskId: string, dependsOn: string): Promise<boolean> {
   try {
     const task = requireTask(taskId)
+    if (task.dependsOn !== dependsOn) return Promise.resolve(false)
     getSharedBakinTaskStore().updateSync(task.id, {
       dependsOn: undefined,
       blockedBy: [],
     })
-    return Promise.resolve()
+    return Promise.resolve(true)
   } catch (err) {
     return Promise.reject(err)
   }

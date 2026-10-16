@@ -29,7 +29,10 @@ const apiPostSpy = mock(async (_path: string, _body: Record<string, unknown>) =>
 mock.module('../../src/cli/http', () => ({
   apiGet: mock(async () => ({ columns: {} })),
   apiPost: (path: string, body: Record<string, unknown>) => apiPostSpy(path, body),
-  getCliAgent: async () => 'cli',
+}))
+mock.module('../../src/cli/actor', () => ({
+  stripActorFlag: (args: string[]) => ({ as: undefined, rest: args }),
+  resolveCliActor: async () => ({ agent: 'cli' }),
 }))
 
 const printSpy = mock((_v: unknown) => {})

@@ -19,11 +19,13 @@ mock.module('../../src/core/logger', () => ({
 mock.module('../../src/core/task-store', () => ({
   readTaskboard: mock(() => ({ columns: {} })),
   clearDependency: mock(async () => undefined),
+  findTaskWithColumn: () => null,
   reorderTasks: mock(async () => undefined),
 }))
 mock.module('@/core/task-store', () => ({
   readTaskboard: mock(() => ({ columns: {} })),
   clearDependency: mock(async () => undefined),
+  findTaskWithColumn: () => null,
   reorderTasks: mock(async () => undefined),
 }))
 mock.module('../../src/core/app-services', () => ({

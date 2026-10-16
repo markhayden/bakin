@@ -132,8 +132,10 @@ import {
   updateTask,
   setDependency,
   clearDependency,
+  findTaskWithColumn,
   reorderTasks,
   moveTaskToInProgress,
+  recoverTask,
   assignTaskToTeam,
   recordTeamResolution,
   archiveOldTasks,
@@ -294,6 +296,91 @@ describe('createTask', () => {
 // ---------------------------------------------------------------------------
 // Move
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// recoveries — the persisted auto-recovery counter (spec D3). Replaces counting
+// 'Auto-recovered:' / 'Restart recovery:' log lines, which never reset.
+// ---------------------------------------------------------------------------
+
+describe('recoveries counter', () => {
+  it('a new task starts at 0 in the file and in the view', async () => {
+    const task = await createTask('Fresh', 'todo')
+    expect(readRawTask(task.id).recoveries).toBe(0)
+    expect(getTaskWithColumn(task.id)?.task.recoveries).toBe(0)
+  })
+
+  it('a legacy file without the field (and with old recovery log lines) reads as 0', async () => {
+    const task = await createTask('Legacy', 'inProgress')
+    const raw = readRawTask(task.id) as Partial<BakinTask>
+    delete raw.recoveries
+    raw.log = [
+      { timestamp: '2026-10-15T14:21:31.276Z', author: 'watchdog', message: 'Auto-recovered: no agent heartbeat or task log for 32+ minutes. Moved back to Todo for re-dispatch.' },
+      { timestamp: '2026-10-15T14:51:31.281Z', author: 'system', message: 'Restart recovery: no live run after server restart; returned to Todo for re-dispatch.' },
+    ]
+    writeFileSync(findTaskFile(task.id), JSON.stringify(raw, null, 2), 'utf-8')
+
+    expect(getTaskWithColumn(task.id)?.task.recoveries).toBe(0)
+  })
+
+  it('recoverTask moves inProgress → todo and increments the counter in ONE write', async () => {
+    const task = await createTask('Stranded', 'inProgress')
+    const before = readRawTask(task.id).version ?? 0
+
+    await recoverTask(task.id)
+
+    const raw = readRawTask(task.id)
+    expect(raw.column).toBe('todo')
+    expect(raw.recoveries).toBe(1)
+    expect(raw.version).toBe(before + 1)
+    expect(getTaskWithColumn(task.id)).toMatchObject({ column: 'todo', task: { recoveries: 1 } })
+  })
+
+  it('recoverTask on a legacy file persists 1, not NaN', async () => {
+    const task = await createTask('Legacy stranded', 'inProgress')
+    const raw = readRawTask(task.id) as Partial<BakinTask>
+    delete raw.recoveries
+    writeFileSync(findTaskFile(task.id), JSON.stringify(raw, null, 2), 'utf-8')
+
+    await recoverTask(task.id)
+    expect(readRawTask(task.id).recoveries).toBe(1)
+  })
+
+  it('recoverTask refuses a transition the table forbids (a task already in todo), exactly like moveTask', async () => {
+    const task = await createTask('Already queued', 'todo')
+    await expect(recoverTask(task.id)).rejects.toThrow('Invalid transition')
+    expect(readRawTask(task.id).recoveries).toBe(0)
+  })
+
+  it('an ordinary move never touches the counter', async () => {
+    const task = await createTask('Counted', 'inProgress')
+    await recoverTask(task.id)
+    await moveTask(task.id, 'inProgress')
+    expect(readRawTask(task.id).recoveries).toBe(1)
+  })
+
+  it('a human move with resetRecoveries writes the column AND recoveries 0 in one write', async () => {
+    const task = await createTask('Retry me', 'inProgress')
+    await recoverTask(task.id)
+    await moveTask(task.id, 'inProgress')
+    await recoverTask(task.id)
+    expect(readRawTask(task.id).recoveries).toBe(2)
+    const before = readRawTask(task.id).version ?? 0
+
+    await moveTask(task.id, 'inProgress', undefined, 'human', { resetRecoveries: true })
+
+    const raw = readRawTask(task.id)
+    expect(raw.column).toBe('inProgress')
+    expect(raw.recoveries).toBe(0)
+    expect(raw.version).toBe(before + 1)
+  })
+
+  it('blocking never touches the counter', async () => {
+    const task = await createTask('Block me', 'inProgress')
+    await recoverTask(task.id)
+    await blockTask(task.id, 'waiting', undefined, 'human')
+    expect(readRawTask(task.id).recoveries).toBe(1)
+  })
+})
 
 describe('moveTask', () => {
   it('moves task through valid transitions', async () => {
@@ -590,9 +677,34 @@ describe('setDependency / clearDependency', () => {
     let found = getTask(child.id)
     expect(found!.dependsOn).toBe(parent.id)
 
-    await clearDependency(child.id)
+    expect(await clearDependency(child.id, parent.id)).toBe(true)
     found = getTask(child.id)
     expect(found!.dependsOn).toBeUndefined()
+  })
+
+  // Code review round 3: the settle park and continuation clear from a
+  // snapshot; a dependency re-registered since must survive the clear.
+  it('clearDependency clears only the dependency the caller saw — a replacement stays', async () => {
+    const first = await createTask('First upstream')
+    const second = await createTask('Second upstream')
+    const child = await createTask('Child')
+    await setDependency(child.id, first.id)
+    await setDependency(child.id, second.id)
+
+    expect(await clearDependency(child.id, first.id)).toBe(false)
+    expect(getTask(child.id)!.dependsOn).toBe(second.id)
+    expect(readRawTask(child.id).blockedBy).toEqual([second.id])
+
+    expect(await clearDependency(child.id, second.id)).toBe(true)
+    expect(getTask(child.id)!.dependsOn).toBeUndefined()
+  })
+
+  it('findTaskWithColumn resolves an id or a title, like the mutators', async () => {
+    const task = await createTask('Write docs')
+    expect(findTaskWithColumn(task.id)?.task.id).toBe(task.id)
+    expect(findTaskWithColumn('Write docs')?.task.id).toBe(task.id)
+    expect(findTaskWithColumn(task.id)?.column).toBe('todo')
+    expect(findTaskWithColumn('ghost')).toBeNull()
   })
 })
 
@@ -800,7 +912,7 @@ describe('write operation error handling', () => {
   })
 
   it('clearDependency rejects on task not found', async () => {
-    await expect(clearDependency('ghost')).rejects.toThrow('Task not found')
+    await expect(clearDependency('ghost', 'other')).rejects.toThrow('Task not found')
   })
 })
 

@@ -118,6 +118,17 @@ describe('seedContextFiles', () => {
   })
 })
 
+describe('role defaults — dependency pattern (spec D6)', () => {
+  // The existing seed/refresh tests compare generated content against the
+  // same constant, so they would pass with any wording; pin the sentence.
+  it('tells subagents not to register a dependency on a task that is already done', () => {
+    const block = ROLE_DEFAULTS.subagent
+    expect(block).toContain('## Bakin Dependency Pattern')
+    expect(block).toMatch(/already (done|complete)[^.]*do not register a dependency/i)
+    expect(block).toMatch(/do the work now/i)
+  })
+})
+
 describe('refreshRoleContextBlocks', () => {
   it('reports no updates when blocks are current', () => {
     seedContextFiles()

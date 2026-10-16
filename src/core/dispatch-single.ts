@@ -19,7 +19,7 @@ import {
   cooldownForFailure,
   trimDispatched,
 } from './dispatch-state'
-import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInProgress, tryAddTaskLog } from './dispatch-board'
+import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInProgress, tryAddTaskLog, completedTaskIdsOf } from './dispatch-board'
 import { formatDispatchError } from './dispatch-failures'
 import { concurrencyGate, preDispatchGate, fireDispatchTurn, getSameAgentTurnsMode, resolveDispatchRouting } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
@@ -67,10 +67,7 @@ export async function dispatchSingleTask(
       ...(agent.role ? { role: agent.role } : {}),
     }))
     const mainAgentId = await getRuntimeMainAgentId(runtime)
-    const completedTaskIds = new Set([
-      ...columns.done.map(t => t.id),
-      ...columns.archived.map(t => t.id),
-    ])
+    const completedTaskIds = completedTaskIdsOf(columns)
     const knownTaskIds = new Set(
       Object.values(columns).flatMap((column) => column.map((t) => t.id)),
     )

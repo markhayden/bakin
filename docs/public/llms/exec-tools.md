@@ -2335,7 +2335,7 @@ bakin_exec_tasks_move {
 ### bakin_exec_tasks_set_dependency
 
 Label: Set task dependency
-Purpose: Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait.
+Purpose: Register that your task is waiting on another task that is NOT yet complete. Your task is parked and auto-re-dispatched when that task completes; after registering, stop — do not wait in this turn. Refuses a target that is already complete (just continue your work), does not exist, or is your own task.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |

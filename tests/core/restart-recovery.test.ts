@@ -53,7 +53,9 @@ type RecoveryTask = {
   title: string
   agent?: string
   workflowId?: string
-  log?: Array<{ message: string; timestamp: string }>
+  recoveries?: number
+  version?: number
+  log?: Array<{ message: string; timestamp: string; author?: string }>
 }
 
 type RecoveryColumns = {
@@ -75,15 +77,53 @@ function setColumns(columns: Partial<RecoveryColumns>): void {
   currentColumns = { ...emptyColumns(), ...columns }
 }
 
-const mockAddTaskLog = mock(async (..._args: unknown[]) => undefined)
-const mockBlockTask = mock(async (..._args: unknown[]) => undefined)
+const storeCallOrder: string[] = []
+const mockAddTaskLog = mock(async (...args: unknown[]) => { storeCallOrder.push(`log:${String(args[0])}`); return undefined })
+const mockBlockTask = mock(async (...args: unknown[]) => { storeCallOrder.push(`block:${String(args[0])}`); return undefined })
 const mockMoveTask = mock(async (..._args: unknown[]) => undefined)
+const mockRecoverTask = mock(async (id: string) => {
+  storeCallOrder.push(`recover:${id}`)
+  const task = findColumnTask(id)
+  if (task) task.recoveries = (task.recoveries ?? 0) + 1
+  return undefined
+})
 
+function findColumnTask(id: string): RecoveryTask | null {
+  for (const column of Object.values(currentColumns)) {
+    const found = column.find((t) => t.id === id)
+    if (found) return found
+  }
+  return null
+}
+function columnOf(id: string): string | null {
+  for (const [name, column] of Object.entries(currentColumns)) {
+    if (column.some((t) => t.id === id)) return name
+  }
+  return null
+}
+
+// A test can act on the ledger at a specific row read — the only seam between
+// the awaited re-assessment and the synchronous mutation boundary.
+let onTaskRead: ((id: string, nth: number) => void) | null = null
+const taskReads = new Map<string, number>()
+
+// Fresh projections on every read, like the real store's taskToView.
 mock.module('../../src/core/task-store', () => ({
-  readTaskboard: mock(() => ({ columns: currentColumns })),
+  readTaskboard: mock(() => ({
+    columns: Object.fromEntries(Object.entries(currentColumns).map(([name, tasks]) => [name, tasks.map((t) => ({ ...t }))])) as RecoveryColumns,
+  })),
+  getTaskWithColumn: (id: string) => {
+    const nth = (taskReads.get(id) ?? 0) + 1
+    taskReads.set(id, nth)
+    onTaskRead?.(id, nth)
+    const task = findColumnTask(id)
+    const column = columnOf(id)
+    return task && column ? { task: { ...task }, column } : null
+  },
   addTaskLog: (...args: unknown[]) => mockAddTaskLog(...args),
   blockTask: (...args: unknown[]) => mockBlockTask(...args),
   moveTask: (...args: unknown[]) => mockMoveTask(...args),
+  recoverTask: (id: string) => mockRecoverTask(id),
 }))
 
 const mockHookInvoke = mock(async (..._args: unknown[]): Promise<unknown> => undefined)
@@ -133,6 +173,9 @@ describe('restart recovery', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bakin-restart-recovery-'))
     mock.clearAllMocks()
     setColumns({})
+    storeCallOrder.length = 0
+    onTaskRead = null
+    taskReads.clear()
     mockGetSettings.mockReturnValue({
       watchdog: {
         maxAutoRecoveries: 3,
@@ -167,7 +210,10 @@ describe('restart recovery', () => {
       'system',
       expect.stringContaining('Restart recovery: no live run after server restart'),
     )
-    expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'todo', 'inProgress')
+    // ONE store write (todo + recoveries+1), THEN the log line (spec D3/D9).
+    expect(mockRecoverTask).toHaveBeenCalledWith('task-1')
+    expect(mockMoveTask).not.toHaveBeenCalled()
+    expect(storeCallOrder.indexOf('recover:task-1')).toBeLessThan(storeCallOrder.indexOf('log:task-1'))
     expect(mockAppendAudit).toHaveBeenCalledWith(
       tempDir,
       'task.restart_recovered',
@@ -233,7 +279,7 @@ describe('restart recovery', () => {
     const result = await runRestartRecovery(tempDir)
 
     expect(result.recovered).toBe(1)
-    expect(mockMoveTask).toHaveBeenCalledWith('task-4', 'todo', 'inProgress')
+    expect(mockRecoverTask).toHaveBeenCalledWith('task-4')
     expect(mockAppendAudit).toHaveBeenCalledWith(
       tempDir,
       'task.restart_recovered',
@@ -348,30 +394,27 @@ describe('restart recovery', () => {
     const holdCall = mockAddTaskLog.mock.calls.find((c) => c[0] === 'task-5')
     expect(holdCall).toBeDefined()
     expect(holdCall?.[1]).toBe('system')
-    // NOT the 'Restart recovery:' prefix — countRecoveries() matches that
-    // prefix and a hold must not count as a recovery attempt.
-    expect(String(holdCall?.[2])).not.toMatch(/^Restart recovery:/)
     expect(holdCall?.[3]).toMatchObject({ restartRecovery: 'manual' })
+    // A hold is not an attempt: the counter is untouched.
+    expect(mockRecoverTask).not.toHaveBeenCalled()
   })
 
-  it('escalates exhausted restart recovery loops to blocked', async () => {
+  it('escalates exhausted restart recovery loops to blocked, counted from the persisted field', async () => {
     setColumns({
       inProgress: [{
         id: 'task-6',
         title: 'Exhausted',
         agent: 'pixel',
-        log: [
-          { message: 'Auto-recovered: attempt 1', timestamp: '2020-01-01T00:00:00Z' },
-          { message: 'Restart recovery: attempt 2', timestamp: '2020-01-01T01:00:00Z' },
-          { message: 'Restart recovery: attempt 3', timestamp: '2020-01-01T02:00:00Z' },
-        ],
+        recoveries: 3,
+        log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }],
       }],
     })
 
     const result = await runRestartRecovery(tempDir)
 
     expect(result.blocked).toBe(1)
-    expect(mockBlockTask).toHaveBeenCalledWith('task-6', expect.stringContaining('Restart recovery limit reached'))
+    expect(mockBlockTask).toHaveBeenCalledWith('task-6', expect.stringContaining('Restart recovery limit reached (3 attempts)'))
+    expect(storeCallOrder.indexOf('block:task-6')).toBeLessThan(storeCallOrder.indexOf('log:task-6'))
     expect(mockMoveTask).not.toHaveBeenCalled()
     expect(mockAppendAudit).toHaveBeenCalledWith(
       tempDir,
@@ -379,6 +422,164 @@ describe('restart recovery', () => {
       'system',
       expect.objectContaining({ id: 'task-6', recoveryCount: 3 }),
     )
+  })
+
+  it('legacy "Restart recovery:" / "Auto-recovered:" log lines are inert — recoveries 0 means recover', async () => {
+    setColumns({
+      inProgress: [{
+        id: 'task-6b',
+        title: 'Pre-upgrade task',
+        agent: 'pixel',
+        log: [
+          { author: 'watchdog', message: 'Auto-recovered: attempt 1', timestamp: '2020-01-01T00:00:00Z' },
+          { author: 'system', message: 'Restart recovery: attempt 2', timestamp: '2020-01-01T01:00:00Z' },
+          { author: 'system', message: 'Restart recovery: attempt 3', timestamp: '2020-01-01T02:00:00Z' },
+        ],
+      }],
+    })
+
+    const result = await runRestartRecovery(tempDir)
+
+    expect(result.recovered).toBe(1)
+    expect(mockRecoverTask).toHaveBeenCalledWith('task-6b')
+    expect(mockBlockTask).not.toHaveBeenCalled()
+  })
+
+  // Fresh validation at the mutation boundary (spec D9): candidates come from
+  // one board snapshot, but the loop awaits between tasks.
+  it('a candidate the operator moved while an earlier candidate was being recovered is skipped', async () => {
+    setColumns({
+      inProgress: [
+        { id: 'task-r1', title: 'First', agent: 'pixel' },
+        { id: 'task-r2', title: 'Second', agent: 'pixel' },
+      ],
+    })
+    mockRecoverTask.mockImplementationOnce(async (id: string) => {
+      storeCallOrder.push(`recover:${id}`)
+      const second = findColumnTask('task-r2')!
+      currentColumns.inProgress = currentColumns.inProgress.filter((t) => t.id !== 'task-r2')
+      currentColumns.todo.push(second)
+      return undefined
+    })
+
+    const result = await runRestartRecovery(tempDir)
+
+    expect(mockRecoverTask).toHaveBeenCalledWith('task-r1')
+    expect(mockRecoverTask).not.toHaveBeenCalledWith('task-r2')
+    expect(result.recovered).toBe(1)
+    expect(result.skipped).toBe(1)
+  })
+
+  it('an exhausted candidate whose counter was reset before its turn is recovered under the fresh count, not blocked', async () => {
+    setColumns({
+      inProgress: [
+        { id: 'task-r3', title: 'First', agent: 'pixel', version: 1 },
+        { id: 'task-r4', title: 'Exhausted in the snapshot', agent: 'pixel', recoveries: 3, version: 5 },
+      ],
+    })
+    mockRecoverTask.mockImplementationOnce(async (id: string) => {
+      storeCallOrder.push(`recover:${id}`)
+      const r4 = findColumnTask('task-r4')!
+      r4.recoveries = 0
+      r4.version = 6
+      return undefined
+    })
+
+    const result = await runRestartRecovery(tempDir)
+
+    // The reset landed BEFORE task-r4's fresh read, so the fresh verdict is "recover".
+    expect(mockBlockTask).not.toHaveBeenCalled()
+    expect(mockRecoverTask).toHaveBeenCalledWith('task-r4')
+    expect(result.recovered).toBe(2)
+  })
+
+  // Code review (PR #975): the fresh read preceded the awaited re-assessment,
+  // so a write DURING re-assessment still acted on the pre-await row.
+  it('a workflow candidate written during its own re-assessment is skipped, not blocked on the pre-await count', async () => {
+    setColumns({
+      inProgress: [{ id: 'task-r7', title: 'Exhausted workflow', agent: 'pixel', workflowId: 'wf', recoveries: 3, version: 2 }],
+    })
+    let activeAgentCalls = 0
+    mockHookInvoke.mockImplementation(async (hook: unknown, data?: unknown) => {
+      const taskId = (data as { taskId?: string } | undefined)?.taskId
+      if (taskId !== 'task-r7') return undefined
+      if (hook === 'workflows.loadInstance') return { status: 'in_progress' }
+      if (hook === 'workflows.getActiveAgents') {
+        activeAgentCalls += 1
+        // Discovery pass sees the exhausted row; the operator resets the card
+        // while the RE-ASSESSMENT's hook is in flight.
+        if (activeAgentCalls === 2) {
+          const r7 = findColumnTask('task-r7')!
+          r7.recoveries = 0
+          r7.version = 3
+        }
+        return [{ agent: 'pixel', stepId: 'design' }]
+      }
+      return undefined
+    })
+
+    const result = await runRestartRecovery(tempDir)
+
+    expect(mockBlockTask).not.toHaveBeenCalled()
+    expect(mockRecoverTask).not.toHaveBeenCalled()
+    expect(result.skipped).toBe(1)
+  })
+
+  // Code review round 3: a workflow step claim writes the ledger, not the task
+  // row (the card is already in progress), so the version compare cannot see
+  // it. The mutation boundary re-checks the ledger synchronously.
+  it('a workflow step claimed after the re-assessment, with the row unchanged, is left alone', async () => {
+    setColumns({
+      inProgress: [{ id: 'task-r8', title: 'Workflow', agent: 'pixel', workflowId: 'wf', version: 2 }],
+    })
+    mockHookInvoke.mockImplementation(async (hook: unknown, data?: unknown) => {
+      if ((data as { taskId?: string } | undefined)?.taskId !== 'task-r8') return undefined
+      if (hook === 'workflows.loadInstance') return { status: 'in_progress' }
+      if (hook === 'workflows.getActiveAgents') return [{ agent: 'pixel', stepId: 'design' }]
+      return undefined
+    })
+    // Reads: 1 = fresh (before re-assessment), 2 = again (after it). The
+    // engine claims the step between the re-assessment and the mutation.
+    onTaskRead = (id, nth) => {
+      if (id === 'task-r8' && nth === 2) liveRun('task-r8', 'pixel', 'design')
+    }
+
+    const result = await runRestartRecovery(tempDir)
+
+    expect(mockRecoverTask).not.toHaveBeenCalled()
+    expect(mockBlockTask).not.toHaveBeenCalled()
+    expect(result.skipped).toBe(1)
+  })
+
+  it('a manual hold is not written for a task that gained a live run mid-run', async () => {
+    setColumns({
+      inProgress: [
+        { id: 'task-r5', title: 'First', agent: 'pixel' },
+        { id: 'task-r6', title: 'Partial workflow', workflowId: 'parallel' },
+      ],
+    })
+    mockHookInvoke.mockImplementation(async (hook: unknown, data?: unknown) => {
+      const taskId = (data as { taskId?: string } | undefined)?.taskId
+      if (taskId !== 'task-r6') return undefined
+      if (hook === 'workflows.loadInstance') return { status: 'in_progress' }
+      if (hook === 'workflows.getActiveAgents') return [{ agent: 'pixel', stepId: 'design' }, { agent: 'rolo', stepId: 'copy' }]
+      return undefined
+    })
+    liveRun('task-r6', 'pixel', 'design')
+    // Recovering task-r5 yields; meanwhile the missing step claims its run.
+    mockRecoverTask.mockImplementationOnce(async (id: string) => {
+      storeCallOrder.push(`recover:${id}`)
+      // seq 2: the design step already holds seq 1 on this task.
+      const claimed = claimRun({ runId: 'task:task-r6:step:copy:d1', taskId: 'task-r6', execKey: stepExecKey('task-r6', 'copy'), seq: 2, agent: 'rolo', bootId: BOOT })
+      if (!claimed.claimed) throw new Error('could not claim task-r6 copy step')
+      return undefined
+    })
+
+    const result = await runRestartRecovery(tempDir)
+
+    expect(mockAddTaskLog).not.toHaveBeenCalledWith('task-r6', 'system', expect.anything(), expect.anything())
+    expect(result.recovered).toBe(1)
+    expect(result.skipped).toBe(1)
   })
 
   it('does not mutate candidates when restart recovery is disabled', async () => {

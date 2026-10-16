@@ -214,8 +214,8 @@ export function taskConsistencyRepair(): HealthRepairActionDefinition {
         const board = readTaskboard() as unknown as {
           columns: { done: Array<{ id: string; title: string; dependsOn?: string }> }
         }
-        const affected = board.columns.done.filter((task) => task.dependsOn)
-        for (const task of affected) await clearDependency(task.id)
+        const affected = board.columns.done.filter((task): task is typeof task & { dependsOn: string } => !!task.dependsOn)
+        for (const task of affected) await clearDependency(task.id, task.dependsOn)
         return items.map((item) => ({
           itemId: item.id,
           actionId: item.actionId,

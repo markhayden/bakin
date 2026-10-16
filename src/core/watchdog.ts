@@ -17,7 +17,8 @@ import {
   addTaskLog,
   blockTask,
   getTask,
-  moveTask,
+  getTaskWithColumn,
+  recoverTask,
   readTaskboard,
 } from './task-store'
 import { budgetGate } from './dispatch-turns'
@@ -55,18 +56,6 @@ const BYPASS_PATTERNS = [
   /I(?:'ve| have) (?:also|additionally) (?:generated|created|written|produced)/i,
 ]
 
-function getLastLogTimestamp(task: { log?: { timestamp: string }[] }): Date | null {
-  if (!task.log || task.log.length === 0) return null
-  let latest: Date | null = null
-  for (const entry of task.log) {
-    const ts = new Date(entry.timestamp)
-    if (!isNaN(ts.getTime()) && (!latest || ts > latest)) {
-      latest = ts
-    }
-  }
-  return latest
-}
-
 /**
  * Restart recovery classifies some tasks 'manual' and writes a structured
  * hold marker ({restartRecovery:'manual'} in the entry data). While that
@@ -87,11 +76,6 @@ function latestLogIsManualRecoveryHold(task: { log?: Array<{ timestamp: string; 
     }
   }
   return latest?.data?.restartRecovery === 'manual'
-}
-
-function countAutoRecoveries(task: { log?: { message: string }[] }): number {
-  if (!task.log) return 0
-  return task.log.filter(e => e.message.startsWith('Auto-recovered:')).length
 }
 
 export function getNotificationChannel(settings: ReturnType<typeof getSettings>): string | null {
@@ -160,7 +144,7 @@ export function start(contentDir: string): void {
     }
 
     try {
-      type WdTask = { id: string; title: string; agent?: string; workflowId?: string; updatedAt?: number; log?: Array<{ message: string; timestamp: string }> }
+      type WdTask = { id: string; title: string; agent?: string; workflowId?: string; updatedAt?: number; recoveries?: number; version?: number; log?: Array<{ message: string; timestamp: string; author?: string }> }
       const board = readTaskboard() as unknown as { columns: Record<string, WdTask[]> }
       const { columns } = board
       const inProgressTasks = columns.inProgress || []
@@ -181,17 +165,13 @@ export function start(contentDir: string): void {
           if (wfInstance && (wfInstance.status === 'pending_approval' || wfInstance.status === 'complete')) continue
         }
 
-        // Fallback chain for "last activity":
-        //   1. Most recent task log entry (agent or system)
-        //   2. The flow row's updated_at — i.e. when the task was last
-        //      mutated (created, moved, dispatched). Grants a fresh task
-        //      a full stuckThresholdMs grace window before it's eligible
-        //      for auto-recovery, so a just-dispatched task doesn't get
-        //      declared "30 min stuck" on the very first watchdog tick.
-        //   3. now() — guarantees we never synthesize an ancient timestamp.
-        const lastLogTs = getLastLogTimestamp(task)
-        const lastActivity = lastLogTs?.getTime() ?? task.updatedAt ?? now
-        const stuckMs = now - lastActivity
+        // The activity clock is updatedAt (spec D5): the store bumps it on
+        // EVERY write — log appends included — so a just-dispatched or
+        // operator-moved card always earns the full stuckThresholdMs grace
+        // window. Reading the newest LOG LINE instead let the watchdog's own
+        // ten-hour-old "Escalated to blocked" line re-block a card one minute
+        // after the operator moved it back to Todo (margo, 2026-10-16).
+        const stuckMs = now - (task.updatedAt ?? now)
 
         if (stuckMs <= settings.watchdog.stuckThresholdMs) {
           // Task has recent activity — check for bypass patterns instead
@@ -206,12 +186,14 @@ export function start(contentDir: string): void {
         // keyed by the (possibly nested-child) task id + step id.
         let stranded: boolean
         let liveRun: ReturnType<typeof getLiveRun> = null
+        let workflowActiveAgents: WorkflowActiveAgent[] = []
+        let workflowDescendants: string[] = []
         try {
           if (task.workflowId) {
-            const activeAgents = await hooks().invoke<WorkflowActiveAgent[]>('workflows.getActiveAgents', { taskId: task.id }) ?? []
-            const descendants = await collectWorkflowDescendantTaskIds(task.id, (id) =>
+            workflowActiveAgents = await hooks().invoke<WorkflowActiveAgent[]>('workflows.getActiveAgents', { taskId: task.id }) ?? []
+            workflowDescendants = await collectWorkflowDescendantTaskIds(task.id, (id) =>
               hooks().invoke<WorkflowInstanceLike | null>('workflows.loadInstance', { taskId: id }))
-            const runs = assessWorkflowRuns(task.id, activeAgents, descendants)
+            const runs = assessWorkflowRuns(task.id, workflowActiveAgents, workflowDescendants)
             // Stranded only when NO execution remains — a previous step's
             // turn still settling after the engine advanced counts as live
             // (review P1), as does a completed nested/map child's final turn
@@ -229,6 +211,23 @@ export function start(contentDir: string): void {
         }
 
         if (settings.watchdog.autoRecover) {
+          // Fresh validation BEFORE anything is superseded, aborted or moved
+          // (spec D9). The board snapshot is one tick old and this loop (and
+          // the workflow hooks above) awaited, so the operator or the engine
+          // may have written this row meanwhile. ANY write bumps `version`;
+          // a changed row is left for the next tick — never judged, never
+          // superseded, on stale evidence. Everything from here to the store
+          // write is synchronous.
+          const fresh = getTaskWithColumn(task.id)
+          if (!fresh || fresh.column !== 'inProgress') {
+            log.debug('Skipping auto-recovery: task left in-progress during the scan', { id: task.id })
+            continue
+          }
+          if (fresh.task.version !== task.version) {
+            log.debug('Skipping auto-recovery: task was written during the scan', { id: task.id })
+            continue
+          }
+
           if (!stranded) {
             if (!liveRun) {
               log.debug('Skipping auto-recovery: a workflow step holds a live run', { id: task.id })
@@ -264,8 +263,16 @@ export function start(contentDir: string): void {
             }
           }
 
-          // Stranded (or just superseded) — auto-recover
-          const recoveryCount = countAutoRecoveries(task)
+          // Stranded (or just superseded) — auto-recover with ONE synchronous
+          // store write (column + counter together), THEN the log line.
+          const stillStranded = task.workflowId
+            ? assessWorkflowRuns(task.id, workflowActiveAgents, workflowDescendants).stranded
+            : getLiveRun(task.id) === null
+          if (!stillStranded) {
+            log.debug('Skipping auto-recovery: a run went live during the scan', { id: task.id })
+            continue
+          }
+          const recoveryCount = fresh.task.recoveries ?? 0
 
           if (recoveryCount >= settings.watchdog.maxAutoRecoveries) {
             // Escalate to blocked
@@ -278,12 +285,12 @@ export function start(contentDir: string): void {
               log.error('Failed to escalate task to blocked', err, { id: task.id })
             }
           } else {
-            // Move back to todo for re-dispatch
+            // Back to todo for re-dispatch, counting the attempt in the same write.
             try {
-              await addTaskLog(task.id, 'watchdog', `Auto-recovered: no live run and no task log for ${minutesStuck}+ minutes. Moved back to Todo for re-dispatch.`)
-              await moveTask(task.id, 'todo')
-              appendAudit(contentDir, 'task.auto_recovered', 'watchdog', { id: task.id, title: task.title, agent: task.agent, minutesStuck })
-              log.info('Task auto-recovered to todo', { id: task.id, title: task.title, minutesStuck })
+              await recoverTask(task.id)
+              await addTaskLog(task.id, 'watchdog', `Auto-recovered: no live run and no activity for ${minutesStuck}+ minutes. Moved back to Todo for re-dispatch (attempt ${recoveryCount + 1} of ${settings.watchdog.maxAutoRecoveries}).`)
+              appendAudit(contentDir, 'task.auto_recovered', 'watchdog', { id: task.id, title: task.title, agent: task.agent, minutesStuck, recoveryCount: recoveryCount + 1 })
+              log.info('Task auto-recovered to todo', { id: task.id, title: task.title, minutesStuck, recoveryCount: recoveryCount + 1 })
             } catch (err) {
               log.error('Failed to auto-recover task', err, { id: task.id })
             }
@@ -576,14 +583,14 @@ async function sweepRunWorkspacesTick(settings: ReturnType<typeof getSettings>):
 }
 
 /** Scan recent task log entries for bypass pattern language */
-function checkBypassPatterns(task: { id: string; title: string; agent?: string; log?: { message: string; timestamp: string }[] }, contentDir: string): void {
+function checkBypassPatterns(task: { id: string; title: string; agent?: string; log?: { message: string; timestamp: string; author?: string }[] }, contentDir: string): void {
   if (!task.log || task.log.length === 0) return
 
   // Only check the last 3 log entries
   const recentLogs = task.log.slice(-3)
   for (const entry of recentLogs) {
-    // Skip watchdog's own log entries
-    if (entry.message.startsWith('ALERT:') || entry.message.startsWith('Auto-recovered:') || entry.message.startsWith('⚠️')) continue
+    // Skip the watchdog's own entries — by author, never by message text (D11).
+    if (entry.author === 'watchdog') continue
 
     for (const pattern of BYPASS_PATTERNS) {
       const match = entry.message.match(pattern)

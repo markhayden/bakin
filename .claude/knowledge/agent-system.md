@@ -218,8 +218,24 @@ Reconnecting clients get missed events via `Last-Event-ID` header.
 ## Watchdog (`src/core/watchdog.ts`)
 
 Monitors agent and MCP server health:
-- Checks heartbeat freshness on interval
-- Detects stuck agents (working but no progress > threshold)
+- **Activity clock = `task.updatedAt`** (spec D5). The store bumps it on
+  EVERY write, log appends included, so a just-dispatched or operator-moved
+  card always earns the full `stuckThresholdMs` grace window. Reading the
+  newest log line instead let the watchdog's own ten-hour-old "Escalated to
+  blocked" line re-block a card one minute after the operator moved it back
+  to Todo (margo, 2026-10-16).
+- **Recovery budget = `task.recoveries`** (spec D3), the persisted counter
+  shared with restart recovery; compared against
+  `settings.watchdog.maxAutoRecoveries`. An operator move (board UI, or CLI
+  `--as=human`: channel `human` + agent `human`) resets it to 0 in the same
+  write as the column change and appends `Moved to <column> by operator`
+  with `data.operatorMove { from, to }`. System moves never reset.
+- **Fresh validation before mutating** (spec D9): the board snapshot is one
+  tick old and the loop awaits between tasks, so before recovering or
+  escalating the watchdog re-reads the row (`getTaskWithColumn`), re-checks
+  column / `updatedAt` / liveness / counter, then makes ONE synchronous store
+  write (`recoverTask` or `blockTask`), THEN logs. The bypass-pattern scan
+  skips the watchdog's own lines by `author`, never by message text.
 - Auto-recovery: supersede-first via the execution ledger. Recovery requires transactionally superseding the task's live run (`supersedeStaleRun`, heartbeat staleness vs `settings.watchdog.stuckThresholdMs`); a fresh run heartbeat means the agent is genuinely working and recovery is skipped (replaces the old 60 s `updatedAt` guard / `AUTO_RECOVERY_GUARD_MS`, issue #114). Zero live runs = stranded task, recovered as before; ledger errors skip recovery (fail closed). Emits `task.run_superseded`. See `.claude/knowledge/execution-ledger.md`.
 - Detects MCP 5xx outages via a rolling error-rate check on `/mcp` (configurable window/threshold/min-samples/cooldown in `settings.watchdog.mcp*`) — fires SSE alert, audit entry, and optional runtime channel notification
 - Alert delivery via `settings.notifications.channel` (runtime channel ID; blank means in-app only) — configured in the **Channels** settings tab's Routing section (`/settings?tab=channels`)
@@ -229,10 +245,12 @@ Monitors agent and MCP server health:
 
 Runs once after server boot, after plugins are active and the HTTP server is
 listening, before the normal dispatch/watchdog loops start. It repairs
-`inProgress` tasks whose active agent heartbeat is missing/stale after a crash
-or restart:
+`inProgress` tasks that hold no running ledger row after a crash or restart
+(the execution ledger is the only liveness authority — heartbeat files gate
+nothing):
 
-- Plain tasks use the card assignee heartbeat.
+- Plain tasks are stranded when `getLiveRun(taskId)` is null (the boot sweep
+  marks prior-boot runs lost first).
 - Workflow tasks use `workflows.getActiveAgents` so the current workflow step
   owner is authoritative.
 - Workflow gates waiting on approval are skipped.
@@ -243,7 +261,11 @@ or restart:
   starts the normal loops and immediately triggers a dispatch cycle so the
   normal dispatcher reassigns them.
 - The retry cap is shared with watchdog recovery via
-  `settings.watchdog.maxAutoRecoveries`; exhausted tasks move to `blocked`.
+  `settings.watchdog.maxAutoRecoveries` and the ONE persisted counter
+  `task.recoveries` (log-prefix counting is gone); every candidate is re-read
+  and re-assessed on the fresh row before it is recovered, blocked or given a
+  manual hold, and the recovery is one store write (`recoverTask`) before
+  its log line. Exhausted tasks move to `blocked`.
 
 ## Key Files
 

@@ -40,6 +40,13 @@ export interface BakinTask {
   blockedReason?: string
   blockedBy: string[]
   blocking: string[]
+  /**
+   * Automatic recoveries (watchdog + restart recovery) since the operator
+   * last moved the card by hand. Compared against
+   * settings.watchdog.maxAutoRecoveries; a human move resets it to 0.
+   * Absent on pre-upgrade files ⇒ 0.
+   */
+  recoveries: number
   comments: TaskComment[]
   pendingDelete: boolean
   log: TaskLogEntry[]
@@ -107,6 +114,7 @@ export type BakinTaskPatch = Partial<Pick<
   | 'blockedReason'
   | 'blockedBy'
   | 'blocking'
+  | 'recoveries'
   | 'pendingDelete'
 >>
 
@@ -198,6 +206,7 @@ export function createEmptyBakinTask(input: CreateBakinTaskInput, now = new Date
     source: input.source,
     blockedBy: [],
     blocking: [],
+    recoveries: 0,
     comments: [],
     pendingDelete: false,
     log: [],

@@ -55,7 +55,8 @@ mock.module('../../src/core/dispatch', () => dispatchModuleMock)
 mock.module('@/core/dispatch', () => dispatchModuleMock)
 
 let currentColumns: { todo?: unknown[]; inProgress?: unknown[]; blocked?: unknown[]; done?: unknown[] } = {}
-const mockClearDependency = mock().mockResolvedValue(undefined)
+// Resolves true like the store does when the task still waits on the completed one.
+const mockClearDependency = mock().mockResolvedValue(true)
 const mockAddTaskLog = mock().mockResolvedValue(undefined)
 const mockMoveTask = mock().mockResolvedValue(undefined)
 
@@ -68,7 +69,7 @@ const taskStoreMock = {
       done: currentColumns.done || [],
     },
   })),
-  clearDependency: (taskId: string) => mockClearDependency(taskId),
+  clearDependency: (taskId: string, dependsOn: string) => mockClearDependency(taskId, dependsOn),
   addTaskLog: (identifier: string, author: string, message: string) => mockAddTaskLog(identifier, author, message),
   moveTask: (taskId: string, to: string, from?: string) => mockMoveTask(taskId, to, from),
 }
@@ -78,6 +79,8 @@ mock.module('@/core/task-store', () => taskStoreMock)
 
 import { checkAndContinueDependents } from '../../src/core/continuation'
 import { appendAudit } from '../../src/core/audit'
+import { withStateLock } from '../../src/core/dispatch-state'
+import { settleFor, waitUntil } from '../helpers/wait'
 
 describe('continuation (full re-dispatch semantics)', () => {
   beforeEach(() => {
@@ -106,7 +109,7 @@ describe('continuation (full re-dispatch semantics)', () => {
 
     await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', { port: 3737 })
 
-    expect(mockClearDependency).toHaveBeenCalledWith('t2')
+    expect(mockClearDependency).toHaveBeenCalledWith('t2', 'completed-1')
     expect(mockClearDispatchMarker).toHaveBeenCalledWith('/tmp/test', 't2')
     expect(mockDispatchSingleTask).toHaveBeenCalledWith(
       't2',
@@ -127,7 +130,36 @@ describe('continuation (full re-dispatch semantics)', () => {
 
     expect(mockDispatchSingleTask).not.toHaveBeenCalled()
     expect(mockMoveTask).not.toHaveBeenCalled()
-    expect(mockClearDependency).toHaveBeenCalledWith('t5')
+    // The live turn may have JUST registered this dependency and stopped; the
+    // settle-time park reads dependsOn to know the task is waiting (spec D2).
+    // Clearing it here would strand the task in progress.
+    expect(mockClearDependency).not.toHaveBeenCalled()
+  })
+
+  it('reconciles under the dispatch state lock and only dispatches after releasing it', async () => {
+    mockColumns({ todo: [{ id: 't-lock', title: 'Locked', agent: 'pixel', dependsOn: 'completed-1' }] })
+    // dispatchSingleTask takes the (non-reentrant) lock itself in production —
+    // if continuation still held it, this would never resolve.
+    mockDispatchSingleTask.mockImplementation(() => withStateLock(async () => undefined))
+
+    let release!: () => void
+    const held = new Promise<void>((resolve) => { release = resolve })
+    const holder = withStateLock(() => held)
+
+    try {
+      const run = checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', { port: 3737 })
+      await settleFor(30, 'continuation must wait for the lock before touching the board')
+      const touchedEarly = mockClearDependency.mock.calls.length + mockDispatchSingleTask.mock.calls.length
+      release()
+      await holder
+      await run
+      expect(touchedEarly).toBe(0)
+      await waitUntil(() => mockDispatchSingleTask.mock.calls.length === 1, { label: 'dispatch after lock release' })
+      expect(mockClearDependency).toHaveBeenCalledWith('t-lock', 'completed-1')
+    } finally {
+      release()
+      mockDispatchSingleTask.mockImplementation(() => Promise.resolve())
+    }
   })
 
   it('re-queues an in-progress dependent with NO live run (the parent idled after delegating)', async () => {
@@ -146,6 +178,24 @@ describe('continuation (full re-dispatch semantics)', () => {
       'continuation',
       { completedDependency: { id: 'completed-1', title: 'Done Task' } },
     )
+  })
+
+  // Code review round 3: every clear names the completed dependency and the
+  // store refuses when the task has since re-registered on something else.
+  it('clears by the completed id and leaves a dependent that moved on to another dependency alone', async () => {
+    mockColumns({
+      todo: [{ id: 't-moved-on', title: 'Re-registered', agent: 'main', dependsOn: 'completed-1' }],
+      blocked: [{ id: 't-still', title: 'Still waiting', agent: 'main', dependsOn: 'completed-1' }],
+    })
+    mockClearDependency.mockImplementation(async (taskId: string) => taskId !== 't-moved-on')
+
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', { port: 3737 })
+
+    expect(mockClearDependency).toHaveBeenCalledWith('t-moved-on', 'completed-1')
+    expect(mockDispatchSingleTask).not.toHaveBeenCalledWith('t-moved-on', expect.anything(), expect.anything(), expect.anything(), expect.anything())
+    expect(mockMoveTask).toHaveBeenCalledWith('t-still', 'todo', 'blocked')
+    expect(mockDispatchSingleTask).toHaveBeenCalledWith('t-still', '/tmp/test', 3737, 'continuation', expect.anything())
+    mockClearDependency.mockImplementation(async () => true)
   })
 
   it('leaves an in-progress WORKFLOW dependent to the engine even without a live run', async () => {

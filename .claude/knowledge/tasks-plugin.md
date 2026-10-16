@@ -54,6 +54,7 @@ interface BakinTaskState {
   comments?: TaskComment[] // human comments
   blockedBy?: string[]     // dependency/task blockers
   blocking?: string[]      // tasks blocked by this task
+  recoveries: number       // auto-recoveries (watchdog + restart recovery) since the last operator move; absent on legacy files ⇒ 0
   pendingDelete?: boolean
   execution?: {
     flowId: string | null
@@ -238,7 +239,7 @@ All routes are registered at `/api/plugins/tasks/{path}` via the plugin route sy
 | POST | `/:taskId/assign` | Assign to agent |
 | POST | `/:taskId/log` | Log progress |
 | POST | `/:taskId/block` | Block with reason |
-| POST | `/:taskId/dependency` | Set dependency |
+| POST | `/:taskId/dependency` | Set dependency — refused with 409 (`reason`: `complete` \| `missing` \| `self`); optional `agent` names the actor in the audit |
 | POST | `/:taskId/complete` | Report complete |
 | POST | `/reorder` | Reorder within column |
 
@@ -255,7 +256,7 @@ All routes are registered at `/api/plugins/tasks/{path}` via the plugin route sy
 | `bakin_exec_tasks_block` | Block with reason |
 | `bakin_exec_tasks_complete` | Report complete |
 | `bakin_exec_tasks_log_progress` | Log progress |
-| `bakin_exec_tasks_set_dependency` | Set dependency |
+| `bakin_exec_tasks_set_dependency` | Register a wait on a task that is NOT yet complete; a done/archived, missing or self target returns `ok:false` + `reason` with an agent-facing message ("continue your task now") |
 | `bakin_exec_tasks_update` | Update task fields |
 | `bakin_exec_tasks_delete` | Delete task |
 | `bakin_exec_tasks_assign` | Assign to agent |
@@ -268,7 +269,9 @@ store lives in `src/core/task-store.ts`; the old
 reintroduced. Core, workflows, installed official plugins, schedule, dispatch, and task-service
 call the task store directly instead of invoking `tasks.*` hooks.
 
-Main store operations: `readTaskboard`, `createTask`, `moveTask`, `blockTask`,
+Main store operations: `readTaskboard`, `createTask`, `moveTask` (with
+`{ resetRecoveries }` for operator moves), `recoverTask` (todo + `recoveries+1`
+in one write — the watchdog's and restart recovery's verb), `blockTask`,
 `addTaskLog`, `updateTask`, `deleteTask`, `setDependency`, `clearDependency`,
 `assignTask`, and `reorderTasks`.
 
@@ -282,13 +285,13 @@ documents that fallback; ID is preferred.
 | Function | Side effects |
 |----------|-------------|
 | `logProgress` | Workflow owner authorization → SSE broadcast → persist log entry |
-| `moveTaskWithEffects` | Workflow done-guard → reopen-delete when leaving done (`reopenIfLeavingDone`) → move → completion gate → audit → Antfly index → continuation trigger → project auto-check → parent unblock |
+| `moveTaskWithEffects` | Workflow done-guard → reopen-delete when leaving done (`reopenIfLeavingDone`) → move (an operator move — channel `human` AND agent `human` — resets `recoveries` in the same write and appends `Moved to <column> by operator` with `data.operatorMove { from, to }`, `from` from the service's own snapshot) → completion gate → audit → Antfly index → continuation trigger → project auto-check → parent unblock |
 | `blockTaskWithEffects` | Workflow owner authorization → completion guard (completed task ⇒ `{ alreadyComplete: true }`, no effects; move route maps to 409, MCP block to soft payload, #482) → block task → audit → propagate to parent (system-strict — never human-bypassed, so a done parent is skipped) |
 | `syncLedgerForStoreMove` | The workflow engine's ledger-aware store move: reopen-delete on leaving done → store move → insert-if-missing completion row on landing on done |
 | `backfillMissingCompletionRows` | Boot heal: synthetic completion rows for done-column tasks without one; idempotent, audited `task.completion_backfilled` |
 | `createTaskWithEffects` | Auto-match workflow → create → start workflow instance → audit |
 | `reportComplete` | Workflow active-task authorization → log → move to done → notify orchestrator |
-| `setDependencyWithEffects` | Set dependency → audit |
+| `setDependencyWithEffects` | ONE validator for tool + route: self / missing / complete (`isCompleteColumn`, the dispatcher's predicate) throw `DependencyRejectedError { reason }` before anything is written → set dependency → audit (`actor ?? 'api'`) |
 | `getTaskDetails` | Read board → find task by ID |
 | `triggerDispatch` | Fire-and-forget POST to `/api/dispatch` |
 
@@ -331,8 +334,10 @@ When `autoArchiveDays > 0`, the plugin moves old Done tasks to Archived. `archiv
 - Scheduled jobs can auto-create tasks on their cron schedule
 
 ### Continuation System
-- Tasks can declare `dependsOn: {taskId}`
-- When a dependency completes (moves to done), `checkAndContinueDependents` finds and unblocks/dispatches dependent tasks
+- Tasks can declare `dependsOn: {taskId}` — only on a task that is not yet complete (the validator refuses done/archived, missing and self targets)
+- A regular turn that ends with `dependsOn` set is parked in `todo` at settle (see `dispatch.md` § Park-in-todo at settle) instead of idling in progress for the watchdog
+- When a dependency completes (moves to done), `checkAndContinueDependents` reconciles under the dispatch state lock and unblocks/dispatches dependent tasks; a dependent with a live run keeps its `dependsOn` for the settle park to clear
+- CLI: `bakin tasks depend <id> <dependsOn> [--as=<actor>]`; every `bakin tasks …` mutation resolves its actor via `src/cli/actor.ts` (`--as=<agent|human>` → run-dir sidecar → roster main)
 
 ### Antfly Search
 

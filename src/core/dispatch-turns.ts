@@ -28,11 +28,11 @@ import { evaluateBudget, ruleMatchesTurn, dayStartMs, monthStartMs, type BudgetP
 import { assembleBudgetSpend, type BudgetSpendFacets } from './budget-spend'
 import { getBootId } from './boot-id'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
-import { moveTask as moveStoredTask } from './task-store'
+import { clearDependency as clearStoredDependency, moveTask as moveStoredTask } from './task-store'
 import { formatDispatchError } from './dispatch-failures'
 import type { DispatchTask, ConcurrencyGate } from './dispatch-types'
 import { withStateLock, loadDispatchState, saveDispatchState } from './dispatch-state'
-import { findDispatchTaskSnapshot, tryAddTaskLog } from './dispatch-board'
+import { findDispatchTaskSnapshot, isCompleteColumn, tryAddTaskLog } from './dispatch-board'
 import { reconcileRejectedDispatch } from './dispatch-session-death'
 import { allocateRunWorkspace, readRunSidecar, removeRunWorkspace, setRunWorkspaceRepo, settleRunWorkspace } from './run-workspace'
 import { addRunWorktree, removeRunWorktree } from './git-worktree'
@@ -894,20 +894,27 @@ export function fireDispatchTurn(opts: {
       })
       // Park-in-todo at settle (regular turns only — a workflow step turn
       // legitimately runs under an agent that differs from the card owner,
-      // see dispatch-workflow.ts). Two cases share the rule:
-      //   • DECOMPOSITION: the turn ends with the agent creating the subtask
-      //     chain and STOPPING (no tasks_complete, by design); the dependsOn
-      //     gate holds the parent in todo until the chain completes, then
-      //     continuation re-dispatches it for final assembly.
+      // see dispatch-workflow.ts). ONE action, three triggers (spec D2):
+      //   • REGISTERED DEPENDENCY: the turn ended with dependsOn set — the
+      //     agent registered a wait and stopped (margo task 12939a37 idled
+      //     in progress for 30 min per cycle until the watchdog noticed).
+      //     An open target parks the task until continuation fires; a target
+      //     that completed DURING the turn (continuation leaves dependsOn to
+      //     this park on live runs) or no longer exists is satisfied, so the
+      //     dependency is cleared and the next dispatch cycle picks it up.
+      //   • DECOMPOSITION: the recovery turn ends with the agent creating the
+      //     subtask chain and STOPPING (no tasks_complete, by design); kept
+      //     as its own trigger because the chain's last child may finish
+      //     before the parent registers — the validator then refuses the
+      //     registration and no dependsOn is left to see.
       //   • HAND-OFF: triage (or the agent) re-assigned the task to another
       //     agent or to a team mid-turn; nothing is executing it any more, so
-      //     it queues for the new owner instead of idling in progress until
-      //     the watchdog notices (found live on margo: 35-minute stalls).
+      //     it queues for the new owner (found live on margo: 35-minute stalls).
       // Only an attempt that still owned its run may move the task, and only
       // while no replacement run is live — a superseded turn whose send
       // resolved late must never park the task its replacement is executing
-      // (review P2). Checked and applied under the state lock, where claims
-      // and the other settle reconciliations serialize.
+      // (review P2). Checked and applied under the state lock, where claims,
+      // continuation and the other settle reconciliations serialize.
       if (opts.dispatchKind === 'regular' && ownedRun) {
         await withStateLock(async () => {
           const fresh = findDispatchTaskSnapshot(opts.task.id)
@@ -916,21 +923,39 @@ export function fireDispatchTurn(opts: {
           const handedOffTo = owner && owner !== opts.targetAgent
             ? owner
             : !owner && fresh.task.team ? `team ${fresh.task.team}` : null
-          if (!completedDecomposition && !handedOffTo) return
+          const dependsOn = fresh.task.dependsOn
+          if (!dependsOn && !completedDecomposition && !handedOffTo) return
           try {
             if (getLiveRun(opts.task.id)) {
               log.debug('Skipping park at settle: a replacement run is live', { id: opts.task.id })
               return
             }
             await moveStoredTask(opts.task.id, 'todo', 'inProgress')
-            if (completedDecomposition) {
+            if (dependsOn) {
+              const target = findDispatchTaskSnapshot(dependsOn)
+              if (!target || isCompleteColumn(target.column)) {
+                // Clears only the dependency this settle saw satisfied: the
+                // dependency route takes no dispatch lock, so a replacement
+                // target registered since the snapshot stays recorded and
+                // the task keeps waiting on it (code review round 3).
+                if (await clearStoredDependency(opts.task.id, dependsOn)) {
+                  await tryAddTaskLog(opts.task.id, 'system', `Dependency ${dependsOn} already complete — re-queued for dispatch.`)
+                } else {
+                  log.debug('Settle park: dependency replaced since the snapshot — left waiting', { id: opts.task.id, dependsOn })
+                }
+              } else {
+                await tryAddTaskLog(opts.task.id, 'system', `Waiting on ${dependsOn} — parked in Todo; re-dispatched when it completes.`)
+              }
+            } else if (completedDecomposition) {
               await tryAddTaskLog(opts.task.id, 'system', 'Decomposition complete — parked in Todo until the subtask chain finishes (dependency gate), then re-dispatched for final assembly.')
             } else {
               await tryAddTaskLog(opts.task.id, 'system', `Handed off to ${handedOffTo}; queued for dispatch.`)
+            }
+            if (handedOffTo) {
               appendAudit(opts.contentDir, 'task.handed_off', 'system', { id: opts.task.id, title: opts.task.title, from: opts.targetAgent, to: handedOffTo })
             }
           } catch (err) {
-            log.warn('Failed to park task in todo at settle', err, { id: opts.task.id, decomposition: completedDecomposition, handedOffTo })
+            log.warn('Failed to park task in todo at settle', err, { id: opts.task.id, dependsOn, decomposition: completedDecomposition, handedOffTo })
           }
         })
       } else if (opts.dispatchKind === 'regular' && !ownedRun) {

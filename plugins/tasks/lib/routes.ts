@@ -29,6 +29,7 @@ import {
   TaskValidationError,
   reportComplete,
   setDependencyWithEffects,
+  DependencyRejectedError,
   getTaskDetails,
   logProgress,
   WorkflowTaskMoveError,
@@ -56,6 +57,15 @@ import {
   reorderBody,
   completeTaskBody,
 } from './task-schemas'
+
+/**
+ * Operator = channel 'human' AND actor 'human' (spec D4) — what the board UI
+ * and `bakin tasks … --as=human` send. An agent naming channel 'human' is
+ * downgraded to 'rest' so nothing it does counts as the operator's hand.
+ */
+function operatorChannel(actor: string, channel: string | undefined): 'human' | 'rest' {
+  return channel === 'human' && actor === 'human' ? 'human' : 'rest'
+}
 
 export const tasksRoutes = [
   defineRoute({
@@ -264,7 +274,7 @@ export const tasksRoutes = [
           return Response.json({ error: 'reason required when moving to blocked' }, { status: 400 })
         }
         try {
-          const { alreadyComplete } = await blockTaskWithEffects(identifier, reason, agent, (body.channel === 'human' && agent === 'human') ? 'human' : 'rest')
+          const { alreadyComplete } = await blockTaskWithEffects(identifier, reason, agent, operatorChannel(agent, body.channel))
           if (alreadyComplete) {
             return Response.json({ error: `Task ${identifier} is completed — reopen it (move it out of Done) before blocking.` }, { status: 409 })
           }
@@ -276,8 +286,7 @@ export const tasksRoutes = [
         }
       }
       try {
-        const effectiveChannel = (body.channel === 'human' && agent === 'human') ? 'human' as const : 'rest' as const
-        const { alreadyComplete } = await moveTaskWithEffects(identifier, to, agent, { from, channel: effectiveChannel })
+        const { alreadyComplete } = await moveTaskWithEffects(identifier, to, agent, { from, channel: operatorChannel(agent, body.channel) })
         if (!alreadyComplete) {
           ctx.activity.log(agent, `Moved task to "${to}"`, { taskId: identifier })
           indexTask(ctx, identifier).catch(() => {})
@@ -332,8 +341,9 @@ export const tasksRoutes = [
         return Response.json({ error: 'taskId required' }, { status: 400 })
       }
       try {
-        await logProgress(identifier, body.author || 'system', body.message, 'rest')
-        ctx.activity.log(body.agent || body.author || 'system', `Logged progress on task ${identifier}`, { taskId: identifier })
+        const author = body.author || 'system'
+        await logProgress(identifier, author, body.message, operatorChannel(author, body.channel))
+        ctx.activity.log(body.agent || author, `Logged progress on task ${identifier}`, { taskId: identifier })
         return Response.json({ ok: true as const })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -381,10 +391,13 @@ export const tasksRoutes = [
       const guard = taskEditGuard(ctx, taskId)
       if (guard) return guardResponse(guard)
       try {
-        await setDependencyWithEffects(taskId, body.dependsOn, 'rest')
-        ctx.activity.log('system', `Set dependency on ${body.dependsOn}`, { taskId })
+        await setDependencyWithEffects(taskId, body.dependsOn, 'rest', body.agent)
+        ctx.activity.log(body.agent ?? 'system', `Set dependency on ${body.dependsOn}`, { taskId })
         return Response.json({ ok: true as const })
       } catch (err) {
+        if (err instanceof DependencyRejectedError) {
+          return Response.json({ error: err.message, reason: err.reason }, { status: 409 })
+        }
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
     },

@@ -22,10 +22,12 @@ import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { assertWorkflowToolAllowed } from './workflow-tool-authorization'
 import { deleteCompletion, getLiveRun, hasCompletion, recordCompletion } from './execution-ledger'
 import { bumpTaskRunHeartbeat } from './task-liveness'
+import { isCompleteColumn } from './dispatch-board'
 import {
   addTaskLog as appendTaskLog,
   blockTask as blockStoredTask,
   createTask as createStoredTask,
+  findTaskWithColumn,
   getTasksByColumn,
   getTaskWithColumn,
   moveTask as moveStoredTask,
@@ -67,6 +69,17 @@ function getPort(): number {
 // ---------------------------------------------------------------------------
 
 export type Channel = 'human' | 'mcp' | 'rest' | 'cli' | 'system'
+
+/**
+ * The operator acting by hand (spec D4): channel 'human' AND agent 'human' —
+ * what the board UI sends and what `bakin tasks … --as human` sends. Either
+ * alone is not enough (an agent naming channel 'human' is downgraded by the
+ * routes); the ONE predicate behind the budget reset, the operator log line
+ * and the workflow-ownership bypass.
+ */
+function isOperatorAction(agent: string, channel: Channel | undefined): boolean {
+  return channel === 'human' && agent === 'human'
+}
 
 /**
  * Workflow done-guard rejection — a TYPED class so route/tool callers
@@ -157,7 +170,13 @@ export async function logProgress(
   message: string,
   channel?: Channel,
 ): Promise<void> {
-  await assertWorkflowToolAllowed({ taskId, agent, action: 'progress-log' })
+  // The workflow step-ownership check is for AGENTS writing on a workflow
+  // task. The operator (spec D4: channel 'human' AND agent 'human') owns no
+  // step and may annotate any card — the board UI and `bakin tasks … --as
+  // human` are the same person as the human move that bypasses the done guard.
+  if (!isOperatorAction(agent, channel)) {
+    await assertWorkflowToolAllowed({ taskId, agent, action: 'progress-log' })
+  }
   // Broadcast to live activity feed first (never block on persistence)
   broadcast({ type: 'activity', agent, message, ts: new Date().toISOString(), taskId, ...(channel ? { channel } : {}) })
   // Progress is a liveness signal — bump the agent's run heartbeat so a
@@ -213,9 +232,17 @@ export async function moveTaskWithEffects(
   // whether this caller won (legacy done task without a row) or is
   // suppressed. Every other case still moves (including the crash-window
   // heal where a completion row exists but the column never reached done).
+  // Operator move (spec D4): the board UI (and the CLI under --as human) sends
+  // channel 'human' AND agent 'human'. It restarts the recovery budget in the
+  // same store write and leaves a structured line in the task's own log —
+  // the column it actually left comes from our snapshot, never the client.
+  const operatorMove = isOperatorAction(agent, opts?.channel)
   const alreadyDone = (before?.column ?? '').toLowerCase() === 'done'
   if (!(movingToDone && alreadyDone)) {
-    await moveStoredTask(taskId, to, opts?.from, opts?.channel)
+    await moveStoredTask(taskId, to, opts?.from, opts?.channel, operatorMove ? { resetRecoveries: true } : undefined)
+    if (operatorMove) {
+      await appendTaskLog(taskId, 'human', `Moved to ${to} by operator`, { operatorMove: { from: before?.column, to } })
+    }
   }
 
   // Completion gate — first write wins. The INSERT after the (idempotent)
@@ -609,13 +636,59 @@ export async function reportComplete(
 /**
  * Register a dependency between tasks.
  */
+export type DependencyRejectionReason = 'missing' | 'self' | 'complete'
+
+function dependencyRejectionMessage(reason: DependencyRejectionReason, dependsOn: string): string {
+  switch (reason) {
+    case 'complete':
+      return `Task ${dependsOn} is already complete — do not wait on it. Continue your task now; no dependency was registered.`
+    case 'missing':
+      return `Task ${dependsOn} does not exist — check the id. No dependency was registered.`
+    case 'self':
+      return `A task cannot depend on itself (${dependsOn}). No dependency was registered.`
+  }
+}
+
+/**
+ * Typed refusal from setDependencyWithEffects (spec D1). Classified by
+ * `reason`, never by message text; the message is written FOR the agent — the
+ * exec tool hands it back verbatim and the REST route maps the class to 409.
+ */
+export class DependencyRejectedError extends Error {
+  constructor(readonly reason: DependencyRejectionReason, readonly dependsOn: string) {
+    super(dependencyRejectionMessage(reason, dependsOn))
+    this.name = 'DependencyRejectedError'
+  }
+}
+
+/**
+ * Register `taskId` as waiting on `dependsOn`. ONE validator for the exec
+ * tool and the REST route: a self-dependency, a target that does not exist,
+ * or a target that is already complete (`isCompleteColumn` — the same
+ * definition the dispatcher uses) is refused before anything is written. The
+ * margo loop (task 12939a37) was an agent registering a dependency on a DONE
+ * task every re-dispatch and being told to stop and wait for a completion
+ * that could never fire again.
+ */
 export async function setDependencyWithEffects(
   taskId: string,
   dependsOn: string,
   channel?: Channel,
+  /** Acting agent, named in the audit; `api` when the caller carries none. */
+  actor?: string,
 ): Promise<void> {
-  await setStoredDependency(taskId, dependsOn)
-  appendAudit(getContentDir(), 'task.dependency_set', 'api', { id: taskId, dependsOn }, channel)
+  if (taskId === dependsOn) throw new DependencyRejectedError('self', dependsOn)
+  // The store resolves the SOURCE by id or title; compare resolved identities,
+  // not the strings the caller typed, or `bakin tasks depend "<title>" <id>`
+  // registers a task as waiting on itself (code review round 3).
+  const source = findTaskWithColumn(taskId)
+  if (!source) throw new Error(`Task not found: ${taskId}`)
+  const target = getTaskWithColumn(dependsOn)
+  if (!target) throw new DependencyRejectedError('missing', dependsOn)
+  if (source.task.id === target.task.id) throw new DependencyRejectedError('self', dependsOn)
+  if (isCompleteColumn(target.column)) throw new DependencyRejectedError('complete', dependsOn)
+  await setStoredDependency(source.task.id, dependsOn)
+  appendAudit(getContentDir(), 'task.dependency_set', actor ?? 'api', { id: source.task.id, dependsOn }, channel)
 }
 
 /**

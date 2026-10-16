@@ -18,6 +18,7 @@ import {
   taskStoreMock,
   taskServiceMock,
   MockWorkflowTaskMoveError,
+  MockDependencyRejectedError,
   resetTasksRoutesHarness,
   completionsFake,
   mockTaskRuns,
@@ -913,6 +914,32 @@ describe('POST /:taskId/log — Add Log Entry', () => {
     expect(mockLogProgress).toHaveBeenCalledWith('task-log', 'system', 'Auto log', 'rest')
   })
 
+  // Code review round 3: `bakin tasks complete … --as=human` logs before it
+  // moves; the operator's note must not need workflow step ownership.
+  it('passes the human channel through for an operator note (author human + channel human)', async () => {
+    mockLogProgress.mockResolvedValue(undefined)
+
+    const route = findRoute(activated.routes, 'POST', '/:taskId/log')!
+    await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-log' },
+      body: { message: 'Task complete: shipped by hand', author: 'human', channel: 'human' },
+    })
+
+    expect(mockLogProgress).toHaveBeenCalledWith('task-log', 'human', 'Task complete: shipped by hand', 'human')
+  })
+
+  it('downgrades channel=human to rest when the author is an agent', async () => {
+    mockLogProgress.mockResolvedValue(undefined)
+
+    const route = findRoute(activated.routes, 'POST', '/:taskId/log')!
+    await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-log' },
+      body: { message: 'pretending', author: 'pixel', channel: 'human' },
+    })
+
+    expect(mockLogProgress).toHaveBeenCalledWith('task-log', 'pixel', 'pretending', 'rest')
+  })
+
   it('returns 400 when message is missing', async () => {
     const route = findRoute(activated.routes, 'POST', '/:taskId/log')!
     const { status, body } = await callRoute(route, activated.ctx, {
@@ -1007,7 +1034,20 @@ describe('POST /:taskId/dependency — Set Dependency', () => {
 
     expect(status).toBe(200)
     expect(body.ok).toBe(true)
-    expect(mockSetDependencyWithEffects).toHaveBeenCalledWith('task-dep', 'task-parent', 'rest')
+    expect(mockSetDependencyWithEffects).toHaveBeenCalledWith('task-dep', 'task-parent', 'rest', undefined)
+  })
+
+  it('passes the acting agent through so the audit names it (CLI --as, spec D12)', async () => {
+    mockSetDependencyWithEffects.mockResolvedValue(undefined)
+
+    const route = findRoute(activated.routes, 'POST', '/:taskId/dependency')!
+    const { status } = await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-dep' },
+      body: { dependsOn: 'task-parent', agent: 'patch' },
+    })
+
+    expect(status).toBe(200)
+    expect(mockSetDependencyWithEffects).toHaveBeenCalledWith('task-dep', 'task-parent', 'rest', 'patch')
   })
 
   it('returns 400 when dependsOn is missing', async () => {
@@ -1019,6 +1059,21 @@ describe('POST /:taskId/dependency — Set Dependency', () => {
 
     expect(status).toBe(400)
     expect(body.error).toBe('invalid input')
+  })
+
+  // Typed refusal (spec D1): a complete/missing/self target is a client
+  // mistake, not a server fault — 409 with the agent-facing message.
+  it('returns 409 with the message when the service refuses the dependency', async () => {
+    mockSetDependencyWithEffects.mockRejectedValue(new MockDependencyRejectedError('complete', 'task-parent'))
+
+    const route = findRoute(activated.routes, 'POST', '/:taskId/dependency')!
+    const { status, body } = await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-dep' },
+      body: { dependsOn: 'task-parent' },
+    })
+
+    expect(status).toBe(409)
+    expect(body.error).toContain('task-parent')
   })
 
   it('returns 500 on dependency error', async () => {

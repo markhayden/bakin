@@ -1812,7 +1812,7 @@ curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/tasks/<taskId>/dependency' \
   -H 'Content-Type: application/json' \
-  --data '{"id":"value","dependsOn":"value"}'
+  --data '{"id":"value","dependsOn":"value","agent":"value"}'
 ```
 </OpenApiReference>
 
@@ -1822,7 +1822,7 @@ curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/tasks/<taskId>/log' \
   -H 'Content-Type: application/json' \
-  --data '{"id":"value","title":"value","author":"value","agent":"value","message":"value"}'
+  --data '{"id":"value","title":"value","author":"value","agent":"value","message":"value","channel":"value"}'
 ```
 </OpenApiReference>
 

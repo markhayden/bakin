@@ -33013,6 +33013,9 @@
                   "message": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "channel": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -33309,6 +33312,9 @@
                   "dependsOn": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "agent": {
+                    "type": "string"
                   }
                 },
                 "required": [

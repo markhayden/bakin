@@ -32,6 +32,7 @@ import {
   blockTaskWithEffects,
   reportComplete,
   setDependencyWithEffects,
+  DependencyRejectedError,
   logProgress,
   triggerDispatch,
 } from '../../../src/core/task-service'
@@ -295,7 +296,7 @@ export function registerTaskExecTools(ctx: PluginContext): void {
       name: 'bakin_exec_tasks_set_dependency',
       label: 'Set task dependency',
       activityDuplicate: true,
-      description: 'Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait.',
+      description: 'Register that your task is waiting on another task that is NOT yet complete. Your task is parked and auto-re-dispatched when that task completes; after registering, stop — do not wait in this turn. Refuses a target that is already complete (just continue your work), does not exist, or is your own task.',
       parameters: {
         taskId: z.string().describe('Your task ID (the one that depends)'),
         dependsOn: z.string().describe('Task ID you depend on'),
@@ -304,9 +305,12 @@ export function registerTaskExecTools(ctx: PluginContext): void {
         const guard = taskEditGuard(ctx, params.taskId as string, { agent })
         if (guard) return { ok: false, error: guard.error }
         try {
-          await setDependencyWithEffects(params.taskId as string, params.dependsOn as string, 'mcp')
-          return { ok: true, message: `Dependency registered. You will be re-dispatched when ${params.dependsOn} completes. Stop now.` }
+          await setDependencyWithEffects(params.taskId as string, params.dependsOn as string, 'mcp', agent)
+          return { ok: true, message: `Dependency registered: ${params.taskId} now waits on ${params.dependsOn}. Your task will be parked and re-dispatched when it completes. Stop now.` }
         } catch (err) {
+          if (err instanceof DependencyRejectedError) {
+            return { ok: false, error: err.message, reason: err.reason }
+          }
           return { ok: false, error: (err as Error).message }
         }
       },

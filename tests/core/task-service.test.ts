@@ -101,11 +101,19 @@ const mockGetTaskWithColumn = mock((id: string) => {
   if (id !== 'task-1') return null
   return { task: { id: 'task-1', title: 'Test Task' }, column: 'inProgress' }
 })
+// The store resolves mutator identifiers by id OR title — the dependency
+// validator's source lookup goes through this path.
+const mockFindTaskWithColumn = mock((identifier: string) => {
+  if (identifier === 'task-a') return { task: { id: 'task-a', title: 'Source' }, column: 'inProgress' }
+  if (identifier === 'Target') return { task: { id: 'task-b', title: 'Target' }, column: 'todo' }
+  return mockGetTaskWithColumn(identifier)
+})
 
 const taskStoreMock = {
   addTaskLog: mockAddTaskLog,
   blockTask: mockBlockTask,
   createTask: mockCreateTask,
+  findTaskWithColumn: mockFindTaskWithColumn,
   getTasksByColumn: mock(() => []),
   getTaskWithColumn: mockGetTaskWithColumn,
   moveTask: mockMoveTask,
@@ -235,6 +243,24 @@ describe('task-service', () => {
       expect(mockBroadcast).not.toHaveBeenCalled()
       expect(mockAddTaskLog).not.toHaveBeenCalled()
     })
+
+    // Code review round 3: the operator owns no workflow step; the note that
+    // `bakin tasks complete … --as=human` writes must land like a board edit.
+    it('the operator (author human, channel human) is never asked for step ownership', async () => {
+      await service.logProgress('task-1', 'human', 'Task complete: shipped by hand', 'human')
+
+      expect(mockHookRegistry.invoke).not.toHaveBeenCalledWith('workflows.authorizeToolUse', expect.anything())
+      expect(mockAddTaskLog).toHaveBeenCalledWith('task-1', 'human', 'Task complete: shipped by hand')
+      expect(mockBroadcast).toHaveBeenCalledWith(expect.objectContaining({ agent: 'human', channel: 'human' }))
+    })
+
+    it('an agent naming the human channel is still checked', async () => {
+      mockHookRegistry.has.mockReturnValueOnce(true)
+      mockHookRegistry.invoke.mockResolvedValueOnce({ allowed: false, reason: 'Agent "pixel" is not the owner of the active workflow step' })
+
+      await expect(service.logProgress('task-1', 'pixel', 'test', 'human')).rejects.toThrow(/not the owner/)
+      expect(mockAddTaskLog).not.toHaveBeenCalled()
+    })
   })
 
   describe('moveTaskWithEffects', () => {
@@ -242,7 +268,7 @@ describe('task-service', () => {
       const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       await service.moveTaskWithEffects('task-1', 'done', 'pixel')
 
-      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'done', undefined, undefined)
+      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'done', undefined, undefined, undefined)
       expect(appendAudit).toHaveBeenCalledWith(
         expect.any(String),
         'task.moved',
@@ -275,6 +301,36 @@ describe('task-service', () => {
       // Just verify no error — the actual indexing test belongs in the plugin tests
     })
 
+    // ── Operator moves reset the recovery budget (spec D4) ──────────────────
+    // margo 2026-10-16: a blocked card moved to Todo by hand was re-blocked
+    // within one watchdog tick because the recovery count never reset.
+    it('an operator move (channel human AND agent human) resets recoveries in the move write and logs the move', async () => {
+      await service.moveTaskWithEffects('task-1', 'todo', 'human', { channel: 'human' })
+
+      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'todo', undefined, 'human', { resetRecoveries: true })
+      expect(mockAddTaskLog).toHaveBeenCalledWith('task-1', 'human', 'Moved to todo by operator', { operatorMove: { from: 'inProgress', to: 'todo' } })
+    })
+
+    it('a rest-channel move by an agent neither resets nor logs', async () => {
+      await service.moveTaskWithEffects('task-1', 'todo', 'main', { channel: 'rest' })
+
+      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'todo', undefined, 'rest', undefined)
+      expect(mockAddTaskLog).not.toHaveBeenCalled()
+    })
+
+    it("a human channel with a non-human agent is not an operator move", async () => {
+      await service.moveTaskWithEffects('task-1', 'todo', 'pixel', { channel: 'human' })
+
+      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'todo', undefined, 'human', undefined)
+      expect(mockAddTaskLog).not.toHaveBeenCalled()
+    })
+
+    it('the operator line records the column the card actually left, not a client-supplied from', async () => {
+      await service.moveTaskWithEffects('task-1', 'blocked', 'human', { channel: 'human', from: 'todo' })
+
+      expect(mockAddTaskLog).toHaveBeenCalledWith('task-1', 'human', 'Moved to blocked by operator', { operatorMove: { from: 'inProgress', to: 'blocked' } })
+    })
+
     it('should NOT trigger continuation for non-done moves', async () => {
       const { checkAndContinueDependents } = require('@/core/continuation') as typeof import('@/core/continuation')
       await service.moveTaskWithEffects('task-1', 'inProgress', 'pixel')
@@ -302,7 +358,7 @@ describe('task-service', () => {
 
     it('should allow done-guard skip via option', async () => {
       await service.moveTaskWithEffects('task-1', 'done', 'pixel', { skipDoneGuard: true })
-      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'done', undefined, undefined)
+      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'done', undefined, undefined, undefined)
     })
   })
 
@@ -566,7 +622,19 @@ describe('task-service', () => {
   })
 
   describe('setDependencyWithEffects', () => {
+    const boardWith = (column: string) =>
+      mockGetTaskWithColumn.mockImplementation((id: string) =>
+        id === 'task-b' ? { task: { id: 'task-b', title: 'Target' }, column } : null)
+    // clearAllMocks resets calls, not implementations — put the default back.
+    afterEach(() => {
+      mockGetTaskWithColumn.mockImplementation((id: string) => {
+        if (id !== 'task-1') return null
+        return { task: { id: 'task-1', title: 'Test Task' }, column: 'inProgress' }
+      })
+    })
+
     it('should set dependency and append audit', async () => {
+      boardWith('todo')
       const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       await service.setDependencyWithEffects('task-a', 'task-b')
 
@@ -578,6 +646,82 @@ describe('task-service', () => {
         { id: 'task-a', dependsOn: 'task-b' },
         undefined,
       )
+    })
+
+    it('audits the acting agent when one is given, api otherwise', async () => {
+      boardWith('todo')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
+      await service.setDependencyWithEffects('task-a', 'task-b', 'rest', 'patch')
+      expect(appendAudit).toHaveBeenCalledWith(expect.any(String), 'task.dependency_set', 'patch', { id: 'task-a', dependsOn: 'task-b' }, 'rest')
+    })
+
+    it.each(['todo', 'inProgress', 'blocked', 'review'])('accepts an open target in %s', async (column) => {
+      boardWith(column)
+      await service.setDependencyWithEffects('task-a', 'task-b')
+      expect(mockSetDependency).toHaveBeenCalledWith('task-a', 'task-b')
+    })
+
+    // The margo loop (task 12939a37): registering a dependency on a DONE task
+    // promised a re-dispatch that could never fire. Refuse, write nothing,
+    // and tell the agent to continue.
+    it.each(['done', 'archived'])('refuses a target that is already complete (%s), writes nothing, audits nothing', async (column) => {
+      boardWith(column)
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
+
+      const err = await service.setDependencyWithEffects('task-a', 'task-b').catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(service.DependencyRejectedError)
+      expect((err as InstanceType<typeof service.DependencyRejectedError>).reason).toBe('complete')
+      expect((err as Error).message).toContain('task-b')
+      expect((err as Error).message).toMatch(/already complete/i)
+      expect((err as Error).message).toMatch(/continue/i)
+      expect(mockSetDependency).not.toHaveBeenCalled()
+      expect(appendAudit).not.toHaveBeenCalledWith(expect.any(String), 'task.dependency_set', expect.anything(), expect.anything(), undefined)
+    })
+
+    it('refuses a target that does not exist', async () => {
+      mockGetTaskWithColumn.mockImplementation(() => null)
+
+      const err = await service.setDependencyWithEffects('task-a', 'ghost').catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(service.DependencyRejectedError)
+      expect((err as InstanceType<typeof service.DependencyRejectedError>).reason).toBe('missing')
+      expect(mockSetDependency).not.toHaveBeenCalled()
+    })
+
+    it('refuses a self-dependency before looking anything up', async () => {
+      const err = await service.setDependencyWithEffects('task-a', 'task-a').catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(service.DependencyRejectedError)
+      expect((err as InstanceType<typeof service.DependencyRejectedError>).reason).toBe('self')
+      expect(mockGetTaskWithColumn).not.toHaveBeenCalled()
+      expect(mockSetDependency).not.toHaveBeenCalled()
+    })
+
+    // Code review round 3: the store resolves the source by title too, so the
+    // string compare alone let `depend "<title>" <its own id>` through.
+    it('refuses a self-dependency spelled as the source title', async () => {
+      boardWith('todo')
+      const err = await service.setDependencyWithEffects('Target', 'task-b').catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(service.DependencyRejectedError)
+      expect((err as InstanceType<typeof service.DependencyRejectedError>).reason).toBe('self')
+      expect(mockSetDependency).not.toHaveBeenCalled()
+    })
+
+    it('writes under the resolved source id, never the identifier typed', async () => {
+      boardWith('todo')
+      mockFindTaskWithColumn.mockImplementationOnce(() => ({ task: { id: 'task-a', title: 'Source' }, column: 'inProgress' }))
+      await service.setDependencyWithEffects('Source', 'task-b')
+      expect(mockSetDependency).toHaveBeenCalledWith('task-a', 'task-b')
+    })
+
+    it('a source that does not exist is a plain error, not a dependency refusal', async () => {
+      boardWith('todo')
+      const err = await service.setDependencyWithEffects('nobody', 'task-b').catch((e: unknown) => e)
+      expect(err).not.toBeInstanceOf(service.DependencyRejectedError)
+      expect((err as Error).message).toContain('Task not found: nobody')
+      expect(mockSetDependency).not.toHaveBeenCalled()
     })
   })
 

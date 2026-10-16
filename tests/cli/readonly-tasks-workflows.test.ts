@@ -92,7 +92,9 @@ describe('read-only CLI TTY commands — tasks and workflows', () => {
   })
 
   it('renders task creation result errors with the shared TUI when stdout is a TTY', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ error: 'Task title is invalid.' }))
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ agents: [{ id: 'patch' }], mainAgentId: 'patch' })) // actor roster (createdBy)
+      .mockResolvedValueOnce(jsonResponse({ error: 'Task title is invalid.' }))
     process.argv = ['bun', 'cli/bakin.ts', 'tasks', 'create', 'Bad task']
 
     const { main } = await import('../../cli/bakin')
@@ -162,6 +164,7 @@ describe('read-only CLI TTY commands — tasks and workflows', () => {
   it('renders task action confirmations with the shared TUI screen in a TTY', async () => {
     const { main } = await import('../../cli/bakin')
 
+    fetchMock.mockResolvedValueOnce(jsonResponse({ agents: [{ id: 'patch' }], mainAgentId: 'patch' })) // actor roster (createdBy)
     fetchMock.mockResolvedValueOnce(jsonResponse({
       ok: true,
       id: 'task-1',
