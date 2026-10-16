@@ -714,9 +714,12 @@ commit, so this is today's behavior plus deference.
 - `installAntflyDependency(op, …)` (spec plan; point of no return at
   service stop + swap; the service lock and `~/.antfly` paths unchanged)
   and `SearchAdapterSetupOptions.op`.
-- Models: exact pinned `bytes`; disk-growth polling on the T0 paths;
-  `total: null` for unpinned models; output → `op.output`; kill plus the
-  T0 cleanup.
+- Models (per T0, `tasks/evidence-antfly-pull.md`): parse the stderr
+  protocol for file structure and announced sizes (the item `total` grows
+  as files start), poll the current staging `.part` for bytes between the
+  16 MiB lines, and send every line to `op.output`. `runPull` passes
+  `--models-dir <inferenceModelsRoot()>`. Cancel sends SIGTERM and keeps
+  the staging dir (the next pull resumes); there is no cleanup code.
 - **Callers in this commit:** `onboarding/search.ts:57` and
   `onboarding/search-models.ts:37` pass `runLocal` contexts (they switch
   to the onboarding contract in PR6).
@@ -724,9 +727,14 @@ commit, so this is today's behavior plus deference.
 **Acceptance:**
 - [ ] Plan and stage tests with fetch and spawn fakes.
 - [ ] Cancel during the engine download leaves the old engine running.
-- [ ] Models cancel acceptance **as T0 decided**: if pull writes in place,
-      cancel is refused once the pull starts; otherwise the partial is
-      cleaned.
+- [ ] Models cancel (T0: staging plus atomic publish): cancel is allowed
+      throughout the pull; the final model dir is untouched and the
+      staging dir is kept; a re-run resumes (stub binary replaying the
+      stderr protocol).
+- [ ] Stall test with a stub `antfly` that prints the protocol and then
+      stops (the real binary ignores proxy and base-URL overrides).
+- [ ] `runPull` argv includes `--models-dir` set to
+      `inferenceModelsRoot()`.
 
 **Scope:** M.
 

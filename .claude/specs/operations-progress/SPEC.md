@@ -61,7 +61,7 @@ There are no external users. Nothing is kept for backwards compatibility.
 | D9 | **Every event carries the complete operation view.** `operation.updated` carries the full snapshot (log trimmed to the tail), with a per-operation monotonic `rev`. Milestones (start, stage change, item done, attempt, stall, waiting change, cancelling, finish) go through `broadcast()` immediately. Tick-only changes go through `broadcastEphemeral()`, throttled to ≤2/s/op. Because every update is complete, keeping the highest `rev` is always safe. Updates and responses from an older `bootId` than the client holds are ignored. Clients reconcile from `GET /api/operations/:id` on `bakin.reconcile` and retry failed reads with bounded backoff while live. |
 | D10 | **Repair apply is a parent operation, with one child per selected repair action.** `HealthRepairActionDefinition` gains a required `operationPlan(items): OperationPlan` and an optional `resources: CoreResource[] \| string[]` declaration, both used before execution, and `apply(items, op)` receives the child's `OperationContext`. Core resources are authorized only for repairs registered by core plugins (`isCorePlugin(ownerId)`); user plugins may declare only their own `<pluginId>:<name>` resources. The parent's own plan is the children plus `verifying`. These are the only children in the system (D21). |
 | D11 | **CLI targeting from the lock file, with a local secret.** Any explicit `BAKIN_URL` means server-only, and unreachable is an error. With no `BAKIN_URL`, the CLI reads `server.lock` in its own `BAKIN_HOME`: a live pid means use that lock's port; no lock or a dead pid means in-process. The CLI resolves prompts locally and sends explicit options (shared zod schema). The server honours `allowServiceClaim` only with the `X-Bakin-Cli-Secret` header matching the `cliSecret` that the server writes into `server.lock` (written `0600`, never served over HTTP). It never falls back to in-process after a request was sent. |
-| D12 | **Model pulls: pinned sizes plus disk growth, unknown-total fallback.** Pinned files get an exact `bytes`. The poll counts only pinned paths plus the pull's partial-file location. Unpinned models report `total: null`. Completion is decided only by the existing completeness and pin checks. A spike settles partial-file location, resume behavior and cancel cleanup before byte-percentage and cancel acceptance criteria are final. |
+| D12 | **Model pulls: antfly's stderr protocol plus the staging `.part` size** (settled by the T0 spike, `tasks/evidence-antfly-pull.md`). One item per model. Its `total` is the running sum of file sizes announced on stderr (`[i/N] <path> (<size>)...`), so it grows as files start; pinned bytes are not a total (a pull fetches ~2× the pinned weights). Bytes come from the 16 MiB stderr lines plus polling the current `<path>.part` in `<owner>/.<name>.antfly-download-staging/`. `runPull` always passes `--models-dir <inferenceModelsRoot()>` (the pull ignores `ANTFLY_HOME`). **No point of no return:** publication is an atomic rename at the end and an interrupted pull resumes at byte level, so cancel (SIGTERM) is allowed throughout and keeps the staging dir for the resume. Completion is decided only by the existing completeness and pin checks. |
 | D13 | **New public SDK pattern (approved system extension).** `OperationProgress` in `@makinbakin/sdk/patterns` (composing Timeline with nesting, Progress, Alert and Button, with no new tokens) and `useOperation(id)` in `@makinbakin/sdk/hooks`. A public Storybook contract under `Feedback/`. The three private copies are deleted. |
 | D14 | **Header tray plus attention.** A host-owned indicator in the header, shown only while something is running or has just finished. Compact rows with Cancel (when allowed) and an `href` link. One `OperationsAttentionProvider` toasts and sends an OS notification on finish, fail and stuck, keyed on `origin ∈ {web, cli, discord}`. |
 | D15 | **Runtime switch, search reset and reindex become operations**, all non-cancellable. The private `EventSource`, `runtime:switch*` events, `ProgressSteps`, `startReindexJob`, `getReindexJobStatus`, `rebuildRegisteredTables`' attach-to-any-pass coalescing and the CLI pollers are deleted. A reindex shows its tables as concurrent items. Reset is stop → wipe → start → reindex as stages of one operation. `search.rebuild.*` stays only as telemetry for background migrations. |
@@ -384,7 +384,7 @@ Clients read `result.body` exactly as they read the old response.
 |---|---|
 | `installMediaStore` (`media-store`) | downloading (6 tarballs as items) → extracting → building → verifying (probe) → **committing (store rename)** → cleanup; receipt match → all stages skipped, "already installed" |
 | antfly engine (`search-engine`) | preparing → downloading → verifying (sha256) → extracting → verifying (version) → **committing (service stop + swap)** → cleanup (data dir on version change) → verifying (readyz) |
-| antfly models (`search-engine`) | downloading (one item per model: disk growth vs pinned bytes, or `total: null`) → verifying (completeness + pins). The point of no return is decided by the D12 spike: if pull writes in place, it is the first pull start. |
+| antfly models (`search-engine`) | downloading (one item per model: stderr-announced sizes plus staging `.part` growth, D12) → verifying (completeness + pins). No point of no return: cancel is allowed throughout and keeps the resumable staging dir. |
 | requirements (inside packs/plugins, `install-state` held by the caller) | installing: items per bin/model/npm requirement (managed bun appears as an item with its own bytes); point of no return is the first item whose install writes to `~/.bakin/bin` or the model dir |
 | replace transaction / Whiskit (`install-state`) | preparing (fetch/stage source and consent re-check) → **committing (journal-first rename of the live dir; existing order unchanged)** → committing (place files) → building in place (Whiskit items entered **before** each step with new `status: 'start'`; output → `op.output`; bounded by `DEFAULT_BUILD_TIMEOUT_MS`) → installing (bins) → committing (ledger, journal commit). Failures still roll back through the existing transaction. |
 | pack sync / repair, agent-sync, plugin-assets (`install-state`) | preparing → **installing (first requirement install or managed-block write, whichever comes first)** → committing → verifying (the same boundary as the HTTP table) |
@@ -692,8 +692,9 @@ rather than by a syntactic "catch blocks rethrow" scanner.
 7. An approval from Discord updates the card with the decision first, then
    posts exactly one outcome follow-up. A restart mid-repair yields "outcome
    unknown".
-8. Model pulls show bytes against pinned totals, and "size unknown" for
-   unpinned models.
+8. Model pulls show per-model bytes against the sizes antfly announces
+   (the total grows as files start, D12), with stub-binary tests for stall
+   and cancel.
 9. The deleted list is gone (`rg` returns nothing) and the architecture tests
    pin it.
 10. `bun run test`, `typecheck`, `lint`, `check:cycles` and
@@ -710,10 +711,9 @@ rather than by a syntactic "catch blocks rethrow" scanner.
 
 ## Open questions and spikes
 
-1. **Antfly pull (D12 spike, first task of its PR):** partial-file location,
-   resume behavior after a kill, cleanup on cancel, and therefore the models
-   point of no return. Byte-percentage and cancel acceptance for models are
-   final only after this.
+1. **Antfly pull (resolved 2026-10-16, T0):** staging dir with `.part`
+   files, byte-level resume after SIGTERM/SIGKILL, atomic publish, so no
+   point of no return; see D12 and `tasks/evidence-antfly-pull.md`.
 2. **Performance ceilings:** measured deltas from moving the panel into the
    SDK patterns bundle and adding the tray come back for approval.
 3. **Discord-resolved repairs (resolved 2026-10-15):** `origin: 'discord'`,
