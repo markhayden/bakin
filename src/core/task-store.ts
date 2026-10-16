@@ -321,7 +321,13 @@ export function createTask(
   }
 }
 
-export function moveTask(identifier: string, to: string, _from?: string, channel?: string): Promise<void> {
+export function moveTask(
+  identifier: string,
+  to: string,
+  _from?: string,
+  channel?: string,
+  opts?: { /** Operator move (spec D4): the recovery budget restarts in the same write. */ resetRecoveries?: boolean },
+): Promise<void> {
   try {
     const toCol = normalizeColumn(to)
     if (!toCol) throw new Error(`Invalid column: ${to}`)
@@ -331,7 +337,10 @@ export function moveTask(identifier: string, to: string, _from?: string, channel
     const isHuman = channel === 'human'
     assertTransitionAllowed(task, toCol, isHuman)
 
-    getSharedBakinTaskStore().updateSync(task.id, columnPatch(toCol))
+    getSharedBakinTaskStore().updateSync(task.id, {
+      ...columnPatch(toCol),
+      ...(opts?.resetRecoveries ? { recoveries: 0 } : {}),
+    })
 
     if ((toCol === 'done' || toCol === 'blocked') && currentCol === 'inProgress') {
       void cancelWorkflowInstance(task.id)

@@ -214,9 +214,17 @@ export async function moveTaskWithEffects(
   // whether this caller won (legacy done task without a row) or is
   // suppressed. Every other case still moves (including the crash-window
   // heal where a completion row exists but the column never reached done).
+  // Operator move (spec D4): the board UI (and the CLI under --as human) sends
+  // channel 'human' AND agent 'human'. It restarts the recovery budget in the
+  // same store write and leaves a structured line in the task's own log —
+  // the column it actually left comes from our snapshot, never the client.
+  const operatorMove = opts?.channel === 'human' && agent === 'human'
   const alreadyDone = (before?.column ?? '').toLowerCase() === 'done'
   if (!(movingToDone && alreadyDone)) {
-    await moveStoredTask(taskId, to, opts?.from, opts?.channel)
+    await moveStoredTask(taskId, to, opts?.from, opts?.channel, operatorMove ? { resetRecoveries: true } : undefined)
+    if (operatorMove) {
+      await appendTaskLog(taskId, 'human', `Moved to ${to} by operator`, { operatorMove: { from: before?.column, to } })
+    }
   }
 
   // Completion gate — first write wins. The INSERT after the (idempotent)

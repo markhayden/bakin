@@ -356,6 +356,29 @@ describe('recoveries counter', () => {
     await moveTask(task.id, 'inProgress')
     expect(readRawTask(task.id).recoveries).toBe(1)
   })
+
+  it('a human move with resetRecoveries writes the column AND recoveries 0 in one write', async () => {
+    const task = await createTask('Retry me', 'inProgress')
+    await recoverTask(task.id)
+    await moveTask(task.id, 'inProgress')
+    await recoverTask(task.id)
+    expect(readRawTask(task.id).recoveries).toBe(2)
+    const before = readRawTask(task.id).version ?? 0
+
+    await moveTask(task.id, 'inProgress', undefined, 'human', { resetRecoveries: true })
+
+    const raw = readRawTask(task.id)
+    expect(raw.column).toBe('inProgress')
+    expect(raw.recoveries).toBe(0)
+    expect(raw.version).toBe(before + 1)
+  })
+
+  it('blocking never touches the counter', async () => {
+    const task = await createTask('Block me', 'inProgress')
+    await recoverTask(task.id)
+    await blockTask(task.id, 'waiting', undefined, 'human')
+    expect(readRawTask(task.id).recoveries).toBe(1)
+  })
 })
 
 describe('moveTask', () => {

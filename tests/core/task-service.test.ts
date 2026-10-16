@@ -242,7 +242,7 @@ describe('task-service', () => {
       const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       await service.moveTaskWithEffects('task-1', 'done', 'pixel')
 
-      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'done', undefined, undefined)
+      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'done', undefined, undefined, undefined)
       expect(appendAudit).toHaveBeenCalledWith(
         expect.any(String),
         'task.moved',
@@ -275,6 +275,36 @@ describe('task-service', () => {
       // Just verify no error — the actual indexing test belongs in the plugin tests
     })
 
+    // ── Operator moves reset the recovery budget (spec D4) ──────────────────
+    // margo 2026-10-16: a blocked card moved to Todo by hand was re-blocked
+    // within one watchdog tick because the recovery count never reset.
+    it('an operator move (channel human AND agent human) resets recoveries in the move write and logs the move', async () => {
+      await service.moveTaskWithEffects('task-1', 'todo', 'human', { channel: 'human' })
+
+      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'todo', undefined, 'human', { resetRecoveries: true })
+      expect(mockAddTaskLog).toHaveBeenCalledWith('task-1', 'human', 'Moved to todo by operator', { operatorMove: { from: 'inProgress', to: 'todo' } })
+    })
+
+    it('a rest-channel move by an agent neither resets nor logs', async () => {
+      await service.moveTaskWithEffects('task-1', 'todo', 'main', { channel: 'rest' })
+
+      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'todo', undefined, 'rest', undefined)
+      expect(mockAddTaskLog).not.toHaveBeenCalled()
+    })
+
+    it("a human channel with a non-human agent is not an operator move", async () => {
+      await service.moveTaskWithEffects('task-1', 'todo', 'pixel', { channel: 'human' })
+
+      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'todo', undefined, 'human', undefined)
+      expect(mockAddTaskLog).not.toHaveBeenCalled()
+    })
+
+    it('the operator line records the column the card actually left, not a client-supplied from', async () => {
+      await service.moveTaskWithEffects('task-1', 'blocked', 'human', { channel: 'human', from: 'todo' })
+
+      expect(mockAddTaskLog).toHaveBeenCalledWith('task-1', 'human', 'Moved to blocked by operator', { operatorMove: { from: 'inProgress', to: 'blocked' } })
+    })
+
     it('should NOT trigger continuation for non-done moves', async () => {
       const { checkAndContinueDependents } = require('@/core/continuation') as typeof import('@/core/continuation')
       await service.moveTaskWithEffects('task-1', 'inProgress', 'pixel')
@@ -302,7 +332,7 @@ describe('task-service', () => {
 
     it('should allow done-guard skip via option', async () => {
       await service.moveTaskWithEffects('task-1', 'done', 'pixel', { skipDoneGuard: true })
-      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'done', undefined, undefined)
+      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'done', undefined, undefined, undefined)
     })
   })
 
