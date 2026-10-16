@@ -301,6 +301,7 @@ Converted routes (validate → 202/200 `{ operationId, bootId }`):
 | `POST /api/packages/install`, `/api/agent-packages/install` | install | install-state | first projection write |
 | `DELETE /api/packages/:id`, `/api/agent-packages/:id` | remove | install-state | first runtime deletion or file removal |
 | `POST /api/packages/:id/sync`, `/api/agent-packages/:id/sync` | sync | install-state | first requirement install or managed-block write, whichever comes first |
+| team-wide sync (`plugins/team/lib/routes/teams.ts`) | team:sync | install-state | first agent's managed-block write |
 | `POST /api/plugins/install` (preview) | fetch | — | none (always cancellable) |
 | `POST /api/plugins/install` (commit), `/api/plugins/upgrade` (commit) | install / upgrade | install-state | the replace transaction's journal-first rename of the live dir (`replace-transaction.ts:296`); placement and the build follow it in place, so they're not cancellable |
 | `POST /api/plugins/upgrade` (preview) | fetch | — | none |
@@ -320,6 +321,9 @@ added in this work:
 - repair `plan`: bounded local scans (for example, Team's `scanAgentSync()`)
   with no network. It keeps the 15s client limit.
 - skill-map **apply**: local writes under a non-blocking `install-state` try
+  (409 `install_busy`).
+- lesson toggle: a non-blocking `install-state` try taken **before** the
+  ledger write and held through its local `syncAgent` recompose
   (409 `install_busy`).
 - plugin unlink: symlink and ledger removal under a non-blocking
   `install-state` try.
