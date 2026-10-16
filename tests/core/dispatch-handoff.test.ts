@@ -85,7 +85,7 @@ mock.module('../../src/core/app-services-store', () => ({ getAppServices: () => 
 mock.module('@/core/app-services', () => ({ getAppServices: () => mockAppServices }))
 mock.module('@/core/app-services-store', () => ({ getAppServices: () => mockAppServices }))
 
-type BoardTask = { id: string; title: string; agent?: string; team?: string; workflowId?: string }
+type BoardTask = { id: string; title: string; agent?: string; team?: string; workflowId?: string; dependsOn?: string }
 type Columns = { backlog: BoardTask[]; todo: BoardTask[]; inProgress: BoardTask[]; review: BoardTask[]; done: BoardTask[]; archived: BoardTask[]; blocked: BoardTask[] }
 let currentColumns: Columns = { backlog: [], todo: [], inProgress: [], review: [], done: [], archived: [], blocked: [] }
 function setColumns(c: Partial<Columns>): void {
@@ -111,7 +111,12 @@ function relocate(id: string, to: keyof Columns): void {
 
 const mockStoreMoveTask = mock(async (..._args: unknown[]) => undefined)
 const mockStoreAddTaskLog = mock(async (..._args: unknown[]) => undefined)
+const mockStoreClearDependency = mock(async (id: string) => {
+  const task = findTask(id)
+  if (task) delete task.dependsOn
+})
 const taskStoreMock = {
+  clearDependency: (id: string) => mockStoreClearDependency(id),
   readTaskboard: mock(() => ({ columns: currentColumns })),
   addTaskLog: (...args: unknown[]) => mockStoreAddTaskLog(...args),
   updateTask: mock(async () => undefined),
@@ -175,6 +180,7 @@ beforeEach(() => {
   auditEvents.length = 0
   mockStoreMoveTask.mockClear()
   mockStoreAddTaskLog.mockClear()
+  mockStoreClearDependency.mockClear()
 })
 
 afterEach(async () => {
@@ -274,6 +280,7 @@ describe('settle-time hand-off', () => {
 
   it('leaves a task alone when the same agent still owns it after settle', async () => {
     setColumns({ inProgress: [{ id: 't-same', title: 'Keep going', agent: 'jessica' }] })
+    claimRun({ runId: 'task:t-same:d1', taskId: 't-same', seq: 1, agent: 'jessica', bootId: 'review' })
     fireTurn('t-same', 'jessica')
     await turnStarted('jessica')
     releaseSend('jessica')
@@ -286,6 +293,7 @@ describe('settle-time hand-off', () => {
 
   it('a resolved team task (agent set, team retained) is not a hand-off', async () => {
     setColumns({ inProgress: [{ id: 't-resolved', title: 'Team pick', agent: 'jessica', team: 'researchers' }] })
+    claimRun({ runId: 'task:t-resolved:d1', taskId: 't-resolved', seq: 1, agent: 'jessica', bootId: 'review' })
     fireTurn('t-resolved', 'jessica')
     await turnStarted('jessica')
     releaseSend('jessica')
@@ -297,6 +305,7 @@ describe('settle-time hand-off', () => {
 
   it('does nothing when the task was completed during the turn', async () => {
     setColumns({ inProgress: [{ id: 't-done', title: 'Finish me', agent: 'jessica' }] })
+    claimRun({ runId: 'task:t-done:d1', taskId: 't-done', seq: 1, agent: 'jessica', bootId: 'review' })
     fireTurn('t-done', 'jessica')
     await turnStarted('jessica')
 
@@ -312,6 +321,7 @@ describe('settle-time hand-off', () => {
 
   it('never parks a workflow step turn whose card owner differs from the step agent', async () => {
     setColumns({ inProgress: [{ id: 'wf-card', title: 'Workflow task', agent: 'trainer', workflowId: 'video' }] })
+    claimRun({ runId: 'task:wf-card:step:clip:d1', taskId: 'wf-card', execKey: 'wf-card:clip', seq: 1, agent: 'pixel', bootId: 'review' })
     fireTurn('wf-card', 'pixel', { dispatchKind: 'workflow', stepId: 'clip' })
     await turnStarted('pixel')
     releaseSend('pixel')
@@ -324,6 +334,8 @@ describe('settle-time hand-off', () => {
 
   it('never parks parallel workflow steps running under different agents', async () => {
     setColumns({ inProgress: [{ id: 'wf-par', title: 'Parallel workflow', agent: 'trainer', workflowId: 'parallel' }] })
+    claimRun({ runId: 'task:wf-par:step:design:d1', taskId: 'wf-par', execKey: 'wf-par:design', seq: 1, agent: 'pixel', bootId: 'review' })
+    claimRun({ runId: 'task:wf-par:step:copy:d1', taskId: 'wf-par', execKey: 'wf-par:copy', seq: 2, agent: 'patch', bootId: 'review' })
     fireTurn('wf-par', 'pixel', { dispatchKind: 'workflow', stepId: 'design' })
     fireTurn('wf-par', 'patch', { dispatchKind: 'workflow', stepId: 'copy' })
     await turnStarted('pixel')
@@ -336,11 +348,90 @@ describe('settle-time hand-off', () => {
     expect(mockStoreMoveTask).not.toHaveBeenCalled()
   })
 
+  // ── Registered-dependency trigger (spec D2) ───────────────────────────────
+  // The margo shape: the agent registers a dependency and stops. Nothing is
+  // executing the task any more, so it must leave inProgress at settle — not
+  // 30 minutes later when the watchdog notices.
+
+  it('parks a task whose turn registered an OPEN dependency, with the waiting line', async () => {
+    setColumns({ inProgress: [{ id: 't-wait', title: 'Waiting', agent: 'jessica' }], todo: [{ id: 'dep-open', title: 'Upstream', agent: 'patch' }] })
+    claimRun({ runId: 'task:t-wait:d1', taskId: 't-wait', seq: 1, agent: 'jessica', bootId: 'review' })
+    fireTurn('t-wait', 'jessica')
+    await turnStarted('jessica')
+
+    findTask('t-wait')!.dependsOn = 'dep-open' // bakin_exec_tasks_set_dependency mid-turn
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+
+    expect(mockStoreMoveTask).toHaveBeenCalledTimes(1)
+    expect(mockStoreMoveTask).toHaveBeenCalledWith('t-wait', 'todo', 'inProgress')
+    expect(mockStoreAddTaskLog).toHaveBeenCalledWith('t-wait', 'system', 'Waiting on dep-open — parked in Todo; re-dispatched when it completes.')
+    expect(mockStoreClearDependency).not.toHaveBeenCalled()
+    expect(auditEvents.some((e) => e.event === 'task.handed_off')).toBe(false)
+  })
+
+  it('parks AND clears when the dependency completed during the turn (continuation left dependsOn alone)', async () => {
+    setColumns({ inProgress: [{ id: 't-raced', title: 'Raced', agent: 'jessica', dependsOn: 'dep-done' }], done: [{ id: 'dep-done', title: 'Finished upstream', agent: 'patch' }] })
+    claimRun({ runId: 'task:t-raced:d1', taskId: 't-raced', seq: 1, agent: 'jessica', bootId: 'review' })
+    fireTurn('t-raced', 'jessica')
+    await turnStarted('jessica')
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+
+    expect(mockStoreMoveTask).toHaveBeenCalledWith('t-raced', 'todo', 'inProgress')
+    expect(mockStoreClearDependency).toHaveBeenCalledWith('t-raced')
+    expect(mockStoreAddTaskLog).toHaveBeenCalledWith('t-raced', 'system', 'Dependency dep-done already complete — re-queued for dispatch.')
+  })
+
+  it('treats a dependency target that no longer exists as complete (matches dispatch eligibility)', async () => {
+    setColumns({ inProgress: [{ id: 't-ghost', title: 'Ghost dep', agent: 'jessica', dependsOn: 'ghost' }] })
+    claimRun({ runId: 'task:t-ghost:d1', taskId: 't-ghost', seq: 1, agent: 'jessica', bootId: 'review' })
+    fireTurn('t-ghost', 'jessica')
+    await turnStarted('jessica')
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+
+    expect(mockStoreMoveTask).toHaveBeenCalledWith('t-ghost', 'todo', 'inProgress')
+    expect(mockStoreClearDependency).toHaveBeenCalledWith('t-ghost')
+    expect(mockStoreAddTaskLog).toHaveBeenCalledWith('t-ghost', 'system', 'Dependency ghost already complete — re-queued for dispatch.')
+  })
+
+  it('a dependency registered AND a reassignment in one turn park exactly once', async () => {
+    setColumns({ inProgress: [{ id: 't-both', title: 'Both', agent: 'jessica' }], todo: [{ id: 'dep-x', title: 'Upstream', agent: 'patch' }] })
+    claimRun({ runId: 'task:t-both:d1', taskId: 't-both', seq: 1, agent: 'jessica', bootId: 'review' })
+    fireTurn('t-both', 'jessica')
+    await turnStarted('jessica')
+
+    const task = findTask('t-both')!
+    task.dependsOn = 'dep-x'
+    task.agent = 'patch'
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+
+    expect(mockStoreMoveTask).toHaveBeenCalledTimes(1)
+    expect(mockStoreAddTaskLog).toHaveBeenCalledTimes(1)
+    expect(mockStoreAddTaskLog).toHaveBeenCalledWith('t-both', 'system', 'Waiting on dep-x — parked in Todo; re-dispatched when it completes.')
+    expect(auditEvents.find((e) => e.event === 'task.handed_off')?.data).toMatchObject({ id: 't-both', from: 'jessica', to: 'patch' })
+  })
+
+  it('a registered dependency never parks a workflow step turn either', async () => {
+    setColumns({ inProgress: [{ id: 'wf-dep', title: 'Workflow task', agent: 'trainer', workflowId: 'video', dependsOn: 'dep-open' }], todo: [{ id: 'dep-open', title: 'Upstream' }] })
+    claimRun({ runId: 'task:wf-dep:step:clip:d1', taskId: 'wf-dep', execKey: 'wf-dep:clip', seq: 1, agent: 'pixel', bootId: 'review' })
+    fireTurn('wf-dep', 'pixel', { dispatchKind: 'workflow', stepId: 'clip' })
+    await turnStarted('pixel')
+    releaseSend('pixel')
+    await awaitDispatchIdle()
+    await settleFor(50, 'a park would have happened during settle; none expected')
+
+    expect(mockStoreMoveTask).not.toHaveBeenCalled()
+  })
+
   it('never parks a nested workflow parent whose child step settles', async () => {
     setColumns({ inProgress: [
       { id: 'wf-parent', title: 'Nested parent', agent: 'trainer', workflowId: 'outer' },
       { id: 'wf-child', title: 'Nested child', agent: 'pixel', workflowId: 'inner' },
     ] })
+    claimRun({ runId: 'task:wf-parent:step:inner-step:d1', taskId: 'wf-child', execKey: 'wf-child:inner-step', seq: 1, agent: 'pixel', bootId: 'review' })
     fireTurn('wf-parent', 'pixel', { dispatchKind: 'workflow', stepId: 'inner-step', childTaskId: 'wf-child' })
     await turnStarted('pixel')
     releaseSend('pixel')

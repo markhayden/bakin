@@ -78,6 +78,8 @@ mock.module('@/core/task-store', () => taskStoreMock)
 
 import { checkAndContinueDependents } from '../../src/core/continuation'
 import { appendAudit } from '../../src/core/audit'
+import { withStateLock } from '../../src/core/dispatch-state'
+import { settleFor, waitUntil } from '../helpers/wait'
 
 describe('continuation (full re-dispatch semantics)', () => {
   beforeEach(() => {
@@ -127,7 +129,36 @@ describe('continuation (full re-dispatch semantics)', () => {
 
     expect(mockDispatchSingleTask).not.toHaveBeenCalled()
     expect(mockMoveTask).not.toHaveBeenCalled()
-    expect(mockClearDependency).toHaveBeenCalledWith('t5')
+    // The live turn may have JUST registered this dependency and stopped; the
+    // settle-time park reads dependsOn to know the task is waiting (spec D2).
+    // Clearing it here would strand the task in progress.
+    expect(mockClearDependency).not.toHaveBeenCalled()
+  })
+
+  it('reconciles under the dispatch state lock and only dispatches after releasing it', async () => {
+    mockColumns({ todo: [{ id: 't-lock', title: 'Locked', agent: 'pixel', dependsOn: 'completed-1' }] })
+    // dispatchSingleTask takes the (non-reentrant) lock itself in production —
+    // if continuation still held it, this would never resolve.
+    mockDispatchSingleTask.mockImplementation(() => withStateLock(async () => undefined))
+
+    let release!: () => void
+    const held = new Promise<void>((resolve) => { release = resolve })
+    const holder = withStateLock(() => held)
+
+    try {
+      const run = checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', { port: 3737 })
+      await settleFor(30, 'continuation must wait for the lock before touching the board')
+      const touchedEarly = mockClearDependency.mock.calls.length + mockDispatchSingleTask.mock.calls.length
+      release()
+      await holder
+      await run
+      expect(touchedEarly).toBe(0)
+      await waitUntil(() => mockDispatchSingleTask.mock.calls.length === 1, { label: 'dispatch after lock release' })
+      expect(mockClearDependency).toHaveBeenCalledWith('t-lock')
+    } finally {
+      release()
+      mockDispatchSingleTask.mockImplementation(() => Promise.resolve())
+    }
   })
 
   it('re-queues an in-progress dependent with NO live run (the parent idled after delegating)', async () => {
