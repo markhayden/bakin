@@ -44,7 +44,16 @@ export {
 } from '@makinbakin/sdk/types'
 export { OperationCancelledError, OperationRejectedError } from './errors'
 export {
+  CHILD_SKIPPED_CODE,
+  parentOutcome,
+  tallyChildren,
+  type ChildTally,
+  type ParentOutcome,
+  type ParentOutcomeCode,
+} from './children'
+export {
   createOperationRegistry,
+  type ChildOperationInput,
   type OperationPublishKind,
   type OperationRegistry,
   type OperationRegistryDeps,
