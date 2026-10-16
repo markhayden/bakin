@@ -112,7 +112,7 @@ Functions: `injectBlock`, `extractBlock`, `removeBlock`, `listBlocks`, `hasBlock
 
 `src/core/agent-packages/installer.ts` — `installPackage(options)`:
 
-1. **Acquire `~/.bakin/packages/.lock`** via `install-lock.ts` (PID-tagged advisory file lock with stale-detection)
+1. **Acquire the install lock** (`~/.bakin/install.lock`, the `install-state` operation resource — `.claude/knowledge/operations.md` § Resources) via `withInstallLock` until PR4 converts installs to operations
 2. **Fetch source** via `source-fetcher.ts` → staging dir + commitSha. github: clones with `--depth 1 --branch <ref>` first; on failure (commit SHAs not accepted by `--branch`), falls back to deeper clone + `git checkout`. Local sources copy with `dereference:false`. `clawhub:@owner/slug[@version]` downloads per-file with sha256 verification (async path only). Bare names refuse. **Raw skill bundles (#687):** a fetched dir with `SKILL.md` but no `bakin-package.json` is synthesized IN STAGING into a skill-pack (id `hub-<name>`, `upstream` provenance stanza, frozen `metadata.openclaw` requirement translation) — see `.claude/knowledge/skill-hub-interop.md`; the runtimes/platforms gate (D14) then refuses incompatible packs server-side before any projection.
 3. **Parse + validate manifest** via the zod schema
 4. **Compute install mode** for `kind: "agent"`:
@@ -335,7 +335,6 @@ src/core/agent-packages/
 ├── projector.ts            projectPackage (rollback) + unprojectPackage
 ├── dependency-resolver.ts  recursive resolveDependencies
 ├── installer.ts            public installPackage entry point
-├── install-lock.ts         advisory lock at packages/.lock
 ├── uninstaller.ts          removePackageById with cascade
 ├── updater.ts              updatePackageById with sha-based no-op
 ├── lesson-toggle.ts        setLessonEnabled (single-lesson SOUL.md mutator)

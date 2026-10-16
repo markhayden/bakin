@@ -127,7 +127,8 @@ rollback, receipts) with two additions:
   **Zero-owner delete:** `deleteBinsWithoutOwners` is the ONE S6 rule —
   plugin remove, plugin upgrade (dropped bins) and the pack uninstaller
   (`withoutSharedArtifacts` also consults plugin pins) all keep a binary
-  any remaining owner pins. **One lock:** `~/.bakin/install.lock` is a
+  any remaining owner pins. **One lock:** `~/.bakin/install.lock` (the
+  `install-state` operation resource, `.claude/knowledge/operations.md`) is a
   single atomic (O_EXCL) lock the OUTER operation acquires
   (`withInstallLock` — pack install/update/remove, plugin install/upgrade/
   remove, the plugin-assets repair; reentrant only within that operation's

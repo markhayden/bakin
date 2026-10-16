@@ -304,6 +304,46 @@ Register search content through `ctx.search`. Every content type declares a requ
 
 The full authoring guide — registration, file-backed sync, hit renderers, honest degradation — lives at [Search](/docs/extending/plugins/search/).
 
+## Long-Running Work
+
+Anything that can take more than a few seconds — downloads, builds, imports, syncs — runs as an **operation** through `ctx.operations`, so the user sees staged progress, a stuck warning when nothing moves, a cancel button while it is safe, and an explicit outcome. Start it from a route and answer immediately:
+
+```ts
+handler: async (req, ctx) => {
+  const started = await ctx.operations.start({
+    kind: 'import',
+    title: 'Import contacts',
+    fingerprint: `import:${listId}`,          // an identical live request attaches
+    resources: ['crm:contacts'],               // your own <pluginId>:<name> resources
+    request: req,                              // carries web/cli origin onto the operation
+    plan: {
+      stages: [
+        { id: 'fetch', kind: 'downloading', label: 'Fetch the export' },
+        { id: 'write', kind: 'installing', label: 'Write contacts' },
+      ],
+      pointOfNoReturn: 'write',                // cancel is refused once this stage starts
+    },
+    run: async (op) => {
+      op.stage('fetch')
+      op.bytes('fetch', { received: 0, total: null })   // null = size unknown
+      // … op.item(), op.bytes(), op.output() (liveness only), op.throwIfCancelled()
+      op.stage('write')
+      return { status: 'succeeded', code: 'ok', httpStatus: 200, body: { imported: 42 } }
+    },
+  })
+  return Response.json(started, { status: started.attached ? 200 : 202 })
+}
+```
+
+- **Plan first.** Stages use fixed kinds (`preparing`, `downloading`, `extracting`, `building`, `installing`, `verifying`, `committing`, `cleanup`). `pointOfNoReturn` names the first stage that changes anything outside staging; `'start'` means never cancellable, `null` means cancellable throughout.
+- **Progress vs. liveness.** `op.bytes`, completed items and stages are progress; `op.output` only proves the work is alive. A stage with no progress for its threshold shows as quiet, then stuck — even while output continues.
+- **Cancel** aborts `op.signal`; `op.stage()` and `op.throwIfCancelled()` stop the run before it can cross the point of no return.
+- **Resources** serialize work: every plugin may declare its own `<pluginId>:<name>` resources; a second operation waits visibly while the first holds them. The core resources (`install-state`, `media-store`, `search-engine`) are reserved for core plugins.
+- **Kinds and fingerprints are namespaced** to your plugin id, and the owner is recorded as `plugin:<id>`.
+- `ctx.operations.await(id)` resolves with the terminal view for in-process callers.
+
+In tests, `@makinbakin/sdk/testing` runs a real operations registry with in-memory resources, so `await harness.ctx.operations.await(operationId)` returns the finished view without touching a Bakin home.
+
 ## Cleanup
 
 Use lifecycle hooks deliberately:

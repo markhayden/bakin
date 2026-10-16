@@ -347,7 +347,9 @@ backup dir ⇒ restore from the sentinel. The loader
 (backups, staging clones) and any dir still carrying a sentinel. A new
 operation on an id first recovers that id's leftovers.
 
-**Install lock:** `~/.bakin/install.lock` is ONE atomic (O_EXCL) lock. The
+**Install lock:** `~/.bakin/install.lock` is ONE atomic (O_EXCL) lock — the
+`install-state` operation resource (`.claude/knowledge/operations.md`
+§ Resources; `install-lock.ts` is now a facade over it, deleted in PR4). The
 outer operation acquires it with `withInstallLock`, which is reentrant only
 within that operation's async continuation (AsyncLocalStorage) — a second
 request arriving while the lock is held is refused like a second process
