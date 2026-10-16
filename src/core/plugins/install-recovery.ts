@@ -12,7 +12,7 @@
 import { existsSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from '@/core/logger'
-import { BACKUP_PREFIX, INSTALL_SENTINEL, recoverPluginDir } from './replace-transaction'
+import { BACKUP_PREFIX, INSTALL_SENTINEL, recoverPluginDir, sweepPluginTrash } from './replace-transaction'
 
 const log = createLogger('plugin-recovery')
 
@@ -38,6 +38,10 @@ export function recoverInterruptedPluginOps(pluginsRoot: string): PluginRecovery
       log.error('Plugin recovery failed — the directory stays hidden from the loader', err as Error, { id })
     }
   }
+  // Retired backup dirs whose delete failed last time (a writer was still
+  // inside, #978) — pure cleanup, nothing to interpret.
+  const swept = sweepPluginTrash(pluginsRoot)
+  if (swept.length > 0) log.info('Swept plugin trash left by earlier operations', { count: swept.length })
   return { recovered }
 }
 

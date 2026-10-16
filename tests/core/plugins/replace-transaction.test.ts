@@ -37,6 +37,7 @@ mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info() {
 import {
   BACKUP_PREFIX,
   INSTALL_SENTINEL,
+  TRASH_PREFIX,
   backupPluginDir,
   journalPath,
   pluginBackupDir,
@@ -139,11 +140,13 @@ beforeAll(async () => {
 })
 afterAll(() => {
   server.stop(true)
+  unlockTree(testDir) // a #978 test may have left a read-only subtree behind on failure
   rmSync(testDir, { recursive: true, force: true })
   rmSync(snapRoot, { recursive: true, force: true })
 })
 beforeEach(() => {
   currentRoot = testDir
+  unlockTree(testDir)
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   failTwo = false
@@ -235,12 +238,16 @@ describe('replacePluginDir', () => {
     expect(existsSync(binPath('one'))).toBe(false)
   })
 
-  // #978: a writer the failed step left behind (a detached `git gc`, a build
-  // watcher) can hold or re-populate the broken target while rollback runs —
-  // deleting it and renaming the backup into the hole raced that on CI
-  // (ENOTEMPTY). An undeletable subtree stands in for the writer: the
-  // restore must land and the REAL error must be the one thrown.
-  it('a broken target that cannot be deleted never blocks the restore — previous tree back, real error thrown, leftover hidden then swept', async () => {
+  // #978: a writer the failed step left behind (the CI suspect: git's
+  // detached `gc --auto`; a build watcher would do the same) can hold or
+  // re-populate the broken target while rollback runs — deleting it and
+  // renaming the backup into the hole raced that (ENOTEMPTY). A read-only
+  // subtree stands in for the writer: as root it would not bind, so these
+  // cases skip there instead of passing vacuously.
+  const asRoot = typeof process.getuid === 'function' && process.getuid() === 0
+  const trashDirs = () => readdirSync(pluginsRoot()).filter((name) => name.startsWith(TRASH_PREFIX))
+
+  it.skipIf(asRoot)('a broken target that cannot be deleted never blocks the restore — previous tree back, real error thrown, backup parked whole in trash', async () => {
     seedPrevious()
     const before = { tree: treeDigest(pluginDir()), row: readPluginLockfile().plugins[ID] }
     await expect(run({
@@ -257,19 +264,32 @@ describe('replacePluginDir', () => {
     expect(readPluginLockfile().plugins[ID]).toEqual(before.row)
     expect(existsSync(join(pluginDir(), INSTALL_SENTINEL))).toBe(false)
     expect(isLoadableUserPluginDir(pluginsRoot(), ID)).toBe(true)
-    // Whatever could not be deleted sits under the backup prefix — never loadable.
-    expect(isLoadableUserPluginDir(pluginsRoot(), `${BACKUP_PREFIX}${ID}`)).toBe(false)
-
-    // The writer finishes; the next boot's sweep finishes the cleanup.
-    unlockTree(pluginBackupDir(pluginsRoot(), ID))
-    recoverInterruptedPluginOps(pluginsRoot())
+    // The backup dir was renamed WHOLE into the trash before any delete:
+    // nothing is left at the transaction location (so no half-deleted
+    // backup dir can ever be misread), the undeletable discard pile sits
+    // inside the trash, and the trash is hidden from the loader. (What the
+    // failed delete removed first — the journal, say — is irrelevant: trash
+    // is never read.)
     expect(existsSync(pluginBackupDir(pluginsRoot(), ID))).toBe(false)
+    const [trash, ...rest] = trashDirs()
+    expect(rest).toEqual([])
+    expect(trash).toBeDefined()
+    expect(readdirSync(join(pluginsRoot(), trash!)).some((name) => name.startsWith('discard-'))).toBe(true)
+    expect(isLoadableUserPluginDir(pluginsRoot(), trash!)).toBe(false)
+    // Boot recovery with the trash still undeletable: nothing to recover, nothing thrown, target untouched.
+    expect(recoverInterruptedPluginOps(pluginsRoot()).recovered).toEqual([])
+    expect(treeDigest(pluginDir())).toEqual(before.tree)
+
+    // The writer finishes; the next sweep deletes the trash.
+    unlockTree(pluginsRoot())
+    recoverInterruptedPluginOps(pluginsRoot())
+    expect(trashDirs()).toEqual([])
     expect(treeDigest(pluginDir())).toEqual(before.tree)
   })
 
-  it('a committed upgrade whose backup cannot be deleted still commits — the leftover is hidden, then swept at the next boot', async () => {
+  it.skipIf(asRoot)('a committed upgrade whose backup cannot be deleted still commits, and the NEXT operation proceeds past the parked trash', async () => {
     seedPrevious()
-    // Housekeeping still writing in the OLD clone (it was renamed aside into the backup).
+    // Housekeeping still writing in the OLD clone (renamed aside into the backup).
     const held = join(pluginDir(), '.git', 'objects', 'tmp')
     mkdirSync(held, { recursive: true })
     writeFileSync(join(held, 'pack'), 'gc in flight\n')
@@ -282,12 +302,48 @@ describe('replacePluginDir', () => {
     expect(readPluginLockfile().plugins[ID]?.version).toBe('2.0.0')
     expect(existsSync(join(pluginDir(), INSTALL_SENTINEL))).toBe(false)
     expect(isLoadableUserPluginDir(pluginsRoot(), ID)).toBe(true)
-    expect(isLoadableUserPluginDir(pluginsRoot(), `${BACKUP_PREFIX}${ID}`)).toBe(false)
-
-    unlockTree(pluginBackupDir(pluginsRoot(), ID))
-    recoverInterruptedPluginOps(pluginsRoot())
     expect(existsSync(pluginBackupDir(pluginsRoot(), ID))).toBe(false)
-    expect(JSON.parse(readFileSync(join(pluginDir(), 'bakin-plugin.json'), 'utf-8')).version).toBe('2.0.0')
+    expect(trashDirs()).toHaveLength(1)
+
+    // A second upgrade while the trash is still undeletable: the transaction
+    // location is free, so it runs; the committed old backup can never be
+    // mistaken for this operation's backup.
+    const v3 = await run({
+      place: (dir) => {
+        writeFileSync(join(dir, 'bakin-plugin.json'), JSON.stringify({ id: ID, version: '3.0.0' }))
+        writeFileSync(join(dir, 'index.ts'), 'export default 3\n')
+      },
+      ledger: () => { writePluginLockfile(addPlugin(readPluginLockfile(), ID, entry('3.0.0'))) },
+    })
+    expect(v3.targetDir).toBe(pluginDir())
+    expect(JSON.parse(readFileSync(join(pluginDir(), 'bakin-plugin.json'), 'utf-8')).version).toBe('3.0.0')
+    expect(readPluginLockfile().plugins[ID]?.version).toBe('3.0.0')
+
+    unlockTree(pluginsRoot())
+    recoverInterruptedPluginOps(pluginsRoot())
+    expect(trashDirs()).toEqual([])
+    expect(JSON.parse(readFileSync(join(pluginDir(), 'bakin-plugin.json'), 'utf-8')).version).toBe('3.0.0')
+  })
+
+  it.skipIf(asRoot)('boot: a committed journal whose backup cannot be deleted keeps the committed dir and parks the backup — never an error', async () => {
+    seedPrevious()
+    const committedTree = treeDigest(pluginDir())
+    writeJournal({ committed: true })
+    const oldClone = backupPluginDir(pluginBackupDir(pluginsRoot(), ID))
+    mkdirSync(join(oldClone, '.git', 'objects', 'tmp'), { recursive: true })
+    writeFileSync(join(oldClone, '.git', 'objects', 'tmp', 'pack'), 'gc in flight\n')
+    chmodSync(join(oldClone, '.git', 'objects', 'tmp'), 0o555)
+
+    expect(recoverInterruptedPluginOps(pluginsRoot()).recovered).toEqual([ID])
+    expect(treeDigest(pluginDir())).toEqual(committedTree)
+    expect(existsSync(pluginBackupDir(pluginsRoot(), ID))).toBe(false)
+    expect(trashDirs()).toHaveLength(1)
+    expect(isLoadableUserPluginDir(pluginsRoot(), ID)).toBe(true)
+
+    unlockTree(pluginsRoot())
+    recoverInterruptedPluginOps(pluginsRoot())
+    expect(trashDirs()).toEqual([])
+    expect(treeDigest(pluginDir())).toEqual(committedTree)
   })
 })
 
