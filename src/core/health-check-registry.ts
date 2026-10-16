@@ -6,6 +6,7 @@ import type {
   HealthRepairActionDef,
   HealthRepairActionDefinition,
 } from '../../packages/core/src/plugin-types'
+import { CORE_RESOURCES } from '@bakin/core/operations'
 import {
   parseHealthCheckRegistration,
   parseHealthRepairActionDefinition,
@@ -83,17 +84,36 @@ export function registerHealthRepairAction(def: HealthRepairActionDef): void {
     id: def.localId,
     name: def.name,
     plan: def.plan,
+    ...(def.operationPlan ? { operationPlan: def.operationPlan } : {}),
+    ...(def.resources ? { resources: def.resources } : {}),
     apply: def.apply,
   })
   repairActions.set(def.id, { ...parsed, id: def.id, localId: def.localId, owner: { ...def.owner } })
   notifyChanged()
 }
 
+/**
+ * Declared repair resources are authorized against the registering owner
+ * (#895 D10/D19): core code, adapters and core plugins may name the core
+ * resources; every plugin may name its own `<pluginId>:<name>` resources;
+ * anything else is refused at registration.
+ */
+function authorizeRepairResources(actionOwner: HealthOwner, actionId: string, resources: readonly string[], isCorePlugin: boolean): void {
+  const allowed = (resource: string) => {
+    if ((CORE_RESOURCES as readonly string[]).includes(resource)) return actionOwner.kind !== 'plugin' || isCorePlugin
+    return actionOwner.kind === 'plugin' && resource.startsWith(`${actionOwner.id}:`) && resource.length > actionOwner.id.length + 1
+  }
+  const denied = resources.find((r) => !allowed(r))
+  if (denied) throw new Error(`Health repair action "${actionOwner.id}.${actionId}" may not declare resource "${denied}" — core resources are reserved for core code and core plugins; plugins use "${actionOwner.id}:<name>"`)
+}
+
 export function registerOwnedHealthRepairAction(
   actionOwner: HealthOwner,
   input: HealthRepairActionDefinition,
+  opts: { isCorePlugin?: boolean } = {},
 ): string {
   const parsed = parseHealthRepairActionDefinition(input)
+  authorizeRepairResources(actionOwner, parsed.id, parsed.resources ?? [], opts.isCorePlugin ?? false)
   const id = `${actionOwner.id}.${parsed.id}`
   registerHealthRepairAction({ ...parsed, id, localId: parsed.id, owner: { ...actionOwner } })
   return id
@@ -123,8 +143,9 @@ export function registerPluginHealthRepairAction(
   pluginId: string,
   input: HealthRepairActionDefinition,
   label = pluginId,
+  opts: { isCorePlugin?: boolean } = {},
 ): string {
-  return registerOwnedHealthRepairAction(owner('plugin', pluginId, label), input)
+  return registerOwnedHealthRepairAction(owner('plugin', pluginId, label), input, opts)
 }
 
 export function registerAdapterHealthCheck(

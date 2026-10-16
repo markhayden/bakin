@@ -8,6 +8,7 @@ import {
   listHealthRepairActions,
   onHealthRegistryChanged,
   registerAdapterHealthCheck,
+  registerAdapterHealthRepairAction,
   registerPluginHealthCheck,
   registerPluginHealthRepairAction,
   unregisterOwnerHealth,
@@ -112,6 +113,37 @@ describe('separate repair-action registry', () => {
       apply: async () => [],
     } as never)).toThrow(HealthContractError)
     expect(listHealthRepairActions()).toEqual([])
+  })
+
+  it('accepts and forwards the operation plan and resources (#895 D10)', () => {
+    const operationPlan = () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' })
+    const id = registerPluginHealthRepairAction('test-plugin', { ...action(), operationPlan, resources: ['test-plugin:cache'] })
+    const stored = getHealthRepairAction(id)!
+    expect(stored.operationPlan).toBe(operationPlan)
+    expect(stored.resources).toEqual(['test-plugin:cache'])
+  })
+
+  it('rejects a non-callable operation plan', () => {
+    expect(() => registerPluginHealthRepairAction('test-plugin', { ...action(), operationPlan: 'stages' } as never)).toThrow(HealthContractError)
+  })
+})
+
+describe('repair resource authorization (#895 D10/D19)', () => {
+  it('refuses core resources and foreign namespaces from a user plugin', () => {
+    expect(() => registerPluginHealthRepairAction('test-plugin', { ...action('a'), resources: ['media-store'] })).toThrow('may not declare resource "media-store"')
+    expect(() => registerPluginHealthRepairAction('test-plugin', { ...action('b'), resources: ['other-plugin:cache'] })).toThrow('may not declare resource "other-plugin:cache"')
+    expect(() => registerPluginHealthRepairAction('test-plugin', { ...action('c'), resources: ['test-plugin:'] })).toThrow('may not declare resource')
+    expect(listHealthRepairActions()).toEqual([])
+  })
+
+  it('allows a core plugin the core resources and every plugin its own namespace', () => {
+    expect(registerPluginHealthRepairAction('test-plugin', { ...action('media'), resources: ['media-store', 'install-state'] }, 'Test', { isCorePlugin: true })).toBe('test-plugin.media')
+    expect(registerPluginHealthRepairAction('other-plugin', { ...action('own'), resources: ['other-plugin:cache'] })).toBe('other-plugin.own')
+  })
+
+  it('allows adapters the core resources only', () => {
+    expect(registerAdapterHealthRepairAction('pi', 'Pi', { ...action('engine'), resources: ['search-engine'] })).toBe('pi.engine')
+    expect(() => registerAdapterHealthRepairAction('pi', 'Pi', { ...action('other'), resources: ['pi:cache'] })).toThrow('may not declare resource "pi:cache"')
   })
 })
 

@@ -37,14 +37,17 @@ import { dispatchRoute } from '@bakin/core/routing'
 import { createConversationTurnService } from '../../../../src/core/conversation-turns'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
-import { createMemoryResourceAcquirer, createOperationRegistry, toPluginOperationInput } from '@bakin/core/operations'
+import { assertPluginResources, createMemoryResourceAcquirer, createOperationRegistry, toPluginOperationInput } from '@bakin/core/operations'
 import type {
   BakinPlugin,
   ExecToolDefinition,
   ExecToolResult,
   HealthCheckRegistrationInput,
   HealthRepairActionDefinition,
+  HealthRepairApplyResult,
+  HealthRepairPlanItem,
   NavItem,
+  OperationView,
   PluginContext,
   PluginNodeTypeInput,
   PluginNotificationChannelInput,
@@ -115,6 +118,13 @@ export interface PluginTestContext {
   seedSearchResults(results: SearchResult[], aggregations?: SearchResponse['aggregations']): void
   /** Build the `PluginToolContext` an exec tool receives as its third arg. */
   toolContext(invocation?: PluginToolContext['invocation']): PluginToolContext
+  /**
+   * Apply a registered repair action the way Health does: inside a real
+   * operation built from its `operationPlan`, holding its declared
+   * `resources`, with the `op` context passed to `apply`. Assert on the
+   * returned rows and on `operation.stages` to prove the action reports.
+   */
+  applyHealthRepair(actionId: string, items: HealthRepairPlanItem[]): Promise<{ results: HealthRepairApplyResult[]; operation: OperationView }>
   /** Delete the temp directory. Call from `afterAll`. Safe to call twice. */
   dispose(): void
 }
@@ -349,6 +359,29 @@ export function createTestContext(
     seedSearchResults: (results, aggregations) => {
       seededResults = results
       seededAggregations = aggregations
+    },
+    applyHealthRepair: async (actionId, items) => {
+      const action = healthRepairActions.find((a) => a.id === actionId)
+      if (!action) throw new Error(`No repair action "${actionId}" was registered by ${pluginId}`)
+      const resources = action.resources ?? []
+      assertPluginResources(pluginId, options.core ?? false, resources)
+      const plan = action.operationPlan?.(items) ?? { stages: [{ id: 'apply', kind: 'installing' as const, label: action.name }], pointOfNoReturn: 'apply' }
+      let results: HealthRepairApplyResult[] = []
+      const { operationId } = await operations.start({
+        kind: `${pluginId}:repair:${action.id}`,
+        owner: `plugin:${pluginId}`,
+        origin: 'system',
+        title: action.name,
+        fingerprint: `${pluginId}:repair:${action.id}:${items.map((i) => i.id).sort().join(',')}`,
+        resources,
+        plan,
+        run: async (op) => {
+          results = await action.apply(items, op)
+          return { status: 'succeeded', code: 'ok', httpStatus: 200, body: results }
+        },
+      })
+      const operation = await operations.await(operationId)
+      return { results, operation }
     },
     toolContext: (invocation) => ({
       invocation,
