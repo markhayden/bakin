@@ -33,7 +33,7 @@ Branch: `feat/channel-readiness` (main checkout; 3737 serves it for the live tes
       Decision (verified 2026-10-06 during T3's isolated boot): the Pi adapter boots in a throwaway `PI_HOME` with no auth (`BAKIN_RUNTIME_ADAPTER=pi`, manifest 200, idle line logged) → the spawned-server approach stands; no fallback needed.
 - [x] T11 Docs sweep (commit 13) — generated API reference lists only the declarative core families (no /api/secrets, /api/runtime either), so /api/channels is documented in the knowledge doc + Settings page
 - [x] CHECKPOINT D (2026-10-07): `bun run test` 10630 pass / 0 fail; `ui:conformance --full` green except the browser-payload ceiling (initial host JS 245134 → 269730 B — owner commits `ui:performance:generate`); lint/typecheck/cycles/docs:check green; commit 14 = configuration-only native-runtime fix caught by the full suite
-- [ ] Owner live runbook on 3737 (SPEC §10) → draft PR opened 2026-10-07 → merge after approval
+- [x] Owner live runbook on 3737 PASSED (owner, 2026-10-15) → PR #974 MERGED 2026-10-16 (merge commit c2a582daa; 19 commits incl. commit 16 CLI channels section, the owner-committed payload ceiling, and three CI fixes: draft-PR completeness gate, host-asset build + manifest regeneration before the test shards)
 
 ## Deferred / noticed, not touching
 - `tests/ui/architecture/sdk-public-api.test.ts` "matches the reviewed value and type inventory exactly" runs 4.5–5.3 s against a 5 s budget and fails ~2 of 3 `tests/ui/architecture` runs on this box (observed 2026-10-06 during T2's `ui:conformance --quick`; untouched by this branch). Pre-existing time bomb — needs its cost cut, not its timeout widened.
