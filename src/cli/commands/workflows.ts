@@ -89,7 +89,8 @@ async function cmdWorkflowsSubmit(actor: CliActor, taskId: string, stepId: strin
 }
 
 export async function run(argv: string[]): Promise<void> {
-  const { as, rest: args } = stripActorFlag(argv)
+  const { as, rest: args, invalid } = stripActorFlag(argv)
+  if (invalid) await exitUsage(invalid)
   const sub = args[1]
   if (sub === 'list') {
     await cmdWorkflowsList()

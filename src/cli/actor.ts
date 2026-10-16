@@ -30,24 +30,36 @@ export interface CliActor {
   channel?: 'human'
 }
 
-/** Remove `--as <value>` / `--as=<value>` wherever it sits; positionals keep their order. */
-export function stripActorFlag(args: string[]): { as: string | undefined; rest: string[] } {
+export const ACTOR_FLAG_USAGE = '--as needs a value: --as=<agent> to act as that agent, or --as=human for an operator action'
+
+/**
+ * Remove `--as <value>` / `--as=<value>` wherever it sits; positionals keep
+ * their order. A flag with no value, an empty value, or an option-shaped
+ * value (`--as --json`) is `invalid` — the command must refuse it rather
+ * than silently act under a different identity.
+ */
+export function stripActorFlag(args: string[]): { as: string | undefined; rest: string[]; invalid?: string } {
   const rest: string[] = []
   let as: string | undefined
+  let invalid: string | undefined
+  const take = (value: string | undefined): void => {
+    if (!value || value.startsWith('-')) invalid = ACTOR_FLAG_USAGE
+    else as = value
+  }
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
     if (arg === '--as') {
-      as = args[i + 1]
-      i++
+      take(args[i + 1])
+      if (args[i + 1] !== undefined && !args[i + 1].startsWith('-')) i++
       continue
     }
     if (arg.startsWith('--as=')) {
-      as = arg.slice('--as='.length)
+      take(arg.slice('--as='.length))
       continue
     }
     rest.push(arg)
   }
-  return { as, rest }
+  return { as, rest, ...(invalid ? { invalid } : {}) }
 }
 
 /** One CLI invocation runs one command — no memo, one roster read at most. */

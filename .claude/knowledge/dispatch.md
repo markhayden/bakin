@@ -460,8 +460,8 @@ normal dispatch/watchdog loops:
   reported for manual attention instead of redispatching live work. The
   manual path writes a structured hold marker
   (`addTaskLog(..., { restartRecovery: 'manual' })`, message prefixed
-  `Manual recovery hold:` — deliberately NOT `Restart recovery:`, which
-  `countRecoveries()` would count as an attempt). The watchdog skips a task
+  `Manual recovery hold:`; a hold is not an attempt — the `recoveries`
+  counter is untouched). The watchdog skips a task
   while that marker is its LATEST log entry; any newer activity clears the
   hold naturally.
 - Recovery loops share `settings.watchdog.maxAutoRecoveries` and ONE counter:

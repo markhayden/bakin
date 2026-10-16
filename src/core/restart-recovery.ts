@@ -258,6 +258,16 @@ export async function runRestartRecovery(contentDir: string): Promise<RestartRec
       result.skipped++
       continue
     }
+    // The re-assessment awaited workflow hooks; any write to the row in that
+    // window (operator move or reset, engine step advance, agent log) bumps
+    // `version` — leave such a task alone this pass rather than act on a
+    // verdict computed from the pre-await row.
+    const again = getTaskWithColumn(snapshot.id)
+    if (!again || again.column !== 'inProgress' || again.task.version !== fresh.task.version) {
+      log.info('Restart recovery skipped a candidate written during re-assessment', { id: snapshot.id })
+      result.skipped++
+      continue
+    }
 
     if (candidate.action === 'manual') {
       // Durable + visible hold: the structured marker makes the watchdog

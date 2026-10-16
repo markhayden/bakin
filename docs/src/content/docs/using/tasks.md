@@ -40,7 +40,7 @@ The routing call runs through your agent runtime — no separate API key needed.
   <img src="/docs/media/screenshots/using-tasks--task-detail.webp" alt="Task detail panel showing fields, dependencies, and the activity log." loading="lazy">
 </figure>
 
-Click any card to open the detail panel. From here you can change the title, owner, column, dependencies, and append to the activity log. The log captures progress notes from agents, every automatic recovery, and every column move you make by hand (`Moved to <column> by operator`). A hand move also restarts the task's automatic-recovery budget, so a card you move back to Todo gets a fresh set of attempts. It's the audit trail that survives outside chat history.
+Click any card to open the detail panel. From here you can change the title, owner, column, dependencies, and append to the activity log. The log captures progress notes from agents, every automatic recovery, and every column move you make by hand (`Moved to <column> by operator`). A hand move also restarts the task's automatic-recovery budget, so a card you move back to Todo gets a fresh set of attempts. Blocking a card records its reason instead; it is not a retry and leaves the budget alone. It's the audit trail that survives outside chat history.
 
 ### Move tasks between columns
 

@@ -144,7 +144,7 @@ export function start(contentDir: string): void {
     }
 
     try {
-      type WdTask = { id: string; title: string; agent?: string; workflowId?: string; updatedAt?: number; recoveries?: number; log?: Array<{ message: string; timestamp: string; author?: string }> }
+      type WdTask = { id: string; title: string; agent?: string; workflowId?: string; updatedAt?: number; recoveries?: number; version?: number; log?: Array<{ message: string; timestamp: string; author?: string }> }
       const board = readTaskboard() as unknown as { columns: Record<string, WdTask[]> }
       const { columns } = board
       const inProgressTasks = columns.inProgress || []
@@ -211,6 +211,23 @@ export function start(contentDir: string): void {
         }
 
         if (settings.watchdog.autoRecover) {
+          // Fresh validation BEFORE anything is superseded, aborted or moved
+          // (spec D9). The board snapshot is one tick old and this loop (and
+          // the workflow hooks above) awaited, so the operator or the engine
+          // may have written this row meanwhile. ANY write bumps `version`;
+          // a changed row is left for the next tick — never judged, never
+          // superseded, on stale evidence. Everything from here to the store
+          // write is synchronous.
+          const fresh = getTaskWithColumn(task.id)
+          if (!fresh || fresh.column !== 'inProgress') {
+            log.debug('Skipping auto-recovery: task left in-progress during the scan', { id: task.id })
+            continue
+          }
+          if (fresh.task.version !== task.version) {
+            log.debug('Skipping auto-recovery: task was written during the scan', { id: task.id })
+            continue
+          }
+
           if (!stranded) {
             if (!liveRun) {
               log.debug('Skipping auto-recovery: a workflow step holds a live run', { id: task.id })
@@ -246,22 +263,8 @@ export function start(contentDir: string): void {
             }
           }
 
-          // Stranded (or just superseded) — auto-recover. Fresh validation at
-          // the mutation boundary (spec D9): the board snapshot is one tick
-          // old and this loop awaited other tasks' writes, so the operator
-          // may have moved or reset this card meanwhile. Re-read the row,
-          // re-apply every predicate, then ONE synchronous store write
-          // (column + counter together), THEN the log line.
-          const fresh = getTaskWithColumn(task.id)
-          if (!fresh || fresh.column !== 'inProgress') {
-            log.debug('Skipping auto-recovery: task left in-progress during the scan', { id: task.id })
-            continue
-          }
-          const freshNow = Date.now()
-          if (freshNow - (fresh.task.updatedAt ?? freshNow) <= settings.watchdog.stuckThresholdMs) {
-            log.debug('Skipping auto-recovery: task was touched during the scan', { id: task.id })
-            continue
-          }
+          // Stranded (or just superseded) — auto-recover with ONE synchronous
+          // store write (column + counter together), THEN the log line.
           const stillStranded = task.workflowId
             ? assessWorkflowRuns(task.id, workflowActiveAgents, workflowDescendants).stranded
             : getLiveRun(task.id) === null

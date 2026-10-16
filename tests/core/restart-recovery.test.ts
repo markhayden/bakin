@@ -54,6 +54,7 @@ type RecoveryTask = {
   agent?: string
   workflowId?: string
   recoveries?: number
+  version?: number
   log?: Array<{ message: string; timestamp: string; author?: string }>
 }
 
@@ -101,12 +102,15 @@ function columnOf(id: string): string | null {
   return null
 }
 
+// Fresh projections on every read, like the real store's taskToView.
 mock.module('../../src/core/task-store', () => ({
-  readTaskboard: mock(() => ({ columns: currentColumns })),
+  readTaskboard: mock(() => ({
+    columns: Object.fromEntries(Object.entries(currentColumns).map(([name, tasks]) => [name, tasks.map((t) => ({ ...t }))])) as RecoveryColumns,
+  })),
   getTaskWithColumn: (id: string) => {
     const task = findColumnTask(id)
     const column = columnOf(id)
-    return task && column ? { task, column } : null
+    return task && column ? { task: { ...task }, column } : null
   },
   addTaskLog: (...args: unknown[]) => mockAddTaskLog(...args),
   blockTask: (...args: unknown[]) => mockBlockTask(...args),
@@ -456,24 +460,59 @@ describe('restart recovery', () => {
     expect(result.skipped).toBe(1)
   })
 
-  it('an exhausted candidate whose counter was reset mid-run is recovered under the fresh count, not blocked', async () => {
+  it('an exhausted candidate whose counter was reset before its turn is recovered under the fresh count, not blocked', async () => {
     setColumns({
       inProgress: [
-        { id: 'task-r3', title: 'First', agent: 'pixel' },
-        { id: 'task-r4', title: 'Exhausted in the snapshot', agent: 'pixel', recoveries: 3 },
+        { id: 'task-r3', title: 'First', agent: 'pixel', version: 1 },
+        { id: 'task-r4', title: 'Exhausted in the snapshot', agent: 'pixel', recoveries: 3, version: 5 },
       ],
     })
     mockRecoverTask.mockImplementationOnce(async (id: string) => {
       storeCallOrder.push(`recover:${id}`)
-      findColumnTask('task-r4')!.recoveries = 0
+      const r4 = findColumnTask('task-r4')!
+      r4.recoveries = 0
+      r4.version = 6
+      return undefined
+    })
+
+    const result = await runRestartRecovery(tempDir)
+
+    // The reset landed BEFORE task-r4's fresh read, so the fresh verdict is "recover".
+    expect(mockBlockTask).not.toHaveBeenCalled()
+    expect(mockRecoverTask).toHaveBeenCalledWith('task-r4')
+    expect(result.recovered).toBe(2)
+  })
+
+  // Code review (PR #975): the fresh read preceded the awaited re-assessment,
+  // so a write DURING re-assessment still acted on the pre-await row.
+  it('a workflow candidate written during its own re-assessment is skipped, not blocked on the pre-await count', async () => {
+    setColumns({
+      inProgress: [{ id: 'task-r7', title: 'Exhausted workflow', agent: 'pixel', workflowId: 'wf', recoveries: 3, version: 2 }],
+    })
+    let activeAgentCalls = 0
+    mockHookInvoke.mockImplementation(async (hook: unknown, data?: unknown) => {
+      const taskId = (data as { taskId?: string } | undefined)?.taskId
+      if (taskId !== 'task-r7') return undefined
+      if (hook === 'workflows.loadInstance') return { status: 'in_progress' }
+      if (hook === 'workflows.getActiveAgents') {
+        activeAgentCalls += 1
+        // Discovery pass sees the exhausted row; the operator resets the card
+        // while the RE-ASSESSMENT's hook is in flight.
+        if (activeAgentCalls === 2) {
+          const r7 = findColumnTask('task-r7')!
+          r7.recoveries = 0
+          r7.version = 3
+        }
+        return [{ agent: 'pixel', stepId: 'design' }]
+      }
       return undefined
     })
 
     const result = await runRestartRecovery(tempDir)
 
     expect(mockBlockTask).not.toHaveBeenCalled()
-    expect(mockRecoverTask).toHaveBeenCalledWith('task-r4')
-    expect(result.recovered).toBe(2)
+    expect(mockRecoverTask).not.toHaveBeenCalled()
+    expect(result.skipped).toBe(1)
   })
 
   it('a manual hold is not written for a task that gained a live run mid-run', async () => {

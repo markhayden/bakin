@@ -94,6 +94,7 @@ type WatchdogTask = {
   workflowId?: string
   updatedAt?: number
   recoveries?: number
+  version?: number
   log?: Array<{ message: string; timestamp: string; author?: string; data?: Record<string, unknown> }>
 }
 
@@ -157,13 +158,17 @@ function lookupWatchdogTask(id: string): WatchdogTask | null {
   return null
 }
 
+// Like the real store's taskToView, every read hands back a fresh projection:
+// the scan's snapshot never aliases a row a later mock mutation changes.
 const taskStoreMock = () => ({
-  readTaskboard: mock(() => ({ columns: currentWatchdogColumns })),
+  readTaskboard: mock(() => ({
+    columns: Object.fromEntries(Object.entries(currentWatchdogColumns).map(([name, tasks]) => [name, tasks.map((t) => ({ ...t }))])) as WatchdogColumns,
+  })),
   getTask: (id: string) => lookupWatchdogTask(id),
   getTaskWithColumn: (id: string) => {
     const task = lookupWatchdogTask(id)
     const column = columnOf(id)
-    return task && column ? { task, column } : null
+    return task && column ? { task: { ...task }, column } : null
   },
   addTaskLog: (...args: unknown[]) => mockStoreAddTaskLog(...args),
   blockTask: (...args: unknown[]) => mockStoreBlockTask(...args),
@@ -685,7 +690,7 @@ describe('watchdog', () => {
         storeCallOrder.push(`recover:${id}`)
         const b = lookupWatchdogTask('task-b')!
         currentWatchdogColumns.inProgress = currentWatchdogColumns.inProgress.filter((t) => t.id !== 'task-b')
-        currentWatchdogColumns.todo.push({ ...b, updatedAt: Date.now() })
+        currentWatchdogColumns.todo.push({ ...b, updatedAt: Date.now(), version: (b.version ?? 0) + 1 })
         return undefined
       })
 
@@ -698,25 +703,58 @@ describe('watchdog', () => {
       expect(mockStoreAddTaskLog).not.toHaveBeenCalledWith('task-b', 'watchdog', expect.anything())
     })
 
-    it('a task whose counter was reset by the operator mid-scan is recovered under the fresh count, not blocked', async () => {
+    it('a task whose counter was reset by the operator mid-scan is left for the next tick — never blocked on the stale count', async () => {
       setWatchdogColumns({
         inProgress: [
-          { id: 'task-a2', title: 'First stranded', agent: 'pixel', updatedAt: Date.parse('2020-01-01T00:00:00Z') },
-          { id: 'task-b2', title: 'Exhausted in the snapshot', agent: 'pixel', recoveries: 3, updatedAt: Date.parse('2020-01-01T00:00:00Z') },
+          { id: 'task-a2', title: 'First stranded', agent: 'pixel', updatedAt: Date.parse('2020-01-01T00:00:00Z'), version: 1 },
+          { id: 'task-b2', title: 'Exhausted in the snapshot', agent: 'pixel', recoveries: 3, updatedAt: Date.parse('2020-01-01T00:00:00Z'), version: 7 },
         ],
       })
+      // The snapshot the scan iterates must stay stale while the store row moves on.
+      const snapshotB = { ...lookupWatchdogTask('task-b2')! }
       mockStoreRecoverTask.mockImplementationOnce(async (id: string) => {
         storeCallOrder.push(`recover:${id}`)
-        // Operator move → reset, but the card stays stale-looking (still in progress, old updatedAt preserved for the test).
-        lookupWatchdogTask('task-b2')!.recoveries = 0
+        const b = lookupWatchdogTask('task-b2')!
+        b.recoveries = 0
+        b.version = 8 // every store write bumps version
+        return undefined
+      })
+      void snapshotB
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+      expect(mockStoreRecoverTask).not.toHaveBeenCalledWith('task-b2')
+    })
+
+    // Code review (PR #975): validation must precede the supersede, or a card
+    // the operator just moved still has its stale LIVE run superseded and
+    // its turn aborted before the fresh check skips the move.
+    it('an operator write during the scan is detected BEFORE a stale live run is superseded or aborted', async () => {
+      setWatchdogColumns({
+        inProgress: [
+          { id: 'task-a3', title: 'First stranded', agent: 'pixel', updatedAt: Date.parse('2020-01-01T00:00:00Z'), version: 1 },
+          { id: 'task-b3', title: 'Live but stale run', agent: 'pixel', updatedAt: Date.parse('2020-01-01T00:00:00Z'), version: 3 },
+        ],
+      })
+      // task-b3 holds a live run whose heartbeat is far older than the threshold.
+      claimRun({ runId: 'task:task-b3:d1', taskId: 'task-b3', seq: 1, agent: 'pixel', bootId: 'boot-wd', now: Date.now() - 60 * 60 * 1000 })
+      mockStoreRecoverTask.mockImplementationOnce(async (id: string) => {
+        storeCallOrder.push(`recover:${id}`)
+        const b = lookupWatchdogTask('task-b3')!
+        b.updatedAt = Date.now()
+        b.version = 4 // the operator touched the card during task-a3's recovery
         return undefined
       })
 
       start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
-      expect(mockStoreBlockTask).not.toHaveBeenCalled()
-      expect(mockStoreRecoverTask).toHaveBeenCalledWith('task-b2')
+      expect(getLiveRun('task-b3')?.status).toBe('running')
+      expect(abortByRunIdsSpy).not.toHaveBeenCalledWith(['task:task-b3:d1'], 'superseded')
+      expect(vi.mocked(appendAudit)).not.toHaveBeenCalledWith(tempDir, 'task.run_superseded', 'watchdog', expect.objectContaining({ id: 'task-b3' }))
+      expect(mockStoreRecoverTask).not.toHaveBeenCalledWith('task-b3')
     })
 
   })

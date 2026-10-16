@@ -205,7 +205,8 @@ async function cmdTasksGet(id: string, opts: { json?: boolean } = {}): Promise<v
 export async function run(argv: string[]): Promise<void> {
   // `--as` may sit anywhere; strip it before positional parsing. Resolution
   // (sidecar walk / roster lookup) is lazy — read-only commands never pay.
-  const { as, rest: args } = stripActorFlag(argv)
+  const { as, rest: args, invalid } = stripActorFlag(argv)
+  if (invalid) await exitUsage(invalid)
   const actor = () => resolveCliActor(as)
   const sub = args[1]
   if (sub === 'list') {

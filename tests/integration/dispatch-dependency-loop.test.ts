@@ -108,7 +108,11 @@ mock.module('@/core/app-services-store', () => ({ getAppServices: () => mockAppS
 
 const hookRegistryMock = () => ({
   getHookRegistry: mock().mockReturnValue({
-    invoke: mock(async (hook: string) => (hook === 'workflows.getActiveAgents' ? [] : undefined)),
+    invoke: mock(async (hook: string) => {
+      if (hook === 'workflows.getActiveAgents') return []
+      if (hook === 'spend.getBudgetPolicy') return { rules: [] } // schema-valid, no limits (S8)
+      return undefined
+    }),
     has: mock((name: string) => name === 'spend.getBudgetPolicy'),
     register: mock(),
     call: mock(async <T,>(_name: string, data: T) => data),

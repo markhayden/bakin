@@ -95,6 +95,23 @@ describe('stripActorFlag', () => {
   })
 })
 
+describe('stripActorFlag — malformed flags are usage errors, never a silent identity', () => {
+  it.each([
+    [['tasks', 'move', 't1', 'todo', '--as']],
+    [['tasks', 'move', 't1', 'todo', '--as=']],
+    [['tasks', 'move', '--as', '--json', 't1', 'todo']],
+  ])('%j is invalid', (argv) => {
+    expect(stripActorFlag(argv as string[]).invalid).toBeTruthy()
+  })
+
+  it('a command with a malformed --as exits with usage and sends nothing', async () => {
+    await expect(runTasks(['tasks', 'move', 't1', 'todo', '--as'])).rejects.toThrow(ExitCalled)
+    await expect(runTasks(['tasks', 'move', 't1', 'todo', '--as='])).rejects.toThrow(ExitCalled)
+    await expect(runWorkflows(['workflows', 'submit', 't1', 'draft', '{}', '--as', '--json'])).rejects.toThrow(ExitCalled)
+    expect(apiPostSpy).not.toHaveBeenCalled()
+  })
+})
+
 describe('resolveCliActor', () => {
   it('--as human is the operator: agent human + channel human', async () => {
     expect(await resolveCliActor('human')).toEqual({ agent: 'human', channel: 'human' })
