@@ -54,6 +54,7 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 import { assetRepair, checkAssets, incompleteEnrichmentAssetIds } from '../../../plugins/assets/lib/health-checks'
+import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 
 const assetsRoot = join(testDir, 'assets')
 const storeRoot = join(assetsRoot, 'store')
@@ -232,7 +233,11 @@ describe('checkAssets — trash purge', () => {
     utimesSync(oldFile, thirtyDaysAgo / 1000, thirtyDaysAgo / 1000)
 
     const repair = assetRepair(testDir)
-    const applied = await repair.apply(await repair.plan(repairTarget))
+    const run = await runRepairContract(repair, await repair.plan(repairTarget))
+    expectRepairContract(repair, run)
+    expect(run.view.stages.map((s) => s.status)).toEqual(['done', 'done'])
+    expect(run.view.stages[1]!.items?.map((i) => i.id)).toEqual(['ancient.bin'])
+    const applied = run.results
     expect(existsSync(oldFile)).toBe(false)
     expect(existsSync(freshFile)).toBe(true)
     expect(applied[0].changes.some(change => change.description.includes('Purge expired trash item'))).toBe(true)

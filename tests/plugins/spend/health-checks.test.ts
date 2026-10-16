@@ -53,6 +53,7 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', hookRegistryMock)
 mock.module('../../../src/core/plugin-registry', hookRegistryMock)
 
 import { acceptUnattributedHistoryRepair, checkBudget, spendEvidenceRepair } from '@bakin/spend/lib/health-checks'
+import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 import { recordRunCost } from '../../../src/core/execution-ledger'
 import { closeAllDbs, closeDb } from '../../../packages/core/src/storage/db'
 import { replaceSessionUsage, toLocalDayKey } from '../../../packages/core/src/usage-history/store'
@@ -669,7 +670,10 @@ describe('budget health check', () => {
 describe('spend evidence repair (spend-evidence-refresh-pricing)', () => {
   it('force-refreshes the model catalog through the models hook and reports the count', async () => {
     const repair = spendEvidenceRepair()
-    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    const run = await runRepairContract(repair, await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    expectRepairContract(repair, run)
+    expect(run.view.plan.pointOfNoReturn).toBeNull()
+    const outcomes = run.results
     expect(outcomes).toEqual([
       expect.objectContaining({ status: 'applied', affectedCheckIds: ['spend.budget'] }),
     ])
@@ -772,7 +776,10 @@ describe('accept-unattributed-history (spend fossils, health trust overhaul)', (
     const plan = await repair.plan({ type: 'all_actionable', reportId: 'r1' })
     expect(plan[0]?.safety).toBe('destructive')
 
-    const outcomes = await repair.apply(plan)
+    const run = await runRepairContract(repair, plan)
+    expectRepairContract(repair, run)
+    expect(run.calls).toEqual(['stage:record'])
+    const outcomes = run.results
     expect(outcomes[0]).toMatchObject({ status: 'applied' })
     expect(budgetPolicyPatches).toHaveLength(1)
     expect(typeof budgetPolicyPatches[0]!.acceptUnattributedBefore).toBe('string')

@@ -654,6 +654,11 @@ export function spendEvidenceRepair(): HealthRepairActionDefinition {
   return {
     id: 'spend-evidence-refresh-pricing',
     name: 'Refresh model pricing',
+    // Read-only toward providers; the local cache swap is the only write.
+    operationPlan: () => ({
+      stages: [{ id: 'refresh', kind: 'downloading', label: 'Refresh the model catalog with pricing' }],
+      pointOfNoReturn: null,
+    }),
     async plan(target) {
       return [{
         id: 'refresh-model-pricing',
@@ -670,7 +675,7 @@ export function spendEvidenceRepair(): HealthRepairActionDefinition {
         }],
       }]
     },
-    async apply(items) {
+    async apply(items, op) {
       const done = (status: 'applied' | 'failed', message: string) => items.map((item: HealthRepairPlanItem) => ({
         itemId: item.id,
         actionId: item.actionId,
@@ -681,6 +686,7 @@ export function spendEvidenceRepair(): HealthRepairActionDefinition {
       }))
       if (items.length === 0) return []
       try {
+        op?.stage('refresh')
         const registry = getHookRegistry()
         if (!registry.has('models.refreshAvailableModels')) {
           return done('failed', 'The models plugin is not active — the catalog cannot be refreshed from here.')
@@ -716,6 +722,10 @@ export function acceptUnattributedHistoryRepair(): HealthRepairActionDefinition 
   return {
     id: 'accept-unattributed-history',
     name: 'Accept unattributed history',
+    operationPlan: () => ({
+      stages: [{ id: 'record', kind: 'committing', label: 'Record the write-off cutoff' }],
+      pointOfNoReturn: 'record',
+    }),
     async plan(target) {
       const cutoff = toLocalDayKey(Date.now())
       return [{
@@ -733,7 +743,7 @@ export function acceptUnattributedHistoryRepair(): HealthRepairActionDefinition 
         }],
       }]
     },
-    async apply(items) {
+    async apply(items, op) {
       const done = (status: 'applied' | 'failed', message: string) => items.map((item: HealthRepairPlanItem) => ({
         itemId: item.id,
         actionId: item.actionId,
@@ -744,6 +754,7 @@ export function acceptUnattributedHistoryRepair(): HealthRepairActionDefinition 
       }))
       if (items.length === 0) return []
       try {
+        op?.stage('record')
         const cutoff = toLocalDayKey(Date.now())
         const result = await getHookRegistry().invoke<{ ok: boolean; error?: string }>(
           'spend.updateBudgetPolicy',
