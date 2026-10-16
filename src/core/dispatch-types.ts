@@ -38,7 +38,7 @@ export type DispatchTask = {
   scheduleJobId?: string
   parentId?: string | null
   tags?: string[]
-  log?: Array<{ timestamp: string; message?: string }>
+  log?: Array<{ timestamp: string; message?: string; author?: string }>
 }
 
 export type DispatchColumns = {

@@ -152,7 +152,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 import { loadDispatchState, start, stop, getDispatchInfo, isTaskDispatchEligible } from '../../src/core/dispatch'
-import { isCompleteColumn } from '../../src/core/dispatch-board'
+import { isCompleteColumn, shouldBlockAfterDispatchFailure } from '../../src/core/dispatch-board'
 import { dispatchTasks, awaitDispatchIdle } from '../../src/core/dispatch'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import type { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
@@ -190,6 +190,40 @@ describe('dispatch', () => {
 
     it.each(['backlog', 'todo', 'inProgress', 'review', 'blocked'])('%s is not complete', (column) => {
       expect(isCompleteColumn(column)).toBe(false)
+    })
+  })
+
+  // "The agent made progress, then the run died" ⇒ block for review. Only
+  // entries the TARGET AGENT wrote count as progress (spec D10): an operator
+  // move line, a watchdog line or a system line landing mid-turn must never
+  // turn a transport failure into a blocked card.
+  describe('shouldBlockAfterDispatchFailure', () => {
+    const ts = '2026-05-12T12:00:00.000Z'
+    const snapshot = (log: Array<{ timestamp: string; message?: string; author?: string }>) =>
+      ({ column: 'inProgress' as const, task: { id: 't', title: 'T', log } })
+
+    it('blocks when the agent appended a log entry during the turn', () => {
+      expect(shouldBlockAfterDispatchFailure(snapshot([{ timestamp: ts, author: 'pixel', message: 'Started work' }]), 0, 'pixel')).toBe(true)
+    })
+
+    it('ignores entries that were already there at dispatch', () => {
+      expect(shouldBlockAfterDispatchFailure(snapshot([{ timestamp: ts, author: 'pixel', message: 'old' }]), 1, 'pixel')).toBe(false)
+    })
+
+    it.each(['human', 'watchdog', 'system', 'main'])('does not count a %s-authored entry as agent progress', (author) => {
+      expect(shouldBlockAfterDispatchFailure(snapshot([{ timestamp: ts, author, message: 'Moved to inProgress by operator' }]), 0, 'pixel')).toBe(false)
+    })
+
+    it('counts an agent entry that follows a non-agent one', () => {
+      const log = [
+        { timestamp: ts, author: 'human', message: 'Moved to inProgress by operator' },
+        { timestamp: ts, author: 'pixel', message: 'Reading the brief' },
+      ]
+      expect(shouldBlockAfterDispatchFailure(snapshot(log), 0, 'pixel')).toBe(true)
+    })
+
+    it('no growth ⇒ no block', () => {
+      expect(shouldBlockAfterDispatchFailure(snapshot([]), 0, 'pixel')).toBe(false)
     })
   })
 

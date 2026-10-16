@@ -113,9 +113,16 @@ export async function tryAddTaskLog(taskId: string, author: string, message: str
   }
 }
 
+/**
+ * "The agent made progress, then its run died" ⇒ block for review instead of
+ * retrying blind. Progress means an entry the TARGET AGENT wrote since
+ * dispatch (spec D10) — operator moves, watchdog and system lines land in the
+ * same log and must never turn a transport failure into a blocked card.
+ */
 export function shouldBlockAfterDispatchFailure(
   snapshot: DispatchTaskSnapshot,
   initialLogCount: number,
+  targetAgent: string,
 ): boolean {
-  return (snapshot.task.log?.length ?? 0) > initialLogCount
+  return (snapshot.task.log ?? []).slice(initialLogCount).some((entry) => entry.author === targetAgent)
 }

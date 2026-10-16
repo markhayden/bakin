@@ -576,14 +576,14 @@ async function sweepRunWorkspacesTick(settings: ReturnType<typeof getSettings>):
 }
 
 /** Scan recent task log entries for bypass pattern language */
-function checkBypassPatterns(task: { id: string; title: string; agent?: string; log?: { message: string; timestamp: string }[] }, contentDir: string): void {
+function checkBypassPatterns(task: { id: string; title: string; agent?: string; log?: { message: string; timestamp: string; author?: string }[] }, contentDir: string): void {
   if (!task.log || task.log.length === 0) return
 
   // Only check the last 3 log entries
   const recentLogs = task.log.slice(-3)
   for (const entry of recentLogs) {
-    // Skip watchdog's own log entries
-    if (entry.message.startsWith('ALERT:') || entry.message.startsWith('Auto-recovered:') || entry.message.startsWith('⚠️')) continue
+    // Skip the watchdog's own entries — by author, never by message text (D11).
+    if (entry.author === 'watchdog') continue
 
     for (const pattern of BYPASS_PATTERNS) {
       const match = entry.message.match(pattern)

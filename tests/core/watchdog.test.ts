@@ -93,7 +93,7 @@ type WatchdogTask = {
   agent?: string
   workflowId?: string
   updatedAt?: number
-  log?: Array<{ message: string; timestamp: string; data?: Record<string, unknown> }>
+  log?: Array<{ message: string; timestamp: string; author?: string; data?: Record<string, unknown> }>
 }
 
 type WatchdogColumns = {
@@ -740,7 +740,7 @@ describe('watchdog', () => {
             title: 'Bypass task',
             agent: 'pixel',
             log: [
-              { message: 'Working around the error by skipping validation', timestamp: new Date().toISOString() },
+              { author: 'pixel', message: 'Working around the error by skipping validation', timestamp: new Date().toISOString() },
             ],
           },
         ],
@@ -764,7 +764,7 @@ describe('watchdog', () => {
       }))
     })
 
-    it('ignores watchdog own log entries', async () => {
+    it('ignores watchdog own log entries — by author, never by message text', async () => {
       setWatchdogColumns({
         inProgress: [
           {
@@ -772,7 +772,8 @@ describe('watchdog', () => {
             title: 'Safe task',
             agent: 'pixel',
             log: [
-              { message: 'ALERT: No progress logged in 30+ minutes', timestamp: new Date().toISOString() },
+              // A watchdog line whose wording would trip the scan if read as the agent's.
+              { author: 'watchdog', message: 'Auto-recovered: the agent was working around the error for 30+ minutes', timestamp: new Date().toISOString() },
             ],
           },
         ],

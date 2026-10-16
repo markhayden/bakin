@@ -316,7 +316,7 @@ export async function reconcileRejectedDispatch(input: {
   }
 
   const summary = formatSanitizedRuntimeFailure(input.err)
-  if (snapshot?.column === 'inProgress' && shouldBlockAfterDispatchFailure(snapshot, input.initialLogCount)) {
+  if (snapshot?.column === 'inProgress' && shouldBlockAfterDispatchFailure(snapshot, input.initialLogCount, input.targetAgent)) {
     delete input.state.failedDispatches?.[input.task.id]
     await blockStoredTask(input.task.id, `Agent run ended before reporting completion. ${summary}.`)
     await tryAddTaskLog(input.task.id, 'system', `Agent run ended before task completion: ${summary}. Task moved to blocked for review.`)
