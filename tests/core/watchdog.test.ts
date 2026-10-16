@@ -93,6 +93,7 @@ type WatchdogTask = {
   agent?: string
   workflowId?: string
   updatedAt?: number
+  recoveries?: number
   log?: Array<{ message: string; timestamp: string; author?: string; data?: Record<string, unknown> }>
 }
 
@@ -111,12 +112,39 @@ function emptyWatchdogColumns(): WatchdogColumns {
 }
 
 let currentWatchdogColumns = emptyWatchdogColumns()
-const mockStoreAddTaskLog = mock(async (..._args: unknown[]) => undefined)
-const mockStoreBlockTask = mock(async (..._args: unknown[]) => undefined)
+/** Store-call order per task — the counter write must land BEFORE its log line (spec D9). */
+const storeCallOrder: string[] = []
+const mockStoreAddTaskLog = mock(async (...args: unknown[]) => { storeCallOrder.push(`log:${String(args[0])}`); return undefined })
+const mockStoreBlockTask = mock(async (...args: unknown[]) => { storeCallOrder.push(`block:${String(args[0])}`); return undefined })
 const mockStoreMoveTask = mock(async (..._args: unknown[]) => undefined)
+const mockStoreRecoverTask = mock(async (id: string) => {
+  storeCallOrder.push(`recover:${id}`)
+  const task = lookupWatchdogTask(id)
+  if (task) task.recoveries = (task.recoveries ?? 0) + 1
+  return undefined
+})
 
+/**
+ * Mirrors the real store: updatedAt is bumped on EVERY write, log appends
+ * included, so a fixture that gives only log timestamps gets updatedAt = the
+ * newest of them. A fixture that sets updatedAt explicitly keeps it.
+ */
 function setWatchdogColumns(columns: Partial<WatchdogColumns>): void {
   currentWatchdogColumns = { ...emptyWatchdogColumns(), ...columns }
+  for (const column of Object.values(currentWatchdogColumns)) {
+    for (const task of column) {
+      if (task.updatedAt !== undefined) continue
+      const stamps = (task.log ?? []).map((e) => Date.parse(e.timestamp)).filter((n) => !Number.isNaN(n))
+      if (stamps.length > 0) task.updatedAt = Math.max(...stamps)
+    }
+  }
+}
+
+function columnOf(id: string): string | null {
+  for (const [name, column] of Object.entries(currentWatchdogColumns)) {
+    if (column.some((t) => t.id === id)) return name
+  }
+  return null
 }
 
 // getTask backs the orphan-turn sweep's store-existence check (#604): any
@@ -129,20 +157,21 @@ function lookupWatchdogTask(id: string): WatchdogTask | null {
   return null
 }
 
-mock.module('../../src/core/task-store', () => ({
+const taskStoreMock = () => ({
   readTaskboard: mock(() => ({ columns: currentWatchdogColumns })),
   getTask: (id: string) => lookupWatchdogTask(id),
+  getTaskWithColumn: (id: string) => {
+    const task = lookupWatchdogTask(id)
+    const column = columnOf(id)
+    return task && column ? { task, column } : null
+  },
   addTaskLog: (...args: unknown[]) => mockStoreAddTaskLog(...args),
   blockTask: (...args: unknown[]) => mockStoreBlockTask(...args),
   moveTask: (...args: unknown[]) => mockStoreMoveTask(...args),
-}))
-mock.module('@/core/task-store', () => ({
-  readTaskboard: mock(() => ({ columns: currentWatchdogColumns })),
-  getTask: (id: string) => lookupWatchdogTask(id),
-  addTaskLog: (...args: unknown[]) => mockStoreAddTaskLog(...args),
-  blockTask: (...args: unknown[]) => mockStoreBlockTask(...args),
-  moveTask: (...args: unknown[]) => mockStoreMoveTask(...args),
-}))
+  recoverTask: (id: string) => mockStoreRecoverTask(id),
+})
+mock.module('../../src/core/task-store', taskStoreMock)
+mock.module('@/core/task-store', taskStoreMock)
 
 // In-flight turn registry mock for the orphan sweep (#604).
 type TurnSnapshot = { marker: string; agentId: string; taskId: string; threadId: string; startedAt: number; abortedAt?: number }
@@ -221,12 +250,13 @@ describe('watchdog', () => {
     mockRuntimeSend.mockResolvedValue({ id: 'runtime-msg' })
     mockRuntimeChannelSend.mockResolvedValue({ deliveries: [] })
     setWatchdogColumns({})
+    storeCallOrder.length = 0
     turnsSnapshot = []
     snapshotThrows = false
     forceReleaseSpy.mockReturnValue(true)
     hookInvokeImpl = async () => undefined
     budgetGateDecision = { action: 'allow' }
-    mockStoreAddTaskLog.mockImplementation(async (..._args: unknown[]) => undefined)
+    mockStoreAddTaskLog.mockImplementation(async (...args: unknown[]) => { storeCallOrder.push(`log:${String(args[0])}`); return undefined })
   })
 
   afterEach(() => {
@@ -330,7 +360,7 @@ describe('watchdog', () => {
       await vi.advanceTimersByTimeAsync(1500)
 
       // The stranded task was still recovered despite the sweep throwing.
-      expect(mockStoreMoveTask).toHaveBeenCalledWith('task-1', 'todo')
+      expect(mockStoreRecoverTask).toHaveBeenCalledWith('task-1')
     })
   })
 
@@ -478,9 +508,11 @@ describe('watchdog', () => {
       start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
-      // Should have called moveTask to recover
+      // ONE store write (todo + recoveries+1), THEN the log line (spec D3/D9).
+      expect(mockStoreRecoverTask).toHaveBeenCalledWith('task-2')
+      expect(mockStoreMoveTask).not.toHaveBeenCalled()
       expect(mockStoreAddTaskLog).toHaveBeenCalledWith('task-2', 'watchdog', expect.stringContaining('Auto-recovered: no live run'))
-      expect(mockStoreMoveTask).toHaveBeenCalledWith('task-2', 'todo')
+      expect(storeCallOrder.indexOf('recover:task-2')).toBeLessThan(storeCallOrder.indexOf('log:task-2'))
       expect(vi.mocked(appendAudit)).toHaveBeenCalledWith(
         tempDir,
         'task.auto_recovered',
@@ -547,20 +579,46 @@ describe('watchdog', () => {
       await vi.advanceTimersByTimeAsync(1500)
 
       // Marker is no longer latest — the task is eligible again.
-      expect(mockStoreMoveTask).toHaveBeenCalledWith('task-resumed', 'todo')
+      expect(mockStoreRecoverTask).toHaveBeenCalledWith('task-resumed')
     })
 
-    it('escalates to blocked after max auto-recoveries', async () => {
+    it('escalates to blocked after max auto-recoveries, counted from the persisted field', async () => {
       setWatchdogColumns({
         inProgress: [
           {
             id: 'task-3',
             title: 'Exhausted task',
             agent: 'pixel',
+            recoveries: 3,
+            log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }],
+          },
+        ],
+      })
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(mockStoreBlockTask).toHaveBeenCalledWith('task-3', expect.stringContaining('Auto-recovery limit reached (3 attempts)'))
+      expect(storeCallOrder.indexOf('block:task-3')).toBeLessThan(storeCallOrder.indexOf('log:task-3'))
+      expect(vi.mocked(appendAudit)).toHaveBeenCalledWith(
+        tempDir,
+        'task.auto_recovery_exhausted',
+        'watchdog',
+        expect.objectContaining({ id: 'task-3', recoveryCount: 3 }),
+      )
+    })
+
+    it('legacy "Auto-recovered:" log lines are inert history — a task with recoveries 0 is recovered, not blocked', async () => {
+      setWatchdogColumns({
+        inProgress: [
+          {
+            id: 'task-legacy',
+            title: 'Pre-upgrade task',
+            agent: 'pixel',
             log: [
-              { message: 'Auto-recovered: attempt 1', timestamp: '2020-01-01T00:00:00Z' },
-              { message: 'Auto-recovered: attempt 2', timestamp: '2020-01-01T01:00:00Z' },
-              { message: 'Auto-recovered: attempt 3', timestamp: '2020-01-01T02:00:00Z' },
+              { author: 'watchdog', message: 'Auto-recovered: attempt 1', timestamp: '2020-01-01T00:00:00Z' },
+              { author: 'watchdog', message: 'Auto-recovered: attempt 2', timestamp: '2020-01-01T01:00:00Z' },
+              { author: 'watchdog', message: 'Auto-recovered: attempt 3', timestamp: '2020-01-01T02:00:00Z' },
             ],
           },
         ],
@@ -569,13 +627,96 @@ describe('watchdog', () => {
       start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
-      expect(mockStoreBlockTask).toHaveBeenCalledWith('task-3', expect.stringContaining('Auto-recovery limit reached'))
-      expect(vi.mocked(appendAudit)).toHaveBeenCalledWith(
-        tempDir,
-        'task.auto_recovery_exhausted',
-        'watchdog',
-        expect.objectContaining({ id: 'task-3', recoveryCount: 3 }),
-      )
+      expect(mockStoreRecoverTask).toHaveBeenCalledWith('task-legacy')
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+    })
+
+    // ── The activity clock is updatedAt (spec D5) ───────────────────────────
+    // margo 2026-10-16: an operator moved a blocked card to Todo at 02:30:33Z,
+    // it was dispatched at 02:30:37Z and RE-BLOCKED at 02:31:32Z — staleness
+    // was read from the newest log line (the watchdog's own ten-hour-old
+    // "Escalated to blocked"), and the recovery count never reset.
+
+    it('a fresh updatedAt with ancient log lines is NOT stuck', async () => {
+      setWatchdogColumns({
+        inProgress: [
+          {
+            id: 'task-fresh',
+            title: 'Just re-dispatched',
+            agent: 'pixel',
+            updatedAt: Date.now() - 60 * 1000,
+            log: [{ author: 'watchdog', message: 'Escalated to blocked: 3 auto-recoveries exhausted.', timestamp: '2020-01-01T00:00:00Z' }],
+          },
+        ],
+      })
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(mockStoreRecoverTask).not.toHaveBeenCalled()
+      expect(mockStoreMoveTask).not.toHaveBeenCalled()
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+      expect(vi.mocked(broadcast)).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'alert' }))
+    })
+
+    it('an exhausted counter with a fresh updatedAt is left alone — the grace window applies before the budget', async () => {
+      setWatchdogColumns({
+        inProgress: [{ id: 'task-fresh-3', title: 'Operator retry', agent: 'pixel', recoveries: 3, updatedAt: Date.now() - 60 * 1000 }],
+      })
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+      expect(mockStoreRecoverTask).not.toHaveBeenCalled()
+    })
+
+    // ── Fresh validation at the mutation boundary (spec D9) ─────────────────
+    it('a task moved by the operator while the scan awaited an earlier recovery is skipped this tick', async () => {
+      setWatchdogColumns({
+        inProgress: [
+          { id: 'task-a', title: 'First stranded', agent: 'pixel', updatedAt: Date.parse('2020-01-01T00:00:00Z') },
+          { id: 'task-b', title: 'Second stranded', agent: 'pixel', updatedAt: Date.parse('2020-01-01T00:00:00Z') },
+        ],
+      })
+      // Recovering task-a yields; during that await the operator moves task-b
+      // to Todo (fresh updatedAt, column todo). The snapshot still says stale.
+      mockStoreRecoverTask.mockImplementationOnce(async (id: string) => {
+        storeCallOrder.push(`recover:${id}`)
+        const b = lookupWatchdogTask('task-b')!
+        currentWatchdogColumns.inProgress = currentWatchdogColumns.inProgress.filter((t) => t.id !== 'task-b')
+        currentWatchdogColumns.todo.push({ ...b, updatedAt: Date.now() })
+        return undefined
+      })
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(mockStoreRecoverTask).toHaveBeenCalledWith('task-a')
+      expect(mockStoreRecoverTask).not.toHaveBeenCalledWith('task-b')
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+      expect(mockStoreAddTaskLog).not.toHaveBeenCalledWith('task-b', 'watchdog', expect.anything())
+    })
+
+    it('a task whose counter was reset by the operator mid-scan is recovered under the fresh count, not blocked', async () => {
+      setWatchdogColumns({
+        inProgress: [
+          { id: 'task-a2', title: 'First stranded', agent: 'pixel', updatedAt: Date.parse('2020-01-01T00:00:00Z') },
+          { id: 'task-b2', title: 'Exhausted in the snapshot', agent: 'pixel', recoveries: 3, updatedAt: Date.parse('2020-01-01T00:00:00Z') },
+        ],
+      })
+      mockStoreRecoverTask.mockImplementationOnce(async (id: string) => {
+        storeCallOrder.push(`recover:${id}`)
+        // Operator move → reset, but the card stays stale-looking (still in progress, old updatedAt preserved for the test).
+        lookupWatchdogTask('task-b2')!.recoveries = 0
+        return undefined
+      })
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+      expect(mockStoreRecoverTask).toHaveBeenCalledWith('task-b2')
     })
 
   })
@@ -625,7 +766,7 @@ describe('watchdog', () => {
         'watchdog',
         expect.objectContaining({ id: 'hb-stale', runIds: ['task:hb-stale:d1'] }),
       )
-      expect(mockStoreMoveTask).toHaveBeenCalledWith('hb-stale', 'todo')
+      expect(mockStoreRecoverTask).toHaveBeenCalledWith('hb-stale')
       expect(getLiveRun('hb-stale')).toBeNull()
       // ONLY the superseded runs' turns are aborted (by runId) — a healthy
       // parallel workflow-step sibling sharing the taskId must survive
