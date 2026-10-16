@@ -245,6 +245,14 @@ never sit at rest in a card — surface on hover or behind the detail view.
   plugin event so content fills in live.
 - Refresh AFTER your own write lands (synthetic event), never off the event
   that precedes the write.
+- Long-running work (anything that can take more than a few seconds) is an
+  operation (#895): `startOperation` + `useOperation` from
+  `@makinbakin/sdk/hooks` and `OperationProgress` from
+  `@makinbakin/sdk/patterns`. Never a bare spinner, a private poller or a
+  private `EventSource`. Quiet/stuck come from measurable progress only;
+  output is liveness. Cancel shows only while allowed, otherwise the reason.
+  The header tray and `OperationsAttentionProvider` already announce
+  finished/failed/stuck — flows do not toast their own completion twice.
 
 ## 10. Cards & media
 

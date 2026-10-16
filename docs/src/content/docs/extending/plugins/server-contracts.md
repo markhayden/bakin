@@ -344,6 +344,8 @@ handler: async (req, ctx) => {
 
 In tests, `@makinbakin/sdk/testing` runs a real operations registry with in-memory resources, so `await harness.ctx.operations.await(operationId)` returns the finished view without touching a Bakin home.
 
+Show it in your UI with `startOperation` and `useOperation` from `@makinbakin/sdk/hooks` and the `OperationProgress` pattern from `@makinbakin/sdk/patterns` (see [UI overview → Long-running work](/docs/extending/ui/overview/#long-running-work)). The header's operations tray and the shell's finished/failed/stuck notifications pick up every operation automatically — never add your own progress poller or `EventSource`.
+
 ## Cleanup
 
 Use lifecycle hooks deliberately:

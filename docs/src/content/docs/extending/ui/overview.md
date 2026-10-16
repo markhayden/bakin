@@ -1087,6 +1087,39 @@ Skeletons are visual stand-ins and remain hidden from assistive technology. Use 
 
 `Banner` is persistent surface context, while `Alert` is compact inline feedback and a toast is transient shell feedback. Banner tone does not imply announcement urgency. Plugins call `toast()` rather than mounting `ToastRegion`; the public `Toast` and `ToastRegion` presentation contract exists for the Bakin shell and deterministic previews. Toast actions use client-side SDK routing and must remain optional—required recovery belongs in the affected page region.
 
+## Long-running work
+
+Work that can take more than a few seconds runs on the server as an operation (see [Long-Running Work](/docs/extending/plugins/server-contracts/#long-running-work)). The browser never polls for it and never invents its own progress UI: start the route with `startOperation`, follow it with `useOperation`, and render `OperationProgress`.
+
+```tsx
+import { useState } from 'react'
+import { startOperation, useOperation, OperationStartError, toast } from '@makinbakin/sdk/hooks'
+import { OperationProgress } from '@makinbakin/sdk/patterns'
+import { Button } from '@makinbakin/sdk/ui'
+
+export function ImportContacts({ listId }: { listId: string }) {
+  const [started, setStarted] = useState<{ operationId: string; bootId: string } | null>(null)
+  const { operation, children, phase, cancel } = useOperation(started?.operationId ?? null, { bootId: started?.bootId })
+
+  async function begin() {
+    try {
+      setStarted(await startOperation(() => fetch(`/api/plugins/crm/import/${listId}`, { method: 'POST' })))
+    } catch (err) {
+      // The route's own refusal (validation, conflict) keeps its status and body.
+      toast(err instanceof OperationStartError ? err.message : 'Import could not start', 'error')
+    }
+  }
+
+  if (!operation) return <Button onClick={begin}>Import contacts</Button>
+  return <OperationProgress operation={operation} childOperations={children} phase={phase} onCancel={() => { void cancel() }} />
+}
+```
+
+- `useOperation` keeps the highest `rev` within one server boot and reconciles after reconnects. Its `phase` distinguishes `finished`, `expired` (the record aged out), `restarted` (Bakin restarted mid-run — the outcome is unknown) and `unreachable` (reads are failing and retrying); pass it to `OperationProgress`, which explains each one.
+- `OperationProgress` shows the plan as a timeline, a determinate bar only when the size is known, quiet/stuck from measurable progress alone (output is liveness), the waiting overlay, Cancel only while it is allowed (otherwise the reason), an alert for every non-happy outcome, and the activity log under Details. `variant="compact"` is the row form.
+- Pass `onRecheck` where the outcome can be unknown (restarted, expired) so the person can re-read the resulting state.
+- The shell's header tray lists running and just-finished operations with Cancel and a link to `href`, and announces finished, failed and stuck (once per stage) as a toast plus an OS notification for work a person started on the web, the CLI or Discord. Set `href` on the operation so those links land on your page.
+
 ## Stylesheet Contract
 
 `@makinbakin/sdk/styles.css` is the one supported compiled design-system stylesheet. The Bakin host loads it once for installed plugins, so plugin client entries must not import it or copy its contents into plugin-owned CSS.
