@@ -76,6 +76,7 @@ mock.module('../../src/core/task-store', () => ({
   getAgentTasks: () => [],
   createTask: async () => ({ id: 'stub' }),
   moveTask: async () => {},
+  recoverTask: async () => {},
   assignTask: async () => {},
   deleteTask: async () => {},
   addTaskLog: async () => {},

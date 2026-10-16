@@ -70,6 +70,7 @@ const taskStoreMock = {
   addTaskLog: mock(async () => {}),
   blockTask: mock(async () => {}),
   moveTask: mock(async () => {}),
+  recoverTask: mock(async () => {}),
   setDependency: mock(async () => {}),
   clearDependency: mock(async () => {}),
   reorderTasks: mock(async () => {}),

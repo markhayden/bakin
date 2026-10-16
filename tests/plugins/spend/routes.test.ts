@@ -78,6 +78,8 @@ mock.module('@/core/app-services', () => ({ getAppServices: () => ({ runtime: { 
 mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => testDir, getOpenClawPath: (s: string) => join(testDir, s), resetOpenClawHome: () => {} }))
 mock.module('../../../src/core/task-store', () => ({
   readTaskboard: () => ({ columns: { todo: [{ id: 't-unassigned', title: 'Badge me' }] } }),
+  // dispatch-turns (dynamically imported by /status) needs the facade shape at load.
+  clearDependency: async () => {},
   moveTask: async () => {},
   addTaskLog: async () => {},
   updateTask: async () => {},

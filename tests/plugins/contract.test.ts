@@ -54,6 +54,7 @@ mock.module('@/core/task-store', () => ({
   getAgentTasks: () => [],
   createTask: mock(() => Promise.resolve({ id: 'mock-task' })),
   moveTask: mock(() => Promise.resolve()),
+  recoverTask: mock(() => Promise.resolve()),
   assignTask: mock(() => Promise.resolve()),
   deleteTask: mock(() => Promise.resolve()),
   addTaskLog: mock(() => Promise.resolve()),
