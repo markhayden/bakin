@@ -3,7 +3,8 @@
  * instance stepping. Relocated verbatim from cli/bakin.ts (B5.3
  * command-module split).
  */
-import { apiGet, apiPost, getCliAgent } from '../http'
+import { apiGet, apiPost } from '../http'
+import { resolveCliActor, stripActorFlag, type CliActor } from '../actor'
 import { print, printTable } from '../output'
 import { exitCommandIssue, exitUsage, exitUnknownSubcommand } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
@@ -58,7 +59,7 @@ async function cmdWorkflowsStep(taskId: string): Promise<void> {
   print(result)
 }
 
-async function cmdWorkflowsSubmit(taskId: string, stepId: string, outputJson: string): Promise<void> {
+async function cmdWorkflowsSubmit(actor: CliActor, taskId: string, stepId: string, outputJson: string): Promise<void> {
   let output: Record<string, unknown>
   try {
     output = JSON.parse(outputJson)
@@ -74,7 +75,7 @@ async function cmdWorkflowsSubmit(taskId: string, stepId: string, outputJson: st
     console.error(`Invalid JSON for output. Usage: ${usage}`)
     process.exit(1)
   }
-  const result = await apiPost(`/api/plugins/workflows/steps/${encodeURIComponent(taskId)}/complete`, { stepId, agentId: await getCliAgent(), output })
+  const result = await apiPost(`/api/plugins/workflows/steps/${encodeURIComponent(taskId)}/complete`, { stepId, agentId: actor.agent, output })
   if (process.stdout.isTTY) {
     await printWorkflowActionTui({
       action: 'submitted',
@@ -87,7 +88,8 @@ async function cmdWorkflowsSubmit(taskId: string, stepId: string, outputJson: st
   print(result)
 }
 
-export async function run(args: string[]): Promise<void> {
+export async function run(argv: string[]): Promise<void> {
+  const { as, rest: args } = stripActorFlag(argv)
   const sub = args[1]
   if (sub === 'list') {
     await cmdWorkflowsList()
@@ -98,8 +100,8 @@ export async function run(args: string[]): Promise<void> {
     if (!args[2]) await exitUsage('bakin workflows step <taskId>')
     await cmdWorkflowsStep(args[2])
   } else if (sub === 'submit') {
-    if (!args[2] || !args[3] || !args[4]) await exitUsage('bakin workflows submit <taskId> <stepId> \'<json>\'')
-    await cmdWorkflowsSubmit(args[2], args[3], args[4])
+    if (!args[2] || !args[3] || !args[4]) await exitUsage('bakin workflows submit <taskId> <stepId> \'<json>\' [--as=<actor>]')
+    await cmdWorkflowsSubmit(await resolveCliActor(as), args[2], args[3], args[4])
   } else {
     await exitUnknownSubcommand('workflows', sub, ['list', 'start', 'step', 'submit'])
   }

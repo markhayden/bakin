@@ -721,9 +721,9 @@ bakin tasks get <id>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="tasks-create" name="tasks create" summary="Create a task." description="Creates a task and optionally assigns an agent or workflow.">
+<CliCommandCard id="tasks-create" name="tasks create" summary="Create a task." description="Creates a task and optionally assigns an agent or workflow. `--as=&lt;agent&gt;` acts as that agent; `--as=human` is an operator action; inside a dispatch run directory the acting agent is detected from its sidecar.">
 ```sh frame="terminal"
-bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow=<reason>]
+bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow=<reason>] [--as=<actor>]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
@@ -732,66 +732,72 @@ bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow=<reason>]
       <tr><td><code>[agent]</code></td><td>argument</td><td>no</td><td>Agent id to assign or target.</td></tr>
       <tr><td><code>[--workflow=&lt;id&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
       <tr><td><code>[--no-workflow=&lt;reason&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
+      <tr><td><code>[--as=&lt;actor&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="tasks-move" name="tasks move" summary="Move a task." description="Moves a task to a different board column.">
+<CliCommandCard id="tasks-move" name="tasks move" summary="Move a task." description="Moves a task to a different board column. `--as=human` is an operator move: it restarts the task's auto-recovery budget and logs the move. `--as=&lt;agent&gt;` acts as that agent; `--as=human` is an operator action; inside a dispatch run directory the acting agent is detected from its sidecar.">
 ```sh frame="terminal"
-bakin tasks move <id> <column>
+bakin tasks move <id> <column> [--as=<actor>]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
       <tr><td><code>&lt;column&gt;</code></td><td>argument</td><td>yes</td><td>Task board column.</td></tr>
+      <tr><td><code>[--as=&lt;actor&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="tasks-log" name="tasks log" summary="Log task progress." description="Adds a progress log entry to a task.">
+<CliCommandCard id="tasks-log" name="tasks log" summary="Log task progress." description="Adds a progress log entry to a task. `--as=&lt;agent&gt;` acts as that agent; `--as=human` is an operator action; inside a dispatch run directory the acting agent is detected from its sidecar.">
 ```sh frame="terminal"
-bakin tasks log <id> <message>
+bakin tasks log <id> <message> [--as=<actor>]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
       <tr><td><code>&lt;message&gt;</code></td><td>argument</td><td>yes</td><td>Message text.</td></tr>
+      <tr><td><code>[--as=&lt;actor&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="tasks-block" name="tasks block" summary="Block a task." description="Marks a task blocked with a reason.">
+<CliCommandCard id="tasks-block" name="tasks block" summary="Block a task." description="Marks a task blocked with a reason. `--as=&lt;agent&gt;` acts as that agent; `--as=human` is an operator action; inside a dispatch run directory the acting agent is detected from its sidecar.">
 ```sh frame="terminal"
-bakin tasks block <id> <reason>
+bakin tasks block <id> <reason> [--as=<actor>]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
       <tr><td><code>&lt;reason&gt;</code></td><td>argument</td><td>yes</td><td>Human-readable reason.</td></tr>
+      <tr><td><code>[--as=&lt;actor&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="tasks-depend" name="tasks depend" summary="Register a task dependency." description="Sets a task dependency relationship.">
+<CliCommandCard id="tasks-depend" name="tasks depend" summary="Register a task dependency." description="Registers that a task waits on another task that is not yet complete; refused when the target is already done, missing, or the task itself. `--as=&lt;agent&gt;` acts as that agent; `--as=human` is an operator action; inside a dispatch run directory the acting agent is detected from its sidecar.">
 ```sh frame="terminal"
-bakin tasks depend <id> <dependsOn>
+bakin tasks depend <id> <dependsOn> [--as=<actor>]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
       <tr><td><code>&lt;dependsOn&gt;</code></td><td>argument</td><td>yes</td><td>Task id this task depends on.</td></tr>
+      <tr><td><code>[--as=&lt;actor&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="tasks-complete" name="tasks complete" summary="Complete a task." description="Marks a task complete with a completion summary.">
+<CliCommandCard id="tasks-complete" name="tasks complete" summary="Complete a task." description="Marks a task complete with a completion summary. `--as=&lt;agent&gt;` acts as that agent; `--as=human` is an operator action; inside a dispatch run directory the acting agent is detected from its sidecar.">
 ```sh frame="terminal"
-bakin tasks complete <id> <summary>
+bakin tasks complete <id> <summary> [--as=<actor>]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
       <tr><td><code>&lt;summary&gt;</code></td><td>argument</td><td>yes</td><td>Completion summary.</td></tr>
+      <tr><td><code>[--as=&lt;actor&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -830,9 +836,9 @@ bakin workflows step <taskId>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="workflows-submit" name="workflows submit" summary="Submit workflow step output." description="Submits JSON output for a workflow step.">
+<CliCommandCard id="workflows-submit" name="workflows submit" summary="Submit workflow step output." description="Submits JSON output for a workflow step. `--as=&lt;agent&gt;` acts as that agent; `--as=human` is an operator action; inside a dispatch run directory the acting agent is detected from its sidecar.">
 ```sh frame="terminal"
-bakin workflows submit <taskId> <stepId> <json>
+bakin workflows submit <taskId> <stepId> <json> [--as=<actor>]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
@@ -840,6 +846,7 @@ bakin workflows submit <taskId> <stepId> <json>
       <tr><td><code>&lt;taskId&gt;</code></td><td>argument</td><td>yes</td><td>Task id.</td></tr>
       <tr><td><code>&lt;stepId&gt;</code></td><td>argument</td><td>yes</td><td>Workflow step id.</td></tr>
       <tr><td><code>&lt;json&gt;</code></td><td>argument</td><td>yes</td><td>JSON payload.</td></tr>
+      <tr><td><code>[--as=&lt;actor&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -1126,5 +1133,5 @@ bakin brands remove <id> [--yes]
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 6, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 15, 2026 · Bakin 0.0.0-dev</span>
 </aside>

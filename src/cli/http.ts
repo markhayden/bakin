@@ -105,17 +105,6 @@ export async function apiPostJson(
   return { ok: true, data: parseJsonText(text) }
 }
 
-// Lazy so importing this module (e.g. when the compiled binary delegates unknown
-// commands to cli/bakin.ts) does not initialize runtime services at startup.
-let __cliAgent: string | undefined
-export async function getCliAgent(): Promise<string> {
-  if (__cliAgent === undefined) {
-    const roster = await getCliRoster()
-    __cliAgent = roster.mainAgentId ?? roster.agentIds[0] ?? 'main'
-  }
-  return __cliAgent
-}
-
 export async function getCliRoster(): Promise<CliRoster> {
   const result = await apiGet('/api/plugins/team/') as {
     agents?: Array<{ id?: unknown }>

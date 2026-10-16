@@ -305,7 +305,7 @@ export function registerTaskExecTools(ctx: PluginContext): void {
         const guard = taskEditGuard(ctx, params.taskId as string, { agent })
         if (guard) return { ok: false, error: guard.error }
         try {
-          await setDependencyWithEffects(params.taskId as string, params.dependsOn as string, 'mcp')
+          await setDependencyWithEffects(params.taskId as string, params.dependsOn as string, 'mcp', agent)
           return { ok: true, message: `Dependency registered: ${params.taskId} now waits on ${params.dependsOn}. Your task will be parked and re-dispatched when it completes. Stop now.` }
         } catch (err) {
           if (err instanceof DependencyRejectedError) {

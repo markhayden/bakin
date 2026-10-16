@@ -665,7 +665,7 @@ describe('bakin_exec_tasks_set_dependency', () => {
 
     expect(result.ok).toBe(true)
     expect(result.message).toContain('Dependency registered')
-    expect(mockSetDependencyWithEffects).toHaveBeenCalledWith('task-sd', 'task-other', 'mcp')
+    expect(mockSetDependencyWithEffects).toHaveBeenCalledWith('task-sd', 'task-other', 'mcp', 'rolo')
   })
 
   // The margo loop: the refusal's message IS the instruction to the agent —

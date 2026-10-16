@@ -33309,6 +33309,9 @@
                   "dependsOn": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "agent": {
+                    "type": "string"
                   }
                 },
                 "required": [

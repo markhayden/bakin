@@ -622,6 +622,13 @@ describe('task-service', () => {
       )
     })
 
+    it('audits the acting agent when one is given, api otherwise', async () => {
+      boardWith('todo')
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
+      await service.setDependencyWithEffects('task-a', 'task-b', 'rest', 'patch')
+      expect(appendAudit).toHaveBeenCalledWith(expect.any(String), 'task.dependency_set', 'patch', { id: 'task-a', dependsOn: 'task-b' }, 'rest')
+    })
+
     it.each(['todo', 'inProgress', 'blocked', 'review'])('accepts an open target in %s', async (column) => {
       boardWith(column)
       await service.setDependencyWithEffects('task-a', 'task-b')

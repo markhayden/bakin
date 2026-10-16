@@ -382,8 +382,8 @@ export const tasksRoutes = [
       const guard = taskEditGuard(ctx, taskId)
       if (guard) return guardResponse(guard)
       try {
-        await setDependencyWithEffects(taskId, body.dependsOn, 'rest')
-        ctx.activity.log('system', `Set dependency on ${body.dependsOn}`, { taskId })
+        await setDependencyWithEffects(taskId, body.dependsOn, 'rest', body.agent)
+        ctx.activity.log(body.agent ?? 'system', `Set dependency on ${body.dependsOn}`, { taskId })
         return Response.json({ ok: true as const })
       } catch (err) {
         if (err instanceof DependencyRejectedError) {

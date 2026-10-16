@@ -656,13 +656,15 @@ export async function setDependencyWithEffects(
   taskId: string,
   dependsOn: string,
   channel?: Channel,
+  /** Acting agent, named in the audit; `api` when the caller carries none. */
+  actor?: string,
 ): Promise<void> {
   if (taskId === dependsOn) throw new DependencyRejectedError('self', dependsOn)
   const target = getTaskWithColumn(dependsOn)
   if (!target) throw new DependencyRejectedError('missing', dependsOn)
   if (isCompleteColumn(target.column)) throw new DependencyRejectedError('complete', dependsOn)
   await setStoredDependency(taskId, dependsOn)
-  appendAudit(getContentDir(), 'task.dependency_set', 'api', { id: taskId, dependsOn }, channel)
+  appendAudit(getContentDir(), 'task.dependency_set', actor ?? 'api', { id: taskId, dependsOn }, channel)
 }
 
 /**

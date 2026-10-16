@@ -1008,7 +1008,20 @@ describe('POST /:taskId/dependency — Set Dependency', () => {
 
     expect(status).toBe(200)
     expect(body.ok).toBe(true)
-    expect(mockSetDependencyWithEffects).toHaveBeenCalledWith('task-dep', 'task-parent', 'rest')
+    expect(mockSetDependencyWithEffects).toHaveBeenCalledWith('task-dep', 'task-parent', 'rest', undefined)
+  })
+
+  it('passes the acting agent through so the audit names it (CLI --as, spec D12)', async () => {
+    mockSetDependencyWithEffects.mockResolvedValue(undefined)
+
+    const route = findRoute(activated.routes, 'POST', '/:taskId/dependency')!
+    const { status } = await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-dep' },
+      body: { dependsOn: 'task-parent', agent: 'patch' },
+    })
+
+    expect(status).toBe(200)
+    expect(mockSetDependencyWithEffects).toHaveBeenCalledWith('task-dep', 'task-parent', 'rest', 'patch')
   })
 
   it('returns 400 when dependsOn is missing', async () => {
