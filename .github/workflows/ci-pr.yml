@@ -267,7 +267,7 @@ jobs:
   completeness:
     name: Test completeness
     needs: [test]
-    if: always() && needs.test.result != 'cancelled'
+    if: always() && needs.test.result != 'cancelled' && needs.test.result != 'skipped'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
