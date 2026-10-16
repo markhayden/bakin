@@ -8,7 +8,7 @@
  * Real HTTP must bypass the happy-dom fetch shim the suite preloads, so
  * every request goes through `Bun.fetch`.
  */
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { createServer } from 'net'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -50,7 +50,22 @@ function freePort(): Promise<number> {
   })
 }
 
+/**
+ * server.ts statically embeds the host shell, vendor and plugin bundles
+ * (`with { type: 'file' }`), so a checkout that has never been built cannot
+ * boot it. Fail fast with the command instead of a cryptic module error
+ * from the child.
+ */
+function assertBuiltAssets(): void {
+  const required = ['packages/host/dist/main.js', 'packages/host/public/vendor/react.js', 'plugins/health/dist/client.js']
+  const missing = required.filter((rel) => !existsSync(join(REPO_ROOT, rel)))
+  if (missing.length > 0) {
+    throw new Error(`isolated server needs built host assets (missing ${missing.join(', ')}) — run: bun run build:host && bun run build:plugins`)
+  }
+}
+
 export async function startIsolatedServer(options: IsolatedServerOptions = {}): Promise<IsolatedServer> {
+  assertBuiltAssets()
   const home = join(tmpdir(), `bakin-isolated-${Date.now()}-${randomUUID()}`)
   mkdirSync(join(home, 'pi'), { recursive: true })
   const settings = { search: { settings: { url: 'http://127.0.0.1:39999' } }, runtime: { adapter: 'pi' }, ...(options.settings ?? {}) }
