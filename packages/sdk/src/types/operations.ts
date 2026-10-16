@@ -191,6 +191,26 @@ export interface OperationListResponse {
   operations: OperationView[]
 }
 
+/** `GET /api/operations/:id[?children=1]`. */
+export interface OperationGetResponse {
+  bootId: string
+  operation: OperationView
+  /** Present only when requested with `?children=1`. */
+  children?: OperationView[]
+}
+
+/** Every 404 carries the server's boot id: same boot → expired, different → restarted. */
+export interface OperationNotFoundResponse {
+  bootId: string
+  error: 'not_found'
+}
+
+/** `POST /api/operations/:id/cancel` — 202 cancelling, 409 not_cancellable/already_finished, 404 not_found. */
+export interface OperationCancelResponse {
+  bootId: string
+  status: OperationCancelResult
+}
+
 // ---------------------------------------------------------------------------
 // Quiet state (D4, D17) — pure, shared by the registry, the CLI and the UI
 // ---------------------------------------------------------------------------

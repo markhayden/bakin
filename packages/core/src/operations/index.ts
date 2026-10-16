@@ -15,12 +15,15 @@ export {
   type OperationAttempt,
   type OperationAttemptReason,
   type OperationBytes,
+  type OperationCancelResponse,
   type OperationCancelResult,
   type OperationContext,
+  type OperationGetResponse,
   type OperationItem,
   type OperationListResponse,
   type OperationLogEntry,
   type OperationLogLevel,
+  type OperationNotFoundResponse,
   type OperationOrigin,
   type OperationOutcome,
   type OperationOutcomeSummary,
@@ -37,7 +40,7 @@ export {
   type OperationView,
   type OperationWaitingFor,
 } from '@makinbakin/sdk/types'
-export { OperationCancelledError } from './errors'
+export { OperationCancelledError, OperationRejectedError } from './errors'
 export {
   createOperationRegistry,
   type OperationPublishKind,

@@ -11,3 +11,15 @@ export class OperationCancelledError extends Error {
     this.name = 'OperationCancelledError'
   }
 }
+
+/**
+ * Thrown by an operation's `validate` to refuse the request synchronously
+ * with today's HTTP status and body (D6: invalid requests still fail before
+ * any operation exists). The start helper maps it straight to the response.
+ */
+export class OperationRejectedError extends Error {
+  constructor(public readonly httpStatus: number, public readonly body: unknown) {
+    super(`Operation rejected (${httpStatus})`)
+    this.name = 'OperationRejectedError'
+  }
+}
