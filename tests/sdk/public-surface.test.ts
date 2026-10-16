@@ -22,6 +22,12 @@ describe('SDK public surface cleanup', () => {
     expect(useUnsavedChangesGuard).toBeFunction()
   })
 
+  it('publishes the operations follow hook and start helper (#895)', () => {
+    expect(Hooks.useOperation).toBeFunction()
+    expect(Hooks.startOperation).toBeFunction()
+    expect(Hooks.OperationStartError).toBeFunction()
+  })
+
   it.each(['PageHeaderOverflowMenu', 'ASSIGNED_AGENT_VALUE'])('keeps %s private to pattern implementations', (name) => {
     expect(Object.hasOwn(Patterns, name)).toBe(false)
   })

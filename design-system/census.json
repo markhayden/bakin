@@ -18,13 +18,13 @@
     ]
   },
   "summary": {
-    "total": 109,
+    "total": 111,
     "byKind": {
       "host-route": 27,
       "plugin-route": 12,
       "plugin-slot": 32,
       "plugin-template": 2,
-      "shared-component": 36,
+      "shared-component": 38,
       "sdk-ui-export": 0
     },
     "nonVisualAliases": 3
@@ -2091,6 +2091,30 @@
       ]
     },
     {
+      "id": "shared-component:packages/host/src/components/attention/operations-attention-provider",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/attention/operations-attention-provider"
+      },
+      "sourcePath": "packages/host/src/components/attention/operations-attention-provider.tsx",
+      "symbols": [
+        "OperationsAttentionProvider"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/attention/operations-attention-provider.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
       "id": "shared-component:packages/host/src/components/layout/app-sidebar",
       "kind": "shared-component",
       "owner": {
@@ -2356,6 +2380,33 @@
         {
           "type": "source-export",
           "path": "packages/host/src/components/not-found.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/operations/operations-tray",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/operations/operations-tray"
+      },
+      "sourcePath": "packages/host/src/components/operations/operations-tray.tsx",
+      "symbols": [
+        "OperationsTray",
+        "OperationsTrayView",
+        "cancelOperation",
+        "trayLabel"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/operations/operations-tray.tsx",
           "detail": "exported values discovered from TSX source"
         }
       ]

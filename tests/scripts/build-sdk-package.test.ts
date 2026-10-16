@@ -158,6 +158,7 @@ describe('buildSdkPackage', () => {
     expect(Object.hasOwn(patterns, 'ASSIGNED_AGENT_VALUE')).toBe(false)
     const hooks = await import(pathToFileURL(join(outDir, 'hooks/index.js')).href)
     expect(hooks.useHorizontalResize).toBeFunction()
+    expect(hooks.useOperation).toBeFunction()
     for (const name of ['useFormGuard', 'useFileDrop', 'useVerticalResize']) {
       expect(Object.hasOwn(hooks, name)).toBe(false)
     }

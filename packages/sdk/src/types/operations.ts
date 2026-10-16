@@ -24,6 +24,11 @@ export const OPERATION_STAGE_KINDS = [
 export type OperationStageKind = (typeof OPERATION_STAGE_KINDS)[number]
 
 export type OperationStatus = 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled'
+
+/** True once an operation has settled; a finished view never changes again. */
+export function isOperationFinished(status: OperationStatus): boolean {
+  return status === 'succeeded' || status === 'failed' || status === 'cancelled'
+}
 export type OperationStageStatus = 'pending' | 'active' | 'done' | 'failed' | 'skipped'
 /** Who started it — drives attention routing (toast, OS notification, Discord). */
 export type OperationOrigin = 'web' | 'cli' | 'discord' | 'system'
@@ -175,6 +180,13 @@ export interface OperationOutcome<B = unknown> {
   httpStatus: number
   body: B
 }
+
+/**
+ * How a client following one operation sees it: `expired` = the same boot no
+ * longer has the record; `restarted` = the server's boot changed (outcome
+ * unknown); `unreachable` = reads are failing and being retried.
+ */
+export type OperationPhase = 'loading' | 'live' | 'finished' | 'expired' | 'restarted' | 'unreachable'
 
 /** The body of a converted route's 202 (or 200 when attached to a live twin). */
 export interface OperationStartResponse {

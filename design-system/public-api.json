@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 317,
-    "typeExports": 426
+    "valueExports": 318,
+    "typeExports": 428
   },
   "entrypoints": [
     {
@@ -475,6 +475,7 @@
         "ModelSelect",
         "NavList",
         "NodeCard",
+        "OperationProgress",
         "Page",
         "PageAside",
         "PageBody",
@@ -590,6 +591,8 @@
         "NodeCardProps",
         "NodeCardTone",
         "NumberSettingsField",
+        "OperationProgressProps",
+        "OperationProgressVariant",
         "PageAsideCollapsible",
         "PageAsideProps",
         "PageAsideWidth",

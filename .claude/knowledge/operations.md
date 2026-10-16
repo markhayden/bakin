@@ -8,7 +8,8 @@ spinner-only and job-specific paths the 2026-09-21 margo incident exposed.
 
 Spec: `.claude/specs/operations-progress/SPEC.md` (decisions D1–D24).
 Plan and rollout order: `.claude/specs/operations-progress/PLAN.md`. PR1 ships
-the primitive below; PR2 adds the browser pattern/hook/tray, PR3–PR6 convert
+the primitive below; PR2 adds the browser hook, pattern, tray and attention
+(§ Browser); PR3–PR6 convert
 the flows (repair, installs, search, onboarding/runtime) and delete the legacy
 job registry (`install-progress.ts`) and the throw-on-busy lock API.
 
@@ -26,6 +27,10 @@ job registry (`install-progress.ts`) and the throw-on-busy lock API.
 | HTTP surface + converted-route start | `packages/host/src/api/operations.ts` |
 | Transfer primitive (events, abort, `opTransfer`) | `packages/core/src/net/download.ts` |
 | Legacy install-lock facade (deleted in PR4) | `src/core/install-core/install-lock.ts` |
+| Browser follow hook + start helper | `src/hooks/use-operation.ts` → `@makinbakin/sdk/hooks` (`useOperation`, `startOperation`, `OperationStartError`) |
+| Progress pattern | `packages/sdk/src/patterns/operation-progress.tsx` → `@makinbakin/sdk/patterns` (story `Components/Feedback/OperationProgress`) |
+| Header tray + live list | `packages/host/src/components/operations/{operations-tray.tsx,operations-list.ts}` |
+| Attention (toast + OS notification) | `packages/host/src/components/attention/{operation-attention.ts,operations-attention-provider.tsx}` |
 
 ## The model
 
@@ -186,6 +191,40 @@ own namespace and resources. `@makinbakin/sdk/testing` runs a real registry
 with in-memory resources (`createMemoryResourceAcquirer`) so author tests
 never touch a real Bakin home.
 
+## Browser (PR2)
+
+- **`useOperation(id, { bootId })`** follows one operation over the shell's
+  single SSE connection (`operation.updated`) and reconciles from
+  `GET /api/operations/:id?children=1` on `bakin.reconcile`. Guards: a view
+  applies only with a higher `rev`; events from another boot never apply; a
+  read answered by another boot latches `restarted` and nothing after it
+  applies (not even a late old-boot answer); a same-boot 404 is `expired`
+  (a finished view stays finished when it ages out); a failed read is
+  `unreachable` and retries with backoff 1/2/4/8/15s, keeping the last view.
+  The reducer is pure (`reduceOperationFollow`). `phase` is the SDK type
+  `OperationPhase`.
+- **`startOperation(fetcher)`** returns `{ operationId, bootId, attached? }`
+  for a 202/200 and throws `OperationStartError { status, body }` for the
+  route's own refusal (D22 keeps today's 4xx).
+- **`OperationProgress`** is SDK-owned (beside the search patterns) because it
+  renders SDK types and the private kit (`@bakin/ui`) may not depend on the
+  SDK (`ui-package-boundary` test). Children nest under the parent's FIRST
+  stage (a repair parent's plan is its children, then verifying). It ticks its
+  own clock only while live; `now` pins it for stories/tests.
+- **Tray** (`OperationsTray`, mounted in the header): visible only while
+  something runs or finished in the last 2 minutes (`RECENTLY_FINISHED_MS`);
+  top-level operations only (children roll up); a new boot replaces the list;
+  a malformed list answer is ignored rather than crashing the header. Popover
+  pattern — opening focuses the first row's Cancel, Escape returns focus to
+  the trigger.
+- **Attention** (`OperationsAttentionProvider`, beside
+  `ApprovalsAttentionProvider`): pure rules in `nextOperationAttention`.
+  Finished/failed once per operation (memo survives SSE milestone replay),
+  stuck once per stage (judged with `operationQuietState` on the stuck
+  milestone the registry's sweep publishes — never from log text), cancelled
+  never. Only `origin ∈ {web, cli, discord}`; system work and children stay in
+  the tray; nothing announces while the person is on the operation's `href`.
+
 ## Tests
 
 - `tests/core/operations/` — types, registry (lifecycle, attach, cancel,
@@ -198,3 +237,10 @@ never touch a real Bakin home.
   tar output.
 - `tests/sdk-testing/operations.test.ts` — the published harness, author-style.
 - `tests/architecture/operations-{resources,transfers}.test.ts`.
+- `tests/hooks/use-operation.test.tsx` — rev/boot guards, reconcile, expired,
+  restarted (late old-boot answer ignored), unreachable recovery,
+  `startOperation`.
+- `tests/ui/patterns/operation-progress.test.tsx` + the 23 play-asserted
+  stories in `storybook/public/feedback/operation-progress.stories.tsx`
+  (five visual baselines).
+- `tests/host/operations-{tray,attention}.test.tsx`.

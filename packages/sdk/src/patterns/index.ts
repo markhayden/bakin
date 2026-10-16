@@ -61,6 +61,10 @@ export {
   UnsavedChangesDialog,
 } from '@bakin/ui/patterns'
 
+/** Follow a long-running operation: plan, live progress, quiet/stuck, cancel, outcome (#895). */
+export { OperationProgress } from './operation-progress'
+export type { OperationProgressProps, OperationProgressVariant } from './operation-progress'
+
 /** Replace an affected result region when search returns no trustworthy result. */
 export { SearchUnavailable } from './search-patterns'
 /** Show fused and per-leg search relevance as exact, non-color-dependent evidence. */

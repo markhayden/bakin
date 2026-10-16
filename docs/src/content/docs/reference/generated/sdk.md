@@ -130,6 +130,11 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | `usePluginEvent` | Subscribe to a server-pushed plugin event over the shell's single connection. |
 | `emitPluginEvent` | Subscribe to a server-pushed plugin event over the shell's single connection. |
 | `PluginEventPayload` | Subscribe to a server-pushed plugin event over the shell's single connection. |
+| `useOperation` | Follow one server operation live (rev/boot guards, reconcile, expired vs restarted vs unreachable). |
+| `startOperation` | Call a converted long-running route and get its `{ operationId, bootId }`. |
+| `OperationStartError` | Thrown by `startOperation` when the route refuses; carries its status and JSON body. |
+| `UseOperationOptions` | — |
+| `UseOperationResult` | — |
 | `useHistoryBack` | — |
 | `useHorizontalResize` | Resize a side-by-side split pane by dragging the divider between columns. |
 | `useAvailableModels` | The available-models catalog (cached, read-only); empty until loaded. |
@@ -735,5 +740,5 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 6, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 16, 2026 · Bakin 0.0.0-dev</span>
 </aside>

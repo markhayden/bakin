@@ -4,6 +4,7 @@ import { ConnectionDot } from './connection-dot'
 import { DispatchTimer } from './dispatch-timer'
 import { NotificationToggle } from './notification-toggle'
 import { AppSidebar } from './app-sidebar'
+import { OperationsTray } from '../operations/operations-tray'
 import { openGlobalSearch } from '../search/use-search-hotkey'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { useActivityContext } from '@/context/activity-context'
@@ -329,6 +330,7 @@ export function Header() {
             <span className="hidden sm:inline">Search</span>
             <CommandShortcut className="ml-0 hidden pl-0 sm:inline">⌘K</CommandShortcut>
           </Button>
+          <OperationsTray />
           <div className="hidden md:block"><DispatchTimer /></div>
           <div className="hidden md:block"><DebugToggle /></div>
           <div className="hidden sm:block"><NotificationToggle /></div>
