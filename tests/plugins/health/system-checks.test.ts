@@ -337,6 +337,12 @@ mock.module('../../../src/core/onboarding/plugin-assets', () => ({
     check: async () => mockPluginAssetsResult,
     install: async () => mockPluginAssetsInstall,
   },
+  PLUGIN_ASSETS_PLAN: { stages: [{ id: 'skills', kind: 'installing', label: 'Install plugin skills' }, { id: 'bins', kind: 'installing', label: 'Install plugin binaries' }], pointOfNoReturn: 'skills' },
+  applyPluginAssets: async (op?: { stage(id: string): void }) => {
+    op?.stage('skills')
+    op?.stage('bins')
+    return mockPluginAssetsInstall
+  },
 }))
 
 mock.module('@/core/exec-tools/registry', () => ({
@@ -1239,6 +1245,15 @@ describe('installPluginAssetsRepair', () => {
     mockPluginAssetsInstall = { name: 'plugin-assets', status: 'failed', message: 'tmux (terminal): pinned differently by pack ocr', durationMs: 5 }
     const failed = await action.apply(items)
     expect(failed[0]).toMatchObject({ status: 'failed', message: 'tmux (terminal): pinned differently by pack ocr', changes: [] })
+  })
+
+  it('declares install-state and passes the repair runtime contract', async () => {
+    const action = installPluginAssetsRepair()
+    mockPluginAssetsInstall = { name: 'plugin-assets', status: 'installed', message: 'Installed 1 skill(s)', durationMs: 5 }
+    const run = await runRepairContract(action, await action.plan(target))
+    expectRepairContract(action, run)
+    expect(run.view.resources).toEqual(['install-state'])
+    expect(run.calls).toEqual(['stage:skills', 'stage:bins'])
   })
 })
 

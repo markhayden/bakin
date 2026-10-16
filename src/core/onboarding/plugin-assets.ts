@@ -38,6 +38,7 @@ import { verifyInstalledBin } from '../agent-packages/bin-verify'
 import { withInstallLock } from '../install-core/install-lock'
 import { binTargetPath } from '../plugins/bin-owners'
 import type { RuntimeSkill } from '@bakin/core/adapters/runtime'
+import type { OperationContext, OperationPlan } from '@bakin/core/operations'
 import { BinRequirementsSchema, type BinRequirement } from '@bakin/core/plugins/bin-requirement'
 import {
   type PluginLockfile,
@@ -271,12 +272,29 @@ export async function scanPluginAssets(plugins: PluginEntry[]): Promise<ScanRepo
   return report
 }
 
-export async function installPluginAssets(plugins: PluginEntry[]): Promise<InstallReport> {
+/**
+ * Plugin assets as an operation (#895): skills first (the point of no return —
+ * the first runtime write), then binaries, one item per plugin in each.
+ */
+export const PLUGIN_ASSETS_PLAN: OperationPlan = {
+  stages: [
+    { id: 'skills', kind: 'installing', label: 'Install plugin skills' },
+    { id: 'bins', kind: 'installing', label: 'Install plugin binaries' },
+  ],
+  pointOfNoReturn: 'skills',
+}
+
+export async function installPluginAssets(plugins: PluginEntry[], op?: OperationContext): Promise<InstallReport> {
   const report: InstallReport = { installed: [], unchanged: [], skipped: [], bins: { installed: [], unchanged: [], failed: [] } }
   const runtime = getAppServices().runtime
 
+  op?.stage('skills')
   for (const plugin of plugins) {
-    for (const skill of findSkillsForPlugin(plugin)) {
+    const skills = findSkillsForPlugin(plugin)
+    if (skills.length === 0) continue
+    op?.item('skills', { id: plugin.id, label: plugin.id, status: 'active' })
+    const before = report.installed.length
+    for (const skill of skills) {
       const ref: SkillRef = { pluginId: plugin.id, name: skill.name }
       const sourceHash = sha256OfFile(skill.skillMdPath)
       const installedSkill = await runtime.skills.get(skill.name)
@@ -297,6 +315,8 @@ export async function installPluginAssets(plugins: PluginEntry[]): Promise<Insta
       report.installed.push(ref)
       log.info('Installed plugin skill', { name: skill.name, pluginId: plugin.id })
     }
+    const wrote = report.installed.length - before
+    op?.item('skills', { id: plugin.id, label: plugin.id, status: 'done', message: wrote > 0 ? `${wrote} skill(s) written` : 'up to date' })
   }
 
   // Sync lockfile installedSkills with what we just laid down. Without
@@ -311,6 +331,7 @@ export async function installPluginAssets(plugins: PluginEntry[]): Promise<Insta
   // unchanged. Serialized under the install lock like every bin writer;
   // a pin conflict or failed download fails THIS plugin's repair loudly and
   // leaves the others to proceed.
+  op?.stage('bins')
   for (const plugin of plugins) {
     const bins = findBinsForPlugin(plugin)
     if (bins.length === 0) continue
@@ -322,8 +343,10 @@ export async function installPluginAssets(plugins: PluginEntry[]): Promise<Insta
       // Core plugins never declare bins; a user plugin without a ledger row
       // was never consented to — the repair does not install for it.
       log.warn('Skipping binaries of a plugin with no lockfile entry', { pluginId: plugin.id })
+      op?.item('bins', { id: plugin.id, label: plugin.id, status: 'skipped', message: 'no consented lockfile entry' })
       continue
     }
+    op?.item('bins', { id: plugin.id, label: plugin.id, status: 'active' })
     try {
       const results = await withInstallLock(() => installPluginBins(installable, {
         pluginId: plugin.id,
@@ -341,10 +364,12 @@ export async function installPluginAssets(plugins: PluginEntry[]): Promise<Insta
         }
       }
       syncLockfileInstalledBins(plugin.id, toInstalledBins(results) ?? [])
+      op?.item('bins', { id: plugin.id, label: plugin.id, status: 'done', message: `${results.filter((r) => r.created).length} installed, ${results.filter((r) => !r.created).length} unchanged` })
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
       log.error('Plugin binary install failed', err as Error, { pluginId: plugin.id })
       for (const bin of installable) report.bins.failed.push({ pluginId: plugin.id, name: bin.name, error })
+      op?.item('bins', { id: plugin.id, label: plugin.id, status: 'failed', message: error })
     }
   }
 
@@ -508,6 +533,11 @@ async function check(): Promise<CheckResult> {
 }
 
 async function install(_opts: OnboardingOptions): Promise<InstallResult> {
+  return applyPluginAssets()
+}
+
+/** The component's install, reporting through `op` when run as an operation (the Health repair). */
+export async function applyPluginAssets(op?: OperationContext): Promise<InstallResult> {
   await ensureAppServices()
   const start = Date.now()
   let plugins: PluginEntry[]
@@ -517,7 +547,7 @@ async function install(_opts: OnboardingOptions): Promise<InstallResult> {
     if (!(err instanceof PluginDiscoveryError)) throw err
     return { name: 'plugin-assets', status: 'failed', message: `Plugin assets could not be inspected — ${err.message}`, error: err, durationMs: Date.now() - start }
   }
-  const report = await installPluginAssets(plugins)
+  const report = await installPluginAssets(plugins, op)
   const durationMs = Date.now() - start
   const { bins } = report
 

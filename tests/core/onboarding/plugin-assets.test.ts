@@ -49,9 +49,11 @@ mock.module('../../../bakin.config', () => ({ default: { plugins: [] } }))
 import {
   scanPluginAssets,
   installPluginAssets,
+  PLUGIN_ASSETS_PLAN,
   pluginAssetsComponent,
 } from '@/core/onboarding/plugin-assets'
 import { addPlugin, readPluginLockfile, writePluginLockfile } from '../../../packages/core/src/plugins/lockfile'
+import { withOperationView } from '../../helpers/operation-harness'
 import { readInstalledBy } from '../../../packages/core/src/agent-packages/markers'
 
 type TestGlobal = typeof globalThis & {
@@ -192,6 +194,13 @@ describe('plugin-assets onboarding component', () => {
       expect(report.installed).toEqual([{ pluginId: 'sdr', name: 'cold-email' }])
       expect(report.drifted).toEqual([])
       expect(report.missing).toEqual([])
+    })
+
+    it('reports through op: skills then bins, one item per plugin (#895)', async () => {
+      const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
+      const { view } = await withOperationView({ plan: PLUGIN_ASSETS_PLAN, resources: ['install-state'] }, (op) => installPluginAssets([{ id: 'sdr', path: pluginDir }], op))
+      expect(view.stages.map((s) => [s.id, s.status])).toEqual([['skills', 'done'], ['bins', 'done']])
+      expect(view.stages[0]!.items).toEqual([{ id: 'sdr', label: 'sdr', status: 'done', message: '1 skill(s) written' }])
     })
 
     it('reports a skill as drifted when source hash differs from installed hash', async () => {

@@ -24,12 +24,16 @@ let installCalls = 0
 let installShouldFail = false
 let lastInstallForce: boolean | undefined
 let applyStoreStatus: 'ok' | 'missing' = 'missing'
+let lastInstallOp: unknown
 let loaderLoads = false
+const { MEDIA_PLAN: REAL_MEDIA_PLAN } = await import('../../../packages/core/src/media/install-plan')
 mock.module('../../../packages/core/src/media/installer', () => ({
   checkMediaStore: () => (applyStoreStatus === 'ok'
     ? { status: 'ok' as const, receipt: { schema: 1, sharpVersion: '0.34.5', platform: 'darwin-arm64', entry: 'dist/index.js', installedAt: 'now', tarballs: [] } }
     : { status: 'missing' as const }),
-  installMediaStore: async (opts?: { force?: boolean }) => {
+  MEDIA_PLAN: REAL_MEDIA_PLAN,
+  installMediaStore: async (op: unknown, opts?: { force?: boolean }) => {
+    lastInstallOp = op
     installCalls += 1
     lastInstallForce = opts?.force
     if (installShouldFail) throw new Error('registry unreachable (fixture)')
@@ -139,6 +143,15 @@ describe('mediaStoreRepair', () => {
     const plan = await repair.plan(target as never)
     await repair.apply(plan)
     expect(lastInstallForce).toBe(true)
+  })
+
+  it('declares media-store and the installer plan, and hands its op straight to the installer (#895)', async () => {
+    const repair = mediaStoreRepair()
+    expect(repair.resources).toEqual(['media-store'])
+    expect(repair.operationPlan!([]).stages.map((s) => s.id)).toEqual(['prepare', 'download', 'extract', 'bundle', 'verify', 'commit'])
+    const op = { id: 'op-1' } as never
+    await repair.apply(await repair.plan(target as never), op)
+    expect(lastInstallOp).toBe(op)
   })
 
   it('apply reports failed honestly when the installer throws', async () => {

@@ -62,7 +62,12 @@ mock.module('../../../packages/core/src/media/sharp-loader', () => ({
   resetSharpModuleCache: () => { loaderResets += 1 },
 }))
 
-import { checkMediaStore, installMediaStore, mediaStoreDir, mediaStoreEntry, readMediaReceipt } from '../../../packages/core/src/media/installer'
+import { checkMediaStore, installMediaStore, MEDIA_PLAN, mediaStoreDir, mediaStoreEntry, readMediaReceipt, type MediaInstallOptions } from '../../../packages/core/src/media/installer'
+import { settleOperation, withOperation, withOperationView } from '../../helpers/operation-harness'
+
+/** The installer runs inside an operation that holds media-store, as in production. */
+const mediaInstall = (opts: MediaInstallOptions) =>
+  withOperation({ plan: MEDIA_PLAN, resources: ['media-store'] }, (op) => installMediaStore(op, opts))
 import { mediaPlatformKey } from '../../../packages/core/src/media/pin'
 
 const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('hex')
@@ -76,6 +81,7 @@ const platform = mediaPlatformKey()
 if (!platform) throw new Error('unsupported test platform')
 
 let server: { port: number; stop: (force?: boolean) => void }
+let stallsLeft = 0
 const fixtures: Record<string, Buffer> = {}
 
 /** Build an npm-shaped tarball (package/ root) holding the given files. */
@@ -95,6 +101,15 @@ beforeAll(() => {
     port: 0,
     fetch(req: Request) {
       const path = new URL(req.url).pathname
+      // The margo signature: the registry answers, sends a little, then the
+      // body never moves again. `stallsLeft` counts how many requests do it.
+      if (path === '/libvips.tgz' && stallsLeft > 0) {
+        stallsLeft -= 1
+        const body = fixtures[path]!
+        return new NativeResponse(new ReadableStream<Uint8Array>({
+          start(controller) { controller.enqueue(new Uint8Array(body.subarray(0, 64))) },
+        }), { headers: { 'content-length': String(body.length) } })
+      }
       if (fixtures[path]) return new NativeResponse(new Uint8Array(fixtures[path]!))
       return new NativeResponse('nope', { status: 404 })
     },
@@ -135,7 +150,7 @@ const okProbe = async (): Promise<void> => {}
 
 describe('installMediaStore', () => {
   it('downloads, stages, places natives, and commits with a receipt', async () => {
-    const result = await installMediaStore({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })
+    const result = await mediaInstall({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })
     expect(result.skipped).toBe(false)
     expect(result.storeDir).toBe(mediaStoreDir())
 
@@ -157,9 +172,9 @@ describe('installMediaStore', () => {
   })
 
   it('is idempotent: a receipt at the pin skips all work', async () => {
-    await installMediaStore({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })
+    await mediaInstall({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })
     let bundled = 0
-    const again = await installMediaStore({
+    const again = await mediaInstall({
       fetchImpl: nativeFetch,
       bundle: async (e, o) => { bundled += 1; await fakeBundle(e, o) },
       probe: okProbe,
@@ -170,13 +185,13 @@ describe('installMediaStore', () => {
   })
 
   it('force re-installs over a matching receipt', async () => {
-    await installMediaStore({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })
-    const again = await installMediaStore({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe, force: true })
+    await mediaInstall({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })
+    const again = await mediaInstall({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe, force: true })
     expect(again.skipped).toBe(false)
   })
 
   it('a library-validation dlopen failure names the REAL fix (signed-binary entitlement), not npm advice', async () => {
-    await expect(installMediaStore({
+    await expect(mediaInstall({
       fetchImpl: nativeFetch,
       bundle: fakeBundle,
       probe: async () => {
@@ -188,7 +203,7 @@ describe('installMediaStore', () => {
   })
 
   it('a failed probe leaves NO store dir and surfaces the sharp error', async () => {
-    await expect(installMediaStore({
+    await expect(mediaInstall({
       fetchImpl: nativeFetch,
       bundle: fakeBundle,
       probe: async () => { throw new Error('media store probe failed — refusing to commit: fixture') },
@@ -205,7 +220,7 @@ describe('installMediaStore', () => {
     const good = pinData.shared[0]!
     pinData.shared = [{ ...good, sha256: sha256('tampered') }]
     try {
-      await expect(installMediaStore({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe }))
+      await expect(mediaInstall({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe }))
         .rejects.toThrow(/checksum/i)
       expect(existsSync(mediaStoreDir())).toBe(false)
     } finally {
@@ -222,7 +237,7 @@ describe('installMediaStore', () => {
     const liveStaging = join(testDir, 'media', 'sharp', '.staging-0.0.1-fixture-1')
     mkdirSync(liveStaging, { recursive: true })
 
-    await installMediaStore({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })
+    await mediaInstall({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })
 
     expect(existsSync(deadStaging)).toBe(false)
     expect(existsSync(liveStaging)).toBe(true)
@@ -233,9 +248,53 @@ describe('installMediaStore', () => {
     const oldDir = join(testDir, 'media', 'sharp', '0.0.0-old')
     mkdirSync(oldDir, { recursive: true })
     writeFileSync(join(oldDir, 'receipt.json'), '{}')
-    await installMediaStore({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })
+    await mediaInstall({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })
     expect(existsSync(oldDir)).toBe(false)
     expect(existsSync(mediaStoreDir())).toBe(true)
+  })
+})
+
+describe('installMediaStore as an operation (#895)', () => {
+  it('refuses to run unless the caller holds media-store', async () => {
+    await expect(withOperation({ plan: MEDIA_PLAN }, (op) => installMediaStore(op, { fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })))
+      .rejects.toThrow('requires the media-store resource')
+    expect(existsSync(mediaStoreDir())).toBe(false)
+  })
+
+  it('reports the plan: one download item per pinned tarball with bytes, then extract, bundle, verify, commit', async () => {
+    const { view } = await withOperationView({ plan: MEDIA_PLAN, resources: ['media-store'] }, (op) => installMediaStore(op, { fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe }))
+    expect(view.stages.map((s) => [s.id, s.status])).toEqual([
+      ['prepare', 'done'], ['download', 'done'], ['extract', 'done'], ['bundle', 'done'], ['verify', 'done'], ['commit', 'done'],
+    ])
+    const download = view.stages.find((s) => s.id === 'download')!
+    expect(download.items?.map((i) => i.status)).toEqual(['done', 'done', 'done'])
+    for (const item of download.items!) expect(item.bytes?.received).toBeGreaterThan(0)
+    expect(view.stages.find((s) => s.id === 'extract')!.items).toHaveLength(3)
+  })
+
+  it('margo replay: a stalled registry stream is visible, retried with a fresh request, and the install completes', async () => {
+    stallsLeft = 1
+    const { view } = await withOperationView({ plan: MEDIA_PLAN, resources: ['media-store'] }, (op) => installMediaStore(op, { fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe, stallTimeoutMs: 150 }))
+    const download = view.stages.find((s) => s.id === 'download')!
+    expect(download.attempt).toMatchObject({ n: 2, of: 2, reason: 'stalled' })
+    expect(view.log.some((l) => l.level === 'warn' && /no data for/.test(l.text))).toBe(true)
+    expect(download.items?.every((i) => i.status === 'done')).toBe(true)
+    expect(checkMediaStore().status).toBe('ok')
+  })
+
+  it('margo replay: a stream that stalls on every attempt fails the item, the stage and the install — and commits nothing', async () => {
+    stallsLeft = 2
+    const { error, view } = await settleOperation({ plan: MEDIA_PLAN, resources: ['media-store'] }, (op) => installMediaStore(op, { fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe, stallTimeoutMs: 100 }))
+    expect(String(error)).toMatch(/stall|no data/i)
+    expect(view.status).toBe('failed')
+    const download = view.stages.find((s) => s.id === 'download')!
+    expect(download.status).toBe('failed')
+    const libvips = download.items!.find((i) => i.id.includes('libvips'))!
+    expect(libvips.status).toBe('failed')
+    expect(libvips.message).toMatch(/stall|no data/i)
+    expect(view.stages.slice(2).every((s) => s.status === 'pending')).toBe(true)
+    expect(existsSync(mediaStoreDir())).toBe(false)
+    stallsLeft = 0
   })
 })
 
@@ -245,7 +304,7 @@ describe('checkMediaStore', () => {
   })
 
   it('reports missing when the receipt is for another sharp version', async () => {
-    await installMediaStore({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })
+    await mediaInstall({ fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })
     const receiptPath = join(mediaStoreDir(), 'receipt.json')
     const receipt = JSON.parse(readFileSync(receiptPath, 'utf-8')) as { sharpVersion: string }
     receipt.sharpVersion = '0.0.0-other'

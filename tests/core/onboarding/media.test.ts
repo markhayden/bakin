@@ -40,9 +40,11 @@ let storeStatus: StoreStatus = { status: 'missing' }
 let installCalls = 0
 let installShouldFail = false
 let lastInstallForce: boolean | undefined
+const { MEDIA_PLAN: REAL_MEDIA_PLAN } = await import('../../../packages/core/src/media/install-plan')
 mock.module('../../../packages/core/src/media/installer', () => ({
   checkMediaStore: () => storeStatus,
-  installMediaStore: async (opts?: { force?: boolean }) => {
+  MEDIA_PLAN: REAL_MEDIA_PLAN,
+  installMediaStore: async (_op: unknown, opts?: { force?: boolean }) => {
     installCalls += 1
     lastInstallForce = opts?.force
     if (installShouldFail) throw new Error('download failed (fixture)')
