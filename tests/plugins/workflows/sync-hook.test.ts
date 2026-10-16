@@ -105,6 +105,11 @@ function makeCtx(): CapturedCtx {
     pluginId: 'workflows',
     runtime: createMockRuntimeAdapter(),
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    // These activations start no operations; a call here is a test bug.
+    operations: {
+      start: async () => { throw new Error('ctx.operations is not used by this test') },
+      await: async () => { throw new Error('ctx.operations is not used by this test') },
+    },
     conversations: {
       createTurnService: (config) => createConversationTurnService(config as unknown as Parameters<typeof createConversationTurnService>[0]) as unknown as ReturnType<PluginContext['conversations']['createTurnService']>,
     },

@@ -15,7 +15,6 @@ import {
   type OperationGetResponse,
   type OperationListResponse,
   type OperationNotFoundResponse,
-  type OperationOrigin,
   type StartOperationInput,
 } from '@bakin/core/operations'
 import { getBootId } from '@/core/boot-id'
@@ -63,15 +62,6 @@ export async function cancel(_req: Request, url: URL): Promise<Response> {
   const status = id ? getOperationRegistry().cancel(id) : 'not_found'
   const body: OperationCancelResponse = { bootId: getBootId(), status }
   return Response.json(body, { status: CANCEL_STATUS[status] })
-}
-
-/**
- * Who started the request. The CLI marks its requests; everything else
- * arriving over HTTP is the browser. `discord` and `system` origins are
- * in-process and never come from a header.
- */
-export function operationOriginFromRequest(req: Request): OperationOrigin {
-  return req.headers.get('x-bakin-origin') === 'cli' ? 'cli' : 'web'
 }
 
 /**

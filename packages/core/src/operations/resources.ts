@@ -76,20 +76,27 @@ const RECLAIM_ATTEMPTS = 3
 
 const isCoreResource = (resource: string): boolean => (CORE_RESOURCES as readonly string[]).includes(resource)
 
+/** Pure name check: a core resource or `<pluginId>:<name>`. */
+export function assertResourceName(resource: string): void {
+  if (!isCoreResource(resource) && !PLUGIN_RESOURCE_RE.test(resource)) {
+    throw new Error(`Invalid operation resource '${resource}': use a core resource or '<pluginId>:<name>'`)
+  }
+}
+
 export function resourceLockPath(resource: string): string {
+  assertResourceName(resource)
   if (resource === 'install-state') return join(getContentDir(), 'install.lock')
   if (isCoreResource(resource)) return join(getContentDir(), 'locks', `${resource}.lock`)
-  const plugin = PLUGIN_RESOURCE_RE.exec(resource)
-  if (!plugin) throw new Error(`Invalid operation resource '${resource}': use a core resource or '<pluginId>:<name>'`)
-  return join(getContentDir(), 'locks', plugin[1], `${plugin[2]}.lock`)
+  const [pluginId, name] = resource.split(':') as [string, string]
+  return join(getContentDir(), 'locks', pluginId, `${name}.lock`)
 }
 
 /** Canonical acquisition order: core resources in their fixed order, then plugin resources by name. */
 export function sortResources(resources: Iterable<string>): string[] {
   const unique = [...new Set(resources)]
+  for (const r of unique) assertResourceName(r)
   const core = CORE_RESOURCES.filter((r) => unique.includes(r))
   const rest = unique.filter((r) => !isCoreResource(r)).sort()
-  for (const r of rest) resourceLockPath(r)
   return [...core, ...rest]
 }
 

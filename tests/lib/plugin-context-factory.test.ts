@@ -40,6 +40,8 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 mock.module('../../src/lib/plugin-permissions', () => ({ wrapPluginContextPermissions: (ctx: unknown) => ctx }))
 
 import { buildPluginContext, noopRegistrars } from '../../src/lib/plugin-context-factory'
+import { _resetOperationRegistryForTests, getOperationRegistry } from '../../src/core/operations'
+import type { OperationPlan } from '@bakin/core/operations'
 
 const services = { runtime: {}, search: {}, tasks: {} } as never
 const events = {} as never
@@ -218,5 +220,40 @@ describe('ctx.conversations guardrails (#703 review)', () => {
         events: { chunk: 'chat.chunk', done: 'demo4.done', error: 'demo4.error' }, // spoof attempt
       }),
     ).toThrow(/namespaced/)
+  })
+})
+
+describe('buildPluginContext ctx.operations (#895 D19)', () => {
+  const plan: OperationPlan = { stages: [{ id: 'work', kind: 'installing', label: 'Work' }], pointOfNoReturn: null }
+  const ctxFor = (pluginId: string, source: 'core' | 'user') => buildPluginContext({
+    pluginId, source, services, storage: {} as never, events, registrars: noopRegistrars(pluginId),
+    skipFileBackedWiring: true, manifestPermissions: [],
+  })
+
+  it('starts on the process registry, namespaced and owned by the plugin, with origin from the request', async () => {
+    _resetOperationRegistryForTests()
+    const ctx = ctxFor('voice', 'user')
+    const request = new Request('http://localhost/api/plugins/voice/install', { method: 'POST', headers: { 'X-Bakin-Origin': 'cli' } })
+    const { operationId } = await ctx.operations.start({
+      kind: 'install', title: 'Install voices', fingerprint: 'en', plan, request, resources: ['voice:models'],
+      run: async () => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: { voices: 3 } }),
+    })
+    const view = await ctx.operations.await(operationId)
+    expect(view).toMatchObject({ kind: 'voice:install', fingerprint: 'voice:en', owner: 'plugin:voice', origin: 'cli', status: 'succeeded', resources: ['voice:models'] })
+    expect(getOperationRegistry().get(operationId)?.id).toBe(operationId)
+    _resetOperationRegistryForTests()
+  })
+
+  it('refuses core resources for a user plugin and allows them for a core plugin', async () => {
+    _resetOperationRegistryForTests()
+    const run = async () => ({ status: 'succeeded' as const, code: 'ok', httpStatus: 200, body: null })
+    await expect(ctxFor('voice', 'user').operations.start({ kind: 'x', title: 'X', fingerprint: 'x', plan, resources: ['media-store'], run }))
+      .rejects.toThrow(/reserved for core plugins/)
+    expect(getOperationRegistry().list()).toEqual([])
+
+    const ctx = ctxFor('health', 'core')
+    const { operationId } = await ctx.operations.start({ kind: 'repair', title: 'Repair', fingerprint: 'm', plan, resources: ['media-store'], run })
+    expect((await ctx.operations.await(operationId)).status).toBe('succeeded')
+    _resetOperationRegistryForTests()
   })
 })

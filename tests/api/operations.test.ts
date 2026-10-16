@@ -33,7 +33,7 @@ import { buildOpenApiDocument } from '../../packages/host/src/api/docs-runtime'
 import { collectOpenApiSources } from '../../packages/host/src/api/openapi-sources'
 import { _resetOperationRegistryForTests, getOperationRegistry } from '../../src/core/operations'
 import { getBootId } from '../../src/core/boot-id'
-import { OperationRejectedError, type OperationPlan, type StartOperationInput } from '@bakin/core/operations'
+import { operationOriginFromRequest, OperationRejectedError, type OperationPlan, type StartOperationInput } from '@bakin/core/operations'
 
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -199,9 +199,9 @@ describe('startOperationResponse — the shared converted-route start', () => {
 describe('origin from the request', () => {
   it('is cli only when the CLI says so, web otherwise', () => {
     const req = (headers: Record<string, string> = {}) => new Request('http://localhost/x', { headers })
-    expect(operationsRoute.operationOriginFromRequest(req({ 'X-Bakin-Origin': 'cli' }))).toBe('cli')
-    expect(operationsRoute.operationOriginFromRequest(req())).toBe('web')
-    expect(operationsRoute.operationOriginFromRequest(req({ 'X-Bakin-Origin': 'system' }))).toBe('web')
+    expect(operationOriginFromRequest(req({ 'X-Bakin-Origin': 'cli' }))).toBe('cli')
+    expect(operationOriginFromRequest(req())).toBe('web')
+    expect(operationOriginFromRequest(req({ 'X-Bakin-Origin': 'system' }))).toBe('web')
   })
 })
 

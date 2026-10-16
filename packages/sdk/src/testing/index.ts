@@ -37,6 +37,7 @@ import { dispatchRoute } from '@bakin/core/routing'
 import { createConversationTurnService } from '../../../../src/core/conversation-turns'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
+import { createMemoryResourceAcquirer, createOperationRegistry, toPluginOperationInput } from '@bakin/core/operations'
 import type {
   BakinPlugin,
   ExecToolDefinition,
@@ -126,6 +127,8 @@ export interface CreateTestContextOptions {
    * delete a caller-provided directory on `dispose()`.
    */
   dir?: string
+  /** Treat the plugin as a core plugin (it may then declare core operation resources). */
+  core?: boolean
 }
 
 /**
@@ -192,6 +195,16 @@ export function createTestContext(
     })
   }
 
+  // ctx.operations runs on a real registry with the host's rules (namespacing,
+  // origin, resource authorization) and in-memory resources — never lock
+  // files under a real Bakin home.
+  const operations = createOperationRegistry({
+    bootId: () => 'test-boot',
+    publish: () => {},
+    quietCheckIntervalMs: 0,
+    acquireResources: createMemoryResourceAcquirer(),
+  })
+
   const capture = (level: CapturedLog['level']) =>
     (message: string, data?: unknown) => {
       logs.push({ level, message, data })
@@ -211,6 +224,10 @@ export function createTestContext(
     // The REAL turn engine (host implementation) — external-author tests
     // exercise genuine turn lifecycle against the mock runtime. Same
     // documented cross-tier cast as runtime/tasks above.
+    operations: {
+      start: async (input) => operations.start(toPluginOperationInput(pluginId, options.core ?? false, input)),
+      await: (operationId) => operations.await(operationId),
+    },
     conversations: {
       createTurnService: (config) =>
         createConversationTurnService(
@@ -347,6 +364,7 @@ export function createTestContext(
       getSettings: ctx.getSettings,
     }),
     dispose: () => {
+      operations.dispose()
       if (disposed || !ownsDir) {
         disposed = true
         return

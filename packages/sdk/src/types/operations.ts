@@ -212,6 +212,36 @@ export interface OperationCancelResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Plugin API (D19) — `ctx.operations`
+// ---------------------------------------------------------------------------
+
+export interface PluginOperationStartInput<B = unknown> {
+  /** Stored as `<pluginId>:<kind>`. */
+  kind: string
+  title: string
+  href?: string
+  /** Kind + normalized inputs, stored as `<pluginId>:<fingerprint>`; an identical live request attaches. */
+  fingerprint: string
+  /**
+   * Resources acquired before `run`, in canonical order. User plugins may name
+   * only their own `<pluginId>:<name>` resources; the core resources are
+   * reserved for core plugins.
+   */
+  resources?: string[]
+  plan: OperationPlan
+  /** The triggering request: its origin (web or cli) is carried onto the operation. Omit for background work (`system`). */
+  request?: Request
+  run: (op: OperationContext) => Promise<OperationOutcome<B>>
+}
+
+export interface PluginOperationsAPI {
+  /** Registers and starts the operation; answer the route with this (202, or 200 when `attached`). */
+  start<B>(input: PluginOperationStartInput<B>): Promise<OperationStartResponse>
+  /** Resolves with the terminal view (for in-process callers that must wait). */
+  await(operationId: string): Promise<OperationView>
+}
+
+// ---------------------------------------------------------------------------
 // Quiet state (D4, D17) — pure, shared by the registry, the CLI and the UI
 // ---------------------------------------------------------------------------
 

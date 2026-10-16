@@ -29,6 +29,7 @@ import type {
   HealthOwner,
   HealthRepairActionDefinition,
   PluginLogger,
+  PluginOperationsAPI,
   SearchAPI,
   TaskLogEntry,
 } from '@makinbakin/sdk/types'
@@ -468,6 +469,8 @@ export interface PluginContext {
   search: SearchAPI
   /** Shared conversation turn engine — background turns for chat-like surfaces (#703) */
   conversations: ConversationTurnsAPI
+  /** Staged, cancellable, boot-aware progress for long-running work (#895) */
+  operations: PluginOperationsAPI
 }
 
 // ---------------------------------------------------------------------------

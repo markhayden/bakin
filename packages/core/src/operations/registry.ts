@@ -52,6 +52,12 @@ export interface OperationRegistryDeps {
   quietCheckIntervalMs?: number
   /** Backoff while waiting on a held resource. */
   resourcePollMs?: { initial: number; max: number }
+  /**
+   * Resource acquisition. Defaults to the cross-process lock files; the SDK
+   * testing harness injects an in-memory acquirer so author tests never touch
+   * a real Bakin home.
+   */
+  acquireResources?: typeof acquireResources
 }
 
 export interface StartOperationInput<B = unknown> {
@@ -323,7 +329,7 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
 
   async function acquireDeclared(entry: Entry): Promise<{ lease: ResourceLease; waited: boolean }> {
     let waited = false
-    const lease = await acquireResources(entry.view.resources, {
+    const lease = await (deps.acquireResources ?? acquireResources)(entry.view.resources, {
       identity: { bootId: entry.view.bootId, operationId: entry.view.id, title: entry.view.title },
       signal: entry.controller.signal,
       ...(deps.resourcePollMs ? { pollMs: deps.resourcePollMs } : {}),

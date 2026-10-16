@@ -39,6 +39,8 @@ export {
   type OperationStatus,
   type OperationView,
   type OperationWaitingFor,
+  type PluginOperationStartInput,
+  type PluginOperationsAPI,
 } from '@makinbakin/sdk/types'
 export { OperationCancelledError, OperationRejectedError } from './errors'
 export {
@@ -65,3 +67,6 @@ export {
   type ResourceWait,
 } from './resources'
 export { runLocal } from './local'
+export { createMemoryResourceAcquirer } from './memory-resources'
+export { operationOriginFromRequest } from './origin'
+export { assertPluginResources, OperationResourceDeniedError, toPluginOperationInput } from './plugin'
