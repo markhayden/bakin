@@ -11,7 +11,7 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { downloadToFile } from './download'
+import { downloadToFile } from '@bakin/core/net/download'
 import { safeExtractArtifact, verifyChecksum } from './artifact'
 import { readProvenance, PROVENANCE_FILENAME, type WhiskitBuildProvenance } from './provenance'
 import type { WhiskitArtifactResolver } from './resolver'

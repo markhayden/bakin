@@ -28,7 +28,7 @@ import { assertNoBinPinConflict, binTargetPath } from '../plugins/bin-owners'
 import type { Manifest } from '../../../packages/core/src/agent-packages/manifest'
 import type { BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
 import { writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
-import { commitFileAtomic, downloadToFile, extractTarMember, sha256File } from '../../../packages/core/src/net/download'
+import { commitFileAtomic, downloadToFile, extractTarMember, sha256File, type DownloadEvent } from '../../../packages/core/src/net/download'
 import type { ProjectorResult } from './projector'
 import { getBakinPaths } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
@@ -57,8 +57,8 @@ export interface BinInstallOptions {
    * global fetch cannot drive real sockets.
    */
   fetchImpl?: typeof fetch
-  /** Byte progress for the download leg (#895). */
-  onProgress?: (receivedBytes: number, totalBytes: number | null) => void
+  /** Transfer events for the download leg (#895). */
+  onEvent?: (event: DownloadEvent) => void
 }
 
 export async function installBinRequirement(
@@ -106,7 +106,7 @@ export async function installBinRequirement(
       try {
         const tarPath = join(extractDir, 'archive.tar.gz')
         await downloadToFile(download.url, tarPath, {
-          sha256: pin, timeoutMs: DOWNLOAD_TIMEOUT_MS, fetchImpl: options.fetchImpl, label, onProgress: options.onProgress,
+          sha256: pin, timeoutMs: DOWNLOAD_TIMEOUT_MS, fetchImpl: options.fetchImpl, label, onEvent: options.onEvent,
         })
         const memberPath = await extractTarMember(tarPath, download.archive.member, extractDir, {
           timeoutMs: VERIFY_TIMEOUT_MS, label: `${label} archive`,
@@ -117,7 +117,7 @@ export async function installBinRequirement(
       }
     } else {
       await downloadToFile(download.url, tmp, {
-        sha256: pin, timeoutMs: DOWNLOAD_TIMEOUT_MS, fetchImpl: options.fetchImpl, label, onProgress: options.onProgress,
+        sha256: pin, timeoutMs: DOWNLOAD_TIMEOUT_MS, fetchImpl: options.fetchImpl, label, onEvent: options.onEvent,
       })
     }
 
@@ -177,10 +177,13 @@ export async function installManifestBins(
   for (const [index, bin] of bins.entries()) {
     progress({ stage: 'bins', message: `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`, item: bin.name, current: index + 1, total: bins.length })
     const installed = await installBinRequirement(bin, installedBy, {
-      onProgress: (receivedBytes, totalBytes) => progress({
-        stage: 'bins', message: `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`,
-        item: bin.name, current: index + 1, total: bins.length, receivedBytes, totalBytes,
-      }),
+      onEvent: (event) => {
+        if (event.type !== 'bytes') return
+        progress({
+          stage: 'bins', message: `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`,
+          item: bin.name, current: index + 1, total: bins.length, receivedBytes: event.received, totalBytes: event.total,
+        })
+      },
     })
     result.projections.push({ kind: 'bin', target: installed.target, sha256: installed.sha256, ...(installed.member ? { member: installed.member } : {}) })
   }
@@ -232,9 +235,10 @@ export async function installPluginBins(
     const message = `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`
     progress({ stage: 'bins', message, item: bin.name, current: index + 1, total: bins.length })
     const installed = await installBinRequirement(bin, installedBy, {
-      onProgress: (receivedBytes, totalBytes) => progress({
-        stage: 'bins', message, item: bin.name, current: index + 1, total: bins.length, receivedBytes, totalBytes,
-      }),
+      onEvent: (event) => {
+        if (event.type !== 'bytes') return
+        progress({ stage: 'bins', message, item: bin.name, current: index + 1, total: bins.length, receivedBytes: event.received, totalBytes: event.total })
+      },
     })
     out.push({ name: bin.name, sha256: installed.sha256, ...(installed.member ? { member: installed.member } : {}), target: binTargetPath(bin.name), created: !installed.skipped })
   }

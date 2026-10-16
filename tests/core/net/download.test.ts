@@ -36,6 +36,7 @@ import {
   type DownloadEvent,
 } from '../../../packages/core/src/net/download'
 import type { OperationContext } from '@makinbakin/sdk/types'
+import { settleFor } from '../../helpers/wait'
 
 const sha256 = (s: string | Buffer) => createHash('sha256').update(s).digest('hex')
 
@@ -197,7 +198,7 @@ describe('downloadToFile stall hardening (margo 2026-09-21: installers hung fore
   it('reports progress with received bytes and the declared total', async () => {
     const seen: Array<[number, number | null]> = []
     await downloadToFile(url('/payload'), join(testDir, 'progress.txt'), {
-      fetchImpl: nativeFetch, onProgress: (received, total) => seen.push([received, total]),
+      fetchImpl: nativeFetch, onEvent: (e) => { if (e.type === 'bytes') seen.push([e.received, e.total]) },
     })
     expect(seen.length).toBeGreaterThan(0)
     expect(seen.at(-1)![0]).toBe(Buffer.byteLength(PAYLOAD))
@@ -384,6 +385,21 @@ describe('download events (#895): attempt, bytes, stalled, retry', () => {
     await expect(downloadToFile(url('/payload'), join(testDir, 'ev-pre.txt'), { fetchImpl: nativeFetch, signal: controller.signal }))
       .rejects.toThrow('gone')
     expect(hits['/payload']).toBeUndefined()
+  })
+})
+
+describe('abandoned attempts', () => {
+  it('a fast failure whose directory the caller removes never surfaces a late sink error', async () => {
+    // The antfly installer's shape: an in-memory HTTP error (no socket, so it
+    // fails before the sink's async open completes), a fresh retry that fails
+    // the same way, then the caller removes its temp dir straight away.
+    for (let i = 0; i < 20; i++) {
+      const dir = join(testDir, `gone-soon-${i}`)
+      const notFound = (async () => new Response('gone', { status: 404 })) as unknown as typeof fetch
+      await expect(downloadToFile(url('/missing'), join(dir, 'a.tgz'), { fetchImpl: notFound, retries: 1 })).rejects.toThrow(/404/)
+      rmSync(dir, { recursive: true, force: true })
+    }
+    await settleFor(100, 'a late open error from an abandoned sink would surface as an unhandled rejection here')
   })
 })
 

@@ -160,10 +160,18 @@ streaming starts (locally reproduced; `arrayBuffer()` DOES honor it).
 `downloadToFile` is therefore stall-proof by construction: manual chunk
 loop, per-read stall window (default 30s) + overall attempt deadline, one
 fresh-request retry on transient failures (never on checksum mismatch),
-partial cleanup per attempt, `onProgress` hook. The installer logs
+partial cleanup per attempt. Since #895 it reports `DownloadEvent`s
+(`attempt` N of M, `bytes`, `stalled`, `retry` with a classified reason —
+`stalled`/`deadline`/`http`/`network`) through `onEvent`, takes an abort
+`signal` (no retry, partial removed, the abort reason rethrown), and
+`opTransfer(op, stageId, itemId)` maps the events onto an operation; the
+tar helpers take `signal` + `onOutput` (stderr lines). `downloadText` rides
+the same attempt loop. Every artifact transfer uses it — the antfly engine
+streams instead of buffering and the Whiskit node:http copy is deleted
+(`tests/architecture/operations-transfers.test.ts`). The installer logs
 per-tarball start/done lines and sweeps dead installers' `.staging-*` dirs
 (pid-liveness check). Never reintroduce `Bun.write(dest, res)` for network
-bodies. Follow-ups: #895 (UI progress), #896 (cross-process single-flight).
+bodies. Follow-up: #896 (cross-process single-flight).
 
 ## macOS code signing (rc.33 lesson)
 

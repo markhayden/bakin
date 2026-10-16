@@ -5,8 +5,9 @@
  * media sharp store) composes these three steps instead of hand-rolling the
  * recipe: stream a download to disk with a sha256 pin, optionally pull a
  * member out of a tar.gz, and verify-then-commit into the final path with an
- * atomic rename. The antfly engine installer still carries its own copy —
- * refitting it is ticketed separately (service-lifecycle entanglement).
+ * atomic rename. Every artifact transfer rides it — the antfly engine, Whiskit
+ * releases and plugin sources included (#895); progress, stalls and retries
+ * surface as `DownloadEvent`s that `opTransfer` maps onto an operation.
  *
  * Downloads STREAM to disk — never buffered in memory (model files are ~GB).
  * A failed leg always deletes its partial file; the target path is only ever
@@ -76,10 +77,8 @@ export interface TransferOptions {
 }
 
 export interface DownloadToFileOptions extends TransferOptions {
-  /** Lowercase hex sha256 pin. Mismatch deletes the file and throws. */
+  /** Lowercase hex sha256 pin. Mismatch deletes the file and throws `DownloadChecksumError`. */
   sha256?: string
-  /** Called after each chunk with received bytes and the declared total (null when unknown). */
-  onProgress?: (receivedBytes: number, totalBytes: number | null) => void
 }
 
 export interface DownloadResult {
@@ -90,7 +89,13 @@ export interface DownloadResult {
 
 const DEFAULT_STALL_TIMEOUT_MS = 30_000
 
-class ChecksumMismatchError extends Error {}
+/** The bytes did not match the pin. Deterministic, so never retried. */
+export class DownloadChecksumError extends Error {
+  constructor(message: string, readonly expected: string, readonly actual: string, readonly url: string) {
+    super(message)
+    this.name = 'DownloadChecksumError'
+  }
+}
 
 /** A failed attempt, classified for the retry event. */
 class TransferAttemptError extends Error {
@@ -148,7 +153,7 @@ async function readWithDeadlines<T>(
 async function transferAttempt(
   url: string,
   options: TransferOptions,
-  onChunk: (chunk: Uint8Array, received: number, total: number | null) => Promise<void> | void,
+  onChunk: (chunk: Uint8Array) => Promise<void> | void,
 ): Promise<number> {
   const label = options.label ?? 'Download'
   const timeoutMs = options.timeoutMs ?? DEFAULT_DOWNLOAD_TIMEOUT_MS
@@ -200,7 +205,7 @@ async function transferAttempt(
         })
         if (chunk.done) break
         received += chunk.value.byteLength
-        await onChunk(chunk.value, received, totalBytes)
+        await onChunk(chunk.value)
         options.onEvent?.({ type: 'bytes', received, total: totalBytes })
         throwIfAborted(options.signal)
       }
@@ -232,7 +237,7 @@ async function withRetries<T>(options: TransferOptions, attemptFn: () => Promise
     } catch (err) {
       cleanup()
       if (err instanceof AbortedError) throw err.reason
-      if (err instanceof ChecksumMismatchError) throw err
+      if (err instanceof DownloadChecksumError) throw err
       lastError = err
       if (n < attempts) {
         const reason: DownloadFailureReason = err instanceof TransferAttemptError ? err.reason : 'network'
@@ -266,25 +271,32 @@ export async function downloadToFile(url: string, destPath: string, options: Dow
     })
     let bytes: number
     try {
-      bytes = await transferAttempt(url, options, async (chunk, received, total) => {
+      bytes = await transferAttempt(url, options, async (chunk) => {
         if (!sink.write(chunk)) {
           await new Promise<void>((resolve, reject) => {
             sink.once('drain', resolve)
             sink.once('error', reject)
           })
         }
-        options.onProgress?.(received, total)
       })
       sink.end()
       await sinkDone
     } catch (err) {
+      // The sink opens asynchronously; when an attempt fails fast the caller's
+      // cleanup can remove the directory before that open runs. The abandoned
+      // stream's late error is expected — observe it so it never surfaces as
+      // an unhandled rejection.
+      sinkDone.catch((sinkErr: unknown) => log.debug('abandoned download sink settled with an error', { destPath, error: String(sinkErr) }))
       sink.destroy()
       throw err
     }
     const actual = await sha256File(destPath)
     if (options.sha256 && actual !== options.sha256.toLowerCase()) {
-      throw new ChecksumMismatchError(
+      throw new DownloadChecksumError(
         `${label} checksum mismatch: expected ${options.sha256.toLowerCase()}, got ${actual} — refusing to install (${url})`,
+        options.sha256.toLowerCase(),
+        actual,
+        url,
       )
     }
     return { sha256: actual, bytes }

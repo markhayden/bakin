@@ -14,7 +14,7 @@ import {
   writePluginLockfile,
 } from '@bakin/core/plugins/lockfile'
 import { githubArtifactSource } from '@/core/whiskit/github-resolver'
-import { downloadText } from '@/core/whiskit/download'
+import { downloadText } from '@bakin/core/net/download'
 import { parseArtifactsIndex, INDEX_FILENAME } from '@/core/whiskit/artifacts-index'
 import { materializeArtifact } from '@/core/whiskit/consumer-install'
 import { isExternalsContractCompatible, PROVENANCE_FILENAME } from '@/core/whiskit/provenance'

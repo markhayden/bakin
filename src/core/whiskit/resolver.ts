@@ -9,7 +9,7 @@
  *
  * Part of the Whiskit consumer install path (Phase 6).
  */
-import { downloadText } from './download'
+import { downloadText } from '@bakin/core/net/download'
 import {
   INDEX_FILENAME,
   parseArtifactsIndex,
