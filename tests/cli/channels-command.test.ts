@@ -20,6 +20,7 @@ let verifyItems: Array<{ key: string; status: 'pass' | 'fail' | 'skipped'; summa
 const apiCalls: string[] = []
 mock.module('../../src/cli/http', () => ({
   BASE_URL: 'http://bakin.test',
+  cliFetch: (path: string, init?: RequestInit) => fetch(`http://bakin.test${path}`, init),
   apiGet: mock(async (path: string) => { apiCalls.push(`GET ${path}`); return readiness }),
   api: mock(async (path: string, init?: RequestInit) => { apiCalls.push(`${init?.method ?? 'GET'} ${path}`); return { items: verifyItems, readiness } }),
 }))

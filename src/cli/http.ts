@@ -10,8 +10,63 @@
  */
 import { isOperationFinished, type OperationCancelResult, type OperationView } from '@makinbakin/sdk/types'
 import { extractApiErrorMessage, formatApiError } from '../core/cli/api-error'
+import { getContentDir } from '../core/content-dir'
+import { readLiveServerLock, type ServerLock } from '../core/server-lock'
 
-export const BASE_URL = process.env.BAKIN_URL || `http://localhost:${process.env.PORT || 3737}`
+/**
+ * Which server this CLI talks to (#895 D11), resolved once:
+ * - an explicit `BAKIN_URL` is used as given (unreachable is an error);
+ * - otherwise the live `server.lock` in this CLI's own `BAKIN_HOME` gives the
+ *   port of the server running for THIS home;
+ * - otherwise no server is running for this home, and server-only verbs fail
+ *   with `BakinNotRunningError` — never a guess at port 3737, which may belong
+ *   to another home.
+ */
+export interface CliTarget {
+  baseUrl: string
+  source: 'env' | 'lock' | 'none'
+  pid?: number
+}
+
+export function resolveCliTarget(
+  env: Record<string, string | undefined>,
+  lock: Pick<ServerLock, 'pid' | 'port'> | null,
+): CliTarget {
+  if (env.BAKIN_URL) return { baseUrl: env.BAKIN_URL.replace(/\/+$/, ''), source: 'env' }
+  if (lock) return { baseUrl: `http://localhost:${lock.port || env.PORT || 3737}`, source: 'lock', pid: lock.pid }
+  return { baseUrl: `http://localhost:${env.PORT || 3737}`, source: 'none' }
+}
+
+export const CLI_TARGET = resolveCliTarget(process.env, readLiveServerLock())
+
+/** For display and probes (`bakin status`, help). Requests go through `serverBaseUrl()`. */
+export const BASE_URL = CLI_TARGET.baseUrl
+
+/** No server is running for this CLI's home (and no BAKIN_URL was given). */
+export class BakinNotRunningError extends Error {
+  constructor() {
+    super(`Bakin isn't running for ${getContentDir()}. Start it with \`bakin start\` (or set BAKIN_URL to reach another server).`)
+    this.name = 'BakinNotRunningError'
+  }
+}
+
+/** The base URL for a server request; throws when no server runs for this home. */
+export function serverBaseUrl(target: CliTarget = CLI_TARGET): string {
+  if (target.source === 'none') throw new BakinNotRunningError()
+  return target.baseUrl
+}
+
+/** How the target was chosen, for error details. */
+export function describeCliTarget(target: CliTarget = CLI_TARGET): string {
+  if (target.source === 'env') return `${target.baseUrl} (BAKIN_URL)`
+  if (target.source === 'lock') return `${target.baseUrl} (server.lock, pid ${target.pid})`
+  return `no server.lock with a live process in ${getContentDir()}`
+}
+
+/** `fetch` against this home's server — for callers that need the raw Response. */
+export function cliFetch(path: string, init?: RequestInit): Promise<Response> {
+  return fetch(`${serverBaseUrl()}${path}`, init)
+}
 
 export interface CliRoster {
   agentIds: string[]
@@ -22,7 +77,7 @@ export interface CliRoster {
 // HTTP helpers
 // ---------------------------------------------------------------------------
 export async function api(path: string, options?: RequestInit): Promise<unknown> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${serverBaseUrl()}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -81,6 +136,7 @@ export function apiErrorPayload(status: number, body: string): Record<string, un
 }
 
 export function isServerConnectionError(err: unknown): boolean {
+  if (err instanceof BakinNotRunningError) return true
   // Raw fetch() failures carry no typed taxonomy (this is the CLI probing a
   // possibly-down local server, upstream of any adapter) — message sniffing
   // is the only signal available here.
@@ -94,7 +150,7 @@ export async function apiPostJson(
   path: string,
   body?: unknown,
 ): Promise<{ ok: true; data: unknown } | { ok: false; data: Record<string, unknown> }> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${serverBaseUrl()}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
@@ -161,7 +217,7 @@ export async function followOperation(
   start: { operationId: string; bootId: string },
   opts: FollowOperationOptions = {},
 ): Promise<OperationFollowResult> {
-  const base = opts.baseUrl ?? BASE_URL
+  const base = opts.baseUrl ?? serverBaseUrl()
   const reconcileMs = opts.reconcileMs ?? 5_000
   const backoff = opts.reconnectMs ?? { initial: 500, max: 5_000 }
   let operation: OperationView | null = null
@@ -258,9 +314,9 @@ export async function followOperation(
 }
 
 /** Cancel through the server; returns the registry's answer (or `unreachable`). */
-export async function cancelOperationRemote(operationId: string, baseUrl = BASE_URL): Promise<OperationCancelResult | 'unreachable'> {
+export async function cancelOperationRemote(operationId: string, baseUrl?: string): Promise<OperationCancelResult | 'unreachable'> {
   try {
-    const res = await fetch(`${baseUrl}/api/operations/${encodeURIComponent(operationId)}/cancel`, { method: 'POST' })
+    const res = await fetch(`${baseUrl ?? serverBaseUrl()}/api/operations/${encodeURIComponent(operationId)}/cancel`, { method: 'POST' })
     const body = jsonObject(await res.json().catch(() => null))
     return typeof body?.status === 'string' ? body.status as OperationCancelResult : 'unreachable'
   } catch {

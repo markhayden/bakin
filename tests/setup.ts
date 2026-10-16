@@ -36,6 +36,12 @@ import { afterEach, mock, setSystemTime, spyOn } from 'bun:test'
 // ---------------------------------------------------------------------------
 process.env.BAKIN_CONSOLE_FORMAT ??= 'silent'
 
+// The CLI targets its own home's server through server.lock (#895 D11),
+// resolved once at import. Pin an explicit target for the whole suite so no
+// test ever reads this machine's real lock; tests of the resolution itself
+// call the pure resolveCliTarget with explicit inputs.
+process.env.BAKIN_URL ??= 'http://localhost:3737'
+
 // Disable RTL's auto-registration. Read the block in tests/rtl-settle.ts before
 // changing this — RTL otherwise installs a bare synchronous afterEach(cleanup)
 // that races the settle-then-unmount hook written specifically to replace it,

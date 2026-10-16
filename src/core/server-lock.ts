@@ -44,6 +44,16 @@ export function readServerLock(): ServerLock | null {
   }
 }
 
+/**
+ * The lock of a server that is actually running for this content dir, or
+ * null (no lock, a corrupt one, or a dead pid). The CLI uses it to target its
+ * own home's server (#895 D11).
+ */
+export function readLiveServerLock(): ServerLock | null {
+  const lock = readServerLock()
+  return lock && isPidAlive(lock.pid) ? lock : null
+}
+
 function isPidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0)

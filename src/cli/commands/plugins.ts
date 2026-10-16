@@ -15,7 +15,7 @@ import {
   readArtifactsIndex,
   writeArtifactsIndex,
 } from '../../core/whiskit/artifacts-index'
-import { BASE_URL, apiGet, apiPost, apiPostJson, jsonObject } from '../http'
+import { apiGet, apiPost, apiPostJson, cliFetch, jsonObject } from '../http'
 import { print } from '../output'
 import { exitCommandIssue, exitUsage, exitUnknownSubcommand } from '../help'
 import { parsePluginInstallArgs, PLUGIN_INSTALL_USAGE } from '../../core/cli/plugin-install-args'
@@ -571,7 +571,7 @@ function printPluginRestoreSnapshots(pluginId: string, snapshots: PluginRestoreS
 }
 
 async function cmdPluginsRestore(pluginId: string, opts: { snapshot?: string; force: boolean; list: boolean }): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/plugins/restore`, {
+  const res = await cliFetch('/api/plugins/restore', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

@@ -4,7 +4,7 @@
  * All commands are thin wrappers around the Bakin HTTP API.
  */
 import { APP_VERSION } from '../packages/core/src/constants'
-import { BASE_URL, isServerConnectionError } from '../src/cli/http'
+import { BakinNotRunningError, describeCliTarget, isServerConnectionError } from '../src/cli/http'
 import { invocationCommand } from '../src/cli/output'
 import {
   BINARY_ONLY_COMMANDS,
@@ -170,7 +170,7 @@ export async function main(): Promise<void> {
             }
           } catch (err) {
             if (!isServerConnectionError(err)) throw err
-            pluginLookupError = `Plugin command lookup skipped because Bakin is not reachable at ${BASE_URL}.`
+            pluginLookupError = `Plugin command lookup skipped because Bakin is not reachable (${describeCliTarget()}).`
           }
         }
         if (process.stdout.isTTY) {
@@ -193,18 +193,20 @@ export async function main(): Promise<void> {
     if (
       isServerConnectionError(err)
     ) {
+      const notRunning = err instanceof BakinNotRunningError
+      const message = notRunning ? "Bakin isn't running for this home." : 'Cannot connect to Bakin. Is the server running?'
       if (process.stdout.isTTY) {
         await printCommandFailureTui({
           command: invocationCommand(args),
-          message: 'Cannot connect to Bakin. Is the server running?',
-          detail: `Tried: ${BASE_URL}`,
+          message,
+          detail: `Tried: ${describeCliTarget()}`,
           code: 'SERVER_UNREACHABLE',
-          next: 'Run `bakin start` to launch the server.',
+          next: 'Run `bakin start` to launch the server (or set BAKIN_URL to reach another one).',
         })
       } else {
-        console.error('Error: Cannot connect to Bakin. Is the server running?')
-        console.error(`  Tried: ${BASE_URL}`)
-        console.error(`  Run \`bakin start\` to launch the server.`)
+        console.error(`Error: ${message}`)
+        console.error(`  Tried: ${describeCliTarget()}`)
+        console.error(`  Run \`bakin start\` to launch the server (or set BAKIN_URL to reach another one).`)
       }
     } else {
       const message = err instanceof Error ? err.message : String(err)

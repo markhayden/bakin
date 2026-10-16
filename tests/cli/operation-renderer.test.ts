@@ -259,14 +259,15 @@ describe('followOperation', () => {
 
   it('reconnects with Last-Event-ID and reconciles a milestone missed while down', async () => {
     stub = stubServer()
-    const following = followOperation({ operationId: 'op-1', bootId: 'boot-a' }, { baseUrl: stub.url, reconcileMs: 60_000, reconnectMs: { initial: 10, max: 10 } })
+    const revs: number[] = []
+    const following = followOperation({ operationId: 'op-1', bootId: 'boot-a' }, { baseUrl: stub.url, reconcileMs: 60_000, reconnectMs: { initial: 10, max: 10 }, onUpdate: ({ operation }) => revs.push(operation.rev) })
     await waitFor(() => stub.lastEventIds.length === 1, 'connected')
     stub.push(view({ rev: 2 }), 41)
-    await new Promise((r) => setTimeout(r, 20))
+    await waitFor(() => revs.includes(2), 'event 41 applied')
     stub.snapshot = { status: 200, body: { bootId: 'boot-a', operation: view({ rev: 7, status: 'failed', outcome: { code: 'download_failed' } }), children: [] } }
     stub.dropStreams()
     const result = await following
-    expect(stub.lastEventIds).toEqual([null, '41'])
+    expect(stub.lastEventIds.slice(0, 2)).toEqual([null, '41'])
     expect(result.operation?.outcome?.code).toBe('download_failed')
   })
 

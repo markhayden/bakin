@@ -119,7 +119,7 @@ async function cmdVerify(json: boolean): Promise<void> {
 }
 
 async function cmdReconnect(json: boolean): Promise<void> {
-  const response = await fetch(`${(await import('../http')).BASE_URL}/api/channels/reconnect?wait=1`, { method: 'POST' })
+  const response = await (await import('../http')).cliFetch('/api/channels/reconnect?wait=1', { method: 'POST' })
   const body = await response.json().catch(() => ({})) as { readiness?: ChannelReadiness; error?: string; message?: string }
   if (!response.ok && response.status !== 202) {
     if (response.status === 409 && body.error === 'owner_is_runtime') {

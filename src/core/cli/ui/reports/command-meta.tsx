@@ -90,7 +90,7 @@ export function HelpReport({ groups, env = {}, error, errorDetail, color = true 
   const commandCount = helpCommandCount(groups)
   const groupCount = groups.length
   const envRows: DetailFieldRow[] = [
-    { field: 'BAKIN_URL', value: `Base URL for the running server (default: ${valueText(env.bakinUrl, 'http://localhost:3737')})` },
+    { field: 'BAKIN_URL', value: `Server to talk to (default: this home's running server, from server.lock${env.bakinUrl ? ` — now ${valueText(env.bakinUrl, '')}` : ''})` },
     { field: 'BAKIN_HOME', value: 'Override for ~/.bakin' },
     { field: 'PORT', value: 'Port to bind when `start` launches (default: 3737)' },
   ]
