@@ -46,6 +46,7 @@ import {
 } from '@makinbakin/sdk/internal'
 import { Slot } from '@makinbakin/sdk/slots'
 import { ApprovalsAttentionProvider } from '../components/attention/approvals-attention-provider'
+import { OperationsAttentionProvider } from '../components/attention/operations-attention-provider'
 import { Banner, Button, Spinner, SystemState, Text } from '@makinbakin/sdk/ui'
 import { assertReactInstance } from '../lib/react-identity'
 import { findShadowingHostPaths } from '../lib/route-shadow'
@@ -740,6 +741,7 @@ export function PluginHost({ children }: { children: ReactNode }) {
     <>
       {children}
       <ApprovalsAttentionProvider />
+      <OperationsAttentionProvider />
       <Slot name="nav-badge-providers" />
       {boot.failedPlugins.length > 0 && !failuresDismissed && (
         <PluginFailureBanner
