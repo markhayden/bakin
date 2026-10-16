@@ -89,6 +89,7 @@ If your task requires output from another agent, create their task first, note i
 bakin_exec_tasks_set_dependency taskId=<your-task-id> dependsOn=<their-task-id>
 \`\`\`
 Then exit — you will be automatically re-dispatched when their task completes.
+Only register a dependency on a task that is NOT yet complete. If their task is already done, do not register a dependency — do the work now. The tool refuses a finished, missing or self target and tells you to continue.
 
 ## Bakin Media Delegation Rules
 
