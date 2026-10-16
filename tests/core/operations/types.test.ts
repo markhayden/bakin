@@ -1,3 +1,26 @@
+import { afterAll, mock } from 'bun:test'
+import { rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+
+const testDir = join(tmpdir(), `bakin-test-operations-types-${Date.now()}-${randomUUID()}`)
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir, root: testDir, db: join(testDir, 'bakin.db'), media: join(testDir, 'media') }),
+})
+mock.module('../../../src/core/content-dir', contentDirMock)
+mock.module('../../../packages/core/src/content-dir', contentDirMock)
+mock.module('@bakin/adapter-openclaw/home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+const loggerMock = () => ({ createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }) })
+mock.module('../../../src/core/logger', loggerMock)
+mock.module('../../../packages/core/src/logger', loggerMock)
+afterAll(() => rmSync(testDir, { recursive: true, force: true }))
+
 import { describe, expect, it } from 'bun:test'
 
 import * as SdkTypes from '@makinbakin/sdk/types'

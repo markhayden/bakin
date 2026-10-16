@@ -8,7 +8,9 @@
 
 export {
   CORE_RESOURCES,
+  OPERATION_QUIET_THRESHOLDS,
   OPERATION_STAGE_KINDS,
+  operationQuietState,
   type CoreResource,
   type OperationAttempt,
   type OperationAttemptReason,
@@ -24,6 +26,7 @@ export {
   type OperationOutcomeSummary,
   type OperationOwner,
   type OperationPlan,
+  type OperationQuietState,
   type OperationQuietThresholds,
   type OperationStageKind,
   type OperationStagePlan,
@@ -35,3 +38,10 @@ export {
   type OperationWaitingFor,
 } from '@makinbakin/sdk/types'
 export { OperationCancelledError } from './errors'
+export {
+  createOperationRegistry,
+  type OperationPublishKind,
+  type OperationRegistry,
+  type OperationRegistryDeps,
+  type StartOperationInput,
+} from './registry'

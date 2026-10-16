@@ -190,3 +190,42 @@ export interface OperationListResponse {
   bootId: string
   operations: OperationView[]
 }
+
+// ---------------------------------------------------------------------------
+// Quiet state (D4, D17) — pure, shared by the registry, the CLI and the UI
+// ---------------------------------------------------------------------------
+
+/** One row per stage kind. A stage's own `quiet` overrides its row. */
+export const OPERATION_QUIET_THRESHOLDS: Record<OperationStageKind, OperationQuietThresholds> = {
+  preparing: { quietMs: 10_000, stuckMs: 30_000 },
+  downloading: { quietMs: 10_000, stuckMs: 30_000 },
+  extracting: { quietMs: 15_000, stuckMs: 45_000 },
+  verifying: { quietMs: 15_000, stuckMs: 45_000 },
+  committing: { quietMs: 15_000, stuckMs: 45_000 },
+  cleanup: { quietMs: 15_000, stuckMs: 45_000 },
+  building: { quietMs: 30_000, stuckMs: 120_000 },
+  installing: { quietMs: 30_000, stuckMs: 120_000 },
+}
+
+export interface OperationQuietState {
+  state: 'progressing' | 'quiet' | 'stuck' | 'waiting' | 'idle'
+  /** The active stage the state was judged against (absent when idle or waiting). */
+  stageId?: string
+  /** Time since the last measurable progress. */
+  sinceProgressMs: number
+}
+
+/**
+ * Judges a view from `lastProgressAt` alone — output and heartbeats never
+ * reset it. Waiting is never quiet or stuck unless the holder is stale, and a
+ * finished operation is idle.
+ */
+export function operationQuietState(view: Pick<OperationView, 'status' | 'stages' | 'lastProgressAt' | 'waitingFor'>, now: number): OperationQuietState {
+  const sinceProgressMs = Math.max(0, now - Date.parse(view.lastProgressAt))
+  if (view.status !== 'running' && view.status !== 'cancelling') return { state: 'idle', sinceProgressMs }
+  if (view.waitingFor && !view.waitingFor.stale) return { state: 'waiting', sinceProgressMs }
+  const active = view.stages.find((s) => s.status === 'active')
+  const thresholds = active ? (active.quiet ?? OPERATION_QUIET_THRESHOLDS[active.kind]) : OPERATION_QUIET_THRESHOLDS.preparing
+  const state = sinceProgressMs >= thresholds.stuckMs ? 'stuck' : sinceProgressMs >= thresholds.quietMs ? 'quiet' : 'progressing'
+  return { state, stageId: active?.id, sinceProgressMs }
+}
