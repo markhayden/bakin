@@ -42,6 +42,14 @@ export interface ApprovalKindHandler<K extends ApprovalKind = ApprovalKind> {
    */
   onResolve(record: RecordOf<K>, decision: ApprovalDecision): Promise<unknown>
   /**
+   * Runs strictly AFTER the decision is saved, the channel card is updated and
+   * the resolution is published (#895 D24) — e.g. waiting for the repair the
+   * decision started, recording its outcome and following up on the channel.
+   * Fire-and-forget: it never delays the resolver, and a throw is logged.
+   * Receives whatever `onResolve` returned.
+   */
+  afterResolve?(record: RecordOf<K>, result: unknown): Promise<void>
+  /**
    * Render the approval on a runtime channel. Default: one `createApproval`
    * card. Kinds with richer context (gates post output + a thread) override.
    */

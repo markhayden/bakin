@@ -229,6 +229,7 @@ const channels: ChannelSurface = {
   editApproval: async (args) => requireApplied().approvals.editApproval(args),
   cancelApproval: async (args) => requireApplied().approvals.cancelApproval(args),
   resolveApproval: async (args) => requireApplied().approvals.resolveApproval(args),
+  postApprovalOutcome: async (args) => requireApplied().approvals.postApprovalOutcome(args),
   subscribeApprovalResponses: (handler) => {
     approvalHandlers.add(handler)
     return () => approvalHandlers.delete(handler)

@@ -219,6 +219,19 @@ describe('discord approval surface', () => {
     expect(String(deps.edits[0].payload.content)).toContain('superseded')
   })
 
+  it('postApprovalOutcome replies to the card with the outcome, never pinging anyone (#895 D24)', async () => {
+    const deps = makeDeps()
+    const { deliveries } = await renderCard(deps)
+    await deps.surface.postApprovalOutcome({ approvalId: APPROVAL_ID, deliveries, outcome: { status: 'failed', title: 'Repair failed', message: 'Checksum mismatch' } })
+    const followUp = deps.posted.at(-1)!
+    expect(followUp.channelId).toBe('777')
+    expect(followUp.payload).toEqual({
+      content: '❌ **Repair failed** — Checksum mismatch',
+      message_reference: { message_id: 'card-1', fail_if_not_exists: false },
+      allowed_mentions: { parse: [] },
+    })
+  })
+
   it('unsubscribe stops event delivery', async () => {
     const deps = makeDeps()
     const received: ApprovalResolveEvent[] = []

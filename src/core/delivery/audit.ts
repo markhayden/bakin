@@ -16,6 +16,7 @@ export type DeliveryAuditEvent =
   | 'delivery.send_failed'
   | 'delivery.approval_rendered'
   | 'delivery.approval_denied'
+  | 'delivery.approval_outcome_posted'
   | 'delivery.inbound_denied'
 
 export function auditDelivery(event: DeliveryAuditEvent, data: Record<string, unknown> = {}): void {

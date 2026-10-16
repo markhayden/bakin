@@ -263,6 +263,8 @@ export type {
   EditApprovalArgs,
   CancelApprovalArgs,
   ResolveApprovalArgs,
+  ApprovalOutcome,
+  PostApprovalOutcomeArgs,
   ApprovalResolveEvent,
   InboundChannelAttachment,
   InboundChannelMessage,

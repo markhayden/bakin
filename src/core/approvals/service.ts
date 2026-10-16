@@ -5,7 +5,7 @@
  * `approval.pending` / `approval.resolved` plugin-events for the board, the
  * attention provider and the Health page (spec D6/D7).
  */
-import type { ApprovalDelivery } from '@bakin/core/adapters/runtime'
+import type { ApprovalDelivery, ApprovalOutcome } from '@bakin/core/adapters/runtime'
 import type { RuntimeChannelSurface } from '@bakin/core/adapters/runtime/channels'
 import {
   cancelApprovalRecord,
@@ -109,6 +109,31 @@ export function requestApproval(input: RequestApprovalInput): ApprovalRecord {
 // Discord button) is refused before its handler runs (plan review R1).
 const inFlight = new Set<string>()
 
+// afterResolve follow-ups still running (tests await them; nothing else does).
+const followUps = new Set<Promise<void>>()
+
+/** Test seam: resolves once every running afterResolve follow-up has settled. */
+export async function settleApprovalFollowUps(): Promise<void> {
+  while (followUps.size > 0) await Promise.allSettled([...followUps])
+}
+
+/**
+ * Follow up on a resolved approval's channel card with what the decision led
+ * to. Feature-detected: runtimes without `postApprovalOutcome`, or records
+ * never rendered on a channel, do nothing. Never throws.
+ */
+export async function postApprovalOutcome(record: ApprovalRecord, outcome: ApprovalOutcome): Promise<boolean> {
+  const channels = runtimeChannels()
+  if (!channels?.postApprovalOutcome || record.deliveries.length === 0) return false
+  try {
+    await channels.postApprovalOutcome({ approvalId: record.approvalId, deliveries: record.deliveries, outcome })
+    return true
+  } catch (err) {
+    log.warn('Approval outcome follow-up failed', { approvalId: record.approvalId, err: err instanceof Error ? err.message : String(err) })
+    return false
+  }
+}
+
 /**
  * Apply a decision: refuse unknown/non-pending/in-flight ids with typed
  * errors, run the kind handler (its throw leaves the record pending), then
@@ -147,6 +172,12 @@ export async function resolveApprovalWithResult(approvalId: string, decision: Ap
     }
     publishResolved(resolved)
     log.info('Approval resolved', { approvalId, kind: record.owner.kind, option: decision.option, by: decision.actor.source })
+    if (handler.afterResolve) {
+      const followUp = handler.afterResolve(resolved, result)
+        .catch((err) => log.error('Approval follow-up failed', err, { approvalId, kind: record.owner.kind }))
+        .finally(() => followUps.delete(followUp))
+      followUps.add(followUp)
+    }
     return { record: resolved, result }
   } finally {
     inFlight.delete(approvalId)
