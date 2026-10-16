@@ -29,6 +29,7 @@ import {
   mockLogProgress,
   mockTriggerDispatch,
   mockUpdateTask,
+  MockDependencyRejectedError,
 } from './helpers/tasks-routes-harness'
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
@@ -665,6 +666,25 @@ describe('bakin_exec_tasks_set_dependency', () => {
     expect(result.ok).toBe(true)
     expect(result.message).toContain('Dependency registered')
     expect(mockSetDependencyWithEffects).toHaveBeenCalledWith('task-sd', 'task-other', 'mcp')
+  })
+
+  // The margo loop: the refusal's message IS the instruction to the agent —
+  // the tool must hand it back verbatim, never swallow it into a generic error.
+  it('hands a dependency refusal back to the agent as ok:false with the message', async () => {
+    mockSetDependencyWithEffects.mockRejectedValue(new MockDependencyRejectedError('complete', 'task-other'))
+
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_set_dependency')!
+    const result = await callTool(tool, { taskId: 'task-sd', dependsOn: 'task-other' }, 'rolo')
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('task-other')
+    expect(result.reason).toBe('complete')
+  })
+
+  it('describes the tool as waiting on a task that is not yet complete', () => {
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_set_dependency')!
+    expect(tool.description).toMatch(/not yet complete|still open/i)
+    expect(tool.description).toMatch(/refus/i)
   })
 
   it('returns error on dependency failure', async () => {

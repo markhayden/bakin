@@ -152,6 +152,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 import { loadDispatchState, start, stop, getDispatchInfo, isTaskDispatchEligible } from '../../src/core/dispatch'
+import { isCompleteColumn } from '../../src/core/dispatch-board'
 import { dispatchTasks, awaitDispatchIdle } from '../../src/core/dispatch'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import type { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
@@ -179,6 +180,18 @@ describe('dispatch', () => {
   // -------------------------------------------------------------------------
   // isTaskDispatchEligible
   // -------------------------------------------------------------------------
+
+  // ONE definition of "complete" for dependencies — the dispatcher's
+  // completedTaskIds and the set_dependency validator both call it (spec D1).
+  describe('isCompleteColumn', () => {
+    it.each(['done', 'archived'])('%s is complete', (column) => {
+      expect(isCompleteColumn(column)).toBe(true)
+    })
+
+    it.each(['backlog', 'todo', 'inProgress', 'review', 'blocked'])('%s is not complete', (column) => {
+      expect(isCompleteColumn(column)).toBe(false)
+    })
+  })
 
   describe('isTaskDispatchEligible', () => {
     const nowMs = Date.parse('2026-05-12T12:00:00.000Z')

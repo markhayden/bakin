@@ -29,6 +29,7 @@ import {
   TaskValidationError,
   reportComplete,
   setDependencyWithEffects,
+  DependencyRejectedError,
   getTaskDetails,
   logProgress,
   WorkflowTaskMoveError,
@@ -385,6 +386,9 @@ export const tasksRoutes = [
         ctx.activity.log('system', `Set dependency on ${body.dependsOn}`, { taskId })
         return Response.json({ ok: true as const })
       } catch (err) {
+        if (err instanceof DependencyRejectedError) {
+          return Response.json({ error: err.message, reason: err.reason }, { status: 409 })
+        }
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
     },

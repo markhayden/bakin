@@ -22,6 +22,7 @@ import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { assertWorkflowToolAllowed } from './workflow-tool-authorization'
 import { deleteCompletion, getLiveRun, hasCompletion, recordCompletion } from './execution-ledger'
 import { bumpTaskRunHeartbeat } from './task-liveness'
+import { isCompleteColumn } from './dispatch-board'
 import {
   addTaskLog as appendTaskLog,
   blockTask as blockStoredTask,
@@ -609,11 +610,49 @@ export async function reportComplete(
 /**
  * Register a dependency between tasks.
  */
+export type DependencyRejectionReason = 'missing' | 'self' | 'complete'
+
+function dependencyRejectionMessage(reason: DependencyRejectionReason, dependsOn: string): string {
+  switch (reason) {
+    case 'complete':
+      return `Task ${dependsOn} is already complete — do not wait on it. Continue your task now; no dependency was registered.`
+    case 'missing':
+      return `Task ${dependsOn} does not exist — check the id. No dependency was registered.`
+    case 'self':
+      return `A task cannot depend on itself (${dependsOn}). No dependency was registered.`
+  }
+}
+
+/**
+ * Typed refusal from setDependencyWithEffects (spec D1). Classified by
+ * `reason`, never by message text; the message is written FOR the agent — the
+ * exec tool hands it back verbatim and the REST route maps the class to 409.
+ */
+export class DependencyRejectedError extends Error {
+  constructor(readonly reason: DependencyRejectionReason, readonly dependsOn: string) {
+    super(dependencyRejectionMessage(reason, dependsOn))
+    this.name = 'DependencyRejectedError'
+  }
+}
+
+/**
+ * Register `taskId` as waiting on `dependsOn`. ONE validator for the exec
+ * tool and the REST route: a self-dependency, a target that does not exist,
+ * or a target that is already complete (`isCompleteColumn` — the same
+ * definition the dispatcher uses) is refused before anything is written. The
+ * margo loop (task 12939a37) was an agent registering a dependency on a DONE
+ * task every re-dispatch and being told to stop and wait for a completion
+ * that could never fire again.
+ */
 export async function setDependencyWithEffects(
   taskId: string,
   dependsOn: string,
   channel?: Channel,
 ): Promise<void> {
+  if (taskId === dependsOn) throw new DependencyRejectedError('self', dependsOn)
+  const target = getTaskWithColumn(dependsOn)
+  if (!target) throw new DependencyRejectedError('missing', dependsOn)
+  if (isCompleteColumn(target.column)) throw new DependencyRejectedError('complete', dependsOn)
   await setStoredDependency(taskId, dependsOn)
   appendAudit(getContentDir(), 'task.dependency_set', 'api', { id: taskId, dependsOn }, channel)
 }

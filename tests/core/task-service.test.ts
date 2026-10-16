@@ -566,7 +566,19 @@ describe('task-service', () => {
   })
 
   describe('setDependencyWithEffects', () => {
+    const boardWith = (column: string) =>
+      mockGetTaskWithColumn.mockImplementation((id: string) =>
+        id === 'task-b' ? { task: { id: 'task-b', title: 'Target' }, column } : null)
+    // clearAllMocks resets calls, not implementations — put the default back.
+    afterEach(() => {
+      mockGetTaskWithColumn.mockImplementation((id: string) => {
+        if (id !== 'task-1') return null
+        return { task: { id: 'task-1', title: 'Test Task' }, column: 'inProgress' }
+      })
+    })
+
     it('should set dependency and append audit', async () => {
+      boardWith('todo')
       const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       await service.setDependencyWithEffects('task-a', 'task-b')
 
@@ -578,6 +590,49 @@ describe('task-service', () => {
         { id: 'task-a', dependsOn: 'task-b' },
         undefined,
       )
+    })
+
+    it.each(['todo', 'inProgress', 'blocked', 'review'])('accepts an open target in %s', async (column) => {
+      boardWith(column)
+      await service.setDependencyWithEffects('task-a', 'task-b')
+      expect(mockSetDependency).toHaveBeenCalledWith('task-a', 'task-b')
+    })
+
+    // The margo loop (task 12939a37): registering a dependency on a DONE task
+    // promised a re-dispatch that could never fire. Refuse, write nothing,
+    // and tell the agent to continue.
+    it.each(['done', 'archived'])('refuses a target that is already complete (%s), writes nothing, audits nothing', async (column) => {
+      boardWith(column)
+      const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
+
+      const err = await service.setDependencyWithEffects('task-a', 'task-b').catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(service.DependencyRejectedError)
+      expect((err as InstanceType<typeof service.DependencyRejectedError>).reason).toBe('complete')
+      expect((err as Error).message).toContain('task-b')
+      expect((err as Error).message).toMatch(/already complete/i)
+      expect((err as Error).message).toMatch(/continue/i)
+      expect(mockSetDependency).not.toHaveBeenCalled()
+      expect(appendAudit).not.toHaveBeenCalledWith(expect.any(String), 'task.dependency_set', expect.anything(), expect.anything(), undefined)
+    })
+
+    it('refuses a target that does not exist', async () => {
+      mockGetTaskWithColumn.mockImplementation(() => null)
+
+      const err = await service.setDependencyWithEffects('task-a', 'ghost').catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(service.DependencyRejectedError)
+      expect((err as InstanceType<typeof service.DependencyRejectedError>).reason).toBe('missing')
+      expect(mockSetDependency).not.toHaveBeenCalled()
+    })
+
+    it('refuses a self-dependency before looking anything up', async () => {
+      const err = await service.setDependencyWithEffects('task-a', 'task-a').catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(service.DependencyRejectedError)
+      expect((err as InstanceType<typeof service.DependencyRejectedError>).reason).toBe('self')
+      expect(mockGetTaskWithColumn).not.toHaveBeenCalled()
+      expect(mockSetDependency).not.toHaveBeenCalled()
     })
   })
 

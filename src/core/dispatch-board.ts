@@ -36,6 +36,25 @@ export async function readDispatchColumns(): Promise<DispatchColumns> {
   return { ...emptyDispatchColumns(), ...(board?.columns ?? {}) }
 }
 
+/**
+ * THE definition of "complete" for dependency purposes (spec D1): the
+ * dispatcher's completedTaskIds and the set_dependency validator both call
+ * it, so a dependency can never be "satisfied" for one and "open" for the
+ * other. Column ids as the store normalizes them.
+ */
+export function isCompleteColumn(column: string): boolean {
+  return column === 'done' || column === 'archived'
+}
+
+/** Ids of every task in a complete column — see isCompleteColumn. */
+export function completedTaskIdsOf(columns: Record<string, Array<{ id: string }>>): Set<string> {
+  return new Set(
+    Object.entries(columns)
+      .filter(([column]) => isCompleteColumn(column))
+      .flatMap(([, tasks]) => tasks.map((task) => task.id)),
+  )
+}
+
 export function isTaskDispatchEligible(
   task: DispatchTask,
   context: DispatchEligibilityContext,

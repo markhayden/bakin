@@ -18,6 +18,7 @@ import {
   taskStoreMock,
   taskServiceMock,
   MockWorkflowTaskMoveError,
+  MockDependencyRejectedError,
   resetTasksRoutesHarness,
   completionsFake,
   mockTaskRuns,
@@ -1019,6 +1020,21 @@ describe('POST /:taskId/dependency — Set Dependency', () => {
 
     expect(status).toBe(400)
     expect(body.error).toBe('invalid input')
+  })
+
+  // Typed refusal (spec D1): a complete/missing/self target is a client
+  // mistake, not a server fault — 409 with the agent-facing message.
+  it('returns 409 with the message when the service refuses the dependency', async () => {
+    mockSetDependencyWithEffects.mockRejectedValue(new MockDependencyRejectedError('complete', 'task-parent'))
+
+    const route = findRoute(activated.routes, 'POST', '/:taskId/dependency')!
+    const { status, body } = await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-dep' },
+      body: { dependsOn: 'task-parent' },
+    })
+
+    expect(status).toBe(409)
+    expect(body.error).toContain('task-parent')
   })
 
   it('returns 500 on dependency error', async () => {

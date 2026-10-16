@@ -22,7 +22,7 @@ import {
   getDispatchMarkerTaskId,
   trimDispatched,
 } from './dispatch-state'
-import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInProgress, tryAddTaskLog } from './dispatch-board'
+import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInProgress, tryAddTaskLog, completedTaskIdsOf } from './dispatch-board'
 import { auditConcurrencyClampIfNeeded, concurrencyGate, preDispatchGate, fireDispatchTurn, getSameAgentTurnsMode, resolveDispatchRouting, type BudgetSpendMemo } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
 import { deferForMissingBrand } from './dispatch-context-blocks'
@@ -76,10 +76,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
     const columns = await readDispatchColumns()
     const todoTasks = columns.todo
     const activeIds = new Set(columns.inProgress.map(t => t.id))
-    const completedTaskIds = new Set([
-      ...columns.done.map(t => t.id),
-      ...columns.archived.map(t => t.id),
-    ])
+    const completedTaskIds = completedTaskIdsOf(columns)
     const knownTaskIds = new Set(
       Object.values(columns).flatMap((column) => column.map((t) => t.id)),
     )

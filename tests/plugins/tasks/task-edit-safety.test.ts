@@ -83,6 +83,7 @@ mock.module('../../../src/core/task-service', () => ({
   validateTeamRef: async () => undefined,
   validateTeamAssignment: async () => undefined,
   TaskValidationError: class extends Error {},
+  DependencyRejectedError: class extends Error {},
   moveTaskWithEffects: mock(async () => ({ alreadyComplete: false })),
   blockTaskWithEffects: mockBlockTaskWithEffects,
   createTaskWithEffects: mock(async () => ({ id: 'new' })),

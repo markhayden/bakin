@@ -168,7 +168,7 @@ Agents drive tasks through MCP exec tools. The full set:
 - `bakin_exec_tasks_list`: List all tasks on the board. Optionally filter by column or agent.
 - `bakin_exec_tasks_log_progress`: Log a human-readable progress update to the live activity feed. Call this at every significant step.
 - `bakin_exec_tasks_move`: Move a task to a different column on the task board.
-- `bakin_exec_tasks_set_dependency`: Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait.
+- `bakin_exec_tasks_set_dependency`: Register that your task is waiting on another task that is NOT yet complete. Your task is parked and auto-re-dispatched when that task completes; after registering, stop — do not wait in this turn. Refuses a target that is already complete (just continue your work), does not exist, or is your own task.
 - `bakin_exec_tasks_update`: Update a task on the board — change title, description, or assigned agent.
 <!-- /docs:exec-tools -->
 
